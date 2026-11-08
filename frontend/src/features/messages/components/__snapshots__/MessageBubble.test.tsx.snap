@@ -7,9 +7,9 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
   <div
     class="w-10 shrink-0"
   >
-    <button
-      class="block rounded-pill cursor-default"
-      type="button"
+    <span
+      class="flex rounded-pill"
+      data-testid="message-avatar"
     >
       <span
         class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill bg-sunken font-semibold text-secondary transition-shadow duration-base ease-standard h-10 w-10 text-body"
@@ -21,7 +21,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
           src="/avatar.jpg"
         />
       </span>
-    </button>
+    </span>
   </div>
   <div
     class="flex min-w-0 max-w-[80%] flex-col"
@@ -80,9 +80,9 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
   <div
     class="w-10 shrink-0"
   >
-    <button
-      class="block rounded-pill cursor-default"
-      type="button"
+    <span
+      class="flex rounded-pill"
+      data-testid="message-avatar"
     >
       <span
         class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill bg-sunken font-semibold text-secondary transition-shadow duration-base ease-standard h-10 w-10 text-body"
@@ -94,7 +94,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
           src="/avatar.jpg"
         />
       </span>
-    </button>
+    </span>
   </div>
   <div
     class="flex min-w-0 max-w-[80%] flex-col"
@@ -142,9 +142,9 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
   <div
     class="w-10 shrink-0"
   >
-    <button
-      class="block rounded-pill cursor-default"
-      type="button"
+    <span
+      class="flex rounded-pill"
+      data-testid="message-avatar"
     >
       <span
         class="relative inline-flex shrink-0 items-center justify-center overflow-hidden rounded-pill bg-sunken font-semibold text-secondary transition-shadow duration-base ease-standard h-10 w-10 text-body"
@@ -156,7 +156,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
           src="/avatar.jpg"
         />
       </span>
-    </button>
+    </span>
   </div>
   <div
     class="flex min-w-0 max-w-[80%] flex-col"
@@ -185,7 +185,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
         data-testid="unread-shelter"
       >
         <svg
-          class="h-8 w-8 opacity-90"
+          class="h-8 w-8"
           fill="none"
           height="24"
           stroke="currentColor"

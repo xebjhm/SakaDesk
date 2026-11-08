@@ -10,6 +10,7 @@ export interface LetterRowProps {
     avatarUrl: string | null;
     /** The user's nickname. */
     userName: string;
+    /** Called when the letter image is clicked; the chat opens it in the letter viewer. */
     onOpenImage: (letter: Letter) => void;
 }
 

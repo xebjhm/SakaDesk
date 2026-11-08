@@ -28,6 +28,7 @@ import type { ReadState } from './readStateStore';
 import { useReadStateSubscription } from './hooks/useReadStateSubscription';
 import { useUiStateReporter } from './hooks/useUiStateReporter';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
+import { LetterViewerModal } from '../../core/modals/LetterViewerModal';
 import { ConfirmDialog } from '../../shell/components/ConfirmDialog';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 import { memberImageUrl } from './profileImages';
@@ -36,6 +37,7 @@ import { CallOverlay } from '../incomingCall/CallOverlay';
 import { isCallPopupActive } from '../callPopup/callPopupApi';
 import { useTimelineKeyNav } from './hooks/useTimelineKeyNav';
 import { useTimelineJump } from './hooks/useTimelineJump';
+import { useTimelineLetterViewer } from './hooks/useTimelineLetterViewer';
 import { useLandingHighlight } from './hooks/useLandingHighlight';
 import { buildTimeline } from './timeline/buildTimeline';
 import { firstUnreadIndex } from './timeline/jumpTarget';
@@ -451,15 +453,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Breadcrumbs, once per room visit: how each letter's avatar was chosen, and dropped letters.
     useLetterBreadcrumbs(roomExtras.lettersRoomKey, letterAvatar, roomExtras.profile !== null, timeline.droppedLetters);
     const letterUserName = roomExtras.profile?.name || userNickname || t('letters.you');
-    const [letterViewer, setLetterViewer] = useState<Letter | null>(null);
-    const renderLetter = useCallback((letter: Letter) => (
-        <LetterRow
-            letter={letter}
-            avatarUrl={letterAvatar.byId.get(letter.id) ?? null}
-            userName={letterUserName}
-            onOpenImage={setLetterViewer}
-        />
-    ), [letterAvatar, letterUserName]);
 
     const { highlightedRowKey, flash: flashLanded } = useLandingHighlight(selectedGroupDir);
     // The old room's visible range says nothing about the new one: unknown until MessageList reports it.
@@ -588,6 +581,20 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const jumpToLetter = useCallback((id: number) => {
         void jumpTo({ kind: 'letter', id });
     }, [jumpTo]);
+
+    // The letter viewer opened from a timeline letter (walks the timeline's letters chronologically);
+    // cleared on a room switch. Its jump, like the Sent letters dialog's, focuses the timeline after.
+    const timelineRef = useRef<HTMLDivElement>(null);
+    const letterViewer = useTimelineLetterViewer(selectedGroupDir, jumpToLetter, timelineRef);
+    const openLetterViewer = letterViewer.open;
+    const renderLetter = useCallback((letter: Letter) => (
+        <LetterRow
+            letter={letter}
+            avatarUrl={letterAvatar.byId.get(letter.id) ?? null}
+            userName={letterUserName}
+            onOpenImage={openLetterViewer}
+        />
+    ), [letterAvatar, letterUserName, openLetterViewer]);
 
     // The backend's popup owns a voice while the window is visible but unfocused: ask it, keep no copy.
     const isCallElsewhere = useCallback((messageId: number) => {
@@ -768,7 +775,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             memberAvatar={headerAvatar}
                             letters={roomExtras.letters}
                             lettersStatus={roomExtras.lettersStatus}
-                            onJumpToLetter={jumpToLetter}
+                            onJumpToLetter={letterViewer.jump}
                             activeService={activeService || undefined}
                             onOpenCalendar={openCalendar}
                             onBackgroundChange={setBackgroundSettings}
@@ -781,6 +788,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 <FadeOnChange changeKey={selectedGroupDir} className="flex min-h-0 flex-1 flex-col">
                 {/* Virtualized Timeline */}
                 <div
+                    ref={timelineRef}
                     className="flex-1 overflow-hidden relative isolate"
                     tabIndex={0}
                     onKeyDown={handleKeyDown}
@@ -925,15 +933,16 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     onNavigate={setMediaViewerIndex}
                 />
             )}
-            {/* Letter image viewer */}
-            {letterViewer?.image_url && (
-                <MediaViewerModal
-                    mediaItems={[{ src: letterViewer.image_url, type: 'picture', timestamp: letterViewer.created_at }]}
-                    currentIndex={0}
-                    onClose={() => setLetterViewer(null)}
-                    onNavigate={() => {}}
-                />
-            )}
+            {/* Letter viewer (image and full text), opened from a letter in the timeline */}
+            <LetterViewerModal
+                letters={timeline.letters}
+                letterId={letterViewer.letterId}
+                order="oldest_first"
+                source="timeline"
+                onNavigate={letterViewer.navigate}
+                onClose={letterViewer.close}
+                onJump={letterViewer.jump}
+            />
         </div>
     );
 };

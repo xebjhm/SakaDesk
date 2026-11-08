@@ -61,6 +61,8 @@ ClientEvent = Literal[
     "archive_stats_load",
     "celebration",
     "sync_sequence",
+    "letter_viewer",
+    "letter_jump",
 ]
 
 ALLOWED_FIELDS = frozenset(

@@ -98,6 +98,12 @@ describe('buildTimeline', () => {
         expect(buildTimeline([msg(1, at(1, 9, 0))], [letter(7, at(1, 10, 0))]).droppedLetters).toBe(0);
     });
 
+    it('lists the placed letters chronologically (the letter viewer walks this list)', () => {
+        const t = buildTimeline([msg(1, at(1, 9, 0))], [letter(8, at(2, 8, 0)), letter(5, 'not a date'), letter(7, at(1, 10, 0))]);
+        expect(t.letters.map((l) => l.id)).toEqual([7, 8]);
+        expect(buildTimeline([], []).letters).toEqual([]);
+    });
+
     it('messageIdNear is null when the timeline holds only letters', () => {
         const t = buildTimeline([], [letter(5, at(1, 8, 0)), letter(6, at(2, 8, 0))]);
         expect(t.messageIdNear(0)).toBeNull();

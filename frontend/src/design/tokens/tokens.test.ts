@@ -7,7 +7,7 @@ import {
 } from './index';
 
 const SHELTERS = {
-    hinatazaka: { picture: '#a8d0e8', video: '#c4a8d8', voice: '#b8a8d8', text: '#8bb8d6' },
+    hinatazaka: { picture: '#b2caed', video: '#ceadec', voice: '#b7acec', text: '#85badd' },
     sakurazaka: { picture: '#ec9595', video: '#edc094', voice: '#d695ec', text: '#eb95ae' },
     nogizaka: { picture: '#c4a8d8', video: '#9B59B6', voice: '#b8a8d8', text: '#d8c8e8' },
     yodel: { picture: '#8ab89a', video: '#6a9a7a', voice: '#7aaa8a', text: '#5a8a6a' },

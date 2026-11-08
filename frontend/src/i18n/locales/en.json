@@ -697,6 +697,16 @@
     "you": "You",
     "openImageAt": "Open letter sent {{date}}"
   },
+  "letterViewer": {
+    "title": "Sent letter",
+    "previous": "Previous letter",
+    "next": "Next letter",
+    "jumpToLetter": "Jump to letter in chat",
+    "jumpToLetterAt": "Show letter sent {{date}} in the chat",
+    "imageMissing": "Letter image unavailable",
+    "openImage": "View the letter image larger",
+    "fullText": "Letter text"
+  },
   "celebration": {
     "firstSyncTitle": "Your archive is ready",
     "firstSyncBody": "{{value}} message saved",

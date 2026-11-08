@@ -106,9 +106,9 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                         <button
                             type="button"
                             onClick={() => setSelectedMedia(message)}
-                            className="block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                            className="relative block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                         >
-                            <SafeImage src={mediaUrl} alt={t('favorites.title')} className="max-h-64 max-w-full object-contain" />
+                            <SafeImage src={mediaUrl} alt={t('favorites.title')} className="max-h-64 max-w-full object-contain" skeletonClassName="h-48 w-64 max-w-full" />
                         </button>
                     )}
                     {message.type === 'video' && mediaUrl && (

@@ -81,6 +81,8 @@ const TimelineDateHeader: React.FC<{ date: string; onOpenCalendar?: () => void }
  * The sticky band GroupedVirtuoso keeps the current day's header in: full width over the rows,
  * transparent around the pill. Click-through, so rows behind it (media, the reveal shelter, the
  * favourite star) stay clickable; the pill sets pointer-events back to auto.
+ * Rows are `isolate`d (renderItem), so a row's own z-index (the unread shelter) stays inside the row
+ * and can never paint over this band.
  */
 const StickyHeaderBand: React.FC<TopItemListProps> = ({ style, children }) => (
     <div style={style} className="pointer-events-none">{children}</div>
@@ -196,7 +198,7 @@ export const MessageList: React.FC<ChatListProps> = ({
 
     const renderItem = (item: TimelineItem) => {
         const rowKey = rowKeyOf(item);
-        const rowClass = cn('rounded-card px-4 pb-1', highlightedRowKey === rowKey && 'animate-landing');
+        const rowClass = cn('isolate rounded-card px-4 pb-1', highlightedRowKey === rowKey && 'animate-landing');
         if (item.kind === 'letter') {
             return <div className={rowClass} id={rowKey}>{renderLetter?.(item.letter)}</div>;
         }

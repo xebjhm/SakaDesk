@@ -53,7 +53,7 @@ from backend.services.messages_cache import (
     get_messages_summary,
     stat_key,
 )
-from backend.services import profile_images_service
+from backend.services import avatar_resize, profile_images_service
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
@@ -880,6 +880,25 @@ async def get_media(file_path: str):
     safe_path = _resolve_media_path(file_path)
     logger.debug("media_request", exists=True)
     return FileResponse(safe_path)
+
+
+@router.get("/avatar/{file_path:path}")
+async def get_avatar(file_path: str, w: int = Query(...)):
+    """Serve an archived avatar downscaled to ``w`` px (square WebP).
+
+    ``file_path`` is the same as for ``/media/{file_path}`` and is validated
+    the same way. ``w`` must be one of ``avatar_resize.ALLOWED_WIDTHS``
+    (400 otherwise). The variant is cached on disk; a source that is not
+    larger than ``w``, or one Pillow cannot read, is served unchanged.
+    """
+    if w not in avatar_resize.ALLOWED_WIDTHS:
+        logger.info("avatar_request_rejected", reason="width", width=w)
+        raise HTTPException(status_code=400, detail="Unsupported width")
+    safe_path = _resolve_media_path(file_path)
+    served = await asyncio.to_thread(avatar_resize.resized_avatar, safe_path, w)
+    if served == safe_path:
+        return FileResponse(safe_path)
+    return FileResponse(served, media_type="image/webp")
 
 
 # =============================================================================

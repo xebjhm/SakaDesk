@@ -36,6 +36,8 @@ export interface ModalProps {
     header?: 'expressive' | 'plain' | 'console';
     /** Extra classes for the title (h2), e.g. an identity colour on the plain header. */
     titleClassName?: string;
+    /** A strip between the header and the body that does not scroll (tab bars): opaque `bg-sheet`, outside the scroller, so the scrollbar starts below it. Its own padding is the caller's. Standard layout only (ignored, with a development warning, in the bare layout). */
+    toolbar?: React.ReactNode;
     children: React.ReactNode;
     footer?: React.ReactNode;
     /** A hairline and 16 px above the footer, for a long body that scrolls under it (Diagnostics). */
@@ -74,7 +76,7 @@ function warnOnce(message: string): void {
 export const Modal: React.FC<ModalProps> = (props) => (props.isOpen ? <OpenModal {...props} /> : null);
 
 const OpenModal: React.FC<ModalProps> = ({
-    onClose, title, icon, 'aria-label': ariaLabel, labelledBy, closeLabel, headerExtra, children, footer, footerDivider = false,
+    onClose, title, icon, 'aria-label': ariaLabel, labelledBy, closeLabel, headerExtra, toolbar, children, footer, footerDivider = false,
     tone = 'sheet', layout = 'standard', placement = 'center', dismissible = true,
     initialFocusRef, className, bodyClassName, titleClassName, logId, onKeyDown, scope = 'inherit', header = 'expressive',
 }) => {
@@ -99,6 +101,9 @@ const OpenModal: React.FC<ModalProps> = ({
     useEffect(() => {
         if (title !== undefined && layout === 'bare') {
             warnOnce('[Modal] title is ignored in layout="bare": name the dialog with aria-label or labelledBy');
+        }
+        if (toolbar !== undefined && layout === 'bare') {
+            warnOnce('[Modal] toolbar is ignored in layout="bare": render it inside the children');
         }
         if (!named && !ariaLabel) {
             warnOnce('[Modal] dialog has no accessible name: pass title, aria-label or labelledBy');
@@ -163,13 +168,14 @@ const OpenModal: React.FC<ModalProps> = ({
                                     size="sm"
                                     aria-label={closeLabel}
                                     icon={<X />}
-                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-header-glass hover:text-expressive-header' : header === 'console' ? 'text-console-muted hover:bg-header-glass hover:text-console' : undefined}
+                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-header-glass hover:text-expressive-header focus-visible:ring-expressive-header-focus focus-visible:ring-offset-0' : header === 'console' ? 'text-console-muted hover:bg-header-glass hover:text-console' : undefined}
                                     onClick={() => requestClose('button')}
                                 />
                             )}
                         </div>
                         {header === 'expressive' && <div data-testid="modal-header-bar" aria-hidden="true" className="h-[3px] shrink-0 bg-expressive-header-bar" />}
-                        <div className={cn('min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 text-body text-primary', bodyClassName)}>{children}</div>
+                        {toolbar && <div data-testid="modal-toolbar" className="shrink-0 bg-sheet">{toolbar}</div>}
+                        <div data-testid="modal-body" className={cn('min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 text-body text-primary', bodyClassName)}>{children}</div>
                         {footer && (
                             <div data-testid="modal-footer" className={cn('flex shrink-0 items-center justify-end gap-2 px-6 pb-6', footerDivider && 'border-t border-subtle pt-4')}>
                                 {footer}

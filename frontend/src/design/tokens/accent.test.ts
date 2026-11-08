@@ -36,6 +36,9 @@ describe('brandAccent', () => {
         expect(a.headerBar).toBe('none');
         expect(a.soft).toBe(aurora.gradient);
     });
+    it('focuses header buttons in the header text colour', () => {
+        expect(a.headerFocus).toBe(a.headerText);
+    });
 });
 
 describe('groupAccent', () => {
@@ -56,6 +59,18 @@ describe('groupAccent', () => {
         expect(a.header).toBe(`linear-gradient(to right, ${g.from}, ${g.via}, ${g.to})`);
         expect(a.headerText).toBe('#FFFFFF');
         expect(a.headerBar).toBe('none');
+    });
+    it.each(['hinatazaka', 'nogizaka', 'yodel'] as const)('%s (gradient header) focuses header buttons in the header text colour', (id) => {
+        const a = groupAccent(id);
+        expect(a.headerFocus).toBe(a.headerText);
+    });
+    it('Sakurazaka (light header) focuses header buttons in its strong title tone, ≥ 3:1 on the white header', () => {
+        const a = groupAccent('sakurazaka');
+        expect(a.headerFocus).toBe(groupRoles('sakurazaka').strong);
+        expect(a.headerFocus).not.toBe(a.headerText);
+        // The pale title text is too faint for a focus indicator (~2.4:1); the strong tone is ~6.5:1.
+        expect(contrastRatio(a.headerText, a.header)!).toBeLessThan(3);
+        expect(contrastRatio(a.headerFocus, a.header)!).toBeGreaterThanOrEqual(4.5);
     });
     it('Sakurazaka (light header) gets a white header, title text and the bar', () => {
         const o = groupTokens.sakurazaka.official;

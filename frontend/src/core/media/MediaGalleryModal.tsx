@@ -359,9 +359,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         }
     };
 
-    // Render icon-only tabs (like official app) - sticky at top of scroll container
+    // Render icon-only tabs (like official app) - in the Modal toolbar slot (outside the scroller)
     const renderTabs = () => (
-        <div role="tablist" aria-label={t('media.typeTabs')} className="sticky top-0 z-20 flex shrink-0 bg-sheet">
+        <div role="tablist" aria-label={t('media.typeTabs')} className="flex">
             {MEDIA_TABS.map((tab) => {
                 const selected = activeTab === tab.id;
                 return (
@@ -407,8 +407,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                             if (el) monthRefs.current.set(group.key, el);
                         }}
                     >
-                        {/* Month header - sticky below tabs (top-12 = tabs height) */}
-                        <div className="sticky top-12 z-10 bg-sheet px-4 py-3 text-small font-semibold text-secondary">
+                        {/* Month header - sticky to the scroller's top edge (the tabs are in the toolbar) */}
+                        <div className="sticky top-0 z-10 bg-sheet px-4 py-3 text-small font-semibold text-secondary">
                             {group.label}
                         </div>
 
@@ -499,8 +499,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 if (el) monthRefs.current.set(group.key, el);
                             }}
                         >
-                            {/* Month header - sticky below tabs (top-12 = tabs height) */}
-                            <div className="sticky top-12 z-10 bg-sheet px-4 py-3 text-small font-semibold text-secondary">
+                            {/* Month header - sticky to the scroller's top edge (the tabs are in the toolbar) */}
+                            <div className="sticky top-0 z-10 bg-sheet px-4 py-3 text-small font-semibold text-secondary">
                                 {group.label}
                             </div>
 
@@ -580,7 +580,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 closeLabel={t('common.close')}
                 logId="media_gallery"
                 className="h-[80vh] max-w-4xl"
-                bodyClassName="px-0 pb-0"
+                bodyClassName="px-0 pb-0 pt-0"
+                toolbar={renderTabs()}
                 footer={
                     <>
                         <p className="mr-auto text-small text-muted">
@@ -595,7 +596,6 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     </>
                 }
             >
-                {renderTabs()}
                 {renderContent()}
             </Modal>
 

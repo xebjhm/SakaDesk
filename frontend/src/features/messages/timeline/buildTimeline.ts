@@ -38,6 +38,8 @@ export interface Timeline {
     messageIdNear: (index: number) => number | null;
     /** Letters left out because their created_at cannot be parsed (the caller logs the count). */
     droppedLetters: number;
+    /** The letters placed in the timeline, chronological (the letter viewer's prev / next order). */
+    letters: Letter[];
 }
 
 export const messageRowKey = (id: number): RowKey => `msg-${id}`;
@@ -108,6 +110,7 @@ export function buildTimeline(messages: readonly Message[], letters: readonly Le
     return {
         items,
         droppedLetters: letters.length - dated.length,
+        letters: dated.map((d) => d.letter),
         groupCounts,
         groupDates,
         groupStarts,

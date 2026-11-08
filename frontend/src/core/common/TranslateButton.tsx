@@ -1,14 +1,12 @@
 import React from 'react';
 import { Loader2, Globe, ChevronDown, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { ACCENT, withAlpha } from '../../design/colorMix';
 
 interface TranslateButtonProps {
     state: 'idle' | 'loading' | 'done' | 'error';
     onClick: () => void;
     /** Error message to display when state is 'error' */
     error?: string | null;
-    accentColor?: string;
     /** 'light' for dark backgrounds, 'dark' for light backgrounds (default) */
     variant?: 'light' | 'dark';
     /**
@@ -33,7 +31,6 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
     state,
     onClick,
     error,
-    accentColor = ACCENT,
     variant = 'dark',
     doneLabel,
     onToggleExpanded,
@@ -44,11 +41,11 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
 
     if (state === 'done') {
         if (!doneLabel) return null;
-        const pillStyle = {
-            borderColor: isLight ? 'rgba(255,255,255,0.15)' : withAlpha(accentColor, 25),
-            color: isLight ? 'rgba(255,255,255,0.6)' : '#6b7280',
-            background: isLight ? 'rgba(255,255,255,0.06)' : withAlpha(accentColor, 3),
-        };
+        // Dark variant is neutral (owner decision 2026-11-08): no group accent.
+        const pillStyle = isLight
+            ? { borderColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.06)' }
+            : undefined;
+        const pillTone = isLight ? '' : 'border-subtle text-secondary';
         if (onToggleExpanded) {
             const Chevron = expanded ? ChevronDown : ChevronRight;
             return (
@@ -56,7 +53,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onToggleExpanded(); }}
                     aria-expanded={expanded}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors hover:opacity-80"
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors hover:opacity-80 ${pillTone}`}
                     style={pillStyle}
                 >
                     <Chevron className="w-3 h-3" />
@@ -66,7 +63,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
         }
         return (
             <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border"
+                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${pillTone}`}
                 style={pillStyle}
             >
                 {doneLabel}
@@ -76,7 +73,8 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
 
     const isLoading = state === 'loading';
     const isError = state === 'error';
-    const palette = buttonPalette(isError, isLight, accentColor);
+    const neutral = !isError && !isLight;
+    const palette = neutral ? undefined : buttonPalette(isError, isLight);
     const label = isLoading
         ? t('translation.translating')
         : isError
@@ -91,8 +89,10 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
                     if (!isLoading) onClick();
                 }}
                 disabled={isLoading}
-                className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors hover:opacity-80 disabled:cursor-wait"
-                style={{
+                className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors disabled:cursor-wait ${
+                    neutral ? 'border-subtle text-secondary hover:text-primary' : 'hover:opacity-80'
+                }`}
+                style={palette && {
                     borderColor: palette.border,
                     color: palette.text,
                     background: palette.background,
@@ -116,13 +116,12 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
     );
 };
 
-function buttonPalette(isError: boolean, isLight: boolean, accentColor: string) {
+/** Inline palette for the error state and the light variant; the dark idle/loading look is neutral classes. */
+function buttonPalette(isError: boolean, isLight: boolean) {
     if (isError) {
         return isLight
             ? { border: 'rgba(239,68,68,0.3)', text: '#fca5a5', background: 'rgba(239,68,68,0.08)' }
             : { border: '#fca5a540',            text: '#ef4444', background: '#fef2f208' };
     }
-    return isLight
-        ? { border: 'rgba(255,255,255,0.15)', text: 'rgba(255,255,255,0.7)', background: 'rgba(255,255,255,0.06)' }
-        : { border: withAlpha(accentColor, 25), text: accentColor, background: withAlpha(accentColor, 3) };
+    return { border: 'rgba(255,255,255,0.15)', text: 'rgba(255,255,255,0.7)', background: 'rgba(255,255,255,0.06)' };
 }

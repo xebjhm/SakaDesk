@@ -86,7 +86,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
             <div className="relative">
                 <IconButton
                     ref={triggerRef}
-                    className="h-9 w-9 text-current hover:bg-sunken hover:text-current"
+                    className="h-9 w-9 text-current hover:bg-sunken hover:text-current focus-visible:ring-expressive-header-focus focus-visible:ring-offset-0"
                     aria-label={t('common.moreOptions')}
                     title={t('common.moreOptions')}
                     aria-haspopup="menu"

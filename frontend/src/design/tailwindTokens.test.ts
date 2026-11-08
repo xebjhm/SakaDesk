@@ -27,6 +27,8 @@ describe('accent and expressive utilities', () => {
         ['backgroundImage', "'expressive-header'", '--ds-expressive-header'],
         ['backgroundImage', "'expressive-header-bar'", '--ds-expressive-header-bar'],
         ['backgroundImage', "'expressive-progress'", '--ds-expressive-progress'],
+        ['ringColor', "'expressive-header'", '--ds-expressive-header-text'],
+        ['ringColor', "'expressive-header-focus'", '--ds-expressive-header-focus'],
         ['ringColor', "'accent-logo'", '--ds-accent-logo'],
         ['ringColor', "'accent-subtle'", '--ds-accent-subtle'],
         ['backgroundImage', "'expressive-orb-1'", '--ds-expressive-orb-1'],

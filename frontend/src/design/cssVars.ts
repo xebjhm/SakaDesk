@@ -90,6 +90,7 @@ export function accentTokenVars(a: AccentRoles): Record<string, string> {
         '--ds-expressive-soft': a.soft,
         '--ds-expressive-header': a.header,
         '--ds-expressive-header-text': a.headerText,
+        '--ds-expressive-header-focus': a.headerFocus,
         '--ds-expressive-header-bar': a.headerBar,
         '--ds-expressive-progress': a.progress,
         '--ds-expressive-orb-1': a.orb1,

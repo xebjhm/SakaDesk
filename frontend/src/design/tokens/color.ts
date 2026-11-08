@@ -23,7 +23,7 @@ export const color = {
     text: {
         primary: '#1f2937',
         secondary: '#4b5563',
-        muted: '#9ca3af',
+        muted: '#6b7280',
         inverse: '#FFFFFF',
     },
     border: {

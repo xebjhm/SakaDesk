@@ -5,7 +5,7 @@ export type DialogLogId =
     | 'calendar' | 'background' | 'favorites' | 'media_gallery' | 'media_viewer' | 'blog_gallery'
     | 'member_select' | 'member_timeline' | 'about' | 'report_issue' | 'diagnostics' | 'add_service'
     | 'confirm' | 'reveal_all' | 'settings' | 'search' | 'member_profile' | 'login' | 'sync' | 'setup'
-    | 'tos' | 'sent_letters';
+    | 'tos' | 'sent_letters' | 'letter_viewer';
 
 /** `surface` of the `dialog_load` breadcrumb: a data load inside a dialog. */
 export type DialogLoadSurface =

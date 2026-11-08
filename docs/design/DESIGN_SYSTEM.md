@@ -112,7 +112,13 @@ one of two layers:
   title text, the canvas (sidebar) gradient, unread-shelter colours and the
   `shelterStyle` / `headerStyle` switches. For Hinatazaka, Sakurazaka and
   Nogizaka these were copied from the official apps and are kept verbatim;
-  tests pin them. Do not "fix" them to match the scale.
+  tests pin them. Do not "fix" them to match the scale. Hinatazaka's unread
+  shelters were re-taken from the official app screenshots on 2026-11-08
+  (picture `#b2caed`, video `#ceadec`, voice `#b7acec`, text `#85badd`, style
+  `classic`). Nogizaka's and Yodel's shelter values are approximations from the
+  first theme commit, not yet verified against the official apps (code comments
+  mark them; to be re-taken from screenshots later). Shelter icons are drawn at
+  full opacity.
 - **System layer:** each group has its logo colour and a 10-step scale (50
   lightest to 900 darkest, logo colour snapped into its step).
 
@@ -152,7 +158,8 @@ colour of pywebview's `background_color`), `bg-frost` (the frosted bar over the 
 feed's orbs: `--ds-overlay-frost`, white at 72 %, paired with `backdrop-blur-frost` (20 px), `backdrop-saturate-180` and
 `border-b border-frost`, the white hairline at 40 %: `--ds-overlay-frost-border`), `bg-scrim` (the modal backdrop,
 carries its own alpha, never `bg-black/NN`), `text-primary`, `text-secondary`,
-`text-muted`, `text-inverse`, `border-subtle`, `border-strong`. Search matches
+`text-muted` (`#6b7280` since 2026-11-08, darker than the old `#9ca3af` for readable metadata),
+`text-inverse`, `border-subtle`, `border-strong`. Search matches
 use `bg-mark-exact`, `bg-mark-reading` and `border-mark-underline`. The white
 gap around avatars and selection rings is `ring-surface` / `border-surface` /
 `ring-offset-surface` (there is no `bg-surface`: use `bg-sheet`). Toasts use
@@ -242,6 +249,7 @@ Components ask for a role; the context decides the value
 | `unread` | ink 400 glow | group unread shadow | `shadow-accent-unread` |
 | `soft` | aurora | group 50 → 100 | `bg-expressive-soft` |
 | `header`, `headerText`, `headerBar` | aurora, dark text, no bar | title gradient (Sakurazaka: white sheet, dark text, bar) | `bg-expressive-header`, `text-expressive-header`, `bg-expressive-header-bar` |
+| `headerFocus` | dark text (= `headerText`) | white (= `headerText`) on a gradient header; step 700 (`strong`) on a light header | `ring-expressive-header-focus` (focus ring of buttons on the expressive header) |
 | `progress` | aurora | the title gradient (a light header: the official bar) | `bg-expressive-progress` (the sync progress fill) |
 | `orb1`-`orb3` | aurora orbs | the group's ambient orbs | `bg-expressive-orb-1`, `-2`, `-3` |
 
@@ -249,7 +257,7 @@ The CSS variables are `--ds-accent-*` and `--ds-expressive-*`
 (`design/cssVars.ts`). The `--ds-group-*` variables stay for the official layer
 (title, canvas, shelters) and the legacy group utilities.
 
-**Pre-token media parts** (voice player, transcript, translate and transcribe
+**Pre-token media parts** (voice player, transcript and transcribe
 buttons) mix their accent in inline styles: they default to `ACCENT`
 (`var(--ds-accent)`) and mix through `withAlpha(colour, percent)`
 (`design/colorMix.ts`). New components use utilities. On the compact voice
@@ -258,14 +266,14 @@ player's `bg-sunken` card, the mute and menu buttons hover one step darker
 
 ### When to use the group colour
 
-The group colour does exactly three jobs: **A. identity** (whose space this is: the group canvas and rail block, the chat header, the group's own content, group markers in cross-group lists, the dialog expressive header); **B. current state** (active tab, selected nav item or row, slider fill, switch on, checked, progress); **C. the one primary action** of a view (primary `Button`). Everything else is neutral: secondary and tertiary actions, disclosure and utility controls, counts and metadata, tooling surfaces. Decoration that stays group-coloured is pastel strength, never solid. Nothing accent-coloured sits on the accent gradient header. Semantic colours (danger, warning, success, oshi pink, yellow star) are unchanged.
+The group colour does exactly three jobs: **A. identity** (whose space this is: the group canvas and rail block, the chat header, the group's own content, group markers in cross-group lists, the dialog expressive header); **B. current state** (active tab, selected nav item or row, slider fill, switch on, checked, progress); **C. the one primary action** of a view (primary `Button`). Everything else is neutral: secondary and tertiary actions, disclosure and utility controls, counts and metadata, tooling surfaces. Decoration that stays group-coloured is pastel strength, never solid. Nothing accent-coloured sits on the accent gradient header. Semantic colours (danger, warning, success, oshi pink, yellow star) are unchanged. The 翻譯 translate control (`TranslateButton`, dark variant) is a neutral utility control: `border-subtle text-secondary hover:text-primary`, no accent.
 
 | Job | Examples |
 |---|---|
 | A. identity | chat header, group rail block, group markers in cross-group lists, dialog expressive header |
 | B. state | active tab, selected rail item, slider fill |
 | C. primary | Done, Save |
-| Neutral | Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts |
+| Neutral | Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts, the letter viewer's date link and previous / next |
 | Pastel decoration | empty-state soft circle, milestone card surface |
 
 Pre-existing accents from the original design stay until the owner revisits
@@ -404,7 +412,7 @@ is `circle` for floating buttons (`overlay` and `accent` by default) and
 | default | as specified per variant |
 | hover | `hover:brightness-106` and `hover:-translate-y-px`; the glow grows (`shadow-accent-glow-hover`) |
 | pressed | `active:scale-97` and `active:brightness-94`; the glow shrinks |
-| focus-visible | 2 px `ring-accent` with a 2 px `ring-offset-surface` gap |
+| focus-visible | 2 px `ring-accent` with a 2 px `ring-offset-surface` gap. **Exception, buttons on the expressive header** (the dialog close button, the chat header ⋯): no accent on the title layer, so `ring-expressive-header-focus` with `ring-offset-0`. That ring is the header text colour on a gradient header (the same colour as `ring-expressive-header`) and the group's strong title tone (step 700) on a light title header (Sakurazaka: `#a72f5d`, 6.5:1 on white, where the pale title text is only 2.4:1) |
 | loading | `loading` prop: a spinner is overlaid, the label stays so the width does not change, clicks are swallowed, `aria-busy` is set |
 | selected | `bg-accent-subtle` background + `border-accent-border` + `text-accent-strong` text |
 | **disabled** | **keeps its colour** at 40 % opacity, no shadow, `cursor-not-allowed`, and **always shows a reason** |
@@ -526,17 +534,18 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | A boxed item on a sheet | `Card` |
 | Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for a 推 filter). The blog feed's All / Favorite is its own segmented control (see "The blog feed") |
 | Unread count | `Badge count={n}` (hidden at 0, `99+` cap, unread glow) |
-| Person or member | `Avatar` (`selected`: accent ring with a white gap + halo) |
+| Person or member | `Avatar` (`selected`: accent ring with a white gap + halo; a muted look or hover zoom goes on the image via `imgClassName` / `imgStyle`, never on a wrapper, so the ring stays sharp and in place) |
 | Timeline date | `DatePill` (`sticky` inside scrolling timelines) |
 | Action | `Button` (variants in section 9) |
 | Icon-only action | `IconButton` |
 | Feature-rail entry | `RailItem` |
-| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos) |
+| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos). A sent letter opens in `LetterViewerModal`, a wide sheet (not the dark viewer, because the letter's full text is read beside the image): the image on a `bg-sunken` stage, the text in message type, and the photo viewer's footer (a neutral date link that jumps to the letter in the chat, the `n / total` counter, previous / next and ← / →, and with golden finger a ghost Download). Clicking the image opens it in the dark viewer on top for ↑ / ↓ zoom and golden-finger copy / download; Escape returns to the letter |
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |
 | Loading, empty, error inside a dialog | `DialogStatus` |
 | Empty list or screen | `EmptyState` |
+| Image still loading | Neutral skeleton `bg-sunken animate-pulse motion-reduce:animate-none` (`SafeImage` `skeletonClassName`); keep the `<img>` laid out at `opacity-0`, never `hidden`, so `loading="lazy"` can fire |
 | Low-density screen background | `Atmosphere` |
 | One-time celebration | `CelebrationToast` / `MilestoneCard` |
 
@@ -555,12 +564,13 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 | `layout` | `standard` (header with the title and a ghost close button, body, footer) or `bare` (children straight in the frame: search, the profile card, the entry flows) |
 | `scope` | `inherit` (default: the scope in `ScopeContext`: brand from a `BrandScope` or a brand `Modal`, or a group scope a parent provides with `ScopeContext.Provider`, else the active group) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
 | `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile), `plain` (a quiet white header; the member timeline uses it) or `console` (a dark ink header, `bg-console` / `text-console`, no bar and no group or brand colour; Developer Diagnostics only) |
-| `icon` | A decorative lucide icon before the title, in the header text colour; plain dialog icons are drawn at 20 px, while `ConfirmDialog` passes its own 32 px semantic tile (drawn as given). Only the standard layout with a title draws it (`Modal` ignores it, with no title or in the bare layout). Used by Calendar, Favorites (star), Sent letters (mail), Background (palette), Media gallery and Blog photo gallery (image), Report issue (bug) and Diagnostics (terminal); `ConfirmDialog` passes its icon tile |
+| `icon` | A decorative lucide icon before the title, in the header text colour; plain dialog icons are drawn at 20 px, while `ConfirmDialog` passes its own 32 px semantic tile (drawn as given). Only the standard layout with a title draws it (`Modal` ignores it, with no title or in the bare layout). Used by Calendar, Favorites (star), Sent letters and the letter viewer (mail), Background (palette), Media gallery and Blog photo gallery (image), Report issue (bug) and Diagnostics (terminal); `ConfirmDialog` passes its icon tile |
 | `placement` | `center` (default) or `top` (15 vh from the top: search) |
 | `dismissible` | `true` (default); `false` for flows that must not be skipped (ToS, setup, sync): no close button, and Escape and the backdrop do nothing |
 | `closeLabel` | Required whenever the dialog has a close button: `t('common.close')`. Without it there is no close button |
 | `logId` | Required on every dialog: its `DialogLogId`, which logs the `dialog` open / close breadcrumbs (data loads inside log `dialog_load`) |
 | `footerDivider` | A `border-subtle` hairline and 16 px above the footer, for a long body that scrolls under it (Diagnostics) |
+| `toolbar` | Standard layout only (the bare layout ignores it, with a development warning). A non-scrolling strip between the header and the body (the media gallery's tab bar): opaque `bg-sheet`, outside the scroller so the scrollbar starts below it; a body with sticky headers under it takes `pt-0` and the headers stick at `top-0` |
 | `titleClassName` | Extra classes for the title (the member timeline sets `text-accent-strong` on its plain header) |
 | `initialFocusRef`, `onKeyDown`, `headerExtra`, `footer`, `className`, `bodyClassName` | first focus, the content's own keys, header extras, footer actions, frame and body classes |
 

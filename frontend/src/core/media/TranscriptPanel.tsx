@@ -112,16 +112,18 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
     // No audible speech: show a short static note (not an empty, expandable
     // list). The rerun button stays so the user can retry if they disagree.
     if (noSpeech) {
-        const mutedColor = isLight ? 'rgba(255,255,255,0.5)' : '#9ca3af';
         return (
-            <div className="flex items-center gap-1.5 text-xs py-1" style={{ color: mutedColor }}>
+            <div
+                className={`flex items-center gap-1.5 text-xs py-1${isLight ? '' : ' text-muted'}`}
+                style={isLight ? { color: 'rgba(255,255,255,0.5)' } : undefined}
+            >
                 <span>{t('transcription.transcript')}</span>
                 <span style={{ opacity: 0.85 }}>· {t('transcription.noSpeech')}</span>
                 {onRerun && (
                     <button
                         onClick={onRerun}
-                        className="p-0.5 rounded hover:opacity-70 transition-opacity"
-                        style={{ color: isLight ? 'rgba(255,255,255,0.3)' : '#9ca3af' }}
+                        className={`p-0.5 rounded hover:opacity-70 transition-opacity${isLight ? '' : ' text-muted'}`}
+                        style={isLight ? { color: 'rgba(255,255,255,0.3)' } : undefined}
                         type="button"
                         title={t('transcription.rerun')}
                     >
@@ -148,8 +150,8 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                 {onRerun && (
                     <button
                         onClick={onRerun}
-                        className="p-0.5 rounded hover:opacity-70 transition-opacity"
-                        style={{ color: isLight ? 'rgba(255,255,255,0.3)' : '#9ca3af' }}
+                        className={`p-0.5 rounded hover:opacity-70 transition-opacity${isLight ? '' : ' text-muted'}`}
+                        style={isLight ? { color: 'rgba(255,255,255,0.3)' } : undefined}
                         type="button"
                         title={t('transcription.rerun')}
                     >

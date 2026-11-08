@@ -18,7 +18,6 @@ import { useJustBecame } from '../../../hooks/useJustBecame';
 import { buildMediaUrl, MEDIA_API_BASE } from '../mediaUrl';
 import { groupTokens } from '../../../design/tokens';
 import { serviceGroupId } from '../../../config/serviceGroup';
-import { ACCENT_LOGO } from '../../../design/colorMix';
 import { Avatar } from '../../../design/primitives';
 
 interface MessageBubbleProps {
@@ -285,7 +284,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
             >
-                <Icon className={cn('h-8 w-8', look === 'classic' && 'opacity-90')} />
+                <Icon className="h-8 w-8" />
             </div>
         );
     };
@@ -302,7 +301,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 state={translationState}
                 onClick={triggerTranslation}
                 error={translationError}
-                accentColor={ACCENT_LOGO}
             />
         </div>
     );
@@ -328,24 +326,25 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
             {/* Avatar column: the avatar shows once, at the top of a run */}
             <div className="w-10 shrink-0">
-                {runStart && (
+                {/* Only a clickable avatar (it opens a profile card) is a button; the room
+                    author (member 0) gets no handler, so a plain, non-focusable span of the same box. */}
+                {runStart && onAvatarClick && (
                     <button
                         type="button"
+                        data-testid="message-avatar"
                         onClick={(e) => {
                             e.stopPropagation();
-                            onAvatarClick?.();
+                            onAvatarClick();
                         }}
-                        // Only a clickable avatar (it opens a profile card) looks
-                        // clickable; the room author (member 0) gets no handler.
-                        className={cn(
-                            'block rounded-pill',
-                            onAvatarClick
-                                ? 'cursor-pointer transition-shadow duration-fast ease-standard hover:ring-2 hover:ring-accent-border'
-                                : 'cursor-default',
-                        )}
+                        className="flex cursor-pointer rounded-pill transition-shadow duration-fast ease-standard hover:ring-2 hover:ring-accent-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                     >
                         <Avatar src={member_avatar} name={member_name} size="md" />
                     </button>
+                )}
+                {runStart && !onAvatarClick && (
+                    <span data-testid="message-avatar" className="flex rounded-pill">
+                        <Avatar src={member_avatar} name={member_name} size="md" />
+                    </span>
                 )}
             </div>
 
@@ -356,7 +355,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         <span lang="ja" className="text-small font-semibold text-accent-strong">{member_name}</span>
                         <time className="text-caption text-muted" dateTime={message.timestamp}>{time}</time>
                         {favoriteStar}
-                        {translateButton && <div className="ml-auto">{translateButton}</div>}
+                        {/* Beside the time, not at the far edge: the centred sticky date pill sits over the far edge */}
+                        {translateButton}
                     </div>
                 )}
 
@@ -444,7 +444,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 {/* Transcription footer — only for voice/video, hidden when unread shelter is active */}
                 {transcriptionEnabled && isTranscribable && !isUnread && (
                     <div
-                        className="-mt-1 rounded-b-md border border-t-0 border-accent-border bg-accent-subtle px-3 py-1.5"
+                        className="-mt-1 rounded-b-md border-x border-b border-group-bubble bg-accent-subtle px-3 py-1.5"
                     >
                         {transcriptionState !== 'done' ? (
                             <TranscribeButton

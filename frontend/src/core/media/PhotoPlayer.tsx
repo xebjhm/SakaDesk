@@ -35,7 +35,23 @@ interface PhotoPlayerProps {
      * this — the variants ship with sensible defaults.
      */
     className?: string;
+    /** Called once when the image fails to load and the fallback is shown (breadcrumbs). */
+    onError?: () => void;
 }
+
+/**
+ * The shared missing / broken photo look: a neutral `bg-sunken` box with the image-off icon.
+ * Given a `label`, it is announced as an image with that name; otherwise it is decorative.
+ */
+export const PhotoFallback: React.FC<{ className?: string; label?: string }> = ({ className, label }) => (
+    <div
+        className={cn('flex items-center justify-center bg-sunken', className)}
+        role={label ? 'img' : undefined}
+        aria-label={label}
+    >
+        <ImageOff className="h-8 w-8 text-muted" aria-hidden="true" />
+    </div>
+);
 
 /**
  * Unified photo display. Picks one of three visual treatments based on
@@ -51,6 +67,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     zoom = 1,
     anchorRef,
     className,
+    onError,
 }) => {
     const [hasError, setHasError] = useState(false);
     // Fullscreen instances are reused across navigation (arrow keys change `src`
@@ -59,11 +76,11 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     useEffect(() => { setHasError(false); }, [src]);
     const effectiveLoading = loading ?? (variant === 'gallery-thumb' ? 'lazy' : 'eager');
 
-    const fallback = (extraClasses?: string) => (
-        <div className={cn('flex items-center justify-center bg-sunken', extraClasses)}>
-            <ImageOff className="h-8 w-8 text-muted" />
-        </div>
-    );
+    const fallback = (extraClasses?: string) => <PhotoFallback className={extraClasses} />;
+    const fail = () => {
+        setHasError(true);
+        onError?.();
+    };
 
     if (variant === 'gallery-thumb') {
         return (
@@ -81,7 +98,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
                         alt={alt}
                         loading={effectiveLoading}
                         className="w-full h-full object-cover"
-                        onError={() => setHasError(true)}
+                        onError={fail}
                     />
                 )}
             </button>
@@ -96,7 +113,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
                 alt={alt}
                 loading={effectiveLoading}
                 draggable={false}
-                onError={() => setHasError(true)}
+                onError={fail}
                 className={cn('max-w-[90vw] max-h-[90vh] object-contain transition-transform duration-fast ease-standard motion-reduce:transition-none', className)}
                 style={{ transform: `scale(${zoom})` }}
             />
@@ -111,7 +128,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
             alt={alt}
             loading={effectiveLoading}
             onClick={onClick}
-            onError={() => setHasError(true)}
+            onError={fail}
             className={cn('w-full h-full object-contain', onClick && 'cursor-pointer', className)}
         />
     );

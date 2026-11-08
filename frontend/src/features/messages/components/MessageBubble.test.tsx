@@ -63,19 +63,39 @@ describe('MessageBubble component', () => {
     expect(avatar).toHaveAttribute('src', '/avatar.jpg')
   })
 
-  it('makes the avatar look clickable only with onAvatarClick', async () => {
-    // Room-author (member 0) messages pass no handler: no pointer, no hover ring.
-    const { rerender } = render(<MessageBubble {...defaultProps} />)
-    const button = screen.getByRole('img', { name: 'Test User' }).closest('button')!
-    expect(button.className).not.toContain('cursor-pointer')
-    expect(button.className).not.toContain('hover:ring-accent-border')
+  it('without onAvatarClick the avatar is a plain, non-focusable span of the same box', () => {
+    // Room-author (member 0) messages pass no handler: no button, no pointer, no hover ring, no tab stop.
+    render(<MessageBubble {...defaultProps} />)
+    const avatar = screen.getByTestId('message-avatar')
+    expect(avatar.tagName).toBe('SPAN')
+    expect(avatar).toContainElement(screen.getByRole('img', { name: 'Test User' }))
+    expect(avatar).toHaveClass('flex', 'rounded-pill')
+    expect(avatar).not.toHaveAttribute('tabindex')
+    expect(avatar.className).not.toContain('cursor-pointer')
+    expect(avatar.className).not.toContain('hover:ring-accent-border')
+    expect(screen.queryByRole('button', { name: /Test User/ })).toBeNull()
+    expect(avatar.closest('button')).toBeNull()
+  })
 
+  it('with onAvatarClick the avatar is a clickable, focusable button', async () => {
     const onAvatarClick = vi.fn()
-    rerender(<MessageBubble {...defaultProps} onAvatarClick={onAvatarClick} />)
+    render(<MessageBubble {...defaultProps} onAvatarClick={onAvatarClick} />)
+    const button = screen.getByTestId('message-avatar')
+    expect(button.tagName).toBe('BUTTON')
+    expect(button).toHaveAttribute('type', 'button')
+    expect(button).toContainElement(screen.getByRole('img', { name: 'Test User' }))
     expect(button.className).toContain('cursor-pointer')
     expect(button.className).toContain('hover:ring-accent-border')
     await userEvent.click(button)
     expect(onAvatarClick).toHaveBeenCalledTimes(1)
+    button.focus()
+    expect(button).toHaveFocus()
+  })
+
+  it('sizes the avatar button to the avatar and gives it a round focus ring', () => {
+    render(<MessageBubble {...defaultProps} onAvatarClick={vi.fn()} />)
+    const button = screen.getByRole('img', { name: 'Test User' }).closest('button')!
+    expect(button).toHaveClass('flex', 'rounded-pill', 'focus-visible:outline-none', 'focus-visible:ring-2', 'focus-visible:ring-accent', 'focus-visible:ring-offset-2', 'focus-visible:ring-offset-surface')
   })
 
   it('should render initials when no avatar provided', () => {
@@ -250,5 +270,10 @@ describe('MessageBubble component', () => {
       const { container } = render(<MessageBubble {...defaultProps} isUnread={true} />)
       expect(container.firstChild).toMatchSnapshot()
     })
+  })
+
+  it('draws the unread shelter icon at full opacity', () => {
+    render(<MessageBubble {...defaultProps} isUnread={true} />)
+    expect(screen.getByTestId('unread-shelter').querySelector('svg')?.getAttribute('class')).not.toMatch(/opacity/)
   })
 })
