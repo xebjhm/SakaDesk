@@ -93,18 +93,20 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
             onClose={onClose}
             title={<span lang="ja">{memberNameJp}</span>}
             closeLabel={t('common.close')}
+            header="plain"
+            titleClassName="text-accent-strong"
             logId="member_timeline"
             className="max-h-[85vh] max-w-3xl"
             bodyClassName="px-4 pb-4"
             headerExtra={
                 <>
                     {onOpenPhotoGallery && (
-                        <Button variant="ghost" size="sm" className="bg-accent-wash text-accent-strong hover:bg-accent-subtle" onClick={onOpenPhotoGallery} title={t('blogGallery.button')}>
+                        <Button variant="ghost" size="sm" className="rounded-pill bg-accent-wash text-accent-strong hover:bg-accent-subtle" onClick={onOpenPhotoGallery} title={t('blogGallery.button')}>
                             <Image className="h-4 w-4" />
                             {t('blogGallery.button')}
                         </Button>
                     )}
-                    {blogs.length > 0 && <span className="text-small opacity-80">{t('blogs.post', { count: blogs.length })}</span>}
+                    {blogs.length > 0 && <span className="text-small text-muted">{t('blogs.post', { count: blogs.length })}</span>}
                 </>
             }
         >
@@ -164,7 +166,7 @@ const TimelineMonthSection: React.FC<TimelineMonthSectionProps> = ({
                 className="flex w-full items-center justify-between px-4 py-3 transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
             >
                 <span className="flex items-center gap-3">
-                    <span className={cn('flex h-6 w-6 items-center justify-center rounded-pill transition-colors duration-base ease-standard', expanded ? 'bg-accent text-inverse' : 'bg-sunken text-secondary')}>
+                    <span className={cn('flex h-6 w-6 items-center justify-center rounded-pill transition-colors duration-base ease-standard', expanded ? 'bg-accent-logo text-inverse' : 'bg-sunken text-secondary')}>
                         <ChevronRight className={cn('h-3 w-3 transition-transform duration-base ease-standard motion-reduce:transition-none', expanded && 'rotate-90')} />
                     </span>
                     <span className={cn('text-body font-semibold', expanded ? 'text-accent-strong' : 'text-secondary')}>{monthLabel}</span>

@@ -80,6 +80,7 @@ export default {
                 'accent-strong': 'var(--ds-accent-strong)',
                 'accent-subtle': 'var(--ds-accent-subtle)',
                 'accent-border': 'var(--ds-accent-border)',
+                'accent-logo': 'var(--ds-accent-logo)',
                 sheet: 'var(--ds-surface-sheet)',
                 card: 'var(--ds-surface-card)',
                 pill: 'var(--ds-surface-pill)',

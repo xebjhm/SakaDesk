@@ -991,6 +991,10 @@ describe('Modal v2 header and scope', () => {
         expect(screen.getByTestId('modal-header').className).not.toContain('bg-expressive-header');
         expect(screen.queryByTestId('modal-header-bar')).toBeNull();
     });
+    it('titleClassName styles the title', () => {
+        render(<Modal isOpen onClose={() => {}} title="Member" header="plain" titleClassName="text-accent-strong">body</Modal>);
+        expect(screen.getByRole('heading', { level: 2 })).toHaveClass('text-accent-strong', 'font-bold');
+    });
     it('scope="brand" sets the brand accent variables on the frame', () => {
         render(<Modal isOpen onClose={() => {}} title="Settings" scope="brand">body</Modal>);
         const frame = screen.getByRole('dialog');
