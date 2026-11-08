@@ -279,18 +279,18 @@ player's `bg-sunken` card, the mute and menu buttons hover one step darker
 
 ### When to use the group colour
 
-The group colour does exactly three jobs: **A. identity** (whose space this is: the group canvas and rail block, the chat header, the group's own content, group markers in cross-group lists, the dialog expressive header); **B. current state** (active tab, selected nav item or row, slider fill, switch on, checked, progress); **C. the one primary action** of a view (primary `Button`). Everything else is neutral: secondary and tertiary actions, disclosure and utility controls, counts and metadata, tooling surfaces. Decoration that stays group-coloured is pastel strength, never solid. Nothing accent-coloured sits on the accent gradient header. Semantic colours (danger, warning, success, oshi pink, yellow star) are unchanged. The 翻譯 translate control (`TranslateButton`, dark variant) is a neutral utility control: `border-subtle text-secondary hover:text-primary`, no accent.
+The group colour does exactly three jobs: **A. identity** (whose space this is: the group canvas and rail block, the chat header, the group's own content, group markers in cross-group lists, the dialog expressive header); **B. current state** (active tab, selected nav item or row, slider fill, switch on, checked, progress); **C. the one primary action** of a view (primary `Button`). Everything else is neutral: secondary and tertiary actions, disclosure and utility controls, counts and metadata, tooling surfaces. Decoration that stays group-coloured is pastel strength, never solid. Nothing accent-coloured sits on the accent gradient header. Semantic colours (danger, warning, success, oshi pink, yellow star) are unchanged. The 翻譯 translate control (`TranslateButton`, dark variant) is a neutral utility control: `text-secondary hover:text-primary`, no accent. In chat it is one icon-only "文A" button (`iconOnly`, lucide `Languages`; the label is its `aria-label` and `title`; spinner while loading, alert icon on error) in the trailing column at the bubble's bottom-right of every message, run start and continuation alike (never in the run-start header); the blog reader keeps the text-label form. The voice/video transcript 「顯示文字」 control (`TranscribeButton`, dark variant) is neutral in the same way: `border-subtle text-secondary hover:text-primary`.
 
 | Job | Examples |
 |---|---|
 | A. identity | chat header, group rail block, group markers in cross-group lists, dialog expressive header |
 | B. state | active tab, selected rail item, slider fill |
 | C. primary | Done, Save |
-| Neutral | Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts, the letter viewer's date link and older / newer buttons |
+| Neutral | the transcript "Show text" control, Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts, the letter viewer's date link and older / newer buttons |
 | Pastel decoration | empty-state soft circle, milestone card surface |
 
 Pre-existing accents from the original design stay until the owner revisits
-them: the ⋯ conversation-menu icons, the transcript "Show text" control, the
+them: the ⋯ conversation-menu icons, the
 member-timeline row hover tint and expanded month count pill, the sent-letters
 hover, the blog-feed "Select member" pill (pastel tint with a gradient hover), the
 blog nav footer glow, and the ToS per-group links.

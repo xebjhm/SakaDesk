@@ -650,7 +650,6 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     state={transcriptionState}
                     onClick={triggerTranscription}
                     error={transcriptionError}
-                    accentColor={accentColor}
                     variant={panelTheme}
                 />
             )

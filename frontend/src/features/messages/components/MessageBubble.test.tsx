@@ -233,6 +233,36 @@ describe('MessageBubble component', () => {
     expect(link).not.toHaveClass('text-accent')
   })
 
+  describe('translate icon', () => {
+    afterEach(() => { useAppStore.setState({ translationEnabled: false }) })
+    const trailing = (c: HTMLElement) => c.querySelector('[data-testid="message-trailing"]') as HTMLElement
+
+    it('run start: one icon-only neutral button in the trailing column, not in the header', () => {
+      useAppStore.setState({ translationEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} />)
+      const buttons = screen.getAllByRole('button', { name: 'Translate' })
+      expect(buttons).toHaveLength(1)
+      expect(trailing(container)).toContainElement(buttons[0])
+      expect(buttons[0].textContent).toBe('')
+      expect(buttons[0]).toHaveClass('text-secondary', 'hover:text-primary')
+      expect(buttons[0]).toHaveAttribute('title', 'Translate')
+      expect(screen.getByText('10:30').parentElement).not.toContainElement(buttons[0])
+    })
+
+    it('continuation: the same button sits in the trailing column with the time', () => {
+      useAppStore.setState({ translationEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} runStart={false} />)
+      const button = screen.getByRole('button', { name: 'Translate' })
+      expect(trailing(container)).toContainElement(button)
+      expect(trailing(container)).toContainElement(screen.getByText('10:30'))
+    })
+
+    it('renders no trailing column when there is nothing to put in it', () => {
+      const { container } = render(<MessageBubble {...defaultProps} />)
+      expect(trailing(container)).toBeNull()
+    })
+  })
+
   describe('voice transcript footer', () => {
     const voice = createMessage({ type: 'voice', content: null, media_file: 'v.m4a' })
     const footerOf = (c: HTMLElement) => c.querySelector('[data-testid="transcript-footer"]') as HTMLElement

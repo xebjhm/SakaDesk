@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Globe, ChevronDown, ChevronRight } from 'lucide-react';
+import { Loader2, Languages, Globe, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
 interface TranslateButtonProps {
@@ -21,6 +21,11 @@ interface TranslateButtonProps {
      */
     onToggleExpanded?: () => void;
     expanded?: boolean;
+    /**
+     * Render only the "文A" language icon (chat bubbles); the label becomes the
+     * accessible name and tooltip. Without it the button keeps its text label (blog reader).
+     */
+    iconOnly?: boolean;
 }
 
 /**
@@ -35,6 +40,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
     doneLabel,
     onToggleExpanded,
     expanded = false,
+    iconOnly = false,
 }) => {
     const { t } = useTranslation();
     const isLight = variant === 'light';
@@ -80,6 +86,36 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
         : isError
             ? t('translation.error.failed')
             : t('translation.translate');
+
+    if (iconOnly) {
+        return (
+            <div>
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isLoading) onClick();
+                    }}
+                    disabled={isLoading}
+                    aria-label={label}
+                    title={label}
+                    className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-wait ${
+                        isError ? 'text-semantic-danger hover:opacity-80' : 'text-secondary hover:text-primary'
+                    }`}
+                >
+                    {isLoading
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : isError
+                            ? <AlertCircle className="h-4 w-4" />
+                            : <Languages className="h-4 w-4" />
+                    }
+                </button>
+                {isError && error && (
+                    <p className="mt-0.5 max-w-[250px] text-caption text-secondary">{error}</p>
+                )}
+            </div>
+        );
+    }
 
     return (
         <div>

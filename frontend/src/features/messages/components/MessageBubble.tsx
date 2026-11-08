@@ -302,6 +302,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 state={translationState}
                 onClick={triggerTranslation}
                 error={translationError}
+                iconOnly
             />
         </div>
     );
@@ -350,14 +351,12 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
             </div>
 
             <div className="flex min-w-0 max-w-[80%] flex-col">
-                {/* Name, time, favorite star and translate button: once per run */}
+                {/* Name, time and favorite star: once per run */}
                 {runStart && (
                     <div className="mb-1 flex items-center gap-2">
                         <span lang="ja" className="text-small font-semibold text-accent-strong">{member_name}</span>
                         <time className="text-caption text-muted" dateTime={message.timestamp}>{time}</time>
                         {favoriteStar}
-                        {/* Beside the time, not at the far edge: the centred sticky date pill sits over the far edge */}
-                        {translateButton}
                     </div>
                 )}
 
@@ -476,17 +475,21 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 )}
             </div>
 
-            {/* Later bubbles of a run: star, translate button and the time (on hover) beside the bubble */}
-            {!runStart && (
-                <div className="flex shrink-0 flex-col items-start justify-end gap-1 pb-1">
-                    {favoriteStar}
+            {/* Trailing column at the bubble's bottom-right, for every message: the one translate
+                icon; later bubbles of a run also get the star and the time (on hover). A run
+                start keeps star and time in its header. */}
+            {(translateButton || !runStart) && (
+                <div data-testid="message-trailing" className="flex shrink-0 flex-col items-start justify-end gap-1 pb-1">
+                    {!runStart && favoriteStar}
                     {translateButton}
-                    <time
-                        className="text-caption text-muted opacity-0 transition-opacity duration-fast ease-standard group-hover/row:opacity-100"
-                        dateTime={message.timestamp}
-                    >
-                        {time}
-                    </time>
+                    {!runStart && (
+                        <time
+                            className="text-caption text-muted opacity-0 transition-opacity duration-fast ease-standard group-hover/row:opacity-100"
+                            dateTime={message.timestamp}
+                        >
+                            {time}
+                        </time>
+                    )}
                 </div>
             )}
         </div>
