@@ -65,11 +65,12 @@ one OG (松田好花). The official Yodel app switches colours per OG page.
 - Scale (h 278, logo snapped into 600): 50 `#f3f6ff` · 100 `#e7ecff` · 200 `#d2daff` · 300 `#b5c0ff` ·
   400 `#98a2ff` · 500 `#7e85ff` · **600 `#6060e0`** · 700 `#4c4bbb` · 800 `#393992` · 900 `#28286b`.
   White on 600 = 4.9:1.
-- Yodel has no official layer data for periwinkle, so its "official" fields become system-derived and
+- Yodel has no official layer data for periwinkle, so its title and canvas become system-derived and
   are labelled that way in `groups.ts`:
   - title gradient 200 → 400 → 600, bar 200 → 600, title text 700, header style `gradient`;
   - canvas `['#e7ecff', '#f3f6ff', '#f8f9ff']` (100 → 50 → near white);
-  - shelters: picture 300, video 400, voice 500, text 600, style `classic`;
+  - shelters stay official (owner decision 2026-11-04: all shelter colours come from the official apps):
+    picture `#8ab89a`, video `#6a9a7a`, voice `#7aaa8a`, text `#5a8a6a`, style `classic`;
   - bubble border and glow = logo `#6060e0` (glow alpha 0.3).
 - **Reserved: per-OG layer.** A room-level override through `groupScopeStyle`, falling back to Yodel
   periwinkle. Not built in v2. TODO: read a raw Yodel API response (Windows side, reuse the existing
@@ -180,7 +181,7 @@ Expression is about intensity, not on or off.
 | `primary` | `linear-gradient(135deg, accent-logo, accent)`, white bold text, `glow` shadow | at most one per screen and one per dialog (D1 rule kept) |
 | `tonal` (secondary emphasis) | `linear-gradient(135deg, accent-border, accent-logo mixed 35 % with white)`, text group/ink 800 | e.g. "mark all read"; warmer than the outline button, never competes with primary |
 | `secondary` | white, neutral 300 border, neutral 800 text | cancel and so on |
-| `ghost` | text only, accent-strong | inline actions |
+| `ghost` | text only, `text-secondary`, `hover:bg-sunken` (updated by R-e, 2026-11-08: neutral, never the group colour) | inline actions |
 | `danger` | danger 600 solid, white text | takes the place of the primary |
 
 ## 6. Typography
@@ -246,14 +247,14 @@ allowed.
 |---|---|
 | First launch (boot → ToS → choose groups → first sync) | aurora + orbs (L2), serif headings. ToS header text becomes dark (fixes the original white-on-pastel 1.5:1). The original amber disclaimer returns in the new warning colours. The original per-group ToS link colours return as group markers. The group cards use group markers |
 | Empty states | fixed pattern: aurora circle (group-tinted 50 → 100 in group context) + line icon + serif title + one sentence + one action |
-| About | aurora hero + serif wordmark + "your archive" stats (messages, photos, days), tabular numerals |
+| About | aurora hero + serif wordmark; SakaDesk information only (archive stats moved out, 2026-11) |
 
 **Celebrations**: tiers B and C only. No full-screen tier.
 
 | Event | Context | Tier | Form |
 |---|---|---|---|
 | First complete sync | brand | B | bottom-right glass toast + one aurora shimmer + about 10 sparkles; once ever |
-| A member reaches 1,000 / 5,000 / 10,000 messages | group | C | the next time that chat opens, a card in the timeline (serif number, group subtle gradient, glow) + ≤ 1.2 s group-coloured confetti |
+| A member reaches 1,000 / 5,000 / 10,000 messages | group | C | the next time that chat opens, a card in the timeline (serif number, group subtle gradient; the glow was dropped, updated by R-e, 2026-11-08) + ≤ 1.2 s group-coloured confetti |
 | Subscription day 100, then every full year | group | C | same as above (the chat title already shows the day count) |
 | Member birthday | group | C | later, together with Memories #15 |
 

@@ -25,6 +25,13 @@ describe('Button', () => {
         expect(screen.getByRole('button', { name: 'later' }).className).not.toMatch(/accent-gradient/);
     });
 
+    it('ghost is neutral: secondary text, sunken hover, never the group colour', () => {
+        render(<Button variant="ghost">cancel</Button>);
+        const b = screen.getByRole('button', { name: 'cancel' });
+        expect(b).toHaveClass('text-secondary', 'hover:bg-sunken', 'hover:text-primary');
+        expect(b.className).not.toMatch(/(^|\s)(hover:)?(bg|text|border)-accent/);
+    });
+
     it('does not fire when disabled', async () => {
         const onClick = vi.fn();
         render(<Button disabled onClick={onClick}>x</Button>);
@@ -49,6 +56,18 @@ describe('IconButton', () => {
 });
 
 describe('RailItem', () => {
+    it('is icon-only: the label is the accessible name and an aria-hidden tooltip, not visible text', () => {
+        render(<RailItem icon={<MessageCircle />} label="トーク" />);
+        const b = screen.getByRole('button', { name: 'トーク' });
+        expect(b).toHaveAttribute('aria-label', 'トーク');
+        expect(b).not.toHaveAttribute('title');
+        const tip = screen.getByText('トーク');
+        expect(tip).toHaveAttribute('role', 'tooltip');
+        expect(tip).toHaveAttribute('aria-hidden', 'true');
+        expect(tip).toHaveClass('bg-toast', 'text-viewer', 'pointer-events-none', 'left-full', 'opacity-0', 'group-hover:opacity-100', 'group-focus-visible:opacity-100');
+        expect(tip.className).not.toMatch(/accent/);
+        expect(b).toHaveClass('h-10', 'w-10');
+    });
     it('shows icon and label and marks the current item', () => {
         render(
             <>
@@ -59,7 +78,7 @@ describe('RailItem', () => {
         expect(screen.getByRole('button', { name: 'トーク' })).toHaveAttribute('aria-current', 'page');
         expect(screen.getByRole('button', { name: 'ブログ' })).not.toHaveAttribute('aria-current');
     });
-    it('the selected entry is a white card with the accent icon, label and bar', () => {
+    it('the selected entry is a white card with the accent icon and bar', () => {
         render(
             <>
                 <RailItem icon={<MessageCircle />} label="トーク" selected />
@@ -67,9 +86,9 @@ describe('RailItem', () => {
             </>,
         );
         const on = screen.getByRole('button', { name: 'トーク' });
-        expect(on).toHaveClass('bg-sheet', 'shadow-card', 'text-accent-strong');
+        expect(on).toHaveClass('bg-sheet', 'shadow-card');
         expect(on.querySelector('[data-rail-bar]')).toHaveClass('bg-accent');
-        expect(on.querySelector('[aria-hidden="true"]:not([data-rail-bar])')).toHaveClass('text-accent');
+        expect(on.querySelector('[data-rail-icon]')).toHaveClass('text-accent');
         expect(screen.getByRole('button', { name: 'ブログ' }).querySelector('[data-rail-bar]')).toBeNull();
     });
 });

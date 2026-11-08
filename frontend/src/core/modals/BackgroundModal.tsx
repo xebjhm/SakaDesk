@@ -149,7 +149,7 @@ export const BackgroundModal: React.FC<BackgroundModalProps> = ({
                     {t('background.customImage')}
                 </h3>
                 <input ref={fileInputRef} type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
-                <Button variant="secondary" className="border-2 border-dashed hover:border-accent-border hover:text-accent-strong" onClick={() => fileInputRef.current?.click()}>
+                <Button variant="secondary" className="border-2 border-dashed" onClick={() => fileInputRef.current?.click()}>
                     <Upload className="h-4 w-4" />
                     {t('background.uploadImage')}
                 </Button>

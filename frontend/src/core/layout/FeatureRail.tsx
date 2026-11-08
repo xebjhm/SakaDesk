@@ -12,9 +12,9 @@ export interface FeatureRailProps {
 }
 
 /**
- * Feature rail (D-5): icon + label entries on the group canvas, in the same level-0 block as
+ * Feature rail (D-5): icon-only entries (label in a hover tooltip) on the group canvas, in the same level-0 block as
  * the feature's sidebar. The selected entry is a white card (RailItem) with the group accent on
- * its icon, label and left bar (the pre-D2 colour cues).
+ * its icon and left bar (the pre-D2 colour cues).
  */
 export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
     const { t } = useTranslation();
@@ -64,7 +64,7 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
 
     return (
         <>
-            <nav aria-label={t('featureRail.label')} className="flex w-20 shrink-0 flex-col gap-1 px-2 py-3">
+            <nav aria-label={t('featureRail.label')} className="flex w-12 shrink-0 flex-col items-center gap-1 py-3">
                 {sortedFeatures.map(feature => {
                     const Icon = feature.icon;
                     return (

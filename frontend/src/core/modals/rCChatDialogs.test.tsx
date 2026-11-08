@@ -45,7 +45,7 @@ describe('BackgroundModal (R-c)', () => {
         expect(screen.getByTestId('modal-header-icon')).toBeInTheDocument();
         fireEvent.click(screen.getByTitle('#FEE2E2'));
         expect(screen.getByTitle('#FEE2E2')).toHaveClass('ring-2', 'ring-accent', 'ring-offset-2', 'ring-offset-surface');
-        expect(screen.getByRole('button', { name: /Upload/ })).toHaveClass('border-dashed', 'hover:border-accent-border', 'hover:text-accent-strong');
+        expect(screen.getByRole('button', { name: /Upload/ })).toHaveClass('border-dashed', 'hover:bg-sunken');
         expect(screen.getByRole('slider')).toHaveClass('accent-accent');
     });
 });

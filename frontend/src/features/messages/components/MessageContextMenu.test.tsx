@@ -28,10 +28,11 @@ describe('MessageContextMenu', () => {
         expect(onClose).toHaveBeenCalledTimes(2);
     });
 
-    it('is a point menu; a favourite shows the strong filled star', () => {
+    it('is a point menu; a favourite shows the yellow semantic star', () => {
         render(<MessageContextMenu x={10} y={10} isFavorite onToggleFavorite={vi.fn()} onClose={vi.fn()} />);
         const item = screen.getByRole('menuitem', { name: 'Remove from favorites' });
-        expect(item.querySelector('svg')).toHaveClass('fill-current', 'text-accent');
+        expect(item.querySelector('svg')).toHaveClass('fill-current', 'text-semantic-star', 'drop-shadow-sm');
+        expect(item.querySelector('svg')!.getAttribute('class')).not.toContain('text-accent');
         expect(screen.getByRole('menu').parentElement).toBe(document.body);
     });
 

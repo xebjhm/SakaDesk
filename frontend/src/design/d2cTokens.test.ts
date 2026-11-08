@@ -22,6 +22,14 @@ describe('D2c tokens', () => {
         expect(v['--ds-viewer-text']).toBe('#FFFFFF');
         expect(v['--ds-viewer-text-muted']).toBe('rgba(255, 255, 255, 0.7)');
         expect(v['--ds-viewer-underline']).toBe('rgba(255, 255, 255, 0.3)');
+        expect(v['--ds-console-bg']).toBe('#111827');
+        expect(v['--ds-console-text']).toBe('#FFFFFF');
+        expect(v['--ds-console-text-muted']).toBe('#CBD5E1');
+        expect(v['--ds-console-prompt']).toBe('#4ADE80');
+        expect(v['--ds-console-error']).toBe('#F87171');
+        expect(v['--ds-console-warning']).toBe('#FBBF24');
+        expect(v['--ds-console-badge']).toBe('rgba(251, 191, 36, 0.15)');
+        expect(v['--ds-console-badge-text']).toBe('#FBBF24');
         expect(v['--ds-decor-sunday']).toBe('#EF4444');
         expect(v['--ds-decor-heart']).toBe('#F87171');
         expect(v['--ds-overlay-toast']).toBe('rgba(0, 0, 0, 0.8)');
@@ -41,6 +49,9 @@ describe('D2c tokens', () => {
             "'status-attention': 'var(--ds-semantic-warning-solid)'",
             "'viewer-scrim': 'var(--ds-viewer-scrim)'",
             "'viewer-muted': 'var(--ds-viewer-text-muted)'",
+            "console: 'var(--ds-console-bg)'",
+            "'console-muted': 'var(--ds-console-text-muted)'",
+            "'console-badge': 'var(--ds-console-badge-text)'",
             "sunday: 'var(--ds-decor-sunday)'",
             "heart: 'var(--ds-decor-heart)'",
             "surface: 'var(--ds-surface-sheet)'",

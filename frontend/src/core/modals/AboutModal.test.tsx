@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, afterEach, beforeAll } from 'vitest';
-import { render, screen, act, within, waitFor } from '@testing-library/react';
+import { render, screen, act, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../__tests__/mocks/server';
 
@@ -36,46 +36,21 @@ describe('AboutModal', () => {
         expect(screen.getByText('SakaDesk', { selector: 'h3' })).toHaveClass('text-display');
     });
 
-    it('shows the archive stats in the display face with tabular numerals (pending decision D9)', async () => {
-        vi.useFakeTimers({ toFake: ['Date'] });
-        vi.setSystemTime(new Date(2026, 10, 6, 12));
-        server.use(http.get('/api/archive/stats', () => HttpResponse.json({
-            messages: 12846, photos: 2301, first_message_at: new Date(2026, 10, 1, 12).toISOString(),
-        })));
+    it('shows only SakaDesk information: no archive stats, no stats request', async () => {
+        const statsRequested = vi.fn();
+        server.use(http.get('/api/archive/stats', () => {
+            statsRequested();
+            return HttpResponse.json({ messages: 12846, photos: 2301, first_message_at: null });
+        }));
         render(<AboutModal isOpen onClose={vi.fn()} onOpenDiagnostics={vi.fn()} />);
-        const stats = screen.getByTestId('about-stats');
-        expect(within(stats).getByRole('heading', { name: 'Your archive' })).toBeInTheDocument();
-        const messages = await within(stats).findByText('12,846');
-        expect(messages).toHaveClass('font-display', 'tabular-nums');
-        expect(within(stats).getByText('2,301')).toBeInTheDocument();
-        expect(within(stats).getByText('6')).toBeInTheDocument();
-        expect(within(stats).getByText('Days')).toBeInTheDocument();
-        expect(clientLog).toHaveBeenCalledWith('archive_stats_load', { outcome: 'ok' });
-        vi.useRealTimers();
-    });
-
-    it('shows "—" days, not 0, when messages exist but the earliest time is missing', async () => {
-        server.use(http.get('/api/archive/stats', () => HttpResponse.json({ messages: 12846, photos: 2301, first_message_at: null })));
-        render(<AboutModal isOpen onClose={vi.fn()} onOpenDiagnostics={vi.fn()} />);
-        const stats = screen.getByTestId('about-stats');
-        await within(stats).findByText('12,846');
-        const days = within(stats).getByText('Days').parentElement as HTMLElement;
-        expect(within(days).getByText('—')).toBeInTheDocument();
-        expect(within(stats).queryByText('0')).toBeNull();
-    });
-
-    it('shows 0 / 0 / — for an empty archive', async () => {
-        server.use(http.get('/api/archive/stats', () => HttpResponse.json({ messages: 0, photos: 0, first_message_at: null })));
-        render(<AboutModal isOpen onClose={vi.fn()} onOpenDiagnostics={vi.fn()} />);
-        const stats = screen.getByTestId('about-stats');
-        await waitFor(() => expect(within(stats).getAllByText('0')).toHaveLength(2));
-        expect(within(within(stats).getByText('Days').parentElement as HTMLElement).getByText('—')).toBeInTheDocument();
-    });
-
-    it('hides the stats when they cannot be loaded', async () => {
-        server.use(http.get('/api/archive/stats', () => new HttpResponse(null, { status: 500 })));
-        render(<AboutModal isOpen onClose={vi.fn()} onOpenDiagnostics={vi.fn()} />);
-        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('archive_stats_load', { outcome: 'failed' }));
+        const dialog = screen.getByRole('dialog');
         expect(screen.queryByTestId('about-stats')).toBeNull();
+        for (const label of ['Your archive', 'Messages', 'Photos', 'Days']) {
+            expect(within(dialog).queryByText(label)).toBeNull();
+        }
+        await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+        expect(statsRequested).not.toHaveBeenCalled();
+        expect(clientLog).not.toHaveBeenCalledWith('archive_stats_load', expect.anything());
+        expect(within(dialog).getByText('SakaDesk', { selector: 'h3' })).toBeInTheDocument();
     });
 });

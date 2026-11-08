@@ -30,7 +30,8 @@ const VARIANT: Record<ButtonVariant, string> = {
     /** Secondary emphasis (e.g. "mark all read"): soft tonal gradient, dark accent text. */
     tonal: cn('bg-accent-tonal text-accent-tonal', LIFT),
     secondary: 'bg-pill text-primary border border-strong hover:bg-sunken disabled:hover:bg-pill aria-disabled:hover:bg-pill',
-    ghost: 'bg-transparent text-accent-strong hover:bg-accent-subtle',
+    /** Neutral text action for secondary / tertiary actions; never the group colour. */
+    ghost: 'bg-transparent text-secondary hover:bg-sunken hover:text-primary',
     /** Destructive confirm (semantic, never follows context). Counts as the screen's one primary. */
     danger: cn('bg-status-danger text-inverse shadow-pill', LIFT),
     /** Cautionary confirm (semantic warning, never follows context; restores `e4e4118`'s amber solid as warning solid `#9b5e1e`, white text >= 4.5:1, already pinned in `tokens.test.ts`). Counts as the screen's one primary. */

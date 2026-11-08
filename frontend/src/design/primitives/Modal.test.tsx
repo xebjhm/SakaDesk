@@ -986,10 +986,23 @@ describe('Modal v2 header and scope', () => {
         expect(header.className).toContain('text-expressive-header');
         expect(screen.getByTestId('modal-header-bar').className).toContain('bg-expressive-header-bar');
     });
+    it('header="console" renders a dark ink header with no expressive bar and a muted close button', () => {
+        render(<Modal isOpen onClose={() => {}} title="Dev" header="console" closeLabel="Close">body</Modal>);
+        const header = screen.getByTestId('modal-header');
+        expect(header).toHaveClass('bg-console', 'text-console');
+        expect(header.className).not.toContain('expressive');
+        expect(screen.queryByTestId('modal-header-bar')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('text-console-muted', 'hover:text-console');
+    });
+
     it('header="plain" keeps the quiet header', () => {
         render(<Modal isOpen onClose={() => {}} title="Confirm" header="plain">body</Modal>);
         expect(screen.getByTestId('modal-header').className).not.toContain('bg-expressive-header');
         expect(screen.queryByTestId('modal-header-bar')).toBeNull();
+    });
+    it('titleClassName styles the title', () => {
+        render(<Modal isOpen onClose={() => {}} title="Member" header="plain" titleClassName="text-accent-strong">body</Modal>);
+        expect(screen.getByRole('heading', { level: 2 })).toHaveClass('text-accent-strong', 'font-bold');
     });
     it('scope="brand" sets the brand accent variables on the frame', () => {
         render(<Modal isOpen onClose={() => {}} title="Settings" scope="brand">body</Modal>);
@@ -1019,7 +1032,8 @@ describe('Modal v2 header and scope', () => {
     });
     it('the expressive close button takes the header text colour', () => {
         render(<Modal isOpen onClose={() => {}} title="X" closeLabel="Close">body</Modal>);
-        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('text-expressive-header');
+        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('text-expressive-header', 'hover:bg-header-glass');
+        expect(screen.getByRole('button', { name: 'Close' }).className).not.toMatch(/(^|\s)(hover:)?(bg|text|border)-accent/);
     });
     it('frame uses the xl radius', () => {
         render(<Modal isOpen onClose={() => {}} title="X">body</Modal>);

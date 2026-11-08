@@ -50,6 +50,29 @@ describe('MemberTimelineModal', () => {
         expect(button).not.toHaveClass('text-secondary', 'text-primary');
     });
 
+    it('keeps the plain white header with the member name in the accent text and a muted count', () => {
+        renderModal();
+        expect(screen.getByTestId('modal-header').className).not.toContain('bg-expressive-header');
+        expect(screen.queryByTestId('modal-header-bar')).toBeNull();
+        expect(screen.getByRole('heading', { level: 2 })).toHaveClass('text-accent-strong');
+        const count = screen.getByText('2 posts');
+        expect(count).toHaveClass('text-muted');
+        expect(count).not.toHaveClass('opacity-80');
+    });
+
+    it('draws the Photo Album button as a pill', () => {
+        renderModal();
+        expect(screen.getByRole('button', { name: 'Photo Album' })).toHaveClass('rounded-pill');
+    });
+
+    it('draws the month disclosure disc in the light logo colour when open and neutral when closed', () => {
+        renderModal();
+        const [openDisc, closedDisc] = screen.getAllByTestId('month-disc');
+        expect(openDisc).toHaveClass('bg-accent-logo', 'text-inverse');
+        expect(openDisc.className).not.toMatch(/(^| )bg-accent( |$)/);
+        expect(closedDisc).toHaveClass('bg-sunken', 'text-secondary');
+    });
+
     it('breadcrumbs a broken row thumbnail', () => {
         const withThumb = [{ ...blogs[0], thumbnail: '/broken.jpg' }] as unknown as BlogMeta[];
         const props = {
@@ -78,7 +101,7 @@ describe('MemberTimelineModal', () => {
         renderModal();
         const month = screen.getAllByRole('button', { expanded: true })[0];
         expect(month.querySelector('.text-accent-strong')).not.toBeNull();
-        expect(month.querySelector('.bg-accent')).not.toBeNull();
+        expect(month.querySelector('.bg-accent-logo')).not.toBeNull();
         const row = screen.getByRole('button', { name: /今日の日記/ });
         expect(row).toHaveClass('hover:bg-accent-subtle', 'focus-visible:ring-accent');
         expect(screen.getByText('今日の日記 🌸')).toHaveAttribute('lang', 'ja');
@@ -88,11 +111,5 @@ describe('MemberTimelineModal', () => {
         renderModal();
         const heading = screen.getByRole('heading', { name: /春野/ });
         expect(heading.querySelector('[lang="ja"]')).not.toBeNull();
-    });
-
-    it('lets the post count inherit the header colour', () => {
-        renderModal();
-        const count = screen.getAllByText('2 posts')[0];
-        expect(count).not.toHaveClass('text-muted');
     });
 });

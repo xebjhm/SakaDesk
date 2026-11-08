@@ -203,6 +203,8 @@ export const DesignPage: React.FC = () => {
                             <Swatch key={step} name={`oshi ${step}`} value={color.semantic.oshi[step]} />
                         ))}
                         <Swatch name="star" value={color.semantic.star} />
+                        <Swatch name="console" value={color.console.bg} />
+                        <Swatch name="console prompt" value={color.console.prompt} />
                     </div>
                 </Section>
 

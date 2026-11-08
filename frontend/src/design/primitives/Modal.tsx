@@ -21,7 +21,7 @@ export interface ModalProps {
     labelledBy?: string;
     /** Translated label of the header close button; no close button without it. */
     closeLabel?: string;
-    /** Header content between the title and the close button. It sits on the expressive header, so it should inherit the header text colour (no text-muted). */
+    /** Header content between the title and the close button. On the expressive header it should inherit the header text colour (no text-muted); on the plain header it sits on white, so muted text and tonal controls are fine; on the console header (dark) extras use the console tokens. */
     headerExtra?: React.ReactNode;
     /**
      * 'brand': the dialog is a brand-context surface (settings, search, about...) and its children inherit brand.
@@ -29,8 +29,13 @@ export interface ModalProps {
      * parent hands over, as the login does for its geo warning), else the active group.
      */
     scope?: 'inherit' | 'brand';
-    /** 'expressive' (default): context gradient header (L1). 'plain': quiet header for small confirms. */
-    header?: 'expressive' | 'plain';
+    /**
+     * 'expressive' (default): context gradient header (L1). 'plain': quiet white header (the member timeline).
+     * 'console': dark ink header with no group or brand colour and no bar under it (Developer Diagnostics only).
+     */
+    header?: 'expressive' | 'plain' | 'console';
+    /** Extra classes for the title (h2), e.g. an identity colour on the plain header. */
+    titleClassName?: string;
     children: React.ReactNode;
     footer?: React.ReactNode;
     /** A hairline and 16 px above the footer, for a long body that scrolls under it (Diagnostics). */
@@ -71,7 +76,7 @@ export const Modal: React.FC<ModalProps> = (props) => (props.isOpen ? <OpenModal
 const OpenModal: React.FC<ModalProps> = ({
     onClose, title, icon, 'aria-label': ariaLabel, labelledBy, closeLabel, headerExtra, children, footer, footerDivider = false,
     tone = 'sheet', layout = 'standard', placement = 'center', dismissible = true,
-    initialFocusRef, className, bodyClassName, logId, onKeyDown, scope = 'inherit', header = 'expressive',
+    initialFocusRef, className, bodyClassName, titleClassName, logId, onKeyDown, scope = 'inherit', header = 'expressive',
 }) => {
     const inherited = useScope();
     const scopeValue = scope === 'brand' ? { scope: 'brand' as const, style: brandScopeStyle() } : inherited;
@@ -141,14 +146,16 @@ const OpenModal: React.FC<ModalProps> = ({
                             data-testid="modal-header"
                             className={cn(
                                 'flex shrink-0 items-center gap-3 px-6',
-                                header === 'expressive' ? 'bg-expressive-header py-4 text-expressive-header' : 'pb-2 pt-5 text-primary',
+                                header === 'expressive' && 'bg-expressive-header py-4 text-expressive-header',
+                                header === 'plain' && 'pb-2 pt-5 text-primary',
+                                header === 'console' && 'bg-console py-4 text-console',
                             )}
                         >
                             {title !== undefined && icon && (
                                 <span data-testid="modal-header-icon" aria-hidden="true" className="flex shrink-0 items-center [&>svg]:h-5 [&>svg]:w-5">{icon}</span>
                             )}
                             {title !== undefined && (
-                                <h2 id={titleId} className="min-w-0 flex-1 truncate text-title font-bold">{title}</h2>
+                                <h2 id={titleId} className={cn('min-w-0 flex-1 truncate text-title font-bold', titleClassName)}>{title}</h2>
                             )}
                             {headerExtra}
                             {dismissible && closeLabel && (
@@ -156,7 +163,7 @@ const OpenModal: React.FC<ModalProps> = ({
                                     size="sm"
                                     aria-label={closeLabel}
                                     icon={<X />}
-                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-accent-subtle hover:text-accent-strong' : undefined}
+                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-header-glass hover:text-expressive-header' : header === 'console' ? 'text-console-muted hover:bg-header-glass hover:text-console' : undefined}
                                     onClick={() => requestClose('button')}
                                 />
                             )}

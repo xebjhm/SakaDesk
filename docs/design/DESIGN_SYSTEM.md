@@ -120,10 +120,12 @@ one of two layers:
 100 `#e7ecff` · 200 `#d2daff` · 300 `#b5c0ff` · 400 `#98a2ff` · 500 `#7e85ff` ·
 600 `#6060e0` · 700 `#4c4bbb` · 800 `#393992` · 900 `#28286b`. The old green
 was the colour of one member's page. Yodel has no official periwinkle data, so
-its official fields are **system-derived** from the scale (title gradient
+its title and canvas are **system-derived** from the scale (title gradient
 200 → 400 → 600, bar 200 → 600, title text 700, canvas 100 → 50 → near white,
-shelters 300 / 400 / 500 / 600, bubble border and glow from the logo). They are
-labelled that way in `groups.ts`.
+bubble border and glow from the logo). They are labelled that way in
+`groups.ts`. Yodel's **unread shelters stay official**: the original colours
+from the apps (`#8ab89a` / `#6a9a7a` / `#7aaa8a` / `#5a8a6a`, style `classic`),
+kept verbatim and pinned by tests.
 
 **Reserved: per-OG layer.** A room-level Yodel override through
 `groupScopeStyle`, falling back to periwinkle. Not built.
@@ -168,6 +170,10 @@ Viewer chrome (dark photo and video viewer): `bg-viewer-scrim`,
 `bg-viewer-stage`, `bg-viewer-control` (+ `-hover`), `text-viewer`,
 `text-viewer-muted`, `decoration-viewer`.
 
+Developer console (the hidden Diagnostics panel only): `bg-console`, `bg-console-badge`,
+`text-console`, `text-console-muted`, `text-console-prompt`, `text-console-error`,
+`text-console-warning`, `text-console-badge`.
+
 ### Semantic colours
 
 Global: they never follow context. Danger is always the same brick red, in
@@ -211,7 +217,8 @@ group accent says where you are; a meaning colour says what a thing is.
 - **The favourite star** on a bookmarked chat message is the original yellow,
   `color.semantic.star` `#facc15` (`text-semantic-star`, with a small drop
   shadow for definition on white), the same in every group. Favourites shows the
-  same yellow star on each bookmarked message.
+  same yellow star on each bookmarked message, and so does the favourite icon in
+  the message context menu.
 - Danger and success stay semantic as above.
 - Not oshi: About's "made with love" heart (`text-heart`, `decor.heart`) and
   anything else that is merely pink.
@@ -227,7 +234,7 @@ Components ask for a role; the context decides the value
 | `strong` (700) | ink 700 | group 700 | `text-accent-strong` |
 | `subtle` (50) | ink 50 | group 50 | `bg-accent-subtle`, `ring-accent-subtle` (the running sync step's halo) |
 | `border` (200) | ink 200 | group 200 | `bg-accent-border`, `border-accent-border`, `ring-accent-border` |
-| `logo` | ink 400 | group logo | the light end of the gradient; `ring-accent-logo` (the landing card selection ring) |
+| `logo` | ink 400 | group logo | the light end of the gradient; `bg-accent-logo` (the member-timeline expanded month disc); `ring-accent-logo` (the landing card selection ring) |
 | `glow` | ink 500 at 0.35 | group glow | `shadow-accent-glow`, `shadow-accent-glow-hover`, `shadow-accent-halo` (selection halo on avatars and the rail logo) |
 | `gradient` | ink 400 → 600 | logo → 600 | `bg-accent-gradient` (primary button) |
 | `wash` / `wash-border` | logo 8 % → accent 6 % at 135°; logo 19 % hairline | same | `bg-accent-wash` / `border-accent-wash` (a quiet accent control at rest: Select Member, Photo Album; hover fills with the gradient or `bg-accent-subtle`) |
@@ -248,6 +255,24 @@ buttons) mix their accent in inline styles: they default to `ACCENT`
 (`design/colorMix.ts`). New components use utilities. On the compact voice
 player's `bg-sunken` card, the mute and menu buttons hover one step darker
 (`hover:bg-sunken hover:brightness-94`), never lighter.
+
+### When to use the group colour
+
+The group colour does exactly three jobs: **A. identity** (whose space this is: the group canvas and rail block, the chat header, the group's own content, group markers in cross-group lists, the dialog expressive header); **B. current state** (active tab, selected nav item or row, slider fill, switch on, checked, progress); **C. the one primary action** of a view (primary `Button`). Everything else is neutral: secondary and tertiary actions, disclosure and utility controls, counts and metadata, tooling surfaces. Decoration that stays group-coloured is pastel strength, never solid. Nothing accent-coloured sits on the accent gradient header. Semantic colours (danger, warning, success, oshi pink, yellow star) are unchanged.
+
+| Job | Examples |
+|---|---|
+| A. identity | chat header, group rail block, group markers in cross-group lists, dialog expressive header |
+| B. state | active tab, selected rail item, slider fill |
+| C. primary | Done, Save |
+| Neutral | Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts |
+| Pastel decoration | empty-state soft circle, milestone card surface |
+
+Pre-existing accents from the original design stay until the owner revisits
+them: the ⋯ conversation-menu icons, the transcript "Show text" control, the
+member-timeline row hover tint and expanded month count pill, the sent-letters
+hover, the blog-feed "Select member" pill (pastel tint with a gradient hover), the
+blog nav footer glow, and the ToS per-group links.
 
 ## 5. Expression tiers
 
@@ -361,9 +386,9 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 | Variant | Look | Rule |
 |---|---|---|
 | `primary` | `bg-accent-gradient`, white bold text, glow shadow | at most one `primary`, `warning` or `danger` per screen and one per dialog (each dialog counts on its own) |
-| `tonal` | `bg-accent-tonal`, dark accent text | secondary emphasis (e.g. "mark all read"); never competes with primary |
+| `tonal` | `bg-accent-tonal`, dark accent text | reserved: no production call site. Do not use it for secondary actions under the colour rule (those are `secondary` or `ghost`); never competes with primary |
 | `secondary` | white, neutral border, neutral text | cancel and so on |
-| `ghost` | text only, `text-accent-strong` | inline actions |
+| `ghost` | text only, `text-secondary`, `hover:bg-sunken` | neutral secondary / tertiary action; never the group colour (matches `IconButton` ghost) |
 | `warning` | `bg-status-attention`, white text | a cautionary confirm; takes the place of the primary |
 | `danger` | `bg-status-danger`, white text | a destructive confirm; takes the place of the primary |
 | `overlay` | `bg-viewer-control` | controls on the dark viewer |
@@ -415,8 +440,8 @@ Brand moments are for waiting, starting, finishing and looking back
   sheet toast (`bg-sheet`, `animate-toast-in`; the caller positions it, typically bottom-right) with one aurora shimmer (`animate-shimmer`)
   and ten sparkles (`animate-sparkle`). `role="status"`.
 - **`MilestoneCard`** (`value`, `label`): tier C. A card in the timeline
-  (`font-display` number with `tabular-nums`, `bg-expressive-soft`, glow,
-  `animate-pop`) with 26 pieces of short confetti (`animate-confetti`) in the
+  (`font-display` number with `tabular-nums` in `text-primary`, `bg-expressive-soft`
+  surface with an accent border, no glow, `animate-pop`) with 26 pieces of short confetti (`animate-confetti`) in the
   context accent colours.
 
 Celebration events (tiers B and C only; there is no full-screen tier):
@@ -453,7 +478,7 @@ Wiring:
   (`target` `milestone_messages` / `milestone_days`, `outcome` `shown` with `count`, or
   `seeded`, or `skipped` with `reason` `no_messages`).
 
-Other brand moments: first launch (ToS, the login carousel, setup and the first sync) sits on `EntryBackdrop` (`shell/components/EntryBackdrop.tsx`: the brand orbs over `bg-window`, also behind a blocking sync); the boot screen is brand with an ink spinner and no orbs (it shows on every launch); the landing page is a brand sheet on the orbs with a serif `text-display` heading. About opens on a hero of brand orbs under its aurora header (logo, `text-display` serif wordmark, version) and a "your archive" row (messages, photos, days; `font-display` `tabular-nums`; days show "—" when the earliest message time is unknown) from `GET /api/archive/stats` (`core/modals/archiveStats.ts`; breadcrumb `archive_stats_load`, `outcome` `ok` / `failed`; hidden on failure).
+Other brand moments: first launch (ToS, the login carousel, setup and the first sync) sits on `EntryBackdrop` (`shell/components/EntryBackdrop.tsx`: the brand orbs over `bg-window`, also behind a blocking sync); the boot screen is brand with an ink spinner and no orbs (it shows on every launch); the landing page is a brand sheet on the orbs with a serif `text-display` heading. About opens on a hero of brand orbs under its aurora header (logo, `text-display` serif wordmark, version) and the tagline, credits and repository link. About shows only SakaDesk's own information; the archive statistics (`GET /api/archive/stats`, `core/modals/archiveStats.ts`) now feed only the first-sync toast, and the personal-summary view is their long-term home (ROADMAP P1.1 Phase 4).
 
 ## 11. Motion and elevation
 
@@ -529,13 +554,14 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 | `tone` | `sheet` (default: a level-1 sheet, `bg-sheet rounded-xl shadow-sheet` on `bg-scrim`) or `viewer` (dark, full screen, on `bg-viewer-scrim`; photos and videos) |
 | `layout` | `standard` (header with the title and a ghost close button, body, footer) or `bare` (children straight in the frame: search, the profile card, the entry flows) |
 | `scope` | `inherit` (default: the scope in `ScopeContext`: brand from a `BrandScope` or a brand `Modal`, or a group scope a parent provides with `ScopeContext.Provider`, else the active group) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
-| `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile) or `plain` (a quiet title; no dialog uses it today) |
+| `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile), `plain` (a quiet white header; the member timeline uses it) or `console` (a dark ink header, `bg-console` / `text-console`, no bar and no group or brand colour; Developer Diagnostics only) |
 | `icon` | A decorative lucide icon before the title, in the header text colour; plain dialog icons are drawn at 20 px, while `ConfirmDialog` passes its own 32 px semantic tile (drawn as given). Only the standard layout with a title draws it (`Modal` ignores it, with no title or in the bare layout). Used by Calendar, Favorites (star), Sent letters (mail), Background (palette), Media gallery and Blog photo gallery (image), Report issue (bug) and Diagnostics (terminal); `ConfirmDialog` passes its icon tile |
 | `placement` | `center` (default) or `top` (15 vh from the top: search) |
 | `dismissible` | `true` (default); `false` for flows that must not be skipped (ToS, setup, sync): no close button, and Escape and the backdrop do nothing |
 | `closeLabel` | Required whenever the dialog has a close button: `t('common.close')`. Without it there is no close button |
 | `logId` | Required on every dialog: its `DialogLogId`, which logs the `dialog` open / close breadcrumbs (data loads inside log `dialog_load`) |
 | `footerDivider` | A `border-subtle` hairline and 16 px above the footer, for a long body that scrolls under it (Diagnostics) |
+| `titleClassName` | Extra classes for the title (the member timeline sets `text-accent-strong` on its plain header) |
 | `initialFocusRef`, `onKeyDown`, `headerExtra`, `footer`, `className`, `bodyClassName` | first focus, the content's own keys, header extras, footer actions, frame and body classes |
 
 - **Escape** goes to the **top-most** dialog only, which closes and claims it
@@ -566,6 +592,17 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
   `bg-semantic-danger-icon`, the empty tile `bg-expressive-soft`; `retryVariant` is
   `secondary` by default and `primary` for the gradient retry the blog dialogs use).
   `BlogStatus`'s retry is always `primary`.
+
+### Developer surfaces
+
+The hidden Developer Diagnostics panel uses no brand or group colour in its chrome, on purpose, so it
+is unmistakable next to user screens (it still sits in brand scope for any nested dialog): a dark ink `Modal` `header="console"`, a terminal icon in
+`text-console-prompt`, a monospace uppercase "Hidden Panel" badge (`bg-console-badge`,
+`text-console-badge`), a solid ink Copy JSON button (`Button variant="secondary"` with a
+`bg-console text-console` override, kept dark on hover and when disabled) and the log block in
+`bg-console text-console-muted font-mono` (errors `text-console-error`, warnings
+`text-console-warning`). The `console` tokens (`color.console`, `--ds-console-*`) hold the
+pre-D2 panel's values; use them for developer tooling only.
 
 ### Menus
 
@@ -672,8 +709,11 @@ The rail's bottom actions (add service, search, settings, update) sit in a `Bran
 `soft` ink circles; the update icon uses the semantic info / success / danger colours. The
 selected logo's halo is `shadow-accent-halo` in the active group's context.
 
-The feature rail's selected `RailItem` is a white card with `text-accent` icon,
-`text-accent-strong` label and a `bg-accent` bar on the left.
+The feature rail is icon-only (a `w-12` column of 40 px `RailItem` tiles, 20 px icons). The
+feature name is the button's `aria-label` and a neutral dark tooltip (`bg-toast text-viewer`,
+never the group colour) to the right of the tile, shown on hover and keyboard focus after a short
+delay. The selected `RailItem` is a white card with a `text-accent` icon and a `bg-accent` bar on
+the left.
 
 ### Layering
 
@@ -781,6 +821,7 @@ Do not "fix" these.
 |---|---|
 | Separate blocks with spacing and levels | Draw straight divider lines (`border-b` between list items, `<hr>`) |
 | Give a fixed-meaning element its meaning colour in every context (推 hearts `text-semantic-oshi`, the favourite star `text-semantic-star`) | Recolour it with the group accent, or use oshi pink for a heart that is not 推 (About's `text-heart`) or for anything just because it is pink |
+| Keep secondary and tertiary actions neutral (`ghost`, `secondary`); spend the group colour on identity, current state and the one primary action | Tint a utility, disclosure or Cancel-style control with `text-accent-strong` or an accent wash |
 | Use token classes (`rounded-lg`, `text-body`, `bg-sheet`) | Hard-code `#hex`, `rgb()`, or arbitrary `rounded-[..]`, `shadow-[..]`, `text-[..]`, `p-[..]` |
 | Dim overlays with `bg-scrim` | Dim overlays with `bg-black/NN` or `bg-white/NN` |
 | Ask for a role (`bg-accent`, `text-accent-strong`, `bg-expressive-soft`) so the component follows its context | Hard-code a colour, or use group colour in brand screens |
