@@ -32,6 +32,8 @@ import { LetterViewerModal } from '../../core/modals/LetterViewerModal';
 import { ConfirmDialog } from '../../shell/components/ConfirmDialog';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 import { memberImageUrl } from './profileImages';
+import { resizedAvatarUrl } from './mediaUrl';
+import { useAvatarWidth } from './hooks/useAvatarWidth';
 import { useIncomingCall } from '../incomingCall/useIncomingCall';
 import { CallOverlay } from '../incomingCall/CallOverlay';
 import { isCallPopupActive } from '../callPopup/callPopupApi';
@@ -115,6 +117,9 @@ interface MessageCacheEntry {
     maxMessageId: number;
     service: string;
 }
+
+/** Drawn size of the chat avatars (message runs, letters, header: Avatar `md`), in CSS px. */
+const CHAT_AVATAR_CSS_PX = 40;
 
 interface MessagesFeatureProps {
     appSettings: AppSettings | null;
@@ -543,18 +548,27 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     };
 
+    // Chat avatars (message runs, letters, header; the viewer's voice player reuses the sender's)
+    // are drawn at 36-40 CSS px: request the resized variant matched to the screen. The profile
+    // card (192 CSS px) keeps the full-size image.
+    const chatAvatarPx = useAvatarWidth(CHAT_AVATAR_CSS_PX);
+
     // The 1:1 room's member: header avatar, the ⋯ menu and the profile popup.
     const headerMember = Object.values(membersMap)[0];
     const headerAvatar = memberImageUrl(headerMember, 'thumbnail') || headerMember?.portrait || undefined;
+    const headerAvatarSmall = resizedAvatarUrl(headerAvatar, chatAvatarPx);
     const isLightHeader = groupTokens[serviceGroupId(activeService)].official.headerStyle === 'light';
 
     const getSenderInfo = useCallback((msg: GroupMessage) => {
         const memberInfo = (isGroupChat && msg.member_id) ? membersMap[msg.member_id] : Object.values(membersMap)[0];
         return {
             name: formatName(msg.member_name || memberInfo?.name || selectedName || 'Unknown'),
-            avatar: memberImageUrl(memberInfo, 'thumbnail') || memberInfo?.portrait || memberImageUrl(memberInfo, 'phone_image')
+            avatar: resizedAvatarUrl(
+                memberImageUrl(memberInfo, 'thumbnail') || memberInfo?.portrait || memberImageUrl(memberInfo, 'phone_image'),
+                chatAvatarPx,
+            ),
         };
-    }, [isGroupChat, membersMap, selectedName]);
+    }, [isGroupChat, membersMap, selectedName, chatAvatarPx]);
 
     /**
      * Resolve the member directory path for a message (used by transcription API).
@@ -590,11 +604,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const renderLetter = useCallback((letter: Letter) => (
         <LetterRow
             letter={letter}
-            avatarUrl={letterAvatar.byId.get(letter.id) ?? null}
+            avatarUrl={resizedAvatarUrl(letterAvatar.byId.get(letter.id), chatAvatarPx) ?? null}
             userName={letterUserName}
             onOpenImage={openLetterViewer}
         />
-    ), [letterAvatar, letterUserName, openLetterViewer]);
+    ), [letterAvatar, letterUserName, openLetterViewer, chatAvatarPx]);
 
     // The backend's popup owns a voice while the window is visible but unfocused: ask it, keep no copy.
     const isCallElsewhere = useCallback((messageId: number) => {
@@ -739,7 +753,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         onClick={() => setIsSidebarOpen(true)}
                     />
                     {selectedGroupDir && !isGroupChat && (
-                        <Avatar src={headerAvatar} name={selectedName || ''} size="md" className="ring-2 ring-surface" />
+                        <Avatar src={headerAvatarSmall} name={selectedName || ''} size="md" className="ring-2 ring-surface" />
                     )}
                     <div className="min-w-0 flex-1">
                         <h2 lang={selectedName ? 'ja' : undefined} className="truncate text-title font-semibold">{selectedName || t('messageList.selectConversation')}</h2>

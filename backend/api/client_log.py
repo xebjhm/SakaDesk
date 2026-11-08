@@ -63,6 +63,7 @@ ClientEvent = Literal[
     "sync_sequence",
     "letter_viewer",
     "letter_jump",
+    "display_density_change",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -91,6 +92,7 @@ ALLOWED_FIELDS = frozenset(
         "count",
         "history",
         "fallback",
+        "dppx_pct",
     }
 )
 WARNING_EVENTS = frozenset(

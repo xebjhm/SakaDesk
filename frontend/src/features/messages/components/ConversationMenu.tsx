@@ -8,6 +8,8 @@ import { MediaGalleryModal } from '../../../core/media/MediaGalleryModal';
 import { BackgroundModal } from '../../../core/modals/BackgroundModal';
 import { FavoritesModal } from '../../../core/modals/FavoritesModal';
 import { useAppStore } from '../../../store/appStore';
+import { resizedAvatarUrl } from '../mediaUrl';
+import { useAvatarWidth } from '../hooks/useAvatarWidth';
 import { useTranslation } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
 import { IconButton, Menu, MenuItem } from '../../../design/primitives';
@@ -20,6 +22,7 @@ interface ChatHeaderMenuProps {
     isGroupChat: boolean;
     messages: Message[];
     memberName: string;
+    /** Full-size avatar URL; the media gallery and favourites get resized variants for their small avatars. */
     memberAvatar?: string;
     activeService?: string; // Service ID for API calls
     /** Opens the date-search calendar (owned by MessagesFeature; the date pills open it too). */
@@ -54,6 +57,12 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     const { t } = useTranslation();
     const [showMenu, setShowMenu] = useState(false);
     const [activeModal, setActiveModal] = useState<ModalType>(null);
+    // Resized variants matched to the screen: the gallery's voice rows draw the avatar at 48 CSS px,
+    // the favourites cards at 40 CSS px.
+    const galleryAvatarPx = useAvatarWidth(48);
+    const favoritesAvatarPx = useAvatarWidth(40);
+    const galleryAvatar = resizedAvatarUrl(memberAvatar, galleryAvatarPx);
+    const favoritesAvatar = resizedAvatarUrl(memberAvatar, favoritesAvatarPx);
 
     const triggerRef = useRef<HTMLButtonElement>(null);
     const setTargetMessageId = useAppStore((state) => state.setTargetMessageId);
@@ -139,7 +148,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 onClose={() => setActiveModal(null)}
                 messages={messages}
                 memberName={memberName}
-                memberAvatar={memberAvatar}
+                memberAvatar={galleryAvatar}
                 serviceId={activeService}
                 memberPath={conversationPath}
                 onSourceJump={handleJumpToMessage}
@@ -159,7 +168,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 onClose={() => setActiveModal(null)}
                 messages={messages}
                 memberName={memberName}
-                memberAvatar={memberAvatar}
+                memberAvatar={favoritesAvatar}
                 serviceId={activeService}
             />
         </>

@@ -276,6 +276,7 @@ def test_notify_open_chat_accepts_has_target():
         ("design_fonts_fallback", {"target": "zh_tw"}, "warning"),
         ("avatar_fallback", {"size": "md"}, "info"),
         ("avatar_fallback", {"surface": "member_select"}, "info"),
+        ("display_density_change", {"dppx_pct": 175}, "info"),
         ("menu_item_blocked", {"target": "sent_letters"}, "info"),
         ("blog_fallback", {"target": "card_thumb", "reason": "image_error"}, "info"),
         (

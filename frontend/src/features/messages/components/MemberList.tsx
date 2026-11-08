@@ -10,7 +10,8 @@ import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
 import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
-import { resizedAvatarUrl, type AvatarWidth } from '../mediaUrl';
+import { resizedAvatarUrl } from '../mediaUrl';
+import { useAvatarWidth } from '../hooks/useAvatarWidth';
 import { logDialogLoad } from '../../../design/dialog/dialogLog';
 import { Portal } from '../../../core/common/Portal';
 import { MemberContextMenu } from './MemberContextMenu';
@@ -54,8 +55,8 @@ function formatRelativeTime(isoTime: string, t: (key: string, opts?: Record<stri
     return t('time.daysAgo', { count: days });
 }
 
-/** Resized avatar width: the 64 CSS px tile at up to 3x device pixel ratio, rounded to an allowed width. */
-const AVATAR_PX: AvatarWidth = 192;
+/** Drawn size of a member tile avatar (h-16 w-16), in CSS px. */
+const AVATAR_CSS_PX = 64;
 /** Inactive (offline) members: softened, no contrast cut. Image only, never the ring. */
 const INACTIVE_IMG = 'opacity-75 saturate-50';
 /** Graduated members: light sepia. Image only, never the ring. */
@@ -71,6 +72,8 @@ const SectionHeading: React.FC<{ children: React.ReactNode }> = ({ children }) =
 export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow }) => {
     const { t } = useTranslation();
     const [groups, setGroups] = useState<GroupInfo[]>([]);
+    // Resized variant matched to the screen: 64 CSS px × device pixel ratio, rounded up to an allowed width.
+    const avatarPx = useAvatarWidth(AVATAR_CSS_PX);
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [lastSyncMap, setLastSyncMap] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
@@ -270,7 +273,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                             </span>
                         ) : (
                             <Avatar
-                                src={resizedAvatarUrl(info.avatar, AVATAR_PX)}
+                                src={resizedAvatarUrl(info.avatar, avatarPx)}
                                 name={info.displayName}
                                 decorative
                                 size="lg"

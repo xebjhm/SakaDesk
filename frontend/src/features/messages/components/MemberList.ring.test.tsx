@@ -80,13 +80,24 @@ describe('MemberList avatar ring and sharpness', () => {
         expectRingUntouched(ring, button);
     });
 
-    it('requests the 192 px resized variant for local archived avatars only', async () => {
-        serve();
-        render(<MemberList activeService="hinatazaka46" onSelectGroup={vi.fn()} />);
-        expect((await cell('オンライン')).img).toHaveAttribute(
-            'src',
-            '/api/content/avatar/hinatazaka46/messages/66%20A/120%20A/profile_images/group_thumbnail/a.jpg?w=192',
-        );
-        expect((await cell('オフライン')).img).toHaveAttribute('src', 'https://cdn.example/b.jpg');
+    it.each([
+        [1, 64],
+        [1.5, 96],
+        [1.75, 112],
+        [2, 128],
+    ])('requests the 64 px tile at %f dppx as the %i px variant, for local archived avatars only', async (dpr, w) => {
+        const original = window.devicePixelRatio;
+        Object.defineProperty(window, 'devicePixelRatio', { configurable: true, writable: true, value: dpr });
+        try {
+            serve();
+            render(<MemberList activeService="hinatazaka46" onSelectGroup={vi.fn()} />);
+            expect((await cell('オンライン')).img).toHaveAttribute(
+                'src',
+                `/api/content/avatar/hinatazaka46/messages/66%20A/120%20A/profile_images/group_thumbnail/a.jpg?w=${w}`,
+            );
+            expect((await cell('オフライン')).img).toHaveAttribute('src', 'https://cdn.example/b.jpg');
+        } finally {
+            Object.defineProperty(window, 'devicePixelRatio', { configurable: true, writable: true, value: original });
+        }
     });
 });

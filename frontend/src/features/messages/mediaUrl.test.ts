@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildMediaUrl, resizedAvatarUrl } from './mediaUrl';
+import { AVATAR_WIDTHS, avatarWidthFor, buildMediaUrl, resizedAvatarUrl } from './mediaUrl';
 
 describe('buildMediaUrl', () => {
     it('encodes the service and each path segment, keeping slashes', () => {
@@ -35,5 +35,41 @@ describe('resizedAvatarUrl', () => {
         expect(resizedAvatarUrl(null, 192)).toBeUndefined();
         expect(resizedAvatarUrl(undefined, 192)).toBeUndefined();
         expect(resizedAvatarUrl('', 192)).toBeUndefined();
+    });
+});
+
+describe('avatarWidthFor', () => {
+    it('mirrors the backend allow-list (avatar_resize.ALLOWED_WIDTHS)', () => {
+        expect([...AVATAR_WIDTHS]).toEqual([64, 80, 96, 112, 128, 160, 192, 256]);
+    });
+
+    it.each([
+        // member list tile, 64 CSS px
+        [64, 1, 64], [64, 1.25, 80], [64, 1.5, 96], [64, 1.75, 112], [64, 2, 128], [64, 2.5, 160], [64, 3, 192],
+        // chat message / header avatar, 40 CSS px (70 device px at 175 % → 80)
+        [40, 1, 64], [40, 1.5, 64], [40, 1.75, 80], [40, 2, 80], [40, 3, 128],
+        // gallery header avatar, 48 CSS px
+        [48, 1.75, 96], [48, 2, 96],
+    ])('%i CSS px at %f dppx → %i', (css, dpr, expected) => {
+        expect(avatarWidthFor(css, dpr)).toBe(expected);
+    });
+
+    it('rounds up, never down (no upscaling by the browser)', () => {
+        // 64 × 1.1 = 70.4 → 80, not 64
+        expect(avatarWidthFor(64, 1.1)).toBe(80);
+    });
+
+    it('tolerates float noise in the device pixel ratio', () => {
+        // 64 × 1.7500000001 must still pick 112, not jump to 128
+        expect(avatarWidthFor(64, 1.7500000001)).toBe(112);
+    });
+
+    it('clamps to the largest width above the allow-list', () => {
+        expect(avatarWidthFor(64, 5)).toBe(256);
+    });
+
+    it('treats a missing or invalid ratio as 1', () => {
+        expect(avatarWidthFor(64, 0)).toBe(64);
+        expect(avatarWidthFor(64, Number.NaN)).toBe(64);
     });
 });
