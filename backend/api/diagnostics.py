@@ -150,29 +150,37 @@ def _walk_disk_usage(output_dir: Path) -> DiskWalkResult:
 
     Uses ``os.scandir`` rather than ``Path.rglob`` + ``stat``: on Windows the
     directory listing already carries file sizes, so no extra syscall per file.
-    Symlinks are not followed (no loops, no double counting). An entry that
-    disappears or cannot be read mid-walk (sync writes concurrently) is counted
-    in ``skipped`` instead of failing the walk.
+    Symlinks and Windows junctions are not followed (no loops, no double
+    counting); they count as neither file nor folder. An entry that disappears
+    or cannot be read mid-walk (sync writes concurrently) is counted in
+    ``skipped`` instead of failing the walk. Only the top two levels (services
+    and their categories) are sorted by name, for a stable breakdown order;
+    deeper listings are summed unsorted.
     """
     result = DiskWalkResult()
 
-    def _scan(path: str) -> list["os.DirEntry[str]"]:
+    def _scan(path: str, ordered: bool = False) -> list["os.DirEntry[str]"]:
         try:
             with os.scandir(path) as entries:
-                return sorted(entries, key=lambda e: e.name)
+                if ordered:
+                    return sorted(entries, key=lambda e: e.name)
+                return list(entries)
         except OSError:
             result.skipped += 1
             return []
 
     def _kind(entry: "os.DirEntry[str]") -> str:
         try:
+            # A junction reports is_dir() even with follow_symlinks=False.
+            if entry.is_junction():
+                return "other"
             if entry.is_dir(follow_symlinks=False):
                 return "dir"
             if entry.is_file(follow_symlinks=False):
                 return "file"
         except OSError:
             result.skipped += 1
-        return "other"  # symlink, device, or unreadable
+        return "other"  # symlink, junction, device, or unreadable
 
     def _file_bytes(entry: "os.DirEntry[str]") -> int:
         try:
@@ -214,7 +222,7 @@ def _walk_disk_usage(output_dir: Path) -> DiskWalkResult:
         if kind != "dir":
             continue
         service: dict = {"name": top.name, "total_bytes": 0, "categories": []}
-        for child in _scan(top.path):
+        for child in _scan(top.path, ordered=True):
             child_kind = _kind(child)
             if child_kind == "dir":
                 cat_bytes = _tree_bytes(child.path)
@@ -238,7 +246,9 @@ class _DiskUsageTracker:
     that same walk; once it finishes, its result (or failure) is cached for the
     rest of the app run. ``refresh=True`` starts a new walk unless one is
     already running (then it joins it). A daemon thread rather than an executor
-    so a long walk can never hold up app shutdown. Thread-safe.
+    so a long walk can never hold up app shutdown. If the thread cannot be
+    started, the slot is freed and ``failed`` is returned (not cached, so the
+    next poll or refresh retries). Thread-safe.
     """
 
     def __init__(self) -> None:
@@ -277,12 +287,24 @@ class _DiskUsageTracker:
             self._running_dir = output_dir
             self._idle.clear()
         logger.info("diagnostics_disk_usage_started", reason=reason)
-        threading.Thread(
-            target=self._run,
-            args=(output_dir,),
-            name="diagnostics-disk-usage",
-            daemon=True,
-        ).start()
+        try:
+            threading.Thread(
+                target=self._run,
+                args=(output_dir,),
+                name="diagnostics-disk-usage",
+                daemon=True,
+            ).start()
+        except Exception as e:  # noqa: BLE001 — e.g. RuntimeError: can't start thread
+            # Nothing is running: free the slot so a later poll / Refresh retries.
+            with self._lock:
+                self._running_dir = None
+                self._idle.set()
+            logger.warning(
+                "diagnostics_disk_usage_failed",
+                phase="thread_start",
+                error_type=type(e).__name__,
+            )
+            return DiskUsage(state="failed")
         return DiskUsage(state="pending")
 
     def wait_idle(self, timeout: float) -> bool:
@@ -290,28 +312,19 @@ class _DiskUsageTracker:
         return self._idle.wait(timeout)
 
     def _run(self, output_dir: str) -> None:
+        """Thread body: walk, cache the result, and ALWAYS go idle again.
+
+        Any exception — in the walk or while building / logging the result —
+        becomes a cached ``failed`` (logged with ``error_type`` only: messages
+        can carry the PII folder path); the ``finally`` frees the single-flight
+        slot so a crash can never leave the panel ``pending`` forever.
+        """
         started = time.monotonic()
+        usage = DiskUsage(state="failed")
         try:
             walk = _walk_disk_usage(Path(output_dir))
-        except Exception as e:  # noqa: BLE001 — any failure becomes state=failed
-            duration_ms = int((time.monotonic() - started) * 1000)
-            # error_type only: the message can carry the (PII) folder path.
-            logger.warning(
-                "diagnostics_disk_usage_failed",
-                duration_ms=duration_ms,
-                error_type=type(e).__name__,
-            )
-            usage = DiskUsage(state="failed", duration_ms=duration_ms)
-        else:
             duration_ms = int((time.monotonic() - started) * 1000)
             size_mb = round(walk.total_bytes / (1024 * 1024), 2)
-            logger.info(
-                "diagnostics_disk_usage_finished",
-                duration_ms=duration_ms,
-                file_count=walk.file_count,
-                size_mb=size_mb,
-                skipped=walk.skipped,
-            )
             usage = DiskUsage(
                 state="ready",
                 size_mb=size_mb,
@@ -322,11 +335,28 @@ class _DiskUsageTracker:
                 .replace("+00:00", "Z"),
                 duration_ms=duration_ms,
             )
-        with self._lock:
-            self._cached = usage
-            self._cached_dir = output_dir
-            self._running_dir = None
-            self._idle.set()
+            logger.info(
+                "diagnostics_disk_usage_finished",
+                duration_ms=duration_ms,
+                file_count=walk.file_count,
+                size_mb=size_mb,
+                skipped=walk.skipped,
+            )
+        except Exception as e:  # noqa: BLE001 — any failure becomes state=failed
+            duration_ms = int((time.monotonic() - started) * 1000)
+            usage = DiskUsage(state="failed", duration_ms=duration_ms)
+            logger.warning(
+                "diagnostics_disk_usage_failed",
+                phase="walk",
+                duration_ms=duration_ms,
+                error_type=type(e).__name__,
+            )
+        finally:
+            with self._lock:
+                self._cached = usage
+                self._cached_dir = output_dir
+                self._running_dir = None
+                self._idle.set()
 
 
 _disk_usage_tracker = _DiskUsageTracker()
@@ -387,13 +417,21 @@ async def get_disk_usage():
     )
 
 
+def _normalise_output_dir(value: object) -> Optional[str]:
+    """A settings ``output_dir`` value as a non-empty string, else None.
+
+    The one normalisation used by the summary and the poll endpoint, so a
+    hand-edited non-string value never reaches ``Path()`` in the walk thread.
+    """
+    return value if isinstance(value, str) and value else None
+
+
 def _configured_output_dir() -> Optional[str]:
     """The configured output folder from settings, or None (blocking read)."""
     try:
         if get_settings_path().exists():
             with open(get_settings_path(), "r", encoding="utf-8") as f:
-                value = json.load(f).get("output_dir")
-                return value if isinstance(value, str) and value else None
+                return _normalise_output_dir(json.load(f).get("output_dir"))
     except Exception as e:
         logger.warning("diagnostics_settings_read_failed", error_type=type(e).__name__)
     return None
@@ -440,7 +478,7 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
     # Use same defaults as the settings API (SettingsResponse) to avoid
     # dual-source-of-truth bugs where diagnostics shows different values.
     config_state = {}
-    output_dir = None
+    output_dir: Optional[str] = None
     try:
         if get_settings_path().exists():
             with open(get_settings_path(), "r", encoding="utf-8") as f:
@@ -452,7 +490,7 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
                 config_state["adaptive_sync"] = data.get("adaptive_sync_enabled", True)
                 config_state["notifications"] = data.get("notifications_enabled", True)
                 config_state["blogs_full_backup"] = data.get("blogs_full_backup", False)
-                output_dir = data.get("output_dir")
+                output_dir = _normalise_output_dir(data.get("output_dir"))
         else:
             # No settings file yet — show all defaults
             config_state["is_configured"] = False

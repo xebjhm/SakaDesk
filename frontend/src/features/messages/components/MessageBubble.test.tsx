@@ -235,7 +235,7 @@ describe('MessageBubble component', () => {
 
   describe('voice transcript footer', () => {
     const voice = createMessage({ type: 'voice', content: null, media_file: 'v.m4a' })
-    const footerOf = (c: HTMLElement) => c.querySelector('.bg-accent-subtle') as HTMLElement
+    const footerOf = (c: HTMLElement) => c.querySelector('[data-testid="transcript-footer"]') as HTMLElement
 
     afterEach(() => { useAppStore.setState({ transcriptionEnabled: false }) })
 

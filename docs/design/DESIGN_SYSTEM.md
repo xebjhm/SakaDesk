@@ -118,8 +118,8 @@ one of two layers:
   `classic`). Nogizaka's shelter values are approximations from the first theme
   commit, not yet verified against the official app (code comments mark them;
   to be re-taken from screenshots later). Yodel's shelters are logo-derived on
-  purpose (owner decision 2026-11-09); a per-OG penlight layer is planned. Shelter icons are drawn at
-  full opacity.
+  purpose (owner decision 2026-11-09); a per-OG penlight layer is planned.
+  Shelter icons are drawn at full opacity.
 - **System layer:** each group has its logo colour and a 10-step scale (50
   lightest to 900 darkest, logo colour snapped into its step).
 
@@ -539,7 +539,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Action | `Button` (variants in section 9) |
 | Icon-only action | `IconButton` |
 | Feature-rail entry | `RailItem` |
-| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos). A sent letter opens in `LetterViewerModal`, a wide sheet (not the dark viewer, because the letter's full text is read beside the image): the image on a `bg-sunken` stage, the text in message type, and the photo viewer's footer (a neutral date link that jumps to the letter in the chat, the `n / total` counter, previous / next and ← / →, and with golden finger a ghost Download). Clicking the image opens it in the dark viewer on top for ↑ / ↓ zoom and golden-finger copy / download; Escape returns to the letter |
+| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos). A sent letter opens in `LetterViewerModal`, a wide sheet (not the dark viewer, because the letter's full text is read beside the image): the image on a `bg-sunken` stage, the text in message type, and the photo viewer's footer (a neutral date link that jumps to the letter in the chat, the `n / total` counter, previous / next and ← / →, always in time order (› / → newer, from the chat and from the newest-first Sent letters list alike), and with golden finger a ghost Download). Clicking the image opens it in the dark viewer on top for ↑ / ↓ zoom and golden-finger copy / download; Escape returns to the letter |
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |

@@ -447,6 +447,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 {/* Transcription footer — only for voice/video, hidden when unread shelter is active */}
                 {hasTranscriptFooter && (
                     <div
+                        data-testid="transcript-footer"
                         className="rounded-b-card border-x border-b border-group-bubble bg-accent-subtle px-3 py-1.5"
                     >
                         {transcriptionState !== 'done' ? (

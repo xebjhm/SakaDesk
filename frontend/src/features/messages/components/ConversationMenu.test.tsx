@@ -1,5 +1,5 @@
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import { ConversationMenu } from './ConversationMenu';
 
 describe('ConversationMenu trigger', () => {
@@ -41,13 +41,24 @@ describe('ConversationMenu trigger', () => {
 
     it('uses the header glass for hover and open on a gradient header, never the light grey', () => {
         const trigger = renderMenu();
-        expect(trigger).toHaveClass('hover:bg-header-glass', 'aria-expanded:bg-header-glass');
+        expect(trigger).toHaveClass('hover:bg-header-glass');
         expect(trigger.className).not.toContain('bg-sunken');
+        expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(trigger);
+        // Open: aria-expanded drives the open-state background.
+        expect(trigger).toHaveAttribute('aria-expanded', 'true');
+        expect(trigger).toHaveClass('aria-expanded:bg-header-glass');
+        expect(screen.getByRole('menu')).toBeInTheDocument();
     });
 
     it('keeps a visible neutral hover and open state on the light header', () => {
         const trigger = renderMenu(true);
-        expect(trigger).toHaveClass('hover:bg-sunken', 'aria-expanded:bg-sunken');
+        expect(trigger).toHaveClass('hover:bg-sunken');
         expect(trigger.className).not.toContain('header-glass');
+        expect(trigger).toHaveAttribute('aria-expanded', 'false');
+        fireEvent.click(trigger);
+        expect(trigger).toHaveAttribute('aria-expanded', 'true');
+        expect(trigger).toHaveClass('aria-expanded:bg-sunken');
+        expect(screen.getByRole('menu')).toBeInTheDocument();
     });
 });

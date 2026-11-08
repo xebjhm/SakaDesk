@@ -80,6 +80,8 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
     const scrollerRef = useRef<HTMLDivElement>(null);
 
     const handleModeChange = (mode: BlogSelectionMode) => {
+        // Clicking the pill that is already active changes nothing: keep the reader's place.
+        if (mode === selectionMode) return;
         // A different filter is a different list: start at its top, not at the old offset.
         if (scrollerRef.current) scrollerRef.current.scrollTop = 0;
         setBlogSelectionMode(effectiveServiceId, mode);

@@ -58,6 +58,15 @@ describe('RecentPostsFeed', () => {
         expect(scroller.scrollTop).toBe(0);
     });
 
+    it('keeps the scroll position when the already-active pill is clicked', () => {
+        render(<RecentPostsFeed {...props()} />);
+        fireEvent.click(screen.getByRole('button', { name: 'All' }));
+        const scroller = screen.getByTestId('feed-scroller');
+        scroller.scrollTop = 420;
+        fireEvent.click(screen.getByRole('button', { name: 'All' }));
+        expect(scroller.scrollTop).toBe(420);
+    });
+
     it('opens the member dialog from a secondary button', () => {
         const p = props();
         render(<RecentPostsFeed {...p} />);

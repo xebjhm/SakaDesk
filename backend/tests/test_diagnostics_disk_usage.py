@@ -26,13 +26,26 @@ from backend.main import app
 client = TestClient(app)
 
 
-@pytest.fixture
-def tracker(monkeypatch):
-    """A fresh tracker per test so cached results never leak between cases."""
+_REAL_WALK = diagnostics._walk_disk_usage
+
+
+@pytest.fixture(autouse=True)
+def _isolate_diagnostics_disk_usage(monkeypatch):
+    """Override the root conftest fixture: fresh tracker, but the REAL walk.
+
+    These tests walk only their own ``tmp_path`` folders.
+    """
     fresh = diagnostics._DiskUsageTracker()
     monkeypatch.setattr(diagnostics, "_disk_usage_tracker", fresh)
+    monkeypatch.setattr(diagnostics, "_walk_disk_usage", _REAL_WALK)
     yield fresh
     fresh.wait_idle(5)
+
+
+@pytest.fixture
+def tracker(_isolate_diagnostics_disk_usage):
+    """The fresh per-test tracker, so cached results never leak between cases."""
+    return _isolate_diagnostics_disk_usage
 
 
 @pytest.fixture
@@ -109,9 +122,16 @@ def test_background_result_is_served_once_ready(tracker, settings):
 
 
 def test_disk_usage_endpoint_polls_the_same_cache(tracker, settings):
-    first = client.get("/api/diagnostics/disk-usage").json()
-    assert first["state"] in ("pending", "ready")
-    assert tracker.wait_idle(5)
+    release = threading.Event()
+    calls: list = []
+    with patch.object(
+        diagnostics, "_walk_disk_usage", _blocking_walker(release, calls)
+    ):
+        first = client.get("/api/diagnostics/disk-usage").json()
+        assert first["state"] == "pending"
+        release.set()
+        assert tracker.wait_idle(5)
+    assert len(calls) == 1
     ready = client.get("/api/diagnostics/disk-usage").json()
     assert ready["state"] == "ready"
     assert ready["file_count"] == 1
@@ -246,6 +266,71 @@ def test_disk_usage_endpoint_with_unreadable_settings_logs_and_walks_nothing(
     assert entry["error_type"] == "JSONDecodeError"
 
 
+def test_failure_after_the_walk_still_goes_idle_and_reports_failed(tracker, settings):
+    # The walk returns, but building the result raises (a bad total): the thread
+    # body must still cache ``failed``, free the slot and log without paths.
+    broken = diagnostics.DiskWalkResult()
+    broken.total_bytes = "not a number"  # type: ignore[assignment]
+    with (
+        capture_logs() as logs,
+        patch.object(diagnostics, "_walk_disk_usage", return_value=broken),
+    ):
+        assert tracker.snapshot(str(settings)).state == "pending"
+        assert tracker.wait_idle(5)
+        failed = tracker.snapshot(str(settings))
+    assert failed.state == "failed"
+    assert tracker._running_dir is None
+    [entry] = [e for e in logs if e["event"] == "diagnostics_disk_usage_failed"]
+    assert entry["error_type"] == "TypeError"
+    assert entry["phase"] == "walk"
+    assert str(settings) not in json.dumps(logs, default=str)
+
+
+def test_thread_start_failure_frees_the_slot_and_logs(tracker, settings):
+    thread = MagicMock()
+    thread.return_value.start.side_effect = RuntimeError(f"can't start: {settings}")
+    with capture_logs() as logs, patch.object(diagnostics.threading, "Thread", thread):
+        usage = tracker.snapshot(str(settings))
+    assert usage.state == "failed"
+    assert tracker._running_dir is None
+    assert tracker.wait_idle(0)
+    [entry] = [e for e in logs if e["event"] == "diagnostics_disk_usage_failed"]
+    assert entry["phase"] == "thread_start"
+    assert entry["error_type"] == "RuntimeError"
+    assert str(settings) not in json.dumps(logs, default=str)
+    # Not cached: the next poll starts a real walk.
+    assert tracker.snapshot(str(settings)).state == "pending"
+    assert tracker.wait_idle(5)
+    assert tracker.snapshot(str(settings)).state == "ready"
+
+
+@pytest.mark.parametrize("bad_value", [123, ["a"], {"x": 1}, ""])
+def test_non_string_output_dir_is_normalised_away(tracker, tmp_path, bad_value):
+    settings_path = tmp_path / "settings.json"
+    settings_path.write_text(
+        json.dumps({"is_configured": True, "output_dir": bad_value}), encoding="utf-8"
+    )
+    with (
+        capture_logs() as logs,
+        patch("backend.api.diagnostics.get_settings_path", return_value=settings_path),
+        patch("backend.api.diagnostics.get_logs_dir", return_value=tmp_path / "logs"),
+        patch(
+            "backend.api.diagnostics.get_token_manager",
+            return_value=MagicMock(load_session=MagicMock(return_value=None)),
+        ),
+        patch.object(diagnostics, "_walk_disk_usage") as walker,
+    ):
+        summary = client.get("/api/diagnostics")
+        polled = client.get("/api/diagnostics/disk-usage")
+        assert tracker.wait_idle(5)
+    assert summary.status_code == 200
+    assert summary.json()["disk_usage"]["state"] == "ready"
+    assert summary.json()["config_state"]["output_dir_configured"] is True
+    assert polled.json()["state"] == "ready"
+    walker.assert_not_called()
+    assert not [e for e in logs if e["event"] == "diagnostics_disk_usage_failed"]
+
+
 class TestWalkDiskUsage:
     """The single-pass walk that feeds both the total and the breakdown."""
 
@@ -278,7 +363,9 @@ class TestWalkDiskUsage:
         assert result.detailed["total_bytes"] == 107
 
     @staticmethod
-    def _flaky_scandir(monkeypatch, *, unlistable=(), bad_stat=(), bad_kind=()):
+    def _flaky_scandir(
+        monkeypatch, *, unlistable=(), bad_stat=(), bad_kind=(), junctions=()
+    ):
         """Patch ``os.scandir`` so named folders/entries raise like a live archive."""
         real_scandir = diagnostics.os.scandir
 
@@ -287,6 +374,9 @@ class TestWalkDiskUsage:
                 self._entry = entry
                 self.name = entry.name
                 self.path = entry.path
+
+            def is_junction(self):
+                return self.name in junctions
 
             def is_dir(self, follow_symlinks=True):
                 if self.name in bad_kind:
@@ -358,3 +448,45 @@ class TestWalkDiskUsage:
         result = diagnostics._walk_disk_usage(tmp_path)
         assert result.file_count == 1
         assert [svc["name"] for svc in result.detailed["services"]] == ["svc"]
+
+    def test_junctions_are_not_followed(self, tmp_path, monkeypatch):
+        # A Windows junction reports is_dir() even with follow_symlinks=False;
+        # it must count as "other" like a symlink (no loops, no double count).
+        (tmp_path / "svc" / "cat").mkdir(parents=True)
+        (tmp_path / "svc" / "cat" / "a.bin").write_bytes(b"a" * 4)
+        (tmp_path / "svc" / "cat" / "loop").mkdir()  # stands in for a junction
+        (tmp_path / "svc" / "cat" / "loop" / "dup.bin").write_bytes(b"d" * 9)
+        (tmp_path / "jsvc").mkdir()  # a junction at the service level
+        (tmp_path / "jsvc" / "cat").mkdir()
+        self._flaky_scandir(monkeypatch, junctions={"loop", "jsvc"})
+
+        result = diagnostics._walk_disk_usage(tmp_path)
+
+        assert result.file_count == 1
+        assert result.total_bytes == 4
+        assert result.skipped == 0
+        assert [svc["name"] for svc in result.detailed["services"]] == ["svc"]
+
+    def test_only_the_top_two_levels_are_sorted(self, tmp_path, monkeypatch):
+        deep = tmp_path / "b-svc" / "z-cat" / "deep"
+        deep.mkdir(parents=True)
+        (deep / "f.bin").write_bytes(b"f")
+        (tmp_path / "b-svc" / "a-cat").mkdir()
+        (tmp_path / "a-svc").mkdir()
+        real_sorted = sorted
+        sorted_calls: list[int] = []
+
+        def counting_sorted(*args, **kwargs):
+            sorted_calls.append(1)
+            return real_sorted(*args, **kwargs)
+
+        monkeypatch.setattr("builtins.sorted", counting_sorted)
+        result = diagnostics._walk_disk_usage(tmp_path)
+
+        names = [svc["name"] for svc in result.detailed["services"]]
+        assert names == ["a-svc", "b-svc"]
+        cats = result.detailed["services"][1]["categories"]
+        assert [c["name"] for c in cats] == ["a-cat", "z-cat"]
+        assert cats[1]["bytes"] == 1
+        # Root + one listing per service; the deep folders are not sorted.
+        assert len(sorted_calls) == 3

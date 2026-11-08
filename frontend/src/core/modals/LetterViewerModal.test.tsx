@@ -96,7 +96,7 @@ describe('LetterViewerModal', () => {
         const body = within(dialog).getByTestId('modal-body');
         expect(body).toHaveClass('flex-col', 'min-[900px]:flex-row');
         // Stacked: the image takes at most 45% of the body, the text keeps the rest and scrolls.
-        const stage = within(dialog).getByRole('img', { name: 'Sent letter' }).closest('div');
+        const stage = within(dialog).getByTestId('letter-image-stage');
         expect(stage).toHaveClass('max-h-[45%]', 'min-[900px]:max-h-none');
         const text = within(dialog).getByRole('region', { name: 'Letter text' });
         expect(text).toHaveClass('overflow-y-auto', 'pb-4');

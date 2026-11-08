@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useLayoutEffect, useMemo, useRef } from 'react';
 import { Copy, RefreshCw, CheckCircle2, AlertCircle, Database, HardDrive, Clock, AlertTriangle, Unplug, ChevronRight, Terminal } from 'lucide-react';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { getServiceById, sortByServiceOrder } from '../../data/services';
@@ -241,8 +241,15 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     }, [isOpen]);
 
     // While disk usage is `pending`, poll the background result until it is
-    // `ready` / `failed`. Stops when the panel closes (logged as abandoned).
+    // `ready` / `failed`. Stops when the panel closes or unmounts while still
+    // pending (logged as abandoned) — not when a Refresh response settled it.
     const diskState = data?.disk_usage.state;
+    // The latest state, read by the poll cleanup to tell "settled elsewhere" from
+    // "abandoned". Layout effects run before passive cleanups, so it is current.
+    const diskStateRef = useRef(diskState);
+    useLayoutEffect(() => {
+        diskStateRef.current = diskState;
+    });
     useEffect(() => {
         if (!isOpen || diskState !== 'pending' || diskPollFailed) return;
         let settled = false;
@@ -272,10 +279,11 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
         timer = setTimeout(poll, DISK_USAGE_POLL_MS);
         return () => {
             clearTimeout(timer);
-            if (!settled) {
-                settled = true;
-                clientLog('diagnostics_disk_usage', { outcome: 'abandoned', phase: 'poll', count: polls });
-            }
+            if (settled) return;
+            settled = true;
+            // Became ready / failed through the Refresh response (already logged there).
+            if (diskStateRef.current !== 'pending') return;
+            clientLog('diagnostics_disk_usage', { outcome: 'abandoned', phase: 'poll', count: polls });
         };
     }, [isOpen, diskState, diskPollFailed]);
 

@@ -36,15 +36,16 @@ export interface LetterViewerModalProps {
 /**
  * A sent letter on a sheet dialog: the letter image (fit, on a neutral stage; the shared
  * missing-photo fallback when the file is missing or broken) beside the letter's full text,
- * which the image does not always show in full. Below ~900 px the image sits above the text (at most 45% of the dialog; the text scrolls).
+ * which the image does not always show in full. Below ~900 px the image sits above the text
+ * (at most 45% of the dialog body; the text scrolls).
  * Clicking the image opens it in the dark media viewer on top (↑ / ↓ zoom, and with golden
  * finger Ctrl+C copy and Download, as before); Escape returns to the letter. With golden finger
  * the footer offers Download too. Ctrl+C on the letter itself copies the selected text as usual.
  * The footer is the photo viewer's: the send date and time as a link that closes the viewer
  * and jumps to the letter in the chat, the "n / total" counter (oldest = 1), and previous /
- * next buttons; ← / → move too. › / → always show the newer letter and ‹ / ← the older one, for the
- * chat and the newest-first Sent letters list alike (not while
- * focus is in the letter text, where they move the caret / selection).
+ * next buttons; ← / → move too. › / → always show the newer letter and ‹ / ← the older one,
+ * for the chat and the newest-first Sent letters list alike (not while focus is in the letter
+ * text, where they move the caret / selection).
  * Breadcrumbs: `letter_viewer` (`open`; `fallback` with `no_image` / `image_error`; `skip` with
  * `not_found`) and `letter_jump`, each with the `source` as `surface`.
  */
@@ -179,7 +180,7 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
                 className="h-[85vh] max-w-5xl"
                 bodyClassName="flex flex-col gap-4 overflow-hidden min-[900px]:flex-row"
             >
-                <div ref={stageRef} className="flex min-h-0 max-h-[45%] flex-1 items-center justify-center overflow-hidden rounded-card bg-sunken p-4 min-[900px]:max-h-none min-[900px]:basis-3/5">
+                <div ref={stageRef} data-testid="letter-image-stage" className="flex min-h-0 max-h-[45%] flex-1 items-center justify-center overflow-hidden rounded-card bg-sunken p-4 min-[900px]:max-h-none min-[900px]:basis-3/5">
                     {image ? (
                         <button
                             type="button"

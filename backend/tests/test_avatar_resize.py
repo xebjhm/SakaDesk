@@ -2,6 +2,7 @@
 
 import io
 import os
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -209,6 +210,21 @@ class TestResizedAvatar:
         assert avatar_resize.ALLOWED_WIDTHS == frozenset(
             {64, 80, 96, 112, 128, 160, 192, 256}
         )
+
+    def test_allow_list_matches_the_frontend_source(self):
+        # Parse the real frontend constant so the two lists cannot drift apart.
+        source = (
+            Path(__file__).resolve().parents[2]
+            / "frontend"
+            / "src"
+            / "features"
+            / "messages"
+            / "mediaUrl.ts"
+        ).read_text(encoding="utf-8")
+        match = re.search(r"export const AVATAR_WIDTHS = \[([^\]]*)\]", source)
+        assert match, "AVATAR_WIDTHS not found in mediaUrl.ts"
+        frontend = frozenset(int(w) for w in re.findall(r"\d+", match.group(1)))
+        assert frontend == avatar_resize.ALLOWED_WIDTHS
 
     @pytest.mark.parametrize("width", [80, 96, 112, 160])
     def test_density_matched_widths_are_resized(self, tmp_path, width):

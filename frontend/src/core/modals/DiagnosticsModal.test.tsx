@@ -212,6 +212,31 @@ describe('DiagnosticsModal', () => {
             expect(clientLog).toHaveBeenCalledWith('diagnostics_disk_usage', { outcome: 'abandoned', phase: 'poll', count: 0 });
         });
 
+        it('logs an abandoned poll when the panel unmounts while still calculating', async () => {
+            vi.mocked(clientLog).mockClear();
+            vi.stubGlobal('fetch', routeFetch(PENDING_DATA, [{ state: 'pending' }]));
+            const { unmount } = render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+            await screen.findByTestId('disk-usage-pending');
+            unmount();
+            expect(clientLog).toHaveBeenCalledWith('diagnostics_disk_usage', { outcome: 'abandoned', phase: 'poll', count: 0 });
+        });
+
+        it('does not log abandoned when the Refresh response makes disk usage ready', async () => {
+            vi.mocked(clientLog).mockClear();
+            let summary: unknown = PENDING_DATA;
+            const fetchMock = vi.fn((url: string) =>
+                url.startsWith('/api/diagnostics/disk-usage') ? ok({ state: 'pending' }) : ok(summary),
+            );
+            vi.stubGlobal('fetch', fetchMock);
+            render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+            await screen.findByTestId('disk-usage-pending');
+            summary = { ...DATA, disk_usage: READY_USAGE };
+            fireEvent.click(screen.getByRole('button', { name: /Refresh/ }));
+            expect(await screen.findByText('2.0 GB')).toBeInTheDocument();
+            expect(clientLog).toHaveBeenCalledWith('diagnostics_disk_usage', { outcome: 'ready', phase: 'refresh' });
+            expect(clientLog).not.toHaveBeenCalledWith('diagnostics_disk_usage', expect.objectContaining({ outcome: 'abandoned' }));
+        });
+
         it('Refresh asks the backend to recompute disk usage', async () => {
             vi.mocked(clientLog).mockClear();
             const fetchMock = routeFetch(DATA, [READY_USAGE]);
