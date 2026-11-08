@@ -273,7 +273,7 @@ The group colour does exactly three jobs: **A. identity** (whose space this is: 
 | A. identity | chat header, group rail block, group markers in cross-group lists, dialog expressive header |
 | B. state | active tab, selected rail item, slider fill |
 | C. primary | Done, Save |
-| Neutral | Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts, the letter viewer's date link and previous / next |
+| Neutral | Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts, the letter viewer's date link and older / newer buttons |
 | Pastel decoration | empty-state soft circle, milestone card surface |
 
 Pre-existing accents from the original design stay until the owner revisits
@@ -539,7 +539,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Action | `Button` (variants in section 9) |
 | Icon-only action | `IconButton` |
 | Feature-rail entry | `RailItem` |
-| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos). A sent letter opens in `LetterViewerModal`, a wide sheet (not the dark viewer, because the letter's full text is read beside the image): the image on a `bg-sunken` stage, the text in message type, and the photo viewer's footer (a neutral date link that jumps to the letter in the chat, the `n / total` counter, previous / next and ← / →, always in time order (› / → newer, from the chat and from the newest-first Sent letters list alike), and with golden finger a ghost Download). Clicking the image opens it in the dark viewer on top for ↑ / ↓ zoom and golden-finger copy / download; Escape returns to the letter |
+| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos). A sent letter opens in `LetterViewerModal`, a wide sheet (not the dark viewer, because the letter's full text is read beside the image): the image on a `bg-sunken` stage, the text in message type, and the photo viewer's footer (a neutral date link that jumps to the letter in the chat, the `n / total` counter, older / newer buttons and ← / →, always in time order (› / → newer, from the chat and from the newest-first Sent letters list alike), and with golden finger a ghost Download). Clicking the image opens it in the dark viewer on top for ↑ / ↓ zoom and golden-finger copy / download; Escape returns to the letter |
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |
@@ -725,6 +725,17 @@ feature name is the button's `aria-label` and a neutral dark tooltip (`bg-toast 
 never the group colour) to the right of the tile, shown on hover and keyboard focus after a short
 delay. The selected `RailItem` is a white card with a `text-accent` icon and a `bg-accent` bar on
 the left.
+
+### Left is older, right is newer
+
+Everywhere something steps through items in time (the photo / video / voice viewer, the media
+gallery detail, the blog photo gallery, member image history, the sent-letter viewer, blog posts,
+the calendar), ← / ‹ goes to the **older** item and → / › to the **newer** one, whichever way the
+list is sorted on screen. A newest-first grid therefore steps with its index reversed, and a
+visible counter counts the oldest item as 1. Buttons that step carry older / newer labels
+(`letterViewer.older` / `letterViewer.newer`), not previous / next. `utils/timeOrder.ts`
+(`timeNeighbours`) is the one helper; `MediaViewerModal` takes `order` (`oldest_first` by default,
+`newest_first` for a newest-first list).
 
 ### Layering
 

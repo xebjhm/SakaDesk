@@ -697,8 +697,8 @@
   },
   "letterViewer": {
     "title": "已发送的信件",
-    "previous": "上一封信件",
-    "next": "下一封信件",
+    "older": "较早的信件",
+    "newer": "较新的信件",
     "jumpToLetter": "跳转到聊天中的这封信件",
     "jumpToLetterAt": "在聊天中显示 {{date}} 发送的信件",
     "imageMissing": "没有信件图片",

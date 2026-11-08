@@ -699,8 +699,8 @@
   },
   "letterViewer": {
     "title": "Sent letter",
-    "previous": "Previous letter",
-    "next": "Next letter",
+    "older": "Older letter",
+    "newer": "Newer letter",
     "jumpToLetter": "Jump to letter in chat",
     "jumpToLetterAt": "Show letter sent {{date}} in the chat",
     "imageMissing": "Letter image unavailable",

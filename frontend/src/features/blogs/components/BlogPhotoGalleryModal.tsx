@@ -255,6 +255,7 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
                     currentIndex={viewerIndex}
                     onClose={() => setViewerIndex(null)}
                     onNavigate={setViewerIndex}
+                    order="newest_first"
                 />
             )}
 

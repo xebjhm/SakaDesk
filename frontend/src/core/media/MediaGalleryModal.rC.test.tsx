@@ -95,3 +95,23 @@ describe('MediaGalleryModal (R-c)', () => {
         expect(header).not.toHaveClass('top-12');
     });
 });
+
+describe('MediaGalleryModal detail view direction', () => {
+    const pic = (id: number, ts: string) => ({ id, content: null, timestamp: ts, type: 'picture', is_favorite: false, media_file: `messages/a/picture/${id}.jpg` }) as unknown as Message;
+
+    it('the grid is newest first, but ArrowLeft opens the older photo and ArrowRight the newer', async () => {
+        const messages = [pic(1, '2026-10-01T04:00:00Z'), pic(2, '2026-10-02T04:00:00Z'), pic(3, '2026-10-03T04:00:00Z')];
+        render(<MediaGalleryModal isOpen onClose={vi.fn()} messages={messages} memberName="春野 ひなた" serviceId="hinatazaka46" />);
+        const thumbs = Array.from(document.querySelectorAll('img')).map((i) => i.closest('button')!);
+        await userEvent.click(thumbs[1]); // the middle photo (id 2)
+        const viewer = await screen.findByRole('dialog', { name: 'Media viewer' });
+        const shown = () => viewer.querySelector('img')?.getAttribute('src') ?? '';
+        expect(shown()).toMatch(/\/2\.jpg/);
+        await userEvent.keyboard('{ArrowLeft}');
+        expect(shown()).toMatch(/\/1\.jpg/);
+        await userEvent.keyboard('{ArrowLeft}'); // already the oldest
+        expect(shown()).toMatch(/\/1\.jpg/);
+        await userEvent.keyboard('{ArrowRight}{ArrowRight}');
+        expect(shown()).toMatch(/\/3\.jpg/);
+    });
+});

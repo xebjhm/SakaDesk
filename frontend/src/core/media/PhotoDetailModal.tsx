@@ -4,6 +4,7 @@ import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
+import { timeNeighbours, type ListOrder } from '../../utils/timeOrder';
 import { Modal, IconButton, Button } from '../../design/primitives';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
@@ -40,13 +41,15 @@ interface MediaViewerModalProps {
     onNavigate: (index: number) => void;
     /** Optional content shown top-centre (e.g. tabs); clicks on it don't close the viewer. */
     headerSlot?: React.ReactNode;
+    /** How `mediaItems` is sorted (default `oldest_first`); ← / → always step older / newer and the counter counts the oldest as 1. */
+    order?: ListOrder;
 }
 
 /**
  * Unified media viewer modal for photos, videos, and voice.
  *
  * Keyboard controls:
- * - Left/Right: Navigate to previous/next media
+ * - Left/Right: Older/newer media, whichever way `order` sorts the list
  * - Up/Down: Zoom in/out (photos) or volume up/down (video/voice)
  * - Escape: Close (handled by the dialog layer, which respects fullscreen)
  */
@@ -56,6 +59,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     onClose,
     onNavigate,
     headerSlot,
+    order = 'oldest_first',
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
@@ -68,8 +72,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     // Clipboard shortcut — window-level Ctrl+C listener
     const { toastMessage } = useClipboardShortcut(item?.src, item?.type);
 
-    const hasPrev = currentIndex > 0;
-    const hasNext = currentIndex < mediaItems.length - 1;
+    const { older, newer, ordinal } = timeNeighbours(currentIndex, mediaItems.length, order);
 
     // Reset zoom when navigating to a new item. (Video/voice transcription
     // state is owned by the player components themselves via messageId.)
@@ -93,11 +96,11 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         switch (e.key) {
             case 'ArrowLeft':
                 e.preventDefault();
-                if (hasPrev) onNavigate(currentIndex - 1);
+                if (older !== null) onNavigate(older);
                 break;
             case 'ArrowRight':
                 e.preventDefault();
-                if (hasNext) onNavigate(currentIndex + 1);
+                if (newer !== null) onNavigate(newer);
                 break;
             // ↑ / ↓ zoom a photo; for video and voice they stay unclaimed: the player owns volume.
             case 'ArrowUp':
@@ -113,7 +116,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 }
                 break;
         }
-    }, [hasPrev, hasNext, currentIndex, onNavigate, item?.type]);
+    }, [older, newer, onNavigate, item?.type]);
 
     if (!item) return null;
     const lifted = item.sourceLabel && item.onSourceJump ? 'bottom-14' : 'bottom-6';
@@ -176,7 +179,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
 
             {mediaItems.length > 1 && (
                 <div className={cn('absolute left-6 text-small tabular-nums text-viewer-muted', lifted)}>
-                    {currentIndex + 1} / {mediaItems.length}
+                    {ordinal} / {mediaItems.length}
                 </div>
             )}
 

@@ -697,8 +697,8 @@
   },
   "letterViewer": {
     "title": "寄咗嘅信",
-    "previous": "上一封信",
-    "next": "下一封信",
+    "older": "較舊嘅信",
+    "newer": "較新嘅信",
     "jumpToLetter": "跳去傾偈入面呢封信",
     "jumpToLetterAt": "喺傾偈度顯示 {{date}} 寄嘅信",
     "imageMissing": "冇信嘅圖片",

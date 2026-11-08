@@ -51,7 +51,7 @@ describe('SentLettersModal', () => {
         expect(within(viewer).getByRole('region', { name: 'Letter text' })).toHaveTextContent('新しい');
         fireEvent.keyDown(viewer, { key: 'ArrowLeft' });
         expect(within(screen.getByRole('dialog', { name: 'Sent letter' })).getByRole('region', { name: 'Letter text' })).toHaveTextContent('古い');
-        await userEvent.click(within(screen.getByRole('dialog', { name: 'Sent letter' })).getByRole('button', { name: 'Next letter' }));
+        await userEvent.click(within(screen.getByRole('dialog', { name: 'Sent letter' })).getByRole('button', { name: 'Newer letter' }));
         expect(within(screen.getByRole('dialog', { name: 'Sent letter' })).getByRole('region', { name: 'Letter text' })).toHaveTextContent('新しい');
     });
 

@@ -80,4 +80,44 @@ describe('MediaViewerModal', () => {
         fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowDown' });
         expect(Number(slider().value)).toBeCloseTo(before);
     });
+
+    describe('time-aware navigation (← older, → newer)', () => {
+        const three: MediaViewerItem[] = [
+            { src: '/1.jpg', type: 'picture', timestamp: '2026-11-01T00:00:00Z' },
+            { src: '/2.jpg', type: 'picture', timestamp: '2026-11-02T00:00:00Z' },
+            { src: '/3.jpg', type: 'picture', timestamp: '2026-11-03T00:00:00Z' },
+        ];
+
+        it('oldest-first (default): ← goes to index-1 and → to index+1', () => {
+            const onNavigate = vi.fn();
+            render(<MediaViewerModal mediaItems={three} currentIndex={1} onClose={vi.fn()} onNavigate={onNavigate} />);
+            fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowLeft' });
+            expect(onNavigate).toHaveBeenLastCalledWith(0);
+            fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowRight' });
+            expect(onNavigate).toHaveBeenLastCalledWith(2);
+            expect(screen.getByText('2 / 3')).toBeInTheDocument();
+        });
+
+        it('newest-first: ← goes to the older item (index+1), → to the newer (index-1), oldest = 1', () => {
+            const newestFirst = [...three].reverse();
+            const onNavigate = vi.fn();
+            render(<MediaViewerModal mediaItems={newestFirst} currentIndex={1} order="newest_first" onClose={vi.fn()} onNavigate={onNavigate} />);
+            fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowLeft' });
+            expect(onNavigate).toHaveBeenLastCalledWith(2);
+            fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowRight' });
+            expect(onNavigate).toHaveBeenLastCalledWith(0);
+            expect(screen.getByText('2 / 3')).toBeInTheDocument();
+        });
+
+        it('newest-first: nothing happens past either end', () => {
+            const onNavigate = vi.fn();
+            const { rerender } = render(<MediaViewerModal mediaItems={three} currentIndex={0} order="newest_first" onClose={vi.fn()} onNavigate={onNavigate} />);
+            fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowRight' });
+            expect(onNavigate).not.toHaveBeenCalled();
+            expect(screen.getByText('3 / 3')).toBeInTheDocument();
+            rerender(<MediaViewerModal mediaItems={three} currentIndex={2} order="newest_first" onClose={vi.fn()} onNavigate={onNavigate} />);
+            fireEvent.keyDown(screen.getByRole('dialog'), { key: 'ArrowLeft' });
+            expect(onNavigate).not.toHaveBeenCalled();
+        });
+    });
 });
