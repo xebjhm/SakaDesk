@@ -71,7 +71,7 @@ export const LazyVideo: React.FC<LazyVideoProps> = ({
                     isLoaded ? "opacity-0" : "opacity-100"
                 )}
             >
-                <Film className="h-8 w-8 text-muted" />
+                <Film className="h-8 w-8 text-secondary" />
             </div>
 
             {/* Video - only render when visible, fade in when loaded */}

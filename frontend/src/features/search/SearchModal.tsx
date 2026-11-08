@@ -474,7 +474,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
           </Button>
         )}
         {results.length > 0 && (
-          <div className="flex flex-col gap-1 bg-sunken px-4 py-2 text-caption text-muted">
+          <div className="flex flex-col gap-1 bg-sunken px-4 py-2 text-caption text-secondary">
             <div className="flex justify-between">
               <span>
                 {totalCount > results.length

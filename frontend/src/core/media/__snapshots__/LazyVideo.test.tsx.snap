@@ -8,7 +8,7 @@ exports[`LazyVideo component > Snapshots > should match snapshot after intersect
     class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-100"
   >
     <svg
-      class="h-8 w-8 text-muted"
+      class="h-8 w-8 text-secondary"
       fill="none"
       height="24"
       stroke="currentColor"
@@ -65,7 +65,7 @@ exports[`LazyVideo component > Snapshots > should match snapshot before intersec
     class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-100"
   >
     <svg
-      class="h-8 w-8 text-muted"
+      class="h-8 w-8 text-secondary"
       fill="none"
       height="24"
       stroke="currentColor"
@@ -117,7 +117,7 @@ exports[`LazyVideo component > Snapshots > should match snapshot when fully load
     class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-0"
   >
     <svg
-      class="h-8 w-8 text-muted"
+      class="h-8 w-8 text-secondary"
       fill="none"
       height="24"
       stroke="currentColor"
@@ -174,7 +174,7 @@ exports[`LazyVideo component > Snapshots > should match snapshot with children o
     class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-100"
   >
     <svg
-      class="h-8 w-8 text-muted"
+      class="h-8 w-8 text-secondary"
       fill="none"
       height="24"
       stroke="currentColor"

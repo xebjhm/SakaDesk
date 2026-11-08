@@ -42,7 +42,7 @@ const FeedModeSegment: React.FC<{ selected: boolean; onClick: () => void; childr
             'inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-segment font-medium',
             'transition-colors duration-base ease-standard motion-reduce:transition-none',
             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-            selected ? 'bg-pill text-semantic-oshi shadow-segment' : 'bg-transparent text-muted hover:text-secondary',
+            selected ? 'bg-pill text-semantic-oshi shadow-segment' : 'bg-transparent text-secondary hover:text-primary',
         )}
     >
         {children}

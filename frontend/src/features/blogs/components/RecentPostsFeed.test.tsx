@@ -126,13 +126,13 @@ describe('RecentPostsFeed', () => {
         const favorite = screen.getByRole('button', { name: 'Favorite' });
         expect(all).toHaveAttribute('aria-pressed', 'true');
         expect(all).toHaveClass('bg-pill', 'shadow-segment', 'text-semantic-oshi');
-        expect(favorite).toHaveClass('bg-transparent', 'text-muted', 'hover:text-secondary');
+        expect(favorite).toHaveClass('bg-transparent', 'text-secondary', 'hover:text-primary');
         expect(favorite).not.toHaveClass('shadow-segment');
         fireEvent.click(favorite);
         expect(favorite).toHaveAttribute('aria-pressed', 'true');
         expect(favorite).toHaveClass('bg-pill', 'shadow-segment', 'text-semantic-oshi');
         expect(favorite.querySelector('svg')).toHaveClass('h-3.5', 'w-3.5', 'text-semantic-oshi-solid');
-        expect(all).toHaveClass('text-muted');
+        expect(all).toHaveClass('text-secondary');
     });
 
     it('draws the favourites empty-state heart in the oshi colour', () => {
