@@ -308,8 +308,8 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 </div>
             </div>
 
-            {/* Group grid; the sync pill below is a footer, so the list never scrolls under it */}
-            <div className="flex-1 overflow-y-auto px-2 pb-2">
+            {/* Group grid; bottom padding keeps the last row clear of the floating sync pill */}
+            <div className="flex-1 overflow-y-auto px-2 pb-16">
                 {loading ? (
                     <div className="flex flex-col items-center gap-2 p-6 text-center text-small text-secondary">
                         <RefreshCw className="h-5 w-5 animate-spin text-accent" />
@@ -344,9 +344,9 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 )}
             </div>
 
-            {/* Sync pill: in-flow footer under the list (a floating overlay covered member names mid-scroll) */}
-            <div data-testid="sync-footer" className="flex shrink-0 justify-center py-3">
-                <div className="inline-flex items-center gap-1 rounded-pill bg-pill py-1 pl-3 pr-1 text-caption text-secondary shadow-pill">
+            {/* Floating sync pill */}
+            <div data-testid="sync-pill" className="pointer-events-none absolute inset-x-0 bottom-3 flex justify-center">
+                <div className="pointer-events-auto inline-flex items-center gap-1 rounded-pill bg-pill py-1 pl-3 pr-1 text-caption text-secondary shadow-pill">
                     {isSyncing ? (
                         <span className="flex items-center gap-1 py-1 pr-2 font-semibold text-accent">
                             <RefreshCw className="h-3 w-3 animate-spin" />

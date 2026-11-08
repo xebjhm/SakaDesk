@@ -7,19 +7,19 @@ import { MemberList } from './MemberList';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
-describe('MemberList sync pill (M9)', () => {
-    it('sits below the scrolling list, not floating over it', async () => {
+describe('MemberList sync pill', () => {
+    it('stays floating and the list keeps bottom padding to scroll clear of it', async () => {
         server.use(
             http.get('/api/content/groups', () => HttpResponse.json({ groups: [], last_sync: {} })),
             http.post('/api/content/unread_counts', () => HttpResponse.json({})),
         );
         render(<MemberList activeService="hinatazaka46" onSelectGroup={vi.fn()} onSyncNow={vi.fn()} />);
         const syncNow = await screen.findByRole('button', { name: /sync now/i });
-        const footer = syncNow.closest('[data-testid="sync-footer"]') as HTMLElement;
-        expect(footer).not.toBeNull();
-        expect(footer.className).not.toMatch(/absolute|fixed/);
-        const scroller = footer.previousElementSibling as HTMLElement;
-        expect(scroller).toHaveClass('overflow-y-auto');
-        expect(scroller.contains(footer)).toBe(false);
+        const pill = syncNow.closest('[data-testid="sync-pill"]') as HTMLElement;
+        expect(pill).not.toBeNull();
+        expect(pill).toHaveClass('absolute', 'bottom-3', 'pointer-events-none');
+        const scroller = pill.previousElementSibling as HTMLElement;
+        expect(scroller).toHaveClass('overflow-y-auto', 'pb-16');
+        expect(scroller.contains(pill)).toBe(false);
     });
 });
