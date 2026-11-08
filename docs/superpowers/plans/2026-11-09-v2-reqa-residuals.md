@@ -46,3 +46,6 @@
 
 ### Task 9: CHANGELOG and full checks
 `[Unreleased]` end-user entries (merge into existing sections): Diagnostics opens immediately; sharper chat avatars; tidier voice transcript edge; video favourites show a placeholder; tabs and filters start at the top; letter viewer arrows go in time order; links in messages are easier to read; the chat menu button stays visible on hover. Full suites (frontend vitest/tsc/eslint, backend pytest/ruff). Commit `docs(changelog): note re-QA fixes`.
+
+### Task 10: Yodel unread covers back to the logo periwinkle (owner correction)
+Owner (2026-11-09): Yodel's unread covers must keep the logo-derived periwinkle; the old green restored in R-e (commit 4d047f4) was wrong; per-OG penlight colours are a future plan. Set `yodel.official.shelter` in `frontend/src/design/tokens/groups.ts` back to `{ picture: '#b5c0ff', video: '#98a2ff', voice: '#7e85ff', text: '#6060e0' }` (style `classic`), replace the "unverified approximation" comment with: logo-derived on purpose; a per-OG (penlight) layer is planned. Re-pin `tokens.test.ts`; revert the doc wording added by 4d047f4 / R-f Task 6 in DESIGN_SYSTEM.md, the v2 spec §3.2 and `design/__fixtures__/README.md`; remove the CHANGELOG `[Unreleased]` Fixed entry "Yodel's unread covers have their original colours back". Commit `fix(design): keep Yodel unread covers on the logo palette`.
