@@ -326,24 +326,25 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
             {/* Avatar column: the avatar shows once, at the top of a run */}
             <div className="w-10 shrink-0">
-                {runStart && (
+                {/* Only a clickable avatar (it opens a profile card) is a button; the room
+                    author (member 0) gets no handler, so a plain, non-focusable span of the same box. */}
+                {runStart && onAvatarClick && (
                     <button
                         type="button"
+                        data-testid="message-avatar"
                         onClick={(e) => {
                             e.stopPropagation();
-                            onAvatarClick?.();
+                            onAvatarClick();
                         }}
-                        // Only a clickable avatar (it opens a profile card) looks
-                        // clickable; the room author (member 0) gets no handler.
-                        className={cn(
-                            'flex rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
-                            onAvatarClick
-                                ? 'cursor-pointer transition-shadow duration-fast ease-standard hover:ring-2 hover:ring-accent-border'
-                                : 'cursor-default',
-                        )}
+                        className="flex cursor-pointer rounded-pill transition-shadow duration-fast ease-standard hover:ring-2 hover:ring-accent-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
                     >
                         <Avatar src={member_avatar} name={member_name} size="md" />
                     </button>
+                )}
+                {runStart && !onAvatarClick && (
+                    <span data-testid="message-avatar" className="flex rounded-pill">
+                        <Avatar src={member_avatar} name={member_name} size="md" />
+                    </span>
                 )}
             </div>
 

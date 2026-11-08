@@ -47,17 +47,18 @@ const SafeImageInner: React.FC<SafeImageProps> = ({
 
     if (hasError) {
         return (
-            <div className={cn("flex items-center justify-center bg-gray-200", className)}>
+            // Spans, not divs: SafeImage is often rendered inside a <button>.
+            <span data-testid="image-fallback" className={cn("flex items-center justify-center bg-sunken", className)}>
                 {fallbackContent ?? (
                     fallbackText ? (
-                        <div className="p-2 text-xs text-gray-600 line-clamp-4 text-center">
+                        <span className="p-2 text-xs text-secondary line-clamp-4 text-center">
                             {fallbackText}
-                        </div>
+                        </span>
                     ) : (
-                        <ImageOff className="w-8 h-8 text-gray-400" />
+                        <ImageOff className="w-8 h-8 text-muted" />
                     )
                 )}
-            </div>
+            </span>
         );
     }
 
@@ -66,10 +67,10 @@ const SafeImageInner: React.FC<SafeImageProps> = ({
     return (
         <>
             {showSkeleton && (
-                <div
+                <span
                     data-testid="image-skeleton"
                     aria-hidden="true"
-                    className={cn('animate-pulse bg-sunken motion-reduce:animate-none', skeletonClassName)}
+                    className={cn('block animate-pulse bg-sunken motion-reduce:animate-none', skeletonClassName)}
                 />
             )}
             <img

@@ -308,7 +308,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 </div>
             </div>
 
-            {/* Group grid; bottom padding keeps the last row clear of the floating sync pill */}
+            {/* Group grid. pb-16 (64 px) = the floating sync pill (32 px: py-1 + the h-6 button) + its bottom-3 offset (12 px) + a 20 px gap; change them together. */}
             <div className="flex-1 overflow-y-auto px-2 pb-16">
                 {loading ? (
                     <div className="flex flex-col items-center gap-2 p-6 text-center text-small text-secondary">

@@ -193,6 +193,8 @@ export default {
             ringColor: {
                 accent: 'var(--ds-accent)',
                 'expressive-header': 'var(--ds-expressive-header-text)',
+                // Header-button focus ring: header text on a gradient header, the strong step on a light one.
+                'expressive-header-focus': 'var(--ds-expressive-header-focus)',
                 'accent-border': 'var(--ds-accent-border)',
                 'accent-logo': 'var(--ds-accent-logo)',
                 'accent-subtle': 'var(--ds-accent-subtle)',

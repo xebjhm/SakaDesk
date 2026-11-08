@@ -71,7 +71,7 @@ one OG (松田好花). The official Yodel app switches colours per OG page.
   - canvas `['#e7ecff', '#f3f6ff', '#f8f9ff']` (100 → 50 → near white);
   - shelters stay official (owner decision 2026-11-04: all shelter colours come from the official apps):
     picture `#8ab89a`, video `#6a9a7a`, voice `#7aaa8a`, text `#5a8a6a`, style `classic`;
-    (2026-11-08: these Yodel values and Nogizaka's are unverified approximations; Hinatazaka's were replaced by official-app values `#b2caed` / `#ceadec` / `#b7acec` / `#85badd`; text muted is `#6b7280`);
+    (2026-11-08: these Yodel values and Nogizaka's are unverified approximations; Hinatazaka's were replaced by official-app values `#b2caed` / `#ceadec` / `#b7acec` / `#85badd`);
   - bubble border and glow = logo `#6060e0` (glow alpha 0.3).
 - **Reserved: per-OG layer.** A room-level override through `groupScopeStyle`, falling back to Yodel
   periwinkle. Not built in v2. TODO: read a raw Yodel API response (Windows side, reuse the existing
@@ -80,7 +80,8 @@ one OG (松田好花). The official Yodel app switches colours per OG page.
 
 ### 3.3 Neutrals ("ink neutral")
 
-Keep the current values (`color.surface`, `color.text`, `color.border`). The Tailwind grays they come
+Keep the current values (`color.surface`, `color.text`, `color.border`), except muted text, which is
+`#6b7280` (owner decision 2026-11-08: the lighter grey was too faint to read). The Tailwind grays they come
 from already sit at hue 257–264 with chroma ≤ 0.03, the same hue as the brand ink. v2 only renames and
 documents them as **ink neutral**.
 

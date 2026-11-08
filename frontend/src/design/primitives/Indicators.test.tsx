@@ -100,6 +100,17 @@ describe('DatePill', () => {
         expect(screen.getByText(/2025/)).toBeInTheDocument();
     });
 
+    it('keeps the sticky wrapper click-through and stacked above the rows; only the pill takes clicks', () => {
+        const { container, rerender } = render(<DatePill date={new Date(2025, 0, 1)} sticky />);
+        const wrapper = container.firstChild as HTMLElement;
+        // Click-through: rows under the full-width band stay clickable.
+        expect(wrapper).toHaveClass('pointer-events-none', 'sticky', 'top-0', 'z-10');
+        expect(screen.getByText(/2025/)).toHaveClass('pointer-events-auto');
+        rerender(<DatePill date={new Date(2025, 0, 1)} sticky onClick={vi.fn()} actionLabel="Jump to a date" />);
+        expect(container.firstChild).toHaveClass('pointer-events-none', 'z-10');
+        expect(screen.getByRole('button')).toHaveClass('pointer-events-auto');
+    });
+
     it('becomes a button with a tooltip when it has an action', async () => {
         const onClick = vi.fn();
         render(<DatePill date={new Date(2026, 10, 4, 9, 0)} onClick={onClick} actionLabel="Jump to a date" />);

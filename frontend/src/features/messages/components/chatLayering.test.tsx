@@ -1,7 +1,8 @@
-import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { render, within } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../../__tests__/mocks/server';
+import i18n from '../../../i18n';
 import { useAppStore } from '../../../store/appStore';
 import type { Message } from '../../../types';
 import { MessageList } from './MessageList';
@@ -16,6 +17,8 @@ vi.mock('../hooks/useChatScroll', () => ({
 const msg = (id: number, over: Partial<Message> = {}): Message => ({
     id, timestamp: '2025-01-01T03:00:00Z', type: 'text', is_favorite: false, content: `m${id}`, ...over,
 });
+
+beforeAll(async () => { await i18n.changeLanguage('en'); });
 
 beforeEach(() => {
     server.use(
@@ -47,6 +50,8 @@ describe('chat layering (H6)', () => {
         const time = container.querySelector('time')!;
         const header = time.parentElement!;
         expect(header.querySelector('[class*="ml-auto"]')).toBeNull();
-        expect(header.textContent).toContain('Translate');
+        const translate = within(header).getByRole('button', { name: /Translate/ });
+        // After the time in DOM order (and so beside it), not before it or at the far edge.
+        expect(time.compareDocumentPosition(translate) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 });

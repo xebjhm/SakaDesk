@@ -34,11 +34,21 @@ describe('Modal', () => {
         expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
     });
 
-    it('the expressive close button focuses in the header text colour, not the accent', () => {
+    it('the expressive close button focuses in the header focus colour, not the accent', () => {
         render(<Modal isOpen onClose={vi.fn()} title="t" closeLabel="閉じる">x</Modal>);
         const close = screen.getByRole('button', { name: '閉じる' });
-        expect(close).toHaveClass('focus-visible:ring-expressive-header');
+        // Header text on a gradient header, the strong title tone on a light one (accent.ts headerFocus).
+        expect(close).toHaveClass('focus-visible:ring-expressive-header-focus', 'focus-visible:ring-offset-0');
         expect(close.className).not.toContain('focus-visible:ring-accent');
+        expect(close.className).not.toMatch(/focus-visible:ring-expressive-header(\s|$)/);
+    });
+
+    it('plain and console headers do not take the expressive header focus ring', () => {
+        const { unmount } = render(<Modal isOpen onClose={vi.fn()} title="t" closeLabel="閉じる" header="plain">x</Modal>);
+        expect(screen.getByRole('button', { name: '閉じる' }).className).not.toContain('ring-expressive-header');
+        unmount();
+        render(<Modal isOpen onClose={vi.fn()} title="t" closeLabel="閉じる" header="console">x</Modal>);
+        expect(screen.getByRole('button', { name: '閉じる' }).className).not.toContain('ring-expressive-header');
     });
 
     it('takes its name from aria-label or labelledBy in a bare layout', () => {
@@ -927,15 +937,19 @@ describe('Modal: focus restore and trap (fix wave 2)', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
-    it('warns in development when a dialog has no accessible name, or a title in a bare layout', () => {
+    it('warns in development when a dialog has no accessible name, or a title or toolbar in a bare layout', () => {
         const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
         render(<Modal isOpen onClose={vi.fn()} layout="bare">x</Modal>);
         render(<Modal isOpen onClose={vi.fn()} layout="bare" title="見出し" aria-label="名前">x</Modal>);
-        render(<Modal isOpen onClose={vi.fn()} title="ok">x</Modal>);
+        render(<Modal isOpen onClose={vi.fn()} title="ok" toolbar={<span>tabs</span>}>x</Modal>);
+        render(<Modal isOpen onClose={vi.fn()} layout="bare" aria-label="名前" toolbar={<span>タブ</span>}>x</Modal>);
         expect(warn.mock.calls.map((c) => String(c[0]))).toEqual([
             expect.stringContaining('no accessible name'),
             expect.stringContaining('title is ignored'),
+            expect.stringContaining('toolbar is ignored'),
         ]);
+        // The bare layout really does not draw it.
+        expect(screen.queryByText('タブ')).toBeNull();
         warn.mockRestore();
     });
 
@@ -1056,6 +1070,22 @@ describe('Modal v2 header and scope', () => {
         expect(body).toHaveClass('overflow-y-auto');
         expect(screen.getByTestId('modal-header').compareDocumentPosition(toolbar) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
         expect(toolbar.compareDocumentPosition(body) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    });
+    it('Tab reaches the toolbar controls, between the header close button and the body', async () => {
+        render(
+            <Modal isOpen onClose={() => {}} title="X" closeLabel="閉じる" toolbar={<div role="tablist" aria-label="bar"><button role="tab">写真 📷</button><button role="tab">動画</button></div>}>
+                <button>本文</button>
+            </Modal>,
+        );
+        expect(screen.getByRole('dialog')).toHaveFocus();
+        await userEvent.tab();
+        expect(screen.getByRole('button', { name: '閉じる' })).toHaveFocus();
+        await userEvent.tab();
+        expect(screen.getByRole('tab', { name: '写真 📷' })).toHaveFocus();
+        await userEvent.tab();
+        expect(screen.getByRole('tab', { name: '動画' })).toHaveFocus();
+        await userEvent.tab();
+        expect(screen.getByRole('button', { name: '本文' })).toHaveFocus();
     });
     it('draws no toolbar element without a toolbar', () => {
         render(<Modal isOpen onClose={() => {}} title="X">body</Modal>);

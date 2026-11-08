@@ -249,6 +249,7 @@ Components ask for a role; the context decides the value
 | `unread` | ink 400 glow | group unread shadow | `shadow-accent-unread` |
 | `soft` | aurora | group 50 → 100 | `bg-expressive-soft` |
 | `header`, `headerText`, `headerBar` | aurora, dark text, no bar | title gradient (Sakurazaka: white sheet, dark text, bar) | `bg-expressive-header`, `text-expressive-header`, `bg-expressive-header-bar` |
+| `headerFocus` | dark text (= `headerText`) | white (= `headerText`) on a gradient header; step 700 (`strong`) on a light header | `ring-expressive-header-focus` (focus ring of buttons on the expressive header) |
 | `progress` | aurora | the title gradient (a light header: the official bar) | `bg-expressive-progress` (the sync progress fill) |
 | `orb1`-`orb3` | aurora orbs | the group's ambient orbs | `bg-expressive-orb-1`, `-2`, `-3` |
 
@@ -411,7 +412,7 @@ is `circle` for floating buttons (`overlay` and `accent` by default) and
 | default | as specified per variant |
 | hover | `hover:brightness-106` and `hover:-translate-y-px`; the glow grows (`shadow-accent-glow-hover`) |
 | pressed | `active:scale-97` and `active:brightness-94`; the glow shrinks |
-| focus-visible | 2 px `ring-accent` with a 2 px `ring-offset-surface` gap |
+| focus-visible | 2 px `ring-accent` with a 2 px `ring-offset-surface` gap. **Exception, buttons on the expressive header** (the dialog close button, the chat header ⋯): no accent on the title layer, so `ring-expressive-header-focus` with `ring-offset-0`. That ring is the header text colour on a gradient header (the same colour as `ring-expressive-header`) and the group's strong title tone (step 700) on a light title header (Sakurazaka: `#a72f5d`, 6.5:1 on white, where the pale title text is only 2.4:1) |
 | loading | `loading` prop: a spinner is overlaid, the label stays so the width does not change, clicks are swallowed, `aria-busy` is set |
 | selected | `bg-accent-subtle` background + `border-accent-border` + `text-accent-strong` text |
 | **disabled** | **keeps its colour** at 40 % opacity, no shadow, `cursor-not-allowed`, and **always shows a reason** |
@@ -569,7 +570,7 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 | `closeLabel` | Required whenever the dialog has a close button: `t('common.close')`. Without it there is no close button |
 | `logId` | Required on every dialog: its `DialogLogId`, which logs the `dialog` open / close breadcrumbs (data loads inside log `dialog_load`) |
 | `footerDivider` | A `border-subtle` hairline and 16 px above the footer, for a long body that scrolls under it (Diagnostics) |
-| `toolbar` | A non-scrolling strip between the header and the body (the media gallery's tab bar): opaque `bg-sheet`, outside the scroller so the scrollbar starts below it; a body with sticky headers under it takes `pt-0` and the headers stick at `top-0` |
+| `toolbar` | Standard layout only (the bare layout ignores it, with a development warning). A non-scrolling strip between the header and the body (the media gallery's tab bar): opaque `bg-sheet`, outside the scroller so the scrollbar starts below it; a body with sticky headers under it takes `pt-0` and the headers stick at `top-0` |
 | `titleClassName` | Extra classes for the title (the member timeline sets `text-accent-strong` on its plain header) |
 | `initialFocusRef`, `onKeyDown`, `headerExtra`, `footer`, `className`, `bodyClassName` | first focus, the content's own keys, header extras, footer actions, frame and body classes |
 

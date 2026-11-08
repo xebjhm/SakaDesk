@@ -37,7 +37,7 @@ describe('cssVars', () => {
         );
         expect(vars['--ds-group-badge']).toBe(r.action);
         expect(vars['--ds-group-bubble-border']).toBe(r.bubbleBorder);
-        expect(Object.keys(vars)).toHaveLength(27 + 19 + 1 + 4 + 2 + 1 + 2 + 1); // rail beacon (+1); blog tile + caption hover glows (+2); accent halo (+1); shelters (+4); accent wash + wash border (+2); progress (+1)
+        expect(Object.keys(vars)).toHaveLength(27 + 19 + 1 + 4 + 2 + 1 + 2 + 1 + 1); // header-button focus ring (+1); rail beacon (+1); blog tile + caption hover glows (+2); accent halo (+1); shelters (+4); accent wash + wash border (+2); progress (+1)
         expect(vars['--ds-group-highlight']).toBe(r.highlight);
         expect(vars['--ds-shadow-group-glow']).toBe(`0 0 12px 2px ${r.glow}`);
     });
@@ -92,6 +92,7 @@ describe('accent CSS variables', () => {
         expect(v['--ds-expressive-soft']).toBe(a.soft);
         expect(v['--ds-expressive-header']).toBe(a.header);
         expect(v['--ds-expressive-header-text']).toBe(a.headerText);
+        expect(v['--ds-expressive-header-focus']).toBe(a.headerFocus);
         expect(v['--ds-expressive-header-bar']).toBe(a.headerBar);
         expect(v['--ds-expressive-orb-1']).toBe(a.orb1);
     });

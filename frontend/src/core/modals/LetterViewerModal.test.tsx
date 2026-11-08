@@ -11,6 +11,7 @@ import { buildTimeline } from '../../features/messages/timeline/buildTimeline';
 import { useAppStore } from '../../store/appStore';
 import { resetDialogStack } from '../../design/dialog/dialogStack';
 import { downloadMedia } from '../../utils/download';
+import { copyImageToClipboard } from '../../utils/clipboard';
 import en from '../../i18n/locales/en.json';
 import ja from '../../i18n/locales/ja.json';
 import zhCN from '../../i18n/locales/zh-CN.json';
@@ -19,6 +20,7 @@ import yue from '../../i18n/locales/yue.json';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../../utils/download', () => ({ downloadMedia: vi.fn() }));
+vi.mock('../../utils/clipboard', () => ({ copyImageToClipboard: vi.fn(() => Promise.resolve()), copyVideoToClipboard: vi.fn(() => Promise.resolve()) }));
 
 const letter = (id: number, created_at: string, image_url: string | null, text = ''): Letter =>
     ({ id, text, created_at, image_url, width: 341, height: 512 });
@@ -34,6 +36,7 @@ beforeAll(async () => { await i18n.changeLanguage('en'); });
 beforeEach(() => {
     vi.mocked(clientLog).mockClear();
     vi.mocked(downloadMedia).mockClear();
+    vi.mocked(copyImageToClipboard).mockClear();
     resetDialogStack();
     useAppStore.setState({ goldenFingerActive: false });
 });
@@ -209,6 +212,8 @@ describe('LetterViewerModal', () => {
         expect(screen.queryByRole('dialog', { name: 'Media viewer' })).toBeNull();
         expect(screen.getByRole('dialog', { name: 'Sent letter' })).toBeInTheDocument();
         expect(props.onClose).not.toHaveBeenCalled();
+        // Focus goes back to the image button that opened the dark viewer.
+        expect(within(screen.getByRole('dialog', { name: 'Sent letter' })).getByRole('button', { name: 'View the letter image larger' })).toHaveFocus();
     });
 
     it('offers the media viewer\'s golden-finger Download (and Ctrl+C copy) for the letter image', async () => {
@@ -218,6 +223,23 @@ describe('LetterViewerModal', () => {
         await userEvent.click(within(dialog).getByRole('button', { name: 'View the letter image larger' }));
         const media = await screen.findByRole('dialog', { name: 'Media viewer' });
         expect(within(media).getByRole('button', { name: 'Download' })).toBeInTheDocument();
+        // Ctrl+C with the dark viewer open copies the letter image.
+        const copy = new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true });
+        act(() => { media.dispatchEvent(copy); });
+        expect(copyImageToClipboard).toHaveBeenCalledExactlyOnceWith('/l/2.jpg');
+        expect(copy.defaultPrevented).toBe(true);
+    });
+
+    it('leaves Ctrl+C in the letter text to the browser (copies the selected text, not the image)', async () => {
+        useAppStore.setState({ goldenFingerActive: true });
+        renderViewer();
+        const dialog = await screen.findByRole('dialog', { name: 'Sent letter' });
+        const text = within(dialog).getByRole('region', { name: 'Letter text' });
+        text.focus();
+        const copy = new KeyboardEvent('keydown', { key: 'c', ctrlKey: true, bubbles: true, cancelable: true });
+        act(() => { text.dispatchEvent(copy); });
+        expect(copyImageToClipboard).not.toHaveBeenCalled();
+        expect(copy.defaultPrevented).toBe(false);
     });
 
     it('shows Download in the footer only with golden finger and an image', async () => {

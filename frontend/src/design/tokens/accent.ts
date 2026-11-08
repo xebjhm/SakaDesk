@@ -35,6 +35,11 @@ export interface AccentRoles {
     header: string;
     /** Text and icons on the expressive header. */
     headerText: string;
+    /**
+     * Focus ring for buttons on the expressive header: the header text on a gradient header;
+     * the strong step (700) on a light header, whose pale title text is under 3:1 on white.
+     */
+    headerFocus: string;
     /** Bar under a light header, or 'none'. */
     headerBar: string;
     /** Sync progress fill: the aurora (brand); the title gradient, or the official bar under a light header (group). */
@@ -66,6 +71,7 @@ export function brandAccent(): AccentRoles {
         soft: aurora.gradient,
         header: aurora.gradient,
         headerText: color.text.primary,
+        headerFocus: color.text.primary,
         headerBar: 'none',
         progress: aurora.gradient,
         orb1: orb(aurora.orbs[0]), orb2: orb(aurora.orbs[1]), orb3: orb(aurora.orbs[2]),
@@ -89,6 +95,7 @@ export function groupAccent(id: GroupId): AccentRoles {
         soft: `linear-gradient(135deg, ${r.subtle} 0%, ${r.highlight} 100%)`,
         header: light ? color.surface.sheet : titleGradient,
         headerText: light ? t.text : color.text.inverse,
+        headerFocus: light ? r.strong : color.text.inverse,
         headerBar: light ? t.bar : 'none',
         progress: light ? t.bar : titleGradient,
         orb1: r.ambient.orb1, orb2: r.ambient.orb2, orb3: r.ambient.orb3,

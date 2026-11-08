@@ -71,6 +71,14 @@ describe('FavoritesModal (R-c)', () => {
         expect(screen.getByText('今日もありがとう🌸')).toHaveAttribute('lang', 'ja');
     });
 
+    it('positions the picture button so the loading image stays inside it', () => {
+        render(<FavoritesModal isOpen onClose={vi.fn()} messages={favs} memberName="春野 ひなた" serviceId="sakurazaka46" />);
+        const button = within(screen.getByRole('dialog', { name: 'Favorites' })).getAllByRole('button').find((b) => b.querySelector('img'))!;
+        // The not-yet-loaded <img> is `absolute`; `relative` keeps it clipped to the button.
+        expect(button).toHaveClass('relative', 'overflow-hidden');
+        expect(button.querySelector('[data-testid="image-skeleton"]')!.tagName).toBe('SPAN');
+    });
+
     it('opens the dark viewer with a circular close button', async () => {
         vi.useRealTimers();
         render(<FavoritesModal isOpen onClose={vi.fn()} messages={favs} memberName="春野 ひなた" serviceId="sakurazaka46" />);

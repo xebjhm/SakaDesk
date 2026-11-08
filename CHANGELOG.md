@@ -55,9 +55,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
-- **Lighter grey text is darker and easier to read.** Hinatazaka's unread
-  covers now use the official app colours, and the translate button is
-  neutral instead of using the group colour.
+- **Grey text is darker** and easier to read. Hinatazaka's unread covers now
+  use the official app colours, and the translate button is neutral instead
+  of using the group colour.
 - **Calmer colours.** The group colour now marks only where you are, what is
   selected and the main action. Secondary buttons, counts and tool panels are
   neutral.

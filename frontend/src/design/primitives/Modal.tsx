@@ -36,7 +36,7 @@ export interface ModalProps {
     header?: 'expressive' | 'plain' | 'console';
     /** Extra classes for the title (h2), e.g. an identity colour on the plain header. */
     titleClassName?: string;
-    /** A strip between the header and the body that does not scroll (tab bars): opaque `bg-sheet`, outside the scroller, so the scrollbar starts below it. Its own padding is the caller's. Standard layout only. */
+    /** A strip between the header and the body that does not scroll (tab bars): opaque `bg-sheet`, outside the scroller, so the scrollbar starts below it. Its own padding is the caller's. Standard layout only (ignored, with a development warning, in the bare layout). */
     toolbar?: React.ReactNode;
     children: React.ReactNode;
     footer?: React.ReactNode;
@@ -102,6 +102,9 @@ const OpenModal: React.FC<ModalProps> = ({
         if (title !== undefined && layout === 'bare') {
             warnOnce('[Modal] title is ignored in layout="bare": name the dialog with aria-label or labelledBy');
         }
+        if (toolbar !== undefined && layout === 'bare') {
+            warnOnce('[Modal] toolbar is ignored in layout="bare": render it inside the children');
+        }
         if (!named && !ariaLabel) {
             warnOnce('[Modal] dialog has no accessible name: pass title, aria-label or labelledBy');
         }
@@ -165,7 +168,7 @@ const OpenModal: React.FC<ModalProps> = ({
                                     size="sm"
                                     aria-label={closeLabel}
                                     icon={<X />}
-                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-header-glass hover:text-expressive-header focus-visible:ring-expressive-header focus-visible:ring-offset-0' : header === 'console' ? 'text-console-muted hover:bg-header-glass hover:text-console' : undefined}
+                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-header-glass hover:text-expressive-header focus-visible:ring-expressive-header-focus focus-visible:ring-offset-0' : header === 'console' ? 'text-console-muted hover:bg-header-glass hover:text-console' : undefined}
                                     onClick={() => requestClose('button')}
                                 />
                             )}
