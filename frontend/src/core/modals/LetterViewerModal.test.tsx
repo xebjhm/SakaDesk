@@ -1,6 +1,6 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, within, fireEvent } from '@testing-library/react';
+import { act, render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
 import { clientLog } from '../../utils/clientLog';
@@ -8,6 +8,9 @@ import { LetterViewerModal } from './LetterViewerModal';
 import type { Letter } from '../../features/messages/letters';
 import { LetterRow } from '../../features/messages/components/LetterRow';
 import { buildTimeline } from '../../features/messages/timeline/buildTimeline';
+import { useAppStore } from '../../store/appStore';
+import { resetDialogStack } from '../../design/dialog/dialogStack';
+import { downloadMedia } from '../../utils/download';
 import en from '../../i18n/locales/en.json';
 import ja from '../../i18n/locales/ja.json';
 import zhCN from '../../i18n/locales/zh-CN.json';
@@ -15,6 +18,7 @@ import zhTW from '../../i18n/locales/zh-TW.json';
 import yue from '../../i18n/locales/yue.json';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+vi.mock('../../utils/download', () => ({ downloadMedia: vi.fn() }));
 
 const letter = (id: number, created_at: string, image_url: string | null, text = ''): Letter =>
     ({ id, text, created_at, image_url, width: 341, height: 512 });
@@ -27,7 +31,12 @@ const letters = [
 ];
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
-beforeEach(() => { vi.mocked(clientLog).mockClear(); });
+beforeEach(() => {
+    vi.mocked(clientLog).mockClear();
+    vi.mocked(downloadMedia).mockClear();
+    resetDialogStack();
+    useAppStore.setState({ goldenFingerActive: false });
+});
 
 const renderViewer = (overrides: Partial<React.ComponentProps<typeof LetterViewerModal>> = {}) => {
     const props: React.ComponentProps<typeof LetterViewerModal> = {
@@ -44,11 +53,22 @@ const renderViewer = (overrides: Partial<React.ComponentProps<typeof LetterViewe
 };
 
 describe('LetterViewerModal', () => {
-    it('renders nothing when no letter is open or the id is not in the list', () => {
-        const { rerender, props } = renderViewer({ letterId: null });
+    it('renders nothing when no letter is open', () => {
+        const { props } = renderViewer({ letterId: null });
         expect(screen.queryByRole('dialog')).toBeNull();
-        rerender(<LetterViewerModal {...props} letterId={99} />);
+        expect(props.onClose).not.toHaveBeenCalled();
+        expect(clientLog).not.toHaveBeenCalled();
+    });
+
+    it('closes and logs a skip once when the open letter is no longer in the list', () => {
+        const { rerender, props } = renderViewer({ letterId: 99 });
         expect(screen.queryByRole('dialog')).toBeNull();
+        expect(props.onClose).toHaveBeenCalledOnce();
+        expect(clientLog).toHaveBeenCalledWith('letter_viewer', { phase: 'skip', surface: 'timeline', reason: 'not_found' });
+        // A re-render with the same missing id (before the parent cleared it) does not log again.
+        rerender(<LetterViewerModal {...props} letters={[...letters]} letterId={99} />);
+        expect(vi.mocked(clientLog).mock.calls.filter(([, f]) => (f as { phase?: string }).phase === 'skip')).toHaveLength(1);
+        expect(props.onClose).toHaveBeenCalledOnce();
     });
 
     it('shows the letter image beside its full text in a sheet dialog', async () => {
@@ -58,7 +78,7 @@ describe('LetterViewerModal', () => {
         const img = dialog.querySelector('img');
         expect(img).toHaveAttribute('src', '/l/2.jpg');
         expect(img).toHaveClass('object-contain');
-        expect(img?.parentElement).toHaveClass('bg-sunken');
+        expect(img?.closest('.bg-sunken')).not.toBeNull();
         const text = within(dialog).getByRole('region', { name: 'Letter text' });
         expect(text).toHaveAttribute('lang', 'ja');
         expect(text).toHaveClass('whitespace-pre-wrap', 'overflow-y-auto', 'text-body', 'text-primary');
@@ -157,6 +177,68 @@ describe('LetterViewerModal', () => {
         expect(screen.getByText('3 / 3')).toBeInTheDocument();
     });
 
+    it('leaves ← / → to the caret and selection while focus is in the letter text', async () => {
+        const { props } = renderViewer();
+        const dialog = await screen.findByRole('dialog');
+        const text = within(dialog).getByRole('region', { name: 'Letter text' });
+        text.focus();
+        const left = new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true, cancelable: true });
+        text.dispatchEvent(left);
+        const right = new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true, cancelable: true, shiftKey: true });
+        text.dispatchEvent(right);
+        expect(left.defaultPrevented).toBe(false);
+        expect(right.defaultPrevented).toBe(false);
+        expect(props.onNavigate).not.toHaveBeenCalled();
+    });
+
+    it('opens the letter image in the dark media viewer on top, and Escape returns to the letter', async () => {
+        const { props } = renderViewer();
+        const dialog = await screen.findByRole('dialog', { name: 'Sent letter' });
+        await userEvent.click(within(dialog).getByRole('button', { name: 'View the letter image larger' }));
+        const media = await screen.findByRole('dialog', { name: 'Media viewer' });
+        const img = media.querySelector('img');
+        expect(img).toHaveAttribute('src', '/l/2.jpg');
+        expect(screen.getByRole('dialog', { name: 'Sent letter' })).toBeInTheDocument();
+        // ↑ zooms the image as before; ← / → in the media viewer do not move the letter viewer.
+        fireEvent.keyDown(media, { key: 'ArrowUp' });
+        expect(img).toHaveStyle({ transform: 'scale(1.25)' });
+        fireEvent.keyDown(media, { key: 'ArrowLeft' });
+        fireEvent.keyDown(media, { key: 'ArrowRight' });
+        expect(props.onNavigate).not.toHaveBeenCalled();
+        await userEvent.keyboard('{Escape}');
+        expect(screen.queryByRole('dialog', { name: 'Media viewer' })).toBeNull();
+        expect(screen.getByRole('dialog', { name: 'Sent letter' })).toBeInTheDocument();
+        expect(props.onClose).not.toHaveBeenCalled();
+    });
+
+    it('offers the media viewer\'s golden-finger Download (and Ctrl+C copy) for the letter image', async () => {
+        useAppStore.setState({ goldenFingerActive: true });
+        renderViewer();
+        const dialog = await screen.findByRole('dialog', { name: 'Sent letter' });
+        await userEvent.click(within(dialog).getByRole('button', { name: 'View the letter image larger' }));
+        const media = await screen.findByRole('dialog', { name: 'Media viewer' });
+        expect(within(media).getByRole('button', { name: 'Download' })).toBeInTheDocument();
+    });
+
+    it('shows Download in the footer only with golden finger and an image', async () => {
+        const { rerender, props } = renderViewer();
+        const dialog = await screen.findByRole('dialog');
+        expect(within(dialog).queryByRole('button', { name: 'Download' })).toBeNull();
+
+        act(() => useAppStore.setState({ goldenFingerActive: true }));
+        rerender(<LetterViewerModal {...props} />);
+        await userEvent.click(within(screen.getByRole('dialog')).getByRole('button', { name: 'Download' }));
+        expect(downloadMedia).toHaveBeenCalledWith('/l/2.jpg', expect.stringMatching(/\.jpg$/));
+
+        // No image (null, or failed to load): no Download and no image button.
+        rerender(<LetterViewerModal {...props} letterId={3} />);
+        expect(within(screen.getByRole('dialog')).queryByRole('button', { name: 'Download' })).toBeNull();
+        rerender(<LetterViewerModal {...props} letterId={1} />);
+        fireEvent.error(screen.getByRole('dialog').querySelector('img')!);
+        expect(within(screen.getByRole('dialog')).queryByRole('button', { name: 'Download' })).toBeNull();
+        expect(within(screen.getByRole('dialog')).queryByRole('button', { name: 'View the letter image larger' })).toBeNull();
+    });
+
     it('hides the counter and the arrows for a single letter', async () => {
         renderViewer({ letters: [letters[0]], letterId: 1 });
         const dialog = await screen.findByRole('dialog');
@@ -198,7 +280,7 @@ describe('LetterViewerModal from the chat timeline', () => {
 
 describe('letter viewer strings', () => {
     const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
-    const KEYS = ['title', 'previous', 'next', 'jumpToLetter', 'jumpToLetterAt', 'imageMissing', 'fullText'] as const;
+    const KEYS = ['title', 'previous', 'next', 'jumpToLetter', 'jumpToLetterAt', 'imageMissing', 'openImage', 'fullText'] as const;
 
     it.each(Object.entries(locales))('%s has every letterViewer key', (_code, data) => {
         const section = (data as unknown as Record<string, Record<string, string> | undefined>).letterViewer;

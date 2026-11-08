@@ -702,6 +702,7 @@
     "jumpToLetter": "トークでこのレターへ移動",
     "jumpToLetterAt": "{{date}}に送信したレターをトークで表示",
     "imageMissing": "レター画像がありません",
+    "openImage": "レター画像を大きく表示",
     "fullText": "レターの本文"
   },
   "celebration": {

@@ -3,9 +3,9 @@ import { render, screen, within, fireEvent } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
 import { SentLettersModal } from './SentLettersModal';
+import type { Letter } from '../../features/messages/letters';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
-import type { Letter } from '../../features/messages/letters';
 
 const letter = (id: number, created_at: string, image_url: string | null, text = ''): Letter =>
     ({ id, text, created_at, image_url, width: 341, height: 512 });

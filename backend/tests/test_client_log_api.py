@@ -400,6 +400,7 @@ def test_letter_breadcrumbs_are_accepted(event, fields):
         {"phase": "open", "surface": "timeline"},
         {"phase": "fallback", "surface": "timeline", "reason": "no_image"},
         {"phase": "fallback", "surface": "sent_letters", "reason": "image_error"},
+        {"phase": "skip", "surface": "timeline", "reason": "not_found"},
     ],
 )
 def test_letter_viewer_breadcrumb_is_accepted(fields):

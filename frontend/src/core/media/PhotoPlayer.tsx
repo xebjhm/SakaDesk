@@ -37,8 +37,6 @@ interface PhotoPlayerProps {
     className?: string;
     /** Called once when the image fails to load and the fallback is shown (breadcrumbs). */
     onError?: () => void;
-    /** Names the fallback as an image (e.g. "Letter image unavailable"); decorative without it. */
-    fallbackLabel?: string;
 }
 
 /**
@@ -70,7 +68,6 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     anchorRef,
     className,
     onError,
-    fallbackLabel,
 }) => {
     const [hasError, setHasError] = useState(false);
     // Fullscreen instances are reused across navigation (arrow keys change `src`
@@ -79,7 +76,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     useEffect(() => { setHasError(false); }, [src]);
     const effectiveLoading = loading ?? (variant === 'gallery-thumb' ? 'lazy' : 'eager');
 
-    const fallback = (extraClasses?: string) => <PhotoFallback className={extraClasses} label={fallbackLabel} />;
+    const fallback = (extraClasses?: string) => <PhotoFallback className={extraClasses} />;
     const fail = () => {
         setHasError(true);
         onError?.();

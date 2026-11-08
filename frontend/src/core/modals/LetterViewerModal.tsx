@@ -1,11 +1,14 @@
-import React, { useCallback, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, Mail } from 'lucide-react';
-import { IconButton, Modal } from '../../design/primitives';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ChevronLeft, ChevronRight, Download, Mail } from 'lucide-react';
+import { Button, IconButton, Modal } from '../../design/primitives';
 import { useTranslation } from '../../i18n';
 import type { Letter } from '../../features/messages/letters';
+import { useAppStore } from '../../store/appStore';
 import { PhotoFallback, PhotoPlayer } from '../media/PhotoPlayer';
+import { MediaViewerModal } from '../media/PhotoDetailModal';
 import { clientLog } from '../../utils/clientLog';
-import { formatDateTime } from '../../utils/classnames';
+import { downloadMedia } from '../../utils/download';
+import { formatDateTime, formatDownloadFilename } from '../../utils/classnames';
 import { toValidDate } from '../../utils/dateFormatters';
 
 /** Where the viewer was opened from (breadcrumb `surface`). */
@@ -14,7 +17,10 @@ export type LetterViewerSource = 'sent_letters' | 'timeline';
 export interface LetterViewerModalProps {
     /** The letters in the order of the list the viewer was opened from; ← / → walk this list. */
     letters: readonly Letter[];
-    /** Id of the open letter; null (or an id not in `letters`) renders nothing. */
+    /**
+     * Id of the open letter; null renders nothing. An id not in `letters` (gone after a refetch)
+     * renders nothing too, logs `letter_viewer` `skip` / `not_found` once and calls `onClose`.
+     */
     letterId: number | null;
     /** The list's order, so the "n / total" counter counts the oldest letter as 1 either way. */
     order: 'newest_first' | 'oldest_first';
@@ -31,14 +37,26 @@ export interface LetterViewerModalProps {
  * A sent letter on a sheet dialog: the letter image (fit, on a neutral stage; the shared
  * missing-photo fallback when the file is missing or broken) beside the letter's full text,
  * which the image does not always show in full. Below ~900 px the image sits above the text.
+ * Clicking the image opens it in the dark media viewer on top (↑ / ↓ zoom, and with golden
+ * finger Ctrl+C copy and Download, as before); Escape returns to the letter. With golden finger
+ * the footer offers Download too. Ctrl+C on the letter itself copies the selected text as usual.
  * The footer is the photo viewer's: the send date and time as a link that closes the viewer
  * and jumps to the letter in the chat, the "n / total" counter (oldest = 1), and previous /
- * next buttons; ← / → move too, in the order of the list the viewer was opened from.
- * Breadcrumbs: `letter_viewer` (`open`; `fallback` with `no_image` / `image_error`) and
- * `letter_jump`, each with the `source` as `surface`.
+ * next buttons; ← / → move too, in the order of the list the viewer was opened from (not while
+ * focus is in the letter text, where they move the caret / selection).
+ * Breadcrumbs: `letter_viewer` (`open`; `fallback` with `no_image` / `image_error`; `skip` with
+ * `not_found`) and `letter_jump`, each with the `source` as `surface`.
  */
 export const LetterViewerModal: React.FC<LetterViewerModalProps> = (props) => {
-    const index = props.letterId === null ? -1 : props.letters.findIndex((l) => l.id === props.letterId);
+    const { letterId, letters, source, onClose } = props;
+    const index = letterId === null ? -1 : letters.findIndex((l) => l.id === letterId);
+    const missing = letterId !== null && index === -1;
+    useEffect(() => {
+        if (!missing) return;
+        clientLog('letter_viewer', { phase: 'skip', surface: source, reason: 'not_found' });
+        onClose();
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- once per missing id
+    }, [missing, letterId]);
     if (index === -1) return null;
     return <OpenLetterViewer {...props} index={index} />;
 };
@@ -55,6 +73,12 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
     const sent = toValidDate(letter.created_at);
     const sentLabel = sent ? formatDateTime(sent) : '';
     const stageRef = useRef<HTMLDivElement>(null);
+    const textRef = useRef<HTMLDivElement>(null);
+    const goldenFingerActive = useAppStore((s) => s.goldenFingerActive);
+    // Per letter, so moving to another letter neither keeps the media viewer open nor the failure.
+    const [zoomedId, setZoomedId] = useState<number | null>(null);
+    const [failedId, setFailedId] = useState<number | null>(null);
+    const image = letter.image_url && failedId !== letter.id ? letter.image_url : null;
 
     useEffect(() => {
         clientLog('letter_viewer', { phase: 'open', surface: source });
@@ -77,6 +101,8 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
     }, [letters, total, onNavigate]);
 
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+        // In the letter text ← / → move the caret / selection.
+        if (e.target instanceof Node && textRef.current?.contains(e.target)) return;
         if (e.key === 'ArrowLeft') {
             e.preventDefault();
             go(index - 1);
@@ -90,6 +116,10 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
         clientLog('letter_jump', { surface: source });
         onClose();
         onJump(letter.id);
+    };
+
+    const download = () => {
+        if (image) downloadMedia(image, formatDownloadFilename(image, letter.created_at));
     };
 
     const footer = (
@@ -111,51 +141,81 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
                     </>
                 )}
             </div>
-            {total > 1 && (
+            {(total > 1 || (goldenFingerActive && image)) && (
                 <div className="flex shrink-0 items-center gap-1">
-                    <IconButton size="sm" aria-label={t('letterViewer.previous')} icon={<ChevronLeft />} disabled={!hasPrev} onClick={() => go(index - 1)} />
-                    <IconButton size="sm" aria-label={t('letterViewer.next')} icon={<ChevronRight />} disabled={!hasNext} onClick={() => go(index + 1)} />
+                    {goldenFingerActive && image && (
+                        <Button variant="ghost" size="sm" onClick={download}>
+                            <Download className="h-4 w-4" />
+                            {t('common.download')}
+                        </Button>
+                    )}
+                    {total > 1 && (
+                        <>
+                            <IconButton size="sm" aria-label={t('letterViewer.previous')} icon={<ChevronLeft />} disabled={!hasPrev} onClick={() => go(index - 1)} />
+                            <IconButton size="sm" aria-label={t('letterViewer.next')} icon={<ChevronRight />} disabled={!hasNext} onClick={() => go(index + 1)} />
+                        </>
+                    )}
                 </div>
             )}
         </div>
     );
 
     return (
-        <Modal
-            isOpen
-            onClose={onClose}
-            title={t('letterViewer.title')}
-            icon={<Mail />}
-            closeLabel={t('common.close')}
-            logId="letter_viewer"
-            onKeyDown={handleKeyDown}
-            footer={footer}
-            className="h-[85vh] max-w-5xl"
-            bodyClassName="flex flex-col gap-4 overflow-hidden min-[900px]:flex-row"
-        >
-            <div ref={stageRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-card bg-sunken p-4 min-[900px]:basis-3/5">
-                {letter.image_url ? (
-                    <PhotoPlayer
-                        key={letter.id}
-                        variant="bubble"
-                        src={letter.image_url}
-                        alt={t('letterViewer.title')}
-                        onError={() => clientLog('letter_viewer', { phase: 'fallback', surface: source, reason: 'image_error' })}
-                        fallbackLabel={t('letterViewer.imageMissing')}
-                    />
-                ) : (
-                    <PhotoFallback className="h-full w-full" label={t('letterViewer.imageMissing')} />
-                )}
-            </div>
-            <div
-                role="region"
-                aria-label={t('letterViewer.fullText')}
-                tabIndex={0}
-                lang={letter.text ? 'ja' : undefined}
-                className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap rounded-card text-body text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent min-[900px]:basis-2/5"
+        <>
+            <Modal
+                isOpen
+                onClose={onClose}
+                title={t('letterViewer.title')}
+                icon={<Mail />}
+                closeLabel={t('common.close')}
+                logId="letter_viewer"
+                onKeyDown={handleKeyDown}
+                footer={footer}
+                className="h-[85vh] max-w-5xl"
+                bodyClassName="flex flex-col gap-4 overflow-hidden min-[900px]:flex-row"
             >
-                {letter.text || t('sentLetters.noTextContent')}
-            </div>
-        </Modal>
+                <div ref={stageRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-card bg-sunken p-4 min-[900px]:basis-3/5">
+                    {image ? (
+                        <button
+                            type="button"
+                            aria-label={t('letterViewer.openImage')}
+                            onClick={() => setZoomedId(letter.id)}
+                            className="flex h-full w-full cursor-zoom-in items-center justify-center rounded-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        >
+                            <PhotoPlayer
+                                key={letter.id}
+                                variant="bubble"
+                                src={image}
+                                alt={t('letterViewer.title')}
+                                onError={() => {
+                                    setFailedId(letter.id);
+                                    clientLog('letter_viewer', { phase: 'fallback', surface: source, reason: 'image_error' });
+                                }}
+                            />
+                        </button>
+                    ) : (
+                        <PhotoFallback className="h-full w-full" label={t('letterViewer.imageMissing')} />
+                    )}
+                </div>
+                <div
+                    ref={textRef}
+                    role="region"
+                    aria-label={t('letterViewer.fullText')}
+                    tabIndex={0}
+                    lang={letter.text ? 'ja' : undefined}
+                    className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap rounded-card text-body text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent min-[900px]:basis-2/5"
+                >
+                    {letter.text || t('sentLetters.noTextContent')}
+                </div>
+            </Modal>
+            {image && zoomedId === letter.id && (
+                <MediaViewerModal
+                    mediaItems={[{ src: image, type: 'picture', timestamp: letter.created_at }]}
+                    currentIndex={0}
+                    onClose={() => setZoomedId(null)}
+                    onNavigate={() => {}}
+                />
+            )}
+        </>
     );
 };

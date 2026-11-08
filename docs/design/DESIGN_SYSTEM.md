@@ -538,7 +538,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Action | `Button` (variants in section 9) |
 | Icon-only action | `IconButton` |
 | Feature-rail entry | `RailItem` |
-| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos). A sent letter opens in `LetterViewerModal`, a wide sheet (not the dark viewer, because the letter's full text is read beside the image): the image on a `bg-sunken` stage, the text in message type, and the photo viewer's footer (a neutral date link that jumps to the letter in the chat, the `n / total` counter, previous / next and ← / →) |
+| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos). A sent letter opens in `LetterViewerModal`, a wide sheet (not the dark viewer, because the letter's full text is read beside the image): the image on a `bg-sunken` stage, the text in message type, and the photo viewer's footer (a neutral date link that jumps to the letter in the chat, the `n / total` counter, previous / next and ← / →, and with golden finger a ghost Download). Clicking the image opens it in the dark viewer on top for ↑ / ↓ zoom and golden-finger copy / download; Escape returns to the letter |
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |

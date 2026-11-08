@@ -702,6 +702,7 @@
     "jumpToLetter": "跳转到聊天中的这封信件",
     "jumpToLetterAt": "在聊天中显示 {{date}} 发送的信件",
     "imageMissing": "没有信件图片",
+    "openImage": "放大查看信件图片",
     "fullText": "信件内容"
   },
   "celebration": {

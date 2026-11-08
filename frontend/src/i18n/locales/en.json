@@ -704,6 +704,7 @@
     "jumpToLetter": "Jump to letter in chat",
     "jumpToLetterAt": "Show letter sent {{date}} in the chat",
     "imageMissing": "Letter image unavailable",
+    "openImage": "View the letter image larger",
     "fullText": "Letter text"
   },
   "celebration": {

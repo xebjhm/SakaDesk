@@ -702,6 +702,7 @@
     "jumpToLetter": "跳去傾偈入面呢封信",
     "jumpToLetterAt": "喺傾偈度顯示 {{date}} 寄嘅信",
     "imageMissing": "冇信嘅圖片",
+    "openImage": "放大睇信嘅圖片",
     "fullText": "信嘅內容"
   },
   "celebration": {
