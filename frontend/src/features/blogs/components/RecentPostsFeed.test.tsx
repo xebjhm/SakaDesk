@@ -47,6 +47,17 @@ describe('RecentPostsFeed', () => {
         expect(screen.getByRole('group', { name: 'Show posts from' })).toBeInTheDocument();
     });
 
+    it('starts at the top of the list after switching the filter', () => {
+        render(<RecentPostsFeed {...props()} />);
+        const scroller = screen.getByTestId('feed-scroller');
+        scroller.scrollTop = 420;
+        fireEvent.click(screen.getByRole('button', { name: 'Favorite' }));
+        expect(scroller.scrollTop).toBe(0);
+        scroller.scrollTop = 300;
+        fireEvent.click(screen.getByRole('button', { name: 'All' }));
+        expect(scroller.scrollTop).toBe(0);
+    });
+
     it('opens the member dialog from a secondary button', () => {
         const p = props();
         render(<RecentPostsFeed {...p} />);
