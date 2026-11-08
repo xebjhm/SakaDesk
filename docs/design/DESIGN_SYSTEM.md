@@ -546,7 +546,7 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 | `tone` | `sheet` (default: a level-1 sheet, `bg-sheet rounded-xl shadow-sheet` on `bg-scrim`) or `viewer` (dark, full screen, on `bg-viewer-scrim`; photos and videos) |
 | `layout` | `standard` (header with the title and a ghost close button, body, footer) or `bare` (children straight in the frame: search, the profile card, the entry flows) |
 | `scope` | `inherit` (default: the scope in `ScopeContext`: brand from a `BrandScope` or a brand `Modal`, or a group scope a parent provides with `ScopeContext.Provider`, else the active group) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
-| `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile) or `plain` (a quiet white header; the member timeline uses it) |
+| `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile) `plain` (a quiet white header; the member timeline uses it) or `console` (a dark ink header, `bg-console` / `text-console`, no bar and no group or brand colour; Developer Diagnostics only) |
 | `icon` | A decorative lucide icon before the title, in the header text colour; plain dialog icons are drawn at 20 px, while `ConfirmDialog` passes its own 32 px semantic tile (drawn as given). Only the standard layout with a title draws it (`Modal` ignores it, with no title or in the bare layout). Used by Calendar, Favorites (star), Sent letters (mail), Background (palette), Media gallery and Blog photo gallery (image), Report issue (bug) and Diagnostics (terminal); `ConfirmDialog` passes its icon tile |
 | `placement` | `center` (default) or `top` (15 vh from the top: search) |
 | `dismissible` | `true` (default); `false` for flows that must not be skipped (ToS, setup, sync): no close button, and Escape and the backdrop do nothing |
@@ -584,6 +584,17 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
   `bg-semantic-danger-icon`, the empty tile `bg-expressive-soft`; `retryVariant` is
   `secondary` by default and `primary` for the gradient retry the blog dialogs use).
   `BlogStatus`'s retry is always `primary`.
+
+### Developer surfaces
+
+The hidden Developer Diagnostics panel is outside brand and group contexts on purpose, so it is
+unmistakable next to user screens: a dark ink `Modal` `header="console"`, a terminal icon in
+`text-console-prompt`, a monospace uppercase "Hidden Panel" badge (`bg-console-badge`,
+`text-console-badge`), a solid ink Copy JSON button (`Button variant="secondary"` with a
+`bg-console text-console` override, kept dark on hover and when disabled) and the log block in
+`bg-console text-console-muted font-mono` (errors `text-console-error`, warnings
+`text-console-warning`). The `console` tokens (`color.console`, `--ds-console-*`) hold the
+pre-D2 panel's values; use them for developer tooling only.
 
 ### Menus
 

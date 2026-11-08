@@ -79,6 +79,21 @@ export const color = {
         textMuted: 'rgba(255, 255, 255, 0.7)',
         underline: 'rgba(255, 255, 255, 0.3)',
     },
+    /**
+     * The hidden Developer Diagnostics panel: a developer console, outside brand and group colour on
+     * purpose. Values are the e4e4118 panel's (header gray-900, terminal icon green-400, log text
+     * slate-300 / red-400 / amber-400); the badge is amber-400 on a 15 % amber tint.
+     */
+    console: {
+        bg: '#111827',
+        text: '#FFFFFF',
+        textMuted: '#CBD5E1',
+        prompt: '#4ADE80',
+        error: '#F87171',
+        warning: '#FBBF24',
+        badge: 'rgba(251, 191, 36, 0.15)',
+        badgeText: '#FBBF24',
+    },
     /** Decorations kept from the pre-D2c look: calendar Sundays, About's heart. */
     decor: {
         sunday: '#EF4444',

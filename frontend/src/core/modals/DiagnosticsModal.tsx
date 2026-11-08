@@ -214,8 +214,8 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     };
 
     return (
-        <Modal scope="brand" isOpen={isOpen} onClose={onClose} title="Developer Diagnostics" icon={<Terminal />} closeLabel={t('common.close')} logId="diagnostics" className="max-w-3xl"
-            headerExtra={<span className="rounded-pill bg-sheet px-2 py-1 text-caption text-secondary">Hidden Panel</span>}
+        <Modal scope="brand" isOpen={isOpen} onClose={onClose} title="Developer Diagnostics" header="console" icon={<Terminal className="text-console-prompt" />} closeLabel={t('common.close')} logId="diagnostics" className="max-w-3xl"
+            headerExtra={<span className="rounded-pill bg-console-badge px-2 py-1 font-mono text-caption uppercase tracking-wide text-console-badge">Hidden Panel</span>}
             bodyClassName="flex flex-col gap-4"
             footerDivider
             footer={
@@ -224,7 +224,12 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                         <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin motion-reduce:animate-none')} />
                         Refresh
                     </Button>
-                    <Button variant="primary" onClick={handleCopy} disabled={!data}>
+                    <Button
+                        variant="secondary"
+                        className="border-transparent bg-console text-console hover:bg-console hover:opacity-90 disabled:hover:bg-console disabled:hover:opacity-100 aria-disabled:hover:bg-console"
+                        onClick={handleCopy}
+                        disabled={!data}
+                    >
                         {copied ? <CheckCircle2 className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                         {copied ? 'Copied!' : 'Copy JSON'}
                     </Button>
@@ -489,14 +494,14 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                         </Pill>
                                     </div>
                                 </div>
-                                <div className="h-48 overflow-y-auto whitespace-pre-wrap rounded-card bg-sunken p-4 font-mono text-caption text-secondary">
+                                <div className="h-48 overflow-y-auto whitespace-pre-wrap rounded-card bg-console p-4 font-mono text-caption text-console-muted">
                                     {getLogsForTab().length > 0 ? (
                                         getLogsForTab().map((line, i) => (
                                             <div
                                                 key={i}
                                                 className={cn(
-                                                    line.includes(' - ERROR - ') && 'text-status-danger',
-                                                    line.includes(' - WARNING - ') && !line.includes(' - ERROR - ') && 'text-status-warning',
+                                                    line.includes(' - ERROR - ') && 'text-console-error',
+                                                    line.includes(' - WARNING - ') && !line.includes(' - ERROR - ') && 'text-console-warning',
                                                 )}
                                             >
                                                 {line}

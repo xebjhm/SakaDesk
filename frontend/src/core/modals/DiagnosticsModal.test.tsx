@@ -33,17 +33,46 @@ describe('DiagnosticsModal', () => {
         expect(screen.getByTestId('modal-footer')).toHaveClass('border-t', 'pt-4');
     });
 
-    it('is a brand dialog whose header note sits on a white pill', async () => {
+    it('is a brand-scoped dialog with a dark console header and no expressive bar', async () => {
         render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
         const dialog = await screen.findByRole('dialog', { name: 'Developer Diagnostics' });
         expect(dialog).toHaveAttribute('data-scope', 'brand');
-        expect(screen.getByText('Hidden Panel')).toHaveClass('bg-sheet', 'text-secondary');
+        expect(screen.getByTestId('modal-header')).toHaveClass('bg-console', 'text-console');
+        expect(screen.queryByTestId('modal-header-bar')).toBeNull();
+    });
+
+    it('shows the hidden-panel badge as monospace uppercase amber on dark', async () => {
+        render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+        await screen.findByRole('dialog', { name: 'Developer Diagnostics' });
+        expect(screen.getByText('Hidden Panel')).toHaveClass('font-mono', 'uppercase', 'tracking-wide', 'bg-console-badge', 'text-console-badge');
+    });
+
+    it('draws Copy JSON as a solid ink button, never the accent gradient', async () => {
+        render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+        await screen.findByText(/2026 - INFO - ok/);
+        const copy = screen.getByRole('button', { name: /Copy JSON/ });
+        expect(copy).toHaveClass('bg-console', 'text-console', 'hover:bg-console');
+        expect(copy.className).not.toMatch(/bg-accent/);
+        expect(copy.className).not.toContain('hover:bg-sunken');
+    });
+
+    it('uses no brand gradient or expressive surface anywhere in the panel', async () => {
+        render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+        const dialog = await screen.findByRole('dialog', { name: 'Developer Diagnostics' });
+        await screen.findByText(/2026 - INFO - ok/);
+        expect(dialog.innerHTML).not.toMatch(/accent-gradient|expressive|shadow-accent/);
+    });
+
+    it('draws the log block in the console look', async () => {
+        render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+        const line = await screen.findByText(/2026 - INFO - ok/);
+        expect(line.parentElement).toHaveClass('bg-console', 'text-console-muted', 'font-mono');
     });
 
     it('draws the terminal icon in the header', async () => {
         render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
         await screen.findByRole('dialog', { name: 'Developer Diagnostics' });
-        expect(screen.getByTestId('modal-header-icon')).toBeInTheDocument();
+        expect(screen.getByTestId('modal-header-icon').querySelector('svg')).toHaveClass('text-console-prompt');
     });
 
     it('loads the diagnostics and shows the system block and logs', async () => {

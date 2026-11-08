@@ -29,8 +29,11 @@ export interface ModalProps {
      * parent hands over, as the login does for its geo warning), else the active group.
      */
     scope?: 'inherit' | 'brand';
-    /** 'expressive' (default): context gradient header (L1). 'plain': quiet white header (the member timeline). */
-    header?: 'expressive' | 'plain';
+    /**
+     * 'expressive' (default): context gradient header (L1). 'plain': quiet white header (the member timeline).
+     * 'console': dark ink header with no group or brand colour and no bar under it (Developer Diagnostics only).
+     */
+    header?: 'expressive' | 'plain' | 'console';
     /** Extra classes for the title (h2), e.g. an identity colour on the plain header. */
     titleClassName?: string;
     children: React.ReactNode;
@@ -143,7 +146,9 @@ const OpenModal: React.FC<ModalProps> = ({
                             data-testid="modal-header"
                             className={cn(
                                 'flex shrink-0 items-center gap-3 px-6',
-                                header === 'expressive' ? 'bg-expressive-header py-4 text-expressive-header' : 'pb-2 pt-5 text-primary',
+                                header === 'expressive' && 'bg-expressive-header py-4 text-expressive-header',
+                                header === 'plain' && 'pb-2 pt-5 text-primary',
+                                header === 'console' && 'bg-console py-4 text-console',
                             )}
                         >
                             {title !== undefined && icon && (
@@ -158,7 +163,7 @@ const OpenModal: React.FC<ModalProps> = ({
                                     size="sm"
                                     aria-label={closeLabel}
                                     icon={<X />}
-                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-header-glass' : undefined}
+                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-header-glass' : header === 'console' ? 'text-console-muted hover:bg-header-glass hover:text-console' : undefined}
                                     onClick={() => requestClose('button')}
                                 />
                             )}

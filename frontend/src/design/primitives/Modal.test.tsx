@@ -986,6 +986,15 @@ describe('Modal v2 header and scope', () => {
         expect(header.className).toContain('text-expressive-header');
         expect(screen.getByTestId('modal-header-bar').className).toContain('bg-expressive-header-bar');
     });
+    it('header="console" renders a dark ink header with no expressive bar and a muted close button', () => {
+        render(<Modal isOpen onClose={() => {}} title="Dev" header="console" closeLabel="Close">body</Modal>);
+        const header = screen.getByTestId('modal-header');
+        expect(header).toHaveClass('bg-console', 'text-console');
+        expect(header.className).not.toContain('expressive');
+        expect(screen.queryByTestId('modal-header-bar')).toBeNull();
+        expect(screen.getByRole('button', { name: 'Close' })).toHaveClass('text-console-muted', 'hover:text-console');
+    });
+
     it('header="plain" keeps the quiet header', () => {
         render(<Modal isOpen onClose={() => {}} title="Confirm" header="plain">body</Modal>);
         expect(screen.getByTestId('modal-header').className).not.toContain('bg-expressive-header');
