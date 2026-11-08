@@ -54,6 +54,7 @@ from backend.services.messages_cache import (
     stat_key,
 )
 from backend.services import avatar_resize, profile_images_service
+from backend.services.media_range import MediaFileResponse
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
@@ -876,10 +877,16 @@ async def get_media(file_path: str):
     and rest is the relative path from the service directory (e.g., 'messages/.../voice/123.m4a').
 
     The service_id is translated to the display name (e.g., '櫻坂46') for disk lookup.
+
+    Range requests get bounded ``206`` bodies (at most
+    ``media_range.MEDIA_RANGE_CAP`` bytes) and reading stops when the client
+    disconnects, so paused or abandoned video/voice downloads never hold one
+    of WebView2's six per-host connections. Requests without ``Range`` (e.g.
+    ``<img>``) get the full file with ``200``. See ``backend.services.media_range``;
+    it also logs the ``media_request`` breadcrumb.
     """
     safe_path = _resolve_media_path(file_path)
-    logger.debug("media_request", exists=True)
-    return FileResponse(safe_path)
+    return MediaFileResponse(safe_path)
 
 
 @router.get("/avatar/{file_path:path}")

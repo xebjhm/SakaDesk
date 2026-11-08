@@ -154,6 +154,13 @@ async def lifespan(app: FastAPI):
 
     desktop_bridge.set_server_loop(asyncio.get_running_loop())
 
+    # Windows only: finish closing sockets the browser reset (aborted media
+    # downloads) instead of leaving them half-open. Keeps the Proactor loop,
+    # which login's Playwright subprocess needs. See proactor_resets.
+    from backend.services.proactor_resets import install_proactor_reset_guard
+
+    install_proactor_reset_guard()
+
     # Port-independent app state (SQLite) must exist before any reader/writer
     # touches it.
     app_state.init_db()
