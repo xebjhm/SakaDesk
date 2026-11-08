@@ -52,6 +52,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   notifications off in Settings.
 
 ### Changed
+- **Calmer colours.** The group colour now marks only where you are, what is
+  selected and the main action. Secondary buttons, counts and tool panels are
+  neutral.
+- **The side feature list shows icons only.** Hover an icon to see its name.
+- **The blog member timeline has its original white header back.**
 - **The blog feed looks like it used to again.** Each post is a full photo
   tile with a small floating caption card at its bottom-right corner, and
   hovering a post lifts it with a soft glow in your group's colour.
@@ -82,9 +87,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Yodel now uses its own periwinkle colours.** The old green came from one
   member's page; Yodel screens now follow the Yodel logo colour.
 - **A cleaner main window.** The add, search and settings buttons on the left
-  now use SakaDesk's own soft colour, the feature list shows names under its
-  icons and shares the group's background with the member list, and chats and
-  blogs sit on one rounded page. The member list widens on large windows to
+  now use SakaDesk's own soft colour, the feature list shares the group's
+  background with the member list, and chats and blogs sit on one rounded
+  page. The member list widens on large windows to
   show four or five members per row.
 - **Chats are easier to read.** Messages sent in a row show the name, photo
   and time only once (hover a message to see its time), and the chat title
@@ -129,6 +134,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   sync repair rows in Settings say which group they act on.
 
 ### Fixed
+- **Yodel's unread covers have their original colours back**, which are
+  easier to tell apart.
 - **Cancel ends the whole first sync.** Pressing Cancel while SakaDesk
   downloads your groups for the first time used to leave the first sync
   hanging on the group it was running, so the other groups never started and
