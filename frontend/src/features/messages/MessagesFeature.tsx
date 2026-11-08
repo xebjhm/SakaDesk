@@ -28,6 +28,7 @@ import type { ReadState } from './readStateStore';
 import { useReadStateSubscription } from './hooks/useReadStateSubscription';
 import { useUiStateReporter } from './hooks/useUiStateReporter';
 import { MediaViewerModal } from '../../core/media/PhotoDetailModal';
+import { LetterViewerModal } from '../../core/modals/LetterViewerModal';
 import { ConfirmDialog } from '../../shell/components/ConfirmDialog';
 import type { MediaViewerItem } from '../../core/media/PhotoDetailModal';
 import { memberImageUrl } from './profileImages';
@@ -451,15 +452,21 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Breadcrumbs, once per room visit: how each letter's avatar was chosen, and dropped letters.
     useLetterBreadcrumbs(roomExtras.lettersRoomKey, letterAvatar, roomExtras.profile !== null, timeline.droppedLetters);
     const letterUserName = roomExtras.profile?.name || userNickname || t('letters.you');
-    const [letterViewer, setLetterViewer] = useState<Letter | null>(null);
+    // The letter viewer opened from a timeline letter: walks the timeline's letters chronologically.
+    // It remembers its room, so a room switch underneath (a notification) does not reopen it later.
+    const [letterViewer, setLetterViewer] = useState<{ id: number; room: string | undefined } | null>(null);
+    const openLetterViewer = useCallback(
+        (letter: Letter) => setLetterViewer({ id: letter.id, room: selectedGroupDir }),
+        [selectedGroupDir],
+    );
     const renderLetter = useCallback((letter: Letter) => (
         <LetterRow
             letter={letter}
             avatarUrl={letterAvatar.byId.get(letter.id) ?? null}
             userName={letterUserName}
-            onOpenImage={setLetterViewer}
+            onOpenImage={openLetterViewer}
         />
-    ), [letterAvatar, letterUserName]);
+    ), [letterAvatar, letterUserName, openLetterViewer]);
 
     const { highlightedRowKey, flash: flashLanded } = useLandingHighlight(selectedGroupDir);
     // The old room's visible range says nothing about the new one: unknown until MessageList reports it.
@@ -925,15 +932,16 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     onNavigate={setMediaViewerIndex}
                 />
             )}
-            {/* Letter image viewer */}
-            {letterViewer?.image_url && (
-                <MediaViewerModal
-                    mediaItems={[{ src: letterViewer.image_url, type: 'picture', timestamp: letterViewer.created_at }]}
-                    currentIndex={0}
-                    onClose={() => setLetterViewer(null)}
-                    onNavigate={() => {}}
-                />
-            )}
+            {/* Letter viewer (image and full text), opened from a letter in the timeline */}
+            <LetterViewerModal
+                letters={timeline.letters}
+                letterId={letterViewer && letterViewer.room === selectedGroupDir ? letterViewer.id : null}
+                order="oldest_first"
+                source="timeline"
+                onNavigate={(id) => setLetterViewer((v) => (v ? { ...v, id } : v))}
+                onClose={() => setLetterViewer(null)}
+                onJump={jumpToLetter}
+            />
         </div>
     );
 };

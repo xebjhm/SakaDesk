@@ -393,6 +393,48 @@ def test_letter_breadcrumbs_are_accepted(event, fields):
     assert {key: entry[key] for key in fields} == fields
 
 
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"phase": "open", "surface": "sent_letters"},
+        {"phase": "open", "surface": "timeline"},
+        {"phase": "fallback", "surface": "timeline", "reason": "no_image"},
+        {"phase": "fallback", "surface": "sent_letters", "reason": "image_error"},
+    ],
+)
+def test_letter_viewer_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log", json={"event": "letter_viewer", "fields": fields}
+        )
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == "letter_viewer"
+    assert entry["log_level"] == "info"
+    assert {key: entry[key] for key in fields} == fields
+
+
+@pytest.mark.parametrize("surface", ["sent_letters", "timeline"])
+def test_letter_jump_breadcrumb_is_accepted(surface):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "letter_jump", "fields": {"surface": surface}},
+        )
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == "letter_jump"
+    assert entry["surface"] == surface
+
+
+def test_letter_viewer_rejects_letter_text():
+    res = client.post(
+        "/api/client-log",
+        json={"event": "letter_viewer", "fields": {"surface": "いつもありがとう🌸"}},
+    )
+    assert res.status_code == 422
+
+
 def test_blog_load_breadcrumb_is_accepted():
     with capture_logs() as logs:
         res = client.post(

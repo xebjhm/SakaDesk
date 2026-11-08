@@ -695,6 +695,15 @@
     "you": "你",
     "openImageAt": "打開 {{date}} 寄嘅信"
   },
+  "letterViewer": {
+    "title": "寄咗嘅信",
+    "previous": "上一封信",
+    "next": "下一封信",
+    "jumpToLetter": "跳去傾偈入面呢封信",
+    "jumpToLetterAt": "喺傾偈度顯示 {{date}} 寄嘅信",
+    "imageMissing": "冇信嘅圖片",
+    "fullText": "信嘅內容"
+  },
   "celebration": {
     "firstSyncTitle": "你嘅存檔準備好喇",
     "firstSyncBody": "已經儲存咗 {{value}} 條訊息",

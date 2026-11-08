@@ -695,6 +695,15 @@
     "you": "你",
     "openImageAt": "開啟 {{date}} 傳送的信件"
   },
+  "letterViewer": {
+    "title": "已傳送的信件",
+    "previous": "上一封信件",
+    "next": "下一封信件",
+    "jumpToLetter": "跳至聊天中的這封信件",
+    "jumpToLetterAt": "在聊天中顯示 {{date}} 傳送的信件",
+    "imageMissing": "沒有信件圖片",
+    "fullText": "信件內容"
+  },
   "celebration": {
     "firstSyncTitle": "你的存檔已準備就緒",
     "firstSyncBody": "已儲存 {{value}} 則訊息",

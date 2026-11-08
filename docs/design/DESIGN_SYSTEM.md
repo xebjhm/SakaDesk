@@ -272,7 +272,7 @@ The group colour does exactly three jobs: **A. identity** (whose space this is: 
 | A. identity | chat header, group rail block, group markers in cross-group lists, dialog expressive header |
 | B. state | active tab, selected rail item, slider fill |
 | C. primary | Done, Save |
-| Neutral | Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts |
+| Neutral | Reset to Default, Jump to Date, Today, Refresh, Cancel, Verify now, Check now, counts, the letter viewer's date link and previous / next |
 | Pastel decoration | empty-state soft circle, milestone card surface |
 
 Pre-existing accents from the original design stay until the owner revisits
@@ -538,7 +538,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Action | `Button` (variants in section 9) |
 | Icon-only action | `IconButton` |
 | Feature-rail entry | `RailItem` |
-| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos) |
+| Dialog, sheet or dark viewer | `Modal` (`tone="viewer"` for photos and videos). A sent letter opens in `LetterViewerModal`, a wide sheet (not the dark viewer, because the letter's full text is read beside the image): the image on a `bg-sunken` stage, the text in message type, and the photo viewer's footer (a neutral date link that jumps to the letter in the chat, the `n / total` counter, previous / next and ← / →) |
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |
@@ -563,7 +563,7 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 | `layout` | `standard` (header with the title and a ghost close button, body, footer) or `bare` (children straight in the frame: search, the profile card, the entry flows) |
 | `scope` | `inherit` (default: the scope in `ScopeContext`: brand from a `BrandScope` or a brand `Modal`, or a group scope a parent provides with `ScopeContext.Provider`, else the active group) or `brand` (applies `brandScopeStyle()` and provides the brand context to nested dialogs) |
 | `header` | `expressive` (default: the context's gradient header and bar, L1; `ConfirmDialog` uses it too, with a semantic icon tile), `plain` (a quiet white header; the member timeline uses it) or `console` (a dark ink header, `bg-console` / `text-console`, no bar and no group or brand colour; Developer Diagnostics only) |
-| `icon` | A decorative lucide icon before the title, in the header text colour; plain dialog icons are drawn at 20 px, while `ConfirmDialog` passes its own 32 px semantic tile (drawn as given). Only the standard layout with a title draws it (`Modal` ignores it, with no title or in the bare layout). Used by Calendar, Favorites (star), Sent letters (mail), Background (palette), Media gallery and Blog photo gallery (image), Report issue (bug) and Diagnostics (terminal); `ConfirmDialog` passes its icon tile |
+| `icon` | A decorative lucide icon before the title, in the header text colour; plain dialog icons are drawn at 20 px, while `ConfirmDialog` passes its own 32 px semantic tile (drawn as given). Only the standard layout with a title draws it (`Modal` ignores it, with no title or in the bare layout). Used by Calendar, Favorites (star), Sent letters and the letter viewer (mail), Background (palette), Media gallery and Blog photo gallery (image), Report issue (bug) and Diagnostics (terminal); `ConfirmDialog` passes its icon tile |
 | `placement` | `center` (default) or `top` (15 vh from the top: search) |
 | `dismissible` | `true` (default); `false` for flows that must not be skipped (ToS, setup, sync): no close button, and Escape and the backdrop do nothing |
 | `closeLabel` | Required whenever the dialog has a close button: `t('common.close')`. Without it there is no close button |
