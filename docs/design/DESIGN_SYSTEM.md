@@ -236,7 +236,7 @@ group accent says where you are; a meaning colour says what a thing is.
   rounded thumb drawn inside a transparent border, which grows to 8 px and darkens on hover (no
   layout change). Thumb colours are the `--ds-scrollbar-thumb*`
   tokens (`color.scrollbar`: translucent ink on light surfaces; `thumbOnDark*`, translucent white, inside
-  `[data-surface="dark"]`, which `Modal tone="viewer"` sets, and the call overlay). Firefox gets
+  `[data-surface="dark"]`, which `Modal tone="viewer"` sets, the call overlay and the Diagnostics console). Firefox gets
   `scrollbar-width: thin` + `scrollbar-color` only where `::-webkit-scrollbar` is unsupported.
 - **Favourites video cards** show a shimmer sweep and a centred `Film` icon (`text-secondary`) on `bg-skeleton`
   (`--ds-border-strong`) and mount the `<video>` only when the card nears the dialog body's visible area.
@@ -575,7 +575,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Loading, empty, error inside a dialog | `DialogStatus` |
 | Empty list or screen | `EmptyState` |
 | Image still loading | Neutral skeleton `bg-sunken animate-pulse motion-reduce:animate-none` (`SafeImage` `skeletonClassName`); keep the `<img>` laid out at `opacity-0`, never `hidden`, so `loading="lazy"` can fire |
-| Video or voice buffering / failed | `useMediaPlayback` (`core/media/useMediaPlayback.ts`). Buffering (waiting for data while playing): a `Loader2` spinner with `animate-spin motion-reduce:animate-none`, centred over the video in `text-viewer` (`role="status"`, `common.loading`), or in place of the voice player's play icon (`aria-busy`). Failed: a neutral message (`videoPlayer.playbackError` / `voicePlayer.playbackError`, never danger red) with a Retry (`common.retry`) that reloads the element at the same position and plays: on the video a `bg-viewer-scrim` panel with an `overlay` Button, on the voice player a `text-secondary` caption with a `ghost` Button. Every `<video>` / `<audio>` gets its source through `useMediaSource` (`core/media/mediaElement.ts`), which releases it (pause, drop `src`, `load()`) before the source changes and on unmount; viewers key the player by source |
+| Video or voice buffering / failed | `useMediaPlayback` (`core/media/useMediaPlayback.ts`). Buffering (waiting for data while playing): a `Loader2` spinner with `animate-spin motion-reduce:animate-none`, centred over the video in `text-viewer` (`role="status"`, `common.loading`), or in place of the voice player's play icon (`aria-busy`). Failed: a neutral message (`videoPlayer.playbackError` / `voicePlayer.playbackError`, never danger red) with a Retry (`common.retry`) that reloads the element at the same position and plays: on the video a `bg-viewer-scrim` panel with an `overlay` Button, on the voice player a `text-secondary` caption with a `ghost` Button. Every `<video>` / `<audio>` element gets its source through `useMediaSource` (`core/media/mediaElement.ts`), which releases it (pause, drop `src`, `load()`) before the source changes and on unmount; viewers key the player by source. The one detached preload `Audio()` in `preloadAudio.ts` has no element to hook, so it is released manually |
 | Low-density screen background | `Atmosphere` |
 | One-time celebration | `CelebrationToast` / `MilestoneCard` |
 

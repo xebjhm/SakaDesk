@@ -143,7 +143,7 @@ def apply_title_bar_colors(
 def make_title_bar_handler(
     window: Any, apply: Callable[[int | None], bool] = apply_title_bar_colors
 ) -> Callable[..., None]:
-    """A pywebview event handler (``before_show``/``shown``) colouring the title bar.
+    """A pywebview event handler (``shown``/``loaded``) colouring the title bar.
 
     Retries on the next event until one application succeeds, then ignores later
     events. Never raises, so a failure cannot break startup.

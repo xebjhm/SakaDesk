@@ -66,9 +66,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Grey text is darker** and easier to read, also on grey backgrounds such as
   the search footer and the background preview. Hinatazaka's unread covers now
   use the official app colours.
-- **Arrows always go older and newer.** In every photo, video and voice viewer
-  and gallery, left goes to the older item and right to the newer one,
-  whichever way the list is sorted.
+- **Arrows go older and newer.** In the photo, video and voice viewers and
+  galleries, left goes to the older item and right to the newer one, whichever
+  way the list is sorted. Images inside a blog post keep their reading order.
 - **One tidy translate icon.** Every message has the same small, neutral
   translate icon at its bottom-right corner, next to the time. The Show text
   button under a voice message is neutral too.

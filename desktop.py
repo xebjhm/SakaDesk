@@ -1021,11 +1021,13 @@ def main() -> None:
             hidden=background,
         )
 
-        # Windows 11: recolour the native title bar to the app surface. Both
-        # events try; the handler stops after the first success and never raises.
+        # Windows 11: recolour the native title bar to the app surface. Only
+        # non-locking events (``before_show`` is locking: the GUI thread waits
+        # on its handlers); the handler stops after the first success and
+        # never raises.
         _title_bar = make_title_bar_handler(window)
-        window.events.before_show += _title_bar
         window.events.shown += _title_bar
+        window.events.loaded += _title_bar
 
         # Save window geometry on close by reading current dimensions directly.
         # We read window.width/height/x/y properties instead of relying on

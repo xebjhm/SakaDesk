@@ -246,7 +246,7 @@ class MediaFileResponse(Response):
         try:
             await self._stream(fh, receive, send, length, stats)
         finally:
-            await asyncio.to_thread(fh.close)
+            fh.close()
         self._log(stats, started)
 
     async def _not_found(

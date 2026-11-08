@@ -535,3 +535,51 @@ async def test_request_cancellation_is_not_swallowed(tmp_path):
     task.cancel()
     with pytest.raises(asyncio.CancelledError):
         await task
+
+
+@pytest.mark.asyncio
+async def test_disconnect_through_real_app_stops_reading(tmp_path):
+    """Same as above but through ``backend.main:app`` and its HTTP middleware."""
+    video = _make_file(tmp_path, "clip.mp4", MEDIA_RANGE_CAP * 2)
+    first_body_sent = asyncio.Event()
+    sent: list[dict[str, Any]] = []
+    requested = False
+
+    async def receive() -> dict[str, Any]:
+        nonlocal requested
+        if not requested:
+            requested = True
+            return {"type": "http.request", "body": b"", "more_body": False}
+        await first_body_sent.wait()
+        return {"type": "http.disconnect"}
+
+    async def send(message: dict[str, Any]) -> None:
+        sent.append(message)
+        if message["type"] == "http.response.body":
+            first_body_sent.set()
+
+    scope = _scope("bytes=0-")
+    scope.update(
+        path="/api/content/media/svc/x",
+        raw_path=b"/api/content/media/svc/x",
+        query_string=b"",
+        scheme="http",
+        server=("127.0.0.1", 8000),
+        client=("127.0.0.1", 50000),
+        http_version="1.1",
+        root_path="",
+    )
+    scope["headers"] = [*scope["headers"], (b"host", b"127.0.0.1:8000")]
+
+    with (
+        patch("backend.api.content._resolve_media_path", return_value=video),
+        capture_logs() as logs,
+    ):
+        await asyncio.wait_for(app(scope, receive, send), timeout=10)
+
+    bodies = [m for m in sent if m["type"] == "http.response.body"]
+    assert len(bodies) < MEDIA_RANGE_CAP // media_range.CHUNK_SIZE
+    entries = [e for e in logs if e["event"] == "media_request"]
+    assert len(entries) == 1
+    assert entries[0]["client_disconnected"] is True
+    assert entries[0]["bytes_sent"] < MEDIA_RANGE_CAP

@@ -61,7 +61,7 @@ export interface ModalProps {
     bodyRef?: React.Ref<HTMLDivElement>;
     /** Breadcrumb surface: logs `dialog` open / close. */
     logId?: DialogLogId;
-    /** Keys for the dialog's own content (the viewer's ← / → / ↑ / ↓); Escape is the layer's. */
+    /** Keys for the dialog's own content (the viewer's ← / → / ↑ / ↓); Escape is the layer's by default, but a caller may claim it (call `preventDefault()`: `useDialog` honours `defaultPrevented`, as the calendar picker does). */
     onKeyDown?: React.KeyboardEventHandler<HTMLDivElement>;
 }
 
