@@ -463,15 +463,16 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   (`cubic-bezier(0.2, 0, 0, 1)`). framer-motion reads numbers:
   `transition={{ duration: motion.duration.base / 1000, ease: motion.easing.standard }}`.
 - Every animation is 150-200 ms. The listed exceptions: `duration-glide`
-  (scroll glides only), `animate-landing` (1400 ms, the landed-row highlight),
+  (scroll glides, and the blog feed caption card's hover nudge through
+  `transition-caption`), `animate-landing` (1400 ms, the landed-row highlight),
   the ambient orbs' 22-34 s drift (`animate-orb-drift-1/2`,
   `animate-orb-breathe`), About's easter egg (`animate-heart-float` 800 ms,
   `animate-heartbeat` 1.2 s), and the celebrations: `animate-toast-in` 350 ms
   (the toast entrance), `animate-shimmer` 1.2 s, `animate-pop` 500 ms,
   `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, and the blog feed's
-  original motion (`duration-lift` 500 ms, `duration-zoom` 700 ms, `ease-spring`
-  on the feed tile, `duration-lens` 300 ms on the timeline rail's zoom; see
-  "The blog feed"). All stop or become static with reduced motion
+  original motion (`duration-lift` 500 ms, `duration-zoom` 700 ms and the
+  caption's `transition-caption` on the feed tile, `duration-lens` 300 ms on the
+  timeline rail's zoom; see "The blog feed"). All stop or become static with reduced motion
   (`motion-reduce:`).
 - `animate-reveal` (a fade in with an 8 px rise, `duration-base`) is for cards
   appearing in a feed and for a sheet dialog entering; pair it with
@@ -629,9 +630,16 @@ D2b replacements were rejected. Its values live in `design/tokens/blogFeed.ts`.
   `text-accent-strong`, `lang="ja"`); featured cards use the `-lg` sizes. On hover the card
   lifts 6 px (`duration-lift`, 500 ms), a blurred `bg-accent-aura` glows behind it, the tile
   shadow becomes `shadow-tile-hover` (logo-colour glow), the photo zooms to 105 %
-  (`duration-zoom`, 700 ms) and the caption nudges 4 px up-left on `ease-spring`
-  (`duration-glide`) with `shadow-caption-hover`. Reduced motion keeps the hover look but
-  drops the transitions. Focus shows a `ring-2 ring-inset ring-accent` over the photo.
+  (`duration-zoom`, 700 ms) and the caption nudges 4 px up-left with `shadow-caption-hover`.
+  The caption uses `transition-caption` (a `tailwind.config.js` utility, as e4e4118's inline
+  transition): `transform` on `ease-spring` and `box-shadow` on `ease`, both `duration-glide`
+  (400 ms), so only the nudge overshoots, never the glow. Reduced motion keeps the hover look
+  (aura, glows) but nothing moves: no transitions, no lift, zoom or nudge
+  (`motion-reduce:hover:translate-y-0` and the like). Focus shows a
+  `ring-2 ring-inset ring-accent` over the photo.
+  The caption's min / max widths (`min-w-[95px] max-w-[150px]`, featured
+  `min-w-[130px] max-w-[200px]`) are arbitrary width values on purpose: fixed layout sizes the
+  guard allows, copied from e4e4118, with no matching spacing step.
 - **All / Favorite filter** (`RecentPostsFeed`): one segmented control, not two pills. A grey
   track (`role="group"`, `rounded-full bg-segment-track`, black at 5 %; `p-0.5` plus a
   transparent 1 px border for the original 3 px inset, `gap-0.5`) holds two `aria-pressed`
@@ -644,11 +652,13 @@ D2b replacements were rejected. Its values live in `design/tokens/blogFeed.ts`.
   `shadow-accent-beacon` (the strong colour glowing at 38 % / 25 %). After an 800 ms dwell the
   fisheye zoom shows the original "light through a lens": the `border-subtle` track widens from
   2 to 3 px and a 20 px `bg-accent-lens` band (a radial glow of the strong colour at 8 %)
-  fades in over the magnified zone, centred by `--ds-rail-lens-y` (set on the element; it
-  keeps its last centre while it fades out). The hover ring is `border-accent-strong` when
+  fades in (`ease-out`, as e4e4118) over the magnified zone, centred by `--ds-rail-lens-y` (set
+  on the element from the last zoom centre, kept in state). Unlike e4e4118, which removed it at
+  once, it also fades out on leave. The 3 px zoomed track is `border-l-[3px]`, an arbitrary
+  border width kept on purpose: Tailwind has no 3 px border step and the value is e4e4118's. The hover ring is `border-accent-strong` when
   zoomed (`border-strong` otherwise) and the tooltip glows with `shadow-accent-glow`. The zoom
-  transitions (track width, lens, year markers, dot) run `duration-lens` (300 ms)
-  `ease-in-out`, none with reduced motion.
+  transitions run `duration-lens` (300 ms): track width, year markers and dot `ease-in-out`,
+  the lens `ease-out`; none with reduced motion.
 
 ### The group rail and the profile card
 

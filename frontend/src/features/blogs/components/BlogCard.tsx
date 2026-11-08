@@ -42,7 +42,8 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
             className={cn(
                 // e4e4118: "-translate-y-1.5" on hover, "transition-transform duration-500 ease-out".
                 'group relative isolate block aspect-[3/4] w-full cursor-pointer text-left',
-                'transition-transform duration-lift ease-out hover:-translate-y-1.5 motion-reduce:transition-none',
+                // Reduced motion: the hover look (aura, glows) stays, nothing moves.
+                'transition-transform duration-lift ease-out hover:-translate-y-1.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0',
                 'focus-visible:outline-none',
             )}
         >
@@ -74,7 +75,7 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
                         className={cn(
                             // e4e4118: "transition-all duration-700 ease-out", "scale-105" on hover.
                             'absolute inset-0 h-full w-full object-cover object-top',
-                            'transition duration-zoom ease-out group-hover:scale-105 motion-reduce:transition-none',
+                            'transition duration-zoom ease-out group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100',
                             imageLoaded ? 'opacity-100' : 'opacity-0',
                         )}
                     />
@@ -95,7 +96,8 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
                 data-testid="blog-card-caption"
                 className={cn(
                     'absolute z-20 block border border-tile-glass bg-tile-glass text-left shadow-caption backdrop-blur-lg backdrop-saturate-180',
-                    'transition duration-glide ease-spring group-hover:-translate-x-1 group-hover:-translate-y-1 group-hover:shadow-caption-hover motion-reduce:transition-none',
+                    'transition-caption group-hover:-translate-x-1 group-hover:-translate-y-1 group-hover:shadow-caption-hover',
+                    'motion-reduce:transition-none motion-reduce:group-hover:translate-x-0 motion-reduce:group-hover:translate-y-0',
                     isFeatured
                         ? '-bottom-3 -right-3 min-w-[130px] max-w-[200px] rounded-md px-3.5 py-3'
                         : '-bottom-2 -right-2 min-w-[95px] max-w-[150px] rounded-sm px-2.5 py-2',

@@ -23,6 +23,7 @@ const twMerge = extendTailwindMerge<'mask-image'>({
             animate: [{ animate: ['landing', 'reveal', 'orb-drift-1', 'orb-drift-2', 'orb-breathe', 'heart-float', 'heartbeat', 'shimmer', 'pop', 'confetti', 'sparkle', 'toast-in'] }],
             ease: [{ ease: ['standard', 'spring'] }],
             'mask-image': [{ mask: ['fade-y'] }],
+            transition: [{ transition: ['caption'] }],
         },
     },
 })

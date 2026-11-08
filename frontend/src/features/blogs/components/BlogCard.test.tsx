@@ -1,4 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { render, fireEvent, screen } from '@testing-library/react';
 import { BlogCard } from './BlogCard';
 import type { RecentPost } from '../../../types';
@@ -80,7 +82,7 @@ describe('BlogCard e4e4118 tile', () => {
     expect(button).not.toHaveClass('bg-card', 'overflow-hidden');
     const tile = screen.getByTestId('blog-card-tile');
     expect(tile).toHaveClass('absolute', 'inset-0', 'overflow-hidden', 'rounded-md', 'bg-accent-tile', 'shadow-tile', 'group-hover:shadow-tile-hover');
-    expect(button.querySelector('img')).toHaveClass('group-hover:scale-105', 'duration-zoom', 'motion-reduce:transition-none');
+    expect(button.querySelector('img')).toHaveClass('group-hover:scale-105', 'duration-zoom');
     expect(tile.querySelector('.bg-tile-vignette')).not.toBeNull();
     expect(button.querySelector('.bg-accent-aura')).toHaveClass('-inset-3', '-z-10', 'blur-xl', 'opacity-0', 'group-hover:opacity-100', 'motion-reduce:transition-none');
   });
@@ -91,8 +93,31 @@ describe('BlogCard e4e4118 tile', () => {
     expect(caption).toHaveClass(
       'absolute', '-bottom-2', '-right-2', 'rounded-sm', 'px-2.5', 'py-2', 'min-w-[95px]', 'max-w-[150px]',
       'bg-tile-glass', 'border-tile-glass', 'backdrop-blur-lg', 'shadow-caption',
-      'group-hover:-translate-x-1', 'group-hover:-translate-y-1', 'group-hover:shadow-caption-hover', 'ease-spring',
+      'group-hover:-translate-x-1', 'group-hover:-translate-y-1', 'group-hover:shadow-caption-hover',
     );
+  });
+
+  it('springs only the caption nudge; its glow eases (e4e4118 per-property transition)', () => {
+    render(<BlogCard post={makePost({})} onClick={() => {}} />);
+    const caption = screen.getByTestId('blog-card-caption');
+    expect(caption).toHaveClass('transition-caption');
+    expect(caption).not.toHaveClass('transition', 'ease-spring', 'duration-glide');
+    const config = readFileSync(resolve(__dirname, '../../../../tailwind.config.js'), 'utf-8');
+    expect(config).toContain("transitionProperty: 'transform, box-shadow'");
+    expect(config).toContain("transitionDuration: 'var(--ds-duration-glide)'");
+    expect(config).toContain("transitionTimingFunction: 'var(--ds-ease-spring), ease'");
+  });
+
+  it('keeps the hover look but moves nothing under reduced motion', () => {
+    render(<BlogCard post={makePost({})} onClick={() => {}} />);
+    const button = screen.getByRole('button');
+    expect(button).toHaveClass('motion-reduce:transition-none', 'motion-reduce:hover:translate-y-0');
+    expect(button.querySelector('img')).toHaveClass('motion-reduce:group-hover:scale-100');
+    expect(screen.getByTestId('blog-card-caption')).toHaveClass(
+      'motion-reduce:transition-none', 'motion-reduce:group-hover:translate-x-0', 'motion-reduce:group-hover:translate-y-0',
+      'group-hover:shadow-caption-hover',
+    );
+    expect(button.querySelector('.bg-accent-aura')).toHaveClass('group-hover:opacity-100');
   });
 
   it('uses the larger offsets, padding and radius on a featured card', () => {

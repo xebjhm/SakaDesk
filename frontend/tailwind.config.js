@@ -343,5 +343,16 @@ export default {
             const fadeY = 'linear-gradient(to bottom, transparent 0%, black 20%, black 65%, transparent 100%)';
             addUtilities({ '.mask-fade-y': { maskImage: fadeY, WebkitMaskImage: fadeY } });
         },
+        // The blog feed caption card's hover (e4e4118: "transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+        // box-shadow 0.4s ease"): only the nudge springs; the glow eases, so it never overshoots.
+        ({ addUtilities }) => {
+            addUtilities({
+                '.transition-caption': {
+                    transitionProperty: 'transform, box-shadow',
+                    transitionDuration: 'var(--ds-duration-glide)',
+                    transitionTimingFunction: 'var(--ds-ease-spring), ease',
+                },
+            });
+        },
     ],
 }
