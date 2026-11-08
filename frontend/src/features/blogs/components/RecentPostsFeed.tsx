@@ -6,7 +6,7 @@ import type { RecentPost } from '../../../types';
 import { BlogCard } from './BlogCard';
 import { BlogStatus } from './BlogStatus';
 import { DynamicBackground } from '../../../core/common/DynamicBackground';
-import { Button, Pill } from '../../../design/primitives';
+import { Button } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { useAppStore } from '../../../store/appStore';
 import type { BlogSelectionMode } from '../../../store/appStore';
@@ -23,6 +23,31 @@ interface RecentPostsFeedProps {
     onRetry: () => void;
     serviceId?: string | null;
 }
+
+/**
+ * One segment of the feed's All / Favorite control (e4e4118: "padding: 6px 14px", "font-size: 0.75rem",
+ * muted text that turns secondary on hover; the selected one a white pill with "0 1px 3px" shadow and
+ * the 推 pink "#ff69b4", here the semantic oshi colour since this is the favourite filter).
+ */
+const FeedModeSegment: React.FC<{ selected: boolean; onClick: () => void; children: React.ReactNode }> = ({
+    selected,
+    onClick,
+    children,
+}) => (
+    <button
+        type="button"
+        aria-pressed={selected}
+        onClick={onClick}
+        className={cn(
+            'inline-flex items-center gap-1 rounded-full px-3.5 py-1.5 text-segment font-medium',
+            'transition-colors duration-base ease-standard motion-reduce:transition-none',
+            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+            selected ? 'bg-pill text-semantic-oshi shadow-segment' : 'bg-transparent text-muted hover:text-secondary',
+        )}
+    >
+        {children}
+    </button>
+);
 
 // Determine which posts should be "hero" (2x2) cards
 function getHeroIndices(totalPosts: number): Set<number> {
@@ -75,14 +100,24 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                 </div>
 
                 <div className="flex shrink-0 items-center gap-3">
-                    <div role="group" aria-label={t('blogs.postsFrom')} className="inline-flex items-center gap-0.5 rounded-full bg-sunken p-0.5">
-                        <Pill selected={selectionMode === 'all'} onClick={() => handleModeChange('all')}>
+                    {/* e4e4118's segmented control: one grey track ("padding: 3px", "gap: 2px",
+                        "rgba(0, 0, 0, 0.05)"); p-0.5 plus a transparent 1 px border makes the 3 px inset. */}
+                    <div
+                        role="group"
+                        aria-label={t('blogs.postsFrom')}
+                        className="inline-flex items-center gap-0.5 rounded-full border border-transparent bg-segment-track p-0.5"
+                    >
+                        <FeedModeSegment selected={selectionMode === 'all'} onClick={() => handleModeChange('all')}>
                             {t('blogs.all')}
-                        </Pill>
-                        <Pill tone="oshi" selected={selectionMode === 'favorite'} onClick={() => handleModeChange('favorite')}>
-                            <Heart aria-hidden="true" className="h-3 w-3" fill="currentColor" />
+                        </FeedModeSegment>
+                        <FeedModeSegment selected={selectionMode === 'favorite'} onClick={() => handleModeChange('favorite')}>
+                            <Heart
+                                aria-hidden="true"
+                                className={cn('h-3.5 w-3.5', selectionMode === 'favorite' && 'text-semantic-oshi-solid')}
+                                fill="currentColor"
+                            />
                             {t('blogs.favorite')}
-                        </Pill>
+                        </FeedModeSegment>
                     </div>
                     <Button
                         variant="ghost"

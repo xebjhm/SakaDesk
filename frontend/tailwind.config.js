@@ -49,6 +49,14 @@ export default {
                 'expressive-orb-2': 'var(--ds-expressive-orb-2)',
                 'expressive-orb-3': 'var(--ds-expressive-orb-3)',
                 aurora: 'var(--ds-aurora)',
+                // Blog feed tile (e4e4118 look): the hover aura (logo 19 % -> accent 8 %), the photo
+                // placeholder (logo 9 % -> accent 7 %, 145deg) and the bottom-edge vignette.
+                'accent-aura': 'radial-gradient(ellipse at center, color-mix(in srgb, var(--ds-accent-logo) 19%, transparent) 0%, color-mix(in srgb, var(--ds-accent) 8%, transparent) 50%, transparent 70%)',
+                'accent-tile': 'linear-gradient(145deg, color-mix(in srgb, var(--ds-accent-logo) 9%, transparent) 0%, color-mix(in srgb, var(--ds-accent) 7%, transparent) 100%)',
+                'tile-vignette': 'linear-gradient(to top, var(--ds-blog-vignette) 0%, transparent 20%)',
+                // Timeline rail lens (e4e4118 "light through a lens"): a strong-colour glow at 8 % ("15" hex
+                // alpha) centred on the zoom; TimelineRail sets --ds-rail-lens-y.
+                'accent-lens': 'radial-gradient(ellipse 100% 30% at 50% var(--ds-rail-lens-y), color-mix(in srgb, var(--ds-accent-strong) 8%, transparent) 0%, transparent 70%)',
                 // Theme-aware gradients
                 'theme-gradient': 'linear-gradient(to right, var(--color-gradient-from), var(--color-gradient-to))',
                 'theme-gradient-vertical': 'linear-gradient(to bottom, var(--color-gradient-from), var(--color-gradient-to))',
@@ -69,6 +77,7 @@ export default {
             // Opacity modifiers (bg-sheet/50) do not work with these; add a token instead.
             backgroundColor: {
                 accent: 'var(--ds-accent)',
+                'accent-strong': 'var(--ds-accent-strong)',
                 'accent-subtle': 'var(--ds-accent-subtle)',
                 'accent-border': 'var(--ds-accent-border)',
                 sheet: 'var(--ds-surface-sheet)',
@@ -114,6 +123,10 @@ export default {
                 'group-shelter-video': 'var(--ds-group-shelter-video)',
                 'group-shelter-voice': 'var(--ds-group-shelter-voice)',
                 'group-shelter-text': 'var(--ds-group-shelter-text)',
+                // Blog feed tile caption card (e4e4118 frosted white).
+                'tile-glass': 'var(--ds-blog-glass)',
+                // The feed's All / Favorite segmented control track (e4e4118 black at 5 %).
+                'segment-track': 'var(--ds-blog-segment-track)',
             },
             textColor: {
                 accent: 'var(--ds-accent)',
@@ -149,6 +162,7 @@ export default {
                 'accent-border': 'var(--ds-accent-border)',
                 'accent-wash': 'var(--ds-accent-wash-border)',
                 accent: 'var(--ds-accent)',
+                'accent-strong': 'var(--ds-accent-strong)',
                 'frost': 'var(--ds-overlay-frost-border)',
                 subtle: 'var(--ds-border-subtle)',
                 strong: 'var(--ds-border-strong)',
@@ -161,6 +175,7 @@ export default {
                 'group-bubble': 'var(--ds-group-bubble-border)',
                 'group-subtle': 'var(--ds-group-subtle-border)',
                 surface: 'var(--ds-surface-sheet)',
+                'tile-glass': 'var(--ds-blog-glass-border)',
                 'group-shelter-picture': 'var(--ds-group-shelter-picture)',
                 'group-shelter-video': 'var(--ds-group-shelter-video)',
                 'group-shelter-voice': 'var(--ds-group-shelter-voice)',
@@ -209,10 +224,17 @@ export default {
                 'accent-halo': 'var(--ds-shadow-accent-halo)',
                 'accent-glow-hover': 'var(--ds-shadow-accent-glow-hover)',
                 'accent-unread': 'var(--ds-shadow-accent-unread)',
+                'accent-beacon': 'var(--ds-shadow-accent-beacon)',
                 pill: 'var(--ds-shadow-pill)',
                 card: 'var(--ds-shadow-card)',
                 sheet: 'var(--ds-shadow-sheet)',
                 'group-glow': 'var(--ds-shadow-group-glow)',
+                // Blog feed tile (e4e4118 look).
+                tile: 'var(--ds-blog-shadow-tile)',
+                'tile-hover': 'var(--ds-shadow-accent-tile)',
+                caption: 'var(--ds-blog-shadow-caption)',
+                'caption-hover': 'var(--ds-shadow-accent-caption)',
+                segment: 'var(--ds-blog-shadow-segment)',
             },
             fontSize: {
                 caption: ['var(--ds-font-caption-size)', { lineHeight: 'var(--ds-font-caption-leading)' }],
@@ -222,6 +244,14 @@ export default {
                 heading: ['var(--ds-font-heading-size)', { lineHeight: 'var(--ds-font-heading-leading)' }],
                 display: ['var(--ds-font-display-size)', { lineHeight: 'var(--ds-font-display-leading)' }],
                 reading: ['var(--ds-font-reading-size)', { lineHeight: 'var(--ds-font-reading-leading)' }],
+                // Blog feed tile caption (e4e4118 sizes; size only, the line height is inherited).
+                'tile-date': 'var(--ds-blog-font-tile-date)',
+                'tile-date-lg': 'var(--ds-blog-font-tile-date-lg)',
+                'tile-title': 'var(--ds-blog-font-tile-title)',
+                'tile-title-lg': 'var(--ds-blog-font-tile-title-lg)',
+                'tile-name': 'var(--ds-blog-font-tile-name)',
+                'tile-name-lg': 'var(--ds-blog-font-tile-name-lg)',
+                segment: 'var(--ds-blog-font-segment)',
             },
             keyframes: {
                 landing: {
@@ -296,9 +326,13 @@ export default {
                 fast: 'var(--ds-duration-fast)',
                 base: 'var(--ds-duration-base)',
                 glide: 'var(--ds-duration-glide)',
+                lift: 'var(--ds-duration-lift)',
+                zoom: 'var(--ds-duration-zoom)',
+                lens: 'var(--ds-duration-lens)',
             },
             transitionTimingFunction: {
                 standard: 'var(--ds-ease-standard)',
+                spring: 'var(--ds-ease-spring)',
             },
         },
     },
@@ -308,6 +342,17 @@ export default {
         ({ addUtilities }) => {
             const fadeY = 'linear-gradient(to bottom, transparent 0%, black 20%, black 65%, transparent 100%)';
             addUtilities({ '.mask-fade-y': { maskImage: fadeY, WebkitMaskImage: fadeY } });
+        },
+        // The blog feed caption card's hover (e4e4118: "transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1),
+        // box-shadow 0.4s ease"): only the nudge springs; the glow eases, so it never overshoots.
+        ({ addUtilities }) => {
+            addUtilities({
+                '.transition-caption': {
+                    transitionProperty: 'transform, box-shadow',
+                    transitionDuration: 'var(--ds-duration-glide)',
+                    transitionTimingFunction: 'var(--ds-ease-spring), ease',
+                },
+            });
         },
     ],
 }

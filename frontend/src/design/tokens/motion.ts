@@ -1,6 +1,7 @@
 /**
  * Motion: every animation is 150-200 ms with one easing curve, except three
- * special cases: `glide` (400 ms, scroll glides only), `landing`
+ * special cases: `glide` (400 ms, scroll glides and the blog feed caption card's
+ * hover nudge, `transition-caption`), `landing`
  * (1400 ms, the landed-row highlight only) and `toast` (350 ms, the
  * celebration toast entrance only).
  */

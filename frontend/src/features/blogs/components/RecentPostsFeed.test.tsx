@@ -88,17 +88,31 @@ describe('RecentPostsFeed', () => {
         expect(button).not.toHaveClass('bg-accent-tonal');
     });
 
-    it('sits the All / Favorite pills on the grey track', () => {
+    it('draws All / Favorite as one segmented control: a grey track holding both segments', () => {
         render(<RecentPostsFeed {...props()} />);
         const track = screen.getByRole('group', { name: 'Show posts from' });
-        expect(track).toHaveClass('rounded-full', 'bg-sunken', 'p-0.5');
+        expect(track).toHaveClass('inline-flex', 'rounded-full', 'bg-segment-track', 'gap-0.5', 'p-0.5', 'border', 'border-transparent');
+        const segments = track.querySelectorAll('button');
+        expect(segments).toHaveLength(2);
+        segments.forEach((segment) => {
+            expect(segment).toHaveClass('rounded-full', 'px-3.5', 'py-1.5', 'text-segment', 'font-medium');
+            expect(segment).not.toHaveClass('shadow-pill', 'ring-1');
+        });
     });
 
-    it('shows the selected All pill in the accent roles and the selected Favorite pill in the oshi roles', () => {
+    it('raises the selected segment as a white pill in the oshi colour, the other muted on the track', () => {
         render(<RecentPostsFeed {...props()} />);
-        expect(screen.getByRole('button', { name: 'All' })).toHaveClass('bg-accent-subtle', 'text-accent-strong');
-        fireEvent.click(screen.getByRole('button', { name: 'Favorite' }));
-        expect(screen.getByRole('button', { name: 'Favorite' })).toHaveClass('bg-semantic-oshi-subtle', 'text-semantic-oshi');
+        const all = screen.getByRole('button', { name: 'All' });
+        const favorite = screen.getByRole('button', { name: 'Favorite' });
+        expect(all).toHaveAttribute('aria-pressed', 'true');
+        expect(all).toHaveClass('bg-pill', 'shadow-segment', 'text-semantic-oshi');
+        expect(favorite).toHaveClass('bg-transparent', 'text-muted', 'hover:text-secondary');
+        expect(favorite).not.toHaveClass('shadow-segment');
+        fireEvent.click(favorite);
+        expect(favorite).toHaveAttribute('aria-pressed', 'true');
+        expect(favorite).toHaveClass('bg-pill', 'shadow-segment', 'text-semantic-oshi');
+        expect(favorite.querySelector('svg')).toHaveClass('h-3.5', 'w-3.5', 'text-semantic-oshi-solid');
+        expect(all).toHaveClass('text-muted');
     });
 
     it('draws the favourites empty-state heart in the oshi colour', () => {

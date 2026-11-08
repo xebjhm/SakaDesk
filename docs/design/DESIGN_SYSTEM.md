@@ -204,7 +204,9 @@ group accent says where you are; a meaning colour says what a thing is.
   (white glyph 3.4:1, icons only), text `#aa376f` (6.0:1 on white, 5.5:1 on
   subtle). Utilities: `text-semantic-oshi`, `bg-semantic-oshi-subtle`,
   `bg-semantic-oshi-solid`, `border-semantic-oshi`, `ring-semantic-oshi`,
-  `fill-semantic-oshi`. `Pill tone="oshi"` is the Favorite filter. An unselected
+  `fill-semantic-oshi`. The blog feed's All / Favorite control shows its selected
+  segment in `text-semantic-oshi` (the heart `text-semantic-oshi-solid`), and
+  `Pill tone="oshi"` gives any other 推 filter the oshi roles. An unselected
   heart outline uses `text-semantic-oshi-solid` (the vivid pink, 3:1 for an icon).
 - **The favourite star** on a bookmarked chat message is the original yellow,
   `color.semantic.star` `#facc15` (`text-semantic-star`, with a small drop
@@ -408,7 +410,7 @@ Brand moments are for waiting, starting, finishing and looking back
   would otherwise cut the orbs flat; About's hero uses it.
   Low-density screens only. The blog feed pairs its orbs with a `bg-frost` header
   (L2: orbs + frosted glass); the reader is L0 and has no glass. The feed's
-  All / Favorite pills sit on a grey track (`rounded-full bg-sunken p-0.5`).
+  All / Favorite filter is one segmented control (see "The blog feed").
 - **`CelebrationToast`** (`title`, `description`, `icon`): tier B. A solid
   sheet toast (`bg-sheet`, `animate-toast-in`; the caller positions it, typically bottom-right) with one aurora shimmer (`animate-shimmer`)
   and ten sparkles (`animate-sparkle`). `role="status"`.
@@ -461,18 +463,23 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   (`cubic-bezier(0.2, 0, 0, 1)`). framer-motion reads numbers:
   `transition={{ duration: motion.duration.base / 1000, ease: motion.easing.standard }}`.
 - Every animation is 150-200 ms. The listed exceptions: `duration-glide`
-  (scroll glides only), `animate-landing` (1400 ms, the landed-row highlight),
+  (scroll glides, and the blog feed caption card's hover nudge through
+  `transition-caption`), `animate-landing` (1400 ms, the landed-row highlight),
   the ambient orbs' 22-34 s drift (`animate-orb-drift-1/2`,
   `animate-orb-breathe`), About's easter egg (`animate-heart-float` 800 ms,
   `animate-heartbeat` 1.2 s), and the celebrations: `animate-toast-in` 350 ms
   (the toast entrance), `animate-shimmer` 1.2 s, `animate-pop` 500 ms,
-  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms. All stop or become static
-  with reduced motion (`motion-reduce:`).
+  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, and the blog feed's
+  original motion (`duration-lift` 500 ms, `duration-zoom` 700 ms and the
+  caption's `transition-caption` on the feed tile, `duration-lens` 300 ms on the
+  timeline rail's zoom; see "The blog feed"). All stop or become static with reduced motion
+  (`motion-reduce:`).
 - `animate-reveal` (a fade in with an 8 px rise, `duration-base`) is for cards
   appearing in a feed and for a sheet dialog entering; pair it with
   `motion-reduce:animate-none`.
 - Three shadow levels, `shadow-pill`, `shadow-card`, `shadow-sheet`, stay
-  neutral. L1 glows are coloured through the accent `glow` role
+  neutral. The blog feed tile keeps its original shadows (`shadow-tile`,
+  `shadow-caption` and their logo-glow `-hover` forms). L1 glows are coloured through the accent `glow` role
   (`shadow-accent-glow`, `shadow-accent-glow-hover`, `shadow-accent-unread`).
 - `bezierEasing` in `design/tokens/motion.ts` evaluates the standard curve in JS.
 
@@ -492,7 +499,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Group background behind everything | `Canvas` |
 | Main content area or dialog body | `Sheet` / `Modal` |
 | A boxed item on a sheet | `Card` |
-| Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for the 推 filter) |
+| Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for a 推 filter). The blog feed's All / Favorite is its own segmented control (see "The blog feed") |
 | Unread count | `Badge count={n}` (hidden at 0, `99+` cap, unread glow) |
 | Person or member | `Avatar` (`selected`: accent ring with a white gap + halo) |
 | Timeline date | `DatePill` (`sticky` inside scrolling timelines) |
@@ -606,8 +613,52 @@ the mascot or an unknown member). `resolveWash` also reports why there is none
 `wash`; `reason`: `image_error`, `mascot`, `no_member_data`). No other element uses
 member colours.
 
-The blog timeline rail's hover ring is `border-accent` when zoomed (`border-strong`
-otherwise) and its tooltip glows with `shadow-accent-glow`.
+### The blog feed (the original look)
+
+The blog feed keeps its original design (commit `e4e4118`), restored with tokens after the
+D2b replacements were rejected. Its values live in `design/tokens/blogFeed.ts`.
+
+- **Feed tile** (`BlogCard`): the photo tile fills the whole 3:4 card (`rounded-md`, featured
+  `rounded-lg`; `bg-accent-tile`, the logo 9 % → accent 7 % placeholder; `shadow-tile`; a
+  `bg-tile-vignette` fade along the bottom). The caption is a small frosted card
+  (`bg-tile-glass`, `border-tile-glass`, `backdrop-blur-lg backdrop-saturate-180`,
+  `shadow-caption`) anchored at the bottom-right and deliberately offset past the photo edge
+  (`-bottom-2 -right-2`, padding `px-2.5 py-2`, `rounded-sm`, 95–150 px wide; featured
+  `-bottom-3 -right-3`, `px-3.5 py-3`, `rounded-md`, 130–200 px). It holds the date in small
+  caps (`text-tile-date`, `uppercase tracking-wider text-muted`), the serif title
+  (`text-tile-title`, `font-reading`, `lang="ja"`) and the member name (`text-tile-name`,
+  `text-accent-strong`, `lang="ja"`); featured cards use the `-lg` sizes. On hover the card
+  lifts 6 px (`duration-lift`, 500 ms), a blurred `bg-accent-aura` glows behind it, the tile
+  shadow becomes `shadow-tile-hover` (logo-colour glow), the photo zooms to 105 %
+  (`duration-zoom`, 700 ms) and the caption nudges 4 px up-left with `shadow-caption-hover`.
+  The caption uses `transition-caption` (a `tailwind.config.js` utility, as e4e4118's inline
+  transition): `transform` on `ease-spring` and `box-shadow` on `ease`, both `duration-glide`
+  (400 ms), so only the nudge overshoots, never the glow. Reduced motion keeps the hover look
+  (aura, glows) but nothing moves: no transitions, no lift, zoom or nudge
+  (`motion-reduce:hover:translate-y-0` and the like). Focus shows a
+  `ring-2 ring-inset ring-accent` over the photo.
+  The caption's min / max widths (`min-w-[95px] max-w-[150px]`, featured
+  `min-w-[130px] max-w-[200px]`) are arbitrary width values on purpose: fixed layout sizes the
+  guard allows, copied from e4e4118, with no matching spacing step.
+- **All / Favorite filter** (`RecentPostsFeed`): one segmented control, not two pills. A grey
+  track (`role="group"`, `rounded-full bg-segment-track`, black at 5 %; `p-0.5` plus a
+  transparent 1 px border for the original 3 px inset, `gap-0.5`) holds two `aria-pressed`
+  segments (`rounded-full px-3.5 py-1.5 text-segment font-medium`, 12 px). The unselected one
+  is `text-muted` on the track (`hover:text-secondary`); the selected one is a raised white pill
+  (`bg-pill shadow-segment`) in the oshi colour (`text-semantic-oshi`; the Favorite heart
+  `text-semantic-oshi-solid`), for All as well, as in the original: the control is the 推 filter.
+
+- **Timeline rail** (`TimelineRail`): the current post is a `bg-accent-strong` dot with
+  `shadow-accent-beacon` (the strong colour glowing at 38 % / 25 %). After an 800 ms dwell the
+  fisheye zoom shows the original "light through a lens": the `border-subtle` track widens from
+  2 to 3 px and a 20 px `bg-accent-lens` band (a radial glow of the strong colour at 8 %)
+  fades in (`ease-out`, as e4e4118) over the magnified zone, centred by `--ds-rail-lens-y` (set
+  on the element from the last zoom centre, kept in state). Unlike e4e4118, which removed it at
+  once, it also fades out on leave. The 3 px zoomed track is `border-l-[3px]`, an arbitrary
+  border width kept on purpose: Tailwind has no 3 px border step and the value is e4e4118's. The hover ring is `border-accent-strong` when
+  zoomed (`border-strong` otherwise) and the tooltip glows with `shadow-accent-glow`. The zoom
+  transitions run `duration-lens` (300 ms): track width, year markers and dot `ease-in-out`,
+  the lens `ease-out`; none with reduced motion.
 
 ### The group rail and the profile card
 
