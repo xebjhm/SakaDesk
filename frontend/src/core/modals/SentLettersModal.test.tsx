@@ -40,7 +40,7 @@ describe('SentLettersModal', () => {
         expect(screen.getByRole('dialog', { name: 'Sent Letters' })).toBeInTheDocument();
     });
 
-    it('walks the viewer newest first, as the grid reads (→ is older)', async () => {
+    it('walks the viewer newest first, as the grid reads (← older, → newer)', async () => {
         render(
             <SentLettersModal isOpen onClose={vi.fn()} status="ready" onSelectLetter={vi.fn()}
                 letters={[letter(1, '2023-06-01T14:00:00Z', null, '古い'), letter(2, '2025-05-05T14:00:00Z', null, '新しい')]} />,
@@ -49,9 +49,9 @@ describe('SentLettersModal', () => {
         await userEvent.click(within(dialog).getAllByRole('button', { name: /^Letter sent/ })[0]);
         const viewer = await screen.findByRole('dialog', { name: 'Sent letter' });
         expect(within(viewer).getByRole('region', { name: 'Letter text' })).toHaveTextContent('新しい');
-        fireEvent.keyDown(viewer, { key: 'ArrowRight' });
+        fireEvent.keyDown(viewer, { key: 'ArrowLeft' });
         expect(within(screen.getByRole('dialog', { name: 'Sent letter' })).getByRole('region', { name: 'Letter text' })).toHaveTextContent('古い');
-        await userEvent.click(within(screen.getByRole('dialog', { name: 'Sent letter' })).getByRole('button', { name: 'Previous letter' }));
+        await userEvent.click(within(screen.getByRole('dialog', { name: 'Sent letter' })).getByRole('button', { name: 'Next letter' }));
         expect(within(screen.getByRole('dialog', { name: 'Sent letter' })).getByRole('region', { name: 'Letter text' })).toHaveTextContent('新しい');
     });
 

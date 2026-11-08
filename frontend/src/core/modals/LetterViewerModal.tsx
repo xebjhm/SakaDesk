@@ -22,11 +22,11 @@ export interface LetterViewerModalProps {
      * renders nothing too, logs `letter_viewer` `skip` / `not_found` once and calls `onClose`.
      */
     letterId: number | null;
-    /** The list's order, so the "n / total" counter counts the oldest letter as 1 either way. */
+    /** The list's order, so the counter counts the oldest letter as 1 and the arrows keep time order either way. */
     order: 'newest_first' | 'oldest_first';
     /** Breadcrumb surface of the `letter_viewer` / `letter_jump` events. */
     source: LetterViewerSource;
-    /** Called with the id of the previous / next letter in `letters`. */
+    /** Called with the id of the older (‹ / ←) or newer (› / →) letter, whichever way `letters` is sorted. */
     onNavigate: (id: number) => void;
     onClose: () => void;
     /** Called with the letter id after the viewer closed itself; the caller jumps the chat there. */
@@ -36,13 +36,14 @@ export interface LetterViewerModalProps {
 /**
  * A sent letter on a sheet dialog: the letter image (fit, on a neutral stage; the shared
  * missing-photo fallback when the file is missing or broken) beside the letter's full text,
- * which the image does not always show in full. Below ~900 px the image sits above the text.
+ * which the image does not always show in full. Below ~900 px the image sits above the text (at most 45% of the dialog; the text scrolls).
  * Clicking the image opens it in the dark media viewer on top (↑ / ↓ zoom, and with golden
  * finger Ctrl+C copy and Download, as before); Escape returns to the letter. With golden finger
  * the footer offers Download too. Ctrl+C on the letter itself copies the selected text as usual.
  * The footer is the photo viewer's: the send date and time as a link that closes the viewer
  * and jumps to the letter in the chat, the "n / total" counter (oldest = 1), and previous /
- * next buttons; ← / → move too, in the order of the list the viewer was opened from (not while
+ * next buttons; ← / → move too. › / → always show the newer letter and ‹ / ← the older one, for the
+ * chat and the newest-first Sent letters list alike (not while
  * focus is in the letter text, where they move the caret / selection).
  * Breadcrumbs: `letter_viewer` (`open`; `fallback` with `no_image` / `image_error`; `skip` with
  * `not_found`) and `letter_jump`, each with the `source` as `surface`.
@@ -67,8 +68,12 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
     const { t } = useTranslation();
     const letter = letters[index];
     const total = letters.length;
-    const hasPrev = index > 0;
-    const hasNext = index < total - 1;
+    // ‹ / ← always step to the older letter and › / → to the newer one, whichever way the list is sorted.
+    const step = order === 'newest_first' ? -1 : 1;
+    const olderIndex = index - step;
+    const newerIndex = index + step;
+    const hasPrev = olderIndex >= 0 && olderIndex < total;
+    const hasNext = newerIndex >= 0 && newerIndex < total;
     const ordinal = order === 'newest_first' ? total - index : index + 1;
     const sent = toValidDate(letter.created_at);
     const sentLabel = sent ? formatDateTime(sent) : '';
@@ -105,12 +110,12 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
         if (e.target instanceof Node && textRef.current?.contains(e.target)) return;
         if (e.key === 'ArrowLeft') {
             e.preventDefault();
-            go(index - 1);
+            go(olderIndex);
         } else if (e.key === 'ArrowRight') {
             e.preventDefault();
-            go(index + 1);
+            go(newerIndex);
         }
-    }, [go, index]);
+    }, [go, olderIndex, newerIndex]);
 
     const jump = () => {
         clientLog('letter_jump', { surface: source });
@@ -151,8 +156,8 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
                     )}
                     {total > 1 && (
                         <>
-                            <IconButton size="sm" aria-label={t('letterViewer.previous')} icon={<ChevronLeft />} disabled={!hasPrev} onClick={() => go(index - 1)} />
-                            <IconButton size="sm" aria-label={t('letterViewer.next')} icon={<ChevronRight />} disabled={!hasNext} onClick={() => go(index + 1)} />
+                            <IconButton size="sm" aria-label={t('letterViewer.previous')} icon={<ChevronLeft />} disabled={!hasPrev} onClick={() => go(olderIndex)} />
+                            <IconButton size="sm" aria-label={t('letterViewer.next')} icon={<ChevronRight />} disabled={!hasNext} onClick={() => go(newerIndex)} />
                         </>
                     )}
                 </div>
@@ -174,7 +179,7 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
                 className="h-[85vh] max-w-5xl"
                 bodyClassName="flex flex-col gap-4 overflow-hidden min-[900px]:flex-row"
             >
-                <div ref={stageRef} className="flex min-h-0 flex-1 items-center justify-center overflow-hidden rounded-card bg-sunken p-4 min-[900px]:basis-3/5">
+                <div ref={stageRef} className="flex min-h-0 max-h-[45%] flex-1 items-center justify-center overflow-hidden rounded-card bg-sunken p-4 min-[900px]:max-h-none min-[900px]:basis-3/5">
                     {image ? (
                         <button
                             type="button"
@@ -203,7 +208,7 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
                     aria-label={t('letterViewer.fullText')}
                     tabIndex={0}
                     lang={letter.text ? 'ja' : undefined}
-                    className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap rounded-card text-body text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent min-[900px]:basis-2/5"
+                    className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap rounded-card px-1 pb-4 text-body text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent min-[900px]:basis-2/5"
                 >
                     {letter.text || t('sentLetters.noTextContent')}
                 </div>

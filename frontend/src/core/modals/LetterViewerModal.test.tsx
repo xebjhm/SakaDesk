@@ -95,6 +95,11 @@ describe('LetterViewerModal', () => {
         const dialog = await screen.findByRole('dialog');
         const body = within(dialog).getByTestId('modal-body');
         expect(body).toHaveClass('flex-col', 'min-[900px]:flex-row');
+        // Stacked: the image takes at most 45% of the body, the text keeps the rest and scrolls.
+        const stage = within(dialog).getByRole('img', { name: 'Sent letter' }).closest('div');
+        expect(stage).toHaveClass('max-h-[45%]', 'min-[900px]:max-h-none');
+        const text = within(dialog).getByRole('region', { name: 'Letter text' });
+        expect(text).toHaveClass('overflow-y-auto', 'pb-4');
     });
 
     it('shows the missing-media fallback when the letter has no image, and logs it', async () => {
@@ -163,14 +168,26 @@ describe('LetterViewerModal', () => {
         expect(props.onNavigate).not.toHaveBeenCalled();
     });
 
-    it('follows the order of the list it was opened from (newest first: → is older)', async () => {
+    it('moves in time order whichever way the list is sorted (→ / › newer, ← / ‹ older)', async () => {
         const newestFirst = [...letters].reverse();
         const { props } = renderViewer({ letters: newestFirst, order: 'newest_first', source: 'sent_letters' });
         const dialog = await screen.findByRole('dialog');
         fireEvent.keyDown(dialog, { key: 'ArrowRight' });
-        expect(props.onNavigate).toHaveBeenLastCalledWith(1);
-        fireEvent.keyDown(dialog, { key: 'ArrowLeft' });
         expect(props.onNavigate).toHaveBeenLastCalledWith(3);
+        fireEvent.keyDown(dialog, { key: 'ArrowLeft' });
+        expect(props.onNavigate).toHaveBeenLastCalledWith(1);
+        await userEvent.click(within(dialog).getByRole('button', { name: 'Next letter' }));
+        expect(props.onNavigate).toHaveBeenLastCalledWith(3);
+        await userEvent.click(within(dialog).getByRole('button', { name: 'Previous letter' }));
+        expect(props.onNavigate).toHaveBeenLastCalledWith(1);
+    });
+
+    it('disables the arrows at the oldest and newest ends of a newest-first list', async () => {
+        const newestFirst = [...letters].reverse();
+        const { props, rerender } = renderViewer({ letters: newestFirst, order: 'newest_first', letterId: 3 });
+        expect(within(await screen.findByRole('dialog')).getByRole('button', { name: 'Next letter' })).toBeDisabled();
+        rerender(<LetterViewerModal {...props} letters={newestFirst} order="newest_first" letterId={1} />);
+        expect(within(screen.getByRole('dialog')).getByRole('button', { name: 'Previous letter' })).toBeDisabled();
     });
 
     it('counts letters oldest = 1, like the photo viewer, whatever the list order', async () => {
