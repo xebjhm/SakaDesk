@@ -227,6 +227,10 @@ group accent says where you are; a meaning colour says what a thing is.
 
 - **Muted text on grey.** `text-muted` (#6b7280) is for white and near-white surfaces only. On a grey fill
   (`bg-sunken`, the segment track, the Background preview) use `text-secondary` (#4b5563, at least 4.5:1).
+- **Windows title bar.** The main window keeps the native frame; on Windows 11 (build ≥ 22000) the
+  caption, caption text and window border are recoloured to `color.surface.window` (#F0F2F5) and
+  `color.text.primary` (#1F2937) through DWM (`window_chrome.py`, which mirrors these two values; a test
+  cross-checks them against `design/tokens/color.ts`). Older Windows keeps the default bar.
 - **Scrollbars** are slim and app-wide (`index.css`): a constant 10 px scrollbar box with a 6 px rounded thumb
   drawn inside a transparent border, which grows to 8 px and darkens on hover (no layout change). Thumb colours are the `--ds-scrollbar-thumb*`
   tokens (`color.scrollbar`: translucent ink on light surfaces; `thumbOnDark*`, translucent white, inside
