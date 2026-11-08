@@ -169,7 +169,9 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 )}
                 {item.type === 'video' && (
                     <div className="flex flex-col items-center gap-3">
+                        {/* Keyed by source: each item gets a fresh player (no carried-over state) */}
                         <VideoPlayer
+                            key={item.src}
                             src={item.src}
                             variant="fullscreen"
                             autoPlay
@@ -185,6 +187,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 {item.type === 'voice' && (
                     <div className="flex w-96 flex-col gap-3">
                         <VoicePlayer
+                            key={item.src}
                             src={item.src}
                             variant="fullscreen"
                             avatarUrl={item.avatarUrl}

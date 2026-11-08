@@ -340,6 +340,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         )}
                         {selectedMedia.type === 'video' && mediaUrl && (
                             <VideoPlayer
+                                key={mediaUrl}
                                 src={mediaUrl}
                                 variant="gallery"
                                 autoPlay

@@ -520,11 +520,13 @@
     "skipBack": "Back 5 seconds (←)",
     "skipForward": "Forward 5 seconds (→)",
     "mute": "Mute (M)",
-    "unmute": "Unmute (M)"
+    "unmute": "Unmute (M)",
+    "playbackError": "This voice message couldn't be played."
   },
   "videoPlayer": {
     "noAudio": "No audio",
-    "loop": "Loop"
+    "loop": "Loop",
+    "playbackError": "This video couldn't be played."
   },
   "generations": {
     "1st": "1ST GEN",

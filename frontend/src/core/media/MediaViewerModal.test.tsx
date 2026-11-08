@@ -328,3 +328,33 @@ describe('MediaViewerModal', () => {
         });
     });
 });
+
+describe('MediaViewerModal players are keyed by source', () => {
+    const videos: MediaViewerItem[] = [
+        { src: '/v1.mp4', type: 'video', timestamp: '2026-11-01T00:00:00Z' },
+        { src: '/v2.mp4', type: 'video', timestamp: '2026-11-02T00:00:00Z' },
+    ];
+
+    it('mounts a fresh player for the next video and releases the old one', () => {
+        const load = vi.mocked(HTMLMediaElement.prototype.load);
+        const { rerender } = render(<MediaViewerModal mediaItems={videos} currentIndex={0} onClose={vi.fn()} onNavigate={vi.fn()} />);
+        const first = screen.getByRole('dialog').querySelector('video') as HTMLVideoElement;
+        expect(first.getAttribute('src')).toBe('/v1.mp4');
+        load.mockClear();
+        rerender(<MediaViewerModal mediaItems={videos} currentIndex={1} onClose={vi.fn()} onNavigate={vi.fn()} />);
+        const second = screen.getByRole('dialog').querySelector('video') as HTMLVideoElement;
+        expect(second).not.toBe(first);
+        expect(second.getAttribute('src')).toBe('/v2.mp4');
+        expect(first.getAttribute('src')).toBeNull();
+        expect(load).toHaveBeenCalledTimes(1);
+    });
+
+    it('does not carry an error state over to the next video', () => {
+        const { rerender } = render(<MediaViewerModal mediaItems={videos} currentIndex={0} onClose={vi.fn()} onNavigate={vi.fn()} />);
+        const first = screen.getByRole('dialog').querySelector('video') as HTMLVideoElement;
+        fireEvent(first, new Event('error'));
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+        rerender(<MediaViewerModal mediaItems={videos} currentIndex={1} onClose={vi.fn()} onNavigate={vi.fn()} />);
+        expect(screen.queryByRole('alert')).toBeNull();
+    });
+});

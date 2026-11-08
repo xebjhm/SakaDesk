@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Download, Repeat, MoreVertical } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Download, Repeat, MoreVertical, Loader2, RotateCcw } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { copyVideoToClipboard } from '../../utils/clipboard';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
+import { useMediaSource } from './mediaElement';
+import { useMediaPlayback } from './useMediaPlayback';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { useTranscription, type TranscriptionSegment } from '../../hooks/useTranscription';
@@ -12,7 +14,7 @@ import { useJustBecame } from '../../hooks/useJustBecame';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
-import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
+import { Button, Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
 
 const VOLUME_STORAGE_KEY = 'sakadesk_video_amp';
 
@@ -144,7 +146,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
     const menuButtonRef = useRef<HTMLButtonElement>(null);
 
-    const { volume, setVolume, isMuted, toggleMute, connectElement } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
+    const { volume, setVolume, isMuted, toggleMute, connectElement, prepareForPlayback } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
+    const { status: playbackStatus, play, retry } = useMediaPlayback(videoRef, 'video', src);
 
     // Connect video to amplification pipeline
     useEffect(() => {
@@ -178,12 +181,28 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         };
     }, [connectElement]);
 
+    // The source is bound imperatively so the element is released (pause, drop
+    // src, load) before the source changes and on unmount: an abandoned video
+    // must not keep one of the browser's few media connections open.
+    useMediaSource(videoRef, src);
+
+    // Build the amplification graph (first play) before starting playback.
+    const startPlayback = useCallback(() => {
+        prepareForPlayback();
+        play();
+    }, [prepareForPlayback, play]);
+
+    const handleRetry = useCallback(() => {
+        prepareForPlayback();
+        retry();
+    }, [prepareForPlayback, retry]);
+
     // Auto-play on mount or when src changes (e.g., navigating between videos in viewer)
     useEffect(() => {
         if (autoPlay && videoRef.current) {
-            videoRef.current.play().catch(() => {});
+            startPlayback();
         }
-    }, [autoPlay, src]);
+    }, [autoPlay, src, startPlayback]);
 
     // Sync playback rate
     useEffect(() => {
@@ -246,11 +265,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         const video = videoRef.current;
         if (!video) return;
         if (video.paused) {
-            video.play();
+            startPlayback();
         } else {
             video.pause();
         }
-    }, []);
+    }, [startPlayback]);
 
     const handleSeek = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
         const video = videoRef.current;
@@ -420,7 +439,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             {/* Video element — no native controls */}
             <video
                 ref={videoRef}
-                src={src}
                 className={cn("max-w-full max-h-full", isFullscreen ? "w-full h-full object-contain" : videoClassName)}
                 playsInline
                 disablePictureInPicture
@@ -441,7 +459,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             )}
 
             {/* Big center play button when paused */}
-            {!isPlaying && (
+            {!isPlaying && playbackStatus !== 'error' && (
                 <button
                     onClick={togglePlay}
                     className="absolute inset-0 flex items-center justify-center bg-black/20"
@@ -450,6 +468,33 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         <Play className="w-8 h-8 text-white fill-current ml-1" />
                     </div>
                 </button>
+            )}
+
+            {/* Buffering: waiting for data while playing */}
+            {playbackStatus === 'buffering' && (
+                <div
+                    role="status"
+                    aria-label={t('common.loading')}
+                    data-testid="video-buffering"
+                    className="pointer-events-none absolute inset-0 flex items-center justify-center"
+                >
+                    <Loader2 aria-hidden="true" className="h-10 w-10 animate-spin text-viewer motion-reduce:animate-none" />
+                </div>
+            )}
+
+            {/* Playback error: neutral message with a Retry that reloads the element */}
+            {playbackStatus === 'error' && (
+                <div
+                    role="alert"
+                    className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-viewer-scrim p-4 text-center text-viewer"
+                    onClick={e => e.stopPropagation()}
+                >
+                    <p className="text-small">{t('videoPlayer.playbackError')}</p>
+                    <Button variant="overlay" size="sm" onClick={handleRetry}>
+                        <RotateCcw aria-hidden="true" className="h-4 w-4" />
+                        {t('common.retry')}
+                    </Button>
+                </div>
             )}
 
             {/* Bottom controls bar */}

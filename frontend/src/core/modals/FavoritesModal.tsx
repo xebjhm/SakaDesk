@@ -3,6 +3,7 @@ import { Star, Play, X, Film } from 'lucide-react';
 import type { Message } from '../../types';
 import { cn, formatDateTime } from '../../utils/classnames';
 import { VoicePlayer } from '../media/VoicePlayer';
+import { useMediaSource } from '../media/mediaElement';
 import { SafeImage } from '../common';
 import type { BaseModalProps } from '../../types/modal';
 import { Modal, Card, Avatar, IconButton } from '../../design/primitives';
@@ -30,11 +31,15 @@ interface FavoritesModalProps extends BaseModalProps {
  * metadata). A failed video drops the placeholder, logs `favorite_video_error`
  * and leaves the native element. Without IntersectionObserver the video mounts
  * immediately (the parent logs `favorite_video_lazy_unsupported` once per open).
+ * The video is released (pause, drop src, load) on unmount so closing
+ * Favourites never leaves media connections open.
  */
 const FavoriteVideoThumb: React.FC<{ src: string; root: HTMLElement | null }> = ({ src, root }) => {
     const [ready, setReady] = useState(false);
     const [inView, setInView] = useState(() => typeof IntersectionObserver === 'undefined');
     const holderRef = useRef<HTMLDivElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    useMediaSource(videoRef, inView ? src : undefined);
 
     useEffect(() => {
         const el = holderRef.current;
@@ -70,7 +75,7 @@ const FavoriteVideoThumb: React.FC<{ src: string; root: HTMLElement | null }> = 
             )}
             {inView && (
                 <video
-                    src={src}
+                    ref={videoRef}
                     className={cn('max-h-64 max-w-full object-contain', !ready && 'pointer-events-none absolute left-0 top-0 opacity-0')}
                     preload="metadata"
                     onLoadedData={() => setReady(true)}
@@ -82,6 +87,22 @@ const FavoriteVideoThumb: React.FC<{ src: string; root: HTMLElement | null }> = 
                 />
             )}
         </div>
+    );
+};
+
+/** The viewer's native-controls video, released (pause, drop src, load) on unmount. */
+const FavoriteVideoDetail: React.FC<{ src: string; allowDownload: boolean }> = ({ src, allowDownload }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    useMediaSource(videoRef, src);
+    return (
+        <video
+            ref={videoRef}
+            controls
+            controlsList={allowDownload ? undefined : 'nodownload'}
+            disablePictureInPicture
+            autoPlay
+            className="max-h-[80vh] max-w-full"
+        />
     );
 };
 
@@ -143,14 +164,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                             <SafeImage src={mediaUrl} alt={t('favorites.title')} className="max-h-[80vh] max-w-full object-contain" />
                         )}
                         {selectedMedia.type === 'video' && mediaUrl && (
-                            <video
-                                src={mediaUrl}
-                                controls
-                                controlsList={goldenFingerActive ? undefined : 'nodownload'}
-                                disablePictureInPicture
-                                autoPlay
-                                className="max-h-[80vh] max-w-full"
-                            />
+                            <FavoriteVideoDetail key={mediaUrl} src={mediaUrl} allowDownload={goldenFingerActive} />
                         )}
                     </div>
                     <p className="text-small text-viewer-muted">

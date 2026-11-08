@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { useAmplifiedVolume } from '../../core/media/useAmplifiedVolume';
+import { useMediaSource } from '../../core/media/mediaElement';
 import { VOLUME_STORAGE_KEY as VOICE_VOLUME_KEY } from '../../core/media/VoicePlayer';
 import type { IncomingCall } from './useIncomingCall';
 
@@ -8,10 +9,16 @@ type CallAudioProps = Pick<IncomingCall, 'phase' | 'audioUrl' | 'onPlaybackEnded
 /**
  * The call's audio element. Mounted per call (keyed by message id) so each call reads
  * the voice player's current persisted volume and closes its AudioContext when the call ends.
+ * The AudioContext is created when the call connects (right before `play()`), and the
+ * element is released (pause, drop src, load) only on unmount, when the call is over.
  */
 export const CallAudio: React.FC<CallAudioProps> = ({ phase, audioUrl, onPlaybackEnded, onPlaybackError }) => {
     const audioRef = useRef<HTMLAudioElement | null>(null);
-    const { connectElement } = useAmplifiedVolume(VOICE_VOLUME_KEY);
+    const { connectElement, prepareForPlayback } = useAmplifiedVolume(VOICE_VOLUME_KEY);
+
+    // Bound imperatively (before the play effect below) so the element is released
+    // when this unmounts — the call is over — and never keeps its media connection.
+    useMediaSource(audioRef, audioUrl);
 
     // Play from the start on connect; stop otherwise.
     useEffect(() => {
@@ -19,11 +26,12 @@ export const CallAudio: React.FC<CallAudioProps> = ({ phase, audioUrl, onPlaybac
         if (!el) return;
         if (phase === 'connected') {
             el.currentTime = 0;
+            prepareForPlayback();
             el.play().catch(() => onPlaybackError());
         } else {
             el.pause();
         }
-    }, [phase, onPlaybackError]);
+    }, [phase, onPlaybackError, prepareForPlayback]);
 
     return (
         <audio
@@ -32,7 +40,6 @@ export const CallAudio: React.FC<CallAudioProps> = ({ phase, audioUrl, onPlaybac
                 audioRef.current = el;
                 connectElement(el);
             }}
-            src={audioUrl}
             preload="auto"
             onEnded={onPlaybackEnded}
             onError={onPlaybackError}

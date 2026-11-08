@@ -518,11 +518,13 @@
     "skipBack": "后退 5 秒 (←)",
     "skipForward": "快进 5 秒 (→)",
     "mute": "静音 (M)",
-    "unmute": "取消静音 (M)"
+    "unmute": "取消静音 (M)",
+    "playbackError": "无法播放这条语音。"
   },
   "videoPlayer": {
     "noAudio": "无音频",
-    "loop": "循环播放"
+    "loop": "循环播放",
+    "playbackError": "无法播放这个视频。"
   },
   "generations": {
     "1st": "１期生",

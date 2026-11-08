@@ -7,8 +7,11 @@ export const PRELOAD_TIMEOUT_MS = 10_000;
  * queued, so a URL may 404 until the file is on disk; ringing only after this
  * succeeds avoids a call with no voice.
  *
- * A failed or aborted preload clears `src` and calls `load()` so the browser
- * drops the in-flight download, and removes its listeners.
+ * Either way the detached element is then released: `src` is cleared and
+ * `load()` called so the browser drops the download (a `preload='auto'`
+ * element kept alive would go on buffering and hold one of the browser's few
+ * media connections), and its listeners are removed. The call's own `<audio>`
+ * loads the file again for playback.
  */
 export function preloadAudio(
     url: string,
@@ -32,11 +35,11 @@ export function preloadAudio(
             audio.removeEventListener('canplay', onCanPlay);
             audio.removeEventListener('error', onError);
             signal?.removeEventListener('abort', onAbort);
+            audio.removeAttribute('src');
+            audio.load();
             if (ok) {
                 resolve();
             } else {
-                audio.removeAttribute('src');
-                audio.load();
                 reject(new Error(reason));
             }
         };

@@ -1,10 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
-import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw } from 'lucide-react';
+import { Button, Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
+import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw, Loader2 } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
+import { useMediaSource } from './mediaElement';
+import { useMediaPlayback } from './useMediaPlayback';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { useTranscription } from '../../hooks/useTranscription';
@@ -169,7 +171,9 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     const [isPlaying, setIsPlaying] = useState(false);
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
-    const { volume, setVolume, isMuted: isVolumeMuted, toggleMute: handleMuteToggle, connectElement } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
+    const { volume, setVolume, isMuted: isVolumeMuted, toggleMute: handleMuteToggle, connectElement, prepareForPlayback } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
+    const { status: playbackStatus, play, retry } = useMediaPlayback(audioRef, 'voice', src);
+    const isBuffering = playbackStatus === 'buffering';
     const [showVolume, setShowVolume] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
     const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
@@ -215,13 +219,28 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         };
     }, [connectElement]);
 
+    // The source is bound imperatively so the element is released (pause, drop
+    // src, load) before the source changes and on unmount (matches VideoPlayer).
+    useMediaSource(audioRef, src);
+
+    // Build the amplification graph (first play) before starting playback.
+    const startPlayback = useCallback(() => {
+        prepareForPlayback();
+        play();
+    }, [prepareForPlayback, play]);
+
+    const handleRetry = useCallback(() => {
+        prepareForPlayback();
+        retry();
+    }, [prepareForPlayback, retry]);
+
     // Auto-play on mount / when the source changes (matches VideoPlayer) so navigating
     // voice→voice in the gallery auto-plays the next clip.
     useEffect(() => {
         if (autoPlay && audioRef.current) {
-            audioRef.current.play().catch(() => {});
+            startPlayback();
         }
-    }, [autoPlay, src]);
+    }, [autoPlay, src, startPlayback]);
 
     // Sync playback rate to audio element
     useEffect(() => {
@@ -283,11 +302,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         if (!audio) return;
 
         if (audio.paused) {
-            audio.play();
+            startPlayback();
         } else {
             audio.pause();
         }
-    }, []);
+    }, [startPlayback]);
 
     const handleSkipBack = useCallback(() => {
         const audio = audioRef.current;
@@ -409,6 +428,17 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
     const isMuted = isVolumeMuted || volume === 0;
 
+    // Playback error: neutral message with a Retry that reloads the element.
+    const errorRow = playbackStatus === 'error' ? (
+        <div role="alert" className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-caption text-secondary">{t('voicePlayer.playbackError')}</span>
+            <Button variant="ghost" size="sm" onClick={handleRetry}>
+                <RotateCcw aria-hidden="true" className="h-4 w-4" />
+                {t('common.retry')}
+            </Button>
+        </div>
+    ) : null;
+
     const handleMenuToggle = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
         e.preventDefault();
@@ -442,7 +472,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                 } as React.CSSProperties}
             >
                 {/* Hidden audio element */}
-                <audio ref={audioRef} src={src} preload="metadata" />
+                <audio ref={audioRef} preload="metadata" />
 
                 {/* Row 1: Avatar + Info + Menu */}
                 <div className="flex items-center gap-3 mb-2">
@@ -582,8 +612,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                             className="w-12 h-12 rounded-full shadow-card flex items-center justify-center hover:shadow-sheet hover:scale-105 transition-all hover:brightness-90"
                             style={{ backgroundColor: accentColor }}
                             type="button"
+                            aria-busy={isBuffering || undefined}
                         >
-                            {isPlaying ? (
+                            {isBuffering ? (
+                                <Loader2 aria-hidden="true" data-testid="voice-buffering" className="w-6 h-6 text-inverse animate-spin motion-reduce:animate-none" />
+                            ) : isPlaying ? (
                                 <Pause className="w-6 h-6 text-inverse fill-current" />
                             ) : (
                                 <Play className="w-6 h-6 text-inverse fill-current ml-0.5" />
@@ -601,6 +634,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     {/* Right: Balance space */}
                     <div className="flex-1" />
                 </div>
+                {errorRow}
 
                 {/* Menu portal */}
                 {showMenu && createPortal(
@@ -687,7 +721,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             style={{ '--ring-color': withAlpha(accentColor, 50) } as React.CSSProperties}
         >
             {/* Hidden audio element */}
-            <audio ref={audioRef} src={src} preload="metadata" />
+            <audio ref={audioRef} preload="metadata" />
 
             {/* Row 1: Progress Slider with smooth animation */}
             <div className="mb-3">
@@ -759,8 +793,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     className="w-10 h-10 rounded-full shadow-pill flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
                     style={{ backgroundColor: accentColor }}
                     type="button"
+                    aria-busy={isBuffering || undefined}
                 >
-                    {isPlaying ? (
+                    {isBuffering ? (
+                        <Loader2 aria-hidden="true" data-testid="voice-buffering" className="w-5 h-5 text-inverse animate-spin motion-reduce:animate-none" />
+                    ) : isPlaying ? (
                         <Pause className="w-5 h-5 text-inverse fill-current" />
                     ) : (
                         <Play className="w-5 h-5 text-inverse fill-current ml-0.5" />
@@ -785,6 +822,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     </button>
                 </div>
             </div>
+            {errorRow}
 
             {/* Menu portal */}
             {showMenu && createPortal(

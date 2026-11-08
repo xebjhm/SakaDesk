@@ -328,17 +328,42 @@ describe('CallOverlay', () => {
 
         it('a volume change between two calls is applied to the second call', () => {
             persisted.setPref(VOLUME_STORAGE_KEY, '0.2');
-            const first = call();
+            // The audio graph (and its gain) is built when the call connects.
+            const first = call({ phase: 'connected', talkStartedAt: Date.now() });
             const { rerender } = render(<CallOverlay call={first} {...theme} />);
             const firstAudio = screen.getByTestId('call-audio');
             expect(gains[gains.length - 1]?.value).toBeCloseTo(0.4);
 
             rerender(<CallOverlay call={call({ phase: 'idle', message: null })} {...theme} />);
             persisted.setPref(VOLUME_STORAGE_KEY, '0.8');
-            rerender(<CallOverlay call={call({ message: { ...first.message!, id: 11 } })} {...theme} />);
+            rerender(<CallOverlay call={call({ phase: 'connected', talkStartedAt: Date.now(), message: { ...first.message!, id: 11 } })} {...theme} />);
 
             expect(screen.getByTestId('call-audio')).not.toBe(firstAudio);
             expect(gains[gains.length - 1]?.value).toBeCloseTo(1.6);
+        });
+
+        it('builds no audio graph while ringing; it is built when the call connects', () => {
+            const ringing = call();
+            const { rerender } = render(<CallOverlay call={ringing} {...theme} />);
+            expect(gains).toHaveLength(0);
+            rerender(<CallOverlay call={call({ phase: 'connected', talkStartedAt: Date.now() })} {...theme} />);
+            expect(gains).toHaveLength(1);
+        });
+
+        it('releases the call audio when the call UI goes away', () => {
+            const load = vi.mocked(HTMLMediaElement.prototype.load);
+            load.mockClear();
+            const { rerender } = render(<CallOverlay call={call()} {...theme} />);
+            const audio = screen.getByTestId('call-audio') as HTMLAudioElement;
+            expect(audio.getAttribute('src')).toBe('/api/content/media/x/a.m4a');
+            // Ringing → connected → ended keeps the element and its source.
+            rerender(<CallOverlay call={call({ phase: 'connected', talkStartedAt: Date.now() })} {...theme} />);
+            rerender(<CallOverlay call={call({ phase: 'ended', talkStartedAt: Date.now() })} {...theme} />);
+            expect(audio.getAttribute('src')).toBe('/api/content/media/x/a.m4a');
+            expect(load).not.toHaveBeenCalled();
+            rerender(<CallOverlay call={call({ phase: 'idle', message: null })} {...theme} />);
+            expect(audio.getAttribute('src')).toBeNull();
+            expect(load).toHaveBeenCalledTimes(1);
         });
     });
 

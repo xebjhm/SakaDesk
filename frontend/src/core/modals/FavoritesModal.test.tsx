@@ -113,6 +113,18 @@ describe('FavoritesModal video cards', () => {
         expect(vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'favorite_video_lazy_unsupported')).toHaveLength(1);
     });
 
+    it('releases the card video when the dialog closes', () => {
+        const load = vi.mocked(HTMLMediaElement.prototype.load);
+        load.mockClear();
+        const { unmount } = render(<FavoritesModal isOpen onClose={vi.fn()} messages={[video]} memberName="x" serviceId="hinatazaka46" />);
+        scrollIntoView();
+        const el = getVideo();
+        expect(el).toHaveAttribute('src', expect.stringContaining('5.mp4'));
+        unmount();
+        expect(el.getAttribute('src')).toBeNull();
+        expect(load).toHaveBeenCalledTimes(1);
+    });
+
     it('does not log the fallback when IntersectionObserver exists', () => {
         vi.mocked(clientLog).mockClear();
         renderModal();

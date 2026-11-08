@@ -518,11 +518,13 @@
     "skipBack": "5秒戻る (←)",
     "skipForward": "5秒進む (→)",
     "mute": "ミュート (M)",
-    "unmute": "ミュート解除 (M)"
+    "unmute": "ミュート解除 (M)",
+    "playbackError": "このボイスを再生できませんでした。"
   },
   "videoPlayer": {
     "noAudio": "音声なし",
-    "loop": "リピート"
+    "loop": "リピート",
+    "playbackError": "この動画を再生できませんでした。"
   },
   "generations": {
     "1st": "一期生",

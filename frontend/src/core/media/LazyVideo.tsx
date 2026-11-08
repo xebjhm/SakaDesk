@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Film } from 'lucide-react';
 import { cn } from '../../utils/classnames';
+import { useMediaSource } from './mediaElement';
 
 interface LazyVideoProps {
     src: string;
@@ -12,7 +13,9 @@ interface LazyVideoProps {
 /**
  * LazyVideo component that loads video only when visible in viewport.
  * Shows a placeholder with film icon until the video enters viewport,
- * then fades in smoothly once the video metadata is loaded.
+ * then fades in smoothly once the video metadata is loaded. The video is
+ * released (pause, drop src, load) on unmount so a thumbnail scrolled away or
+ * a closed gallery never keeps a media connection open.
  */
 export const LazyVideo: React.FC<LazyVideoProps> = ({
     src,
@@ -23,6 +26,9 @@ export const LazyVideo: React.FC<LazyVideoProps> = ({
     const [isVisible, setIsVisible] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
     const containerRef = useRef<HTMLButtonElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    // Bound once the <video> is mounted (it renders only when visible).
+    useMediaSource(videoRef, isVisible ? src : undefined);
 
     // Intersection Observer to detect when component enters viewport
     useEffect(() => {
@@ -77,7 +83,7 @@ export const LazyVideo: React.FC<LazyVideoProps> = ({
             {/* Video - only render when visible, fade in when loaded */}
             {isVisible && (
                 <video
-                    src={src}
+                    ref={videoRef}
                     className={cn(
                         "h-full w-full object-cover transition-opacity duration-base ease-standard",
                         isLoaded ? "opacity-100" : "opacity-0"
