@@ -276,6 +276,7 @@ def test_notify_open_chat_accepts_has_target():
         ("design_fonts_fallback", {"target": "zh_tw"}, "warning"),
         ("avatar_fallback", {"size": "md"}, "info"),
         ("avatar_fallback", {"surface": "member_select"}, "info"),
+        ("display_density_change", {"dppx_pct": 175}, "info"),
         ("menu_item_blocked", {"target": "sent_letters"}, "info"),
         ("blog_fallback", {"target": "card_thumb", "reason": "image_error"}, "info"),
         (
@@ -308,6 +309,8 @@ def test_notify_open_chat_accepts_has_target():
             "info",
         ),
         ("celebration", {"target": "milestone_days", "outcome": "seeded"}, "info"),
+        ("favorite_video_error", {}, "info"),
+        ("favorite_video_error", {"phase": "load"}, "info"),
     ],
 )
 def test_design_system_events_are_accepted(event, fields, level):
@@ -571,3 +574,38 @@ def test_sync_sequence_breadcrumb_is_accepted(outcome):
     assert events[0]["event"] == "sync_sequence"
     assert events[0]["outcome"] == outcome
     assert events[0]["count"] == 1
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"outcome": "pending", "phase": "load"},
+        {"outcome": "ready", "phase": "refresh"},
+        {"outcome": "ready", "phase": "poll", "count": 3},
+        {"outcome": "failed", "phase": "poll", "count": 1},
+        {"outcome": "error", "phase": "poll", "count": 2},
+        {"outcome": "abandoned", "phase": "poll", "count": 4},
+    ],
+)
+def test_diagnostics_disk_usage_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "diagnostics_disk_usage", "fields": fields},
+        )
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == "diagnostics_disk_usage"
+    assert entry["log_level"] == "info"
+    assert {key: entry[key] for key in fields} == fields
+
+
+def test_diagnostics_disk_usage_rejects_paths():
+    res = client.post(
+        "/api/client-log",
+        json={
+            "event": "diagnostics_disk_usage",
+            "fields": {"outcome": "D:\\SakaDesk Output"},
+        },
+    )
+    assert res.status_code == 422

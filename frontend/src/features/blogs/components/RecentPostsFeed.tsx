@@ -1,6 +1,6 @@
 // frontend/src/features/blogs/components/RecentPostsFeed.tsx
 // Latest posts of the active service: the group's expressive orbs behind a frosted header and a card grid.
-import React, { useMemo } from 'react';
+import React, { useMemo, useRef } from 'react';
 import { AlertCircle, Heart, Newspaper, RefreshCw, Users } from 'lucide-react';
 import type { RecentPost } from '../../../types';
 import { BlogCard } from './BlogCard';
@@ -77,7 +77,13 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
     const heroIndices = useMemo(() => getHeroIndices(posts.length), [posts.length]);
     const { t } = useTranslation();
 
+    const scrollerRef = useRef<HTMLDivElement>(null);
+
     const handleModeChange = (mode: BlogSelectionMode) => {
+        // Clicking the pill that is already active changes nothing: keep the reader's place.
+        if (mode === selectionMode) return;
+        // A different filter is a different list: start at its top, not at the old offset.
+        if (scrollerRef.current) scrollerRef.current.scrollTop = 0;
         setBlogSelectionMode(effectiveServiceId, mode);
     };
 
@@ -131,7 +137,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                 </div>
             </header>
 
-            <div className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
+            <div ref={scrollerRef} data-testid="feed-scroller" className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
                 {loading && <BlogStatus kind="loading" title={t('blogs.loadingPosts')} />}
 
                 {error && !loading && (

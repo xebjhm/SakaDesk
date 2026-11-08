@@ -139,6 +139,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     // Voice/video transcription is owned by the player components themselves
     // (VoicePlayer variant="gallery", VideoPlayer variant="gallery").
     const scrollContainerRef = useRef<HTMLDivElement>(null);
+    // The Modal body, the scroller (reset to the top when the tab changes).
+    const bodyRef = useRef<HTMLDivElement>(null);
     const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemRefs = useRef<Map<string, HTMLElement>>(new Map());  // Keyed by date string YYYY-MM-DD
 
@@ -359,6 +361,13 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         }
     };
 
+    const selectTab = (tab: MediaTab) => {
+        if (tab === activeTab) return;
+        // A different tab is a different list: start at its top, not at the old offset.
+        if (bodyRef.current) bodyRef.current.scrollTop = 0;
+        setActiveTab(tab);
+    };
+
     // Render icon-only tabs (like official app) - in the Modal toolbar slot (outside the scroller)
     const renderTabs = () => (
         <div role="tablist" aria-label={t('media.typeTabs')} className="flex">
@@ -371,7 +380,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         role="tab"
                         aria-selected={selected}
                         aria-label={t(tab.labelKey)}
-                        onClick={() => setActiveTab(tab.id)}
+                        onClick={() => selectTab(tab.id)}
                         className={cn(
                             'relative flex flex-1 items-center justify-center py-3 transition-colors duration-fast ease-standard',
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
@@ -581,6 +590,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 logId="media_gallery"
                 className="h-[80vh] max-w-4xl"
                 bodyClassName="px-0 pb-0 pt-0"
+                bodyRef={bodyRef}
                 toolbar={renderTabs()}
                 footer={
                     <>

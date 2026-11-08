@@ -1,13 +1,18 @@
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional, cast
+from typing import Literal, Optional, cast
 import asyncio
+import os
 import platform
 import sys
 import json
+import threading
 import time
-from datetime import datetime
+from dataclasses import dataclass, field
+from datetime import datetime, timezone
 from pathlib import Path
+
+import structlog
 from backend.services.platform import get_app_data_dir, get_settings_path, get_logs_dir
 from pysaka.credentials import get_token_manager
 from pysaka import Group, get_jwt_remaining_seconds
@@ -16,6 +21,7 @@ from backend.version import APP_VERSION
 from backend.api.report import _get_username, _get_nickname, scrub_log_line
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
+logger = structlog.get_logger(__name__)
 
 # pysaka version - try importlib.metadata first (works with installed packages)
 try:
@@ -58,10 +64,35 @@ class ServiceSyncInfo(BaseModel):
 
 class SyncState(BaseModel):
     last_error: Optional[str] = None
+    # Backward-compatible mirrors of ``DiagnosticsResponse.disk_usage``: filled
+    # only once the background walk is ``ready`` (0 / None while pending/failed).
     disk_usage_mb: float = 0.0
     file_count: int = 0
     disk_usage_detailed: Optional[dict] = None  # Expandable breakdown
     services: list[ServiceSyncInfo] = []  # Per-service sync status
+
+
+DiskUsageState = Literal["pending", "ready", "failed"]
+
+
+class DiskUsage(BaseModel):
+    """Output-folder disk usage, computed in the background (L6).
+
+    ``state`` is ``pending`` while the walk runs, ``ready`` once a result is
+    cached for this app run, and ``failed`` if the walk raised (also cached
+    until a refresh). ``size_mb`` / ``file_count`` / ``detailed`` /
+    ``computed_at`` are filled only when ``ready``; ``duration_ms`` when
+    ``ready`` or ``failed``. ``computed_at`` is UTC (ISO 8601, ``Z``).
+    ``detailed`` is ``{total_bytes, services: [{name, total_bytes, categories:
+    [{name, bytes}]}]}``.
+    """
+
+    state: DiskUsageState
+    size_mb: float = 0.0
+    file_count: int = 0
+    detailed: Optional[dict] = None
+    computed_at: Optional[str] = None
+    duration_ms: Optional[int] = None
 
 
 class LogsSummary(BaseModel):
@@ -75,6 +106,7 @@ class DiagnosticsResponse(BaseModel):
     auth_status: AuthStatus
     config_state: dict
     sync_state: SyncState
+    disk_usage: DiskUsage
     logs: LogsSummary
 
 
@@ -98,45 +130,236 @@ def _get_token_expiry_seconds(token: str) -> Optional[int]:
     return cast(Optional[int], get_jwt_remaining_seconds(token))
 
 
-# SD-BE-API-01: cache the disk-usage walk. Previously GET /api/diagnostics
-# walked the whole output tree TWICE per request (this uncached summary plus the
-# detailed breakdown below). Cache the summary on the same 60s TTL so a request
-# does at most one extra walk, and repeated polls do none.
-_disk_usage_cache: dict = {"data": None, "expires": 0}
+@dataclass
+class DiskWalkResult:
+    """Totals from one pass over the output folder (see ``_walk_disk_usage``)."""
+
+    total_bytes: int = 0
+    file_count: int = 0
+    skipped: int = 0  # entries that vanished / could not be read mid-walk
+    detailed: dict = field(default_factory=lambda: {"total_bytes": 0, "services": []})
 
 
-def _get_disk_usage(output_dir: str) -> tuple[float, int]:
-    """Get disk usage statistics for output directory (60-second cache).
-    Returns: (size_mb, file_count)
+def _walk_disk_usage(output_dir: Path) -> DiskWalkResult:
+    """Sum every file under ``output_dir`` in ONE pass (blocking — slow on big archives).
+
+    ``total_bytes`` / ``file_count`` cover every regular file. ``detailed``
+    breaks bytes down by top-level folder (service) and its sub-folders
+    (categories); files lying directly in the root or a service folder count
+    toward the totals but not toward a category (as before).
+
+    Uses ``os.scandir`` rather than ``Path.rglob`` + ``stat``: on Windows the
+    directory listing already carries file sizes, so no extra syscall per file.
+    Symlinks and Windows junctions are not followed (no loops, no double
+    counting); they count as neither file nor folder. An entry that disappears
+    or cannot be read mid-walk (sync writes concurrently) is counted in
+    ``skipped`` instead of failing the walk. Only the top two levels (services
+    and their categories) are sorted by name, for a stable breakdown order;
+    deeper listings are summed unsorted.
     """
-    now = time.time()
-    if _disk_usage_cache["data"] and now < _disk_usage_cache["expires"]:
-        cached: tuple[float, int] = _disk_usage_cache["data"]  # type: ignore[assignment]
-        return cached
+    result = DiskWalkResult()
 
-    total_size = 0
-    file_count = 0
-    size_mb = 0.0
+    def _scan(path: str, ordered: bool = False) -> list["os.DirEntry[str]"]:
+        try:
+            with os.scandir(path) as entries:
+                if ordered:
+                    return sorted(entries, key=lambda e: e.name)
+                return list(entries)
+        except OSError:
+            result.skipped += 1
+            return []
 
-    try:
-        output_path = Path(output_dir)
-        if not output_path.exists():
-            return 0.0, 0
+    def _kind(entry: "os.DirEntry[str]") -> str:
+        try:
+            # A junction reports is_dir() even with follow_symlinks=False.
+            if entry.is_junction():
+                return "other"
+            if entry.is_dir(follow_symlinks=False):
+                return "dir"
+            if entry.is_file(follow_symlinks=False):
+                return "file"
+        except OSError:
+            result.skipped += 1
+        return "other"  # symlink, junction, device, or unreadable
 
-        # Recursively sum all file sizes
-        for file_path in output_path.rglob("*"):
-            if file_path.is_file():
-                file_count += 1
-                total_size += file_path.stat().st_size
+    def _file_bytes(entry: "os.DirEntry[str]") -> int:
+        try:
+            size = entry.stat(follow_symlinks=False).st_size
+        except OSError:
+            result.skipped += 1
+            return 0
+        result.file_count += 1
+        return size
 
-        size_mb = total_size / (1024 * 1024)
-    except Exception:
-        pass
+    def _tree_bytes(root: str) -> int:
+        """Bytes of all files under ``root`` (iterative, no recursion limit)."""
+        total = 0
+        stack = [root]
+        while stack:
+            for entry in _scan(stack.pop()):
+                kind = _kind(entry)
+                if kind == "dir":
+                    stack.append(entry.path)
+                elif kind == "file":
+                    total += _file_bytes(entry)
+        return total
 
-    result = (round(size_mb, 2), file_count)
-    _disk_usage_cache["data"] = result
-    _disk_usage_cache["expires"] = now + 60
+    if not output_dir.is_dir():
+        return result
+
+    # The root listing itself is not guarded: an unreadable output folder is a
+    # failed walk, not an empty one.
+    with os.scandir(output_dir) as root_entries:
+        tops = sorted(root_entries, key=lambda e: e.name)
+
+    loose_bytes = 0  # files outside any category folder
+    services: list[dict] = []
+    for top in tops:
+        kind = _kind(top)
+        if kind == "file":
+            loose_bytes += _file_bytes(top)
+            continue
+        if kind != "dir":
+            continue
+        service: dict = {"name": top.name, "total_bytes": 0, "categories": []}
+        for child in _scan(top.path, ordered=True):
+            child_kind = _kind(child)
+            if child_kind == "dir":
+                cat_bytes = _tree_bytes(child.path)
+                service["categories"].append({"name": child.name, "bytes": cat_bytes})
+                service["total_bytes"] += cat_bytes
+            elif child_kind == "file":
+                loose_bytes += _file_bytes(child)
+        services.append(service)
+
+    categorised = sum(svc["total_bytes"] for svc in services)
+    result.detailed = {"total_bytes": categorised, "services": services}
+    result.total_bytes = categorised + loose_bytes
     return result
+
+
+class _DiskUsageTracker:
+    """Single-flight, run-cached background disk-usage computation (L6).
+
+    ``snapshot()`` never blocks on the walk: the first call for an output folder
+    starts it on a daemon thread and reports ``pending``; concurrent calls join
+    that same walk; once it finishes, its result (or failure) is cached for the
+    rest of the app run. ``refresh=True`` starts a new walk unless one is
+    already running (then it joins it). A daemon thread rather than an executor
+    so a long walk can never hold up app shutdown. If the thread cannot be
+    started, the slot is freed and ``failed`` is returned (not cached, so the
+    next poll or refresh retries). Thread-safe.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._idle = threading.Event()
+        self._idle.set()
+        self._running_dir: Optional[str] = None
+        self._cached_dir: Optional[str] = None
+        self._cached: Optional[DiskUsage] = None
+
+    def snapshot(self, output_dir: Optional[str], refresh: bool = False) -> DiskUsage:
+        """Current disk usage for ``output_dir``; starts a walk when needed."""
+        if not output_dir:
+            logger.debug("diagnostics_disk_usage_skipped", reason="no_output_dir")
+            return DiskUsage(state="ready")
+        with self._lock:
+            if self._running_dir is not None:
+                logger.debug(
+                    "diagnostics_disk_usage_joined",
+                    same_dir=self._running_dir == output_dir,
+                    refresh=refresh,
+                )
+                return DiskUsage(state="pending")
+            if (
+                self._cached is not None
+                and self._cached_dir == output_dir
+                and not refresh
+            ):
+                return self._cached
+            if refresh:
+                reason = "refresh"
+            elif self._cached is None:
+                reason = "first"
+            else:
+                reason = "output_dir_changed"
+            self._running_dir = output_dir
+            self._idle.clear()
+        logger.info("diagnostics_disk_usage_started", reason=reason)
+        try:
+            threading.Thread(
+                target=self._run,
+                args=(output_dir,),
+                name="diagnostics-disk-usage",
+                daemon=True,
+            ).start()
+        except Exception as e:  # noqa: BLE001 — e.g. RuntimeError: can't start thread
+            # Nothing is running: free the slot so a later poll / Refresh retries.
+            with self._lock:
+                self._running_dir = None
+                self._idle.set()
+            logger.warning(
+                "diagnostics_disk_usage_failed",
+                phase="thread_start",
+                error_type=type(e).__name__,
+            )
+            return DiskUsage(state="failed")
+        return DiskUsage(state="pending")
+
+    def wait_idle(self, timeout: float) -> bool:
+        """Block until no walk is running (used by tests); True if idle."""
+        return self._idle.wait(timeout)
+
+    def _run(self, output_dir: str) -> None:
+        """Thread body: walk, cache the result, and ALWAYS go idle again.
+
+        Any exception — in the walk or while building / logging the result —
+        becomes a cached ``failed`` (logged with ``error_type`` only: messages
+        can carry the PII folder path); the ``finally`` frees the single-flight
+        slot so a crash can never leave the panel ``pending`` forever.
+        """
+        started = time.monotonic()
+        usage = DiskUsage(state="failed")
+        try:
+            walk = _walk_disk_usage(Path(output_dir))
+            duration_ms = int((time.monotonic() - started) * 1000)
+            size_mb = round(walk.total_bytes / (1024 * 1024), 2)
+            usage = DiskUsage(
+                state="ready",
+                size_mb=size_mb,
+                file_count=walk.file_count,
+                detailed=walk.detailed,
+                computed_at=datetime.now(timezone.utc)
+                .isoformat(timespec="seconds")
+                .replace("+00:00", "Z"),
+                duration_ms=duration_ms,
+            )
+            logger.info(
+                "diagnostics_disk_usage_finished",
+                duration_ms=duration_ms,
+                file_count=walk.file_count,
+                size_mb=size_mb,
+                skipped=walk.skipped,
+            )
+        except Exception as e:  # noqa: BLE001 — any failure becomes state=failed
+            duration_ms = int((time.monotonic() - started) * 1000)
+            usage = DiskUsage(state="failed", duration_ms=duration_ms)
+            logger.warning(
+                "diagnostics_disk_usage_failed",
+                phase="walk",
+                duration_ms=duration_ms,
+                error_type=type(e).__name__,
+            )
+        finally:
+            with self._lock:
+                self._cached = usage
+                self._cached_dir = output_dir
+                self._running_dir = None
+                self._idle.set()
+
+
+_disk_usage_tracker = _DiskUsageTracker()
 
 
 def _tail_lines(path: Path, max_lines: int, max_bytes: int = 1_000_000) -> list[str]:
@@ -165,64 +388,56 @@ def _tail_lines(path: Path, max_lines: int, max_bytes: int = 1_000_000) -> list[
     return lines[-max_lines:]
 
 
-_disk_cache: dict = {"data": None, "expires": 0}
-
-
-def _get_detailed_disk_usage(output_dir: str) -> dict:
-    """Get per-service, per-category disk usage breakdown with 60-second cache."""
-    now = time.time()
-    if _disk_cache["data"] and now < _disk_cache["expires"]:
-        cached: dict = _disk_cache["data"]  # type: ignore[assignment]
-        return cached
-
-    result: dict = {"total_bytes": 0, "services": []}
-    output_path = Path(output_dir)
-    if not output_path.exists():
-        return result
-
-    for service_dir in sorted(output_path.iterdir()):
-        if not service_dir.is_dir():
-            continue
-        service_entry: dict = {
-            "name": service_dir.name,
-            "total_bytes": 0,
-            "categories": [],
-        }
-
-        for category_dir in sorted(service_dir.iterdir()):
-            if not category_dir.is_dir():
-                continue
-            cat_size = sum(
-                f.stat().st_size for f in category_dir.rglob("*") if f.is_file()
-            )
-            service_entry["categories"].append(
-                {
-                    "name": category_dir.name,
-                    "bytes": cat_size,
-                }
-            )
-            service_entry["total_bytes"] += cat_size
-
-        result["services"].append(service_entry)
-        result["total_bytes"] += service_entry["total_bytes"]
-
-    _disk_cache["data"] = result
-    _disk_cache["expires"] = now + 60
-    return result
-
-
 @router.get("", response_model=DiagnosticsResponse)
-async def get_diagnostics():
+async def get_diagnostics(refresh_disk_usage: bool = False):
     """Collect comprehensive system diagnostics for debugging.
 
-    SD-BE-API-01: the gather does blocking keyring reads, a settings-file read,
-    the output-dir disk walk(s) and log tail-reads — all off-loaded to a single
-    thread so the polled endpoint never freezes the event loop.
+    SD-BE-API-01: the gather does blocking keyring reads, a settings-file read
+    and log tail-reads — all off-loaded to a single thread so the endpoint never
+    freezes the event loop.
+
+    L6: the output-folder disk walk is NOT part of the gather (it took ~160 s on
+    a 34 GB archive). ``disk_usage`` comes from the background tracker: the
+    first request starts the walk and reports ``pending``; poll
+    ``GET /api/diagnostics/disk-usage`` until ``ready`` / ``failed``.
+    ``refresh_disk_usage=true`` recomputes a cached result.
     """
-    return await asyncio.to_thread(_collect_diagnostics)
+    return await asyncio.to_thread(_collect_diagnostics, refresh_disk_usage)
 
 
-def _collect_diagnostics() -> DiagnosticsResponse:
+@router.get("/disk-usage", response_model=DiskUsage)
+async def get_disk_usage():
+    """Poll the background disk-usage result (never walks on the request path).
+
+    Starts a walk only if none is cached or running for the configured output
+    folder — the same single-flight tracker as ``GET /api/diagnostics``.
+    """
+    return await asyncio.to_thread(
+        lambda: _disk_usage_tracker.snapshot(_configured_output_dir())
+    )
+
+
+def _normalise_output_dir(value: object) -> Optional[str]:
+    """A settings ``output_dir`` value as a non-empty string, else None.
+
+    The one normalisation used by the summary and the poll endpoint, so a
+    hand-edited non-string value never reaches ``Path()`` in the walk thread.
+    """
+    return value if isinstance(value, str) and value else None
+
+
+def _configured_output_dir() -> Optional[str]:
+    """The configured output folder from settings, or None (blocking read)."""
+    try:
+        if get_settings_path().exists():
+            with open(get_settings_path(), "r", encoding="utf-8") as f:
+                return _normalise_output_dir(json.load(f).get("output_dir"))
+    except Exception as e:
+        logger.warning("diagnostics_settings_read_failed", error_type=type(e).__name__)
+    return None
+
+
+def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsResponse:
     """Blocking diagnostics gather — call via ``asyncio.to_thread`` (SD-BE-API-01)."""
     # System Info
     sys_info = SystemInfo(
@@ -263,7 +478,7 @@ def _collect_diagnostics() -> DiagnosticsResponse:
     # Use same defaults as the settings API (SettingsResponse) to avoid
     # dual-source-of-truth bugs where diagnostics shows different values.
     config_state = {}
-    output_dir = None
+    output_dir: Optional[str] = None
     try:
         if get_settings_path().exists():
             with open(get_settings_path(), "r", encoding="utf-8") as f:
@@ -275,7 +490,7 @@ def _collect_diagnostics() -> DiagnosticsResponse:
                 config_state["adaptive_sync"] = data.get("adaptive_sync_enabled", True)
                 config_state["notifications"] = data.get("notifications_enabled", True)
                 config_state["blogs_full_backup"] = data.get("blogs_full_backup", False)
-                output_dir = data.get("output_dir")
+                output_dir = _normalise_output_dir(data.get("output_dir"))
         else:
             # No settings file yet — show all defaults
             config_state["is_configured"] = False
@@ -354,13 +569,15 @@ def _collect_diagnostics() -> DiagnosticsResponse:
             sync_state.services = services_info
             sync_state.last_error = last_error
 
-            # Get disk usage stats
-            size_mb, file_count = _get_disk_usage(output_dir)
-            sync_state.disk_usage_mb = size_mb
-            sync_state.file_count = file_count
-            sync_state.disk_usage_detailed = _get_detailed_disk_usage(output_dir)
     except Exception:
         pass
+
+    # L6: never walk here — the tracker answers at once (pending/ready/failed).
+    disk_usage = _disk_usage_tracker.snapshot(output_dir, refresh=refresh_disk_usage)
+    if disk_usage.state == "ready":
+        sync_state.disk_usage_mb = disk_usage.size_mb
+        sync_state.file_count = disk_usage.file_count
+        sync_state.disk_usage_detailed = disk_usage.detailed
 
     # Logs with categorization
     # debug.log has everything (recent context); error.log is pre-filtered
@@ -419,5 +636,6 @@ def _collect_diagnostics() -> DiagnosticsResponse:
         auth_status=auth_status,
         config_state=config_state,
         sync_state=sync_state,
+        disk_usage=disk_usage,
         logs=logs_summary,
     )

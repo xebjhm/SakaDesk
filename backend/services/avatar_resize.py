@@ -1,9 +1,11 @@
 """Downscaled copies of archived avatars, cached on disk.
 
-Member-list avatars are archived at ~1000 px but shown at 64 CSS px. Letting
-the browser shrink them ~9x in one pass looks soft, so the
-``/api/content/avatar`` route serves a square, Lanczos-downscaled WebP at one
-of a few fixed widths instead.
+Avatars are archived at ~1000 px but shown at 40-64 CSS px (member list, chat
+messages, chat header). Letting the browser shrink them ~9x in one pass looks
+soft, so the ``/api/content/avatar`` route serves a square, Lanczos-downscaled
+WebP at one of a few fixed widths instead. The frontend asks for the smallest
+width that covers the drawn size in device pixels, so the browser has little or
+nothing left to scale.
 
 Variants live under ``<app data dir>/cache/avatars/`` and are named by a hash
 of the source's resolved path, its mtime and the width, so a re-archived image
@@ -36,8 +38,13 @@ from backend.services.platform import get_app_data_dir
 
 logger = structlog.get_logger(__name__)
 
-ALLOWED_WIDTHS: frozenset[int] = frozenset({64, 128, 192, 256})
-"""Widths the route accepts (CSS px x device pixel ratio, rounded up)."""
+ALLOWED_WIDTHS: frozenset[int] = frozenset({64, 80, 96, 112, 128, 160, 192, 256})
+"""Widths the route accepts; mirrors ``AVATAR_WIDTHS`` in the frontend.
+
+The frontend picks the smallest one at or above CSS px x device pixel ratio.
+16 px steps up to 128 keep that close at common display scales (64 CSS px at
+125 / 150 / 175 / 200 % = 80 / 96 / 112 / 128; 40 CSS px at 175 % = 70 -> 80).
+"""
 
 _WEBP_QUALITY = 90
 

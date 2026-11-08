@@ -715,5 +715,10 @@
     "milestoneDays": "days subscribed",
     "milestoneYears": "year subscribed",
     "milestoneYears_other": "years subscribed"
+  },
+  "diagnostics": {
+    "diskUsageComputedAt": "Calculated {{time}}",
+    "diskUsageCalculating": "Calculating…",
+    "diskUsageFailed": "Couldn't calculate"
   }
 }

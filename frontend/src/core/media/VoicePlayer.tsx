@@ -66,6 +66,12 @@ interface VoicePlayerProps {
     service?: string;
     /** Member dir path — required for the gallery/fullscreen variants to fetch transcription */
     memberPath?: string;
+    /**
+     * `compact` only: the bubble this player sits in has a footer attached below it, so the
+     * player squares its bottom corners (top corners keep the radius) and bubble, player and
+     * footer read as one shape.
+     */
+    joinedBelow?: boolean;
 }
 
 /**
@@ -114,6 +120,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     viewerMode,
     onTimeUpdate,
     seekTo,
+    joinedBelow,
     onTimestampClick,
     messageId,
     service,
@@ -671,7 +678,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         <div
             ref={containerRef}
             tabIndex={0}
-            className="bg-sunken rounded-lg p-3 min-w-[300px] outline-none focus:ring-2"
+            className={cn('bg-sunken rounded-lg p-3 min-w-[300px] outline-none focus:ring-2', joinedBelow && 'rounded-b-none')}
             style={{ '--ring-color': withAlpha(accentColor, 50) } as React.CSSProperties}
         >
             {/* Hidden audio element */}

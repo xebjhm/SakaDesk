@@ -1,7 +1,7 @@
 import React, { useState, useMemo } from 'react';
 import { Star, Play, X } from 'lucide-react';
 import type { Message } from '../../types';
-import { formatDateTime } from '../../utils/classnames';
+import { cn, formatDateTime } from '../../utils/classnames';
 import { VoicePlayer } from '../media/VoicePlayer';
 import { SafeImage } from '../common';
 import type { BaseModalProps } from '../../types/modal';
@@ -9,6 +9,7 @@ import { Modal, Card, Avatar, IconButton } from '../../design/primitives';
 import { DialogStatus } from '../common/DialogStatus';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
+import { clientLog } from '../../utils/clientLog';
 
 interface FavoritesModalProps extends BaseModalProps {
     messages: Message[];
@@ -16,6 +17,40 @@ interface FavoritesModalProps extends BaseModalProps {
     memberAvatar?: string;
     serviceId?: string;  // Service ID for building correct media URLs
 }
+
+/**
+ * Inline video thumbnail: the neutral skeleton pulses until the first frame is
+ * available. The video stays laid out but invisible meanwhile (never
+ * `display:none`), mirroring SafeImage's skeleton mode. The pulse stops on
+ * whichever of `loadeddata` / `loadedmetadata` fires first (some engines stop
+ * at metadata). A failed video stops the pulse, logs `favorite_video_error`
+ * and leaves the native element.
+ */
+const FavoriteVideoThumb: React.FC<{ src: string }> = ({ src }) => {
+    const [ready, setReady] = useState(false);
+    return (
+        <>
+            {!ready && (
+                <span
+                    data-testid="video-skeleton"
+                    aria-hidden="true"
+                    className="block h-40 w-64 max-w-full animate-pulse bg-sunken motion-reduce:animate-none"
+                />
+            )}
+            <video
+                src={src}
+                className={cn('max-h-64 max-w-full object-contain', !ready && 'pointer-events-none absolute opacity-0')}
+                preload="metadata"
+                onLoadedData={() => setReady(true)}
+                onLoadedMetadata={() => setReady(true)}
+                onError={() => {
+                    clientLog('favorite_video_error', { phase: 'load' });
+                    setReady(true);
+                }}
+            />
+        </>
+    );
+};
 
 export const FavoritesModal: React.FC<FavoritesModalProps> = ({
     isOpen,
@@ -117,7 +152,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                             onClick={() => setSelectedMedia(message)}
                             className="relative block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                         >
-                            <video src={mediaUrl} className="max-h-64 max-w-full object-contain" preload="metadata" />
+                            <FavoriteVideoThumb key={mediaUrl} src={mediaUrl} />
                             <span className="absolute inset-0 flex items-center justify-center">
                                 <span className="flex h-14 w-14 items-center justify-center rounded-pill bg-viewer-control text-viewer">
                                     <Play className="ml-1 h-7 w-7" />

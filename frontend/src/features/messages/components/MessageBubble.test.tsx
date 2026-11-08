@@ -1,9 +1,10 @@
-import { describe, it, expect, vi, beforeAll, afterAll, beforeEach } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../../__tests__/mocks/server'
 import { MessageBubble } from './MessageBubble'
+import { useAppStore } from '../../../store/appStore'
 import type { Message } from '../../../types'
 
 // The translation and transcription hooks read their backend caches on mount: both are empty.
@@ -225,9 +226,50 @@ describe('MessageBubble component', () => {
     expect(screen.getByText('Test User')).toHaveAttribute('lang', 'ja')
   })
 
-  it('links use the accent colour', () => {
+  it('links use the strong accent role (4.5:1) and underline on hover', () => {
     render(<MessageBubble {...defaultProps} message={createMessage({ content: 'see https://example.com' })} />)
-    expect(screen.getByRole('link', { name: 'https://example.com' })).toHaveClass('text-accent')
+    const link = screen.getByRole('link', { name: 'https://example.com' })
+    expect(link).toHaveClass('text-accent-strong', 'hover:underline')
+    expect(link).not.toHaveClass('text-accent')
+  })
+
+  describe('voice transcript footer', () => {
+    const voice = createMessage({ type: 'voice', content: null, media_file: 'v.m4a' })
+    const footerOf = (c: HTMLElement) => c.querySelector('[data-testid="transcript-footer"]') as HTMLElement
+
+    afterEach(() => { useAppStore.setState({ transcriptionEnabled: false }) })
+
+    it('joins the bubble: square bottom corners, footer carries the radius, no negative margin', () => {
+      useAppStore.setState({ transcriptionEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.border-group-bubble')).toHaveClass('rounded-card', 'rounded-b-none')
+      const footer = footerOf(container)
+      expect(footer).toHaveClass('rounded-b-card', 'border-x', 'border-b')
+      expect(footer.className).not.toMatch(/-mt-/)
+    })
+
+    it('squares the voice player bottom corners when a footer is attached, keeping the top', () => {
+      useAppStore.setState({ transcriptionEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      const player = container.querySelector('.min-w-\\[300px\\]') as HTMLElement
+      expect(player).toHaveClass('rounded-lg', 'rounded-b-none')
+    })
+
+    it('keeps the voice player fully rounded without a footer', () => {
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).not.toHaveClass('rounded-b-none')
+    })
+
+    it('keeps the bubble fully rounded without a footer and while unread', () => {
+      const { container, rerender } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.border-group-bubble')).not.toHaveClass('rounded-b-none')
+      useAppStore.setState({ transcriptionEnabled: true })
+      rerender(<MessageBubble {...defaultProps} message={voice} isUnread />)
+      expect(footerOf(container)).toBeNull()
+      expect(container.querySelector('.border-group-bubble')).not.toHaveClass('rounded-b-none')
+      expect(screen.getByTestId('unread-shelter')).toHaveClass('rounded-card')
+      expect(screen.getByTestId('unread-shelter')).not.toHaveClass('rounded-b-none')
+    })
   })
 
   it('the unread shelter uses the official shelter colour of the message type', () => {

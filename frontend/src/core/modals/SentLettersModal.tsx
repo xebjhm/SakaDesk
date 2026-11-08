@@ -24,7 +24,7 @@ export interface SentLettersModalProps {
 /**
  * Overview of the letters sent to this member: a grid of letter thumbnails, newest first,
  * with their dates. Choosing one (click or keyboard) opens it in the letter viewer on top
- * (image and full text; ← / → walk this newest-first list); the viewer's date link closes
+ * (image and full text; › / → newer, ‹ / ← older); the viewer's date link closes
  * both dialogs and jumps to the letter in the chat. Each card is named by its send date and
  * time. Letters whose created_at cannot be parsed are not listed (the timeline does not show
  * them either). While the letters load, or when they are unavailable, the dialog says so

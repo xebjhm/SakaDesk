@@ -31,6 +31,25 @@ describe('MediaGalleryModal (R-c)', () => {
         expect(videos.querySelector('span[aria-hidden="true"]')).toBeNull();
     });
 
+    it('starts at the top after switching tabs (N3)', async () => {
+        render(<MediaGalleryModal isOpen onClose={vi.fn()} messages={[voice, older]} memberName="春野 ひなた" serviceId="hinatazaka46" />);
+        const body = screen.getByTestId('modal-body');
+        body.scrollTop = 500;
+        await userEvent.click(screen.getByRole('tab', { name: 'Voice messages' }));
+        expect(body.scrollTop).toBe(0);
+        body.scrollTop = 300;
+        await userEvent.click(screen.getByRole('tab', { name: 'Videos' }));
+        expect(body.scrollTop).toBe(0);
+    });
+
+    it('keeps the scroll offset when the active tab is clicked again', async () => {
+        render(<MediaGalleryModal isOpen onClose={vi.fn()} messages={[voice, older]} memberName="春野 ひなた" serviceId="hinatazaka46" />);
+        const body = screen.getByTestId('modal-body');
+        body.scrollTop = 400;
+        await userEvent.click(screen.getByRole('tab', { name: 'Photos' }));
+        expect(body.scrollTop).toBe(400);
+    });
+
     it('flips voice row selection to the accent roles and marks the name ja', async () => {
         render(<MediaGalleryModal isOpen onClose={vi.fn()} messages={[voice, older]} memberName="春野 ひなた" serviceId="hinatazaka46" />);
         await userEvent.click(screen.getByRole('tab', { name: 'Voice messages' }));

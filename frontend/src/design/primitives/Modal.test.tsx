@@ -543,6 +543,12 @@ describe('Modal: the dialog layer in depth', () => {
         expect(screen.getByText('本文')).toHaveClass('p-0');
     });
 
+    it('forwards bodyRef to the scrolling body', () => {
+        const ref = React.createRef<HTMLDivElement>();
+        render(<Modal isOpen onClose={vi.fn()} title="t" bodyRef={ref}>本文</Modal>);
+        expect(ref.current).toBe(screen.getByTestId('modal-body'));
+    });
+
     it('top placement pads 15vh from the top above the stacked z-index', () => {
         render(<Modal isOpen onClose={vi.fn()} aria-label="s" placement="top" layout="bare">x</Modal>);
         const backdrop = screen.getByTestId('modal-backdrop');

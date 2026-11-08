@@ -10,7 +10,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 - **Sent letters open in a viewer.** It shows the letter image, the full text
   and a date link that jumps back to it in the chat. Click the image for the
-  large view with zoom.
+  large view with zoom; the arrows always go in time order, and narrow windows
+  give the letter more room.
 - **Small celebrations.** Your first complete sync ends with a short
   celebration, and a chat shows a card when a member passes 1,000, 5,000 or
   10,000 messages, or when your subscription reaches day 100 and each full
@@ -143,13 +144,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Incoming-call card corners are clean.** They no longer show square patches,
   and the card edge is a single line.
 - **Gallery photos no longer slide above the tabs** when you scroll.
-- **Member photos are sharper**, and the selected member's ring stays clean.
+- **Member photos are sharper** in chats and member lists, and the selected
+  member's ring stays clean.
 - **The chat date label stays on top of unread covers** and no longer hides
   the translate button.
 - **The avatar no longer shows a dark outline** after you close a profile.
-- **Favourites and member lists show placeholders while loading.**
-- **Yodel's unread covers have their original colours back**, which are
-  easier to tell apart.
+- **Favourites and member lists show placeholders while loading**, video
+  favourites included.
+- **Diagnostics opens immediately.** Disk usage fills in once it has been
+  calculated, instead of the whole panel waiting for it on a large archive.
+- **The voice transcript joins its message neatly**, without a step at the
+  corners.
+- **Tabs and blog filters start at the top.** Switching media gallery tabs or
+  the blog feed's All / Favorite filter shows the new list from its start.
+- **Links in messages are easier to read.** They are darker and underline when
+  you point at them.
+- **The chat menu button stays visible on hover** on coloured chat headers.
 - **Cancel ends the whole first sync.** Pressing Cancel while SakaDesk
   downloads your groups for the first time used to leave the first sync
   hanging on the group it was running, so the other groups never started and

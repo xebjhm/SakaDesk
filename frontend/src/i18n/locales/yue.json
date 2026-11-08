@@ -711,5 +711,10 @@
     "milestoneMessages": "條訊息",
     "milestoneDays": "日嘅訂閱",
     "milestoneYears": "年嘅訂閱"
+  },
+  "diagnostics": {
+    "diskUsageComputedAt": "計算於 {{time}}",
+    "diskUsageCalculating": "計緊…",
+    "diskUsageFailed": "計唔到"
   }
 }

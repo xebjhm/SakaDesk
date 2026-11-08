@@ -57,6 +57,8 @@ export interface ModalProps {
     className?: string;
     /** Standard body classes (padding). */
     bodyClassName?: string;
+    /** Ref to the scrolling body element (standard layout only), e.g. to reset `scrollTop` when a tab changes. */
+    bodyRef?: React.Ref<HTMLDivElement>;
     /** Breadcrumb surface: logs `dialog` open / close. */
     logId?: DialogLogId;
     /** Keys for the dialog's own content (the viewer's ← / → / ↑ / ↓); Escape is the layer's. */
@@ -78,7 +80,7 @@ export const Modal: React.FC<ModalProps> = (props) => (props.isOpen ? <OpenModal
 const OpenModal: React.FC<ModalProps> = ({
     onClose, title, icon, 'aria-label': ariaLabel, labelledBy, closeLabel, headerExtra, toolbar, children, footer, footerDivider = false,
     tone = 'sheet', layout = 'standard', placement = 'center', dismissible = true,
-    initialFocusRef, className, bodyClassName, titleClassName, logId, onKeyDown, scope = 'inherit', header = 'expressive',
+    initialFocusRef, className, bodyClassName, bodyRef, titleClassName, logId, onKeyDown, scope = 'inherit', header = 'expressive',
 }) => {
     const inherited = useScope();
     const scopeValue = scope === 'brand' ? { scope: 'brand' as const, style: brandScopeStyle() } : inherited;
@@ -175,7 +177,7 @@ const OpenModal: React.FC<ModalProps> = ({
                         </div>
                         {header === 'expressive' && <div data-testid="modal-header-bar" aria-hidden="true" className="h-[3px] shrink-0 bg-expressive-header-bar" />}
                         {toolbar && <div data-testid="modal-toolbar" className="shrink-0 bg-sheet">{toolbar}</div>}
-                        <div data-testid="modal-body" className={cn('min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 text-body text-primary', bodyClassName)}>{children}</div>
+                        <div ref={bodyRef} data-testid="modal-body" className={cn('min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 text-body text-primary', bodyClassName)}>{children}</div>
                         {footer && (
                             <div data-testid="modal-footer" className={cn('flex shrink-0 items-center justify-end gap-2 px-6 pb-6', footerDivider && 'border-t border-subtle pt-4')}>
                                 {footer}

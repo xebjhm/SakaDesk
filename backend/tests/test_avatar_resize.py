@@ -2,6 +2,7 @@
 
 import io
 import os
+import re
 from pathlib import Path
 from unittest.mock import patch
 
@@ -203,6 +204,35 @@ class TestResizedAvatar:
         with pytest.raises(ValueError):
             avatar_resize.resized_avatar(src, 100, tmp_path / "cache")
 
+    def test_allow_list_matches_the_frontend_widths(self):
+        # Mirrors AVATAR_WIDTHS in frontend/src/features/messages/mediaUrl.ts:
+        # 16 px steps up to 128 cover 64 / 40 / 48 CSS px at common scales.
+        assert avatar_resize.ALLOWED_WIDTHS == frozenset(
+            {64, 80, 96, 112, 128, 160, 192, 256}
+        )
+
+    def test_allow_list_matches_the_frontend_source(self):
+        # Parse the real frontend constant so the two lists cannot drift apart.
+        source = (
+            Path(__file__).resolve().parents[2]
+            / "frontend"
+            / "src"
+            / "features"
+            / "messages"
+            / "mediaUrl.ts"
+        ).read_text(encoding="utf-8")
+        match = re.search(r"export const AVATAR_WIDTHS = \[([^\]]*)\]", source)
+        assert match, "AVATAR_WIDTHS not found in mediaUrl.ts"
+        frontend = frozenset(int(w) for w in re.findall(r"\d+", match.group(1)))
+        assert frontend == avatar_resize.ALLOWED_WIDTHS
+
+    @pytest.mark.parametrize("width", [80, 96, 112, 160])
+    def test_density_matched_widths_are_resized(self, tmp_path, width):
+        src = _jpeg(tmp_path / "a.jpg", (1000, 1000))
+        out = avatar_resize.resized_avatar(src, width, tmp_path / "cache")
+        assert out != src
+        assert Image.open(out).size == (width, width)
+
     def test_cache_dir_lives_under_the_app_data_dir(self, tmp_path):
         with patch(
             "backend.services.avatar_resize.get_app_data_dir", return_value=tmp_path
@@ -238,6 +268,13 @@ class TestAvatarRoute:
         assert r.headers["content-type"] == "image/webp"
         assert _open(r.content).size == (192, 192)
 
+    def test_serves_a_density_matched_width(self, archive):
+        # 64 CSS px at 175 % scaling = 112 device px: served exactly.
+        _jpeg(archive / "a.jpg", (1000, 1000))
+        r = client.get(f"{URL}/a.jpg?w=112")
+        assert r.status_code == 200
+        assert _open(r.content).size == (112, 112)
+
     def test_second_request_is_a_cache_hit(self, archive, tmp_path):
         _jpeg(archive / "a.jpg", (1000, 1000))
         assert client.get(f"{URL}/a.jpg?w=128").status_code == 200
@@ -258,7 +295,14 @@ class TestAvatarRoute:
 
     @pytest.mark.parametrize(
         ("w", "status"),
-        [("100", 400), ("0", 400), ("512", 400), ("-64", 400), ("abc", 422)],
+        [
+            ("100", 400),
+            ("0", 400),
+            ("512", 400),
+            ("-64", 400),
+            ("70", 400),
+            ("abc", 422),
+        ],
     )
     def test_width_outside_the_allow_list_is_rejected(
         self, archive, tmp_path, w, status
