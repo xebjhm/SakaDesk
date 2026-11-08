@@ -1,5 +1,5 @@
-import React, { useState, useMemo } from 'react';
-import { Star, Play, X } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Star, Play, X, Film } from 'lucide-react';
 import type { Message } from '../../types';
 import { cn, formatDateTime } from '../../utils/classnames';
 import { VoicePlayer } from '../media/VoicePlayer';
@@ -19,36 +19,69 @@ interface FavoritesModalProps extends BaseModalProps {
 }
 
 /**
- * Inline video thumbnail: the neutral skeleton pulses until the first frame is
- * available. The video stays laid out but invisible meanwhile (never
- * `display:none`), mirroring SafeImage's skeleton mode. The pulse stops on
- * whichever of `loadeddata` / `loadedmetadata` fires first (some engines stop
- * at metadata). A failed video stops the pulse, logs `favorite_video_error`
- * and leaves the native element.
+ * Inline video thumbnail. The `<video>` is mounted only once the card nears the
+ * viewport (IntersectionObserver with the default root, which accounts for the
+ * dialog body being the scroll container), so opening Favourites does not load
+ * every video at once. Until the first frame is available a neutral placeholder
+ * shows a shimmer sweep (hidden under reduced motion) and a centred Film icon.
+ * The loading video stays laid out but invisible (never `display:none`),
+ * mirroring SafeImage's skeleton mode. The placeholder goes away on whichever
+ * of `loadeddata` / `loadedmetadata` fires first (some engines stop at
+ * metadata). A failed video drops the placeholder, logs `favorite_video_error`
+ * and leaves the native element. Without IntersectionObserver the video mounts
+ * immediately.
  */
 const FavoriteVideoThumb: React.FC<{ src: string }> = ({ src }) => {
     const [ready, setReady] = useState(false);
+    const [inView, setInView] = useState(() => typeof IntersectionObserver === 'undefined');
+    const holderRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const el = holderRef.current;
+        if (inView || !el) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((entry) => entry.isIntersecting)) {
+                    setInView(true);
+                    observer.disconnect();
+                }
+            },
+            // Start loading slightly before the card enters view.
+            { rootMargin: '200px', threshold: 0 },
+        );
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [inView]);
+
     return (
-        <>
+        <div ref={holderRef} className="relative">
             {!ready && (
                 <span
                     data-testid="video-skeleton"
                     aria-hidden="true"
-                    className="block h-40 w-64 max-w-full animate-pulse bg-sunken motion-reduce:animate-none"
+                    className="relative flex h-40 w-64 max-w-full items-center justify-center overflow-hidden bg-sunken"
+                >
+                    <span
+                        data-testid="video-shimmer"
+                        className="absolute inset-y-0 left-0 w-1/2 animate-shimmer-sweep bg-pill opacity-60 blur-md motion-reduce:hidden"
+                    />
+                    <Film className="relative h-8 w-8 text-secondary" />
+                </span>
+            )}
+            {inView && (
+                <video
+                    src={src}
+                    className={cn('max-h-64 max-w-full object-contain', !ready && 'pointer-events-none absolute left-0 top-0 opacity-0')}
+                    preload="metadata"
+                    onLoadedData={() => setReady(true)}
+                    onLoadedMetadata={() => setReady(true)}
+                    onError={() => {
+                        clientLog('favorite_video_error', { phase: 'load' });
+                        setReady(true);
+                    }}
                 />
             )}
-            <video
-                src={src}
-                className={cn('max-h-64 max-w-full object-contain', !ready && 'pointer-events-none absolute opacity-0')}
-                preload="metadata"
-                onLoadedData={() => setReady(true)}
-                onLoadedMetadata={() => setReady(true)}
-                onError={() => {
-                    clientLog('favorite_video_error', { phase: 'load' });
-                    setReady(true);
-                }}
-            />
-        </>
+        </div>
     );
 };
 

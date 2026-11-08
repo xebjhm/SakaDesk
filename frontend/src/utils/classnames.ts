@@ -20,7 +20,7 @@ const twMerge = extendTailwindMerge<'mask-image'>({
             'rounded-tl': [{ 'rounded-tl': ['tail'] }],
             shadow: [{ shadow: ['accent-glow', 'accent-beacon', 'accent-glow-hover', 'accent-halo', 'accent-unread', 'pill', 'card', 'sheet', 'group-glow', 'tile', 'tile-hover', 'caption', 'caption-hover', 'segment'] }],
             duration: [{ duration: ['fast', 'base', 'glide', 'lift', 'zoom', 'lens'] }],
-            animate: [{ animate: ['landing', 'reveal', 'orb-drift-1', 'orb-drift-2', 'orb-breathe', 'heart-float', 'heartbeat', 'shimmer', 'pop', 'confetti', 'sparkle', 'toast-in'] }],
+            animate: [{ animate: ['landing', 'reveal', 'orb-drift-1', 'orb-drift-2', 'orb-breathe', 'heart-float', 'heartbeat', 'shimmer', 'shimmer-sweep', 'pop', 'confetti', 'sparkle', 'toast-in'] }],
             ease: [{ ease: ['standard', 'spring'] }],
             'mask-image': [{ mask: ['fade-y'] }],
             transition: [{ transition: ['caption'] }],

@@ -300,6 +300,7 @@ export default {
                     '100%': { opacity: '0', transform: 'translateX(-50%) translateY(-30px) scale(1.3)' },
                 },
                 shimmer: { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(100%)' } },
+                'shimmer-sweep': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(200%)' } },
                 pop: { '0%': { opacity: '0', transform: 'scale(0.9)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
                 burst: {
                     '0%': { opacity: '1', transform: 'translate(0, 0) rotate(0deg)' },
@@ -328,6 +329,7 @@ export default {
                 'heart-float': 'heart-float 800ms ease-out forwards',
                 heartbeat: 'heartbeat 1.2s ease-in-out infinite',
                 shimmer: 'shimmer 1.2s 300ms var(--ds-ease-standard) both',
+                'shimmer-sweep': 'shimmer-sweep 1.4s var(--ds-ease-standard) infinite',
                 pop: 'pop 500ms cubic-bezier(0.2, 1.4, 0.4, 1) both',
                 confetti: 'burst 1.2s cubic-bezier(0.2, 0.7, 0.3, 1) both',
                 sparkle: 'sparkle-burst 900ms 350ms cubic-bezier(0.2, 0.7, 0.3, 1) both',

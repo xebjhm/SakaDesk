@@ -225,6 +225,10 @@ colours) so they sit with the aurora. `color.semantic` has five steps per set:
 An element with a fixed meaning keeps its meaning colour in every context. The
 group accent says where you are; a meaning colour says what a thing is.
 
+- **Muted text on grey.** `text-muted` (#6b7280) is for white and near-white surfaces only. On a grey fill
+  (`bg-sunken`, the segment track, the Background preview) use `text-secondary` (#4b5563, at least 4.5:1).
+- **Favourites video cards** show a shimmer sweep and a centred `Film` icon (`text-secondary`) on `bg-sunken`
+  and mount the `<video>` only when the card nears the viewport.
 - **推 (oshi)** hearts and the Favorite filter use the global oshi pink,
   `color.semantic.oshi`: subtle `#fff0f8`, border `#ffcbe1`, solid `#de5f99`
   (white glyph 3.4:1, icons only), text `#aa376f` (6.0:1 on white, 5.5:1 on
@@ -514,7 +518,8 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   the ambient orbs' 22-34 s drift (`animate-orb-drift-1/2`,
   `animate-orb-breathe`), About's easter egg (`animate-heart-float` 800 ms,
   `animate-heartbeat` 1.2 s), and the celebrations: `animate-toast-in` 350 ms
-  (the toast entrance), `animate-shimmer` 1.2 s, `animate-pop` 500 ms,
+  (the toast entrance), `animate-shimmer` 1.2 s, `animate-shimmer-sweep` 1.4 s (the looping
+  loading sweep on a Favourites video placeholder; hidden under reduced motion), `animate-pop` 500 ms,
   `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, and the blog feed's
   original motion (`duration-lift` 500 ms, `duration-zoom` 700 ms and the
   caption's `transition-caption` on the feed tile, `duration-lens` 300 ms on the
