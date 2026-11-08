@@ -65,6 +65,7 @@ ClientEvent = Literal[
     "letter_jump",
     "display_density_change",
     "favorite_video_error",
+    "diagnostics_disk_usage",
 ]
 
 ALLOWED_FIELDS = frozenset(

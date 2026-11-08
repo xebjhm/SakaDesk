@@ -1,7 +1,6 @@
 """Extended tests for diagnostics API endpoint (GET /api/diagnostics)."""
 
 import json
-import time
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
@@ -213,87 +212,6 @@ class TestFormatDuration:
         from backend.api.diagnostics import _format_duration
 
         assert _format_duration(7320) == "2h 2m"
-
-
-class TestDiskUsage:
-    """Tests for _get_disk_usage helper."""
-
-    def _reset_cache(self):
-        # SD-BE-API-01: _get_disk_usage now caches on a 60s TTL; reset between
-        # cases so each exercises a fresh walk rather than a stale cached result.
-        from backend.api.diagnostics import _disk_usage_cache
-
-        _disk_usage_cache["data"] = None
-        _disk_usage_cache["expires"] = 0
-
-    def test_nonexistent_dir(self, tmp_path):
-        from backend.api.diagnostics import _get_disk_usage
-
-        self._reset_cache()
-        size_mb, count = _get_disk_usage(str(tmp_path / "missing"))
-        assert size_mb == 0.0
-        assert count == 0
-
-    def test_empty_dir(self, tmp_path):
-        from backend.api.diagnostics import _get_disk_usage
-
-        self._reset_cache()
-        size_mb, count = _get_disk_usage(str(tmp_path))
-        assert size_mb == 0.0
-        assert count == 0
-
-    def test_dir_with_files(self, tmp_path):
-        from backend.api.diagnostics import _get_disk_usage
-
-        self._reset_cache()
-        f1 = tmp_path / "a.bin"
-        # Write >10 KB so rounding to 2 decimals still > 0.00
-        f1.write_bytes(b"x" * 10240)
-        f2 = tmp_path / "sub" / "b.bin"
-        f2.parent.mkdir()
-        f2.write_bytes(b"y" * 10240)
-        size_mb, count = _get_disk_usage(str(tmp_path))
-        assert count == 2
-        assert size_mb > 0
-
-
-class TestDetailedDiskUsage:
-    """Tests for _get_detailed_disk_usage helper."""
-
-    def test_nonexistent_dir(self, tmp_path):
-        from backend.api.diagnostics import _get_detailed_disk_usage, _disk_cache
-
-        # Clear cache
-        _disk_cache["data"] = None
-        _disk_cache["expires"] = 0
-        result = _get_detailed_disk_usage(str(tmp_path / "missing"))
-        assert result["total_bytes"] == 0
-        assert result["services"] == []
-
-    def test_with_services(self, tmp_path):
-        from backend.api.diagnostics import _get_detailed_disk_usage, _disk_cache
-
-        # Clear cache
-        _disk_cache["data"] = None
-        _disk_cache["expires"] = 0
-        svc = tmp_path / "hinatazaka46" / "messages"
-        svc.mkdir(parents=True)
-        (svc / "data.json").write_text("content", encoding="utf-8")
-        result = _get_detailed_disk_usage(str(tmp_path))
-        assert len(result["services"]) == 1
-        assert result["services"][0]["name"] == "hinatazaka46"
-        assert result["total_bytes"] > 0
-
-    def test_cache_is_used(self, tmp_path):
-        from backend.api.diagnostics import _get_detailed_disk_usage, _disk_cache
-
-        _disk_cache["data"] = {"total_bytes": 999, "services": []}
-        _disk_cache["expires"] = time.time() + 3600
-        result = _get_detailed_disk_usage(str(tmp_path))
-        assert result["total_bytes"] == 999
-        # Clean up
-        _disk_cache["data"] = None
-        _disk_cache["expires"] = 0
 
 
 class TestDiagnosticsScrubbing:

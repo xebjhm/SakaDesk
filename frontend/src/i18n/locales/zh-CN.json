@@ -711,5 +711,9 @@
     "milestoneMessages": "条消息",
     "milestoneDays": "天的订阅",
     "milestoneYears": "年的订阅"
+  },
+  "diagnostics": {
+    "diskUsageCalculating": "正在计算…",
+    "diskUsageFailed": "无法计算"
   }
 }

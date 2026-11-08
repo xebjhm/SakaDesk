@@ -8,6 +8,10 @@ import { Modal, Button, Card, Pill } from '../../design/primitives';
 import { logDialogLoad } from '../../design/dialog/dialogLog';
 import { cn } from '../../utils/classnames';
 import { DialogStatus } from '../common/DialogStatus';
+import { clientLog } from '../../utils/clientLog';
+
+/** How often the panel polls `/api/diagnostics/disk-usage` while it is `pending`. */
+export const DISK_USAGE_POLL_MS = 2000;
 
 /**
  * Returns the hashed filename of the currently-loaded frontend bundle
@@ -71,10 +75,25 @@ interface DiskUsageDetailed {
 
 interface SyncState {
     last_error?: string;
+    /** Mirrors of `disk_usage` (0 / absent until it is `ready`), kept for the copied JSON. */
     disk_usage_mb: number;
     file_count: number;
-    disk_usage_detailed?: DiskUsageDetailed;
+    disk_usage_detailed?: DiskUsageDetailed | null;
     services: ServiceSyncInfo[];
+}
+
+/**
+ * Output-folder disk usage, computed by the backend in the background: the
+ * walk can take minutes on a large archive, so it starts `pending` and the
+ * panel polls until it is `ready` or `failed`.
+ */
+interface DiskUsage {
+    state: 'pending' | 'ready' | 'failed';
+    size_mb: number;
+    file_count: number;
+    detailed?: DiskUsageDetailed | null;
+    computed_at?: string | null;
+    duration_ms?: number | null;
 }
 
 interface LogsSummary {
@@ -88,7 +107,23 @@ interface DiagnosticsData {
     auth_status: AuthStatus;
     config_state: Record<string, any>;
     sync_state: SyncState;
+    disk_usage: DiskUsage;
     logs: LogsSummary;
+}
+
+/** Apply a polled disk-usage result, keeping the backend's `sync_state` mirrors in step. */
+function withDiskUsage(data: DiagnosticsData, usage: DiskUsage): DiagnosticsData {
+    const ready = usage.state === 'ready';
+    return {
+        ...data,
+        disk_usage: usage,
+        sync_state: {
+            ...data.sync_state,
+            disk_usage_mb: ready ? usage.size_mb : 0,
+            file_count: ready ? usage.file_count : 0,
+            disk_usage_detailed: ready ? usage.detailed ?? null : null,
+        },
+    };
 }
 
 interface DiagnosticsModalProps {
@@ -139,6 +174,8 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
     const [error, setError] = useState<string | null>(null);
     const [copied, setCopied] = useState(false);
     const [logTab, setLogTab] = useState<LogTab>('recent');
+    // A disk-usage poll request itself failed (backend unreachable); Refresh clears it.
+    const [diskPollFailed, setDiskPollFailed] = useState(false);
     const frontendBundle = useMemo(() => getFrontendBundle(), []);
 
     // Get live auth status from context
@@ -173,15 +210,22 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
         return `in ${minutes}m`;
     };
 
-    const fetchDiagnostics = async () => {
+    /**
+     * Load the summary. It answers at once; disk usage may still be `pending`
+     * (then the poll effect below takes over). `refreshDiskUsage` (the Refresh
+     * button) asks the backend to recompute its cached disk usage.
+     */
+    const fetchDiagnostics = async (refreshDiskUsage = false) => {
         setLoading(true);
         setError(null);
+        setDiskPollFailed(false);
         try {
-            const res = await fetch('/api/diagnostics');
+            const res = await fetch(refreshDiskUsage ? '/api/diagnostics?refresh_disk_usage=true' : '/api/diagnostics');
             if (!res.ok) throw new Error('Failed to fetch diagnostics');
-            const json = await res.json();
+            const json: DiagnosticsData = await res.json();
             setData(json);
             logDialogLoad('diagnostics', 'ok');
+            clientLog('diagnostics_disk_usage', { outcome: json.disk_usage.state, phase: refreshDiskUsage ? 'refresh' : 'load' });
         } catch (err: any) {
             logDialogLoad('diagnostics', 'error');
             setError(err.message);
@@ -195,6 +239,45 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
             fetchDiagnostics();
         }
     }, [isOpen]);
+
+    // While disk usage is `pending`, poll the background result until it is
+    // `ready` / `failed`. Stops when the panel closes (logged as abandoned).
+    const diskState = data?.disk_usage.state;
+    useEffect(() => {
+        if (!isOpen || diskState !== 'pending' || diskPollFailed) return;
+        let settled = false;
+        let polls = 0;
+        let timer: ReturnType<typeof setTimeout>;
+        const poll = async () => {
+            polls += 1;
+            try {
+                const res = await fetch('/api/diagnostics/disk-usage');
+                if (!res.ok) throw new Error('Failed to fetch disk usage');
+                const usage: DiskUsage = await res.json();
+                if (settled) return;
+                if (usage.state === 'pending') {
+                    timer = setTimeout(poll, DISK_USAGE_POLL_MS);
+                    return;
+                }
+                settled = true;
+                clientLog('diagnostics_disk_usage', { outcome: usage.state, phase: 'poll', count: polls });
+                setData(prev => (prev ? withDiskUsage(prev, usage) : prev));
+            } catch {
+                if (settled) return;
+                settled = true;
+                clientLog('diagnostics_disk_usage', { outcome: 'error', phase: 'poll', count: polls });
+                setDiskPollFailed(true);
+            }
+        };
+        timer = setTimeout(poll, DISK_USAGE_POLL_MS);
+        return () => {
+            clearTimeout(timer);
+            if (!settled) {
+                settled = true;
+                clientLog('diagnostics_disk_usage', { outcome: 'abandoned', phase: 'poll', count: polls });
+            }
+        };
+    }, [isOpen, diskState, diskPollFailed]);
 
     const handleCopy = () => {
         if (!data) return;
@@ -220,7 +303,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
             footerDivider
             footer={
                 <>
-                    <Button variant="ghost" className="mr-auto" onClick={fetchDiagnostics}>
+                    <Button variant="ghost" className="mr-auto" onClick={() => fetchDiagnostics(true)}>
                         <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin motion-reduce:animate-none')} />
                         Refresh
                     </Button>
@@ -378,25 +461,39 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                         <Database className="h-3 w-3" /> DISK USAGE
                                     </h4>
                                     <div className="flex flex-col gap-1 text-small">
-                                        {/* Total */}
-                                        <div className="flex justify-between font-medium">
-                                            <span className="text-secondary">Total</span>
-                                            <span className="font-mono text-primary">
-                                                {data.sync_state.disk_usage_detailed
-                                                    ? formatBytes(data.sync_state.disk_usage_detailed.total_bytes)
-                                                    : data.sync_state.disk_usage_mb >= 1024
-                                                        ? `${(data.sync_state.disk_usage_mb / 1024).toFixed(2)} GB`
-                                                        : `${data.sync_state.disk_usage_mb.toFixed(2)} MB`}
-                                            </span>
-                                        </div>
-                                        <div className="flex justify-between text-caption">
-                                            <span className="text-muted">Files</span>
-                                            <span className="font-mono text-muted">{data.sync_state.file_count.toLocaleString()}</span>
-                                        </div>
-                                        {/* Per-service expandable */}
-                                        {data.sync_state.disk_usage_detailed?.services?.map((svc) => (
-                                            <DiskUsageServiceRow key={svc.name} service={svc} />
-                                        ))}
+                                        {data.disk_usage.state === 'pending' && !diskPollFailed ? (
+                                            <div role="status" data-testid="disk-usage-pending" className="flex items-center gap-2 text-muted">
+                                                <RefreshCw className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+                                                {t('diagnostics.diskUsageCalculating')}
+                                            </div>
+                                        ) : data.disk_usage.state !== 'ready' || diskPollFailed ? (
+                                            <div role="status" data-testid="disk-usage-failed" className="flex items-center gap-2 text-status-warning">
+                                                <AlertCircle className="h-3 w-3" />
+                                                {t('diagnostics.diskUsageFailed')}
+                                            </div>
+                                        ) : (
+                                            <>
+                                                {/* Total */}
+                                                <div className="flex justify-between font-medium">
+                                                    <span className="text-secondary">Total</span>
+                                                    <span className="font-mono text-primary">
+                                                        {data.disk_usage.detailed
+                                                            ? formatBytes(data.disk_usage.detailed.total_bytes)
+                                                            : data.disk_usage.size_mb >= 1024
+                                                                ? `${(data.disk_usage.size_mb / 1024).toFixed(2)} GB`
+                                                                : `${data.disk_usage.size_mb.toFixed(2)} MB`}
+                                                    </span>
+                                                </div>
+                                                <div className="flex justify-between text-caption">
+                                                    <span className="text-muted">Files</span>
+                                                    <span className="font-mono text-muted">{data.disk_usage.file_count.toLocaleString()}</span>
+                                                </div>
+                                                {/* Per-service expandable */}
+                                                {data.disk_usage.detailed?.services?.map((svc) => (
+                                                    <DiskUsageServiceRow key={svc.name} service={svc} />
+                                                ))}
+                                            </>
+                                        )}
                                     </div>
                                 </Card>
                             </div>

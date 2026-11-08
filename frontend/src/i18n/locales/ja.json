@@ -711,5 +711,9 @@
     "milestoneMessages": "通のメッセージ",
     "milestoneDays": "日間の購読",
     "milestoneYears": "年間の購読"
+  },
+  "diagnostics": {
+    "diskUsageCalculating": "計算中…",
+    "diskUsageFailed": "計算できませんでした"
   }
 }
