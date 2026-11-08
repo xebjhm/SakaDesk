@@ -37,6 +37,7 @@ from backend.services.tray_tooltip import refresh_tray_tooltip  # noqa: E402
 from backend.services.ui_state import set_ui_state  # noqa: E402
 from tray import TrayController  # noqa: E402
 from call_popup_window import CallPopupWindow  # noqa: E402
+from window_chrome import make_title_bar_handler  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
 # Setup logging
@@ -1019,6 +1020,12 @@ def main() -> None:
             background_color="#F0F2F5",
             hidden=background,
         )
+
+        # Windows 11: recolour the native title bar to the app surface. Both
+        # events try; the handler stops after the first success and never raises.
+        _title_bar = make_title_bar_handler(window)
+        window.events.before_show += _title_bar
+        window.events.shown += _title_bar
 
         # Save window geometry on close by reading current dimensions directly.
         # We read window.width/height/x/y properties instead of relying on
