@@ -356,7 +356,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         <span lang="ja" className="text-small font-semibold text-accent-strong">{member_name}</span>
                         <time className="text-caption text-muted" dateTime={message.timestamp}>{time}</time>
                         {favoriteStar}
-                        {translateButton && <div className="ml-auto">{translateButton}</div>}
+                        {/* Beside the time, not at the far edge: the centred sticky date pill sits over the far edge */}
+                        {translateButton}
                     </div>
                 )}
 
