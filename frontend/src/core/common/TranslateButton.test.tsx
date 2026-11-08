@@ -50,6 +50,12 @@ describe('TranslateButton icon-only', () => {
         expect(screen.getByRole('button', { name: 'Translating...' })).toBeDisabled();
         rerender(<TranslateButton state="error" onClick={vi.fn()} iconOnly error="boom" />);
         expect(screen.getByRole('button', { name: /fail/i })).toBeInTheDocument();
-        expect(screen.getByText('boom')).toBeInTheDocument();
+        // The error is the icon's tooltip and description, never in-flow text that would widen the column
+        const button = screen.getByRole('button', { name: /fail/i });
+        expect(button.getAttribute('title')).toContain('boom');
+        expect(button).toHaveAccessibleDescription('boom');
+        expect(button).toHaveClass('text-semantic-danger');
+        expect(screen.getByText('boom')).toHaveClass('sr-only');
+        expect(document.querySelector('p')).toBeNull();
     });
 });

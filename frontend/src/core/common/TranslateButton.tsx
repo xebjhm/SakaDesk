@@ -43,6 +43,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
     iconOnly = false,
 }) => {
     const { t } = useTranslation();
+    const errorId = React.useId();
     const isLight = variant === 'light';
 
     if (state === 'done') {
@@ -98,7 +99,8 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
                     }}
                     disabled={isLoading}
                     aria-label={label}
-                    title={label}
+                    aria-describedby={isError && error ? errorId : undefined}
+                    title={isError && error ? `${label}: ${error}` : label}
                     className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-wait ${
                         isError ? 'text-semantic-danger hover:opacity-80' : 'text-secondary hover:text-primary'
                     }`}
@@ -110,9 +112,8 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
                             : <Languages className="h-4 w-4" />
                     }
                 </button>
-                {isError && error && (
-                    <p className="mt-0.5 max-w-[250px] text-caption text-secondary">{error}</p>
-                )}
+                {/* Screen-reader-only: in-flow text would widen the shrink-0 trailing column */}
+                {isError && error && <span id={errorId} className="sr-only">{error}</span>}
             </div>
         );
     }

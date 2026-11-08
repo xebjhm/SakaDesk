@@ -257,6 +257,22 @@ describe('MessageBubble component', () => {
       expect(trailing(container)).toContainElement(screen.getByText('10:30'))
     })
 
+    it('reveals on row hover and on keyboard focus, not hover alone', () => {
+      useAppStore.setState({ translationEnabled: true })
+      render(<MessageBubble {...defaultProps} />)
+      const wrapper = screen.getByRole('button', { name: 'Translate' }).parentElement!.parentElement as HTMLElement
+      expect(wrapper).toHaveClass('opacity-0', 'group-hover/row:opacity-100', 'focus-within:opacity-100', 'group-focus-within/row:opacity-100')
+    })
+
+    it('the trailing column is out of flow so the bubble never reflows or loses width', () => {
+      useAppStore.setState({ translationEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} />)
+      expect(trailing(container)).toHaveClass('absolute', 'left-full', 'bottom-0')
+      expect(trailing(container)).not.toHaveClass('shrink-0')
+      // Anchored to the bubble column, which keeps its max width regardless of the icon
+      expect(trailing(container).parentElement).toHaveClass('relative', 'max-w-[80%]')
+    })
+
     it('renders no trailing column when there is nothing to put in it', () => {
       const { container } = render(<MessageBubble {...defaultProps} />)
       expect(trailing(container)).toBeNull()
@@ -290,6 +306,12 @@ describe('MessageBubble component', () => {
       expect(container.querySelector('.min-w-\\[300px\\]')).toHaveClass('rounded-tl-tail')
       rerender(<MessageBubble {...defaultProps} message={voice} runStart={false} />)
       expect(container.querySelector('.min-w-\\[300px\\]')).not.toHaveClass('rounded-tl-tail')
+    })
+
+    it('a run-start voice player with a footer has tail corner, square bottom and rounded-lg together', () => {
+      useAppStore.setState({ transcriptionEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).toHaveClass('rounded-tl-tail', 'rounded-b-none', 'rounded-lg')
     })
 
     it('keeps the voice player fully rounded without a footer', () => {
