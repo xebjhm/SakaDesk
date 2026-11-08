@@ -192,6 +192,7 @@ export default {
             },
             ringColor: {
                 accent: 'var(--ds-accent)',
+                'expressive-header': 'var(--ds-expressive-header-text)',
                 'accent-border': 'var(--ds-accent-border)',
                 'accent-logo': 'var(--ds-accent-logo)',
                 'accent-subtle': 'var(--ds-accent-subtle)',

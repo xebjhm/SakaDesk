@@ -34,6 +34,13 @@ describe('Modal', () => {
         expect(screen.getByRole('button', { name: 'OK' })).toBeInTheDocument();
     });
 
+    it('the expressive close button focuses in the header text colour, not the accent', () => {
+        render(<Modal isOpen onClose={vi.fn()} title="t" closeLabel="閉じる">x</Modal>);
+        const close = screen.getByRole('button', { name: '閉じる' });
+        expect(close).toHaveClass('focus-visible:ring-expressive-header');
+        expect(close.className).not.toContain('focus-visible:ring-accent');
+    });
+
     it('takes its name from aria-label or labelledBy in a bare layout', () => {
         render(
             <>

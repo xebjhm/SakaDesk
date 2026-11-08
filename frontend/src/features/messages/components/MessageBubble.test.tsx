@@ -78,6 +78,12 @@ describe('MessageBubble component', () => {
     expect(onAvatarClick).toHaveBeenCalledTimes(1)
   })
 
+  it('sizes the avatar button to the avatar and gives it a round focus ring', () => {
+    render(<MessageBubble {...defaultProps} onAvatarClick={vi.fn()} />)
+    const button = screen.getByRole('img', { name: 'Test User' }).closest('button')!
+    expect(button).toHaveClass('flex', 'rounded-pill', 'focus-visible:outline-none', 'focus-visible:ring-2', 'focus-visible:ring-accent', 'focus-visible:ring-offset-2', 'focus-visible:ring-offset-surface')
+  })
+
   it('should render initials when no avatar provided', () => {
     render(<MessageBubble {...defaultProps} member_avatar={undefined} />)
     expect(screen.getByText('T')).toBeInTheDocument()

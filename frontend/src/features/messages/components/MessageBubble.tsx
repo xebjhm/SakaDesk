@@ -338,7 +338,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         // Only a clickable avatar (it opens a profile card) looks
                         // clickable; the room author (member 0) gets no handler.
                         className={cn(
-                            'block rounded-pill',
+                            'flex rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
                             onAvatarClick
                                 ? 'cursor-pointer transition-shadow duration-fast ease-standard hover:ring-2 hover:ring-accent-border'
                                 : 'cursor-default',

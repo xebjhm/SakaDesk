@@ -8,7 +8,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
     class="w-10 shrink-0"
   >
     <button
-      class="block rounded-pill cursor-default"
+      class="flex rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface cursor-default"
       type="button"
     >
       <span
@@ -81,7 +81,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
     class="w-10 shrink-0"
   >
     <button
-      class="block rounded-pill cursor-default"
+      class="flex rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface cursor-default"
       type="button"
     >
       <span
@@ -143,7 +143,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
     class="w-10 shrink-0"
   >
     <button
-      class="block rounded-pill cursor-default"
+      class="flex rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface cursor-default"
       type="button"
     >
       <span

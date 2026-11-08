@@ -165,7 +165,7 @@ const OpenModal: React.FC<ModalProps> = ({
                                     size="sm"
                                     aria-label={closeLabel}
                                     icon={<X />}
-                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-header-glass hover:text-expressive-header' : header === 'console' ? 'text-console-muted hover:bg-header-glass hover:text-console' : undefined}
+                                    className={header === 'expressive' ? 'text-expressive-header hover:bg-header-glass hover:text-expressive-header focus-visible:ring-expressive-header focus-visible:ring-offset-0' : header === 'console' ? 'text-console-muted hover:bg-header-glass hover:text-console' : undefined}
                                     onClick={() => requestClose('button')}
                                 />
                             )}
