@@ -43,6 +43,9 @@
     "retry": "Retry",
     "confirm": "Confirm",
     "mediaViewer": "Media viewer",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomFit": "Fit to screen",
     "debug": "Debug"
   },
   "settings": {

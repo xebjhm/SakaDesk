@@ -221,7 +221,7 @@ describe('LetterViewerModal', () => {
         expect(screen.getByRole('dialog', { name: 'Sent letter' })).toBeInTheDocument();
         // ↑ zooms the image as before; ← / → in the media viewer do not move the letter viewer.
         fireEvent.keyDown(media, { key: 'ArrowUp' });
-        expect(img).toHaveStyle({ transform: 'scale(1.25)' });
+        expect(img).toHaveStyle({ transform: 'translate(0px, 0px) scale(1.25)' });
         fireEvent.keyDown(media, { key: 'ArrowLeft' });
         fireEvent.keyDown(media, { key: 'ArrowRight' });
         expect(props.onNavigate).not.toHaveBeenCalled();

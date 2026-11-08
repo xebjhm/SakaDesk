@@ -11,7 +11,8 @@ interface PhotoPlayerProps {
      *  - `gallery-thumb` — square thumbnail in a grid (media gallery,
      *                      blog photo gallery). Click opens the viewer.
      *  - `fullscreen`    — large image inside MediaViewerModal. Accepts
-     *                      a `zoom` factor for the in-modal zoom controls.
+     *                      a `zoom` factor and a `pan` offset for the
+     *                      viewer's zoom and pan.
      */
     variant: 'bubble' | 'gallery-thumb' | 'fullscreen';
     /** Click handler — typically opens the fullscreen viewer */
@@ -25,6 +26,8 @@ interface PhotoPlayerProps {
     loading?: 'lazy' | 'eager';
     /** Fullscreen-only zoom factor (1 = 100%). */
     zoom?: number;
+    /** Fullscreen-only pan offset in px, applied before the zoom (0, 0 = centred). */
+    pan?: { x: number; y: number };
     /**
      * Ref callback applied to the outer `<button>` for `gallery-thumb`.
      * Used by the gallery list to anchor jump-to-date scrolling.
@@ -65,6 +68,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     alt = '',
     loading,
     zoom = 1,
+    pan,
     anchorRef,
     className,
     onError,
@@ -115,7 +119,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
                 draggable={false}
                 onError={fail}
                 className={cn('max-w-[90vw] max-h-[90vh] object-contain transition-transform duration-fast ease-standard motion-reduce:transition-none', className)}
-                style={{ transform: `scale(${zoom})` }}
+                style={{ transform: `translate(${pan?.x ?? 0}px, ${pan?.y ?? 0}px) scale(${zoom})` }}
             />
         );
     }

@@ -43,6 +43,9 @@
     "retry": "再試",
     "confirm": "確認",
     "mediaViewer": "媒體檢視器",
+    "zoomIn": "放大",
+    "zoomOut": "縮細",
+    "zoomFit": "符合畫面",
     "debug": "除錯"
   },
   "settings": {

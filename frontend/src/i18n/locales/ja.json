@@ -43,6 +43,9 @@
     "retry": "再試行",
     "confirm": "確認",
     "mediaViewer": "メディアビューア",
+    "zoomIn": "拡大",
+    "zoomOut": "縮小",
+    "zoomFit": "画面に合わせる",
     "debug": "デバッグ"
   },
   "settings": {
