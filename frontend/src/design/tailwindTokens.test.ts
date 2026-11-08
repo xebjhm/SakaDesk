@@ -89,6 +89,22 @@ describe('accent and expressive utilities', () => {
         ['borderRadius', 'pill', '--ds-radius-pill'],
         ['fontFamily', 'sans', '--ds-font-family-sans'],
         ['fontFamily', 'display', '--ds-font-family-serif'],
+        // Blog feed tile (e4e4118 look).
+        ['fontSize', "'tile-date'", '--ds-blog-font-tile-date'],
+        ['fontSize', "'tile-date-lg'", '--ds-blog-font-tile-date-lg'],
+        ['fontSize', "'tile-title'", '--ds-blog-font-tile-title'],
+        ['fontSize', "'tile-title-lg'", '--ds-blog-font-tile-title-lg'],
+        ['fontSize', "'tile-name'", '--ds-blog-font-tile-name'],
+        ['fontSize', "'tile-name-lg'", '--ds-blog-font-tile-name-lg'],
+        ['boxShadow', 'tile', '--ds-blog-shadow-tile'],
+        ['boxShadow', "'tile-hover'", '--ds-shadow-accent-tile'],
+        ['boxShadow', 'caption', '--ds-blog-shadow-caption'],
+        ['boxShadow', "'caption-hover'", '--ds-shadow-accent-caption'],
+        ['backgroundColor', "'tile-glass'", '--ds-blog-glass'],
+        ['borderColor', "'tile-glass'", '--ds-blog-glass-border'],
+        ['transitionDuration', 'lift', '--ds-duration-lift'],
+        ['transitionDuration', 'zoom', '--ds-duration-zoom'],
+        ['transitionTimingFunction', 'spring', '--ds-ease-spring'],
     ];
     const sectionBody = (name: string) => {
         const start = config.indexOf(`${name}: {`);

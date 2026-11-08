@@ -13,3 +13,4 @@ export { ambientLayout, type AmbientLayout, type OrbLayout } from './ambient';
 export { memberWash } from './member';
 export { brandInk, aurora, brandGlow } from './brand';
 export { brandAccent, groupAccent, mixHex, type AccentRoles } from './accent';
+export { blogFeed } from './blogFeed';

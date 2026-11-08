@@ -466,13 +466,16 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   `animate-orb-breathe`), About's easter egg (`animate-heart-float` 800 ms,
   `animate-heartbeat` 1.2 s), and the celebrations: `animate-toast-in` 350 ms
   (the toast entrance), `animate-shimmer` 1.2 s, `animate-pop` 500 ms,
-  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms. All stop or become static
-  with reduced motion (`motion-reduce:`).
+  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, and the blog feed tile's
+  original hover (`duration-lift` 500 ms, `duration-zoom` 700 ms, `ease-spring`;
+  see "The blog feed"). All stop or become static with reduced motion
+  (`motion-reduce:`).
 - `animate-reveal` (a fade in with an 8 px rise, `duration-base`) is for cards
   appearing in a feed and for a sheet dialog entering; pair it with
   `motion-reduce:animate-none`.
 - Three shadow levels, `shadow-pill`, `shadow-card`, `shadow-sheet`, stay
-  neutral. L1 glows are coloured through the accent `glow` role
+  neutral. The blog feed tile keeps its original shadows (`shadow-tile`,
+  `shadow-caption` and their logo-glow `-hover` forms). L1 glows are coloured through the accent `glow` role
   (`shadow-accent-glow`, `shadow-accent-glow-hover`, `shadow-accent-unread`).
 - `bezierEasing` in `design/tokens/motion.ts` evaluates the standard curve in JS.
 
@@ -605,6 +608,27 @@ the mascot or an unknown member). `resolveWash` also reports why there is none
 (`mascot`, `no_member_data`), logged as `blog_fallback` (`target`: `card_thumb` or
 `wash`; `reason`: `image_error`, `mascot`, `no_member_data`). No other element uses
 member colours.
+
+### The blog feed (the original look)
+
+The blog feed keeps its original design (commit `e4e4118`), restored with tokens after the
+D2b replacements were rejected. Its values live in `design/tokens/blogFeed.ts`.
+
+- **Feed tile** (`BlogCard`): the photo tile fills the whole 3:4 card (`rounded-md`, featured
+  `rounded-lg`; `bg-accent-tile`, the logo 9 % → accent 7 % placeholder; `shadow-tile`; a
+  `bg-tile-vignette` fade along the bottom). The caption is a small frosted card
+  (`bg-tile-glass`, `border-tile-glass`, `backdrop-blur-lg backdrop-saturate-180`,
+  `shadow-caption`) anchored at the bottom-right and deliberately offset past the photo edge
+  (`-bottom-2 -right-2`, padding `px-2.5 py-2`, `rounded-sm`, 95–150 px wide; featured
+  `-bottom-3 -right-3`, `px-3.5 py-3`, `rounded-md`, 130–200 px). It holds the date in small
+  caps (`text-tile-date`, `uppercase tracking-wider text-muted`), the serif title
+  (`text-tile-title`, `font-reading`, `lang="ja"`) and the member name (`text-tile-name`,
+  `text-accent-strong`, `lang="ja"`); featured cards use the `-lg` sizes. On hover the card
+  lifts 6 px (`duration-lift`, 500 ms), a blurred `bg-accent-aura` glows behind it, the tile
+  shadow becomes `shadow-tile-hover` (logo-colour glow), the photo zooms to 105 %
+  (`duration-zoom`, 700 ms) and the caption nudges 4 px up-left on `ease-spring`
+  (`duration-glide`) with `shadow-caption-hover`. Reduced motion keeps the hover look but
+  drops the transitions. Focus shows a `ring-2 ring-inset ring-accent` over the photo.
 
 The blog timeline rail's hover ring is `border-accent` when zoomed (`border-strong`
 otherwise) and its tooltip glows with `shadow-accent-glow`.

@@ -49,6 +49,11 @@ export default {
                 'expressive-orb-2': 'var(--ds-expressive-orb-2)',
                 'expressive-orb-3': 'var(--ds-expressive-orb-3)',
                 aurora: 'var(--ds-aurora)',
+                // Blog feed tile (e4e4118 look): the hover aura (logo 19 % -> accent 8 %), the photo
+                // placeholder (logo 9 % -> accent 7 %, 145deg) and the bottom-edge vignette.
+                'accent-aura': 'radial-gradient(ellipse at center, color-mix(in srgb, var(--ds-accent-logo) 19%, transparent) 0%, color-mix(in srgb, var(--ds-accent) 8%, transparent) 50%, transparent 70%)',
+                'accent-tile': 'linear-gradient(145deg, color-mix(in srgb, var(--ds-accent-logo) 9%, transparent) 0%, color-mix(in srgb, var(--ds-accent) 7%, transparent) 100%)',
+                'tile-vignette': 'linear-gradient(to top, var(--ds-blog-vignette) 0%, transparent 20%)',
                 // Theme-aware gradients
                 'theme-gradient': 'linear-gradient(to right, var(--color-gradient-from), var(--color-gradient-to))',
                 'theme-gradient-vertical': 'linear-gradient(to bottom, var(--color-gradient-from), var(--color-gradient-to))',
@@ -114,6 +119,8 @@ export default {
                 'group-shelter-video': 'var(--ds-group-shelter-video)',
                 'group-shelter-voice': 'var(--ds-group-shelter-voice)',
                 'group-shelter-text': 'var(--ds-group-shelter-text)',
+                // Blog feed tile caption card (e4e4118 frosted white).
+                'tile-glass': 'var(--ds-blog-glass)',
             },
             textColor: {
                 accent: 'var(--ds-accent)',
@@ -161,6 +168,7 @@ export default {
                 'group-bubble': 'var(--ds-group-bubble-border)',
                 'group-subtle': 'var(--ds-group-subtle-border)',
                 surface: 'var(--ds-surface-sheet)',
+                'tile-glass': 'var(--ds-blog-glass-border)',
                 'group-shelter-picture': 'var(--ds-group-shelter-picture)',
                 'group-shelter-video': 'var(--ds-group-shelter-video)',
                 'group-shelter-voice': 'var(--ds-group-shelter-voice)',
@@ -213,6 +221,11 @@ export default {
                 card: 'var(--ds-shadow-card)',
                 sheet: 'var(--ds-shadow-sheet)',
                 'group-glow': 'var(--ds-shadow-group-glow)',
+                // Blog feed tile (e4e4118 look).
+                tile: 'var(--ds-blog-shadow-tile)',
+                'tile-hover': 'var(--ds-shadow-accent-tile)',
+                caption: 'var(--ds-blog-shadow-caption)',
+                'caption-hover': 'var(--ds-shadow-accent-caption)',
             },
             fontSize: {
                 caption: ['var(--ds-font-caption-size)', { lineHeight: 'var(--ds-font-caption-leading)' }],
@@ -222,6 +235,13 @@ export default {
                 heading: ['var(--ds-font-heading-size)', { lineHeight: 'var(--ds-font-heading-leading)' }],
                 display: ['var(--ds-font-display-size)', { lineHeight: 'var(--ds-font-display-leading)' }],
                 reading: ['var(--ds-font-reading-size)', { lineHeight: 'var(--ds-font-reading-leading)' }],
+                // Blog feed tile caption (e4e4118 sizes; size only, the line height is inherited).
+                'tile-date': 'var(--ds-blog-font-tile-date)',
+                'tile-date-lg': 'var(--ds-blog-font-tile-date-lg)',
+                'tile-title': 'var(--ds-blog-font-tile-title)',
+                'tile-title-lg': 'var(--ds-blog-font-tile-title-lg)',
+                'tile-name': 'var(--ds-blog-font-tile-name)',
+                'tile-name-lg': 'var(--ds-blog-font-tile-name-lg)',
             },
             keyframes: {
                 landing: {
@@ -296,9 +316,12 @@ export default {
                 fast: 'var(--ds-duration-fast)',
                 base: 'var(--ds-duration-base)',
                 glide: 'var(--ds-duration-glide)',
+                lift: 'var(--ds-duration-lift)',
+                zoom: 'var(--ds-duration-zoom)',
             },
             transitionTimingFunction: {
                 standard: 'var(--ds-ease-standard)',
+                spring: 'var(--ds-ease-spring)',
             },
         },
     },

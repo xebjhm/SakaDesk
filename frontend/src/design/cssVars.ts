@@ -4,7 +4,7 @@
  */
 import {
     color, groupRoles, groupTokens, radius, shadow, typeScale, fontFamily, motion, easingCss,
-    ambientLayout, memberWash, aurora, groupAccent, type AccentRoles, type GroupId,
+    ambientLayout, memberWash, aurora, groupAccent, blogFeed, type AccentRoles, type GroupId,
 } from './tokens';
 
 /** camelCase token name → kebab-case CSS variable segment (controlHover → control-hover). */
@@ -46,6 +46,15 @@ export function staticTokenVars(): Record<string, string> {
     vars['--ds-member-wash-1'] = 'transparent';
     vars['--ds-member-wash-2'] = 'transparent';
     vars['--ds-aurora'] = aurora.gradient;
+    // The blog feed tile (e4e4118 look, tokens/blogFeed.ts).
+    for (const [name, size] of Object.entries(blogFeed.type)) vars[`--ds-blog-font-${kebab(name)}`] = size;
+    vars['--ds-blog-shadow-tile'] = blogFeed.shadow.tile;
+    vars['--ds-blog-shadow-caption'] = blogFeed.shadow.caption;
+    vars['--ds-blog-glass'] = blogFeed.glass;
+    vars['--ds-blog-glass-border'] = blogFeed.glassBorder;
+    vars['--ds-blog-vignette'] = blogFeed.vignette;
+    for (const [name, ms] of Object.entries(blogFeed.motion.duration)) vars[`--ds-duration-${name}`] = `${ms}ms`;
+    vars['--ds-ease-spring'] = easingCss(blogFeed.motion.spring);
     return vars;
 }
 
@@ -68,6 +77,9 @@ export function accentTokenVars(a: AccentRoles): Record<string, string> {
         '--ds-shadow-accent-halo': `0 0 12px 2px ${a.glow}`,
         '--ds-shadow-accent-glow-hover': `0 6px 22px ${a.glow}`,
         '--ds-shadow-accent-unread': a.unread,
+        // Blog feed tile hover (e4e4118): a logo-colour glow over a neutral lift ("35" and "40" hex alpha = 21 % / 25 %).
+        '--ds-shadow-accent-tile': `0 16px 40px -10px color-mix(in srgb, ${a.logo} 21%, transparent), ${blogFeed.shadow.tileLift}`,
+        '--ds-shadow-accent-caption': `0 10px 28px -6px color-mix(in srgb, ${a.logo} 25%, transparent), ${blogFeed.shadow.captionLift}`,
         '--ds-expressive-soft': a.soft,
         '--ds-expressive-header': a.header,
         '--ds-expressive-header-text': a.headerText,
