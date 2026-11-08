@@ -4,6 +4,7 @@ import i18n from '../../i18n';
 import { FavoritesModal } from './FavoritesModal';
 import { resetDialogStack } from '../../design/dialog/dialogStack';
 import type { Message } from '../../types';
+import { clientLog } from '../../utils/clientLog';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 beforeAll(async () => { await i18n.changeLanguage('en'); });
@@ -31,9 +32,18 @@ describe('FavoritesModal video cards', () => {
         expect(el).not.toHaveClass('opacity-0');
     });
 
-    it('stops pulsing when the video fails to load', () => {
+    it('swaps the skeleton once metadata loads, when the engine stops there', () => {
+        const el = renderModal();
+        fireEvent.loadedMetadata(el);
+        expect(screen.queryByTestId('video-skeleton')).toBeNull();
+        expect(el).not.toHaveClass('opacity-0');
+    });
+
+    it('stops pulsing and logs a breadcrumb when the video fails to load', () => {
+        vi.mocked(clientLog).mockClear();
         const el = renderModal();
         fireEvent.error(el);
         expect(screen.queryByTestId('video-skeleton')).toBeNull();
+        expect(clientLog).toHaveBeenCalledWith('favorite_video_error', { phase: 'load' });
     });
 });

@@ -9,6 +9,7 @@ import { Modal, Card, Avatar, IconButton } from '../../design/primitives';
 import { DialogStatus } from '../common/DialogStatus';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
+import { clientLog } from '../../utils/clientLog';
 
 interface FavoritesModalProps extends BaseModalProps {
     messages: Message[];
@@ -20,8 +21,10 @@ interface FavoritesModalProps extends BaseModalProps {
 /**
  * Inline video thumbnail: the neutral skeleton pulses until the first frame is
  * available. The video stays laid out but invisible meanwhile (never
- * `display:none`), mirroring SafeImage's skeleton mode. A failed video stops
- * the pulse and leaves the native element, as before.
+ * `display:none`), mirroring SafeImage's skeleton mode. The pulse stops on
+ * whichever of `loadeddata` / `loadedmetadata` fires first (some engines stop
+ * at metadata). A failed video stops the pulse, logs `favorite_video_error`
+ * and leaves the native element.
  */
 const FavoriteVideoThumb: React.FC<{ src: string }> = ({ src }) => {
     const [ready, setReady] = useState(false);
@@ -39,7 +42,11 @@ const FavoriteVideoThumb: React.FC<{ src: string }> = ({ src }) => {
                 className={cn('max-h-64 max-w-full object-contain', !ready && 'pointer-events-none absolute opacity-0')}
                 preload="metadata"
                 onLoadedData={() => setReady(true)}
-                onError={() => setReady(true)}
+                onLoadedMetadata={() => setReady(true)}
+                onError={() => {
+                    clientLog('favorite_video_error', { phase: 'load' });
+                    setReady(true);
+                }}
             />
         </>
     );

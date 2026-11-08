@@ -3,8 +3,9 @@
  *
  * Two layers (docs/design/DESIGN_SYSTEM.md, "Colour system"):
  * - `official`: colours copied from the official apps. They are kept verbatim
- *   and pinned by tests (Yodel's are system-derived since v2): title gradient/bar/text, canvas, unread shelters and
- *   styles.
+ *   and pinned by tests: title gradient/bar/text, canvas, unread shelters and
+ *   styles. Yodel's title and canvas are system-derived since v2; its unread
+ *   shelters are logo-derived on purpose (owner decision 2026-11-09).
  * - System: `logo` plus a 10-step `scale` (OKLCH, logo colour snapped into its
  *   nearest step). Every other colour is a role from `roles.ts`. The only
  *   other hex written here are the per-group `bubbleBorder` and `glow` values

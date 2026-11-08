@@ -139,8 +139,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     // Voice/video transcription is owned by the player components themselves
     // (VoicePlayer variant="gallery", VideoPlayer variant="gallery").
     const scrollContainerRef = useRef<HTMLDivElement>(null);
-    // `display: contents` wrapper around the tab content; its parent is the Modal body, the scroller.
-    const contentRef = useRef<HTMLDivElement>(null);
+    // The Modal body, the scroller (reset to the top when the tab changes).
+    const bodyRef = useRef<HTMLDivElement>(null);
     const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemRefs = useRef<Map<string, HTMLElement>>(new Map());  // Keyed by date string YYYY-MM-DD
 
@@ -362,8 +362,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     };
 
     const selectTab = (tab: MediaTab) => {
+        if (tab === activeTab) return;
         // A different tab is a different list: start at its top, not at the old offset.
-        if (contentRef.current?.parentElement) contentRef.current.parentElement.scrollTop = 0;
+        if (bodyRef.current) bodyRef.current.scrollTop = 0;
         setActiveTab(tab);
     };
 
@@ -589,6 +590,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 logId="media_gallery"
                 className="h-[80vh] max-w-4xl"
                 bodyClassName="px-0 pb-0 pt-0"
+                bodyRef={bodyRef}
                 toolbar={renderTabs()}
                 footer={
                     <>
@@ -604,7 +606,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     </>
                 }
             >
-                <div ref={contentRef} className="contents">{renderContent()}</div>
+                {renderContent()}
             </Modal>
 
             {renderDetailView()}

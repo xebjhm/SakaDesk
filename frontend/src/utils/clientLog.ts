@@ -14,7 +14,8 @@ export type ClientLogEvent =
     | 'timeline_jump' | 'letters_load' | 'account_profile_load' | 'letter_avatar' | 'streak_load'
     | 'blog_load' | 'dialog' | 'dialog_load' | 'call_layer' | 'sync_start_skipped'
     | 'menu_item_blocked' | 'blog_fallback' | 'group_marker_fallback' | 'entry_validation' | 'archive_stats_load' | 'celebration' | 'sync_sequence'
-    | 'letter_viewer' | 'letter_jump' | 'display_density_change';
+    | 'letter_viewer' | 'letter_jump' | 'display_density_change'
+    | 'favorite_video_error';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'

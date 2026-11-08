@@ -115,9 +115,10 @@ one of two layers:
   tests pin them. Do not "fix" them to match the scale. Hinatazaka's unread
   shelters were re-taken from the official app screenshots on 2026-11-08
   (picture `#b2caed`, video `#ceadec`, voice `#b7acec`, text `#85badd`, style
-  `classic`). Nogizaka's and Yodel's shelter values are approximations from the
-  first theme commit, not yet verified against the official apps (code comments
-  mark them; to be re-taken from screenshots later). Shelter icons are drawn at
+  `classic`). Nogizaka's shelter values are approximations from the first theme
+  commit, not yet verified against the official app (code comments mark them;
+  to be re-taken from screenshots later). Yodel's shelters are logo-derived on
+  purpose (owner decision 2026-11-09); a per-OG penlight layer is planned. Shelter icons are drawn at
   full opacity.
 - **System layer:** each group has its logo colour and a 10-step scale (50
   lightest to 900 darkest, logo colour snapped into its step).
@@ -570,6 +571,7 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
 | `logId` | Required on every dialog: its `DialogLogId`, which logs the `dialog` open / close breadcrumbs (data loads inside log `dialog_load`) |
 | `footerDivider` | A `border-subtle` hairline and 16 px above the footer, for a long body that scrolls under it (Diagnostics) |
 | `toolbar` | Standard layout only (the bare layout ignores it, with a development warning). A non-scrolling strip between the header and the body (the media gallery's tab bar): opaque `bg-sheet`, outside the scroller so the scrollbar starts below it; a body with sticky headers under it takes `pt-0` and the headers stick at `top-0` |
+| `bodyRef` | Standard layout only. A ref to the scrolling body element, for callers that must move its scroll (the media gallery resets it to the top when the tab changes) |
 | `titleClassName` | Extra classes for the title (the member timeline sets `text-accent-strong` on its plain header) |
 | `initialFocusRef`, `onKeyDown`, `headerExtra`, `footer`, `className`, `bodyClassName` | first focus, the content's own keys, header extras, footer actions, frame and body classes |
 

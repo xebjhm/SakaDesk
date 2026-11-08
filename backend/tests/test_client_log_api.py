@@ -309,6 +309,8 @@ def test_notify_open_chat_accepts_has_target():
             "info",
         ),
         ("celebration", {"target": "milestone_days", "outcome": "seeded"}, "info"),
+        ("favorite_video_error", {}, "info"),
+        ("favorite_video_error", {"phase": "load"}, "info"),
     ],
 )
 def test_design_system_events_are_accepted(event, fields, level):
