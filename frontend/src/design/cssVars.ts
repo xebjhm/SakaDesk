@@ -58,6 +58,8 @@ export function staticTokenVars(): Record<string, string> {
     vars['--ds-blog-font-segment'] = blogFeed.segment.size;
     for (const [name, ms] of Object.entries(blogFeed.motion.duration)) vars[`--ds-duration-${name}`] = `${ms}ms`;
     vars['--ds-ease-spring'] = easingCss(blogFeed.motion.spring);
+    // Timeline rail lens centre: set per element by TimelineRail while zoomed.
+    vars['--ds-rail-lens-y'] = blogFeed.railLensY;
     return vars;
 }
 
@@ -82,6 +84,8 @@ export function accentTokenVars(a: AccentRoles): Record<string, string> {
         '--ds-shadow-accent-unread': a.unread,
         // Blog feed tile hover (e4e4118): a logo-colour glow over a neutral lift ("35" and "40" hex alpha = 21 % / 25 %).
         '--ds-shadow-accent-tile': `0 16px 40px -10px color-mix(in srgb, ${a.logo} 21%, transparent), ${blogFeed.shadow.tileLift}`,
+        // Timeline rail current-post dot (e4e4118): a strong-colour glow ("60" and "40" hex alpha = 38 % / 25 %).
+        '--ds-shadow-accent-beacon': `0 0 12px color-mix(in srgb, ${a.strong} 38%, transparent), 0 0 4px color-mix(in srgb, ${a.strong} 25%, transparent)`,
         '--ds-shadow-accent-caption': `0 10px 28px -6px color-mix(in srgb, ${a.logo} 25%, transparent), ${blogFeed.shadow.captionLift}`,
         '--ds-expressive-soft': a.soft,
         '--ds-expressive-header': a.header,

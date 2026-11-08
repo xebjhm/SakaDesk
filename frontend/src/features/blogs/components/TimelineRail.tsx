@@ -49,6 +49,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
     const [zoomCenter, setZoomCenter] = useState<number | null>(null);
     const dwellTimerRef = useRef<NodeJS.Timeout | null>(null);
     const lastHoverIndexRef = useRef<number | null>(null);
+    const lensYRef = useRef<string | null>(null);
 
     // Group blogs by year
     const yearGroups = useMemo((): YearGroup[] => {
@@ -229,6 +230,9 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
     };
 
     const hovered = hoverInfo ? blogs[hoverInfo.index] : undefined;
+    // The lens keeps its last centre while it fades out after the zoom ends.
+    if (zoomCenter !== null) lensYRef.current = `${(zoomCenter / Math.max(blogs.length - 1, 1)) * 100}%`;
+    const lensStyle = lensYRef.current ? ({ '--ds-rail-lens-y': lensYRef.current } as React.CSSProperties) : {};
 
     return (
         <div
@@ -240,10 +244,27 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
             onMouseLeave={handleMouseLeave}
             onClick={handleClick}
         >
-            {/* Track */}
+            {/* Track: e4e4118 widened it from "2px" to "3px" while zoomed ("300ms cubic-bezier(0.4, 0, 0.2, 1)"). */}
             <div
-                className="absolute left-1/2 -translate-x-1/2 border-l-2 border-subtle"
+                data-testid="timeline-rail-track"
+                className={cn(
+                    'absolute left-1/2 -translate-x-1/2 border-subtle',
+                    'transition-[border-width] duration-lens ease-in-out motion-reduce:transition-none',
+                    isZoomed ? 'border-l-[3px]' : 'border-l-2',
+                )}
                 style={{ top: RAIL_PADDING, bottom: RAIL_PADDING }}
+            />
+
+            {/* Light through a lens (e4e4118): a soft strong-accent glow ("20px" wide, "ellipse 100% 30%")
+                along the track, centred on the magnified zone while zoomed. */}
+            <div
+                data-testid="timeline-rail-lens"
+                className={cn(
+                    'pointer-events-none absolute left-1/2 w-5 -translate-x-1/2 bg-accent-lens',
+                    'transition-opacity duration-lens ease-in-out motion-reduce:transition-none',
+                    isZoomed && zoomCenter !== null ? 'opacity-100' : 'opacity-0',
+                )}
+                style={{ top: RAIL_PADDING, bottom: RAIL_PADDING, ...lensStyle }}
             />
 
             {/* Year markers (a label is skipped when it would overlap the previous one) */}
@@ -259,7 +280,7 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                 return (
                     <div
                         key={group.year}
-                        className="absolute right-full mr-2 flex -translate-y-1/2 items-center transition-[top] duration-base ease-standard motion-reduce:transition-none"
+                        className="absolute right-full mr-2 flex -translate-y-1/2 items-center transition-[top] duration-lens ease-in-out motion-reduce:transition-none"
                         style={{ top: position }}
                     >
                         <span className="whitespace-nowrap text-caption font-medium text-muted">{group.year}</span>
@@ -268,9 +289,9 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                 );
             })}
 
-            {/* Current post */}
+            {/* Current post: e4e4118's dot in the strong accent with a soft beacon glow. */}
             <div
-                className="absolute left-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-accent shadow-accent-glow transition-[top] duration-base ease-standard motion-reduce:transition-none"
+                className="absolute left-1/2 h-2.5 w-2.5 -translate-x-1/2 -translate-y-1/2 rounded-pill bg-accent-strong shadow-accent-beacon transition-[top] duration-lens ease-in-out motion-reduce:transition-none"
                 style={{ top: getYFromIndex(currentIndex, railRef.current) }}
             />
 
@@ -280,8 +301,8 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
                     <div
                         className={cn(
                             'pointer-events-none absolute left-1/2 h-3.5 w-3.5 -translate-x-1/2 -translate-y-1/2 rounded-pill border-2',
-                            isZoomed ? 'border-accent' : 'border-strong',
-                            'transition-[opacity,border-color] duration-base ease-standard motion-reduce:transition-none',
+                            isZoomed ? 'border-accent-strong' : 'border-strong',
+                            'transition-[opacity,border-color] duration-lens ease-in-out motion-reduce:transition-none',
                             isZoomed ? 'opacity-90' : 'opacity-60',
                         )}
                         style={{ top: hoverInfo.y }}

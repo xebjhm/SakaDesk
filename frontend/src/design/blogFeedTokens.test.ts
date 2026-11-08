@@ -15,7 +15,7 @@ describe('blog feed tile tokens (e4e4118)', () => {
         expect(blogFeed.shadow.caption).toBe('0 6px 20px -6px rgba(0, 0, 0, 0.1)');
         expect(blogFeed.glass).toBe('rgba(255, 255, 255, 0.92)');
         expect(blogFeed.glassBorder).toBe('rgba(255, 255, 255, 0.6)');
-        expect(blogFeed.motion.duration).toEqual({ lift: 500, zoom: 700 });
+        expect(blogFeed.motion.duration).toEqual({ lift: 500, zoom: 700, lens: 300 });
     });
 
     it('keeps the e4e4118 All / Favorite segmented control values', () => {
@@ -36,6 +36,16 @@ describe('blog feed tile tokens (e4e4118)', () => {
         expect(v['--ds-ease-spring']).toBe('cubic-bezier(0.34, 1.56, 0.64, 1)');
     });
 
+    it('restores the timeline rail lens and the current-post beacon', () => {
+        const v = staticTokenVars();
+        expect(v['--ds-duration-lens']).toBe('300ms');
+        expect(v['--ds-rail-lens-y']).toBe('50%');
+        const a = groupAccent('hinatazaka');
+        expect(accentTokenVars(a)['--ds-shadow-accent-beacon']).toBe(
+            `0 0 12px color-mix(in srgb, ${a.strong} 38%, transparent), 0 0 4px color-mix(in srgb, ${a.strong} 25%, transparent)`,
+        );
+    });
+
     it('glows the tile and caption on hover in the context logo colour', () => {
         const a = groupAccent('hinatazaka');
         const v = accentTokenVars(a);
@@ -54,6 +64,7 @@ describe('blog feed tile gradients (tailwind.config.js)', () => {
     it('mixes the aura and the placeholder from the accent roles (e4e4118 logo / action alphas)', () => {
         expect(config).toContain("'accent-aura': 'radial-gradient(ellipse at center, color-mix(in srgb, var(--ds-accent-logo) 19%, transparent) 0%, color-mix(in srgb, var(--ds-accent) 8%, transparent) 50%, transparent 70%)'");
         expect(config).toContain("'accent-tile': 'linear-gradient(145deg, color-mix(in srgb, var(--ds-accent-logo) 9%, transparent) 0%, color-mix(in srgb, var(--ds-accent) 7%, transparent) 100%)'");
+        expect(config).toContain("'accent-lens': 'radial-gradient(ellipse 100% 30% at 50% var(--ds-rail-lens-y), color-mix(in srgb, var(--ds-accent-strong) 8%, transparent) 0%, transparent 70%)'");
         expect(config).toContain("'tile-vignette': 'linear-gradient(to top, var(--ds-blog-vignette) 0%, transparent 20%)'");
     });
 });

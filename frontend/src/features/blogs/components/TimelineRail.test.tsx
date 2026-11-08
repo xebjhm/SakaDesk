@@ -70,9 +70,9 @@ describe('TimelineRail', () => {
 });
 
 describe('TimelineRail look (D2b)', () => {
-    it('uses the accent for the current dot and no superseded group roles', () => {
+    it('draws the current dot in the strong accent with its beacon glow and no superseded group roles', () => {
         const { container, rail } = setup(3);
-        expect(rail.querySelector('.bg-accent.shadow-accent-glow')).toHaveClass('rounded-pill');
+        expect(rail.querySelector('.bg-accent-strong.shadow-accent-beacon')).toHaveClass('rounded-pill', 'duration-lens', 'ease-in-out');
         expect(container.innerHTML).not.toMatch(/-group-(accent|glow|subtle|strong)/);
     });
 
@@ -83,9 +83,26 @@ describe('TimelineRail look (D2b)', () => {
         expect(rail.querySelector('.border-2')).toHaveClass('border-strong');
         expect(screen.getByText('#' + (42 - 21)).closest('.rounded-card')).toHaveClass('shadow-accent-glow');
         act(() => { vi.advanceTimersByTime(800); });
-        expect(rail.querySelector('.border-2')).toHaveClass('border-accent');
-        expect(rail.querySelector('.border-2')).toHaveClass('transition-[opacity,border-color]');
+        expect(rail.querySelector('.border-2')).toHaveClass('border-accent-strong');
+        expect(rail.querySelector('.border-2')).toHaveClass('transition-[opacity,border-color]', 'duration-lens');
         expect(screen.getByText(blogs[21].title)).toHaveAttribute('lang', 'ja');
+    });
+
+    it('lights the track through a lens over the magnified zone once zoomed (e4e4118)', () => {
+        vi.useFakeTimers();
+        const { rail } = setup();
+        const lens = screen.getByTestId('timeline-rail-lens');
+        const track = screen.getByTestId('timeline-rail-track');
+        expect(lens).toHaveClass('bg-accent-lens', 'w-5', 'pointer-events-none', 'opacity-0', 'transition-opacity', 'duration-lens', 'motion-reduce:transition-none');
+        expect(track).toHaveClass('border-l-2', 'border-subtle');
+        fireEvent.mouseMove(rail, { clientY: 230 });
+        act(() => { vi.advanceTimersByTime(800); });
+        expect(lens).toHaveClass('opacity-100');
+        expect(lens.style.getPropertyValue('--ds-rail-lens-y')).toBe(`${(21 / 41) * 100}%`);
+        expect(track).toHaveClass('border-l-[3px]', 'transition-[border-width]', 'duration-lens');
+        fireEvent.mouseLeave(rail);
+        expect(lens).toHaveClass('opacity-0');
+        expect(track).toHaveClass('border-l-2');
     });
 
     it('fills its column and is hidden from assistive technology', () => {

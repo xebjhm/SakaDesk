@@ -54,6 +54,9 @@ export default {
                 'accent-aura': 'radial-gradient(ellipse at center, color-mix(in srgb, var(--ds-accent-logo) 19%, transparent) 0%, color-mix(in srgb, var(--ds-accent) 8%, transparent) 50%, transparent 70%)',
                 'accent-tile': 'linear-gradient(145deg, color-mix(in srgb, var(--ds-accent-logo) 9%, transparent) 0%, color-mix(in srgb, var(--ds-accent) 7%, transparent) 100%)',
                 'tile-vignette': 'linear-gradient(to top, var(--ds-blog-vignette) 0%, transparent 20%)',
+                // Timeline rail lens (e4e4118 "light through a lens"): a strong-colour glow at 8 % ("15" hex
+                // alpha) centred on the zoom; TimelineRail sets --ds-rail-lens-y.
+                'accent-lens': 'radial-gradient(ellipse 100% 30% at 50% var(--ds-rail-lens-y), color-mix(in srgb, var(--ds-accent-strong) 8%, transparent) 0%, transparent 70%)',
                 // Theme-aware gradients
                 'theme-gradient': 'linear-gradient(to right, var(--color-gradient-from), var(--color-gradient-to))',
                 'theme-gradient-vertical': 'linear-gradient(to bottom, var(--color-gradient-from), var(--color-gradient-to))',
@@ -74,6 +77,7 @@ export default {
             // Opacity modifiers (bg-sheet/50) do not work with these; add a token instead.
             backgroundColor: {
                 accent: 'var(--ds-accent)',
+                'accent-strong': 'var(--ds-accent-strong)',
                 'accent-subtle': 'var(--ds-accent-subtle)',
                 'accent-border': 'var(--ds-accent-border)',
                 sheet: 'var(--ds-surface-sheet)',
@@ -158,6 +162,7 @@ export default {
                 'accent-border': 'var(--ds-accent-border)',
                 'accent-wash': 'var(--ds-accent-wash-border)',
                 accent: 'var(--ds-accent)',
+                'accent-strong': 'var(--ds-accent-strong)',
                 'frost': 'var(--ds-overlay-frost-border)',
                 subtle: 'var(--ds-border-subtle)',
                 strong: 'var(--ds-border-strong)',
@@ -219,6 +224,7 @@ export default {
                 'accent-halo': 'var(--ds-shadow-accent-halo)',
                 'accent-glow-hover': 'var(--ds-shadow-accent-glow-hover)',
                 'accent-unread': 'var(--ds-shadow-accent-unread)',
+                'accent-beacon': 'var(--ds-shadow-accent-beacon)',
                 pill: 'var(--ds-shadow-pill)',
                 card: 'var(--ds-shadow-card)',
                 sheet: 'var(--ds-shadow-sheet)',
@@ -322,6 +328,7 @@ export default {
                 glide: 'var(--ds-duration-glide)',
                 lift: 'var(--ds-duration-lift)',
                 zoom: 'var(--ds-duration-zoom)',
+                lens: 'var(--ds-duration-lens)',
             },
             transitionTimingFunction: {
                 standard: 'var(--ds-ease-standard)',

@@ -108,6 +108,10 @@ describe('accent and expressive utilities', () => {
         ['backgroundColor', "'segment-track'", '--ds-blog-segment-track'],
         ['boxShadow', 'segment', '--ds-blog-shadow-segment'],
         ['fontSize', 'segment', '--ds-blog-font-segment'],
+        ['backgroundColor', "'accent-strong'", '--ds-accent-strong'],
+        ['borderColor', "'accent-strong'", '--ds-accent-strong'],
+        ['boxShadow', "'accent-beacon'", '--ds-shadow-accent-beacon'],
+        ['transitionDuration', 'lens', '--ds-duration-lens'],
     ];
     const sectionBody = (name: string) => {
         const start = config.indexOf(`${name}: {`);

@@ -35,9 +35,14 @@ export const blogFeed = {
         shadow: '0 1px 3px rgba(0, 0, 0, 0.1)',
         size: '0.75rem',
     },
+    /** The timeline rail lens: where its glow centres before the zoom sets it (a CSS position). */
+    railLensY: '50%',
     motion: {
-        /** Milliseconds: the tile lift and its glow (`lift`), the photo zoom and fade-in (`zoom`). */
-        duration: { lift: 500, zoom: 700 },
+        /**
+         * Milliseconds: the tile lift and its glow (`lift`), the photo zoom and fade-in (`zoom`),
+         * and the timeline rail's fisheye zoom (`lens`: track width, lens glow, markers and dot).
+         */
+        duration: { lift: 500, zoom: 700, lens: 300 },
         /** The caption card's springy hover nudge. */
         spring: [0.34, 1.56, 0.64, 1],
     },

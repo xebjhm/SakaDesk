@@ -468,9 +468,10 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   `animate-orb-breathe`), About's easter egg (`animate-heart-float` 800 ms,
   `animate-heartbeat` 1.2 s), and the celebrations: `animate-toast-in` 350 ms
   (the toast entrance), `animate-shimmer` 1.2 s, `animate-pop` 500 ms,
-  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, and the blog feed tile's
-  original hover (`duration-lift` 500 ms, `duration-zoom` 700 ms, `ease-spring`;
-  see "The blog feed"). All stop or become static with reduced motion
+  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, and the blog feed's
+  original motion (`duration-lift` 500 ms, `duration-zoom` 700 ms, `ease-spring`
+  on the feed tile, `duration-lens` 300 ms on the timeline rail's zoom; see
+  "The blog feed"). All stop or become static with reduced motion
   (`motion-reduce:`).
 - `animate-reveal` (a fade in with an 8 px rise, `duration-base`) is for cards
   appearing in a feed and for a sheet dialog entering; pair it with
@@ -639,8 +640,15 @@ D2b replacements were rejected. Its values live in `design/tokens/blogFeed.ts`.
   (`bg-pill shadow-segment`) in the oshi colour (`text-semantic-oshi`; the Favorite heart
   `text-semantic-oshi-solid`), for All as well, as in the original: the control is the 推 filter.
 
-The blog timeline rail's hover ring is `border-accent` when zoomed (`border-strong`
-otherwise) and its tooltip glows with `shadow-accent-glow`.
+- **Timeline rail** (`TimelineRail`): the current post is a `bg-accent-strong` dot with
+  `shadow-accent-beacon` (the strong colour glowing at 38 % / 25 %). After an 800 ms dwell the
+  fisheye zoom shows the original "light through a lens": the `border-subtle` track widens from
+  2 to 3 px and a 20 px `bg-accent-lens` band (a radial glow of the strong colour at 8 %)
+  fades in over the magnified zone, centred by `--ds-rail-lens-y` (set on the element; it
+  keeps its last centre while it fades out). The hover ring is `border-accent-strong` when
+  zoomed (`border-strong` otherwise) and the tooltip glows with `shadow-accent-glow`. The zoom
+  transitions (track width, lens, year markers, dot) run `duration-lens` (300 ms)
+  `ease-in-out`, none with reduced motion.
 
 ### The group rail and the profile card
 

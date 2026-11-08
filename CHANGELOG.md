@@ -59,6 +59,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   hovering a post lifts it with a soft glow in your group's colour.
 - **All / Favorite is one switch again.** The blog feed's filter is back to a
   single grey track with the chosen option raised in pink.
+- **The blog timeline glows where you zoom in.** Resting on the timeline beside
+  a post lights the magnified stretch with a soft glow in your group's colour,
+  as it used to.
 - **First launch has its colours back.** The welcome, terms, group picker,
   folder setup and first sync use SakaDesk's soft aurora again, each group
   card and terms link in its own group colour, and the disclaimer in its
