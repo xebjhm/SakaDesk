@@ -237,6 +237,13 @@ describe('DiagnosticsModal', () => {
             expect(clientLog).not.toHaveBeenCalledWith('diagnostics_disk_usage', expect.objectContaining({ outcome: 'abandoned' }));
         });
 
+        it('shows when the disk usage figure was computed', async () => {
+            vi.stubGlobal('fetch', routeFetch({ ...DATA, disk_usage: READY_USAGE }, [READY_USAGE]));
+            render(<DiagnosticsModal isOpen onClose={vi.fn()} />);
+            const stamp = await screen.findByTestId('disk-usage-computed-at');
+            expect(stamp).toHaveTextContent(/^Calculated 2026\/11\/\d\d \d\d:\d\d$/);
+        });
+
         it('Refresh asks the backend to recompute disk usage', async () => {
             vi.mocked(clientLog).mockClear();
             const fetchMock = routeFetch(DATA, [READY_USAGE]);

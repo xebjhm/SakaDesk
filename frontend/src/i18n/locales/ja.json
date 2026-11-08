@@ -713,6 +713,7 @@
     "milestoneYears": "年間の購読"
   },
   "diagnostics": {
+    "diskUsageComputedAt": "計算日時: {{time}}",
     "diskUsageCalculating": "計算中…",
     "diskUsageFailed": "計算できませんでした"
   }

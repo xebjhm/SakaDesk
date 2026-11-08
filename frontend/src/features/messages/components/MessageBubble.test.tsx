@@ -248,6 +248,18 @@ describe('MessageBubble component', () => {
       expect(footer.className).not.toMatch(/-mt-/)
     })
 
+    it('squares the voice player bottom corners when a footer is attached, keeping the top', () => {
+      useAppStore.setState({ transcriptionEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      const player = container.querySelector('.min-w-\\[300px\\]') as HTMLElement
+      expect(player).toHaveClass('rounded-lg', 'rounded-b-none')
+    })
+
+    it('keeps the voice player fully rounded without a footer', () => {
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).not.toHaveClass('rounded-b-none')
+    })
+
     it('keeps the bubble fully rounded without a footer and while unread', () => {
       const { container, rerender } = render(<MessageBubble {...defaultProps} message={voice} />)
       expect(container.querySelector('.border-group-bubble')).not.toHaveClass('rounded-b-none')

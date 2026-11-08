@@ -37,6 +37,15 @@ describe('VoicePlayer component', () => {
       expect(player).toBeInTheDocument()
     })
 
+    it('squares the bottom corners only when joined to a footer below', () => {
+      const { container, rerender } = render(<VoicePlayer {...defaultProps} />)
+      const player = () => container.querySelector('.min-w-\\[300px\\]') as HTMLElement
+      expect(player()).toHaveClass('rounded-lg')
+      expect(player()).not.toHaveClass('rounded-b-none')
+      rerender(<VoicePlayer {...defaultProps} joinedBelow />)
+      expect(player()).toHaveClass('rounded-lg', 'rounded-b-none')
+    })
+
     it('should render play button', () => {
       const { container } = render(<VoicePlayer {...defaultProps} />)
       // Find the main play button - it's the one with w-10 h-10 rounded-full (center play button)

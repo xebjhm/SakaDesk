@@ -15,7 +15,7 @@ import { toValidDate } from '../../utils/dateFormatters';
 export type LetterViewerSource = 'sent_letters' | 'timeline';
 
 export interface LetterViewerModalProps {
-    /** The letters in the order of the list the viewer was opened from; ← / → walk this list. */
+    /** The letters in the order of the list the viewer was opened from (see `order`); the list keeps that order, but ← / → always step in time order. */
     letters: readonly Letter[];
     /**
      * Id of the open letter; null renders nothing. An id not in `letters` (gone after a refetch)

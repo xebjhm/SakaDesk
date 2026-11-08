@@ -59,6 +59,8 @@ Sakamichi groups". The solid ink sits next to group logos on the rail and never 
 
 Unchanged from D1.5 (10-step OKLCH scales, official layer kept verbatim, role mapping), except Yodel:
 
+(2026-11-08: Nogizaka's shelters are unverified approximations; Hinatazaka's were replaced by official-app values `#b2caed` / `#ceadec` / `#b7acec` / `#85badd`.)
+
 **Yodel is re-based on its logo periwinkle `#6060E0`.** The old green (`#5a8a6a`) was the colour of
 one OG (松田好花). The official Yodel app switches colours per OG page.
 
@@ -70,7 +72,6 @@ one OG (松田好花). The official Yodel app switches colours per OG page.
   - title gradient 200 → 400 → 600, bar 200 → 600, title text 700, header style `gradient`;
   - canvas `['#e7ecff', '#f3f6ff', '#f8f9ff']` (100 → 50 → near white);
   - shelters: picture 300, video 400, voice 500, text 600, style `classic` (owner decision 2026-11-09: logo-derived on purpose; a per-OG penlight layer is planned);
-    (2026-11-08: Nogizaka's shelters are unverified approximations; Hinatazaka's were replaced by official-app values `#b2caed` / `#ceadec` / `#b7acec` / `#85badd`);
   - bubble border and glow = logo `#6060e0` (glow alpha 0.3).
 - **Reserved: per-OG layer.** A room-level override through `groupScopeStyle`, falling back to Yodel
   periwinkle. Not built in v2. TODO: read a raw Yodel API response (Windows side, reuse the existing

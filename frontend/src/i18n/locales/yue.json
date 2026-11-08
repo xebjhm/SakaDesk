@@ -713,6 +713,7 @@
     "milestoneYears": "年嘅訂閱"
   },
   "diagnostics": {
+    "diskUsageComputedAt": "計算於 {{time}}",
     "diskUsageCalculating": "計緊…",
     "diskUsageFailed": "計唔到"
   }

@@ -6,7 +6,8 @@ import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { Modal, Button, Card, Pill } from '../../design/primitives';
 import { logDialogLoad } from '../../design/dialog/dialogLog';
-import { cn } from '../../utils/classnames';
+import { cn, formatDateTime } from '../../utils/classnames';
+import { toValidDate } from '../../utils/dateFormatters';
 import { DialogStatus } from '../common/DialogStatus';
 import { clientLog } from '../../utils/clientLog';
 
@@ -481,6 +482,11 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                             </div>
                                         ) : (
                                             <>
+                                                {data.disk_usage.computed_at && toValidDate(data.disk_usage.computed_at) && (
+                                                    <div data-testid="disk-usage-computed-at" className="text-caption text-muted">
+                                                        {t('diagnostics.diskUsageComputedAt', { time: formatDateTime(data.disk_usage.computed_at) })}
+                                                    </div>
+                                                )}
                                                 {/* Total */}
                                                 <div className="flex justify-between font-medium">
                                                     <span className="text-secondary">Total</span>
