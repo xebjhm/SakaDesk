@@ -246,11 +246,7 @@
     "goldenFingerEnabled": "下載按鈕已啟用 ✨",
     "goldenFingerDisabled": "下載按鈕已停用",
     "goldenFingerCopied": "已複製到剪貼簿",
-    "goldenFingerCopyFailed": "複製失敗",
-    "archiveTitle": "你的存檔",
-    "statMessages": "訊息",
-    "statPhotos": "照片",
-    "statDays": "天"
+    "goldenFingerCopyFailed": "複製失敗"
   },
   "report": {
     "title": "回報問題",

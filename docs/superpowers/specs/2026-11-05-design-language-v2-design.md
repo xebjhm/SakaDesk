@@ -246,7 +246,7 @@ allowed.
 |---|---|
 | First launch (boot → ToS → choose groups → first sync) | aurora + orbs (L2), serif headings. ToS header text becomes dark (fixes the original white-on-pastel 1.5:1). The original amber disclaimer returns in the new warning colours. The original per-group ToS link colours return as group markers. The group cards use group markers |
 | Empty states | fixed pattern: aurora circle (group-tinted 50 → 100 in group context) + line icon + serif title + one sentence + one action |
-| About | aurora hero + serif wordmark + "your archive" stats (messages, photos, days), tabular numerals |
+| About | aurora hero + serif wordmark; SakaDesk information only (archive stats moved out, 2026-11) |
 
 **Celebrations**: tiers B and C only. No full-screen tier.
 

@@ -470,7 +470,7 @@ Wiring:
   (`target` `milestone_messages` / `milestone_days`, `outcome` `shown` with `count`, or
   `seeded`, or `skipped` with `reason` `no_messages`).
 
-Other brand moments: first launch (ToS, the login carousel, setup and the first sync) sits on `EntryBackdrop` (`shell/components/EntryBackdrop.tsx`: the brand orbs over `bg-window`, also behind a blocking sync); the boot screen is brand with an ink spinner and no orbs (it shows on every launch); the landing page is a brand sheet on the orbs with a serif `text-display` heading. About opens on a hero of brand orbs under its aurora header (logo, `text-display` serif wordmark, version) and a "your archive" row (messages, photos, days; `font-display` `tabular-nums`; days show "—" when the earliest message time is unknown) from `GET /api/archive/stats` (`core/modals/archiveStats.ts`; breadcrumb `archive_stats_load`, `outcome` `ok` / `failed`; hidden on failure).
+Other brand moments: first launch (ToS, the login carousel, setup and the first sync) sits on `EntryBackdrop` (`shell/components/EntryBackdrop.tsx`: the brand orbs over `bg-window`, also behind a blocking sync); the boot screen is brand with an ink spinner and no orbs (it shows on every launch); the landing page is a brand sheet on the orbs with a serif `text-display` heading. About opens on a hero of brand orbs under its aurora header (logo, `text-display` serif wordmark, version) and the tagline, credits and repository link. About shows only SakaDesk's own information; the archive statistics (`GET /api/archive/stats`, `core/modals/archiveStats.ts`) now feed only the first-sync toast, and the personal-summary view is their long-term home (ROADMAP P1.1 Phase 4).
 
 ## 11. Motion and elevation
 

@@ -1,10 +1,9 @@
-import { useState, useRef, useCallback, useEffect, useId } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Heart } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
 import { Atmosphere, Modal } from '../../design/primitives';
 import { cn } from '../../utils/classnames';
-import { useArchiveStats } from './archiveStats';
 
 declare const __APP_VERSION__: string;
 
@@ -21,7 +20,7 @@ interface FloatingHeart {
 }
 
 export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalProps) {
-    const { t, i18n } = useTranslation();
+    const { t } = useTranslation();
 
     // Hidden dev mode (5-click easter egg on version)
     const [versionClickCount, setVersionClickCount] = useState(0);
@@ -31,18 +30,6 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
     const setGoldenFingerActive = useAppStore(s => s.setGoldenFingerActive);
 
     const appVersion = __APP_VERSION__;
-
-    // "Your archive" (spec §9): loaded each time About opens; hidden if it fails.
-    const archive = useArchiveStats(isOpen);
-    const statsId = useId();
-    const totals = archive.status === 'ready' ? archive.stats : null;
-    // "—" while loading, and for a count the archive cannot give (days without a readable first time).
-    const statValue = (n: number | null | undefined) => (totals && n != null ? n.toLocaleString(i18n.language) : '—');
-    const statItems = [
-        { key: 'messages', label: t('about.statMessages'), value: statValue(totals?.messages) },
-        { key: 'photos', label: t('about.statPhotos'), value: statValue(totals?.photos) },
-        { key: 'days', label: t('about.statDays'), value: statValue(totals?.days) },
-    ];
 
     // Golden finger: 5 heart clicks in 2 seconds
     const heartClickCount = useRef(0);
@@ -149,20 +136,6 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                         </p>
                     </div>
                 </Atmosphere>
-
-                {archive.status !== 'error' && (
-                    <section data-testid="about-stats" aria-labelledby={statsId} className="mb-6 w-full">
-                        <h4 id={statsId} className="mb-2 text-caption font-semibold text-muted">{t('about.archiveTitle')}</h4>
-                        <dl className="grid grid-cols-3 gap-2">
-                            {statItems.map((item) => (
-                                <div key={item.key} className="flex flex-col items-center gap-1 rounded-lg bg-elevated px-2 py-3">
-                                    <dt className="order-2 text-caption text-muted">{item.label}</dt>
-                                    <dd className="order-1 font-display text-heading font-semibold tabular-nums text-primary">{item.value}</dd>
-                                </div>
-                            ))}
-                        </dl>
-                    </section>
-                )}
 
                 <div className="mb-6 flex flex-col gap-1">
                     <p className="text-small text-muted">{t('about.identity')}</p>

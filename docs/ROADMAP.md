@@ -59,6 +59,7 @@ Completed items have been archived — see git history for details.
 - [ ] Phase 2: Desktop app integration (consent, upload)
 - [ ] Phase 3: Public website stats dashboard
 - [ ] Phase 4: Personal analytics (local summaries)
+  - Note: `GET /api/archive/stats` (archive totals: messages, photos, and the earliest message time that gives days) already exists. It was moved out of the About dialog in 2026-11; the personal-summary view is its home.
 - [ ] Phase 5: Yearly Wrapped with shareable cards
 
 **Prerequisites / conflicts:**
