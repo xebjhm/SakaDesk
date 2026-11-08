@@ -138,3 +138,18 @@ Design: header `bg-console` (near-black ink, the e4e4118 `gray-900` value `#1118
 - [ ] **Step 1:** Run the full frontend suite `cd frontend && npx vitest run`, `npx tsc --noEmit`, `npx eslint src`, and `cd .. && uv run pytest -q` — all PASS (keyring test in pysaka is not part of this repo).
 - [ ] **Step 2:** Update CHANGELOG.
 - [ ] **Step 3: Commit** `docs(changelog): note calmer group colour usage`
+
+### Task 8: Restore Yodel's official unread shelters
+
+The owner's decision (2026-11-04): every unread-shelter colour in the original theme was taken from the official apps and keeps its original value. Commit 84fcad4 (Yodel re-based on its logo periwinkle) replaced Yodel's official green shelters with system-derived periwinkle (`#b5c0ff` picture shelter with a white icon is hard to read). Restore the original values.
+
+**Files:**
+- Modify: `frontend/src/design/tokens/groups.ts` — `yodel.official.shelter` back to `{ picture: '#8ab89a', video: '#6a9a7a', voice: '#7aaa8a', text: '#5a8a6a' }` (values from `git show 0725cc3:frontend/src/config/serviceThemes.ts`), `shelterStyle: 'classic'`; fix the comments that say Yodel's official fields are all system-derived (the shelters are official; title / canvas stay system-derived).
+- Modify: the tests that pin shelter values (`grep -rn "b5c0ff\|shelter" frontend/src --include=*.test.ts*`).
+- Modify: `docs/design/DESIGN_SYSTEM.md` and the v2 spec (`docs/superpowers/specs/2026-11-05-design-language-v2-design.md`) wherever they say Yodel's shelters are derived from the periwinkle scale.
+
+- [ ] **Step 1: Failing test** — pin `groupTokens.yodel.official.shelter` to the four original values.
+- [ ] **Step 2: Run** — FAIL.
+- [ ] **Step 3: Implement**.
+- [ ] **Step 4: Run** touched tests + guard + tsc — PASS.
+- [ ] **Step 5: Commit** `fix(design): restore Yodel's official unread shelter colours`
