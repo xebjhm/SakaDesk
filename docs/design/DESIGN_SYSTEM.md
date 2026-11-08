@@ -186,6 +186,7 @@ the photo always covers its own box), and a double-click toggles fit ↔ 2× at 
 ← / → always step older / newer, never pan. The transform eases with `duration-fast`, not while
 dragging and not with reduced motion. Zoom and pan reset when the item changes. Video and voice
 have no zoom and leave the wheel and ↑ / ↓ to the player.
+The media gallery's own detail view (`MediaGalleryModal`, photos only) uses the same hook and the same three controls, with ↑ / ↓ zoom and ← / → still older / newer.
 
 Developer console (the hidden Diagnostics panel only): `bg-console`, `bg-console-badge`,
 `text-console`, `text-console-muted`, `text-console-prompt`, `text-console-error`,

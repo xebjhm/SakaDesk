@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 
 /** Fit: the photo at its displayed size. */
 export const MIN_ZOOM = 1;
@@ -71,7 +71,7 @@ interface Drag {
  * `stageRef` is the box the photo is laid out in (its rect is the photo's untransformed box);
  * the wheel listener goes on the whole viewer frame around it (`[role="dialog"]`), non-passive,
  * and calls `preventDefault` so the wheel never scrolls the page behind. Drag pans only when
- * zoomed and uses pointer capture, so the pan follows the pointer even off the photo.
+ * zoomed and uses pointer capture, so the pan follows the pointer even off the photo; losing the capture (for any reason) ends the drag.
  * The view resets to fit whenever `resetKey` changes (a new item). Disabled (video, voice),
  * nothing listens and the view stays at fit.
  */
@@ -80,7 +80,8 @@ export function useZoomPan(stageRef: React.RefObject<HTMLElement | null>, enable
     const [dragging, setDragging] = useState(false);
     const drag = useRef<Drag | null>(null);
 
-    useEffect(() => {
+    // A layout effect: the reset lands before paint, so a new item never shows at the old zoom.
+    useLayoutEffect(() => {
         setView(FIT);
         setDragging(false);
         drag.current = null;
@@ -151,6 +152,6 @@ export function useZoomPan(stageRef: React.RefObject<HTMLElement | null>, enable
         dragging,
         step,
         reset,
-        stageHandlers: { onPointerDown, onPointerMove, onPointerUp: endDrag, onPointerCancel: endDrag, onDoubleClick },
+        stageHandlers: { onPointerDown, onPointerMove, onPointerUp: endDrag, onPointerCancel: endDrag, onLostPointerCapture: endDrag, onDoubleClick },
     };
 }

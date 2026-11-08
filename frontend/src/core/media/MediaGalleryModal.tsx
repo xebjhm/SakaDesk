@@ -1,5 +1,5 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
-import { Image as ImageIcon, Film, Volume2, Calendar, VolumeX, Download, X } from 'lucide-react';
+import { Image as ImageIcon, Film, Volume2, Calendar, VolumeX, Download, X, ZoomIn, ZoomOut, Shrink } from 'lucide-react';
 import { cn, formatDateTime, formatDuration, formatDownloadFilename } from '../../utils/classnames';
 import { timeNeighbours } from '../../utils/timeOrder';
 import { downloadMedia } from '../../utils/download';
@@ -15,6 +15,7 @@ import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { useClipboardShortcut } from './useClipboardShortcut';
+import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 import { useTranscription } from '../../hooks/useTranscription';
 
 interface MediaGalleryModalProps extends BaseModalProps {
@@ -156,6 +157,11 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         selectedMedia?.type as 'picture' | 'video' | 'voice' | undefined,
     );
 
+    // Photo zoom/pan for the detail view (same hook and controls as the dark viewer); resets per item.
+    const zoomStageRef = useRef<HTMLDivElement>(null);
+    const detailIsPhoto = selectedMedia?.type === 'picture' && !!selectedMedia.media_file;
+    const { view, dragging, step, reset, stageHandlers } = useZoomPan(zoomStageRef, detailIsPhoto, selectedMedia?.id);
+
     // Filter messages by media type
     const mediaItems = useMemo(() => {
         const photos = messages.filter(m => m.type === 'picture' && m.media_file);
@@ -270,8 +276,21 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 e.preventDefault();
                 if (newer !== null) setSelectedMedia(currentTabItems[newer]);
                 break;
+            // ↑ / ↓ zoom a photo; videos leave them to the player (volume).
+            case 'ArrowUp':
+                if (detailIsPhoto) {
+                    e.preventDefault();
+                    step(1);
+                }
+                break;
+            case 'ArrowDown':
+                if (detailIsPhoto) {
+                    e.preventDefault();
+                    step(-1);
+                }
+                break;
         }
-    }, [selectedMedia, currentTabItems]);
+    }, [selectedMedia, currentTabItems, detailIsPhoto, step]);
 
     useEffect(() => {
         if (!selectedMedia) return;
@@ -289,10 +308,35 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         return (
             <Modal isOpen onClose={() => setSelectedMedia(null)} tone="viewer" layout="bare" aria-label={t('common.mediaViewer')} logId="media_viewer">
                 <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={() => setSelectedMedia(null)} />
+                {detailIsPhoto && (
+                    // aria-disabled (not disabled) at the limits, so a focused button keeps focus and ← / → keep working.
+                    <div className="absolute left-4 top-4 z-10 flex gap-2">
+                        <IconButton variant="overlay" aria-label={t('common.zoomOut')} icon={<ZoomOut />} aria-disabled={view.scale <= MIN_ZOOM || undefined} onClick={() => step(-1)} />
+                        <IconButton variant="overlay" aria-label={t('common.zoomFit')} icon={<Shrink />} aria-disabled={view.scale <= MIN_ZOOM || undefined} onClick={reset} />
+                        <IconButton variant="overlay" aria-label={t('common.zoomIn')} icon={<ZoomIn />} aria-disabled={view.scale >= MAX_ZOOM || undefined} onClick={() => step(1)} />
+                    </div>
+                )}
                 <div className="flex max-h-[90vh] w-full max-w-4xl flex-col gap-4 p-4">
                     <div className="flex flex-1 items-center justify-center overflow-hidden rounded-card bg-viewer-stage">
                         {selectedMedia.type === 'picture' && mediaUrl && (
-                            <PhotoPlayer variant="fullscreen" src={mediaUrl} alt={t('common.mediaViewer')} className="max-h-[80vh]" />
+                            <div
+                                ref={zoomStageRef}
+                                data-testid="viewer-stage"
+                                className={cn(
+                                    'flex touch-none select-none items-center justify-center',
+                                    view.scale > MIN_ZOOM && (dragging ? 'cursor-grabbing' : 'cursor-grab'),
+                                )}
+                                {...stageHandlers}
+                            >
+                                <PhotoPlayer
+                                    variant="fullscreen"
+                                    src={mediaUrl}
+                                    alt={t('common.mediaViewer')}
+                                    zoom={view.scale}
+                                    pan={view}
+                                    className={cn('max-h-[80vh]', dragging && 'transition-none')}
+                                />
+                            </div>
                         )}
                         {selectedMedia.type === 'video' && mediaUrl && (
                             <VideoPlayer

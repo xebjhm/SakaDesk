@@ -267,6 +267,46 @@ describe('MediaViewerModal', () => {
             expect(view()).toEqual({ x: 0, y: 0, scale: 1 });
         });
 
+        it('ends the drag when the pointer capture is lost', () => {
+            const { stage } = renderViewer();
+            fireEvent.doubleClick(img(), { clientX: 200, clientY: 150 });
+            fireEvent.pointerDown(img(), { pointerId: 3, button: 0, clientX: 200, clientY: 150 });
+            fireEvent.pointerMove(img(), { pointerId: 3, clientX: 230, clientY: 150 });
+            expect(view().x).toBe(30);
+            expect(stage).toHaveClass('cursor-grabbing');
+            fireEvent.lostPointerCapture(img(), { pointerId: 3 });
+            expect(stage).not.toHaveClass('cursor-grabbing');
+            fireEvent.pointerMove(img(), { pointerId: 3, clientX: 300, clientY: 150 });
+            expect(view().x).toBe(30);
+        });
+
+        it('a click on the photo at fit does not close the viewer', async () => {
+            const onClose = vi.fn();
+            render(<MediaViewerModal mediaItems={pics} currentIndex={0} onClose={onClose} onNavigate={vi.fn()} />);
+            await userEvent.click(img());
+            expect(onClose).not.toHaveBeenCalled();
+        });
+
+        it('removes the wheel listener on unmount', () => {
+            const { unmount } = renderViewer();
+            const frame = screen.getByRole('dialog');
+            const remove = vi.spyOn(frame, 'removeEventListener');
+            unmount();
+            expect(remove).toHaveBeenCalledWith('wheel', expect.any(Function));
+        });
+
+        it('removes the wheel listener when switching to a video', () => {
+            window.HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
+            window.HTMLMediaElement.prototype.pause = vi.fn();
+            window.HTMLMediaElement.prototype.load = vi.fn();
+            const mixed: MediaViewerItem[] = [pics[0], { src: '/v.mp4', type: 'video', timestamp: '2026-11-02T00:00:00Z' }];
+            const { rerender } = render(<MediaViewerModal mediaItems={mixed} currentIndex={0} onClose={vi.fn()} onNavigate={vi.fn()} />);
+            const remove = vi.spyOn(screen.getByRole('dialog'), 'removeEventListener');
+            rerender(<MediaViewerModal mediaItems={mixed} currentIndex={1} onClose={vi.fn()} onNavigate={vi.fn()} />);
+            expect(remove).toHaveBeenCalledWith('wheel', expect.any(Function));
+            expect(fireEvent.wheel(screen.getByRole('dialog'), { deltaY: -100 })).toBe(true);
+        });
+
         it('video and voice get no zoom controls and leave the wheel alone', () => {
             window.HTMLMediaElement.prototype.play = vi.fn().mockResolvedValue(undefined);
             window.HTMLMediaElement.prototype.pause = vi.fn();
