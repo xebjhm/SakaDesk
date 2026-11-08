@@ -16,12 +16,13 @@ describe('styled scrollbars (R-h task 8)', () => {
         expect(v['--ds-scrollbar-thumb-on-dark-hover']).toMatch(/^rgba\(255, 255, 255/);
     });
 
-    it('styles a 6px rounded thumb on a transparent track, growing to 10px on hover', () => {
-        expect(css).toMatch(/::-webkit-scrollbar\s*\{[^}]*width:\s*6px/);
-        expect(css).toMatch(/::-webkit-scrollbar:hover\s*\{[^}]*width:\s*10px/);
+    it('keeps a constant 10px scrollbar box and thickens only the drawn thumb on hover', () => {
+        expect(css).toMatch(/::-webkit-scrollbar\s*\{[^}]*width:\s*10px[^}]*height:\s*10px/);
+        // No hover rule on the scrollbar box itself: its size must never change (Virtuoso re-measure).
+        expect(css).not.toMatch(/::-webkit-scrollbar:hover/);
         expect(css).toMatch(/::-webkit-scrollbar-track[^{]*\{[^}]*background:\s*transparent/);
-        expect(css).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*var\(--ds-scrollbar-thumb[^}]*border-radius:\s*9999px/);
-        expect(css).toMatch(/::-webkit-scrollbar-thumb:hover\s*\{[^}]*--ds-scrollbar-thumb-hover/);
+        expect(css).toMatch(/::-webkit-scrollbar-thumb\s*\{[^}]*var\(--ds-scrollbar-thumb[^}]*border-radius:\s*9999px[^}]*border:\s*2px solid transparent[^}]*background-clip:\s*padding-box/);
+        expect(css).toMatch(/::-webkit-scrollbar-thumb:hover\s*\{[^}]*--ds-scrollbar-thumb-hover[^}]*border-width:\s*1px/);
     });
 
     it('gives dark surfaces a light thumb and leaves scrollbar-gutter alone', () => {

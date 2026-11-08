@@ -9,6 +9,7 @@ import { clientLog } from '../../utils/clientLog';
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 let ioCallback: IntersectionObserverCallback | null = null;
+let ioOptions: IntersectionObserverInit | undefined;
 const observe = vi.fn();
 const disconnect = vi.fn();
 beforeEach(() => {
@@ -17,7 +18,7 @@ beforeEach(() => {
     observe.mockClear();
     disconnect.mockClear();
     vi.stubGlobal('IntersectionObserver', class {
-        constructor(cb: IntersectionObserverCallback) { ioCallback = cb; }
+        constructor(cb: IntersectionObserverCallback, opts?: IntersectionObserverInit) { ioCallback = cb; ioOptions = opts; }
         observe = observe; unobserve = vi.fn(); disconnect = disconnect;
     });
 });
@@ -47,9 +48,9 @@ describe('FavoritesModal video cards', () => {
     it('shows a shimmer sweep and a centred Film icon, static under reduced motion', () => {
         renderModal();
         const skeleton = screen.getByTestId('video-skeleton');
-        expect(skeleton).toHaveClass('bg-sunken', 'flex', 'items-center', 'justify-center', 'overflow-hidden');
+        expect(skeleton).toHaveClass('bg-[var(--ds-border-strong)]', 'flex', 'items-center', 'justify-center', 'overflow-hidden');
         expect(skeleton).not.toHaveClass('animate-pulse');
-        expect(screen.getByTestId('video-shimmer')).toHaveClass('animate-shimmer-sweep', 'motion-reduce:hidden');
+        expect(screen.getByTestId('video-shimmer')).toHaveClass('animate-shimmer-sweep', 'via-pill', 'motion-reduce:hidden');
         expect(skeleton.querySelector('svg')).toHaveClass('text-secondary');
     });
 
@@ -83,5 +84,38 @@ describe('FavoritesModal video cards', () => {
         fireEvent.error(getVideo());
         expect(screen.queryByTestId('video-skeleton')).toBeNull();
         expect(clientLog).toHaveBeenCalledWith('favorite_video_error', { phase: 'load' });
+    });
+
+    it('roots the observer at the dialog body so rootMargin pre-loading works inside it', () => {
+        renderModal();
+        expect(ioOptions?.root).toBe(screen.getByTestId('modal-body'));
+        expect(ioOptions?.rootMargin).toBe('200px');
+    });
+
+    it('disconnects the observer on unmount, and after the card has been seen', () => {
+        const { unmount } = render(<FavoritesModal isOpen onClose={vi.fn()} messages={[video]} memberName="x" serviceId="hinatazaka46" />);
+        disconnect.mockClear();
+        unmount();
+        expect(disconnect).toHaveBeenCalled();
+        disconnect.mockClear();
+        renderModal();
+        scrollIntoView();
+        expect(disconnect).toHaveBeenCalled();
+    });
+
+    it('logs the eager-mount fallback once per open when IntersectionObserver is missing', () => {
+        vi.stubGlobal('IntersectionObserver', undefined);
+        vi.mocked(clientLog).mockClear();
+        const two = { ...video, id: 6, media_file: 'messages/a/video/6.mp4' } as unknown as Message;
+        const { rerender } = render(<FavoritesModal isOpen onClose={vi.fn()} messages={[video, two]} memberName="x" />);
+        expect(screen.getByTestId('modal-body').querySelectorAll('video')).toHaveLength(2);
+        rerender(<FavoritesModal isOpen onClose={vi.fn()} messages={[video, two]} memberName="y" />);
+        expect(vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'favorite_video_lazy_unsupported')).toHaveLength(1);
+    });
+
+    it('does not log the fallback when IntersectionObserver exists', () => {
+        vi.mocked(clientLog).mockClear();
+        renderModal();
+        expect(clientLog).not.toHaveBeenCalledWith('favorite_video_lazy_unsupported');
     });
 });

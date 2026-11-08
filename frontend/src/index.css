@@ -58,14 +58,12 @@
 
 @layer base {
   /* Slim, token-based scrollbars (WebView2 = Chromium). A transparent track with a rounded thumb that
-     grows and darkens while the pointer is over the scrollbar. Colours are the --ds-scrollbar-* tokens
-     (design/tokens/color.ts); the fallbacks only cover the instant before applyTokens runs. Layout is
-     untouched (no gutter rule here). */
+     looks thicker and darkens while the pointer is over it. The scrollbar box is a CONSTANT 10px so
+     hovering never changes a scroller's content width (that would make Virtuoso re-measure and jitter);
+     the visible thumb is drawn thinner with a transparent border + background-clip, and the hover
+     state just shrinks that border. Colours are the --ds-scrollbar-* tokens (design/tokens/color.ts);
+     the fallbacks only cover the instant before applyTokens runs. No gutter rule here. */
   ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
-  }
-  ::-webkit-scrollbar:hover {
     width: 10px;
     height: 10px;
   }
@@ -76,9 +74,12 @@
   ::-webkit-scrollbar-thumb {
     background-color: var(--ds-scrollbar-thumb, rgba(31, 41, 55, 0.28));
     border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
   }
   ::-webkit-scrollbar-thumb:hover {
     background-color: var(--ds-scrollbar-thumb-hover, rgba(31, 41, 55, 0.5));
+    border-width: 1px;
   }
 
   /* Dark surfaces (the image/video viewer and the call screen) take the light thumb. */

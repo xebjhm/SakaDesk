@@ -20,8 +20,8 @@ interface FavoritesModalProps extends BaseModalProps {
 
 /**
  * Inline video thumbnail. The `<video>` is mounted only once the card nears the
- * viewport (IntersectionObserver with the default root, which accounts for the
- * dialog body being the scroll container), so opening Favourites does not load
+ * viewport (IntersectionObserver rooted at the dialog body, the scroll container,
+ * so the `rootMargin` pre-load applies inside it), so opening Favourites does not load
  * every video at once. Until the first frame is available a neutral placeholder
  * shows a shimmer sweep (hidden under reduced motion) and a centred Film icon.
  * The loading video stays laid out but invisible (never `display:none`),
@@ -29,16 +29,16 @@ interface FavoritesModalProps extends BaseModalProps {
  * of `loadeddata` / `loadedmetadata` fires first (some engines stop at
  * metadata). A failed video drops the placeholder, logs `favorite_video_error`
  * and leaves the native element. Without IntersectionObserver the video mounts
- * immediately.
+ * immediately (the parent logs `favorite_video_lazy_unsupported` once per open).
  */
-const FavoriteVideoThumb: React.FC<{ src: string }> = ({ src }) => {
+const FavoriteVideoThumb: React.FC<{ src: string; root: HTMLElement | null }> = ({ src, root }) => {
     const [ready, setReady] = useState(false);
     const [inView, setInView] = useState(() => typeof IntersectionObserver === 'undefined');
     const holderRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const el = holderRef.current;
-        if (inView || !el) return;
+        if (inView || !el || !root) return;
         const observer = new IntersectionObserver(
             (entries) => {
                 if (entries.some((entry) => entry.isIntersecting)) {
@@ -47,11 +47,11 @@ const FavoriteVideoThumb: React.FC<{ src: string }> = ({ src }) => {
                 }
             },
             // Start loading slightly before the card enters view.
-            { rootMargin: '200px', threshold: 0 },
+            { root, rootMargin: '200px', threshold: 0 },
         );
         observer.observe(el);
         return () => observer.disconnect();
-    }, [inView]);
+    }, [inView, root]);
 
     return (
         <div ref={holderRef} className="relative">
@@ -59,11 +59,11 @@ const FavoriteVideoThumb: React.FC<{ src: string }> = ({ src }) => {
                 <span
                     data-testid="video-skeleton"
                     aria-hidden="true"
-                    className="relative flex h-40 w-64 max-w-full items-center justify-center overflow-hidden bg-sunken"
+                    className="relative flex h-40 w-64 max-w-full items-center justify-center overflow-hidden bg-[var(--ds-border-strong)]"
                 >
                     <span
                         data-testid="video-shimmer"
-                        className="absolute inset-y-0 left-0 w-1/2 animate-shimmer-sweep bg-pill opacity-60 blur-md motion-reduce:hidden"
+                        className="absolute inset-y-0 left-0 w-1/2 animate-shimmer-sweep bg-gradient-to-r from-transparent via-pill to-transparent motion-reduce:hidden"
                     />
                     <Film className="relative h-8 w-8 text-secondary" />
                 </span>
@@ -95,6 +95,15 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 }) => {
     const { t } = useTranslation();
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+    // The dialog body is the scroll container: it is the IntersectionObserver root for video cards.
+    const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
+
+    // Without IntersectionObserver every video mounts eagerly; leave one breadcrumb per modal open.
+    useEffect(() => {
+        if (isOpen && typeof IntersectionObserver === 'undefined') {
+            clientLog('favorite_video_lazy_unsupported');
+        }
+    }, [isOpen]);
 
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
 
@@ -185,7 +194,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                             onClick={() => setSelectedMedia(message)}
                             className="relative block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                         >
-                            <FavoriteVideoThumb key={mediaUrl} src={mediaUrl} />
+                            <FavoriteVideoThumb key={mediaUrl} src={mediaUrl} root={bodyEl} />
                             <span className="absolute inset-0 flex items-center justify-center">
                                 <span className="flex h-14 w-14 items-center justify-center rounded-pill bg-viewer-control text-viewer">
                                     <Play className="ml-1 h-7 w-7" />
@@ -212,6 +221,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                 icon={<Star />}
                 closeLabel={t('common.close')}
                 logId="favorites"
+                bodyRef={setBodyEl}
                 className="h-[80vh] max-w-3xl"
                 bodyClassName="bg-sunken px-4 py-4"
                 footer={<p className="mr-auto text-small text-muted">{t('favorites.count', { count: favoriteMessages.length })}</p>}
