@@ -72,6 +72,11 @@ interface VoicePlayerProps {
      * footer read as one shape.
      */
     joinedBelow?: boolean;
+    /**
+     * The bubble starts a run and keeps its small top-left tail corner; the player
+     * takes the same corner so no sliver of the bubble fill shows behind it.
+     */
+    tailCorner?: boolean;
 }
 
 /**
@@ -121,6 +126,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     onTimeUpdate,
     seekTo,
     joinedBelow,
+    tailCorner,
     onTimestampClick,
     messageId,
     service,
@@ -677,7 +683,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         <div
             ref={containerRef}
             tabIndex={0}
-            className={cn('bg-sunken rounded-lg p-3 min-w-[300px] outline-none focus:ring-2', joinedBelow && 'rounded-b-none')}
+            className={cn('bg-sunken rounded-lg p-3 min-w-[300px] outline-none focus:ring-2', joinedBelow && 'rounded-b-none', tailCorner && 'rounded-tl-tail')}
             style={{ '--ring-color': withAlpha(accentColor, 50) } as React.CSSProperties}
         >
             {/* Hidden audio element */}

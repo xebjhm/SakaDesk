@@ -411,6 +411,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                 onTimeUpdate={setPlayerTime}
                                 seekTo={seekTarget}
                                 joinedBelow={hasTranscriptFooter}
+                                tailCorner={runStart}
                             />
                         )}
 

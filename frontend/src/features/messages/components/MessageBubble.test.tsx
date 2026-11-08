@@ -285,6 +285,13 @@ describe('MessageBubble component', () => {
       expect(player).toHaveClass('rounded-lg', 'rounded-b-none')
     })
 
+    it('a run-start voice player carries the bubble tail corner; a later one does not', () => {
+      const { container, rerender } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).toHaveClass('rounded-tl-tail')
+      rerender(<MessageBubble {...defaultProps} message={voice} runStart={false} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).not.toHaveClass('rounded-tl-tail')
+    })
+
     it('keeps the voice player fully rounded without a footer', () => {
       const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
       expect(container.querySelector('.min-w-\\[300px\\]')).not.toHaveClass('rounded-b-none')
