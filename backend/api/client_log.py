@@ -66,6 +66,7 @@ ClientEvent = Literal[
     "display_density_change",
     "favorite_video_error",
     "diagnostics_disk_usage",
+    "calendar_picker",
 ]
 
 ALLOWED_FIELDS = frozenset(

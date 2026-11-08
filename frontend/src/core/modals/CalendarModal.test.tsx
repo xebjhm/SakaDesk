@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse, delay } from 'msw'
 import { server } from '../../__tests__/mocks/server'
@@ -457,16 +457,20 @@ describe('CalendarModal component', () => {
       setupApiHandler([{ date: DAY_15, count: 5 }, { date: `${YEAR}-${MONTH}-20`, count: 1 }])
       render(<CalendarModal isOpen onClose={defaultCloseHandler} conversationPath="/test/path" onSelectDate={vi.fn()} />)
       await waitFor(() => expect(screen.getByText('Available on 2 days')).toBeInTheDocument())
-      expect(screen.getByText('15').closest('button')).toHaveAttribute('title', '5 items')
-      expect(screen.getByText('20').closest('button')).toHaveAttribute('title', '1 item')
-      expect(screen.getByText('14').closest('button')).not.toHaveAttribute('title')
+      // The count is the day's dark tooltip (hover / focus) and its accessible description.
+      const day = (n: string) => screen.getByText(n).closest('button')!
+      expect(day('15')).toHaveAccessibleDescription('5 items')
+      expect(within(day('15')).getByRole('tooltip', { hidden: true })).toHaveTextContent('5 items')
+      expect(day('20')).toHaveAccessibleDescription('1 item')
+      expect(within(day('14')).queryByRole('tooltip', { hidden: true })).toBeNull()
+      expect(day('15')).not.toHaveAttribute('title')
     })
   })
 
   // Role-based structure checks (the dialog is portaled, so a container snapshot was empty).
   describe('Structure', () => {
     const dayButtons = () =>
-      screen.getAllByRole('button').filter(b => /^\d{1,2}$/.test(b.textContent ?? ''))
+      screen.getAllByRole('button').filter(b => b.hasAttribute('data-day'))
 
     it('API mode: a named dialog showing the frozen month, with only the dated days enabled', async () => {
       setupApiHandler([
@@ -481,7 +485,7 @@ describe('CalendarModal component', () => {
       expect(screen.getByText('June 2026')).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Previous month' })).toBeInTheDocument()
       expect(screen.getByRole('button', { name: 'Next month' })).toBeInTheDocument()
-      expect(dayButtons().filter(b => !(b as HTMLButtonElement).disabled).map(b => b.textContent)).toEqual(['15', '20'])
+      expect(dayButtons().filter(b => !(b as HTMLButtonElement).disabled).map(b => b.getAttribute('data-day'))).toEqual(['15', '20'])
     })
 
     it('Messages mode: the custom title names the dialog and the media days are enabled', async () => {
@@ -493,7 +497,7 @@ describe('CalendarModal component', () => {
       await waitFor(() => expect(screen.getByText('Available on 2 days')).toBeInTheDocument())
 
       expect(screen.getByRole('dialog', { name: 'Jump to Date' })).toBeInTheDocument()
-      expect(dayButtons().filter(b => !(b as HTMLButtonElement).disabled).map(b => b.textContent)).toEqual(['15', '20'])
+      expect(dayButtons().filter(b => !(b as HTMLButtonElement).disabled).map(b => b.getAttribute('data-day'))).toEqual(['15', '20'])
     })
   })
 })

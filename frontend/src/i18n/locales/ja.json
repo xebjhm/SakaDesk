@@ -333,6 +333,13 @@
     "availableOnDays": "{{count}}日分利用可能",
     "itemCount": "{{count}}件",
     "tapToJump": "日付を選択して移動",
+    "monthYear": "{{year}}年{{month}}",
+    "pickMonth": "年と月を選択",
+    "backToDays": "日付に戻る",
+    "yearList": "年",
+    "monthGrid": "月",
+    "yearValue": "{{year}}年",
+    "noMessages": "メッセージなし",
     "weekdays": {
       "sun": "日",
       "mon": "月",

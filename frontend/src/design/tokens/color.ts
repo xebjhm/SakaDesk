@@ -94,9 +94,17 @@ export const color = {
         badge: 'rgba(251, 191, 36, 0.15)',
         badgeText: '#FBBF24',
     },
-    /** Decorations kept from the pre-D2c look: calendar Sundays, About's heart. */
+    /** Decorations kept from the pre-D2c look: About's heart. */
     decor: {
-        sunday: '#EF4444',
         heart: '#F87171',
+    },
+    /**
+     * The date-search calendar, Japanese convention (owner decision R-h): Sundays and public
+     * holidays (祝日) red, Saturdays blue. Fixed meanings, so they never follow the group accent;
+     * both are >= 4.5:1 on white.
+     */
+    calendar: {
+        holiday: '#DC2626',
+        saturday: '#2563EB',
     },
 } as const;

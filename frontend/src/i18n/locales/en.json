@@ -334,6 +334,13 @@
     "itemCount": "{{count}} item",
     "itemCount_other": "{{count}} items",
     "tapToJump": "Tap a date to jump",
+    "monthYear": "{{month}} {{year}}",
+    "pickMonth": "Choose year and month",
+    "backToDays": "Back to the days",
+    "yearList": "Year",
+    "monthGrid": "Month",
+    "yearValue": "{{year}}",
+    "noMessages": "No messages",
     "weekdays": {
       "sun": "Sun",
       "mon": "Mon",

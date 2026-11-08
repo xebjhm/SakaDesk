@@ -333,6 +333,13 @@
     "availableOnDays": "有 {{count}} 天可用",
     "itemCount": "{{count}} 项",
     "tapToJump": "点击日期跳转",
+    "monthYear": "{{year}}年{{month}}",
+    "pickMonth": "选择年份和月份",
+    "backToDays": "返回日期",
+    "yearList": "年份",
+    "monthGrid": "月份",
+    "yearValue": "{{year}}年",
+    "noMessages": "没有消息",
     "weekdays": {
       "sun": "日",
       "mon": "一",

@@ -163,8 +163,10 @@ carries its own alpha, never `bg-black/NN`), `text-primary`, `text-secondary`,
 use `bg-mark-exact`, `bg-mark-reading` and `border-mark-underline`. The white
 gap around avatars and selection rings is `ring-surface` / `border-surface` /
 `ring-offset-surface` (there is no `bg-surface`: use `bg-sheet`). Toasts use
-`bg-toast` with `text-viewer`. The calendar's Sundays use `text-sunday` and
-About's heart `text-heart`. `bg-control-off` is an off switch.
+`bg-toast` with `text-viewer`. The calendar's Sundays and public holidays use
+`text-calendar-holiday` (`#DC2626`) and its Saturdays `text-calendar-saturday` (`#2563EB`)
+(`color.calendar`, `--ds-calendar-*`; see "Date-search calendar"), and About's heart
+`text-heart`. `bg-control-off` is an off switch.
 
 Chat header pills: `bg-header-glass` (unread) and `bg-header-shade` (sync) on a
 title gradient; on a light header `bg-group-title-tint` / `bg-group-title-wash`
@@ -625,6 +627,29 @@ is unmistakable next to user screens (it still sits in brand scope for any neste
 `bg-console text-console-muted font-mono` (errors `text-console-error`, warnings
 `text-console-warning`). The `console` tokens (`color.console`, `--ds-console-*`) hold the
 pre-D2 panel's values; use them for developer tooling only.
+
+### Date-search calendar
+
+`CalendarModal` follows the Japanese wall-calendar convention (owner decision, R-h):
+
+- **Week** starts on Sunday. Sundays and Japanese public holidays (祝日, from the offline
+  `@holiday-jp/holiday_jp` dataset through `utils/jpHolidays.ts` `holidayName()`) are
+  `text-calendar-holiday` (`#DC2626`, 4.8:1 on white), Saturdays `text-calendar-saturday`
+  (`#2563EB`, 5.2:1); the weekday header labels use the same colours, the other labels
+  `text-muted`. These are fixed meanings ("semantic over context"): they never follow the group
+  accent. Out-of-month days are uniformly `text-muted opacity-80` (3.3:1), without weekend colour.
+- **Day tooltip:** a day's holiday name (in Japanese, `lang="ja"`) and its item count show in the
+  dark app tooltip (`bg-toast text-viewer`, as the feature rail's) above the cell on hover and
+  keyboard focus; edge columns align it to their edge. The holiday is part of the day's
+  accessible name ("3, 文化の日") and the count is its accessible description.
+- **Year / month picker:** the month title is a button (`aria-expanded`) that swaps the day grid
+  for a year list (the first dated year, or the last ten years when there are no dates, up to
+  this year) and a 12-month grid. Years and months with dates are `text-primary` (months with
+  the accent dot), the others `text-muted` but still selectable; the selected year and the
+  month on screen are the state (`bg-accent-subtle text-accent-strong`). Picking a month, the
+  back button or Escape (claimed, so the dialog stays open) returns to the day grid, and
+  focus goes back to the title. `calendar_picker` breadcrumbs: `phase` `open` (`count` years),
+  `select` (`has_target`: the month has dates) and `back` (`reason` `escape` / `button`).
 
 ### Menus
 

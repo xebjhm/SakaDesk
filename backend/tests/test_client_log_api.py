@@ -609,3 +609,33 @@ def test_diagnostics_disk_usage_rejects_paths():
         },
     )
     assert res.status_code == 422
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"phase": "open", "count": 7},
+        {"phase": "select", "has_target": True},
+        {"phase": "select", "has_target": False},
+        {"phase": "back", "reason": "escape"},
+        {"phase": "back", "reason": "button"},
+    ],
+)
+def test_calendar_picker_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log", json={"event": "calendar_picker", "fields": fields}
+        )
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == "calendar_picker"
+    assert entry["log_level"] == "info"
+    assert {key: entry[key] for key in fields} == fields
+
+
+def test_calendar_picker_rejects_holiday_text():
+    res = client.post(
+        "/api/client-log",
+        json={"event": "calendar_picker", "fields": {"reason": "文化の日"}},
+    )
+    assert res.status_code == 422

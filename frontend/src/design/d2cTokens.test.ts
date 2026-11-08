@@ -30,14 +30,16 @@ describe('D2c tokens', () => {
         expect(v['--ds-console-warning']).toBe('#FBBF24');
         expect(v['--ds-console-badge']).toBe('rgba(251, 191, 36, 0.15)');
         expect(v['--ds-console-badge-text']).toBe('#FBBF24');
-        expect(v['--ds-decor-sunday']).toBe('#EF4444');
+        expect(v['--ds-decor-sunday']).toBeUndefined();
+        expect(v['--ds-calendar-holiday']).toBe('#DC2626');
+        expect(v['--ds-calendar-saturday']).toBe('#2563EB');
         expect(v['--ds-decor-heart']).toBe('#F87171');
         expect(v['--ds-overlay-toast']).toBe('rgba(0, 0, 0, 0.8)');
         expect(v['--ds-group-marker']).toBe('transparent');
     });
 
-    it('keep status text readable on white (≥ 4.5:1)', () => {
-        for (const c of [color.semantic.danger.text, color.semantic.success.text, color.semantic.warning.text]) {
+    it('keep status and calendar weekend / holiday text readable on white (≥ 4.5:1)', () => {
+        for (const c of [color.semantic.danger.text, color.semantic.success.text, color.semantic.warning.text, color.calendar.holiday, color.calendar.saturday]) {
             expect(contrastRatio(c, color.surface.sheet)!).toBeGreaterThanOrEqual(4.5);
         }
     });
@@ -52,7 +54,8 @@ describe('D2c tokens', () => {
             "console: 'var(--ds-console-bg)'",
             "'console-muted': 'var(--ds-console-text-muted)'",
             "'console-badge': 'var(--ds-console-badge-text)'",
-            "sunday: 'var(--ds-decor-sunday)'",
+            "'calendar-holiday': 'var(--ds-calendar-holiday)'",
+            "'calendar-saturday': 'var(--ds-calendar-saturday)'",
             "heart: 'var(--ds-decor-heart)'",
             "surface: 'var(--ds-surface-sheet)'",
             "'control-off': 'var(--ds-border-strong)'",
@@ -61,12 +64,16 @@ describe('D2c tokens', () => {
         ]) {
             expect(config).toContain(needle);
         }
+        expect(config).not.toContain('--ds-decor-sunday');
     });
 
     it('teach tailwind-merge the new text colours and animations', () => {
         expect(cn('text-small', 'text-status-danger')).toBe('text-small text-status-danger');
         expect(cn('text-muted', 'text-viewer-muted')).toBe('text-viewer-muted');
         expect(cn('text-caption', 'text-heart')).toBe('text-caption text-heart');
+        expect(cn('text-muted', 'text-calendar-holiday')).toBe('text-calendar-holiday');
+        expect(cn('text-muted', 'text-calendar-saturday')).toBe('text-calendar-saturday');
+        expect(cn('text-small', 'text-calendar-holiday')).toBe('text-small text-calendar-holiday');
         expect(cn('animate-reveal', 'animate-heartbeat')).toBe('animate-heartbeat');
     });
 
