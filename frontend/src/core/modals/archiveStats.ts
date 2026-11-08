@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react';
 import { clientLog } from '../../utils/clientLog';
 import { fromLocalDateStr, toLocalDateStr } from '../../utils/dateFormatters';
 
-/** About's "your archive" numbers (decision D9). */
+/** Archive totals (messages, photos, days spanned); used by the first-sync toast, later by the personal summary (ROADMAP P1.1 Phase 4). */
 export interface ArchiveStats {
     messages: number;
     photos: number;

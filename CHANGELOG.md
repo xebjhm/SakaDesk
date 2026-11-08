@@ -8,8 +8,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Your archive at a glance.** About now shows how many messages and photos
-  you have saved and how many days your archive spans.
 - **Small celebrations.** Your first complete sync ends with a short
   celebration, and a chat shows a card when a member passes 1,000, 5,000 or
   10,000 messages, or when your subscription reaches day 100 and each full
