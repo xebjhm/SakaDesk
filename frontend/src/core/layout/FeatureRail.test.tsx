@@ -21,9 +21,17 @@ describe('FeatureRail', () => {
         const { container } = render(<FeatureRail service="hinatazaka46" />);
         expect(screen.getByRole('button', { name: 'Messages' })).toHaveAttribute('aria-current', 'page');
         expect(screen.getByRole('button', { name: 'Blogs' })).not.toHaveAttribute('aria-current');
-        expect(container.querySelector('[style]')).toBeNull(); // no inline group colour
+        expect(container.querySelector('[style]:not([role="tooltip"])')).toBeNull(); // no inline group colour (tooltips carry only a z-index)
         await userEvent.click(screen.getByRole('button', { name: 'Blogs' }));
         expect(useAppStore.getState().getActiveFeature('hinatazaka46')).toBe('blogs');
+    });
+
+    it('is icon-only and does not clip its tooltips', () => {
+        const { container } = render(<FeatureRail service="hinatazaka46" />);
+        const nav = screen.getByRole('navigation', { name: 'Features' });
+        expect(nav).toHaveClass('w-12');
+        expect(nav.className).not.toMatch(/overflow/);
+        expect(container.querySelectorAll('[role="tooltip"]')).toHaveLength(2);
     });
 
     it('is a labelled nav', () => {

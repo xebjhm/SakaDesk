@@ -689,8 +689,11 @@ The rail's bottom actions (add service, search, settings, update) sit in a `Bran
 `soft` ink circles; the update icon uses the semantic info / success / danger colours. The
 selected logo's halo is `shadow-accent-halo` in the active group's context.
 
-The feature rail's selected `RailItem` is a white card with `text-accent` icon,
-`text-accent-strong` label and a `bg-accent` bar on the left.
+The feature rail is icon-only (a `w-12` column of 40 px `RailItem` tiles, 20 px icons). The
+feature name is the button's `aria-label` and a neutral tooltip (`bg-viewer-control text-viewer`,
+never the group colour) to the right of the tile, shown on hover and keyboard focus after a short
+delay. The selected `RailItem` is a white card with a `text-accent` icon and a `bg-accent` bar on
+the left.
 
 ### Layering
 
