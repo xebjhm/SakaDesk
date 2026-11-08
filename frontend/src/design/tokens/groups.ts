@@ -3,9 +3,8 @@
  *
  * Two layers (docs/design/DESIGN_SYSTEM.md, "Colour system"):
  * - `official`: colours copied from the official apps. They are kept verbatim
- *   and pinned by tests: title gradient/bar/text, canvas, unread shelters and
- *   styles. Exception: Yodel's title and canvas are system-derived since v2;
- *   its shelters are still official.
+ *   and pinned by tests (Yodel's are system-derived since v2): title gradient/bar/text, canvas, unread shelters and
+ *   styles.
  * - System: `logo` plus a 10-step `scale` (OKLCH, logo colour snapped into its
  *   nearest step). Every other colour is a role from `roles.ts`. The only
  *   other hex written here are the per-group `bubbleBorder` and `glow` values
@@ -124,9 +123,8 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
     },
     yodel: {
         // Design language v2: the logo periwinkle. The old green (#5a8a6a) was one OG's page colour.
-        // Title and canvas are SYSTEM-DERIVED from this scale (no official periwinkle data);
-        // the unread shelters are official (from the apps) and keep their original green.
-        // A per-OG layer is reserved (spec §3.2).
+        // Official fields are SYSTEM-DERIVED from this scale (no official periwinkle data); a
+        // per-OG layer is reserved (spec §3.2).
         logo: '#6060e0',
         scale: {
             50: '#f3f6ff', 100: '#e7ecff', 200: '#d2daff', 300: '#b5c0ff', 400: '#98a2ff',
@@ -141,9 +139,8 @@ export const groupTokens: Record<GroupId, GroupTokens> = {
                 text: '#4c4bbb',
             },
             canvas: ['#e7ecff', '#f3f6ff', '#f8f9ff'],
-            // Approximation from the first theme commit (67fa58a), NOT verified against the official app;
-            // re-take from official-app screenshots later (owner decision 2026-11-08).
-            shelter: { picture: '#8ab89a', video: '#6a9a7a', voice: '#7aaa8a', text: '#5a8a6a' },
+            // Logo-derived on purpose (owner decision 2026-11-09); a per-OG (penlight) layer is planned.
+            shelter: { picture: '#b5c0ff', video: '#98a2ff', voice: '#7e85ff', text: '#6060e0' },
             shelterStyle: 'classic',
             headerStyle: 'gradient',
         },

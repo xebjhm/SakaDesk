@@ -126,12 +126,11 @@ one of two layers:
 100 `#e7ecff` · 200 `#d2daff` · 300 `#b5c0ff` · 400 `#98a2ff` · 500 `#7e85ff` ·
 600 `#6060e0` · 700 `#4c4bbb` · 800 `#393992` · 900 `#28286b`. The old green
 was the colour of one member's page. Yodel has no official periwinkle data, so
-its title and canvas are **system-derived** from the scale (title gradient
+its official fields are **system-derived** from the scale (title gradient
 200 → 400 → 600, bar 200 → 600, title text 700, canvas 100 → 50 → near white,
-bubble border and glow from the logo). They are labelled that way in
-`groups.ts`. Yodel's **unread shelters stay official**: the original colours
-from the apps (`#8ab89a` / `#6a9a7a` / `#7aaa8a` / `#5a8a6a`, style `classic`),
-kept verbatim and pinned by tests.
+shelters 300 / 400 / 500 / 600, bubble border and glow from the logo). They are
+labelled that way in `groups.ts`. The logo-derived shelters are on purpose
+(owner decision 2026-11-09); a per-OG (penlight) colour layer is planned.
 
 **Reserved: per-OG layer.** A room-level Yodel override through
 `groupScopeStyle`, falling back to periwinkle. Not built.

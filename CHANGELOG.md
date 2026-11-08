@@ -148,8 +148,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the translate button.
 - **The avatar no longer shows a dark outline** after you close a profile.
 - **Favourites and member lists show placeholders while loading.**
-- **Yodel's unread covers have their original colours back**, which are
-  easier to tell apart.
 - **Cancel ends the whole first sync.** Pressing Cancel while SakaDesk
   downloads your groups for the first time used to leave the first sync
   hanging on the group it was running, so the other groups never started and
