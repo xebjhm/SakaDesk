@@ -5,11 +5,17 @@ import i18n from '../../i18n';
 import { MediaViewerModal, type MediaViewerItem } from './PhotoDetailModal';
 import { useAppStore } from '../../store/appStore';
 import { resetDialogStack } from '../../design/dialog/dialogStack';
+import { http, HttpResponse } from 'msw';
+import { server } from '../../__tests__/mocks/server';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
-beforeEach(() => resetDialogStack());
+beforeEach(() => {
+    resetDialogStack();
+    // The viewer persists the amp prefs; answer it instead of tripping onUnhandledRequest.
+    server.use(http.patch('/api/app-state/prefs', () => HttpResponse.json({})));
+});
 
 const items: MediaViewerItem[] = [
     { src: '/a.jpg', type: 'picture', timestamp: '2026-11-01T00:00:00Z', sourceLabel: '春の日記 🌸', onSourceJump: vi.fn() },

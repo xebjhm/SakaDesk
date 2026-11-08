@@ -172,7 +172,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const { volume, setVolume, isMuted: isVolumeMuted, toggleMute: handleMuteToggle, connectElement, prepareForPlayback } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
-    const { status: playbackStatus, play, retry } = useMediaPlayback(audioRef, 'voice', src);
+    const { status: playbackStatus, play, retry } = useMediaPlayback(audioRef, 'voice', src, variant);
     const isBuffering = playbackStatus === 'buffering';
     const [showVolume, setShowVolume] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
@@ -217,11 +217,12 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                 clearTimeout(volumeHideTimeout.current);
             }
         };
-    }, [connectElement]);
+    }, [connectElement, variant]);
 
     // The source is bound imperatively so the element is released (pause, drop
     // src, load) before the source changes and on unmount (matches VideoPlayer).
-    useMediaSource(audioRef, src);
+    // `variant` renders a different <audio> element, so it rebinds the source too.
+    useMediaSource(audioRef, src, variant);
 
     // Build the amplification graph (first play) before starting playback.
     const startPlayback = useCallback(() => {

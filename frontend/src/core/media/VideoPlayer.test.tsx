@@ -190,10 +190,67 @@ describe('VideoPlayer media lifecycle', () => {
     });
 
     it('logs a rejected play() from the play button too', async () => {
+        play.mockImplementation(() => Promise.reject(new DOMException('unsupported', 'NotSupportedError')));
+        const { container } = render(<VideoPlayer src="/api/media/v.mp4" />);
+        await act(async () => { fireEvent.click(container.querySelector('button.absolute.inset-0')!); });
+        expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'play_rejected', error_type: 'notsupportederror' }));
+    });
+
+    it('does not log a play() superseded by a release as a failure', async () => {
         play.mockImplementation(() => Promise.reject(new DOMException('aborted', 'AbortError')));
         const { container } = render(<VideoPlayer src="/api/media/v.mp4" />);
         await act(async () => { fireEvent.click(container.querySelector('button.absolute.inset-0')!); });
-        expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'play_rejected', error_type: 'aborterror' }));
+        expect(vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.phase === 'play_rejected')).toHaveLength(0);
+    });
+
+    describe('buffering accuracy', () => {
+        const state = (el: HTMLVideoElement, readyState: number, paused: boolean) => {
+            Object.defineProperty(el, 'readyState', { configurable: true, value: readyState });
+            Object.defineProperty(el, 'paused', { configurable: true, value: paused });
+        };
+
+        it('a stall while playing with buffered data does not spin', () => {
+            const { container } = render(<VideoPlayer src="/api/media/v.mp4" />);
+            const el = video(container);
+            state(el, 4, false);
+            act(() => { el.dispatchEvent(new Event('stalled')); });
+            expect(screen.queryByTestId('video-buffering')).toBeNull();
+        });
+
+        it('a starved stall spins until progress reports buffered data', () => {
+            const { container } = render(<VideoPlayer src="/api/media/v.mp4" />);
+            const el = video(container);
+            state(el, 2, false);
+            act(() => { el.dispatchEvent(new Event('stalled')); });
+            expect(screen.getByTestId('video-buffering')).toBeInTheDocument();
+            state(el, 4, false);
+            act(() => { el.dispatchEvent(new Event('progress')); });
+            expect(screen.queryByTestId('video-buffering')).toBeNull();
+            expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'recovered', reason: 'stalled' }));
+        });
+
+        it('emptied does not clear a visible error', () => {
+            const { container } = render(<VideoPlayer src="/api/media/v.mp4" />);
+            const el = video(container);
+            act(() => { el.dispatchEvent(new Event('error')); });
+            act(() => { el.dispatchEvent(new Event('emptied')); });
+            expect(screen.getByRole('alert')).toBeInTheDocument();
+        });
+
+        it('logs the first 3 waiting episodes, then one summary with the count', () => {
+            const { container, unmount } = render(<VideoPlayer src="/api/media/v.mp4" />);
+            const el = video(container);
+            for (let i = 0; i < 5; i++) {
+                act(() => { el.dispatchEvent(new Event('waiting')); });
+                act(() => { el.dispatchEvent(new Event('canplay')); });
+            }
+            const phases = () => vi.mocked(clientLog).mock.calls.map(([, f]) => f?.phase);
+            expect(phases().filter((p) => p === 'waiting')).toHaveLength(3);
+            expect(phases().filter((p) => p === 'recovered')).toHaveLength(3);
+            expect(phases()).not.toContain('summary');
+            unmount();
+            expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'summary', count: 5 }));
+        });
     });
 
     it('creates no AudioContext until the video plays', () => {

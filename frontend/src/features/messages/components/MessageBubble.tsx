@@ -392,6 +392,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {message.type === 'video' && mediaUrl && (
                             <MediaContainer message={message} isVideo>
                                 <VideoPlayer
+                                    key={mediaUrl}
                                     src={mediaUrl}
                                     messageTimestamp={message.timestamp}
                                     noAudio={message.is_muted}
@@ -407,6 +408,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {/* Voice */}
                         {message.type === 'voice' && mediaUrl && (
                             <VoicePlayer
+                                key={mediaUrl}
                                 src={mediaUrl}
                                 messageTimestamp={message.timestamp}
                                 onTimeUpdate={setPlayerTime}

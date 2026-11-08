@@ -690,6 +690,16 @@ def test_calendar_picker_rejects_holiday_text():
             "network_state": 3,
             "error_code": 4,
         },
+        {"phase": "amp_connect_failed", "error_type": "invalidstateerror"},
+        {"phase": "amp_resume_failed", "error_type": "notallowederror"},
+        {
+            "phase": "summary",
+            "surface": "video",
+            "ready_state": 4,
+            "network_state": 1,
+            "error_code": 0,
+            "count": 7,
+        },
     ],
 )
 def test_media_playback_breadcrumb_is_accepted(fields):

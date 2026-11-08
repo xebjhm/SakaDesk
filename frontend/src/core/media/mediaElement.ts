@@ -1,4 +1,4 @@
-import { useEffect, type RefObject } from 'react';
+import { useLayoutEffect, type RefObject } from 'react';
 
 /**
  * Stop a media element and drop its network connection: pause, remove `src`
@@ -24,11 +24,23 @@ export function releaseMediaElement(el: HTMLMediaElement | null | undefined): vo
  * element is mounted (e.g. `inView ? src : undefined`) also re-runs the binding
  * once it exists.
  */
-export function useMediaSource(ref: RefObject<HTMLMediaElement | null>, src: string | undefined): void {
-    useEffect(() => {
+export function useMediaSource(
+    ref: RefObject<HTMLMediaElement | null>,
+    src: string | undefined,
+    /** Change this when the element behind `ref` is replaced (e.g. a variant that renders a different `<audio>`). */
+    elementKey?: unknown,
+): void {
+    // A layout effect binds the source before the first paint, so no frame shows a src-less element.
+    useLayoutEffect(() => {
         const el = ref.current;
         if (!el || !src) return;
         el.setAttribute('src', src);
         return () => releaseMediaElement(el);
-    }, [ref, src]);
+    }, [ref, src, elementKey]);
+}
+
+/** An exception's class name as a log code: `NotAllowedError` → `notallowederror`. */
+export function errorCode(err: unknown): string {
+    const name = err instanceof Error || err instanceof DOMException ? err.name : 'unknown';
+    return name.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40) || 'unknown';
 }

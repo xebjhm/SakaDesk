@@ -1,6 +1,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
+import { clientLog } from '../../utils/clientLog';
+
+vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 const contexts: FakeContext[] = [];
 
@@ -22,6 +25,7 @@ class FakeContext {
 const realAudioContext = globalThis.AudioContext;
 beforeEach(() => {
     contexts.length = 0;
+    vi.mocked(clientLog).mockClear();
     globalThis.AudioContext = FakeContext as unknown as typeof AudioContext;
 });
 afterEach(() => { globalThis.AudioContext = realAudioContext; });
@@ -83,5 +87,37 @@ describe('useAmplifiedVolume (lazy AudioContext)', () => {
         const { result } = renderHook(() => useAmplifiedVolume('test_amp'));
         act(() => { result.current.prepareForPlayback(); });
         expect(contexts).toHaveLength(0);
+    });
+});
+
+describe('useAmplifiedVolume failure breadcrumbs', () => {
+    it('logs a failed createMediaElementSource once per hook instance', () => {
+        globalThis.AudioContext = class extends FakeContext {
+            constructor() {
+                super();
+                this.createMediaElementSource = vi.fn(() => { throw new DOMException('in use', 'InvalidStateError'); });
+            }
+        } as unknown as typeof AudioContext;
+        const { result } = renderHook(() => useAmplifiedVolume('test_amp'));
+        act(() => { result.current.connectElement(document.createElement('video')); });
+        act(() => { result.current.prepareForPlayback(); });
+        act(() => { result.current.prepareForPlayback(); });
+        const calls = vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.phase === 'amp_connect_failed');
+        expect(calls).toEqual([['media_playback', { phase: 'amp_connect_failed', error_type: 'invalidstateerror' }]]);
+    });
+
+    it('logs a rejected resume once per hook instance', async () => {
+        globalThis.AudioContext = class extends FakeContext {
+            constructor() {
+                super();
+                this.resume = vi.fn(() => Promise.reject(new DOMException('no gesture', 'NotAllowedError')));
+            }
+        } as unknown as typeof AudioContext;
+        const { result } = renderHook(() => useAmplifiedVolume('test_amp'));
+        act(() => { result.current.connectElement(document.createElement('video')); });
+        await act(async () => { result.current.prepareForPlayback(); await Promise.resolve(); });
+        await act(async () => { result.current.prepareForPlayback(); await Promise.resolve(); });
+        const calls = vi.mocked(clientLog).mock.calls.filter(([, f]) => f?.phase === 'amp_resume_failed');
+        expect(calls).toEqual([['media_playback', { phase: 'amp_resume_failed', error_type: 'notallowederror' }]]);
     });
 });

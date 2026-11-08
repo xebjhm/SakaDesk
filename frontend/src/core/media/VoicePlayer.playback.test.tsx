@@ -81,3 +81,14 @@ describe('VoicePlayer play()', () => {
         expect(el.getAttribute('src')).toBe('/api/media/b.m4a');
     });
 });
+
+describe('VoicePlayer variant change', () => {
+    it('rebinds the source and playback listeners to the new audio element', () => {
+        const { container, rerender } = render(<VoicePlayer src="/api/media/v.m4a" variant="compact" />);
+        rerender(<VoicePlayer src="/api/media/v.m4a" variant="premium" />);
+        const second = audio(container);
+        expect(second.getAttribute('src')).toBe('/api/media/v.m4a');
+        act(() => { second.dispatchEvent(new Event('waiting')); });
+        expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'waiting', surface: 'voice' }));
+    });
+});

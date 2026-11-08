@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { persisted } from '../persistence/persisted';
+import { clientLog } from '../../utils/clientLog';
+import { errorCode } from './mediaElement';
 
 const DEFAULT_VOLUME = 0.5; // 50% slider = gain 1.0 = original recording volume
 
@@ -77,6 +79,14 @@ export function useAmplifiedVolume(storageKey: string) {
      * `play()` so the graph exists (and the resume happens inside the click)
      * before any sound comes out. No-op without a registered element.
      */
+    // Each failure phase is logged once per hook instance.
+    const loggedPhasesRef = useRef(new Set<string>());
+    const logOnce = useCallback((phase: 'amp_connect_failed' | 'amp_resume_failed', err: unknown) => {
+        if (loggedPhasesRef.current.has(phase)) return;
+        loggedPhasesRef.current.add(phase);
+        clientLog('media_playback', { phase, error_type: errorCode(err) });
+    }, []);
+
     const prepareForPlayback = useCallback(() => {
         const element = registeredElementRef.current;
         if (!element) return;
@@ -120,16 +130,17 @@ export function useAmplifiedVolume(storageKey: string) {
                 connectedElementRef.current = element;
                 // Ensure native volume is maxed — all control via GainNode
                 element.volume = 1;
-            } catch {
+            } catch (err) {
                 // Element may already be connected to an AudioContext (e.g., hot reload)
+                logOnce('amp_connect_failed', err);
             }
         }
 
         // Playback starts from a user gesture, so a suspended context can resume now.
         if (ctx.state === 'suspended') {
-            ctx.resume().catch(() => { /* resumes on the next gesture-driven play */ });
+            ctx.resume().catch((err) => logOnce('amp_resume_failed', err));
         }
-    }, []);
+    }, [logOnce]);
 
     /**
      * Register the media element whose sound this hook amplifies. Cheap: it only
