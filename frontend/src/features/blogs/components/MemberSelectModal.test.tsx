@@ -21,6 +21,26 @@ function renderModal(over: Partial<React.ComponentProps<typeof MemberSelectModal
     return props;
 }
 
+describe('MemberSelectModal thumbnails', () => {
+    const withThumb = [{ id: '9901', name: '春野 ひなた', thumbnail: 'x.jpg' }];
+
+    it('shows a pulsing skeleton until the thumbnail loads', () => {
+        renderModal({ members: withThumb as never });
+        const sk = screen.getByTestId('thumb-skeleton');
+        expect(sk.className).toContain('animate-pulse');
+        expect(sk.className).toContain('motion-reduce:animate-none');
+        fireEvent.load(document.querySelector('img[src*="9901"]')!);
+        expect(screen.queryByTestId('thumb-skeleton')).toBeNull();
+    });
+
+    it('falls back to the initial when the thumbnail fails', () => {
+        renderModal({ members: withThumb as never });
+        fireEvent.error(document.querySelector('img[src*="9901"]')!);
+        expect(screen.queryByTestId('thumb-skeleton')).toBeNull();
+        expect(document.querySelector('img[src*="9901"]')).toBeNull();
+    });
+});
+
 describe('MemberSelectModal', () => {
     it('selects a member by click', () => {
         const p = renderModal();

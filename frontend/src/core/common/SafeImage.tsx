@@ -15,6 +15,12 @@ interface SafeImageProps {
     fallbackContent?: React.ReactNode;
     /** Optional fallback text shown inside the fallback container */
     fallbackText?: string;
+    /**
+     * Size/shape classes for a neutral pulsing placeholder (e.g. `h-48 w-64 rounded-card`).
+     * When set, the placeholder is shown until the image has loaded and the
+     * image is hidden meanwhile; a failed image still shows the fallback.
+     */
+    skeletonClassName?: string;
 }
 
 /**
@@ -28,8 +34,10 @@ export const SafeImage: React.FC<SafeImageProps> = ({
     loading,
     fallbackContent,
     fallbackText,
+    skeletonClassName,
 }) => {
     const [hasError, setHasError] = useState(false);
+    const [loaded, setLoaded] = useState(false);
 
     if (hasError) {
         return (
@@ -47,13 +55,25 @@ export const SafeImage: React.FC<SafeImageProps> = ({
         );
     }
 
+    const showSkeleton = Boolean(skeletonClassName) && !loaded;
+
     return (
-        <img
-            src={src}
-            alt={alt}
-            className={className}
-            loading={loading}
-            onError={() => setHasError(true)}
-        />
+        <>
+            {showSkeleton && (
+                <div
+                    data-testid="image-skeleton"
+                    aria-hidden="true"
+                    className={cn('animate-pulse bg-sunken motion-reduce:animate-none', skeletonClassName)}
+                />
+            )}
+            <img
+                src={src}
+                alt={alt}
+                className={cn(className, showSkeleton && 'hidden')}
+                loading={loading}
+                onLoad={() => setLoaded(true)}
+                onError={() => setHasError(true)}
+            />
+        </>
     );
 };
