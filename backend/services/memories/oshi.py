@@ -10,6 +10,7 @@ import time
 import structlog
 
 from backend.services.blog_service import BlogService
+from backend.services.memories.locks import keyed_lock
 from backend.services.memories.names import normalize_member_name
 from backend.services.settings_store import load_config
 
@@ -21,25 +22,41 @@ _MEMBERS_TTL_SECONDS = 3600.0
 _members_cache: dict[str, tuple[float, dict[str, str]]] = {}
 
 
+def _cached(service: str) -> dict[str, str] | None:
+    cached = _members_cache.get(service)
+    if cached is not None and cached[0] > time.monotonic():
+        return cached[1]
+    return None
+
+
 async def _blog_members(service: str) -> dict[str, str]:
     """Blog member id -> name for ``service``; ``{}`` when unavailable.
 
     Cached for an hour per service so repeat callers (notifications) don't
     scrape on every call. Failures and empty results are never cached.
+    Single-flight: concurrent callers for one service share one fetch.
     """
-    cached = _members_cache.get(service)
-    if cached is not None and cached[0] > time.monotonic():
-        return cached[1]
-    try:
-        members = await BlogService().get_blog_members(service)
-    except Exception as exc:
-        logger.warning(
-            "oshi_members_unavailable", service=service, error_type=type(exc).__name__
-        )
-        return {}
-    if members:
+    hit = _cached(service)
+    if hit is not None:
+        return hit
+    async with keyed_lock(("oshi_blog_members", service)):
+        hit = _cached(service)  # filled while we waited
+        if hit is not None:
+            return hit
+        try:
+            members = await BlogService().get_blog_members(service)
+        except Exception as exc:
+            logger.warning(
+                "oshi_members_unavailable",
+                service=service,
+                error_type=type(exc).__name__,
+            )
+            return {}
+        if not members:
+            logger.info("oshi_members_empty", service=service)
+            return {}
         _members_cache[service] = (time.monotonic() + _MEMBERS_TTL_SECONDS, members)
-    return members
+        return members
 
 
 async def oshi_names(service: str) -> set[str]:
