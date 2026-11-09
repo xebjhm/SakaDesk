@@ -681,7 +681,10 @@ def test_concurrent_shows_all_display_in_turn() -> None:
         release.set()
     assert first == 1
     assert list(others) == [1, True, 1]
-    assert order == ["34", "79", "simple", "80"]
+    # The running show finishes first; the queued ones each resolve the notifier
+    # on a worker thread, so their relative order is not guaranteed.
+    assert order[0] == "34"
+    assert sorted(order[1:]) == ["79", "80", "simple"]
     assert not [e for e in logs if e["event"] == "notify_skip"]
     assert len([e for e in logs if e["event"] == "notify_sent"]) == 4
 
