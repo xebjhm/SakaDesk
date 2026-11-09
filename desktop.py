@@ -947,8 +947,12 @@ def _load_window_geometry() -> dict:
         try:
             data = json.loads(legacy_path.read_text(encoding="utf-8"))
             logger.info("Migrating window geometry from window.json to settings.json")
-            _save_window_data_to_settings(data, settings_path)
-            legacy_path.unlink(missing_ok=True)
+            # Keep window.json when settings.json was not written (it exists
+            # but is unreadable), so a later launch can still migrate it.
+            if _save_window_data_to_settings(data, settings_path):
+                legacy_path.unlink(missing_ok=True)
+            else:
+                logger.info("window_migration_deferred", reason="settings_unwritten")
         except Exception:
             logger.warning("Failed to migrate window.json", exc_info=True)
             data = None
@@ -956,24 +960,26 @@ def _load_window_geometry() -> dict:
     return window_geometry.parse_saved_geometry(data)
 
 
-def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> None:
+def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> bool:
     """Write the window data dict into settings.json under the 'window' key.
 
     SD-AUX-03: goes through ``settings_store.update_raw_sync``, which writes
     atomically (tmp file + ``os.replace``) so a crash or force-close mid-write
     cannot leave a corrupt settings.json, and takes the same cross-thread lock
     as ``update_config`` / ``mark_tray_hint_shown`` so this GUI-thread save and
-    a concurrent API settings update cannot overwrite each other.
+    a concurrent API settings update cannot overwrite each other. Returns
+    whether the file was written: ``False`` when settings.json exists but is
+    unreadable, which ``update_raw_sync`` leaves untouched rather than wipe.
     """
-    settings_store.update_raw_sync(settings_path, {"window": window_data})
+    return settings_store.update_raw_sync(settings_path, {"window": window_data})
 
 
 def _save_window_geometry(geom: dict) -> None:
     """Save window geometry (``window.width/height/x/y``, verbatim) to settings.json."""
     try:
         data = window_geometry.to_saved_dict(geom)
-        _save_window_data_to_settings(data, get_app_data_dir() / "settings.json")
-        logger.debug("Window geometry saved", geometry=data)
+        if _save_window_data_to_settings(data, get_app_data_dir() / "settings.json"):
+            logger.debug("Window geometry saved", geometry=data)
     except Exception:
         logger.warning("Failed to save window geometry", exc_info=True)
 

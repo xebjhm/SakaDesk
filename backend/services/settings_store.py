@@ -139,24 +139,42 @@ async def update_config(updater: Callable[[dict], None]) -> dict:
         )
 
 
-def update_raw_sync(path: Path, updates: dict[str, Any]) -> None:
+def update_raw_sync(path: Path, updates: dict[str, Any]) -> bool:
     """Merge top-level ``updates`` into the settings file at ``path``.
 
     Synchronous, for callers outside the event loop (the GUI thread saving
     window geometry). Takes the same ``_file_lock`` as :func:`update_config`.
     Operates on the raw file contents (no defaults are merged in, so keys the
-    user never set are not materialised); an unreadable or missing file is
-    treated as empty. The write is atomic.
+    user never set are not materialised). A missing file is treated as empty
+    and created. A file that exists but cannot be read, parsed, or does not
+    hold a JSON object is left untouched: writing would replace every setting
+    with ``updates`` alone. That case logs ``settings_raw_update_skipped``
+    (reason and error type only) and returns ``False``. The write is atomic.
+    Returns ``True`` when the file was written; a write failure raises.
     """
     with _file_lock:
         raw: dict = {}
         if path.exists():
             try:
-                raw = json.loads(path.read_text(encoding="utf-8"))
+                loaded = json.loads(path.read_text(encoding="utf-8"))
             except Exception as e:
-                logger.warning("settings_raw_read_failed", error_type=type(e).__name__)
+                logger.warning(
+                    "settings_raw_update_skipped",
+                    reason="unreadable",
+                    error_type=type(e).__name__,
+                )
+                return False
+            if not isinstance(loaded, dict):
+                logger.warning(
+                    "settings_raw_update_skipped",
+                    reason="not_object",
+                    error_type=type(loaded).__name__,
+                )
+                return False
+            raw = loaded
         raw.update(updates)
         _write_file(path, raw)
+    return True
 
 
 def read_config_sync() -> dict[str, Any]:

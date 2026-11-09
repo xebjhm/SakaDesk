@@ -373,8 +373,45 @@ class TestUpdateRawSync:
         settings_store_mod.update_raw_sync(path, {"window": {"width": 1}})
         assert json.loads(path.read_text(encoding="utf-8")) == {"window": {"width": 1}}
 
-    def test_unreadable_file_is_treated_as_empty(self, tmp_path):
+    def test_missing_file_is_written_and_reports_saved(self, tmp_path):
+        path = tmp_path / "settings.json"
+        assert settings_store_mod.update_raw_sync(path, {"window": {}}) is True
+        assert json.loads(path.read_text(encoding="utf-8")) == {"window": {}}
+
+    def test_unreadable_file_is_left_untouched(self, tmp_path):
+        """A corrupt-but-present file must never be replaced by ``updates`` alone.
+
+        Overwriting it would wipe output_dir / is_configured / language and
+        every other setting on the next close-to-tray geometry save.
+        """
+        from structlog.testing import capture_logs
+
         path = tmp_path / "settings.json"
         path.write_text("{broken", encoding="utf-8")
-        settings_store_mod.update_raw_sync(path, {"window": {}})
-        assert json.loads(path.read_text(encoding="utf-8")) == {"window": {}}
+        with capture_logs() as logs:
+            saved = settings_store_mod.update_raw_sync(path, {"window": {}})
+        assert saved is False
+        assert path.read_text(encoding="utf-8") == "{broken"
+        skipped = [e for e in logs if e["event"] == "settings_raw_update_skipped"]
+        assert skipped == [
+            {
+                "event": "settings_raw_update_skipped",
+                "reason": "unreadable",
+                "error_type": "JSONDecodeError",
+                "log_level": "warning",
+            }
+        ]
+
+    def test_non_object_file_is_left_untouched(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        path = tmp_path / "settings.json"
+        path.write_text("[1, 2]", encoding="utf-8")
+        with capture_logs() as logs:
+            saved = settings_store_mod.update_raw_sync(path, {"window": {}})
+        assert saved is False
+        assert path.read_text(encoding="utf-8") == "[1, 2]"
+        assert any(
+            e["event"] == "settings_raw_update_skipped" and e["reason"] == "not_object"
+            for e in logs
+        )
