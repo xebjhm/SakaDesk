@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from '../i18n';
 import { aiErrorKey } from '../i18n/aiError';
 import { persisted } from '../core/persistence/persisted';
@@ -53,16 +53,21 @@ export function useMessageTranslation(params: {
     const [state, setState] = useState<TranslationState>('idle');
     const [error, setError] = useState<string | null>(null);
 
+    // Bumped by retrigger/clear so a cached lookup that is still pending when
+    // either runs cannot overwrite the newer state.
+    const localGen = useRef(0);
+
     // Re-sync state when cacheKey changes (e.g., target language or provider changed)
     useEffect(() => {
         let cancelled = false;
+        const gen = localGen.current;
         setTranslation(null);
         setState('idle');
         setError(null);
         if (cacheKey) {
             // Batched with the lookups of every other bubble mounting now.
             loadCachedTranslation(cacheKey).then((cached) => {
-                if (!cancelled && cached) {
+                if (!cancelled && gen === localGen.current && cached) {
                     setTranslation(cached);
                     setState('done');
                 }
@@ -129,11 +134,13 @@ export function useMessageTranslation(params: {
         // No single-key delete endpoint; doTranslate() below overwrites the
         // cache entry once the fresh translation comes back, so there's
         // nothing to explicitly clear first — just reset local state.
+        localGen.current += 1;
         setTranslation(null);
         await doTranslate();
     }, [doTranslate]);
 
     const clear = useCallback(() => {
+        localGen.current += 1;
         setTranslation(null);
         setState('idle');
         setError(null);

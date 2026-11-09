@@ -3,6 +3,10 @@ import { renderHook, act, waitFor } from '@testing-library/react';
 import { useMessageTranslation, clearTranslationCache } from './useMessageTranslation';
 import { persisted } from '../core/persistence/persisted';
 import * as appStateApi from '../core/persistence/appStateApi';
+import { __resetTranslationLoaderForTests } from '../core/persistence/translationLoader';
+import { clientLog } from '../utils/clientLog';
+
+vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 const KEY = 'translation:message:500:en';
 const baseParams = {
@@ -28,6 +32,7 @@ const store = new Map<string, string>();
 
 describe('useMessageTranslation', () => {
     beforeEach(() => {
+        __resetTranslationLoaderForTests();
         store.clear();
         vi.spyOn(persisted, 'getTranslations').mockImplementation(async (keys: string[]) => {
             const out: Record<string, string> = {};
@@ -117,7 +122,11 @@ describe('useMessageTranslation', () => {
 
 describe('useMessageTranslation batching', () => {
     // The earlier describe never restores its spies; start these from a clean slate.
-    beforeEach(() => vi.restoreAllMocks());
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        __resetTranslationLoaderForTests();
+        vi.mocked(clientLog).mockClear();
+    });
     afterEach(() => vi.restoreAllMocks());
 
     it('mounting several bubbles together issues one cache lookup', async () => {
@@ -141,13 +150,44 @@ describe('useMessageTranslation batching', () => {
         expect(results.map((r) => r.current.state)).toEqual(['idle', 'idle']);
     });
 
-    it('does not set state for a bubble unmounted before the batch answers', async () => {
-        const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
-        vi.spyOn(persisted, 'getTranslations').mockResolvedValue({ 'translation:message:21:en': 'late' });
-        const { result, unmount } = renderHook(() => useMessageTranslation({ ...baseParams, messageId: 21 }));
-        unmount();
-        await act(async () => { await new Promise((r) => setTimeout(r, 120)); });
+    it('ignores a stale lookup answered after the target language changed', async () => {
+        let release!: (m: Record<string, string>) => void;
+        vi.spyOn(persisted, 'getTranslations').mockImplementation(((keys: string[]) =>
+            keys.some((k) => k.endsWith(':en'))
+                ? new Promise((r) => { release = r; })
+                : Promise.resolve({ [keys[0]]: 'fresh-ja' })) as typeof persisted.getTranslations);
+        const { result, rerender } = renderHook(
+            ({ lang }) => useMessageTranslation({ ...baseParams, messageId: 21, targetLanguage: lang }),
+            { initialProps: { lang: 'en' } },
+        );
+        await act(async () => { await new Promise((r) => setTimeout(r, 80)); }); // en lookup now in flight
+        rerender({ lang: 'ja' });
+        await waitFor(() => expect(result.current.translation).toBe('fresh-ja'));
+        await act(async () => { release({ 'translation:message:21:en': 'stale-en' }); });
+        expect(result.current.translation).toBe('fresh-ja');
+    });
+
+    it('a pending cached lookup does not overwrite state after clear()', async () => {
+        let release!: (m: Record<string, string>) => void;
+        vi.spyOn(persisted, 'getTranslations').mockImplementation(() => new Promise((r) => { release = r; }));
+        const { result } = renderHook(() => useMessageTranslation({ ...baseParams, messageId: 31 }));
+        await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+        act(() => result.current.clear());
+        await act(async () => { release({ 'translation:message:31:en': 'late' }); });
         expect(result.current.translation).toBeNull();
-        expect(errors).not.toHaveBeenCalled();
+        expect(result.current.state).toBe('idle');
+    });
+
+    it('a pending cached lookup does not overwrite the fresh result of retrigger()', async () => {
+        let release!: (m: Record<string, string>) => void;
+        vi.spyOn(persisted, 'getTranslations').mockImplementation(() => new Promise((r) => { release = r; }));
+        vi.spyOn(persisted, 'putTranslations').mockResolvedValue(undefined);
+        mockFetchOk('fresh');
+        const { result } = renderHook(() => useMessageTranslation({ ...baseParams, messageId: 41 }));
+        await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+        await act(async () => { await result.current.retrigger(); });
+        expect(result.current.translation).toBe('fresh');
+        await act(async () => { release({ 'translation:message:41:en': 'stale-cached' }); });
+        expect(result.current.translation).toBe('fresh');
     });
 });

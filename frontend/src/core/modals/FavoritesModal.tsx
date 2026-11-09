@@ -142,10 +142,11 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 }) => {
     const { t } = useTranslation();
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
-    // The dialog body is the scroll container: it is the IntersectionObserver root for video cards.
+    // The dialog body is the scroll container: it is the IntersectionObserver root for the video and voice cards.
     const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
 
-    // Without IntersectionObserver every video mounts eagerly; leave one breadcrumb per modal open.
+    // Without IntersectionObserver every video and voice card mounts eagerly; leave one
+    // breadcrumb per modal open (the event name predates voice cards and covers both).
     useEffect(() => {
         if (isOpen && typeof IntersectionObserver === 'undefined') {
             clientLog('favorite_video_lazy_unsupported');

@@ -4,6 +4,7 @@ import {
     loadCachedTranslation,
     TRANSLATION_BATCH_MAX_KEYS,
     TRANSLATION_BATCH_WINDOW_MS,
+    __resetTranslationLoaderForTests,
 } from './translationLoader';
 import { clientLog } from '../../utils/clientLog';
 
@@ -15,6 +16,7 @@ let getSpy: ReturnType<typeof vi.spyOn>;
 describe('loadCachedTranslation', () => {
     beforeEach(() => {
         vi.useFakeTimers();
+        __resetTranslationLoaderForTests();
         store.clear();
         vi.mocked(clientLog).mockClear();
         getSpy = vi.spyOn(persisted, 'getTranslations').mockImplementation(async (keys: string[]) => {
@@ -87,5 +89,27 @@ describe('loadCachedTranslation', () => {
         const second = loadCachedTranslation('r:1');
         await vi.advanceTimersByTimeAsync(TRANSLATION_BATCH_WINDOW_MS);
         await expect(second).resolves.toBe('ok');
+    });
+
+    it.each([422, 500])('rejects all callers on a %i JSON answer instead of treating it as uncached', async (status) => {
+        getSpy.mockRestore();
+        vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: false, status, json: async () => ({ detail: 'nope' }) }));
+        const outcomes = ['h:1', 'h:2'].map((k) => loadCachedTranslation(k).then(() => 'ok', () => 'rejected'));
+        await vi.advanceTimersByTimeAsync(TRANSLATION_BATCH_WINDOW_MS);
+        await expect(Promise.all(outcomes)).resolves.toEqual(['rejected', 'rejected']);
+        expect(clientLog).toHaveBeenCalledWith('translation_batch_failed', { count: 2, error_type: 'error' });
+        vi.unstubAllGlobals();
+    });
+
+    it('resolves from a 200 JSON answer through the real fetch path', async () => {
+        getSpy.mockRestore();
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ 'h:1': 'one' }) });
+        vi.stubGlobal('fetch', fetchMock);
+        const a = loadCachedTranslation('h:1');
+        const b = loadCachedTranslation('h:2');
+        await vi.advanceTimersByTimeAsync(TRANSLATION_BATCH_WINDOW_MS);
+        await expect(Promise.all([a, b])).resolves.toEqual(['one', undefined]);
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        vi.unstubAllGlobals();
     });
 });

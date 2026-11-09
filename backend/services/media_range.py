@@ -42,7 +42,8 @@ The detailed ``media_request`` breadcrumb (status, range header capped to
 ``client_disconnected`` and ``truncated``) is written at info on every
 occurrence for a client disconnect, a truncated body or a status >= 400, and
 otherwise only at debug for 1 in ``MEDIA_LOG_SAMPLE_EVERY`` requests. Neither
-log carries the path or file name.
+log carries the path or file name. Requests after the last full block of
+``MEDIA_SUMMARY_EVERY`` are not summarised if the app shuts down first.
 """
 
 from __future__ import annotations

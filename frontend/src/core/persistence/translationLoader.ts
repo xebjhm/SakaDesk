@@ -9,7 +9,7 @@
  * most `TRANSLATION_BATCH_MAX_KEYS`, the backend's limit). A key requested
  * while the same key is queued or in flight shares that lookup.
  *
- * A failed batch rejects every caller waiting on it (they behave as the
+ * A failed batch (network error or a non-2xx answer such as 422) rejects every caller waiting on it (they behave as the
  * single-key request did before) and logs one `translation_batch_failed`
  * breadcrumb with the key count and a code-like error type, never the keys.
  *
@@ -18,10 +18,10 @@
 
 import { clientLog } from '../../utils/clientLog';
 import { persisted } from './persisted';
+import { TRANSLATION_LOOKUP_MAX_KEYS } from './appStateApi';
 
 export const TRANSLATION_BATCH_WINDOW_MS = 50;
-/** Mirrors `MAX_TRANSLATION_KEYS` in `backend/api/app_state.py`. */
-export const TRANSLATION_BATCH_MAX_KEYS = 100;
+export const TRANSLATION_BATCH_MAX_KEYS = TRANSLATION_LOOKUP_MAX_KEYS;
 
 interface Waiter {
     resolve: (value: string | undefined) => void;
@@ -73,4 +73,13 @@ export function loadCachedTranslation(key: string): Promise<string | undefined> 
     queue.push(key);
     if (timer === null) timer = setTimeout(flush, TRANSLATION_BATCH_WINDOW_MS);
     return promise;
+}
+
+/** Test-only: drop all queued and in-flight state and any pending timer. */
+export function __resetTranslationLoaderForTests(): void {
+    if (timer !== null) clearTimeout(timer);
+    timer = null;
+    queue = [];
+    waiters.clear();
+    lookups.clear();
 }
