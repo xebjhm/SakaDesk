@@ -74,6 +74,7 @@ from backend.api import (  # noqa: E402
     transcription,
     translation,
     app_state as app_state_api,
+    memories,
     archive,
 )
 from backend.api_no_store import ApiNoStoreMiddleware  # noqa: E402
@@ -458,6 +459,7 @@ app.include_router(
 )
 app.include_router(translation.router, prefix="/api/translation", tags=["translation"])
 app.include_router(app_state_api.router, prefix="/api/app-state", tags=["app-state"])
+app.include_router(memories.router)
 
 
 @app.get("/health")
