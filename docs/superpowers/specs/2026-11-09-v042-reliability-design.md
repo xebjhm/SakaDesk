@@ -101,25 +101,27 @@ The log also shows two refreshes for one service starting in the same millisecon
 
 ### Problem (user screenshot, 2026-11-09)
 
-The popup window (`call_popup_window.py`) is a frameless WebView2 window. It has a dark background (`#0D0F14`), small DWM rounded corners (`DWMWCP_ROUND`, about 8 px) and a DWM shadow. The page fills the window, but the ringing halo and the card's visible edge are drawn inset by 8 px with a 16 px radius (`.sd-call-halo--inset`). A dark square rim therefore shows between the window edge and our rounded card.
+The popup window (`call_popup_window.py`) is a frameless WebView2 window. It had a dark background (`#0D0F14`), small DWM rounded corners (`DWMWCP_ROUND`, about 8 px) and a DWM shadow. The ringing halo and the card's visible edge were drawn inset by 8 px with a 16 px radius, so a dark square rim showed between the window edge and our rounded card. A first attempt (commit 01d8002) made the page full-bleed with an 8 px radius, but the user wants the original 16 px corners back.
 
-### Design
+### Design (implemented: option A, a transparent window)
 
-1. **Primary: full bleed.** The call card fills the window edge to edge, and its corner radius matches the window's DWM corner.
-   - Remove the 8 px inset: the halo uses `inset: 0` and follows the window's corner radius. **As implemented:** `.sd-call-halo--inset` is `inset: 0; border-radius: 8px`.
-   - The window and body background match the card's own edge colour, so no dark band can appear. **As implemented:** not changed yet; the window background stays `#0D0F14` until the native-pixel Windows capture shows whether it is needed.
-   - The native DWM rounded corners and shadow form the frame: antialiased, with no transparency tricks.
-   - On Windows 10 (no corner preference), the corners are square but the rim is still gone.
-2. **Fallback, only if the primary looks wrong on Windows: a transparent window.** Use pywebview `transparent=True`, a transparent WebView2 background, and the rounded card drawn by CSS.
-   - This is tried only if the primary cannot match the look. Colour-key transparency can leave a fringe on antialiased edges.
-   - The choice is made from native-pixel captures on Windows, and it is shown to the user before merge.
-3. **The ringing glow.** It moves to the inside of the card edge, so it is never clipped by the window bounds.
+1. **Transparent window.** `create_window` gets `transparent=True` and `shadow=False`. pywebview on WinForms colour-keys the form (`BackColor = TransparencyKey`, pure red) and makes the WebView2 background transparent. `background_color` stays but is ignored when transparent.
+2. **Near-black key.** With a red key the antialiased card corners would blend into a red fringe. `_apply_transparency_key(window)` therefore replaces both colours with `TRANSPARENCY_KEY = (3, 1, 2)` on the form's GUI thread (`Invoke` when `InvokeRequired`), before the window is shown (both the hwnd-ready path and the `before_show` path). It never raises: it logs `call_popup_transparency` (`applied=True`) or `call_popup_transparency_failed` (`error_type`). It is an injectable seam (`apply_transparency`), like `create_window` and `dwmapi`.
+3. **No DWM rounding.** `_apply_styles` sets `DWMWCP_DONOTROUND` (1) instead of `DWMWCP_ROUND`, because the page draws its own rounded card.
+4. **16 px card.** `PopupCall` sets `--sd-rad: 16px`, so the CallScreen card, its clip-path and its bands use 16 px corners. `.sd-call-popup` has `border-radius: 16px; overflow: hidden`. The document (`html`, `body`, `#root`) is `background: transparent !important` (the `!important` beats the inline `#F0F2F5` on `index.html`'s body), so nothing opaque is painted outside the card.
+5. **The ringing glow** is `.sd-call-halo--inset` with `inset: 0; border-radius: 16px`: it follows the card edge and draws no ring line.
+
+### Known trade-offs
+
+- No OS shadow: a DWM shadow on a colour-keyed form draws a box, so `shadow=False`.
+- A faint dark 1 px edge can show on the antialiased card corners (they blend toward the near-black key).
+- Pixels that exactly match the key (3, 1, 2) are see-through. A photo under the call screen's gradients is very unlikely to hit it exactly.
+- On Windows 10 nothing changes visually: the card's own corners are drawn by CSS.
 
 ### Verification
 
-- Windows build. The test call is fired the way C3 acceptance did it, and the popup is captured as native pixels via CDP. A full-screen grab is never used, per the user's privacy rule.
-- Before/after captures go on the comparison page for the user.
-- Tests: the existing popup layout tests are updated (no inset, matching radius). `call_popup_window` keeps its style tests.
+- Unit tests: create kwargs, the DWM preference, the transparency seam (called before show on both paths; sets both colours via `Invoke` when `InvokeRequired`; logs and never raises on failure), and the frontend CSS/radius tests.
+- Verified on the user's machine with a real call (to be confirmed by the user before merge).
 
 ## Out of scope
 
