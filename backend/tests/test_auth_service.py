@@ -3,7 +3,7 @@
 import asyncio
 
 import pytest
-from unittest.mock import patch
+from unittest.mock import AsyncMock, patch
 from backend.services.auth_service import AuthService
 
 
@@ -83,7 +83,12 @@ def test_get_status_expired_token(auth_service):
         mock_tm.return_value.load_session.return_value = {
             "access_token": "expired_token",
         }
-        with patch.object(auth_service, "_is_token_expired", return_value=True):
+        with (
+            patch.object(auth_service, "_is_token_expired", return_value=True),
+            # Renewal is covered in test_auth_renewal.py; "error" is the documented
+            # "not renewed this time, will retry" outcome that keeps token_expired.
+            patch.object(AuthService, "renew_expired", AsyncMock(return_value="error")),
+        ):
             result = asyncio.run(auth_service.get_status(service="hinatazaka46"))
             assert not result["authenticated"]
             assert result.get("token_expired")
