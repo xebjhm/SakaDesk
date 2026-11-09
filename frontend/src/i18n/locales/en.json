@@ -284,7 +284,8 @@
     "installNow": "Install Now",
     "updateAvailable": "Update available!",
     "upgradeNow": "Update Now",
-    "skipVersion": "Skip this version"
+    "skipVersion": "Skip this version",
+    "cancelDownload": "Cancel download"
   },
   "memberList": {
     "title": "Talk",
@@ -481,7 +482,9 @@
     "noContent": "No content",
     "loading": "Loading letters…",
     "unavailable": "Letters are unavailable right now",
-    "letterSent": "Letter sent {{date}}"
+    "letterSent": "Letter sent {{date}}",
+    "count": "{{count}} letter",
+    "count_other": "{{count}} letters"
   },
   "blogs": {
     "latestBlogs": "Latest Blogs",

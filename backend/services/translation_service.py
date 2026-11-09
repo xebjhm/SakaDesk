@@ -7,13 +7,13 @@ with a provider abstraction for multiple backends (Gemini, OpenAI).
 Translations are cached client-side in localStorage — no server-side storage.
 """
 
-import re
 import structlog
 from abc import ABC, abstractmethod
 from typing import Literal, Optional, cast
 
 import httpx
 
+from backend.services.nickname import PLACEHOLDER_RE as _PLACEHOLDER_RE
 from backend.services.ai_errors import (
     EmptyOutputError,
     IncompleteOutputError,
@@ -34,8 +34,6 @@ LANGUAGE_NAMES: dict[str, str] = {
     "zh-CN": "Simplified Chinese",
     "yue": "Cantonese",
 }
-
-_PLACEHOLDER_RE = re.compile(r"%%%|％％％")
 
 
 # ---------------------------------------------------------------------------

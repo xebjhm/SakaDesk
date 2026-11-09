@@ -375,3 +375,33 @@ def test_abandon_failure_on_cancel_does_not_mask_the_cancel(tmp_path: Path) -> N
             )
     failed = _events(logs, "call_popup_abandon_failed")
     assert [e["error_type"] for e in failed] == ["RuntimeError"]
+
+
+def test_toast_body_uses_the_services_cached_nickname(tmp_path: Path) -> None:
+    """0.4.1: the sync wiring passes user_nicknames[service] to the planner."""
+    c = NewMessageCollector(SERVICE)
+    c.on_new_messages(
+        {
+            "group_id": 34,
+            "group_name": "金村 美玖",
+            "member_id": 58,
+            "member_name": "金村 美玖",
+            "member_dir": _member_dir(tmp_path, 34, 58, "金村 美玖"),
+        },
+        [
+            {
+                "id": 1,
+                "timestamp": "2026-11-04T10:00:00Z",
+                "type": "text",
+                "content": "％％％、おやすみ🌙",
+                "state": "published",
+            }
+        ],
+    )
+    send, _ = _run(
+        _service(tmp_path),
+        c,
+        settings={"user_nicknames": {SERVICE: "ひな", "sakurazaka46": "さく"}},
+    )
+    (plan,) = send.await_args.args[0]
+    assert plan.body == "ひな、おやすみ🌙"

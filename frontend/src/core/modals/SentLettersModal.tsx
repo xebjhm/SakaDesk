@@ -28,7 +28,8 @@ export interface SentLettersModalProps {
  * both dialogs and jumps to the letter in the chat. Each card is named by its send date and
  * time. Letters whose created_at cannot be parsed are not listed (the timeline does not show
  * them either). While the letters load, or when they are unavailable, the dialog says so
- * instead of "no letters".
+ * instead of "no letters". When letters are listed, the footer shows how many (the same
+ * count as the grid), like the Favorites dialog.
  */
 export const SentLettersModal: React.FC<SentLettersModalProps> = ({ isOpen, onClose, letters, status, onSelectLetter }) => {
     const { t, i18n } = useTranslation();
@@ -100,7 +101,18 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({ isOpen, onCl
 
     return (
         <>
-            <Modal isOpen={isOpen} onClose={close} title={t('sentLetters.title')} icon={<Mail />} closeLabel={t('common.close')} logId="sent_letters" className="max-w-2xl">
+            <Modal
+                isOpen={isOpen}
+                onClose={close}
+                title={t('sentLetters.title')}
+                icon={<Mail />}
+                closeLabel={t('common.close')}
+                logId="sent_letters"
+                className="max-w-2xl"
+                footer={newestFirst.length > 0
+                    ? <p className="mr-auto text-small text-muted">{t('sentLetters.count', { count: newestFirst.length })}</p>
+                    : undefined}
+            >
                 {body}
             </Modal>
             <LetterViewerModal

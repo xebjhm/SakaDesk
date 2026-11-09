@@ -784,7 +784,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         <ConversationMenu
                             conversationPath={selectedGroupDir}
                             isGroupChat={isGroupChat}
-                            messages={messages}
+                            messages={displayMessages}
                             memberName={selectedName || ''}
                             memberAvatar={headerAvatar}
                             letters={roomExtras.letters}

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.1] - 2026-11-09
+
+### Added
+- **Sent letters show how many there are.** The sent-letters overview now
+  shows the number of letters at the bottom, like Favorites.
+
+### Fixed
+- **In-app upgrades no longer fail with "file in use".** Clicking the update
+  ring during a download started a second download, so the installer could
+  not open; a click now does nothing while downloading (the small × cancels),
+  and a cancel really stops the download. From 0.3.4 or 0.4.0, let the
+  download finish without clicking, then click the ring when it turns green.
+- **Your nickname appears in Windows notifications and Favorites.** The
+  "%%%" placeholders in members' messages showed as is there; they now show
+  your nickname, as in the chat.
+
 ## [0.4.0] - 2026-11-09
 
 ### Added
@@ -617,7 +633,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting on sensitive endpoints
 - Input validation and sanitization
 
-[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.4.1...HEAD
+[0.4.1]: https://github.com/xebjhm/SakaDesk/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/xebjhm/SakaDesk/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/xebjhm/SakaDesk/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/xebjhm/SakaDesk/compare/v0.3.2...v0.3.3

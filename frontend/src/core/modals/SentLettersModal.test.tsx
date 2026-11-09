@@ -13,6 +13,21 @@ const letter = (id: number, created_at: string, image_url: string | null, text =
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
 describe('SentLettersModal', () => {
+    it('shows how many letters were sent (unparseable dates are not counted)', async () => {
+        render(
+            <SentLettersModal isOpen onClose={vi.fn()} status="ready" onSelectLetter={vi.fn()}
+                letters={[letter(1, '2023-06-01T14:00:00Z', null, 'a'), letter(2, '2025-05-05T14:00:00Z', null, 'b'), letter(3, 'not a date', null, 'c')]} />,
+        );
+        const dialog = await screen.findByRole('dialog', { name: 'Sent Letters' });
+        expect(within(dialog).getByText('2 letters')).toBeInTheDocument();
+    });
+
+    it('shows no count when there are no letters', async () => {
+        render(<SentLettersModal isOpen onClose={vi.fn()} status="ready" onSelectLetter={vi.fn()} letters={[]} />);
+        const dialog = await screen.findByRole('dialog', { name: 'Sent Letters' });
+        expect(within(dialog).queryByText(/\d+ letters?$/)).toBeNull();
+    });
+
     it('lists the letters newest first and opens the chosen one in the letter viewer', async () => {
         const onClose = vi.fn();
         const onSelectLetter = vi.fn();

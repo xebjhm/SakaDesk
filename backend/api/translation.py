@@ -13,6 +13,7 @@ import structlog
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
+from backend.services.nickname import PLACEHOLDER_RE as _PLACEHOLDER_RE
 from backend.api.content import get_output_dir, validate_path_within_dir
 from backend.api.errors import CodedHTTPException, ai_provider_error
 from backend.services.settings_store import load_config, update_config
@@ -158,7 +159,6 @@ def warm_key_status_cache() -> None:
         logger.debug("translation.key_status_warm_failed", exc_info=True)
 
 
-_PLACEHOLDER_RE = re.compile(r"%%%|％％％")
 _NICKNAME_TOKEN = "{{NICKNAME}}"
 
 

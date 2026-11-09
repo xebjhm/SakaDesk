@@ -284,7 +284,8 @@
     "installNow": "即刻安裝",
     "updateAvailable": "有更新！",
     "upgradeNow": "即刻更新",
-    "skipVersion": "跳過呢個版本"
+    "skipVersion": "跳過呢個版本",
+    "cancelDownload": "取消下載"
   },
   "memberList": {
     "title": "Talk",
@@ -479,7 +480,9 @@
     "noContent": "冇內容",
     "loading": "載入緊信…",
     "unavailable": "暫時顯示唔到信",
-    "letterSent": "{{date}} 寄嘅信"
+    "letterSent": "{{date}} 寄嘅信",
+    "count": "共 {{count}} 封信",
+    "count_other": "共 {{count}} 封信"
   },
   "blogs": {
     "latestBlogs": "最新 Blog",
