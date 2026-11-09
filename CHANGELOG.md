@@ -19,7 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   asking you to log in again.
 - **A clear alert when you really need to log in again.** If a group's sign-in
   can no longer be renewed, SakaDesk shows one Windows notification (click it
-  to log in) and a warning dot on the tray icon until you do.
+  to log in) and a warning dot on the tray icon until you do. If you were only
+  offline, the warning clears by itself once SakaDesk can reach the service again.
 - **Read progress is no longer lost after a slow start.** If SakaDesk could not
   load your read progress at startup, it keeps trying and saves what you read
   in the meantime.
