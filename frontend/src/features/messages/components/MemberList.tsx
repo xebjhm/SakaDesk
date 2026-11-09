@@ -10,7 +10,7 @@ import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
 import { clientLog } from '../../../utils/clientLog';
-import { pollJson, pollLogKey, useUnmountSignal } from '../../../utils/pollJson';
+import { pollJson, pollLogKey, SIDEBAR_POLL_TIMEOUT_MS, useUnmountSignal } from '../../../utils/pollJson';
 import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
 import { resizedAvatarUrl } from '../mediaUrl';
 import { useAvatarWidth } from '../hooks/useAvatarWidth';
@@ -121,6 +121,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             : '/api/content/groups';
         const result = await pollJson<GroupsResponse>(serviceKey('groups', service), url, {
             signal: unmountSignal(),
+            timeoutMs: SIDEBAR_POLL_TIMEOUT_MS,
             replace,
         });
         // Skipped: a request is already in flight and will update the state.
@@ -138,7 +139,9 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             if (!Array.isArray(data) && data.last_sync) setLastSyncMap(data.last_sync);
             checkUnread(groupList, replace);
         }
-        setLoading(false);
+        // A timeout is not an answer: keep the spinner (an empty list would read
+        // as data loss) until a later tick succeeds or fails for real.
+        if (result.status !== 'timeout') setLoading(false);
     };
 
     const checkUnread = async (groupList: GroupInfo[], replace = false) => {
@@ -172,6 +175,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 : '/api/content/unread_counts';
             const result = await pollJson<Record<string, number>>(serviceKey('unread_counts', service), url, {
                 signal: unmountSignal(),
+                timeoutMs: SIDEBAR_POLL_TIMEOUT_MS,
                 replace,
                 init: {
                     method: 'POST',
@@ -215,10 +219,15 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         [activeService],
     );
 
+    // Refresh when a sync ends. Only a true -> false transition counts: mount is
+    // already covered by the polling hook's immediate load, and a second request
+    // would start a concurrent cold scan on the backend.
+    const wasSyncing = useRef(isSyncing);
     useEffect(() => {
-        if (isSyncing === false) {
+        if (wasSyncing.current === true && isSyncing === false) {
             void loadGroups(true);
         }
+        wasSyncing.current = isSyncing;
     }, [isSyncing]);
 
     useEffect(() => {

@@ -18,8 +18,19 @@
 
 import { useCallback, useEffect, useRef } from 'react';
 import { clientLog } from './clientLog';
+import { breadcrumbCode } from './breadcrumbCode';
 
+/** Default abort timeout: right for small progress polls (sync status, call state). */
 export const POLL_TIMEOUT_MS = 4000;
+
+/**
+ * Timeout for the sidebar's `/api/content/groups` and `/unread_counts` polls. The
+ * first scan of a large archive parses every `messages.json` (plus antivirus
+ * time on Windows) and can outlast the generic timeout. Skip-while-pending
+ * already prevents a pile-up, so a longer cut-off costs nothing; the short one
+ * only matters for progress polls.
+ */
+export const SIDEBAR_POLL_TIMEOUT_MS = 15000;
 
 export type PollResult<T> =
     | { status: 'ok'; data: T }
@@ -53,11 +64,6 @@ const skippedCount = new Map<string, number>();
 /** Breadcrumb field values must match [a-z0-9_]{1,40}. */
 export function pollLogKey(key: string): string {
     return key.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40);
-}
-
-function errorType(err: unknown): string {
-    const name = err instanceof Error ? err.name : 'unknown';
-    return name.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40) || 'unknown';
 }
 
 function reportSkips(key: string): void {
@@ -109,7 +115,7 @@ export async function pollJson<T>(key: string, url: string, options: PollOptions
             clientLog('poll_timeout', { key: pollLogKey(key), timeout_ms: timeoutMs });
             return { status: 'timeout' };
         }
-        clientLog('poll_failed', { key: pollLogKey(key), error_type: errorType(error) });
+        clientLog('poll_failed', { key: pollLogKey(key), error_type: breadcrumbCode(error) });
         return { status: 'failed', error };
     } finally {
         clearTimeout(timer);
