@@ -165,38 +165,106 @@ async def test_two_expired_services_settle_concurrently():
 
 
 @pytest.mark.asyncio
-async def test_hanging_renewal_times_out_as_error_and_releases_gate():
+async def test_slow_renewal_times_out_on_status_path_but_still_completes_and_saves():
     svc = AuthService()
-    svc._get_service_auth_status = lambda s: dict(EXPIRED)  # type: ignore[method-assign]
+    saved = []
+    svc._get_service_auth_status = lambda s: dict(  # type: ignore[method-assign]
+        VALID if saved else EXPIRED
+    )
     svc._load_token_for_renewal = lambda s: (  # type: ignore[method-assign]
         {"access_token": "t", "cookies": {"session": "c"}},
-        True,
+        not saved,
     )
-    cancelled = asyncio.Event()
 
-    async def hang(self, session):
+    def save(service, client):
+        saved.append(service)
+        return 3600.0
+
+    svc._save_refreshed = save  # type: ignore[method-assign]
+    release = asyncio.Event()
+    cancelled = []
+
+    async def slow_refresh(self, session):
         try:
-            await asyncio.Event().wait()
+            await release.wait()  # the server answers after the status call gave up
         except asyncio.CancelledError:
-            cancelled.set()
+            cancelled.append(True)
             raise
+        return True
 
+    success = MagicMock(wraps=session_alert.report_success)
     with (
         patch.object(auth_mod, "STATUS_RENEW_TIMEOUT_SECONDS", 0.05),
-        patch("backend.services.auth_service.Client.refresh_access_token", hang),
+        patch(
+            "backend.services.auth_service.Client.refresh_access_token", slow_refresh
+        ),
+        patch.object(session_alert, "report_success", success),
         capture_logs() as logs,
     ):
         t0 = time.monotonic()
         status = await svc.get_status(SVC)
         elapsed = time.monotonic() - t0
-    assert elapsed < 1.0
-    assert status["token_expired"] is True and status.get("session_expired") is None
-    assert cancelled.is_set()
-    assert not session_alert.needs_login(SVC)
-    assert session_alert.renew_block_reason(SVC) == "cooldown"
+        assert elapsed < 1.0
+        assert status["token_expired"] is True
+        assert status.get("session_expired") is None
+        assert not session_alert.needs_login(SVC)
+        assert refresh_gate._lock_for(SVC).locked()  # the renewal still runs
+        ev = [e for e in logs if e["event"] == "session_renew"]
+        assert ev and ev[-1]["outcome"] == "timeout"
+        success.assert_not_called()
+
+        release.set()
+        for _ in range(100):
+            if not refresh_gate._lock_for(SVC).locked():
+                break
+            await asyncio.sleep(0.01)
+    assert not cancelled
+    assert saved == [SVC]
+    success.assert_called_with(SVC)  # clear() after the background renewal
+    assert session_alert.may_renew(SVC)  # the timeout's cooldown was cleared
     assert not refresh_gate._lock_for(SVC).locked()
-    ev = [e for e in logs if e["event"] == "session_renew"]
-    assert ev and ev[-1]["outcome"] == "timeout"
+    ok = [e for e in logs if e["event"] == "session_renew" and e["outcome"] == "ok"]
+    assert ok
+    assert await svc.get_status(SVC) == VALID
+
+
+@pytest.mark.asyncio
+async def test_status_call_during_a_background_renewal_waits_at_the_gate():
+    """Past the cooldown, a later status call waits for the running renewal."""
+    svc = AuthService()
+    saved = []
+    svc._get_service_auth_status = lambda s: dict(  # type: ignore[method-assign]
+        VALID if saved else EXPIRED
+    )
+    svc._load_token_for_renewal = lambda s: (  # type: ignore[method-assign]
+        {"access_token": "t", "cookies": {"session": "c"}},
+        not saved,
+    )
+    svc._save_refreshed = lambda s, c: saved.append(s) or 3600.0  # type: ignore[method-assign]
+    release = asyncio.Event()
+    calls = 0
+
+    async def slow_refresh(self, session):
+        nonlocal calls
+        calls += 1
+        await release.wait()
+        return True
+
+    with patch(
+        "backend.services.auth_service.Client.refresh_access_token", slow_refresh
+    ):
+        with patch.object(auth_mod, "STATUS_RENEW_TIMEOUT_SECONDS", 0.05):
+            await svc.get_status(SVC)  # times out, renewal continues
+        session_alert._cooldown_until.pop(SVC, None)  # as if 60 s passed
+        later = asyncio.ensure_future(svc.get_status(SVC))
+        await asyncio.sleep(0.02)
+        assert not later.done()  # waiting at the busy gate
+        release.set()
+        status = await asyncio.wait_for(later, 5)
+    # The waiter re-read the token inside the gate: one refresh in total.
+    assert calls == 1
+    assert saved == [SVC]
+    assert status == VALID
 
 
 @pytest.mark.asyncio

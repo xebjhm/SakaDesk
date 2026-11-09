@@ -25,6 +25,7 @@ from pysaka import (
 from pysaka.credentials import get_token_manager
 
 from backend.services import refresh_gate, session_alert
+from backend.services.background_tasks import track_background_task
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
 from backend.services.service_utils import (
     get_all_services,
@@ -34,9 +35,9 @@ from backend.services.service_utils import (
 
 logger = structlog.get_logger(__name__)
 
-# Bound on the in-line renewal of the status path (``get_status``), which the
-# app's loading screen waits on. A slower renewal is cancelled and counts as
-# outcome ``error``; the sync path renews without this bound.
+# How long the status path (``get_status``, which the app's loading screen waits
+# on) waits for an in-line renewal. A slower renewal keeps running in the
+# background and saves its result; this status call answers outcome ``error``.
 STATUS_RENEW_TIMEOUT_SECONDS = 20.0
 
 
@@ -260,17 +261,40 @@ class AuthService:
         settled = await asyncio.gather(*(self._settle(s, statuses[s]) for s in names))
         return {"services": dict(zip(names, settled))}
 
-    async def _renew_for_status(self, service: str) -> str:
-        """``renew_expired`` bounded by ``STATUS_RENEW_TIMEOUT_SECONDS``.
+    async def _renew_and_report(self, service: str) -> str:
+        """``renew_expired`` plus the ``session_alert`` report its outcome calls for.
 
-        On timeout the renewal is cancelled (the gate and the pysaka refresh
-        unwind through their ``async with`` blocks), the retry cooldown starts,
-        ``session_renew`` (outcome ``timeout``) is logged and ``error`` is
-        returned, so the service is never marked for a slow renewal.
+        ``dead`` / ``no_cookies`` report ``expired``; ``refresh_failed`` reports
+        ``refresh_failed`` (a mark on the second strike). Runs to completion
+        even when the status call that started it stopped waiting.
         """
+        outcome = await self.renew_expired(service)
+        if outcome in ("dead", "no_cookies"):
+            await session_alert.report(service, "expired")
+        elif outcome == "refresh_failed":
+            await session_alert.report(service, "refresh_failed")
+        return outcome
+
+    async def _renew_for_status(self, service: str) -> str:
+        """Wait at most ``STATUS_RENEW_TIMEOUT_SECONDS`` for a renewal.
+
+        The renewal runs as a tracked background task (``_renew_and_report``)
+        and is awaited through ``asyncio.shield``: the timeout only stops this
+        status call from waiting. The renewal itself keeps running inside the
+        gate and saves (or reports) its result, because cancelling a refresh
+        after the server rotated the session cookie would lose the new cookie
+        and kill the session. On timeout the 60 s retry cooldown starts (so
+        polls do not pile up behind the busy gate meanwhile; a success clears
+        it), ``session_renew`` (outcome ``timeout``) is logged and ``error`` is
+        returned for this call.
+        """
+        task = track_background_task(
+            self._renew_and_report(service), name="session_renew_status"
+        )
         try:
-            async with asyncio.timeout(STATUS_RENEW_TIMEOUT_SECONDS):
-                return await self.renew_expired(service)
+            return await asyncio.wait_for(
+                asyncio.shield(task), STATUS_RENEW_TIMEOUT_SECONDS
+            )
         except TimeoutError:
             session_alert.note_renew_failure(service)
             logger.info(
@@ -278,6 +302,7 @@ class AuthService:
                 service=service,
                 outcome="timeout",
                 timeout_s=STATUS_RENEW_TIMEOUT_SECONDS,
+                renewal="continues_in_background",
             )
             return "error"
 
@@ -306,15 +331,11 @@ class AuthService:
                 session_alert.note_renew_failure(service)
                 logger.warning("session_renew_still_expired", service=service)
             return fresh
-        if outcome in ("dead", "no_cookies"):
-            await session_alert.report(service, "expired")
+        # _renew_and_report already fed session_alert: dead / no_cookies always
+        # mark; otherwise a mark (second strike, or a retry that failed) means a
+        # dead session for now.
+        if outcome in ("dead", "no_cookies") or session_alert.needs_login(service):
             return {**status, "authenticated": False, "session_expired": True}
-        if marked:
-            return {**status, "authenticated": False, "session_expired": True}
-        if outcome == "refresh_failed" and await session_alert.report(
-            service, "refresh_failed"
-        ):
-            return {**status, "session_expired": True}
         return status
 
     def _load_token_for_renewal(self, service: str) -> tuple[Optional[dict], bool]:
@@ -359,7 +380,7 @@ class AuthService:
         (removing a ``refresh_failed`` mark and its tray alert). Logs
         ``session_renew`` (with ``reason`` when skipped) and
         ``session_renew_retry`` when a marked service is retried; never raises.
-        Cancellation propagates (see ``_renew_for_status``).
+        Cancellation propagates (a refreshed save still finishes first).
         """
         reason = session_alert.renew_block_reason(service)
         if reason is not None:
