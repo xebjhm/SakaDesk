@@ -480,7 +480,9 @@
     "noContent": "无内容",
     "loading": "正在加载信件…",
     "unavailable": "暂时无法显示信件",
-    "letterSent": "{{date}} 发送的信件"
+    "letterSent": "{{date}} 发送的信件",
+    "count": "共 {{count}} 封信",
+    "count_other": "共 {{count}} 封信"
   },
   "blogs": {
     "latestBlogs": "最新 Blog",

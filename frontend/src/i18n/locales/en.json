@@ -482,7 +482,9 @@
     "noContent": "No content",
     "loading": "Loading letters…",
     "unavailable": "Letters are unavailable right now",
-    "letterSent": "Letter sent {{date}}"
+    "letterSent": "Letter sent {{date}}",
+    "count": "{{count}} letter",
+    "count_other": "{{count}} letters"
   },
   "blogs": {
     "latestBlogs": "Latest Blogs",
