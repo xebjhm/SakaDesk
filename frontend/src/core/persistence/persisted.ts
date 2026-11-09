@@ -121,10 +121,14 @@ async function backgroundRetry(): Promise<void> {
  * Load every conversation row into the cache, retrying with backoff
  * (CONV_HYDRATE_RETRY_DELAYS_MS). Each retry logs `conv_hydrate_retry` and a
  * final failure `conv_hydrate_failed` (error class and HTTP status only). On
- * final failure the cache is empty and not ready, and a background loop keeps
- * retrying (CONV_BACKGROUND_RETRY_DELAYS_MS, then every
- * CONV_BACKGROUND_RETRY_MAX_MS), logging `conv_hydrate_retry` with
- * `phase: 'background'` per failure and `conv_hydrate_recovered` on success.
+ * final failure:
+ * - If the cache was already ready (an earlier load succeeded, e.g. the refresh
+ *   after a migration), the existing cache is KEPT and stays ready. The log
+ *   carries `phase: 'refresh'`, no background loop is started.
+ * - If the cache was never ready, it is empty and not ready, and a background
+ *   loop keeps retrying (CONV_BACKGROUND_RETRY_DELAYS_MS, then every
+ *   CONV_BACKGROUND_RETRY_MAX_MS), logging `conv_hydrate_retry` with
+ *   `phase: 'background'` per failure and `conv_hydrate_recovered` on success.
  * When the cache goes from not ready to ready, the listeners registered with
  * onConversationsReady run once. Never rejects.
  */
@@ -137,6 +141,11 @@ async function hydrateConversations(): Promise<void> {
       return;
     } catch (err) {
       if (attempt >= attempts) {
+        if (convReady) {
+          // Keep the loaded cache: a failed refresh must not wipe good rows.
+          clientLog('conv_hydrate_failed', { count: attempts, phase: 'refresh', ...failureFields(err) });
+          return;
+        }
         convCache = {};
         convReady = false;
         clientLog('conv_hydrate_failed', { count: attempts, ...failureFields(err) });

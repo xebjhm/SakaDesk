@@ -55,15 +55,15 @@ describe('persisted conversation cache', () => {
     expect(persisted.conversationsReady()).toBe(true);
   });
 
-  it('is not ready when the load fails, even after an earlier success', async () => {
+  it('keeps the loaded cache and stays ready when a later load fails', async () => {
     vi.spyOn(api, 'getAllConversations').mockResolvedValueOnce({ read_state_a: { value: '1' } });
     await persisted.hydrateConversations();
     expect(persisted.conversationsReady()).toBe(true);
     vi.useFakeTimers();
     vi.spyOn(api, 'getAllConversations').mockRejectedValue(new Error('down'));
     await hydrateWithTimers();
-    expect(persisted.conversationsReady()).toBe(false);
-    expect(persisted.getConv('read_state_a', null)).toBeNull();
+    expect(persisted.conversationsReady()).toBe(true);
+    expect(persisted.getConv<{ value?: string }>('read_state_a', {}).value).toBe('1');
   });
 
   it('retries a failed load with backoff and becomes ready when a retry succeeds', async () => {
@@ -91,14 +91,22 @@ describe('persisted conversation cache', () => {
   });
 
   it('gives up after the last retry and logs conv_hydrate_failed once', async () => {
+    // Fresh module instance: the cache above is already ready, and this case needs a never-loaded cache.
+    vi.resetModules();
+    const fresh = await import('./persisted');
+    const freshApi = await import('./appStateApi');
+    const freshLog = await import('../../utils/clientLog');
+    vi.mocked(freshLog.clientLog).mockClear();
     vi.useFakeTimers();
-    const load = vi.spyOn(api, 'getAllConversations').mockRejectedValue(new api.AppStateHttpError(500));
-    await hydrateWithTimers();
-    expect(load).toHaveBeenCalledTimes(CONV_HYDRATE_RETRY_DELAYS_MS.length + 1);
-    expect(persisted.conversationsReady()).toBe(false);
-    const failed = vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'conv_hydrate_failed');
+    const load = vi.spyOn(freshApi, 'getAllConversations').mockRejectedValue(new freshApi.AppStateHttpError(500));
+    const done = fresh.persisted.hydrateConversations();
+    await vi.advanceTimersByTimeAsync(fresh.CONV_HYDRATE_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0));
+    await done;
+    expect(load).toHaveBeenCalledTimes(fresh.CONV_HYDRATE_RETRY_DELAYS_MS.length + 1);
+    expect(fresh.persisted.conversationsReady()).toBe(false);
+    const failed = vi.mocked(freshLog.clientLog).mock.calls.filter(([e]) => e === 'conv_hydrate_failed');
     expect(failed).toEqual([
-      ['conv_hydrate_failed', { count: CONV_HYDRATE_RETRY_DELAYS_MS.length + 1, error_type: 'appstatehttperror', error_code: 500 }],
+      ['conv_hydrate_failed', { count: fresh.CONV_HYDRATE_RETRY_DELAYS_MS.length + 1, error_type: 'appstatehttperror', error_code: 500 }],
     ]);
   });
 
