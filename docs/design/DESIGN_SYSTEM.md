@@ -242,6 +242,8 @@ group accent says where you are; a meaning colour says what a thing is.
   `scrollbar-width: thin` + `scrollbar-color` only where `::-webkit-scrollbar` is unsupported.
 - **Favourites video cards** show a shimmer sweep and a centred `Film` icon (`text-secondary`) on `bg-skeleton`
   (`--ds-border-strong`) and mount the `<video>` only when the card nears the dialog body's visible area.
+  Favourites voice cards lazy-mount the same way: until the card nears the visible area a same-height
+  placeholder holds the layout and the voice player (and its audio request) is not mounted.
 - **推 (oshi)** hearts and the Favorite filter use the global oshi pink,
   `color.semantic.oshi`: subtle `#fff0f8`, border `#ffcbe1`, solid `#de5f99`
   (white glyph 3.4:1, icons only), text `#aa376f` (6.0:1 on white, 5.5:1 on

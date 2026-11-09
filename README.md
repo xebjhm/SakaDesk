@@ -88,7 +88,7 @@ uv run python desktop.py
 
 Terminal 1 - Backend:
 ```bash
-uv run uvicorn backend.main:app --port 8000 --reload --reload-exclude "output/*" --reload-exclude "auth_data/*"
+uv run uvicorn backend.main:app --port 8000 --reload --reload-exclude "output/*" --reload-exclude "auth_data/*" --timeout-keep-alive 600
 ```
 
 Terminal 2 - Frontend:
