@@ -46,6 +46,8 @@ The log also shows two refreshes for one service starting in the same millisecon
 - **Refresh exceptions.** A network error, a timeout or a headless-browser failure counts as a failed renewal for this check. The service is not marked dead on a network error, though: only `SessionExpiredError` or `RefreshFailedError` marks it. On other errors, `get_status` returns the old `token_expired` answer without `session_expired`, and the next tick tries again.
 - **Hung refresh.** A refresh that hangs holds the gate for at most the existing refresh timeout. Waiters time out at the same bound and treat it as a failed check.
 
+- **Refinements (plan, 2026-11-09).** `SessionExpiredError` (or no cookies) marks at once; `RefreshFailedError` marks after two consecutive failed renewals, so a short offline period never toasts. A failed renewal is not retried within 60 s, a renewal whose result still reads expired (clock skew) also starts that cooldown, and a marked service is not renewed again until login or logout clears it.
+
 ### Tests
 
 - `get_status` with an expired token covers three cases:
