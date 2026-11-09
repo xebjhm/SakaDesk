@@ -19,6 +19,7 @@ import type { SearchModalHandle } from '../features/search'
 import { persisted } from '../core/persistence/persisted'
 import { applyStartupLanguage } from './language'
 import { openChatFromToast } from './openChat'
+import { clientLog } from '../utils/clientLog'
 import { markVoiceHeard } from './markVoiceHeard'
 
 import { useAuth } from './hooks/useAuth'
@@ -255,6 +256,21 @@ function App() {
     useEffect(() => {
         window.__sakadeskOpenChat = openChatFromToast;
         return () => { delete window.__sakadeskOpenChat; };
+    }, []);
+
+    // Desktop "log in again" toast click: show that service and its login dialog.
+    useEffect(() => {
+        window.__sakadeskOpenLogin = (service: string) => {
+            if (!useAppStore.getState().selectedServices.includes(service)) {
+                clientLog('notify_open_login', { delivered: false, reason: 'unknown_service' });
+                return false;
+            }
+            useAppStore.getState().setActiveService(service);
+            setDisconnectedLoginService(service);
+            clientLog('notify_open_login', { delivered: true, service });
+            return true;
+        };
+        return () => { delete window.__sakadeskOpenLogin; };
     }, []);
 
     // Desktop popup answered a voice: the main window (sole writer) marks it heard.

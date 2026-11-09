@@ -54,6 +54,16 @@ class FakeIcon:
             raise OSError("shell gone")
         self._title = value
 
+    @property
+    def icon(self):
+        return self.image
+
+    @icon.setter
+    def icon(self, value):
+        if getattr(self, "fail_on_icon", False):
+            raise OSError("shell gone")
+        self.image = value
+
     def run_detached(self):
         if FakeIcon.fail_on_run:
             raise RuntimeError("no shell")
@@ -361,3 +371,47 @@ def test_a_failing_strings_provider_falls_back_to_the_key(fake_pystray):
     failed = [e for e in logs if e["event"] == "tray_label_failed"]
     assert failed and failed[0]["error_type"] == "OSError"
     assert "金村" not in str(logs)
+
+
+def _started_with_real_image(fake_pystray):
+    from PIL import Image
+
+    base = Image.new("RGBA", (64, 64), (10, 20, 30, 255))
+    tray, _ = make(icon_factory=lambda: base)
+    tray.start()
+    return tray, FakeIcon.instances[0], base
+
+
+def test_set_alert_swaps_icon_and_back(fake_pystray):
+    tray, icon, base = _started_with_real_image(fake_pystray)
+    with capture_logs() as logs:
+        tray.set_alert(True)
+    assert icon.icon is not base
+    assert icon.icon.getpixel((47, 47)) == (217, 119, 6, 255)
+    assert base.getpixel((47, 47)) == (10, 20, 30, 255)  # base is untouched
+    assert {"event": "tray_alert", "on": True, "log_level": "info"} in logs
+    tray.set_alert(False)
+    assert icon.icon is base
+
+
+def test_set_alert_without_icon_is_noop():
+    with capture_logs() as logs:
+        TrayController(
+            strings=lambda: {},
+            on_open=lambda: None,
+            on_sync_now=lambda: None,
+            on_quit=lambda: None,
+        ).set_alert(True)
+    assert any(
+        e["event"] == "tray_alert_skipped" and e["reason"] == "no_icon" for e in logs
+    )
+
+
+def test_set_alert_failure_is_logged_with_the_error_type_only(fake_pystray):
+    tray, icon, _ = _started_with_real_image(fake_pystray)
+    icon.fail_on_icon = True
+    with capture_logs() as logs:
+        tray.set_alert(True)
+    failed = [e for e in logs if e["event"] == "tray_alert_failed"]
+    assert failed and failed[0]["error_type"] == "OSError"
+    assert "shell gone" not in str(logs)

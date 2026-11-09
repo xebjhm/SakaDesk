@@ -1,7 +1,7 @@
 """System tray icon for SakaDesk (Windows only).
 
 ``TrayController`` wraps ``pystray``: an icon with a localized menu (Open,
-Sync now, Quit) and a tooltip. ``pystray`` and ``PIL`` are imported lazily
+Sync now, Quit), a tooltip and a login-needed badge (:meth:`TrayController.set_alert`). ``pystray`` and ``PIL`` are imported lazily
 inside :meth:`TrayController.start`, so Linux CI and dev runs never import
 them; there the tray reports itself unavailable.
 
@@ -53,6 +53,27 @@ def _load_icon_image() -> Any:
     return image_module.open(icon_path())
 
 
+def _alert_image(base: Any) -> Any:
+    """The tray icon with an amber warning dot at the bottom right (login needed).
+
+    The tray is a native surface outside the web design system, so the colour
+    is a literal RGB tuple (the semantic warning amber).
+    """
+    from PIL import ImageDraw
+
+    img = base.convert("RGBA").copy()
+    w, h = img.size
+    r = max(4, w // 4)
+    draw = ImageDraw.Draw(img)
+    draw.ellipse(
+        (w - 2 * r - 1, h - 2 * r - 1, w - 1, h - 1),
+        fill=(217, 119, 6, 255),
+        outline=(255, 255, 255, 255),
+        width=max(1, w // 32),
+    )
+    return img
+
+
 class TrayController:
     """The tray icon and its menu. One instance per process."""
 
@@ -73,6 +94,8 @@ class TrayController:
         self._on_quit = on_quit
         self._icon_factory = icon_factory or _load_icon_image
         self._icon: Any = None
+        # The image the icon was created with (restored when the alert clears).
+        self._base_image: Any = None
         # The menu labels the pystray menu was last built with (None until started).
         self._built_labels: dict[str, str] | None = None
 
@@ -149,14 +172,16 @@ class TrayController:
                     self._dynamic_label("quit"), self._wrap("quit", self._on_quit)
                 ),
             )
+            base_image = self._icon_factory()
             icon = pystray.Icon(
-                ICON_NAME, self._icon_factory(), self._label("tooltip_idle"), menu
+                ICON_NAME, base_image, self._label("tooltip_idle"), menu
             )
             icon.run_detached()
         except Exception as e:
             logger.warning("tray", action="failed", error_type=type(e).__name__)
             return
         self._icon = icon
+        self._base_image = base_image
         self._built_labels = self._menu_labels()
         logger.info("tray", action="started")
 
@@ -199,6 +224,22 @@ class TrayController:
         except Exception as e:
             logger.warning("tray_title_failed", error_type=type(e).__name__)
         self.refresh_menu()
+
+    def set_alert(self, on: bool) -> None:
+        """Show (or remove) the login-needed badge on the icon. Never raises.
+
+        Logs ``tray_alert`` (``on``), ``tray_alert_skipped`` (``reason``) or
+        ``tray_alert_failed`` (``error_type``).
+        """
+        icon = self._icon
+        if icon is None or self._base_image is None:
+            logger.debug("tray_alert_skipped", reason="no_icon")
+            return
+        try:
+            icon.icon = _alert_image(self._base_image) if on else self._base_image
+            logger.info("tray_alert", on=on)
+        except Exception as e:
+            logger.warning("tray_alert_failed", error_type=type(e).__name__)
 
     def stop(self) -> None:
         """Remove the icon. Idempotent; never raises."""

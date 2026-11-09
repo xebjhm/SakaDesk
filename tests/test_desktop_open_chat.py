@@ -328,3 +328,54 @@ def test_focus_is_a_noop_off_windows(monkeypatch):
     monkeypatch.setattr(desktop.platform, "system", lambda: "Linux")
     desktop._focus_window(42)  # no ctypes.windll on Linux: must simply return
     desktop._focus_existing_window()
+
+
+LOGIN_SCRIPT = 'window.__sakadeskOpenLogin ? window.__sakadeskOpenLogin("sakurazaka46") === true : false'
+
+
+def test_login_handler_shows_focuses_and_asks_the_frontend():
+    window = _FakeWindow()
+    focused: list[object] = []
+    handler = desktop.make_open_login_handler(window, focused.append)
+    with capture_logs() as logs:
+        handler("sakurazaka46")
+    assert [c[0] for c in window.calls] == ["show", "evaluate_js"]
+    assert window.calls[1][1] == (LOGIN_SCRIPT,)
+    assert len(focused) == 1
+    assert {
+        "event": "notify_open_login",
+        "service": "sakurazaka46",
+        "delivered": True,
+        "log_level": "info",
+    } in logs
+
+
+def test_login_handler_logs_not_ready_when_the_frontend_returns_false():
+    handler = desktop.make_open_login_handler(
+        _FakeWindow(js_result=False), lambda _h: None
+    )
+    with capture_logs() as logs:
+        handler("sakurazaka46")
+    assert any(
+        e["event"] == "notify_open_login_failed"
+        and e["reason"] == "not_ready"
+        and e["service"] == "sakurazaka46"
+        for e in logs
+    )
+
+
+def test_login_handler_never_raises_and_logs_only_the_error_type():
+    handler = desktop.make_open_login_handler(
+        _FakeWindow(fail_on="show"), lambda _h: None
+    )
+    with capture_logs() as logs:
+        handler("sakurazaka46")
+    failed = [e for e in logs if e["event"] == "notify_open_login_failed"]
+    assert failed and failed[0]["error_type"] == "RuntimeError"
+    assert "secret" not in str(logs)
+
+
+def test_login_handler_quotes_a_hostile_service_id_safely():
+    window = _FakeWindow()
+    desktop.make_open_login_handler(window, lambda _h: None)('x");alert(1);("')
+    assert json.dumps('x");alert(1);("') in window.calls[1][1][0]

@@ -267,6 +267,20 @@ def test_notify_open_chat_accepts_has_target():
     assert event["has_target"] is True
 
 
+def test_notify_open_login_accepts_delivered():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "notify_open_login",
+                "fields": {"service": "sakurazaka46", "delivered": True},
+            },
+        )
+    assert res.status_code == 204
+    (event,) = _client_events(logs)
+    assert event["delivered"] is True
+
+
 @pytest.mark.parametrize(
     ("event", "fields", "level"),
     [
