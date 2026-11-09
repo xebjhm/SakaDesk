@@ -28,12 +28,17 @@ export function logRecapLoad(
     clientLog('recap_load', { target, outcome, ...extra });
 }
 
-export type RecapPlayPhase = 'open' | 'step' | 'pause' | 'resume' | 'end' | 'close' | 'skip';
+export type RecapPlayPhase =
+    | 'open' | 'step' | 'pause' | 'resume' | 'end' | 'close' | 'skip'
+    | 'voice_start' | 'voice_clip' | 'voice_error' | 'voice_end';
 
 /**
  * `recap_play`: a player decision. `key` is a slide key, `index` its position,
  * `reason` the trigger (`auto`, `key`, `click`, `media`) or why a slide was
- * skipped (`not_built`), `fallback` a fallback code. Ids and codes only.
+ * skipped (`not_built`, `no_media`) or a voice clip failed (`media_error`,
+ * `play_rejected`), `fallback` a fallback code. The `voice_*` phases trace the
+ * voice slide: ▶ pressed (`count` clips), a clip started (`index`), a clip
+ * failed, the sequence finished. Ids and codes only.
  */
 export function logRecapPlay(
     phase: RecapPlayPhase,

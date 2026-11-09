@@ -313,6 +313,10 @@ export default {
                     '10%': { opacity: '1' },
                     '100%': { opacity: '0', transform: 'translate(var(--dx), var(--dy)) rotate(540deg)' },
                 },
+                // Recap star clock: a star drops into place (the end state is the element's own).
+                'star-fall': { '0%': { opacity: '0', transform: 'translateY(-14px)' } },
+                // Recap burst: a photo fans out from the stack (the end state is the element's own transform).
+                'fan-in': { '0%': { opacity: '0', transform: 'translateY(12px) rotate(0deg) scale(0.92)' } },
                 heartbeat: {
                     '0%, 100%': { transform: 'scale(1)' },
                     '15%': { transform: 'scale(1.3)' },
@@ -330,6 +334,8 @@ export default {
                 'orb-breathe': 'orb-breathe 22s ease-in-out infinite',
                 'heart-float': 'heart-float 800ms ease-out forwards',
                 heartbeat: 'heartbeat 1.2s ease-in-out infinite',
+                'star-fall': 'star-fall 600ms var(--ds-ease-standard) both',
+                'fan-in': 'fan-in 500ms var(--ds-ease-standard) both',
                 shimmer: 'shimmer 1.2s 300ms var(--ds-ease-standard) both',
                 'shimmer-sweep': 'shimmer-sweep 1.4s var(--ds-ease-standard) infinite',
                 pop: 'pop 500ms cubic-bezier(0.2, 1.4, 0.4, 1) both',

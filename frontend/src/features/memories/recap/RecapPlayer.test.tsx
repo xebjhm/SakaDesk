@@ -4,7 +4,7 @@ import { act, fireEvent, render, screen } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { RecapPlayer, AUTO_ADVANCE_MS } from './RecapPlayer';
 import { SLIDE_REGISTRY, type SlideRegistry } from './slideRegistry';
-import { payload, s01, s02, s12, s13 } from './__fixtures__/payload';
+import { clockData, greetingsData, payload, photosData, s01, s02, s12, s13, voiceData } from './__fixtures__/payload';
 import type { RecapSlide } from './api';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
@@ -272,12 +272,12 @@ describe('RecapPlayer', () => {
     });
 
     it('skips slides that have no renderer yet and logs it', () => {
-        const clock: RecapSlide = {
-            key: 's03_clock', fallback: null, data: { stars: [], peak_hour: 22, representative: null, longest_streak: null },
+        const letter: RecapSlide = {
+            key: 's07_letter', fallback: null, data: { message: null, char_count: 120, photo_url: null },
         };
-        render(<RecapPlayer recap={payload({ slides: [s01, clock, s02] })} nickname="ゆき" onClose={() => {}} />);
+        render(<RecapPlayer recap={payload({ slides: [s01, letter, s02] })} nickname="ゆき" onClose={() => {}} />);
         expect(screen.getAllByTestId('recap-progress-segment')).toHaveLength(2);
-        expect(playLogs()).toContainEqual(['recap_play', expect.objectContaining({ phase: 'skip', key: 's03_clock', reason: 'not_built' })]);
+        expect(playLogs()).toContainEqual(['recap_play', expect.objectContaining({ phase: 'skip', key: 's07_letter', reason: 'not_built' })]);
     });
 
     it('logs ids and codes only', () => {
@@ -332,5 +332,31 @@ describe('RecapPlayer', () => {
     it('never prints null, undefined or 0 for missing fields', () => {
         render(<RecapPlayer recap={payload({ slides: [s02, s12] })} nickname="ゆき" onClose={() => {}} />);
         expect(document.body.textContent).not.toMatch(/null|undefined|NaN/);
+    });
+    it('plays the rhythm, photo and voice slides; the voice slide holds until its playback ends', () => {
+        vi.useFakeTimers();
+        const slides: RecapSlide[] = [
+            { key: 's03_clock', fallback: null, data: clockData() },
+            { key: 's04_greetings', fallback: null, data: greetingsData() },
+            { key: 's05_photos', fallback: null, data: photosData() },
+            { key: 's06_voice', fallback: null, data: voiceData() },
+            s12,
+        ];
+        render(<RecapPlayer recap={payload({ slides })} nickname="ゆき" onClose={() => {}} />);
+        expect(screen.getAllByTestId('recap-progress-segment')).toHaveLength(5);
+        for (const key of ['s03_clock', 's04_greetings', 's05_photos']) {
+            expect(current()).toBe(key);
+            expect(document.body.textContent).not.toMatch(/%%%|null|undefined|NaN/);
+            act(() => { vi.advanceTimersByTime(AUTO_ADVANCE_MS); });
+        }
+        expect(current()).toBe('s06_voice');
+        act(() => { vi.advanceTimersByTime(AUTO_ADVANCE_MS * 3); });
+        expect(current()).toBe('s06_voice');
+        expect(screen.getByRole('button', { name: '声を聴く' })).toBeInTheDocument();
+    });
+
+    it('the slide layer lets clicks through to the step zones', () => {
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        expect(screen.getByTestId('slide-s01_first').className).toMatch(/pointer-events-none/);
     });
 });

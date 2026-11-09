@@ -797,6 +797,48 @@
       "daisukiWord": "大好き",
       "daisukiSingle": "Just one \"daisuki\" this year."
     },
+    "s03": {
+      "titleNight": "Her nights were your nights.",
+      "titleMorning": "Her mornings were your mornings.",
+      "titleNoon": "Her afternoons were your afternoons.",
+      "peak": "From the hour with the most stars:",
+      "flat": "Her words were there at every hour of the day.",
+      "streak": "Her words arrived {{count}} day in a row.",
+      "streak_other": "Her words arrived {{count}} days in a row.",
+      "clockLabel": "A star clock of her day"
+    },
+    "s04": {
+      "title": "Good morning, and good night.",
+      "titleDay": "At the start and the end of the day.",
+      "titleMorning": "At the start of the day.",
+      "titleEvening": "At the end of the day.",
+      "firstOhayo": "Her first \"ohayo\" of the year",
+      "firstMorning": "Her first morning words of the year",
+      "latestOyasumi": "Her \"oyasumi\" sent at the latest hour",
+      "latestArigato": "Her \"arigato\" sent at the latest hour",
+      "latestOtsukare": "Her \"otsukare\" sent at the latest hour",
+      "countOyasumi": "\"Oyasumi\" closed the day {{count}} time.",
+      "countOyasumi_other": "\"Oyasumi\" closed the day {{count}} times.",
+      "countArigato": "\"Arigato\", {{count}} time.",
+      "countArigato_other": "\"Arigato\", {{count}} times.",
+      "countOtsukare": "\"Otsukare\", {{count}} time.",
+      "countOtsukare_other": "\"Otsukare\", {{count}} times."
+    },
+    "s05": {
+      "title": "The views she wanted to share.",
+      "mostlyBursts": "She is someone who always shares a whole bunch at once.",
+      "bestPhoto": "A treasured picture of the year.",
+      "burstLabel": "Photos sent together"
+    },
+    "s06": {
+      "title": "Voices that arrived this year.",
+      "play": "Play her voice",
+      "hint": "Press ▶ to hear her voice.",
+      "playing": "Playing",
+      "video": "Her voice, from her videos.",
+      "count": "Her voice arrived {{count}} time this year.",
+      "count_other": "Her voice arrived {{count}} times this year."
+    },
     "s12": {
       "title": "Her words of {{year}}"
     },

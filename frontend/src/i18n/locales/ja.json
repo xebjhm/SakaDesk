@@ -791,6 +791,43 @@
       "daisukiWord": "大好き",
       "daisukiSingle": "今年、一度だけの“大好き”。"
     },
+    "s03": {
+      "titleNight": "彼女の夜は、あなたの夜。",
+      "titleMorning": "彼女の朝は、あなたの朝。",
+      "titleNoon": "彼女の昼下がりは、あなたの昼下がり。",
+      "peak": "いちばん星が集まる時間の、ひとこと。",
+      "flat": "どの時間にも、彼女のことばがあった。",
+      "streak": "{{count}}日つづけて、彼女のことばが届いた。",
+      "clockLabel": "彼女の一日の星時計"
+    },
+    "s04": {
+      "title": "おはようと、おやすみ。",
+      "titleDay": "一日のはじまりと、おわりに。",
+      "titleMorning": "一日のはじまりに。",
+      "titleEvening": "一日のおわりに。",
+      "firstOhayo": "今年最初の、おはよう",
+      "firstMorning": "今年最初の、朝のことば",
+      "latestOyasumi": "いちばん遅い時間の、おやすみ",
+      "latestArigato": "いちばん遅い時間の、ありがとう",
+      "latestOtsukare": "いちばん遅い時間の、おつかれさま",
+      "countOyasumi": "{{count}}回の「おやすみ」で、一日を締めくくった。",
+      "countArigato": "「ありがとう」を、{{count}}回。",
+      "countOtsukare": "「おつかれさま」を、{{count}}回。"
+    },
+    "s05": {
+      "title": "見せたかった景色。",
+      "mostlyBursts": "彼女は、いつもまとめて見せてくれる人。",
+      "bestPhoto": "今年の、とっておきの一枚。",
+      "burstLabel": "一度に届いた写真"
+    },
+    "s06": {
+      "title": "今年、届いた声。",
+      "play": "声を聴く",
+      "hint": "▶を押すと、声が流れます。",
+      "playing": "再生中",
+      "video": "動画から届いた声。",
+      "count": "今年、{{count}}回 声が届いた。"
+    },
     "s12": {
       "title": "{{year}}年、彼女のひとこと"
     },

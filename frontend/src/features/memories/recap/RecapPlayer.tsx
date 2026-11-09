@@ -244,7 +244,15 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
                     aria-roledescription="carousel"
                     className="relative aspect-[9/16] h-full max-w-full overflow-hidden rounded-xl bg-aurora shadow-sheet"
                 >
-                    <div key={`${index}:${restart}`} data-testid={`slide-${slide.key}`} className={cn('absolute inset-0', enter)} aria-live="polite">
+                    {/* The slide sits above the step zones but lets clicks through, so a slide's own
+                        control (the voice slide's ▶, `pointer-events-auto`) is clickable and a click
+                        anywhere else still steps. */}
+                    <div
+                        key={`${index}:${restart}`}
+                        data-testid={`slide-${slide.key}`}
+                        className={cn('pointer-events-none absolute inset-0 z-20', enter)}
+                        aria-live="polite"
+                    >
                         <Slide
                             data={slide.data}
                             fallback={slide.fallback}
@@ -266,7 +274,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
                         onClick={() => go(1, 'click')}
                         className="absolute bottom-0 right-0 top-12 z-10 w-2/3 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
                     />
-                    <div className="absolute inset-x-0 top-0 z-20 flex flex-col gap-2 px-4 pt-4">
+                    <div className="absolute inset-x-0 top-0 z-30 flex flex-col gap-2 px-4 pt-4">
                         <div
                             role="progressbar"
                             aria-label={t('recap.player.progress', { current: index + 1, total: slides.length })}

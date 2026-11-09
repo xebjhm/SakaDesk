@@ -1,4 +1,7 @@
-import type { RecapMessage, RecapOverview, RecapPayload, RecapSlide } from '../api';
+import type {
+    RecapClip, RecapMessage, RecapOverview, RecapPayload, RecapSlide, S03ClockData, S04GreetingsData, S05PhotosData,
+    S06VoiceData,
+} from '../api';
 
 export const MEMBER_PATH = '日向坂46/messages/34 金村 美玖/58 金村 美玖';
 
@@ -32,6 +35,58 @@ export const s02: RecapSlide = {
         single: false,
     },
 };
+
+export const clockData = (over: Partial<S03ClockData> = {}): S03ClockData => ({
+    stars: [
+        { h: 22, m: 10, type: 'text' }, { h: 22, m: 40, type: 'picture' }, { h: 22, m: 55, type: 'voice' },
+        { h: 7, m: 5, type: 'text' }, { h: 13, m: 30, type: 'text' },
+    ],
+    peak_hour: 22,
+    representative: message(5, '%%%、今日もおつかれさま'),
+    longest_streak: 12,
+    ...over,
+});
+
+export const greetingsData = (over: Partial<S04GreetingsData> = {}): S04GreetingsData => ({
+    first_ohayo: message(6, 'おはよう、%%%'),
+    latest_oyasumi: message(7, 'おやすみ🌙'),
+    oyasumi_count: 180,
+    distinct_days: 150,
+    variant: 'oyasumi',
+    ...over,
+});
+
+const burstAt = (id: number, ts: string, type: RecapMessage['type'] = 'picture') =>
+    message(id, null, { type, ts, media_url: `/api/media/b${id}.jpg` });
+
+export const photosData = (over: Partial<S05PhotosData> = {}): S05PhotosData => ({
+    burst: [
+        burstAt(10, '2026-05-03T09:00:00Z'), burstAt(11, '2026-05-03T09:00:20Z'),
+        burstAt(12, '2026-05-03T09:01:00Z'), burstAt(13, '2026-05-03T09:03:00Z', 'video'),
+    ],
+    burst_caption: '%%%に見せたかった海',
+    wall: ['/api/media/w1.jpg', null, '/api/media/w2.jpg', '/api/media/w3.jpg', '/api/media/w4.jpg'],
+    mostly_bursts: false,
+    ...over,
+});
+
+export const clip = (id: number, over: Partial<RecapClip> = {}): RecapClip => ({
+    message: message(id, null, { type: 'voice', media_url: `/api/media/v${id}.m4a` }),
+    start: 0,
+    end: 6,
+    transcript_segments: null,
+    ...over,
+});
+
+export const voiceData = (over: Partial<S06VoiceData> = {}): S06VoiceData => ({
+    clips: [
+        clip(20, { transcript_segments: [{ start: 0, end: 3, text: '%%%、聞こえる？' }] }),
+        clip(21),
+        clip(22),
+    ],
+    voice_count: 24,
+    ...over,
+});
 
 export const s12: RecapSlide = {
     key: 's12_sentence',

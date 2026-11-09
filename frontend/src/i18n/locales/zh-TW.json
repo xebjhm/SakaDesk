@@ -791,6 +791,43 @@
       "daisukiWord": "大好き",
       "daisukiSingle": "今年，只有一次的「大好き」。"
     },
+    "s03": {
+      "titleNight": "她的夜晚，也是你的夜晚。",
+      "titleMorning": "她的早晨，也是你的早晨。",
+      "titleNoon": "她的午後，也是你的午後。",
+      "peak": "星星最密集的時刻，她的一句話。",
+      "flat": "無論哪個時刻，都有她的話語。",
+      "streak": "連續{{count}}天，都收到了她的話語。",
+      "clockLabel": "她一天的星空時鐘"
+    },
+    "s04": {
+      "title": "早安，與晚安。",
+      "titleDay": "在一天的開始與結束。",
+      "titleMorning": "在一天的開始。",
+      "titleEvening": "在一天的結束。",
+      "firstOhayo": "今年第一句早安",
+      "firstMorning": "今年第一句早晨的話",
+      "latestOyasumi": "最晚時刻的一句晚安",
+      "latestArigato": "最晚時刻的一句謝謝",
+      "latestOtsukare": "最晚時刻的一句辛苦了",
+      "countOyasumi": "用{{count}}次「晚安」為一天畫下句點。",
+      "countArigato": "「謝謝」，{{count}}次。",
+      "countOtsukare": "「辛苦了」，{{count}}次。"
+    },
+    "s05": {
+      "title": "她想分享的風景。",
+      "mostlyBursts": "她總是一口氣分享好多張。",
+      "bestPhoto": "今年珍藏的一張。",
+      "burstLabel": "一起傳來的照片"
+    },
+    "s06": {
+      "title": "今年收到的聲音。",
+      "play": "聆聽她的聲音",
+      "hint": "按下 ▶，就能聽見她的聲音。",
+      "playing": "播放中",
+      "video": "來自影片的聲音。",
+      "count": "今年，收到了{{count}}次她的聲音。"
+    },
     "s12": {
       "title": "{{year}}年，她的一句話"
     },

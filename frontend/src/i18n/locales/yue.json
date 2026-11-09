@@ -791,6 +791,43 @@
       "daisukiWord": "大好き",
       "daisukiSingle": "今年，得一次嘅「大好き」。"
     },
+    "s03": {
+      "titleNight": "佢嘅夜晚，亦係你嘅夜晚。",
+      "titleMorning": "佢嘅朝早，亦係你嘅朝早。",
+      "titleNoon": "佢嘅下晝，亦係你嘅下晝。",
+      "peak": "星星最密嘅時刻，佢嘅一句說話。",
+      "flat": "無論邊個時刻，都有佢嘅說話。",
+      "streak": "連續{{count}}日，都收到佢嘅說話。",
+      "clockLabel": "佢一日嘅星空時鐘"
+    },
+    "s04": {
+      "title": "早晨，同晚安。",
+      "titleDay": "喺一日嘅開始同結束。",
+      "titleMorning": "喺一日嘅開始。",
+      "titleEvening": "喺一日嘅結束。",
+      "firstOhayo": "今年第一句早晨",
+      "firstMorning": "今年第一句朝早嘅說話",
+      "latestOyasumi": "最晏嗰句晚安",
+      "latestArigato": "最晏嗰句多謝",
+      "latestOtsukare": "最晏嗰句辛苦晒",
+      "countOyasumi": "用{{count}}次「晚安」為一日劃上句號。",
+      "countArigato": "「多謝」，{{count}}次。",
+      "countOtsukare": "「辛苦晒」，{{count}}次。"
+    },
+    "s05": {
+      "title": "佢想分享嘅風景。",
+      "mostlyBursts": "佢成日一次過分享好多張。",
+      "bestPhoto": "今年珍藏嘅一張。",
+      "burstLabel": "一齊傳嚟嘅相"
+    },
+    "s06": {
+      "title": "今年收到嘅聲音。",
+      "play": "聽佢把聲",
+      "hint": "撳 ▶，就聽到佢把聲。",
+      "playing": "播緊",
+      "video": "嚟自影片嘅聲音。",
+      "count": "今年，收到{{count}}次佢把聲。"
+    },
     "s12": {
       "title": "{{year}}年，佢嘅一句說話"
     },

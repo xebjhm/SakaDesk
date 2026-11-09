@@ -56,14 +56,26 @@ export interface S02NameData {
     single: boolean;
 }
 
+/** `_s03_clock`. Hours and minutes are JST. */
 export interface S03ClockData {
+    /** One star per message (spread down to at most 600). */
     stars: { h: number; m: number; type: RecapMessageType }[];
+    /** The busiest JST hour (ties go to the later hour). */
     peak_hour: number;
+    /** A message of the peak hour, or null when none is free. */
     representative: RecapMessage | null;
+    /** Longest run of days with a message; only set when it is 7 or more. */
     longest_streak: number | null;
+    /** Present only when no hour stands out (fallback `flat`): the busiest part of the day. */
     band?: 'night' | 'noon' | 'morning';
 }
 
+/**
+ * `_s04_greetings`. Fallback `morning`: `first_ohayo` is her first morning
+ * message (5-10 h), not an おはよう. `variant` names the evening word; the
+ * evening message is the one sent latest in the night by clock time (not the
+ * most recent), and `oyasumi_count` counts that variant's messages.
+ */
 export interface S04GreetingsData {
     first_ohayo: RecapMessage | null;
     latest_oyasumi: RecapMessage | null;
@@ -72,6 +84,11 @@ export interface S04GreetingsData {
     variant: 'oyasumi' | 'arigato' | 'otsukare';
 }
 
+/**
+ * `_s05_photos`. `burst` is the year's biggest free burst (up to 30 items,
+ * pictures or videos), empty in the `best_photo` fallback, which sets
+ * `best_photo` instead. `wall` (media URLs) is present with 5+ pictures.
+ */
 export interface S05PhotosData {
     burst: RecapMessage[];
     burst_caption: string | null;
@@ -80,13 +97,22 @@ export interface S05PhotosData {
     best_photo?: RecapMessage | null;
 }
 
-export interface RecapClip {
-    message: RecapMessage | null;
+/** A transcript segment; times are seconds into the media. */
+export interface RecapTranscriptSegment {
     start: number;
     end: number;
-    transcript_segments: { start: number; end: number; text: string }[] | null;
+    text: string;
 }
 
+/** One voice (or video audio) opening; `start` / `end` are seconds into the media, or null. */
+export interface RecapClip {
+    message: RecapMessage | null;
+    start: number | null;
+    end: number | null;
+    transcript_segments: RecapTranscriptSegment[] | null;
+}
+
+/** `_s06_voice`. Fallback `video`: the clips are video audio and `voice_count` is null; `single`: one clip. */
 export interface S06VoiceData {
     clips: RecapClip[];
     voice_count: number | null;
