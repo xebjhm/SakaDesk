@@ -63,7 +63,7 @@ def _alert_image(base: Any) -> Any:
 
     img = base.convert("RGBA").copy()
     w, h = img.size
-    r = max(4, w // 4)
+    r = max(3, round(w * 0.18))  # dot diameter ~36% of the icon
     draw = ImageDraw.Draw(img)
     draw.ellipse(
         (w - 2 * r - 1, h - 2 * r - 1, w - 1, h - 1),
