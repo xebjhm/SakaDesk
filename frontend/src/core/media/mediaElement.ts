@@ -73,9 +73,3 @@ export function useMediaDuration(
     }, [ref, src, elementKey]);
     return duration;
 }
-
-/** An exception's class name as a log code: `NotAllowedError` → `notallowederror`. */
-export function errorCode(err: unknown): string {
-    const name = err instanceof Error || err instanceof DOMException ? err.name : 'unknown';
-    return name.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40) || 'unknown';
-}

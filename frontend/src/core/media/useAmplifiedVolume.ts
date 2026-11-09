@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { persisted } from '../persistence/persisted';
 import { clientLog } from '../../utils/clientLog';
-import { errorCode } from './mediaElement';
+import { breadcrumbCode } from '../../utils/breadcrumbCode';
 
 const DEFAULT_VOLUME = 0.5; // 50% slider = gain 1.0 = original recording volume
 
@@ -84,7 +84,7 @@ export function useAmplifiedVolume(storageKey: string) {
     const logOnce = useCallback((phase: 'amp_connect_failed' | 'amp_resume_failed', err: unknown) => {
         if (loggedPhasesRef.current.has(phase)) return;
         loggedPhasesRef.current.add(phase);
-        clientLog('media_playback', { phase, error_type: errorCode(err) });
+        clientLog('media_playback', { phase, error_type: breadcrumbCode(err) });
     }, []);
 
     const prepareForPlayback = useCallback(() => {

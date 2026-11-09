@@ -17,6 +17,7 @@
  */
 
 import { clientLog } from '../../utils/clientLog';
+import { breadcrumbCode } from '../../utils/breadcrumbCode';
 import { persisted } from './persisted';
 import { TRANSLATION_LOOKUP_MAX_KEYS } from './appStateApi';
 
@@ -33,18 +34,12 @@ const waiters = new Map<string, Waiter>();
 let queue: string[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-/** A thrown value's class name as a log code: `TypeError` -> `typeerror`. */
-export function errorType(err: unknown): string {
-    const name = err instanceof Error ? err.name : 'unknown';
-    return name.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40) || 'unknown';
-}
-
 async function fetchChunk(keys: string[]): Promise<void> {
     try {
         const found = await persisted.getTranslations(keys);
         for (const key of keys) waiters.get(key)?.resolve(found[key]);
     } catch (err) {
-        clientLog('translation_batch_failed', { count: keys.length, error_type: errorType(err) });
+        clientLog('translation_batch_failed', { count: keys.length, error_type: breadcrumbCode(err) });
         for (const key of keys) waiters.get(key)?.reject(err);
     } finally {
         for (const key of keys) {
@@ -94,7 +89,7 @@ export async function readCachedTranslation(key: string, caller: 'trigger' | 'bl
     try {
         return (await persisted.getTranslations([key]))[key];
     } catch (err) {
-        clientLog('translation_batch_failed', { count: 1, error_type: errorType(err), caller });
+        clientLog('translation_batch_failed', { count: 1, error_type: breadcrumbCode(err), caller });
         return undefined;
     }
 }

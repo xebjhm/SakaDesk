@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type RefObject } from 'react';
 import { clientLog } from '../../utils/clientLog';
-import { errorCode } from './mediaElement';
+import { breadcrumbCode } from '../../utils/breadcrumbCode';
 
 /** What the player shows over its controls. */
 export type PlaybackStatus = 'ready' | 'buffering' | 'error';
@@ -200,7 +200,7 @@ export function useMediaPlayback(
                 stats.aborted += 1;
                 return;
             }
-            log('play_rejected', { error_type: errorCode(err) });
+            log('play_rejected', { error_type: breadcrumbCode(err) });
         };
         let pending: Promise<void>;
         try {
