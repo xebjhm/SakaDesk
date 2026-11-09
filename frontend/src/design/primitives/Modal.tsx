@@ -178,7 +178,7 @@ const OpenModal: React.FC<ModalProps> = ({
                         </div>
                         {header === 'expressive' && <div data-testid="modal-header-bar" aria-hidden="true" className="h-[3px] shrink-0 bg-expressive-header-bar" />}
                         {toolbar && <div data-testid="modal-toolbar" className="shrink-0 bg-sheet">{toolbar}</div>}
-                        <div ref={bodyRef} data-testid="modal-body" className={cn('sd-sheet-scroll min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 text-body text-primary', bodyClassName)}>{children}</div>
+                        <div ref={bodyRef} data-testid="modal-body" className={cn('min-h-0 flex-1 overflow-y-auto px-6 pb-6 pt-4 text-body text-primary', !footer && tone !== 'viewer' && 'sd-sheet-scroll', bodyClassName)}>{children}</div>
                         {footer && (
                             <div data-testid="modal-footer" className={cn('flex shrink-0 items-center justify-end gap-2 px-6 pb-6', footerDivider && 'border-t border-subtle pt-4')}>
                                 {footer}

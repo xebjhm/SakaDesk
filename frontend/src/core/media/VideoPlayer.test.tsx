@@ -326,9 +326,14 @@ describe('VideoPlayer media lifecycle', () => {
 });
 
 describe('VideoPlayer duration when metadata is already loaded', () => {
+    const proto = HTMLMediaElement.prototype;
+    const native = {
+        readyState: Object.getOwnPropertyDescriptor(proto, 'readyState')!,
+        duration: Object.getOwnPropertyDescriptor(proto, 'duration')!,
+    };
     afterEach(() => {
-        delete (HTMLMediaElement.prototype as { readyState?: number }).readyState;
-        delete (HTMLMediaElement.prototype as { duration?: number }).duration;
+        Object.defineProperty(proto, 'readyState', native.readyState);
+        Object.defineProperty(proto, 'duration', native.duration);
     });
 
     it('shows the length without waiting for loadedmetadata', () => {

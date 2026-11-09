@@ -61,7 +61,8 @@ when an attempt completes (a connection, or a reset reported on completion).
 The accept socket that a failed ``AcceptEx`` call created is not closed here:
 CPython never closes it explicitly, so it is freed by reference counting / GC
 once the failed attempt is dropped. Triage should not expect a close event for
-those sockets.
+those sockets. CPython emits a ``ResourceWarning`` for each such GC-freed
+socket under ``-W default`` or dev mode.
 """
 
 from __future__ import annotations

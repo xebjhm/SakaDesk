@@ -82,11 +82,11 @@
     border-width: 1px;
   }
 
-  /* Scrollers inside a rounded sheet (the chat timeline, the Modal body) keep the track clear of the
-     sheet's corner radius, so the thumb never runs into the rounded corner and gets clipped into a wedge
-     at the top or bottom of the scroll. --ds-radius-xl is the sheet radius (24px). */
+  /* Scrollers that reach a rounded sheet's bottom corner (the chat timeline, a Modal body with no footer)
+     keep the track's bottom clear of the corner radius, so the thumb is not clipped into a wedge when
+     scrolled to the end. A header always sits above them, so there is no top inset.
+     --ds-radius-xl is the sheet radius (24px). */
   .sd-sheet-scroll::-webkit-scrollbar-track {
-    margin-top: var(--ds-radius-xl, 24px);
     margin-bottom: var(--ds-radius-xl, 24px);
   }
 
