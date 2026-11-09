@@ -95,6 +95,9 @@ class SettingsResponse(BaseModel):
     user_nicknames: Optional[dict[str, str]] = (
         None  # Per-service nicknames for %%% placeholder replacement
     )
+    oshi_members: Optional[dict[str, list[str]]] = (
+        None  # Per-service oshi blog member ids, mirrored from the frontend
+    )
     notifications_enabled: bool = True  # Desktop notifications for new messages
     notifications_hide_content: bool = (
         False  # Toasts show a generic body instead of the message preview
@@ -133,6 +136,7 @@ class SettingsUpdate(BaseModel):
     call_popup_enabled: Optional[bool] = None
     close_to_tray: Optional[bool] = None
     autostart: Optional[bool] = None
+    oshi_members: Optional[dict[str, list[str]]] = None
 
 
 class FreshCheckResponse(BaseModel):
@@ -188,6 +192,7 @@ async def get_settings():
         is_configured=config["is_configured"],
         user_nickname=config.get("user_nickname"),
         user_nicknames=config.get("user_nicknames"),
+        oshi_members=config.get("oshi_members"),
         notifications_enabled=config["notifications_enabled"],
         notifications_hide_content=config.get("notifications_hide_content", False),
         blogs_full_backup=config["blogs_full_backup"],
@@ -243,6 +248,8 @@ async def update_settings(update: SettingsUpdate):
             if update.autostart != config.get("autostart", False):
                 autostart_change = update.autostart
             config["autostart"] = update.autostart
+        if update.oshi_members is not None:
+            config["oshi_members"] = update.oshi_members
         schedule_changed = before != tuple(config.get(key) for key in _SCHEDULE_KEYS)
 
     config = await _store_update(_apply)
@@ -268,6 +275,7 @@ async def update_settings(update: SettingsUpdate):
         is_configured=config["is_configured"],
         user_nickname=config.get("user_nickname"),
         user_nicknames=config.get("user_nicknames"),
+        oshi_members=config.get("oshi_members"),
         notifications_enabled=config["notifications_enabled"],
         notifications_hide_content=config.get("notifications_hide_content", False),
         blogs_full_backup=config["blogs_full_backup"],

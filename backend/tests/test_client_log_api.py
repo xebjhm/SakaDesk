@@ -888,3 +888,11 @@ def test_sidebar_load_breadcrumb_is_accepted(fields):
     assert entry["event"] == "sidebar_load"
     assert entry["log_level"] == "info"
     assert {key: entry[key] for key in fields} == fields
+
+
+def test_oshi_mirror_failed_is_allowlisted():
+    r = client.post(
+        "/api/client-log",
+        json={"event": "oshi_mirror_failed", "fields": {"error_type": "typeerror"}},
+    )
+    assert r.status_code == 204

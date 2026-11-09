@@ -78,6 +78,7 @@ ClientEvent = Literal[
     "translation_batch_failed",
     "conv_hydrate_retry",
     "conv_hydrate_failed",
+    "oshi_mirror_failed",
     "conv_hydrate_recovered",
     "conv_write_failed",
     "read_state_save_deferred",

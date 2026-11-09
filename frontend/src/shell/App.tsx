@@ -21,6 +21,7 @@ import { applyStartupLanguage } from './language'
 import { openChatFromToast } from './openChat'
 import { clientLog } from '../utils/clientLog'
 import { markVoiceHeard } from './markVoiceHeard'
+import { useOshiMirror } from './useOshiMirror'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
@@ -236,6 +237,10 @@ function App() {
             )
             .finally(() => setPrefsHydrated(true));
     }, []);
+
+    // Mirror the oshi list to backend settings, only once persisted state has
+    // hydrated (never overwrite the backend with the empty startup map).
+    useOshiMirror(prefsHydrated);
 
     // SD-FE-STATE-03: flush any pending debounced prefs writes when the window
     // is being hidden/closed. pywebview tears down the JS context on close, so a

@@ -259,6 +259,17 @@ class TestUpdateSettings:
         assert response.status_code == 200
         assert response.json()["notifications_hide_content"] is True
 
+    def test_oshi_members_round_trips(self):
+        """oshi_members: absent -> None; POST persists and echoes it."""
+        cfg = _default_config()
+        with _patch_store(load_return=cfg):
+            assert client.get("/api/settings").json()["oshi_members"] is None
+            response = client.post(
+                "/api/settings", json={"oshi_members": {"hinatazaka46": ["12"]}}
+            )
+        assert response.status_code == 200
+        assert response.json()["oshi_members"] == {"hinatazaka46": ["12"]}
+
     def test_update_blogs_full_backup(self):
         """Toggle blogs_full_backup."""
         cfg = _default_config(blogs_full_backup=False)
