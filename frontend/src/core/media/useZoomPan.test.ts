@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { clampView, zoomAt, wheelZoom, FIT, MAX_ZOOM, MIN_ZOOM } from './useZoomPan';
+import { clampView, zoomAt, wheelZoom, FIT, MAX_ZOOM, MIN_ZOOM, type ZoomView } from './useZoomPan';
 
 const box = { width: 400, height: 300 };
 
@@ -37,5 +37,25 @@ describe('zoom / pan math', () => {
         expect(wheelZoom(1, -4, 0)).toBeLessThan(1.01);
         // Line-mode deltas (3 lines per notch) feel like a pixel notch.
         expect(wheelZoom(1, -3, 1)).toBeCloseTo(wheelZoom(1, -48, 0));
+    });
+});
+
+describe('fit snap (float residue)', () => {
+    it('wheel zoom out in two notches lands exactly on MIN_ZOOM', () => {
+        // exp(0.09) * exp(-0.045) * exp(-0.045) is 1 + 2.2e-16 in floating point.
+        const zoomedIn = wheelZoom(MIN_ZOOM, -60, 0);
+        expect(wheelZoom(wheelZoom(zoomedIn, 30, 0), 30, 0)).toBe(MIN_ZOOM);
+    });
+
+    it('a zoom-out step through zoomAt lands exactly on MIN_ZOOM', () => {
+        let view: ZoomView = FIT;
+        for (let i = 0; i < 7; i++) view = zoomAt(view, view.scale * 1.1, { x: 0, y: 0 }, box);
+        for (let i = 0; i < 7; i++) view = zoomAt(view, view.scale / 1.1, { x: 0, y: 0 }, box);
+        expect(view.scale).toBe(MIN_ZOOM);
+    });
+
+    it('clampView snaps a scale within the epsilon of fit', () => {
+        expect(clampView({ scale: MIN_ZOOM + 1e-9, x: 0, y: 0 }, box).scale).toBe(MIN_ZOOM);
+        expect(clampView({ scale: MIN_ZOOM + 1e-3, x: 0, y: 0 }, box).scale).toBe(MIN_ZOOM + 1e-3);
     });
 });

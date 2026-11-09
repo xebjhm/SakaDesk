@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, beforeAll, vi } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import i18n from '../../i18n';
 import { VideoPlayer } from './VideoPlayer';
@@ -322,5 +322,19 @@ describe('VideoPlayer media lifecycle', () => {
         } finally {
             globalThis.AudioContext = Real;
         }
+    });
+});
+
+describe('VideoPlayer duration when metadata is already loaded', () => {
+    afterEach(() => {
+        delete (HTMLMediaElement.prototype as { readyState?: number }).readyState;
+        delete (HTMLMediaElement.prototype as { duration?: number }).duration;
+    });
+
+    it('shows the length without waiting for loadedmetadata', () => {
+        Object.defineProperty(HTMLMediaElement.prototype, 'readyState', { configurable: true, get: () => 1 });
+        Object.defineProperty(HTMLMediaElement.prototype, 'duration', { configurable: true, get: () => 65 });
+        render(<VideoPlayer src="/api/media/v.mp4" />);
+        expect(screen.getAllByText(/1:05/).length).toBeGreaterThan(0);
     });
 });

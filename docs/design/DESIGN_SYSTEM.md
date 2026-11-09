@@ -234,7 +234,9 @@ group accent says where you are; a meaning colour says what a thing is.
   cross-checks them against `design/tokens/color.ts`). Older Windows keeps the default bar.
 - **Scrollbars** are slim and app-wide (`index.css`): a constant 10 px scrollbar box with a 6 px
   rounded thumb drawn inside a transparent border, which grows to 8 px and darkens on hover (no
-  layout change). Thumb colours are the `--ds-scrollbar-thumb*`
+  layout change). Scrollers inside a rounded sheet (the Modal body and the chat timeline) carry
+  `sd-sheet-scroll`, which insets the track top and bottom by `--ds-radius-xl` (24 px, the sheet
+  radius) so the thumb never runs into the rounded corner. Thumb colours are the `--ds-scrollbar-thumb*`
   tokens (`color.scrollbar`: translucent ink on light surfaces; `thumbOnDark*`, translucent white, inside
   `[data-surface="dark"]`, which `Modal tone="viewer"` sets, the call overlay and the Diagnostics console). Firefox gets
   `scrollbar-width: thin` + `scrollbar-color` only where `::-webkit-scrollbar` is unsupported.

@@ -31,6 +31,22 @@ describe('styled scrollbars (R-h task 8)', () => {
         expect(css).not.toContain('scrollbar-gutter');
     });
 
+    it('keeps the track clear of the sheet corner radius for scrollers inside rounded sheets', () => {
+        // The thumb must not run into the 24px sheet corner (it was clipped into a wedge at the bottom).
+        const rule = css.match(/\.sd-sheet-scroll::-webkit-scrollbar-track\s*\{([^}]*)\}/)?.[1] ?? '';
+        expect(rule).toMatch(/margin-top:\s*var\(--ds-radius-xl,\s*24px\)/);
+        expect(rule).toMatch(/margin-bottom:\s*var\(--ds-radius-xl,\s*24px\)/);
+        expect(staticTokenVars()['--ds-radius-xl']).toBe('24px');
+        // Scoped: no global track margin.
+        expect(css).not.toMatch(/(^|\n)\s*::-webkit-scrollbar-track[^{]*\{[^}]*margin/);
+    });
+
+    it('applies the class to the Modal body and the chat timeline scroller', () => {
+        render(<Modal isOpen onClose={vi.fn()} aria-label="s" title="t">x</Modal>);
+        expect(screen.getByTestId('modal-body')).toHaveClass('sd-sheet-scroll');
+        expect(readFileSync(resolve(__dirname, '../features/messages/components/MessageList.tsx'), 'utf-8')).toMatch(/<GroupedVirtuoso[^>]*className="sd-sheet-scroll"/s);
+    });
+
     it('keeps the Firefox fallback away from Chromium', () => {
         expect(css).toMatch(/@supports not selector\(::-webkit-scrollbar\)\s*\{[^@]*scrollbar-width:\s*thin[^@]*scrollbar-color:/);
     });
