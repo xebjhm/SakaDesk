@@ -123,7 +123,7 @@ async def test_refresh_if_needed_runs_in_gate_and_reports_success():
     }
     svc._get_token_remaining_seconds = lambda t: 10.0  # type: ignore[method-assign]
     svc._save_refreshed = lambda s, c: 3600.0  # type: ignore[method-assign]
-    session_alert.note_renew_failure(SVC)
+    session_alert.note_renew_failure(SVC, now=-1000.0)  # recorded, already over
     held = []
     real_hold = refresh_gate.hold
 
@@ -141,7 +141,7 @@ async def test_refresh_if_needed_runs_in_gate_and_reports_success():
         result = await svc.refresh_if_needed(SVC)
     assert held == [SVC]
     assert result["status"] == "refreshed"
-    assert session_alert.may_renew(SVC) is True  # report_success cleared cooldown
+    assert SVC not in session_alert._cooldown_until  # clear() reset the cooldown
 
 
 @pytest.mark.asyncio

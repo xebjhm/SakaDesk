@@ -34,6 +34,11 @@ from backend.services.service_utils import (
 
 logger = structlog.get_logger(__name__)
 
+# Bound on the in-line renewal of the status path (``get_status``), which the
+# app's loading screen waits on. A slower renewal is cancelled and counts as
+# outcome ``error``; the sync path renews without this bound.
+STATUS_RENEW_TIMEOUT_SECONDS = 20.0
+
 
 def _region_is_blocked(country_code: Optional[str]) -> bool:
     """Yodel's web service is Japan-only. A known non-JP country is blocked; an
@@ -248,21 +253,50 @@ class AuthService:
             return {s: self._get_service_auth_status(s) for s in get_all_services()}
 
         statuses = await asyncio.to_thread(_all_status)
-        for s, st in list(statuses.items()):
-            statuses[s] = await self._settle(s, st)
-        return {"services": statuses}
+        # Settle concurrently: each renewal is bounded by
+        # STATUS_RENEW_TIMEOUT_SECONDS, so the loading screen waits for the
+        # slowest one rather than the sum.
+        names = list(statuses)
+        settled = await asyncio.gather(*(self._settle(s, statuses[s]) for s in names))
+        return {"services": dict(zip(names, settled))}
+
+    async def _renew_for_status(self, service: str) -> str:
+        """``renew_expired`` bounded by ``STATUS_RENEW_TIMEOUT_SECONDS``.
+
+        On timeout the renewal is cancelled (the gate and the pysaka refresh
+        unwind through their ``async with`` blocks), the retry cooldown starts,
+        ``session_renew`` (outcome ``timeout``) is logged and ``error`` is
+        returned, so the service is never marked for a slow renewal.
+        """
+        try:
+            async with asyncio.timeout(STATUS_RENEW_TIMEOUT_SECONDS):
+                return await self.renew_expired(service)
+        except TimeoutError:
+            session_alert.note_renew_failure(service)
+            logger.info(
+                "session_renew",
+                service=service,
+                outcome="timeout",
+                timeout_s=STATUS_RENEW_TIMEOUT_SECONDS,
+            )
+            return "error"
 
     async def _settle(self, service: str, status: dict) -> dict:
         """Renew an expired token, then report the live status (spec B1 §1).
 
         Adds ``session_expired: True`` only for a dead session. ``token_expired``
-        without ``session_expired`` means "not renewed this time, will retry".
+        without ``session_expired`` means "not renewed this time, will retry"
+        (outcome ``error``, ``skipped``, a timeout, or a first
+        ``refresh_failed`` strike). A marked service reads ``session_expired``
+        unless its slow retry (``refresh_failed`` marks only, see
+        ``session_alert.MARKED_RETRY_SECONDS``) is due and succeeds.
         """
-        if session_alert.needs_login(service):
+        marked = session_alert.needs_login(service)
+        if marked and not session_alert.may_renew(service):
             return {**status, "authenticated": False, "session_expired": True}
-        if not status.get("token_expired"):
+        if not marked and not status.get("token_expired"):
             return status
-        outcome = await self.renew_expired(service)
+        outcome = await self._renew_for_status(service)
         if outcome in ("ok", "not_expired"):
             fresh = await asyncio.to_thread(self._get_service_auth_status, service)
             if fresh.get("token_expired"):
@@ -274,7 +308,9 @@ class AuthService:
             return fresh
         if outcome in ("dead", "no_cookies"):
             await session_alert.report(service, "expired")
-            return {**status, "session_expired": True}
+            return {**status, "authenticated": False, "session_expired": True}
+        if marked:
+            return {**status, "authenticated": False, "session_expired": True}
         if outcome == "refresh_failed" and await session_alert.report(
             service, "refresh_failed"
         ):
@@ -314,14 +350,29 @@ class AuthService:
         """Renew ``service``'s expired token with its session cookie, single-flight.
 
         Returns ``ok`` (renewed and saved), ``not_expired`` (another caller renewed
-        it while we waited), ``no_cookies``, ``dead`` (SessionExpiredError),
-        ``refresh_failed`` (RefreshFailedError), ``error`` (anything else, e.g.
-        offline or a gate timeout) or ``skipped`` (marked dead or inside the retry
-        cooldown). Logs ``session_renew``; never raises.
+        it while we waited, or the stored token is not expired), ``no_cookies``,
+        ``dead`` (SessionExpiredError), ``refresh_failed`` (RefreshFailedError or
+        a ``False`` refresh), ``error`` (anything else, e.g. offline or a gate
+        timeout) or ``skipped`` (``session_alert.renew_block_reason``: an
+        ``expired`` mark, a ``refresh_failed`` mark before its slow retry, or the
+        retry cooldown). ``ok`` / ``not_expired`` call ``session_alert.clear``
+        (removing a ``refresh_failed`` mark and its tray alert). Logs
+        ``session_renew`` (with ``reason`` when skipped) and
+        ``session_renew_retry`` when a marked service is retried; never raises.
+        Cancellation propagates (see ``_renew_for_status``).
         """
-        if not session_alert.may_renew(service):
-            logger.info("session_renew", service=service, outcome="skipped")
+        reason = session_alert.renew_block_reason(service)
+        if reason is not None:
+            logger.info(
+                "session_renew", service=service, outcome="skipped", reason=reason
+            )
             return "skipped"
+        if session_alert.needs_login(service):
+            logger.info(
+                "session_renew_retry",
+                service=service,
+                kind=session_alert.mark_kind(service),
+            )
         try:
             async with refresh_gate.hold(service):
                 data, expired = await asyncio.to_thread(
@@ -341,7 +392,7 @@ class AuthService:
                     async with aiohttp.ClientSession() as session:
                         refreshed = await client.refresh_access_token(session)
                     if refreshed:
-                        await asyncio.to_thread(self._save_refreshed, service, client)
+                        await self._save_refreshed_uncancellable(service, client)
                         outcome = "ok"
                     else:
                         outcome = "refresh_failed"
@@ -355,11 +406,29 @@ class AuthService:
             )
             outcome = "error"
         if outcome in ("ok", "not_expired"):
-            session_alert.report_success(service)
+            await session_alert.clear(service)
         elif outcome in ("refresh_failed", "error"):
             session_alert.note_renew_failure(service)
         logger.info("session_renew", service=service, outcome=outcome)
         return outcome
+
+    async def _save_refreshed_uncancellable(
+        self, service: str, client: Client
+    ) -> float:
+        """Run ``_save_refreshed`` in a thread and finish it even when cancelled.
+
+        The refresh already rotated the session cookie, so the save must land
+        before the caller's ``refresh_gate`` opens; a cancellation (status-path
+        timeout) waits for the save, then propagates.
+        """
+        save = asyncio.ensure_future(
+            asyncio.to_thread(self._save_refreshed, service, client)
+        )
+        try:
+            return await asyncio.shield(save)
+        except asyncio.CancelledError:
+            await save
+            raise
 
     async def login_with_browser(self, service: str):
         """
@@ -394,7 +463,11 @@ class AuthService:
                 )
 
                 if creds:
-                    self._save_credentials(service, creds)
+                    # The browser flow stays outside the gate; only the save is
+                    # held, so a renewal in flight can never write its older
+                    # rotated credentials over this fresh login.
+                    async with refresh_gate.hold(service):
+                        self._save_credentials(service, creds)
                     logger.info(
                         "Login successful, credentials saved to TokenManager",
                         service=service,
@@ -408,7 +481,9 @@ class AuthService:
                 )
                 raise
             except Exception as e:
-                logger.error("Login error", service=service, error=str(e))
+                logger.error(
+                    "Login error", service=service, error_type=type(e).__name__
+                )
                 return False
             finally:
                 if self._active_login_task is asyncio.current_task():
@@ -491,7 +566,17 @@ class AuthService:
             threshold_minutes: Refresh if token expires within this many minutes.
 
         Returns:
-            dict with 'refreshed' (bool), 'remaining_seconds' (float), 'status' (str)
+            dict with 'refreshed' (bool), 'remaining_seconds' (float) and 'status':
+            ``valid``, ``refreshed``, ``no_token``, ``refresh_failed`` (the refresh
+            returned False), ``skipped`` (``session_alert.renew_block_reason``
+            blocks a refresh: marked, or inside the retry cooldown), ``error``
+            (an exception; logged by type only) or ``test_mode``.
+
+        Failures feed ``session_alert`` like ``renew_expired`` does:
+        ``SessionExpiredError`` reports ``expired``; ``RefreshFailedError`` or a
+        ``False`` refresh starts the cooldown and reports ``refresh_failed``; any
+        other error starts the cooldown. A refresh that worked calls
+        ``session_alert.clear``.
         """
         validate_service(service)
         group = self._get_group(service)
@@ -547,7 +632,22 @@ class AuthService:
                         "status": "valid",
                     }
 
-                # Token is expired or within threshold - attempt refresh
+                # Token is expired or within threshold - attempt refresh, unless
+                # the service is marked or inside its retry cooldown.
+                reason = session_alert.renew_block_reason(service)
+                if reason is not None:
+                    logger.info(
+                        "session_renew",
+                        service=service,
+                        outcome="skipped",
+                        reason=reason,
+                        path="refresh_if_needed",
+                    )
+                    return {
+                        "refreshed": False,
+                        "remaining_seconds": remaining_seconds,
+                        "status": "skipped",
+                    }
                 logger.info(
                     "Token expiring soon, attempting refresh",
                     service=service,
@@ -571,7 +671,7 @@ class AuthService:
                         new_remaining = await asyncio.to_thread(
                             self._save_refreshed, service, client
                         )
-                        session_alert.report_success(service)
+                        await session_alert.clear(service)
                         logger.info(
                             "Token refreshed successfully via API",
                             service=service,
@@ -587,17 +687,35 @@ class AuthService:
                             "API-based refresh failed, session may require re-login",
                             service=service,
                         )
+                        session_alert.note_renew_failure(service)
+                        await session_alert.report(service, "refresh_failed")
                         return {
                             "refreshed": False,
                             "remaining_seconds": remaining_seconds,
                             "status": "refresh_failed",
                         }
 
+        except SessionExpiredError:
+            logger.warning(
+                "refresh_if_needed error",
+                service=service,
+                error_type="SessionExpiredError",
+            )
+            await session_alert.report(service, "expired")
+        except RefreshFailedError:
+            logger.warning(
+                "refresh_if_needed error",
+                service=service,
+                error_type="RefreshFailedError",
+            )
+            session_alert.note_renew_failure(service)
+            await session_alert.report(service, "refresh_failed")
         except Exception as e:
             logger.error(
-                "refresh_if_needed error", service=service, error=str(e), exc_info=True
+                "refresh_if_needed error", service=service, error_type=type(e).__name__
             )
-            return {"refreshed": False, "remaining_seconds": 0, "status": f"error: {e}"}
+            session_alert.note_renew_failure(service)
+        return {"refreshed": False, "remaining_seconds": 0, "status": "error"}
 
     def get_config(self, service: str) -> dict:
         """
