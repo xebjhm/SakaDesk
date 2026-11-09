@@ -401,7 +401,8 @@
     "blogs": "ブログ",
     "news": "ニュース",
     "fanclub": "ファンクラブ",
-    "ai": "AIエージェント"
+    "ai": "AIエージェント",
+    "memories": "思い出"
   },
   "landing": {
     "welcome": "SakaDeskへようこそ",
@@ -736,5 +737,10 @@
     "diskUsageComputedAt": "計算日時: {{time}}",
     "diskUsageCalculating": "計算中…",
     "diskUsageFailed": "計算できませんでした"
+  },
+  "memories": {
+    "home": {
+      "recapCard": "年度回顧"
+    }
   }
 }

@@ -896,3 +896,12 @@ def test_oshi_mirror_failed_is_allowlisted():
         json={"event": "oshi_mirror_failed", "fields": {"error_type": "typeerror"}},
     )
     assert r.status_code == 204
+
+
+def test_memories_events_are_allowlisted():
+    for event, fields in (
+        ("memories_open", {"service": "hinatazaka46"}),
+        ("memories_page", {"target": "recap"}),
+    ):
+        r = client.post("/api/client-log", json={"event": event, "fields": fields})
+        assert r.status_code == 204

@@ -45,7 +45,7 @@ import { persisted } from '../core/persistence/persisted';
 import type { RecentPost } from '../types';
 
 /** Available feature tabs within a service. */
-export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai';
+export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai' | 'memories';
 
 /** Blog filtering mode: show all members or only favorites. */
 export type BlogSelectionMode = 'all' | 'favorite';

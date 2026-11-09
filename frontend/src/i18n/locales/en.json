@@ -402,7 +402,8 @@
     "blogs": "Blogs",
     "news": "News",
     "fanclub": "Fan Club",
-    "ai": "AI Agent"
+    "ai": "AI Agent",
+    "memories": "Memories"
   },
   "landing": {
     "welcome": "Welcome to SakaDesk",
@@ -740,5 +741,10 @@
     "diskUsageComputedAt": "Calculated {{time}}",
     "diskUsageCalculating": "Calculating…",
     "diskUsageFailed": "Couldn't calculate"
+  },
+  "memories": {
+    "home": {
+      "recapCard": "Year recap"
+    }
   }
 }

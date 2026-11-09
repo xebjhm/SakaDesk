@@ -31,7 +31,15 @@ describe('FeatureRail', () => {
         const nav = screen.getByRole('navigation', { name: 'Features' });
         expect(nav).toHaveClass('w-12');
         expect(nav.className).not.toMatch(/overflow/);
-        expect(container.querySelectorAll('[role="tooltip"]')).toHaveLength(2);
+        expect(container.querySelectorAll('[role="tooltip"]')).toHaveLength(3);
+    });
+
+    it('shows a Memories item for every service', () => {
+        for (const service of ['hinatazaka46', 'sakurazaka46', 'nogizaka46', 'yodel']) {
+            const { unmount } = render(<FeatureRail service={service} />);
+            expect(screen.getByRole('button', { name: 'Memories' })).toBeInTheDocument();
+            unmount();
+        }
     });
 
     it('is a labelled nav', () => {

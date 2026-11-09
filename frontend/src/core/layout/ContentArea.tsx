@@ -2,6 +2,7 @@
 import React from 'react';
 import { useAppStore, type FeatureId } from '../../store/appStore';
 import { BlogsFeature } from '../../features/blogs';
+import { MemoriesFeature } from '../../features/memories';
 import { InlineSyncView } from './InlineSyncView';
 import { ContentSheet } from './ContentSheet';
 import { FadeOnChange } from './FadeOnChange';
@@ -48,6 +49,8 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
         content = <ContentSheet><InlineSyncView service={service} syncProgress={syncProgress} /></ContentSheet>;
     } else if (activeFeature === 'blogs') {
         content = <ContentSheet><BlogsFeature blogBackupEnabled={blogBackupEnabled} /></ContentSheet>;
+    } else if (activeFeature === 'memories') {
+        content = <ContentSheet><MemoriesFeature service={service} /></ContentSheet>;
     } else if (activeFeature === 'news' || activeFeature === 'fanclub' || activeFeature === 'ai') {
         content = <ContentSheet><ComingSoon feature={activeFeature} /></ContentSheet>;
     } else {

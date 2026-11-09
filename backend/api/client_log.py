@@ -85,6 +85,8 @@ ClientEvent = Literal[
     "read_state_pending_flushed",
     "read_state_sync_failed",
     "sidebar_load",
+    "memories_open",
+    "memories_page",
 ]
 
 ALLOWED_FIELDS = frozenset(

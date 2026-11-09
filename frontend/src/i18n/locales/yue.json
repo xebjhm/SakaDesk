@@ -401,7 +401,8 @@
     "blogs": "Blog",
     "news": "新聞",
     "fanclub": "粉絲會",
-    "ai": "AI 助手"
+    "ai": "AI 助手",
+    "memories": "回憶"
   },
   "landing": {
     "welcome": "歡迎使用 SakaDesk",
@@ -736,5 +737,10 @@
     "diskUsageComputedAt": "計算於 {{time}}",
     "diskUsageCalculating": "計緊…",
     "diskUsageFailed": "計唔到"
+  },
+  "memories": {
+    "home": {
+      "recapCard": "年度回顧"
+    }
   }
 }
