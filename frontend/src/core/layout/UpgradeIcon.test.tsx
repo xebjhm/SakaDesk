@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { UpgradeIcon } from './UpgradeIcon';
+import { resetUpgradeStoreForTests } from '../upgrade/upgradeStore';
 
 // 0.4.1: the 0.3.4 → 0.4.0 upgrade broke because a click on the ring while
 // downloading cancelled, and auto-download then started a second download
@@ -29,9 +30,10 @@ describe('UpgradeIcon while downloading', () => {
     let calls: Call[];
     beforeEach(() => {
         calls = [];
+        resetUpgradeStoreForTests();
         vi.stubGlobal('fetch', mockBackend(calls));
     });
-    afterEach(() => vi.unstubAllGlobals());
+    afterEach(() => { vi.unstubAllGlobals(); resetUpgradeStoreForTests(); });
 
     const starts = () => calls.filter((c) => c.url === '/api/version/upgrade/start').length;
     const cancels = () => calls.filter((c) => c.url === '/api/version/upgrade/cancel').length;

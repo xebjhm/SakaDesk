@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vite
 import { render, screen, fireEvent, waitFor, within, act } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
+import { resetUpgradeStoreForTests } from '../../core/upgrade/upgradeStore';
 import { SettingsModal } from './SettingsModal';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
@@ -22,6 +23,7 @@ const base: AppSettings = {
 let fetchMock: ReturnType<typeof vi.fn>;
 
 beforeEach(() => {
+    resetUpgradeStoreForTests();
     resetDialogStack();
     vi.mocked(clientLog).mockClear();
     fetchMock = vi.fn().mockResolvedValue({ ok: false, json: async () => ({}) });
@@ -384,6 +386,18 @@ describe('updates tab', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Check Now' }));
         await waitFor(() => expect(screen.getByRole('status')).toHaveTextContent(i18n.t('settings.upToDate')));
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_update_check', outcome: 'ok' });
+    });
+
+    it('a check that finds an update shows the Download button (shared upgrade store)', async () => {
+        fetchMock.mockImplementation(async (url: string) =>
+            url === '/api/version?force=true'
+                ? { ok: true, json: async () => ({ current_version: '0.4.1', latest_version: '0.4.2', update_available: true, upgrade_supported: true, release_url: null, release_notes: null, error: null }) }
+                : { ok: false, json: async () => ({}) });
+        renderModal();
+        openTab('Updates');
+        fireEvent.click(screen.getByRole('button', { name: 'Check Now' }));
+        expect(await screen.findByRole('button', { name: 'Download update' })).toBeInTheDocument();
+        expect(screen.getByRole('status')).toBeEmptyDOMElement();
     });
 
     it('a failed check logs an error without the error text', async () => {

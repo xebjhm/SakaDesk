@@ -111,7 +111,6 @@
     "autoDownloadUpdates": "自動下載更新",
     "autoDownloadUpdatesDesc": "在背景自動下載新版本",
     "checkForUpdates": "立即檢查",
-    "updateFound": "v{{version}} 可用！",
     "upToDate": "已是最新版本",
     "updateCheckFailed": "檢查失敗",
     "transcriptionDevice": "語音轉文字",
@@ -285,7 +284,11 @@
     "updateAvailable": "有可用更新！",
     "upgradeNow": "立即更新",
     "skipVersion": "跳過此版本",
-    "cancelDownload": "取消下載"
+    "cancelDownload": "取消下載",
+    "download": "下載更新",
+    "installHint": "SakaDesk 會關閉，安裝完成後自動重新開啟。",
+    "retry": "重試",
+    "openReleasePage": "開啟下載頁面"
   },
   "memberList": {
     "title": "聊天",

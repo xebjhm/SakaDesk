@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Update from Settings.** Settings → Updates now has buttons to download
+  the new version, follow its progress or cancel it, and install it, instead
+  of only saying a new version is available. A version you skipped on the
+  update icon can still be installed there.
+
 ## [0.4.1] - 2026-11-09
 
 ### Added

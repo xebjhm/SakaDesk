@@ -1,31 +1,12 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import { Download, ArrowUpCircle, Loader2, X, AlertCircle } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
-import { persisted } from '../persistence/persisted';
+import { useUpgradeStore, upgradeStage, openReleasePage } from '../upgrade/upgradeStore';
 
 // SVG progress ring constants (hoisted to avoid recomputation on every render)
 const RING_RADIUS = 18;
 const RING_CIRCUMFERENCE = 2 * Math.PI * RING_RADIUS;
-
-interface VersionInfo {
-    current_version: string;
-    latest_version: string | null;
-    update_available: boolean;
-    release_url: string | null;
-    release_notes: string | null;
-    error: string | null;
-    upgrade_supported: boolean;
-}
-
-interface UpgradeStatus {
-    state: 'idle' | 'downloading' | 'ready' | 'launching' | 'error';
-    progress: number;
-    error: string | null;
-    version: string | null;
-}
-
-type Stage = 'hidden' | 'available' | 'downloading' | 'ready' | 'launching' | 'error';
 
 /**
  * Upgrade icon for the service rail (Zone A).
@@ -34,27 +15,22 @@ type Stage = 'hidden' | 'available' | 'downloading' | 'ready' | 'launching' | 'e
  * - Stage 1 (available): Download arrow + blue dot — click to start download
  * - Stage 2 (ready): Restart arrow + green dot — click to launch installer
  *
+ * State lives in the shared upgrade store (also used by Settings → Updates).
  * When auto_download_updates is ON, Stage 1 is skipped (download starts silently).
  * While downloading, clicking the ring does nothing; the hover × cancels, and a
  * cancelled download is not restarted automatically until the next app start.
  */
 export function UpgradeIcon() {
     const { t } = useTranslation();
-    const [versionInfo, setVersionInfo] = useState<VersionInfo | null>(null);
-    const [upgradeStatus, setUpgradeStatus] = useState<UpgradeStatus | null>(null);
-    const [dismissed, setDismissed] = useState(false);
+    const versionInfo = useUpgradeStore((st) => st.versionInfo);
+    const upgradeStatus = useUpgradeStore((st) => st.status);
+    const dismissed = useUpgradeStore((st) => st.dismissed);
+    const autoDownloadTriggered = useUpgradeStore((st) => st.autoDownloadTriggered);
+    const { checkVersion, startDownload, install, cancel, dismissError, skipVersion, markAutoDownloadTriggered } =
+        useUpgradeStore.getState();
     const [autoDownload, setAutoDownload] = useState(false);
-    const autoDownloadTriggered = useRef(false);
 
-    // Determine current stage
-    const stage: Stage = (() => {
-        if (upgradeStatus?.state === 'error') return 'error';
-        if (upgradeStatus?.state === 'launching') return 'launching';
-        if (upgradeStatus?.state === 'ready') return 'ready';
-        if (upgradeStatus?.state === 'downloading') return 'downloading';
-        if (versionInfo?.update_available && !dismissed) return 'available';
-        return 'hidden';
-    })();
+    const stage = upgradeStage({ status: upgradeStatus, versionInfo, dismissed });
 
     // Fetch auto_download setting on mount
     useEffect(() => {
@@ -70,145 +46,27 @@ export function UpgradeIcon() {
             });
     }, []);
 
-    // Check version on mount and periodically
+    // Check version on mount and hourly (the store is shared with Settings).
     useEffect(() => {
-        const checkVersion = async () => {
-            try {
-                const res = await fetch('/api/version');
-                if (res.ok) {
-                    const data: VersionInfo = await res.json();
-                    setVersionInfo(data);
-
-                    const dismissedVersion = persisted.getPref<string | null>('dismissed_update', null);
-                    if (dismissedVersion === data.latest_version) {
-                        setDismissed(true);
-                    } else if (data.update_available) {
-                        setDismissed(false);
-                    }
-                }
-            } catch (err) {
-                console.warn('[UpgradeIcon] Version check failed:', err);
-            }
-        };
-
-        checkVersion();
-        const interval = setInterval(checkVersion, 60 * 60 * 1000);
+        void checkVersion();
+        const interval = setInterval(() => { void checkVersion(); }, 60 * 60 * 1000);
         return () => clearInterval(interval);
-    }, []);
+    }, [checkVersion]);
 
-    const handleStartDownload = useCallback(async () => {
-        try {
-            const res = await fetch('/api/version/upgrade/start', { method: 'POST' });
-            const data = await res.json();
-            if (data.success) {
-                setUpgradeStatus({ state: 'downloading', progress: 0, error: null, version: data.version });
-            } else {
-                setUpgradeStatus({ state: 'error', progress: 0, error: data.error, version: null });
-            }
-        } catch {
-            setUpgradeStatus({ state: 'error', progress: 0, error: t('update.upgradeFailed'), version: null });
-        }
-    }, [t]);
-
-    // Auto-download when enabled and update is available
+    // Auto-download when enabled and update is available (once per app session;
+    // a user cancel also counts, so it is not restarted right away).
     useEffect(() => {
-        if (
-            autoDownload &&
-            stage === 'available' &&
-            versionInfo?.upgrade_supported &&
-            !autoDownloadTriggered.current
-        ) {
-            autoDownloadTriggered.current = true;
-            handleStartDownload();
+        if (autoDownload && stage === 'available' && versionInfo?.upgrade_supported && !autoDownloadTriggered) {
+            markAutoDownloadTriggered();
+            void startDownload();
         }
-    }, [autoDownload, stage, versionInfo?.upgrade_supported, handleStartDownload]);
+    }, [autoDownload, stage, versionInfo?.upgrade_supported, autoDownloadTriggered, markAutoDownloadTriggered, startDownload]);
 
-    // Poll upgrade status while downloading
-    const shouldPoll = upgradeStatus?.state === 'downloading';
-    useEffect(() => {
-        if (!shouldPoll) return;
-
-        const poll = async () => {
-            try {
-                const res = await fetch('/api/version/upgrade/status');
-                if (res.ok) {
-                    const status: UpgradeStatus = await res.json();
-                    setUpgradeStatus(status);
-                }
-            } catch (err) {
-                console.warn('[UpgradeIcon] Status poll failed:', err);
-            }
-        };
-
-        const interval = setInterval(poll, 500);
-        return () => clearInterval(interval);
-    }, [shouldPoll]);
-
-    const handleInstall = useCallback(async () => {
-        try {
-            const res = await fetch('/api/version/upgrade/install', { method: 'POST' });
-            const data = await res.json();
-            if (data.success) {
-                setUpgradeStatus(prev => prev ? { ...prev, state: 'launching' } : null);
-                // Close the window after a short delay to let the installer start.
-                // The backend also exits after ~2 seconds as a fallback.
-                setTimeout(() => window.close(), 1500);
-            } else {
-                setUpgradeStatus({ state: 'error', progress: 100, error: data.error, version: upgradeStatus?.version || null });
-            }
-        } catch {
-            setUpgradeStatus({ state: 'error', progress: 100, error: t('update.upgradeFailed'), version: upgradeStatus?.version || null });
-        }
-    }, [upgradeStatus, t]);
-
-    const handleDismiss = useCallback((e: React.MouseEvent) => {
+    const handleDismiss = (e: React.MouseEvent) => {
         e.stopPropagation();
-        if (stage === 'available' && versionInfo?.latest_version) {
-            persisted.setPref('dismissed_update', versionInfo.latest_version);
-            setDismissed(true);
-        }
-        if (stage === 'error') {
-            // Cancel on error dismiss
-            fetch('/api/version/upgrade/cancel', { method: 'POST' }).catch((err) => {
-                console.warn('[UpgradeIcon] Cancel on dismiss failed:', err);
-            });
-            setUpgradeStatus(null);
-        }
-    }, [stage, versionInfo]);
-
-    const handleCancel = useCallback(async () => {
-        let cancelled = false;
-        try {
-            const res = await fetch('/api/version/upgrade/cancel', { method: 'POST' });
-            const data = res.ok ? await res.json() : null;
-            cancelled = data?.success === true;
-            if (!cancelled) console.warn('[UpgradeIcon] Cancel refused:', res.status);
-        } catch (err) {
-            console.warn('[UpgradeIcon] Cancel request failed:', err);
-        }
-        // Keep autoDownloadTriggered set: a user cancel must not make auto-download
-        // start again right away (it restarts on the next app start).
-        if (cancelled) {
-            setUpgradeStatus(null);
-            return;
-        }
-        // The cancel did not go through: show what the backend is really doing
-        // (a download may still be running) instead of pretending it stopped.
-        try {
-            const res = await fetch('/api/version/upgrade/status');
-            if (res.ok) setUpgradeStatus(await res.json());
-        } catch (err) {
-            console.warn('[UpgradeIcon] Status after failed cancel failed:', err);
-        }
-    }, []);
-
-    // For non-Windows: open release page in browser
-    const handleOpenRelease = useCallback(() => {
-        const url = versionInfo?.release_url;
-        if (url && /^https:\/\/github\.com\//.test(url)) {
-            window.open(url, '_blank');
-        }
-    }, [versionInfo?.release_url]);
+        if (stage === 'available') skipVersion();
+        if (stage === 'error') dismissError();
+    };
 
     if (stage === 'hidden') return null;
 
@@ -233,9 +91,9 @@ export function UpgradeIcon() {
         switch (stage) {
             case 'available':
                 if (versionInfo?.upgrade_supported) {
-                    handleStartDownload();
+                    void startDownload();
                 } else {
-                    handleOpenRelease();
+                    openReleasePage(versionInfo?.release_url);
                 }
                 break;
             case 'downloading':
@@ -243,7 +101,7 @@ export function UpgradeIcon() {
                 // is the hover × only, so a stray click cannot restart the download.
                 break;
             case 'ready':
-                handleInstall();
+                void install();
                 break;
         }
     };
@@ -304,7 +162,7 @@ export function UpgradeIcon() {
             {/* Hover ×: skip (available), cancel (error) or cancel the download */}
             {(stage === 'available' || stage === 'error' || stage === 'downloading') && (
                 <button
-                    onClick={stage === 'downloading' ? (e) => { e.stopPropagation(); void handleCancel(); } : handleDismiss}
+                    onClick={stage === 'downloading' ? (e) => { e.stopPropagation(); void cancel(); } : handleDismiss}
                     aria-label={stage === 'downloading' ? t('update.cancelDownload') : stage === 'error' ? t('common.cancel') : t('update.skipVersion')}
                     className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-control-off text-primary transition-colors duration-fast ease-standard hover:brightness-94 group-hover:flex"
                     title={stage === 'downloading' ? t('update.cancelDownload') : stage === 'error' ? t('common.cancel') : t('update.skipVersion')}
