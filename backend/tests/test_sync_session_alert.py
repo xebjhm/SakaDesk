@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from pysaka import RefreshFailedError, SessionExpiredError
+from structlog.testing import capture_logs
 
 import backend.api.sync as sync_api
 from backend.services import session_alert
@@ -36,15 +37,46 @@ async def test_sync_failure_reports(exc, kind):
 
 
 @pytest.mark.asyncio
-async def test_sync_success_reports_success():
-    svc = MagicMock(start_sync=AsyncMock(return_value=None))
+async def test_completed_sync_clears_session_alert():
+    svc = MagicMock(start_sync=AsyncMock(return_value=True))
     with (
         patch.object(sync_api, "get_sync_service", return_value=svc),
         patch.object(sync_api, "schedule_refresh"),
-        patch("backend.api.sync.session_alert.report_success") as ok,
+        patch("backend.api.sync.session_alert.clear", AsyncMock()) as clear,
     ):
         await sync_api.run_sync_task("sakurazaka46", False, False)
-    ok.assert_called_once_with("sakurazaka46")
+    clear.assert_awaited_once_with("sakurazaka46")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "start",
+    [
+        AsyncMock(
+            return_value=False
+        ),  # already running / not configured / swallowed error
+        AsyncMock(return_value=None),
+        AsyncMock(side_effect=RuntimeError("boom")),
+    ],
+)
+async def test_sync_that_did_not_complete_reports_no_success(start):
+    svc = MagicMock(start_sync=start)
+    with (
+        patch.object(sync_api, "get_sync_service", return_value=svc),
+        patch.object(sync_api, "schedule_refresh"),
+        patch("backend.api.sync.session_alert.clear", AsyncMock()) as clear,
+        patch("backend.api.sync.session_alert.report_success") as ok,
+        capture_logs() as logs,
+    ):
+        await sync_api.run_sync_task("sakurazaka46", False, False)
+    clear.assert_not_awaited()
+    ok.assert_not_called()
+    if start.side_effect is None:
+        assert any(
+            e["event"] == "sync_session_success_skipped"
+            and e["reason"] == "not_completed"
+            for e in logs
+        )
 
 
 @pytest.mark.asyncio

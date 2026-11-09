@@ -369,7 +369,7 @@ class SyncService:
         include_inactive: bool = True,
         force_resync: bool = False,
         initial_limit: int = DEFAULT_INITIAL_MESSAGE_LIMIT,
-    ):
+    ) -> bool:
         """
         Main sync function.
         - include_inactive: True to sync offline members too
@@ -379,6 +379,12 @@ class SyncService:
           Not applied in a room whose one-time history scan runs in this sync,
           nor to extra room authors (not in the room's member list): both
           always keep full history, or the scan could never complete.
+
+        Returns True only when the sync completed (``progress.complete()``,
+        including "no groups"), which proves the session works. Returns False
+        when a sync was already running, configuration is incomplete, or a
+        generic error was swallowed (reported through ``progress.error``).
+        ``SessionExpiredError`` / ``RefreshFailedError`` / cancellation raise.
         """
         if self.running:
             return False
@@ -417,7 +423,7 @@ class SyncService:
                     has_output_dir=bool(app_settings.get("output_dir")),
                 )
                 progress.error("Output folder not configured")
-                return
+                return False
 
             self._resolve_service_paths(app_settings)
             assert self.metadata_file is not None  # set by _resolve_service_paths
@@ -473,7 +479,7 @@ class SyncService:
                 if not groups:
                     logger.info("No groups found!")
                     progress.complete()
-                    return
+                    return True
 
                 # pysaka 0.4.5: own nickname + avatar (for the chat's letter
                 # bubbles). Personal fields are never stored by pysaka.
@@ -1314,6 +1320,7 @@ class SyncService:
                 )
 
             progress.complete()
+            return True
 
         except asyncio.CancelledError:
             # Cooperative cancellation via cancel() (SVC-C1). Report the cancel
@@ -1338,6 +1345,7 @@ class SyncService:
             logger.error("Sync error", error=str(e))
             logger.error(traceback.format_exc())
             progress.error(str(e))
+            return False
         finally:
             if pending_call is not None and not call_dispatched:
                 # Never awaits: abandon spawns its fallback toast as a background

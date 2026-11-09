@@ -31,12 +31,23 @@ def get_sync_service(service: str) -> SyncService:
 
 
 async def run_sync_task(service: str, include_inactive: bool, force_resync: bool):
-    """Wrapper to run sync in background properly."""
+    """Run one sync in the background and feed its result to session_alert.
+
+    Only a sync that completed (``start_sync`` returned True) proves the session
+    alive: it calls ``session_alert.clear`` (resets strikes and cooldown and
+    removes a needs-login mark). A no-op (already running, not configured) or a
+    swallowed generic failure logs ``sync_session_success_skipped`` instead.
+    """
     sync_service = get_sync_service(service)
     progress = progress_manager.get(service)
     try:
-        await sync_service.start_sync(include_inactive, force_resync)
-        session_alert.report_success(service)
+        completed = await sync_service.start_sync(include_inactive, force_resync)
+        if completed:
+            await session_alert.clear(service)
+        else:
+            logger.info(
+                "sync_session_success_skipped", service=service, reason="not_completed"
+            )
     except SessionExpiredError:
         logger.warning("sync_failed", service=service, reason="session_expired")
         progress.error("SESSION_EXPIRED")
