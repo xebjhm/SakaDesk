@@ -20,6 +20,7 @@ import time
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
+import pytest
 import uvicorn
 from structlog.testing import capture_logs
 
@@ -104,6 +105,12 @@ class TestServerConfig:
         ).items()
 
 
+# uvicorn's default ws="auto" imports the deprecated websockets.legacy API when
+# the server starts; that third-party notice is not about this test.
+@pytest.mark.filterwarnings("ignore:websockets.legacy is deprecated:DeprecationWarning")
+@pytest.mark.filterwarnings(
+    "ignore:websockets.server.WebSocketServerProtocol is deprecated:DeprecationWarning"
+)
 def test_idle_connection_still_serves_the_next_poll():
     """A connection idle for a whole poll interval is still served.
 

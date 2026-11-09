@@ -19,6 +19,7 @@ import ctypes  # noqa: E402
 import platform  # noqa: E402
 from dataclasses import asdict  # noqa: E402
 from pathlib import Path  # noqa: E402
+from typing import Any, Callable  # noqa: E402
 
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app  # noqa: E402
@@ -845,7 +846,7 @@ def wait_for_server(
     return False
 
 
-def build_server_config(asgi_app) -> uvicorn.Config:
+def build_server_config(asgi_app: Callable[..., Any]) -> uvicorn.Config:
     """uvicorn settings for the local backend.
 
     ``timeout_keep_alive`` is KEEP_ALIVE_TIMEOUT_S rather than uvicorn's
