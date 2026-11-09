@@ -12,7 +12,7 @@ import httpx
 import structlog
 from datetime import datetime, timezone, timedelta
 from typing import Optional
-from fastapi import APIRouter, BackgroundTasks
+from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.services.upgrade_service import (
@@ -78,6 +78,16 @@ _upgrade_state: dict = {
     "version": None,
     "installer_path": None,
 }
+
+# The running download task and its generation. Every /upgrade/start bumps the
+# generation; a download only writes ``_upgrade_state`` while its generation is
+# still current, so a cancelled (or superseded) download can never mark a newer
+# attempt "ready" while another download is still writing the installer.
+_download_task: Optional["asyncio.Task[None]"] = None
+_upgrade_generation = 0
+
+# How long /upgrade/cancel waits for a cancelled download to close its file.
+_CANCEL_WAIT_SECONDS = 5.0
 
 
 def _parse_version(version_str: str) -> tuple:
@@ -227,7 +237,7 @@ async def get_upgrade_status():
 
 
 @router.post("/upgrade/start")
-async def start_upgrade(background_tasks: BackgroundTasks):
+async def start_upgrade():
     """
     Start the upgrade process.
 
@@ -253,6 +263,7 @@ async def start_upgrade(background_tasks: BackgroundTasks):
         return {"success": False, "error": "Upgrade not supported on this platform"}
 
     if _upgrade_state["state"] == "downloading":
+        logger.info("upgrade_start_skipped", reason="already_downloading")
         return {"success": False, "error": "Upgrade already in progress"}
 
     # SD-BE-API-06: claim the "downloading" state SYNCHRONOUSLY, before the first
@@ -292,19 +303,39 @@ async def start_upgrade(background_tasks: BackgroundTasks):
     # Commit the resolved version into the download state.
     _upgrade_state["version"] = version
 
-    # Start download in background
-    background_tasks.add_task(_download_and_prepare_upgrade, version)
+    # Start the download as a tracked task so /upgrade/cancel can stop it.
+    global _download_task, _upgrade_generation
+    _upgrade_generation += 1
+    generation = _upgrade_generation
+    _download_task = asyncio.create_task(
+        _download_and_prepare_upgrade(version, generation)
+    )
+    logger.info("upgrade_download_started", generation=generation)
 
     return {"success": True, "message": "Upgrade started", "version": version}
 
 
-async def _download_and_prepare_upgrade(version: str):
-    """Background task to download and verify the installer."""
+async def _download_and_prepare_upgrade(
+    version: str, generation: Optional[int] = None
+) -> None:
+    """Background task to download and verify the installer.
+
+    ``generation`` is the /upgrade/start generation this download belongs to.
+    When a newer start or a cancel has moved the generation on, the result is
+    dropped (and a downloaded installer is not reported "ready"). ``None``
+    (direct calls) always writes the state.
+    """
     global _upgrade_state
+
+    def _current() -> bool:
+        return generation is None or generation == _upgrade_generation
 
     try:
         # Get installer info (URL, size, SHA-256 digest)
         info = await get_installer_info(version)
+        if not _current():
+            logger.info("upgrade_download_superseded", generation=generation)
+            return
         if not info:
             _upgrade_state["state"] = "error"
             _upgrade_state["error"] = "Could not find installer for this version"
@@ -312,10 +343,18 @@ async def _download_and_prepare_upgrade(version: str):
 
         # Download with progress tracking
         def progress_callback(downloaded: int, total: int):
-            if total > 0:
+            if total > 0 and _current():
                 _upgrade_state["progress"] = (downloaded / total) * 100
 
         installer_path = await download_installer(info, progress_callback)
+
+        if not _current():
+            logger.info(
+                "upgrade_download_superseded",
+                generation=generation,
+                current=_upgrade_generation,
+            )
+            return
 
         if not installer_path:
             _upgrade_state["state"] = "error"
@@ -332,8 +371,9 @@ async def _download_and_prepare_upgrade(version: str):
     except Exception as e:
         # Error type only: an OSError message carries the (user) file path.
         logger.error("Upgrade preparation failed", error_type=type(e).__name__)
-        _upgrade_state["state"] = "error"
-        _upgrade_state["error"] = str(e)
+        if _current():
+            _upgrade_state["state"] = "error"
+            _upgrade_state["error"] = str(e)
 
 
 async def _quiesce_workers_before_exit() -> None:
@@ -437,7 +477,7 @@ async def install_upgrade():
     if not installer_path or not installer_path.exists():
         return {"success": False, "error": "Installer not found"}
 
-    success = launch_installer(installer_path)
+    success = await launch_installer(installer_path)
 
     if success:
         _upgrade_state["state"] = "launching"
@@ -474,8 +514,30 @@ async def install_upgrade():
 
 @router.post("/upgrade/cancel")
 async def cancel_upgrade():
-    """Cancel an ongoing upgrade and clean up files."""
-    global _upgrade_state
+    """Cancel an ongoing upgrade: stop the download, then clean up files.
+
+    The download task is cancelled and awaited (up to ``_CANCEL_WAIT_SECONDS``)
+    so its installer file handle is closed before the upgrade directory is
+    removed. Bumping the generation makes any download that is still finishing
+    drop its result instead of reporting "ready".
+    """
+    global _upgrade_state, _download_task, _upgrade_generation
+
+    _upgrade_generation += 1
+    task = _download_task
+    _download_task = None
+    if task is not None and not task.done():
+        task.cancel()
+        try:
+            await asyncio.wait_for(asyncio.shield(task), _CANCEL_WAIT_SECONDS)
+        except asyncio.CancelledError:
+            logger.info("upgrade_download_cancelled")
+        except asyncio.TimeoutError:
+            logger.warning("upgrade_cancel_wait_timeout", seconds=_CANCEL_WAIT_SECONDS)
+        except Exception as e:  # the task's own failure; it is gone either way
+            logger.warning("upgrade_cancel_task_error", error_type=type(e).__name__)
+    else:
+        logger.info("upgrade_cancel_no_download")
 
     cleanup_upgrade_files()
 

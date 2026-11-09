@@ -284,7 +284,8 @@
     "installNow": "Install Now",
     "updateAvailable": "Update available!",
     "upgradeNow": "Update Now",
-    "skipVersion": "Skip this version"
+    "skipVersion": "Skip this version",
+    "cancelDownload": "Cancel download"
   },
   "memberList": {
     "title": "Talk",

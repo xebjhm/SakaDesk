@@ -21,6 +21,7 @@ def _reset_version_cache():
         "release_notes": None,
         "error": None,
     }
+    v._download_task = None
     v._upgrade_state = {
         "state": "idle",
         "progress": 0.0,
@@ -758,3 +759,95 @@ class TestPrepareUpgradeLogs:
         assert ready["file_name"] == "SakaDesk-1.0.0-Setup.exe"
         (failed,) = [e for e in logs if e["event"] == "Upgrade preparation failed"]
         assert failed["error_type"] == "OSError"
+
+
+class TestCancelStopsDownload:
+    """0.4.1: cancel must stop the running download, and a superseded download
+    must never mark a newer attempt "ready" (the 0.3.4 → 0.4.0 WinError 32 bug:
+    cancel left download #1 running, auto-download started #2 into the same
+    file, #1 reported ready, launching hit #2's open write handle)."""
+
+    def setup_method(self):
+        _reset_version_cache()
+
+    def test_cancel_cancels_and_awaits_running_download(self, tmp_path):
+        import asyncio
+
+        import backend.api.version as v
+
+        events: list[str] = []
+
+        async def scenario():
+            gate = asyncio.Event()
+
+            async def info(_version):
+                return object()
+
+            async def download(_info, _cb):
+                try:
+                    await gate.wait()
+                except asyncio.CancelledError:
+                    events.append("download_cancelled")
+                    raise
+                return tmp_path / "x.exe"
+
+            with (
+                patch.object(v, "get_installer_info", info),
+                patch.object(v, "download_installer", download),
+                patch.object(
+                    v, "cleanup_upgrade_files", lambda: events.append("cleanup")
+                ),
+            ):
+                v._upgrade_generation += 1
+                v._upgrade_state["state"] = "downloading"
+                v._download_task = asyncio.create_task(
+                    v._download_and_prepare_upgrade("1.0.0", v._upgrade_generation)
+                )
+                await asyncio.sleep(0)
+                await v.cancel_upgrade()
+
+        asyncio.run(scenario())
+        # The download stopped (closing its file) BEFORE the directory cleanup.
+        assert events == ["download_cancelled", "cleanup"]
+        assert v._upgrade_state["state"] == "idle"
+        assert v._download_task is None
+
+    def test_superseded_download_does_not_report_ready(self, tmp_path):
+        import asyncio
+
+        import backend.api.version as v
+
+        async def info(_version):
+            return object()
+
+        async def download(_info, _cb):
+            return tmp_path / "x.exe"
+
+        old_generation = v._upgrade_generation + 1
+        v._upgrade_generation = old_generation + 1  # a cancel/new start happened
+        v._upgrade_state["state"] = "downloading"
+        with (
+            patch.object(v, "get_installer_info", info),
+            patch.object(v, "download_installer", download),
+        ):
+            asyncio.run(v._download_and_prepare_upgrade("1.0.0", old_generation))
+        assert v._upgrade_state["state"] == "downloading"
+        assert v._upgrade_state["installer_path"] is None
+
+    def test_start_tracks_the_download_task(self):
+        import backend.api.version as v
+
+        with (
+            patch.object(
+                v,
+                "_fetch_latest_release",
+                return_value={"error": None, "latest_version": "99.0.0"},
+            ),
+            patch.object(v, "is_upgrade_supported", return_value=True),
+            patch.object(v, "_download_and_prepare_upgrade") as prepare,
+        ):
+            before = v._upgrade_generation
+            response = client.post("/api/version/upgrade/start")
+        assert response.json()["success"] is True
+        assert v._upgrade_generation == before + 1
+        prepare.assert_called_once_with("99.0.0", before + 1)

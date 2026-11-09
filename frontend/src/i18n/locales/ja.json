@@ -284,7 +284,8 @@
     "installNow": "今すぐインストール",
     "updateAvailable": "アップデートがあります",
     "upgradeNow": "今すぐ更新",
-    "skipVersion": "このバージョンをスキップ"
+    "skipVersion": "このバージョンをスキップ",
+    "cancelDownload": "ダウンロードを中止"
   },
   "memberList": {
     "title": "トーク",

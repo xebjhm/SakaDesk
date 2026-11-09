@@ -35,6 +35,8 @@ type Stage = 'hidden' | 'available' | 'downloading' | 'ready' | 'launching' | 'e
  * - Stage 2 (ready): Restart arrow + green dot — click to launch installer
  *
  * When auto_download_updates is ON, Stage 1 is skipped (download starts silently).
+ * While downloading, clicking the ring does nothing; the hover × cancels, and a
+ * cancelled download is not restarted automatically until the next app start.
  */
 export function UpgradeIcon() {
     const { t } = useTranslation();
@@ -181,7 +183,8 @@ export function UpgradeIcon() {
             console.warn('[UpgradeIcon] Cancel request failed:', err);
         }
         setUpgradeStatus(null);
-        autoDownloadTriggered.current = false;
+        // Keep autoDownloadTriggered set: a user cancel must not make auto-download
+        // start again right away (it restarts on the next app start).
     }, []);
 
     // For non-Windows: open release page in browser
@@ -221,7 +224,8 @@ export function UpgradeIcon() {
                 }
                 break;
             case 'downloading':
-                handleCancel();
+                // A click on the ring does nothing while downloading: cancelling
+                // is the hover × only, so a stray click cannot restart the download.
                 break;
             case 'ready':
                 handleInstall();
@@ -282,12 +286,13 @@ export function UpgradeIcon() {
                 )}
             </button>
 
-            {/* Dismiss button on hover for available/error stages */}
-            {(stage === 'available' || stage === 'error') && (
+            {/* Hover ×: skip (available), cancel (error) or cancel the download */}
+            {(stage === 'available' || stage === 'error' || stage === 'downloading') && (
                 <button
-                    onClick={handleDismiss}
+                    onClick={stage === 'downloading' ? (e) => { e.stopPropagation(); void handleCancel(); } : handleDismiss}
+                    aria-label={stage === 'downloading' ? t('update.cancelDownload') : stage === 'error' ? t('common.cancel') : t('update.skipVersion')}
                     className="absolute -right-1 -top-1 hidden h-4 w-4 items-center justify-center rounded-full bg-control-off text-primary transition-colors duration-fast ease-standard hover:brightness-94 group-hover:flex"
-                    title={stage === 'error' ? t('common.cancel') : t('update.skipVersion')}
+                    title={stage === 'downloading' ? t('update.cancelDownload') : stage === 'error' ? t('common.cancel') : t('update.skipVersion')}
                 >
                     <X className="h-2.5 w-2.5" />
                 </button>
