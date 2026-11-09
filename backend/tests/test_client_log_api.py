@@ -758,6 +758,11 @@ def test_media_playback_rejects_urls_and_unknown_keys(fields):
             {"count": 12, "error_type": "typeerror"},
             "warning",
         ),
+        (
+            "translation_batch_failed",
+            {"count": 1, "error_type": "error", "caller": "trigger"},
+            "warning",
+        ),
     ],
 )
 def test_poll_breadcrumbs_are_accepted(event, fields, level):
@@ -779,3 +784,14 @@ def test_poll_breadcrumb_rejects_a_url_as_key():
         },
     )
     assert res.status_code == 422
+
+
+def test_allowed_fields_never_shadow_log_call_keywords():
+    """Field keys are splatted into ``log(event, source="client", **fields)``.
+
+    A field named like one of those keywords would raise ``TypeError`` and turn
+    the breadcrumb into a 500, so the allow-list must never contain them.
+    """
+    from backend.api.client_log import ALLOWED_FIELDS
+
+    assert not ALLOWED_FIELDS & {"source", "event"}

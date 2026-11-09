@@ -27,6 +27,7 @@ describe('loadCachedTranslation', () => {
     });
     afterEach(() => {
         vi.useRealTimers();
+        vi.unstubAllGlobals();
         vi.restoreAllMocks();
     });
 
@@ -98,7 +99,6 @@ describe('loadCachedTranslation', () => {
         await vi.advanceTimersByTimeAsync(TRANSLATION_BATCH_WINDOW_MS);
         await expect(Promise.all(outcomes)).resolves.toEqual(['rejected', 'rejected']);
         expect(clientLog).toHaveBeenCalledWith('translation_batch_failed', { count: 2, error_type: 'error' });
-        vi.unstubAllGlobals();
     });
 
     it('resolves from a 200 JSON answer through the real fetch path', async () => {
@@ -110,6 +110,5 @@ describe('loadCachedTranslation', () => {
         await vi.advanceTimersByTimeAsync(TRANSLATION_BATCH_WINDOW_MS);
         await expect(Promise.all([a, b])).resolves.toEqual(['one', undefined]);
         expect(fetchMock).toHaveBeenCalledTimes(1);
-        vi.unstubAllGlobals();
     });
 });

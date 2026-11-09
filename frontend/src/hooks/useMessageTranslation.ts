@@ -3,7 +3,7 @@ import { useTranslation } from '../i18n';
 import { aiErrorKey } from '../i18n/aiError';
 import { persisted } from '../core/persistence/persisted';
 import * as api from '../core/persistence/appStateApi';
-import { loadCachedTranslation } from '../core/persistence/translationLoader';
+import { loadCachedTranslation, readCachedTranslation } from '../core/persistence/translationLoader';
 
 type TranslationState = 'idle' | 'loading' | 'done' | 'error';
 
@@ -121,9 +121,9 @@ export function useMessageTranslation(params: {
 
     const trigger = useCallback(async () => {
         if (!service || !messageId || !memberPath) return;
-        const cachedMap = await persisted.getTranslations([cacheKey]);
-        if (cachedMap[cacheKey]) {
-            setTranslation(cachedMap[cacheKey]);
+        const cachedValue = await readCachedTranslation(cacheKey, 'trigger');
+        if (cachedValue) {
+            setTranslation(cachedValue);
             setState('done');
             return;
         }

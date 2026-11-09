@@ -33,7 +33,8 @@ const waiters = new Map<string, Waiter>();
 let queue: string[] = [];
 let timer: ReturnType<typeof setTimeout> | null = null;
 
-function errorType(err: unknown): string {
+/** A thrown value's class name as a log code: `TypeError` -> `typeerror`. */
+export function errorType(err: unknown): string {
     const name = err instanceof Error ? err.name : 'unknown';
     return name.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40) || 'unknown';
 }
@@ -82,4 +83,18 @@ export function __resetTranslationLoaderForTests(): void {
     queue = [];
     waiters.clear();
     lookups.clear();
+}
+
+/**
+ * Cache read for a single user-initiated translation (`caller` names the call site).
+ * A failed read is a cache miss: it logs `translation_batch_failed` and resolves
+ * `undefined` so the caller goes on to the translate API.
+ */
+export async function readCachedTranslation(key: string, caller: 'trigger' | 'blog'): Promise<string | undefined> {
+    try {
+        return (await persisted.getTranslations([key]))[key];
+    } catch (err) {
+        clientLog('translation_batch_failed', { count: 1, error_type: errorType(err), caller });
+        return undefined;
+    }
 }

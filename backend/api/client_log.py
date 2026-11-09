@@ -110,6 +110,7 @@ ALLOWED_FIELDS = frozenset(
         "aborted",
         "key",
         "timeout_ms",
+        "caller",
     }
 )
 WARNING_EVENTS = frozenset(

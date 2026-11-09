@@ -191,3 +191,23 @@ describe('useMessageTranslation batching', () => {
         expect(result.current.translation).toBe('fresh');
     });
 });
+
+describe('useMessageTranslation trigger with a failing cache read', () => {
+    beforeEach(() => {
+        vi.restoreAllMocks();
+        __resetTranslationLoaderForTests();
+        vi.mocked(clientLog).mockClear();
+    });
+    afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+
+    it('treats the failed read as a miss, logs it and still translates', async () => {
+        vi.spyOn(persisted, 'getTranslations').mockRejectedValue(new TypeError('Failed to fetch'));
+        vi.spyOn(persisted, 'putTranslations').mockResolvedValue(undefined);
+        const fetchMock = mockFetchOk('fresh');
+        const { result } = renderHook(() => useMessageTranslation({ ...baseParams, messageId: 51 }));
+        await act(async () => { await result.current.trigger(); });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(result.current.translation).toBe('fresh');
+        expect(clientLog).toHaveBeenCalledWith('translation_batch_failed', { count: 1, error_type: 'typeerror', caller: 'trigger' });
+    });
+});

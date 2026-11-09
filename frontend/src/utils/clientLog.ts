@@ -27,7 +27,7 @@ export type ClientLogFieldKey =
     | 'surface' | 'call_id' | 'changed' | 'has_target'
     | 'theme' | 'size'
     | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path' | 'count' | 'history' | 'fallback' | 'dppx_pct'
-    | 'ready_state' | 'network_state' | 'error_code' | 'aborted' | 'key' | 'timeout_ms';
+    | 'ready_state' | 'network_state' | 'error_code' | 'aborted' | 'key' | 'timeout_ms' | 'caller';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 
