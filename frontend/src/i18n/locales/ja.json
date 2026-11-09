@@ -29,7 +29,6 @@
     "error": "エラー",
     "loading": "読み込み中...",
     "done": "完了",
-    "refresh": "更新",
     "browse": "参照",
     "download": "ダウンロード",
     "dismiss": "閉じる",
@@ -39,7 +38,15 @@
     "featureRequest": "機能リクエスト",
     "moreOptions": "その他のオプション",
     "removeService": "サービスを削除",
-    "on": "ON"
+    "on": "ON",
+    "unreadCount": "未読 {{count}} 件",
+    "retry": "再試行",
+    "confirm": "確認",
+    "mediaViewer": "メディアビューア",
+    "zoomIn": "拡大",
+    "zoomOut": "縮小",
+    "zoomFit": "画面に合わせる",
+    "debug": "デバッグ"
   },
   "settings": {
     "title": "設定",
@@ -47,6 +54,7 @@
     "tabSync": "同期",
     "tabAi": "AI",
     "tabUpdates": "アップデート",
+    "sections": "設定の項目",
     "outputFolder": "保存先フォルダ",
     "autoSync": "自動同期",
     "syncEvery": "同期間隔",
@@ -84,6 +92,18 @@
     "syncSmart": "スマートタイミング",
     "syncReadToPhone": "既読をスマホと同期",
     "syncReadToPhoneDesc": "ここでチャットを開くと、公式アプリでもそのトークの未読件数（赤いバッジ）が消えます（公式アプリで開いたときと同じ）。初期設定はオフ。",
+    "incomingCall": "着信",
+    "incomingCallDesc": "未再生のボイスがあるメンバーのトークを開くと、最新のボイスを着信として再生します",
+    "callPopup": "バックグラウンド着信ウィンドウ",
+    "callPopupDesc": "SakaDesk がバックグラウンドのときにメンバーからボイスが届くと、右下の小さなウィンドウで着信します",
+    "closeToTray": "閉じてもトレイで実行を続ける",
+    "closeToTrayDesc": "ウィンドウを閉じてもバックグラウンドで同期を続けます",
+    "autostart": "Windows の起動時に開始",
+    "autostartDesc": "サインイン時にトレイで起動します",
+    "notifications": "通知",
+    "notificationsDesc": "メンバーから新着メッセージが届いたら Windows の通知を表示します",
+    "notificationsHideContent": "通知にメッセージ内容を表示しない",
+    "notificationsHideContentDesc": "通知には新着があることだけを表示します",
     "serviceSettings": "サービス設定",
     "syncCurrentOff": "現在: 手動同期のみ",
     "syncCurrentFixed": "現在: {{minutes}}分ごと",
@@ -98,11 +118,19 @@
     "aiProvider": "AIプロバイダー",
     "resetDefaults": "デフォルトに戻す",
     "resetConfirm": "設定をデフォルトに戻しますか？データフォルダ・保存済みのAPIキー・言語は保持されます。",
+    "saveFailed": "この設定を保存できませんでした。もう一度お試しください。",
     "transcriptionCpuDesc": "すべてのPCで動作、処理は遅め",
     "transcriptionGpuDesc": "NVIDIA GPU（CUDA）が必要、高速処理",
     "transcriptionGpuTesting": "GPUをテスト中...",
     "transcriptionGpuSuccess": "GPUが利用可能です",
     "transcriptionGpuFailed": "GPUテストに失敗しました"
+  },
+  "call": {
+    "incoming": "着信中…",
+    "ended": "通話終了",
+    "answer": "応答",
+    "decline": "拒否",
+    "hangUp": "終了"
   },
   "time": {
     "minute": "{{count}}分",
@@ -134,10 +162,7 @@
     "sessionExpiredDesc": "{{service}}のセッション有効期限が切れました。{{feature}}を利用するには再ログインしてください。",
     "premiumFeatureDesc": "{{feature}}はプレミアム機能です。利用するには{{service}}アカウントでログインしてください。",
     "credentialsSaved": "認証情報はお使いのデバイスに安全に保存されます。",
-    "waitingForBrowser": "ブラウザを待機中...",
-    "launchBrowserLogin": "ブラウザでログイン",
     "connectAccount": "アカウント連携",
-    "browserPrompt": "{{service}}のMessageアカウントにログインしてください。ブラウザウィンドウが開き、認証情報を入力できます。",
     "loginFailed": "ログインに失敗したかキャンセルされました",
     "yodelJpOnlyTitle": "yodel は日本国内のみ利用できます",
     "yodelJpOnlyMessage": "yodel のサービスは日本国内でのみ提供されているため、現在の場所からは接続できません。ログインするには、日本国内のインターネット接続に切り替えてから、もう一度お試しください。",
@@ -160,6 +185,7 @@
     "articleIpTitle": "第3条（知的財産権）",
     "articleProhibitedTitle": "第8条（禁止事項）",
     "acceptCheckbox": "上記および利用中の公式サービスの利用規約を理解し、同意します。",
+    "acceptRequired": "上のチェックボックスにチェックを入れてください",
     "acceptAndContinue": "同意して開始する"
   },
   "setup": {
@@ -168,6 +194,7 @@
     "outputFolderPath": "データ出力先パス",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "メッセージ等の保存先を指定してください。エクスプローラーからパスをコピーできます。",
+    "folderRequired": "先にフォルダを入力するか選択してください",
     "downloadBlogsOffline": "ブログの検索用ダウンロード",
     "downloadBlogsHint": "すべてのブログ記事をダウンロードして全文検索を有効にします。サービスごとに約5〜15 GBを使用します。",
     "startUsing": "SakaDeskを始める"
@@ -176,6 +203,7 @@
     "phase": "フェーズ {{number}}: {{name}}",
     "starting": "開始中",
     "phaseScanning": "グループをスキャン中",
+    "scanningHistory": "トーク履歴を初回スキャン中…",
     "phaseDiscovering": "検出中",
     "phaseSyncing": "メタデータ取得中",
     "phaseDownloading": "メディアダウンロード中",
@@ -204,7 +232,11 @@
     "unknownError": "不明なエラー",
     "sessionExpired": "認証セッションが期限切れです。サービスを引き続きご利用いただくには、再度ログインしてください。",
     "refreshFailed": "認証に予期せず失敗しました。再度ログインしてください。問題が続く場合は、不具合報告をお願いします。",
-    "cancelled": "同期をキャンセルしました"
+    "cancelled": "同期をキャンセルしました",
+    "progress": "同期の進行状況",
+    "stepDone": "完了",
+    "stepCurrent": "現在のステップ",
+    "stepPending": "未完了"
   },
   "about": {
     "title": "アプリについて",
@@ -212,6 +244,7 @@
     "identity": "坂道シリーズ非公式ツール",
     "features": "メッセージ • ブログ • アーカイブ",
     "madeWith": "Made with",
+    "madeWithLove": "愛を込めて",
     "by": "by",
     "goldenFingerEnabled": "ダウンロードボタン有効 ✨",
     "goldenFingerDisabled": "ダウンロードボタン無効",
@@ -257,6 +290,8 @@
     "title": "トーク",
     "loadingConversations": "トーク一覧を読み込み中...",
     "noConversations": "トークが見つかりませんでした。",
+    "loadFailedTitle": "トーク一覧を読み込めませんでした",
+    "loadFailedBody": "保存したメッセージは消えていません。少し待ってから再試行してください。",
     "online": "オンライン",
     "offline": "オフライン",
     "graduated": "卒業メンバー",
@@ -270,11 +305,13 @@
     "favorites": "お気に入り",
     "media": "メディア",
     "background": "背景設定",
-    "sentLetters": "送信したレター"
+    "sentLetters": "送信したレター",
+    "sentLettersGroupChat": "グループトークにはレターがありません"
   },
   "messageList": {
     "noMessages": "メッセージがありません",
     "jumpToOldestUnread": "未読の最初へ移動",
+    "messageActions": "メッセージの操作",
     "welcomeTitle": "SakaDeskへようこそ",
     "welcomeSubtitle": "サイドバーからトークを選択して開始してください。",
     "loadingMessages": "メッセージを読み込み中...",
@@ -285,13 +322,26 @@
     "revealAllDescription": "{{count}}件のメッセージを一括で既読にします。",
     "confirm": "確認",
     "noContent": "(内容なし)",
-    "attachment": "添付ファイル"
+    "attachment": "添付ファイル",
+    "openCalendar": "日付を選んで移動",
+    "openConversations": "トーク一覧を表示"
   },
   "calendar": {
+    "loadFailed": "日付を読み込めませんでした",
+    "prevMonth": "前の月",
+    "nextMonth": "次の月",
     "title": "日付検索",
     "today": "今日",
     "availableOnDays": "{{count}}日分利用可能",
+    "itemCount": "{{count}}件",
     "tapToJump": "日付を選択して移動",
+    "monthYear": "{{year}}年{{month}}",
+    "pickMonth": "年と月を選択",
+    "backToDays": "日付に戻る",
+    "yearList": "年",
+    "monthGrid": "月",
+    "yearValue": "{{year}}年",
+    "noMessages": "メッセージなし",
     "weekdays": {
       "sun": "日",
       "mon": "月",
@@ -336,6 +386,12 @@
     "imageTooLarge": "画像が大きすぎます。2MB以下の画像を選択してください。",
     "selectImageFile": "画像ファイルを選択してください。"
   },
+  "contentArea": {
+    "comingSoon": "近日公開"
+  },
+  "featureRail": {
+    "label": "機能"
+  },
   "features": {
     "messages": "メッセージ",
     "blogs": "ブログ",
@@ -353,10 +409,12 @@
     "selectService": "サービスを選択してください"
   },
   "serviceRail": {
+    "label": "グループ",
     "sessionExpiredRelogin": "セッション切れ - クリックして再ログイン",
     "addService": "サービスを追加"
   },
   "search": {
+    "memberCount": "{{count}}人のメンバー",
     "placeholder": "メッセージとブログを検索...",
     "placeholderMessages": "メッセージを検索...",
     "placeholderBlogs": "ブログを検索...",
@@ -366,9 +424,10 @@
     "resultCountPartial": "{{total}}件中{{shown}}件を表示",
     "loadMore": "さらに読み込む",
     "pressEnterToSelect": "Enterで選択",
-    "errorSearchFailed": "検索に失敗しました。もう一度お試しください。",
-    "building": "検索インデックスを構築中...",
-    "filters": "フィルター",
+    "searchFailed": "検索できませんでした。もう一度お試しください。",
+    "title": "検索",
+    "filters": "絞り込み",
+    "removeFilter": "フィルターを外す：{{name}}",
     "exactMatchOnly": "完全一致のみ",
     "includeUnread": "未読も含む",
     "filterByMember": "メンバー・サービスで絞り込み...",
@@ -410,17 +469,17 @@
       "photos": "写真 {{count}}枚",
       "videos": "動画 {{count}}本",
       "voice": "ボイス {{count}}件"
-    }
+    },
+    "typeTabs": "メディアの種類"
   },
   "sentLetters": {
     "title": "送信したレター",
     "noLetters": "まだレターを送信していません",
     "noTextContent": "テキストなし",
     "noContent": "内容なし",
-    "tapToClose": "タップして閉じる",
-    "noGroupId": "グループIDがありません",
-    "noService": "アクティブなサービスがありません",
-    "fetchFailed": "レターの読み込みに失敗しました"
+    "loading": "レターを読み込み中…",
+    "unavailable": "現在レターを表示できません",
+    "letterSent": "{{date}}に送信したレター"
   },
   "blogs": {
     "latestBlogs": "新着ブログ",
@@ -435,7 +494,6 @@
     "addMembersHint": "推しメンを設定すると、最新記事がここに表示されます",
     "selectServiceHint": "サービスを選択して同期してください",
     "noMembersFound": "メンバーが見つかりません",
-    "tapOutsideToClose": "画面外をタップして閉じる",
     "publishedRecently": "24時間以内に公開",
     "cached": "保存済み",
     "mascot": "マスコット",
@@ -445,18 +503,30 @@
     "post_other": "{{count}}件の記事",
     "syncingBlogs": "ブログを同期中...",
     "firstSyncHint": "初回は少し時間がかかる場合があります",
-    "selectService": "サービスを選択してください"
+    "selectService": "サービスを選択してください",
+    "back": "新着ブログに戻る",
+    "postsFrom": "表示する記事",
+    "feedLoadFailed": "記事を読み込めませんでした",
+    "postLoadFailed": "この記事を読み込めませんでした",
+    "loadingPost": "記事を読み込み中...",
+    "olderPost": "古い記事",
+    "newerPost": "新しい記事",
+    "postNavigation": "記事ナビゲーション",
+    "addFavorite": "{{name}}をお気に入りに追加",
+    "removeFavorite": "{{name}}をお気に入りから削除"
   },
   "voicePlayer": {
     "speed": "再生速度",
     "skipBack": "5秒戻る (←)",
     "skipForward": "5秒進む (→)",
     "mute": "ミュート (M)",
-    "unmute": "ミュート解除 (M)"
+    "unmute": "ミュート解除 (M)",
+    "playbackError": "このボイスを再生できませんでした。"
   },
   "videoPlayer": {
     "noAudio": "音声なし",
-    "loop": "リピート"
+    "loop": "リピート",
+    "playbackError": "この動画を再生できませんでした。"
   },
   "generations": {
     "1st": "一期生",
@@ -520,7 +590,10 @@
       "clearApiKey": "APIキーを削除",
       "clearApiKeyConfirm": "保存したAPIキーをこの端末から削除しますか？",
       "cacheClearedMsg": "翻訳キャッシュをクリアしました",
+      "cacheClearFailed": "翻訳キャッシュをクリアできませんでした。もう一度お試しください。",
       "savedSecurely": "認証情報マネージャーに安全に保存されました",
+      "saveFailed": "AI設定を保存できませんでした。もう一度お試しください。",
+      "clearApiKeyFailed": "APIキーを削除できませんでした。もう一度お試しください。",
       "keyMissing": "APIキーが保存されていません。翻訳は使用できません。上でキーを入力してください。"
     },
     "error": {
@@ -533,5 +606,129 @@
       "geminiPaid": "有料枠 — 翻訳100件あたり約US$0.01。データはトレーニングに使用されません。",
       "openai": "APIデータはトレーニングに使用されません"
     }
+  },
+  "profileImages": {
+    "thumbnailGroup": "一覧アイコン",
+    "thumbnailGroupHint": "トーク一覧に表示されるアイコン",
+    "thumbnail": "トークアイコン",
+    "thumbnailHint": "トーク内のメッセージ横に表示されるアイコン",
+    "phoneImage": "着信画面",
+    "phoneImageHint": "着信時に表示される写真",
+    "viewImages": "画像を見る",
+    "current": "現在",
+    "versions": "{{count}} 件",
+    "kinds": "画像の種類"
+  },
+  "date": {
+    "today": "今日",
+    "yesterday": "昨日"
+  },
+  "designPage": {
+    "title": "デザインシステム",
+    "subtitle": "SakaDesk の全画面で使うトークンと基本コンポーネント。開発ビルドのみ。",
+    "group": "グループ",
+    "colors": "カラー",
+    "neutral": "ニュートラル",
+    "groupColors": "グループカラー",
+    "contrast": "白文字 {{ratio}}:1",
+    "contrastNA": "単色ではありません",
+    "radius": "角丸",
+    "shadow": "影",
+    "type": "文字",
+    "sample": "日向坂 SakaDesk あいう 🌸 123",
+    "motion": "モーション",
+    "animate": "再生",
+    "replay": "もう一度",
+    "landing": "着地ハイライト",
+    "primitives": "基本コンポーネント",
+    "surfaces": "レイヤー",
+    "pills": "ピル",
+    "filterAll": "すべて",
+    "filterUnread": "未読",
+    "badges": "バッジ",
+    "avatars": "アバター",
+    "datePills": "日付ピル",
+    "buttons": "ボタン",
+    "primary": "プライマリ",
+    "secondary": "セカンダリ",
+    "ghost": "ゴースト",
+    "disabled": "無効",
+    "close": "閉じる",
+    "rail": "機能レール",
+    "modal": "モーダル",
+    "openModal": "モーダルを開く",
+    "modalTitle": "サンプルモーダル",
+    "modalBody": "モーダルはシートです：角丸 20px、大きく柔らかい影。",
+    "rules": "ルール",
+    "do": "推奨",
+    "dont": "禁止",
+    "do1": "余白とレイヤーでブロックを分ける。",
+    "dont1": "直線の区切り線を引く。",
+    "do2": "rounded-card や text-body などのトークンクラスを使う。",
+    "dont2": "#hex カラーや rounded-[10px] などの任意値を直書きする。",
+    "do3": "グループカラーは公式レイヤーとカラーシステム表のロールからのみ使い、直書きしない。プライマリボタンは画面ごとに1つまで。",
+    "dont3": "グループカラーを直書きする、またはそれ以外の要素に使う。",
+    "levelsSample": "Canvas › Sheet › Card",
+    "search": "検索",
+    "scale": "色階",
+    "logoStep": "ロゴの色",
+    "railLogo": "選択中のグループロゴ（レール）",
+    "roles": "役割",
+    "roleName": "役割",
+    "roleStep": "段階",
+    "danger": "危険",
+    "accent": "アクセント",
+    "overlay": "オーバーレイ",
+    "forms": "フォーム",
+    "switchSample": "スイッチの例",
+    "inputSample": "入力欄の例",
+    "selectSample": "選択肢の例",
+    "menu": "メニュー",
+    "menuItem": "メニュー項目",
+    "menuSelected": "選択中の項目",
+    "menuOpen": "メニューを開く",
+    "context": "コンテキスト",
+    "contextBrand": "SakaDesk ブランド",
+    "brand": "ブランド",
+    "semantic": "セマンティックカラー",
+    "tiers": "表現ティア",
+    "tierQuiet": "L0 控えめ",
+    "tierInteractive": "L1 インタラクティブ",
+    "tierAtmosphere": "L2 アトモスフィア",
+    "moments": "ブランドモーメント",
+    "sampleEmptyTitle": "お気に入りはまだありません",
+    "sampleEmptyBody": "メッセージを右クリックして「お気に入りに追加」を選んでください。",
+    "sampleToastTitle": "同期が完了しました",
+    "sampleToastBody": "12,846 件のメッセージを保存しました",
+    "sampleMilestone": "購読開始からの日数",
+    "sampleDisabledReason": "先にグループを選んでください",
+    "displaySample": "すべてのメッセージを残す"
+  },
+  "letters": {
+    "openImage": "レターを開く",
+    "you": "あなた",
+    "openImageAt": "{{date}}に送信したレターを開く"
+  },
+  "letterViewer": {
+    "title": "送信したレター",
+    "older": "古いレター",
+    "newer": "新しいレター",
+    "jumpToLetter": "トークでこのレターへ移動",
+    "jumpToLetterAt": "{{date}}に送信したレターをトークで表示",
+    "imageMissing": "レター画像がありません",
+    "openImage": "レター画像を大きく表示",
+    "fullText": "レターの本文"
+  },
+  "celebration": {
+    "firstSyncTitle": "アーカイブの準備ができました",
+    "firstSyncBody": "{{value}}件のメッセージを保存しました",
+    "milestoneMessages": "通のメッセージ",
+    "milestoneDays": "日間の購読",
+    "milestoneYears": "年間の購読"
+  },
+  "diagnostics": {
+    "diskUsageComputedAt": "計算日時: {{time}}",
+    "diskUsageCalculating": "計算中…",
+    "diskUsageFailed": "計算できませんでした"
   }
 }

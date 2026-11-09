@@ -1,261 +1,120 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { RefreshCw, Mail, ChevronLeft } from 'lucide-react';
-import { cn } from '../../utils/classnames';
-import { BaseModal, DetailModal, SafeImage, ModalLoadingState, ModalErrorState, ModalEmptyState } from '../common';
-import type { BaseModalProps } from '../../types/modal';
-import { useAppStore } from '../../store/appStore';
-import { getServiceTheme } from '../../config/serviceThemes';
+import React, { useMemo, useState } from 'react';
+import { Mail } from 'lucide-react';
+import { Card, Modal } from '../../design/primitives';
 import { useTranslation } from '../../i18n';
-import { parseErrorDetail } from '../../utils/httpError';
+import type { Letter } from '../../features/messages/letters';
+import type { LettersStatus } from '../../features/messages/hooks/useRoomExtras';
+import { toValidDate } from '../../utils/dateFormatters';
+import { LetterViewerModal } from './LetterViewerModal';
 
-interface Letter {
-    id: number;
-    content: string;
-    created_at: string;
-    updated_at: string;
-    image?: string;
-    thumbnail?: string;
+export interface SentLettersModalProps {
+    isOpen: boolean;
+    onClose: () => void;
+    /** The open room's letters: the same list the chat timeline shows (local archive). */
+    letters: readonly Letter[];
+    /** Whether the letters are still loading, loaded, or could not be loaded (failed or timed out). */
+    status: LettersStatus;
+    /**
+     * Called with a letter id after the jump link in the letter viewer closed the viewer and
+     * this dialog; the caller jumps the chat there.
+     */
+    onSelectLetter: (id: number) => void;
 }
 
-interface SentLettersModalProps extends BaseModalProps {
-    conversationPath: string;
-    memberName: string;
-    groupId?: string;
-    activeService?: string; // Service ID for API calls
-}
-
-export const SentLettersModal: React.FC<SentLettersModalProps> = ({
-    isOpen,
-    onClose,
-    conversationPath: _conversationPath,  // Reserved for future use
-    memberName,
-    groupId,
-    activeService,
-}) => {
-    const { t } = useTranslation();
-    // Get per-service theme colors
-    const currentService = useAppStore((state) => state.activeService);
-    const theme = getServiceTheme(currentService);
-
-    const [letters, setLetters] = useState<Letter[]>([]);
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
-    const [selectedLetter, setSelectedLetter] = useState<Letter | null>(null);
-    const [zoomedImage, setZoomedImage] = useState<string | null>(null);
-
-    const fetchLetters = useCallback(async () => {
-        if (!groupId) {
-            setError(t('sentLetters.noGroupId'));
-            return;
-        }
-        // SD-CONTRACT-04: `service` is a REQUIRED backend query param; the old
-        // no-service URL variant is a frontend-invented shape that always 422s.
-        // Guard instead of firing a request that can never succeed.
-        if (!activeService) {
-            setError(t('sentLetters.noService'));
-            return;
-        }
-
-        setLoading(true);
-        setError(null);
-
-        try {
-            const url = `/api/chat/letters/${groupId}?service=${encodeURIComponent(activeService)}`;
-            const res = await fetch(url);
-            if (!res.ok) {
-                const errData = await res.json().catch(() => ({}));
-                // SD-CONTRACT-04: a 422 `detail` is an array of objects — parse
-                // it to a readable string instead of rendering "[object Object]".
-                throw new Error(parseErrorDetail(errData, t('sentLetters.fetchFailed')));
-            }
-            const data = await res.json();
-            // Sort letters by created_at in reverse order (newest first)
-            const sortedLetters = (data.letters || []).sort((a: Letter, b: Letter) =>
-                new Date(b.created_at).getTime() - new Date(a.created_at).getTime()
-            );
-            setLetters(sortedLetters);
-        } catch (err: any) {
-            setError(err.message || 'Failed to load letters');
-        } finally {
-            setLoading(false);
-        }
-    }, [groupId, activeService]);
-
-    useEffect(() => {
-        if (isOpen && groupId) {
-            fetchLetters();
-        }
-    }, [isOpen, groupId, fetchLetters]);
-
-    // Reset selection when modal closes
-    useEffect(() => {
-        if (!isOpen) {
-            setSelectedLetter(null);
-            setZoomedImage(null);
-        }
-    }, [isOpen]);
-
-    const formatDate = (dateStr: string) => {
-        const date = new Date(dateStr);
-        return `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')}`;
+/**
+ * Overview of the letters sent to this member: a grid of letter thumbnails, newest first,
+ * with their dates. Choosing one (click or keyboard) opens it in the letter viewer on top
+ * (image and full text; › / → newer, ‹ / ← older); the viewer's date link closes
+ * both dialogs and jumps to the letter in the chat. Each card is named by its send date and
+ * time. Letters whose created_at cannot be parsed are not listed (the timeline does not show
+ * them either). While the letters load, or when they are unavailable, the dialog says so
+ * instead of "no letters".
+ */
+export const SentLettersModal: React.FC<SentLettersModalProps> = ({ isOpen, onClose, letters, status, onSelectLetter }) => {
+    const { t, i18n } = useTranslation();
+    const [viewerId, setViewerId] = useState<number | null>(null);
+    // Closed from outside: forget the open letter, so reopening shows the grid, not the viewer.
+    const [wasOpen, setWasOpen] = useState(isOpen);
+    if (wasOpen !== isOpen) {
+        setWasOpen(isOpen);
+        if (!isOpen) setViewerId(null);
+    }
+    const newestFirst = useMemo(
+        () => letters
+            .map((letter) => ({ letter, date: toValidDate(letter.created_at) }))
+            .filter((entry): entry is { letter: Letter; date: Date } => entry.date !== null)
+            .sort((a, b) => b.date.getTime() - a.date.getTime()),
+        [letters],
+    );
+    const newestFirstLetters = useMemo(() => newestFirst.map(({ letter }) => letter), [newestFirst]);
+    const close = () => {
+        setViewerId(null);
+        onClose();
     };
+    const dateFormat = useMemo(
+        () => new Intl.DateTimeFormat(i18n.language, { year: 'numeric', month: 'short', day: 'numeric' }),
+        [i18n.language],
+    );
+    const dateTimeFormat = useMemo(
+        () => new Intl.DateTimeFormat(i18n.language, {
+            year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
+        }),
+        [i18n.language],
+    );
 
-    // Full-screen image zoom view
-    const renderZoomedImage = () => {
-        if (!zoomedImage) return null;
-
-        return (
-            <DetailModal
-                isOpen={!!zoomedImage}
-                onClose={() => setZoomedImage(null)}
-                footer={t('sentLetters.tapToClose')}
-            >
-                <img
-                    src={zoomedImage}
-                    alt="Letter full view"
-                    className="max-w-full max-h-[85vh] object-contain"
-                />
-            </DetailModal>
-        );
-    };
-
-    // Detail view for selected letter
-    const renderDetailView = () => {
-        if (!selectedLetter) return null;
-
-        return (
-            <DetailModal
-                isOpen={!!selectedLetter}
-                onClose={() => setSelectedLetter(null)}
-                title={`To. ${memberName}`}
-                subtitle={formatDate(selectedLetter.created_at)}
-                backButton={
-                    <button
-                        onClick={() => setSelectedLetter(null)}
-                        className="text-white/80 hover:text-white transition-colors"
-                    >
-                        <ChevronLeft className="w-6 h-6" />
-                    </button>
-                }
-                onCloseAll={onClose}
-            >
-                {/* Letter image if available - clickable for zoom */}
-                {selectedLetter.image && (
-                    <button
-                        onClick={() => setZoomedImage(selectedLetter.image!)}
-                        className="mb-4 rounded-lg overflow-hidden block w-full cursor-zoom-in hover:opacity-90 transition-opacity"
-                    >
-                        <SafeImage
-                            src={selectedLetter.image}
-                            alt="Letter attachment"
-                            className="w-full h-auto max-h-[400px] object-contain"
-                        />
-                    </button>
-                )}
-
-                {/* Letter text */}
-                <div className="bg-[#f8f5f0] rounded-lg p-6 min-h-[200px]">
-                    <p className="text-gray-800 whitespace-pre-wrap leading-relaxed">
-                        {selectedLetter.content || (
-                            <span className="text-gray-400 italic">{t('sentLetters.noTextContent')}</span>
-                        )}
-                    </p>
-                </div>
-            </DetailModal>
-        );
-    };
-
-    // Render content based on state
-    const renderContent = () => {
-        if (loading) {
-            return <ModalLoadingState />;
-        }
-
-        if (error) {
-            return <ModalErrorState error={error} onRetry={fetchLetters} />;
-        }
-
-        if (letters.length === 0) {
-            return <ModalEmptyState icon={Mail} message={t('sentLetters.noLetters')} />;
-        }
-
-        return (
-            <div className="grid grid-cols-2 gap-4">
-                {letters.map((letter) => (
+    let body: React.ReactNode;
+    if (status === 'loading') {
+        body = <p className="py-10 text-center text-small text-muted" role="status">{t('sentLetters.loading')}</p>;
+    } else if (status === 'unavailable' && newestFirst.length === 0) {
+        body = <p className="py-10 text-center text-small text-muted">{t('sentLetters.unavailable')}</p>;
+    } else if (newestFirst.length === 0) {
+        body = <p className="py-10 text-center text-small text-muted">{t('sentLetters.noLetters')}</p>;
+    } else {
+        body = (
+            <div className="grid grid-cols-3 gap-3">
+                {newestFirst.map(({ letter, date }) => (
                     <button
                         key={letter.id}
-                        onClick={() => setSelectedLetter(letter)}
-                        className="bg-[#f8f5f0] rounded-lg p-3 text-left hover:shadow-md transition-all border border-transparent group"
-                        onMouseEnter={(e) => {
-                            e.currentTarget.style.borderColor = theme.modals.accentColorMuted;
-                            const nameEl = e.currentTarget.querySelector('[data-letter-name]') as HTMLElement;
-                            if (nameEl) nameEl.style.color = theme.modals.accentColor;
-                        }}
-                        onMouseLeave={(e) => {
-                            e.currentTarget.style.borderColor = 'transparent';
-                            const nameEl = e.currentTarget.querySelector('[data-letter-name]') as HTMLElement;
-                            if (nameEl) nameEl.style.color = '#1f2937';
-                        }}
+                        type="button"
+                        aria-label={t('sentLetters.letterSent', { date: dateTimeFormat.format(date) })}
+                        onClick={() => setViewerId(letter.id)}
+                        className="group flex flex-col gap-2 rounded-card text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                     >
-                        {/* Thumbnail or preview text - taller aspect ratio to show full letter */}
-                        <div className="aspect-[3/4] mb-3 rounded overflow-hidden bg-white flex items-center justify-center">
-                            {letter.thumbnail || letter.image ? (
-                                <SafeImage
-                                    src={letter.thumbnail || letter.image || ''}
-                                    alt="Letter preview"
-                                    className="w-full h-full object-contain"
-                                    fallbackText={letter.content}
-                                />
+                        <Card className="aspect-[3/4] overflow-hidden ring-1 ring-transparent transition-shadow duration-fast ease-standard group-hover:ring-accent-border group-hover:shadow-accent-glow-hover">
+                            {letter.image_url ? (
+                                <img src={letter.image_url} alt="" draggable={false} className="h-full w-full object-cover" />
+                            ) : letter.text ? (
+                                <p lang="ja" className="line-clamp-6 whitespace-pre-wrap p-3 text-small text-secondary">{letter.text}</p>
                             ) : (
-                                <div className="p-2 text-xs text-gray-600 line-clamp-6">
-                                    {letter.content || t('sentLetters.noContent')}
-                                </div>
+                                <p className="line-clamp-6 whitespace-pre-wrap p-3 text-small text-secondary">{t('sentLetters.noContent')}</p>
                             )}
-                        </div>
-
-                        {/* Meta info */}
-                        <div
-                            data-letter-name
-                            className="text-sm font-medium text-gray-800 transition-colors"
-                        >
-                            To. {memberName}
-                        </div>
-                        <div className="text-xs text-gray-500 mt-1">
-                            {formatDate(letter.created_at)}
-                        </div>
+                        </Card>
+                        <time dateTime={letter.created_at} className="text-caption text-secondary transition-colors duration-fast ease-standard group-hover:text-accent-strong">
+                            {dateFormat.format(date)}
+                        </time>
                     </button>
                 ))}
             </div>
         );
-    };
+    }
 
     return (
         <>
-            <BaseModal
-                isOpen={isOpen}
-                onClose={onClose}
-                title={t('sentLetters.title')}
-                icon={Mail}
-                footer={
-                    <div className="bg-gray-50 px-6 py-3 border-t border-gray-100">
-                        <button
-                            onClick={fetchLetters}
-                            disabled={loading}
-                            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
-                        >
-                            <RefreshCw className={cn("w-4 h-4", loading && "animate-spin")} />
-                            {t('common.refresh')}
-                        </button>
-                    </div>
-                }
-            >
-                <div className="p-6">
-                    {renderContent()}
-                </div>
-            </BaseModal>
-
-            {renderDetailView()}
-            {renderZoomedImage()}
+            <Modal isOpen={isOpen} onClose={close} title={t('sentLetters.title')} icon={<Mail />} closeLabel={t('common.close')} logId="sent_letters" className="max-w-2xl">
+                {body}
+            </Modal>
+            <LetterViewerModal
+                letters={newestFirstLetters}
+                letterId={isOpen ? viewerId : null}
+                order="newest_first"
+                source="sent_letters"
+                onNavigate={setViewerId}
+                onClose={() => setViewerId(null)}
+                onJump={(id) => {
+                    close();
+                    onSelectLetter(id);
+                }}
+            />
         </>
     );
 };

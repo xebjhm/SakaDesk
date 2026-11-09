@@ -7,6 +7,230 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-09
+
+### Added
+- **Sent letters open in a viewer.** It shows the letter image, the full text
+  and a date link that jumps back to it in the chat. Click the image for the
+  large view with zoom; the arrows always go in time order, and narrow windows
+  give the letter more room.
+- **Zoom photos with the mouse wheel.** In the photo viewer and the media
+  gallery, scroll to zoom in where you point, or use the zoom buttons or a
+  double-click; drag to move around a zoomed photo.
+- **A Japanese-style calendar.** The date calendar marks Japanese public
+  holidays (point at a day to see its name), shows Sundays and holidays in red
+  and Saturdays in blue, and lets you click the month title to pick any year
+  and month.
+- **Small celebrations.** Your first complete sync ends with a short
+  celebration, and a chat shows a card when a member passes 1,000, 5,000 or
+  10,000 messages, or when your subscription reaches day 100 and each full
+  year. Nothing needs to be closed, and reduced motion keeps them still.
+- **Incoming calls while SakaDesk is in the background.** When a member sends
+  a voice message while the app is hidden, minimised or behind other windows,
+  a small call window rings at the bottom right of the screen; answer to play
+  it there, or miss it and get a missed-call notification instead. It stays
+  out of the way during fullscreen apps, presentations and Focus Assist, and
+  you can turn it off in Settings.
+- **SakaDesk keeps running in the system tray.** Closing the window now hides
+  it to the tray and keeps syncing in the background, so notifications still
+  arrive; use the tray icon to open the app, sync now, or quit. You can also
+  start SakaDesk with Windows. Both are in Settings.
+- **See a member's list icon, chat icon and call-screen photo.** Open them from
+  the new buttons on the profile card, by clicking the large avatar, or with
+  View images on a member's right-click menu. Copy and save work like other
+  photos.
+- **Avatar history.** Every time a member changes one of these images,
+  SakaDesk keeps the old one; flip through them with the arrow keys and see
+  when each was in use.
+- **Messages from just before you subscribed.** After updating, the next sync
+  adds the day or so of messages the member sent right before your first
+  subscription, which the app never downloaded before. These recovered
+  messages also show up in search.
+- **Your sent letters are now kept in your archive**, even after a
+  subscription ends, and they appear in the chat where you sent them, with
+  the avatar you had at the time. Sent Letters in the chat menu shows them
+  all; click one to open it in the letter viewer.
+- **Dates stay at the top of the chat while you scroll.** Each day starts
+  with a date label (Today, Yesterday, or the date); click it to open the
+  calendar and jump to another day.
+- **Your own nickname and avatar for each group are now archived.** Only those
+  two are kept; other profile details are not stored.
+- **Incoming calls for new voice messages.** Opening a member's chat whose
+  newest voice message you haven't heard rings like a phone call; answer to
+  play it, or decline and it rings again the next time you open the chat.
+  You can turn this off in Settings.
+- **Windows notifications for new messages.** Each chat with new messages
+  gets one notification with their photo and a preview; click it
+  to open the chat at that message. You can hide message content or turn
+  notifications off in Settings.
+
+### Changed
+- **Grey text is darker** and easier to read, also on grey backgrounds such as
+  the search footer and the background preview. Hinatazaka's unread covers now
+  use the official app colours.
+- **Arrows go older and newer.** In the photo, video and voice viewers and
+  galleries, left goes to the older item and right to the newer one, whichever
+  way the list is sorted. Images inside a blog post keep their reading order.
+- **One tidy translate icon.** Every message has the same small, neutral
+  translate icon at its bottom-right corner, next to the time. The Show text
+  button under a voice message is neutral too.
+- **Slim scrollbars.** Scrollbars are thin and rounded, and grow a little when
+  you point at them.
+- **The title bar matches the app on Windows 11** instead of the standard
+  window colour.
+- **Calmer colours.** The group colour now marks only where you are, what is
+  selected and the main action. Secondary buttons, counts and tool panels are
+  neutral.
+- **The side feature list shows icons only.** Hover an icon to see its name.
+- **Empty screens are friendlier.** An empty list now shows a soft circle, a
+  short title and a hint instead of grey text.
+- **Japanese text always uses Japanese letter shapes.** Member names,
+  messages and blog titles are shown with Japanese letter shapes whatever
+  language the app is in.
+- **Favourites (推) hearts are pink in every group.** The heart on a member
+  and the Favorite filter keep the same pink whichever group you are in.
+- **Starred messages use one yellow star in every group** instead of the
+  group colour.
+- **Yodel now uses its own periwinkle colours.** The old green came from one
+  member's page; Yodel screens now follow the Yodel logo colour.
+- **A cleaner main window.** The add, search and settings buttons on the left
+  now use SakaDesk's own soft colour, the feature list shares the group's
+  background with the member list, and chats and blogs sit on one rounded
+  page. The member list widens on large windows to
+  show four or five members per row.
+- **Chats are easier to read.** Messages sent in a row show the name, photo
+  and time only once (hover a message to see its time), and the chat title
+  shows the member's photo and how many days you have been subscribed.
+- **One consistent colour design per group.** Badges, buttons, member
+  names, links, dialogs and the voice player now follow each group's logo
+  colours, so every group looks equally clear. The official title bars,
+  sidebars and unread covers keep their official look.
+- **Hovering a group in the left rail shows its Japanese name** (乃木坂46,
+  櫻坂46, 日向坂46) instead of an internal id.
+- **The sidebar no longer re-reads your whole archive every two seconds**, and
+  it pauses while the window is minimized. Avatars load from your local
+  archive, so they also show offline.
+- **Logs no longer contain letter contents or signed image links**, so a
+  diagnostics report is safer to share.
+- **The sync screen says when it is scanning a chat's full history for the first
+  time**, and the member count no longer runs past its total.
+- **When the server is busy, a chat is retried on the next sync** instead of
+  looking empty or missing messages until then.
+- **Blogs match the new look.** The latest-posts grid, the reader and the
+  timeline beside it now use the same design as the chats, keeping each
+  group's soft background colours and each member's colours in the reader.
+  Posts read at a comfortable width with more space between lines, dates
+  follow your app language, and the older and newer posts float at the bottom.
+- **Dialogs, menus and the photo viewer match the new look.** Settings, search,
+  the date picker, favourites, the media and photo galleries, the member lists
+  for blogs, About and every other window now share one calm design and one
+  menu style; photos and videos still open in a dark full-screen viewer.
+  App windows such as Settings, search and About use SakaDesk's own colours
+  whichever group is open, while a chat's calendar, favourites, media and
+  background windows use that group's colours. The sync repair rows in
+  Settings say which group they act on.
+- **Confirmations appear inside the app.** Resetting settings, deleting the
+  blog backup, a deep re-sync and revealing all unread messages now ask in a
+  SakaDesk window instead of a browser pop-up, with Cancel selected first.
+- **The first-launch screens match the new look.** The terms, the group
+  picker, sign-in, the data folder setup and the sync progress now share the
+  app's calm design on SakaDesk's soft aurora, and each group's card, terms
+  link and sign-in show that group's own colours.
+  In a small window the terms now scroll instead of cutting off the Accept
+  button, and the settings error message appears in your language and can be
+  closed.
+### Fixed
+- **Videos no longer get stuck loading or freeze mid-play.** Opening many
+  videos or voice messages no longer blocks the next ones from loading. Players
+  now show a spinner while they wait for data, and a message with Retry if
+  playback fails. Videos, voice messages and sync progress also keep loading
+  during long sessions, instead of stalling for several minutes after the app
+  has been open a while.
+- **Voice and video durations always show** instead of sometimes reading
+  0:00 / 0:00.
+- **Opening Settings no longer slows the app down.** With a large blog
+  archive, the blog cache size and backup counts took up to 20 seconds to
+  appear and held up everything else meanwhile. The counts now appear in a
+  few seconds and the rest of the app stays responsive.
+- **Gallery photos no longer slide above the tabs** when you scroll.
+- **Member photos are sharper** in chats, member lists and the blog member
+  picker, and the selected member's ring stays clean.
+- **The avatar no longer shows a dark outline** after you close a profile.
+- **Favourites and member lists show placeholders while loading.** Video
+  favourites show a clear loading shimmer, and video and voice favourites load
+  as you scroll to them, so Favourites opens quickly.
+- **Diagnostics opens immediately.** Disk usage fills in once it has been
+  calculated, instead of the whole panel waiting for it on a large archive.
+- **Voice messages fit their bubble neatly.** The player follows the bubble's
+  corner, and the transcript joins the message without a step at the corners.
+- **Tabs and blog filters start at the top.** Switching media gallery tabs or
+  the blog feed's All / Favorite filter shows the new list from its start.
+- **Links in messages are easier to read.** They are darker and underline when
+  you point at them.
+- **The chat menu button stays visible on hover** on coloured chat headers.
+- **Cancel ends the whole first sync.** Pressing Cancel while SakaDesk
+  downloads your groups for the first time used to leave the first sync
+  hanging on the group it was running, so the other groups never started and
+  your blog backup choice was never saved. It now stops the sync, closes the
+  dialog, and still saves your blog backup choice.
+- **Yodel's location warning uses Yodel's colours** instead of those of the
+  screen behind it.
+- **The member count in the search filter is translated** into your app
+  language.
+- **Jumping to an old date is quick.** Picking a day in the chat calendar now
+  goes straight there instead of scrolling through every message in between,
+  then glides the last stretch into place and gently highlights the message you
+  land on. Jumps from search results, notifications and the media gallery glide
+  in and highlight the message the same way.
+- **The new-message count after a sync is now exact.** It used to include
+  messages that were already saved.
+- **A chat could stay frozen if its whole history was an exact multiple of 200
+  messages** and the member had posted nothing new. Sync now handles this case
+  and the chat updates again.
+- **Favoriting a message during a sync could lose the messages that sync had
+  just downloaded.** Both now take turns writing the file.
+- **One failed refresh no longer hides every unread badge** in the sidebar.
+- **An unread badge could never clear after a member withdrew a message**, and
+  withdrawn messages still counted in chat totals and showed up in search.
+  Badges and totals now leave them out, as the chat does, and search no longer
+  adds them; the one-time full re-read of each chat after updating also removes
+  the ones search already had.
+- **Installing an update from inside the app could just close SakaDesk and do
+  nothing**: the installer often gave up because SakaDesk hadn't finished
+  closing yet, so nothing was installed and the app didn't reopen. It now waits
+  for SakaDesk to close, installs the update, and reopens it.
+- **After an update, the diagnostics report could list an outdated component
+  version**, which made bug reports misleading. Leftover version information
+  from the previous install is now removed when updating.
+- **Some chats were missing many messages from members who were not in the room's
+  current lineup** — for example the official 日向坂46 room's 2021–2022 member posts,
+  earlier lineups of a single's live-event room, and announcements posted as the
+  room itself. After updating, the first sync re-reads each chat once and adds
+  them with their photos and videos. It goes slowly so the server doesn't refuse
+  it, so it can take a while; if the server still asks it to slow down, the
+  remaining chats are read on the next sync.
+- **Retry on the blog screens works.** After a failed load, Retry now reloads
+  the latest posts, or the post you were reading, instead of leaving an empty
+  page or sending you back to the list.
+- **The arrow keys no longer switch blog posts by accident.** Left and right
+  now leave the post alone while you type in a text field, use a blog dialog
+  or the photo viewer.
+- **Closing one window no longer closes the one behind it.** Escape now
+  closes only the top window (for example the date picker over the media
+  gallery), and every window keeps the keyboard inside it and puts you back
+  where you were when it closes.
+- **Settings that fail to save now say so.** If a setting cannot be saved, a
+  message appears under it and an error notice shows above the Settings
+  window, instead of the change seeming to work.
+- **Adding a group could start its first sync twice.** It now starts once.
+- **Settings could reset after closing the window.** If the settings file
+  could not be read at that moment, for example while antivirus was scanning
+  it, saving the window size replaced it and the next launch started setup
+  again. The file is now left untouched.
+- **Read progress could be lost after a slow start.** If saved chat state
+  failed to load when SakaDesk started, reading a message could overwrite
+  earlier progress. SakaDesk now retries the load and does not save read
+  progress until it has loaded.
 ## [0.3.4] - 2026-11-03
 
 ### Changed
@@ -393,7 +617,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting on sensitive endpoints
 - Input validation and sanitization
 
-[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.3.4...HEAD
+[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/xebjhm/SakaDesk/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/xebjhm/SakaDesk/compare/v0.3.3...v0.3.4
 [0.3.3]: https://github.com/xebjhm/SakaDesk/compare/v0.3.2...v0.3.3
 [0.3.2]: https://github.com/xebjhm/SakaDesk/compare/v0.3.1...v0.3.2

@@ -40,6 +40,16 @@ describe('App Integration Tests', () => {
     })
   })
 
+  it('installs window.__sakadeskOpenChat on mount and removes it on unmount', async () => {
+    const { unmount } = renderApp()
+
+    await waitFor(() => {
+      expect(typeof window.__sakadeskOpenChat).toBe('function')
+    })
+    unmount()
+    expect(window.__sakadeskOpenChat).toBeUndefined()
+  })
+
   it('should show welcome message when no conversation selected', async () => {
     renderApp()
 
@@ -97,5 +107,12 @@ describe('App Integration Tests', () => {
       const header = screen.getByRole('banner')
       expect(within(header).getByText('Test Member')).toBeInTheDocument()
     })
+  })
+
+  it('shows the no-conversation screen as the empty-state pattern (R-d, pending decision D6)', async () => {
+    renderApp()
+    const title = await screen.findByRole('heading', { name: 'Welcome to SakaDesk' })
+    expect(title).toHaveClass('font-display')
+    expect(title.parentElement?.querySelector('[data-testid="empty-state-circle"]')).not.toBeNull()
   })
 })

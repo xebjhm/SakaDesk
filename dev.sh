@@ -22,7 +22,10 @@ port_in_use() {
 start_backend() {
     echo "Starting backend on port $BACKEND_PORT..."
     cd "$SCRIPT_DIR"
-    nohup uv run uvicorn backend.main:app --port $BACKEND_PORT --reload > "$BACKEND_LOG" 2>&1 &
+    # Keep-alive must match KEEP_ALIVE_TIMEOUT_S in desktop.py (outlast the
+    # browser's 300 s idle sockets so the server never closes a reused one).
+    nohup uv run uvicorn backend.main:app --port $BACKEND_PORT --reload \
+        --timeout-keep-alive 600 > "$BACKEND_LOG" 2>&1 &
     echo $! > /tmp/sakadesk-backend.pid
     sleep 2
     if curl -s "http://localhost:$BACKEND_PORT/health" > /dev/null 2>&1; then

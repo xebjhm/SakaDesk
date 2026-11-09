@@ -16,6 +16,7 @@ A desktop GUI application for browsing, synchronizing, and backing up content fr
 - **Unread message management** with read state persistence
 - **Virtual scrolling** for efficient display of 10k+ messages
 - **Voice message playback** for audio content
+- **Incoming calls** — an unheard voice message rings like a phone call in the chat, or in a small bottom-right window while the app is in the background
 - **Favorites and sent letters** management
 - **Calendar navigation** for browsing messages by date
 - **Notifications** panel for service alerts
@@ -87,7 +88,7 @@ uv run python desktop.py
 
 Terminal 1 - Backend:
 ```bash
-uv run uvicorn backend.main:app --port 8000 --reload --reload-exclude "output/*" --reload-exclude "auth_data/*"
+uv run uvicorn backend.main:app --port 8000 --reload --reload-exclude "output/*" --reload-exclude "auth_data/*" --timeout-keep-alive 600
 ```
 
 Terminal 2 - Frontend:
@@ -139,6 +140,7 @@ SakaDesk/
 │   ├── api/                 # API route handlers
 │   │   ├── auth.py          # Authentication endpoints
 │   │   ├── blogs.py         # Blog browsing/backup
+│   │   ├── call_popup.py    # Background call popup API
 │   │   ├── chat_features.py # Letters, calendar, etc.
 │   │   ├── content.py       # Message/group content
 │   │   ├── diagnostics.py   # Debug utilities
@@ -156,9 +158,11 @@ SakaDesk/
 │       ├── adaptive_sync.py # Adaptive sync scheduling
 │       ├── auth_service.py  # Authentication logic
 │       ├── blog_service.py  # Blog backup engine
-│       ├── notification_service.py # Notification handling
+│       ├── call_popup.py    # Call popup decisions and controller
+│       ├── notification_service.py # Native Windows toast delivery
 │       ├── path_resolver.py # Data path resolution
 │       ├── platform.py      # Cross-platform utilities
+│       ├── quiet_state.py   # Fullscreen / Focus Assist detection
 │       ├── search_service.py # Search index & query
 │       ├── service_utils.py # Shared service helpers
 │       ├── settings_store.py # Persistent settings
@@ -185,6 +189,8 @@ SakaDesk/
 ├── scripts/                 # Development/CI scripts
 │   ├── verify_build.py      # Build verification
 │   └── build_windows.bat    # Windows build script
+├── call_popup_window.py     # Bottom-right call popup window (Windows)
+├── window_chrome.py         # Windows 11 title bar colours (DWM)
 ├── desktop.py               # Desktop app entry point
 └── pyproject.toml           # Python project configuration
 ```
@@ -214,7 +220,8 @@ When running the backend, interactive API documentation is available at:
 - **python-multipart** + **aiofiles** - File upload and async file I/O
 - **keyring** + **keyrings-alt** - Secure credential storage
 - **structlog** - Structured logging
-- **plyer** - Native desktop notifications
+- **windows-toasts** - Native Windows toast notifications (Windows only)
+- **pywin32** - Start Menu shortcut / app identity so toasts show as banners (Windows only)
 - **pykakasi** + **jaconv** - Japanese transliteration for search
 - **tk** - Tkinter for native file dialogs
 

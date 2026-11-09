@@ -2,12 +2,19 @@
 
 from typing import Any
 
-from fastapi import APIRouter, Body
+import structlog
+from fastapi import APIRouter, Body, HTTPException
 from pydantic import BaseModel
 
 from backend.services import app_state
+from backend.services.tray_tooltip import schedule_refresh_debounced
+from backend.services.unread_summary import READ_STATE_KEY_PREFIX
 
 router = APIRouter()
+logger = structlog.get_logger(__name__)
+
+MAX_TRANSLATION_KEYS = 100
+"""Most distinct cache keys one ``GET /translations`` lookup may request."""
 
 
 # Handlers await the a* wrappers so the blocking SQLite work runs off the event
@@ -33,6 +40,10 @@ async def patch_conversation(
     path: str, patch: dict[str, Any] = Body(...)
 ) -> dict[str, bool]:
     await app_state.aset_conversation(path, patch)
+    if path.startswith(READ_STATE_KEY_PREFIX):
+        # The sidebar's read state changed; the tray tooltip's unread total is
+        # computed from these rows, so refresh it (bursts coalesce).
+        schedule_refresh_debounced()
     return {"ok": True}
 
 
@@ -43,7 +54,24 @@ async def get_all_conversations() -> dict[str, Any]:
 
 @router.get("/translations")
 async def get_translations(keys: str = "") -> dict[str, str]:
-    wanted = [k for k in keys.split(",") if k]
+    """Look up cached translations for a comma-separated list of ``keys``.
+
+    Several keys per call let the UI batch the lookups of all visible bubbles.
+    Duplicates and empty entries are ignored; more than
+    ``MAX_TRANSLATION_KEYS`` distinct keys answers 422. Unknown keys are simply
+    absent from the result.
+    """
+    wanted = list(dict.fromkeys(k for k in keys.split(",") if k))
+    if len(wanted) > MAX_TRANSLATION_KEYS:
+        logger.warning(
+            "translations_lookup_rejected",
+            count=len(wanted),
+            max=MAX_TRANSLATION_KEYS,
+        )
+        raise HTTPException(
+            status_code=422,
+            detail=f"At most {MAX_TRANSLATION_KEYS} keys per request",
+        )
     return await app_state.aget_translations(wanted)
 
 

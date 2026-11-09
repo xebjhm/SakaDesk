@@ -1,25 +1,36 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
-import { Loader2 } from 'lucide-react'
+import { AlertCircle, Loader2, X } from 'lucide-react'
+import { Button, IconButton } from '../design/primitives'
+import { useTranslation } from '../i18n'
 import { DiagnosticsModal, ReportIssueModal, AboutModal } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
 import { MessagesFeature } from '../features/messages'
 import { useAppStore } from '../store/appStore'
 import type { FeatureId } from '../store/appStore'
-import { applyThemeToDocument, serviceIdToGroupId } from '../config/colors'
+import { serviceIdToGroupId } from '../config/colors'
+import { applyGroupTokens } from '../design/applyTokens'
+import type { GroupId } from '../design/tokens'
+import { Z_INDEX } from '../constants/zIndex'
 import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
 import { persisted } from '../core/persistence/persisted'
-import i18n from '../i18n'
+import { applyStartupLanguage } from './language'
+import { openChatFromToast } from './openChat'
+import { markVoiceHeard } from './markVoiceHeard'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
+import { useBackendSyncWatcher } from './hooks/useBackendSyncWatcher'
 import { useSettings } from './hooks/useSettings'
-import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog } from './components'
+import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, EntryBackdrop, FirstSyncToast } from './components'
+import { BrandScope } from '../design/brandScope'
+import { celebrateFirstSync } from './firstSyncCelebration'
 
 function App() {
+    const { t } = useTranslation()
     const {
         activeService,
         setActiveService,
@@ -40,21 +51,14 @@ function App() {
         checkAuth,
     } = useAuth();
 
-    // Apply theme CSS variables when activeService changes
-    useEffect(() => {
-        if (activeService) {
-            const groupId = serviceIdToGroupId(activeService);
-            applyThemeToDocument(groupId);
-        }
-    }, [activeService]);
-
     // Settings hook
     const {
         appSettings,
         setAppSettings,
         outputDirInput,
         setOutputDirInput,
-        settingsError,
+        settingsErrorKey,
+        clearSettingsError,
         showSettingsModal,
         setShowSettingsModal,
         showSetupWizard,
@@ -81,6 +85,9 @@ function App() {
         hasStartedSyncRef,
         sessionExpiredService,
         clearSessionExpired,
+        isPolling,
+        followSync,
+        lastHandledRunId,
     } = useSync({
         isAuthenticated,
         appSettings,
@@ -112,6 +119,15 @@ function App() {
         },
         markServiceDisconnected,
     });
+
+    // Follow syncs the backend scheduler / tray started on its own, including ones
+    // that finished (or failed) while nobody was watching.
+    useBackendSyncWatcher({
+        services: isAuthenticated ? connectedServices : [],
+        isPolling,
+        follow: followSync,
+        lastHandledRunId,
+    })
 
     // Track active feature per service for disconnected-service detection
     const activeFeatures = useAppStore(s => s.activeFeatures);
@@ -159,6 +175,8 @@ function App() {
     const [showReportModal, setShowReportModal] = useState(false);
     const [crashError, setCrashError] = useState<string | undefined>();
     const [showAboutModal, setShowAboutModal] = useState(false);
+    const [showFirstSyncToast, setShowFirstSyncToast] = useState(false);
+    const hideFirstSyncToast = useCallback(() => setShowFirstSyncToast(false), []);
 
     // Search modal
     const searchModalRef = useRef<SearchModalHandle>(null);
@@ -170,9 +188,23 @@ function App() {
         return persisted.getPref('tos_accepted_at', null) !== null;
     });
 
+    // Group design tokens on the document: the active group's once ToS is accepted and a group is
+    // chosen, the `default` group before that. Its accent roles equal the brand; the entry screens
+    // set brand scope on themselves (R-d), so no screen reads its group roles.
+    const tokenGroup: GroupId = tosAccepted && selectedServices.length > 0 && activeService
+        ? serviceIdToGroupId(activeService)
+        : 'default';
+    useEffect(() => {
+        applyGroupTokens(tokenGroup);
+    }, [tokenGroup]);
+
     // Backend-backed prefs hydration — loads the app-state prefs cache before
     // the gated UI renders. Swallows fetch errors internally (see persisted.ts),
-    // so this can never block/break startup even if the endpoint is unavailable.
+    // so this can never break startup even if the endpoint is unavailable; a
+    // failing conversation-cache load retries with backoff first, delaying the
+    // first render by at most the sum of CONV_HYDRATE_RETRY_DELAYS_MS plus the
+    // request times. The conversation cache is therefore loaded (or known
+    // failed) before any chat can save read progress.
     const [prefsHydrated, setPrefsHydrated] = useState(false);
     useEffect(() => {
         persisted.hydratePrefs()
@@ -187,24 +219,10 @@ function App() {
                 // be bounced back to the ToS gate on every launch.
                 setTosAccepted(persisted.getPref('tos_accepted_at', null) !== null);
             })
-            .then(async () => {
-                // Apply language now that hydration + migration have run, so the
-                // first gated render is in the right language. This is the SINGLE
-                // ordered decision for language (i18n/index.ts no longer applies
-                // /api/settings itself, avoiding a startup race between the two):
-                // 1) explicit persisted user choice, 2) installer/settings.json
-                // language, 3) browser-detected default (already applied by
-                // i18n/index.ts's synchronous init, so no action needed for #3).
-                const lang = persisted.getPref<string | null>('language', null);
-                if (lang) {
-                    await i18n.changeLanguage(lang);
-                } else {
-                    try {
-                        const s = await (await fetch('/api/settings')).json();
-                        if (s?.language) await i18n.changeLanguage(s.language);
-                    } catch { /* keep browser-detected default */ }
-                }
-            })
+            // Apply language now that hydration + migration have run, so the first
+            // gated render is in the right language (the single ordered decision lives
+            // in language.ts).
+            .then(() => applyStartupLanguage())
             .then(() =>
                 // Load the app-state bundle (selected services, favorites, etc.)
                 // from the backend now that the prefs cache is hydrated. Storage
@@ -233,6 +251,18 @@ function App() {
         };
     }, []);
 
+    // Desktop toast click: the pywebview host calls window.__sakadeskOpenChat(target).
+    useEffect(() => {
+        window.__sakadeskOpenChat = openChatFromToast;
+        return () => { delete window.__sakadeskOpenChat; };
+    }, []);
+
+    // Desktop popup answered a voice: the main window (sole writer) marks it heard.
+    useEffect(() => {
+        window.__sakadeskMarkVoiceHeard = markVoiceHeard;
+        return () => { delete window.__sakadeskMarkVoiceHeard; };
+    }, []);
+
     // === RENDER ===
 
     // Show loading while auth check is in progress or prefs are hydrating.
@@ -241,12 +271,23 @@ function App() {
     // the backend, not the empty mount-time cache). Gating on ToS before
     // hydration would bounce those users back into the dialog.
     if (!authCheckComplete || !prefsHydrated) {
-        return <div className="h-screen flex items-center justify-center bg-[#F0F2F5]"><Loader2 className="animate-spin text-blue-500" /></div>;
+        return (
+            <BrandScope className="flex h-screen items-center justify-center bg-window">
+                <span data-testid="boot-screen" role="status" aria-label={t('common.loading')}>
+                    <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-accent motion-reduce:animate-none" />
+                </span>
+            </BrandScope>
+        );
     }
 
     // Show ToS dialog on first launch (blocks all other content until accepted)
     if (!tosAccepted) {
-        return <TosDialog onAccept={() => setTosAccepted(true)} />;
+        return (
+            <>
+                <EntryBackdrop />
+                <TosDialog onAccept={() => setTosAccepted(true)} />
+            </>
+        );
     }
 
     // Show LandingPage if no services selected (new user or all services removed)
@@ -287,10 +328,14 @@ function App() {
                     ? connectedServices
                     : [];
                 if (servicesToSync.length > 0) {
-                    await startSequentialSync(servicesToSync);
+                    const outcome = await startSequentialSync(servicesToSync);
+                    // Tier-B celebration of the first complete sync (spec §9, decision D11).
+                    if (celebrateFirstSync(outcome)) setShowFirstSyncToast(true);
                 }
                 // Now save blogs_full_backup — the useSettings hook will
-                // auto-start blog backup via /api/blogs/backup/start.
+                // auto-start blog backup via /api/blogs/backup/start. Saved after a
+                // cancelled sync too: Cancel stops the message sync, it does not undo
+                // the blog backup the user chose in the wizard.
                 if (setupBlogFullBackup) {
                     await saveSettings({ blogs_full_backup: true });
                 }
@@ -303,9 +348,11 @@ function App() {
     const isOnboarding = loginCarousel !== null || showSetupWizard;
 
     return (
-        <div className="flex flex-col h-screen bg-[#F0F2F5] font-sans overflow-hidden">
+        <div className="flex h-screen flex-col overflow-hidden bg-window font-sans">
 
             <div className="flex flex-1 overflow-hidden">
+                {/* First launch (login carousel, setup, first sync) and blocking syncs: the brand orbs behind the dialogs (spec §9). The layout is hidden meanwhile. */}
+                {(isOnboarding || showSyncModal) && <EntryBackdrop />}
                 {/* Sync Modal — pass sequentialSyncInfo for multi-service progress */}
                 {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} onCancel={() => cancelSync()} />}
 
@@ -357,24 +404,32 @@ function App() {
                     crashError={crashError}
                 />
 
-                {/* ERROR TOAST */}
-                {settingsError && (
-                    <div className="fixed bottom-4 right-4 bg-red-50 border border-red-200 text-red-800 px-4 py-3 rounded-xl shadow-lg flex items-center gap-3 z-50">
-                        <div className="bg-red-100 p-2 rounded-full">
-                            <Loader2 className="w-4 h-4 text-red-600" />
+                {/* ERROR TOAST: a status card on the toast layer, so it shows over an open Settings dialog. */}
+                {settingsErrorKey && (
+                    <div
+                        data-testid="settings-error-toast"
+                        role="alert"
+                        style={{ zIndex: Z_INDEX.TOAST }}
+                        className="fixed bottom-4 right-4 flex max-w-sm items-center gap-3 rounded-card bg-card p-4 shadow-card animate-reveal motion-reduce:animate-none"
+                    >
+                        <AlertCircle aria-hidden="true" className="h-5 w-5 shrink-0 text-status-danger" />
+                        <div className="min-w-0 flex-1">
+                            <p className="text-small font-semibold text-primary">{t('common.error')}</p>
+                            <p className="text-caption text-secondary">{t(settingsErrorKey)}</p>
                         </div>
-                        <div>
-                            <p className="font-semibold text-sm">Error</p>
-                            <p className="text-xs opacity-90">{settingsError}</p>
-                        </div>
-                        <button
-                            onClick={() => setShowDiagnostics(true)}
-                            className="ml-2 bg-white/50 hover:bg-white text-red-700 p-1.5 rounded-lg transition-colors text-xs font-medium"
-                        >
-                            Debug
-                        </button>
+                        <Button variant="ghost" size="sm" onClick={() => setShowDiagnostics(true)}>
+                            {t('common.debug')}
+                        </Button>
+                        <IconButton
+                            size="sm"
+                            variant="ghost"
+                            aria-label={t('common.close')}
+                            icon={<X />}
+                            onClick={clearSettingsError}
+                        />
                     </div>
                 )}
+                {showFirstSyncToast && <FirstSyncToast onDone={hideFirstSyncToast} />}
 
                 {/* Settings Modal */}
                 {showSettingsModal && appSettings && (

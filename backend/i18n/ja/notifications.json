@@ -1,0 +1,10 @@
+{
+  "sent_photo": "写真を送信しました",
+  "sent_video": "動画を送信しました",
+  "sent_voice": "ボイスを送信しました",
+  "sent_message": "メッセージを送信しました",
+  "hidden_body": "新しいメッセージがあります",
+  "more": "ほか{n}件",
+  "test_title": "SakaDesk",
+  "test_body": "通知は正常に動作しています"
+}

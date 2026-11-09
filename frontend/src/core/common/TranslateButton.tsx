@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2, Globe, ChevronDown, ChevronRight } from 'lucide-react';
+import { Loader2, Languages, Globe, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 
 interface TranslateButtonProps {
@@ -7,7 +7,6 @@ interface TranslateButtonProps {
     onClick: () => void;
     /** Error message to display when state is 'error' */
     error?: string | null;
-    accentColor?: string;
     /** 'light' for dark backgrounds, 'dark' for light backgrounds (default) */
     variant?: 'light' | 'dark';
     /**
@@ -22,6 +21,11 @@ interface TranslateButtonProps {
      */
     onToggleExpanded?: () => void;
     expanded?: boolean;
+    /**
+     * Render only the "文A" language icon (chat bubbles); the label becomes the
+     * accessible name and tooltip. Without it the button keeps its text label (blog reader).
+     */
+    iconOnly?: boolean;
 }
 
 /**
@@ -32,22 +36,23 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
     state,
     onClick,
     error,
-    accentColor = '#6da0d4',
     variant = 'dark',
     doneLabel,
     onToggleExpanded,
     expanded = false,
+    iconOnly = false,
 }) => {
     const { t } = useTranslation();
+    const errorId = React.useId();
     const isLight = variant === 'light';
 
     if (state === 'done') {
         if (!doneLabel) return null;
-        const pillStyle = {
-            borderColor: isLight ? 'rgba(255,255,255,0.15)' : `${accentColor}40`,
-            color: isLight ? 'rgba(255,255,255,0.6)' : '#6b7280',
-            background: isLight ? 'rgba(255,255,255,0.06)' : `${accentColor}08`,
-        };
+        // Dark variant is neutral (owner decision 2026-11-08): no group accent.
+        const pillStyle = isLight
+            ? { borderColor: 'rgba(255,255,255,0.15)', color: 'rgba(255,255,255,0.6)', background: 'rgba(255,255,255,0.06)' }
+            : undefined;
+        const pillTone = isLight ? '' : 'border-subtle text-secondary';
         if (onToggleExpanded) {
             const Chevron = expanded ? ChevronDown : ChevronRight;
             return (
@@ -55,7 +60,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
                     type="button"
                     onClick={(e) => { e.stopPropagation(); onToggleExpanded(); }}
                     aria-expanded={expanded}
-                    className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors hover:opacity-80"
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors hover:opacity-80 ${pillTone}`}
                     style={pillStyle}
                 >
                     <Chevron className="w-3 h-3" />
@@ -65,7 +70,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
         }
         return (
             <span
-                className="inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border"
+                className={`inline-flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border ${pillTone}`}
                 style={pillStyle}
             >
                 {doneLabel}
@@ -75,12 +80,43 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
 
     const isLoading = state === 'loading';
     const isError = state === 'error';
-    const palette = buttonPalette(isError, isLight, accentColor);
+    const neutral = !isError && !isLight;
+    const palette = neutral ? undefined : buttonPalette(isError, isLight);
     const label = isLoading
         ? t('translation.translating')
         : isError
             ? t('translation.error.failed')
             : t('translation.translate');
+
+    if (iconOnly) {
+        return (
+            <div>
+                <button
+                    type="button"
+                    onClick={(e) => {
+                        e.stopPropagation();
+                        if (!isLoading) onClick();
+                    }}
+                    disabled={isLoading}
+                    aria-label={label}
+                    aria-describedby={isError && error ? errorId : undefined}
+                    title={isError && error ? `${label}: ${error}` : label}
+                    className={`flex h-6 w-6 items-center justify-center rounded-full transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-wait ${
+                        isError ? 'text-semantic-danger hover:opacity-80' : 'text-secondary hover:text-primary'
+                    }`}
+                >
+                    {isLoading
+                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        : isError
+                            ? <AlertCircle className="h-4 w-4" />
+                            : <Languages className="h-4 w-4" />
+                    }
+                </button>
+                {/* Screen-reader-only: in-flow text would widen the shrink-0 trailing column */}
+                {isError && error && <span id={errorId} className="sr-only">{error}</span>}
+            </div>
+        );
+    }
 
     return (
         <div>
@@ -90,8 +126,10 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
                     if (!isLoading) onClick();
                 }}
                 disabled={isLoading}
-                className="flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors hover:opacity-80 disabled:cursor-wait"
-                style={{
+                className={`flex items-center gap-1 px-2 py-0.5 text-xs rounded-full border transition-colors disabled:cursor-wait ${
+                    neutral ? 'border-subtle text-secondary hover:text-primary' : 'hover:opacity-80'
+                }`}
+                style={palette && {
                     borderColor: palette.border,
                     color: palette.text,
                     background: palette.background,
@@ -115,13 +153,12 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
     );
 };
 
-function buttonPalette(isError: boolean, isLight: boolean, accentColor: string) {
+/** Inline palette for the error state and the light variant; the dark idle/loading look is neutral classes. */
+function buttonPalette(isError: boolean, isLight: boolean) {
     if (isError) {
         return isLight
             ? { border: 'rgba(239,68,68,0.3)', text: '#fca5a5', background: 'rgba(239,68,68,0.08)' }
             : { border: '#fca5a540',            text: '#ef4444', background: '#fef2f208' };
     }
-    return isLight
-        ? { border: 'rgba(255,255,255,0.15)', text: 'rgba(255,255,255,0.7)', background: 'rgba(255,255,255,0.06)' }
-        : { border: `${accentColor}40`,        text: accentColor,            background: `${accentColor}08` };
+    return { border: 'rgba(255,255,255,0.15)', text: 'rgba(255,255,255,0.7)', background: 'rgba(255,255,255,0.06)' };
 }

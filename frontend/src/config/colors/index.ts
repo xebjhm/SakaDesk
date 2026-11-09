@@ -18,12 +18,10 @@ export {
     type SemanticColors,
 } from './semantic';
 
-// CSS variable utilities
+// CSS variable utilities (legacy; design/applyTokens.ts writes them now)
 export {
     CSS_VAR_NAMES,
     generateThemeCSSVariables,
-    applyThemeToDocument,
-    clearThemeFromDocument,
     serviceIdToGroupId,
     isGroupId,
 } from './css-variables';

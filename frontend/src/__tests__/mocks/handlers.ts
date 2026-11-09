@@ -34,6 +34,9 @@ const TEST_MESSAGES = [
 
 export const handlers = [
   // Auth status - always authenticated for integration tests (multi-service format)
+  http.get('/api/archive/stats', () => {
+    return HttpResponse.json({ messages: 0, photos: 0, first_message_at: null })
+  }),
   http.get('/api/auth/status', () => {
     return HttpResponse.json({
       services: {
@@ -157,6 +160,24 @@ export const handlers = [
     return HttpResponse.json({ success: true })
   }),
 
+  // UI breadcrumbs (fire-and-forget)
+  http.post('/api/client-log', () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  // Call popup ownership (main-window check)
+  http.get('/api/call-popup/active', () => {
+    return HttpResponse.json({ active: false })
+  }),
+
+  // Call popup page (default: the backend no longer knows the call; events accepted)
+  http.get('/api/call-popup/calls/:id', () => {
+    return new HttpResponse(null, { status: 404 })
+  }),
+  http.post('/api/call-popup/calls/:id/events', () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
+
   // Blog cache size
   http.get('/api/blogs/cache-size', () => {
     return HttpResponse.json({ size_bytes: 0 })
@@ -180,4 +201,21 @@ export const handlers = [
       upgrade_supported: false,
     })
   }),
+
+  // Focused-chat reporting (fire-and-forget)
+  http.post('/api/ui-state', () => {
+    return new HttpResponse(null, { status: 204 })
+  }),
+
+  // Backend app-state store (empty store, already migrated). Answered so the
+  // startup conversation-cache load succeeds instead of retrying with backoff.
+  http.get('/api/app-state/prefs', () => HttpResponse.json({})),
+  http.patch('/api/app-state/prefs', () => new HttpResponse(null, { status: 204 })),
+  http.get('/api/app-state/conversation-all', () => HttpResponse.json({})),
+  http.get('/api/app-state/conversation', () => HttpResponse.json({})),
+  http.patch('/api/app-state/conversation', () => new HttpResponse(null, { status: 204 })),
+  http.get('/api/app-state/migrate', () => HttpResponse.json({ migrated: true })),
+
+  // Read-state search copy (fire-and-forget)
+  http.put('/api/read-states', () => new HttpResponse(null, { status: 204 })),
 ]

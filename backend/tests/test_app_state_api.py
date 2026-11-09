@@ -1,4 +1,7 @@
 # backend/tests/test_app_state_api.py
+from structlog.testing import capture_logs
+
+from backend.api.app_state import MAX_TRANSLATION_KEYS
 from backend.services import app_state
 
 
@@ -42,3 +45,38 @@ def test_conversation_all_endpoint(client, tmp_path):
     got = client.get("/api/app-state/conversation-all").json()
     assert got["a/1"] == {"read_up_to": 9}
     assert got["b/2"] == {"scroll_msg_id": 3}
+
+
+def test_translations_batch_lookup_returns_only_known_keys(client, tmp_path):
+    app_state.set_db_path(tmp_path / "app_state.db")
+    app_state.init_db()
+    client.patch("/api/app-state/translations", json={"a:1": "x", "a:2": "y"})
+    got = client.get("/api/app-state/translations?keys=a:1,a:2,a:3,a:1,,").json()
+    assert got == {"a:1": "x", "a:2": "y"}
+
+
+def test_translations_batch_accepts_exactly_max_keys(client, tmp_path):
+    app_state.set_db_path(tmp_path / "app_state.db")
+    app_state.init_db()
+    keys = ",".join(f"k:{i}" for i in range(MAX_TRANSLATION_KEYS))
+    assert client.get(f"/api/app-state/translations?keys={keys}").json() == {}
+
+
+def test_translations_batch_over_max_is_rejected_and_logged(client, tmp_path):
+    app_state.set_db_path(tmp_path / "app_state.db")
+    app_state.init_db()
+    keys = ",".join(f"k:{i}" for i in range(MAX_TRANSLATION_KEYS + 1))
+    with capture_logs() as logs:
+        resp = client.get(f"/api/app-state/translations?keys={keys}")
+    assert resp.status_code == 422
+    [entry] = [e for e in logs if e["event"] == "translations_lookup_rejected"]
+    assert entry["log_level"] == "warning"
+    assert entry["count"] == MAX_TRANSLATION_KEYS + 1
+    assert "k:0" not in str(entry)
+
+
+def test_translations_batch_duplicates_do_not_count_toward_max(client, tmp_path):
+    app_state.set_db_path(tmp_path / "app_state.db")
+    app_state.init_db()
+    keys = ",".join(["k:1"] * (MAX_TRANSLATION_KEYS * 2))
+    assert client.get(f"/api/app-state/translations?keys={keys}").status_code == 200

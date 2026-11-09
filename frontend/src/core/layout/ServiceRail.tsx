@@ -4,11 +4,13 @@ import { Plus, Unplug, Search } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
-import { SERVICES, getServiceShortCode, getServiceLogoUrl, getServicePrimaryColor } from '../../data/services';
+import { SERVICES, getServiceShortCode, getServiceLogoUrl, getServiceDisplayName } from '../../data/services';
 import { AddServiceModal } from './AddServiceModal';
 import { UpgradeIcon } from './UpgradeIcon';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { useTranslation } from '../../i18n';
+import { IconButton, Menu, MenuItem } from '../../design/primitives';
+import { BrandScope } from '../../design/brandScope';
 
 export interface ServiceRailProps {
     services: string[];
@@ -116,15 +118,15 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
     }, [dragIndex, services, getServiceOrder, setServiceOrder, handleDragEnd]);
 
     return (
-        <div
-            className="w-16 bg-gray-50 h-full flex flex-col items-center py-3 shrink-0 border-r border-gray-200"
+        <nav
+            aria-label={t('serviceRail.label')}
+            className="flex h-full w-16 shrink-0 flex-col items-center bg-elevated py-3"
             onClick={() => setContextMenu(null)}
         >
             {/* Service buttons */}
             <div className="flex flex-col items-center gap-3 flex-1">
                 {services.map((service, index) => {
                     const isActive = activeService === service;
-                    const primaryColor = getServicePrimaryColor(service);
                     const showDropBefore = dropIndex === index && dragIndex !== null && dragIndex > index;
                     const showDropAfter = dropIndex === index && dragIndex !== null && dragIndex < index;
 
@@ -140,28 +142,29 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                         >
                             {/* Drop indicator — before */}
                             {showDropBefore && (
-                                <div className="absolute -top-2 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-blue-400" />
+                                <div className="absolute -top-2 left-1/2 w-8 -translate-x-1/2 border-t-2 border-strong" />
                             )}
 
                             <button
                                 onClick={() => setActiveService(service)}
                                 onContextMenu={(e) => handleContextMenu(e, service)}
-                                className="group relative flex items-center justify-center transition-all duration-200"
-                                title={service}
+                                className="group relative flex items-center justify-center rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                title={getServiceDisplayName(service)}
+                                aria-label={getServiceDisplayName(service)}
+                                aria-current={isActive ? 'page' : undefined}
                             >
                                 {/* Service Icon Container */}
                                 <div
                                     className={cn(
-                                        "w-11 h-11 rounded-full bg-white flex items-center justify-center overflow-hidden transition-all duration-200",
-                                        "shadow-sm hover:shadow-md hover:scale-105",
-                                        isActive ? "ring-[2.5px] ring-offset-1" : "ring-1 ring-gray-200"
+                                        'flex h-11 w-11 items-center justify-center overflow-hidden rounded-pill bg-card',
+                                        'transition duration-fast ease-standard hover:scale-105',
+                                        isActive ? 'ring-2 ring-group-logo ring-offset-2 shadow-accent-halo' : 'shadow-pill hover:shadow-card',
                                     )}
-                                    style={isActive ? { '--tw-ring-color': primaryColor } as React.CSSProperties : undefined}
                                 >
                                     {getServiceLogoUrl(service) ? (
                                         <img
                                             src={getServiceLogoUrl(service)}
-                                            alt={service}
+                                            alt={getServiceDisplayName(service)}
                                             className="w-8 h-8 object-contain"
                                             draggable={false}
                                             onError={(e) => {
@@ -172,7 +175,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                         />
                                     ) : null}
                                     <span className={cn(
-                                        "text-gray-600 font-semibold text-sm",
+                                        'text-small font-semibold text-secondary',
                                         getServiceLogoUrl(service) ? "hidden" : ""
                                     )}>
                                         {getServiceShortCode(service)}
@@ -182,17 +185,17 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                 {/* Disconnected Warning Badge */}
                                 {isServiceDisconnected(service) && (
                                     <div
-                                        className="absolute -bottom-0.5 -right-0.5 w-4 h-4 bg-orange-500 rounded-full border-2 border-gray-50 flex items-center justify-center"
+                                        className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-pill border-2 border-surface bg-status-attention"
                                         title={t('serviceRail.sessionExpiredRelogin')}
                                     >
-                                        <Unplug className="w-2.5 h-2.5 text-white" />
+                                        <Unplug className="h-2.5 w-2.5 text-inverse" />
                                     </div>
                                 )}
                             </button>
 
                             {/* Drop indicator — after */}
                             {showDropAfter && (
-                                <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 w-8 h-0.5 rounded-full bg-blue-400" />
+                                <div className="absolute -bottom-2 left-1/2 w-8 -translate-x-1/2 border-t-2 border-strong" />
                             )}
                         </div>
                     );
@@ -201,51 +204,39 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
 
             {/* Context Menu for removing service */}
             {contextMenu && (
-                <div
-                    className="fixed bg-white rounded-lg shadow-xl py-1 z-50 min-w-[140px] border border-gray-200"
-                    style={{ left: contextMenu.x, top: contextMenu.y }}
-                    onClick={(e) => e.stopPropagation()}
-                >
-                    <button
-                        onClick={handleRemoveService}
-                        className="w-full px-3 py-2 text-left text-sm text-red-500 hover:bg-red-50 transition-colors"
-                    >
-                        {t('common.removeService')}
-                    </button>
-                </div>
+                <Menu aria-label={t('common.removeService')} onClose={() => setContextMenu(null)} point={{ x: contextMenu.x, y: contextMenu.y }} estimatedSize={{ width: 176, height: 48 }}>
+                    <MenuItem destructive onClick={handleRemoveService}>{t('common.removeService')}</MenuItem>
+                </Menu>
             )}
 
-            {/* Separator line */}
-            <div className="w-8 h-px bg-gray-300 my-2" />
-
-            {/* Bottom actions */}
-            <div className="flex flex-col items-center gap-2">
+            {/* Bottom actions: brand context (spec §4: the rail frame's icons use the brand ink) */}
+            <BrandScope className="mt-4 flex flex-col items-center gap-2">
                 {/* Add Service Button - only show if not all services selected */}
                 {!allServicesSelected && (
-                    <button
-                        onClick={() => setShowAddModal(true)}
-                        className="group w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200"
+                    <IconButton
+                        variant="soft"
+                        shape="circle"
+                        className="h-11 w-11"
+                        aria-label={t('serviceRail.addService')}
                         title={t('serviceRail.addService')}
-                    >
-                        <div className="w-11 h-11 rounded-full bg-gray-200 flex items-center justify-center text-green-600 transition-all duration-200 group-hover:bg-green-500 group-hover:text-white">
-                            <Plus className="w-5 h-5" />
-                        </div>
-                    </button>
+                        icon={<Plus className="h-5 w-5" />}
+                        onClick={() => setShowAddModal(true)}
+                    />
                 )}
 
                 {/* Upgrade Icon — appears when an update is available */}
                 <UpgradeIcon />
 
                 {/* Search Button */}
-                <button
-                    onClick={onOpenSearch}
-                    className="group w-11 h-11 rounded-full flex items-center justify-center transition-all duration-200"
+                <IconButton
+                    variant="soft"
+                    shape="circle"
+                    className="h-11 w-11"
+                    aria-label={t('search.placeholder')}
                     title={`${t('search.placeholder')} (${navigator.platform.includes('Mac') ? '\u2318' : 'Ctrl+'}K)`}
-                >
-                    <div className="w-11 h-11 rounded-full bg-gray-200 flex items-center justify-center text-gray-600 transition-all duration-200 group-hover:bg-blue-500 group-hover:text-white">
-                        <Search className="w-5 h-5" />
-                    </div>
-                </button>
+                    icon={<Search className="h-5 w-5" />}
+                    onClick={onOpenSearch}
+                />
 
                 {/* Settings Menu */}
                 <SettingsMenu
@@ -253,7 +244,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                     onReportIssue={onReportIssue}
                     onOpenAbout={onOpenAbout}
                 />
-            </div>
+            </BrandScope>
 
             {/* Add Service Modal */}
             {showAddModal && (
@@ -262,6 +253,6 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                     onClose={() => setShowAddModal(false)}
                 />
             )}
-        </div>
+        </nav>
     );
 };

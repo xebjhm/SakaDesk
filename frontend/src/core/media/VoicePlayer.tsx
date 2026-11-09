@@ -1,17 +1,21 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw } from 'lucide-react';
+import { Button, Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
+import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw, Loader2 } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
+import { useMediaDuration, useMediaSource } from './mediaElement';
+import { useMediaPlayback } from './useMediaPlayback';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { useTranscription } from '../../hooks/useTranscription';
 import { useJustBecame } from '../../hooks/useJustBecame';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
+import { ACCENT, withAlpha } from '../../design/colorMix';
 
-const VOLUME_STORAGE_KEY = 'sakadesk_voice_amp';
+export const VOLUME_STORAGE_KEY = 'sakadesk_voice_amp';
 
 interface VoicePlayerProps {
     src: string;
@@ -21,7 +25,7 @@ interface VoicePlayerProps {
      *  - `premium`    — standalone premium card, no transcription.
      *  - `gallery`    — premium card anchored at the bottom of the media
      *                   gallery voice tab; internal transcription above
-     *                   with a translucent backdrop so it stays readable
+     *                   on an opaque sheet surface so it stays readable
      *                   over the blurred player bar.
      *  - `fullscreen` — premium card inside MediaViewerModal; internal
      *                   transcription below.
@@ -64,6 +68,17 @@ interface VoicePlayerProps {
     service?: string;
     /** Member dir path — required for the gallery/fullscreen variants to fetch transcription */
     memberPath?: string;
+    /**
+     * `compact` only: the bubble this player sits in has a footer attached below it, so the
+     * player squares its bottom corners (top corners keep the radius) and bubble, player and
+     * footer read as one shape.
+     */
+    joinedBelow?: boolean;
+    /**
+     * The bubble starts a run and keeps its small top-left tail corner; the player
+     * takes the same corner so no sliver of the bubble fill shows behind it.
+     */
+    tailCorner?: boolean;
 }
 
 /**
@@ -83,23 +98,21 @@ const SkipButton: React.FC<{
             disabled={disabled}
             className={cn(
                 "relative w-10 h-10 flex items-center justify-center rounded-full transition-colors",
-                "hover:bg-gray-100 active:bg-gray-200",
+                "hover:bg-sunken active:brightness-94",
                 disabled && "opacity-50 cursor-not-allowed"
             )}
             title={title}
         >
-            <Icon className="w-6 h-6 text-gray-600" strokeWidth={2} />
+            <Icon className="w-6 h-6 text-secondary" strokeWidth={2} />
             {/* Number "5" inside the circle */}
-            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-gray-600 mt-0.5">
+            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5">
                 5
             </span>
         </button>
     );
 };
 
-// Fallback to Hinatazaka's voice player accent (#6da0d4) when no theme color provided.
-// Canonical values defined in serviceThemes.ts -> messages.voicePlayerAccent
-const DEFAULT_ACCENT_COLOR = '#6da0d4';
+const DEFAULT_ACCENT_COLOR = ACCENT; // the context's accent (group in a chat, ink in a brand scope)
 
 export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     src,
@@ -114,6 +127,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     viewerMode,
     onTimeUpdate,
     seekTo,
+    joinedBelow,
+    tailCorner,
     onTimestampClick,
     messageId,
     service,
@@ -124,7 +139,6 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     const audioRef = useRef<HTMLAudioElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const menuButtonRef = useRef<HTMLButtonElement>(null);
-    const menuPortalRef = useRef<HTMLDivElement>(null);
     const volumeHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
     // Only gallery/fullscreen own transcription; callers must supply all
@@ -155,9 +169,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     }, []);
 
     const [isPlaying, setIsPlaying] = useState(false);
-    const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
-    const { volume, setVolume, isMuted: isVolumeMuted, toggleMute: handleMuteToggle, connectElement } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
+    const { volume, setVolume, isMuted: isVolumeMuted, toggleMute: handleMuteToggle, connectElement, prepareForPlayback } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
+    const { status: playbackStatus, play, retry } = useMediaPlayback(audioRef, 'voice', src, variant);
+    const isBuffering = playbackStatus === 'buffering';
     const [showVolume, setShowVolume] = useState(false);
     const [showMenu, setShowMenu] = useState(false);
     const [menuStyle, setMenuStyle] = useState<React.CSSProperties>({});
@@ -176,13 +191,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             setCurrentTime(audio.currentTime);
             onTimeUpdate?.(audio.currentTime);
         };
-        const handleLoadedMetadata = () => setDuration(audio.duration);
         const handleEnded = () => setIsPlaying(false);
         const handlePlay = () => setIsPlaying(true);
         const handlePause = () => setIsPlaying(false);
 
         audio.addEventListener('timeupdate', handleTimeUpdate);
-        audio.addEventListener('loadedmetadata', handleLoadedMetadata);
         audio.addEventListener('ended', handleEnded);
         audio.addEventListener('play', handlePlay);
         audio.addEventListener('pause', handlePause);
@@ -193,7 +206,6 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
         return () => {
             audio.removeEventListener('timeupdate', handleTimeUpdate);
-            audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
             audio.removeEventListener('ended', handleEnded);
             audio.removeEventListener('play', handlePlay);
             audio.removeEventListener('pause', handlePause);
@@ -201,15 +213,32 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                 clearTimeout(volumeHideTimeout.current);
             }
         };
-    }, [connectElement]);
+    }, [connectElement, variant]);
+
+    // The source is bound imperatively so the element is released (pause, drop
+    // src, load) before the source changes and on unmount (matches VideoPlayer).
+    // `variant` renders a different <audio> element, so it rebinds the source too.
+    useMediaSource(audioRef, src, variant);
+    const duration = useMediaDuration(audioRef, src, variant);
+
+    // Build the amplification graph (first play) before starting playback.
+    const startPlayback = useCallback(() => {
+        prepareForPlayback();
+        play();
+    }, [prepareForPlayback, play]);
+
+    const handleRetry = useCallback(() => {
+        prepareForPlayback();
+        retry();
+    }, [prepareForPlayback, retry]);
 
     // Auto-play on mount / when the source changes (matches VideoPlayer) so navigating
     // voice→voice in the gallery auto-plays the next clip.
     useEffect(() => {
         if (autoPlay && audioRef.current) {
-            audioRef.current.play().catch(() => {});
+            startPlayback();
         }
-    }, [autoPlay, src]);
+    }, [autoPlay, src, startPlayback]);
 
     // Sync playback rate to audio element
     useEffect(() => {
@@ -271,11 +300,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         if (!audio) return;
 
         if (audio.paused) {
-            audio.play();
+            startPlayback();
         } else {
             audio.pause();
         }
-    }, []);
+    }, [startPlayback]);
 
     const handleSkipBack = useCallback(() => {
         const audio = audioRef.current;
@@ -294,6 +323,10 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     // Keyboard shortcuts - must be after handler definitions
     useEffect(() => {
         const handleKeyDown = (e: KeyboardEvent) => {
+            // A menu, field or already-handled key is not a player shortcut.
+            if (e.defaultPrevented) return;
+            const el = e.target instanceof HTMLElement ? e.target : null;
+            if (el?.closest('[role="menu"], input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
             // In viewer mode: listen globally (no focus check), skip Left/Right (reserved for modal nav)
             // In normal mode: only when container is focused
             if (!viewerMode) {
@@ -345,31 +378,6 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         return () => window.removeEventListener('keydown', handleKeyDown);
     }, [viewerMode, togglePlay, handleSkipBack, handleSkipForward, handleMuteToggle, volume, setVolume]);
 
-    // Close menu on click outside or Escape key
-    useEffect(() => {
-        if (!showMenu) return;
-
-        const handleClickOutside = (e: MouseEvent) => {
-            const target = e.target as Node;
-            if (
-                menuButtonRef.current && !menuButtonRef.current.contains(target) &&
-                menuPortalRef.current && !menuPortalRef.current.contains(target)
-            ) {
-                setShowMenu(false);
-            }
-        };
-        const handleEsc = (e: KeyboardEvent) => {
-            if (e.key === 'Escape') setShowMenu(false);
-        };
-
-        document.addEventListener('mousedown', handleClickOutside);
-        document.addEventListener('keydown', handleEsc);
-        return () => {
-            document.removeEventListener('mousedown', handleClickOutside);
-            document.removeEventListener('keydown', handleEsc);
-        };
-    }, [showMenu]);
-
     const handleVolumeMouseEnter = useCallback(() => {
         if (volumeHideTimeout.current) {
             clearTimeout(volumeHideTimeout.current);
@@ -418,6 +426,17 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
     const isMuted = isVolumeMuted || volume === 0;
 
+    // Playback error: neutral message with a Retry that reloads the element.
+    const errorRow = playbackStatus === 'error' ? (
+        <div role="alert" className="mt-2 flex items-center justify-between gap-2">
+            <span className="text-caption text-secondary">{t('voicePlayer.playbackError')}</span>
+            <Button variant="ghost" size="sm" onClick={handleRetry}>
+                <RotateCcw aria-hidden="true" className="h-4 w-4" />
+                {t('common.retry')}
+            </Button>
+        </div>
+    ) : null;
+
     const handleMenuToggle = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
         e.preventDefault();
@@ -436,35 +455,35 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         setShowVolume(false);
     }, []);
 
-    // Premium-family variants share the same glassmorphism card. `gallery`
+    // Premium-family variants share the same opaque sheet card. `gallery`
     // and `fullscreen` wrap it with internal transcription UI (above/below).
     if (variant === 'premium' || variant === 'gallery' || variant === 'fullscreen') {
         const premiumCard = (
             <div
                 ref={containerRef}
                 tabIndex={0}
-                className="backdrop-blur-xl bg-white/90 rounded-2xl p-3 outline-none focus:ring-2 shadow-lg"
+                className="bg-sheet rounded-lg p-3 outline-none focus:ring-2 shadow-card"
                 style={{
-                    '--tw-ring-color': `${accentColor}80`,
+                    '--tw-ring-color': withAlpha(accentColor, 50),
                     borderWidth: '1px',
-                    borderColor: `${accentColor}33`,
+                    borderColor: withAlpha(accentColor, 20),
                 } as React.CSSProperties}
             >
                 {/* Hidden audio element */}
-                <audio ref={audioRef} src={src} preload="metadata" />
+                <audio ref={audioRef} preload="metadata" />
 
                 {/* Row 1: Avatar + Info + Menu */}
                 <div className="flex items-center gap-3 mb-2">
                     {/* Avatar with accent ring */}
                     <div
                         className="w-10 h-10 rounded-full p-0.5 shrink-0"
-                        style={{ background: `linear-gradient(to bottom right, ${accentColor}, ${accentColor}cc)` }}
+                        style={{ background: `linear-gradient(to bottom right, ${accentColor}, ${withAlpha(accentColor, 80)})` }}
                     >
-                        <div className="w-full h-full rounded-full overflow-hidden bg-white">
+                        <div className="w-full h-full rounded-full overflow-hidden bg-sheet">
                             {avatarUrl ? (
                                 <img src={avatarUrl} alt="" className="w-full h-full object-cover" />
                             ) : (
-                                <div className="w-full h-full flex items-center justify-center text-gray-400 text-sm font-medium bg-gray-100">
+                                <div className="w-full h-full flex items-center justify-center text-muted text-sm font-medium bg-sunken">
                                     {memberName?.charAt(0) || '?'}
                                 </div>
                             )}
@@ -473,16 +492,16 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     {/* Name and timestamp */}
                     <div className="flex-1 min-w-0">
                         {memberName && (
-                            <p className="text-sm font-semibold text-gray-800 truncate">{memberName}</p>
+                            <p lang="ja" className="text-sm font-semibold text-primary truncate">{memberName}</p>
                         )}
                         {(timestamp || durationText) && (
-                            <p className="text-xs text-gray-500">
+                            <p className="text-xs text-secondary">
                                 {timestamp && (
                                     onTimestampClick ? (
                                         <button
                                             type="button"
                                             onClick={onTimestampClick}
-                                            className="hover:text-gray-700 underline underline-offset-2 decoration-gray-300 hover:decoration-gray-500 transition-colors"
+                                            className="underline decoration-current underline-offset-2 transition-colors hover:text-primary"
                                         >
                                             {timestamp}
                                         </button>
@@ -490,7 +509,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                         <span>{timestamp}</span>
                                     )
                                 )}
-                                {timestamp && durationText && <span className="mx-1 text-gray-300">•</span>}
+                                {timestamp && durationText && <span className="mx-1 text-muted">•</span>}
                                 {durationText}
                             </p>
                         )}
@@ -499,16 +518,19 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     <button
                         ref={menuButtonRef}
                         onClick={handleMenuToggle}
-                        className="p-1.5 hover:bg-white/50 rounded-full transition-colors"
+                        aria-label={t('common.moreOptions')}
+                        aria-haspopup="menu"
+                        aria-expanded={showMenu}
+                        className="p-1.5 hover:bg-sunken rounded-full transition-colors"
                         type="button"
                     >
-                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                        <MoreVertical className="w-4 h-4 text-secondary" />
                     </button>
                 </div>
 
                 {/* Row 2: Progress Bar */}
                 <div className="mb-2">
-                    <div className="relative h-1 bg-gray-200/60 rounded-full overflow-hidden">
+                    <div className="relative h-1 bg-sunken rounded-full overflow-hidden">
                         <div
                             className="absolute inset-y-0 left-0 rounded-full"
                             style={{ width: `${animatedProgress}%`, backgroundColor: accentColor }}
@@ -523,8 +545,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         />
                     </div>
                     <div className="flex justify-between mt-1">
-                        <span className="text-[10px] text-gray-500">{formatTime(currentTime)}</span>
-                        <span className="text-[10px] text-gray-500">{formatTime(duration)}</span>
+                        <span className="text-caption text-secondary">{formatTime(currentTime)}</span>
+                        <span className="text-caption text-secondary">{formatTime(duration)}</span>
                     </div>
                 </div>
 
@@ -539,14 +561,14 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         >
                             <button
                                 onClick={handleMuteToggle}
-                                className="p-1 hover:bg-white/50 rounded-full transition-colors"
+                                className="p-1 hover:bg-sunken rounded-full transition-colors"
                                 title={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
                                 type="button"
                             >
                                 {isMuted ? (
-                                    <VolumeX className="w-4 h-4 text-gray-500" />
+                                    <VolumeX className="w-4 h-4 text-secondary" />
                                 ) : (
-                                    <Volume2 className="w-4 h-4 text-gray-500" />
+                                    <Volume2 className="w-4 h-4 text-secondary" />
                                 )}
                             </button>
                             <div
@@ -567,7 +589,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                     className="w-full h-1 rounded-full appearance-none cursor-pointer"
                                     style={{
                                         accentColor: accentColor,
-                                        background: `linear-gradient(to right, ${accentColor} ${volume * 100}%, #d1d5db ${volume * 100}%)`
+                                        background: `linear-gradient(to right, ${accentColor} ${volume * 100}%, var(--ds-border-strong) ${volume * 100}%)`
                                     }}
                                 />
                             </div>
@@ -585,14 +607,17 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
                         <button
                             onClick={togglePlay}
-                            className="w-12 h-12 rounded-full shadow-lg flex items-center justify-center hover:shadow-xl hover:scale-105 transition-all hover:brightness-90"
+                            className="w-12 h-12 rounded-full shadow-card flex items-center justify-center hover:shadow-sheet hover:scale-105 transition-all hover:brightness-90"
                             style={{ backgroundColor: accentColor }}
                             type="button"
+                            aria-busy={isBuffering || undefined}
                         >
-                            {isPlaying ? (
-                                <Pause className="w-6 h-6 text-white fill-current" />
+                            {isBuffering ? (
+                                <Loader2 aria-hidden="true" data-testid="voice-buffering" className="w-6 h-6 text-inverse animate-spin motion-reduce:animate-none" />
+                            ) : isPlaying ? (
+                                <Pause className="w-6 h-6 text-inverse fill-current" />
                             ) : (
-                                <Play className="w-6 h-6 text-white fill-current ml-0.5" />
+                                <Play className="w-6 h-6 text-inverse fill-current ml-0.5" />
                             )}
                         </button>
 
@@ -607,44 +632,33 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     {/* Right: Balance space */}
                     <div className="flex-1" />
                 </div>
+                {errorRow}
 
                 {/* Menu portal */}
                 {showMenu && createPortal(
-                    <div
-                        ref={menuPortalRef}
+                    <Menu
+                        aria-label={t('common.moreOptions')}
+                        onClose={() => setShowMenu(false)}
+                        layer="popover"
                         style={menuStyle}
-                        className="flex flex-col bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] w-max whitespace-nowrap z-[9999]"
+                        ignoreRefs={[menuButtonRef]}
+                        returnFocusRef={menuButtonRef}
+                        className="w-max whitespace-nowrap"
                     >
                         {goldenFingerActive && (
                             <>
-                                <button
-                                    onClick={handleDownload}
-                                    className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100/80 flex items-center gap-2"
-                                    type="button"
-                                >
-                                    <Download className="w-4 h-4" />
-                                    {t('common.download')}
-                                </button>
-                                <div className="border-t border-gray-200 my-1" />
+                                <MenuItem icon={<Download className="h-4 w-4" />} onClick={handleDownload}>{t('common.download')}</MenuItem>
+                                <MenuSeparator />
                             </>
                         )}
-                        <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
-                        {[0.5, 1, 1.5, 2].map(rate => (
-                            <button
-                                key={rate}
-                                onClick={() => handlePlaybackRateChange(rate)}
-                                className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100/80"
-                                style={{
-                                    color: playbackRate === rate ? accentColor : '#374151',
-                                    fontWeight: playbackRate === rate ? 500 : 400,
-                                }}
-                                type="button"
-                            >
+                        <MenuLabel>{t('voicePlayer.speed')}</MenuLabel>
+                        {[0.5, 1, 1.5, 2].map((rate) => (
+                            <MenuItem key={rate} radio selected={playbackRate === rate} onClick={() => handlePlaybackRateChange(rate)}>
                                 {rate}x
-                            </button>
+                            </MenuItem>
                         ))}
-                    </div>,
-                    document.body
+                    </Menu>,
+                    document.body,
                 )}
             </div>
         );
@@ -674,7 +688,6 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     state={transcriptionState}
                     onClick={triggerTranscription}
                     error={transcriptionError}
-                    accentColor={accentColor}
                     variant={panelTheme}
                 />
             )
@@ -702,15 +715,15 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         <div
             ref={containerRef}
             tabIndex={0}
-            className="bg-[#F3F4F6] rounded-2xl p-3 min-w-[300px] outline-none focus:ring-2"
-            style={{ '--ring-color': `${accentColor}80` } as React.CSSProperties}
+            className={cn('bg-sunken rounded-lg p-3 min-w-[300px] outline-none focus:ring-2', joinedBelow && 'rounded-b-none', tailCorner && 'rounded-tl-tail')}
+            style={{ '--ring-color': withAlpha(accentColor, 50) } as React.CSSProperties}
         >
             {/* Hidden audio element */}
-            <audio ref={audioRef} src={src} preload="metadata" />
+            <audio ref={audioRef} preload="metadata" />
 
             {/* Row 1: Progress Slider with smooth animation */}
             <div className="mb-3">
-                <div className="relative h-1 bg-gray-300 rounded-full overflow-hidden">
+                <div className="relative h-1 bg-control-off rounded-full overflow-hidden">
                     <div
                         className="absolute inset-y-0 left-0 rounded-full"
                         style={{ width: `${animatedProgress}%`, backgroundColor: accentColor }}
@@ -737,14 +750,14 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     >
                         <button
                             onClick={handleMuteToggle}
-                            className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+                            className="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
                             title={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
                             type="button"
                         >
                             {isMuted ? (
-                                <VolumeX className="w-4 h-4 text-gray-500" />
+                                <VolumeX className="w-4 h-4 text-secondary" />
                             ) : (
-                                <Volume2 className="w-4 h-4 text-gray-500" />
+                                <Volume2 className="w-4 h-4 text-secondary" />
                             )}
                         </button>
                         <div
@@ -765,7 +778,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                 className="w-full h-1 rounded-full appearance-none cursor-pointer"
                                 style={{
                                     accentColor: accentColor,
-                                    background: `linear-gradient(to right, ${accentColor} ${volume * 100}%, #d1d5db ${volume * 100}%)`
+                                    background: `linear-gradient(to right, ${accentColor} ${volume * 100}%, var(--ds-border-strong) ${volume * 100}%)`
                                 }}
                             />
                         </div>
@@ -775,67 +788,65 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                 {/* Center: Play Button */}
                 <button
                     onClick={togglePlay}
-                    className="w-10 h-10 rounded-full shadow-md flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
+                    className="w-10 h-10 rounded-full shadow-pill flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
                     style={{ backgroundColor: accentColor }}
                     type="button"
+                    aria-busy={isBuffering || undefined}
                 >
-                    {isPlaying ? (
-                        <Pause className="w-5 h-5 text-white fill-current" />
+                    {isBuffering ? (
+                        <Loader2 aria-hidden="true" data-testid="voice-buffering" className="w-5 h-5 text-inverse animate-spin motion-reduce:animate-none" />
+                    ) : isPlaying ? (
+                        <Pause className="w-5 h-5 text-inverse fill-current" />
                     ) : (
-                        <Play className="w-5 h-5 text-white fill-current ml-0.5" />
+                        <Play className="w-5 h-5 text-inverse fill-current ml-0.5" />
                     )}
                 </button>
 
                 {/* Right: Time display + Options */}
                 <div className="flex-1 flex items-center justify-end gap-1">
-                    <div className="text-xs text-gray-500 whitespace-nowrap">
+                    <div className="text-xs text-secondary whitespace-nowrap">
                         {formatTime(currentTime)} / {formatTime(duration)}
                     </div>
                     <button
                         ref={menuButtonRef}
                         onClick={handleMenuToggle}
-                        className="p-1.5 hover:bg-gray-200 rounded-full transition-colors"
+                        aria-label={t('common.moreOptions')}
+                        aria-haspopup="menu"
+                        aria-expanded={showMenu}
+                        className="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
                         type="button"
                     >
-                        <MoreVertical className="w-4 h-4 text-gray-500" />
+                        <MoreVertical className="w-4 h-4 text-secondary" />
                     </button>
                 </div>
             </div>
+            {errorRow}
 
             {/* Menu portal */}
             {showMenu && createPortal(
-                <div
-                    ref={menuPortalRef}
+                <Menu
+                    aria-label={t('common.moreOptions')}
+                    onClose={() => setShowMenu(false)}
+                    layer="popover"
                     style={menuStyle}
-                    className="flex flex-col bg-white rounded-lg shadow-lg border border-gray-200 py-1 min-w-[160px] w-max whitespace-nowrap z-[9999]"
+                    ignoreRefs={[menuButtonRef]}
+                    returnFocusRef={menuButtonRef}
+                    className="w-max whitespace-nowrap"
                 >
                     {goldenFingerActive && (
                         <>
-                            <button
-                                onClick={handleDownload}
-                                className="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2"
-                                type="button"
-                            >
-                                <Download className="w-4 h-4" />
-                                {t('common.download')}
-                            </button>
-                            <div className="border-t border-gray-200 my-1" />
+                            <MenuItem icon={<Download className="h-4 w-4" />} onClick={handleDownload}>{t('common.download')}</MenuItem>
+                            <MenuSeparator />
                         </>
                     )}
-                    <div className="px-4 py-1 text-xs text-gray-400">{t('voicePlayer.speed')}</div>
-                    {[0.5, 1, 1.5, 2].map(rate => (
-                        <button
-                            key={rate}
-                            onClick={() => handlePlaybackRateChange(rate)}
-                            className="w-full px-4 py-1.5 text-left text-sm hover:bg-gray-100"
-                            style={{ color: playbackRate === rate ? accentColor : '#374151', fontWeight: playbackRate === rate ? 500 : 400 }}
-                            type="button"
-                        >
+                    <MenuLabel>{t('voicePlayer.speed')}</MenuLabel>
+                    {[0.5, 1, 1.5, 2].map((rate) => (
+                        <MenuItem key={rate} radio selected={playbackRate === rate} onClick={() => handlePlaybackRateChange(rate)}>
                             {rate}x
-                        </button>
+                        </MenuItem>
                     ))}
-                </div>,
-                document.body
+                </Menu>,
+                document.body,
             )}
         </div>
     );

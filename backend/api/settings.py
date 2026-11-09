@@ -4,7 +4,9 @@ Handles output folder configuration and auto-sync settings.
 Uses platform-appropriate paths for Windows deployment.
 """
 
+import asyncio
 import json
+import sys
 import structlog
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
@@ -18,6 +20,9 @@ from backend.services.platform import (
 from backend.services.service_utils import (
     validate_service,
 )
+from backend.services import autostart, desktop_bridge
+from backend.services.auto_sync_scheduler import wake_scheduler
+from backend.services.call_popup import get_call_popup_controller
 from backend.services.notification_service import set_notifications_enabled
 from backend.services.settings_store import (
     load_config as _store_load,
@@ -91,12 +96,23 @@ class SettingsResponse(BaseModel):
         None  # Per-service nicknames for %%% placeholder replacement
     )
     notifications_enabled: bool = True  # Desktop notifications for new messages
+    notifications_hide_content: bool = (
+        False  # Toasts show a generic body instead of the message preview
+    )
     blogs_full_backup: bool = False  # Global blog full backup — applies to all services
     language: Optional[str] = None  # UI language set by installer or user
     auto_download_updates: bool = False  # Auto-download new versions in background
     sync_read_to_phone: bool = (
         False  # Opt-in: opening a chat here clears its unread on the official app
     )
+    incoming_call_enabled: bool = (
+        True  # Ring when opening a 1:1 chat whose newest voice is unheard
+    )
+    call_popup_enabled: bool = (
+        True  # Ring a background call in a bottom-right popup (app not in front)
+    )
+    close_to_tray: bool = True  # Closing the window hides it to the tray
+    autostart: bool = False  # Start at Windows sign-in, hidden in the tray
 
 
 class SettingsUpdate(BaseModel):
@@ -109,9 +125,14 @@ class SettingsUpdate(BaseModel):
     sync_interval_minutes: Optional[int] = Field(default=None, ge=1)
     adaptive_sync_enabled: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
+    notifications_hide_content: Optional[bool] = None
     blogs_full_backup: Optional[bool] = None
     auto_download_updates: Optional[bool] = None
     sync_read_to_phone: Optional[bool] = None
+    incoming_call_enabled: Optional[bool] = None
+    call_popup_enabled: Optional[bool] = None
+    close_to_tray: Optional[bool] = None
+    autostart: Optional[bool] = None
 
 
 class FreshCheckResponse(BaseModel):
@@ -126,6 +147,28 @@ class ServiceSettings(BaseModel):
     adaptive_sync_enabled: bool = True
     last_sync: Optional[str] = None
     blogs_full_backup: bool = False
+
+
+# Settings that change when the auto-sync scheduler should next run.
+_SCHEDULE_KEYS = ("auto_sync_enabled", "sync_interval_minutes", "adaptive_sync_enabled")
+
+
+async def _apply_autostart(enabled: bool) -> None:
+    """Sync the Windows Run value with the saved setting, off the event loop.
+
+    ``autostart.apply`` never raises and logs its own outcome; the guard here
+    only keeps an unexpected error from failing a settings update that was
+    already saved.
+    """
+    try:
+        await asyncio.to_thread(
+            autostart.apply,
+            enabled,
+            frozen=bool(getattr(sys, "frozen", False)),
+            exe=Path(sys.executable),
+        )
+    except Exception as e:
+        logger.warning("autostart", action="failed", error_type=type(e).__name__)
 
 
 @router.get("", response_model=SettingsResponse)
@@ -146,18 +189,28 @@ async def get_settings():
         user_nickname=config.get("user_nickname"),
         user_nicknames=config.get("user_nicknames"),
         notifications_enabled=config["notifications_enabled"],
+        notifications_hide_content=config.get("notifications_hide_content", False),
         blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
         auto_download_updates=config["auto_download_updates"],
         sync_read_to_phone=config.get("sync_read_to_phone", False),
+        incoming_call_enabled=config.get("incoming_call_enabled", True),
+        call_popup_enabled=config.get("call_popup_enabled", True),
+        close_to_tray=config.get("close_to_tray", True),
+        autostart=config.get("autostart", False),
     )
 
 
 @router.post("", response_model=SettingsResponse)
 async def update_settings(update: SettingsUpdate):
     """Update settings."""
+    autostart_change: Optional[bool] = None
+    call_popup_change: Optional[bool] = None
+    schedule_changed = False
 
     def _apply(config: dict) -> None:
+        nonlocal autostart_change, call_popup_change, schedule_changed
+        before = tuple(config.get(key) for key in _SCHEDULE_KEYS)
         if update.output_dir is not None:
             config["output_dir"] = update.output_dir
             config["is_configured"] = True
@@ -170,14 +223,42 @@ async def update_settings(update: SettingsUpdate):
         if update.notifications_enabled is not None:
             config["notifications_enabled"] = update.notifications_enabled
             set_notifications_enabled(update.notifications_enabled)
+        if update.notifications_hide_content is not None:
+            config["notifications_hide_content"] = update.notifications_hide_content
         if update.blogs_full_backup is not None:
             config["blogs_full_backup"] = update.blogs_full_backup
         if update.auto_download_updates is not None:
             config["auto_download_updates"] = update.auto_download_updates
         if update.sync_read_to_phone is not None:
             config["sync_read_to_phone"] = update.sync_read_to_phone
+        if update.incoming_call_enabled is not None:
+            config["incoming_call_enabled"] = update.incoming_call_enabled
+        if update.call_popup_enabled is not None:
+            if update.call_popup_enabled != config.get("call_popup_enabled", True):
+                call_popup_change = update.call_popup_enabled
+            config["call_popup_enabled"] = update.call_popup_enabled
+        if update.close_to_tray is not None:
+            config["close_to_tray"] = update.close_to_tray
+        if update.autostart is not None:
+            if update.autostart != config.get("autostart", False):
+                autostart_change = update.autostart
+            config["autostart"] = update.autostart
+        schedule_changed = before != tuple(config.get(key) for key in _SCHEDULE_KEYS)
 
     config = await _store_update(_apply)
+
+    if schedule_changed:
+        # The scheduler would otherwise only notice after its current wait.
+        wake_scheduler()
+
+    if autostart_change is not None:
+        await _apply_autostart(autostart_change)
+
+    if call_popup_change is True:
+        # Create the popup window now (in a thread; never blocks this response).
+        desktop_bridge.call_popup_ensure()
+    elif call_popup_change is False:
+        await get_call_popup_controller().cancel(reason="disabled")
 
     return SettingsResponse(
         output_dir=config.get("output_dir", get_default_output_dir()),
@@ -188,10 +269,15 @@ async def update_settings(update: SettingsUpdate):
         user_nickname=config.get("user_nickname"),
         user_nicknames=config.get("user_nicknames"),
         notifications_enabled=config["notifications_enabled"],
+        notifications_hide_content=config.get("notifications_hide_content", False),
         blogs_full_backup=config["blogs_full_backup"],
         language=config.get("language"),
         auto_download_updates=config["auto_download_updates"],
         sync_read_to_phone=config.get("sync_read_to_phone", False),
+        incoming_call_enabled=config.get("incoming_call_enabled", True),
+        call_popup_enabled=config.get("call_popup_enabled", True),
+        close_to_tray=config.get("close_to_tray", True),
+        autostart=config.get("autostart", False),
     )
 
 
@@ -218,8 +304,6 @@ async def check_fresh_install():
 @router.post("/select-folder")
 async def select_folder():
     """Open a native folder picker dialog."""
-    import asyncio
-
     try:
         import tkinter as tk
         from tkinter import filedialog

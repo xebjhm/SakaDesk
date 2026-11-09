@@ -6,7 +6,6 @@ import { VideoPlayer } from '../../../core/media/VideoPlayer';
 import { PhotoPlayer } from '../../../core/media/PhotoPlayer';
 import { Video, MessageSquare, Volume2, Image as ImageIcon, Star } from 'lucide-react';
 import { MessageContextMenu } from './MessageContextMenu';
-import { DEFAULT_SHELTER_COLORS } from '../../../config/serviceThemes';
 import { useTranslation } from '../../../i18n';
 import { TranscribeButton } from '../../../core/media/TranscribeButton';
 import { TranscriptPanel } from '../../../core/media/TranscriptPanel';
@@ -15,26 +14,11 @@ import { useMessageTranslation } from '../../../hooks/useMessageTranslation';
 import { TranslateButton } from '../../../core/common/TranslateButton';
 import { InlineTranslation } from '../../../core/common/InlineTranslation';
 import { useAppStore } from '../../../store/appStore';
-import { getServiceTheme } from '../../../config/serviceThemes';
 import { useJustBecame } from '../../../hooks/useJustBecame';
-
-interface ShelterColors {
-    picture: string;
-    video: string;
-    voice: string;
-    text: string;
-}
-
-type ShelterStyle = 'classic' | 'light';
-
-interface MessageBubbleTheme {
-    bubbleBorder: string;
-    voicePlayerAccent: string;
-    favoriteColor?: string;
-    linkColor?: string;
-    shelterColors?: ShelterColors;
-    shelterStyle?: ShelterStyle;
-}
+import { buildMediaUrl, MEDIA_API_BASE } from '../mediaUrl';
+import { groupTokens } from '../../../design/tokens';
+import { serviceGroupId } from '../../../config/serviceGroup';
+import { Avatar } from '../../../design/primitives';
 
 interface MessageBubbleProps {
     message: Message;
@@ -47,12 +31,13 @@ interface MessageBubbleProps {
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
     onAvatarClick?: () => void;
     onMediaClick?: (mediaUrl: string, type: string, timestamp?: string) => void;
-    theme?: MessageBubbleTheme;
     service?: string;
     /** Relative path from output_dir to the member directory (for transcription API) */
     memberPath?: string;
     /** User's nickname for %%% placeholder replacement in translations */
     userNickname?: string;
+    /** First message of a run (same sender, same day, ≤ 5 min apart): shows avatar, name and time. */
+    runStart?: boolean;
 }
 
 const SHELTER_ICONS = {
@@ -61,6 +46,17 @@ const SHELTER_ICONS = {
     voice: Volume2,
     picture: ImageIcon,
 };
+
+type ShelterKind = 'picture' | 'video' | 'voice' | 'text';
+/** Official unread shelters: `classic` = filled with a white icon, `light` = white with a coloured border and icon. */
+const SHELTER_CLASSES: Record<ShelterKind, { classic: string; light: string }> = {
+    picture: { classic: 'bg-group-shelter-picture text-inverse', light: 'border-2 border-group-shelter-picture bg-card text-group-shelter-picture' },
+    video: { classic: 'bg-group-shelter-video text-inverse', light: 'border-2 border-group-shelter-video bg-card text-group-shelter-video' },
+    voice: { classic: 'bg-group-shelter-voice text-inverse', light: 'border-2 border-group-shelter-voice bg-card text-group-shelter-voice' },
+    text: { classic: 'bg-group-shelter-text text-inverse', light: 'border-2 border-group-shelter-text bg-card text-group-shelter-text' },
+};
+const shelterKind = (type: string): ShelterKind =>
+    type === 'picture' || type === 'video' || type === 'voice' ? type : 'text';
 
 // URL regex pattern for detecting links in text
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g;
@@ -108,8 +104,8 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
     return (
         <div
             className={cn(
-                "rounded-lg overflow-hidden mb-2 flex items-center justify-center",
-                isVideo ? "bg-black" : "bg-gray-50"
+                "rounded-sm overflow-hidden mb-2 flex items-center justify-center",
+                isVideo ? "bg-viewer-stage" : "bg-elevated"
             )}
             style={containerStyle}
         >
@@ -119,7 +115,7 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
 };
 
 // Component to render text with clickable URLs
-const LinkifiedText: React.FC<{ text: string; linkColor?: string }> = ({ text, linkColor }) => {
+const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
     const parts = text.split(URL_REGEX);
 
     return (
@@ -134,8 +130,7 @@ const LinkifiedText: React.FC<{ text: string; linkColor?: string }> = ({ text, l
                             href={part}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="hover:underline break-all"
-                            style={{ color: linkColor || '#2563eb' }}
+                            className="break-all text-accent-strong hover:underline"
                             onClick={(e) => e.stopPropagation()}
                         >
                             {part}
@@ -152,21 +147,23 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     message,
     member_name,
     member_avatar,
-    api_base = "/api/content/media",
+    api_base = MEDIA_API_BASE,
     isUnread = false,
     onReveal,
     onLongPress,
     onToggleFavorite,
     onAvatarClick,
     onMediaClick,
-    theme,
     service,
     memberPath,
     userNickname,
+    runStart = true,
 }) => {
     const { t } = useTranslation();
     const date = new Date(message.timestamp);
-    const dateStr = `${date.getFullYear()}/${(date.getMonth() + 1).toString().padStart(2, '0')}/${date.getDate().toString().padStart(2, '0')} ${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    const time = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    // Card radius; the first bubble of a run keeps a small top-left corner.
+    const bubbleCorners = cn('rounded-card', runStart && 'rounded-tl-tail');
 
     // Context menu state
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
@@ -205,7 +202,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     // media_file is relative to service dir (e.g., "messages/62 石森 璃花/.../voice/346492.m4a")
     // API expects full path from output dir (e.g., "櫻坂46/messages/62 石森 璃花/.../voice/346492.m4a")
     const mediaUrl = message.media_file && service
-        ? `${api_base}/${encodeURIComponent(service)}/${message.media_file.split('/').map(encodeURIComponent).join('/')}`
+        ? buildMediaUrl(service, message.media_file, api_base)
         : null;
 
     // Transcription — only active for voice and non-muted video messages
@@ -225,6 +222,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     // Feature toggles
     const translationEnabled = useAppStore(s => s.translationEnabled);
     const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
+    const hasTranscriptFooter = transcriptionEnabled && isTranscribable && !isUnread;
 
     // Translation — active for messages with text content
     const hasTextContent = !!message.content && message.content.trim().length > 0;
@@ -268,23 +266,16 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     }, []);
 
     const ShelterOverlay = () => {
-        const type = message.type;
-        const shelterColors = theme?.shelterColors || DEFAULT_SHELTER_COLORS;
-        const shelterStyle = theme?.shelterStyle || 'classic';
-        const themeColor = shelterColors[type as keyof ShelterColors] || shelterColors.text;
-        const Icon = SHELTER_ICONS[type] || MessageSquare;
-
-        // 'classic' = colored background with white icon (Hinatazaka, Nogizaka)
-        // 'light' = white background with colored border and icon (Sakurazaka)
-        const isLightStyle = shelterStyle === 'light';
-        const bgColor = isLightStyle ? '#FFFFFF' : themeColor;
-        const iconColor = isLightStyle ? themeColor : 'rgba(255, 255, 255, 0.9)';
-        const borderStyle = isLightStyle ? `2px solid ${themeColor}` : 'none';
-
+        const Icon = SHELTER_ICONS[message.type] || MessageSquare;
+        const look = groupTokens[serviceGroupId(service ?? null)].official.shelterStyle;
         return (
             <div
-                className="absolute inset-0 z-10 flex items-center justify-center cursor-pointer transition-colors rounded-2xl"
-                style={{ backgroundColor: bgColor, border: borderStyle }}
+                data-testid="unread-shelter"
+                className={cn(
+                    'absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors',
+                    bubbleCorners,
+                    SHELTER_CLASSES[shelterKind(message.type)][look],
+                )}
                 onClick={(e) => {
                     e.stopPropagation();
                     onReveal?.();
@@ -294,14 +285,32 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 onTouchStart={handleTouchStart}
                 onTouchEnd={handleTouchEnd}
             >
-                <Icon className="w-8 h-8" style={{ color: iconColor }} />
+                <Icon className="h-8 w-8" />
             </div>
         );
     };
 
+    const favoriteStar = message.is_favorite && (
+        <Star className="h-3.5 w-3.5 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
+    );
+    const translateButton = translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
+        <div className={cn(
+            'transition-opacity duration-fast ease-standard',
+            // Revealed on row hover and whenever the button (or the row) has keyboard focus
+            translationState === 'loading' || translationState === 'error' ? 'opacity-100' : 'opacity-0 focus-within:opacity-100 group-hover/row:opacity-100 group-focus-within/row:opacity-100',
+        )}>
+            <TranslateButton
+                state={translationState}
+                onClick={triggerTranslation}
+                error={translationError}
+                iconOnly
+            />
+        </div>
+    );
+
     return (
         <div
-            className="flex gap-3 mb-6 relative"
+            className={cn('group/row relative flex gap-3', runStart ? 'pt-3' : 'pt-1')}
             onContextMenu={handleContextMenu}
             onTouchStart={handleTouchStartFavorite}
             onTouchEnd={handleTouchEndFavorite}
@@ -318,54 +327,39 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 />
             )}
 
-            {/* Avatar */}
-            <div className="flex-shrink-0">
-                <button
-                    onClick={(e) => {
-                        e.stopPropagation();
-                        onAvatarClick?.();
-                    }}
-                    className="w-10 h-10 rounded-full bg-gray-200 overflow-hidden hover:ring-2 hover:ring-blue-300 transition-all cursor-pointer"
-                >
-                    {member_avatar ? (
-                        <img
-                            src={member_avatar}
-                            alt={member_name}
-                            className="w-full h-full object-cover"
-                        />
-                    ) : (
-                        <div className="w-full h-full flex items-center justify-center text-gray-500 text-xs font-medium">
-                            {member_name.substring(0, 2)}
-                        </div>
-                    )}
-                </button>
+            {/* Avatar column: the avatar shows once, at the top of a run */}
+            <div className="w-10 shrink-0">
+                {/* Only a clickable avatar (it opens a profile card) is a button; the room
+                    author (member 0) gets no handler, so a plain, non-focusable span of the same box. */}
+                {runStart && onAvatarClick && (
+                    <button
+                        type="button"
+                        data-testid="message-avatar"
+                        onClick={(e) => {
+                            e.stopPropagation();
+                            onAvatarClick();
+                        }}
+                        className="flex cursor-pointer rounded-pill transition-shadow duration-fast ease-standard hover:ring-2 hover:ring-accent-border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+                    >
+                        <Avatar src={member_avatar} name={member_name} size="md" />
+                    </button>
+                )}
+                {runStart && !onAvatarClick && (
+                    <span data-testid="message-avatar" className="flex rounded-pill">
+                        <Avatar src={member_avatar} name={member_name} size="md" />
+                    </span>
+                )}
             </div>
 
-            <div className="flex flex-col max-w-[80%] group/bubble">
-                {/* Metadata row — name, time, favorite star, translate button (right-aligned) */}
-                <div className="flex items-center gap-2 mb-1">
-                    <span className="text-sm text-gray-700 font-medium">{member_name}</span>
-                    <span className="text-xs text-gray-400">{dateStr}</span>
-                    {message.is_favorite && (
-                        <Star
-                            className="w-3.5 h-3.5"
-                            style={{ color: theme?.favoriteColor || '#3b82f6', fill: theme?.favoriteColor || '#3b82f6' }}
-                        />
-                    )}
-                    {translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
-                        <div className={cn(
-                            "ml-auto transition-opacity",
-                            translationState === 'loading' || translationState === 'error' ? "opacity-100" : "opacity-0 group-hover/bubble:opacity-100"
-                        )}>
-                            <TranslateButton
-                                state={translationState}
-                                onClick={triggerTranslation}
-                                error={translationError}
-                                accentColor={service ? getServiceTheme(service).primaryColor : undefined}
-                            />
-                        </div>
-                    )}
-                </div>
+            <div className="relative flex min-w-0 max-w-[80%] flex-col">
+                {/* Name, time and favorite star: once per run */}
+                {runStart && (
+                    <div className="mb-1 flex items-center gap-2">
+                        <span lang="ja" className="text-small font-semibold text-accent-strong">{member_name}</span>
+                        <time className="text-caption text-muted" dateTime={message.timestamp}>{time}</time>
+                        {favoriteStar}
+                    </div>
+                )}
 
                 {/* Bubble Container */}
                 <div className="relative">
@@ -373,13 +367,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                     <div
                         className={cn(
-                            "bg-white rounded-2xl shadow-sm border transition-all duration-300",
-                            message.type === 'voice' ? "p-0 overflow-visible" : "p-3 overflow-hidden",
-                            isUnread && "opacity-0 pointer-events-none" // Hide content but keep layout
+                            'border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard',
+                            bubbleCorners,
+                            // The footer carries the bottom radius so bubble and footer read as one shape
+                            hasTranscriptFooter && 'rounded-b-none',
+                            message.type === 'voice' ? 'overflow-visible p-0' : 'overflow-hidden p-3',
+                            isUnread && 'pointer-events-none opacity-0', // Hide content but keep layout
                         )}
-                        style={{
-                            borderColor: theme?.bubbleBorder || '#E5E7EB',
-                        }}
                     >
 
                         {/* Picture */}
@@ -398,6 +392,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {message.type === 'video' && mediaUrl && (
                             <MediaContainer message={message} isVideo>
                                 <VideoPlayer
+                                    key={mediaUrl}
                                     src={mediaUrl}
                                     messageTimestamp={message.timestamp}
                                     noAudio={message.is_muted}
@@ -413,21 +408,23 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {/* Voice */}
                         {message.type === 'voice' && mediaUrl && (
                             <VoicePlayer
+                                key={mediaUrl}
                                 src={mediaUrl}
-                                accentColor={theme?.voicePlayerAccent}
                                 messageTimestamp={message.timestamp}
                                 onTimeUpdate={setPlayerTime}
                                 seekTo={seekTarget}
+                                joinedBelow={hasTranscriptFooter}
+                                tailCorner={runStart}
                             />
                         )}
 
                         {/* Text */}
                         {message.content && (
-                            <div className={cn(
-                                "text-gray-900 whitespace-pre-wrap leading-relaxed text-[15px]",
-                                message.type === 'voice' && "p-3 pt-2"
+                            <div lang="ja" className={cn(
+                                'whitespace-pre-wrap text-body text-primary',
+                                message.type === 'voice' && 'p-3 pt-2',
                             )}>
-                                <LinkifiedText text={message.content} linkColor={theme?.linkColor} />
+                                <LinkifiedText text={message.content} />
                             </div>
                         )}
 
@@ -444,7 +441,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                         {/* Fallback for missing content */}
                         {!message.content && !mediaUrl && (
-                            <div className="text-gray-400 italic text-sm">
+                            <div className="text-small italic text-muted">
                                 {t('messageList.noContent')}
                             </div>
                         )}
@@ -452,20 +449,16 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 </div>
 
                 {/* Transcription footer — only for voice/video, hidden when unread shelter is active */}
-                {transcriptionEnabled && isTranscribable && !isUnread && (
+                {hasTranscriptFooter && (
                     <div
-                        className="rounded-b-xl border-t-0 border px-3 py-1.5 -mt-1"
-                        style={{
-                            borderColor: `${theme?.voicePlayerAccent || '#6da0d4'}30`,
-                            background: `${theme?.voicePlayerAccent || '#6da0d4'}05`,
-                        }}
+                        data-testid="transcript-footer"
+                        className="rounded-b-card border-x border-b border-group-bubble bg-accent-subtle px-3 py-1.5"
                     >
                         {transcriptionState !== 'done' ? (
                             <TranscribeButton
                                 state={transcriptionState}
                                 onClick={triggerTranscription}
                                 error={transcriptionError}
-                                accentColor={theme?.voicePlayerAccent}
                                 variant="dark"
                             />
                         ) : (
@@ -476,12 +469,29 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     currentTime={playerTime}
                                     onSeek={setSeekTarget}
                                     onRerun={retriggerTranscription}
-                                    accentColor={theme?.voicePlayerAccent}
                                     variant="dark"
                                     defaultExpanded={transcriptionJustCompleted}
                                     messageId={message.id}
                                 />
                             )
+                        )}
+                    </div>
+                )}
+                {/* Trailing column at the bubble's bottom-right, for every message, absolutely positioned
+                    so it reserves no flow width (the bubble never reflows when the translate button unmounts): the one translate
+                    icon; later bubbles of a run also get the star and the time (on hover). A run
+                    start keeps star and time in its header. */}
+                {(translateButton || !runStart) && (
+                    <div data-testid="message-trailing" className="absolute bottom-0 left-full ml-3 flex flex-col items-start justify-end gap-1 whitespace-nowrap pb-1">
+                        {!runStart && favoriteStar}
+                        {translateButton}
+                        {!runStart && (
+                            <time
+                                className="text-caption text-muted opacity-0 transition-opacity duration-fast ease-standard group-hover/row:opacity-100"
+                                dateTime={message.timestamp}
+                            >
+                                {time}
+                            </time>
                         )}
                     </div>
                 )}

@@ -41,6 +41,18 @@ from backend.services.service_utils import (
 
 logger = structlog.get_logger(__name__)
 
+
+def _blog_folder(base: Path, member_name: str, blog_id: str, date: str) -> Path:
+    """Folder of one cached blog under a service's blogs ``base``.
+
+    Loops over many blogs resolve ``base`` once and call this per blog:
+    ``get_blogs_base_path`` reads settings.json from disk on every call.
+    """
+    # Sanitize: strip trailing whitespace that Windows cannot mkdir
+    safe_name = member_name.strip().replace("/", "_")
+    return base / safe_name / f"{date}_{blog_id}"
+
+
 # Groups that have blog support. Yodel does not have blogs.
 BLOG_SUPPORTED_GROUPS = frozenset(
     {Group.HINATAZAKA46, Group.NOGIZAKA46, Group.SAKURAZAKA46}
@@ -222,11 +234,9 @@ class BlogService:
         self, service: str, member_name: str, blog_id: str, date: str
     ) -> Path:
         """Get path to cached blog content."""
-        base = self.get_blogs_base_path(service)
-        folder_name = f"{date}_{blog_id}"
-        # Sanitize: strip trailing whitespace that Windows cannot mkdir
-        safe_name = member_name.strip().replace("/", "_")
-        return base / safe_name / folder_name
+        return _blog_folder(
+            self.get_blogs_base_path(service), member_name, blog_id, date
+        )
 
     def get_member_thumbnails_path(self, service: str) -> Path:
         """Get path to member thumbnails directory."""
@@ -730,6 +740,8 @@ class BlogService:
             List of BlogDownloadItem for blogs that need downloading.
         """
         queue: list[BlogDownloadItem] = []
+        # Resolved once: it reads settings.json, too slow to repeat per blog.
+        base = self.get_blogs_base_path(service)
 
         for member_id, member_data in index.get("members", {}).items():
             # Skip members whose blogs are all removed (e.g., graduated)
@@ -745,9 +757,7 @@ class BlogService:
 
                 blog_id = blog["id"]
                 date = blog["published_at"][:10].replace("-", "")
-                cache_path = self.get_blog_cache_path(
-                    service, member_name, blog_id, date
-                )
+                cache_path = _blog_folder(base, member_name, blog_id, date)
 
                 # Skip if already fully cached (validated non-empty, not partial)
                 if skip_cached and self._is_blog_cached(cache_path):
@@ -1161,14 +1171,17 @@ class BlogService:
         member_data = index.get("members", {}).get(member_id, {})
 
         blogs = member_data.get("blogs", [])
+        base = self.get_blogs_base_path(service)
+        member_name = member_data.get("name", "")
 
-        # Check which blogs are cached
-        for blog in blogs:
-            date = blog["published_at"][:10].replace("-", "")
-            cache_path = self.get_blog_cache_path(
-                service, member_data.get("name", ""), blog["id"], date
-            )
-            blog["cached"] = (cache_path / "blog.json").exists()
+        def _mark_cached() -> None:
+            # One existence check per blog: in a worker thread, off the event loop.
+            for blog in blogs:
+                date = blog["published_at"][:10].replace("-", "")
+                folder = _blog_folder(base, member_name, blog["id"], date)
+                blog["cached"] = (folder / "blog.json").exists()
+
+        await asyncio.to_thread(_mark_cached)
 
         return {
             "member_id": member_id,
@@ -1285,23 +1298,48 @@ class BlogService:
     # =========================================================================
 
     async def get_cache_size(self, service: str) -> int:
-        """Get total cache size in bytes for a service."""
+        """Get total cache size in bytes for a service.
+
+        Walks the tree with ``os.scandir``: on Windows each entry's size comes
+        from the directory listing, so the walk needs no per-file ``stat`` call
+        (``Path.rglob`` + ``is_file`` + ``stat`` opened every file and was ~6x
+        slower on a full archive). Symlinks are not followed. Runs in an executor.
+        """
         base_path = self.get_blogs_base_path(service)
         if not base_path.exists():
             return 0
 
-        def _walk() -> int:
-            total = 0
-            for file in base_path.rglob("*"):
-                if file.is_file():
-                    total += file.stat().st_size
-            return total
+        def _walk() -> tuple[int, int]:
+            total = files = 0
+            pending = [str(base_path)]
+            while pending:
+                with os.scandir(pending.pop()) as entries:
+                    for entry in entries:
+                        if entry.is_dir(follow_symlinks=False):
+                            pending.append(entry.path)
+                        elif entry.is_file(follow_symlinks=False):
+                            total += entry.stat(follow_symlinks=False).st_size
+                            files += 1
+            return total, files
 
+        started = time.monotonic()
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, _walk)
+        total, files = await loop.run_in_executor(None, _walk)
+        logger.debug(
+            "blog_cache_size_scanned",
+            service=service,
+            files=files,
+            duration_ms=round((time.monotonic() - started) * 1000),
+        )
+        return total
 
     async def get_cache_stats(self, service: str) -> dict:
-        """Get detailed cache statistics."""
+        """Get blog counts for a service: total, available, cached, removed, pending.
+
+        Counts come from the index plus one ``blog.json`` existence check per
+        available blog. The on-disk size is not included (it needs a walk of the
+        whole tree); ``get_cache_size`` reports it.
+        """
         index = await self.load_blog_index(service)
 
         total_blogs = 0
@@ -1314,27 +1352,26 @@ class BlogService:
             else:
                 removed_count += sum(1 for b in blogs if b.get("removed"))
 
-        # Count cached blogs in executor to avoid blocking the event loop
-        # (synchronous .exists() for potentially thousands of blog paths)
-        blog_paths: list[Path] = []
-        for member_id, member_data in index.get("members", {}).items():
-            if member_data.get("blogs_removed"):
-                continue
-            member_name = member_data.get("name", "")
-            for blog in member_data.get("blogs", []):
-                if blog.get("removed"):
-                    continue
-                date = blog["published_at"][:10].replace("-", "")
-                cache_path = self.get_blog_cache_path(
-                    service, member_name, blog["id"], date
-                )
-                blog_paths.append(cache_path / "blog.json")
+        base = self.get_blogs_base_path(service)
 
         def _count_cached() -> int:
-            return sum(1 for p in blog_paths if p.exists())
+            # Thousands of synchronous existence checks: in a worker thread so
+            # the event loop keeps serving media and polls meanwhile.
+            count = 0
+            for member_data in index.get("members", {}).values():
+                if member_data.get("blogs_removed"):
+                    continue
+                member_name = member_data.get("name", "")
+                for blog in member_data.get("blogs", []):
+                    if blog.get("removed"):
+                        continue
+                    date = blog["published_at"][:10].replace("-", "")
+                    folder = _blog_folder(base, member_name, blog["id"], date)
+                    if (folder / "blog.json").exists():
+                        count += 1
+            return count
 
-        loop = asyncio.get_running_loop()
-        cached_count = await loop.run_in_executor(None, _count_cached)
+        cached_count = await asyncio.to_thread(_count_cached)
 
         available_blogs = total_blogs - removed_count
         return {
@@ -1343,7 +1380,6 @@ class BlogService:
             "cached_blogs": cached_count,
             "removed_blogs": removed_count,
             "pending_download": available_blogs - cached_count,
-            "cache_size_bytes": await self.get_cache_size(service),
             "last_sync": index.get("last_sync"),
             "last_download": index.get("last_download"),
         }

@@ -1,0 +1,5 @@
+{
+  "missed_title": "Missed call: {name}",
+  "missed_body": "Click to open the chat",
+  "missed_more": "+{n} more messages"
+}

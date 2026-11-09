@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Film } from 'lucide-react';
 import { cn } from '../../utils/classnames';
+import { useMediaSource } from './mediaElement';
 
 interface LazyVideoProps {
     src: string;
@@ -12,7 +13,9 @@ interface LazyVideoProps {
 /**
  * LazyVideo component that loads video only when visible in viewport.
  * Shows a placeholder with film icon until the video enters viewport,
- * then fades in smoothly once the video metadata is loaded.
+ * then fades in smoothly once the video metadata is loaded. The video is
+ * released (pause, drop src, load) on unmount so a thumbnail scrolled away or
+ * a closed gallery never keeps a media connection open.
  */
 export const LazyVideo: React.FC<LazyVideoProps> = ({
     src,
@@ -23,6 +26,9 @@ export const LazyVideo: React.FC<LazyVideoProps> = ({
     const [isVisible, setIsVisible] = useState(false);
     const [isLoaded, setIsLoaded] = useState(false);
     const containerRef = useRef<HTMLButtonElement>(null);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    // Bound once the <video> is mounted (it renders only when visible).
+    useMediaSource(videoRef, isVisible ? src : undefined);
 
     // Intersection Observer to detect when component enters viewport
     useEffect(() => {
@@ -62,24 +68,24 @@ export const LazyVideo: React.FC<LazyVideoProps> = ({
         <button
             ref={containerRef}
             onClick={onClick}
-            className={cn("relative bg-gray-200 overflow-hidden", className)}
+            className={cn("relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent", className)}
         >
             {/* Placeholder - visible until video loads */}
             <div
                 className={cn(
-                    "absolute inset-0 flex items-center justify-center bg-gray-200 transition-opacity duration-400 ease-out",
+                    "absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard",
                     isLoaded ? "opacity-0" : "opacity-100"
                 )}
             >
-                <Film className="w-8 h-8 text-gray-400" />
+                <Film className="h-8 w-8 text-secondary" />
             </div>
 
             {/* Video - only render when visible, fade in when loaded */}
             {isVisible && (
                 <video
-                    src={src}
+                    ref={videoRef}
                     className={cn(
-                        "w-full h-full object-cover transition-opacity duration-400 ease-out",
+                        "h-full w-full object-cover transition-opacity duration-base ease-standard",
                         isLoaded ? "opacity-100" : "opacity-0"
                     )}
                     preload="metadata"

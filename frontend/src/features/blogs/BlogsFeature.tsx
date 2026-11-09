@@ -4,6 +4,8 @@ import type { BlogMember, BlogMeta, BlogContentResponse, RecentPost, BlogMemberW
 import { getBlogMembersWithThumbnails, getBlogList, getBlogContent, getRecentPosts, syncBlogMetadata } from './api';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
+import { FadeOnChange } from '../../core/layout/FadeOnChange';
+import { logBlogLoad } from './blogLog';
 import { RecentPostsFeed, MemberTimelineModal, BlogReader } from './components';
 import { MemberSelectModal } from './components/MemberSelectModal';
 import { BlogPhotoGalleryModal } from './components/BlogPhotoGalleryModal';
@@ -72,6 +74,8 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [isSyncing, setIsSyncing] = useState(false);
+    // Bumped by the feed's Retry: the recent-posts effect depends on it and runs again.
+    const [recentReloadKey, setRecentReloadKey] = useState(0);
 
     // Refs for values read inside effects that should not trigger re-runs
     const recentPostsRef = React.useRef(recentPosts);
@@ -139,8 +143,9 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                     matchedTerms: targetBlog.matchedTerms,
                     readingTerms: targetBlog.readingTerms,
                 });
-            } catch (err) {
-                console.error('[BlogsFeature] Failed to open blog from search', err);
+                logBlogLoad('search_open', 'ok');
+            } catch {
+                logBlogLoad('search_open', 'error');
             }
         };
 
@@ -172,12 +177,14 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                 setBlogRecentPosts(activeService, res.posts);
                 // Mark all fetched posts as known (no animation on initial load)
                 knownPostIdsRef.current = new Set(res.posts.map(p => p.id));
+                logBlogLoad('recent', 'ok', res.posts.length);
             })
             .catch(e => {
+                logBlogLoad('recent', 'error');
                 if (!hasCached) setError(e.message);
             })
             .finally(() => setLoading(false));
-    }, [viewState.view, activeService, selectionMode, favoritesKey]);
+    }, [viewState.view, activeService, selectionMode, favoritesKey, recentReloadKey]);
 
     // Auto-sync blog metadata when entering recent view
     // Runs in background, shows subtle indicator, then refreshes posts
@@ -201,16 +208,19 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                 return getRecentPosts(serviceAtStart, 20, memberIds);
             })
             .then(res => {
-                // Only update state if we're still on the same service
-                if (!cancelled && res) {
-                    setRecentPosts(res.posts);
-                    setBlogRecentPosts(serviceAtStart, res.posts);
-                    // Don't update knownPostIdsRef here — new posts will animate
+                // Service or view changed while syncing: nothing is applied.
+                if (cancelled || !res) {
+                    logBlogLoad('sync', 'cancelled');
+                    return;
                 }
+                setRecentPosts(res.posts);
+                setBlogRecentPosts(serviceAtStart, res.posts);
+                // Don't update knownPostIdsRef here — new posts will animate
+                logBlogLoad('sync', 'ok', res.posts.length);
             })
             .catch(() => {
-                // Silent fail - user still sees cached data
-                console.debug('Blog sync failed (non-fatal)');
+                // Non-fatal: the user still sees the cached posts.
+                logBlogLoad('sync', cancelled ? 'cancelled' : 'error');
             })
             .finally(() => {
                 if (!cancelled) {
@@ -244,9 +254,11 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                     }
                 }
                 setMembersWithThumbnails(members);
+                logBlogLoad('members', 'ok', members.length);
             })
             .catch(() => {
-                // Silent fail on pre-fetch - will retry when modal opens
+                // Silent on screen: the member dialog retries when it opens.
+                logBlogLoad('members', 'error');
             });
     }, [activeService, membersWithThumbnails.length]);
 
@@ -270,8 +282,12 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                     }
                 }
                 setMembersWithThumbnails(members);
+                logBlogLoad('members', 'ok', members.length);
             })
-            .catch(e => setMembersError(e.message))
+            .catch(e => {
+                logBlogLoad('members', 'error');
+                setMembersError(e.message);
+            })
             .finally(() => setMembersLoading(false));
     }, [isMemberModalOpen, activeService, membersWithThumbnails.length]);
 
@@ -282,8 +298,14 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
         setTimelineLoading(true);
         setTimelineError(null);
         getBlogList(activeService, timelineMember.id)
-            .then(res => setTimelineBlogs(res.blogs))
-            .catch(e => setTimelineError(e.message))
+            .then(res => {
+                setTimelineBlogs(res.blogs);
+                logBlogLoad('member_posts', 'ok', res.blogs.length);
+            })
+            .catch(e => {
+                logBlogLoad('member_posts', 'error');
+                setTimelineError(e.message);
+            })
             .finally(() => setTimelineLoading(false));
     }, [isTimelineModalOpen, timelineMember, activeService]);
 
@@ -318,9 +340,11 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                     newCache.set(memberId, res.blogs);
                     return newCache;
                 });
+                logBlogLoad('nav_list', 'ok', res.blogs.length);
             })
             .catch(() => {
-                // Silent fail - navigation just won't be available
+                // Older/newer and the rail just stay hidden.
+                logBlogLoad('nav_list', 'error');
             })
             .finally(() => {
                 fetchingMemberBlogsRef.current.delete(memberId);
@@ -338,6 +362,9 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
         // into blog B's view, nor cause B's real content to be discarded.
         const serviceAtStart = activeService;
         let cancelled = false;
+        // True once this fetch's content is applied: applying it re-runs this effect (cleanup
+        // sets `cancelled`), and the spinner must still stop.
+        let applied = false;
 
         // Check content cache first (via ref)
         const cachedContent = contentCacheRef.current.get(blogId);
@@ -349,18 +376,25 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                     ? { ...prev, content: cachedContent }
                     : prev
             );
+            logBlogLoad('content', 'cache_hit');
             return;
         }
 
         // Check if already fetching
-        if (fetchingContentRef.current.has(blogId)) return;
+        if (fetchingContentRef.current.has(blogId)) {
+            logBlogLoad('content', 'in_flight');
+            return;
+        }
         fetchingContentRef.current.add(blogId);
 
         setLoading(true);
         setError(null);
         getBlogContent(serviceAtStart, blogId)
             .then(content => {
-                if (cancelled) return;
+                if (cancelled) {
+                    logBlogLoad('content', 'cancelled');
+                    return;
+                }
                 // Add to cache (keep last 5)
                 setContentCache(prev => {
                     const newCache = new Map(prev);
@@ -378,10 +412,19 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                         ? { ...prev, content }
                         : prev
                 );
+                applied = true;
+                logBlogLoad('content', 'ok');
             })
-            .catch(e => { if (!cancelled) setError(e.message); })
+            .catch(e => {
+                if (cancelled) {
+                    logBlogLoad('content', 'cancelled');
+                    return;
+                }
+                logBlogLoad('content', 'error');
+                setError(e.message);
+            })
             .finally(() => {
-                if (!cancelled) setLoading(false);
+                if (!cancelled || applied) setLoading(false);
                 fetchingContentRef.current.delete(blogId);
             });
 
@@ -403,7 +446,7 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
 
     if (!activeService) {
         return (
-            <div className="flex-1 flex items-center justify-center text-gray-500">
+            <div className="flex flex-1 items-center justify-center text-body text-muted">
                 {t('blogs.selectService')}
             </div>
         );
@@ -484,11 +527,17 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
         // Will trigger re-fetch via effect
     };
 
-    // Retry handler for main content
-    const handleRetry = () => {
+    // Retry on the feed: run the recent-posts fetch again.
+    const handleFeedRetry = () => {
         setError(null);
-        // Re-trigger the current view's data fetch by toggling loading
-        setViewState({ view: 'recent' });
+        setRecentReloadKey(k => k + 1);
+    };
+
+    // Retry in the reader: load the same post again. A fresh reader state with no content
+    // re-runs the content effect (fetchingContentRef was cleared when the failed fetch settled).
+    const handleReaderRetry = () => {
+        setError(null);
+        setViewState(prev => (prev.view === 'reader' ? { ...prev, content: null } : prev));
     };
 
     // Get current member's blogs and current index for navigation
@@ -499,8 +548,11 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
         return { memberBlogs, currentIndex };
     };
 
+    // Feed ↔ reader and every post change fade in (FadeOnChange: no remount, none with reduced motion).
+    const fadeKey = viewState.view === 'reader' ? `reader:${viewState.blog.id}` : 'recent';
+
     return (
-        <div className="flex-1 flex flex-col h-full bg-white overflow-hidden">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
             {/* Member Select Modal */}
             <MemberSelectModal
                 isOpen={isMemberModalOpen}
@@ -540,50 +592,53 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                 />
             )}
 
-            {/* Recent Posts Feed */}
-            {viewState.view === 'recent' && (
-                <RecentPostsFeed
-                    posts={recentPosts}
-                    loading={loading}
-                    error={error}
-                    syncing={isSyncing}
-                    knownPostIds={knownPostIdsRef.current}
-                    onSelectPost={handleSelectRecentPost}
-                    onMemberSelect={() => setIsMemberModalOpen(true)}
-                    onRetry={handleRetry}
-                    serviceId={activeService ?? ''}
-                />
-            )}
-
-            {/* Blog Reader */}
-            {viewState.view === 'reader' && (() => {
-                const { memberBlogs, currentIndex } = getMemberBlogsNavigation();
-                const handleMemberClick = () => {
-                    // Open timeline modal for the current member
-                    setTimelineMember(viewState.member);
-                    setTimelineBlogs([]);
-                    setIsTimelineModalOpen(true);
-                };
-                return (
-                    <BlogReader
-                        content={viewState.content}
-                        member={viewState.member}
-                        blog={viewState.blog}
-                        memberBlogs={memberBlogs}
-                        currentIndex={currentIndex}
+            <FadeOnChange changeKey={fadeKey} className="flex min-h-0 flex-1 flex-col">
+                {/* Recent Posts Feed */}
+                {viewState.view === 'recent' && (
+                    <RecentPostsFeed
+                        posts={recentPosts}
                         loading={loading}
                         error={error}
-                        onBack={handleBack}
-                        onRetry={handleRetry}
-                        onNavigate={handleNavigateBlog}
-                        onMemberClick={handleMemberClick}
+                        syncing={isSyncing}
+                        knownPostIds={knownPostIdsRef.current}
+                        onSelectPost={handleSelectRecentPost}
+                        onMemberSelect={() => setIsMemberModalOpen(true)}
+                        onRetry={handleFeedRetry}
                         serviceId={activeService ?? ''}
-                        searchQuery={viewState.searchQuery}
-                        matchedTerms={viewState.matchedTerms}
-                        readingTerms={viewState.readingTerms}
                     />
-                );
-            })()}
+                )}
+
+                {/* Blog Reader */}
+                {viewState.view === 'reader' && (() => {
+                    const { memberBlogs, currentIndex } = getMemberBlogsNavigation();
+                    const handleMemberClick = () => {
+                        // Open timeline modal for the current member
+                        setTimelineMember(viewState.member);
+                        setTimelineBlogs([]);
+                        setIsTimelineModalOpen(true);
+                    };
+                    return (
+                        <BlogReader
+                            content={viewState.content}
+                            member={viewState.member}
+                            blog={viewState.blog}
+                            memberBlogs={memberBlogs}
+                            currentIndex={currentIndex}
+                            loading={loading}
+                            error={error}
+                            onBack={handleBack}
+                            onRetry={handleReaderRetry}
+                            onNavigate={handleNavigateBlog}
+                            onMemberClick={handleMemberClick}
+                            keysEnabled={!isTimelineModalOpen && !isPhotoGalleryOpen && !isMemberModalOpen}
+                            serviceId={activeService ?? ''}
+                            searchQuery={viewState.searchQuery}
+                            matchedTerms={viewState.matchedTerms}
+                            readingTerms={viewState.readingTerms}
+                        />
+                    );
+                })()}
+            </FadeOnChange>
         </div>
     );
 };

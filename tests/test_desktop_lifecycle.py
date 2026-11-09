@@ -99,3 +99,18 @@ class TestAtomicSettingsWrite:
         )
         # atomic_write_json must clean up its mkstemp temp file.
         assert [p.name for p in tmp_path.iterdir()] == ["settings.json"]
+
+
+class TestLegacyWindowMigration:
+    def test_keeps_legacy_file_when_settings_unreadable(self, tmp_path, monkeypatch):
+        """An unreadable settings.json is not overwritten, so the legacy
+        window.json must survive for a later migration attempt."""
+        monkeypatch.setattr(desktop, "get_app_data_dir", lambda: tmp_path)
+        (tmp_path / "settings.json").write_text("{broken", encoding="utf-8")
+        legacy = tmp_path / "window.json"
+        legacy.write_text(json.dumps({"width": 900, "height": 700}), encoding="utf-8")
+
+        desktop._load_window_geometry()
+
+        assert legacy.exists()
+        assert (tmp_path / "settings.json").read_text(encoding="utf-8") == "{broken"

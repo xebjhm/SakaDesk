@@ -1,5 +1,32 @@
 import { type ClassValue, clsx } from "clsx"
-import { twMerge } from "tailwind-merge"
+import { extendTailwindMerge } from "tailwind-merge"
+
+// Teach tailwind-merge the design-system classes (tailwind.config.js) so a token
+// text size and a token text colour are not treated as conflicting `text-*` classes,
+// and the group gradient (a background-image) is not treated as a `bg-` colour.
+// `mask-image` is a design-system group tailwind-merge does not know (the `mask-fade-y` utility).
+const twMerge = extendTailwindMerge<'mask-image'>({
+    extend: {
+        classGroups: {
+            'font-size': [{ text: ['caption', 'small', 'body', 'title', 'heading', 'display', 'reading', 'tile-date', 'tile-date-lg', 'tile-title', 'tile-title-lg', 'tile-name', 'tile-name-lg', 'segment'] }],
+            'font-family': [{ font: ['sans', 'display', 'reading'] }],
+            'text-color': [{ text: ['primary', 'secondary', 'muted', 'inverse', 'accent', 'accent-strong', 'accent-tonal', 'expressive-header', 'group-title', 'group-strong', 'status-danger', 'status-success', 'status-warning', 'semantic-success', 'semantic-warning', 'semantic-danger', 'semantic-info', 'viewer', 'viewer-muted', 'console', 'console-muted', 'console-prompt', 'console-error', 'console-warning', 'console-badge', 'calendar-holiday', 'calendar-saturday', 'heart', 'semantic-oshi', 'semantic-oshi-solid', 'semantic-star', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text'] }],
+            'bg-color': [{ bg: ['skeleton', 'accent', 'accent-strong', 'accent-subtle', 'accent-border', 'accent-logo', 'status-attention', 'semantic-success-subtle', 'semantic-warning-subtle', 'semantic-danger-subtle', 'semantic-info-subtle', 'semantic-success-icon', 'semantic-warning-icon', 'semantic-danger-icon', 'semantic-info-icon', 'semantic-oshi-subtle', 'semantic-oshi-solid', 'console', 'console-badge', 'header-glass', 'header-shade', 'frost', 'group-title-tint', 'group-title-wash', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text', 'tile-glass', 'segment-track'] }],
+            'bg-image': [{ bg: ['accent-gradient', 'accent-wash', 'accent-tonal', 'expressive-soft', 'expressive-header', 'expressive-header-bar', 'expressive-progress', 'expressive-orb-1', 'expressive-orb-2', 'expressive-orb-3', 'aurora', 'group-canvas', 'group-title', 'group-title-bar', 'group-ambient-1', 'group-ambient-2', 'group-ambient-3', 'member-wash', 'accent-aura', 'accent-tile', 'tile-vignette', 'accent-lens'] }],
+            'border-color': [{ border: ['accent', 'accent-strong', 'accent-border', 'accent-wash', 'frost', 'semantic-success', 'semantic-warning', 'semantic-danger', 'semantic-info', 'semantic-oshi', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text', 'tile-glass'] }],
+            'ring-color': [{ ring: ['accent', 'expressive-header', 'expressive-header-focus', 'accent-border', 'accent-logo', 'accent-subtle', 'semantic-oshi'] }],
+            fill: [{ fill: ['semantic-oshi'] }],
+            rounded: [{ rounded: ['tail', 'card', 'sheet', 'pill'] }],
+            'rounded-tl': [{ 'rounded-tl': ['tail'] }],
+            shadow: [{ shadow: ['accent-glow', 'accent-beacon', 'accent-glow-hover', 'accent-halo', 'accent-unread', 'pill', 'card', 'sheet', 'group-glow', 'tile', 'tile-hover', 'caption', 'caption-hover', 'segment'] }],
+            duration: [{ duration: ['fast', 'base', 'glide', 'lift', 'zoom', 'lens'] }],
+            animate: [{ animate: ['landing', 'reveal', 'orb-drift-1', 'orb-drift-2', 'orb-breathe', 'heart-float', 'heartbeat', 'shimmer', 'shimmer-sweep', 'pop', 'confetti', 'sparkle', 'toast-in'] }],
+            ease: [{ ease: ['standard', 'spring'] }],
+            'mask-image': [{ mask: ['fade-y'] }],
+            transition: [{ transition: ['caption'] }],
+        },
+    },
+})
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))
@@ -27,14 +54,6 @@ export function formatDuration(seconds: number | undefined): string {
     const secs = Math.floor(seconds % 60);
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 }
-
-/**
- * Full month names for display (English)
- */
-export const MONTH_NAMES = [
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-] as const;
 
 /**
  * Short month names for display (English)

@@ -1,14 +1,16 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { X, Download } from 'lucide-react';
+import React, { useEffect, useCallback, useRef } from 'react';
+import { X, Download, ZoomIn, ZoomOut, Shrink } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
-import { Z_CLASS } from '../../constants/zIndex';
+import { timeNeighbours, type ListOrder } from '../../utils/timeOrder';
+import { Modal, IconButton, Button } from '../../design/primitives';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { PhotoPlayer } from './PhotoPlayer';
+import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 
 /** A single media item in the viewer. */
 export interface MediaViewerItem {
@@ -38,45 +40,54 @@ interface MediaViewerModalProps {
     currentIndex: number;
     onClose: () => void;
     onNavigate: (index: number) => void;
+    /** Optional content shown top-centre (e.g. tabs); clicks on it don't close the viewer. */
+    headerSlot?: React.ReactNode;
+    /** How `mediaItems` is sorted (default `oldest_first`); ← / → always step older / newer and the counter counts the oldest as 1. */
+    order?: ListOrder;
 }
 
 /**
  * Unified media viewer modal for photos, videos, and voice.
  *
  * Keyboard controls:
- * - Left/Right: Navigate to previous/next media
+ * - Left/Right: Older/newer media, whichever way `order` sorts the list (never pan, even zoomed)
  * - Up/Down: Zoom in/out (photos) or volume up/down (video/voice)
- * - Escape: Close
+ * - Escape: Close (handled by the dialog layer, which respects fullscreen)
+ *
+ * Photo zoom (1–4×, see `useZoomPan`): the mouse wheel zooms around the cursor anywhere in the
+ * viewer (and never scrolls the page behind); the top-left − / fit / + buttons step out, back to
+ * fit and in; when zoomed, dragging pans (clamped so the photo stays on screen); a double-click
+ * toggles fit ↔ 2× at the click point. Zoom and pan reset when the item changes.
  */
 export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     mediaItems,
     currentIndex,
     onClose,
     onNavigate,
+    headerSlot,
+    order = 'oldest_first',
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
-    const modalRef = useRef<HTMLDivElement>(null);
 
-    const [zoom, setZoom] = useState(1);
+    const stageRef = useRef<HTMLDivElement>(null);
 
     const item = mediaItems[currentIndex];
+    const isPicture = item?.type === 'picture';
+    // Zoom and pan reset when navigating to a new item. (Video/voice transcription
+    // state is owned by the player components themselves via messageId.)
+    const { view, dragging, step, reset, stageHandlers } = useZoomPan(stageRef, isPicture, `${currentIndex}:${item?.src}`);
 
     // Clipboard shortcut — window-level Ctrl+C listener
     const { toastMessage } = useClipboardShortcut(item?.src, item?.type);
 
-    const hasPrev = currentIndex > 0;
-    const hasNext = currentIndex < mediaItems.length - 1;
+    const { older, newer, ordinal } = timeNeighbours(currentIndex, mediaItems.length, order);
 
-    // Reset zoom when navigating to a new item. (Video/voice transcription
-    // state is owned by the player components themselves via messageId.)
+    // Navigating can unmount the focused control (Download, a play button), which drops focus to
+    // the body and silences ← / →: put it back on the dialog frame.
     useEffect(() => {
-        setZoom(1);
-    }, [currentIndex]);
-
-    // Focus modal for keyboard capture
-    useEffect(() => {
-        modalRef.current?.focus();
+        const frame = stageRef.current?.closest<HTMLElement>('[role="dialog"]');
+        if (frame && !frame.contains(document.activeElement)) frame.focus({ preventScroll: true });
     }, [currentIndex]);
 
     const handleDownload = useCallback(() => {
@@ -84,61 +95,83 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         downloadMedia(item.src, formatDownloadFilename(item.src, item.timestamp));
     }, [item]);
 
-    const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
         switch (e.key) {
-            case 'Escape':
-                // When in fullscreen, Escape exits fullscreen (browser handles it).
-                // Don't also close the modal — the user wants to stay in the viewer.
-                if (document.fullscreenElement) break;
-                e.preventDefault();
-                onClose();
-                break;
             case 'ArrowLeft':
                 e.preventDefault();
-                if (hasPrev) onNavigate(currentIndex - 1);
+                if (older !== null) onNavigate(older);
                 break;
             case 'ArrowRight':
                 e.preventDefault();
-                if (hasNext) onNavigate(currentIndex + 1);
+                if (newer !== null) onNavigate(newer);
                 break;
+            // ↑ / ↓ zoom a photo; for video and voice they stay unclaimed: the player owns volume.
             case 'ArrowUp':
-                e.preventDefault();
-                if (item?.type === 'picture') {
-                    setZoom(z => Math.min(z + 0.25, 4));
+                if (isPicture) {
+                    e.preventDefault();
+                    step(1);
                 }
                 break;
             case 'ArrowDown':
-                e.preventDefault();
-                if (item?.type === 'picture') {
-                    setZoom(z => Math.max(z - 0.25, 1));
+                if (isPicture) {
+                    e.preventDefault();
+                    step(-1);
                 }
                 break;
         }
-    }, [onClose, hasPrev, hasNext, currentIndex, onNavigate, item?.type]);
+    }, [older, newer, onNavigate, isPicture, step]);
 
     if (!item) return null;
+    const lifted = item.sourceLabel && item.onSourceJump ? 'bottom-14' : 'bottom-6';
 
     return (
-        <div
-            ref={modalRef}
-            tabIndex={-1}
-            className={cn("fixed inset-0 bg-black/90 flex items-center justify-center outline-none", Z_CLASS.MODAL_DETAIL)}
-            onClick={onClose}
+        <Modal
+            isOpen
+            onClose={onClose}
+            tone="viewer"
+            layout="bare"
+            aria-label={t('common.mediaViewer')}
+            logId="media_viewer"
             onKeyDown={handleKeyDown}
         >
-            {/* Close button */}
-            <button className="absolute top-4 right-4 text-white/70 hover:text-white z-10" onClick={onClose}>
-                <X className="w-6 h-6" />
-            </button>
+            <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={onClose} />
 
-            {/* Media content */}
-            <div className="relative max-w-[90vw] max-h-[90vh] flex items-center justify-center" onClick={e => e.stopPropagation()}>
-                {item.type === 'picture' && (
-                    <PhotoPlayer variant="fullscreen" src={item.src} alt="Media" zoom={zoom} />
+            {isPicture && (
+                // aria-disabled (not disabled) at the limits, so a focused button keeps focus and ← / → keep working.
+                <div className="absolute left-4 top-4 z-10 flex gap-2">
+                    <IconButton variant="overlay" aria-label={t('common.zoomOut')} icon={<ZoomOut />} aria-disabled={view.scale <= MIN_ZOOM || undefined} onClick={() => step(-1)} />
+                    <IconButton variant="overlay" aria-label={t('common.zoomFit')} icon={<Shrink />} aria-disabled={view.scale <= MIN_ZOOM || undefined} onClick={reset} />
+                    <IconButton variant="overlay" aria-label={t('common.zoomIn')} icon={<ZoomIn />} aria-disabled={view.scale >= MAX_ZOOM || undefined} onClick={() => step(1)} />
+                </div>
+            )}
+
+            {headerSlot && <div className="absolute left-1/2 top-4 z-10 -translate-x-1/2">{headerSlot}</div>}
+
+            <div
+                ref={stageRef}
+                data-testid="viewer-stage"
+                className={cn(
+                    'relative flex max-h-[90vh] max-w-[90vw] items-center justify-center',
+                    isPicture && 'touch-none select-none',
+                    isPicture && view.scale > MIN_ZOOM && (dragging ? 'cursor-grabbing' : 'cursor-grab'),
+                )}
+                {...(isPicture ? stageHandlers : {})}
+            >
+                {isPicture && (
+                    <PhotoPlayer
+                        variant="fullscreen"
+                        src={item.src}
+                        alt={t('common.mediaViewer')}
+                        zoom={view.scale}
+                        pan={view}
+                        className={dragging ? 'transition-none' : undefined}
+                    />
                 )}
                 {item.type === 'video' && (
                     <div className="flex flex-col items-center gap-3">
+                        {/* Keyed by source: each item gets a fresh player (no carried-over state) */}
                         <VideoPlayer
+                            key={item.src}
                             src={item.src}
                             variant="fullscreen"
                             autoPlay
@@ -152,8 +185,9 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                     </div>
                 )}
                 {item.type === 'voice' && (
-                    <div className="w-96 flex flex-col gap-3">
+                    <div className="flex w-96 flex-col gap-3">
                         <VoicePlayer
+                            key={item.src}
                             src={item.src}
                             variant="fullscreen"
                             avatarUrl={item.avatarUrl}
@@ -169,47 +203,38 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 )}
             </div>
 
-            {/* Download button (photos only — video and voice have their own controls) */}
             {goldenFingerActive && item.type === 'picture' && (
-                <button
-                    onClick={(e) => { e.stopPropagation(); handleDownload(); }}
-                    className={cn(
-                        "absolute right-6 px-4 py-2 bg-white/20 hover:bg-white/30 text-white rounded-lg text-sm flex items-center gap-2 backdrop-blur-sm transition-colors",
-                        item.sourceLabel && item.onSourceJump ? "bottom-14" : "bottom-6"
-                    )}
-                >
-                    <Download className="w-4 h-4" />
+                <Button variant="overlay" size="sm" className={cn('absolute right-6', lifted)} onClick={handleDownload}>
+                    <Download className="h-4 w-4" />
                     {t('common.download')}
-                </button>
+                </Button>
             )}
 
-            {/* Navigation counter */}
             {mediaItems.length > 1 && (
-                <div className={cn(
-                    "absolute left-6 text-white/60 text-sm",
-                    item.sourceLabel && item.onSourceJump ? "bottom-14" : "bottom-6"
-                )}>
-                    {currentIndex + 1} / {mediaItems.length}
+                <div className={cn('absolute left-6 text-small tabular-nums text-viewer-muted', lifted)}>
+                    {ordinal} / {mediaItems.length}
                 </div>
             )}
 
-            {/* Source label */}
             {item.sourceLabel && item.onSourceJump && (
                 <button
-                    onClick={(e) => { e.stopPropagation(); item.onSourceJump!(); }}
-                    className="absolute bottom-6 left-1/2 -translate-x-1/2 text-white/70 hover:text-white text-sm max-w-[60vw] truncate transition-colors underline underline-offset-2 decoration-white/30 hover:decoration-white/60"
+                    type="button"
+                    onClick={item.onSourceJump}
+                    className="absolute bottom-6 left-1/2 max-w-[60vw] -translate-x-1/2 truncate rounded-pill px-2 text-small text-viewer-muted underline decoration-viewer underline-offset-2 transition-colors duration-fast ease-standard hover:text-viewer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                     {item.sourceLabel}
                 </button>
             )}
+            {item.sourceLabel && !item.onSourceJump && (
+                <div className="absolute bottom-6 left-1/2 max-w-[60vw] -translate-x-1/2 truncate text-small text-viewer-muted">{item.sourceLabel}</div>
+            )}
 
-            {/* Clipboard toast */}
             {toastMessage && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-lg animate-fade-in z-20">
+                <div role="status" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer animate-reveal motion-reduce:animate-none">
                     {toastMessage}
                 </div>
             )}
-        </div>
+        </Modal>
     );
 };
 

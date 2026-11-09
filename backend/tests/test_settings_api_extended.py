@@ -245,6 +245,20 @@ class TestUpdateSettings:
         # Called once during _apply inside update_settings
         mock_notify.assert_called_with(False)
 
+    def test_hide_content_defaults_false_and_round_trips(self):
+        """notifications_hide_content: absent -> False; POST persists and echoes it."""
+        cfg = _default_config()
+        with _patch_store(load_return=cfg):
+            assert (
+                client.get("/api/settings").json()["notifications_hide_content"]
+                is False
+            )
+            response = client.post(
+                "/api/settings", json={"notifications_hide_content": True}
+            )
+        assert response.status_code == 200
+        assert response.json()["notifications_hide_content"] is True
+
     def test_update_blogs_full_backup(self):
         """Toggle blogs_full_backup."""
         cfg = _default_config(blogs_full_backup=False)
@@ -598,3 +612,45 @@ class TestInitServiceSettings:
         response = client.post("/api/settings/service/invalid_service/init")
         assert response.status_code == 400
         assert "invalid service" in response.json()["detail"].lower()
+
+
+class TestSchedulerWake:
+    """Changing a scheduling setting wakes the auto-sync scheduler (once)."""
+
+    @staticmethod
+    def _post(body, cfg=None):
+        cfg = cfg or _default_config(
+            auto_sync_enabled=True, sync_interval_minutes=15, adaptive_sync_enabled=True
+        )
+        with (
+            _patch_store(load_return=cfg),
+            patch("backend.api.settings.wake_scheduler") as wake,
+        ):
+            response = client.post("/api/settings", json=body)
+        assert response.status_code == 200
+        return wake
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {"auto_sync_enabled": False},
+            {"sync_interval_minutes": 30},
+            {"adaptive_sync_enabled": False},
+            {"auto_sync_enabled": False, "sync_interval_minutes": 30},
+        ],
+    )
+    def test_changed_schedule_setting_wakes_the_scheduler(self, body):
+        self._post(body).assert_called_once_with()
+
+    @pytest.mark.parametrize(
+        "body",
+        [
+            {},
+            {"auto_sync_enabled": True},  # same value as stored
+            {"sync_interval_minutes": 15},
+            {"notifications_enabled": False},
+            {"close_to_tray": False},
+        ],
+    )
+    def test_unchanged_or_unrelated_settings_do_not_wake(self, body):
+        self._post(body).assert_not_called()

@@ -1,23 +1,26 @@
 [project]
 name = "sakadesk"
-version = "0.3.4"
+version = "0.4.0"
 description = "SakaDesk GUI Application"
 license = { text = "GPL-3.0-only" }
 requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "pysaka==0.4.4",
+    "pysaka==0.4.6",
     "python-multipart",
     "aiofiles",
     "keyring",
     "tk>=0.1.0",
     "structlog>=25.5.0",
     "keyrings-alt>=5.0.2",
-    "plyer>=2.1.0",
     "pykakasi>=2.3.0",
     "jaconv>=0.5.0",
     "httpx>=0.28.1",
+    "windows-toasts>=1.3.1 ; sys_platform == 'win32'",
+    "pywin32>=312 ; sys_platform == 'win32'",
+    "pystray>=0.19.5 ; sys_platform == 'win32'",
+    "pillow>=12.1.0",
 ]
 
 [tool.uv.sources]

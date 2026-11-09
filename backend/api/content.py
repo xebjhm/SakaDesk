@@ -16,15 +16,16 @@ pysaka directory structure:
         ...
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, Header, HTTPException, Query, Response
 from fastapi.responses import FileResponse
 from pydantic import BaseModel
+from dataclasses import dataclass
 from pathlib import Path
 import asyncio
+import hashlib
 import json
 import structlog
 import os
-import re
 from typing import Optional, List, Dict, Any
 
 from backend.services.platform import (
@@ -40,6 +41,21 @@ from backend.services.path_resolver import (
     resolve_messages_file,
     resolve_media_path,
 )
+from backend.services.chat_kind import (  # noqa: F401  (GROUP_CHAT_IDS re-exported)
+    GROUP_CHAT_IDS,
+    ID_NAME_PATTERN,
+    is_group_chat,
+    is_member_dir,
+)
+from backend.services.message_visibility import visible_messages
+from backend.services.messages_cache import (
+    NO_MESSAGES,
+    get_messages_summary,
+    stat_key,
+)
+from backend.services import avatar_resize, profile_images_service
+from backend.services.media_range import MediaFileResponse
+from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
     get_service_identifier,
@@ -51,25 +67,6 @@ logger = structlog.get_logger(__name__)
 
 # Default fallback if settings not configured
 DEFAULT_OUTPUT_DIR = get_default_output_dir()
-
-# Communal (group) chat IDs, keyed by service identifier to avoid cross-service
-# collisions (group IDs are only unique within a single service's API).
-#
-# LOAD-BEARING — do not "simplify" this away in favour of member_count alone.
-# member_count here is the number of distinct on-disk *senders* (get_member_dirs),
-# NOT the API's /groups/{id}/members count. An official communal channel posts
-# from a single account, so it has one sender folder and member_count == 1;
-# `member_count > 1` therefore cannot detect it. The IDs below are the communal
-# channels verified against real synced data (2026-07-02) that need this override:
-#   hinatazaka46 43 (日向坂46), nogizaka46 45 (乃木坂46), sakurazaka46 33 (櫻坂46).
-# 79/93 (hinatazaka46) also have >1 sender so member_count catches them too; they
-# are listed for clarity. 78/70/73 are closed/future channels kept so they classify
-# correctly if they reopen (currently no synced messages → no group emitted).
-GROUP_CHAT_IDS: dict[str, set[str]] = {
-    "hinatazaka46": {"43", "78", "79", "93"},
-    "sakurazaka46": {"33", "73"},
-    "nogizaka46": {"45", "70"},  # 70 is closed but keep for if it reopens
-}
 
 
 def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
@@ -83,7 +80,7 @@ def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
     try:
         common = os.path.commonpath([str(base_resolved), str(target_path)])
         if common != str(base_resolved):
-            logger.warning(f"Path traversal attempt: {user_path} -> {target_path}")
+            logger.warning("path_traversal_blocked")
             raise HTTPException(status_code=403, detail="Access denied")
     except ValueError:
         raise HTTPException(status_code=403, detail="Access denied")
@@ -164,21 +161,15 @@ def parse_id_name(folder_name: str) -> tuple[Optional[str], str]:
     Parse a folder name in format "{id} {name}" or just "{name}".
     Returns (id, name) tuple. ID may be None if not present.
     """
-    match = re.match(r"^(\d+)\s+(.+)$", folder_name)
+    match = ID_NAME_PATTERN.match(folder_name)
     if match:
         return match.group(1), match.group(2)
     return None, folder_name
 
 
 def get_member_dirs(group_dir: Path) -> List[Path]:
-    """Get all member directories within a group directory."""
-    members = []
-    for item in group_dir.iterdir():
-        if item.is_dir():
-            member_id, _ = parse_id_name(item.name)
-            if member_id and (item / "messages.json").exists():
-                members.append(item)
-    return members
+    """Get all member directories within a group directory (see ``is_member_dir``)."""
+    return [item for item in group_dir.iterdir() if is_member_dir(item)]
 
 
 @router.get("/groups")
@@ -210,24 +201,39 @@ async def get_groups(service: str | None = None):
     return await asyncio.to_thread(_collect_groups, output_dir, service)
 
 
-def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict:
-    """Scan the output tree and build the /groups payload.
+@dataclass(frozen=True)
+class _GroupRef:
+    """One conversation folder as listed by ``/groups`` (and the tray tooltip)."""
 
-    When ``service_filter`` is given (a service identifier like
-    ``"hinatazaka46"``), only that service's groups are returned — a
-    service-scoped view (e.g. the sidebar for the active service) must not
-    receive other services' groups. Group/talk ids are only unique WITHIN a
-    service (the same id can name a different conversation in another service),
-    which is also why the frontend keys unread state by the service-scoped
-    path rather than by id.
+    service_id: str
+    group_dir: Path
+    group_id: str
+    group_name: str
+    member_dirs: List[Path]
+    is_group_chat: bool
+    is_active: bool
+    is_graduated: bool
+    #: Server-side unread snapshot for the phone -> Windows badge cap.
+    #: ``None`` when absent (old metadata) -> callers must not cap on it.
+    server_unread_count: Optional[int]
 
-    Blocking filesystem work (directory walk + per-file json.load) — call via
-    ``asyncio.to_thread``, never on the loop (SD-BE-API-01).
+
+def _list_group_refs(
+    output_dir: Path,
+    server_groups: Dict[str, Dict[str, Any]],
+    service_filter: str | None = None,
+) -> tuple[List[_GroupRef], bool]:
+    """Enumerate the conversation folders under ``output_dir``.
+
+    Single source for ``/groups`` and the tray tooltip's unread total, so both
+    agree on which conversations exist, which are group chats and what the
+    server's unread snapshot is. ``server_groups`` comes from
+    ``load_sync_metadata``. Returns ``(refs, matched_service)`` where
+    ``matched_service`` is False when ``service_filter`` matched no directory.
+
+    Blocking filesystem work - call via ``asyncio.to_thread``.
     """
-    # Load sync metadata for group status (source of truth)
-    sync_metadata, server_groups, last_sync_map = load_sync_metadata(output_dir)
-
-    groups = []
+    refs: List[_GroupRef] = []
     matched_service = False
 
     # Iterate over service directories (e.g., 日向坂46)
@@ -246,7 +252,7 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
             # Skip unknown service directories
             continue
 
-        # Scope to one service when requested — ids are only unique per service.
+        # Scope to one service when requested - ids are only unique per service.
         if service_filter and service_id != service_filter:
             continue
         matched_service = True
@@ -265,97 +271,152 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
             if not member_dirs:
                 continue
 
-            members_info = []
-            last_message_id = 0
-            total_messages = 0
-            group_thumbnail = None
-
-            for member_dir in member_dirs:
-                member_id, member_name = parse_id_name(member_dir.name)
-                msg_file = member_dir / "messages.json"
-
-                member_meta = {
-                    "id": member_id,
-                    "name": member_name,
-                    "dir_name": member_dir.name,
-                    # Relative path from output_dir to member dir
-                    "path": str(member_dir.relative_to(output_dir)).replace("\\", "/"),
-                }
-
-                if msg_file.exists():
-                    try:
-                        with open(msg_file, "r", encoding="utf-8") as f:
-                            data = json.load(f)
-                            m_data = data.get("member", {})
-                            member_meta["thumbnail"] = m_data.get("thumbnail")
-                            member_meta["portrait"] = m_data.get("portrait")
-                            member_meta["phone_image"] = m_data.get("phone_image")
-                            member_meta["group_thumbnail"] = m_data.get(
-                                "group_thumbnail"
-                            )
-
-                            if m_data.get("group_thumbnail"):
-                                group_thumbnail = m_data.get("group_thumbnail")
-
-                            # Get last message ID
-                            msgs = data.get("messages", [])
-                            if msgs:
-                                last_id = msgs[-1].get("id", 0)
-                                if last_id > last_message_id:
-                                    last_message_id = last_id
-
-                            # Count messages
-                            m_total = data.get("total_messages", len(msgs))
-                            total_messages += m_total
-                    except Exception as e:
-                        logger.warning(
-                            "Failed to read messages file",
-                            file_path=str(msg_file),
-                            error=str(e),
-                        )
-
-                members_info.append(member_meta)
-
-            member_count = len(members_info)
             # Check if this is a group chat (multiple members or special group ID)
-            service_chat_ids = GROUP_CHAT_IDS.get(service_id, set())
-            is_group_chat = member_count > 1 or group_id in service_chat_ids
+            is_group = is_group_chat(service_id, group_id, len(member_dirs))
 
             # Derive status from group-level server state
             sg = server_groups.get(f"{service_display_name}:{group_id}")
             if sg:
                 is_graduated = sg.get("state") == "closed"
                 is_active = sg.get("is_active", True) if not is_graduated else False
-                # Server-side unread snapshot for the phone -> Windows badge cap.
-                # None when absent (old metadata) → caller must not cap on it.
                 server_unread_count = sg.get("unread_count")
             else:
-                # No server data yet — need to sync first
+                # No server data yet - need to sync first
                 is_graduated = False
                 is_active = True
                 server_unread_count = None
 
-            groups.append(
-                {
-                    "id": group_id,
-                    "name": group_name,
-                    "service": service_id,
-                    "dir_name": group_dir.name,
-                    # Path to group directory relative to output_dir
-                    "group_path": str(group_dir.relative_to(output_dir)).replace(
-                        "\\", "/"
-                    ),
-                    "member_count": member_count,
-                    "is_group_chat": is_group_chat,
-                    "is_active": is_active,
-                    "is_graduated": is_graduated,
-                    "server_unread_count": server_unread_count,
-                    "thumbnail": group_thumbnail,
-                    "last_message_id": last_message_id,
-                    "total_messages": total_messages,
-                    "members": members_info,
-                }
+            refs.append(
+                _GroupRef(
+                    service_id=service_id,
+                    group_dir=group_dir,
+                    group_id=group_id,
+                    group_name=group_name,
+                    member_dirs=member_dirs,
+                    is_group_chat=is_group,
+                    is_active=is_active,
+                    is_graduated=is_graduated,
+                    server_unread_count=server_unread_count,
+                )
             )
+    return refs, matched_service
+
+
+def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict:
+    """Scan the output tree and build the /groups payload.
+
+    When ``service_filter`` is given (a service identifier like
+    ``"hinatazaka46"``), only that service's groups are returned — a
+    service-scoped view (e.g. the sidebar for the active service) must not
+    receive other services' groups. Group/talk ids are only unique WITHIN a
+    service (the same id can name a different conversation in another service),
+    which is also why the frontend keys unread state by the service-scoped
+    path rather than by id.
+
+    Blocking filesystem work (directory walk + per-file json.load) — call via
+    ``asyncio.to_thread``, never on the loop (SD-BE-API-01).
+    """
+    # Load sync metadata for group status (source of truth)
+    sync_metadata, server_groups, last_sync_map = load_sync_metadata(output_dir)
+
+    group_refs, matched_service = _list_group_refs(
+        output_dir, server_groups, service_filter
+    )
+
+    groups = []
+    for ref in group_refs:
+        service_id = ref.service_id
+        group_dir = ref.group_dir
+        group_id = ref.group_id
+        group_name = ref.group_name
+        member_dirs = ref.member_dirs
+        is_group = ref.is_group_chat
+        is_graduated = ref.is_graduated
+        is_active = ref.is_active
+        server_unread_count = ref.server_unread_count
+
+        members_info = []
+        last_message_id = 0
+        total_messages = 0
+        group_thumbnail = None
+        group_thumbnail_local = None
+
+        for member_dir in member_dirs:
+            member_id, member_name = parse_id_name(member_dir.name)
+            msg_file = member_dir / "messages.json"
+
+            member_meta = {
+                "id": member_id,
+                "name": member_name,
+                "dir_name": member_dir.name,
+                # Relative path from output_dir to member dir
+                "path": str(member_dir.relative_to(output_dir)).replace("\\", "/"),
+            }
+
+            if msg_file.exists():
+                try:
+                    summary = get_messages_summary(msg_file)
+                    m_data = summary.require_member()
+                    member_meta["thumbnail"] = m_data.get("thumbnail")
+                    member_meta["portrait"] = m_data.get("portrait")
+                    member_meta["phone_image"] = m_data.get("phone_image")
+                    member_meta["group_thumbnail"] = m_data.get("group_thumbnail")
+
+                    has_group_thumbnail = bool(m_data.get("group_thumbnail"))
+                    if has_group_thumbnail:
+                        group_thumbnail = m_data.get("group_thumbnail")
+
+                    try:
+                        # Get last message ID (last in file order, as before)
+                        last_id = summary.require_last_id()
+                        if last_id is not NO_MESSAGES and last_id > last_message_id:
+                            last_message_id = last_id
+
+                        # Count messages
+                        total_messages += summary.require_total()
+                    finally:
+                        # After the sidebar totals, so archived-image trouble
+                        # can never cost a member its counts. Never raises.
+                        member_meta.update(
+                            profile_images_service.local_urls(
+                                output_dir, member_dir, member_meta["path"]
+                            )
+                        )
+                        if has_group_thumbnail:
+                            group_thumbnail_local = member_meta.get(
+                                "group_thumbnail_local"
+                            )
+                except Exception as e:
+                    logger.warning(
+                        "Failed to read messages file",
+                        file_path=str(msg_file),
+                        error=str(e),
+                    )
+
+            members_info.append(member_meta)
+
+        member_count = len(members_info)
+
+        groups.append(
+            {
+                "id": group_id,
+                "name": group_name,
+                "service": service_id,
+                "dir_name": group_dir.name,
+                # Path to group directory relative to output_dir
+                "group_path": str(group_dir.relative_to(output_dir)).replace("\\", "/"),
+                "member_count": member_count,
+                "is_group_chat": is_group,
+                "is_active": is_active,
+                "is_graduated": is_graduated,
+                "server_unread_count": server_unread_count,
+                "thumbnail": group_thumbnail,
+                "thumbnail_local": group_thumbnail_local,
+                "last_message_id": last_message_id,
+                "total_messages": total_messages,
+                "members": members_info,
+            }
+        )
 
     # A requested service that matched no directory yields an empty list, which
     # is indistinguishable from "not synced yet". Log it so a mismatched/stale
@@ -373,18 +434,91 @@ def _collect_groups(output_dir: Path, service_filter: str | None = None) -> dict
     return {"groups": groups, "last_sync": last_sync_map}
 
 
-def _visible_messages(messages: list) -> list:
-    """Hide non-'published' messages from the UI (e.g. state='canceled' — the
-    member withdrew the post, which strips its media). The state is still recorded
-    in messages.json on disk; it is just not shown to normal users."""
-    return [
-        m for m in messages if not (m.get("state") and m.get("state") != "published")
-    ]
+_NO_CACHE = "no-cache"
+
+
+def _etag(files: list[Path], *params: Any) -> Optional[str]:
+    """Strong validator for a response built from ``files`` with ``params``.
+
+    Covers every input of the response: the files' stat keys, the query
+    parameters that shape it, and the app version (a code change can change
+    the shape). None if a file vanished mid-request (no caching then).
+    """
+    try:
+        keys = [(str(f), stat_key(f)) for f in files]
+    except OSError:
+        return None
+    raw = json.dumps([keys, [str(p) for p in params], APP_VERSION], ensure_ascii=False)
+    return '"' + hashlib.sha256(raw.encode("utf-8")).hexdigest()[:32] + '"'
+
+
+def _etag_matches(if_none_match: Optional[str], etag: Optional[str]) -> bool:
+    """RFC 9110 ``If-None-Match`` check using weak comparison.
+
+    Accepts ``*`` (matches whenever a representation exists), comma-separated
+    lists and weak ``W/"..."`` forms.
+    """
+    if etag is None or not if_none_match:
+        return False
+    for candidate in if_none_match.split(","):
+        candidate = candidate.strip()
+        if candidate == "*":
+            return True
+        if candidate.startswith("W/"):
+            candidate = candidate[2:]
+        if candidate == etag:
+            return True
+    return False
+
+
+def _not_modified(etag: str) -> Response:
+    return Response(status_code=304, headers={"ETag": etag, "Cache-Control": _NO_CACHE})
+
+
+def _load_member_messages(
+    msg_file: Path, limit: int, last_read_id: int, output_dir: Optional[Path] = None
+) -> dict:
+    """Blocking body of messages_by_path (unchanged logic) — run in a thread."""
+    with open(msg_file, "r", encoding="utf-8") as f:
+        data: dict = json.load(f)
+    messages = visible_messages(data.get("messages", []))
+    messages.sort(key=lambda x: x.get("timestamp", ""))
+    total = len(messages)
+    unread_count = 0
+    max_message_id = 0
+    if last_read_id > 0:
+        for m in messages:
+            msg_id = m.get("id", 0)
+            if msg_id > max_message_id:
+                max_message_id = msg_id
+            if msg_id > last_read_id:
+                unread_count += 1
+    else:
+        unread_count = total
+        if messages:
+            max_message_id = max(m.get("id", 0) for m in messages)
+    if limit > 0:
+        messages = messages[-limit:]
+    data["messages"] = messages
+    data["total_count"] = total
+    data["unread_count"] = unread_count
+    data["max_message_id"] = max_message_id
+    if isinstance(data.get("member"), dict):
+        output_dir = output_dir or get_output_dir()
+        data["member"].update(
+            profile_images_service.local_urls(output_dir, msg_file.parent)
+        )
+    return data
 
 
 @router.get("/messages_by_path")
 async def get_messages_by_path(
-    path: str, limit: int = 0, offset: int = 0, last_read_id: int = 0
+    response: Response,
+    path: str,
+    limit: int = 0,
+    offset: int = 0,
+    last_read_id: int = 0,
+    if_none_match: Optional[str] = Header(default=None),
 ):
     """
     Get messages using the relative path from output dir.
@@ -395,6 +529,9 @@ async def get_messages_by_path(
     Parameters:
     - limit: Maximum number of messages to return (returns latest messages)
     - last_read_id: For calculating unread count
+
+    Sends an ETag with ``Cache-Control: no-cache``; a matching
+    ``If-None-Match`` gets ``304`` without the file being parsed.
     """
     if is_test_mode():
         from backend.fixtures.test_data import get_test_messages_response
@@ -410,64 +547,58 @@ async def get_messages_by_path(
         logger.debug("Messages file not found", file_path=str(msg_file))
         raise HTTPException(status_code=404, detail="No messages found")
 
+    # offset is a response-shaping API parameter, so it is keyed even though
+    # the handler does not use it yet.
+    etag = _etag(
+        [msg_file, *profile_images_service.index_files(safe_path)],
+        "member",
+        path,
+        limit,
+        offset,
+        last_read_id,
+    )
+    if etag is not None and _etag_matches(if_none_match, etag):
+        return _not_modified(etag)
+
     try:
-        with open(msg_file, "r", encoding="utf-8") as f:
-            data = json.load(f)
-            messages = _visible_messages(data.get("messages", []))
-
-            # Sort by timestamp
-            messages.sort(key=lambda x: x.get("timestamp", ""))
-
-            total = len(messages)
-
-            # Calculate unread count and max_message_id
-            unread_count = 0
-            max_message_id = 0
-            if last_read_id > 0:
-                for m in messages:
-                    msg_id = m.get("id", 0)
-                    if msg_id > max_message_id:
-                        max_message_id = msg_id
-                    if msg_id > last_read_id:
-                        unread_count += 1
-            else:
-                unread_count = total
-                if messages:
-                    max_message_id = max(m.get("id", 0) for m in messages)
-
-            # Simple pagination: return latest messages
-            if limit > 0:
-                messages = messages[-limit:]
-
-            data["messages"] = messages
-            data["total_count"] = total
-            data["unread_count"] = unread_count
-            data["max_message_id"] = max_message_id
-            return data
+        data = await asyncio.to_thread(
+            _load_member_messages,
+            msg_file,
+            limit,
+            last_read_id,
+            output_dir,
+        )
     except Exception as e:
         logger.error("Failed to load messages", path=path, error=str(e))
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
+    if etag is not None:
+        response.headers["ETag"] = etag
+        response.headers["Cache-Control"] = _NO_CACHE
+    return data
 
-@router.get("/group_messages/{group_path:path}")
-async def get_group_messages(
-    group_path: str, limit: int = 200, offset: int = 0, last_read_id: int = 0
-):
-    """
-    Get merged messages from all members in a group (for group chats).
 
-    Example group_path: "日向坂46/messages/43 日向坂46"
+def _group_member_files(safe_path: Path) -> list[Path]:
+    files = []
+    for member_dir in sorted(safe_path.iterdir()):
+        if member_dir.is_dir() and parse_id_name(member_dir.name)[0]:
+            msg_file = member_dir / "messages.json"
+            if msg_file.exists():
+                files.append(msg_file)
+                files.extend(profile_images_service.index_files(member_dir))
+    return files
 
-    Parameters:
-    - limit: Maximum number of messages to return (returns latest messages)
-    - last_read_id: For calculating unread count
-    """
-    output_dir = get_output_dir()
-    safe_path = validate_path_within_dir(output_dir, group_path)
 
-    if not safe_path.is_dir():
-        raise HTTPException(status_code=404, detail="Group not found")
-
+def _load_group_messages(
+    safe_path: Path,
+    group_path: str,
+    limit: int,
+    last_read_id: int,
+    output_dir: Optional[Path] = None,
+) -> dict:
+    """Blocking body of group_messages (unchanged logic) — run in a thread."""
+    output_dir = output_dir or get_output_dir()  # once, not per member
+    group_rel = profile_images_service.rel_path(output_dir, safe_path)
     all_messages = []
     members_map = {}
 
@@ -495,8 +626,15 @@ async def get_group_messages(
                     "phone_image": member_info.get("phone_image"),
                     "group_thumbnail": member_info.get("group_thumbnail"),
                 }
+                members_map[member_id].update(
+                    profile_images_service.local_urls(
+                        output_dir,
+                        member_dir,
+                        f"{group_rel}/{member_dir.name}" if group_rel else None,
+                    )
+                )
 
-                for msg in _visible_messages(data.get("messages", [])):
+                for msg in visible_messages(data.get("messages", [])):
                     msg["member_id"] = member_id
                     msg["member_name"] = member_name
                     all_messages.append(msg)
@@ -539,6 +677,79 @@ async def get_group_messages(
         "members": list(members_map.values()),
         "messages": paginated,
     }
+
+
+@router.get("/group_messages/{group_path:path}")
+async def get_group_messages(
+    response: Response,
+    group_path: str,
+    limit: int = 200,
+    offset: int = 0,
+    last_read_id: int = 0,
+    if_none_match: Optional[str] = Header(default=None),
+):
+    """
+    Get merged messages from all members in a group (for group chats).
+
+    Example group_path: "日向坂46/messages/43 日向坂46"
+
+    Parameters:
+    - limit: Maximum number of messages to return (returns latest messages)
+    - last_read_id: For calculating unread count
+
+    Sends an ETag with ``Cache-Control: no-cache``; a matching
+    ``If-None-Match`` gets ``304`` without the files being parsed.
+    """
+    output_dir = get_output_dir()
+    safe_path = validate_path_within_dir(output_dir, group_path)
+
+    if not safe_path.is_dir():
+        raise HTTPException(status_code=404, detail="Group not found")
+
+    files = await asyncio.to_thread(_group_member_files, safe_path)
+    # offset is a response-shaping API parameter, so it is keyed even though
+    # the handler does not use it yet.
+    etag = _etag(files, "group", group_path, limit, offset, last_read_id)
+    if etag is not None and _etag_matches(if_none_match, etag):
+        return _not_modified(etag)
+
+    data = await asyncio.to_thread(
+        _load_group_messages,
+        safe_path,
+        group_path,
+        limit,
+        last_read_id,
+        output_dir,
+    )
+    if etag is not None:
+        response.headers["ETag"] = etag
+        response.headers["Cache-Control"] = _NO_CACHE
+    return data
+
+
+@router.get("/profile_images")
+async def get_profile_images(path: str):
+    """Archived list icon / chat icon / call-screen images of one member, newest
+    first per kind; falls back to the remote URLs before pysaka archived them."""
+    output_dir = get_output_dir()
+    member_dir = validate_path_within_dir(output_dir, path)
+    msg_file = member_dir / "messages.json"
+    if not msg_file.exists():
+        raise HTTPException(status_code=404, detail="No messages found")
+
+    def _build() -> dict:
+        try:
+            member_block = get_messages_summary(msg_file).require_member()
+        except (OSError, ValueError, AttributeError):  # unreadable / malformed
+            member_block = {}
+        return profile_images_service.list_images(
+            output_dir,
+            member_dir,
+            member_block,
+            profile_images_service.rel_path(output_dir, member_dir),
+        )
+
+    return await asyncio.to_thread(_build)
 
 
 class ReadStateInput(BaseModel):
@@ -605,17 +816,9 @@ def _compute_unread_counts(
 
             if msg_file.exists():
                 # Individual member path
-                with open(msg_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    messages = data.get("messages", [])
-                    # A message is unread if: ID > lastReadId AND ID not in revealedIds
-                    unread = sum(
-                        1
-                        for m in messages
-                        if m.get("id", 0) > last_read_id
-                        and m.get("id", 0) not in revealed_ids
-                    )
-                    result[path] = unread
+                result[path] = get_messages_summary(msg_file).unread_count(
+                    last_read_id, revealed_ids
+                )
             elif safe_path.is_dir():
                 # Group chat path - count messages from all member subdirs
                 total_unread = 0
@@ -625,15 +828,9 @@ def _compute_unread_counts(
                     member_msg_file = member_dir / "messages.json"
                     if member_msg_file.exists():
                         try:
-                            with open(member_msg_file, "r", encoding="utf-8") as f:
-                                data = json.load(f)
-                                messages = data.get("messages", [])
-                                total_unread += sum(
-                                    1
-                                    for m in messages
-                                    if m.get("id", 0) > last_read_id
-                                    and m.get("id", 0) not in revealed_ids
-                                )
+                            total_unread += get_messages_summary(
+                                member_msg_file
+                            ).unread_count(last_read_id, revealed_ids)
                         except Exception as e:
                             logger.warning(
                                 "Failed to calculate unread count for member",
@@ -680,10 +877,35 @@ async def get_media(file_path: str):
     and rest is the relative path from the service directory (e.g., 'messages/.../voice/123.m4a').
 
     The service_id is translated to the display name (e.g., '櫻坂46') for disk lookup.
+
+    Range requests get bounded ``206`` bodies (at most
+    ``media_range.MEDIA_RANGE_CAP`` bytes) and reading stops when the client
+    disconnects, so paused or abandoned video/voice downloads never hold one
+    of WebView2's six per-host connections. Requests without ``Range`` (e.g.
+    ``<img>``) get the full file with ``200``. See ``backend.services.media_range``;
+    it also logs the ``media_request`` breadcrumb.
     """
     safe_path = _resolve_media_path(file_path)
-    logger.debug(f"Media request: {file_path} -> {safe_path}, exists=True")
-    return FileResponse(safe_path)
+    return MediaFileResponse(safe_path)
+
+
+@router.get("/avatar/{file_path:path}")
+async def get_avatar(file_path: str, w: int = Query(...)):
+    """Serve an archived avatar downscaled to ``w`` px (square WebP).
+
+    ``file_path`` is the same as for ``/media/{file_path}`` and is validated
+    the same way. ``w`` must be one of ``avatar_resize.ALLOWED_WIDTHS``
+    (400 otherwise). The variant is cached on disk; a source that is not
+    larger than ``w``, or one Pillow cannot read, is served unchanged.
+    """
+    if w not in avatar_resize.ALLOWED_WIDTHS:
+        logger.info("avatar_request_rejected", reason="width", width=w)
+        raise HTTPException(status_code=400, detail="Unsupported width")
+    safe_path = _resolve_media_path(file_path)
+    served = await asyncio.to_thread(avatar_resize.resized_avatar, safe_path, w)
+    if served == safe_path:
+        return FileResponse(safe_path)
+    return FileResponse(served, media_type="image/webp")
 
 
 # =============================================================================
@@ -721,10 +943,9 @@ async def get_talk_rooms(service: str = Query(..., description="Service identifi
             if d.is_dir() and (d / "messages.json").exists()
         ]
         member_count = len(member_dirs)
-        service_chat_ids = GROUP_CHAT_IDS.get(service, set())
         room_type = (
             "group_event"
-            if member_count > 1 or talk_room_id in service_chat_ids
+            if is_group_chat(service, talk_room_id, member_count)
             else "individual"
         )
 
@@ -881,7 +1102,7 @@ async def get_talk_room_messages_param(
                     "thumbnail": member_info.get("thumbnail"),
                 }
 
-                for msg in _visible_messages(data.get("messages", [])):
+                for msg in visible_messages(data.get("messages", [])):
                     msg["member_id"] = member_id
                     msg["member_name"] = member_name
                     all_messages.append(msg)

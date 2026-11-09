@@ -5,9 +5,11 @@ multiprocessing.freeze_support()
 import webview  # noqa: E402
 
 webview.settings["ALLOW_DOWNLOADS"] = True
+import asyncio  # noqa: E402
 import threading  # noqa: E402
 import uvicorn  # noqa: E402
 import os  # noqa: E402
+import sys  # noqa: E402
 import socket  # noqa: E402
 import traceback  # noqa: E402
 import time  # noqa: E402
@@ -15,13 +17,28 @@ import json  # noqa: E402
 import urllib.request  # noqa: E402
 import ctypes  # noqa: E402
 import platform  # noqa: E402
+from dataclasses import asdict  # noqa: E402
 from pathlib import Path  # noqa: E402
+from typing import Any, Callable  # noqa: E402
 
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app  # noqa: E402
 from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
 from backend.services import window_geometry  # noqa: E402
-from backend.services.service_utils import atomic_write_json  # noqa: E402
+from backend.services import desktop_bridge  # noqa: E402
+from backend.services.app_identity import (  # noqa: E402
+    ensure_start_menu_shortcut,
+    set_process_aumid,
+)
+from backend.services import settings_store  # noqa: E402
+from backend.services import autostart  # noqa: E402
+from backend.services.i18n import get_strings, resolve_ui_language  # noqa: E402
+from backend.services.notification_planner import UiState  # noqa: E402
+from backend.services.tray_tooltip import refresh_tray_tooltip  # noqa: E402
+from backend.services.ui_state import set_ui_state  # noqa: E402
+from tray import TrayController  # noqa: E402
+from call_popup_window import CallPopupWindow  # noqa: E402
+from window_chrome import make_title_bar_handler  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
 # Setup logging
@@ -40,23 +57,49 @@ HOST = "127.0.0.1"
 # "Server failed to start" crash dialog on every second launch / quick reopen.
 SERVER_STARTUP_TIMEOUT = 30  # seconds; > backend data-lock acquire timeout (10s)
 
+# How long the server keeps an idle HTTP connection open. It must outlast
+# Chromium's own idle-socket lifetime (300 s), so the browser always closes an
+# idle connection first. With uvicorn's 5 s default, the server closed idle
+# connections just as the 5 s progress poll reused them. On Windows the browser
+# was then left with a half-open socket: the poll it had just sent was never
+# answered until Chromium's TCP keep-alive gave up 495 s later, and the stuck
+# request blocked other requests to the same URL.
+KEEP_ALIVE_TIMEOUT_S = 600
+
 # Global reference so cleanup can signal graceful shutdown
 _uvicorn_server: uvicorn.Server | None = None
 
+# Set by the tray's Quit item (and the session-end guard) so the closing handler
+# lets the window close.
+_quitting = False
+
+# How long the one-time tray hint waits before sending, so the session-end guard
+# (which runs synchronously on the GUI thread right after the closing handler) has
+# had its chance to flag a Windows shutdown / Task Manager / installer close.
+TRAY_HINT_GUARD_DELAY_S = 0.5
+
+
+def _mark_quitting() -> None:
+    """Remember that the app is quitting, so the closing handler lets it close."""
+    global _quitting
+    _quitting = True
+
+
 # Kept alive for the whole process so the mutex persists until the process exits.
 _instance_mutex_handle: int | None = None
-# NAME-SYNC: keep identical to AppMutex in tooling/windows/setup.iss. build.ps1
+# NAME-SYNC: keep identical to MyAppMutex in tooling/windows/setup.iss. build.ps1
 # runs tooling/windows/check_mutex_sync.py as a preflight and fails on drift.
 INSTANCE_MUTEX_NAME = "SakaDeskInstanceMutex"
 
 
 # Win32 error / message constants used by the single-instance guard.
 _ERROR_ALREADY_EXISTS = 183
-_SW_RESTORE = 9
+_SW_RESTORE = 9  # un-minimize (also un-maximizes a maximized window)
+_SW_SHOW = 5  # show in its current size state
 
 
 def _acquire_instance_mutex() -> bool:
-    """Create a named mutex the Windows installer keys off (Inno ``AppMutex``).
+    """Create a named mutex the Windows installer waits on (``MyAppMutex``).
 
     Windows keeps the mutex alive until every handle is closed — i.e. until this
     process fully terminates (``os._exit`` closes all handles). The installer
@@ -84,7 +127,7 @@ def _acquire_instance_mutex() -> bool:
         _instance_mutex_handle = kernel32.CreateMutexW(None, False, INSTANCE_MUTEX_NAME)
         if not _instance_mutex_handle:
             # NULL handle: CreateMutexW failed (does not raise). The installer's
-            # AppMutex protection is then absent — surface it, but fail open.
+            # wait-for-exit protection is then absent — surface it, but fail open.
             logger.warning("CreateMutexW returned NULL; instance mutex not held")
             return True
         return kernel32.GetLastError() != _ERROR_ALREADY_EXISTS
@@ -93,23 +136,598 @@ def _acquire_instance_mutex() -> bool:
         return True
 
 
+def _native_hwnd(window) -> int | None:
+    """The pywebview window's own HWND (WinForms ``window.native.Handle``), or None.
+
+    Never raises: any failure (no native form yet, a cross-thread access
+    error) returns None so the caller falls back to finding the window by
+    title, and is logged as ``window_native_handle_unavailable`` (error type
+    only). A missing handle (``None``) is not an error and is not logged.
+    """
+    try:
+        handle = window.native.Handle
+        if handle is None:
+            return None
+        to_int = getattr(handle, "ToInt64", None)  # pythonnet IntPtr
+        return int(to_int()) if to_int is not None else int(handle)
+    except Exception as e:
+        logger.warning("window_native_handle_unavailable", error_type=type(e).__name__)
+        return None
+
+
+def _configure_user32(user32) -> None:
+    """Declare the HWND/BOOL signatures of the user32 calls ``_focus_window`` makes.
+
+    Without them ctypes passes the handle as a 32-bit int and returns an int,
+    which truncates 64-bit handles. Windows only (``wintypes`` is not used
+    elsewhere); ``FindWindowW`` is left at its defaults.
+    """
+    from ctypes import wintypes
+
+    user32.IsIconic.argtypes = [wintypes.HWND]
+    user32.IsIconic.restype = wintypes.BOOL
+    user32.IsWindowVisible.argtypes = [wintypes.HWND]
+    user32.IsWindowVisible.restype = wintypes.BOOL
+    user32.ShowWindow.argtypes = [wintypes.HWND, ctypes.c_int]
+    user32.ShowWindow.restype = wintypes.BOOL
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    user32.SetForegroundWindow.restype = wintypes.BOOL
+
+
+def _focus_window(hwnd: int | None = None, *, user32=None) -> None:
+    """Bring the SakaDesk window to the foreground (best-effort, never raises).
+
+    Uses ``hwnd`` when given, else ``FindWindowW(None, "SakaDesk")`` (pywebview's
+    window title). A minimized window is restored (``SW_RESTORE``); any other
+    window, and a window hidden to the tray, is shown (``SW_SHOW``) so a
+    maximized window stays maximized; a window that is both hidden and
+    minimized is restored. ``user32`` is injectable for tests; without it this
+    is a no-op off Windows.
+    Logs ``window_focus`` (``minimized``, ``visible``, ``source``,
+    ``foreground`` = the ``SetForegroundWindow`` result), ``window_focus_skipped`` or
+    ``window_focus_failed`` (error type only).
+    """
+    if user32 is None and platform.system() != "Windows":
+        return
+    try:
+        if user32 is None:
+            user32 = ctypes.windll.user32  # type: ignore[attr-defined]
+            _configure_user32(user32)
+        source = "native"
+        if not hwnd:
+            source = "find_window"
+            hwnd = user32.FindWindowW(None, "SakaDesk")
+        if not hwnd:
+            logger.info("window_focus_skipped", reason="no_window")
+            return
+        visible = bool(user32.IsWindowVisible(hwnd))
+        minimized = bool(user32.IsIconic(hwnd))
+        # A hidden window needs SW_SHOW to appear at all; SW_RESTORE would
+        # un-maximize a visible maximized one, so it is only for minimized.
+        user32.ShowWindow(hwnd, _SW_RESTORE if minimized else _SW_SHOW)
+        foreground = bool(user32.SetForegroundWindow(hwnd))
+        logger.debug(
+            "window_focus",
+            minimized=minimized,
+            visible=visible,
+            source=source,
+            foreground=foreground,
+        )
+    except Exception as e:
+        logger.warning("window_focus_failed", error_type=type(e).__name__)
+
+
 def _focus_existing_window() -> None:
     """Bring the already-running SakaDesk window to the foreground (best-effort).
 
     Called when the single-instance guard (SD-AUX-01) detects a second launch,
     so a re-click of the taskbar/desktop icon focuses the live window instead of
-    silently doing nothing. Matches pywebview's window title ("SakaDesk").
+    silently doing nothing. Finds the window by pywebview's title ("SakaDesk").
     """
-    if platform.system() != "Windows":
-        return
+    _focus_window(None)
+
+
+def make_open_chat_handler(window, focus_fn):
+    """Build the toast-click handler that brings ``window`` forward on a chat.
+
+    The handler runs on a WinRT thread. It shows the window (never
+    ``window.restore()``, which would un-maximize it), calls
+    ``focus_fn(hwnd)`` with the window's own handle (or None), then asks the
+    frontend to navigate via ``window.__sakadeskOpenChat``. The payload is the
+    target's fields plus ``message_id`` (an int, the message to scroll to)
+    when one is given. The script returns whether that function existed: it
+    logs ``notify_open_chat`` (service, is_group_chat, has_target,
+    ``delivered=True``) or ``notify_open_chat_failed`` with
+    ``reason=not_ready`` (frontend not mounted yet) or ``error_type``.
+    It never raises. Names and paths are never logged.
+    """
+
+    def handler(target, message_id: int | None = None) -> None:
+        try:
+            window.show()
+            focus_fn(_native_hwnd(window))
+            fields = asdict(target)
+            if message_id is not None:
+                fields["message_id"] = message_id
+            payload = json.dumps(fields, ensure_ascii=False)
+            delivered = window.evaluate_js(
+                "window.__sakadeskOpenChat ? (window.__sakadeskOpenChat("
+                + payload
+                + "), true) : false"
+            )
+            if delivered is True:
+                logger.info(
+                    "notify_open_chat",
+                    service=target.service,
+                    is_group_chat=target.is_group_chat,
+                    has_target=message_id is not None,
+                    delivered=True,
+                )
+            else:
+                logger.warning(
+                    "notify_open_chat_failed",
+                    service=target.service,
+                    reason="not_ready",
+                )
+        except Exception as e:
+            logger.warning(
+                "notify_open_chat_failed",
+                service=getattr(target, "service", None),
+                error_type=type(e).__name__,
+            )
+
+    return handler
+
+
+def parse_background(argv: list[str]) -> bool:
+    """True when ``--background`` is among the command-line arguments.
+
+    ``argv[0]`` (the program) is ignored. Autostart launches SakaDesk with it
+    so the app starts hidden in the tray.
+    """
+    return "--background" in argv[1:]
+
+
+def make_open_window_handler(window, focus_fn):
+    """Build the tray's Open handler: show ``window`` and bring it forward.
+
+    Runs on pystray's thread (or whichever thread calls
+    ``desktop_bridge.open_window``). It shows the window (works on a window
+    hidden to the tray; never ``restore()``, which would un-maximize it), then
+    calls ``focus_fn(hwnd)`` with the window's own handle (or None). The
+    frontend reports focus through ui-state on its own. Exceptions propagate to
+    the caller, which logs them.
+    """
+
+    def handler() -> None:
+        window.show()
+        focus_fn(_native_hwnd(window))
+        logger.info("window_shown")
+
+    return handler
+
+
+def make_quit_handler(*, mark_quitting, stop_tray, destroy_popup, destroy_window):
+    """Build the tray Quit handler.
+
+    Runs ``mark_quitting``, ``stop_tray``, ``destroy_popup`` and
+    ``destroy_window`` in that order. The popup is destroyed before the main
+    window because pywebview exits only when no window is left, so a hidden
+    popup would keep the process (and its single-instance mutex) alive. A
+    callback that raises does not skip the later ones: the failure is logged as
+    ``quit_step_failed`` (``step``, ``error_type``) and the next step runs.
+    """
+    steps = (
+        ("mark_quitting", mark_quitting),
+        ("stop_tray", stop_tray),
+        ("destroy_popup", destroy_popup),
+        ("destroy_window", destroy_window),
+    )
+
+    def handler() -> None:
+        for step, fn in steps:
+            try:
+                fn()
+            except Exception as e:
+                logger.warning(
+                    "quit_step_failed", step=step, error_type=type(e).__name__
+                )
+
+    return handler
+
+
+def make_popup_preloader(ensure, read_settings):
+    """Build the main window's ``loaded`` handler that creates the call popup.
+
+    The first ``loaded`` event (it fires for a window started hidden with
+    ``--background`` too) runs ``ensure()`` once, when the ``call_popup_enabled``
+    setting is on (default on; a missing key counts as on). Later ``loaded``
+    events (page reloads) are ignored, and so are positional arguments (pywebview
+    may pass the window). A once-flag under a lock keeps two threads from
+    creating it twice. Logs ``call_popup_window action=preload_skipped`` with
+    ``reason`` ``disabled`` or ``settings_unreadable`` (``error_type``) and never
+    raises: ``ensure()`` reports its own failures.
+    """
+    lock = threading.Lock()
+    done = False
+
+    def handler(*_args) -> None:
+        nonlocal done
+        with lock:
+            if done:
+                return
+            done = True
+        try:
+            enabled = read_settings().get("call_popup_enabled", True)
+        except Exception as e:
+            logger.warning(
+                "call_popup_window",
+                action="preload_skipped",
+                reason="settings_unreadable",
+                error_type=type(e).__name__,
+            )
+            return
+        if not enabled:
+            logger.info(
+                "call_popup_window", action="preload_skipped", reason="disabled"
+            )
+            return
+        ensure()
+
+    return handler
+
+
+def make_closing_handler(
+    *,
+    is_quitting,
+    tray_available,
+    get_settings,
+    hide_fn,
+    reset_ui_state,
+    notify_hint,
+    save_geometry,
+):
+    """Build pywebview's ``closing`` handler; returning ``False`` cancels the close.
+
+    Runs on pywebview's GUI thread, so it never waits on async work. It always
+    saves the window geometry first. The window then closes (the app exits,
+    handler returns ``True``) when Quit was chosen (``is_quitting()``), the tray
+    is not running (``tray_available()`` is false: a hidden window could never
+    be reopened), ``close_to_tray`` is off, the settings cannot be read, or
+    ``hide_fn()`` fails. Otherwise the window is hidden, ``reset_ui_state()``
+    marks it unfocused with no open chat (so toasts are not suppressed), and the
+    one-time "still running" hint is queued. The handler returns ``False``.
+
+    The hint is queued when ``tray_hint_shown`` is false and no hint is already
+    pending: a "pending" flag, set here synchronously, makes two quick closes
+    queue one hint. ``notify_hint(on_done)`` must schedule the toast without
+    waiting and call ``on_done()`` once it has finished (any outcome), which
+    clears the flag; the flag is only about the in-flight attempt. Persisting
+    ``tray_hint_shown`` is the toast coroutine's job, after the toast was
+    really sent (see :func:`_show_tray_hint`), so a failed send is retried on a
+    later close. The toast coroutine also waits briefly and skips itself when
+    the session-end guard marked the app as quitting meanwhile, because that
+    guard runs only after this handler.
+
+    Logs ``window_close`` with ``action`` (``hidden``/``quit``), ``reason`` for
+    a quit, and for a hide ``hint`` (``queued``/``pending``/``skipped``). It
+    never raises.
+    """
+    pending_lock = threading.Lock()
+    hint_pending = False
+
+    def release_hint() -> None:
+        nonlocal hint_pending
+        with pending_lock:
+            hint_pending = False
+
+    def handler() -> bool:
+        nonlocal hint_pending
+        try:
+            save_geometry()
+        except Exception as e:
+            logger.warning("window_close_save_failed", error_type=type(e).__name__)
+
+        def quit_with(reason: str) -> bool:
+            logger.info("window_close", action="quit", reason=reason)
+            return True
+
+        if is_quitting():
+            return quit_with("quitting")
+        if not tray_available():
+            return quit_with("no_tray")
+        try:
+            settings = get_settings()
+        except Exception as e:
+            logger.warning("window_close_settings_failed", error_type=type(e).__name__)
+            return quit_with("settings_unreadable")
+        if not settings.get("close_to_tray", True):
+            return quit_with("close_to_tray_off")
+        try:
+            hide_fn()
+        except Exception as e:
+            logger.warning("window_close_hide_failed", error_type=type(e).__name__)
+            return quit_with("hide_failed")
+
+        hint = "skipped"
+        try:
+            reset_ui_state()
+            if not settings.get("tray_hint_shown"):
+                with pending_lock:
+                    already_pending = hint_pending
+                    hint_pending = True
+                if already_pending:
+                    hint = "pending"
+                else:
+                    try:
+                        notify_hint(release_hint)
+                    except Exception:
+                        release_hint()
+                        raise
+                    hint = "queued"
+        except Exception as e:
+            logger.warning("window_close_hint_failed", error_type=type(e).__name__)
+        logger.info("window_close", action="hidden", hint=hint)
+        return False
+
+    return handler
+
+
+def _load_session_end_reasons():
+    """The ``CloseReason`` values meaning the session, not the user, is closing.
+
+    Imported lazily: ``System.Windows.Forms`` exists only on Windows (pythonnet).
+    """
+    from System.Windows.Forms import CloseReason  # type: ignore[import-not-found]
+
+    return (CloseReason.WindowsShutDown, CloseReason.TaskManagerClosing)
+
+
+def make_session_end_guard(*, mark_quitting, stop_tray, load_reasons=None):
+    """Build a native ``FormClosing`` handler that lets a session end through.
+
+    The ``closing`` hook cannot tell the user pressing X from Windows
+    shutting down, so close-to-tray would cancel a shutdown, logoff or an
+    installer's Restart Manager close ("SakaDesk is preventing shutdown").
+    This guard is subscribed to the form's own ``FormClosing`` after pywebview's
+    handler, so it runs after it and sees the ``Cancel`` pywebview set. When
+    ``args.CloseReason`` is ``WindowsShutDown`` or ``TaskManagerClosing`` it
+    calls ``mark_quitting()`` and ``stop_tray()`` (the same state as the Quit
+    item), sets ``args.Cancel = False`` and logs ``window_close`` with
+    ``action=quit`` and ``reason=session_end``. Any other reason is left
+    untouched. ``load_reasons()`` returns the session-end values (the lazy
+    ``System.Windows.Forms`` import by default). It never raises; a failure
+    logs ``session_end_guard_failed`` (``error_type``).
+    """
+    reasons_loader = (
+        load_reasons if load_reasons is not None else _load_session_end_reasons
+    )
+
+    def guard(_sender, args) -> None:
+        try:
+            if args.CloseReason not in reasons_loader():
+                return
+            args.Cancel = False
+            logger.info("window_close", action="quit", reason="session_end")
+            mark_quitting()
+            stop_tray()
+        except Exception as e:
+            logger.warning("session_end_guard_failed", error_type=type(e).__name__)
+
+    return guard
+
+
+def attach_session_end_guard(window, guard) -> bool:
+    """Subscribe ``guard`` to ``window.native.FormClosing``; return success.
+
+    Call it from ``window.events.before_show``: by then pywebview's BrowserForm
+    exists (``window.native``) and has already subscribed its own handler, so
+    ``guard`` runs after it. Logs ``session_end_guard`` (``attached``, and a
+    ``reason`` when not). Never raises; a failure logs ``error_type``.
+    """
+    native = getattr(window, "native", None)
+    if native is None:
+        logger.warning("session_end_guard", attached=False, reason="no_native")
+        return False
     try:
-        user32 = ctypes.windll.user32  # type: ignore[attr-defined]
-        hwnd = user32.FindWindowW(None, "SakaDesk")
-        if hwnd:
-            user32.ShowWindow(hwnd, _SW_RESTORE)  # un-minimize if needed
-            user32.SetForegroundWindow(hwnd)
-    except Exception:
-        logger.debug("Failed to focus existing window", exc_info=True)
+        native.FormClosing += guard
+    except Exception as e:
+        logger.warning(
+            "session_end_guard",
+            attached=False,
+            reason="attach_failed",
+            error_type=type(e).__name__,
+        )
+        return False
+    logger.info("session_end_guard", attached=True)
+    return True
+
+
+async def _show_tray_hint(
+    mark_hint_shown=None, *, delay: float | None = None, is_quitting=None
+) -> None:
+    """Show the one-time "still running in the tray" toast. Never raises.
+
+    The closing handler queues this before the session-end guard has run (the
+    guard is subscribed after pywebview's handler), so a Task Manager "End task",
+    a Windows shutdown or an installer's Restart Manager close would otherwise get
+    the hint while the app is exiting. It therefore first waits ``delay`` seconds
+    (default :data:`TRAY_HINT_GUARD_DELAY_S`) and then checks ``is_quitting()``
+    (default: the module's ``_quitting`` flag, set by the guard and the Quit
+    item). If the app is quitting it sends nothing, persists nothing (so the
+    user still gets the hint at a real close) and logs ``tray_hint`` with
+    ``shown=False`` and ``reason=quitting``.
+
+    Runs on the server loop (``send_simple`` needs it). The text follows the
+    UI language and is never logged. Only when ``send_simple`` returns True is
+    ``tray_hint_shown`` persisted (``mark_hint_shown``, default
+    ``settings_store.mark_tray_hint_shown``, off the loop thread); a failed
+    send leaves it unset so a later close retries. Logs ``tray_hint`` with
+    ``shown`` and, when shown, ``persisted``.
+    """
+    quitting_fn = is_quitting if is_quitting is not None else (lambda: _quitting)
+    mark_fn = (
+        mark_hint_shown
+        if mark_hint_shown is not None
+        else settings_store.mark_tray_hint_shown
+    )
+    try:
+        await asyncio.sleep(TRAY_HINT_GUARD_DELAY_S if delay is None else delay)
+        if quitting_fn():
+            logger.info("tray_hint", shown=False, reason="quitting")
+            return
+        from backend.services.notification_service import send_simple
+        from backend.services.settings_store import load_config
+
+        config = await load_config()
+        language = await asyncio.to_thread(resolve_ui_language, config)
+        strings = get_strings("tray", language)
+        shown = bool(
+            await send_simple(
+                strings["still_running_title"], strings["still_running_body"]
+            )
+        )
+        if shown:
+            persisted = bool(await asyncio.to_thread(mark_fn))
+            logger.info("tray_hint", shown=True, persisted=persisted)
+        else:
+            logger.info("tray_hint", shown=False)
+    except Exception as e:
+        logger.warning("tray_hint_failed", error_type=type(e).__name__)
+
+
+def _notify_tray_hint(on_done=None) -> None:
+    """Queue the hint toast on the server loop without waiting for it.
+
+    ``on_done()`` is called when the toast coroutine finishes (or is cancelled),
+    or at once when it could not be scheduled (no server loop).
+    """
+    future = desktop_bridge.run_on_server_loop(_show_tray_hint())
+    if on_done is None:
+        return
+    if future is None:
+        on_done()
+    else:
+        future.add_done_callback(lambda _f: on_done())
+
+
+async def _default_is_authenticated(service: str) -> bool:
+    from backend.api.auth import auth_service
+
+    status = await auth_service.get_status(service)
+    return bool(status.get("authenticated"))
+
+
+async def sync_all_authenticated(
+    services, is_authenticated=_default_is_authenticated, launch=None
+) -> None:
+    """Start a sync (origin ``tray``) for each authenticated service. Never raises.
+
+    Logs ``tray_sync_now`` (``services`` = how many were authenticated,
+    ``started`` = how many actually started; the rest were already running).
+    A failing service is logged (``tray_sync_now_failed``, service and error
+    type) and does not stop the others.
+    """
+    from backend.services.sync_launcher import LAUNCH_STARTED, launch_sync
+
+    launch_fn = launch if launch is not None else launch_sync
+    authenticated = 0
+    started = 0
+    for service in services:
+        try:
+            if not await is_authenticated(service):
+                continue
+            authenticated += 1
+            result = await launch_fn(
+                service,
+                include_inactive=True,
+                force_resync=False,
+                origin="tray",
+            )
+            if result == LAUNCH_STARTED:
+                started += 1
+        except Exception as e:
+            logger.warning(
+                "tray_sync_now_failed", service=service, error_type=type(e).__name__
+            )
+    logger.info("tray_sync_now", services=authenticated, started=started)
+
+
+async def _tray_sync_now() -> None:
+    from backend.services.service_utils import get_all_services
+
+    await sync_all_authenticated(get_all_services())
+
+
+def _request_tray_sync() -> None:
+    """The tray's Sync now: run ``_tray_sync_now`` on the server loop (no wait)."""
+    desktop_bridge.run_on_server_loop(_tray_sync_now())
+
+
+def request_initial_tooltip(run=None, refresh=None) -> bool:
+    """Ask the server loop for one tooltip refresh; return whether it was queued.
+
+    Without it the tooltip would read "SakaDesk" until the first sync ends or
+    the first read-state write. Logs ``tray_tooltip_initial`` (``scheduled``).
+    The loop is registered by the lifespan before ``/health`` answers and
+    ``main`` only gets here after ``wait_for_server``, so it exists in
+    practice; if not, the next sync or read-state write refreshes the tooltip
+    anyway (and ``server_loop_unavailable`` is logged by the bridge).
+    """
+    run_fn = run if run is not None else desktop_bridge.run_on_server_loop
+    refresh_fn = refresh if refresh is not None else refresh_tray_tooltip
+    scheduled = run_fn(refresh_fn()) is not None
+    logger.info("tray_tooltip_initial", scheduled=scheduled)
+    return scheduled
+
+
+def _reconcile_autostart() -> None:
+    """Make the Windows Run entry match the ``autostart`` setting. Never raises."""
+    try:
+        enabled = bool(settings_store.read_config_sync().get("autostart"))
+        autostart.reconcile(
+            enabled,
+            frozen=bool(getattr(sys, "frozen", False)),
+            exe=Path(sys.executable),
+        )
+    except Exception as e:
+        logger.warning("autostart", action="failed", error_type=type(e).__name__)
+
+
+def _tray_strings() -> dict[str, str]:
+    """The tray menu strings in the UI language (English if it cannot be read)."""
+    try:
+        language = resolve_ui_language(settings_store.read_config_sync())
+    except Exception as e:
+        logger.warning("tray_language_failed", error_type=type(e).__name__)
+        language = None
+    return get_strings("tray", language)
+
+
+def _register_app_identity() -> None:
+    """Register the Start Menu shortcut + AUMID so Windows shows toast banners.
+
+    Frozen builds set the process AUMID and ensure the per-user Start Menu
+    shortcut; dev runs only log ``skipped_dev``. Never raises or blocks startup.
+    """
+    try:
+        frozen = bool(getattr(sys, "frozen", False))
+        if frozen:
+            set_process_aumid()
+            programs_dir = (
+                Path(os.environ["APPDATA"])
+                / "Microsoft"
+                / "Windows"
+                / "Start Menu"
+                / "Programs"
+            )
+        else:
+            programs_dir = Path()
+        ensure_start_menu_shortcut(
+            frozen=frozen, exe=Path(sys.executable), programs_dir=programs_dir
+        )
+    except Exception as e:
+        logger.warning("app_identity", action="failed", error_type=type(e).__name__)
 
 
 def _kill_children(children: list) -> None:
@@ -228,6 +846,18 @@ def wait_for_server(
     return False
 
 
+def build_server_config(asgi_app: Callable[..., Any]) -> uvicorn.Config:
+    """uvicorn settings for the local backend.
+
+    ``timeout_keep_alive`` is KEEP_ALIVE_TIMEOUT_S rather than uvicorn's
+    5 s default: the browser always closes an idle connection before the
+    server does, so the server never closes one the browser is reusing.
+    """
+    return uvicorn.Config(
+        asgi_app, log_level="error", timeout_keep_alive=KEEP_ALIVE_TIMEOUT_S
+    )
+
+
 def start_server(sock: socket.socket) -> None:
     """Start uvicorn with a pre-bound SO_REUSEADDR socket.
 
@@ -236,7 +866,8 @@ def start_server(sock: socket.socket) -> None:
     in TIME_WAIT state and would force a new port on quick restarts.
     """
     global _uvicorn_server
-    config = uvicorn.Config(app, log_level="error")
+    config = build_server_config(app)
+    logger.info("server_config", keep_alive_s=config.timeout_keep_alive)
     _uvicorn_server = uvicorn.Server(config)
     _uvicorn_server.run(sockets=[sock])
 
@@ -316,8 +947,12 @@ def _load_window_geometry() -> dict:
         try:
             data = json.loads(legacy_path.read_text(encoding="utf-8"))
             logger.info("Migrating window geometry from window.json to settings.json")
-            _save_window_data_to_settings(data, settings_path)
-            legacy_path.unlink(missing_ok=True)
+            # Keep window.json when settings.json was not written (it exists
+            # but is unreadable), so a later launch can still migrate it.
+            if _save_window_data_to_settings(data, settings_path):
+                legacy_path.unlink(missing_ok=True)
+            else:
+                logger.info("window_migration_deferred", reason="settings_unwritten")
         except Exception:
             logger.warning("Failed to migrate window.json", exc_info=True)
             data = None
@@ -325,33 +960,26 @@ def _load_window_geometry() -> dict:
     return window_geometry.parse_saved_geometry(data)
 
 
-def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> None:
+def _save_window_data_to_settings(window_data: dict, settings_path: Path) -> bool:
     """Write the window data dict into settings.json under the 'window' key.
 
-    SD-AUX-03: use the shared atomic tmp-file+``os.replace`` writer
-    (``atomic_write_json``) rather than a truncating ``write_text`` — a crash or
-    force-close mid-write must not leave a corrupt settings.json that
-    ``settings_store`` then fails to parse. (A cross-process lock can't be taken
-    from here, but atomic replace removes the corruption risk and shrinks the
-    lost-update window to a single last-writer-wins.)
+    SD-AUX-03: goes through ``settings_store.update_raw_sync``, which writes
+    atomically (tmp file + ``os.replace``) so a crash or force-close mid-write
+    cannot leave a corrupt settings.json, and takes the same cross-thread lock
+    as ``update_config`` / ``mark_tray_hint_shown`` so this GUI-thread save and
+    a concurrent API settings update cannot overwrite each other. Returns
+    whether the file was written: ``False`` when settings.json exists but is
+    unreadable, which ``update_raw_sync`` leaves untouched rather than wipe.
     """
-    settings: dict = {}
-    if settings_path.exists():
-        try:
-            settings = json.loads(settings_path.read_text(encoding="utf-8"))
-        except Exception:
-            pass
-    settings["window"] = window_data
-    settings_path.parent.mkdir(parents=True, exist_ok=True)
-    atomic_write_json(settings_path, settings)
+    return settings_store.update_raw_sync(settings_path, {"window": window_data})
 
 
 def _save_window_geometry(geom: dict) -> None:
     """Save window geometry (``window.width/height/x/y``, verbatim) to settings.json."""
     try:
         data = window_geometry.to_saved_dict(geom)
-        _save_window_data_to_settings(data, get_app_data_dir() / "settings.json")
-        logger.debug("Window geometry saved", geometry=data)
+        if _save_window_data_to_settings(data, get_app_data_dir() / "settings.json"):
+            logger.debug("Window geometry saved", geometry=data)
     except Exception:
         logger.warning("Failed to save window geometry", exc_info=True)
 
@@ -389,6 +1017,20 @@ def main() -> None:
                 f"Server failed to start on port {port} within {SERVER_STARTUP_TIMEOUT}s"
             )
 
+        # Start Menu shortcut + AUMID so toast banners show (frozen only).
+        _register_app_identity()
+
+        # Keep the Windows autostart entry in step with the setting (frozen only).
+        _reconcile_autostart()
+
+        # Autostart launches with --background: start hidden in the tray.
+        background = parse_background(sys.argv)
+        logger.info(
+            "app_start",
+            background=background,
+            frozen=bool(getattr(sys, "frozen", False)),
+        )
+
         # Load saved window geometry
         geom = _load_window_geometry()
         logger.info("Window geometry loaded", geom=geom)
@@ -405,13 +1047,22 @@ def main() -> None:
             y=geom.get("y"),
             resizable=True,
             background_color="#F0F2F5",
+            hidden=background,
         )
+
+        # Windows 11: recolour the native title bar to the app surface. Only
+        # non-locking events (``before_show`` is locking: the GUI thread waits
+        # on its handlers); the handler stops after the first success and
+        # never raises.
+        _title_bar = make_title_bar_handler(window)
+        window.events.shown += _title_bar
+        window.events.loaded += _title_bar
 
         # Save window geometry on close by reading current dimensions directly.
         # We read window.width/height/x/y properties instead of relying on
         # resize/move events — pywebview events only fire during initial
         # creation (DPI scaling), not for user-initiated resizes.
-        def on_closing():
+        def save_geometry():
             # pywebview round-trips geometry verbatim: create_window() reproduces
             # exactly what window.width/height/x/y report (the same device-pixel
             # space on this backend), so persist them AS-IS. A previous version
@@ -426,17 +1077,87 @@ def main() -> None:
             logger.info("Window closing", geometry=geom)
             _save_window_geometry(geom)
 
-        window.events.closing += on_closing
+        # Toast click -> show, focus and open that chat (runs on a WinRT thread).
+        desktop_bridge.set_open_chat_handler(
+            make_open_chat_handler(window, _focus_window)
+        )
+
+        show_window = make_open_window_handler(window, _focus_window)
+
+        # Background call popup (Windows only): one hidden window, created after
+        # the main window first loads and reused for every call.
+        popup: CallPopupWindow | None = None
+        if platform.system() == "Windows":
+            popup = CallPopupWindow(
+                main_window=window,
+                url=f"http://{HOST}:{port}/?view=call-popup",
+                is_quitting=lambda: _quitting,
+            )
+            desktop_bridge.set_call_popup_host(popup)
+            window.events.loaded += make_popup_preloader(
+                popup.ensure, settings_store.read_config_sync
+            )
+            # Whatever closes the main window also closes the popup, so
+            # webview.start() can return and the process (and its mutex) exits.
+            window.events.closed += popup.destroy_on_main_closed
+
+        on_quit = make_quit_handler(
+            mark_quitting=_mark_quitting,
+            stop_tray=lambda: tray.stop(),
+            destroy_popup=popup.destroy if popup is not None else (lambda: None),
+            destroy_window=window.destroy,
+        )
+
+        # System tray: Open / Sync now / Quit, and the unread tooltip.
+        tray = TrayController(
+            strings=_tray_strings,
+            on_open=show_window,
+            on_sync_now=_request_tray_sync,
+            on_quit=on_quit,
+        )
+        tray.start()
+        # A toast's "open the window" request works with or without the tray.
+        desktop_bridge.set_open_window_handler(show_window)
+        if tray.available:
+            desktop_bridge.set_tray_tooltip_handler(tray.set_tooltip)
+            request_initial_tooltip()
+
+        # X hides to the tray (or quits: see make_closing_handler).
+        window.events.closing += make_closing_handler(
+            is_quitting=lambda: _quitting,
+            tray_available=lambda: tray.available,
+            get_settings=settings_store.read_config_sync,
+            hide_fn=window.hide,
+            reset_ui_state=lambda: set_ui_state(UiState(None, None, None, False)),
+            notify_hint=_notify_tray_hint,
+            save_geometry=save_geometry,
+        )
+        if tray.available:
+            # Windows shutdown, logoff and installer closes must not be
+            # cancelled by close-to-tray. Subscribed once pywebview's own
+            # FormClosing handler exists, so it runs after it.
+            guard = make_session_end_guard(
+                mark_quitting=_mark_quitting, stop_tray=tray.stop
+            )
+            window.events.before_show += lambda: attach_session_end_guard(window, guard)
+
+        def reveal_without_tray() -> None:
+            # A hidden window with no tray icon could never be reopened.
+            logger.warning("background_start_without_tray")
+            window.show()
 
         # Start native GUI loop
         # private_mode=False: persist localStorage (ToS, read states, language)
         # storage_path: store webview data in app data dir alongside settings
         webview.start(
+            reveal_without_tray if background and not tray.available else None,
             private_mode=False,
             storage_path=str(get_app_data_dir() / "webview"),
         )
 
         # Cleanup AFTER webview closes but BEFORE process exits.
+        desktop_bridge.set_call_popup_host(None)
+        tray.stop()
 
         # Snapshot child processes NOW, before any shutdown logic can
         # clear the tracking set.  Python's ProcessPoolExecutor management

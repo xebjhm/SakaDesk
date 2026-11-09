@@ -43,17 +43,11 @@ export function getSemanticColors(groupId: GroupId): SemanticColors {
  */
 export const UI_TOKENS = {
     /** Surface colors for different elevation levels */
-    surface: {
-        base: NEUTRAL_COLORS.surface.white,
-        elevated: NEUTRAL_COLORS.surface.offWhite,
-        sunken: NEUTRAL_COLORS.surface.gray100,
-    },
+    surface: NEUTRAL_COLORS.surface,
     /** Text colors by importance */
     text: NEUTRAL_COLORS.text,
     /** Border colors */
     border: NEUTRAL_COLORS.border,
-    /** Dark mode surfaces */
-    dark: NEUTRAL_COLORS.dark,
     /** Feedback states */
     feedback: FEEDBACK_COLORS,
 } as const;

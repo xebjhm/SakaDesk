@@ -1,8 +1,19 @@
-import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest'
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
 import { render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
+import { http, HttpResponse } from 'msw'
+import { server } from '../../../__tests__/mocks/server'
 import { MessageBubble } from './MessageBubble'
+import { useAppStore } from '../../../store/appStore'
 import type { Message } from '../../../types'
+
+// The translation and transcription hooks read their backend caches on mount: both are empty.
+beforeEach(() => {
+  server.use(
+    http.get('/api/app-state/translations', () => HttpResponse.json({})),
+    http.get('/api/transcription/:service/:id', () => new HttpResponse(null, { status: 404 })),
+  )
+})
 
 // Fix timezone to UTC for deterministic snapshot output
 const originalTZ = process.env.TZ
@@ -44,8 +55,7 @@ describe('MessageBubble component', () => {
 
   it('should render timestamp in expected format', () => {
     render(<MessageBubble {...defaultProps} />)
-    // Timestamp format: YYYY/MM/DD HH:MM (time may vary based on timezone)
-    expect(screen.getByText(/2024\/01\/15 \d{2}:\d{2}/)).toBeInTheDocument()
+    expect(screen.getByText('10:30')).toBeInTheDocument()
   })
 
   it('should render avatar image when provided', () => {
@@ -54,10 +64,44 @@ describe('MessageBubble component', () => {
     expect(avatar).toHaveAttribute('src', '/avatar.jpg')
   })
 
+  it('without onAvatarClick the avatar is a plain, non-focusable span of the same box', () => {
+    // Room-author (member 0) messages pass no handler: no button, no pointer, no hover ring, no tab stop.
+    render(<MessageBubble {...defaultProps} />)
+    const avatar = screen.getByTestId('message-avatar')
+    expect(avatar.tagName).toBe('SPAN')
+    expect(avatar).toContainElement(screen.getByRole('img', { name: 'Test User' }))
+    expect(avatar).toHaveClass('flex', 'rounded-pill')
+    expect(avatar).not.toHaveAttribute('tabindex')
+    expect(avatar.className).not.toContain('cursor-pointer')
+    expect(avatar.className).not.toContain('hover:ring-accent-border')
+    expect(screen.queryByRole('button', { name: /Test User/ })).toBeNull()
+    expect(avatar.closest('button')).toBeNull()
+  })
+
+  it('with onAvatarClick the avatar is a clickable, focusable button', async () => {
+    const onAvatarClick = vi.fn()
+    render(<MessageBubble {...defaultProps} onAvatarClick={onAvatarClick} />)
+    const button = screen.getByTestId('message-avatar')
+    expect(button.tagName).toBe('BUTTON')
+    expect(button).toHaveAttribute('type', 'button')
+    expect(button).toContainElement(screen.getByRole('img', { name: 'Test User' }))
+    expect(button.className).toContain('cursor-pointer')
+    expect(button.className).toContain('hover:ring-accent-border')
+    await userEvent.click(button)
+    expect(onAvatarClick).toHaveBeenCalledTimes(1)
+    button.focus()
+    expect(button).toHaveFocus()
+  })
+
+  it('sizes the avatar button to the avatar and gives it a round focus ring', () => {
+    render(<MessageBubble {...defaultProps} onAvatarClick={vi.fn()} />)
+    const button = screen.getByRole('img', { name: 'Test User' }).closest('button')!
+    expect(button).toHaveClass('flex', 'rounded-pill', 'focus-visible:outline-none', 'focus-visible:ring-2', 'focus-visible:ring-accent', 'focus-visible:ring-offset-2', 'focus-visible:ring-offset-surface')
+  })
+
   it('should render initials when no avatar provided', () => {
     render(<MessageBubble {...defaultProps} member_avatar={undefined} />)
-    // Should show first 2 chars of name
-    expect(screen.getByText('Te')).toBeInTheDocument()
+    expect(screen.getByText('T')).toBeInTheDocument()
   })
 
   it('should show shelter overlay when isUnread is true', () => {
@@ -120,6 +164,25 @@ describe('MessageBubble component', () => {
     expect(video?.getAttribute('src')).toContain('video.mp4')
   })
 
+  it.each([
+    ['video', 'video'],
+    ['voice', 'audio'],
+  ] as const)('keys the %s player by media URL, so its state resets when the source changes', (type, tag) => {
+    const msg = (file: string) => createMessage({ type, media_file: file, content: null })
+    const { container, rerender } = render(<MessageBubble {...defaultProps} message={msg('path/to/a.mp4')} />)
+    const first = container.querySelector(tag)!
+    expect(first.getAttribute('src')).toContain('a.mp4')
+    // Same URL: the same player (and element) stays mounted.
+    rerender(<MessageBubble {...defaultProps} message={msg('path/to/a.mp4')} />)
+    expect(container.querySelector(tag)).toBe(first)
+    // A new URL mounts a fresh player: a new element, not the old one re-pointed.
+    rerender(<MessageBubble {...defaultProps} message={msg('path/to/b.mp4')} />)
+    const second = container.querySelector(tag)!
+    expect(second).not.toBe(first)
+    expect(second.getAttribute('src')).toContain('b.mp4')
+    expect(first.isConnected).toBe(false)
+  })
+
   it('should render fallback when no content or media', () => {
     const emptyMessage = createMessage({
       content: undefined,
@@ -140,7 +203,7 @@ describe('MessageBubble component', () => {
 
     // VoicePlayer component should be rendered
     // It contains playback controls
-    const voiceContainer = container.querySelector('.rounded-2xl')
+    const voiceContainer = container.querySelector('.rounded-lg')
     expect(voiceContainer).toBeInTheDocument()
   })
 
@@ -154,6 +217,156 @@ describe('MessageBubble component', () => {
     const images = screen.getAllByRole('img')
     const mediaImage = images.find(img => img.getAttribute('src')?.includes('my%20photo.jpg'))
     expect(mediaImage).toBeInTheDocument()
+  })
+
+  it('a later bubble of a run hides avatar and name and shows its time on hover', () => {
+    render(<MessageBubble {...defaultProps} runStart={false} />)
+    expect(screen.queryByText('Test User')).toBeNull()
+    expect(screen.queryByRole('img', { name: 'Test User' })).toBeNull()
+    expect(screen.getByText('10:30')).toHaveClass('opacity-0', 'group-hover/row:opacity-100')
+  })
+
+  it('only the first bubble of a run keeps the small top-left corner', () => {
+    const { container, rerender } = render(<MessageBubble {...defaultProps} />)
+    expect(container.querySelector('.border-group-bubble')).toHaveClass('rounded-card', 'rounded-tl-tail', 'shadow-card')
+    rerender(<MessageBubble {...defaultProps} runStart={false} />)
+    expect(container.querySelector('.border-group-bubble')).toHaveClass('rounded-card')
+    expect(container.querySelector('.border-group-bubble')).not.toHaveClass('rounded-tl-tail')
+  })
+
+  it('draws the favourite star in the accent colour', () => {
+    const { container } = render(<MessageBubble {...defaultProps} message={createMessage({ is_favorite: true })} />)
+    expect(container.querySelector('svg.h-3\\.5')).toHaveClass('fill-current', 'text-semantic-star', 'drop-shadow-sm')
+  })
+
+  it('marks the text and the member name as Japanese content', () => {
+    render(<MessageBubble {...defaultProps} message={createMessage({ content: 'おはよう🌸' })} />)
+    expect(screen.getByText('おはよう🌸').closest('[lang="ja"]')).not.toBeNull()
+    expect(screen.getByText('Test User')).toHaveAttribute('lang', 'ja')
+  })
+
+  it('links use the strong accent role (4.5:1) and underline on hover', () => {
+    render(<MessageBubble {...defaultProps} message={createMessage({ content: 'see https://example.com' })} />)
+    const link = screen.getByRole('link', { name: 'https://example.com' })
+    expect(link).toHaveClass('text-accent-strong', 'hover:underline')
+    expect(link).not.toHaveClass('text-accent')
+  })
+
+  describe('translate icon', () => {
+    afterEach(() => { useAppStore.setState({ translationEnabled: false }) })
+    const trailing = (c: HTMLElement) => c.querySelector('[data-testid="message-trailing"]') as HTMLElement
+
+    it('run start: one icon-only neutral button in the trailing column, not in the header', () => {
+      useAppStore.setState({ translationEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} />)
+      const buttons = screen.getAllByRole('button', { name: 'Translate' })
+      expect(buttons).toHaveLength(1)
+      expect(trailing(container)).toContainElement(buttons[0])
+      expect(buttons[0].textContent).toBe('')
+      expect(buttons[0]).toHaveClass('text-secondary', 'hover:text-primary')
+      expect(buttons[0]).toHaveAttribute('title', 'Translate')
+      expect(screen.getByText('10:30').parentElement).not.toContainElement(buttons[0])
+    })
+
+    it('continuation: the same button sits in the trailing column with the time', () => {
+      useAppStore.setState({ translationEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} runStart={false} />)
+      const button = screen.getByRole('button', { name: 'Translate' })
+      expect(trailing(container)).toContainElement(button)
+      expect(trailing(container)).toContainElement(screen.getByText('10:30'))
+    })
+
+    it('reveals on row hover and on keyboard focus, not hover alone', () => {
+      useAppStore.setState({ translationEnabled: true })
+      render(<MessageBubble {...defaultProps} />)
+      const wrapper = screen.getByRole('button', { name: 'Translate' }).parentElement!.parentElement as HTMLElement
+      expect(wrapper).toHaveClass('opacity-0', 'group-hover/row:opacity-100', 'focus-within:opacity-100', 'group-focus-within/row:opacity-100')
+    })
+
+    it('the trailing column is out of flow so the bubble never reflows or loses width', () => {
+      useAppStore.setState({ translationEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} />)
+      expect(trailing(container)).toHaveClass('absolute', 'left-full', 'bottom-0')
+      expect(trailing(container)).not.toHaveClass('shrink-0')
+      // Anchored to the bubble column, which keeps its max width regardless of the icon
+      expect(trailing(container).parentElement).toHaveClass('relative', 'max-w-[80%]')
+    })
+
+    it('renders no trailing column when there is nothing to put in it', () => {
+      const { container } = render(<MessageBubble {...defaultProps} />)
+      expect(trailing(container)).toBeNull()
+    })
+  })
+
+  describe('voice transcript footer', () => {
+    const voice = createMessage({ type: 'voice', content: null, media_file: 'v.m4a' })
+    const footerOf = (c: HTMLElement) => c.querySelector('[data-testid="transcript-footer"]') as HTMLElement
+
+    afterEach(() => { useAppStore.setState({ transcriptionEnabled: false }) })
+
+    it('joins the bubble: square bottom corners, footer carries the radius, no negative margin', () => {
+      useAppStore.setState({ transcriptionEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.border-group-bubble')).toHaveClass('rounded-card', 'rounded-b-none')
+      const footer = footerOf(container)
+      expect(footer).toHaveClass('rounded-b-card', 'border-x', 'border-b')
+      expect(footer.className).not.toMatch(/-mt-/)
+    })
+
+    it('squares the voice player bottom corners when a footer is attached, keeping the top', () => {
+      useAppStore.setState({ transcriptionEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      const player = container.querySelector('.min-w-\\[300px\\]') as HTMLElement
+      expect(player).toHaveClass('rounded-lg', 'rounded-b-none')
+    })
+
+    it('a run-start voice player carries the bubble tail corner; a later one does not', () => {
+      const { container, rerender } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).toHaveClass('rounded-tl-tail')
+      rerender(<MessageBubble {...defaultProps} message={voice} runStart={false} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).not.toHaveClass('rounded-tl-tail')
+    })
+
+    it('a run-start voice player with a footer has tail corner, square bottom and rounded-lg together', () => {
+      useAppStore.setState({ transcriptionEnabled: true })
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).toHaveClass('rounded-tl-tail', 'rounded-b-none', 'rounded-lg')
+    })
+
+    it('keeps the voice player fully rounded without a footer', () => {
+      const { container } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.min-w-\\[300px\\]')).not.toHaveClass('rounded-b-none')
+    })
+
+    it('keeps the bubble fully rounded without a footer and while unread', () => {
+      const { container, rerender } = render(<MessageBubble {...defaultProps} message={voice} />)
+      expect(container.querySelector('.border-group-bubble')).not.toHaveClass('rounded-b-none')
+      useAppStore.setState({ transcriptionEnabled: true })
+      rerender(<MessageBubble {...defaultProps} message={voice} isUnread />)
+      expect(footerOf(container)).toBeNull()
+      expect(container.querySelector('.border-group-bubble')).not.toHaveClass('rounded-b-none')
+      expect(screen.getByTestId('unread-shelter')).toHaveClass('rounded-card')
+      expect(screen.getByTestId('unread-shelter')).not.toHaveClass('rounded-b-none')
+    })
+  })
+
+  it('the unread shelter uses the official shelter colour of the message type', () => {
+    render(<MessageBubble {...defaultProps} isUnread message={createMessage({ type: 'voice', content: null })} />)
+    const shelter = screen.getByTestId('unread-shelter')
+    expect(shelter).toHaveClass('bg-group-shelter-voice', 'text-inverse')
+    expect(shelter.getAttribute('style')).toBeNull()
+  })
+
+  it('a light-shelter group (Sakurazaka) shows the unread shelter as a bordered white card', () => {
+    render(<MessageBubble {...defaultProps} service="sakurazaka46" isUnread message={createMessage({ type: 'voice', content: null })} />)
+    expect(screen.getByTestId('unread-shelter')).toHaveClass(
+      'border-2', 'border-group-shelter-voice', 'bg-card', 'text-group-shelter-voice',
+    )
+  })
+
+  it('names the sender with the strong accent role', () => {
+    render(<MessageBubble {...defaultProps} />)
+    expect(screen.getByText('Test User')).toHaveClass('text-accent-strong')
   })
 
   describe('Snapshots', () => {
@@ -177,5 +390,10 @@ describe('MessageBubble component', () => {
       const { container } = render(<MessageBubble {...defaultProps} isUnread={true} />)
       expect(container.firstChild).toMatchSnapshot()
     })
+  })
+
+  it('draws the unread shelter icon at full opacity', () => {
+    render(<MessageBubble {...defaultProps} isUnread={true} />)
+    expect(screen.getByTestId('unread-shelter').querySelector('svg')?.getAttribute('class')).not.toMatch(/opacity/)
   })
 })

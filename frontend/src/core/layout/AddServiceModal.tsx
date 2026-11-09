@@ -1,12 +1,13 @@
 // frontend/src/core/layout/AddServiceModal.tsx
 import React from 'react';
-import { X } from 'lucide-react';
-import { getOrderedServiceDefs, getServicePrimaryColor } from '../../data/services';
+import { Modal } from '../../design/primitives';
+import { getOrderedServiceDefs } from '../../data/services';
+import type { ServiceDefinition } from '../../data/services';
+import { useGroupMarker } from '../../design/useGroupMarker';
 import { SERVICE_FEATURES, FEATURE_DEFINITIONS } from '../../config/features';
 import { useAppStore } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
-import { useModalClose } from '../common/useModalClose';
 
 interface AddServiceModalProps {
     selectedServices: string[];
@@ -18,7 +19,6 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
     onClose,
 }) => {
     const { t } = useTranslation();
-    const handleBackdropClick = useModalClose(true, onClose);
     const { addSelectedService, setActiveService, setActiveFeature, getServiceOrder, setFreshlyAddedService } = useAppStore();
 
     // Filter out already selected services, sorted by global order
@@ -41,83 +41,60 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
     };
 
     return (
-        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                {/* Header */}
-                <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-4">
-                    <div className="flex items-center justify-between">
-                        <h3 className="text-lg font-bold text-white">
-                            {t('addService.title')}
-                        </h3>
-                        <button
-                            onClick={onClose}
-                            className="w-8 h-8 rounded-full bg-white/20 hover:bg-white/30 flex items-center justify-center transition-colors"
-                        >
-                            <X className="w-4 h-4 text-white" />
-                        </button>
-                    </div>
+        <Modal isOpen onClose={onClose} title={t('addService.title')} closeLabel={t('common.close')} logId="add_service" scope="brand" className="max-w-lg">
+            {availableServices.length === 0 ? (
+                <p className="py-4 text-center text-body text-muted">{t('addService.allAdded')}</p>
+            ) : (
+                <div className="flex flex-col gap-3">
+                    {availableServices.map((service) => (
+                        <ServiceCard key={service.id} service={service} onSelect={handleSelect} />
+                    ))}
                 </div>
+            )}
+        </Modal>
+    );
+};
 
-                {/* Content */}
-                <div className="p-6">
-                    {availableServices.length === 0 ? (
-                        <p className="text-center text-gray-500 py-4">
-                            {t('addService.allAdded')}
-                        </p>
-                    ) : (
-                        <div className="space-y-3">
-                            {availableServices.map((service) => (
-                                <button
-                                    key={service.id}
-                                    onClick={() => handleSelect(service.id)}
-                                    className="group w-full flex items-center gap-4 p-4 rounded-xl border border-gray-200 hover:bg-gray-50 transition-colors text-left"
-                                    style={{ '--hover-border-color': getServicePrimaryColor(service.id) } as React.CSSProperties}
-                                    onMouseEnter={(e) => e.currentTarget.style.borderColor = getServicePrimaryColor(service.id)}
-                                    onMouseLeave={(e) => e.currentTarget.style.borderColor = ''}
-                                >
-                                    {/* Logo circle with subtle ring */}
-                                    <div className="w-12 h-12 rounded-full bg-white ring-1 ring-gray-200 flex items-center justify-center overflow-hidden shadow-sm">
-                                        {service.logoUrl ? (
-                                            <img
-                                                src={service.logoUrl}
-                                                alt={service.displayName}
-                                                className="w-9 h-9 object-contain"
-                                                onError={(e) => {
-                                                    e.currentTarget.style.display = 'none';
-                                                    e.currentTarget.nextElementSibling?.classList.remove('hidden');
-                                                }}
-                                            />
-                                        ) : null}
-                                        <span className={cn(
-                                            "text-gray-600 font-bold",
-                                            service.logoUrl ? "hidden" : ""
-                                        )}>
-                                            {service.shortCode}
-                                        </span>
-                                    </div>
-                                    <div>
-                                        <h4 className="font-semibold text-gray-900">
-                                            {service.displayName}
-                                        </h4>
-                                        <div className="flex flex-wrap gap-1 mt-0.5">
-                                            {(SERVICE_FEATURES[service.id] || []).map(featureId => {
-                                                const feature = FEATURE_DEFINITIONS[featureId];
-                                                const Icon = feature.icon;
-                                                return (
-                                                    <span key={featureId} className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full text-xs bg-gray-100 text-gray-500">
-                                                        <Icon className="w-3 h-3" />
-                                                        {t(`features.${featureId}`)}
-                                                    </span>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                </button>
-                            ))}
-                        </div>
-                    )}
-                </div>
-            </div>
-        </div>
+/** One service as a group marker (spec section 4): its accent roles follow its own group (`e4e4118`: hover border in the group's logo colour). */
+const ServiceCard: React.FC<{ service: ServiceDefinition; onSelect: (id: string) => void }> = ({ service, onSelect }) => {
+    const { t } = useTranslation();
+    const marker = useGroupMarker(service.id, 'add_service');
+    return (
+        <button
+            type="button"
+            onClick={() => onSelect(service.id)}
+            style={marker}
+            className="flex w-full items-center gap-4 rounded-card border border-subtle bg-card p-4 text-left shadow-card transition-[border-color,box-shadow] duration-fast ease-standard hover:border-accent hover:shadow-accent-glow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+        >
+            <span className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-pill bg-card shadow-pill">
+                {service.logoUrl ? (
+                    <img
+                        src={service.logoUrl}
+                        alt=""
+                        className="h-9 w-9 object-contain"
+                        onError={(e) => {
+                            e.currentTarget.style.display = 'none';
+                            e.currentTarget.nextElementSibling?.classList.remove('hidden');
+                        }}
+                    />
+                ) : null}
+                <span className={cn('font-semibold text-secondary', service.logoUrl ? 'hidden' : '')}>{service.shortCode}</span>
+            </span>
+            <span className="flex min-w-0 flex-col gap-1">
+                <span lang="ja" className="text-body font-semibold text-primary">{service.displayName}</span>
+                <span className="flex flex-wrap gap-1">
+                    {(SERVICE_FEATURES[service.id] || []).map((featureId) => {
+                        const feature = FEATURE_DEFINITIONS[featureId];
+                        const Icon = feature.icon;
+                        return (
+                            <span key={featureId} className="inline-flex items-center gap-1 rounded-pill bg-sunken px-2 py-1 text-caption text-secondary">
+                                <Icon className="h-3 w-3" />
+                                {t(`features.${featureId}`)}
+                            </span>
+                        );
+                    })}
+                </span>
+            </span>
+        </button>
     );
 };

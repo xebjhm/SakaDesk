@@ -1,0 +1,149 @@
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { render, screen, fireEvent } from '@testing-library/react';
+import i18n from '../../../i18n';
+import { useAppStore } from '../../../store/appStore';
+import { MemberSelectModal, MemberThumb } from './MemberSelectModal';
+import { clientLog } from '../../../utils/clientLog';
+
+vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+
+beforeAll(async () => { await i18n.changeLanguage('en'); });
+beforeEach(() => { useAppStore.setState({ favorites: {} }); vi.mocked(clientLog).mockClear(); });
+
+const members = [
+    { id: '9901', name: '春野 ひなた', thumbnail: null },
+    { id: '9902', name: '秋山 さくら', thumbnail: null },
+];
+
+function renderModal(over: Partial<React.ComponentProps<typeof MemberSelectModal>> = {}) {
+    const props = {
+        isOpen: true, onClose: vi.fn(), members, loading: false, error: null,
+        onSelectMember: vi.fn(), onRetry: vi.fn(), serviceId: 'hinatazaka46', ...over,
+    };
+    render(<MemberSelectModal {...(props as React.ComponentProps<typeof MemberSelectModal>)} />);
+    return props;
+}
+
+describe('MemberSelectModal thumbnails', () => {
+    const withThumb = [{ id: '9901', name: '春野 ひなた', thumbnail: 'x.jpg' }];
+
+    it('shows a pulsing skeleton until the thumbnail loads', () => {
+        renderModal({ members: withThumb as never });
+        const sk = screen.getByTestId('thumb-skeleton');
+        expect(sk.className).toContain('animate-pulse');
+        expect(sk.className).toContain('motion-reduce:animate-none');
+        fireEvent.load(document.querySelector('img[src*="9901"]')!);
+        expect(screen.queryByTestId('thumb-skeleton')).toBeNull();
+    });
+
+    it('requests a density-matched resized thumbnail', () => {
+        // 92 CSS px at DPR 1 -> 96; at DPR 2 -> 192
+        const dpr = window.devicePixelRatio;
+        try {
+            Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
+            renderModal({ members: withThumb as never });
+            const img = document.querySelector('img[src*="9901"]') as HTMLImageElement;
+            expect(img.getAttribute('src')).toBe('/api/blogs/member-thumbnail/hinatazaka46/9901?w=192');
+        } finally {
+            Object.defineProperty(window, 'devicePixelRatio', { value: dpr, configurable: true });
+        }
+    });
+
+    it('falls back to the initial when the thumbnail fails', () => {
+        renderModal({ members: withThumb as never });
+        fireEvent.error(document.querySelector('img[src*="9901"]')!);
+        expect(screen.queryByTestId('thumb-skeleton')).toBeNull();
+        expect(document.querySelector('img[src*="9901"]')).toBeNull();
+        expect(clientLog).toHaveBeenCalledWith('avatar_fallback', { surface: 'member_select' });
+    });
+
+    it('keeps the loading image laid out (never display:none) so lazy loading can fire', () => {
+        renderModal({ members: withThumb as never });
+        const img = document.querySelector('img[src*="9901"]') as HTMLImageElement;
+        expect(screen.getByTestId('thumb-skeleton')).toBeTruthy();
+        expect(img.className).not.toMatch(/(^|\s)hidden(\s|$)/);
+        expect(img.className).toContain('opacity-0');
+        fireEvent.load(img);
+        expect(img.className).not.toContain('opacity-0');
+    });
+
+    it('resets loaded/failed state when the url changes', () => {
+        const { rerender } = render(<MemberThumb url="/a.jpg" initial="A" />);
+        fireEvent.error(document.querySelector('img')!);
+        expect(document.querySelector('img')).toBeNull();
+        rerender(<MemberThumb url="/b.jpg" initial="A" />);
+        expect(document.querySelector('img')).not.toBeNull();
+        expect(screen.getByTestId('thumb-skeleton')).toBeTruthy();
+    });
+
+    it('uses the first code point (not a surrogate half) as initial', () => {
+        renderModal({ members: [{ id: '9903', name: '𠮷野 さん', thumbnail: null }] as never });
+        expect(screen.getAllByText('𠮷')[0]).toBeTruthy();
+    });
+});
+
+describe('MemberSelectModal', () => {
+    it('selects a member by click', () => {
+        const p = renderModal();
+        fireEvent.click(screen.getByText(/春野/));
+        expect(p.onSelectMember).toHaveBeenCalledWith(expect.objectContaining({ id: '9901' }));
+    });
+
+    it('toggles a favourite without selecting the member', () => {
+        const p = renderModal();
+        const heart = screen.getAllByRole('button', { pressed: false })[0];
+        fireEvent.click(heart);
+        expect(useAppStore.getState().favorites['hinatazaka46']).toContain('9901');
+        expect(p.onSelectMember).not.toHaveBeenCalled();
+    });
+
+    it('closes on Escape', () => {
+        const p = renderModal();
+        fireEvent.keyDown(document.body, { key: 'Escape' });
+        expect(p.onClose).toHaveBeenCalled();
+    });
+
+    it('shows the retry on an error', () => {
+        const p = renderModal({ error: 'x' });
+        fireEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        expect(p.onRetry).toHaveBeenCalled();
+    });
+
+    it('is a titled dialog; members are buttons; the heart is named', () => {
+        renderModal();
+        expect(screen.getByRole('dialog', { name: 'Select Member' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /^春野 ひなた$/ })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Add 春野 ひなた to favorites' })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('names the heart with the formatted (spaced) name', async () => {
+        renderModal({ members: [{ id: '9903', name: '春野日向', thumbnail: null }] });
+        expect(screen.getByRole('button', { name: /^春野 日向$/ })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Add 春野 日向 to favorites' })).toBeInTheDocument();
+    });
+
+    it('uses the accent roles for focus, placeholder and hover name; the unset heart is the oshi outline (D4)', () => {
+        renderModal();
+        const cell = screen.getAllByRole('button', { name: /春野/ })[0];
+        expect(cell).toHaveClass('focus-visible:ring-accent');
+        expect(cell.querySelector('.group-hover\\:text-accent-strong')).not.toBeNull();
+        const heart = screen.getByRole('button', { name: /Add 春野 ひなた to favorites/ });
+        expect(heart).toHaveClass('focus-visible:ring-accent');
+        expect(heart.querySelector('svg')).toHaveClass('text-semantic-oshi-solid');
+        expect(heart.querySelector('svg')).not.toHaveClass('fill-current');
+    });
+
+    it('marks member names as Japanese', () => {
+        renderModal();
+        expect(screen.getAllByText(/春野/)[0].closest('[lang="ja"]')).not.toBeNull();
+    });
+
+    it('draws a set favourite as a white heart on the solid oshi badge', () => {
+        useAppStore.setState({ favorites: { hinatazaka46: ['9901'] } });
+        renderModal();
+        const heart = screen.getByRole('button', { pressed: true });
+        expect(heart).toHaveClass('bg-semantic-oshi-solid');
+        expect(heart.querySelector('svg')).toHaveClass('fill-current', 'text-inverse');
+        expect(heart.querySelector('svg')).not.toHaveClass('text-accent');
+    });
+});

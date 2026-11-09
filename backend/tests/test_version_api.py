@@ -717,3 +717,44 @@ class TestParseVersion:
 
         assert _is_newer("0.3.2", "0.3.2.dev0") is True
         assert _is_newer("0.3.2.dev0", "0.3.2.dev0") is False
+
+
+class TestPrepareUpgradeLogs:
+    """The prepared-upgrade breadcrumbs never carry the installer's user path."""
+
+    def setup_method(self):
+        _reset_version_cache()
+
+    def test_ready_and_failure_logs_carry_no_user_path(self, tmp_path):
+        import asyncio
+
+        from structlog.testing import capture_logs
+
+        import backend.api.version as v
+
+        account = "金村美玖"
+        installer = tmp_path / "Users" / account / "SakaDesk-1.0.0-Setup.exe"
+
+        async def info(_version):
+            return object()
+
+        async def download(_info, _cb):
+            return installer
+
+        async def boom(_version):
+            raise OSError(f"denied {installer}")
+
+        with capture_logs() as logs:
+            with (
+                patch.object(v, "get_installer_info", info),
+                patch.object(v, "download_installer", download),
+            ):
+                asyncio.run(v._download_and_prepare_upgrade("1.0.0"))
+            assert v._upgrade_state["state"] == "ready"
+            with patch.object(v, "get_installer_info", boom):
+                asyncio.run(v._download_and_prepare_upgrade("1.0.0"))
+        assert account not in repr(logs)
+        (ready,) = [e for e in logs if e["event"] == "Upgrade ready"]
+        assert ready["file_name"] == "SakaDesk-1.0.0-Setup.exe"
+        (failed,) = [e for e in logs if e["event"] == "Upgrade preparation failed"]
+        assert failed["error_type"] == "OSError"

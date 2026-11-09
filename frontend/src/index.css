@@ -20,7 +20,7 @@
     /* Text colors */
     --color-text-primary: #1f2937;
     --color-text-secondary: #4b5563;
-    --color-text-muted: #9ca3af;
+    --color-text-muted: #6b7280;
     --color-text-inverse: #FFFFFF;
 
     /* Feedback colors */
@@ -34,5 +34,82 @@
     /* Must match pywebview background_color in desktop.py (#F0F2F5)
        to prevent color mismatch at Windows 11 rounded corners */
     background-color: #F0F2F5;
+  }
+}
+
+@layer base {
+  /* Japanese content keeps Japanese glyphs whatever the UI language (spec §6). Scoped to marked
+     content, not <html>, so the UI's own stacks and the serif/display utilities keep working. */
+  /* Literal copies of fontFamily.sansJp / .reading in design/tokens/type.ts (CSS cannot import them): keep in sync. */
+  [lang="ja"]:not(html) {
+    --ds-font-family-sans: "Noto Sans JP", system-ui, -apple-system, sans-serif;
+    --ds-font-family-serif: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif;
+    font-family: var(--ds-font-family-sans);
+  }
+  /* The rule above (0,1,1) outranks .font-reading / .font-display (0,1,0) on the same element, so the
+     marked blog titles would fall back to sans: restore their faces with a higher specificity (0,2,1). */
+  [lang="ja"]:not(html).font-reading {
+    font-family: var(--ds-font-family-reading);
+  }
+  [lang="ja"]:not(html).font-display {
+    font-family: var(--ds-font-family-serif);
+  }
+}
+
+@layer base {
+  /* Slim, token-based scrollbars (WebView2 = Chromium). A transparent track with a rounded thumb that
+     looks thicker and darkens while the pointer is over it. The scrollbar box is a CONSTANT 10px so
+     hovering never changes a scroller's content width (that would make Virtuoso re-measure and jitter);
+     the visible thumb is drawn thinner with a transparent border + background-clip, and the hover
+     state just shrinks that border. Colours are the --ds-scrollbar-* tokens (design/tokens/color.ts);
+     the fallbacks only cover the instant before applyTokens runs. No gutter rule here. */
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--ds-scrollbar-thumb, rgba(31, 41, 55, 0.28));
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ds-scrollbar-thumb-hover, rgba(31, 41, 55, 0.5));
+    border-width: 1px;
+  }
+
+  /* Scrollers that reach a rounded sheet's bottom corner (the chat timeline, a Modal body with no footer)
+     keep the track's bottom clear of the corner radius, so the thumb is not clipped into a wedge when
+     scrolled to the end. A header always sits above them, so there is no top inset.
+     --ds-radius-xl is the sheet radius (24px). */
+  .sd-sheet-scroll::-webkit-scrollbar-track {
+    margin-bottom: var(--ds-radius-xl, 24px);
+  }
+
+  /* Dark surfaces (the image/video viewer and the call screen) take the light thumb. */
+  [data-surface="dark"] ::-webkit-scrollbar-thumb,
+  .sd-call-overlay ::-webkit-scrollbar-thumb {
+    background-color: var(--ds-scrollbar-thumb-on-dark, rgba(255, 255, 255, 0.35));
+  }
+  [data-surface="dark"] ::-webkit-scrollbar-thumb:hover,
+  .sd-call-overlay ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ds-scrollbar-thumb-on-dark-hover, rgba(255, 255, 255, 0.6));
+  }
+
+  /* Firefox fallback. Chromium 121+ would let these standard properties override the rules above,
+     so they apply only where ::-webkit-scrollbar is not supported. */
+  @supports not selector(::-webkit-scrollbar) {
+    * {
+      scrollbar-width: thin;
+      scrollbar-color: var(--ds-scrollbar-thumb) transparent;
+    }
+    [data-surface="dark"] *,
+    .sd-call-overlay * {
+      scrollbar-color: var(--ds-scrollbar-thumb-on-dark) transparent;
+    }
   }
 }

@@ -1,8 +1,9 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { X, Heart } from 'lucide-react';
+import { Heart } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
-import { useModalClose } from '../common/useModalClose';
+import { Atmosphere, Modal } from '../../design/primitives';
+import { cn } from '../../utils/classnames';
 
 declare const __APP_VERSION__: string;
 
@@ -20,7 +21,6 @@ interface FloatingHeart {
 
 export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalProps) {
     const { t } = useTranslation();
-    const handleBackdropClick = useModalClose(isOpen, onClose);
 
     // Hidden dev mode (5-click easter egg on version)
     const [versionClickCount, setVersionClickCount] = useState(0);
@@ -111,122 +111,57 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
         }
     };
 
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-            <div className="bg-white rounded-xl max-w-sm w-full shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                {/* Header */}
-                <div className="px-6 py-4 flex items-center justify-between border-b border-gray-100">
-                    <h3 className="text-lg font-bold text-gray-800">{t('about.title')}</h3>
-                    <button onClick={onClose} className="text-gray-400 hover:text-gray-600 transition-colors">
-                        <X className="w-5 h-5" />
-                    </button>
-                </div>
-
-                {/* Content */}
-                <div className="p-8 flex flex-col items-center text-center">
-                    {/* Logo — wrapper handles rounding/shadow/overflow to avoid subpixel gap */}
-                    <div className="w-20 h-20 rounded-2xl shadow-lg mb-4 overflow-hidden">
-                        <img
-                            src="/logo-192.png"
-                            alt="SakaDesk"
-                            className="w-full h-full select-none"
-                        />
-                    </div>
-
-                    {/* App name */}
-                    <h1 className="text-xl font-bold text-gray-800 mb-1">SakaDesk</h1>
-
-                    {/* Version - plain text, secretly clickable */}
-                    <p
-                        onClick={handleVersionClick}
-                        className="text-sm text-gray-400 mb-6 cursor-text select-none"
-                    >
-                        {appVersion ? t('about.version', { version: appVersion }) : '\u00A0'}
-                    </p>
-
-                    {/* Description */}
-                    <div className="mb-6 space-y-1">
-                        <p className="text-sm text-gray-400">
-                            {t('about.identity')}
-                        </p>
-                        <p className="text-sm text-gray-600">
-                            {t('about.features')}
-                        </p>
-                    </div>
-
-                    {/* Made with love — heart is the golden finger trigger */}
-                    <div className="flex items-center gap-1.5 text-xs text-gray-400">
-                        <span>{t('about.madeWith')}</span>
-                        <button
-                            onClick={handleHeartClick}
-                            className="relative focus:outline-none cursor-default"
-                            aria-label="heart"
-                        >
-                            <Heart
-                                className="w-3 h-3 text-red-400 fill-red-400 transition-transform active:scale-125"
-                                style={goldenFingerActive ? { animation: 'heartbeat 1.2s ease-in-out infinite' } : undefined}
-                            />
-                            {/* Floating hearts animation */}
-                            {floatingHearts.map(heart => (
-                                <Heart
-                                    key={heart.id}
-                                    className="absolute w-3 h-3 text-red-400 fill-red-400 pointer-events-none"
-                                    style={{
-                                        left: `calc(50% + ${heart.x}px)`,
-                                        bottom: '100%',
-                                        transform: 'translateX(-50%)',
-                                        animation: 'heartFloat 0.8s ease-out forwards',
-                                    }}
-                                />
-                            ))}
-                        </button>
-                        <span>{t('about.by')} xebjhm</span>
-                    </div>
-
-                    {/* Toast message */}
-                    {toastMessage && (
-                        <div className="mt-3 px-3 py-1.5 bg-gray-800 text-white text-xs rounded-full animate-fade-in">
-                            {toastMessage}
+        <Modal scope="brand" isOpen={isOpen} onClose={onClose} title={t('about.title')} closeLabel={t('common.close')} logId="about" className="max-w-sm"
+            footer={
+                <a href="https://github.com/xebjhm/SakaDesk" target="_blank" rel="noopener noreferrer"
+                    className="w-full rounded-pill py-2 text-center text-small text-secondary transition-colors duration-fast ease-standard hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+                    github.com/xebjhm/SakaDesk
+                </a>
+            }
+        >
+            <div className="flex flex-col items-center text-center">
+                {/* Hero (spec §9, decision D8): the brand orbs behind the logo and the display
+                    wordmark, bled to the dialog edges under the aurora header; `fade` lets the orbs
+                    fade out at the hero edges instead of being cut flat. */}
+                <Atmosphere fade className="-mx-6 -mt-4 self-stretch">
+                    <div data-testid="about-hero" className="flex flex-col items-center px-6 pb-6 pt-8">
+                        <div className="mb-4 h-20 w-20 overflow-hidden rounded-xl shadow-card">
+                            <img src="/logo-192.png" alt="SakaDesk" className="h-full w-full select-none" />
                         </div>
-                    )}
-                </div>
+                        <h3 className="font-display text-display font-bold text-primary">SakaDesk</h3>
+                        {/* Plain text that is secretly clickable (5 clicks: diagnostics). */}
+                        <p onClick={handleVersionClick} className="cursor-text select-none text-small text-muted">
+                            {appVersion ? t('about.version', { version: appVersion }) : ' '}
+                        </p>
+                    </div>
+                </Atmosphere>
 
-                {/* Footer */}
-                <div className="px-6 py-4 bg-gray-50 border-t border-gray-100">
-                    <a
-                        href="https://github.com/xebjhm/SakaDesk"
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="block w-full text-center text-sm text-gray-500 hover:text-gray-700 transition-colors"
-                    >
-                        github.com/xebjhm/SakaDesk
-                    </a>
+                <div className="mb-6 flex flex-col gap-1">
+                    <p className="text-small text-muted">{t('about.identity')}</p>
+                    <p className="text-small text-secondary">{t('about.features')}</p>
                 </div>
+                <div className="flex items-center gap-1 text-caption text-muted">
+                    <span>{t('about.madeWith')}</span>
+                    <button type="button" onClick={handleHeartClick} aria-label={t('about.madeWithLove')} className="relative cursor-default focus:outline-none">
+                        <Heart className={cn('h-3 w-3 fill-current text-heart transition-transform active:scale-125', goldenFingerActive && 'animate-heartbeat motion-reduce:animate-none')} />
+                        {floatingHearts.map((heart) => (
+                            <Heart
+                                key={heart.id}
+                                aria-hidden="true"
+                                className="pointer-events-none absolute bottom-full h-3 w-3 fill-current text-heart animate-heart-float motion-reduce:hidden"
+                                style={{ left: `calc(50% + ${heart.x}px)` }}
+                            />
+                        ))}
+                    </button>
+                    <span>{t('about.by')} xebjhm</span>
+                </div>
+                {toastMessage && (
+                    <div role="status" className="mt-3 rounded-pill bg-toast px-3 py-1 text-caption text-viewer animate-reveal motion-reduce:animate-none">
+                        {toastMessage}
+                    </div>
+                )}
             </div>
-
-            {/* Keyframe for floating hearts */}
-            <style>{`
-                @keyframes heartFloat {
-                    0% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
-                    100% { opacity: 0; transform: translateX(-50%) translateY(-30px) scale(1.3); }
-                }
-                @keyframes heartbeat {
-                    0%, 100% { transform: scale(1); }
-                    15% { transform: scale(1.3); }
-                    30% { transform: scale(1); }
-                    45% { transform: scale(1.2); }
-                    60% { transform: scale(1); }
-                }
-                .animate-fade-in {
-                    animation: fadeIn 0.2s ease-out;
-                }
-                @keyframes fadeIn {
-                    from { opacity: 0; transform: translateY(4px); }
-                    to { opacity: 1; transform: translateY(0); }
-                }
-            `}</style>
-        </div>
+        </Modal>
     );
 }

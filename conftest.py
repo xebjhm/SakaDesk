@@ -12,3 +12,35 @@ import os
 import tempfile
 
 os.environ.setdefault("SAKADESK_DATA_DIR", tempfile.mkdtemp(prefix="sakadesk-tests-"))
+
+# The app lifespan starts a background auto-sync scheduler; tests that create
+# TestClient(app) must never spawn real syncs. Set here so both tests/ and
+# backend/tests/ runs are covered. A test that wants the scheduler removes this
+# variable with monkeypatch.delenv (see tests/test_auto_sync_scheduler.py).
+os.environ.setdefault("SAKADESK_DISABLE_AUTO_SYNC", "1")
+
+
+import pytest  # noqa: E402
+
+
+@pytest.fixture(autouse=True)
+def _isolate_diagnostics_disk_usage(monkeypatch):
+    """A fresh disk-usage tracker per test, and a walk that touches nothing.
+
+    ``GET /api/diagnostics`` (and ``/disk-usage``) start a background walk of
+    the configured output folder. Any test that hits them must never walk a
+    real archive nor leave that thread running into the next test, so every
+    test gets its own tracker and a no-op walk; teardown waits for the thread.
+    ``backend/tests/test_diagnostics_disk_usage.py`` overrides this fixture to
+    keep the real walk on its temp folders. Imported lazily so the
+    ``tests/conftest.py`` module mocks are in place before ``backend`` loads.
+    """
+    from backend.api import diagnostics
+
+    tracker = diagnostics._DiskUsageTracker()
+    monkeypatch.setattr(diagnostics, "_disk_usage_tracker", tracker)
+    monkeypatch.setattr(
+        diagnostics, "_walk_disk_usage", lambda _path: diagnostics.DiskWalkResult()
+    )
+    yield tracker
+    tracker.wait_idle(5)

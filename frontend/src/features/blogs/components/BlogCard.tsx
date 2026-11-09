@@ -1,10 +1,14 @@
 // frontend/src/features/blogs/components/BlogCard.tsx
-// Portrait Gallery Card - Clean Modern Minimalist Design
-// Horizontal labels, glass morphism, consistent member name color
+// A post in the recent feed, in its original (e4e4118) layout: the photo tile fills the card and
+// a small frosted caption card floats over its bottom-right corner, deliberately offset past the
+// photo edge (e4e4118: "bottom/right -8px", featured "-12px").
 import React, { useState, useEffect } from 'react';
 import type { RecentPost } from '../../../types';
 import { getMemberNameKanji } from '../../../data/memberData';
-import { useBlogTheme } from '../hooks';
+import { cn } from '../../../utils/classnames';
+import { formatBlogDate } from '../../../utils/dateFormatters';
+import { useTranslation } from '../../../i18n';
+import { clientLog } from '../../../utils/clientLog';
 
 interface BlogCardProps {
     post: RecentPost;
@@ -13,8 +17,7 @@ interface BlogCardProps {
 }
 
 export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'normal' }) => {
-    const theme = useBlogTheme();
-    const [isHovered, setIsHovered] = useState(false);
+    const { i18n } = useTranslation();
     const [imageLoaded, setImageLoaded] = useState(false);
     const [imageError, setImageError] = useState(false);
 
@@ -28,166 +31,102 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
         setImageError(false);
     }, [post.thumbnail]);
 
-    // Use theme colors for card effects
-    const oshiPrimary = theme.primaryColor;
-    const oshiSecondary = theme.secondaryColor;
-
-    // Format date elegantly
-    const date = new Date(post.published_at);
-    const formattedDate = date.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-    }).toUpperCase();
-
-    // Sizing based on card type
     const isFeatured = size === 'featured';
 
+    // The button is itself the card (a div may not sit inside a button); its parts are spans.
+    // e4e4118 values are quoted where a token stands in for them.
     return (
         <button
+            type="button"
             onClick={onClick}
-            onMouseEnter={() => setIsHovered(true)}
-            onMouseLeave={() => setIsHovered(false)}
-            className={`
-                blog-card group relative w-full cursor-pointer
-                aspect-[3/4] transition-transform duration-500 ease-out
-                focus:outline-none
-                ${isHovered ? '-translate-y-1.5' : 'translate-y-0'}
-            `}
-            style={{ overflow: 'visible' }}
+            className={cn(
+                // e4e4118: "-translate-y-1.5" on hover, "transition-transform duration-500 ease-out".
+                'group relative isolate block aspect-[3/4] w-full cursor-pointer text-left',
+                // Reduced motion: the hover look (aura, glows) stays, nothing moves.
+                'transition-transform duration-lift ease-out hover:-translate-y-1.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0',
+                'focus-visible:outline-none',
+            )}
         >
-            {/* Oshi Glow - Soft colored aura behind card on hover */}
-            <div
-                className="absolute -inset-3 -z-10 rounded-3xl transition-opacity duration-500"
-                style={{
-                    background: `radial-gradient(ellipse at center, ${oshiPrimary}30 0%, ${oshiSecondary}15 50%, transparent 70%)`,
-                    filter: 'blur(24px)',
-                    opacity: isHovered ? 1 : 0,
-                }}
+            {/* The hover aura behind the tile (e4e4118: "-inset-3 rounded-3xl", "blur(24px)", logo 30 → action 15 hex alpha). */}
+            <span
+                aria-hidden="true"
+                className="pointer-events-none absolute -inset-3 -z-10 rounded-xl bg-accent-aura opacity-0 blur-xl transition-opacity duration-lift group-hover:opacity-100 motion-reduce:transition-none"
             />
 
-            {/* Image Container - 3:4 Portrait */}
-            <div
-                className={`
-                    relative w-full h-full overflow-hidden
-                    ${isFeatured ? 'rounded-2xl' : 'rounded-xl'}
-                    transition-shadow duration-500
-                `}
-                style={{
-                    boxShadow: isHovered
-                        ? `0 16px 40px -10px ${oshiPrimary}35, 0 8px 24px -8px rgba(0, 0, 0, 0.18)`
-                        : '0 6px 24px -6px rgba(0, 0, 0, 0.12)',
-                }}
-            >
-                {/* Placeholder gradient while loading */}
-                {(!imageLoaded || imageError || !post.thumbnail) && (
-                    <div
-                        className="absolute inset-0"
-                        style={{
-                            background: `linear-gradient(145deg, ${oshiPrimary}18 0%, ${oshiSecondary}12 100%)`,
-                        }}
-                    />
+            {/* The photo tile (e4e4118: "rounded-xl", featured "rounded-2xl"; "0 6px 24px -6px" at rest). */}
+            <span
+                data-testid="blog-card-tile"
+                className={cn(
+                    'absolute inset-0 block overflow-hidden bg-accent-tile shadow-tile',
+                    'transition-shadow duration-lift group-hover:shadow-tile-hover motion-reduce:transition-none',
+                    isFeatured ? 'rounded-lg' : 'rounded-md',
                 )}
-
-                {/* Actual image */}
+            >
                 {post.thumbnail && !imageError && (
                     <img
                         src={post.thumbnail}
-                        alt={post.title}
-                        className={`
-                            absolute inset-0 w-full h-full object-cover object-top
-                            transition-all duration-700 ease-out
-                            ${imageLoaded ? 'opacity-100' : 'opacity-0'}
-                            ${isHovered ? 'scale-105' : 'scale-100'}
-                        `}
-                        onLoad={() => setImageLoaded(true)}
-                        onError={() => setImageError(true)}
+                        alt=""
                         loading="lazy"
+                        onLoad={() => setImageLoaded(true)}
+                        onError={() => {
+                            setImageError(true);
+                            clientLog('blog_fallback', { target: 'card_thumb', reason: 'image_error' });
+                        }}
+                        className={cn(
+                            // e4e4118: "transition-all duration-700 ease-out", "scale-105" on hover.
+                            'absolute inset-0 h-full w-full object-cover object-top',
+                            'transition duration-zoom ease-out group-hover:scale-105 motion-reduce:transition-none motion-reduce:group-hover:scale-100',
+                            imageLoaded ? 'opacity-100' : 'opacity-0',
+                        )}
                     />
                 )}
-
-                {/* Soft bottom vignette */}
-                <div
-                    className="absolute inset-0 pointer-events-none"
-                    style={{
-                        background: 'linear-gradient(to top, rgba(0,0,0,0.05) 0%, transparent 20%)',
-                    }}
-                />
-
-                {/* Focus ring for accessibility */}
-                <div
-                    className={`
-                        absolute inset-0 pointer-events-none
-                        opacity-0 group-focus-visible:opacity-100 transition-opacity
-                        ${isFeatured ? 'rounded-2xl' : 'rounded-xl'}
-                    `}
-                    style={{ boxShadow: `inset 0 0 0 3px ${oshiPrimary}` }}
-                />
-            </div>
-
-            {/* Label - Clean glass morphism, bottom-right anchor */}
-            <div
-                className={`
-                    absolute z-20 text-left
-                    transition-all duration-400
-                    ${isHovered ? 'translate-x-[-4px] translate-y-[-4px]' : ''}
-                `}
-                style={{
-                    bottom: isFeatured ? '-12px' : '-8px',
-                    right: isFeatured ? '-12px' : '-8px',
-                    padding: isFeatured ? '12px 14px' : '8px 10px',
-                    minWidth: isFeatured ? '130px' : '95px',
-                    maxWidth: isFeatured ? '200px' : '150px',
-                    background: 'rgba(255, 255, 255, 0.92)',
-                    backdropFilter: 'blur(16px) saturate(180%)',
-                    WebkitBackdropFilter: 'blur(16px) saturate(180%)',
-                    borderRadius: isFeatured ? '12px' : '8px',
-                    border: '1px solid rgba(255, 255, 255, 0.6)',
-                    boxShadow: isHovered
-                        ? `0 10px 28px -6px ${oshiPrimary}40, 0 6px 16px -4px rgba(0, 0, 0, 0.1)`
-                        : `0 6px 20px -6px rgba(0, 0, 0, 0.1)`,
-                    transition: 'transform 0.4s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.4s ease',
-                }}
-            >
-                {/* Date - Small, muted, top */}
+                <span aria-hidden="true" className="pointer-events-none absolute inset-0 bg-tile-vignette" />
                 <span
-                    className="block font-medium tracking-wider"
-                    style={{
-                        fontSize: isFeatured ? '0.6rem' : '0.5rem',
-                        color: '#a0a0a0',
-                        marginBottom: isFeatured ? '4px' : '2px',
-                    }}
-                >
-                    {formattedDate}
-                </span>
+                    aria-hidden="true"
+                    className={cn(
+                        'pointer-events-none absolute inset-0 opacity-0 ring-2 ring-inset ring-accent transition-opacity group-focus-visible:opacity-100',
+                        isFeatured ? 'rounded-lg' : 'rounded-md',
+                    )}
+                />
+            </span>
 
-                {/* Title - Serif, elegant */}
-                <h3
-                    className="line-clamp-2 leading-snug"
-                    style={{
-                        fontFamily: '"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif',
-                        fontSize: isFeatured ? '0.9rem' : '0.75rem',
-                        fontWeight: isFeatured ? 500 : 600,
-                        color: '#1f2937',
-                        letterSpacing: '0.01em',
-                        margin: 0,
-                    }}
+            {/* The caption card (e4e4118: padding "8px 10px" / "12px 14px", radius "8px" / "12px",
+                min/max width "95px"/"150px" and "130px"/"200px"; it nudges up-left by "4px" on hover). */}
+            <span
+                data-testid="blog-card-caption"
+                className={cn(
+                    'absolute z-20 block border border-tile-glass bg-tile-glass text-left shadow-caption backdrop-blur-lg backdrop-saturate-180',
+                    'transition-caption group-hover:-translate-x-1 group-hover:-translate-y-1 group-hover:shadow-caption-hover',
+                    'motion-reduce:transition-none motion-reduce:group-hover:translate-x-0 motion-reduce:group-hover:translate-y-0',
+                    isFeatured
+                        ? '-bottom-3 -right-3 min-w-[130px] max-w-[200px] rounded-md px-3.5 py-3'
+                        : '-bottom-2 -right-2 min-w-[95px] max-w-[150px] rounded-sm px-2.5 py-2',
+                )}
+            >
+                <span className={cn('block font-medium uppercase tracking-wider text-muted', isFeatured ? 'mb-1 text-tile-date-lg' : 'mb-0.5 text-tile-date')}>
+                    {formatBlogDate(new Date(post.published_at), i18n.language, 'short')}
+                </span>
+                <span
+                    lang="ja"
+                    className={cn(
+                        'line-clamp-2 font-reading text-primary',
+                        isFeatured ? 'text-tile-title-lg font-medium' : 'text-tile-title font-semibold',
+                        // After the size: tailwind-merge drops a leading that precedes a font size.
+                        'leading-snug',
+                    )}
                 >
                     {post.title}
-                </h3>
-
-                {/* Member name - Theme color, kanji only */}
+                </span>
                 <span
-                    className="block font-semibold"
-                    style={{
-                        fontSize: isFeatured ? '0.7rem' : '0.6rem',
-                        color: theme.memberNameColor,
-                        marginTop: isFeatured ? '6px' : '4px',
-                        letterSpacing: '0.02em',
-                    }}
+                    lang="ja"
+                    className={cn(
+                        'block truncate font-semibold tracking-wide text-accent-strong',
+                        isFeatured ? 'mt-1.5 text-tile-name-lg' : 'mt-1 text-tile-name',
+                    )}
                 >
                     {getMemberNameKanji(post.member_name)}
                 </span>
-            </div>
+            </span>
         </button>
     );
 };

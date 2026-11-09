@@ -1,8 +1,11 @@
 // frontend/src/core/layout/ContentArea.tsx
 import React from 'react';
-import { useAppStore } from '../../store/appStore';
+import { useAppStore, type FeatureId } from '../../store/appStore';
 import { BlogsFeature } from '../../features/blogs';
 import { InlineSyncView } from './InlineSyncView';
+import { ContentSheet } from './ContentSheet';
+import { FadeOnChange } from './FadeOnChange';
+import { useTranslation } from '../../i18n';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 interface ContentAreaProps {
@@ -13,6 +16,23 @@ interface ContentAreaProps {
     blogBackupEnabled?: boolean;
 }
 
+const ComingSoon: React.FC<{ feature: FeatureId }> = ({ feature }) => {
+    const { t } = useTranslation();
+    return (
+        <div className="flex flex-1 items-center justify-center text-secondary">
+            <div className="text-center">
+                <p className="mb-2 text-title">{t(`features.${feature}`)}</p>
+                <p className="text-small text-muted">{t('contentArea.comingSoon')}</p>
+            </div>
+        </div>
+    );
+};
+
+/**
+ * The area right of the feature rail, on the group canvas. Features sit on a ContentSheet;
+ * messages lay out their own member sidebar (on the canvas) and chat sheet. Content fades
+ * in on every feature or service change.
+ */
 export const ContentArea: React.FC<ContentAreaProps> = ({
     service,
     messagesContent,
@@ -23,55 +43,20 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
     const { getActiveFeature } = useAppStore();
     const activeFeature = getActiveFeature(service);
 
-    const renderFeature = () => {
-        switch (activeFeature) {
-            case 'messages':
-                return messagesContent;
-            case 'blogs':
-                return <BlogsFeature blogBackupEnabled={blogBackupEnabled} />;
-            case 'news':
-                return (
-                    <div className="flex-1 flex items-center justify-center text-gray-500">
-                        <div className="text-center">
-                            <p className="text-lg mb-2">News Feature</p>
-                            <p className="text-sm">Coming soon...</p>
-                        </div>
-                    </div>
-                );
-            case 'fanclub':
-                return (
-                    <div className="flex-1 flex items-center justify-center text-gray-500">
-                        <div className="text-center">
-                            <p className="text-lg mb-2">Fan Club Feature</p>
-                            <p className="text-sm">Coming soon...</p>
-                        </div>
-                    </div>
-                );
-            case 'ai':
-                return (
-                    <div className="flex-1 flex items-center justify-center text-gray-500">
-                        <div className="text-center">
-                            <p className="text-lg mb-2">AI Agent Feature</p>
-                            <p className="text-sm">Coming soon...</p>
-                        </div>
-                    </div>
-                );
-            default:
-                return messagesContent;
-        }
-    };
-
+    let content: React.ReactNode;
     if (isInitialSyncing && syncProgress?.state === 'running') {
-        return (
-            <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#F0F2F5]">
-                <InlineSyncView service={service} syncProgress={syncProgress} />
-            </div>
-        );
+        content = <ContentSheet><InlineSyncView service={service} syncProgress={syncProgress} /></ContentSheet>;
+    } else if (activeFeature === 'blogs') {
+        content = <ContentSheet><BlogsFeature blogBackupEnabled={blogBackupEnabled} /></ContentSheet>;
+    } else if (activeFeature === 'news' || activeFeature === 'fanclub' || activeFeature === 'ai') {
+        content = <ContentSheet><ComingSoon feature={activeFeature} /></ContentSheet>;
+    } else {
+        content = messagesContent;
     }
 
     return (
-        <div className="flex-1 flex flex-col h-full overflow-hidden bg-[#F0F2F5]">
-            {renderFeature()}
-        </div>
+        <FadeOnChange changeKey={`${service}:${activeFeature}`} className="flex h-full min-w-0 flex-1">
+            {content}
+        </FadeOnChange>
     );
 };

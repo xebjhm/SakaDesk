@@ -1,10 +1,17 @@
 // frontend/src/features/blogs/components/MemberSelectModal.tsx
-import React, { useMemo, useEffect, useRef } from 'react';
+import React, { useMemo, useState } from 'react';
+import { AlertTriangle, Heart, Users } from 'lucide-react';
 import type { BlogMemberWithThumbnail } from '../../../types';
-import { getMembers, getMemberPenlightHex, toGroupId } from '../../../data/memberData';
+import { getMembers, toGroupId } from '../../../data/memberData';
 import { getMemberThumbnailUrl } from '../api';
+import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
 import { useAppStore } from '../../../store/appStore';
 import { useTranslation } from '../../../i18n';
+import { Modal } from '../../../design/primitives';
+import { DialogStatus } from '../../../core/common/DialogStatus';
+import { cn } from '../../../utils/classnames';
+import { clientLog } from '../../../utils/clientLog';
+import { isMascot, MASCOT_THUMBNAIL_URL } from '../mascot';
 
 interface MemberSelectModalProps {
     isOpen: boolean;
@@ -22,12 +29,51 @@ type GenerationKey = '1st' | '2nd' | '3rd' | '4th' | '5th' | '6th' | '7th' | 'ma
 interface EnrichedMember extends BlogMemberWithThumbnail {
     nameJp: string;
     generation: GenerationKey;
-    penlightColors: [string, string] | null;
     status: 'active' | 'graduated' | 'unknown';
 }
 
 // Stable empty array to avoid creating new reference on each render
 const EMPTY_FAVORITES: string[] = [];
+
+/**
+ * Member avatar circle: a neutral pulsing placeholder while the thumbnail
+ * loads; a missing or failed thumbnail shows the name's first character.
+ */
+export const MemberThumb: React.FC<{ url: string | null; initial: string }> = ({ url, initial }) => (
+    // Keyed on url so loaded/failed state never leaks to a different thumbnail.
+    <MemberThumbInner key={url ?? ''} url={url} initial={initial} />
+);
+
+const MemberThumbInner: React.FC<{ url: string | null; initial: string }> = ({ url, initial }) => {
+    const [state, setState] = useState<'loading' | 'loaded' | 'failed'>('loading');
+    if (!url || state === 'failed') {
+        return (
+            <span aria-hidden="true" lang="ja" className="flex h-full w-full items-center justify-center text-title font-semibold text-accent-strong">
+                {initial}
+            </span>
+        );
+    }
+    // The image stays laid out (opacity-0) while loading: a display:none lazy
+    // image never intersects the viewport, so it would never load.
+    return (
+        <span className="relative block h-full w-full">
+            {state === 'loading' && (
+                <span data-testid="thumb-skeleton" aria-hidden="true" className="absolute inset-0 animate-pulse bg-sunken motion-reduce:animate-none" />
+            )}
+            <img
+                src={url}
+                alt=""
+                loading="lazy"
+                onLoad={() => setState('loaded')}
+                onError={() => {
+                    setState('failed');
+                    clientLog('avatar_fallback', { surface: 'member_select' });
+                }}
+                className={cn('h-full w-full scale-[1.15] object-cover object-top', state === 'loading' && 'opacity-0')}
+            />
+        </span>
+    );
+};
 
 export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
     isOpen,
@@ -43,21 +89,8 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
     const favorites = useAppStore((state) => state.favorites[serviceId] || EMPTY_FAVORITES);
     const toggleFavorite = useAppStore((state) => state.toggleFavorite);
     const { t } = useTranslation();
-
-    // Use ref to track latest onClose callback without triggering effect re-runs
-    const onCloseRef = useRef(onClose);
-    useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
-
-    // Close on escape key
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            if (e.key === 'Escape' && isOpen) {
-                onCloseRef.current();
-            }
-        };
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [isOpen]);
+    // Drawn at 80 CSS px, scaled 1.15x by MemberThumb.
+    const thumbWidth = useAvatarWidth(92);
 
     // Enrich members with generation and name data using service-specific member data
     const enrichedMembers = useMemo(() => {
@@ -80,15 +113,6 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
                 || memberDataMap.get(member.name)
                 || memberDataMap.get(member.name.replace(/\s+/g, ''));
 
-            // Treat mascot (ポカ, id=000) specially
-            const isMascot = member.id === '000' || member.name === 'ポカ';
-
-            // Get penlight colors if member data found
-            let penlightColors: [string, string] | null = null;
-            if (memberData) {
-                penlightColors = getMemberPenlightHex(memberData, groupId);
-            }
-
             // Map numeric generation to string key
             const genNumber = memberData?.generation ?? 2;
             const genKey = `${genNumber}${genNumber === 1 ? 'st' : genNumber === 2 ? 'nd' : genNumber === 3 ? 'rd' : 'th'}` as GenerationKey;
@@ -101,8 +125,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
             return {
                 ...member,
                 nameJp: memberData?.nameKanji ?? member.name,
-                generation: isMascot ? 'mascot' as GenerationKey : genKey,
-                penlightColors,
+                generation: isMascot(member) ? 'mascot' as GenerationKey : genKey,
                 status,
             };
         });
@@ -193,239 +216,75 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
         return name;
     };
 
-    if (!isOpen) return null;
-
     return (
-        <div
-            className="fixed inset-0 z-50 flex items-center justify-center"
-            onClick={onClose}
+        <Modal
+            isOpen={isOpen}
+            onClose={onClose}
+            title={t('blogs.selectMember')}
+            closeLabel={t('common.close')}
+            logId="member_select"
+            className="max-h-[85vh] w-auto max-w-full"
         >
-            {/* Backdrop */}
-            <div className="absolute inset-0 bg-black/40 backdrop-blur-sm" />
-
-            {/* Modal */}
-            <div
-                className="relative w-full max-h-[85vh] mx-4 rounded-3xl overflow-hidden flex flex-col animate-modal-in"
-                style={{
-                    maxWidth: `${modalWidth}px`,
-                    background: 'rgba(255, 255, 255, 0.95)',
-                    backdropFilter: 'blur(20px)',
-                    WebkitBackdropFilter: 'blur(20px)',
-                    boxShadow: '0 25px 50px -12px rgba(0, 0, 0, 0.25)',
-                }}
-                onClick={(e) => e.stopPropagation()}
-            >
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto p-6 pt-4">
-                    {/* Loading */}
-                    {loading && (
-                        <div className="flex flex-col items-center justify-center h-48 gap-4">
-                            <div className="relative">
+            <div className="mx-auto max-w-full" style={{ width: modalWidth - 48 }}>
+            {loading && <DialogStatus kind="loading" title={t('blogs.loadingMembers')} />}
+            {error && !loading && (
+                <DialogStatus kind="error" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} retryVariant="primary" />
+            )}
+            {!loading && !error && filteredMembers.length === 0 && (
+                <DialogStatus kind="empty" icon={<Users />} title={t('blogs.noMembersFound')} />
+            )}
+            {!loading && !error && filteredMembers.length > 0 && (
+                <div className="flex flex-col gap-6">
+                    {generationOrder.map((gen) => {
+                        const genMembers = membersByGeneration[gen];
+                        if (genMembers.length === 0) return null;
+                        return (
+                            <section key={gen} className="flex flex-col gap-3">
+                                <h3 className="text-caption font-semibold uppercase tracking-wider text-muted">{extendedLabels[gen]}</h3>
                                 <div
-                                    className="w-10 h-10 rounded-full animate-spin"
-                                    style={{
-                                        background: 'conic-gradient(from 0deg, transparent, #ff9ccb)',
-                                    }}
-                                />
-                                <div className="absolute inset-1 rounded-full bg-white" />
-                            </div>
-                            <span className="text-sm text-gray-400 tracking-wide">{t('blogs.loadingMembers')}</span>
-                        </div>
-                    )}
-
-                    {/* Error */}
-                    {error && !loading && (
-                        <div className="flex flex-col items-center justify-center h-48 gap-4">
-                            <div
-                                className="p-4 rounded-2xl"
-                                style={{
-                                    background: 'rgba(255, 99, 99, 0.1)',
-                                    border: '1px solid rgba(255, 99, 99, 0.2)',
-                                }}
-                            >
-                                <svg className="w-6 h-6 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
-                                </svg>
-                            </div>
-                            <p className="text-sm text-gray-600">{error}</p>
-                            <button
-                                onClick={onRetry}
-                                className="px-4 py-2 rounded-full text-white text-sm font-medium transition-all duration-300 hover:scale-105 bg-theme-gradient"
-                            >
-                                {t('blogs.retry')}
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Member Grid - Grouped by Generation */}
-                    {!loading && !error && filteredMembers.length > 0 && (
-                        <div className="space-y-6">
-                            {generationOrder.map(gen => {
-                                const genMembers = membersByGeneration[gen];
-                                if (genMembers.length === 0) return null;
-
-                                const gridCols = getGridCols(genMembers.length);
-
-                                return (
-                                    <div key={gen} className="space-y-3">
-                                        {/* Generation Label */}
-                                        <div className="flex items-center gap-2">
-                                            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-                                                {extendedLabels[gen]}
-                                            </span>
-                                            <div className="flex-1 h-px bg-gray-200" />
-                                        </div>
-
-                                        {/* Members Grid - Official site style */}
-                                        <div
-                                            className="grid gap-6 justify-center"
-                                            style={{
-                                                gridTemplateColumns: `repeat(${gridCols}, minmax(0, 100px))`,
-                                            }}
-                                        >
-                                            {genMembers.map((member) => {
-                                                const isFavorited = favorites.includes(member.id);
-                                                // Special case for ポカ (mascot) - use CDN URL directly
-                                                const isMascot = member.id === '000' || member.name === 'ポカ';
-                                                const thumbnailUrl = isMascot
-                                                    ? 'https://cdn.hinatazaka46.com/images/14/98b/e96b48f630edc3119806a1b40bc10/400_320_102400.jpg'
-                                                    : member.thumbnail
-                                                        ? getMemberThumbnailUrl(serviceId, member.id)
-                                                        : null;
-
-                                                return (
-                                                    <div
-                                                        key={member.id}
-                                                        role="button"
-                                                        tabIndex={0}
-                                                        onClick={() => onSelectMember(member)}
-                                                        onKeyDown={(e) => {
-                                                            if (e.key === 'Enter' || e.key === ' ') {
-                                                                e.preventDefault();
-                                                                onSelectMember(member);
-                                                            }
-                                                        }}
-                                                        className="group flex flex-col items-center gap-3 cursor-pointer"
-                                                    >
-                                                        {/* Avatar - Official site style: clean circle, face centered */}
-                                                        <div className="relative group/avatar">
-                                                            <div
-                                                                className="w-20 h-20 rounded-full overflow-hidden transition-transform duration-200 group-hover:scale-105 bg-gradient-to-b from-sky-50 to-sky-100"
-                                                            >
-                                                                {thumbnailUrl ? (
-                                                                    <img
-                                                                        src={thumbnailUrl}
-                                                                        alt={member.nameJp}
-                                                                        className="w-full h-full object-cover"
-                                                                        style={{
-                                                                            objectPosition: 'center 0%',
-                                                                            transform: 'scale(1.15)',
-                                                                        }}
-                                                                        loading="lazy"
-                                                                    />
-                                                                ) : (
-                                                                    <div className="w-full h-full flex items-center justify-center">
-                                                                        <span className="text-lg font-medium text-sky-400">
-                                                                            {member.nameJp.substring(0, 1)}
-                                                                        </span>
-                                                                    </div>
-                                                                )}
-                                                            </div>
-
-                                                            {/* Favorite Heart - positioned at bottom right */}
-                                                            <button
-                                                                type="button"
-                                                                onClick={(e) => {
-                                                                    e.stopPropagation();
-                                                                    toggleFavorite(serviceId, member.id);
-                                                                }}
-                                                                aria-label={isFavorited
-                                                                    ? `${member.nameJp}をお気に入りから削除`
-                                                                    : `${member.nameJp}をお気に入りに追加`}
-                                                                aria-pressed={isFavorited}
-                                                                className="absolute bottom-0 right-0 p-1.5 rounded-full transition-all duration-200 hover:scale-110 z-10"
-                                                                style={{
-                                                                    background: isFavorited
-                                                                        ? '#ff69b4'
-                                                                        : 'rgba(255, 255, 255, 0.95)',
-                                                                    boxShadow: '0 2px 6px rgba(0, 0, 0, 0.15)',
-                                                                }}
-                                                            >
-                                                                <svg
-                                                                    className="w-3.5 h-3.5"
-                                                                    fill={isFavorited ? 'white' : 'none'}
-                                                                    stroke={isFavorited ? 'white' : '#ff69b4'}
-                                                                    strokeWidth={2}
-                                                                    viewBox="0 0 24 24"
-                                                                >
-                                                                    <path
-                                                                        strokeLinecap="round"
-                                                                        strokeLinejoin="round"
-                                                                        d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-                                                                    />
-                                                                </svg>
-                                                            </button>
-                                                        </div>
-
-                                                        {/* Name - with space like official site */}
-                                                        <p
-                                                            className="text-sm text-center leading-tight transition-colors duration-200 text-gray-600 group-hover:text-sky-600"
-                                                            style={{ letterSpacing: '0.05em' }}
-                                                        >
-                                                            {formatName(member.nameJp)}
-                                                        </p>
-                                                    </div>
-                                                );
-                                            })}
-                                        </div>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    )}
-
-                    {/* Empty State */}
-                    {!loading && !error && filteredMembers.length === 0 && (
-                        <div className="flex flex-col items-center justify-center h-48 gap-4">
-                            <div
-                                className="p-5 rounded-2xl"
-                                style={{
-                                    background: 'linear-gradient(135deg, rgba(124, 199, 232, 0.1) 0%, rgba(255, 156, 203, 0.1) 100%)',
-                                }}
-                            >
-                                <svg className="w-8 h-8 text-gray-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0z" />
-                                </svg>
-                            </div>
-                            <p className="text-sm text-gray-500">
-                                {t('blogs.noMembersFound')}
-                            </p>
-                        </div>
-                    )}
+                                    className="grid justify-center gap-6"
+                                    style={{ gridTemplateColumns: `repeat(${getGridCols(genMembers.length)}, minmax(0, 100px))` }}
+                                >
+                                    {genMembers.map((member) => {
+                                        const isFavorited = favorites.includes(member.id);
+                                        const thumbnailUrl = isMascot(member)
+                                            ? MASCOT_THUMBNAIL_URL
+                                            : member.thumbnail ? getMemberThumbnailUrl(serviceId, member.id, thumbWidth) : null;
+                                        return (
+                                            <div key={member.id} className="relative flex flex-col items-center">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => onSelectMember(member)}
+                                                    className="group flex flex-col items-center gap-3 rounded-card p-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                                >
+                                                    <span className="block h-20 w-20 overflow-hidden rounded-pill bg-accent-subtle transition duration-base ease-standard group-hover:scale-105 group-hover:shadow-accent-glow motion-reduce:transform-none">
+                                                        <MemberThumb url={thumbnailUrl} initial={Array.from(member.nameJp)[0] ?? ''} />
+                                                    </span>
+                                                    <span lang="ja" className="text-center text-small tracking-wide text-secondary transition-colors duration-fast ease-standard group-hover:text-accent-strong">
+                                                        {formatName(member.nameJp)}
+                                                    </span>
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => toggleFavorite(serviceId, member.id)}
+                                                    aria-label={isFavorited
+                                                        ? t('blogs.removeFavorite', { name: formatName(member.nameJp) })
+                                                        : t('blogs.addFavorite', { name: formatName(member.nameJp) })}
+                                                    aria-pressed={isFavorited}
+                                                    className={cn('absolute right-3 top-16 flex rounded-pill p-1 shadow-pill transition-transform duration-fast ease-standard hover:scale-110 motion-reduce:transform-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', isFavorited ? 'bg-semantic-oshi-solid' : 'bg-pill')}
+                                                >
+                                                    <Heart className={cn('h-4 w-4', isFavorited ? 'fill-current text-inverse' : 'text-semantic-oshi-solid')} />
+                                                </button>
+                                            </div>
+                                        );
+                                    })}
+                                </div>
+                            </section>
+                        );
+                    })}
                 </div>
-
-                {/* Close hint */}
-                <div className="px-6 py-2 text-center">
-                    <span className="text-xs text-gray-400">{t('blogs.tapOutsideToClose')}</span>
-                </div>
+            )}
             </div>
-
-            {/* CSS Animations */}
-            <style>{`
-                @keyframes modal-in {
-                    from {
-                        opacity: 0;
-                        transform: scale(0.95) translateY(10px);
-                    }
-                    to {
-                        opacity: 1;
-                        transform: scale(1) translateY(0);
-                    }
-                }
-                .animate-modal-in {
-                    animation: modal-in 0.2s ease-out forwards;
-                }
-            `}</style>
-        </div>
+        </Modal>
     );
 };

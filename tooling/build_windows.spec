@@ -11,6 +11,8 @@ project_root = Path(SPECPATH).parent.resolve()
 datas = [
     (str(project_root / 'frontend' / 'dist'), 'frontend/dist'),
     (str(project_root / 'pyproject.toml'), '.'),
+    # Tray icon, loaded by tray.py from sys._MEIPASS/assets when frozen.
+    (str(project_root / 'tooling' / 'windows' / 'SakaDesk.ico'), 'assets'),
 ]
 binaries = []
 hiddenimports = [
@@ -26,6 +28,13 @@ hiddenimports = [
     'uvicorn.lifespan.on',
     'keyring.backends.Windows',
     'win32ctypes.core',
+    # pywin32 (Start Menu shortcut + AUMID in app_identity.py): imported lazily
+    # inside functions, so PyInstaller cannot trace them.
+    'win32com',
+    'win32com.shell',
+    'win32com.propsys',
+    'pythoncom',
+    'pywintypes',
 ]
 
 # Auto-collect packages
@@ -49,6 +58,11 @@ packages_to_collect = [
     'structlog',
     'pykakasi',
     'jaconv',
+    'windows_toasts',
+    'winrt',
+    # System tray (tray.py imports both lazily); PIL loads the tray icon.
+    'pystray',
+    'PIL',
 ]
 
 for pkg in packages_to_collect:

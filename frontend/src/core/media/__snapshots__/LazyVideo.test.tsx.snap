@@ -2,13 +2,13 @@
 
 exports[`LazyVideo component > Snapshots > should match snapshot after intersection but before load 1`] = `
 <button
-  class="relative bg-gray-200 overflow-hidden"
+  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
 >
   <div
-    class="absolute inset-0 flex items-center justify-center bg-gray-200 transition-opacity duration-400 ease-out opacity-100"
+    class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-100"
   >
     <svg
-      class="w-8 h-8 text-gray-400"
+      class="h-8 w-8 text-secondary"
       fill="none"
       height="24"
       stroke="currentColor"
@@ -50,7 +50,7 @@ exports[`LazyVideo component > Snapshots > should match snapshot after intersect
     </svg>
   </div>
   <video
-    class="w-full h-full object-cover transition-opacity duration-400 ease-out opacity-0"
+    class="h-full w-full object-cover transition-opacity duration-base ease-standard opacity-0"
     preload="metadata"
     src="/api/media/video.mp4"
   />
@@ -59,13 +59,13 @@ exports[`LazyVideo component > Snapshots > should match snapshot after intersect
 
 exports[`LazyVideo component > Snapshots > should match snapshot before intersection 1`] = `
 <button
-  class="relative bg-gray-200 overflow-hidden"
+  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
 >
   <div
-    class="absolute inset-0 flex items-center justify-center bg-gray-200 transition-opacity duration-400 ease-out opacity-100"
+    class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-100"
   >
     <svg
-      class="w-8 h-8 text-gray-400"
+      class="h-8 w-8 text-secondary"
       fill="none"
       height="24"
       stroke="currentColor"
@@ -111,13 +111,13 @@ exports[`LazyVideo component > Snapshots > should match snapshot before intersec
 
 exports[`LazyVideo component > Snapshots > should match snapshot when fully loaded 1`] = `
 <button
-  class="relative bg-gray-200 overflow-hidden"
+  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
 >
   <div
-    class="absolute inset-0 flex items-center justify-center bg-gray-200 transition-opacity duration-400 ease-out opacity-0"
+    class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-0"
   >
     <svg
-      class="w-8 h-8 text-gray-400"
+      class="h-8 w-8 text-secondary"
       fill="none"
       height="24"
       stroke="currentColor"
@@ -159,7 +159,7 @@ exports[`LazyVideo component > Snapshots > should match snapshot when fully load
     </svg>
   </div>
   <video
-    class="w-full h-full object-cover transition-opacity duration-400 ease-out opacity-100"
+    class="h-full w-full object-cover transition-opacity duration-base ease-standard opacity-100"
     preload="metadata"
     src="/api/media/video.mp4"
   />
@@ -168,13 +168,13 @@ exports[`LazyVideo component > Snapshots > should match snapshot when fully load
 
 exports[`LazyVideo component > Snapshots > should match snapshot with children overlay 1`] = `
 <button
-  class="relative bg-gray-200 overflow-hidden w-48 h-36"
+  class="relative overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent w-48 h-36"
 >
   <div
-    class="absolute inset-0 flex items-center justify-center bg-gray-200 transition-opacity duration-400 ease-out opacity-100"
+    class="absolute inset-0 flex items-center justify-center bg-sunken transition-opacity duration-base ease-standard opacity-100"
   >
     <svg
-      class="w-8 h-8 text-gray-400"
+      class="h-8 w-8 text-secondary"
       fill="none"
       height="24"
       stroke="currentColor"

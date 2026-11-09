@@ -29,7 +29,6 @@
     "error": "错误",
     "loading": "加载中...",
     "done": "完成",
-    "refresh": "刷新",
     "browse": "浏览",
     "download": "下载",
     "dismiss": "忽略",
@@ -39,7 +38,15 @@
     "featureRequest": "功能请求",
     "moreOptions": "更多选项",
     "removeService": "移除服务",
-    "on": "开"
+    "on": "开",
+    "unreadCount": "{{count}} 条未读",
+    "retry": "重试",
+    "confirm": "确认",
+    "mediaViewer": "媒体查看器",
+    "zoomIn": "放大",
+    "zoomOut": "缩小",
+    "zoomFit": "适应屏幕",
+    "debug": "调试"
   },
   "settings": {
     "title": "设置",
@@ -47,6 +54,7 @@
     "tabSync": "同步",
     "tabAi": "AI",
     "tabUpdates": "更新",
+    "sections": "设置分类",
     "outputFolder": "输出文件夹",
     "autoSync": "自动同步",
     "syncEvery": "同步间隔",
@@ -84,6 +92,18 @@
     "syncSmart": "智能排程",
     "syncReadToPhone": "与手机同步已读",
     "syncReadToPhoneDesc": "在这里打开聊天时，会一并清除它在官方 App 的未读计数（消红点），就像你在官方 App 打开一样。默认关闭。",
+    "incomingCall": "来电",
+    "incomingCallDesc": "打开有未听语音的成员聊天室时，以来电方式播放最新语音",
+    "callPopup": "后台来电小窗",
+    "callPopupDesc": "SakaDesk 在后台时收到成员语音，会在右下角小窗以来电方式响起",
+    "closeToTray": "关闭窗口时缩到系统托盘",
+    "closeToTrayDesc": "关闭窗口后 SakaDesk 会在后台继续同步",
+    "autostart": "开机时自动启动",
+    "autostartDesc": "登录 Windows 时直接在系统托盘启动",
+    "notifications": "通知",
+    "notificationsDesc": "成员发来新消息时显示 Windows 通知",
+    "notificationsHideContent": "通知不显示消息内容",
+    "notificationsHideContentDesc": "通知只会显示有新消息，不显示内容",
     "serviceSettings": "服务设置",
     "syncCurrentOff": "目前: 仅手动同步",
     "syncCurrentFixed": "目前: 每 {{minutes}} 分钟",
@@ -98,11 +118,19 @@
     "aiProvider": "AI 服务商",
     "resetDefaults": "重置为默认值",
     "resetConfirm": "要将设置重置为默认值吗？数据文件夹、已保存的 API 密钥与语言会保留。",
+    "saveFailed": "无法保存此设置，请重试。",
     "transcriptionCpuDesc": "适用所有电脑，速度较慢",
     "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
     "transcriptionGpuTesting": "测试 GPU 中...",
     "transcriptionGpuSuccess": "GPU 可用且运行正常",
     "transcriptionGpuFailed": "GPU 测试失败"
+  },
+  "call": {
+    "incoming": "来电中…",
+    "ended": "通话结束",
+    "answer": "接听",
+    "decline": "拒接",
+    "hangUp": "挂断"
   },
   "time": {
     "minute": "{{count}} 分钟",
@@ -134,10 +162,7 @@
     "sessionExpiredDesc": "您的 {{service}} 会话已过期。请重新登录以继续使用 {{feature}}。",
     "premiumFeatureDesc": "{{feature}} 是高级功能，需要登录您的 {{service}} 账户。",
     "credentialsSaved": "您的凭据将安全存储在您的设备上。",
-    "waitingForBrowser": "等待浏览器操作...",
-    "launchBrowserLogin": "启动浏览器登录",
     "connectAccount": "连接账户",
-    "browserPrompt": "请登录您的 {{service}} Message 账户。将为您打开浏览器窗口以输入凭据。",
     "loginFailed": "登录失败或已取消",
     "yodelJpOnlyTitle": "yodel 仅限日本境内使用",
     "yodelJpOnlyMessage": "yodel 的服务仅在日本境内提供，因此无法从你当前的位置连接。要登录，请先切换到日本的网络连接，然后重试。",
@@ -160,6 +185,7 @@
     "articleIpTitle": "第3条（知识产权）",
     "articleProhibitedTitle": "第8条（禁止事项）",
     "acceptCheckbox": "我理解并接受这些条款，并且我已经阅读了我所使用的服务的官方服务条款。",
+    "acceptRequired": "请先勾选上方的复选框",
     "acceptAndContinue": "接受并继续"
   },
   "setup": {
@@ -168,6 +194,7 @@
     "outputFolderPath": "输出文件夹路径",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "输入存储消息的完整路径。您可以从文件资源管理器复制路径。",
+    "folderRequired": "请先输入或选择文件夹",
     "downloadBlogsOffline": "下载 Blog 以供搜索",
     "downloadBlogsHint": "下载所有 Blog 文章以启用全文搜索。每个服务约使用 5-15 GB。",
     "startUsing": "开始使用 SakaDesk"
@@ -176,6 +203,7 @@
     "phase": "阶段 {{number}}：{{name}}",
     "starting": "正在开始",
     "phaseScanning": "扫描群组",
+    "scanningHistory": "首次完整扫描聊天室历史…",
     "phaseDiscovering": "发现中",
     "phaseSyncing": "获取元数据",
     "phaseDownloading": "下载媒体",
@@ -204,7 +232,11 @@
     "unknownError": "未知错误",
     "sessionExpired": "认证会话已过期。请重新登录以继续使用服务。",
     "refreshFailed": "认证意外失败。请重新登录以继续使用服务。如果问题持续，请报告此问题。",
-    "cancelled": "已取消同步"
+    "cancelled": "已取消同步",
+    "progress": "同步进度",
+    "stepDone": "已完成",
+    "stepCurrent": "当前步骤",
+    "stepPending": "待处理"
   },
   "about": {
     "title": "关于",
@@ -212,6 +244,7 @@
     "identity": "坂道系列非官方工具",
     "features": "Message • Blog • 存档",
     "madeWith": "Made with",
+    "madeWithLove": "用爱制作",
     "by": "by",
     "goldenFingerEnabled": "下载按钮已启用 ✨",
     "goldenFingerDisabled": "下载按钮已停用",
@@ -257,6 +290,8 @@
     "title": "聊天",
     "loadingConversations": "正在加载对话...",
     "noConversations": "未找到对话。",
+    "loadFailedTitle": "无法加载对话",
+    "loadFailedBody": "已保存的消息没有丢失，请稍后再试。",
     "online": "在线",
     "offline": "离线",
     "graduated": "毕业成员",
@@ -270,11 +305,13 @@
     "favorites": "收藏",
     "media": "媒体",
     "background": "背景",
-    "sentLetters": "已发送的信件"
+    "sentLetters": "已发送的信件",
+    "sentLettersGroupChat": "群聊没有已发送的信件"
   },
   "messageList": {
     "noMessages": "没有消息",
     "jumpToOldestUnread": "跳转到最早未读",
+    "messageActions": "消息操作",
     "welcomeTitle": "欢迎使用 SakaDesk",
     "welcomeSubtitle": "从侧边栏选择一个对话开始。",
     "loadingMessages": "正在加载消息...",
@@ -285,13 +322,26 @@
     "revealAllDescription": "这将把所有 {{count}} 条未读消息标记为已读。",
     "confirm": "确认",
     "noContent": "(无内容)",
-    "attachment": "附件"
+    "attachment": "附件",
+    "openCalendar": "跳转到日期",
+    "openConversations": "显示对话列表"
   },
   "calendar": {
+    "loadFailed": "无法载入日期",
+    "prevMonth": "上个月",
+    "nextMonth": "下个月",
     "title": "日期搜索",
     "today": "今天",
     "availableOnDays": "有 {{count}} 天可用",
+    "itemCount": "{{count}} 项",
     "tapToJump": "点击日期跳转",
+    "monthYear": "{{year}}年{{month}}",
+    "pickMonth": "选择年份和月份",
+    "backToDays": "返回日期",
+    "yearList": "年份",
+    "monthGrid": "月份",
+    "yearValue": "{{year}}年",
+    "noMessages": "没有消息",
     "weekdays": {
       "sun": "日",
       "mon": "一",
@@ -302,18 +352,18 @@
       "sat": "六"
     },
     "months": {
-      "jan": "一月",
-      "feb": "二月",
-      "mar": "三月",
-      "apr": "四月",
-      "may": "五月",
-      "jun": "六月",
-      "jul": "七月",
-      "aug": "八月",
-      "sep": "九月",
-      "oct": "十月",
-      "nov": "十一月",
-      "dec": "十二月"
+      "jan": "1月",
+      "feb": "2月",
+      "mar": "3月",
+      "apr": "4月",
+      "may": "5月",
+      "jun": "6月",
+      "jul": "7月",
+      "aug": "8月",
+      "sep": "9月",
+      "oct": "10月",
+      "nov": "11月",
+      "dec": "12月"
     }
   },
   "favorites": {
@@ -336,6 +386,12 @@
     "imageTooLarge": "图片过大。请选择 2MB 以下的图片。",
     "selectImageFile": "请选择图片文件。"
   },
+  "contentArea": {
+    "comingSoon": "即将推出"
+  },
+  "featureRail": {
+    "label": "功能"
+  },
   "features": {
     "messages": "消息",
     "blogs": "Blog",
@@ -353,10 +409,12 @@
     "selectService": "选择服务以开始使用"
   },
   "serviceRail": {
+    "label": "群组",
     "sessionExpiredRelogin": "会话已过期 - 点击重新登录",
     "addService": "添加服务"
   },
   "search": {
+    "memberCount": "{{count}} 位成员",
     "placeholder": "搜索消息和 Blog...",
     "placeholderMessages": "搜索消息...",
     "placeholderBlogs": "搜索 Blog...",
@@ -366,9 +424,10 @@
     "resultCountPartial": "显示 {{shown}} / {{total}} 条结果",
     "loadMore": "加载更多结果",
     "pressEnterToSelect": "按 Enter 选择",
-    "errorSearchFailed": "搜索失败，请重试。",
-    "building": "正在构建搜索索引...",
+    "searchFailed": "搜索失败，请重试。",
+    "title": "搜索",
     "filters": "筛选",
+    "removeFilter": "移除筛选：{{name}}",
     "exactMatchOnly": "仅完全相符",
     "includeUnread": "包含未读",
     "filterByMember": "按成员或服务筛选...",
@@ -410,17 +469,17 @@
       "photos": "{{count}} 张照片",
       "videos": "{{count}} 个视频",
       "voice": "{{count}} 条语音"
-    }
+    },
+    "typeTabs": "媒体类型"
   },
   "sentLetters": {
     "title": "已发送的信件",
     "noLetters": "尚未发送过信件",
     "noTextContent": "无文字内容",
     "noContent": "无内容",
-    "tapToClose": "点击任意位置关闭",
-    "noGroupId": "没有可用的群组 ID",
-    "noService": "没有活动的服务",
-    "fetchFailed": "加载信件失败"
+    "loading": "正在加载信件…",
+    "unavailable": "暂时无法显示信件",
+    "letterSent": "{{date}} 发送的信件"
   },
   "blogs": {
     "latestBlogs": "最新 Blog",
@@ -435,7 +494,6 @@
     "addMembersHint": "添加我的推即可在此查看更新",
     "selectServiceHint": "选择服务并同步以加载 Blog",
     "noMembersFound": "未找到成员",
-    "tapOutsideToClose": "点击外部关闭",
     "publishedRecently": "24小时内发布",
     "cached": "已缓存",
     "mascot": "吉祥物",
@@ -445,18 +503,30 @@
     "post_other": "{{count}} 篇文章",
     "syncingBlogs": "正在同步 Blog...",
     "firstSyncHint": "首次同步可能需要一些时间",
-    "selectService": "请选择服务"
+    "selectService": "请选择服务",
+    "back": "返回最新 Blog",
+    "postsFrom": "显示范围",
+    "feedLoadFailed": "无法加载博文",
+    "postLoadFailed": "无法加载这篇博文",
+    "loadingPost": "正在加载博文...",
+    "olderPost": "较早的文章",
+    "newerPost": "较新的文章",
+    "postNavigation": "文章导航",
+    "addFavorite": "将{{name}}加入收藏",
+    "removeFavorite": "将{{name}}移出收藏"
   },
   "voicePlayer": {
     "speed": "播放速度",
     "skipBack": "后退 5 秒 (←)",
     "skipForward": "快进 5 秒 (→)",
     "mute": "静音 (M)",
-    "unmute": "取消静音 (M)"
+    "unmute": "取消静音 (M)",
+    "playbackError": "无法播放这条语音。"
   },
   "videoPlayer": {
     "noAudio": "无音频",
-    "loop": "循环播放"
+    "loop": "循环播放",
+    "playbackError": "无法播放这个视频。"
   },
   "generations": {
     "1st": "１期生",
@@ -520,7 +590,10 @@
       "clearApiKey": "清除 API 密钥",
       "clearApiKeyConfirm": "要从此设备移除已保存的 API 密钥吗？",
       "cacheClearedMsg": "翻译缓存已清除",
+      "cacheClearFailed": "无法清除翻译缓存，请重试。",
       "savedSecurely": "已安全保存在凭据管理器中",
+      "saveFailed": "无法保存 AI 设置，请重试。",
+      "clearApiKeyFailed": "无法清除 API 密钥，请重试。",
       "keyMissing": "尚未保存 API 密钥，翻译无法使用。请在上方输入密钥。"
     },
     "error": {
@@ -533,5 +606,129 @@
       "geminiPaid": "付费方案 — 每 100 次翻译约 US$0.01。数据不会用于训练。",
       "openai": "API 数据不会用于训练"
     }
+  },
+  "profileImages": {
+    "thumbnailGroup": "列表头像",
+    "thumbnailGroupHint": "显示在聊天室列表上的图标",
+    "thumbnail": "聊天头像",
+    "thumbnailHint": "聊天室内消息旁的头像",
+    "phoneImage": "来电画面",
+    "phoneImageHint": "来电时显示的照片",
+    "viewImages": "查看图片",
+    "current": "目前",
+    "versions": "{{count}} 个版本",
+    "kinds": "图片类型"
+  },
+  "date": {
+    "today": "今天",
+    "yesterday": "昨天"
+  },
+  "designPage": {
+    "title": "设计系统",
+    "subtitle": "SakaDesk 所有页面共用的 token 与基础组件。仅限开发版。",
+    "group": "团体",
+    "colors": "颜色",
+    "neutral": "中性角色",
+    "groupColors": "团体色",
+    "contrast": "白字 {{ratio}}:1",
+    "contrastNA": "非纯色",
+    "radius": "圆角",
+    "shadow": "阴影",
+    "type": "字号",
+    "sample": "日向坂 SakaDesk あいう 🌸 123",
+    "motion": "动画",
+    "animate": "播放",
+    "replay": "重播",
+    "landing": "落点高亮",
+    "primitives": "基础组件",
+    "surfaces": "层级",
+    "pills": "胶囊",
+    "filterAll": "全部",
+    "filterUnread": "未读",
+    "badges": "徽章",
+    "avatars": "头像",
+    "datePills": "日期胶囊",
+    "buttons": "按钮",
+    "primary": "主要",
+    "secondary": "次要",
+    "ghost": "透明",
+    "disabled": "禁用",
+    "close": "关闭",
+    "rail": "功能栏",
+    "modal": "对话框",
+    "openModal": "打开对话框",
+    "modalTitle": "示例对话框",
+    "modalBody": "对话框就是一张纸：20px 圆角、大而柔和的阴影。",
+    "rules": "规则",
+    "do": "这样做",
+    "dont": "不要这样",
+    "do1": "用间距和层级区分区块。",
+    "dont1": "画直的分隔线。",
+    "do2": "使用 rounded-card、text-body 等 token class。",
+    "dont2": "写死 #hex 颜色或 rounded-[10px] 之类的任意值。",
+    "do3": "团体色只通过官方层和色彩系统表中的角色使用，绝不写死。每个页面最多一个主要按钮。",
+    "dont3": "写死团体色，或用它涂其他元素。",
+    "levelsSample": "Canvas › Sheet › Card",
+    "search": "搜索",
+    "scale": "色阶",
+    "logoStep": "logo 原色",
+    "railLogo": "选中的分组 logo（侧栏）",
+    "roles": "用途",
+    "roleName": "用途",
+    "roleStep": "色阶",
+    "danger": "危险",
+    "accent": "强调",
+    "overlay": "浮层",
+    "forms": "表单控件",
+    "switchSample": "开关示例",
+    "inputSample": "输入框示例",
+    "selectSample": "选择框示例",
+    "menu": "菜单",
+    "menuItem": "菜单项",
+    "menuSelected": "已选项",
+    "menuOpen": "打开菜单",
+    "context": "上下文",
+    "contextBrand": "SakaDesk 品牌",
+    "brand": "品牌",
+    "semantic": "语义色",
+    "tiers": "表现层级",
+    "tierQuiet": "L0 安静",
+    "tierInteractive": "L1 交互",
+    "tierAtmosphere": "L2 氛围",
+    "moments": "品牌时刻",
+    "sampleEmptyTitle": "还没有收藏",
+    "sampleEmptyBody": "右键点击消息，选择“添加到收藏”。",
+    "sampleToastTitle": "同步完成",
+    "sampleToastBody": "已保存 12,846 条消息",
+    "sampleMilestone": "订阅以来的天数",
+    "sampleDisabledReason": "请先选择团体",
+    "displaySample": "留住每一条消息"
+  },
+  "letters": {
+    "openImage": "打开信件",
+    "you": "你",
+    "openImageAt": "打开 {{date}} 发送的信件"
+  },
+  "letterViewer": {
+    "title": "已发送的信件",
+    "older": "较早的信件",
+    "newer": "较新的信件",
+    "jumpToLetter": "跳转到聊天中的这封信件",
+    "jumpToLetterAt": "在聊天中显示 {{date}} 发送的信件",
+    "imageMissing": "没有信件图片",
+    "openImage": "放大查看信件图片",
+    "fullText": "信件内容"
+  },
+  "celebration": {
+    "firstSyncTitle": "你的存档已准备就绪",
+    "firstSyncBody": "已保存 {{value}} 条消息",
+    "milestoneMessages": "条消息",
+    "milestoneDays": "天的订阅",
+    "milestoneYears": "年的订阅"
+  },
+  "diagnostics": {
+    "diskUsageComputedAt": "计算于 {{time}}",
+    "diskUsageCalculating": "正在计算…",
+    "diskUsageFailed": "无法计算"
   }
 }

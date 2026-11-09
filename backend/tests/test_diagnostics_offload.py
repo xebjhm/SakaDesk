@@ -1,14 +1,14 @@
 """SD-BE-API-01 — diagnostics.py must not block the loop or slurp the full log.
 
-``GET /api/diagnostics`` stat()s every file under the output dir (twice — a
-plain disk-usage walk plus the detailed breakdown) and read the whole
-DEBUG-level debug.log into memory. These tests pin:
+``GET /api/diagnostics`` used to read the whole DEBUG-level debug.log into
+memory. These tests pin:
 
 1. The blocking gather runs via ``asyncio.to_thread`` (off the event loop).
-2. ``_get_disk_usage`` is cached (the second call within the TTL does not
-   re-walk the tree), so the two disk walks per request collapse to one.
-3. debug.log is tail-read, not fully slurped, so a multi-GB log cannot OOM /
+2. debug.log is tail-read, not fully slurped, so a multi-GB log cannot OOM /
    stall the request — a huge file still returns only its last lines quickly.
+
+The output-folder disk walk moved to a background tracker (L6); see
+``test_diagnostics_disk_usage.py``.
 """
 
 from unittest.mock import MagicMock, patch
@@ -38,29 +38,6 @@ def test_diagnostics_offloads_to_thread(tmp_path):
                     resp = client.get("/api/diagnostics")
     assert resp.status_code == 200
     assert mock_to_thread.called
-
-
-def test_get_disk_usage_is_cached(tmp_path):
-    """A second _get_disk_usage within the TTL must not re-walk the tree."""
-    from backend.api import diagnostics
-
-    # Reset caches.
-    diagnostics._disk_usage_cache["data"] = None
-    diagnostics._disk_usage_cache["expires"] = 0
-
-    (tmp_path / "a.bin").write_bytes(b"x" * 2048)
-
-    first = diagnostics._get_disk_usage(str(tmp_path))
-    assert first[1] == 1  # one file
-
-    # Add another file; a cached call must still report the OLD result.
-    (tmp_path / "b.bin").write_bytes(b"y" * 2048)
-    second = diagnostics._get_disk_usage(str(tmp_path))
-    assert second == first  # served from cache, tree not re-walked
-
-    # Clean up so other tests see a fresh cache.
-    diagnostics._disk_usage_cache["data"] = None
-    diagnostics._disk_usage_cache["expires"] = 0
 
 
 def test_debug_log_is_tail_read_not_slurped(tmp_path):

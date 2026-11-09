@@ -7,8 +7,8 @@ export type FeatureAccessLevel = 'free' | 'paid';
 export interface FeatureDefinition {
     id: FeatureId;
     icon: LucideIcon;
-    label: string;
-    labelJa: string;
+    /** i18n key of the feature's name (`features.<id>`). */
+    labelKey: string;
     accessLevel: FeatureAccessLevel;
 }
 
@@ -16,36 +16,31 @@ export const FEATURE_DEFINITIONS: Record<FeatureId, FeatureDefinition> = {
     messages: {
         id: 'messages',
         icon: MessageSquare,
-        label: 'Messages',
-        labelJa: 'メッセージ',
+        labelKey: 'features.messages',
         accessLevel: 'paid',
     },
     blogs: {
         id: 'blogs',
         icon: BookOpen,
-        label: 'Blogs',
-        labelJa: 'ブログ',
+        labelKey: 'features.blogs',
         accessLevel: 'free',
     },
     news: {
         id: 'news',
         icon: Newspaper,
-        label: 'News',
-        labelJa: 'ニュース',
+        labelKey: 'features.news',
         accessLevel: 'free',
     },
     fanclub: {
         id: 'fanclub',
         icon: Star,
-        label: 'Fan Club',
-        labelJa: 'ファンクラブ',
+        labelKey: 'features.fanclub',
         accessLevel: 'paid',
     },
     ai: {
         id: 'ai',
         icon: Bot,
-        label: 'AI Agent',
-        labelJa: 'AIエージェント',
+        labelKey: 'features.ai',
         accessLevel: 'free',
     },
 };

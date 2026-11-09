@@ -1,7 +1,9 @@
 import { useState } from 'react';
-import { X, Bug, RefreshCw, ExternalLink, Database, Play, LogIn, HelpCircle } from 'lucide-react';
+import { Bug, Loader2, ExternalLink, Database, Play, LogIn, HelpCircle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { useModalClose } from '../common/useModalClose';
+import { Modal, Button, Input } from '../../design/primitives';
+import { logDialogLoad } from '../../design/dialog/dialogLog';
+import { cn } from '../../utils/classnames';
 
 type BugCategory = 'sync_data' | 'playback' | 'login' | 'other';
 
@@ -80,8 +82,10 @@ export function ReportIssueModal({
 
             // Open GitHub in new tab
             window.open(data.github_url, '_blank');
+            logDialogLoad('report_issue', 'ok');
             onClose();
         } catch (err: any) {
+            logDialogLoad('report_issue', 'error');
             setError(err.message);
         } finally {
             setLoading(false);
@@ -96,134 +100,65 @@ export function ReportIssueModal({
         onClose();
     };
 
-    const handleBackdropClick = useModalClose(isOpen, handleClose);
-
-    if (!isOpen) return null;
-
     return (
-        <div className="fixed inset-0 bg-black/60 z-50 flex items-center justify-center p-4" onClick={handleBackdropClick}>
-            <div className="bg-white rounded-xl max-w-lg w-full shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                {/* Header */}
-                <div className="bg-gray-900 px-6 py-4 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                        <Bug className="w-5 h-5 text-amber-400" />
-                        <h3 className="text-lg font-bold text-white">{t('report.title')}</h3>
-                    </div>
-                    <button onClick={handleClose} className="text-gray-400 hover:text-white transition-colors">
-                        <X className="w-6 h-6" />
-                    </button>
+        <Modal scope="brand" icon={<Bug />} isOpen={isOpen} onClose={handleClose} title={t('report.title')} closeLabel={t('common.close')} logId="report_issue" className="max-w-lg"
+            bodyClassName="flex flex-col gap-6"
+            footer={
+                <>
+                    <Button variant="ghost" onClick={handleClose}>{t('common.cancel')}</Button>
+                    <Button variant="primary" onClick={handleSubmit} disabled={!category || loading}>
+                        {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <ExternalLink className="h-4 w-4" />}
+                        {loading ? t('report.generating') : t('report.createGitHubIssue')}
+                    </Button>
+                </>
+            }
+        >
+            <section className="flex flex-col gap-3">
+                <h3 className="text-small font-semibold text-secondary">{t('report.whatType')}</h3>
+                <div className="grid grid-cols-2 gap-3">
+                    {CATEGORY_CONFIGS.map((cat) => {
+                        const Icon = cat.icon;
+                        const isSelected = category === cat.id;
+                        return (
+                            <button
+                                key={cat.id}
+                                type="button"
+                                aria-pressed={isSelected}
+                                onClick={() => setCategory(cat.id)}
+                                className={cn(
+                                    'flex flex-col gap-1 rounded-card border-2 p-4 text-left shadow-card transition-colors duration-fast ease-standard',
+                                    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                                    isSelected ? 'border-accent bg-accent-subtle' : 'border-transparent bg-card hover:bg-sunken',
+                                )}
+                            >
+                                <span className="flex items-center gap-2 text-body font-semibold">
+                                    <Icon className={cn('h-4 w-4', isSelected ? 'text-accent' : 'text-secondary')} />
+                                    <span className={isSelected ? 'text-accent-strong' : 'text-primary'}>{t(cat.labelKey)}</span>
+                                </span>
+                                <span className="text-caption text-muted">{t(cat.helpKey)}</span>
+                            </button>
+                        );
+                    })}
                 </div>
-
-                {/* Content */}
-                <div className="p-6 space-y-5">
-                    {/* Category Selection */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700 mb-3">
-                            {t('report.whatType')}
-                        </label>
-                        <div className="grid grid-cols-2 gap-3">
-                            {CATEGORY_CONFIGS.map((cat) => {
-                                const Icon = cat.icon;
-                                const isSelected = category === cat.id;
-                                return (
-                                    <button
-                                        key={cat.id}
-                                        onClick={() => setCategory(cat.id)}
-                                        className={`p-4 rounded-lg border-2 text-left transition-all ${
-                                            isSelected
-                                                ? 'border-blue-500 bg-blue-50'
-                                                : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                                        }`}
-                                    >
-                                        <div className="flex items-center gap-2 mb-1">
-                                            <Icon className={`w-4 h-4 ${isSelected ? 'text-blue-600' : 'text-gray-500'}`} />
-                                            <span className={`font-medium ${isSelected ? 'text-blue-700' : 'text-gray-900'}`}>
-                                                {t(cat.labelKey)}
-                                            </span>
-                                        </div>
-                                        <p className="text-xs text-gray-500">{t(cat.helpKey)}</p>
-                                    </button>
-                                );
-                            })}
-                        </div>
-                    </div>
-
-                    {/* Description Fields */}
-                    <div className="space-y-4">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                {t('report.whatDoing')}
-                            </label>
-                            <input
-                                type="text"
-                                value={whatDoing}
-                                onChange={(e) => setWhatDoing(e.target.value)}
-                                placeholder={t('report.whatDoingPlaceholder')}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                            />
-                        </div>
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-1">
-                                {t('report.whatWrong')}
-                            </label>
-                            <input
-                                type="text"
-                                value={whatWrong}
-                                onChange={(e) => setWhatWrong(e.target.value)}
-                                placeholder={t('report.whatWrongPlaceholder')}
-                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none"
-                            />
-                        </div>
-                    </div>
-
-                    {/* Context Info */}
-                    {(currentMemberPath || crashError) && (
-                        <div className="bg-gray-50 rounded-lg p-3 text-xs text-gray-600">
-                            <p className="font-medium text-gray-700 mb-1">{t('report.autoContext')}</p>
-                            {currentMemberPath && <p>{t('report.member')}: {currentMemberPath}</p>}
-                            {crashError && <p className="text-red-600">{t('common.error')}: {crashError.slice(0, 100)}...</p>}
-                        </div>
-                    )}
-
-                    {/* Error Message */}
-                    {error && (
-                        <div className="bg-red-50 text-red-700 p-3 rounded-lg text-sm">
-                            {error}
-                        </div>
-                    )}
+            </section>
+            <section className="flex flex-col gap-4">
+                <label className="flex flex-col gap-1 text-small font-semibold text-secondary">
+                    {t('report.whatDoing')}
+                    <Input value={whatDoing} onChange={(e) => setWhatDoing(e.target.value)} placeholder={t('report.whatDoingPlaceholder')} />
+                </label>
+                <label className="flex flex-col gap-1 text-small font-semibold text-secondary">
+                    {t('report.whatWrong')}
+                    <Input value={whatWrong} onChange={(e) => setWhatWrong(e.target.value)} placeholder={t('report.whatWrongPlaceholder')} />
+                </label>
+            </section>
+            {(currentMemberPath || crashError) && (
+                <div className="flex flex-col gap-1 rounded-card bg-sunken p-3 text-caption text-secondary">
+                    <p className="font-semibold text-primary">{t('report.autoContext')}</p>
+                    {currentMemberPath && <p>{t('report.member')}: {currentMemberPath}</p>}
+                    {crashError && <p className="text-status-danger">{t('common.error')}: {crashError.slice(0, 100)}...</p>}
                 </div>
-
-                {/* Footer */}
-                <div className="bg-gray-50 px-6 py-4 border-t border-gray-100 flex justify-end gap-3">
-                    <button
-                        onClick={handleClose}
-                        className="px-4 py-2 text-gray-600 hover:text-gray-900 text-sm font-medium"
-                    >
-                        {t('common.cancel')}
-                    </button>
-                    <button
-                        onClick={handleSubmit}
-                        disabled={!category || loading}
-                        className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-                            !category || loading
-                                ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                                : 'bg-blue-600 text-white hover:bg-blue-700 shadow-lg shadow-blue-500/20'
-                        }`}
-                    >
-                        {loading ? (
-                            <>
-                                <RefreshCw className="w-4 h-4 animate-spin" />
-                                {t('report.generating')}
-                            </>
-                        ) : (
-                            <>
-                                <ExternalLink className="w-4 h-4" />
-                                {t('report.createGitHubIssue')}
-                            </>
-                        )}
-                    </button>
-                </div>
-            </div>
-        </div>
+            )}
+            {error && <p role="alert" className="text-small text-status-danger">{error}</p>}
+        </Modal>
     );
 }

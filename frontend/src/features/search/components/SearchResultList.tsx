@@ -33,7 +33,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
   return (
     <div
       ref={listRef}
-      className="overflow-y-auto max-h-[calc(60vh-120px)]"
+      className="max-h-[calc(60vh-120px)] overflow-y-auto px-2 py-1"
     >
       {results.map((result, index) => (
         <SearchResultItem

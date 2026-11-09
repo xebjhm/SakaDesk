@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { X, ChevronDown } from 'lucide-react';
+import { X, ChevronDown, AlertTriangle } from 'lucide-react';
+import { Button, Menu, MenuItem } from '../../../design/primitives';
+import { Z_INDEX } from '../../../constants/zIndex';
+import { groupMarkerStyle } from '../groupMarker';
+import { logDialogLoad } from '../../../design/dialog/dialogLog';
 import { useTranslation } from '../../../i18n';
 import { getServicePrimaryColor, getServiceDisplayName, sortByServiceOrder } from '../../../data/services';
 import { useAppStore } from '../../../store/appStore';
@@ -60,8 +64,8 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   const [membersData, setMembersData] = useState<MembersResponse | null>(null);
   const mentionInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
-  const dateDropdownRef = useRef<HTMLDivElement>(null);
-  const contentTypeDropdownRef = useRef<HTMLDivElement>(null);
+  const contentTypeTriggerRef = useRef<HTMLButtonElement>(null);
+  const dateTriggerRef = useRef<HTMLButtonElement>(null);
 
   // Fetch members for autocomplete on mount and when index build completes
   useEffect(() => {
@@ -69,23 +73,20 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
     fetch('/api/search/members')
       .then(r => r.json())
       .then((data: MembersResponse) => {
-        if (!cancelled) setMembersData(data);
+        if (cancelled) { logDialogLoad('search_members', 'cancelled'); return; }
+        setMembersData(data);
+        logDialogLoad('search_members', 'ok');
       })
-      .catch(() => {});
+      // The member autocomplete stays empty; services and the other filters still work.
+      .catch(() => logDialogLoad('search_members', 'error'));
     return () => { cancelled = true; };
   }, [refetchKey]);
 
-  // Close dropdowns on outside click
+  // Close the mention autocomplete on outside click (the two Menus close themselves)
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
         setShowDropdown(false);
-      }
-      if (dateDropdownRef.current && !dateDropdownRef.current.contains(e.target as Node)) {
-        setShowDateDropdown(false);
-      }
-      if (contentTypeDropdownRef.current && !contentTypeDropdownRef.current.contains(e.target as Node)) {
-        setShowContentTypeDropdown(false);
       }
     };
     document.addEventListener('mousedown', handler);
@@ -95,7 +96,6 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   const serviceOrder = useAppStore((s) => s.getServiceOrder());
 
   // Filter dropdown items based on query and already-selected chips
-  // eslint-disable-next-line react-hooks/preserve-manual-memoization
   const filteredItems = useMemo(() => {
     if (!membersData) return [];
     const q = mentionQuery.toLowerCase().replace(/^@/, '');
@@ -115,7 +115,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
           type: 'service',
           id,
           label: name,
-          sublabel: `${svc.member_count} members`,
+          sublabel: t('search.memberCount', { count: svc.member_count }),
           color,
         });
       }
@@ -157,7 +157,7 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
     }
 
     return items;
-  }, [membersData, mentionQuery, selectedFilters, serviceOrder]);
+  }, [membersData, mentionQuery, selectedFilters, serviceOrder, t]);
 
   const handleSelectItem = useCallback((item: typeof filteredItems[number]) => {
     onFiltersChange([...selectedFilters, { type: item.type, id: item.id, label: item.label, color: item.color }]);
@@ -171,169 +171,112 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
   }, [selectedFilters, onFiltersChange]);
 
   return (
-    <div className="bg-gray-100/60 rounded-b-xl">
-      {/* Row 1: @-mention input + chips */}
-      <div className="px-3 py-2">
-        <div className="flex flex-wrap items-center gap-1.5" ref={dropdownRef}>
-          {/* Existing chips */}
-          {selectedFilters.map((chip) => (
-            <span
-              key={`${chip.type}-${chip.id}`}
-              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-xs font-medium bg-white border border-gray-200 text-gray-700"
-            >
-              <span className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: chip.color }} />
-              {chip.label}
-              <button
-                onClick={() => handleRemoveChip(chip.id)}
-                className="ml-0.5 hover:text-red-500 transition-colors"
-              >
-                <X className="w-3 h-3" />
-              </button>
-            </span>
-          ))}
+    <div className="flex flex-col gap-2 bg-sunken px-4 py-3">
+      <div className="flex flex-wrap items-center gap-2" ref={dropdownRef}>
+        {selectedFilters.map((chip) => (
+          <span key={`${chip.type}-${chip.id}`} className="inline-flex items-center gap-1 rounded-pill bg-pill px-2 py-1 text-caption font-semibold text-primary shadow-pill">
+            <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-pill bg-group-marker" style={groupMarkerStyle(chip.color)} />
+            <span lang="ja">{chip.label}</span>
+            <button type="button" onClick={() => handleRemoveChip(chip.id)} aria-label={t('search.removeFilter', { name: chip.label })} className="rounded-pill text-muted transition-colors duration-fast ease-standard hover:text-status-danger focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+              <X className="h-3 w-3" />
+            </button>
+          </span>
+        ))}
 
-          {/* Mention input */}
-          <div className="relative flex-1 min-w-[120px]">
-            <input
-              ref={mentionInputRef}
-              type="text"
-              value={mentionQuery}
-              onChange={(e) => {
-                setMentionQuery(e.target.value);
-                setShowDropdown(true);
-              }}
-              onFocus={() => setShowDropdown(true)}
-              placeholder={selectedFilters.length === 0 ? t('search.filterByMember') : ''}
-              className="w-full text-xs bg-transparent outline-none placeholder-gray-400 py-0.5"
-            />
+        <div className="relative min-w-[120px] flex-1">
+          <input
+            ref={mentionInputRef}
+            type="text"
+            value={mentionQuery}
+            onChange={(e) => {
+              setMentionQuery(e.target.value);
+              setShowDropdown(true);
+            }}
+            onFocus={() => setShowDropdown(true)}
+            placeholder={selectedFilters.length === 0 ? t('search.filterByMember') : ''}
+            aria-label={t('search.filterByMember')}
+            className="w-full bg-transparent py-1 text-small text-primary outline-none placeholder:text-muted"
+          />
 
-            {/* Autocomplete dropdown */}
-            {showDropdown && filteredItems.length > 0 && (
-              <div className="absolute left-0 top-full mt-1 w-64 bg-white rounded-lg shadow-lg border border-gray-200 z-50 max-h-72 overflow-y-auto">
-                {filteredItems.map((item) => (
-                  <button
-                    key={`${item.type}-${item.id}`}
-                    className="w-full px-3 py-1.5 flex items-center gap-2 hover:bg-gray-50 text-left text-xs"
-                    onClick={() => handleSelectItem(item)}
-                  >
-                    <span className="w-2.5 h-2.5 rounded-full shrink-0" style={{ backgroundColor: item.color }} />
-                    <span className="font-medium text-gray-700 truncate">{item.label}</span>
-                    {item.sublabel && (
-                      <span className="text-gray-400 truncate ml-auto">{item.sublabel}</span>
-                    )}
-                  </button>
-                ))}
-              </div>
-            )}
-          </div>
+          {showDropdown && filteredItems.length > 0 && (
+            <div role="listbox" className="absolute left-0 top-full mt-1 flex max-h-72 w-64 flex-col overflow-y-auto rounded-card bg-card p-1 shadow-card" style={{ zIndex: Z_INDEX.POPOVER }}>
+              {filteredItems.map((item) => (
+                <button
+                  key={`${item.type}-${item.id}`}
+                  type="button"
+                  role="option"
+                  aria-selected={false}
+                  onClick={() => handleSelectItem(item)}
+                  className="flex w-full items-center gap-2 rounded-pill px-3 py-2 text-left text-small transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none"
+                >
+                  <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-pill bg-group-marker" style={groupMarkerStyle(item.color)} />
+                  <span lang="ja" className="truncate font-semibold text-primary">{item.label}</span>
+                  {item.sublabel && <span lang={item.type === 'member' ? 'ja' : undefined} className="ml-auto truncate text-muted">{item.sublabel}</span>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Row 2: Toggles + date range */}
-      <div className="px-3 py-1.5 flex items-center gap-4 text-xs border-t border-gray-100">
-        {/* Exact match only toggle */}
+      <div className="flex items-center gap-4 text-small text-secondary">
         {/* Exact match here means literal substring match in original text,
             NOT Levenshtein fuzzy search. When OFF (default), search includes
             pronunciation/reading-based matches via pykakasi-normalized kana. */}
-        <label className="flex items-center gap-1.5 cursor-pointer select-none text-gray-600 hover:text-gray-900">
-          <input
-            type="checkbox"
-            checked={exactOnly}
-            onChange={(e) => onExactOnlyChange(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-500 focus:ring-blue-500 focus:ring-1 cursor-pointer"
-          />
+        <label className="flex cursor-pointer select-none items-center gap-2 hover:text-primary">
+          <input type="checkbox" checked={exactOnly} onChange={(e) => onExactOnlyChange(e.target.checked)} className="h-4 w-4 cursor-pointer accent-accent" />
           {t('search.exactMatchOnly')}
         </label>
 
-        {/* Include unread toggle */}
-        <label className="flex items-center gap-1.5 cursor-pointer select-none text-gray-600 hover:text-gray-900">
-          <input
-            type="checkbox"
-            checked={includeUnread}
-            onChange={(e) => onIncludeUnreadChange(e.target.checked)}
-            className="w-3.5 h-3.5 rounded border-gray-300 text-blue-500 focus:ring-blue-500 focus:ring-1 cursor-pointer"
-          />
+        <label className="flex cursor-pointer select-none items-center gap-2 hover:text-primary">
+          <input type="checkbox" checked={includeUnread} onChange={(e) => onIncludeUnreadChange(e.target.checked)} className="h-4 w-4 cursor-pointer accent-accent" />
           {t('search.includeUnread')}
         </label>
 
-        {/* Content type dropdown */}
-        <div className="relative ml-auto" ref={contentTypeDropdownRef}>
-          <button
-            className="flex items-center gap-1 text-gray-500 hover:text-gray-700 transition-colors"
-            onClick={() => setShowContentTypeDropdown(!showContentTypeDropdown)}
-          >
-            {t(CONTENT_TYPE_PRESETS.find(p => p.value === contentType)?.labelKey || 'search.contentAll')}
-            <ChevronDown className="w-3 h-3" />
-          </button>
+        <div className="relative ml-auto">
+          <Button ref={contentTypeTriggerRef} variant="ghost" size="sm" aria-haspopup="menu" aria-expanded={showContentTypeDropdown} onClick={() => setShowContentTypeDropdown((v) => !v)}>
+            {t(CONTENT_TYPE_PRESETS.find((p) => p.value === contentType)?.labelKey || 'search.contentAll')}
+            <ChevronDown className="h-3 w-3" />
+          </Button>
           {showContentTypeDropdown && (
-            <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 z-50 py-1">
+            <Menu aria-label={t('search.filters')} onClose={() => setShowContentTypeDropdown(false)} returnFocusRef={contentTypeTriggerRef} ignoreRefs={[contentTypeTriggerRef]} layer="popover" className="absolute right-0 top-full mt-1 w-44">
               {CONTENT_TYPE_PRESETS.map((preset) => (
-                <button
-                  key={preset.value}
-                  className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 ${
-                    contentType === preset.value ? 'text-blue-600 font-medium' : 'text-gray-700'
-                  }`}
-                  onClick={() => {
-                    onContentTypeChange(preset.value);
-                    setShowContentTypeDropdown(false);
-                  }}
-                >
+                <MenuItem key={preset.value} radio selected={contentType === preset.value} onClick={() => { onContentTypeChange(preset.value); setShowContentTypeDropdown(false); }}>
                   {t(preset.labelKey)}
-                </button>
+                </MenuItem>
               ))}
-            </div>
+            </Menu>
           )}
         </div>
 
-        <span className="text-gray-300">|</span>
-
-        {/* Date range dropdown */}
-        <div className="relative" ref={dateDropdownRef}>
-          <button
-            className="flex items-center gap-1 text-gray-500 hover:text-gray-700 transition-colors"
-            onClick={() => setShowDateDropdown(!showDateDropdown)}
-          >
-            {t(DATE_PRESETS.find(p => p.value === dateRange)?.labelKey || 'search.allTime')}
-            <ChevronDown className="w-3 h-3" />
-          </button>
+        <div className="relative">
+          <Button ref={dateTriggerRef} variant="ghost" size="sm" aria-haspopup="menu" aria-expanded={showDateDropdown} onClick={() => setShowDateDropdown((v) => !v)}>
+            {t(DATE_PRESETS.find((p) => p.value === dateRange)?.labelKey || 'search.allTime')}
+            <ChevronDown className="h-3 w-3" />
+          </Button>
           {showDateDropdown && (
-            <div className="absolute right-0 top-full mt-1 w-36 bg-white rounded-lg shadow-lg border border-gray-200 z-50 py-1">
+            <Menu aria-label={t('search.filters')} onClose={() => setShowDateDropdown(false)} returnFocusRef={dateTriggerRef} ignoreRefs={[dateTriggerRef]} layer="popover" className="absolute right-0 top-full mt-1 w-44">
               {DATE_PRESETS.map((preset) => (
-                <button
-                  key={preset.value}
-                  className={`w-full px-3 py-1.5 text-left text-xs hover:bg-gray-50 ${
-                    dateRange === preset.value ? 'text-blue-600 font-medium' : 'text-gray-700'
-                  }`}
-                  onClick={() => {
-                    onDateRangeChange(preset.value);
-                    setShowDateDropdown(false);
-                  }}
-                >
+                <MenuItem key={preset.value} radio selected={dateRange === preset.value} onClick={() => { onDateRangeChange(preset.value); setShowDateDropdown(false); }}>
                   {t(preset.labelKey)}
-                </button>
+                </MenuItem>
               ))}
-            </div>
+            </Menu>
           )}
         </div>
       </div>
 
-      {/* Notice: blog search limited without full backup */}
       {(contentType === 'blogs' || contentType === 'all') && !blogBackupEnabled && (
-        <div className="px-3 py-2 border-t border-gray-100">
-          <div className="flex items-center gap-2 px-3 py-2 bg-amber-50 border border-amber-200 rounded-lg text-xs text-amber-700">
-            <span>{t('search.blogSearchLimited')}</span>
-            {onOpenBlogSettings && (
-              <button
-                onClick={onOpenBlogSettings}
-                className="underline font-medium hover:text-amber-900 whitespace-nowrap"
-              >
-                {t('search.enableFullBackup')}
-              </button>
-            )}
-          </div>
-        </div>
+        <p className="flex items-center gap-2 rounded-card bg-card px-3 py-2 text-caption text-secondary shadow-pill">
+          <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0 text-status-warning" />
+          <span>{t('search.blogSearchLimited')}</span>
+          {onOpenBlogSettings && (
+            <button type="button" onClick={onOpenBlogSettings} className="whitespace-nowrap font-semibold text-accent-strong underline underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
+              {t('search.enableFullBackup')}
+            </button>
+          )}
+        </p>
       )}
-
     </div>
   );
 };

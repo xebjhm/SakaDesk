@@ -250,11 +250,11 @@ describe('LazyVideo component', () => {
       expect(button?.className).toContain('h-32')
     })
 
-    it('should have bg-gray-200 placeholder background', () => {
+    it('should have bg-sunken placeholder background', () => {
       const { container } = render(<LazyVideo {...defaultProps} />)
 
       const button = container.querySelector('button')
-      expect(button?.className).toContain('bg-gray-200')
+      expect(button?.className).toContain('bg-sunken')
     })
 
     it('should have overflow-hidden for clean video display', () => {
@@ -262,6 +262,26 @@ describe('LazyVideo component', () => {
 
       const button = container.querySelector('button')
       expect(button?.className).toContain('overflow-hidden')
+    })
+  })
+
+  describe('Media release', () => {
+    it('does not request anything before it is visible', () => {
+      const { container, unmount } = render(<LazyVideo {...defaultProps} />)
+      expect(container.querySelector('video')).toBeNull()
+      unmount()
+      expect(HTMLMediaElement.prototype.load).not.toHaveBeenCalled()
+    })
+
+    it('releases the video (pause, drop src, load) when unmounted', () => {
+      const { container, unmount } = render(<LazyVideo {...defaultProps} />)
+      simulateIntersection(true)
+      const video = container.querySelector('video') as HTMLVideoElement
+      expect(video).toHaveAttribute('preload', 'metadata')
+      unmount()
+      expect(video.getAttribute('src')).toBeNull()
+      expect(video.pause).toHaveBeenCalled()
+      expect(video.load).toHaveBeenCalledTimes(1)
     })
   })
 

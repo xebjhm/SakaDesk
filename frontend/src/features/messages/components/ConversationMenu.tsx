@@ -1,15 +1,18 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { MoreVertical, Mail, Image, Calendar, Palette, Star } from 'lucide-react';
-import { cn } from '../../../utils/classnames';
 import type { Message, BackgroundSettings } from '../../../types';
+import type { Letter } from '../letters';
+import type { LettersStatus } from '../hooks/useRoomExtras';
 import { SentLettersModal } from '../../../core/modals/SentLettersModal';
 import { MediaGalleryModal } from '../../../core/media/MediaGalleryModal';
-import { CalendarModal } from '../../../core/modals/CalendarModal';
 import { BackgroundModal } from '../../../core/modals/BackgroundModal';
 import { FavoritesModal } from '../../../core/modals/FavoritesModal';
 import { useAppStore } from '../../../store/appStore';
-import { getServiceTheme } from '../../../config/serviceThemes';
+import { resizedAvatarUrl } from '../mediaUrl';
+import { useAvatarWidth } from '../hooks/useAvatarWidth';
 import { useTranslation } from '../../../i18n';
+import { cn } from '../../../utils/classnames';
+import { IconButton, Menu, MenuItem } from '../../../design/primitives';
 
 // Re-export for backward compatibility
 export type { BackgroundSettings } from '../../../types';
@@ -19,13 +22,20 @@ interface ChatHeaderMenuProps {
     isGroupChat: boolean;
     messages: Message[];
     memberName: string;
+    /** Full-size avatar URL; the media gallery and favourites get resized variants for their small avatars. */
     memberAvatar?: string;
-    groupId?: string;
     activeService?: string; // Service ID for API calls
-    onSelectDate?: (date: string) => void;
+    /** Opens the date-search calendar (owned by MessagesFeature; the date pills open it too). */
+    onOpenCalendar: () => void;
     onBackgroundChange?: (settings: BackgroundSettings) => void;
-    /** Icon color for header (used in light header style) */
-    iconColor?: string;
+    /** The room's sent letters (the timeline's list), for the overview. */
+    letters: readonly Letter[];
+    /** Whether the letters are loading, loaded or unavailable (the overview says so). */
+    lettersStatus: LettersStatus;
+    /** Jumps the chat to a letter chosen in the overview. */
+    onJumpToLetter: (id: number) => void;
+    /** True on a light header (Sakurazaka): neutral hover on the sheet; otherwise the glass over the gradient. */
+    light?: boolean;
 }
 
 type ModalType = 'letters' | 'media' | 'calendar' | 'background' | 'favorites' | null;
@@ -36,19 +46,25 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     messages,
     memberName,
     memberAvatar,
-    groupId,
+    letters,
+    lettersStatus,
+    onJumpToLetter,
     activeService,
-    onSelectDate,
+    onOpenCalendar,
     onBackgroundChange,
-    iconColor,
+    light = false,
 }) => {
     const { t } = useTranslation();
     const [showMenu, setShowMenu] = useState(false);
     const [activeModal, setActiveModal] = useState<ModalType>(null);
+    // Resized variants matched to the screen: the gallery's voice rows draw the avatar at 48 CSS px,
+    // the favourites cards at 40 CSS px.
+    const galleryAvatarPx = useAvatarWidth(48);
+    const favoritesAvatarPx = useAvatarWidth(40);
+    const galleryAvatar = resizedAvatarUrl(memberAvatar, galleryAvatarPx);
+    const favoritesAvatar = resizedAvatarUrl(memberAvatar, favoritesAvatarPx);
 
-    // Get per-service theme colors
-    const currentService = useAppStore((state) => state.activeService);
-    const theme = getServiceTheme(currentService);
+    const triggerRef = useRef<HTMLButtonElement>(null);
     const setTargetMessageId = useAppStore((state) => state.setTargetMessageId);
 
     const handleJumpToMessage = (messageId: number) => {
@@ -58,15 +74,22 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     };
 
     const menuItems = [
-        { id: 'calendar' as ModalType, icon: Calendar, label: t('conversationMenu.dateSearch'), enabled: true },
-        { id: 'favorites' as ModalType, icon: Star, label: t('conversationMenu.favorites'), enabled: true },
-        { id: 'media' as ModalType, icon: Image, label: t('conversationMenu.media'), enabled: true },
-        { id: 'background' as ModalType, icon: Palette, label: t('conversationMenu.background'), enabled: true },
-        { id: 'letters' as ModalType, icon: Mail, label: t('conversationMenu.sentLetters'), enabled: !isGroupChat },
+        { id: 'calendar' as ModalType, icon: Calendar, label: t('conversationMenu.dateSearch'), blockedReason: undefined },
+        { id: 'favorites' as ModalType, icon: Star, label: t('conversationMenu.favorites'), blockedReason: undefined },
+        { id: 'media' as ModalType, icon: Image, label: t('conversationMenu.media'), blockedReason: undefined },
+        { id: 'background' as ModalType, icon: Palette, label: t('conversationMenu.background'), blockedReason: undefined },
+        {
+            id: 'letters' as ModalType, icon: Mail, label: t('conversationMenu.sentLetters'),
+            blockedReason: isGroupChat ? t('conversationMenu.sentLettersGroupChat') : undefined,
+        },
     ];
 
     const handleMenuItemClick = (modalType: ModalType) => {
         setShowMenu(false);
+        if (modalType === 'calendar') {
+            onOpenCalendar();
+            return;
+        }
         setActiveModal(modalType);
     };
 
@@ -74,49 +97,40 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
         <>
             {/* Three-dot menu button */}
             <div className="relative">
-                <button
-                    onClick={() => setShowMenu(!showMenu)}
+                <IconButton
+                    ref={triggerRef}
                     className={cn(
-                        "p-2 rounded-lg transition-colors",
-                        iconColor ? "hover:bg-black/5" : "text-white/80 hover:text-white hover:bg-white/10"
+                        'h-9 w-9 text-current hover:text-current focus-visible:ring-expressive-header-focus focus-visible:ring-offset-0',
+                        light ? 'hover:bg-sunken aria-expanded:bg-sunken' : 'hover:bg-header-glass aria-expanded:bg-header-glass',
                     )}
-                    style={iconColor ? { color: iconColor } : undefined}
+                    aria-label={t('common.moreOptions')}
                     title={t('common.moreOptions')}
-                >
-                    <MoreVertical className="w-5 h-5" />
-                </button>
-
-                {/* Dropdown menu */}
+                    aria-haspopup="menu"
+                    aria-expanded={showMenu}
+                    icon={<MoreVertical className="h-5 w-5" />}
+                    onClick={() => setShowMenu((s) => !s)}
+                />
                 {showMenu && (
-                    <>
-                        {/* Clickaway overlay */}
-                        <div
-                            className="fixed inset-0 z-40"
-                            onClick={() => setShowMenu(false)}
-                        />
-                        {/* Menu */}
-                        <div className="absolute right-0 top-full mt-1 bg-white shadow-xl rounded-lg border border-gray-100 py-1 w-48 z-50">
-                            {menuItems.map((item) => (
-                                <button
-                                    key={item.id}
-                                    onClick={() => item.enabled && handleMenuItemClick(item.id)}
-                                    disabled={!item.enabled}
-                                    className={cn(
-                                        "w-full text-left px-4 py-2.5 text-sm flex items-center gap-3 transition-colors",
-                                        item.enabled
-                                            ? "text-gray-700 hover:bg-gray-50"
-                                            : "text-gray-300 cursor-not-allowed"
-                                    )}
-                                >
-                                    <item.icon
-                                        className="w-4 h-4"
-                                        style={item.enabled ? { color: theme.modals.accentColor } : undefined}
-                                    />
-                                    {item.label}
-                                </button>
-                            ))}
-                        </div>
-                    </>
+                    <Menu
+                        aria-label={t('common.moreOptions')}
+                        onClose={() => setShowMenu(false)}
+                        returnFocusRef={triggerRef}
+                        ignoreRefs={[triggerRef]}
+                        className="absolute right-0 top-full mt-1 w-48"
+                    >
+                        {menuItems.map((item) => (
+                            <MenuItem
+                                key={item.id}
+                                // Pre-D2: the menu's icons carry the group accent.
+                                icon={<item.icon className="h-4 w-4 text-accent" />}
+                                disabledReason={item.blockedReason}
+                                logTarget={item.id === 'letters' ? 'sent_letters' : undefined}
+                                onClick={() => handleMenuItemClick(item.id)}
+                            >
+                                {item.label}
+                            </MenuItem>
+                        ))}
+                    </Menu>
                 )}
             </div>
 
@@ -124,10 +138,9 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
             <SentLettersModal
                 isOpen={activeModal === 'letters'}
                 onClose={() => setActiveModal(null)}
-                conversationPath={conversationPath}
-                memberName={memberName}
-                groupId={groupId}
-                activeService={activeService}
+                letters={letters}
+                status={lettersStatus}
+                onSelectLetter={onJumpToLetter}
             />
 
             <MediaGalleryModal
@@ -135,20 +148,10 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 onClose={() => setActiveModal(null)}
                 messages={messages}
                 memberName={memberName}
-                memberAvatar={memberAvatar}
+                memberAvatar={galleryAvatar}
                 serviceId={activeService}
                 memberPath={conversationPath}
                 onSourceJump={handleJumpToMessage}
-            />
-
-            <CalendarModal
-                isOpen={activeModal === 'calendar'}
-                onClose={() => setActiveModal(null)}
-                conversationPath={conversationPath}
-                onSelectDate={(date) => {
-                    onSelectDate?.(date);
-                    setActiveModal(null);
-                }}
             />
 
             <BackgroundModal
@@ -165,7 +168,7 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 onClose={() => setActiveModal(null)}
                 messages={messages}
                 memberName={memberName}
-                memberAvatar={memberAvatar}
+                memberAvatar={favoritesAvatar}
                 serviceId={activeService}
             />
         </>

@@ -1,0 +1,9 @@
+{
+  "open": "SakaDesk を開く",
+  "sync_now": "今すぐ同期",
+  "quit": "終了",
+  "tooltip_idle": "SakaDesk",
+  "tooltip_unread": "SakaDesk — 未読 {n} 件",
+  "still_running_title": "SakaDesk は実行中です",
+  "still_running_body": "トレイで同期を続けます。終了するにはトレイアイコンを右クリックしてください。"
+}

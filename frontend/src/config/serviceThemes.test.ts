@@ -2,7 +2,6 @@ import { describe, it, expect } from 'vitest'
 import {
     serviceThemes,
     getServiceTheme,
-    getServiceThemeCSSVariables,
     type GroupId,
 } from './serviceThemes'
 
@@ -37,16 +36,9 @@ describe('serviceThemes', () => {
             }
         })
 
-        it('should have all required theme sections', () => {
+        it('keeps only the fields the app still reads', () => {
             for (const theme of Object.values(serviceThemes)) {
-                expect(theme).toHaveProperty('ambient')
-                expect(theme).toHaveProperty('surface')
-                expect(theme).toHaveProperty('text')
-                expect(theme).toHaveProperty('interaction')
-                expect(theme).toHaveProperty('vibe')
-                expect(theme).toHaveProperty('blog')
-                expect(theme).toHaveProperty('modals')
-                expect(theme).toHaveProperty('messages')
+                expect(Object.keys(theme).sort()).toEqual(['accentColor', 'id', 'messages', 'name', 'nameJp', 'primaryColor', 'secondaryColor'])
             }
         })
 
@@ -115,74 +107,6 @@ describe('serviceThemes', () => {
             expect(getServiceTheme('unknown')).toBe(serviceThemes.default)
             expect(getServiceTheme('akb48')).toBe(serviceThemes.default)
             expect(getServiceTheme('')).toBe(serviceThemes.default)
-        })
-    })
-
-    describe('getServiceThemeCSSVariables', () => {
-        it('should return CSS variable mappings', () => {
-            const variables = getServiceThemeCSSVariables(serviceThemes.hinatazaka)
-
-            expect(variables).toHaveProperty('--theme-primary')
-            expect(variables).toHaveProperty('--theme-secondary')
-            expect(variables).toHaveProperty('--theme-accent')
-            expect(variables).toHaveProperty('--theme-bg')
-            expect(variables).toHaveProperty('--theme-card')
-            expect(variables).toHaveProperty('--theme-glass')
-            expect(variables).toHaveProperty('--theme-glass-border')
-            expect(variables).toHaveProperty('--theme-text-primary')
-            expect(variables).toHaveProperty('--theme-text-secondary')
-            expect(variables).toHaveProperty('--theme-text-muted')
-            expect(variables).toHaveProperty('--theme-hover-glow')
-            expect(variables).toHaveProperty('--theme-focus-ring')
-            expect(variables).toHaveProperty('--theme-button-gradient')
-        })
-
-        it('should map primary color correctly', () => {
-            const hinataVars = getServiceThemeCSSVariables(serviceThemes.hinatazaka)
-            expect(hinataVars['--theme-primary']).toBe(serviceThemes.hinatazaka.primaryColor)
-
-            const sakuraVars = getServiceThemeCSSVariables(serviceThemes.sakurazaka)
-            expect(sakuraVars['--theme-primary']).toBe(serviceThemes.sakurazaka.primaryColor)
-        })
-
-        it('should map surface colors correctly', () => {
-            const vars = getServiceThemeCSSVariables(serviceThemes.nogizaka)
-            expect(vars['--theme-bg']).toBe(serviceThemes.nogizaka.surface.background)
-            expect(vars['--theme-card']).toBe(serviceThemes.nogizaka.surface.card)
-            expect(vars['--theme-glass']).toBe(serviceThemes.nogizaka.surface.glass)
-        })
-
-        it('should map text colors correctly', () => {
-            const vars = getServiceThemeCSSVariables(serviceThemes.default)
-            expect(vars['--theme-text-primary']).toBe(serviceThemes.default.text.primary)
-            expect(vars['--theme-text-secondary']).toBe(serviceThemes.default.text.secondary)
-            expect(vars['--theme-text-muted']).toBe(serviceThemes.default.text.muted)
-        })
-    })
-
-    describe('theme consistency', () => {
-        it('should have consistent vibe arrays (non-empty strings)', () => {
-            for (const theme of Object.values(serviceThemes)) {
-                expect(Array.isArray(theme.vibe)).toBe(true)
-                expect(theme.vibe.length).toBeGreaterThan(0)
-                for (const v of theme.vibe) {
-                    expect(typeof v).toBe('string')
-                    expect(v.length).toBeGreaterThan(0)
-                }
-            }
-        })
-
-        it('should have valid ambient orb configurations', () => {
-            for (const theme of Object.values(serviceThemes)) {
-                for (const orb of [theme.ambient.orb1, theme.ambient.orb2, theme.ambient.orb3]) {
-                    expect(typeof orb.color).toBe('string')
-                    expect(typeof orb.position).toBe('string')
-                    expect(typeof orb.size).toBe('string')
-                    expect(typeof orb.opacity).toBe('number')
-                    expect(orb.opacity).toBeGreaterThanOrEqual(0)
-                    expect(orb.opacity).toBeLessThanOrEqual(1)
-                }
-            }
         })
     })
 })

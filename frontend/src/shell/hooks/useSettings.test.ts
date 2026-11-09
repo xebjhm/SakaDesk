@@ -292,3 +292,48 @@ describe('useSettings – blog backup side effect', () => {
         expect(backupCalls).toHaveLength(0)
     })
 })
+
+describe('useSettings – save error', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        mockSelectedServices.value = ['hinatazaka46']
+    })
+
+    it('stores an i18n key on a failed save and clears it on the next successful save', async () => {
+        const { impl } = buildFetch()
+        let failPost = true
+        vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+            if (failPost && (init?.method ?? 'GET').toUpperCase() === 'POST' && input === '/api/settings') {
+                return Promise.resolve({ ok: false, json: () => Promise.resolve({}) })
+            }
+            return impl(input, init)
+        }))
+
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+
+        await act(async () => { await result.current.saveSettings({ auto_sync_enabled: true }) })
+        expect(result.current.settingsErrorKey).toBe('settings.saveFailed')
+
+        failPost = false
+        await act(async () => { await result.current.saveSettings({ auto_sync_enabled: true }) })
+        expect(result.current.settingsErrorKey).toBeNull()
+    })
+
+    it('clearSettingsError dismisses the error', async () => {
+        const { impl } = buildFetch()
+        vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+            if ((init?.method ?? 'GET').toUpperCase() === 'POST' && input === '/api/settings') {
+                return Promise.resolve({ ok: false, json: () => Promise.resolve({}) })
+            }
+            return impl(input, init)
+        }))
+
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        await act(async () => { await result.current.saveSettings({ auto_sync_enabled: true }) })
+        expect(result.current.settingsErrorKey).toBe('settings.saveFailed')
+        act(() => { result.current.clearSettingsError() })
+        expect(result.current.settingsErrorKey).toBeNull()
+    })
+})

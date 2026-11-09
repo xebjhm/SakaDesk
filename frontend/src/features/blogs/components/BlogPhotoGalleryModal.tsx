@@ -1,6 +1,8 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
 import { Image, Calendar } from 'lucide-react';
-import { BaseModal, ModalEmptyState } from '../../../core/common';
+import { Modal, Button } from '../../../design/primitives';
+import { DialogStatus } from '../../../core/common/DialogStatus';
+import { logDialogLoad } from '../../../design/dialog/dialogLog';
 import { PhotoPlayer } from '../../../core/media/PhotoPlayer';
 import { formatDateTime } from '../../../utils/classnames';
 import { CalendarModal } from '../../../core/modals/CalendarModal';
@@ -8,7 +10,6 @@ import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import type { DateCount } from '../../../core/modals/CalendarModal';
 import type { BlogMeta } from '../../../types';
-import { useBlogTheme } from '../hooks';
 import { getBlogContent } from '../api';
 import { useTranslation } from '../../../i18n';
 
@@ -43,7 +44,6 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
     backupEnabled,
     onJumpToBlog,
 }) => {
-    const theme = useBlogTheme();
     const { t } = useTranslation();
 
     const [photos, setPhotos] = useState<BlogPhotoItem[]>([]);
@@ -68,7 +68,7 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
                 cachedBlogs.map((blog) => getBlogContent(serviceId, blog.id).then((content) => ({ blog, content })))
             );
 
-            if (cancelled) return;
+            if (cancelled) { logDialogLoad('blog_gallery', 'cancelled'); return; }
 
             const allPhotos: BlogPhotoItem[] = [];
             for (const result of results) {
@@ -92,6 +92,8 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
                 if (dateDiff !== 0) return dateDiff;
                 return a.imageIndex - b.imageIndex;
             });
+            const failed = results.filter((r) => r.status === 'rejected').length;
+            logDialogLoad('blog_gallery', failed === 0 ? 'ok' : failed === results.length ? 'error' : 'partial', allPhotos.length);
             setPhotos(allPhotos);
             setLoading(false);
         };
@@ -180,21 +182,9 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
 
     if (isOpen && !backupEnabled) {
         return (
-            <BaseModal
-                isOpen={isOpen}
-                onClose={onClose}
-                title={t('blogGallery.title')}
-                icon={Image}
-                maxWidth="max-w-4xl"
-                className="h-[80vh]"
-            >
-                <div className="flex-1 flex items-center justify-center py-12">
-                    <ModalEmptyState
-                        icon={Image}
-                        message={t('blogGallery.emptyNoBackup')}
-                    />
-                </div>
-            </BaseModal>
+            <Modal isOpen onClose={onClose} title={t('blogGallery.title')} icon={<Image />} closeLabel={t('common.close')} logId="blog_gallery" className="h-[80vh] max-w-4xl">
+                <DialogStatus kind="empty" icon={<Image />} title={t('blogGallery.emptyNoBackup')} />
+            </Modal>
         );
     }
 
@@ -202,65 +192,36 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
 
     return (
         <>
-            <BaseModal
+            <Modal
                 isOpen={isOpen}
                 onClose={onClose}
                 title={t('blogGallery.title')}
-                icon={Image}
-                maxWidth="max-w-4xl"
-                className="h-[80vh]"
+                icon={<Image />}
+                closeLabel={t('common.close')}
+                logId="blog_gallery"
+                className="h-[80vh] max-w-4xl"
+                bodyClassName="px-0 pb-0 pt-0"
                 footer={
-                    <div className="bg-gray-50 px-4 py-3 border-t border-gray-100 flex justify-between items-center">
-                        <span className="text-sm text-gray-500">
-                            {t('blogGallery.count', { count: photos.length })}
-                        </span>
-                        <button
-                            onClick={() => setShowCalendar(true)}
-                            className="flex items-center gap-2 text-gray-600 hover:text-gray-900 text-sm font-medium px-3 py-2 rounded-lg hover:bg-gray-100 transition-colors"
-                        >
-                            <Calendar className="w-4 h-4" />
+                    <>
+                        {/* An empty spacer while loading keeps the Jump to date button on the right. */}
+                        <p className="mr-auto text-small text-muted">{loading ? null : t('blogGallery.count', { count: photos.length })}</p>
+                        <Button variant="ghost" onClick={() => setShowCalendar(true)}>
+                            <Calendar className="h-4 w-4" />
                             {t('blogGallery.jumpToDate')}
-                        </button>
-                    </div>
+                        </Button>
+                    </>
                 }
             >
-                {/* Content */}
                 {loading ? (
-                    <div className="flex-1 flex flex-col items-center justify-center py-12 gap-4">
-                        <div className="relative">
-                            <div
-                                className="w-10 h-10 rounded-full animate-spin"
-                                style={{
-                                    background: `conic-gradient(from 0deg, transparent, ${theme.primaryColor})`,
-                                }}
-                            />
-                            <div className="absolute inset-1 rounded-full bg-white" />
-                        </div>
-                        <span className="text-sm text-gray-400">{t('blogGallery.loading')}</span>
-                    </div>
+                    <DialogStatus kind="loading" title={t('blogGallery.loading')} />
                 ) : photos.length === 0 ? (
-                    <div className="flex-1 flex items-center justify-center py-12">
-                        <ModalEmptyState
-                            icon={Image}
-                            message={t('blogGallery.emptyNoPhotos')}
-                        />
-                    </div>
+                    <DialogStatus kind="empty" icon={<Image />} title={t('blogGallery.emptyNoPhotos')} />
                 ) : (
-                    <div ref={scrollContainerRef} className="bg-white">
+                    <div ref={scrollContainerRef}>
                         {groupedPhotos.map((group) => (
-                            <div
-                                key={group.key}
-                                ref={(el) => {
-                                    if (el) monthRefs.current.set(group.key, el);
-                                }}
-                            >
-                                {/* Month header */}
-                                <div className="px-4 py-3 text-sm font-medium text-gray-700 bg-white sticky top-0 z-10">
-                                    {group.label}
-                                </div>
-
-                                {/* Grid */}
-                                <div className="grid grid-cols-4 gap-0.5 px-1">
+                            <div key={group.key} ref={(el) => { if (el) monthRefs.current.set(group.key, el); }}>
+                                <div className="sticky top-0 z-10 bg-sheet px-4 py-3 text-small font-semibold text-secondary">{group.label}</div>
+                                <div className="grid grid-cols-4 gap-1 px-1">
                                     {group.items.map((item) => {
                                         const dateKey = formatDateKey(item.publishedAt);
                                         const isFirstOfDate = !seenDates.has(dateKey);
@@ -285,7 +246,7 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
                         ))}
                     </div>
                 )}
-            </BaseModal>
+            </Modal>
 
             {/* Photo Viewer */}
             {viewerIndex !== null && (
@@ -294,6 +255,7 @@ export const BlogPhotoGalleryModal: React.FC<BlogPhotoGalleryModalProps> = ({
                     currentIndex={viewerIndex}
                     onClose={() => setViewerIndex(null)}
                     onNavigate={setViewerIndex}
+                    order="newest_first"
                 />
             )}
 

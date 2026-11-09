@@ -29,11 +29,15 @@ class SyncProgress:
 
     def __init__(self):
         self._lock = Lock()
+        # Incremented by every reset(), i.e. once per started run, so a client
+        # that was not watching can tell that a run happened in between.
+        self._run_id = 0
         self.reset()
 
     def reset(self):
-        """Reset all progress state"""
+        """Reset all progress state and start a new run (``run_id`` + 1)"""
         with self._lock:
+            self._run_id += 1
             self._state = "idle"
             self._phase = ""
             self._phase_name = ""
@@ -42,6 +46,7 @@ class SyncProgress:
             self._total = 0
             self._detail = ""
             self._detail_extra = ""
+            self._detail_code: Optional[str] = None
             self._speed_unit = ""
             self._phase_start: Optional[float] = None
             self._error: Optional[str] = None
@@ -68,6 +73,18 @@ class SyncProgress:
             self._phase_start = time.time()
             self._detail = ""
             self._detail_extra = ""
+            self._detail_code = None
+
+    def extend_total(self, n: int):
+        """Grow the current phase's total (e.g. room authors found mid-phase)."""
+        with self._lock:
+            self._total += n
+
+    def set_detail_code(self, code: Optional[str]):
+        """Set a machine-readable detail (e.g. "scanning_history") the frontend
+        localises; None clears it. Cleared by start_phase, complete and error."""
+        with self._lock:
+            self._detail_code = code
 
     def update(
         self,
@@ -111,6 +128,7 @@ class SyncProgress:
             self._completed = self._total
             self._detail = "Sync complete!"
             self._detail_extra = ""
+            self._detail_code = None
 
     def error(self, message: str, code: Optional[str] = None):
         """Mark sync as errored.
@@ -127,6 +145,7 @@ class SyncProgress:
             self._phase_name = "Error"
             self._error = message
             self._detail = message
+            self._detail_code = None
             self._error_code = code or _SENTINEL_ERROR_CODES.get(message)
 
     def get_status(self) -> dict:
@@ -138,6 +157,7 @@ class SyncProgress:
             eta = int(remaining / speed) if speed > 0 else None
 
             return {
+                "run_id": self._run_id,
                 "state": self._state,
                 "phase": self._phase,
                 "phase_name": self._phase_name,
@@ -150,6 +170,7 @@ class SyncProgress:
                 "speed_unit": self._speed_unit,
                 "detail": self._detail,
                 "detail_extra": self._detail_extra,
+                "detail_code": self._detail_code,
                 "error_code": self._error_code,
                 "result": self._result,
             }

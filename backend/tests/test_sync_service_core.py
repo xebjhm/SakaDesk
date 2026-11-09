@@ -69,6 +69,18 @@ def _make_message(msg_id: int, member_id: int, published_at: str) -> dict:
     }
 
 
+def _mock_sync_manager() -> MagicMock:
+    """A MagicMock SyncManager whose rooms are already history-scanned and have
+    no extra room authors (pysaka 0.4.6 roster API), so start_sync takes the
+    plain incremental path these tests assert on."""
+    manager = MagicMock()
+    manager.history_scanned = MagicMock(return_value=True)
+    manager.mark_history_scanned = MagicMock()
+    manager.room_archive_complete = AsyncMock(return_value=True)
+    manager.extra_room_members = AsyncMock(return_value=[])
+    return manager
+
+
 # ---------------------------------------------------------------------------
 # check_new_messages — timestamp cursor operations
 # ---------------------------------------------------------------------------
@@ -897,6 +909,37 @@ class TestFreshVsIncrementalSync:
 
         mock_progress.complete.assert_called()
 
+    @pytest.mark.asyncio
+    async def test_account_dir_does_not_defeat_fresh_detection(self, tmp_path):
+        """archive_account_profile writes ``account/`` early in a sync; a first
+        sync that failed afterwards must still be detected as fresh."""
+        service_dir = tmp_path / "日向坂46"
+        (service_dir / "account").mkdir(parents=True)
+        (service_dir / "account" / "profile.json").write_text("{}", encoding="utf-8")
+        (service_dir / "sync_state.json").write_text("{}", encoding="utf-8")
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=[])
+        mock_manager = _mock_sync_manager()
+        mock_manager.client = mock_client
+
+        with patch("backend.services.sync_service.logger") as mock_logger:
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=[],
+                members=None,
+                mock_manager=mock_manager,
+            )
+
+        starts = [
+            c for c in mock_logger.info.call_args_list if c.args[0] == "sync_start"
+        ]
+        assert len(starts) == 1
+        assert starts[0].kwargs["is_fresh"] is True
+
 
 # ---------------------------------------------------------------------------
 # Sync phase progression — full pipeline with mocked client
@@ -942,7 +985,7 @@ class TestSyncPhaseProgression:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value=None)
         mock_manager.get_last_id = MagicMock(return_value=None)
         mock_manager.sync_member = AsyncMock(return_value=0)
@@ -991,7 +1034,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):
@@ -1044,7 +1087,7 @@ class TestSyncPhaseProgression:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value=None)
         mock_manager.get_last_id = MagicMock(return_value=None)
         mock_manager.sync_member = AsyncMock(return_value=0)
@@ -1092,7 +1135,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):
@@ -1141,10 +1184,15 @@ class TestSyncPhaseProgression:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=999)
-        mock_manager.sync_member = AsyncMock(return_value=5)  # 5 new messages
+
+        async def _sync_member(_session, group, member, *_a, **kw):
+            _report_new(kw["on_new_messages"], group, member, 5)  # 5 new messages
+            return 5
+
+        mock_manager.sync_member = AsyncMock(side_effect=_sync_member)
         mock_manager.client = mock_client
         mock_manager.process_media_queue = AsyncMock(return_value={})
 
@@ -1203,7 +1251,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ) as mock_notify,
         ):
@@ -1222,8 +1270,10 @@ class TestSyncPhaseProgression:
             saved_metadata["groups"]["100_1"]["last_sync_ts"] == "2025-03-20T12:00:00Z"
         )
         assert saved_metadata.get("last_sync") is not None
-        # Notification was sent (SD-BE-SVC-18: awaited async wrapper, off-loop).
-        mock_notify.assert_awaited_once_with(5, 1)
+        # One toast plan was sent for the member's 5 new messages.
+        mock_notify.assert_awaited_once()
+        (plans,) = mock_notify.await_args.args
+        assert [p.count for p in plans] == [5]
 
     @pytest.mark.asyncio
     async def test_server_unread_count_captured_in_metadata(self, tmp_path):
@@ -1265,7 +1315,7 @@ class TestSyncPhaseProgression:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=999)
         mock_manager.sync_member = AsyncMock(return_value=0)
@@ -1321,7 +1371,7 @@ class TestSyncPhaseProgression:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):
@@ -1451,6 +1501,26 @@ class TestSyncOlderMessages:
 # ---------------------------------------------------------------------------
 
 
+def _report_new(callback, group, member, count, member_dir=Path("m")):
+    """Fire pysaka's on_new_messages callback like an incremental sync_member
+    that wrote ``count`` messages not on disk before."""
+    callback(
+        {
+            "group_id": group["id"],
+            "group_name": group.get("name", ""),
+            "member_id": member["id"],
+            "member_name": member.get("name", ""),
+            "member_dir": member_dir,
+            "phone_image": None,
+            "initial_sync": False,
+        },
+        [
+            {"id": i, "timestamp": f"2026-01-01T00:00:{i:02d}Z", "type": "text"}
+            for i in range(count)
+        ],
+    )
+
+
 async def _run_start_sync(
     svc,
     tmp_path,
@@ -1460,19 +1530,23 @@ async def _run_start_sync(
     mock_manager,
     metadata=None,
     saved=None,
+    notify_mock=None,
+    progress_mock=None,
     **start_kwargs,
 ):
     """Run start_sync with the standard set of patches. Returns nothing;
     inspect the passed mock_manager / mock_client for assertions. Pass
     ``metadata`` to seed load_metadata and a dict as ``saved`` to capture the
-    last metadata written by save_metadata."""
+    last metadata written by save_metadata; pass ``notify_mock`` to observe
+    the sync-complete notification; pass ``progress_mock`` to observe the
+    progress tracker."""
 
     async def _capture(md):
         if saved is not None:
             saved.clear()
             saved.update(md)
 
-    mock_progress = MagicMock()
+    mock_progress = progress_mock if progress_mock is not None else MagicMock()
     for attr in ("start_phase", "set_completed", "complete", "update", "error"):
         setattr(mock_progress, attr, MagicMock())
 
@@ -1514,8 +1588,8 @@ async def _run_start_sync(
         patch("backend.services.sync_service.SyncManager", return_value=mock_manager),
         patch("backend.services.sync_service.progress_manager") as mock_pm,
         patch(
-            "backend.services.sync_service.notify_sync_complete_async",
-            new_callable=AsyncMock,
+            "backend.services.sync_service.send_planned",
+            notify_mock if notify_mock is not None else AsyncMock(),
         ),
     ):
         mock_pm.get.return_value = mock_progress
@@ -1613,7 +1687,7 @@ class TestNewMemberFullHistory:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(
             side_effect=lambda gid, mid: "2025-03-20T12:00:00Z" if mid == 1 else None
         )
@@ -1654,7 +1728,7 @@ class TestNewMemberFullHistory:
         mock_client.get_members = AsyncMock(return_value=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=None)
         mock_manager.sync_member = AsyncMock(return_value=0)
@@ -1682,7 +1756,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.refresh_if_needed = AsyncMock()
         mock_client.get_groups = AsyncMock(return_value=groups)
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
 
         await _run_start_sync(
@@ -1731,7 +1805,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.get_members = AsyncMock(side_effect=members)
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
         mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=1)
@@ -1755,6 +1829,323 @@ class TestInitialLimitAndIncludeInactive:
         assert saved["server_groups"]["200"]["is_active"] is False
 
     @pytest.mark.asyncio
+    async def test_phase2_backfills_each_member_and_isolates_errors(self, tmp_path):
+        """Every synced member gets one backfill call and one letters call; an
+        error from either (or the account-profile archive) is logged and never
+        fails the sync."""
+        groups = [
+            {
+                "id": 100,
+                "name": "G1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            },
+            {
+                "id": 200,
+                "name": "G2",
+                "state": "open",
+                "subscription": {"state": "active"},
+            },
+        ]
+
+        async def members(_session, gid):
+            return [{"id": gid + 1, "name": f"M{gid}"}]
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(side_effect=members)
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = _mock_sync_manager()
+        mock_manager.client = mock_client
+        mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
+        mock_manager.get_last_id = MagicMock(return_value=1)
+        mock_manager.sync_member = AsyncMock(return_value=0)
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+        mock_manager.backfill_past_messages = AsyncMock(
+            side_effect=[RuntimeError("boom"), 2]
+        )
+        mock_manager.sync_letters = AsyncMock(side_effect=[RuntimeError("boom"), 3])
+        mock_manager.archive_account_profile = AsyncMock(
+            side_effect=OSError("disk full")
+        )
+        saved: dict = {}
+
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=groups,
+            members=None,
+            mock_manager=mock_manager,
+            saved=saved,
+        )
+
+        assert mock_manager.backfill_past_messages.await_count == 2
+        backfilled = {
+            c.args[1]["id"] for c in mock_manager.backfill_past_messages.await_args_list
+        }
+        assert backfilled == {100, 200}
+        assert {c.args[1]["id"] for c in mock_manager.sync_member.await_args_list} == {
+            100,
+            200,
+        }
+        assert {c.args[1]["id"] for c in mock_manager.sync_letters.await_args_list} == {
+            100,
+            200,
+        }
+        mock_manager.archive_account_profile.assert_awaited_once()
+
+    async def _run_backfill_index_scenario(
+        self,
+        tmp_path,
+        *,
+        synced,
+        backfilled,
+        member_ids_by_group=None,
+        sync_member=None,
+    ):
+        """Run a sync where ``sync_member`` returns ``synced`` and
+        ``backfill_past_messages`` returns ``backfilled`` (default: one group
+        100 with one member 101). ``member_ids_by_group`` ({gid: [member ids]})
+        and ``sync_member`` (an AsyncMock side_effect taking
+        ``(session, group, member, ...)``) override that. Returns
+        ``(search_svc, notify_mock)`` after the background index task has been
+        awaited."""
+        member_ids_by_group = member_ids_by_group or {100: [101]}
+        groups = [
+            {
+                "id": gid,
+                "name": f"G{gid}",
+                "state": "open",
+                "subscription": {"state": "active"},
+            }
+            for gid in member_ids_by_group
+        ]
+
+        async def members(_session, gid):
+            return [{"id": mid, "name": f"M{mid}"} for mid in member_ids_by_group[gid]]
+
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(side_effect=members)
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = _mock_sync_manager()
+        mock_manager.client = mock_client
+        mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
+        mock_manager.get_last_id = MagicMock(return_value=1)
+        mock_manager.sync_member = (
+            AsyncMock(side_effect=sync_member)
+            if sync_member is not None
+            else AsyncMock(return_value=synced)
+        )
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+        mock_manager.backfill_past_messages = AsyncMock(return_value=backfilled)
+
+        search_svc = MagicMock()
+        search_svc.index_members = AsyncMock(return_value=1)
+        notify = AsyncMock()
+        bg_coros: list = []
+
+        def _capture_task(coro, name=None):
+            bg_coros.append(coro)
+
+        with (
+            patch(
+                "backend.services.search_service.get_search_service",
+                return_value=search_svc,
+            ),
+            patch(
+                "backend.services.sync_service.track_background_task",
+                side_effect=_capture_task,
+            ),
+        ):
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=groups,
+                members=None,
+                mock_manager=mock_manager,
+                notify_mock=notify,
+            )
+        for coro in bg_coros:
+            await coro
+        return search_svc, notify
+
+    @pytest.mark.asyncio
+    async def test_backfill_only_member_is_indexed_but_not_notified(self, tmp_path):
+        """Messages recovered by backfill must become searchable, yet old
+        (pre-subscription) messages are never reported as new."""
+        search_svc, notify = await self._run_backfill_index_scenario(
+            tmp_path, synced=0, backfilled=5
+        )
+
+        notify.assert_not_awaited()
+        search_svc.index_members.assert_awaited_once()
+        indexed = search_svc.index_members.await_args.args[0]
+        assert [(g["id"], m["id"]) for g, m in indexed] == [(100, 101)]
+        # Backfilled ids sit below the watermark -> must be fully scanned.
+        assert search_svc.index_members.await_args.kwargs["full_member_scan"] == [
+            (100, 101)
+        ]
+
+    @pytest.mark.asyncio
+    async def test_synced_and_backfilled_member_indexed_once_notifies_synced_only(
+        self, tmp_path
+    ):
+        async def sync_member(_session, group, member, *_a, **kw):
+            _report_new(kw["on_new_messages"], group, member, 3)
+            return 3
+
+        search_svc, notify = await self._run_backfill_index_scenario(
+            tmp_path, synced=3, backfilled=2, sync_member=sync_member
+        )
+
+        notify.assert_awaited_once()
+        assert [p.count for p in notify.await_args.args[0]] == [3]
+        search_svc.index_members.assert_awaited_once()
+        indexed = search_svc.index_members.await_args.args[0]
+        assert [(g["id"], m["id"]) for g, m in indexed] == [(100, 101)]
+
+    @pytest.mark.asyncio
+    async def test_failed_group_members_with_backfill_are_still_indexed(self, tmp_path):
+        """Group 100's first member was backfilled before a later member made
+        the group fail; that member's recovered messages are on disk and must
+        still be indexed (full scan), alongside group 200's normal new data."""
+
+        async def sync_member(_session, group, member, *_a, **_kw):
+            if member["id"] == 102:
+                raise RuntimeError("boom")
+            return 1 if group["id"] == 200 else 0
+
+        search_svc, _notify = await self._run_backfill_index_scenario(
+            tmp_path,
+            synced=0,
+            backfilled=4,
+            member_ids_by_group={100: [101, 102], 200: [201]},
+            sync_member=sync_member,
+        )
+
+        search_svc.index_members.assert_awaited_once()
+        indexed = search_svc.index_members.await_args.args[0]
+        assert sorted((g["id"], m["id"]) for g, m in indexed) == [
+            (100, 101),
+            (200, 201),
+        ]
+        assert sorted(
+            search_svc.index_members.await_args.kwargs["full_member_scan"]
+        ) == [
+            (100, 101),
+            (200, 201),
+        ]
+
+    @pytest.mark.asyncio
+    async def test_bool_backfill_result_is_not_counted(self, tmp_path):
+        search_svc, _notify = await self._run_backfill_index_scenario(
+            tmp_path, synced=0, backfilled=True
+        )
+
+        search_svc.index_members.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_no_new_and_no_backfill_skips_index(self, tmp_path):
+        search_svc, notify = await self._run_backfill_index_scenario(
+            tmp_path, synced=0, backfilled=0
+        )
+
+        notify.assert_not_awaited()
+        search_svc.index_members.assert_not_awaited()
+
+    @pytest.mark.asyncio
+    async def test_overlap_only_sync_reports_zero_new_messages(self, tmp_path):
+        """Regression (overcount): sync_member returns 40 re-fetched overlap
+        rows but never fires on_new_messages, so nothing is new on disk."""
+        from structlog.testing import capture_logs
+
+        async def sync_member(_session, _group, _member, *_a, **_kw):
+            return 40
+
+        with capture_logs() as logs:
+            search_svc, notify = await self._run_backfill_index_scenario(
+                tmp_path, synced=40, backfilled=0, sync_member=sync_member
+            )
+
+        notify.assert_not_awaited()
+        done = [e for e in logs if e["event"] == "sync_complete"]
+        assert done[0]["new_messages"] == 0
+        assert done[0]["members_with_new"] == 0
+        # The member still counts as changed (index / cursor bookkeeping).
+        search_svc.index_members.assert_awaited_once()
+        summary = [e for e in logs if e["event"] == "notify_collected"]
+        assert summary[0]["messages"] == 0
+
+    @pytest.mark.asyncio
+    async def test_reports_exactly_the_callback_reported_new_rows(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        async def sync_member(_session, group, member, *_a, **kw):
+            _report_new(kw["on_new_messages"], group, member, 2)
+            return 40
+
+        with capture_logs() as logs:
+            _search_svc, notify = await self._run_backfill_index_scenario(
+                tmp_path, synced=40, backfilled=0, sync_member=sync_member
+            )
+
+        notify.assert_awaited_once()
+        assert [p.count for p in notify.await_args.args[0]] == [2]
+        done = [e for e in logs if e["event"] == "sync_complete"]
+        assert done[0]["new_messages"] == 2
+        assert done[0]["members_with_new"] == 1
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "method", ["backfill_past_messages", "sync_letters", "archive_account_profile"]
+    )
+    async def test_phase2_new_calls_propagate_auth_errors(self, tmp_path, method):
+        """Isolation must not swallow auth failures from the pysaka 0.4.5 calls."""
+        from pysaka import SessionExpiredError
+
+        groups = [
+            {
+                "id": 100,
+                "name": "G1",
+                "state": "open",
+                "subscription": {"state": "active"},
+            }
+        ]
+        mock_client = MagicMock()
+        mock_client.access_token = "tok"
+        mock_client.refresh_if_needed = AsyncMock()
+        mock_client.get_groups = AsyncMock(return_value=groups)
+        mock_client.get_members = AsyncMock(return_value=[{"id": 101, "name": "M"}])
+        mock_client.get_messages = AsyncMock(return_value=[])
+
+        mock_manager = _mock_sync_manager()
+        mock_manager.client = mock_client
+        mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
+        mock_manager.get_last_id = MagicMock(return_value=1)
+        mock_manager.sync_member = AsyncMock(return_value=0)
+        mock_manager.process_media_queue = AsyncMock(return_value={})
+        mock_manager.backfill_past_messages = AsyncMock(return_value=0)
+        mock_manager.sync_letters = AsyncMock(return_value=0)
+        mock_manager.archive_account_profile = AsyncMock(return_value={})
+        setattr(mock_manager, method, AsyncMock(side_effect=SessionExpiredError("x")))
+
+        with pytest.raises(SessionExpiredError):
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=groups,
+                members=None,
+                mock_manager=mock_manager,
+            )
+
+    @pytest.mark.asyncio
     async def test_members_session_expiry_still_propagates(self, tmp_path):
         """Isolation must not swallow auth failures: an expired session while
         listing members is re-raised so the UI prompts re-login."""
@@ -1773,7 +2164,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.refresh_if_needed = AsyncMock()
         mock_client.get_groups = AsyncMock(return_value=groups)
         mock_client.get_members = AsyncMock(side_effect=SessionExpiredError("expired"))
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
 
         with pytest.raises(SessionExpiredError):
@@ -1817,7 +2208,7 @@ class TestInitialLimitAndIncludeInactive:
         mock_client.get_members = AsyncMock(return_value=[{"id": 1, "name": "M"}])
         mock_client.get_messages = AsyncMock(return_value=[])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.client = mock_client
         mock_manager.get_last_ts = MagicMock(return_value="2026-01-01T00:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=1)
@@ -1911,7 +2302,7 @@ class TestInitialLimitAndIncludeInactive:
             captured["prefetched"] = kwargs.get("prefetched_messages")
             return len(kwargs.get("prefetched_messages") or [])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value=None)  # cursor-less
         mock_manager.get_last_id = MagicMock(return_value=None)
         mock_manager.sync_member = AsyncMock(side_effect=capture_sync_member)
@@ -1971,7 +2362,7 @@ class TestInitialLimitAndIncludeInactive:
             captured["prefetched"] = kwargs.get("prefetched_messages")
             return len(kwargs.get("prefetched_messages") or [])
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value=None)  # cursor-less
         mock_manager.get_last_id = MagicMock(return_value=None)
         mock_manager.sync_member = AsyncMock(side_effect=capture_sync_member)
@@ -2329,7 +2720,7 @@ class TestGroupFailureAggregation:
 
         mock_client.get_messages = AsyncMock(side_effect=_get_messages)
 
-        mock_manager = MagicMock()
+        mock_manager = _mock_sync_manager()
         mock_manager.get_last_ts = MagicMock(return_value="2025-03-20T12:00:00Z")
         mock_manager.get_last_id = MagicMock(return_value=5)
         mock_manager.sync_member = AsyncMock(return_value=1)
@@ -2378,7 +2769,7 @@ class TestGroupFailureAggregation:
             ),
             patch("backend.services.sync_service.progress_manager") as mock_pm,
             patch(
-                "backend.services.sync_service.notify_sync_complete_async",
+                "backend.services.sync_service.send_planned",
                 new_callable=AsyncMock,
             ),
         ):
@@ -2396,3 +2787,138 @@ class TestGroupFailureAggregation:
         # outer handler as progress.error(...) (old code: gather propagated it).
         mock_progress.error.assert_not_called()
         assert svc.running is False
+
+
+class TestAuthCacheInvalidation:
+    """A sync that saves or deletes the stored session must tell AuthService, so the
+    auto-sync scheduler's authentication gate does not trust a stale cached token."""
+
+    @staticmethod
+    def _client(refresh_error=None, get_groups=None, new_token="tok"):
+        client = MagicMock()
+        client.access_token = "tok"
+        client.refresh_token = "ref"
+        client.cookies = {}
+
+        async def refresh(*_a, **_k):
+            if refresh_error is not None:
+                raise refresh_error
+            client.access_token = new_token
+
+        client.refresh_if_needed = AsyncMock(side_effect=refresh)
+        client.get_groups = AsyncMock(return_value=get_groups)
+        return client
+
+    @pytest.mark.asyncio
+    async def test_delete_is_followed_by_invalidate(self):
+        from pysaka import RefreshFailedError, SessionExpiredError
+
+        order: list[str] = []
+        tm = MagicMock()
+        tm.delete_session.side_effect = lambda s: order.append("delete")
+        client = self._client(refresh_error=RefreshFailedError("x"), get_groups=None)
+        svc = SyncService()
+        with (
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={"access_token": "tok"},
+            ),
+            patch("backend.services.sync_service.Client", return_value=client),
+            patch("backend.services.sync_service.get_session_dir", return_value="x"),
+            patch("backend.services.sync_service.get_token_manager", return_value=tm),
+            patch(
+                "backend.api.auth.auth_service.invalidate_session",
+                side_effect=lambda s: order.append(f"invalidate:{s}"),
+            ),
+            pytest.raises(SessionExpiredError),
+        ):
+            await svc._authenticated_client(MagicMock())
+        # A failed verification deletes in both the inner branch and the outer
+        # handler; every delete is followed by an invalidate.
+        assert order[:2] == ["delete", "invalidate:hinatazaka46"]
+        assert order[-1] == "invalidate:hinatazaka46"
+        assert order.count("delete") == order.count("invalidate:hinatazaka46")
+
+    @pytest.mark.asyncio
+    async def test_confirmed_expiry_via_get_groups_raising_invalidates(self):
+        from pysaka import RefreshFailedError, SessionExpiredError
+
+        tm = MagicMock()
+        client = self._client(refresh_error=RefreshFailedError("x"))
+        client.get_groups = AsyncMock(side_effect=SessionExpiredError("expired"))
+        svc = SyncService()
+        with (
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={"access_token": "tok"},
+            ),
+            patch("backend.services.sync_service.Client", return_value=client),
+            patch("backend.services.sync_service.get_session_dir", return_value="x"),
+            patch("backend.services.sync_service.get_token_manager", return_value=tm),
+            patch("backend.api.auth.auth_service.invalidate_session") as invalidate,
+            pytest.raises(SessionExpiredError),
+        ):
+            await svc._authenticated_client(MagicMock())
+        tm.delete_session.assert_called_once_with("hinatazaka46")
+        invalidate.assert_called_once_with("hinatazaka46")
+
+    @pytest.mark.asyncio
+    async def test_refreshed_tokens_save_invalidates_the_cache(self):
+        tm = MagicMock()
+        client = self._client(new_token="fresh")
+        svc = SyncService()
+        with (
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={"access_token": "tok"},
+            ),
+            patch("backend.services.sync_service.Client", return_value=client),
+            patch("backend.services.sync_service.get_session_dir", return_value="x"),
+            patch("backend.services.sync_service.get_token_manager", return_value=tm),
+            patch("backend.api.auth.auth_service.invalidate_session") as invalidate,
+        ):
+            await svc._authenticated_client(MagicMock())
+        tm.save_session.assert_called_once()
+        invalidate.assert_called_once_with("hinatazaka46")
+
+    @pytest.mark.asyncio
+    async def test_unchanged_token_does_not_invalidate(self):
+        tm = MagicMock()
+        client = self._client(new_token="tok")
+        svc = SyncService()
+        with (
+            patch.object(
+                svc,
+                "load_config",
+                new_callable=AsyncMock,
+                return_value={"access_token": "tok"},
+            ),
+            patch("backend.services.sync_service.Client", return_value=client),
+            patch("backend.services.sync_service.get_session_dir", return_value="x"),
+            patch("backend.services.sync_service.get_token_manager", return_value=tm),
+            patch("backend.api.auth.auth_service.invalidate_session") as invalidate,
+        ):
+            await svc._authenticated_client(MagicMock())
+        invalidate.assert_not_called()
+
+    def test_invalidate_failure_is_logged_with_the_error_type_only(self):
+        from structlog.testing import capture_logs
+
+        svc = SyncService()
+        with (
+            patch(
+                "backend.api.auth.auth_service.invalidate_session",
+                side_effect=RuntimeError("secret detail"),
+            ),
+            capture_logs() as logs,
+        ):
+            svc._invalidate_auth_cache()
+        (failed,) = [e for e in logs if e["event"] == "auth_cache_invalidate_failed"]
+        assert failed["error_type"] == "RuntimeError"
+        assert "secret" not in str(logs)

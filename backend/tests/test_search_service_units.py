@@ -5,6 +5,7 @@ pykakasi, or a full SearchService with live DB connections.
 """
 
 import asyncio
+import json
 import sqlite3
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -546,7 +547,7 @@ class TestBuildFullIndexShutdownGuard:
         loop = asyncio.get_running_loop()
 
         async def fake_run_in_executor(executor, func, *args):
-            return 0  # stands in for _index_members_process's return count
+            return 0, 0  # stands in for _index_members_process_stats
 
         shutdown_state.begin_shutdown()
         with (
@@ -558,6 +559,24 @@ class TestBuildFullIndexShutdownGuard:
             await svc.index_members([], "hinatazaka46")
 
         mock_create_task.assert_not_called()
+
+    @pytest.mark.asyncio
+    async def test_index_members_forwards_full_member_scan(self, tmp_path):
+        svc = SearchService(tmp_path / "nonexistent.db")
+        loop = asyncio.get_running_loop()
+        captured: list = []
+
+        async def fake_run_in_executor(executor, func, *args):
+            captured.extend(args)
+            return 0, 0
+
+        shutdown_state.begin_shutdown()
+        with patch.object(loop, "run_in_executor", side_effect=fake_run_in_executor):
+            await svc.index_members(
+                [], "hinatazaka46", full_member_scan=[(100, 101), (200, 201)]
+            )
+
+        assert json.loads(captured[-1]) == [[100, 101], [200, 201]]
 
 
 # ── I1: shutdown_search_service must actually drain, not just bound ────

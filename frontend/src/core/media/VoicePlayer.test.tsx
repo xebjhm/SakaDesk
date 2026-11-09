@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { render, screen, fireEvent, act } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { VoicePlayer } from './VoicePlayer'
 import { useAppStore } from '../../store/appStore'
@@ -35,6 +35,15 @@ describe('VoicePlayer component', () => {
       // Compact variant has min-w-[300px]
       const player = container.querySelector('.min-w-\\[300px\\]')
       expect(player).toBeInTheDocument()
+    })
+
+    it('squares the bottom corners only when joined to a footer below', () => {
+      const { container, rerender } = render(<VoicePlayer {...defaultProps} />)
+      const player = () => container.querySelector('.min-w-\\[300px\\]') as HTMLElement
+      expect(player()).toHaveClass('rounded-lg')
+      expect(player()).not.toHaveClass('rounded-b-none')
+      rerender(<VoicePlayer {...defaultProps} joinedBelow />)
+      expect(player()).toHaveClass('rounded-lg', 'rounded-b-none')
     })
 
     it('should render play button', () => {
@@ -87,10 +96,10 @@ describe('VoicePlayer component', () => {
       durationText: '01:45',
     }
 
-    it('should render premium player with glassmorphism styling', () => {
+    it('should render premium player on the sheet surface', () => {
       const { container } = render(<VoicePlayer {...premiumProps} />)
-      // Premium variant uses backdrop-blur-xl
-      const player = container.querySelector('.backdrop-blur-xl')
+      // Premium variant sits on the opaque sheet surface (D13)
+      const player = container.querySelector('.bg-sheet.shadow-card')
       expect(player).toBeInTheDocument()
     })
 
@@ -127,7 +136,7 @@ describe('VoicePlayer component', () => {
     it('should render colored progress bar', () => {
       const { container } = render(<VoicePlayer {...premiumProps} />)
       // Progress bar uses inline backgroundColor style (accentColor prop)
-      const progressBar = container.querySelector('.bg-gray-200\\/60 > div.rounded-full')
+      const progressBar = container.querySelector('.bg-sunken.h-1 > div.rounded-full')
       expect(progressBar).toBeInTheDocument()
     })
   })
@@ -205,5 +214,23 @@ describe('VoicePlayer component', () => {
       )
       expect(container.firstChild).toMatchSnapshot()
     })
+  })
+})
+
+describe('VoicePlayer shortcuts', () => {
+  it('does not run player shortcuts for keys pressed inside its menu', () => {
+    render(<VoicePlayer src="/api/media/voice.m4a" viewerMode />)
+    fireEvent.click(screen.getByRole('button', { name: 'More options' }))
+    const item = screen.getByRole('menuitemradio', { name: '1x' })
+    const ev = new KeyboardEvent('keydown', { key: 'm', bubbles: true, cancelable: true })
+    act(() => { item.dispatchEvent(ev) })
+    expect(ev.defaultPrevented).toBe(false)
+  })
+
+  it('still runs the shortcut outside the menu', () => {
+    render(<VoicePlayer src="/api/media/voice.m4a" viewerMode />)
+    const ev = new KeyboardEvent('keydown', { key: 'm', bubbles: true, cancelable: true })
+    act(() => { document.body.dispatchEvent(ev) })
+    expect(ev.defaultPrevented).toBe(true)
   })
 })

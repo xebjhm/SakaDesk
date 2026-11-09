@@ -109,7 +109,10 @@ function Stop-Tree([string]$PidFile, [int]$Port, [string]$Name) {
 function Start-Backend {
     Write-Host "Starting backend on port $BackendPort..."
     # cmd /c merges stdout+stderr into one log; taskkill /T later kills uv+uvicorn children.
+    # --timeout-keep-alive must match KEEP_ALIVE_TIMEOUT_S in desktop.py (outlast the
+    # browser's 300 s idle sockets so the server never closes a reused one).
     $cmd = "uv run uvicorn backend.main:app --host 127.0.0.1 --port $BackendPort " +
+           "--timeout-keep-alive 600 " +
            "--reload --reload-dir backend --reload-dir ..\pysaka\src " +
            "--reload-exclude `"output/*`" --reload-exclude `"auth_data/*`" > `"$BackendLog`" 2>&1"
     $p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', $cmd `

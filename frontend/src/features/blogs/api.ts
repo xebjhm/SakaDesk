@@ -1,5 +1,6 @@
 // frontend/src/features/blogs/api.ts
 import type { BlogMembersResponse, BlogListResponse, BlogContentResponse, RecentPostsResponse, BlogMembersWithThumbnailsResponse } from '../../types';
+import type { AvatarWidth } from '../messages/mediaUrl';
 
 const API_BASE = '/api/blogs';
 
@@ -38,8 +39,13 @@ export async function getBlogMembersWithThumbnails(service: string): Promise<Blo
     return res.json();
 }
 
-export function getMemberThumbnailUrl(service: string, memberId: string): string {
-    return `${API_BASE}/member-thumbnail/${encodeURIComponent(service)}/${encodeURIComponent(memberId)}`;
+/**
+ * Member photo URL. With `width` (an `AvatarWidth`, from `useAvatarWidth`) the
+ * backend serves a cached square WebP of that size, cropped from the top.
+ */
+export function getMemberThumbnailUrl(service: string, memberId: string, width?: AvatarWidth): string {
+    const base = `${API_BASE}/member-thumbnail/${encodeURIComponent(service)}/${encodeURIComponent(memberId)}`;
+    return width ? `${base}?w=${width}` : base;
 }
 
 export async function getBlogList(

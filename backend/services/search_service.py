@@ -10,7 +10,7 @@ from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
 from html import unescape
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 
 import jaconv
 import structlog
@@ -21,6 +21,7 @@ from backend.services.service_utils import (
     get_service_display_name,
     get_service_identifier,
 )
+from backend.services.message_visibility import is_hidden_message
 from backend.services.shutdown_state import is_shutting_down
 
 logger = structlog.get_logger(__name__)
@@ -286,6 +287,8 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
                     continue
 
                 for msg in data.get("messages", []):
+                    if is_hidden_message(msg):
+                        continue
                     content = msg.get("content")
                     if content is None:
                         continue
@@ -624,11 +627,36 @@ def _index_members_process(
     output_dir_str: str,
     members_json: str,
     service: str,
+    full_scan_json: str = "[]",
 ) -> int:
+    """:func:`_index_members_process_stats` returning only the indexed count."""
+    return _index_members_process_stats(
+        db_path_str, output_dir_str, members_json, service, full_scan_json
+    )[0]
+
+
+def _index_members_process_stats(
+    db_path_str: str,
+    output_dir_str: str,
+    members_json: str,
+    service: str,
+    full_scan_json: str = "[]",
+) -> tuple[int, int]:
     """Incremental message index for changed members. Runs in a separate process.
+
+    Returns ``(indexed, hidden_purged)``.
 
     *members_json* is a JSON-encoded list of ``[group_dict, member_dict]`` pairs
     (dicts cannot be passed directly to a process pool, but JSON strings can).
+
+    *full_scan_json* is a JSON-encoded list of ``[group_id, member_id]`` pairs.
+    Those members bypass the ``MAX(message_id)`` watermark and index every
+    message whose id is not yet present for them. This is needed for messages
+    merged in below the watermark (pre-subscription backfill); all other
+    members keep the watermark behaviour. For those members, rows already
+    indexed for messages that are now hidden (withdrawn after indexing) are
+    deleted, so search matches the chat; ``hidden_purged`` counts them.
+    Hidden messages are never indexed.
     """
     import pykakasi
 
@@ -637,9 +665,12 @@ def _index_members_process(
     output_dir = Path(output_dir_str)
 
     if not output_dir.exists():
-        return 0
+        return 0, 0
 
     members: list[list] = json.loads(members_json)
+    full_scan: set[tuple[Any, Any]] = {
+        (pair[0], pair[1]) for pair in json.loads(full_scan_json)
+    }
 
     service_display = get_service_display_name(service)
 
@@ -660,6 +691,7 @@ def _index_members_process(
         max_indexed_ids[(row[0], row[1])] = row[2]
 
     count = 0
+    purged = 0
     batch: list[Tuple[Any, ...]] = []
 
     for group_dict, member_dict in members:
@@ -667,8 +699,22 @@ def _index_members_process(
         g_name = group_dict.get("name", "")
         mid = member_dict.get("id")
         m_name = member_dict.get("name", "")
+        purge_ids: list[Any] = []
 
-        max_indexed_id = max_indexed_ids.get((gid, mid), 0)
+        if (gid, mid) in full_scan:
+            # Ignore the watermark; skip only ids already indexed for the member.
+            max_indexed_id = 0
+            already_indexed = {
+                row[0]
+                for row in conn.execute(
+                    "SELECT message_id FROM search_messages "
+                    "WHERE service = ? AND group_id = ? AND member_id = ?",
+                    (service, gid, mid),
+                )
+            }
+        else:
+            max_indexed_id = max_indexed_ids.get((gid, mid), 0)
+            already_indexed = set()
 
         msg_file = (
             output_dir
@@ -688,8 +734,13 @@ def _index_members_process(
             continue
 
         for msg in data.get("messages", []):
+            if is_hidden_message(msg):
+                # already_indexed is only filled for full-scan members.
+                if msg.get("id") in already_indexed:
+                    purge_ids.append(msg.get("id"))
+                continue
             msg_id = msg.get("id")
-            if msg_id is None or msg_id <= max_indexed_id:
+            if msg_id is None or msg_id <= max_indexed_id or msg_id in already_indexed:
                 continue
             content = msg.get("content")
             if content is None:
@@ -724,6 +775,16 @@ def _index_members_process(
                 count += len(batch)
                 batch.clear()
 
+        if purge_ids:
+            # A plain DELETE fires search_ad, which drops the FTS entry too.
+            conn.executemany(
+                "DELETE FROM search_messages WHERE service = ? AND group_id = ? "
+                "AND member_id = ? AND message_id = ?",
+                [(service, gid, mid, i) for i in purge_ids],
+            )
+            conn.commit()
+            purged += len(purge_ids)
+
     if batch:
         conn.executemany(
             "INSERT OR REPLACE INTO search_messages "
@@ -738,11 +799,14 @@ def _index_members_process(
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
         "INSERT OR REPLACE INTO search_meta (key, value) VALUES (?, ?)",
-        ("last_incremental_index", f"{now} service={service} new={count}"),
+        (
+            "last_incremental_index",
+            f"{now} service={service} new={count} hidden_purged={purged}",
+        ),
     )
     conn.commit()
     conn.close()
-    return count
+    return count, purged
 
 
 class SearchService:
@@ -2041,6 +2105,7 @@ class SearchService:
     def _build_full_index_sync(self) -> int:
         self._building = True
         count = 0
+        hidden_skipped = 0  # withdrawn messages are never indexed
         try:
             output_dir = get_output_dir()
             if not output_dir.exists():
@@ -2114,6 +2179,9 @@ class SearchService:
                             continue
 
                         for msg in data.get("messages", []):
+                            if is_hidden_message(msg):
+                                hidden_skipped += 1
+                                continue
                             content = msg.get("content")
                             if content is None:
                                 continue
@@ -2185,7 +2253,12 @@ class SearchService:
                 ("index_blog_count", str(blog_count)),
             )
             conn.commit()
-            logger.info("Full search index built", count=count, blog_count=blog_count)
+            logger.info(
+                "Full search index built",
+                count=count,
+                blog_count=blog_count,
+                hidden_skipped=hidden_skipped,
+            )
         finally:
             self._building = False
         return count
@@ -2348,6 +2421,7 @@ class SearchService:
 
         service_display = get_service_display_name(service)
         count = 0
+        hidden_skipped = 0  # withdrawn messages are never indexed
         batch: list[Tuple[Any, ...]] = []
 
         # Batch query: get max indexed message_id for all members at once
@@ -2393,6 +2467,9 @@ class SearchService:
                 continue
 
             for msg in data.get("messages", []):
+                if is_hidden_message(msg):
+                    hidden_skipped += 1
+                    continue
                 msg_id = msg.get("id")
                 if msg_id is None:
                     continue
@@ -2457,7 +2534,12 @@ class SearchService:
         )
         conn.commit()
 
-        logger.info("Incremental index update", service=service, new_messages=count)
+        logger.info(
+            "Incremental index update",
+            service=service,
+            new_messages=count,
+            hidden_skipped=hidden_skipped,
+        )
         return count
 
     def _index_blogs_for_service_sync(self, service: str) -> int:
@@ -2959,23 +3041,38 @@ class SearchService:
                 self._building = False
 
     async def index_members(
-        self, members: List[Tuple[Dict, Dict]], service: str
+        self,
+        members: List[Tuple[Dict, Dict]],
+        service: str,
+        *,
+        full_member_scan: Iterable[Tuple[int, int]] = (),
     ) -> int:
-        """Incremental message index in a separate **process** (own GIL)."""
+        """Incremental message index in a separate **process** (own GIL).
+
+        Members whose ``(group_id, member_id)`` is in *full_member_scan* skip
+        the max-message-id watermark and index every message not yet present
+        (for messages merged in below the watermark, e.g. backfill); their
+        rows for messages withdrawn since indexing are removed. Returns the
+        number of messages indexed.
+        """
         loop = asyncio.get_running_loop()
         output_dir = get_output_dir()
         # Serialize member dicts to JSON for cross-process transfer
         members_json = json.dumps([[g, m] for g, m in members])
-        count = await loop.run_in_executor(
+        count, purged = await loop.run_in_executor(
             self._build_executor,
-            _index_members_process,
+            _index_members_process_stats,
             str(self._db_path),
             str(output_dir),
             members_json,
             service,
+            json.dumps([[g, m] for g, m in full_member_scan]),
         )
         logger.info(
-            "Incremental index update (process)", service=service, new_messages=count
+            "Incremental index update (process)",
+            service=service,
+            new_messages=count,
+            hidden_purged=purged,
         )
         # Primary trigger: if a full build has never completed (fresh install),
         # run one now in the background. C1c: not during shutdown (see above).

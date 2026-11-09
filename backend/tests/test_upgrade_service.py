@@ -108,6 +108,45 @@ class TestLaunchInstaller:
             result = launch_installer(installer)
         assert result is False
 
+    def test_launches_silently_with_log_in_logs_dir(self, tmp_path):
+        """Setup gets the silent flags plus /LOG into the app's logs dir, so a
+        failed upgrade (which closes the app with no UI) leaves a log."""
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
+        logs_dir = tmp_path / "ログ"  # non-ASCII path must pass through intact
+        logs_dir.mkdir()
+        with (
+            patch("backend.services.upgrade_service.is_windows", return_value=True),
+            patch(
+                "backend.services.upgrade_service.get_logs_dir", return_value=logs_dir
+            ),
+            patch("backend.services.upgrade_service.subprocess") as mock_subprocess,
+        ):
+            result = launch_installer(installer)
+        assert result is True
+        args = mock_subprocess.Popen.call_args.args[0]
+        assert args == [
+            str(installer),
+            "/SILENT",
+            "/SUPPRESSMSGBOXES",
+            "/NORESTART",
+            f"/LOG={logs_dir / 'installer.log'}",
+        ]
+
+    def test_returns_false_when_popen_fails(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
+        with (
+            patch("backend.services.upgrade_service.is_windows", return_value=True),
+            patch(
+                "backend.services.upgrade_service.get_logs_dir", return_value=tmp_path
+            ),
+            patch("backend.services.upgrade_service.subprocess") as mock_subprocess,
+        ):
+            mock_subprocess.Popen.side_effect = OSError("blocked")
+            result = launch_installer(installer)
+        assert result is False
+
 
 # ── cleanup_upgrade_files ────────────────────────────────────────────
 
@@ -597,3 +636,121 @@ class TestDownloadUrlAllowlist:
         ):
             result = await download_installer(info)
         assert result is None
+
+
+# ── no user paths in logs (PII: the Windows account name) ────────────
+
+_ACCOUNT = "金村美玖"
+
+
+def _user_dir(tmp_path):
+    d = tmp_path / "Users" / _ACCOUNT / "AppData"
+    d.mkdir(parents=True)
+    return d
+
+
+class TestLogsCarryNoUserPaths:
+    def test_launch_success_logs_no_path(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        base = _user_dir(tmp_path)
+        installer = base / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
+        with (
+            patch("backend.services.upgrade_service.is_windows", return_value=True),
+            patch("backend.services.upgrade_service.get_logs_dir", return_value=base),
+            patch("backend.services.upgrade_service.subprocess"),
+            capture_logs() as logs,
+        ):
+            assert launch_installer(installer) is True
+        assert logs and _ACCOUNT not in repr(logs)
+        (launched,) = [
+            e for e in logs if e["event"] == "Installer launched successfully"
+        ]
+        assert launched["log_file"] == "installer.log"
+
+    def test_launch_missing_installer_logs_no_path(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        installer = _user_dir(tmp_path) / "missing.exe"
+        with (
+            patch("backend.services.upgrade_service.is_windows", return_value=True),
+            capture_logs() as logs,
+        ):
+            assert launch_installer(installer) is False
+        assert logs and _ACCOUNT not in repr(logs)
+
+    def test_launch_failure_logs_error_type_not_message(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        base = _user_dir(tmp_path)
+        installer = base / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
+        with (
+            patch("backend.services.upgrade_service.is_windows", return_value=True),
+            patch("backend.services.upgrade_service.get_logs_dir", return_value=base),
+            patch("backend.services.upgrade_service.subprocess") as mock_subprocess,
+            capture_logs() as logs,
+        ):
+            mock_subprocess.Popen.side_effect = OSError(f"blocked {installer}")
+            assert launch_installer(installer) is False
+        assert logs and _ACCOUNT not in repr(logs)
+        assert any(e.get("error_type") == "OSError" for e in logs)
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_download_success_logs_file_name_only(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        base = _user_dir(tmp_path)
+        content = _make_installer_content()
+        info = _make_info(content)
+        respx.get(info.url).respond(
+            200, content=content, headers={"content-length": str(len(content))}
+        )
+        with (
+            patch(
+                "backend.services.upgrade_service.get_app_data_dir", return_value=base
+            ),
+            capture_logs() as logs,
+        ):
+            result = await download_installer(info)
+        assert result is not None
+        assert _ACCOUNT not in repr(logs)
+        (done,) = [e for e in logs if e["event"] == "Installer downloaded"]
+        assert done["file_name"] == "SakaDesk-1.0.0-Setup.exe"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_download_os_error_logs_error_type_not_message(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        base = _user_dir(tmp_path)
+        info = _make_info(_make_installer_content())
+        respx.get(info.url).respond(200, content=b"x")
+        with (
+            patch(
+                "backend.services.upgrade_service.get_app_data_dir", return_value=base
+            ),
+            patch("builtins.open", side_effect=PermissionError(f"denied {base}")),
+            capture_logs() as logs,
+        ):
+            assert await download_installer(info) is None
+        assert logs and _ACCOUNT not in repr(logs)
+        assert any(e.get("error_type") == "PermissionError" for e in logs)
+
+    def test_cleanup_failure_logs_error_type_not_message(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        base = _user_dir(tmp_path)
+        (base / "upgrade").mkdir()
+        with (
+            patch(
+                "backend.services.upgrade_service.get_app_data_dir", return_value=base
+            ),
+            patch("shutil.rmtree", side_effect=PermissionError(f"denied {base}")),
+            capture_logs() as logs,
+        ):
+            cleanup_upgrade_files()
+        assert logs and _ACCOUNT not in repr(logs)
+        assert any(e.get("error_type") == "PermissionError" for e in logs)

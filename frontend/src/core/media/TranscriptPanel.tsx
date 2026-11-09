@@ -3,6 +3,7 @@ import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { type TranscriptionSegment, findActiveSegmentIndex } from '../../hooks/useTranscription';
 import { useCollapseOnOutOfView } from '../../features/messages/hooks/useMessageVisibility';
+import { ACCENT, withAlpha } from '../../design/colorMix';
 
 interface TranscriptPanelProps {
     segments: TranscriptionSegment[];
@@ -47,7 +48,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
     currentTime = 0,
     onSeek,
     onRerun,
-    accentColor = '#6da0d4',
+    accentColor = ACCENT,
     variant = 'dark',
     defaultExpanded = false,
     messageId,
@@ -111,16 +112,18 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
     // No audible speech: show a short static note (not an empty, expandable
     // list). The rerun button stays so the user can retry if they disagree.
     if (noSpeech) {
-        const mutedColor = isLight ? 'rgba(255,255,255,0.5)' : '#9ca3af';
         return (
-            <div className="flex items-center gap-1.5 text-xs py-1" style={{ color: mutedColor }}>
+            <div
+                className={`flex items-center gap-1.5 text-xs py-1${isLight ? '' : ' text-muted'}`}
+                style={isLight ? { color: 'rgba(255,255,255,0.5)' } : undefined}
+            >
                 <span>{t('transcription.transcript')}</span>
                 <span style={{ opacity: 0.85 }}>· {t('transcription.noSpeech')}</span>
                 {onRerun && (
                     <button
                         onClick={onRerun}
-                        className="p-0.5 rounded hover:opacity-70 transition-opacity"
-                        style={{ color: isLight ? 'rgba(255,255,255,0.3)' : '#9ca3af' }}
+                        className={`p-0.5 rounded hover:opacity-70 transition-opacity${isLight ? '' : ' text-muted'}`}
+                        style={isLight ? { color: 'rgba(255,255,255,0.3)' } : undefined}
                         type="button"
                         title={t('transcription.rerun')}
                     >
@@ -147,8 +150,8 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                 {onRerun && (
                     <button
                         onClick={onRerun}
-                        className="p-0.5 rounded hover:opacity-70 transition-opacity"
-                        style={{ color: isLight ? 'rgba(255,255,255,0.3)' : '#9ca3af' }}
+                        className={`p-0.5 rounded hover:opacity-70 transition-opacity${isLight ? '' : ' text-muted'}`}
+                        style={isLight ? { color: 'rgba(255,255,255,0.3)' } : undefined}
                         type="button"
                         title={t('transcription.rerun')}
                     >
@@ -165,7 +168,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                     ref={containerRef}
                     className={`max-h-32 overflow-y-auto text-xs leading-relaxed mt-1${
                         withBackdrop
-                            ? ` rounded-md px-2 py-1.5 backdrop-blur-sm ${isLight ? 'bg-black/40' : 'bg-white/85'}`
+                            ? ` rounded-sm px-2 py-1.5 backdrop-blur-sm ${isLight ? 'bg-black/40' : 'bg-white/85'}`
                             : ''
                     }`}
                     // Mark "user scrolled" only on real input (wheel/touch), not on
@@ -183,7 +186,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                                 ref={isActive ? activeRef : undefined}
                                 className="py-0.5 px-1 rounded cursor-pointer transition-colors"
                                 style={isActive ? {
-                                    background: isLight ? `rgba(255,255,255,0.08)` : `${accentColor}15`,
+                                    background: isLight ? `rgba(255,255,255,0.08)` : withAlpha(accentColor, 8),
                                 } : undefined}
                                 onClick={() => onSeek?.(seg.start)}
                             >
@@ -197,7 +200,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                                 >
                                     {formatTimestamp(seg.start)}
                                 </span>
-                                <span
+                                <span lang="ja"
                                     style={{
                                         color: isActive
                                             ? (isLight ? 'rgba(255,255,255,0.9)' : '#333')

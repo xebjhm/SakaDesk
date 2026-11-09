@@ -29,7 +29,6 @@
     "error": "Error",
     "loading": "Loading...",
     "done": "Done",
-    "refresh": "Refresh",
     "browse": "Browse",
     "download": "Download",
     "dismiss": "Dismiss",
@@ -39,7 +38,15 @@
     "featureRequest": "Feature Request",
     "moreOptions": "More options",
     "removeService": "Remove Service",
-    "on": "ON"
+    "on": "ON",
+    "unreadCount": "{{count}} unread",
+    "retry": "Retry",
+    "confirm": "Confirm",
+    "mediaViewer": "Media viewer",
+    "zoomIn": "Zoom in",
+    "zoomOut": "Zoom out",
+    "zoomFit": "Fit to screen",
+    "debug": "Debug"
   },
   "settings": {
     "title": "Settings",
@@ -47,6 +54,7 @@
     "tabSync": "Sync",
     "tabAi": "AI",
     "tabUpdates": "Updates",
+    "sections": "Settings sections",
     "outputFolder": "Output Folder",
     "autoSync": "Auto-Sync",
     "syncEvery": "Sync every",
@@ -84,6 +92,18 @@
     "syncSmart": "Smart Timing",
     "syncReadToPhone": "Sync read status to phone",
     "syncReadToPhoneDesc": "Opening a chat here also clears its unread count (the red dot) in the official app, just like opening it there. Off by default.",
+    "incomingCall": "Incoming calls",
+    "incomingCallDesc": "When you open a member's chat with an unheard voice message, play the newest one as an incoming call",
+    "callPopup": "Background call popup",
+    "callPopupDesc": "When SakaDesk is in the background and a member sends a voice message, it rings in a small window at the bottom right",
+    "closeToTray": "Keep running in the tray when closed",
+    "closeToTrayDesc": "Closing the window keeps SakaDesk syncing in the background",
+    "autostart": "Start with Windows",
+    "autostartDesc": "Starts hidden in the tray when you sign in",
+    "notifications": "Notifications",
+    "notificationsDesc": "Show a Windows notification when members send new messages",
+    "notificationsHideContent": "Hide message content in notifications",
+    "notificationsHideContentDesc": "Notifications only say a member sent a new message",
     "serviceSettings": "Service Settings",
     "syncCurrentOff": "Currently: Manual sync only",
     "syncCurrentFixed": "Currently: Every {{minutes}} minutes",
@@ -98,11 +118,19 @@
     "aiProvider": "AI Provider",
     "resetDefaults": "Reset to defaults",
     "resetConfirm": "Reset settings to defaults? Your data folder, saved API key, and language are kept.",
+    "saveFailed": "Couldn't save this setting. Try again.",
     "transcriptionCpuDesc": "Works on all machines, slower",
     "transcriptionGpuDesc": "Requires NVIDIA GPU with CUDA, much faster",
     "transcriptionGpuTesting": "Testing GPU...",
     "transcriptionGpuSuccess": "GPU is available and working",
     "transcriptionGpuFailed": "GPU test failed"
+  },
+  "call": {
+    "incoming": "Incoming call…",
+    "ended": "Call ended",
+    "answer": "Answer",
+    "decline": "Decline",
+    "hangUp": "Hang up"
   },
   "time": {
     "minute": "{{count}} minute",
@@ -134,10 +162,7 @@
     "sessionExpiredDesc": "Your session for {{service}} has expired. Please re-login to continue using {{feature}}.",
     "premiumFeatureDesc": "{{feature}} is a premium feature that requires logging in with your {{service}} account.",
     "credentialsSaved": "Your credentials will be securely stored on your device.",
-    "waitingForBrowser": "Waiting for browser...",
-    "launchBrowserLogin": "Launch Browser Login",
     "connectAccount": "Connect Account",
-    "browserPrompt": "Please log in to your {{service}} Message account. A browser window will open for you to enter your credentials.",
     "loginFailed": "Login failed or cancelled",
     "yodelJpOnlyTitle": "Yodel is available in Japan only",
     "yodelJpOnlyMessage": "Yodel's service is offered only within Japan, so it can't be reached from where you are now. To log in, please connect to the internet from Japan, then try again.",
@@ -160,6 +185,7 @@
     "articleIpTitle": "Article 3 (Intellectual Property Rights)",
     "articleProhibitedTitle": "Article 8 (Prohibited Activities)",
     "acceptCheckbox": "I understand and accept these terms, and I have read the official Terms of Service for the services I use.",
+    "acceptRequired": "Tick the box above to continue",
     "acceptAndContinue": "Accept and Continue"
   },
   "setup": {
@@ -168,6 +194,7 @@
     "outputFolderPath": "Output Folder Path",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "Enter the full path where messages will be stored. You can copy this from Windows Explorer.",
+    "folderRequired": "Enter or choose a folder first",
     "downloadBlogsOffline": "Download blogs for search",
     "downloadBlogsHint": "Downloads all blog posts to enable full-text search. Uses approximately 5–15 GB per service.",
     "startUsing": "Start Using SakaDesk"
@@ -176,6 +203,7 @@
     "phase": "Phase {{number}}: {{name}}",
     "starting": "Starting",
     "phaseScanning": "Scanning Groups",
+    "scanningHistory": "First-time full scan of chat history…",
     "phaseDiscovering": "Discovering",
     "phaseSyncing": "Collecting Metadata",
     "phaseDownloading": "Downloading Media",
@@ -204,7 +232,11 @@
     "unknownError": "Unknown error",
     "sessionExpired": "Authentication session has expired. Please log in again to continue using the service.",
     "refreshFailed": "Authentication failed unexpectedly. Please log in again to continue using the service. If this persists, please report this issue.",
-    "cancelled": "Sync cancelled"
+    "cancelled": "Sync cancelled",
+    "progress": "Sync progress",
+    "stepDone": "Done",
+    "stepCurrent": "Current step",
+    "stepPending": "Pending"
   },
   "about": {
     "title": "About",
@@ -212,6 +244,7 @@
     "identity": "Unofficial Sakamichi Utility",
     "features": "Message • Blog • Archive",
     "madeWith": "Made with",
+    "madeWithLove": "Made with love",
     "by": "by",
     "goldenFingerEnabled": "Download button enabled ✨",
     "goldenFingerDisabled": "Download button disabled",
@@ -257,6 +290,8 @@
     "title": "Talk",
     "loadingConversations": "Loading conversations...",
     "noConversations": "No conversations found.",
+    "loadFailedTitle": "Could not load conversations",
+    "loadFailedBody": "Your saved messages are safe. Try again in a moment.",
     "online": "Online",
     "offline": "Offline",
     "graduated": "Graduated",
@@ -270,11 +305,13 @@
     "favorites": "Favorites",
     "media": "Media",
     "background": "Background",
-    "sentLetters": "Sent Letters"
+    "sentLetters": "Sent Letters",
+    "sentLettersGroupChat": "Group chats have no sent letters"
   },
   "messageList": {
     "noMessages": "No messages",
     "jumpToOldestUnread": "Jump to oldest unread",
+    "messageActions": "Message actions",
     "welcomeTitle": "Welcome to SakaDesk",
     "welcomeSubtitle": "Select a conversation from the sidebar to start.",
     "loadingMessages": "Loading messages...",
@@ -285,13 +322,27 @@
     "revealAllDescription": "This will mark all {{count}} unread messages as read.",
     "confirm": "Confirm",
     "noContent": "(No content)",
-    "attachment": "Attachment"
+    "attachment": "Attachment",
+    "openCalendar": "Jump to a date",
+    "openConversations": "Show conversations"
   },
   "calendar": {
+    "loadFailed": "Could not load the dates",
+    "prevMonth": "Previous month",
+    "nextMonth": "Next month",
     "title": "Date Search",
     "today": "Today",
     "availableOnDays": "Available on {{count}} days",
+    "itemCount": "{{count}} item",
+    "itemCount_other": "{{count}} items",
     "tapToJump": "Tap a date to jump",
+    "monthYear": "{{month}} {{year}}",
+    "pickMonth": "Choose year and month",
+    "backToDays": "Back to the days",
+    "yearList": "Year",
+    "monthGrid": "Month",
+    "yearValue": "{{year}}",
+    "noMessages": "No messages",
     "weekdays": {
       "sun": "Sun",
       "mon": "Mon",
@@ -336,6 +387,12 @@
     "imageTooLarge": "Image too large. Please choose an image under 2MB.",
     "selectImageFile": "Please select an image file."
   },
+  "contentArea": {
+    "comingSoon": "Coming soon"
+  },
+  "featureRail": {
+    "label": "Features"
+  },
   "features": {
     "messages": "Messages",
     "blogs": "Blogs",
@@ -353,10 +410,13 @@
     "selectService": "Select a service to get started"
   },
   "serviceRail": {
+    "label": "Groups",
     "sessionExpiredRelogin": "Session expired - click to re-login",
     "addService": "Add Service"
   },
   "search": {
+    "memberCount": "{{count}} member",
+    "memberCount_other": "{{count}} members",
     "placeholder": "Search messages and blogs...",
     "placeholderMessages": "Search messages...",
     "placeholderBlogs": "Search blogs...",
@@ -366,9 +426,10 @@
     "resultCountPartial": "{{shown}} of {{total}} results",
     "loadMore": "Load more results",
     "pressEnterToSelect": "Press Enter to select",
-    "errorSearchFailed": "Search failed. Please try again.",
-    "building": "Building search index...",
+    "searchFailed": "Search failed. Try again.",
+    "title": "Search",
     "filters": "Filters",
+    "removeFilter": "Remove filter: {{name}}",
     "exactMatchOnly": "Exact match only",
     "includeUnread": "Include unread",
     "filterByMember": "Filter by member or service...",
@@ -410,17 +471,17 @@
       "photos": "{{count}} photos",
       "videos": "{{count}} videos",
       "voice": "{{count}} voice messages"
-    }
+    },
+    "typeTabs": "Media type"
   },
   "sentLetters": {
     "title": "Sent Letters",
     "noLetters": "No letters sent yet",
     "noTextContent": "No text content",
     "noContent": "No content",
-    "tapToClose": "Tap anywhere to close",
-    "noGroupId": "No group ID available",
-    "noService": "No active service",
-    "fetchFailed": "Failed to load letters"
+    "loading": "Loading letters…",
+    "unavailable": "Letters are unavailable right now",
+    "letterSent": "Letter sent {{date}}"
   },
   "blogs": {
     "latestBlogs": "Latest Blogs",
@@ -435,7 +496,6 @@
     "addMembersHint": "Add members to favorites to see their posts here",
     "selectServiceHint": "Select a service and sync to load blogs",
     "noMembersFound": "No members found",
-    "tapOutsideToClose": "Tap outside to close",
     "publishedRecently": "Published within 24 hours",
     "cached": "Cached",
     "mascot": "Mascot",
@@ -445,18 +505,30 @@
     "post_other": "{{count}} posts",
     "syncingBlogs": "Syncing blogs...",
     "firstSyncHint": "This may take a moment for the first time",
-    "selectService": "Please select a service"
+    "selectService": "Please select a service",
+    "back": "Back to latest blogs",
+    "postsFrom": "Show posts from",
+    "feedLoadFailed": "Blog posts could not be loaded",
+    "postLoadFailed": "This post could not be loaded",
+    "loadingPost": "Loading post...",
+    "olderPost": "Older post",
+    "newerPost": "Newer post",
+    "postNavigation": "Post navigation",
+    "addFavorite": "Add {{name}} to favorites",
+    "removeFavorite": "Remove {{name}} from favorites"
   },
   "voicePlayer": {
     "speed": "Speed",
     "skipBack": "Back 5 seconds (←)",
     "skipForward": "Forward 5 seconds (→)",
     "mute": "Mute (M)",
-    "unmute": "Unmute (M)"
+    "unmute": "Unmute (M)",
+    "playbackError": "This voice message couldn't be played."
   },
   "videoPlayer": {
     "noAudio": "No audio",
-    "loop": "Loop"
+    "loop": "Loop",
+    "playbackError": "This video couldn't be played."
   },
   "generations": {
     "1st": "1ST GEN",
@@ -520,7 +592,10 @@
       "clearApiKey": "Clear API key",
       "clearApiKeyConfirm": "Remove the saved API key from this device?",
       "cacheClearedMsg": "Translation cache cleared",
+      "cacheClearFailed": "Couldn't clear the translation cache. Try again.",
       "savedSecurely": "Saved securely in credential manager",
+      "saveFailed": "Couldn't save the AI settings. Try again.",
+      "clearApiKeyFailed": "Couldn't remove the API key. Try again.",
       "keyMissing": "No API key stored — translation won't work. Enter your key above."
     },
     "error": {
@@ -533,5 +608,131 @@
       "geminiPaid": "Paid tier — about US$0.01 per 100 translations. Your data isn't used for training.",
       "openai": "API data not used for training"
     }
+  },
+  "profileImages": {
+    "thumbnailGroup": "List icon",
+    "thumbnailGroupHint": "Icon shown in the conversation list",
+    "thumbnail": "Chat icon",
+    "thumbnailHint": "Avatar shown next to messages in the chat",
+    "phoneImage": "Call screen",
+    "phoneImageHint": "Photo shown when the member calls",
+    "viewImages": "View images",
+    "current": "Now",
+    "versions": "{{count}} versions",
+    "kinds": "Image type"
+  },
+  "date": {
+    "today": "Today",
+    "yesterday": "Yesterday"
+  },
+  "designPage": {
+    "title": "Design system",
+    "subtitle": "Tokens and primitives for every SakaDesk screen. Dev builds only.",
+    "group": "Group",
+    "colors": "Colors",
+    "neutral": "Neutral roles",
+    "groupColors": "Group colors",
+    "contrast": "White text {{ratio}}:1",
+    "contrastNA": "Not a solid color",
+    "radius": "Radius",
+    "shadow": "Shadow",
+    "type": "Type",
+    "sample": "日向坂 SakaDesk あいう 🌸 123",
+    "motion": "Motion",
+    "animate": "Play",
+    "replay": "Replay",
+    "landing": "Landing highlight",
+    "primitives": "Primitives",
+    "surfaces": "Levels",
+    "pills": "Pills",
+    "filterAll": "All",
+    "filterUnread": "Unread",
+    "badges": "Badges",
+    "avatars": "Avatars",
+    "datePills": "Date pills",
+    "buttons": "Buttons",
+    "primary": "Primary",
+    "secondary": "Secondary",
+    "ghost": "Ghost",
+    "disabled": "Disabled",
+    "close": "Close",
+    "rail": "Feature rail",
+    "modal": "Modal",
+    "openModal": "Open modal",
+    "modalTitle": "Sample modal",
+    "modalBody": "A modal is a sheet: 20px corners, large soft shadow.",
+    "rules": "Rules",
+    "do": "Do",
+    "dont": "Don't",
+    "do1": "Separate blocks with spacing and levels.",
+    "dont1": "Draw straight divider lines.",
+    "do2": "Use token classes such as rounded-card and text-body.",
+    "dont2": "Hard-code #hex colors or arbitrary values such as rounded-[10px].",
+    "do3": "Use group color only through the official layer and the roles in the Colour system table; never hard-code it. At most one primary button per screen.",
+    "dont3": "Hard-code a group color, or color any other element with it.",
+    "levelsSample": "Canvas › Sheet › Card",
+    "search": "Search",
+    "scale": "Scale",
+    "logoStep": "Logo color",
+    "railLogo": "Selected group logo (rail)",
+    "roles": "Roles",
+    "roleName": "Role",
+    "roleStep": "Step",
+    "danger": "Danger",
+    "accent": "Accent",
+    "overlay": "Overlay",
+    "forms": "Form controls",
+    "switchSample": "Sample switch",
+    "inputSample": "Sample input",
+    "selectSample": "Sample select",
+    "menu": "Menu",
+    "menuItem": "Menu item",
+    "menuSelected": "Selected item",
+    "menuOpen": "Open menu",
+    "context": "Context",
+    "contextBrand": "SakaDesk brand",
+    "brand": "Brand",
+    "semantic": "Semantic colours",
+    "tiers": "Expression tiers",
+    "tierQuiet": "L0 quiet",
+    "tierInteractive": "L1 interactive",
+    "tierAtmosphere": "L2 atmosphere",
+    "moments": "Brand moments",
+    "sampleEmptyTitle": "No favourites yet",
+    "sampleEmptyBody": "Right-click a message and choose Add to favourites.",
+    "sampleToastTitle": "Sync complete",
+    "sampleToastBody": "12,846 messages saved",
+    "sampleMilestone": "days since you subscribed",
+    "sampleDisabledReason": "Choose a group first",
+    "displaySample": "Keep every message"
+  },
+  "letters": {
+    "openImage": "Open letter",
+    "you": "You",
+    "openImageAt": "Open letter sent {{date}}"
+  },
+  "letterViewer": {
+    "title": "Sent letter",
+    "older": "Older letter",
+    "newer": "Newer letter",
+    "jumpToLetter": "Jump to letter in chat",
+    "jumpToLetterAt": "Show letter sent {{date}} in the chat",
+    "imageMissing": "Letter image unavailable",
+    "openImage": "View the letter image larger",
+    "fullText": "Letter text"
+  },
+  "celebration": {
+    "firstSyncTitle": "Your archive is ready",
+    "firstSyncBody": "{{value}} message saved",
+    "firstSyncBody_other": "{{value}} messages saved",
+    "milestoneMessages": "messages in this chat",
+    "milestoneDays": "days subscribed",
+    "milestoneYears": "year subscribed",
+    "milestoneYears_other": "years subscribed"
+  },
+  "diagnostics": {
+    "diskUsageComputedAt": "Calculated {{time}}",
+    "diskUsageCalculating": "Calculating…",
+    "diskUsageFailed": "Couldn't calculate"
   }
 }

@@ -1,0 +1,142 @@
+/**
+ * Shared fetch wrapper for periodic `/api/` polls.
+ *
+ * - `cache: 'no-store'`: concurrent requests to one cacheable URL queue behind
+ *   the in-flight one in Chromium's HTTP cache lock (up to ~20 s).
+ * - Never overlaps: a call whose `key` still has a request pending is skipped
+ *   (not queued) unless it passes `replace`. Skips are counted and reported with
+ *   the key's next completion.
+ * - Aborts after `timeoutMs` and logs `poll_timeout`; an abort caused by the
+ *   caller's `signal` (unmount) resolves `aborted` and logs nothing. The key is
+ *   freed synchronously so a remount (StrictMode) or `replace` starts at once.
+ *
+ * The result is a value, never a throw, so callers decide what each outcome
+ * means for their own state.
+ *
+ * @module pollJson
+ */
+
+import { useCallback, useEffect, useRef } from 'react';
+import { clientLog } from './clientLog';
+import { breadcrumbCode } from './breadcrumbCode';
+
+/** Default abort timeout: right for small progress polls (sync status, call state). */
+export const POLL_TIMEOUT_MS = 4000;
+
+/**
+ * Timeout for the sidebar's `/api/content/groups` and `/unread_counts` polls. The
+ * first scan of a large archive parses every `messages.json` (plus antivirus
+ * time on Windows) and can outlast the generic timeout. Skip-while-pending
+ * already prevents a pile-up, so a longer cut-off costs nothing; the short one
+ * only matters for progress polls.
+ */
+export const SIDEBAR_POLL_TIMEOUT_MS = 15000;
+
+export type PollResult<T> =
+    | { status: 'ok'; data: T }
+    | { status: 'skipped' | 'timeout' | 'aborted' }
+    | { status: 'rejected'; httpStatus: number }
+    | { status: 'failed'; error: unknown };
+
+export interface PollOptions {
+    timeoutMs?: number;
+    /** Aborted by the caller on unmount: resolves `aborted`, no breadcrumb. */
+    signal?: AbortSignal;
+    /** Extra fetch options (method, headers, body). `cache` and `signal` are fixed. */
+    init?: Omit<RequestInit, 'cache' | 'signal'>;
+    /**
+     * Latest wins: abort the request still pending for this key and start a new
+     * one. The superseded caller resolves `aborted` (no breadcrumb). Use for
+     * event-driven loads; interval ticks keep the default skip-while-pending.
+     */
+    replace?: boolean;
+}
+
+interface Inflight {
+    controller: AbortController;
+    /** Aborted by the caller's signal or superseded by a `replace` call: not a timeout, not a failure. */
+    cancelled: boolean;
+}
+
+const inflight = new Map<string, Inflight>();
+const skippedCount = new Map<string, number>();
+
+/** Breadcrumb field values must match [a-z0-9_]{1,40}. */
+export function pollLogKey(key: string): string {
+    return key.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40);
+}
+
+function reportSkips(key: string): void {
+    const count = skippedCount.get(key);
+    if (!count) return;
+    skippedCount.delete(key);
+    clientLog('poll_skipped', { key: pollLogKey(key), count });
+}
+
+/** Abort a request and free its key at once (not when the rejection arrives). */
+function cancel(key: string, entry: Inflight): void {
+    entry.cancelled = true;
+    entry.controller.abort();
+    if (inflight.get(key) === entry) inflight.delete(key);
+}
+
+export async function pollJson<T>(key: string, url: string, options: PollOptions = {}): Promise<PollResult<T>> {
+    const { timeoutMs = POLL_TIMEOUT_MS, signal, init, replace = false } = options;
+    if (signal?.aborted) return { status: 'aborted' };
+    const current = inflight.get(key);
+    if (current) {
+        if (!replace) {
+            skippedCount.set(key, (skippedCount.get(key) ?? 0) + 1);
+            return { status: 'skipped' };
+        }
+        cancel(key, current); // latest wins: the superseded caller resolves `aborted`
+    }
+
+    const entry: Inflight = { controller: new AbortController(), cancelled: false };
+    inflight.set(key, entry);
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; entry.controller.abort(); }, timeoutMs);
+    const onCallerAbort = () => cancel(key, entry);
+    signal?.addEventListener('abort', onCallerAbort);
+
+    try {
+        const res = await fetch(url, { ...init, cache: 'no-store', signal: entry.controller.signal });
+        if (entry.cancelled) return { status: 'aborted' };
+        if (!res.ok) {
+            clientLog('poll_failed', { key: pollLogKey(key), error_code: res.status });
+            return { status: 'rejected', httpStatus: res.status };
+        }
+        const data = (await res.json()) as T;
+        if (entry.cancelled) return { status: 'aborted' };
+        return { status: 'ok', data };
+    } catch (error) {
+        if (entry.cancelled) return { status: 'aborted' };
+        if (timedOut) {
+            clientLog('poll_timeout', { key: pollLogKey(key), timeout_ms: timeoutMs });
+            return { status: 'timeout' };
+        }
+        clientLog('poll_failed', { key: pollLogKey(key), error_type: breadcrumbCode(error) });
+        return { status: 'failed', error };
+    } finally {
+        clearTimeout(timer);
+        signal?.removeEventListener('abort', onCallerAbort);
+        if (inflight.get(key) === entry) inflight.delete(key);
+        reportSkips(key);
+    }
+}
+
+/**
+ * Returns a getter for an AbortSignal that aborts when the component unmounts.
+ * (Re-armed on re-mount so React StrictMode's mount/unmount/mount works.)
+ */
+export function useUnmountSignal(): () => AbortSignal {
+    const ref = useRef<AbortController | null>(null);
+    useEffect(() => {
+        if (!ref.current || ref.current.signal.aborted) ref.current = new AbortController();
+        return () => { ref.current?.abort(); };
+    }, []);
+    return useCallback(() => {
+        if (!ref.current) ref.current = new AbortController();
+        return ref.current.signal;
+    }, []);
+}

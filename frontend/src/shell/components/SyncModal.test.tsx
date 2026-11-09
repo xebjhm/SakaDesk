@@ -31,8 +31,8 @@ const baseProgress: SyncProgress = {
 
 describe('SyncModal', () => {
     it('renders without crashing', () => {
-        const { container } = render(<SyncModal syncProgress={baseProgress} />);
-        expect(container.querySelector('.fixed')).toBeInTheDocument();
+        render(<SyncModal syncProgress={baseProgress} />);
+        expect(screen.getByRole('dialog')).toBeInTheDocument();
     });
 
     it('shows progress fraction', () => {
@@ -127,6 +127,7 @@ describe('SyncModal', () => {
                     currentService: 'hinatazaka46',
                     currentIndex: 0,
                     total: 2,
+                    services: ['hinatazaka46', 'sakurazaka46'],
                 }}
             />,
         );
@@ -144,6 +145,7 @@ describe('SyncModal', () => {
                     currentService: 'hinatazaka46',
                     currentIndex: 0,
                     total: 1,
+                    services: ['hinatazaka46'],
                 }}
             />,
         );
@@ -180,8 +182,9 @@ describe('SyncModal', () => {
 
     it('shows speed', () => {
         render(<SyncModal syncProgress={baseProgress} />);
-        // speed=2.5, unit="groups" => "2.50 groups/s"
-        expect(screen.getByText('2.50 groups/s')).toBeInTheDocument();
+        // speed=2.5, unit="groups" => the tile stacks "2.50" over "groups/s"
+        expect(screen.getByText('2.50')).toBeInTheDocument();
+        expect(screen.getByText('groups/s')).toBeInTheDocument();
     });
 
     it('shows fallback ETA when eta_seconds is null', () => {

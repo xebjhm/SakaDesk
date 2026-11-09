@@ -1,27 +1,23 @@
 // frontend/src/core/layout/FeatureRail.tsx
 import React, { useState } from 'react';
-import { cn } from '../../utils/classnames';
 import { useAppStore, FeatureId } from '../../store/appStore';
 import { getAvailableFeatures, isFeaturePaid } from '../../config/features';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { LoginModal } from '../../shell/components/LoginModal';
-import { getServicePrimaryColor } from '../../data/services';
+import { RailItem } from '../../design/primitives';
+import { useTranslation } from '../../i18n';
 
 export interface FeatureRailProps {
     service: string;
 }
 
 /**
- * Convert hex color to rgba with opacity for light tints
+ * Feature rail (D-5): icon-only entries (label in a hover tooltip) on the group canvas, in the same level-0 block as
+ * the feature's sidebar. The selected entry is a white card (RailItem) with the group accent on
+ * its icon and left bar (the pre-D2 colour cues).
  */
-function hexToRgba(hex: string, alpha: number): string {
-    const r = parseInt(hex.slice(1, 3), 16);
-    const g = parseInt(hex.slice(3, 5), 16);
-    const b = parseInt(hex.slice(5, 7), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-}
-
 export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
+    const { t } = useTranslation();
     const { getActiveFeature, setActiveFeature, getFeatureOrder, triggerBlogViewReset } = useAppStore();
     const { isServiceConnected, checkAuth, isServiceDisconnected } = useAuth();
     const [loginModal, setLoginModal] = useState<{ featureId: FeatureId } | null>(null);
@@ -29,7 +25,6 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
     const activeFeature = getActiveFeature(service);
     const featureOrder = getFeatureOrder(service);
     const availableFeatures = getAvailableFeatures(service);
-    const primaryColor = getServicePrimaryColor(service);
 
     // Sort available features by user preference
     const sortedFeatures = [...availableFeatures].sort((a, b) => {
@@ -69,41 +64,20 @@ export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
 
     return (
         <>
-            <div className="w-12 bg-white h-full flex flex-col items-center py-3 gap-1 shrink-0 border-r border-gray-100">
+            <nav aria-label={t('featureRail.label')} className="flex w-12 shrink-0 flex-col items-center gap-1 py-3">
                 {sortedFeatures.map(feature => {
-                    const isActive = activeFeature === feature.id;
                     const Icon = feature.icon;
-
                     return (
-                        <button
+                        <RailItem
                             key={feature.id}
+                            icon={<Icon className="h-5 w-5" />}
+                            label={t(feature.labelKey)}
+                            selected={activeFeature === feature.id}
                             onClick={() => handleFeatureClick(feature.id)}
-                            className={cn(
-                                "group relative w-10 h-10 rounded-lg flex items-center justify-center transition-all",
-                                isActive
-                                    ? ""
-                                    : "text-gray-500 hover:text-gray-700 hover:bg-gray-100"
-                            )}
-                            style={isActive ? {
-                                backgroundColor: hexToRgba(primaryColor, 0.2),
-                                color: primaryColor,
-                            } : undefined}
-                            title={feature.label}
-                        >
-                            {/* Active indicator - colored bar */}
-                            {isActive && (
-                                <div
-                                    className="absolute left-0 top-1/2 -translate-y-1/2 w-0.5 h-5 rounded-r-full"
-                                    style={{ backgroundColor: primaryColor }}
-                                />
-                            )}
-
-                            <Icon className="w-5 h-5" />
-                        </button>
+                        />
                     );
                 })}
-
-            </div>
+            </nav>
 
             {/* Login Modal for paid features */}
             {loginModal && (

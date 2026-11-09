@@ -20,6 +20,18 @@ describe('cn utility function', () => {
     expect(cn('text-red-500', 'text-blue-500')).toBe('text-blue-500')
   })
 
+  it('keeps group gradient (bg-image) classes alongside bg colours', () => {
+    expect(cn('bg-group-canvas', 'bg-sheet')).toBe('bg-group-canvas bg-sheet')
+    expect(cn('bg-group-canvas', 'bg-group-title-bar')).toBe('bg-group-title-bar')
+  })
+
+  it('still merges standard and token classes within a group', () => {
+    expect(cn('text-red-500', 'text-blue-500')).toBe('text-blue-500')
+    expect(cn('text-lg', 'text-sm')).toBe('text-sm')
+    expect(cn('shadow-card', 'shadow-group-glow')).toBe('shadow-group-glow')
+    expect(cn('ease-standard', 'ease-in')).toBe('ease-in')
+  })
+
   it('should handle arrays of classes', () => {
     expect(cn(['foo', 'bar'], 'baz')).toBe('foo bar baz')
   })
@@ -137,5 +149,67 @@ describe('formatDownloadFilename', () => {
   it('should decode URL-encoded Japanese characters', () => {
     expect(formatDownloadFilename('https://example.com/media/%E5%86%99%E7%9C%9F.png'))
       .toBe('\u5199\u771f.png')
+  })
+})
+
+describe('cn with design-system classes', () => {
+    it('keeps a token text size and a token text colour together', () => {
+        expect(cn('text-body', 'text-primary')).toBe('text-body text-primary');
+    });
+    it('lets a later token text size win', () => {
+        expect(cn('text-body', 'text-title')).toBe('text-title');
+    });
+    it('lets a later token text colour win', () => {
+        expect(cn('text-primary', 'text-muted')).toBe('text-muted');
+    });
+    it('merges token radius and shadow steps', () => {
+        expect(cn('rounded-card', 'rounded-sheet')).toBe('rounded-sheet');
+        expect(cn('shadow-card', 'shadow-sheet')).toBe('shadow-sheet');
+    });
+    it('merges token durations', () => {
+        expect(cn('duration-fast', 'duration-base')).toBe('duration-base');
+    });
+    it('treats the group role utilities as colours of their property', () => {
+        expect(cn('text-group-strong', 'text-primary')).toBe('text-primary');
+        expect(cn('text-body', 'text-group-strong')).toBe('text-body text-group-strong');
+        expect(cn('bg-group-subtle', 'bg-sheet')).toBe('bg-sheet');
+    });
+});
+
+describe('cn with v2 token utilities', () => {
+  it('keeps font size and token text colour', () => {
+    expect(cn('text-display', 'text-accent-strong')).toBe('text-display text-accent-strong')
+    expect(cn('text-body', 'text-accent-tonal')).toBe('text-body text-accent-tonal')
+  })
+
+  it('keeps bg image and bg colour', () => {
+    expect(cn('bg-accent-gradient', 'bg-accent-subtle')).toBe('bg-accent-gradient bg-accent-subtle')
+  })
+
+  it('merges accent glow with other box shadows', () => {
+    expect(cn('shadow-accent-glow', 'shadow-pill')).toBe('shadow-pill')
+  })
+
+  it('merges accent halo with other box shadows', () => {
+    expect(cn('shadow-accent-halo', 'shadow-card')).toBe('shadow-card')
+  })
+
+  it('keeps font family and font size', () => {
+    expect(cn('font-display', 'text-display')).toBe('font-display text-display')
+  })
+
+  it('merges rounded aliases with the standard scale', () => {
+    expect(cn('rounded-md', 'rounded-pill')).toBe('rounded-pill')
+  })
+
+  it('handles numeric brightness and scale tokens', () => {
+    expect(cn('brightness-94', 'brightness-106')).toBe('brightness-106')
+    expect(cn('scale-97', 'scale-100')).toBe('scale-100')
+    expect(cn('brightness-94', 'scale-97')).toBe('brightness-94 scale-97')
+  })
+
+  it('keeps border/ring accent colours distinct from widths', () => {
+    expect(cn('border-2', 'border-accent')).toBe('border-2 border-accent')
+    expect(cn('ring-2', 'ring-accent')).toBe('ring-2 ring-accent')
   })
 })

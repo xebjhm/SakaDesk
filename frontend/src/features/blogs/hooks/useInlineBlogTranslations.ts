@@ -1,5 +1,9 @@
 import { useEffect, type RefObject } from 'react';
 
+/** Classes of an injected translation line (design tokens; Tailwind sees them in this file). */
+export const TRANSLATION_LINE_CLASS =
+    'blog-translation-inline inline-block border-l-2 border-strong pl-3 text-body italic text-secondary';
+
 /**
  * Inject blog translations into the rendered post DOM — immersive style.
  * Walks the <p> child nodes, finds the same <br>-run boundaries used during
@@ -33,20 +37,11 @@ export function useInlineBlogTranslations(
         let lastContentNode: ChildNode | null = null;
 
         const injectTranslation = (afterNode: ChildNode, text: string) => {
-            // Insert: <br><span class="blog-translation-inline" style="D">text</span>
+            // Insert: <br><span class="blog-translation-inline …">text</span>
             const br = document.createElement('br');
             br.className = 'blog-translation-inline';
             const span = document.createElement('span');
-            span.className = 'blog-translation-inline';
-            span.style.cssText = `
-                color: #555;
-                font-style: italic;
-                font-size: 14px;
-                line-height: 1.65;
-                padding-left: 12px;
-                border-left: 1.5px solid #d1d5db;
-                display: inline-block;
-            `;
+            span.className = TRANSLATION_LINE_CLASS;
             span.textContent = text;
             const ref = afterNode.nextSibling;
             root.insertBefore(br, ref);

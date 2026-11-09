@@ -54,6 +54,7 @@ from fastapi.responses import FileResponse  # noqa: E402
 from starlette.middleware.trustedhost import TrustedHostMiddleware  # noqa: E402
 from backend.api import (  # noqa: E402
     auth,
+    account,
     content,
     sync,
     settings,
@@ -64,13 +65,18 @@ from backend.api import (  # noqa: E402
     notifications,
     favorites,
     chat_features,
+    client_log,
+    ui_state,
+    call_popup,
     blogs,
     search,
     read_states,
     transcription,
     translation,
     app_state as app_state_api,
+    archive,
 )
+from backend.api_no_store import ApiNoStoreMiddleware  # noqa: E402
 from backend.services import app_state  # noqa: E402
 from backend.services.data_lock import DataDirLock  # noqa: E402
 from backend.services.platform import get_app_data_dir  # noqa: E402
@@ -144,6 +150,40 @@ async def lifespan(app: FastAPI):
 
     cleanup_upgrade_files()
 
+    # Let desktop threads (the tray) schedule coroutines on this loop.
+    from backend.services import desktop_bridge
+
+    desktop_bridge.set_server_loop(asyncio.get_running_loop())
+
+    # Windows only: finish closing sockets the browser reset (aborted media
+    # downloads) instead of leaving them half-open. Keeps the Proactor loop,
+    # which login's Playwright subprocess needs. See proactor_resets.
+    # Best effort: a failure here must never stop the server from starting.
+    from backend.services import proactor_resets
+
+    try:
+        proactor_resets.install_proactor_reset_guard()
+    except Exception as exc:
+        logger.warning("proactor_reset_guard_failed", error_type=type(exc).__name__)
+
+    # Windows only: a browser that resets a connection before it is accepted
+    # must not make CPython close the listening socket (the backend would stop
+    # accepting for good). Same best-effort rule as above.
+    try:
+        proactor_resets.install_proactor_accept_guard()
+    except Exception as exc:
+        logger.warning("proactor_accept_guard_failed", error_type=type(exc).__name__)
+
+    # Windows only: the re-armed resets above would each still log CPython's
+    # "Task exception was never retrieved" at ERROR; downgrade exactly that
+    # report to a debug breadcrumb. Same best-effort rule as above.
+    try:
+        proactor_resets.install_accept_reset_log_filter(asyncio.get_running_loop())
+    except Exception as exc:
+        logger.warning(
+            "proactor_accept_log_filter_failed", error_type=type(exc).__name__
+        )
+
     # Port-independent app state (SQLite) must exist before any reader/writer
     # touches it.
     app_state.init_db()
@@ -196,6 +236,22 @@ async def lifespan(app: FastAPI):
         asyncio.to_thread(warm_key_status_cache), name="warm_key_status_cache"
     )
 
+    # Background auto-sync (one task per service). Started last so everything it
+    # relies on exists; skipped under pytest / E2E test mode (see
+    # scheduler_allowed_in_env) so TestClient(app) never spawns real syncs.
+    from backend.services.auto_sync_scheduler import (
+        AutoSyncScheduler,
+        scheduler_allowed_in_env,
+    )
+    from backend.services.service_utils import get_all_services
+
+    auto_sync_scheduler: AutoSyncScheduler | None = None
+    if scheduler_allowed_in_env():
+        auto_sync_scheduler = AutoSyncScheduler(get_all_services())
+        auto_sync_scheduler.start()
+    else:
+        logger.info("auto_sync_scheduler_skipped", reason="env")
+
     yield
 
     # --- Shutdown ---
@@ -208,6 +264,13 @@ async def lifespan(app: FastAPI):
     # existed at the moment it runs.
     begin_shutdown()
 
+    # Desktop threads must stop scheduling onto this loop, and a waiting
+    # debounced tray refresh must not outlive it.
+    from backend.services.tray_tooltip import cancel_pending
+
+    desktop_bridge.set_server_loop(None)
+    await cancel_pending()
+
     # Cancel the deferred blog backup if it's still pending
     if not background_task.done():
         background_task.cancel()
@@ -215,6 +278,20 @@ async def lifespan(app: FastAPI):
             await background_task
         except asyncio.CancelledError:
             pass
+
+    # Drop any popup call (no toast) before syncs and writers stop.
+    from backend.services.call_popup import get_call_popup_controller
+
+    await get_call_popup_controller().shutdown()
+    # Its host calls run on their own pool: stop it without waiting on a
+    # thread a wedged popup may still hold.
+    desktop_bridge.shutdown_call_popup_executor()
+
+    # Stop the auto-sync scheduler before the write barrier so it cannot launch
+    # a sync while writers are being drained (launch_sync also refuses once
+    # begin_shutdown() has run).
+    if auto_sync_scheduler is not None:
+        await auto_sync_scheduler.stop()
 
     # Ordered write barrier (must not be reordered): quiesce+drain every
     # writer registered above, THEN allow final synchronous writes (window
@@ -354,6 +431,9 @@ app.add_middleware(
     allowed_hosts=["127.0.0.1", "localhost", "testserver"],
 )
 
+# API JSON must never enter the browser HTTP cache (cache-lock stalls on polls).
+app.add_middleware(ApiNoStoreMiddleware)
+
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(content.router, prefix="/api/content", tags=["content"])
@@ -365,6 +445,11 @@ app.include_router(version.router)
 app.include_router(notifications.router)
 app.include_router(favorites.router)
 app.include_router(chat_features.router)
+app.include_router(account.router)
+app.include_router(client_log.router)
+app.include_router(archive.router)
+app.include_router(ui_state.router)
+app.include_router(call_popup.router)
 app.include_router(blogs.router, prefix="/api/blogs", tags=["blogs"])
 app.include_router(search.router, prefix="/api/search", tags=["search"])
 app.include_router(read_states.router, prefix="/api/read-states", tags=["read-states"])

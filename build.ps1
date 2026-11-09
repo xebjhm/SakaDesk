@@ -70,9 +70,10 @@ if (-not $ExeOnly -and -not $Iscc) {
     $ExeOnly = $true
 }
 # Guard: the app's instance-mutex name (desktop.py INSTANCE_MUTEX_NAME) must
-# match the installer's AppMutex (setup.iss). If they drift, the in-place
-# upgrade silently regresses to the Restart-Manager-only path and can roll back
-# mid-install. Fail the build before an inconsistent installer can ship.
+# match the installer's MyAppMutex (setup.iss), and setup.iss must not use an
+# AppMutex directive (it aborts the silent in-app upgrade). If the names drift,
+# the in-place upgrade silently regresses to the Restart-Manager-only path and
+# can roll back mid-install. Fail the build before a bad installer can ship.
 # --no-project: the checker is stdlib-only, so skip syncing the pysaka env.
 if (-not $ExeOnly) {
     Write-Host "[0/2] Verifying instance-mutex name is in sync (app <-> installer)..." -ForegroundColor Cyan
@@ -93,10 +94,19 @@ else {
     Write-Host "[1/2] Building frontend..." -ForegroundColor Cyan
     Push-Location (Join-Path $Root 'frontend')
     try {
-        if ($Clean -or -not (Test-Path 'node_modules')) {
+        # Reinstall when node_modules is missing or older than the lockfile (a new or
+        # bumped dependency would otherwise make `npm run build` fail).
+        $installedLock = 'node_modules\.package-lock.json'
+        $lockIsNewer = (-not (Test-Path $installedLock)) -or
+            ((Get-Item 'package-lock.json').LastWriteTimeUtc -gt (Get-Item $installedLock).LastWriteTimeUtc)
+        if ($Clean -or -not (Test-Path 'node_modules') -or $lockIsNewer) {
             npm ci
+            if ($LASTEXITCODE -ne 0) { throw "npm ci failed (exit $LASTEXITCODE)" }
         }
         npm run build
+        # A failed build would otherwise leave the previous frontend\dist in place and
+        # package a stale UI.
+        if ($LASTEXITCODE -ne 0) { throw "Frontend build failed (exit $LASTEXITCODE); not packaging a stale frontend\dist" }
     }
     finally { Pop-Location }
     if (-not (Test-Path (Join-Path $Root 'frontend\dist\index.html'))) {
@@ -107,7 +117,7 @@ else {
 # --- 2. Executable (+ installer) ------------------------------------------
 Write-Host "[2/2] Building executable (PyInstaller)$(if (-not $ExeOnly) { ' + installer (Inno Setup)' })..." -ForegroundColor Cyan
 # Ephemeral build deps via --with (kept out of pyproject/uv.lock); pinned to 3.12.
-$uvPrefix = @('run', '--python', '3.12', '--with', 'pyinstaller', '--with', 'pywebview', 'python')
+$uvPrefix = @('run', '--python', '3.12', '--with', 'pyinstaller', '--with', 'pywebview==5.3.2', 'python')
 if ($ExeOnly) {
     & uv @uvPrefix -m PyInstaller --noconfirm --clean 'tooling/build_windows.spec'
 }

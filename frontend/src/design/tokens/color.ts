@@ -1,0 +1,121 @@
+import { brandInk } from './brand';
+
+/**
+ * Neutral colour tokens, named by role (never by hue) so a dark set can be
+ * added later as a second value map. Values are copied verbatim from the
+ * pre-D1 palette; `legacy-theme-values.json` pins them.
+ */
+export const color = {
+    surface: {
+        /** Level 1 sheet (content area). */
+        sheet: '#FFFFFF',
+        /** Level 2 card (photos, info cards, bubbles). */
+        card: '#FFFFFF',
+        /** Level 3 pill (tabs, filters, dates). */
+        pill: '#FFFFFF',
+        /** Slightly raised neutral, e.g. hover backgrounds. */
+        elevated: '#FAFAFA',
+        /** Recessed neutral, e.g. avatar placeholder, selected pill. */
+        sunken: '#F3F4F6',
+        /** The window base behind the app (root, boot screen); matches pywebview's background_color and index.css. */
+        window: '#F0F2F5',
+    },
+    text: {
+        primary: '#1f2937',
+        secondary: '#4b5563',
+        muted: '#6b7280',
+        inverse: '#FFFFFF',
+    },
+    border: {
+        subtle: '#e5e7eb',
+        strong: '#d1d5db',
+    },
+    overlay: {
+        /** Dimmed backdrop behind modals. Carries its own alpha (token colours cannot take Tailwind opacity modifiers). */
+        scrim: 'rgba(0, 0, 0, 0.4)',
+        /** Toasts (viewer clipboard, About). The pre-D2c `bg-black/80`. */
+        toast: 'rgba(0, 0, 0, 0.8)',
+        /** Unread pill on a gradient chat header: the pre-D2 white glass. */
+        glass: 'rgba(255, 255, 255, 0.2)',
+        /** Sync pill on a gradient chat header: the pre-D2 dark shade. */
+        shade: 'rgba(0, 0, 0, 0.2)',
+        /** Frosted bar over the blog feed's orbs (L2): the pre-D2 white at 72 %. */
+        frost: 'rgba(255, 255, 255, 0.72)',
+        /** Hairline under the frosted feed header: the pre-D2 white at 40 %. */
+        frostBorder: 'rgba(255, 255, 255, 0.4)',
+    },
+    /**
+     * Semantic colours (v2, harmonized ~35 % below signal chroma). Global: they never follow
+     * context. subtle = banner bg, icon = icon circle bg, border = outline, solid = destructive
+     * fill (white text >= 4.5:1), text = text and glyphs (>= 4.5:1 on white). Info is the brand ink.
+     */
+    semantic: {
+        success: { subtle: '#f0fbf4', icon: '#e3f6ea', border: '#cae8d7', solid: '#2e805a', text: '#216a49' },
+        warning: { subtle: '#fff5ed', icon: '#feedde', border: '#f6dac3', solid: '#9b5e1e', text: '#824c13' },
+        danger: { subtle: '#fff3f1', icon: '#ffe7e4', border: '#ffd1cd', solid: '#b44543', text: '#963635' },
+        info: { subtle: brandInk[50], icon: brandInk[100], border: brandInk[200], solid: brandInk[600], text: brandInk[700] },
+        /**
+         * Oshi (推): hearts and the Favorite filter. A fixed meaning, so it never follows the group
+         * accent ("semantic over context"). Hot pink harmonized from the original #ff69b4; solid is
+         * for icon fills (white glyph 3.4:1), text is >= 4.5:1 on white and on subtle.
+         */
+        oshi: { subtle: '#fff0f8', border: '#ffcbe1', solid: '#de5f99', text: '#aa376f' },
+        /** The bookmarked-message star: the original yellow-400, the same in every group. */
+        star: '#facc15',
+    },
+    /** Search matches inside text (blog reader): exact match, match by reading, and its dashed underline. Values from the pre-D2b reader. */
+    mark: {
+        exact: '#FEF08A',
+        reading: '#DBEAFE',
+        underline: '#60A5FA',
+    },
+    /**
+     * Scrollbar thumbs (index.css): a translucent ink on light surfaces, a translucent white on the
+     * dark viewer and call screen. The track is always transparent; `*Hover` is the thumb while the
+     * pointer is over the scrollbar.
+     */
+    scrollbar: {
+        thumb: 'rgba(31, 41, 55, 0.28)',
+        thumbHover: 'rgba(31, 41, 55, 0.5)',
+        thumbOnDark: 'rgba(255, 255, 255, 0.35)',
+        thumbOnDarkHover: 'rgba(255, 255, 255, 0.6)',
+    },
+    /** The dark photo/video viewer's chrome (D2c). Values are the pre-D2c viewer's. */
+    viewer: {
+        scrim: 'rgba(0, 0, 0, 0.9)',
+        stage: '#000000',
+        control: 'rgba(255, 255, 255, 0.2)',
+        controlHover: 'rgba(255, 255, 255, 0.3)',
+        text: '#FFFFFF',
+        textMuted: 'rgba(255, 255, 255, 0.7)',
+        underline: 'rgba(255, 255, 255, 0.3)',
+    },
+    /**
+     * The hidden Developer Diagnostics panel: a developer console, outside brand and group colour on
+     * purpose. Values are the e4e4118 panel's (header gray-900, terminal icon green-400, log text
+     * slate-300 / red-400 / amber-400); the badge is amber-400 on a 15 % amber tint.
+     */
+    console: {
+        bg: '#111827',
+        text: '#FFFFFF',
+        textMuted: '#CBD5E1',
+        prompt: '#4ADE80',
+        error: '#F87171',
+        warning: '#FBBF24',
+        badge: 'rgba(251, 191, 36, 0.15)',
+        badgeText: '#FBBF24',
+    },
+    /** Decorations kept from the pre-D2c look: About's heart. */
+    decor: {
+        heart: '#F87171',
+    },
+    /**
+     * The date-search calendar, Japanese convention (owner decision R-h): Sundays and public
+     * holidays (祝日) red, Saturdays blue. Fixed meanings, so they never follow the group accent;
+     * both are >= 4.5:1 on white.
+     */
+    calendar: {
+        holiday: '#DC2626',
+        saturday: '#2563EB',
+    },
+} as const;

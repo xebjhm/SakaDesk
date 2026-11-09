@@ -3,8 +3,10 @@ import type { SyncProgress } from '../features/messages/MessagesFeature'
 import {
     formatSyncTime,
     formatSyncSpeed,
+    formatSyncSpeedParts,
     getSyncPhaseName,
     getSyncUnitLabel,
+    getSyncDetail,
 } from './syncFormatters'
 
 const mockT = (key: string): string => key
@@ -131,5 +133,27 @@ describe('syncFormatters', () => {
         it('should return sync.items when phase_number is undefined', () => {
             expect(getSyncUnitLabel(makeSyncProgress({}), mockT)).toBe('sync.items')
         })
+    })
+})
+
+describe('getSyncDetail', () => {
+    const t = (k: string) => (k === 'sync.scanningHistory' ? 'SCAN' : k)
+    it('returns detail or fallback without a code', () => {
+        expect(getSyncDetail({ state: 'running', detail: '高井 俐香 (3)' }, t, 'FALLBACK')).toBe('高井 俐香 (3)')
+        expect(getSyncDetail({ state: 'running' }, t, 'FALLBACK')).toBe('FALLBACK')
+    })
+    it('prefixes the localized scanning text', () => {
+        expect(getSyncDetail({ state: 'running', detail: '日向坂46', detail_code: 'scanning_history' }, t, 'F')).toBe('SCAN · 日向坂46')
+        expect(getSyncDetail({ state: 'running', detail_code: 'scanning_history' }, t, 'F')).toBe('SCAN')
+    })
+})
+
+describe('formatSyncSpeedParts', () => {
+    it('splits the number from the unit', () => {
+        expect(formatSyncSpeedParts(12.345, 'ファイル')).toEqual({ value: '12.3', unit: 'ファイル/s' })
+    })
+
+    it('is empty for no speed', () => {
+        expect(formatSyncSpeedParts(0, 'files')).toEqual({ value: '', unit: '' })
     })
 })

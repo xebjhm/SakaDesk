@@ -1,21 +1,30 @@
 // frontend/src/features/blogs/components/BlogReader.tsx
-// Blog reader component with navigation, oshi theming, and content display
+// Blog reader: breadcrumb, the post at a readable width, older/newer pills and the timeline rail.
 
 import React, { useEffect, useState, useRef } from 'react';
 import DOMPurify from 'dompurify';
+import { useReducedMotion } from 'framer-motion';
+import { AlertCircle, ChevronLeft } from 'lucide-react';
 import type { BlogMember, BlogMeta, BlogContentResponse } from '../../../types';
-import { toGroupId, getMemberByBlogId, getMemberByName, getMemberPenlightHex, getMemberNameKanji } from '../../../data/memberData';
+import { toGroupId, getMemberNameKanji } from '../../../data/memberData';
 import { getServiceBlogBaseUrl } from '../../../data/services';
-import { useBlogTheme, useBlogTranslationVisibility, useInlineBlogTranslations } from '../hooks';
+import { useBlogTranslationVisibility, useInlineBlogTranslations } from '../hooks';
 import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
+import { BlogStatus } from './BlogStatus';
+import { BLOG_PROSE } from './blogProse';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { useAppStore } from '../../../store/appStore';
 import { TranslateButton } from '../../../core/common/TranslateButton';
+import { IconButton } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
 import { aiErrorKey } from '../../../i18n/aiError';
 import { persisted } from '../../../core/persistence/persisted';
+import { readCachedTranslation } from '../../../core/persistence/translationLoader';
+import { formatBlogDate } from '../../../utils/dateFormatters';
+import { resolveWash } from '../memberWash';
+import { clientLog } from '../../../utils/clientLog';
 
 export interface BlogReaderProps {
     content: BlogContentResponse | null;
@@ -29,6 +38,8 @@ export interface BlogReaderProps {
     onRetry: () => void;
     onNavigate: (blog: BlogMeta) => void;
     onMemberClick: () => void;
+    /** False while a blog dialog is open: ← / → must not change the post behind it. */
+    keysEnabled?: boolean;
     serviceId: string;
     searchQuery?: string;
     matchedTerms?: string[];
@@ -47,12 +58,12 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     onRetry,
     onNavigate,
     onMemberClick,
+    keysEnabled = true,
     serviceId,
     searchQuery,
     matchedTerms,
     readingTerms,
 }) => {
-    const theme = useBlogTheme();
     const blogContentRef = useRef<HTMLDivElement>(null);
     // Aborts the in-flight translate-all POST when the blog changes, so a stale
     // result can't be injected over a different blog.
@@ -70,23 +81,17 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     // Auto-expand on completion, collapse on scroll-away / blog switch, manual toggle.
     const { expanded: translationsExpanded, toggle: toggleTranslations } =
         useBlogTranslationVisibility(blogTranslations.length, blogContentRef);
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
+    const reducedMotion = useReducedMotion();
 
     // Get group ID for correct member data lookup
     const groupId = toGroupId(serviceId);
 
-    // Get member colors for oshi theming
-    // Try with original name, then without spaces (API returns names with spaces like "藤嶌 果歩")
-    // ポカ (mascot) should have white background - no oshi colors
-    const isMascot = member.id === '000' || member.name === 'ポカ';
-    const memberData = isMascot ? null : (
-        getMemberByName(member.name, groupId) ??
-        getMemberByName(member.name.replace(/\s+/g, ''), groupId) ??
-        getMemberByBlogId(member.id, groupId)
-    );
-    const memberColors = memberData ? getMemberPenlightHex(memberData, groupId) : null;
-    const oshiColor1 = memberColors?.[0] ?? '#ffffff';
-    const oshiColor2 = memberColors?.[1] ?? '#ffffff';
+    // Member penlight wash (data-driven, DESIGN_SYSTEM.md): CSS variables, or none.
+    const { style: washStyle, fallback: washFallback } = resolveWash(member, groupId);
+    useEffect(() => {
+        if (washFallback) clientLog('blog_fallback', { target: 'wash', reason: washFallback });
+    }, [washFallback, blog.id]);
 
     /**
      * Split the blog content DOM into logical paragraph segments.
@@ -138,8 +143,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
 
         // Check cache first
         const cacheKey = `translation:blog:${blog.id}:${translationTargetLanguage}`;
-        const cachedMap = await persisted.getTranslations([cacheKey]);
-        const cached = cachedMap[cacheKey] ?? null;
+        const cached = (await readCachedTranslation(cacheKey, 'blog')) ?? null;
         if (cached) {
             try {
                 const parsed = JSON.parse(cached);
@@ -237,8 +241,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     // Uses both the raw searchQuery and matchedTerms extracted from snippet
     // <mark> tags. This handles reading-based matches where the query is
     // hiragana (e.g., "かわいい") but the blog text is kanji (e.g., "可愛い").
-    // Reading-based matches get blue highlights with dashed border,
-    // while exact matches get yellow highlights.
+    // Reading-based matches get the reading mark (fill + dashed underline), exact matches the exact mark (BLOG_PROSE).
     let processedHtml = sanitizedHtml;
     if ((searchQuery || matchedTerms?.length) && processedHtml) {
         const allTerms = new Set<string>();
@@ -253,7 +256,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         // Helper to escape regex special chars
         const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-        // Apply reading highlights first (blue), then exact highlights (yellow)
+        // Apply reading highlights first then exact highlights
         // Applying exact last means if a term appears in both, exact style wins
         for (const [terms, cssClass] of [
             [readTermsList, 'search-snippet search-highlight reading'],
@@ -269,18 +272,18 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         }
     }
 
-    // Scroll to first search highlight after content renders
+    // Scroll to the first search highlight after content renders (instant with reduced motion)
     useEffect(() => {
         if (searchQuery || matchedTerms?.length) {
             const timer = setTimeout(() => {
                 document.querySelector('.search-highlight')?.scrollIntoView({
-                    behavior: 'smooth',
+                    behavior: reducedMotion ? 'auto' : 'smooth',
                     block: 'center',
                 });
             }, 300);
             return () => clearTimeout(timer);
         }
-    }, [searchQuery, matchedTerms, content]);
+    }, [searchQuery, matchedTerms, content, reducedMotion]);
 
     // Intercept clicks on blog images to open in photo viewer
     useEffect(() => {
@@ -325,179 +328,116 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     }, [blog.id]);
 
     return (
-        <div className="flex flex-col h-full relative bg-white">
-            {/* Two-color oshi background - top-left and bottom-right corners */}
-            <div
-                className="absolute inset-0 pointer-events-none"
-                style={{
-                    background: `
-                        radial-gradient(ellipse 80% 50% at 0% 0%, ${oshiColor1}1a 0%, transparent 50%),
-                        radial-gradient(ellipse 60% 40% at 100% 100%, ${oshiColor2}1a 0%, transparent 50%)
-                    `,
-                }}
-            />
+        <div className="relative flex h-full min-h-0 flex-col">
+            {/* Member penlight wash: two soft corner glows (bg-member-wash) */}
+            <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-member-wash" style={washStyle} />
 
             {/* Breadcrumb */}
-            <div className="px-4 py-2 border-b border-gray-200/60 backdrop-blur-sm bg-white/70 flex items-center gap-2 text-sm shrink-0 relative z-10">
-                <button
+            <div className="relative flex shrink-0 items-center gap-1 px-4 pb-2 pt-3 text-small">
+                <IconButton
+                    size="sm"
+                    aria-label={t('blogs.back')}
+                    icon={<ChevronLeft className="h-4 w-4" />}
                     onClick={onBack}
-                    className="p-1 rounded-lg hover:bg-gray-100 transition-colors"
-                >
-                    <svg
-                        className="w-4 h-4 text-gray-600"
-                        fill="none"
-                        stroke="currentColor"
-                        viewBox="0 0 24 24"
-                    >
-                        <path
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            strokeWidth={2}
-                            d="M15 19l-7-7 7-7"
-                        />
-                    </svg>
-                </button>
+                />
                 <button
+                    type="button"
                     onClick={onMemberClick}
-                    className="font-medium transition-all duration-200 hover:opacity-70"
-                    style={{ color: theme.memberNameColor }}
+                    lang="ja"
+                    className="rounded-pill px-2 py-1 font-semibold text-accent-strong transition-colors duration-fast ease-standard hover:bg-accent-subtle focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                     {getMemberNameKanji(member.name, groupId)}
                 </button>
-                <span className="text-gray-400">/</span>
-                <span className="text-gray-700 truncate max-w-xs">{blog.title}</span>
+                <span aria-hidden="true" className="text-muted">/</span>
+                <span lang="ja" className="min-w-0 truncate px-1 text-secondary">{blog.title}</span>
             </div>
 
-            {/* Main content area */}
-            <div className="flex-1 flex relative overflow-hidden z-10">
-                {/* Content */}
-                <div className="flex-1 overflow-y-auto pb-20">
-                    {/* Loading */}
-                    {loading && (
-                        <div className="flex items-center justify-center h-32">
-                            <div
-                                className="animate-spin rounded-full h-8 w-8 border-b-2"
-                                style={{ borderColor: oshiColor1 }}
+            <div className="relative flex min-h-0 flex-1">
+                {/* Post column: scrolls; older/newer float over its bottom */}
+                <div className="relative min-w-0 flex-1">
+                    <div className="h-full overflow-y-auto">
+                        {loading && <BlogStatus kind="loading" title={t('blogs.loadingPost')} />}
+
+                        {error && !loading && (
+                            <BlogStatus
+                                kind="error"
+                                icon={<AlertCircle className="h-8 w-8" />}
+                                title={t('blogs.postLoadFailed')}
+                                onRetry={onRetry}
+                                retryLabel={t('blogs.retry')}
                             />
-                        </div>
-                    )}
+                        )}
 
-                    {/* Error */}
-                    {error && !loading && (
-                        <div className="p-4 text-center">
-                            <p className="text-red-600 mb-2">{error}</p>
-                            <button
-                                onClick={onRetry}
-                                className="px-4 py-2 text-white rounded-lg"
-                                style={{ backgroundColor: oshiColor1 }}
-                            >
-                                Retry
-                            </button>
-                        </div>
-                    )}
+                        {!loading && !error && content && (
+                            <article className="mx-auto w-full max-w-2xl px-8 pb-24 pt-6">
+                                <header className="mb-8 flex flex-col gap-2">
+                                    <h1 lang="ja" className="font-reading text-heading font-semibold text-primary">{content.meta.title}</h1>
+                                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-muted">
+                                        <button
+                                            type="button"
+                                            onClick={onMemberClick}
+                                            lang="ja"
+                                            className="rounded-pill font-semibold text-accent-strong decoration-group underline-offset-4 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                        >
+                                            {getMemberNameKanji(content.meta.member_name, groupId)}
+                                        </button>
+                                        <span aria-hidden="true">·</span>
+                                        <time dateTime={content.meta.published_at}>
+                                            {formatBlogDate(new Date(content.meta.published_at), i18n.language, 'long')}
+                                        </time>
+                                        {translationEnabled && (
+                                            <span className="ml-auto">
+                                                <TranslateButton
+                                                    state={
+                                                        isTranslating ? 'loading'
+                                                            : translationError ? 'error'
+                                                            : blogTranslations.length > 0 ? 'done'
+                                                            : 'idle'
+                                                    }
+                                                    onClick={handleTranslateAll}
+                                                    error={translationError}
+                                                    doneLabel={t(translationPartial ? 'translation.translatedPartial' : 'translation.translated')}
+                                                    expanded={translationsExpanded}
+                                                    onToggleExpanded={toggleTranslations}
+                                                />
+                                            </span>
+                                        )}
+                                    </div>
+                                </header>
 
-                    {/* Blog Content */}
-                    {!loading && !error && content && (
-                        <article className="max-w-3xl mx-auto px-4 py-6 pr-16 relative">
-                            <header className="mb-6">
-                                <h1
-                                    className="text-2xl font-bold text-gray-900 mb-2"
-                                    style={{ fontFamily: '"Noto Serif JP", serif' }}
-                                >
-                                    {content.meta.title}
-                                </h1>
-                                <div className="flex items-center gap-3 text-sm text-gray-500">
-                                    <button
-                                        onClick={onMemberClick}
-                                        className="font-medium transition-all duration-200 hover:opacity-70"
-                                        style={{ color: theme.memberNameColor }}
-                                    >
-                                        {getMemberNameKanji(content.meta.member_name, groupId)}
-                                    </button>
-                                    <span>-</span>
-                                    <time>
-                                        {new Date(content.meta.published_at).toLocaleDateString('ja-JP', {
-                                            year: 'numeric',
-                                            month: 'long',
-                                            day: 'numeric',
-                                            hour: '2-digit',
-                                            minute: '2-digit',
-                                        })}
-                                    </time>
-                                    {translationEnabled && (
-                                        <span className="ml-auto">
-                                            <TranslateButton
-                                                state={
-                                                    isTranslating ? 'loading'
-                                                        : translationError ? 'error'
-                                                        : blogTranslations.length > 0 ? 'done'
-                                                        : 'idle'
-                                                }
-                                                onClick={handleTranslateAll}
-                                                error={translationError}
-                                                accentColor="#6b7280"
-                                                doneLabel={t(translationPartial ? 'translation.translatedPartial' : 'translation.translated')}
-                                                expanded={translationsExpanded}
-                                                onToggleExpanded={toggleTranslations}
-                                            />
-                                        </span>
-                                    )}
-                                </div>
-                            </header>
+                                {/* Sanitized with DOMPurify, then search highlights injected */}
+                                <div
+                                    ref={blogContentRef}
+                                    lang="ja"
+                                    className={BLOG_PROSE}
+                                    dangerouslySetInnerHTML={{ __html: processedHtml }}
+                                />
+                            </article>
+                        )}
+                    </div>
 
-                            {/* Blog content - sanitized HTML rendered safely with DOMPurify, then search highlights injected */}
-                            <div
-                                ref={blogContentRef}
-                                className="prose prose-sm max-w-none [&_img]:max-w-full [&_img]:h-auto [&_img]:cursor-pointer blog-content"
-                                dangerouslySetInnerHTML={{ __html: processedHtml }}
-                            />
-
-                            {/* Blog content link and search highlight styles */}
-                            <style>{`
-                                .blog-content a {
-                                    color: ${theme.linkColor};
-                                    text-decoration: none;
-                                    border-bottom: 1px solid ${theme.linkUnderlineColor};
-                                    transition: border-color 0.2s ease;
-                                }
-                                .blog-content a:hover {
-                                    border-bottom-color: ${theme.linkColor};
-                                }
-                                .search-highlight {
-                                    background-color: rgb(254 240 138);
-                                    color: inherit;
-                                    border-radius: 2px;
-                                    padding: 0 2px;
-                                }
-                                .search-highlight.reading {
-                                    background-color: rgb(219 234 254);
-                                    border-bottom: 1.5px dashed rgb(96 165 250);
-                                }
-                            `}</style>
-
-                        </article>
-                    )}
+                    <BlogNavFooter
+                        prevBlog={prevBlog}
+                        nextBlog={nextBlog}
+                        onPrev={handlePrev}
+                        onNext={handleNext}
+                        keysEnabled={keysEnabled}
+                    />
                 </div>
 
-                {/* Timeline Rail */}
-                {memberBlogs.length > 1 && (
-                    <TimelineRail
-                        blogs={memberBlogs}
-                        currentIndex={currentIndex}
-                        onSelect={handleRailSelect}
-                    />
-                )}
-
-                {/* Navigation Footer */}
-                <BlogNavFooter
-                    prevBlog={prevBlog}
-                    nextBlog={nextBlog}
-                    onPrev={handlePrev}
-                    onNext={handleNext}
-                />
+                {/* Rail column: always reserved, so the post does not shift when the list arrives */}
+                <div className="relative z-10 w-14 shrink-0">
+                    {memberBlogs.length > 1 && (
+                        <TimelineRail
+                            blogs={memberBlogs}
+                            currentIndex={currentIndex}
+                            onSelect={handleRailSelect}
+                        />
+                    )}
+                </div>
             </div>
 
-            {/* Blog Photo Viewer */}
+            {/* Blog Photo Viewer (D2c) */}
             {blogPhotoIndex !== null && blogPhotoItems.length > 0 && (
                 <MediaViewerModal
                     mediaItems={blogPhotoItems}

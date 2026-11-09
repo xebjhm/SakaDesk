@@ -1,15 +1,46 @@
 import React, { useState } from 'react';
-import { FileText, ExternalLink } from 'lucide-react';
+import { AlertTriangle, ExternalLink, FileText } from 'lucide-react';
 import { useTranslation } from '../../i18n';
+import { Button, Modal } from '../../design/primitives';
+import { useGroupMarker } from '../../design/useGroupMarker';
 import { persisted } from '../../core/persistence/persisted';
 
 interface TosDialogProps {
     onAccept: () => void;
 }
 
+const OFFICIAL_TOS = [
+    { service: 'nogizaka46', href: 'https://contact.nogizaka46.com/s/n46app/page/app_terms', labelKey: 'tos.nogizakaTos' },
+    { service: 'sakurazaka46', href: 'https://sakurazaka46.com/s/s46app/page/app_terms', labelKey: 'tos.sakurazakaTos' },
+    { service: 'hinatazaka46', href: 'https://www.hinatazaka46.com/s/h46app/page/app_terms', labelKey: 'tos.hinatazakaTos' },
+    { service: 'yodel', href: 'https://yodel-app.com/s/yodel/rule', labelKey: 'tos.yodelTos' },
+] as const;
+
 /**
- * Terms of Service acknowledgment dialog shown on first launch.
- * Blocks app usage until the user accepts the terms.
+ * One official-terms link in its own group's link colour: a group marker (spec §9; e4e4118 had
+ * purple / pink / blue / indigo text with a hover underline; decision D3).
+ */
+const TosLink: React.FC<{ service: string; href: string; label: string }> = ({ service, href, label }) => {
+    const marker = useGroupMarker(service, 'tos_link');
+    return (
+        <li style={marker}>
+            <a
+                href={href}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 rounded-md text-small text-accent-strong underline-offset-2 hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+                <ExternalLink aria-hidden="true" className="h-3 w-3" />
+                {label}
+            </a>
+        </li>
+    );
+};
+
+/**
+ * Terms of Service acknowledgment dialog shown on first launch: a brand dialog (spec §4, §9).
+ * Blocks app usage until the user accepts the terms. Standard layout: the body scrolls and
+ * Accept stays in the footer, so a short window never hides it (spec D2d decision 4).
  */
 export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
     const { t } = useTranslation();
@@ -24,119 +55,78 @@ export const TosDialog: React.FC<TosDialogProps> = ({ onAccept }) => {
     };
 
     return (
-        <div className="fixed inset-0 bg-black/70 z-50 flex items-center justify-center p-4">
-            <div className="bg-white rounded-2xl max-w-lg w-full shadow-2xl overflow-hidden">
-                {/* Header */}
-                <div className="bg-gradient-to-r from-[#b4dcff] to-[#f0bede] px-6 py-5">
-                    <div className="flex items-center gap-3">
-                        <FileText className="w-8 h-8 text-white" />
-                        <div>
-                            <h3 className="text-xl font-bold text-white">{t('tos.title')}</h3>
-                            <p className="text-sm text-white/80">{t('tos.subtitle')}</p>
+        <Modal
+            isOpen
+            onClose={() => {}}
+            scope="brand"
+            title={t('tos.title')}
+            icon={<FileText />}
+            dismissible={false}
+            logId="tos"
+            className="max-w-lg"
+            bodyClassName="flex flex-col gap-4"
+            footer={
+                <Button
+                    variant="primary"
+                    className="w-full"
+                    onClick={handleAccept}
+                    disabledReason={acknowledged ? undefined : t('tos.acceptRequired')}
+                >
+                    {t('tos.acceptAndContinue')}
+                </Button>
+            }
+        >
+            <p className="text-small text-muted">{t('tos.subtitle')}</p>
+
+            {/* e4e4118: an amber 50 fill, amber 200 border, amber 800 heading and amber 700 text, no icon → the semantic warning colours (spec §9). */}
+            <section data-testid="tos-disclaimer" className="flex gap-3 rounded-lg border border-semantic-warning bg-semantic-warning-subtle p-4">
+                <AlertTriangle aria-hidden="true" className="h-5 w-5 shrink-0 text-semantic-warning" />
+                <div className="flex flex-col gap-1">
+                    <h3 className="text-body font-semibold text-semantic-warning">{t('tos.disclaimer')}</h3>
+                    <p className="text-small text-semantic-warning">{t('tos.disclaimerText')}</p>
+                </div>
+            </section>
+
+            {/* Official ToS excerpts (collapsible). The articles quote the official Japanese terms verbatim. */}
+            <details className="rounded-lg bg-elevated p-4">
+                <summary className="cursor-pointer select-none text-small font-semibold text-secondary">
+                    {t('tos.officialExcerpts')}
+                </summary>
+                <div className="mt-3 flex flex-col gap-3 text-caption text-secondary">
+                    <div>
+                        <p className="font-semibold">{t('tos.articleIpTitle')}</p>
+                        <p lang="ja">当社が別に定める場合を除き、お客様が本コンテンツを複製、翻案、頒布、公衆送信等することは禁止します。</p>
+                    </div>
+                    <div>
+                        <p className="font-semibold">{t('tos.articleProhibitedTitle')}</p>
+                        <div lang="ja">
+                            <p>(11) 当社または第三者の情報、データおよびソフトウェアを修正、改変、改ざん、リバースエンジニアリング、逆コンパイル、逆アッセンブルまたは消去等する行為</p>
+                            <p>(16) 当社が指定するアクセス方法以外の手段で本サービスにアクセスし、またはアクセスを試みる行為</p>
+                            <p>(17) 自動化された手段（クローラおよび類似の技術を含む）を用いて本サービスにアクセスし、またはアクセスを試みる行為</p>
                         </div>
                     </div>
                 </div>
+            </details>
 
-                {/* Content */}
-                <div className="p-6 space-y-4">
-                    {/* Disclaimer box */}
-                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
-                        <h4 className="font-semibold text-amber-800 mb-2">{t('tos.disclaimer')}</h4>
-                        <p className="text-sm text-amber-700">
-                            {t('tos.disclaimerText')}
-                        </p>
-                    </div>
+            {/* e4e4118: a gray 50 box → the near-white elevated surface (also keeps Hinatazaka 700 links at 4.6:1). */}
+            <section className="flex flex-col gap-3 rounded-lg bg-elevated p-4">
+                <p className="text-small text-secondary">{t('tos.reviewOfficialTos')}</p>
+                <ul className="flex flex-wrap gap-x-4 gap-y-2">
+                    {OFFICIAL_TOS.map((link) => (
+                        <TosLink key={link.href} service={link.service} href={link.href} label={t(link.labelKey)} />
+                    ))}
+                </ul>
+            </section>
 
-                    {/* Official ToS excerpts (collapsible) */}
-                    <details className="bg-gray-50 rounded-xl p-4">
-                        <summary className="text-xs text-gray-600 font-medium cursor-pointer select-none">
-                            {t('tos.officialExcerpts')}
-                        </summary>
-                        <div className="mt-3 text-xs text-gray-500 space-y-3 leading-relaxed">
-                            <div>
-                                <p className="font-semibold">{t('tos.articleIpTitle')}</p>
-                                <p>当社が別に定める場合を除き、お客様が本コンテンツを複製、翻案、頒布、公衆送信等することは禁止します。</p>
-                            </div>
-                            <div>
-                                <p className="font-semibold">{t('tos.articleProhibitedTitle')}</p>
-                                <p>(11) 当社または第三者の情報、データおよびソフトウェアを修正、改変、改ざん、リバースエンジニアリング、逆コンパイル、逆アッセンブルまたは消去等する行為</p>
-                                <p>(16) 当社が指定するアクセス方法以外の手段で本サービスにアクセスし、またはアクセスを試みる行為</p>
-                                <p>(17) 自動化された手段（クローラおよび類似の技術を含む）を用いて本サービスにアクセスし、またはアクセスを試みる行為</p>
-                            </div>
-                        </div>
-                    </details>
-
-                    {/* Official ToS links */}
-                    <div className="bg-gray-50 rounded-xl p-4">
-                        <p className="text-xs text-gray-500 mb-3">
-                            {t('tos.reviewOfficialTos')}
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                            <a
-                                href="https://contact.nogizaka46.com/s/n46app/page/app_terms"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-purple-600 hover:text-purple-800 hover:underline"
-                            >
-                                <ExternalLink className="w-3 h-3" />
-                                {t('tos.nogizakaTos')}
-                            </a>
-                            <span className="text-gray-300">|</span>
-                            <a
-                                href="https://sakurazaka46.com/s/s46app/page/app_terms"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-pink-600 hover:text-pink-800 hover:underline"
-                            >
-                                <ExternalLink className="w-3 h-3" />
-                                {t('tos.sakurazakaTos')}
-                            </a>
-                            <span className="text-gray-300">|</span>
-                            <a
-                                href="https://www.hinatazaka46.com/s/h46app/page/app_terms"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-blue-600 hover:text-blue-800 hover:underline"
-                            >
-                                <ExternalLink className="w-3 h-3" />
-                                {t('tos.hinatazakaTos')}
-                            </a>
-                            <span className="text-gray-300">|</span>
-                            <a
-                                href="https://yodel-app.com/s/yodel/rule"
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="inline-flex items-center gap-1 text-xs text-indigo-600 hover:text-indigo-800 hover:underline"
-                            >
-                                <ExternalLink className="w-3 h-3" />
-                                {t('tos.yodelTos')}
-                            </a>
-                        </div>
-                    </div>
-
-                    {/* Acknowledgment checkbox */}
-                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-xl hover:bg-gray-50 transition-colors">
-                        <input
-                            type="checkbox"
-                            checked={acknowledged}
-                            onChange={(e) => setAcknowledged(e.target.checked)}
-                            className="mt-0.5 w-5 h-5 text-blue-600 rounded focus:ring-blue-500 cursor-pointer"
-                        />
-                        <span className="text-sm text-gray-700">
-                            {t('tos.acceptCheckbox')}
-                        </span>
-                    </label>
-
-                    {/* Accept button */}
-                    <button
-                        onClick={handleAccept}
-                        disabled={!acknowledged}
-                        className="w-full py-3 bg-blue-400 text-white rounded-xl font-medium hover:bg-blue-500 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
-                    >
-                        {t('tos.acceptAndContinue')}
-                    </button>
-                </div>
-            </div>
-        </div>
+            <label className="flex cursor-pointer items-start gap-3 rounded-lg p-3 transition-colors duration-fast ease-standard hover:bg-sunken">
+                <input
+                    type="checkbox"
+                    checked={acknowledged}
+                    onChange={(e) => setAcknowledged(e.target.checked)}
+                    className="mt-1 h-4 w-4 shrink-0 cursor-pointer accent-accent"
+                />
+                <span className="text-body text-primary">{t('tos.acceptCheckbox')}</span>
+            </label>
+        </Modal>
     );
 };

@@ -3,13 +3,14 @@
 The Windows upgrade flow depends on ONE shared name existing on both sides:
 
   * ``INSTANCE_MUTEX_NAME`` in ``desktop.py`` — the app creates this mutex.
-  * ``AppMutex`` in ``tooling/windows/setup.iss`` — the installer detects it,
-    prompts the user to close the app, and waits for it to clear before
-    replacing locked files.
+  * ``#define MyAppMutex`` in ``tooling/windows/setup.iss`` — the installer's
+    ``[Code]`` waits for it to clear before replacing locked files.
 
 If the two drift apart, the installer silently regresses to the fragile
 Restart-Manager-only path and an in-place upgrade can roll back mid-install.
-These tests (and the build-time check they cover) make that drift a hard error.
+An ``AppMutex=`` directive is also rejected: under the in-app upgrade's
+``/SILENT /SUPPRESSMSGBOXES`` it aborts Setup at startup while the app is still
+exiting. These tests (and the build-time check they cover) make both hard errors.
 """
 
 from __future__ import annotations
@@ -40,27 +41,41 @@ def test_extracts_mutex_name_from_python_source():
 
 
 def test_extracts_mutex_name_from_iss_source():
-    source = "AppId={{1314045D}\nAppMutex=SakaDeskInstanceMutex\nCompression=lzma\n"
-    assert checker.find_iss_mutex_name(source) == "SakaDeskInstanceMutex"
-
-
-def test_iss_extraction_ignores_appmutex_mentioned_in_comments():
     source = (
-        "; The app holds this mutex (desktop.py); Setup uses AppMutex to detect it.\n"
-        "AppMutex=SakaDeskInstanceMutex\n"
+        '#define MyAppName "SakaDesk"\n#define MyAppMutex "SakaDeskInstanceMutex"\n'
     )
     assert checker.find_iss_mutex_name(source) == "SakaDeskInstanceMutex"
 
 
+def test_iss_extraction_ignores_define_in_comments():
+    source = '; old: #define MyAppMutex "Stale"\n#define MyAppMutex "SakaDeskInstanceMutex"\n'
+    assert checker.find_iss_mutex_name(source) == "SakaDeskInstanceMutex"
+
+
+def test_verify_sync_rejects_appmutex_directive():
+    """AppMutex= aborts the silent in-app upgrade; it must never come back."""
+    py = 'INSTANCE_MUTEX_NAME = "SharedName"\n'
+    iss = '#define MyAppMutex "SharedName"\n[Setup]\nAppMutex={#MyAppMutex}\n'
+    with pytest.raises(checker.MutexNameMismatch) as exc:
+        checker.verify_sync(py, iss)
+    assert "AppMutex" in str(exc.value)
+
+
+def test_verify_sync_allows_appmutex_mentioned_in_comments():
+    py = 'INSTANCE_MUTEX_NAME = "SharedName"\n'
+    iss = '; Deliberately NO AppMutex= directive.\n#define MyAppMutex "SharedName"\n'
+    assert checker.verify_sync(py, iss) == "SharedName"
+
+
 def test_verify_sync_returns_shared_name_when_matching():
     py = 'INSTANCE_MUTEX_NAME = "SharedName"\n'
-    iss = "AppMutex=SharedName\n"
+    iss = '#define MyAppMutex "SharedName"\n'
     assert checker.verify_sync(py, iss) == "SharedName"
 
 
 def test_verify_sync_raises_on_mismatch():
     py = 'INSTANCE_MUTEX_NAME = "AppSideName"\n'
-    iss = "AppMutex=InstallerSideName\n"
+    iss = '#define MyAppMutex "InstallerSideName"\n'
     with pytest.raises(checker.MutexNameMismatch) as exc:
         checker.verify_sync(py, iss)
     # Message must name both offending values so the failure is actionable.
@@ -70,7 +85,9 @@ def test_verify_sync_raises_on_mismatch():
 
 def test_verify_sync_raises_when_python_name_missing():
     with pytest.raises(checker.MutexNameMismatch):
-        checker.verify_sync("# no mutex here\n", "AppMutex=SakaDeskInstanceMutex\n")
+        checker.verify_sync(
+            "# no mutex here\n", '#define MyAppMutex "SakaDeskInstanceMutex"\n'
+        )
 
 
 def test_verify_sync_raises_when_iss_name_missing():

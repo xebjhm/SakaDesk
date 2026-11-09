@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 from unittest.mock import patch
 import json
@@ -96,3 +98,176 @@ async def test_check_fresh_install(client, isolated_settings):
     (tmp_output / "some_folder").mkdir()
     response = client.get("/api/settings/fresh")
     assert response.json()["is_fresh"] is False
+
+
+@pytest.mark.asyncio
+async def test_incoming_call_enabled_defaults_true(client, isolated_settings):
+    response = client.get("/api/settings")
+    assert response.status_code == 200
+    assert response.json()["incoming_call_enabled"] is True
+
+
+@pytest.mark.asyncio
+async def test_incoming_call_enabled_round_trips(client, isolated_settings):
+    response = client.post("/api/settings", json={"incoming_call_enabled": False})
+    assert response.status_code == 200
+    assert response.json()["incoming_call_enabled"] is False
+    assert client.get("/api/settings").json()["incoming_call_enabled"] is False
+    saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
+    assert saved["incoming_call_enabled"] is False
+
+
+@pytest.mark.asyncio
+async def test_tray_settings_defaults(client, isolated_settings):
+    data = client.get("/api/settings").json()
+    assert data["close_to_tray"] is True
+    assert data["autostart"] is False
+    assert "tray_hint_shown" not in data
+
+
+@pytest.mark.asyncio
+async def test_close_to_tray_round_trips_without_touching_autostart(
+    client, isolated_settings
+):
+    with patch("backend.services.autostart.apply") as apply:
+        response = client.post("/api/settings", json={"close_to_tray": False})
+    assert response.status_code == 200
+    assert response.json()["close_to_tray"] is False
+    assert client.get("/api/settings").json()["close_to_tray"] is False
+    saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
+    assert saved["close_to_tray"] is False
+    apply.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_autostart_change_calls_apply_off_the_loop(client, isolated_settings):
+    import sys
+    import threading
+    from pathlib import Path
+
+    seen: dict = {}
+    handler_thread: list = []
+
+    def fake_apply(enabled, *, frozen, exe, reg=None):
+        seen["thread"] = threading.get_ident()
+        seen["args"] = (enabled, frozen, exe)
+        return "enabled"
+
+    real_to_thread = asyncio.to_thread
+
+    async def recording_to_thread(fn, /, *args, **kwargs):
+        # Called on the event-loop thread; remember which one that is.
+        handler_thread.append(threading.get_ident())
+        return await real_to_thread(fn, *args, **kwargs)
+
+    with (
+        patch("backend.services.autostart.apply", fake_apply),
+        patch("asyncio.to_thread", recording_to_thread),
+    ):
+        response = client.post("/api/settings", json={"autostart": True})
+    assert response.status_code == 200
+    assert response.json()["autostart"] is True
+    assert seen["args"] == (
+        True,
+        getattr(sys, "frozen", False),
+        Path(sys.executable),
+    )
+    # apply ran on a worker thread, not on the event-loop thread that awaited it.
+    assert handler_thread, "loop thread was not recorded"
+    assert seen["thread"] != handler_thread[0]
+    saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
+    assert saved["autostart"] is True
+
+
+@pytest.mark.asyncio
+async def test_autostart_unchanged_value_does_not_call_apply(client, isolated_settings):
+    isolated_settings.write_text(json.dumps({"autostart": True}), encoding="utf-8")
+    with patch("backend.services.autostart.apply") as apply:
+        client.post("/api/settings", json={"autostart": True})
+    apply.assert_not_called()
+    with patch("backend.services.autostart.apply") as apply:
+        client.post("/api/settings", json={"autostart": False})
+    apply.assert_called_once()
+    assert apply.call_args.args == (False,)
+
+
+@pytest.mark.asyncio
+async def test_autostart_apply_failure_does_not_break_the_update(
+    client, isolated_settings
+):
+    with patch("backend.services.autostart.apply", side_effect=OSError("x")):
+        response = client.post("/api/settings", json={"autostart": True})
+    assert response.status_code == 200
+    assert response.json()["autostart"] is True
+
+
+@pytest.mark.asyncio
+async def test_tray_hint_shown_cannot_be_set_via_the_api(client, isolated_settings):
+    response = client.post("/api/settings", json={"tray_hint_shown": True})
+    assert response.status_code == 200
+    saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
+    assert saved.get("tray_hint_shown", False) is False
+
+
+@pytest.mark.asyncio
+async def test_call_popup_enabled_defaults_to_true(client, isolated_settings):
+    assert client.get("/api/settings").json()["call_popup_enabled"] is True
+
+
+def _fake_popup_controller():
+    from unittest.mock import AsyncMock, MagicMock
+
+    fake = MagicMock()
+    fake.cancel = AsyncMock()
+    return fake
+
+
+@pytest.mark.asyncio
+async def test_call_popup_enabled_round_trips_and_cancels_when_turned_off(
+    client, isolated_settings
+):
+    fake = _fake_popup_controller()
+    with (
+        patch("backend.api.settings.get_call_popup_controller", lambda: fake),
+        patch("backend.api.settings.desktop_bridge.call_popup_ensure") as ensure,
+    ):
+        response = client.post("/api/settings", json={"call_popup_enabled": False})
+    assert response.status_code == 200
+    assert response.json()["call_popup_enabled"] is False
+    assert client.get("/api/settings").json()["call_popup_enabled"] is False
+    saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
+    assert saved["call_popup_enabled"] is False
+    fake.cancel.assert_awaited_once_with(reason="disabled")
+    ensure.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_call_popup_turned_on_ensures_the_window(client, isolated_settings):
+    isolated_settings.write_text(
+        json.dumps({"call_popup_enabled": False}), encoding="utf-8"
+    )
+    fake = _fake_popup_controller()
+    with (
+        patch("backend.api.settings.get_call_popup_controller", lambda: fake),
+        patch("backend.api.settings.desktop_bridge.call_popup_ensure") as ensure,
+    ):
+        response = client.post("/api/settings", json={"call_popup_enabled": True})
+    assert response.json()["call_popup_enabled"] is True
+    ensure.assert_called_once_with()
+    fake.cancel.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_call_popup_unchanged_value_calls_neither(client, isolated_settings):
+    fake = _fake_popup_controller()
+    with (
+        patch("backend.api.settings.get_call_popup_controller", lambda: fake),
+        patch("backend.api.settings.desktop_bridge.call_popup_ensure") as ensure,
+    ):
+        client.post("/api/settings", json={"call_popup_enabled": True})
+        isolated_settings.write_text(
+            json.dumps({"call_popup_enabled": False}), encoding="utf-8"
+        )
+        client.post("/api/settings", json={"call_popup_enabled": False})
+    ensure.assert_not_called()
+    fake.cancel.assert_not_awaited()

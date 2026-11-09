@@ -29,7 +29,6 @@
     "error": "錯誤",
     "loading": "撈緊...",
     "done": "搞掂",
-    "refresh": "刷新",
     "browse": "瀏覽",
     "download": "下載",
     "dismiss": "關閉",
@@ -39,7 +38,15 @@
     "featureRequest": "功能請求",
     "moreOptions": "更多選項",
     "removeService": "移除服務",
-    "on": "開"
+    "on": "開",
+    "unreadCount": "{{count}} 則未讀",
+    "retry": "再試",
+    "confirm": "確認",
+    "mediaViewer": "媒體檢視器",
+    "zoomIn": "放大",
+    "zoomOut": "縮細",
+    "zoomFit": "符合畫面",
+    "debug": "除錯"
   },
   "settings": {
     "title": "設定",
@@ -47,6 +54,7 @@
     "tabSync": "同步",
     "tabAi": "AI",
     "tabUpdates": "更新",
+    "sections": "設定分類",
     "outputFolder": "輸出資料夾",
     "autoSync": "自動同步",
     "syncEvery": "同步間隔",
@@ -84,6 +92,18 @@
     "syncSmart": "智慧排程",
     "syncReadToPhone": "同手機同步已讀",
     "syncReadToPhoneDesc": "喺呢度開個 chat 嗰陣，會一併清除佢喺官方 App 嘅未讀計數（消紅點），就好似你喺官方 App 打開一樣。預設係關。",
+    "incomingCall": "來電",
+    "incomingCallDesc": "打開有未聽語音嘅成員聊天室時，以來電方式播放最新語音",
+    "callPopup": "背景來電小窗",
+    "callPopupDesc": "SakaDesk 喺背景時收到成員語音，會喺右下角小窗以來電方式響起",
+    "closeToTray": "閂視窗時縮到系統匣",
+    "closeToTrayDesc": "閂咗視窗之後 SakaDesk 會喺背景繼續同步",
+    "autostart": "開機時自動啟動",
+    "autostartDesc": "登入 Windows 時直接喺系統匣啟動",
+    "notifications": "通知",
+    "notificationsDesc": "成員傳嚟新訊息時顯示 Windows 通知",
+    "notificationsHideContent": "通知唔顯示訊息內容",
+    "notificationsHideContentDesc": "通知只會顯示有新訊息，唔顯示內容",
     "serviceSettings": "服務設定",
     "syncCurrentOff": "而家: 手動同步",
     "syncCurrentFixed": "而家: 每 {{minutes}} 分鐘",
@@ -98,11 +118,19 @@
     "aiProvider": "AI 服務商",
     "resetDefaults": "還原預設",
     "resetConfirm": "要將設定還原做預設值？資料夾、已儲存嘅 API key 同語言會保留。",
+    "saveFailed": "儲存唔到呢個設定，請再試一次。",
     "transcriptionCpuDesc": "所有電腦都用得，速度慢啲",
     "transcriptionGpuDesc": "要 NVIDIA GPU（CUDA），快好多",
     "transcriptionGpuTesting": "測試緊 GPU...",
     "transcriptionGpuSuccess": "GPU 可以用",
     "transcriptionGpuFailed": "GPU 測試失敗"
+  },
+  "call": {
+    "incoming": "來電中…",
+    "ended": "通話結束",
+    "answer": "接聽",
+    "decline": "拒接",
+    "hangUp": "收線"
   },
   "time": {
     "minute": "{{count}} 分鐘",
@@ -134,10 +162,7 @@
     "sessionExpiredDesc": "你嘅 {{service}} Session 過咗期。請重新登入繼續用 {{feature}}。",
     "premiumFeatureDesc": "{{feature}} 係收費功能，需要登入你嘅 {{service}} 帳戶。",
     "credentialsSaved": "你嘅登入資料會安全咁儲存喺你部機度。",
-    "waitingForBrowser": "等待瀏覽器操作...",
-    "launchBrowserLogin": "開瀏覽器登入",
     "connectAccount": "連接帳戶",
-    "browserPrompt": "請登入你嘅 {{service}} Message 帳戶。瀏覽器視窗會彈出嚟畀你入資料。",
     "loginFailed": "登入失敗或者取消咗",
     "yodelJpOnlyTitle": "yodel 只限日本境內使用",
     "yodelJpOnlyMessage": "yodel 嘅服務只喺日本境內提供，所以喺你而家嘅位置連唔到。想登入嘅話，請先切換到日本嘅網絡連線，然後再試多次。",
@@ -160,6 +185,7 @@
     "articleIpTitle": "第3條（知識產權）",
     "articleProhibitedTitle": "第8條（禁止事項）",
     "acceptCheckbox": "我明白同接受呢啲條款，同埋我已經睇咗我用緊嘅服務嘅官方服務條款。",
+    "acceptRequired": "請先剔咗上面個格",
     "acceptAndContinue": "接受並繼續"
   },
   "setup": {
@@ -168,6 +194,7 @@
     "outputFolderPath": "輸出資料夾路徑",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
     "outputFolderHint": "輸入儲存訊息嘅完整路徑。你可以由檔案總管 Copy 個 Path。",
+    "folderRequired": "請先輸入或者揀一個資料夾",
     "downloadBlogsOffline": "下載 Blog 畀搜尋用",
     "downloadBlogsHint": "下載所有 Blog 文章開啟全文搜尋。每個服務大約用 5-15 GB。",
     "startUsing": "開始使用 SakaDesk"
@@ -176,6 +203,7 @@
     "phase": "階段 {{number}}：{{name}}",
     "starting": "開始緊",
     "phaseScanning": "掃描群組",
+    "scanningHistory": "第一次完整掃描聊天室歷史…",
     "phaseDiscovering": "探索緊",
     "phaseSyncing": "攞緊資料",
     "phaseDownloading": "下載媒體",
@@ -204,7 +232,11 @@
     "unknownError": "唔知咩錯誤",
     "sessionExpired": "認證過咗期。請重新登入繼續使用服務。",
     "refreshFailed": "認證失敗咗。請重新登入繼續使用服務。如果問題持續，請報告。",
-    "cancelled": "已經取消同步"
+    "cancelled": "已經取消同步",
+    "progress": "同步進度",
+    "stepDone": "已完成",
+    "stepCurrent": "目前步驟",
+    "stepPending": "待處理"
   },
   "about": {
     "title": "關於",
@@ -212,6 +244,7 @@
     "identity": "坂道系列非官方工具",
     "features": "Message • Blog • 存檔",
     "madeWith": "Made with",
+    "madeWithLove": "用心整嘅",
     "by": "by",
     "goldenFingerEnabled": "下載掣啟用咗 ✨",
     "goldenFingerDisabled": "下載掣停用咗",
@@ -257,6 +290,8 @@
     "title": "Talk",
     "loadingConversations": "載入緊對話...",
     "noConversations": "搵唔到對話。",
+    "loadFailedTitle": "載入唔到對話",
+    "loadFailedBody": "儲存咗嘅訊息冇事，遲啲再試下啦。",
     "online": "Online",
     "offline": "Offline",
     "graduated": "畢業成員",
@@ -270,11 +305,13 @@
     "favorites": "收藏",
     "media": "媒體",
     "background": "背景",
-    "sentLetters": "寄咗嘅信"
+    "sentLetters": "寄咗嘅信",
+    "sentLettersGroupChat": "群組傾偈冇寄出嘅信"
   },
   "messageList": {
     "noMessages": "冇訊息",
     "jumpToOldestUnread": "跳去最早未讀",
+    "messageActions": "訊息操作",
     "welcomeTitle": "歡迎使用 SakaDesk",
     "welcomeSubtitle": "喺側邊揀個對話開始啦。",
     "loadingMessages": "載入緊訊息...",
@@ -285,13 +322,26 @@
     "revealAllDescription": "咁樣會將所有 {{count}} 個未讀訊息標做已讀。",
     "confirm": "確認",
     "noContent": "(冇內容)",
-    "attachment": "附件"
+    "attachment": "附件",
+    "openCalendar": "跳去某一日",
+    "openConversations": "顯示對話列表"
   },
   "calendar": {
+    "loadFailed": "載入唔到日期",
+    "prevMonth": "上個月",
+    "nextMonth": "下個月",
     "title": "日子搜尋",
     "today": "今日",
     "availableOnDays": "有 {{count}} 日有嘢",
+    "itemCount": "{{count}} 項",
     "tapToJump": "撳個日子跳過去",
+    "monthYear": "{{year}}年{{month}}",
+    "pickMonth": "揀年份同月份",
+    "backToDays": "返去日子",
+    "yearList": "年份",
+    "monthGrid": "月份",
+    "yearValue": "{{year}}年",
+    "noMessages": "冇訊息",
     "weekdays": {
       "sun": "日",
       "mon": "一",
@@ -302,18 +352,18 @@
       "sat": "六"
     },
     "months": {
-      "jan": "一月",
-      "feb": "二月",
-      "mar": "三月",
-      "apr": "四月",
-      "may": "五月",
-      "jun": "六月",
-      "jul": "七月",
-      "aug": "八月",
-      "sep": "九月",
-      "oct": "十月",
-      "nov": "十一月",
-      "dec": "十二月"
+      "jan": "1月",
+      "feb": "2月",
+      "mar": "3月",
+      "apr": "4月",
+      "may": "5月",
+      "jun": "6月",
+      "jul": "7月",
+      "aug": "8月",
+      "sep": "9月",
+      "oct": "10月",
+      "nov": "11月",
+      "dec": "12月"
     }
   },
   "favorites": {
@@ -336,6 +386,12 @@
     "imageTooLarge": "張相太大啦。請揀張 2MB 以下嘅。",
     "selectImageFile": "請揀圖片檔案。"
   },
+  "contentArea": {
+    "comingSoon": "就快推出"
+  },
+  "featureRail": {
+    "label": "功能"
+  },
   "features": {
     "messages": "訊息",
     "blogs": "Blog",
@@ -353,10 +409,12 @@
     "selectService": "揀個服務開始用啦"
   },
   "serviceRail": {
+    "label": "群組",
     "sessionExpiredRelogin": "Session 過咗期 - Click 呢度重新登入",
     "addService": "加服務"
   },
   "search": {
+    "memberCount": "{{count}} 位成員",
     "placeholder": "搜尋訊息同 Blog...",
     "placeholderMessages": "搜尋訊息...",
     "placeholderBlogs": "搜尋 Blog...",
@@ -366,9 +424,10 @@
     "resultCountPartial": "顯示緊 {{shown}} / {{total}} 個結果",
     "loadMore": "載入更多結果",
     "pressEnterToSelect": "撳 Enter 揀選",
-    "errorSearchFailed": "搜尋失敗，請再試。",
-    "building": "建緊搜尋索引...",
+    "searchFailed": "搜尋唔到，請再試一次。",
+    "title": "搜尋",
     "filters": "篩選",
+    "removeFilter": "移除篩選：{{name}}",
     "exactMatchOnly": "淨係完全相符",
     "includeUnread": "包含未讀",
     "filterByMember": "按成員或服務篩選...",
@@ -410,17 +469,17 @@
       "photos": "{{count}} 張相",
       "videos": "{{count}} 條片",
       "voice": "{{count}} 個錄音"
-    }
+    },
+    "typeTabs": "媒體類型"
   },
   "sentLetters": {
     "title": "寄咗嘅信",
     "noLetters": "未寄過信",
     "noTextContent": "冇文字內容",
     "noContent": "冇內容",
-    "tapToClose": "撳任意位置關閉",
-    "noGroupId": "冇可用嘅群組 ID",
-    "noService": "冇作用中嘅服務",
-    "fetchFailed": "載入信件失敗"
+    "loading": "載入緊信…",
+    "unavailable": "暫時顯示唔到信",
+    "letterSent": "{{date}} 寄嘅信"
   },
   "blogs": {
     "latestBlogs": "最新 Blog",
@@ -435,7 +494,6 @@
     "addMembersHint": "加返啲我推嘅成員就可以喺度睇到",
     "selectServiceHint": "揀服務再同步嚟載入 Blog",
     "noMembersFound": "搵唔到成員",
-    "tapOutsideToClose": "撳外面閂返",
     "publishedRecently": "24小時內出",
     "cached": "已 Cache",
     "mascot": "吉祥物",
@@ -445,18 +503,30 @@
     "post_other": "{{count}} 篇文",
     "syncingBlogs": "同步緊 Blog...",
     "firstSyncHint": "第一次同步可能要等陣",
-    "selectService": "請揀個服務先"
+    "selectService": "請揀個服務先",
+    "back": "返去最新 Blog",
+    "postsFrom": "顯示範圍",
+    "feedLoadFailed": "載入唔到文章",
+    "postLoadFailed": "載入唔到呢篇文章",
+    "loadingPost": "載入緊文章...",
+    "olderPost": "較舊嘅文章",
+    "newerPost": "較新嘅文章",
+    "postNavigation": "文章導覽",
+    "addFavorite": "將{{name}}加入收藏",
+    "removeFavorite": "將{{name}}移出收藏"
   },
   "voicePlayer": {
     "speed": "播放速度",
     "skipBack": "倒帶 5 秒 (←)",
     "skipForward": "快進 5 秒 (→)",
     "mute": "靜音 (M)",
-    "unmute": "取消靜音 (M)"
+    "unmute": "取消靜音 (M)",
+    "playbackError": "播唔到呢個錄音。"
   },
   "videoPlayer": {
     "noAudio": "冇音訊",
-    "loop": "循環播放"
+    "loop": "循環播放",
+    "playbackError": "播唔到呢條片。"
   },
   "generations": {
     "1st": "１期生",
@@ -520,7 +590,10 @@
       "clearApiKey": "清除 API key",
       "clearApiKeyConfirm": "要喺呢部機度移除已儲存嘅 API key？",
       "cacheClearedMsg": "翻譯緩存已清除",
+      "cacheClearFailed": "清除唔到翻譯緩存，請再試。",
       "savedSecurely": "已安全咁存喺憑證管理員度",
+      "saveFailed": "儲存唔到 AI 設定，請再試。",
+      "clearApiKeyFailed": "清除唔到 API key，請再試。",
       "keyMissing": "重未存 API key，翻譯用唔到。請喺上面輸入。"
     },
     "error": {
@@ -533,5 +606,129 @@
       "geminiPaid": "付費方案 — 每 100 次翻譯約 US$0.01。數據唔會用嚟訓練。",
       "openai": "API 數據唔會用嚟訓練"
     }
+  },
+  "profileImages": {
+    "thumbnailGroup": "列表頭像",
+    "thumbnailGroupHint": "喺聊天室列表顯示嘅圖示",
+    "thumbnail": "聊天頭像",
+    "thumbnailHint": "聊天室入面訊息隔籬嘅頭像",
+    "phoneImage": "來電畫面",
+    "phoneImageHint": "來電時顯示嘅相",
+    "viewImages": "睇圖片",
+    "current": "而家",
+    "versions": "{{count}} 個版本",
+    "kinds": "圖片類型"
+  },
+  "date": {
+    "today": "今日",
+    "yesterday": "尋日"
+  },
+  "designPage": {
+    "title": "設計系統",
+    "subtitle": "SakaDesk 所有畫面共用嘅 token 同基礎元件。淨係開發版有。",
+    "group": "團體",
+    "colors": "顏色",
+    "neutral": "中性角色",
+    "groupColors": "團體色",
+    "contrast": "白字 {{ratio}}:1",
+    "contrastNA": "唔係單色",
+    "radius": "圓角",
+    "shadow": "陰影",
+    "type": "字級",
+    "sample": "日向坂 SakaDesk あいう 🌸 123",
+    "motion": "動畫",
+    "animate": "播放",
+    "replay": "重播",
+    "landing": "落點高亮",
+    "primitives": "基礎元件",
+    "surfaces": "層級",
+    "pills": "膠囊",
+    "filterAll": "全部",
+    "filterUnread": "未讀",
+    "badges": "徽章",
+    "avatars": "頭像",
+    "datePills": "日期膠囊",
+    "buttons": "按鈕",
+    "primary": "主要",
+    "secondary": "次要",
+    "ghost": "透明",
+    "disabled": "停用",
+    "close": "關閉",
+    "rail": "功能列",
+    "modal": "對話框",
+    "openModal": "打開對話框",
+    "modalTitle": "示範對話框",
+    "modalBody": "對話框就係一張紙：20px 圓角、大而柔嘅陰影。",
+    "rules": "規則",
+    "do": "噉做",
+    "dont": "唔好噉做",
+    "do1": "用間距同層級分開區塊。",
+    "dont1": "畫直嘅分隔線。",
+    "do2": "用 rounded-card、text-body 呢類 token class。",
+    "dont2": "寫死 #hex 顏色或者 rounded-[10px] 呢類任意值。",
+    "do3": "團體色只可以經官方層同色彩系統表入面嘅角色用，絕對唔好寫死。每個畫面最多一粒主要按鈕。",
+    "dont3": "寫死團體色，或者用佢塗其他元素。",
+    "levelsSample": "Canvas › Sheet › Card",
+    "search": "搜尋",
+    "scale": "色階",
+    "logoStep": "logo 原色",
+    "railLogo": "選咗嘅組別 logo（側欄）",
+    "roles": "用途",
+    "roleName": "用途",
+    "roleStep": "色階",
+    "danger": "危險",
+    "accent": "強調",
+    "overlay": "浮層",
+    "forms": "表單控制",
+    "switchSample": "開關例子",
+    "inputSample": "輸入框例子",
+    "selectSample": "揀選框例子",
+    "menu": "選單",
+    "menuItem": "選單項目",
+    "menuSelected": "揀咗嘅項目",
+    "menuOpen": "打開選單",
+    "context": "情境",
+    "contextBrand": "SakaDesk 品牌",
+    "brand": "品牌",
+    "semantic": "語意色彩",
+    "tiers": "表現層級",
+    "tierQuiet": "L0 寧靜",
+    "tierInteractive": "L1 互動",
+    "tierAtmosphere": "L2 氛圍",
+    "moments": "品牌時刻",
+    "sampleEmptyTitle": "未有收藏",
+    "sampleEmptyBody": "喺訊息度㩒右鍵，揀「加入收藏」。",
+    "sampleToastTitle": "同步完成",
+    "sampleToastBody": "已儲存 12,846 則訊息",
+    "sampleMilestone": "訂閱咗幾多日",
+    "sampleDisabledReason": "請先揀團體",
+    "displaySample": "留住每一則訊息"
+  },
+  "letters": {
+    "openImage": "打開信",
+    "you": "你",
+    "openImageAt": "打開 {{date}} 寄嘅信"
+  },
+  "letterViewer": {
+    "title": "寄咗嘅信",
+    "older": "較舊嘅信",
+    "newer": "較新嘅信",
+    "jumpToLetter": "跳去傾偈入面呢封信",
+    "jumpToLetterAt": "喺傾偈度顯示 {{date}} 寄嘅信",
+    "imageMissing": "冇信嘅圖片",
+    "openImage": "放大睇信嘅圖片",
+    "fullText": "信嘅內容"
+  },
+  "celebration": {
+    "firstSyncTitle": "你嘅存檔準備好喇",
+    "firstSyncBody": "已經儲存咗 {{value}} 條訊息",
+    "milestoneMessages": "條訊息",
+    "milestoneDays": "日嘅訂閱",
+    "milestoneYears": "年嘅訂閱"
+  },
+  "diagnostics": {
+    "diskUsageComputedAt": "計算於 {{time}}",
+    "diskUsageCalculating": "計緊…",
+    "diskUsageFailed": "計唔到"
   }
 }

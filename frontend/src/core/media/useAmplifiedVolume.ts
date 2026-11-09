@@ -1,5 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { persisted } from '../persistence/persisted';
+import { clientLog } from '../../utils/clientLog';
+import { breadcrumbCode } from '../../utils/breadcrumbCode';
 
 const DEFAULT_VOLUME = 0.5; // 50% slider = gain 1.0 = original recording volume
 
@@ -34,6 +36,8 @@ export function useAmplifiedVolume(storageKey: string) {
     const gainNodeRef = useRef<GainNode | null>(null);
     const sourceNodeRef = useRef<MediaElementAudioSourceNode | null>(null);
     const connectedElementRef = useRef<HTMLMediaElement | null>(null);
+    // The element passed to connectElement (routed through the graph only once it plays)
+    const registeredElementRef = useRef<HTMLMediaElement | null>(null);
     const playListenerRef = useRef<(() => void) | null>(null);
 
     // Keep volumeRef in sync with state
@@ -69,11 +73,22 @@ export function useAmplifiedVolume(storageKey: string) {
     }, [volume, storageKey]);
 
     /**
-     * Connect a media element to the Web Audio API gain pipeline.
-     * Call this once after the media element is available (e.g., in a ref callback or useEffect).
-     * Safe to call multiple times — will only connect once per element.
+     * Route the registered element through the gain pipeline, creating the
+     * AudioContext on first use, and resume the context if it is suspended.
+     * Runs from the element's `play` event; players also call it right before
+     * `play()` so the graph exists (and the resume happens inside the click)
+     * before any sound comes out. No-op without a registered element.
      */
-    const connectElement = useCallback((element: HTMLMediaElement | null) => {
+    // Each failure phase is logged once per hook instance.
+    const loggedPhasesRef = useRef(new Set<string>());
+    const logOnce = useCallback((phase: 'amp_connect_failed' | 'amp_resume_failed', err: unknown) => {
+        if (loggedPhasesRef.current.has(phase)) return;
+        loggedPhasesRef.current.add(phase);
+        clientLog('media_playback', { phase, error_type: breadcrumbCode(err) });
+    }, []);
+
+    const prepareForPlayback = useCallback(() => {
+        const element = registeredElementRef.current;
         if (!element) return;
 
         // If the AudioContext was closed (e.g., React StrictMode cleanup cycle),
@@ -87,61 +102,68 @@ export function useAmplifiedVolume(storageKey: string) {
             connectedElementRef.current = null;
         }
 
-        if (element === connectedElementRef.current) return;
-
-        // Create AudioContext on first connection
+        // Create the AudioContext on first playback, not on mount: a chat
+        // full of video bubbles must not hold one context per bubble.
         if (!audioContextRef.current) {
             audioContextRef.current = new AudioContext();
         }
-
         const ctx = audioContextRef.current;
 
-        // Clean up previous source + its play listener if reconnecting to a different element
-        if (sourceNodeRef.current) {
-            try { sourceNodeRef.current.disconnect(); } catch { /* ignore */ }
-        }
-        if (connectedElementRef.current && playListenerRef.current) {
-            connectedElementRef.current.removeEventListener('play', playListenerRef.current);
-            playListenerRef.current = null;
-        }
-
-        // Create gain node if not exists
-        if (!gainNodeRef.current) {
-            gainNodeRef.current = ctx.createGain();
-            gainNodeRef.current.connect(ctx.destination);
-        }
-
-        // Set initial gain from current volume (effects may have run before context existed)
-        gainNodeRef.current.gain.value = volumeRef.current * 2;
-
-        // Create source from media element and connect through gain
-        try {
-            const source = ctx.createMediaElementSource(element);
-            source.connect(gainNodeRef.current);
-            sourceNodeRef.current = source;
-            connectedElementRef.current = element;
-
-            // Ensure native volume is maxed — all control via GainNode
-            element.volume = 1;
-        } catch {
-            // Element may already be connected to an AudioContext (e.g., hot reload)
-        }
-
-        // Resume AudioContext when media starts playing (user click = user gesture).
-        // Keep a ref to the handler so it can be removed on rebind / unmount.
-        const handlePlay = () => {
-            if (audioContextRef.current?.state === 'suspended') {
-                audioContextRef.current.resume();
+        if (connectedElementRef.current !== element) {
+            // Drop the previous element's source when rebinding to a new element
+            if (sourceNodeRef.current) {
+                try { sourceNodeRef.current.disconnect(); } catch { /* already disconnected */ }
+                sourceNodeRef.current = null;
             }
-        };
-        element.addEventListener('play', handlePlay);
-        playListenerRef.current = handlePlay;
 
-        // Also try to resume now (works if user has already interacted with page)
-        if (ctx.state === 'suspended') {
-            ctx.resume();
+            if (!gainNodeRef.current) {
+                gainNodeRef.current = ctx.createGain();
+                gainNodeRef.current.connect(ctx.destination);
+            }
+            // Set the gain from the current volume (effects may have run before the context existed)
+            gainNodeRef.current.gain.value = volumeRef.current * 2;
+
+            try {
+                const source = ctx.createMediaElementSource(element);
+                source.connect(gainNodeRef.current);
+                sourceNodeRef.current = source;
+                connectedElementRef.current = element;
+                // Ensure native volume is maxed — all control via GainNode
+                element.volume = 1;
+            } catch (err) {
+                // Element may already be connected to an AudioContext (e.g., hot reload)
+                logOnce('amp_connect_failed', err);
+            }
         }
-    }, []);
+
+        // Playback starts from a user gesture, so a suspended context can resume now.
+        if (ctx.state === 'suspended') {
+            ctx.resume().catch((err) => logOnce('amp_resume_failed', err));
+        }
+    }, [logOnce]);
+
+    /**
+     * Register the media element whose sound this hook amplifies. Cheap: it only
+     * listens for `play`; the AudioContext and the element's source node are
+     * created by {@link prepareForPlayback} when playback first starts.
+     * Safe to call multiple times (e.g. from a ref callback) — the same element is
+     * registered once. If a context already exists, a new element is routed now.
+     */
+    const connectElement = useCallback((element: HTMLMediaElement | null) => {
+        if (!element || element === registeredElementRef.current) return;
+
+        // Drop the play listener of a previously registered element
+        if (registeredElementRef.current && playListenerRef.current) {
+            registeredElementRef.current.removeEventListener('play', playListenerRef.current);
+        }
+        registeredElementRef.current = element;
+        element.addEventListener('play', prepareForPlayback);
+        playListenerRef.current = prepareForPlayback;
+
+        if (audioContextRef.current && audioContextRef.current.state !== 'closed') {
+            prepareForPlayback();
+        }
+    }, [prepareForPlayback]);
 
     // Update gain value whenever volume changes
     useEffect(() => {
@@ -151,18 +173,20 @@ export function useAmplifiedVolume(storageKey: string) {
     }, [volume]);
 
     // Close the AudioContext and drop the play listener on unmount. Without this,
-    // each mounted player holds an open AudioContext for its lifetime; scrolling a
-    // long chat/gallery mounts many and browsers cap concurrent contexts (~6 in
-    // Chrome), after which `new AudioContext()` throws and amplification breaks.
-    // A StrictMode mount→cleanup→mount still works: connectElement() detects a
-    // closed context (state === 'closed'), resets its refs, and rebinds the element
-    // to a fresh context (createMediaElementSource is wrapped in try/catch).
+    // each player that has played holds an open AudioContext for its lifetime;
+    // browsers cap concurrent contexts (~6 in Chrome), after which
+    // `new AudioContext()` throws and amplification breaks. The element is
+    // unregistered too, so a StrictMode mount→cleanup→mount registers it again;
+    // the next play detects the closed context (state === 'closed'), resets its
+    // refs and binds the element to a fresh context (createMediaElementSource is
+    // wrapped in try/catch).
     useEffect(() => {
         return () => {
-            if (connectedElementRef.current && playListenerRef.current) {
-                connectedElementRef.current.removeEventListener('play', playListenerRef.current);
-                playListenerRef.current = null;
+            if (registeredElementRef.current && playListenerRef.current) {
+                registeredElementRef.current.removeEventListener('play', playListenerRef.current);
             }
+            playListenerRef.current = null;
+            registeredElementRef.current = null;
             const ctx = audioContextRef.current;
             if (ctx && ctx.state !== 'closed') {
                 ctx.close().catch(() => { /* already closing/closed */ });
@@ -179,8 +203,10 @@ export function useAmplifiedVolume(storageKey: string) {
         isMuted,
         /** Toggle mute on/off. */
         toggleMute,
-        /** Connect a media element to the amplification pipeline. */
+        /** Register the media element to amplify (the audio graph is built on first play). */
         connectElement,
+        /** Build the audio graph (first time) and resume it; call right before `play()`. */
+        prepareForPlayback,
         /** The gain multiplier (0-2). Useful for display: gain 1.0 = original. */
         gain: volume * 2,
     };

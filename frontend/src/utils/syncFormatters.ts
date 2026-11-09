@@ -14,9 +14,18 @@ export const formatSyncTime = (seconds: number | undefined): string => {
 
 /** Format sync speed as "X.XX unit/s". */
 export const formatSyncSpeed = (speed: number | null | undefined, unit: string): string => {
-    if (!speed || speed <= 0) return '';
+    const parts = formatSyncSpeedParts(speed, unit);
+    return parts.value ? `${parts.value} ${parts.unit}` : '';
+};
+
+/** The speed split into its number and its unit ("files/s"), for a tile that stacks them. */
+export const formatSyncSpeedParts = (
+    speed: number | null | undefined,
+    unit: string,
+): { value: string; unit: string } => {
+    if (!speed || speed <= 0) return { value: '', unit: '' };
     const decimals = speed >= 10 ? 1 : 2;
-    return `${speed.toFixed(decimals)} ${unit}/s`;
+    return { value: speed.toFixed(decimals), unit: `${unit}/s` };
 };
 
 /** Get the localized phase name for a sync progress state. */
@@ -47,4 +56,18 @@ export function getSyncUnitLabel(
     if (syncProgress.phase_number === 2) return t('sync.members');
     if (syncProgress.phase_number === 3) return t('sync.files');
     return t('sync.items');
+}
+
+/** Detail line for a sync progress state; prefixes known detail codes with their localized text. */
+export function getSyncDetail(
+    syncProgress: SyncProgress,
+    t: (key: string) => string,
+    fallback: string,
+): string {
+    const detail = syncProgress.detail || '';
+    if (syncProgress.detail_code === 'scanning_history') {
+        const scanning = t('sync.scanningHistory');
+        return detail ? `${scanning} · ${detail}` : scanning;
+    }
+    return detail || fallback;
 }

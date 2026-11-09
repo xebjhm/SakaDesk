@@ -2,6 +2,8 @@ import { defineConfig, devices } from '@playwright/test'
 
 export default defineConfig({
   testDir: './e2e',
+  // e2e/probe runs against the Vite dev server: see playwright.probe.config.ts.
+  testIgnore: ['**/probe/**'],
   fullyParallel: true,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
@@ -26,8 +28,8 @@ export default defineConfig({
   // SAKADESK_TEST_MODE is set via env var (CI step or shell), not inline in the command
   webServer: {
     command: process.platform === 'win32'
-      ? 'cd .. && uv run uvicorn backend.main:app --port 8000'
-      : 'cd .. && SAKADESK_TEST_MODE=true uv run uvicorn backend.main:app --port 8000',
+      ? 'cd .. && uv run uvicorn backend.main:app --port 8000 --timeout-keep-alive 600'
+      : 'cd .. && SAKADESK_TEST_MODE=true uv run uvicorn backend.main:app --port 8000 --timeout-keep-alive 600',
     url: 'http://localhost:8000/api/auth/status',
     reuseExistingServer: !process.env.CI,
     timeout: 30000,

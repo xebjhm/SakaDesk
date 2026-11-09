@@ -1,13 +1,16 @@
-import React, { useState, useMemo } from 'react';
-import { Star, Play, MoreHorizontal } from 'lucide-react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { Star, Play, X, Film } from 'lucide-react';
 import type { Message } from '../../types';
-import { formatDateTime } from '../../utils/classnames';
+import { cn, formatDateTime } from '../../utils/classnames';
 import { VoicePlayer } from '../media/VoicePlayer';
-import { BaseModal, DetailModal, SafeImage, ModalEmptyState } from '../common';
+import { useMediaSource } from '../media/mediaElement';
+import { SafeImage } from '../common';
 import type { BaseModalProps } from '../../types/modal';
+import { Modal, Card, Avatar, IconButton } from '../../design/primitives';
+import { DialogStatus } from '../common/DialogStatus';
 import { useAppStore } from '../../store/appStore';
-import { getServiceTheme } from '../../config/serviceThemes';
 import { useTranslation } from '../../i18n';
+import { clientLog } from '../../utils/clientLog';
 
 interface FavoritesModalProps extends BaseModalProps {
     messages: Message[];
@@ -15,6 +18,119 @@ interface FavoritesModalProps extends BaseModalProps {
     memberAvatar?: string;
     serviceId?: string;  // Service ID for building correct media URLs
 }
+
+/**
+ * True once the element behind the returned ref nears the viewport (an
+ * IntersectionObserver rooted at the dialog body, the scroll container, so the
+ * `rootMargin` pre-load applies inside it). It never goes back to false.
+ * Without IntersectionObserver it is true immediately (the parent logs
+ * `favorite_video_lazy_unsupported` once per open).
+ */
+function useInViewOnce(root: HTMLElement | null) {
+    const [inView, setInView] = useState(() => typeof IntersectionObserver === 'undefined');
+    const holderRef = useRef<HTMLDivElement>(null);
+
+    useEffect(() => {
+        const el = holderRef.current;
+        if (inView || !el || !root) return;
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((entry) => entry.isIntersecting)) {
+                    setInView(true);
+                    observer.disconnect();
+                }
+            },
+            // Start loading slightly before the card enters view.
+            { root, rootMargin: '200px', threshold: 0 },
+        );
+        observer.observe(el);
+        return () => observer.disconnect();
+    }, [inView, root]);
+
+    return { holderRef, inView };
+}
+
+/**
+ * Inline video thumbnail. The `<video>` is mounted only once the card nears the
+ * viewport ({@link useInViewOnce}), so opening Favourites does not load
+ * every video at once. Until the first frame is available a neutral placeholder
+ * shows a shimmer sweep (hidden under reduced motion) and a centred Film icon.
+ * The loading video stays laid out but invisible (never `display:none`),
+ * mirroring SafeImage's skeleton mode. The placeholder goes away on whichever
+ * of `loadeddata` / `loadedmetadata` fires first (some engines stop at
+ * metadata). A failed video drops the placeholder, logs `favorite_video_error`
+ * and leaves the native element. Without IntersectionObserver the video mounts
+ * immediately (the parent logs `favorite_video_lazy_unsupported` once per open).
+ * The video is released (pause, drop src, load) on unmount so closing
+ * Favourites never leaves media connections open.
+ */
+const FavoriteVideoThumb: React.FC<{ src: string; root: HTMLElement | null }> = ({ src, root }) => {
+    const [ready, setReady] = useState(false);
+    const { holderRef, inView } = useInViewOnce(root);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    useMediaSource(videoRef, inView ? src : undefined);
+
+    return (
+        <div ref={holderRef} className="relative">
+            {!ready && (
+                <span
+                    data-testid="video-skeleton"
+                    aria-hidden="true"
+                    className="relative flex h-40 w-64 max-w-full items-center justify-center overflow-hidden bg-skeleton"
+                >
+                    <span
+                        data-testid="video-shimmer"
+                        className="absolute inset-y-0 left-0 w-1/2 animate-shimmer-sweep bg-gradient-to-r from-transparent via-pill to-transparent motion-reduce:hidden"
+                    />
+                    <Film className="relative h-8 w-8 text-secondary" />
+                </span>
+            )}
+            {inView && (
+                <video
+                    ref={videoRef}
+                    className={cn('max-h-64 max-w-full object-contain', !ready && 'pointer-events-none absolute left-0 top-0 opacity-0')}
+                    preload="metadata"
+                    onLoadedData={() => setReady(true)}
+                    onLoadedMetadata={() => setReady(true)}
+                    onError={() => {
+                        clientLog('favorite_video_error', { phase: 'load' });
+                        setReady(true);
+                    }}
+                />
+            )}
+        </div>
+    );
+};
+
+/**
+ * Voice card. The player (and so its `<audio>` and metadata request) mounts
+ * only once the card nears the viewport ({@link useInViewOnce}); until then a
+ * same-height placeholder holds the layout and no request is made.
+ */
+const FavoriteVoice: React.FC<{ src: string; root: HTMLElement | null }> = ({ src, root }) => {
+    const { holderRef, inView } = useInViewOnce(root);
+    return (
+        <div ref={holderRef} className="max-w-md">
+            {inView ? <VoicePlayer src={src} /> : <div data-testid="voice-placeholder" aria-hidden="true" className="h-14" />}
+        </div>
+    );
+};
+
+/** The viewer's native-controls video, released (pause, drop src, load) on unmount. */
+const FavoriteVideoDetail: React.FC<{ src: string; allowDownload: boolean }> = ({ src, allowDownload }) => {
+    const videoRef = useRef<HTMLVideoElement>(null);
+    useMediaSource(videoRef, src);
+    return (
+        <video
+            ref={videoRef}
+            controls
+            controlsList={allowDownload ? undefined : 'nodownload'}
+            disablePictureInPicture
+            autoPlay
+            className="max-h-[80vh] max-w-full"
+        />
+    );
+};
 
 export const FavoritesModal: React.FC<FavoritesModalProps> = ({
     isOpen,
@@ -26,11 +142,18 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 }) => {
     const { t } = useTranslation();
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+    // The dialog body is the scroll container: it is the IntersectionObserver root for the video and voice cards.
+    const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
 
-    // Get per-service theme colors
-    const activeService = useAppStore((state) => state.activeService);
+    // Without IntersectionObserver every video and voice card mounts eagerly; leave one
+    // breadcrumb per modal open (the event name predates voice cards and covers both).
+    useEffect(() => {
+        if (isOpen && typeof IntersectionObserver === 'undefined') {
+            clientLog('favorite_video_lazy_unsupported');
+        }
+    }, [isOpen]);
+
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
-    const theme = getServiceTheme(activeService);
 
     // Filter only favorite messages, sorted by timestamp (newest first)
     const favoriteMessages = useMemo(() => {
@@ -48,181 +171,106 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
             : `/api/content/media/${encodedPath}`;
     };
 
-    // Detail view for media (photos/videos)
+    // Detail view for media (photos/videos): the dark viewer
     const renderDetailView = () => {
         if (!selectedMedia) return null;
-
         const mediaUrl = selectedMedia.media_file ? getMediaUrl(selectedMedia.media_file) : null;
-
         return (
-            <DetailModal
-                isOpen={!!selectedMedia}
+            <Modal
+                isOpen
                 onClose={() => setSelectedMedia(null)}
-                footer={
-                    <>
-                        <span>{memberName}</span>
-                        <span className="mx-2">•</span>
-                        <span>{formatDateTime(selectedMedia.timestamp)}</span>
-                    </>
-                }
+                tone="viewer"
+                layout="bare"
+                aria-label={t('common.mediaViewer')}
+                logId="media_viewer"
             >
-                {selectedMedia.type === 'picture' && mediaUrl && (
-                    <SafeImage
-                        src={mediaUrl}
-                        alt="Favorite"
-                        className="max-w-full max-h-[80vh] object-contain"
-                    />
-                )}
-                {selectedMedia.type === 'video' && mediaUrl && (
-                    <video
-                        src={mediaUrl}
-                        controls
-                        controlsList={goldenFingerActive ? undefined : "nodownload"}
-                        disablePictureInPicture
-                        autoPlay
-                        className="max-w-full max-h-[80vh]"
-                    />
-                )}
-            </DetailModal>
-        );
-    };
-
-    // Render a single favorite message card
-    const renderMessageCard = (message: Message) => {
-        const mediaUrl = message.media_file ? getMediaUrl(message.media_file) : null;
-
-        return (
-            <div key={message.id} className="bg-white">
-                {/* Header row: avatar, name, solid star + timestamp, menu */}
-                <div className="flex items-center gap-3 px-4 py-3">
-                    {/* Avatar */}
-                    <div className="w-10 h-10 rounded-full overflow-hidden bg-gray-200 shrink-0">
-                        {memberAvatar ? (
-                            <img src={memberAvatar} alt={memberName} className="w-full h-full object-cover" />
-                        ) : (
-                            <div className="w-full h-full flex items-center justify-center text-gray-500 text-sm">
-                                {memberName.substring(0, 2)}
-                            </div>
+                <IconButton variant="overlay" className="absolute right-4 top-4" aria-label={t('common.close')} icon={<X />} onClick={() => setSelectedMedia(null)} />
+                <div className="flex max-h-[90vh] w-full max-w-4xl flex-col items-center gap-4 p-4">
+                    <div className="flex flex-1 items-center justify-center overflow-hidden rounded-card bg-viewer-stage">
+                        {selectedMedia.type === 'picture' && mediaUrl && (
+                            <SafeImage src={mediaUrl} alt={t('favorites.title')} className="max-h-[80vh] max-w-full object-contain" />
+                        )}
+                        {selectedMedia.type === 'video' && mediaUrl && (
+                            <FavoriteVideoDetail key={mediaUrl} src={mediaUrl} allowDownload={goldenFingerActive} />
                         )}
                     </div>
-
-                    {/* Name */}
-                    <div className="flex-1 min-w-0">
-                        <span className="text-sm font-medium text-gray-900">{memberName}</span>
-                    </div>
-
-                    {/* Solid star followed by timestamp */}
-                    <div className="flex items-center gap-1.5 shrink-0">
-                        <Star
-                            className="w-4 h-4"
-                            style={{ color: theme.modals.accentColor, fill: theme.modals.accentColor }}
-                        />
-                        <span className="text-sm text-gray-500">{formatDateTime(message.timestamp)}</span>
-                    </div>
-
-                    {/* Menu icon */}
-                    <button className="p-1 text-gray-400 hover:text-gray-600">
-                        <MoreHorizontal className="w-5 h-5" />
-                    </button>
+                    <p className="text-small text-viewer-muted">
+                        <span lang="ja">{memberName}</span>
+                        <span aria-hidden="true" className="mx-2">•</span>
+                        <span>{formatDateTime(selectedMedia.timestamp)}</span>
+                    </p>
                 </div>
-
-                {/* Content area */}
-                <div className="px-4 pb-4 pl-16">
-                    {/* Text message */}
-                    {message.type === 'text' && (
-                        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm">
-                            <p className="text-gray-800 whitespace-pre-wrap">{message.content}</p>
-                        </div>
-                    )}
-
-                    {/* Picture */}
-                    {message.type === 'picture' && mediaUrl && (
-                        <button
-                            onClick={() => setSelectedMedia(message)}
-                            className="rounded-xl overflow-hidden border border-gray-200 shadow-sm max-w-sm block"
-                        >
-                            <SafeImage
-                                src={mediaUrl}
-                                alt="Favorite"
-                                className="max-w-full max-h-64 object-contain"
-                            />
-                        </button>
-                    )}
-
-                    {/* Video */}
-                    {message.type === 'video' && mediaUrl && (
-                        <button
-                            onClick={() => setSelectedMedia(message)}
-                            className="relative rounded-xl overflow-hidden border border-gray-200 shadow-sm max-w-sm block"
-                        >
-                            <video
-                                src={mediaUrl}
-                                className="max-w-full max-h-64 object-contain"
-                                preload="metadata"
-                            />
-                            {/* Play button overlay */}
-                            <div className="absolute inset-0 flex items-center justify-center">
-                                <div className="w-14 h-14 rounded-full bg-white/90 flex items-center justify-center shadow-lg">
-                                    <Play className="w-7 h-7 text-gray-700 ml-1" />
-                                </div>
-                            </div>
-                        </button>
-                    )}
-
-                    {/* Voice */}
-                    {message.type === 'voice' && mediaUrl && (
-                        <div className="bg-white rounded-xl border border-gray-200 p-4 shadow-sm max-w-md">
-                            <VoicePlayer src={mediaUrl} accentColor={theme.modals.accentColor} />
-                        </div>
-                    )}
-                </div>
-            </div>
+            </Modal>
         );
     };
 
-    // Render content
-    const renderContent = () => {
-        if (favoriteMessages.length === 0) {
-            return (
-                <div className="flex-1 flex items-center justify-center py-12">
-                    <ModalEmptyState
-                        icon={Star}
-                        message={t('favorites.noFavorites')}
-                        hint={t('favorites.addHint')}
-                    />
-                </div>
-            );
-        }
-
+    const renderMessageCard = (message: Message) => {
+        const mediaUrl = message.media_file ? getMediaUrl(message.media_file) : null;
         return (
-            <div className="flex-1 overflow-y-auto bg-gray-50">
-                <div className="divide-y divide-gray-100">
-                    {favoriteMessages.map(renderMessageCard)}
+            <Card key={message.id} className="flex flex-col gap-3 p-4">
+                <div className="flex items-center gap-3">
+                    <Avatar src={memberAvatar} name={memberName} size="md" decorative />
+                    <span lang="ja" className="min-w-0 flex-1 truncate text-body font-semibold text-primary">{memberName}</span>
+                    <span className="flex shrink-0 items-center gap-1 text-small text-muted">
+                        <Star aria-hidden="true" className="h-4 w-4 fill-current text-semantic-star drop-shadow-sm" />
+                        {formatDateTime(message.timestamp)}
+                    </span>
                 </div>
-            </div>
+                <div className="pl-12">
+                    {message.type === 'text' && (
+                        <p lang="ja" className="whitespace-pre-wrap text-body text-primary">{message.content}</p>
+                    )}
+                    {message.type === 'picture' && mediaUrl && (
+                        <button
+                            type="button"
+                            onClick={() => setSelectedMedia(message)}
+                            className="relative block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        >
+                            <SafeImage src={mediaUrl} alt={t('favorites.title')} className="max-h-64 max-w-full object-contain" skeletonClassName="h-48 w-64 max-w-full" />
+                        </button>
+                    )}
+                    {message.type === 'video' && mediaUrl && (
+                        <button
+                            type="button"
+                            onClick={() => setSelectedMedia(message)}
+                            className="relative block max-w-sm overflow-hidden rounded-card shadow-card focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                        >
+                            <FavoriteVideoThumb key={mediaUrl} src={mediaUrl} root={bodyEl} />
+                            <span className="absolute inset-0 flex items-center justify-center">
+                                <span className="flex h-14 w-14 items-center justify-center rounded-pill bg-viewer-control text-viewer">
+                                    <Play className="ml-1 h-7 w-7" />
+                                </span>
+                            </span>
+                        </button>
+                    )}
+                    {message.type === 'voice' && mediaUrl && (
+                        <FavoriteVoice key={mediaUrl} src={mediaUrl} root={bodyEl} />
+                    )}
+                </div>
+            </Card>
         );
     };
 
     return (
         <>
-            <BaseModal
+            <Modal
                 isOpen={isOpen}
                 onClose={onClose}
                 title={t('favorites.title')}
-                icon={Star}
-                maxWidth="max-w-3xl"
-                className="h-[80vh]"
-                footer={
-                    <div className="bg-gray-50 px-4 py-3 border-t border-gray-100">
-                        <span className="text-sm text-gray-500">
-                            {t('favorites.count', { count: favoriteMessages.length })}
-                        </span>
-                    </div>
-                }
+                icon={<Star />}
+                closeLabel={t('common.close')}
+                logId="favorites"
+                bodyRef={setBodyEl}
+                className="h-[80vh] max-w-3xl"
+                bodyClassName="bg-sunken px-4 py-4"
+                footer={<p className="mr-auto text-small text-muted">{t('favorites.count', { count: favoriteMessages.length })}</p>}
             >
-                {renderContent()}
-            </BaseModal>
-
+                {favoriteMessages.length === 0 ? (
+                    <DialogStatus kind="empty" icon={<Star />} title={t('favorites.noFavorites')} hint={t('favorites.addHint')} />
+                ) : (
+                    <div className="flex flex-col gap-3">{favoriteMessages.map(renderMessageCard)}</div>
+                )}
+            </Modal>
             {renderDetailView()}
         </>
     );
