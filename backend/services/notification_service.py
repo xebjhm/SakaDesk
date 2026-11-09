@@ -19,7 +19,7 @@ import asyncio
 import sys
 import threading
 from collections import deque
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from typing import Any, Callable, Protocol
 
 import structlog
@@ -43,8 +43,13 @@ _notifications_enabled = True
 # Toast shows run on one dedicated worker thread, so a hung WinRT call can
 # only ever block this thread, never the default executor other code uses.
 _toast_executor: ThreadPoolExecutor | None = None
-_show_running = False  # a show is on (or queued for) the worker thread
+# A show exceeded _SHOW_TIMEOUT_S and its worker job has not finished yet.
+# Set by the timed-out caller, cleared by the job's done-callback.
+_show_stuck = False
 _show_state_lock = threading.Lock()
+# Serialises shows on the event loop: one show at a time, in arrival order.
+# Bound to the loop that created it (a new loop, e.g. in tests, gets its own).
+_show_order: tuple[asyncio.AbstractEventLoop, asyncio.Lock] | None = None
 
 
 class Notifier(Protocol):
@@ -321,28 +326,41 @@ def _get_toast_executor() -> ThreadPoolExecutor:
         return _toast_executor
 
 
-def _claim_show_slot() -> bool:
-    """Mark a show as running; False when a previous show is still running."""
-    global _show_running
-    with _show_state_lock:
-        if _show_running:
-            return False
-        _show_running = True
-        return True
+def _get_show_order_lock() -> asyncio.Lock:
+    """The lock that serialises shows on the running event loop."""
+    global _show_order
+    loop = asyncio.get_running_loop()
+    if _show_order is None or _show_order[0] is not loop:
+        _show_order = (loop, asyncio.Lock())
+    return _show_order[1]
 
 
-def _release_show_slot() -> None:
-    global _show_running
+def _mark_stuck_unless_done(job: Future[bool]) -> None:
+    """Flag ``job`` as stuck if it is still running (its done-callback clears it)."""
+    global _show_stuck
     with _show_state_lock:
-        _show_running = False
+        if not job.done():
+            _show_stuck = True
+
+
+def _clear_stuck(_job: Future[bool]) -> None:
+    global _show_stuck
+    with _show_state_lock:
+        _show_stuck = False
+
+
+def _is_stuck() -> bool:
+    with _show_state_lock:
+        return _show_stuck
 
 
 def _reset_toast_executor_for_tests() -> None:
-    """Drop the executor and busy flag (does not wait for a stuck worker)."""
-    global _toast_executor, _show_running
+    """Drop the executor, order lock and stuck flag (does not wait for a stuck worker)."""
+    global _toast_executor, _show_stuck, _show_order
     with _show_state_lock:
         executor, _toast_executor = _toast_executor, None
-        _show_running = False
+        _show_stuck = False
+    _show_order = None
     if executor is not None:
         executor.shutdown(wait=False)
 
@@ -359,34 +377,38 @@ async def _run_guarded(
     Never raises. ``fields`` are added to every failure/skip log, ``skip_extra``
     to the busy skip and ``sent_extra`` to the success log.
 
-    A show that takes longer than ``_SHOW_TIMEOUT_S`` is logged as
-    ``notify_failed`` (``error_type=TimeoutError``); its worker thread is left
-    to finish on its own. While such a show is still running, further shows
-    are not queued behind it: they are skipped with ``notify_skip
-    reason=busy``.
+    Shows are serialised: a show that starts while another is running waits
+    its turn and then displays, so concurrent callers (per-service scheduler
+    ticks, tray "Sync now", popup fallback toasts, the tray hint) are never
+    dropped. A show that takes longer than ``_SHOW_TIMEOUT_S`` is logged as
+    ``notify_failed`` (``error_type=TimeoutError``) and marked stuck; its
+    worker thread is left to finish on its own. Only while such a stuck show
+    is still running are further shows (including those already waiting)
+    skipped with ``notify_skip reason=busy``, instead of queuing behind it.
     """
-    if not _claim_show_slot():
-        logger.info("notify_skip", reason="busy", **fields, **skip_extra)
-        return False
-    try:
-        # submit + done-callback (not run_in_executor) so the slot is also
-        # freed if the job is cancelled before the worker ever starts it.
-        job = _get_toast_executor().submit(job_fn)
-    except Exception as e:  # e.g. the executor was shut down
-        _release_show_slot()
-        logger.warning("notify_failed", **fields, error_type=type(e).__name__)
-        return False
-    job.add_done_callback(lambda _f: _release_show_slot())
-    try:
-        shown = await asyncio.wait_for(
-            asyncio.wrap_future(job), timeout=_SHOW_TIMEOUT_S
-        )
-    except TimeoutError:
-        logger.warning("notify_failed", **fields, error_type="TimeoutError")
-        return False
-    except Exception as e:
-        logger.warning("notify_failed", **fields, error_type=type(e).__name__)
-        return False
+    async with _get_show_order_lock():
+        if _is_stuck():
+            logger.info("notify_skip", reason="busy", **fields, **skip_extra)
+            return False
+        try:
+            job = _get_toast_executor().submit(job_fn)
+        except Exception as e:  # e.g. the executor was shut down
+            logger.warning("notify_failed", **fields, error_type=type(e).__name__)
+            return False
+        try:
+            shown = await asyncio.wait_for(
+                asyncio.wrap_future(job), timeout=_SHOW_TIMEOUT_S
+            )
+        except TimeoutError:
+            # Flag first, then attach the callback: if the job finishes in
+            # between, the callback runs at once and clears the flag.
+            _mark_stuck_unless_done(job)
+            job.add_done_callback(_clear_stuck)
+            logger.warning("notify_failed", **fields, error_type="TimeoutError")
+            return False
+        except Exception as e:
+            logger.warning("notify_failed", **fields, error_type=type(e).__name__)
+            return False
     if not shown:
         logger.warning("notify_failed", **fields, reason="not_shown")
         return False
@@ -416,9 +438,10 @@ async def send_planned(plans: list[ToastPlan]) -> int:
     reason=disabled``) or when the notifier is unavailable (``notify_skip
     reason=unavailable`` with ``backend_reason``; the notifier already logged
     ``notify_unavailable`` once, when it was built). Each show is bounded by
-    ``_SHOW_TIMEOUT_S``, and while a timed-out show is still stuck the rest
-    are skipped (``notify_skip reason=busy``). The notifier is resolved on a worker thread: its
-    first use imports ``windows_toasts``/WinRT and builds the toaster.
+    ``_SHOW_TIMEOUT_S`` and waits its turn behind any other running show;
+    while a timed-out show is still stuck the rest are skipped (``notify_skip
+    reason=busy``). The notifier is resolved on a worker thread: its first use
+    imports ``windows_toasts``/WinRT and builds the toaster.
     """
     if not plans:
         return 0
@@ -445,8 +468,8 @@ async def send_planned(plans: list[ToastPlan]) -> int:
 async def send_simple(title: str, body: str) -> bool:
     """Show an app-level hint toast (off the event loop); return whether it showed.
 
-    Goes through the same worker thread, busy guard and timeout as chat
-    toasts. Not gated on the notifications flag: it is a one-time lifecycle
+    Goes through the same worker thread, show queue, stuck guard and timeout
+    as chat toasts. Not gated on the notifications flag: it is a one-time lifecycle
     hint, not a message notification. Skipped when the notifier is unavailable
     (``notify_skip reason=unavailable kind=simple``). Outcomes are logged as
     ``notify_sent`` / ``notify_failed`` with ``kind=simple``; the title and

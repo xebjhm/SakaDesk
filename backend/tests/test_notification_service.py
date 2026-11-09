@@ -616,9 +616,9 @@ def test_shows_work_again_after_the_stuck_show_finishes() -> None:
                 assert started.is_set()
                 busy = await ns.send_planned([_plan("79")])
                 release.set()
-                # the freed slot is released by the worker's done-callback
+                # the stuck flag is cleared by the worker's done-callback
                 for _ in range(100):
-                    if not ns._show_running:
+                    if not ns._show_stuck:
                         break
                     await asyncio.sleep(0.01)
                 after = await ns.send_planned([_plan("80")])
@@ -633,6 +633,92 @@ def test_shows_work_again_after_the_stuck_show_finishes() -> None:
     assert [p.group_id for p in fake.shown] == ["34", "80"]
     assert [e["group_id"] for e in logs if e["event"] == "notify_sent"] == ["80"]
     assert [e["reason"] for e in logs if e["event"] == "notify_skip"] == ["busy"]
+
+
+def test_concurrent_shows_all_display_in_turn() -> None:
+    """Shows that start while another is running queue; none is dropped.
+
+    Per-service scheduler ticks fire in lockstep and the tray hint / popup
+    fallback can land at the same moment, so every concurrent show must
+    display, one after another on the toast thread.
+    """
+    release = threading.Event()
+    started = threading.Event()
+    order: list[str] = []
+
+    class Slow(FakeNotifier):
+        def show(self, plan):
+            order.append(plan.group_id)
+            if plan.group_id == "34":
+                started.set()
+                release.wait(5)  # slow, but well inside the timeout
+            return True
+
+        def show_simple(self, title, body):
+            order.append("simple")
+            return True
+
+    fake = Slow()
+
+    async def run():
+        with patch.object(ns, "get_notifier", lambda: fake):
+            first = asyncio.create_task(ns.send_planned([_plan("34")]))
+            while not started.is_set():
+                await asyncio.sleep(0.005)
+            others = asyncio.gather(
+                ns.send_planned([_plan("79")]),
+                ns.send_simple("t", "b"),
+                ns.send_planned([_plan("80")]),
+            )
+            await asyncio.sleep(0.05)  # the others are now waiting their turn
+            release.set()
+            return await first, await others
+
+    try:
+        with capture_logs() as logs:
+            first, others = asyncio.run(run())
+    finally:
+        release.set()
+    assert first == 1
+    assert list(others) == [1, True, 1]
+    assert order == ["34", "79", "simple", "80"]
+    assert not [e for e in logs if e["event"] == "notify_skip"]
+    assert len([e for e in logs if e["event"] == "notify_sent"]) == 4
+
+
+def test_show_queued_behind_a_stuck_show_is_skipped_as_busy() -> None:
+    """Skip only once a show is known stuck (it exceeded its timeout)."""
+    release = threading.Event()
+
+    class Stuck(FakeNotifier):
+        def show(self, plan):
+            self.shown.append(plan)
+            if plan.group_id == "34":
+                release.wait(5)
+            return True
+
+    fake = Stuck()
+
+    async def run():
+        with patch.object(ns, "_SHOW_TIMEOUT_S", 0.05):
+            with patch.object(ns, "get_notifier", lambda: fake):
+                return await asyncio.gather(
+                    ns.send_planned([_plan("34")]),
+                    ns.send_planned([_plan("79", count=2)]),
+                )
+
+    try:
+        with capture_logs() as logs:
+            results = asyncio.run(run())
+    finally:
+        release.set()
+    assert results == [0, 0]
+    assert [p.group_id for p in fake.shown] == ["34"]
+    (failed,) = [e for e in logs if e["event"] == "notify_failed"]
+    assert failed["error_type"] == "TimeoutError" and failed["group_id"] == "34"
+    (busy,) = [e for e in logs if e["event"] == "notify_skip"]
+    assert busy["reason"] == "busy" and busy["group_id"] == "79"
+    assert busy["count"] == 2
 
 
 def test_raising_show_frees_the_slot_for_the_next_one() -> None:
@@ -666,7 +752,7 @@ def test_executor_failure_is_logged_and_frees_the_slot() -> None:
     assert sent == 0
     (failed,) = [e for e in logs if e["event"] == "notify_failed"]
     assert failed["error_type"] == "RuntimeError"
-    assert not ns._show_running
+    assert not ns._show_stuck
 
 
 # ------------------------------------------------------------------ send_simple
@@ -705,7 +791,7 @@ def test_send_simple_exception_is_logged_not_raised() -> None:
     assert failed["kind"] == "simple"
     assert failed["error_type"] == "RuntimeError"
     assert "金村" not in repr(logs)
-    assert not ns._show_running
+    assert not ns._show_stuck
 
 
 def test_send_simple_false_result_logs_not_shown() -> None:
