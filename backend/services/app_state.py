@@ -8,6 +8,7 @@ import asyncio
 import json
 import sqlite3
 import time
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -42,8 +43,50 @@ def init_db() -> None:
             CREATE TABLE IF NOT EXISTS translation_cache (
                 k TEXT PRIMARY KEY, v TEXT, last_used REAL
             );
+            CREATE TABLE IF NOT EXISTS favorite_log (
+                service TEXT, message_id INTEGER, favorited_at TEXT,
+                PRIMARY KEY(service, message_id)
+            );
             """
         )
+
+
+def record_favorite(
+    service: str, message_id: int, is_favorite: bool, *, at: datetime | None = None
+) -> None:
+    """Record when a message was favourited (UTC ISO string).
+
+    Re-favouriting upserts the timestamp; un-favouriting deletes the row.
+    ``at`` defaults to the current UTC time. Blocking I/O: call via
+    ``asyncio.to_thread`` from async handlers.
+    """
+    with _connect() as c:
+        if not is_favorite:
+            c.execute(
+                "DELETE FROM favorite_log WHERE service=? AND message_id=?",
+                (service, message_id),
+            )
+            return
+        when = (at or datetime.now(timezone.utc)).astimezone(timezone.utc)
+        c.execute(
+            "INSERT INTO favorite_log(service,message_id,favorited_at) VALUES(?,?,?) "
+            "ON CONFLICT(service,message_id) DO UPDATE SET favorited_at=excluded.favorited_at",
+            (service, message_id, when.isoformat()),
+        )
+
+
+def favorited_at(service: str, message_ids: list[int]) -> dict[int, str]:
+    """Map of message_id -> UTC ISO favourite time, for the ids that are logged."""
+    if not message_ids:
+        return {}
+    q = ",".join("?" * len(message_ids))
+    with _connect() as c:
+        rows = c.execute(
+            f"SELECT message_id, favorited_at FROM favorite_log "
+            f"WHERE service=? AND message_id IN ({q})",
+            [service, *message_ids],
+        ).fetchall()
+    return {mid: ts for mid, ts in rows}
 
 
 def get_prefs() -> dict[str, Any]:
