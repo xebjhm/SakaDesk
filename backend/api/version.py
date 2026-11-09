@@ -248,7 +248,7 @@ async def start_upgrade():
 
     Poll /upgrade/status to check progress.
     """
-    global _upgrade_state
+    global _upgrade_state, _download_task, _upgrade_generation
 
     # C1c: refuse to spawn a NEW writer once shutdown has begun -- the download
     # runs as an untracked background task that streams the installer into
@@ -274,6 +274,9 @@ async def start_upgrade():
     # exactly that on any early-return error (never clobber a state a concurrent
     # request may have advanced past "downloading").
     _prev_state = dict(_upgrade_state)
+    # A cancel during the version fetch below bumps the generation; the start
+    # then gives up instead of launching a download nobody is waiting for.
+    claimed_generation = _upgrade_generation
     _upgrade_state = {
         "state": "downloading",
         "progress": 0.0,
@@ -292,6 +295,9 @@ async def start_upgrade():
 
     # Get the latest version
     cache = await _fetch_latest_release()
+    if _upgrade_generation != claimed_generation:
+        logger.info("upgrade_start_skipped", reason="cancelled_during_fetch")
+        return {"success": False, "error": "Upgrade cancelled"}
     if cache["error"] or not cache["latest_version"]:
         return _rollback(cache["error"] or "No version available")
 
@@ -304,7 +310,6 @@ async def start_upgrade():
     _upgrade_state["version"] = version
 
     # Start the download as a tracked task so /upgrade/cancel can stop it.
-    global _download_task, _upgrade_generation
     _upgrade_generation += 1
     generation = _upgrade_generation
     _download_task = asyncio.create_task(
@@ -477,11 +482,12 @@ async def install_upgrade():
     if not installer_path or not installer_path.exists():
         return {"success": False, "error": "Installer not found"}
 
+    # Claim "launching" before the (possibly retrying) launch, so a second
+    # /upgrade/install during the retries cannot start a second installer.
+    _upgrade_state["state"] = "launching"
     success = await launch_installer(installer_path)
 
     if success:
-        _upgrade_state["state"] = "launching"
-
         # Schedule hard app exit after a short delay so the response reaches
         # the frontend first. os._exit bypasses finalizers intentionally —
         # sys.exit can hang during async shutdown, and the installer is

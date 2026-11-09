@@ -851,3 +851,50 @@ class TestCancelStopsDownload:
         assert response.json()["success"] is True
         assert v._upgrade_generation == before + 1
         prepare.assert_called_once_with("99.0.0", before + 1)
+
+
+class TestStartInstallHardening:
+    def setup_method(self):
+        _reset_version_cache()
+
+    def test_cancel_during_version_fetch_aborts_start(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        async def fetch():
+            await v.cancel_upgrade()  # the user cancels while the fetch runs
+            return {"error": None, "latest_version": "99.0.0"}
+
+        with (
+            patch.object(v, "_fetch_latest_release", fetch),
+            patch.object(v, "is_upgrade_supported", return_value=True),
+            patch.object(v, "cleanup_upgrade_files"),
+            patch.object(v, "_download_and_prepare_upgrade") as prepare,
+        ):
+            result = asyncio.run(v.start_upgrade())
+        assert result["success"] is False
+        prepare.assert_not_called()
+        assert v._upgrade_state["state"] == "idle"
+
+    def test_second_install_during_launch_is_refused(self, tmp_path):
+        import asyncio
+
+        import backend.api.version as v
+
+        installer = tmp_path / "SakaDesk-9.0.0-Setup.exe"
+        installer.touch()
+        v._upgrade_state["state"] = "ready"
+        v._upgrade_state["installer_path"] = installer
+        seen: list[dict] = []
+
+        async def slow_launch(_path):
+            seen.append(await v.install_upgrade())  # a second click mid-retry
+            return False
+
+        with patch.object(v, "launch_installer", slow_launch):
+            first = asyncio.run(v.install_upgrade())
+        assert first["success"] is False
+        assert seen[0]["success"] is False
+        assert "launching" in seen[0]["error"]
+        assert v._upgrade_state["state"] == "error"
