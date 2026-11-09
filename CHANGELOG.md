@@ -161,7 +161,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Videos no longer get stuck loading or freeze mid-play.** Opening many
   videos or voice messages no longer blocks the next ones from loading. Players
   now show a spinner while they wait for data, and a message with Retry if
-  playback fails.
+  playback fails. Videos, voice messages and sync progress also keep loading
+  during long sessions, instead of stalling for several minutes after the app
+  has been open a while.
+- **Voice and video durations always show** instead of sometimes reading
+  0:00 / 0:00.
+- **Zoom and scrollbar polish.** The zoom-out and fit buttons turn off once a
+  photo fits the window, and a scrollbar no longer gets clipped by the rounded
+  corner when you scroll to the end.
 - **Incoming-call card corners are clean.** They no longer show square patches,
   and the card edge is a single line.
 - **Gallery photos no longer slide above the tabs** when you scroll.
@@ -171,8 +178,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the translate button.
 - **The avatar no longer shows a dark outline** after you close a profile.
 - **Favourites and member lists show placeholders while loading.** Video
-  favourites show a clear loading shimmer and load as you scroll to them, so
-  Favourites opens quickly.
+  favourites show a clear loading shimmer, and video and voice favourites load
+  as you scroll to them, so Favourites opens quickly.
 - **Diagnostics opens immediately.** Disk usage fills in once it has been
   calculated, instead of the whole panel waiting for it on a large archive.
 - **Voice messages fit their bubble neatly.** The player follows the bubble's
