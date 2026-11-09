@@ -1109,6 +1109,28 @@ async def test_subscription_archive_failure_does_not_fail_sync(tmp_path):
     assert ev["error_type"] == "RuntimeError"
 
 
+async def test_subscription_archive_runs_after_metadata_save(tmp_path):
+    """Off the critical path: after notifications and the metadata save."""
+    m = _manager(scanned=True, extra=[])
+    order: list[str] = []
+    saved: dict = {}
+
+    async def archive(*a, **kw):
+        order.append("archive" if "last_sync" in saved else "archive_early")
+        return 1
+
+    with patch(_ARCHIVE, new=AsyncMock(side_effect=archive)):
+        ok = await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=API_MEMBERS,
+            mock_manager=m,
+            saved=saved,
+        )
+    assert ok is True and order == ["archive"]
+
+
 # --- Memories refresh hooks --------------------------------------------------
 
 

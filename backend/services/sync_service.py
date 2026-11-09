@@ -1083,23 +1083,6 @@ class SyncService:
                     ),
                 )
 
-                # Best-effort: archive the earliest subscription start for
-                # Memories. Auth errors propagate; anything else is logged.
-                try:
-                    await archive_subscription_starts(
-                        client,
-                        session,
-                        sorted({int(g) for g in tasks_by_group}),
-                        self.service_data_dir,
-                        today=datetime.now(ZoneInfo("Asia/Tokyo")).date(),
-                    )
-                except (SessionExpiredError, RefreshFailedError):
-                    raise
-                except Exception as e:
-                    logger.warning(
-                        "subscription_starts_failed", error_type=type(e).__name__
-                    )
-
                 # Update Metadata from results (the cursor moves whenever
                 # sync_member processed rows, new or not).
                 for task, count in results:
@@ -1292,6 +1275,14 @@ class SyncService:
                 metadata["last_sync"] = datetime.now(timezone.utc).isoformat()
                 await self.save_metadata(metadata)
 
+                # Best-effort, off the critical path (after notifications and
+                # the metadata save): archive the earliest subscription start
+                # for Memories. Never fails the sync; auth and rate-limit
+                # errors are logged inside and surface elsewhere.
+                await self._archive_subscription_starts(
+                    client, session, sorted({int(g) for g in tasks_by_group})
+                )
+
                 logger.info(
                     "sync_complete",
                     total_elapsed=f"{time.monotonic() - sync_t0:.1f}s",
@@ -1385,6 +1376,21 @@ class SyncService:
             if self._generation == my_generation:
                 self.running = False
                 self._task = None
+
+    async def _archive_subscription_starts(
+        self, client: Any, session: Any, group_ids: list[int]
+    ) -> None:
+        """Run the Memories subscription archive; never raises."""
+        try:
+            await archive_subscription_starts(
+                client,
+                session,
+                group_ids,
+                self.service_data_dir,
+                today=datetime.now(ZoneInfo("Asia/Tokyo")).date(),
+            )
+        except Exception as e:
+            logger.warning("subscription_starts_failed", error_type=type(e).__name__)
 
     def _schedule_memories_refresh(self) -> None:
         """Refresh member profiles and the memory index in the background.

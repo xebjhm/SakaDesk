@@ -15,7 +15,7 @@ from typing import Any
 
 import structlog
 
-from pysaka import RefreshFailedError, SessionExpiredError
+from pysaka import RateLimitedError, RefreshFailedError, SessionExpiredError
 
 logger = structlog.get_logger(__name__)
 
@@ -82,13 +82,26 @@ async def archive_subscription_starts(
 ) -> int:
     """Record the earliest subscription start per group; return groups checked.
 
-    Each group is checked at most once per ``today``. Auth errors propagate;
-    any other per-group failure is logged and skipped.
+    One attempt per group per ``today``: ``last_checked`` is recorded for
+    successes, per-group failures and empty answers alike. Never raises:
+
+    - ``RateLimitedError`` stops the loop (logged); the groups not reached
+      keep their old ``last_checked`` and are retried on a later sync.
+    - Auth errors (``SessionExpiredError`` / ``RefreshFailedError``) also stop
+      the loop and are logged only: the sync surfaces auth failures elsewhere,
+      and this best-effort step must not abort it.
+    - Any other per-group failure is logged and that group is marked checked.
     """
     path = _path(service_data_dir)
     groups = _read_groups(path)
     today_s = today.isoformat()
-    checked = updated = skipped = 0
+    checked = updated = skipped = failed = 0
+
+    def mark(key: str, earliest: Any) -> None:
+        new: dict[str, str] = {"last_checked": today_s}
+        if isinstance(earliest, str):
+            new["earliest_start"] = earliest
+        groups[key] = new
 
     for gid in group_ids:
         key = str(gid)
@@ -96,27 +109,42 @@ async def archive_subscription_starts(
         if isinstance(entry, dict) and entry.get("last_checked") == today_s:
             skipped += 1
             continue
-        checked += 1
+        previous = entry.get("earliest_start") if isinstance(entry, dict) else None
         try:
             streak = await client.get_subscription_streak(session, gid)
-        except (SessionExpiredError, RefreshFailedError):
-            raise
+        except RateLimitedError:
+            logger.warning(
+                "subscription_start_stopped", reason="rate_limited", group_id=gid
+            )
+            break
+        except (SessionExpiredError, RefreshFailedError) as e:
+            logger.warning(
+                "subscription_start_stopped",
+                reason="auth",
+                group_id=gid,
+                error_type=type(e).__name__,
+            )
+            break
         except Exception as e:
+            checked += 1
+            failed += 1
             logger.warning(
                 "subscription_start_failed",
                 group_id=gid,
                 error_type=type(e).__name__,
             )
+            mark(key, previous)
             continue
+        checked += 1
         start = _parse_start(streak)
         if start is None:
             logger.info("subscription_start_missing", group_id=gid)
+            mark(key, previous)
             continue
-        previous = entry.get("earliest_start") if isinstance(entry, dict) else None
         earliest = min(start, previous) if isinstance(previous, str) else start
         if earliest != previous:
             updated += 1
-        groups[key] = {"earliest_start": earliest, "last_checked": today_s}
+        mark(key, earliest)
 
     if skipped:
         logger.info("subscription_start_skipped", reason="checked_today", count=skipped)
@@ -128,5 +156,7 @@ async def archive_subscription_starts(
                 "subscription_starts_write_failed", error_type=type(e).__name__
             )
             return checked
-    logger.info("subscription_starts_archived", checked=checked, updated=updated)
+    logger.info(
+        "subscription_starts_archived", checked=checked, updated=updated, failed=failed
+    )
     return checked
