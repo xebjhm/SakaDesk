@@ -47,7 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Your sent letters are now kept in your archive**, even after a
   subscription ends, and they appear in the chat where you sent them, with
   the avatar you had at the time. Sent Letters in the chat menu shows them
-  all; click one to jump to it.
+  all; click one to open it in the letter viewer.
 - **Dates stay at the top of the chat while you scroll.** Each day starts
   with a date label (Today, Yesterday, or the date); click it to open the
   calendar and jump to another day.
@@ -57,8 +57,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   newest voice message you haven't heard rings like a phone call; answer to
   play it, or decline and it rings again the next time you open the chat.
   You can turn this off in Settings.
-- **Windows notifications for new messages.** Each member who sends new
-  messages gets one notification with their photo and a preview; click it
+- **Windows notifications for new messages.** Each chat with new messages
+  gets one notification with their photo and a preview; click it
   to open the chat at that message. You can hide message content or turn
   notifications off in Settings.
 
@@ -80,34 +80,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   selected and the main action. Secondary buttons, counts and tool panels are
   neutral.
 - **The side feature list shows icons only.** Hover an icon to see its name.
-- **The blog member timeline has its original white header back.**
-- **The blog feed looks like it used to again.** Each post is a full photo
-  tile with a small floating caption card at its bottom-right corner, and
-  hovering a post lifts it with a soft glow in your group's colour.
-- **All / Favorite is one switch again.** The blog feed's filter is back to a
-  single grey track with the chosen option raised in pink.
-- **The blog timeline glows where you zoom in.** Resting on the timeline beside
-  a post lights the magnified stretch with a soft glow in your group's colour,
-  as it used to.
-- **First launch has its colours back.** The welcome, terms, group picker,
-  folder setup and first sync use SakaDesk's soft aurora again, each group
-  card and terms link in its own group colour, and the disclaimer in its
-  original amber.
 - **Empty screens are friendlier.** An empty list now shows a soft circle, a
   short title and a hint instead of grey text.
-- **Blogs have their group colours back.** The blog feed shows soft group
-  colour glows behind a frosted header, cards glow when you point at them,
-  and the member picker, the member's post list and the post reader use the
-  group's colour again. Japanese titles and member names always use
-  Japanese letter shapes, whatever language the app is in.
+- **Japanese text always uses Japanese letter shapes.** Member names,
+  messages and blog titles are shown with Japanese letter shapes whatever
+  language the app is in.
 - **Favourites (推) hearts are pink in every group.** The heart on a member
   and the Favorite filter keep the same pink whichever group you are in.
-- **The chat favourite star is yellow again.** A starred message shows the
-  familiar yellow star in every group.
-- **Chats have their group colours back.** The member list, the chat
-  header, menus, links, favourites and the feature buttons show each
-  group's own colour again, and Japanese names and messages always use
-  Japanese letter shapes, whatever language the app is in.
+- **Starred messages use one yellow star in every group** instead of the
+  group colour.
 - **Yodel now uses its own periwinkle colours.** The old green came from one
   member's page; Yodel screens now follow the Yodel logo colour.
 - **A cleaner main window.** The add, search and settings buttons on the left
@@ -142,21 +123,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the date picker, favourites, the media and photo galleries, the member lists
   for blogs, About and every other window now share one calm design and one
   menu style; photos and videos still open in a dark full-screen viewer.
+  App windows such as Settings, search and About use SakaDesk's own colours
+  whichever group is open, while a chat's calendar, favourites, media and
+  background windows use that group's colours. The sync repair rows in
+  Settings say which group they act on.
 - **Confirmations appear inside the app.** Resetting settings, deleting the
   blog backup, a deep re-sync and revealing all unread messages now ask in a
   SakaDesk window instead of a browser pop-up, with Cancel selected first.
 - **The first-launch screens match the new look.** The terms, the group
   picker, sign-in, the data folder setup and the sync progress now share the
-  app's calm design, and each group's sign-in shows that group's own colours.
+  app's calm design on SakaDesk's soft aurora, and each group's card, terms
+  link and sign-in show that group's own colours.
   In a small window the terms now scroll instead of cutting off the Accept
   button, and the settings error message appears in your language and can be
   closed.
-- **Dialogs have their colours back.** Settings, search, About and the other
-  app windows use SakaDesk's own soft colours, whichever group is open, while
-  the calendar, favourites, media and background windows of a chat use that
-  group's colours again. Bookmarked messages show the yellow star, and the
-  sync repair rows in Settings say which group they act on.
-
 ### Fixed
 - **Videos no longer get stuck loading or freeze mid-play.** Opening many
   videos or voice messages no longer blocks the next ones from loading. Players
@@ -170,16 +150,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   archive, the blog cache size and backup counts took up to 20 seconds to
   appear and held up everything else meanwhile. The counts now appear in a
   few seconds and the rest of the app stays responsive.
-- **Zoom and scrollbar polish.** The zoom-out and fit buttons turn off once a
-  photo fits the window, and a scrollbar no longer gets clipped by the rounded
-  corner when you scroll to the end.
-- **Incoming-call card corners are clean.** They no longer show square patches,
-  and the card edge is a single line.
 - **Gallery photos no longer slide above the tabs** when you scroll.
 - **Member photos are sharper** in chats, member lists and the blog member
   picker, and the selected member's ring stays clean.
-- **The chat date label stays on top of unread covers** and no longer hides
-  the translate button.
 - **The avatar no longer shows a dark outline** after you close a profile.
 - **Favourites and member lists show placeholders while loading.** Video
   favourites show a clear loading shimmer, and video and voice favourites load
@@ -248,10 +221,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   message appears under it and an error notice shows above the Settings
   window, instead of the change seeming to work.
 - **Adding a group could start its first sync twice.** It now starts once.
-- **A call could ring behind an open window.** If a voice call started while
-  a dialog such as Settings was open, it was hidden under that dialog; it now
-  shows above it so you can answer or decline it.
-
+- **Settings could reset after closing the window.** If the settings file
+  could not be read at that moment, for example while antivirus was scanning
+  it, saving the window size replaced it and the next launch started setup
+  again. The file is now left untouched.
+- **Read progress could be lost after a slow start.** If saved chat state
+  failed to load when SakaDesk started, reading a message could overwrite
+  earlier progress. SakaDesk now retries the load and does not save read
+  progress until it has loaded.
 ## [0.3.4] - 2026-11-03
 
 ### Changed
