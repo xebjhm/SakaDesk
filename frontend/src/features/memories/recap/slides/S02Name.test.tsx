@@ -42,4 +42,16 @@ describe('S02Name', () => {
         expect(screen.getByText('“大好き”を、5回。')).toBeInTheDocument();
         expect(screen.getByText('季節が巡っても、“大好き”の温度は変わりませんでした。')).toBeInTheDocument();
     });
+
+    it('daisuki mode with a single 大好き never claims she called the name', () => {
+        renderS02({ ...base, mode: 'daisuki', count: 1, single: true, first: message(4, '大好きだよ'), last: null, fragments: [] });
+        expect(screen.getByText('今年、一度だけの“大好き”。')).toHaveAttribute('data-voice', 'narration');
+        expect(document.body.textContent).not.toMatch(/名前|呼/);
+        expect(screen.queryByText(/1回/)).toBeNull();
+    });
+
+    it('daisuki mode with many 大好き never claims she called the name', () => {
+        renderS02({ ...base, mode: 'daisuki', count: 5, first: message(4, '大好きだよ'), last: null, fragments: [] });
+        expect(document.body.textContent).not.toMatch(/名前|呼/);
+    });
 });

@@ -755,7 +755,7 @@
       "loadFailed": "読み込めませんでした。",
       "oshi": "推し",
       "emptyTitle": "来年のあなたへ",
-      "emptyBody": "{{year}}年のことばは、まだ少しだけ。これから届く一通を、ここで待っています。"
+      "emptyBody": "これから届く一通を、ここで待っています。"
     },
     "titles": {
       "morning": "いちばん「おはよう」をくれた朝の光",
@@ -788,7 +788,8 @@
       "count": "今年、{{count}}回 名前を呼んでくれた。",
       "single": "今年、一度だけ。でも、確かに呼んでくれた。",
       "daisuki": "“大好き”を、{{count}}回。",
-      "daisukiWord": "大好き"
+      "daisukiWord": "大好き",
+      "daisukiSingle": "今年、一度だけの“大好き”。"
     },
     "s12": {
       "title": "{{year}}年、彼女のひとこと"

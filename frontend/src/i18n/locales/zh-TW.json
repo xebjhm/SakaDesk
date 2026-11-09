@@ -755,7 +755,7 @@
       "loadFailed": "無法載入回顧。",
       "oshi": "推し",
       "emptyTitle": "給明年的你",
-      "emptyBody": "{{year}}年的話語還只有一點點。接下來的每一封，都會在這裡等你。"
+      "emptyBody": "接下來的每一封，都會在這裡等你。"
     },
     "titles": {
       "morning": "最常對你說早安的晨光",
@@ -788,7 +788,8 @@
       "count": "今年，她叫了你的名字{{count}}次。",
       "single": "今年只有一次。但她確實呼喚了你。",
       "daisuki": "「大好き」，{{count}}次。",
-      "daisukiWord": "大好き"
+      "daisukiWord": "大好き",
+      "daisukiSingle": "今年，只有一次的「大好き」。"
     },
     "s12": {
       "title": "{{year}}年，她的一句話"

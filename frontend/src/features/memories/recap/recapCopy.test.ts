@@ -38,7 +38,8 @@ describe('recapCopy', () => {
         expect(s02Copy(base).count).toEqual({ key: 'recap.s02.count', params: { count: 42 } });
         expect(s02Copy({ ...base, count: 1, single: true }).count).toEqual({ key: 'recap.s02.single' });
         expect(s02Copy({ ...base, mode: 'daisuki', count: 5 }).count).toEqual({ key: 'recap.s02.daisuki', params: { count: 5 } });
-        expect(s02Copy({ ...base, mode: 'daisuki', count: 1, single: true }).count).toEqual({ key: 'recap.s02.single' });
+        expect(s02Copy({ ...base, mode: 'daisuki', count: 1, single: true }).count).toEqual({ key: 'recap.s02.daisukiSingle' });
+        expect(s02Copy({ ...base, mode: 'daisuki', count: 1, single: false }).count).toEqual({ key: 'recap.s02.daisukiSingle' });
         expect(s02Copy(base).title).toEqual({ key: 'recap.s02.title' });
         expect(s02Copy({ ...base, mode: 'daisuki' }).title).toEqual({ key: 'recap.s02.daisukiTitle' });
     });

@@ -53,7 +53,11 @@ export function s01Copy(
 
 export function s02Copy(data: S02NameData): { title: CopyLine; count: CopyLine } {
     const title = { key: data.mode === 'daisuki' ? 'recap.s02.daisukiTitle' : 'recap.s02.title' };
-    if (data.single || data.count <= 1) return { title, count: { key: 'recap.s02.single' } };
+    // A single occurrence never prints "1回". In daisuki mode she never wrote the fan's name,
+    // so its single line speaks only of the 大好き, never of a name being called.
+    if (data.single || data.count <= 1) {
+        return { title, count: { key: data.mode === 'daisuki' ? 'recap.s02.daisukiSingle' : 'recap.s02.single' } };
+    }
     const key = data.mode === 'daisuki' ? 'recap.s02.daisuki' : 'recap.s02.count';
     return { title, count: { key, params: { count: data.count } } };
 }

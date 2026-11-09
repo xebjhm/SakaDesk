@@ -759,7 +759,7 @@
       "loadFailed": "Could not load the recap.",
       "oshi": "Oshi",
       "emptyTitle": "To you, next year",
-      "emptyBody": "Her words in {{year}} are still only a few. The next message will be waiting here."
+      "emptyBody": "The next message will be waiting for you here."
     },
     "titles": {
       "morning": "The morning light who said \"good morning\" most",
@@ -794,7 +794,8 @@
       "single": "Just once this year. But she truly called it.",
       "daisuki": "\"Daisuki\", {{count}} time.",
       "daisuki_other": "\"Daisuki\", {{count}} times.",
-      "daisukiWord": "大好き"
+      "daisukiWord": "大好き",
+      "daisukiSingle": "Just one \"daisuki\" this year."
     },
     "s12": {
       "title": "Her words of {{year}}"

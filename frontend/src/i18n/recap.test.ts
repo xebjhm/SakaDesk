@@ -17,7 +17,7 @@ const RECAP_KEYS: readonly string[] = [
     'recap.player.label', 'recap.player.prev', 'recap.player.next', 'recap.player.pause', 'recap.player.play',
     'recap.player.progress', 'recap.youFallback',
     'recap.s01.title', 'recap.s01.sub', 'recap.s01.joined', 'recap.s01.notification',
-    'recap.s02.title', 'recap.s02.count', 'recap.s02.single', 'recap.s02.daisuki', 'recap.s02.daisukiWord', 'recap.s02.daisukiTitle',
+    'recap.s02.title', 'recap.s02.count', 'recap.s02.single', 'recap.s02.daisuki', 'recap.s02.daisukiWord', 'recap.s02.daisukiTitle', 'recap.s02.daisukiSingle',
     'recap.s12.title',
     'recap.s13.title', 'recap.s13.partialTitle', 'recap.s13.partialNote', 'recap.s13.narration',
     'recap.s13.graduatedTitle', 'recap.s13.graduatedLine', 'recap.s13.lastTextTitle', 'recap.s13.lastTextPartialTitle', 'recap.s13.lastTextPartialNote',
@@ -41,6 +41,27 @@ describe('recap strings', () => {
     it('year copy takes the year as a parameter, never a hard-coded year', () => {
         for (const data of Object.values(locales)) {
             expect(JSON.stringify(lookup(data, 'recap'))).not.toMatch(/20\d\d/);
+        }
+    });
+
+    it('daisuki copy never says or implies she called the fan\'s name', () => {
+        // In daisuki mode she never wrote the fan's nickname, so no line may claim a name or a call.
+        const NAME_OR_CALL = /名前|呼|叫|喚|唤|\bname\b|\bcall/i;
+        const DAISUKI_KEYS = ['recap.s02.daisukiTitle', 'recap.s02.daisuki', 'recap.s02.daisuki_other', 'recap.s02.daisukiSingle'];
+        for (const [code, data] of Object.entries(locales)) {
+            for (const dotted of DAISUKI_KEYS) {
+                const text = lookup(data, dotted);
+                if (text === undefined && dotted.endsWith('_other') && code !== 'en') continue;
+                expect(text, `${code} ${dotted}`).toBeTruthy();
+                expect(String(text), `${code} ${dotted}`).not.toMatch(NAME_OR_CALL);
+            }
+        }
+    });
+
+    it('the empty-state body looks forward and never describes thin data or an absence', () => {
+        const ABSENCE = /まだ|少し|only a few|still|few|一點|一点|少少|還只|还只|仲係/i;
+        for (const [code, data] of Object.entries(locales)) {
+            expect(String(lookup(data, 'recap.entry.emptyBody')), code).not.toMatch(ABSENCE);
         }
     });
 });

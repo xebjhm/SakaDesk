@@ -60,14 +60,14 @@ const Failed: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
 };
 
 /** Nothing (or too little) to look back on: a gentle card, never a "0". */
-const NotYet: React.FC<{ year: number; action?: React.ReactNode }> = ({ year, action }) => {
+const NotYet: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
     const { t } = useTranslation();
     return (
         <div className="flex flex-1 items-center justify-center">
             <EmptyState
                 icon={<Sparkles />}
                 title={t('recap.entry.emptyTitle')}
-                description={t('recap.entry.emptyBody', { year })}
+                description={t('recap.entry.emptyBody')}
                 action={action}
             />
         </div>
@@ -174,7 +174,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
         if (data.tier === 'none' || playable(data) === 0) {
             return (
                 <div data-testid="recap-entry" className="flex flex-1">
-                    <NotYet year={data.year} action={<Button variant="secondary" onClick={backToList}>{t('recap.entry.back')}</Button>} />
+                    <NotYet action={<Button variant="secondary" onClick={backToList}>{t('recap.entry.back')}</Button>} />
                 </div>
             );
         }
@@ -207,7 +207,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
             </header>
             {overview.status === 'loading' && <Status />}
             {overview.status === 'error' && <Failed onRetry={() => setAttempt((n) => n + 1)} />}
-            {overview.status === 'ok' && members.length === 0 && <NotYet year={year} />}
+            {overview.status === 'ok' && members.length === 0 && <NotYet />}
             {members.length > 0 && (
                 <section className="mx-auto flex w-full max-w-md flex-col gap-3">
                     <p className="text-center text-small text-secondary">{t('recap.entry.choose')}</p>
