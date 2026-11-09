@@ -55,3 +55,14 @@ def test_favorite_log_unfavorite_missing_row_is_noop(tmp_path):
     s = _fresh(tmp_path)
     s.record_favorite("hinatazaka46", 33, False)
     assert s.favorited_at("hinatazaka46", [33]) == {}
+
+
+def test_favorited_at_chunks_large_id_lists(tmp_path):
+    s = _fresh(tmp_path)
+    at = datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc)
+    logged = {5, 499, 500, 501, 999, 1000, 1199}
+    for mid in logged:
+        s.record_favorite("hinatazaka46", mid, True, at=at)
+    result = s.favorited_at("hinatazaka46", list(range(1200)))
+    assert set(result) == logged
+    assert all(v == at.isoformat() for v in result.values())

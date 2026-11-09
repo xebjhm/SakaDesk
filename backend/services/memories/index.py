@@ -9,6 +9,7 @@ subscription start, graduation), so a change in any of them rebuilds the entry.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import hashlib
 import json
 import re
@@ -50,8 +51,9 @@ def _path() -> Path:
 
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(_path())
-    conn.execute("PRAGMA journal_mode=WAL")
+    # busy_timeout first: the journal_mode switch itself can hit a locked DB.
     conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA journal_mode=WAL")
     conn.execute(
         "CREATE TABLE IF NOT EXISTS member_index ("
         "service_dir TEXT, member_dir TEXT, data_hash TEXT, payload TEXT, "
@@ -67,7 +69,7 @@ class MemberIndex:
     name_norm: str = ""
     hour_hist: list[int] = field(default_factory=lambda: [0] * 24)  # JST, non-promo
     first_ts: dict[str, str] = field(default_factory=dict)  # type -> UTC ISO
-    first_nickname_id: int | None = None
+    first_nickname_id: int | None = None  # includes promo texts
     counts_by_year: dict[int, dict[str, int]] = field(default_factory=dict)
     longest_streak_days: int = 0
     bursts: list[list[int]] = field(default_factory=list)
@@ -75,7 +77,7 @@ class MemberIndex:
     importance: dict[int, int] = field(default_factory=dict)  # non-promo texts
     photo_scores: dict[int, int] = field(default_factory=dict)  # non-promo photos
     promo_ids: set[int] = field(default_factory=set)
-    nickname_count: int = 0
+    nickname_count: int = 0  # includes promo texts (unlike greeting_counts)
     greeting_counts: dict[str, int] = field(default_factory=dict)
     birthday: str | None = None
     subscription_start: str | None = None
@@ -272,6 +274,9 @@ def _derive(msgs: list[sel.Msg], idx: MemberIndex) -> None:
         )
 
     # Texts: importance, nickname, greetings.
+    # Promo scope differs by field: ``nickname_count`` / ``first_nickname_id``
+    # INCLUDE promo texts (a nickname is a nickname wherever it appears), while
+    # ``greeting_counts`` / ``importance`` / ``hour_hist`` EXCLUDE promo.
     specials: dict[int, set[date]] = {}
     greetings: Counter[str] = Counter()
     for t in texts:
@@ -323,7 +328,7 @@ def _build(messages_path: Path, base: MemberIndex) -> tuple[MemberIndex, int]:
 
 def _cache_get(service_dir: str, member_dir: str, data_hash: str) -> MemberIndex | None:
     try:
-        with _connect() as c:
+        with contextlib.closing(_connect()) as c:
             row = c.execute(
                 "SELECT data_hash, payload FROM member_index "
                 "WHERE service_dir=? AND member_dir=?",
@@ -338,7 +343,8 @@ def _cache_get(service_dir: str, member_dir: str, data_hash: str) -> MemberIndex
 
 def _cache_put(service_dir: str, idx: MemberIndex) -> None:
     try:
-        with _connect() as c:
+        # closing() releases the handle; the inner ``with`` commits.
+        with contextlib.closing(_connect()) as c, c:
             c.execute(
                 "INSERT OR REPLACE INTO member_index"
                 "(service_dir, member_dir, data_hash, payload) VALUES (?,?,?,?)",

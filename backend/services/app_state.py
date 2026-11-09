@@ -75,18 +75,26 @@ def record_favorite(
         )
 
 
+_IN_CHUNK = 500
+
+
 def favorited_at(service: str, message_ids: list[int]) -> dict[int, str]:
     """Map of message_id -> UTC ISO favourite time, for the ids that are logged."""
     if not message_ids:
         return {}
-    q = ",".join("?" * len(message_ids))
+    out: dict[int, str] = {}
     with _connect() as c:
-        rows = c.execute(
-            f"SELECT message_id, favorited_at FROM favorite_log "
-            f"WHERE service=? AND message_id IN ({q})",
-            [service, *message_ids],
-        ).fetchall()
-    return {mid: ts for mid, ts in rows}
+        # Chunked: SQLite caps bound variables per statement.
+        for i in range(0, len(message_ids), _IN_CHUNK):
+            chunk = message_ids[i : i + _IN_CHUNK]
+            q = ",".join("?" * len(chunk))
+            rows = c.execute(
+                f"SELECT message_id, favorited_at FROM favorite_log "
+                f"WHERE service=? AND message_id IN ({q})",
+                [service, *chunk],
+            ).fetchall()
+            out.update((mid, ts) for mid, ts in rows)
+    return out
 
 
 def get_prefs() -> dict[str, Any]:

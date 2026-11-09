@@ -174,3 +174,41 @@ async def test_build_all_counts_only_stale(tmp_path):
         encoding="utf-8",
     )
     assert await mi.build_all(tmp_path) == 1
+
+
+@pytest.mark.asyncio
+async def test_connections_are_closed(tmp_path, monkeypatch):
+    import sqlite3
+
+    opened: list = []
+    real_connect = sqlite3.connect
+
+    class Tracked:
+        def __init__(self, conn):
+            self.conn = conn
+            self.closed = False
+
+        def close(self):
+            self.closed = True
+            self.conn.close()
+
+        def __getattr__(self, name):
+            return getattr(self.conn, name)
+
+        def __enter__(self):
+            return self.conn.__enter__()
+
+        def __exit__(self, *a):
+            return self.conn.__exit__(*a)
+
+    def tracking(*a, **kw):
+        t = Tracked(real_connect(*a, **kw))
+        opened.append(t)
+        return t
+
+    monkeypatch.setattr(mi.sqlite3, "connect", tracking)
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", content="a")])
+    await mi.get_member_index(tmp_path, d)  # miss: read + write
+    await mi.get_member_index(tmp_path, d)  # hit: read
+    assert len(opened) == 3 and all(t.closed for t in opened)
