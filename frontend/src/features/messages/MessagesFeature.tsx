@@ -23,6 +23,7 @@ import { FadeOnChange } from '../../core/layout/FadeOnChange';
 import { ChatHeaderPill } from './components/ChatHeaderPill';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
+import { persisted } from '../../core/persistence/persisted';
 import { loadReadState, saveReadState, applyReveal, mergeReadState, readStateEquals } from './readStateStore';
 import type { ReadState } from './readStateStore';
 import { useReadStateSubscription } from './hooks/useReadStateSubscription';
@@ -177,6 +178,10 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // (never on the cached render, which may be stale).
     const [freshFetch, setFreshFetch] = useState<{ seq: number; dir: string } | null>(null);
     const [readStateVersion, setReadStateVersion] = useState(0); // Increments on read state change to trigger sidebar refresh
+    // The conversation cache recovered after a failed startup load: re-read unread counts.
+    // Order matters: readStateStore (imported above) registered its flush listener at import
+    // time, before this effect subscribes, so deferred saves are written before this bump.
+    useEffect(() => persisted.onConversationsReady(() => setReadStateVersion((v) => v + 1)), []);
     const [showRevealConfirm, setShowRevealConfirm] = useState(false);
     const [maxMessageId, setMaxMessageId] = useState(0); // Highest message ID (for reveal all)
 

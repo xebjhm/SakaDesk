@@ -31,7 +31,7 @@ export type ClientLogEvent =
     | 'poll_retry' | 'poll_gave_up'
     | 'translation_batch_failed'
     | 'conv_hydrate_retry' | 'conv_hydrate_failed' | 'conv_hydrate_recovered' | 'conv_write_failed'
-    | 'read_state_save_skipped' | 'read_state_sync_failed'
+    | 'read_state_save_deferred' | 'read_state_pending_flushed' | 'read_state_sync_failed'
     | 'sidebar_load';
 
 export type ClientLogFieldKey =
@@ -40,7 +40,7 @@ export type ClientLogFieldKey =
     | 'surface' | 'call_id' | 'changed' | 'has_target' | 'delivered'
     | 'theme' | 'size'
     | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path' | 'count' | 'history' | 'fallback' | 'dppx_pct'
-    | 'ready_state' | 'network_state' | 'error_code' | 'aborted' | 'key' | 'timeout_ms' | 'caller';
+    | 'ready_state' | 'network_state' | 'error_code' | 'aborted' | 'key' | 'timeout_ms' | 'caller' | 'written' | 'dropped';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 

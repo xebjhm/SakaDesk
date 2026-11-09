@@ -841,8 +841,9 @@ def test_allowed_fields_never_shadow_log_call_keywords():
             {"error_type": "appstatehttperror", "error_code": 500},
             "warning",
         ),
+        ("read_state_pending_flushed", {"written": 1, "dropped": 0}, "info"),
         (
-            "read_state_save_skipped",
+            "read_state_save_deferred",
             {
                 "reason": "not_ready",
                 "service": "hinatazaka46",
