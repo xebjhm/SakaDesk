@@ -67,13 +67,20 @@ export function loadReadState(path: string): ReadState {
  * is false: still loading, or the startup load failed): until then `state` may
  * be derived from the empty fallback, and writing it would overwrite the
  * stored progress. Logs `read_state_save_skipped` (reason `not_ready`, ids
- * only). A failed or refused search-copy PUT logs `read_state_sync_failed`.
+ * only) once per chat per session. A failed or refused search-copy PUT logs `read_state_sync_failed`.
  */
+/** Chats whose skipped save was already logged (see saveReadState). */
+const skippedSaveLogged = new Set<string>();
+
 export function saveReadState(path: string, state: ReadState): void {
     const parsed = parseReadStatePath(path);
     const ids = parsed ? { service: parsed.service, group_id: parsed.groupId, member_id: parsed.memberId } : {};
     if (!persisted.conversationsReady()) {
-        clientLog('read_state_save_skipped', { reason: 'not_ready', ...ids });
+        // Once per chat per session: every reveal would otherwise log again.
+        if (!skippedSaveLogged.has(path)) {
+            skippedSaveLogged.add(path);
+            clientLog('read_state_save_skipped', { reason: 'not_ready', ...ids });
+        }
         return;
     }
     try {

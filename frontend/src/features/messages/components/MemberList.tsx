@@ -126,6 +126,8 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
     activeServiceRef.current = activeService;
     // The list as last rendered, read after an await (the closure's `groups` is stale by then).
     const groupsRef = useRef(groups);
+    // Last logged sidebar_load failure (service:status:outcome); cleared on success.
+    const lastFailureLog = useRef<string | null>(null);
     groupsRef.current = groups;
     const serviceKey = (base: string, service: string | undefined) => `${base}_${service ?? 'all'}`;
 
@@ -156,6 +158,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             const groupList = Array.isArray(data) ? data : data.groups;
             setGroups(groupList);
             setLoadError(false);
+            lastFailureLog.current = null;
             if (!Array.isArray(data) && data.last_sync) setLastSyncMap(data.last_sync);
             checkUnread(groupList, replace);
         } else if (result.status === 'rejected' || result.status === 'failed') {
@@ -163,11 +166,17 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             // With a list on screen keep it (the next tick retries); with none, an
             // empty "No conversations" would read as data loss, so show the error.
             const hasList = groupsRef.current.length > 0;
-            clientLog('sidebar_load', {
-                ...(service ? { service } : {}),
-                reason: result.status,
-                outcome: hasList ? 'kept_list' : 'error_state',
-            });
+            const outcome = hasList ? 'kept_list' : 'error_state';
+            // Once per failure streak and outcome, not on every poll tick.
+            const logKey = `${service ?? 'all'}:${result.status}:${outcome}`;
+            if (lastFailureLog.current !== logKey) {
+                lastFailureLog.current = logKey;
+                clientLog('sidebar_load', {
+                    ...(service ? { service } : {}),
+                    reason: result.status,
+                    outcome,
+                });
+            }
             if (!hasList) setLoadError(true);
         }
         // A timeout is not an answer: keep the spinner (an empty list would read

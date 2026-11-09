@@ -218,6 +218,17 @@ describe('saveReadState', () => {
         expect(JSON.stringify(vi.mocked(clientLog).mock.calls)).not.toMatch(/金村|messages/);
     });
 
+    it('logs a skipped save once per chat', () => {
+        vi.spyOn(persisted, 'conversationsReady').mockReturnValue(false);
+        const other = '日向坂46/messages/35 小坂 菜緒/59 小坂 菜緒';
+        saveReadState(other, state);
+        saveReadState(other, state);
+        const skips = () => vi.mocked(clientLog).mock.calls.filter(([event]) => event === 'read_state_save_skipped');
+        expect(skips()).toHaveLength(1);
+        saveReadState('日向坂46/messages/36 正源司 陽子/60 正源司 陽子', state);
+        expect(skips()).toHaveLength(2);
+    });
+
     it('writes the row and the search copy once the cache is loaded', () => {
         vi.spyOn(persisted, 'conversationsReady').mockReturnValue(true);
         saveReadState(PATH, state);

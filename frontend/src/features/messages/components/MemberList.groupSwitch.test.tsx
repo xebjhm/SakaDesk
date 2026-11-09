@@ -98,6 +98,19 @@ describe('MemberList load failure', () => {
         expect(clientLog).toHaveBeenCalledWith('sidebar_load', { service: 'a46', reason: 'failed', outcome: 'error_state' });
     });
 
+    it('logs a failure streak once, not on every refresh', async () => {
+        answers = { a46: [{ groups: [A_GROUP] }, { status: 500 }] };
+        const { rerender } = render(<MemberList activeService="a46" isSyncing onSelectGroup={vi.fn()} />);
+        expect(await screen.findByText('AlphaMember')).toBeInTheDocument();
+        rerender(<MemberList activeService="a46" isSyncing={false} onSelectGroup={vi.fn()} />);
+        await waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(2));
+        rerender(<MemberList activeService="a46" isSyncing onSelectGroup={vi.fn()} />);
+        rerender(<MemberList activeService="a46" isSyncing={false} onSelectGroup={vi.fn()} />);
+        await waitFor(() => expect(requests.length).toBeGreaterThanOrEqual(3));
+        await waitFor(() => expect(clientLog).toHaveBeenCalledWith('sidebar_load', { service: 'a46', reason: 'rejected', outcome: 'kept_list' }));
+        expect(vi.mocked(clientLog).mock.calls.filter(([event]) => event === 'sidebar_load')).toHaveLength(1);
+    });
+
     it('keeps the loaded list when a later refresh fails', async () => {
         answers = { a46: [{ groups: [A_GROUP] }, { status: 500 }] };
         const { rerender } = render(<MemberList activeService="a46" isSyncing onSelectGroup={vi.fn()} />);
