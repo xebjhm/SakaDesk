@@ -1,5 +1,7 @@
 # 0.4.2 Reliability Implementation Plan
 
+> **Historical.** This plan records how 0.4.2 was first built. Where it differs from the spec (`docs/superpowers/specs/2026-11-09-v042-reliability-design.md`) or the code, the spec and the code are authoritative: for example event names (`tray_alert_icon_failed` in `tray.py`), the tray tooltip order (login line first), and the renewal retry and strike rules (strike gap, slow retry of `refresh_failed` marks, what clears a mark).
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Renew expired access tokens silently and alert only on a dead session. Keep retrying read-state hydration and save what was read in the meantime. Remove the dark square frame around the call popup.
