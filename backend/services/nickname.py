@@ -1,10 +1,11 @@
 """The member-message nickname placeholder.
 
 Members write ``%%%`` (ASCII) or ``％％％`` (fullwidth) where the official app
-shows the reader's own nickname. Every place that shows message text to the
-user replaces it with the nickname cached per service in settings
-(``user_nicknames``). Without a cached nickname the text is left unchanged,
-the same as the chat view.
+shows the reader's own nickname. This module replaces it in backend-rendered
+text (currently the Windows toast previews) with the nickname cached per
+service in settings (``user_nicknames``); the chat screen and search results
+do the same in the frontend. Without a cached nickname the text is left
+unchanged, as in the chat view.
 """
 
 from __future__ import annotations

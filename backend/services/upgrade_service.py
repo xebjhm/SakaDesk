@@ -243,9 +243,8 @@ async def _download_to(
             return None
 
         logger.info("SHA-256 verified OK")
-        # Atomic on the same volume; replaces an installer left by an earlier
-        # attempt. Fails (OSError) if that old file is still open somewhere.
-        os.replace(part_path, installer_path)
+        if not await _replace_with_retry(part_path, installer_path):
+            return None
         # File name only: the full path holds the Windows account name.
         logger.info("Installer downloaded", file_name=installer_path.name)
         return installer_path
@@ -257,6 +256,37 @@ async def _download_to(
         )
         # The caller's finally removes the partial .part file.
         return None
+
+
+async def _replace_with_retry(part_path: Path, installer_path: Path) -> bool:
+    """Rename the verified ``.part`` file to the installer name.
+
+    ``os.replace`` is atomic on the same volume and replaces an installer left
+    by an earlier attempt. If that old file is still open (sharing violation,
+    e.g. an antivirus scan), the rename is tried up to ``LAUNCH_ATTEMPTS`` times
+    in total, ``LAUNCH_RETRY_DELAY_SECONDS`` apart. Returns False on failure.
+    """
+    for attempt in range(1, LAUNCH_ATTEMPTS + 1):
+        try:
+            os.replace(part_path, installer_path)
+            return True
+        except OSError as e:
+            winerror = getattr(e, "winerror", None)
+            if winerror == _ERROR_SHARING_VIOLATION and attempt < LAUNCH_ATTEMPTS:
+                logger.warning(
+                    "installer_replace_retry", attempt=attempt, reason="file_in_use"
+                )
+                await asyncio.sleep(LAUNCH_RETRY_DELAY_SECONDS)
+                continue
+            # Error type and code only: the message carries the user path.
+            logger.error(
+                "installer_replace_failed",
+                error_type=type(e).__name__,
+                winerror=winerror,
+                attempt=attempt,
+            )
+            return False
+    return False  # pragma: no cover - the loop always returns
 
 
 async def launch_installer(
@@ -278,8 +308,8 @@ async def launch_installer(
     - [Run] section → relaunches SakaDesk.exe after install
 
     When Windows reports the installer in use (sharing violation, e.g. an
-    antivirus scan of the fresh file), the launch is retried up to
-    ``attempts`` times, ``retry_delay`` seconds apart. Other errors fail at once.
+    antivirus scan of the fresh file), the launch is tried up to ``attempts``
+    times in total, ``retry_delay`` seconds apart. Other errors fail at once.
 
     Args:
         installer_path: Path to the downloaded installer
@@ -297,7 +327,13 @@ async def launch_installer(
         logger.error("Installer not found", file_name=installer_path.name)
         return False
 
-    log_path = get_logs_dir() / "installer.log"
+    try:
+        log_path = get_logs_dir() / "installer.log"
+    except OSError as e:
+        logger.error(
+            "Failed to launch installer", error_type=type(e).__name__, step="logs_dir"
+        )
+        return False
     for attempt in range(1, attempts + 1):
         try:
             subprocess.Popen(
