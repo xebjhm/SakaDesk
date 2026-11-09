@@ -3,13 +3,18 @@ In-place Upgrade Service for SakaDesk.
 
 Handles downloading new versions and triggering the upgrade process on Windows.
 The upgrade flow:
-1. Download new installer to upgrade directory
-2. Verify SHA-256 digest against GitHub release asset
-3. Launch installer with /SILENT /SUPPRESSMSGBOXES /NORESTART /LOG=<logs>/installer.log,
+1. Download new installer to a private ``.part`` file in the upgrade directory
+2. Verify size + SHA-256 digest against the GitHub release asset, then rename
+   the ``.part`` file to the installer name
+3. Launch installer (retrying while Windows reports the file in use) with /SILENT /SUPPRESSMSGBOXES /NORESTART /LOG=<logs>/installer.log,
    then the app exits; Setup waits for it to exit, installs, and relaunches it
 """
 
+import asyncio
 import hashlib
+import os
+import uuid
+
 import structlog
 import subprocess
 from pathlib import Path
@@ -28,6 +33,12 @@ GITHUB_REPO = "xebjhm/SakaDesk"
 
 # Maximum installer size (500 MB) — abort download if exceeded
 MAX_INSTALLER_SIZE = 500 * 1024 * 1024
+
+# Windows ERROR_SHARING_VIOLATION: the file is open in another process (or in
+# a handle of ours that has not closed yet). Launching retries on it.
+_ERROR_SHARING_VIOLATION = 32
+LAUNCH_ATTEMPTS = 5
+LAUNCH_RETRY_DELAY_SECONDS = 1.0
 
 # The installer URL comes from the GitHub release JSON; only fetch over HTTPS
 # from GitHub-controlled hosts so a tampered/redirected URL can't point the
@@ -150,7 +161,25 @@ async def download_installer(
         logger.error(f"Suspicious installer filename from URL: {raw_name!r}")
         return None
     installer_path = upgrade_dir / filename
+    # Each download writes its own .part file, so two downloads can never
+    # write the same file; only a fully verified download is renamed to the
+    # installer name. The finally block removes the .part file on every
+    # failure path, including cancellation.
+    part_path = upgrade_dir / f"{filename}.{uuid.uuid4().hex[:8]}.part"
 
+    try:
+        return await _download_to(info, part_path, installer_path, progress_callback)
+    finally:
+        try:
+            part_path.unlink(missing_ok=True)
+        except OSError as e:
+            logger.warning("installer_part_cleanup_failed", error_type=type(e).__name__)
+
+
+async def _download_to(
+    info: InstallerInfo, part_path: Path, installer_path: Path, progress_callback
+) -> Optional[Path]:
+    """Stream ``info.url`` into ``part_path``, verify it, rename to ``installer_path``."""
     try:
         sha256 = hashlib.sha256()
 
@@ -173,7 +202,7 @@ async def download_installer(
                 total = int(response.headers.get("content-length", 0))
                 downloaded = 0
 
-                with open(installer_path, "wb") as f:
+                with open(part_path, "wb") as f:
                     async for chunk in response.aiter_bytes(chunk_size=8192):
                         f.write(chunk)
                         sha256.update(chunk)
@@ -182,8 +211,6 @@ async def download_installer(
                             logger.error(
                                 f"Download exceeded {MAX_INSTALLER_SIZE} bytes — aborting"
                             )
-                            f.close()
-                            installer_path.unlink(missing_ok=True)
                             return None
                         if progress_callback:
                             progress_callback(downloaded, total)
@@ -191,13 +218,11 @@ async def download_installer(
         # Verify size matches content-length
         if total > 0 and downloaded != total:
             logger.error(f"Download incomplete: {downloaded}/{total} bytes")
-            installer_path.unlink(missing_ok=True)
             return None
 
         # Verify size matches GitHub asset size
         if info.size > 0 and downloaded != info.size:
             logger.error(f"Size mismatch: got {downloaded}, expected {info.size} bytes")
-            installer_path.unlink(missing_ok=True)
             return None
 
         # Verify SHA-256 against GitHub asset digest (mandatory)
@@ -205,7 +230,6 @@ async def download_installer(
             logger.error(
                 "No SHA-256 digest from GitHub — refusing unverified installer"
             )
-            installer_path.unlink(missing_ok=True)
             return None
 
         expected_hex = info.digest.removeprefix("sha256:")
@@ -216,10 +240,12 @@ async def download_installer(
                 expected=expected_hex[:16] + "...",
                 actual=actual_hex[:16] + "...",
             )
-            installer_path.unlink(missing_ok=True)
             return None
 
         logger.info("SHA-256 verified OK")
+        # Atomic on the same volume; replaces an installer left by an earlier
+        # attempt. Fails (OSError) if that old file is still open somewhere.
+        os.replace(part_path, installer_path)
         # File name only: the full path holds the Windows account name.
         logger.info("Installer downloaded", file_name=installer_path.name)
         return installer_path
@@ -229,13 +255,16 @@ async def download_installer(
         logger.error(
             "Error downloading installer", error_type=type(e).__name__, url=info.url
         )
-        # Clean up partial download
-        if installer_path.exists():
-            installer_path.unlink()
+        # The caller's finally removes the partial .part file.
         return None
 
 
-def launch_installer(installer_path: Path) -> bool:
+async def launch_installer(
+    installer_path: Path,
+    *,
+    attempts: int = LAUNCH_ATTEMPTS,
+    retry_delay: float = LAUNCH_RETRY_DELAY_SECONDS,
+) -> bool:
     """
     Launch the Inno Setup installer directly and prepare for app exit.
 
@@ -248,10 +277,14 @@ def launch_installer(installer_path: Path) -> bool:
       on each upgrade), so a failed upgrade leaves evidence behind
     - [Run] section → relaunches SakaDesk.exe after install
 
-    No batch script needed — this removes timing/path edge cases.
+    When Windows reports the installer in use (sharing violation, e.g. an
+    antivirus scan of the fresh file), the launch is retried up to
+    ``attempts`` times, ``retry_delay`` seconds apart. Other errors fail at once.
 
     Args:
         installer_path: Path to the downloaded installer
+        attempts: Maximum launch attempts on a sharing violation
+        retry_delay: Seconds to wait between attempts
 
     Returns:
         True if installer was launched successfully
@@ -264,28 +297,53 @@ def launch_installer(installer_path: Path) -> bool:
         logger.error("Installer not found", file_name=installer_path.name)
         return False
 
-    try:
-        log_path = get_logs_dir() / "installer.log"
-        subprocess.Popen(
-            [
-                str(installer_path),
-                "/SILENT",
-                "/SUPPRESSMSGBOXES",
-                "/NORESTART",
-                f"/LOG={log_path}",
-            ],
-            creationflags=subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
-            | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
-            close_fds=True,
-        )
+    log_path = get_logs_dir() / "installer.log"
+    for attempt in range(1, attempts + 1):
+        try:
+            subprocess.Popen(
+                [
+                    str(installer_path),
+                    "/SILENT",
+                    "/SUPPRESSMSGBOXES",
+                    "/NORESTART",
+                    f"/LOG={log_path}",
+                ],
+                creationflags=subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
+                | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
+                close_fds=True,
+            )
+        except OSError as e:
+            in_use = getattr(e, "winerror", None) == _ERROR_SHARING_VIOLATION
+            if in_use and attempt < attempts:
+                logger.warning(
+                    "installer_launch_retry",
+                    attempt=attempt,
+                    attempts=attempts,
+                    reason="file_in_use",
+                )
+                await asyncio.sleep(retry_delay)
+                continue
+            logger.error(
+                "Failed to launch installer",
+                error_type=type(e).__name__,
+                winerror=getattr(e, "winerror", None),
+                attempt=attempt,
+            )
+            return False
+        except Exception as e:
+            logger.error(
+                "Failed to launch installer",
+                error_type=type(e).__name__,
+                attempt=attempt,
+            )
+            return False
 
         # File name only: the logs dir path holds the Windows account name.
-        logger.info("Installer launched successfully", log_file=log_path.name)
+        logger.info(
+            "Installer launched successfully", log_file=log_path.name, attempt=attempt
+        )
         return True
-
-    except Exception as e:
-        logger.error("Failed to launch installer", error_type=type(e).__name__)
-        return False
+    return False  # pragma: no cover - the loop always returns
 
 
 def cleanup_upgrade_files():

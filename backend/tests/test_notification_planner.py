@@ -80,6 +80,7 @@ def run(
     avatar_for: Any = lambda _d: None,
     divert: Any = lambda _p: False,
     member_count_for: Any = lambda _g: 1,
+    nickname: str | None = None,
 ) -> tuple[list[ToastPlan], list[Skip]]:
     return plan_toasts(
         chats,
@@ -93,6 +94,7 @@ def run(
         avatar_for=avatar_for,
         divert=divert,
         member_count_for=member_count_for,
+        nickname=nickname,
     )
 
 
@@ -623,3 +625,75 @@ def test_avatar_newest_by_name(tmp_path: Path) -> None:
 def test_avatar_extension_case_insensitive(tmp_path: Path) -> None:
     f = _touch(tmp_path / "profile_images" / "thumbnail" / "A.JPG")
     assert find_avatar(tmp_path) == f
+
+
+# ── 0.4.1: nickname placeholder in toasts ───────────────────────────
+
+
+@pytest.mark.parametrize("placeholder", ["%%%", "％％％"])
+def test_preview_replaces_nickname_placeholder(placeholder: str) -> None:
+    text = f"{placeholder}さん、おはよう🌸 {placeholder}"
+    assert (
+        preview_text(msg(content=text), STRINGS, "みーぱん")
+        == "みーぱんさん、おはよう🌸 みーぱん"
+    )
+
+
+def test_preview_without_nickname_keeps_text() -> None:
+    assert preview_text(msg(content="%%%さん"), STRINGS, None) == "%%%さん"
+
+
+def test_preview_replaces_before_truncating() -> None:
+    # 78 chars + placeholder: the cut applies to the replaced text.
+    text = "あ" * 78 + "%%%"
+    out = preview_text(msg(content=text), STRINGS, "ニックネーム")
+    assert out == "あ" * 78 + "ニッ" + "…"
+
+
+def test_toast_body_uses_nickname(tmp_path: Path) -> None:
+    plans, _ = run(
+        [chat(tmp_path, newest=msg(content="%%%、ありがとう"))],
+        tmp_path,
+        nickname="みく推し",
+    )
+    assert plans[0].body == "みく推し、ありがとう"
+
+
+def test_room_toast_body_uses_nickname(tmp_path: Path) -> None:
+    kw: dict[str, Any] = {
+        "group_id": "79",
+        "group_dir": "79 日向坂46 ライブ",
+        "group_name": "日向坂46 ライブ",
+    }
+    chats = [
+        chat(
+            tmp_path,
+            member_id="1",
+            member_dir="1 加藤 史帆",
+            member_name="加藤 史帆",
+            newest=msg(10, "text", "%%%こんばんは"),
+            **kw,
+        ),
+        chat(
+            tmp_path,
+            member_id="2",
+            member_dir="2 齊藤 京子",
+            member_name="齊藤 京子",
+            newest=msg(9, "text", "x", "2026-11-04T09:00:00Z"),
+            **kw,
+        ),
+    ]
+    plans, _ = run(chats, tmp_path, member_count_for=lambda _g: 2, nickname="ひな")
+    assert [p.body for p in plans] == ["加藤 史帆: ひなこんばんは\n+1 more"]
+
+
+def test_nickname_for_reads_per_service_setting() -> None:
+    from backend.services.nickname import apply_nickname, nickname_for
+
+    settings = {"user_nicknames": {"hinatazaka46": "ひな", "sakurazaka46": ""}}
+    assert nickname_for(settings, "hinatazaka46") == "ひな"
+    assert nickname_for(settings, "sakurazaka46") is None
+    assert nickname_for({}, "hinatazaka46") is None
+    assert nickname_for({"user_nicknames": None}, "hinatazaka46") is None
+    # A nickname containing regex replacement syntax is inserted literally.
+    assert apply_nickname("%%%", r"\1\g<0>") == r"\1\g<0>"
