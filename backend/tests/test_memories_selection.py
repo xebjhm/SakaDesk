@@ -235,3 +235,71 @@ def test_jst_rejects_naive_datetime():
     with pytest.raises(ValueError):
         jst(datetime(2026, 9, 14, 12, 0))
     assert jst(T0).hour == 21
+
+
+def test_greeting_classes_multi_label_and_mask():
+    from backend.services.memories.lexicon import GREETING_BITS
+    from backend.services.memories.selection import (
+        classes_from_mask,
+        greeting_classes,
+        greeting_mask,
+    )
+
+    text = "おやすみ、%%%大好きだよ🌙"
+    assert greeting_classes(text) == {"oyasumi", "daisuki"}
+    assert greeting_class(text) == "oyasumi"  # single label keeps lexicon order
+    mask = greeting_mask(text)
+    assert mask == GREETING_BITS["oyasumi"] | GREETING_BITS["daisuki"]
+    assert classes_from_mask(mask) == {"oyasumi", "daisuki"}
+    assert greeting_mask("今日は雨☔") == 0
+    assert greeting_classes("ＯＫ、ありがとう！おはよう") == {"arigato", "ohayo"}
+
+
+def test_bare_suki_is_not_daisuki():
+    from backend.services.memories.selection import greeting_classes
+
+    assert greeting_class("好きな食べ物はカレー🍛") is None
+    assert greeting_classes("好きな食べ物はカレー") == frozenset()
+    assert greeting_class("だいすき💕") == "daisuki"
+    assert greeting_class("%%%ちゃん大好き") == "daisuki"
+
+
+def test_split_sentences():
+    from backend.services.memories.selection import split_sentences
+
+    assert split_sentences("今日はありがとう！楽しかった。\nおやすみ🌙") == [
+        "今日はありがとう",
+        "楽しかった",
+        "おやすみ🌙",
+    ]
+    assert split_sentences("ほんと？うん！！") == ["ほんと", "うん"]  # full-width
+    assert split_sentences("。。\n") == []
+
+
+def test_repeated_counts_sentences_not_messages():
+    from backend.services.memories.selection import (
+        is_repeated,
+        sentence_counts,
+        split_sentences,
+    )
+
+    texts = [
+        "今日もお疲れさま！おやすみ🌙",
+        "ライブ楽しかった！おやすみ🌙",
+        "雨だね。おやすみ🌙",
+        "今日もお疲れさま！ゆっくり休んでね",
+        "今日もお疲れさま！",
+    ]
+    counts = sentence_counts(texts)
+    assert counts["おやすみ🌙"] == 3 and counts["今日もお疲れさま"] == 3
+    # Whole messages all differ, but their sentences repeat.
+    assert is_repeated(split_sentences(texts[0]), counts)
+    assert is_repeated(split_sentences(texts[4]), counts)
+    # A long unique sentence that merely ends with a stock one is not penalised.
+    long_unique = (
+        "初めてのドームで本当に緊張したけどみんなの顔が見えて嬉しかった！おやすみ🌙"
+    )
+    assert not is_repeated(split_sentences(long_unique), counts)
+    assert not is_repeated([], counts)
+    # A sentence repeated inside one message counts once.
+    assert sentence_counts(["うん！うん！うん！"]) == {"うん": 1}

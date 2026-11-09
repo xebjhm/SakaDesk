@@ -42,11 +42,20 @@ NICKNAME_TOKEN = "%%%"
 GREETING_RES = {
     "ohayo": re.compile(r"おはよ"),
     "oyasumi": re.compile(r"おやすみ"),
-    "daisuki": re.compile(r"大好き|だいすき|好き"),
+    # Bare 好き is too broad ("好きな食べ物"); only the explicit forms count.
+    "daisuki": re.compile(r"大好き|だいすき"),
     "arigato": re.compile(r"ありがとう|ありがと|感謝"),
     "otsukare": re.compile(r"お疲れ|おつかれ"),
     "ohiru": re.compile(r"お昼|ランチ"),
 }
+
+# Bit per greeting class, for the multi-label ``greeting_mask`` (stored in the
+# index). Append new classes at the end so existing bits keep their meaning.
+GREETING_BITS = {name: 1 << i for i, name in enumerate(GREETING_RES)}
+
+# Sentence boundaries for the repeated-sentence penalty and sentence picks.
+# Matched on NFKC text, where ！？ become !?.
+SENTENCE_SPLIT_RE = re.compile(r"[。!?\n]+")
 
 # Greeting word + polite ending only, followed by punctuation / emoji / spaces.
 PURE_GREETING_RE = re.compile(

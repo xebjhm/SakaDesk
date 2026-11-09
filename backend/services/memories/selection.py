@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import unicodedata
-from collections.abc import Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
@@ -14,10 +14,12 @@ from backend.services.memories.lexicon import (
     CAPTION_BONUS_WORDS,
     DATE_HEADING_RE,
     EMOTION_WORDS,
+    GREETING_BITS,
     GREETING_RES,
     NICKNAME_TOKEN,
     PROMO_WORDS_RE,
     PURE_GREETING_RE,
+    SENTENCE_SPLIT_RE,
     TIME_RE,
     URL_RE,
 )
@@ -66,11 +68,68 @@ def is_promo(text: str) -> bool:
 
 
 def greeting_class(text: str) -> str | None:
+    """Single label for slot assignment: the first matching class in lexicon order.
+
+    Use :func:`greeting_classes` / :func:`greeting_mask` for counting, where a
+    message such as "おやすみ、大好きだよ" counts for every class it contains.
+    """
     t = normalize(text)
     for name, pattern in GREETING_RES.items():
         if pattern.search(t):
             return name
     return None
+
+
+def greeting_classes(text: str) -> frozenset[str]:
+    """Every greeting class present in ``text`` (multi-label, for counting)."""
+    t = normalize(text)
+    return frozenset(name for name, p in GREETING_RES.items() if p.search(t))
+
+
+def greeting_mask(text: str) -> int:
+    """:func:`greeting_classes` as a bitmask (``lexicon.GREETING_BITS``)."""
+    mask = 0
+    for name in greeting_classes(text):
+        mask |= GREETING_BITS[name]
+    return mask
+
+
+def classes_from_mask(mask: int) -> frozenset[str]:
+    """Inverse of :func:`greeting_mask`."""
+    return frozenset(name for name, bit in GREETING_BITS.items() if mask & bit)
+
+
+def split_sentences(text: str) -> list[str]:
+    """NFKC sentences split at 。！？ and newlines; stripped, empty ones dropped."""
+    return [s.strip() for s in SENTENCE_SPLIT_RE.split(normalize(text)) if s.strip()]
+
+
+REPEAT_MIN = 3
+
+
+def is_repeated(sentences: Sequence[str], counts: Mapping[str, int]) -> bool:
+    """True when repeated sentences make up at least half of the message.
+
+    ``counts`` holds, per sentence, how many of her messages in the year
+    contain it. A sentence is repeated at ``REPEAT_MIN`` (3) or more. The
+    half-of-the-characters rule keeps a long, unique message that merely ends
+    with a stock "おやすみ" from being penalised, while a template message
+    with a tiny unique tail still is.
+    """
+    total = sum(len(s) for s in sentences)
+    if total == 0:
+        return False
+    rep = sum(len(s) for s in sentences if counts.get(s, 0) >= REPEAT_MIN)
+    return rep * 2 >= total
+
+
+def sentence_counts(texts: Iterable[str]) -> dict[str, int]:
+    """Per sentence, the number of ``texts`` containing it (once per text)."""
+    out: dict[str, int] = {}
+    for text in texts:
+        for s in set(split_sentences(text)):
+            out[s] = out.get(s, 0) + 1
+    return out
 
 
 def is_pure_greeting(text: str) -> bool:
