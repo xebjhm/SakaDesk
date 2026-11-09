@@ -290,6 +290,8 @@
     "title": "聊天",
     "loadingConversations": "正在載入對話...",
     "noConversations": "找不到對話。",
+    "loadFailedTitle": "無法載入對話",
+    "loadFailedBody": "已儲存的訊息沒有遺失，請稍後再試。",
     "online": "線上",
     "offline": "離線",
     "graduated": "畢業成員",

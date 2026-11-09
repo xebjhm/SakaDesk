@@ -842,3 +842,23 @@ def test_read_progress_breadcrumbs_are_accepted(event, fields, level):
     assert entry["event"] == event
     assert entry["log_level"] == level
     assert {key: entry[key] for key in fields} == fields
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"service": "hinatazaka46", "reason": "rejected", "outcome": "error_state"},
+        {"service": "hinatazaka46", "reason": "failed", "outcome": "kept_list"},
+        {"service": "hinatazaka46", "outcome": "retry"},
+    ],
+)
+def test_sidebar_load_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log", json={"event": "sidebar_load", "fields": fields}
+        )
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == "sidebar_load"
+    assert entry["log_level"] == "info"
+    assert {key: entry[key] for key in fields} == fields

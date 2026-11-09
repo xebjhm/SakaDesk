@@ -290,6 +290,8 @@
     "title": "Talk",
     "loadingConversations": "Loading conversations...",
     "noConversations": "No conversations found.",
+    "loadFailedTitle": "Could not load conversations",
+    "loadFailedBody": "Your saved messages are safe. Try again in a moment.",
     "online": "Online",
     "offline": "Offline",
     "graduated": "Graduated",

@@ -465,7 +465,7 @@ Brand moments are for waiting, starting, finishing and looking back
 - **`EmptyState`** (`icon`, `title`, `description`, `action`): a fixed
   pattern. A `bg-expressive-soft` circle (aurora in brand context, group 50 →
   100 in group context) holding a line icon in `text-muted` (the pre-D2 grey), a `font-display` title, one
-  sentence and one action. `DialogStatus` and `BlogStatus` draw their `empty` kind with it (the hint is its sentence, the retry its action); the chat's no-conversation screen uses it too. A meaning icon keeps its own colour (the blog feed's Favorite-filter heart stays oshi).
+  sentence and one action. `DialogStatus` and `BlogStatus` draw their `empty` kind with it (the hint is its sentence, the retry its action); the chat's no-conversation screen uses it too, and so does the Talk sidebar's failed-load state (a `CloudOff` icon, a reassuring sentence and a `secondary` Retry). A meaning icon keeps its own colour (the blog feed's Favorite-filter heart stays oshi).
 - **`Atmosphere`** (`fade`): L2. Three drifting orbs (`bg-expressive-orb-*`,
   `animate-orb-drift-1/2`, `animate-orb-breathe`) behind its children.
   Each orb is a square box (a width plus `aspect-square`, never a separate height),

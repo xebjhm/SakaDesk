@@ -290,6 +290,8 @@
     "title": "トーク",
     "loadingConversations": "トーク一覧を読み込み中...",
     "noConversations": "トークが見つかりませんでした。",
+    "loadFailedTitle": "トーク一覧を読み込めませんでした",
+    "loadFailedBody": "保存したメッセージは消えていません。少し待ってから再試行してください。",
     "online": "オンライン",
     "offline": "オフライン",
     "graduated": "卒業メンバー",

@@ -80,6 +80,7 @@ ClientEvent = Literal[
     "conv_write_failed",
     "read_state_save_skipped",
     "read_state_sync_failed",
+    "sidebar_load",
 ]
 
 ALLOWED_FIELDS = frozenset(

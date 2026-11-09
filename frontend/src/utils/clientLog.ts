@@ -31,7 +31,8 @@ export type ClientLogEvent =
     | 'poll_retry' | 'poll_gave_up'
     | 'translation_batch_failed'
     | 'conv_hydrate_retry' | 'conv_hydrate_failed' | 'conv_write_failed'
-    | 'read_state_save_skipped' | 'read_state_sync_failed';
+    | 'read_state_save_skipped' | 'read_state_sync_failed'
+    | 'sidebar_load';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'

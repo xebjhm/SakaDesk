@@ -290,6 +290,8 @@
     "title": "聊天",
     "loadingConversations": "正在加载对话...",
     "noConversations": "未找到对话。",
+    "loadFailedTitle": "无法加载对话",
+    "loadFailedBody": "已保存的消息没有丢失，请稍后再试。",
     "online": "在线",
     "offline": "离线",
     "graduated": "毕业成员",

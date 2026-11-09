@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '../../../utils/classnames';
-import { Users, RefreshCw } from 'lucide-react';
+import { Users, RefreshCw, CloudOff } from 'lucide-react';
 import type { MemberInfo } from '../../../types';
 import { formatName, getShortName } from '../../../utils';
 import { UI_CONSTANTS } from '../../../config/uiConstants';
-import { Avatar, Badge, IconButton } from '../../../design/primitives';
+import { Avatar, Badge, Button, EmptyState, IconButton } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
@@ -82,6 +82,22 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
     const [unreadCounts, setUnreadCounts] = useState<Record<string, number>>({});
     const [lastSyncMap, setLastSyncMap] = useState<Record<string, string>>({});
     const [loading, setLoading] = useState(true);
+    // The last groups load failed for real (rejected / failed) while no list was
+    // shown: render the error state with Retry, not "No conversations".
+    const [loadError, setLoadError] = useState(false);
+    // MessagesFeature stays mounted across a group switch, so this component is
+    // not remounted: on an activeService change drop the previous service's list
+    // and badges during render (before anything paints) and show the spinner until
+    // the new service's load answers. lastSyncMap is keyed by service and holds
+    // every service's time, so it stays.
+    const [shownService, setShownService] = useState(activeService);
+    if (shownService !== activeService) {
+        setShownService(activeService);
+        setGroups([]);
+        setUnreadCounts({});
+        setLoading(true);
+        setLoadError(false);
+    }
     const [menu, setMenu] = useState<{ x: number; y: number; path: string } | null>(null);
     const [viewer, setViewer] = useState<ProfileImagesByKind | null>(null);
 
@@ -108,6 +124,9 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
     // The service the list currently shows: a late response for another one is dropped.
     const activeServiceRef = useRef(activeService);
     activeServiceRef.current = activeService;
+    // The list as last rendered, read after an await (the closure's `groups` is stale by then).
+    const groupsRef = useRef(groups);
+    groupsRef.current = groups;
     const serviceKey = (base: string, service: string | undefined) => `${base}_${service ?? 'all'}`;
 
     /**
@@ -136,12 +155,31 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             // Support both old format (array) and new format (object with groups + last_sync)
             const groupList = Array.isArray(data) ? data : data.groups;
             setGroups(groupList);
+            setLoadError(false);
             if (!Array.isArray(data) && data.last_sync) setLastSyncMap(data.last_sync);
             checkUnread(groupList, replace);
+        } else if (result.status === 'rejected' || result.status === 'failed') {
+            // pollJson logged the failure itself; this records what the user sees.
+            // With a list on screen keep it (the next tick retries); with none, an
+            // empty "No conversations" would read as data loss, so show the error.
+            const hasList = groupsRef.current.length > 0;
+            clientLog('sidebar_load', {
+                ...(service ? { service } : {}),
+                reason: result.status,
+                outcome: hasList ? 'kept_list' : 'error_state',
+            });
+            if (!hasList) setLoadError(true);
         }
         // A timeout is not an answer: keep the spinner (an empty list would read
         // as data loss) until a later tick succeeds or fails for real.
         if (result.status !== 'timeout') setLoading(false);
+    };
+
+    const retryLoad = () => {
+        clientLog('sidebar_load', { ...(activeService ? { service: activeService } : {}), outcome: 'retry' });
+        setLoadError(false);
+        setLoading(true);
+        void loadGroups(true);
     };
 
     const checkUnread = async (groupList: GroupInfo[], replace = false) => {
@@ -366,6 +404,13 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                         <RefreshCw className="h-5 w-5 animate-spin text-accent" />
                         <span>{t('memberList.loadingConversations')}</span>
                     </div>
+                ) : loadError && groups.length === 0 ? (
+                    <EmptyState
+                        icon={<CloudOff />}
+                        title={t('memberList.loadFailedTitle')}
+                        description={t('memberList.loadFailedBody')}
+                        action={<Button variant="secondary" size="sm" onClick={retryLoad}>{t('common.retry')}</Button>}
+                    />
                 ) : groups.length === 0 ? (
                     <div className="p-6 text-center text-small text-secondary">
                         {t('memberList.noConversations')}

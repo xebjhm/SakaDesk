@@ -290,6 +290,8 @@
     "title": "Talk",
     "loadingConversations": "載入緊對話...",
     "noConversations": "搵唔到對話。",
+    "loadFailedTitle": "載入唔到對話",
+    "loadFailedBody": "儲存咗嘅訊息冇事，遲啲再試下啦。",
     "online": "Online",
     "offline": "Offline",
     "graduated": "畢業成員",
