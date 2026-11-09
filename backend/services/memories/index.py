@@ -40,7 +40,8 @@ from backend.services.memories import selection as sel
 from backend.services.memories.member_profiles import load_birthdays
 from backend.services.memories.names import normalize_member_name
 from backend.services.memories.subscriptions import load_subscription_starts
-from backend.services import profile_images_service
+from backend.services import profile_images_service, shutdown_state
+from backend.services.memories.locks import keyed_lock
 from backend.services.platform import get_app_data_dir
 from backend.services.service_utils import get_service_identifier
 
@@ -213,7 +214,11 @@ class _Inputs:
 def _scan_rooms(
     service_data_dir: Path,
 ) -> tuple[tuple[tuple[Path, tuple[Path, ...]], ...], bool]:
-    """``((group_dir, member_dirs), ...)`` with ``messages.json``; ``ok`` flag."""
+    """``((group_dir, member_dirs), ...)`` with ``messages.json``; ``ok`` flag.
+
+    ``ok`` is False when the listing failed or ``messages/`` is missing; the
+    caller must then not treat absent rooms as deleted.
+    """
     root = service_data_dir / "messages"
     out: list[tuple[Path, tuple[Path, ...]]] = []
     try:
@@ -226,8 +231,10 @@ def _scan_rooms(
             if members:
                 out.append((group, members))
     except FileNotFoundError:
+        # Not "ok": never prune the cache because the folder is missing (e.g.
+        # an unplugged output drive).
         logger.info("memory_index_no_messages_dir")
-        return (), True
+        return (), False
     except OSError as e:
         logger.warning("memory_index_scan_failed", error_type=type(e).__name__)
         return tuple(out), False
@@ -658,21 +665,18 @@ def _get_sync(
 async def get_member_index(service_data_dir: Path, member_dir: Path) -> MemberIndex:
     """Cached index for one member; rebuilt off the event loop when stale.
 
-    On any failure an empty index (not cached) is returned and
-    ``memory_index_failed`` is logged.
+    Single-flight per ``(service_dir, member_dir)``: concurrent callers wait
+    for one build and then read its cache row. On any failure an empty index
+    (not cached) is returned and ``memory_index_failed`` is logged.
     """
+    async with keyed_lock(("memory_index", str(service_data_dir), str(member_dir))):
 
-    def run() -> MemberIndex:
-        return _get_sync(service_data_dir, member_dir, _load_inputs(service_data_dir))[
-            0
-        ]
+        def run() -> MemberIndex:
+            return _get_sync(
+                service_data_dir, member_dir, _load_inputs(service_data_dir)
+            )[0]
 
-    return await asyncio.to_thread(run)
-
-
-def _member_dirs(service_data_dir: Path) -> list[Path]:
-    rooms, _ = _scan_rooms(service_data_dir)
-    return [m for _, members in rooms for m in members]
+        return await asyncio.to_thread(run)
 
 
 @dataclass(frozen=True)
@@ -730,16 +734,68 @@ async def list_members(service_data_dir: Path) -> list[MemberSummary]:
     return await asyncio.to_thread(_list_members_sync, service_data_dir)
 
 
+def _prune(service_dir: str, present: set[str]) -> int:
+    """Delete cache rows of rooms no longer on disk; returns rooms removed."""
+    try:
+        with contextlib.closing(_connect()) as c, c:
+            stored = {
+                r[0]
+                for r in c.execute(
+                    "SELECT member_dir FROM member_index WHERE service_dir=?",
+                    (service_dir,),
+                )
+            }
+            gone = sorted(stored - present)
+            for member_dir in gone:
+                for table in ("member_index", "message_facts"):
+                    c.execute(
+                        f"DELETE FROM {table} WHERE service_dir=? AND member_dir=?",
+                        (service_dir, member_dir),
+                    )
+    except sqlite3.Error as e:
+        logger.warning("memory_index_prune_failed", error_type=type(e).__name__)
+        return 0
+    return len(gone)
+
+
 async def build_all(service_data_dir: Path) -> int:
-    """Rebuild every stale member index; returns how many were rebuilt."""
+    """Rebuild every stale member index; returns how many were rebuilt.
 
-    def run() -> int:
-        inputs = _load_inputs(service_data_dir)
-        return sum(
-            _get_sync(service_data_dir, d, inputs)[1]
-            for d in _member_dirs(service_data_dir)
-        )
+    Members are built one by one (each under its single-flight lock), and the
+    loop stops early once app shutdown begins. After a complete pass, cache
+    rows of rooms no longer on disk are pruned.
+    """
+    inputs = await asyncio.to_thread(_load_inputs, service_data_dir)
+    dirs = [m for _, members in inputs.rooms for m in members]
+    stop = shutdown_state.shutdown_event()
+    built = 0
+    service_dir = str(service_data_dir)
+    for d in dirs:
+        if stop.is_set():
+            logger.info(
+                "memory_index_build_all_stopped",
+                reason="shutdown",
+                rebuilt=built,
+                remaining=len(dirs) - dirs.index(d),
+            )
+            return built
+        async with keyed_lock(("memory_index", service_dir, str(d))):
+            _, was_built = await asyncio.to_thread(
+                _get_sync, service_data_dir, d, inputs
+            )
+        built += was_built
 
-    built = await asyncio.to_thread(run)
-    logger.info("memory_index_build_all", rebuilt=built)
+    pruned = 0
+    if inputs.scan_ok:
+        present = {_rel(service_data_dir, d) for d in dirs}
+        pruned = await asyncio.to_thread(_prune, service_dir, present)
+    else:
+        logger.info("memory_index_prune_skipped", reason="scan_failed")
+    solo = {_name_norm(d) for d in dirs}
+    logger.info(
+        "memory_index_birthdays",
+        matched=len(solo & set(inputs.birthdays)),
+        members=len(solo),
+    )
+    logger.info("memory_index_build_all", rebuilt=built, pruned=pruned)
     return built

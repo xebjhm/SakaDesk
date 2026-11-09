@@ -377,3 +377,101 @@ async def test_list_members_merges_rooms_and_skips_communal(tmp_path):
 @pytest.mark.asyncio
 async def test_list_members_empty_service(tmp_path):
     assert await mi.list_members(tmp_path) == []
+
+
+@pytest.mark.asyncio
+async def test_build_all_prunes_removed_rooms(tmp_path):
+    import shutil
+    import sqlite3
+
+    mi.set_db_path(tmp_path / "idx.db")
+    svc, rooms = _hinata(tmp_path)
+    for d in rooms.values():
+        (d / "messages.json").write_text(
+            json.dumps({"messages": [msg(1, "2026-09-14T03:00:00Z", content="a")]}),
+            encoding="utf-8",
+        )
+    assert await mi.build_all(svc) == len(rooms)
+    shutil.rmtree(rooms["grad"])
+
+    def counts():
+        with sqlite3.connect(tmp_path / "idx.db") as c:
+            return (
+                c.execute("SELECT COUNT(*) FROM member_index").fetchone()[0],
+                c.execute("SELECT COUNT(*) FROM message_facts").fetchone()[0],
+            )
+
+    assert counts() == (len(rooms), len(rooms))
+    await mi.build_all(svc)
+    assert counts() == (len(rooms) - 1, len(rooms) - 1)
+
+
+@pytest.mark.asyncio
+async def test_build_all_does_not_prune_when_messages_dir_missing(tmp_path):
+    import shutil
+
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", content="a")])
+    await mi.build_all(tmp_path)
+    moved = tmp_path / "moved"
+    shutil.move(str(tmp_path / "messages"), moved)
+    await mi.build_all(tmp_path)  # drive "unplugged"
+    shutil.move(str(moved), tmp_path / "messages")
+    assert await mi.build_all(tmp_path) == 0  # cache row survived
+    assert d.exists()
+
+
+@pytest.mark.asyncio
+async def test_build_all_stops_on_shutdown(tmp_path):
+    from structlog.testing import capture_logs
+
+    from backend.services import shutdown_state
+
+    mi.set_db_path(tmp_path / "idx.db")
+    svc, _ = _hinata(tmp_path)
+    shutdown_state.begin_shutdown()
+    try:
+        with capture_logs() as logs:
+            assert await mi.build_all(svc) == 0
+    finally:
+        shutdown_state.reset_for_tests()
+    (ev,) = [e for e in logs if e["event"] == "memory_index_build_all_stopped"]
+    assert ev["reason"] == "shutdown" and ev["remaining"] == 8
+
+
+@pytest.mark.asyncio
+async def test_build_all_logs_birthday_match(tmp_path):
+    from structlog.testing import capture_logs
+
+    mi.set_db_path(tmp_path / "idx.db")
+    svc, _ = _hinata(tmp_path)
+    (svc / "memories" / "member_profiles.json").write_text(
+        json.dumps({"birthdays": {"金村美玖": "2002-09-10"}}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    with capture_logs() as logs:
+        await mi.build_all(svc)
+    (ev,) = [e for e in logs if e["event"] == "memory_index_birthdays"]
+    assert ev["matched"] == 1 and ev["members"] >= 3
+    assert "金村" not in str(logs)
+
+
+@pytest.mark.asyncio
+async def test_get_member_index_single_flight(tmp_path, monkeypatch):
+    import asyncio
+
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", content="a")])
+    builds = 0
+    real = mi._build
+
+    def counting(*a, **kw):
+        nonlocal builds
+        builds += 1
+        return real(*a, **kw)
+
+    monkeypatch.setattr(mi, "_build", counting)
+    results = await asyncio.gather(
+        *(mi.get_member_index(tmp_path, d) for _ in range(5))
+    )
+    assert builds == 1 and len({r.data_hash for r in results}) == 1
