@@ -50,6 +50,18 @@ one misleading error line in the log per re-armed reset.
 exactly that report becomes a debug ``proactor_accept_reset_task`` breadcrumb;
 every other context reaches the previous handler unchanged (breadcrumb
 ``proactor_accept_log_filter``).
+
+A synchronous reset re-arms accept on the next loop turn, so a backlog full of
+reset connections would spin the loop without yielding to I/O. After
+``SYNC_RESET_BACKOFF_AFTER`` consecutive synchronous resets the re-arm is
+delayed by ``SYNC_RESET_BACKOFF_S`` (``call_later``) instead, and one
+``proactor_accept_reset_backoff`` breadcrumb marks the streak. The streak ends
+when an attempt completes (a connection, or a reset reported on completion).
+
+The accept socket that a failed ``AcceptEx`` call created is not closed here:
+CPython never closes it explicitly, so it is freed by reference counting / GC
+once the failed attempt is dropped. Triage should not expect a close event for
+those sockets.
 """
 
 from __future__ import annotations
@@ -74,6 +86,10 @@ _ACCEPT_LOG_FILTER_MARK = "_saka_accept_log_filter"
 # (not that the listener is broken): ERROR_NETNAME_DELETED,
 # ERROR_CONNECTION_ABORTED, WSAECONNABORTED, WSAECONNRESET.
 _PER_CONNECTION_ACCEPT_ERRORS = frozenset({64, 1236, 10053, 10054})
+
+# Consecutive synchronous resets after which re-arming backs off, and by how long.
+SYNC_RESET_BACKOFF_AFTER = 50
+SYNC_RESET_BACKOFF_S = 0.05
 
 CallConnectionLost = Callable[[Any, "BaseException | None"], None]
 Accept = Callable[[Any, Any], "asyncio.Future[Any]"]
@@ -197,7 +213,11 @@ def retry_reset_accepts(original: Accept) -> Accept:
     overlapped ``AcceptEx`` (``synchronous=False``), or raised by ``AcceptEx``
     itself when a reset connection is already waiting in the backlog
     (``synchronous=True``). Both log ``proactor_accept_reset`` and re-arm
-    accept on the next loop turn while the listener is still open.
+    accept on the next loop turn while the listener is still open. After
+    ``SYNC_RESET_BACKOFF_AFTER`` consecutive synchronous resets the re-arm is
+    delayed by ``SYNC_RESET_BACKOFF_S`` and one ``proactor_accept_reset_backoff``
+    breadcrumb is logged for the streak; the streak ends when an attempt
+    completes.
 
     The returned future resolves with the first connection that is accepted.
     It fails with any error that is not a per-connection reset, with a reset
@@ -211,6 +231,7 @@ def retry_reset_accepts(original: Accept) -> Accept:
     def guarded(self: Any, listener: Any) -> asyncio.Future[Any]:
         loop = self._loop
         outer = _AcceptFuture(loop=loop)
+        sync_streak = 0  # consecutive synchronous resets
 
         def is_retryable(exc: BaseException) -> bool:
             return _is_connection_reset(exc) and listener.fileno() != -1
@@ -222,6 +243,21 @@ def retry_reset_accepts(original: Accept) -> Accept:
                 error_type=type(exc).__name__,
                 synchronous=synchronous,
             )
+
+        def rearm_after_sync_reset(err: BaseException) -> None:
+            nonlocal sync_streak
+            sync_streak += 1
+            log_reset(err, synchronous=True)
+            if sync_streak < SYNC_RESET_BACKOFF_AFTER:
+                loop.call_soon(rearm)
+                return
+            if sync_streak == SYNC_RESET_BACKOFF_AFTER:
+                logger.info(
+                    "proactor_accept_reset_backoff",
+                    after=SYNC_RESET_BACKOFF_AFTER,
+                    delay_s=SYNC_RESET_BACKOFF_S,
+                )
+            loop.call_later(SYNC_RESET_BACKOFF_S, rearm)
 
         def start_attempt() -> None:
             inner = original(self, listener)
@@ -237,13 +273,14 @@ def retry_reset_accepts(original: Accept) -> Accept:
                 if not is_retryable(err):
                     outer.set_exception(err)
                     return
-                log_reset(err, synchronous=True)
-                loop.call_soon(rearm)
+                rearm_after_sync_reset(err)
             except Exception as err:  # e.g. RuntimeError from a closing loop
                 if not outer.done():
                     outer.set_exception(err)
 
         def on_attempt_done(inner: asyncio.Future[Any]) -> None:
+            nonlocal sync_streak
+            sync_streak = 0  # an attempt completed: the synchronous streak is over
             if outer.done():
                 return
             if inner.cancelled():
@@ -264,8 +301,7 @@ def retry_reset_accepts(original: Accept) -> Accept:
         except OSError as err:
             if not is_retryable(err):
                 raise  # CPython's own handling, exactly as before
-            log_reset(err, synchronous=True)
-            loop.call_soon(rearm)
+            rearm_after_sync_reset(err)
         return outer
 
     setattr(guarded, _ACCEPT_GUARD_MARK, True)

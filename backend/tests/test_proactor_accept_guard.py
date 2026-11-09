@@ -142,6 +142,93 @@ async def test_synchronous_reset_on_rearm_rearms_again():
     assert all(e["log_level"] == "debug" for e in resets)
 
 
+class _LoopSpy:
+    """Records which way each re-arm was scheduled on the running loop."""
+
+    def __init__(self, loop: asyncio.AbstractEventLoop, monkeypatch: Any) -> None:
+        self.soon = 0
+        self.later: list[float] = []
+        real_soon, real_later = loop.call_soon, loop.call_later
+
+        def call_soon(cb: Any, *args: Any, **kw: Any) -> Any:
+            if getattr(cb, "__name__", "") == "rearm":  # not asyncio's own callbacks
+                self.soon += 1
+            return real_soon(cb, *args, **kw)
+
+        def call_later(delay: float, cb: Any, *args: Any) -> Any:
+            self.later.append(delay)
+            return real_later(0, cb, *args)  # no real waiting in tests
+
+        monkeypatch.setattr(loop, "call_soon", call_soon)
+        monkeypatch.setattr(loop, "call_later", call_later)
+
+
+async def _wait_calls(accept: _Scripted, n: int) -> None:
+    for _ in range(50):
+        if accept.calls >= n:
+            return
+        await asyncio.sleep(0)
+
+
+@pytest.mark.asyncio
+async def test_synchronous_reset_streak_backs_off_with_one_breadcrumb(monkeypatch):
+    monkeypatch.setattr(proactor_resets, "SYNC_RESET_BACKOFF_AFTER", 3)
+    monkeypatch.setattr(proactor_resets, "SYNC_RESET_BACKOFF_S", 0.05)
+    loop = asyncio.get_running_loop()
+    spy = _LoopSpy(loop, monkeypatch)
+    # Calls 1-6 reset synchronously; call 7 pends.
+    accept = _Scripted(loop, {n: _win_error(64, "deleted") for n in range(1, 7)})
+    with capture_logs() as logs:
+        outer = retry_reset_accepts(accept)(_proactor(loop), _Listener())
+        await _wait_calls(accept, 7)
+        assert accept.calls == 7 and not outer.done()
+        accept.fake.futures[0].set_result(("conn", ("127.0.0.1", 5005)))
+        assert await outer == ("conn", ("127.0.0.1", 5005))
+    # Resets 1-2 re-arm at once; the 3rd onwards wait.
+    assert spy.soon == 2
+    assert spy.later == [0.05] * 4
+    (backoff,) = [e for e in logs if e["event"] == "proactor_accept_reset_backoff"]
+    assert backoff["after"] == 3 and backoff["delay_s"] == 0.05
+
+
+@pytest.mark.asyncio
+async def test_a_completion_time_result_ends_the_streak(monkeypatch):
+    monkeypatch.setattr(proactor_resets, "SYNC_RESET_BACKOFF_AFTER", 3)
+    loop = asyncio.get_running_loop()
+    spy = _LoopSpy(loop, monkeypatch)
+    # Sync resets on calls 1-2, a pending call 3 that fails at completion time,
+    # then sync resets on calls 4-5 and a pending call 6. Without the reset
+    # the streak would reach 4 and back off.
+    accept = _Scripted(loop, {n: _win_error(64, "deleted") for n in (1, 2, 4, 5)})
+    with capture_logs() as logs:
+        outer = retry_reset_accepts(accept)(_proactor(loop), _Listener())
+        await _wait_calls(accept, 3)
+        accept.fake.futures[0].set_exception(ConnectionResetError(10054, "reset"))
+        await _wait_calls(accept, 6)
+        assert accept.calls == 6 and not outer.done()
+        accept.fake.futures[1].cancel()
+    assert spy.later == []
+    assert not [e for e in logs if e["event"] == "proactor_accept_reset_backoff"]
+
+
+@pytest.mark.asyncio
+async def test_a_second_streak_logs_its_own_backoff_breadcrumb(monkeypatch):
+    monkeypatch.setattr(proactor_resets, "SYNC_RESET_BACKOFF_AFTER", 2)
+    loop = asyncio.get_running_loop()
+    _LoopSpy(loop, monkeypatch)
+    # Calls 1-3 sync reset (streak 1), call 4 pends and resets at completion
+    # (ends it), calls 5-7 sync reset (streak 2), call 8 pends.
+    accept = _Scripted(loop, {n: _win_error(64, "deleted") for n in (1, 2, 3, 5, 6, 7)})
+    with capture_logs() as logs:
+        outer = retry_reset_accepts(accept)(_proactor(loop), _Listener())
+        await _wait_calls(accept, 4)
+        accept.fake.futures[0].set_exception(ConnectionResetError(10054, "reset"))
+        await _wait_calls(accept, 8)
+        assert accept.calls == 8
+        outer.cancel()
+    assert len([e for e in logs if e["event"] == "proactor_accept_reset_backoff"]) == 2
+
+
 @pytest.mark.asyncio
 async def test_synchronous_reset_on_first_call_rearms():
     loop = asyncio.get_running_loop()
