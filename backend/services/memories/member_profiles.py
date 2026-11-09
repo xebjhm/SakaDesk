@@ -27,15 +27,17 @@ _REFRESH_INTERVAL = timedelta(days=7)
 _SUPPORTED = (Group.HINATAZAKA46, Group.SAKURAZAKA46, Group.NOGIZAKA46)
 
 
-def _scraper_for(service: str, session: aiohttp.ClientSession) -> Any | None:
-    """Return the pysaka blog scraper for ``service``, or None without a blog site."""
+def _is_supported(service: str) -> bool:
+    """Single source of truth: does ``service`` have a pysaka blog scraper?"""
     try:
-        group = get_service_enum(service)
+        return get_service_enum(service) in _SUPPORTED
     except ValueError:
-        return None
-    if group not in _SUPPORTED:
-        return None
-    return get_scraper(group, session)
+        return False
+
+
+def _scraper_for(service: str, session: aiohttp.ClientSession) -> Any:
+    """Return the pysaka blog scraper for a supported ``service``."""
+    return get_scraper(get_service_enum(service), session)
 
 
 def _profiles_path(service_data_dir: Path) -> Path:
@@ -78,11 +80,7 @@ async def refresh_member_profiles(
     now = now or datetime.now(timezone.utc)
     path = _profiles_path(service_data_dir)
 
-    try:
-        supported = get_service_enum(service) in _SUPPORTED
-    except ValueError:
-        supported = False
-    if not supported:
+    if not _is_supported(service):
         logger.info("member_profiles_skipped", service=service, reason="unsupported")
         return False
 
@@ -92,13 +90,11 @@ async def refresh_member_profiles(
 
     try:
         async with aiohttp.ClientSession() as session:
-            scraper = _scraper_for(service, session)
-            if scraper is None:
-                logger.info(
-                    "member_profiles_skipped", service=service, reason="unsupported"
-                )
-                return False
-            raw = await scraper.get_member_birthdays()
+            raw = await _scraper_for(service, session).get_member_birthdays()
+        if not raw:
+            # Keep the old file and leave it stale so the next sync retries.
+            logger.info("member_profiles_skipped", service=service, reason="empty")
+            return False
         birthdays = {normalize_member_name(k): v for k, v in raw.items()}
         _write_atomic(path, {"updated_at": now.isoformat(), "birthdays": birthdays})
     except Exception as e:  # keep the old file on any failure

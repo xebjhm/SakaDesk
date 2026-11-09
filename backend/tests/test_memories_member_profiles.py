@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from structlog.testing import capture_logs
 
 from backend.services.memories import member_profiles as mp
 
@@ -91,3 +92,36 @@ async def test_stale_and_force_refresh(tmp_path):
             )
             is True
         )
+
+
+@pytest.mark.asyncio
+async def test_empty_scrape_keeps_old_file_and_retries_next_time(tmp_path):
+    p = tmp_path / "memories" / "member_profiles.json"
+    p.parent.mkdir()
+    old = json.dumps(
+        {
+            "updated_at": (NOW - timedelta(days=9)).isoformat(),
+            "birthdays": {"a": "2000-01-01"},
+        }
+    )
+    p.write_text(old, encoding="utf-8")
+    scraper = AsyncMock()
+    scraper.get_member_birthdays = AsyncMock(return_value={})
+    with (
+        patch.object(mp, "_scraper_for", return_value=scraper),
+        patch.object(mp, "_write_atomic") as write,
+        capture_logs() as logs,
+    ):
+        assert (
+            await mp.refresh_member_profiles("hinatazaka46", tmp_path, now=NOW) is False
+        )
+        # Still stale, so the next call scrapes again.
+        assert (
+            await mp.refresh_member_profiles("hinatazaka46", tmp_path, now=NOW) is False
+        )
+    write.assert_not_called()
+    assert scraper.get_member_birthdays.await_count == 2
+    assert p.read_text(encoding="utf-8") == old
+    assert any(
+        e["event"] == "member_profiles_skipped" and e["reason"] == "empty" for e in logs
+    )

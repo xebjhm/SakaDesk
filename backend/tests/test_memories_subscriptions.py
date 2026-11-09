@@ -113,3 +113,23 @@ async def test_corrupt_file_is_rebuilt(tmp_path):
         (tmp_path / "memories" / "subscriptions.json").read_text(encoding="utf-8")
     )
     assert data["groups"]["3"]["earliest_start"] == "2025-03-01"
+
+
+@pytest.mark.asyncio
+async def test_file_not_rewritten_when_nothing_checked(tmp_path):
+    client = AsyncMock()
+    client.get_subscription_streak = AsyncMock(
+        return_value={"current_start_at_date": "2025-03-01"}
+    )
+    today = date(2026, 11, 10)
+    await archive_subscription_starts(client, None, [34], tmp_path, today=today)
+    path = tmp_path / "memories" / "subscriptions.json"
+    before = path.stat().st_mtime_ns
+    path.write_text(path.read_text(encoding="utf-8") + " ", encoding="utf-8")
+    marker = path.read_text(encoding="utf-8")
+    assert (
+        await archive_subscription_starts(client, None, [34], tmp_path, today=today)
+        == 0
+    )
+    assert path.read_text(encoding="utf-8") == marker  # untouched
+    assert before <= path.stat().st_mtime_ns

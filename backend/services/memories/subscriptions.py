@@ -120,10 +120,7 @@ async def archive_subscription_starts(
 
     if skipped:
         logger.info("subscription_start_skipped", reason="checked_today", count=skipped)
-    if updated or any(
-        isinstance(e, dict) and e.get("last_checked") == today_s
-        for e in groups.values()
-    ):
+    if checked:
         try:
             _write_atomic(path, {"groups": groups})
         except OSError as e:
