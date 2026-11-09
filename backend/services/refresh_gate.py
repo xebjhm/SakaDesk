@@ -21,7 +21,6 @@ logger = structlog.get_logger(__name__)
 GATE_WAIT_SECONDS = 120.0
 
 _locks: dict[str, tuple[asyncio.AbstractEventLoop, asyncio.Lock]] = {}
-_queued: dict[str, int] = {}
 
 
 def _lock_for(service: str) -> asyncio.Lock:
@@ -33,44 +32,19 @@ def _lock_for(service: str) -> asyncio.Lock:
     return entry[1]
 
 
-def _abandon_acquire(lock: asyncio.Lock, acquire: asyncio.Task[bool]) -> None:
-    """Undo a pending or completed ``lock.acquire()`` whose waiter gave up.
-
-    On Python 3.9-3.11 ``wait_for`` can time out after the acquire already
-    succeeded; releasing here keeps the lock from being held forever.
-    """
-    if acquire.done() and not acquire.cancelled():
-        lock.release()
-    else:
-        acquire.cancel()
-
-
 @asynccontextmanager
 async def hold(service: str) -> AsyncIterator[None]:
-    """Hold ``service``'s refresh lock; raises ``asyncio.TimeoutError`` after ``GATE_WAIT_SECONDS``.
-
-    A timeout logs ``session_renew_wait_timeout``. Cancellation while waiting
-    releases or cancels the pending acquire and re-raises without that log.
-    """
+    """Hold ``service``'s refresh lock; raises ``TimeoutError`` after ``GATE_WAIT_SECONDS``."""
     lock = _lock_for(service)
-    # ensure_future defers the acquire, so count queued callers synchronously;
-    # otherwise a second caller would see the lock free and skip the wait log.
-    contended = lock.locked() or _queued.get(service, 0) > 0
-    _queued[service] = _queued.get(service, 0) + 1
-    acquire = asyncio.ensure_future(lock.acquire())
+    contended = lock.locked()
     try:
-        await asyncio.wait_for(asyncio.shield(acquire), GATE_WAIT_SECONDS)
-    except asyncio.TimeoutError:
-        _abandon_acquire(lock, acquire)
+        async with asyncio.timeout(GATE_WAIT_SECONDS):
+            await lock.acquire()
+    except TimeoutError:
         logger.warning(
             "session_renew_wait_timeout", service=service, waited_s=GATE_WAIT_SECONDS
         )
         raise
-    except asyncio.CancelledError:
-        _abandon_acquire(lock, acquire)
-        raise
-    finally:
-        _queued[service] -= 1
     if contended:
         logger.info("session_renew_waited", service=service)
     try:
