@@ -37,6 +37,7 @@ from backend.services.platform import (
     get_default_output_dir,
 )
 from backend.services.new_message_collector import NewMessageCollector
+from backend.services.nickname import nickname_for
 from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
 from backend.services.chat_kind import is_member_dir
@@ -1406,6 +1407,7 @@ class SyncService:
                 # C3: the newest new 1:1 voice goes to the bottom-right call popup.
                 divert=divert,
                 member_count_for=member_count_for,
+                nickname=nickname_for(app_settings, self._service),
             )
             for skip in skips:
                 logger.info(

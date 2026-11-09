@@ -16,6 +16,7 @@ from typing import Any
 
 from backend.services.chat_kind import is_group_chat
 from backend.services.new_message_collector import CollectedChat, newest_key
+from backend.services.nickname import apply_nickname
 
 PREVIEW_MAX_CHARS = 80
 ROOM_MEMBER_ID = "0"
@@ -74,10 +75,14 @@ class UiState:
     focused: bool
 
 
-def preview_text(message: dict[str, Any], strings: dict[str, str]) -> str:
+def preview_text(
+    message: dict[str, Any], strings: dict[str, str], nickname: str | None = None
+) -> str:
     """One-line preview of ``message``.
 
-    Text is whitespace-collapsed and cut to 80 characters (plus ``…``).
+    The nickname placeholder (``%%%`` / ``％％％``) is replaced by ``nickname``
+    first (left as is when ``nickname`` is empty); then the text is
+    whitespace-collapsed and cut to 80 characters (plus ``…``).
     Pictures, videos and voice use their localized label; empty text and
     unknown types use ``sent_message``.
     """
@@ -86,7 +91,8 @@ def preview_text(message: dict[str, Any], strings: dict[str, str]) -> str:
     if media_key is not None:
         return strings[media_key]
     if kind == "text":
-        text = " ".join(str(message.get("content") or "").split())
+        raw = apply_nickname(str(message.get("content") or ""), nickname)
+        text = " ".join(raw.split())
         if text:
             if len(text) > PREVIEW_MAX_CHARS:
                 return text[:PREVIEW_MAX_CHARS] + "…"
@@ -145,6 +151,7 @@ def plan_toasts(
     avatar_for: Callable[[Path], Path | None],
     divert: Callable[[ToastPlan], bool],
     member_count_for: Callable[[str], int],
+    nickname: str | None = None,
 ) -> tuple[list[ToastPlan], list[Skip]]:
     """Plan one toast per 1:1 member or room, and report what was skipped.
 
@@ -153,7 +160,8 @@ def plan_toasts(
     returns True to suppress it), disabled, viewing (focused app on that
     chat). ``member_count_for(group_id)``
     is the number of member folders in the group, which together with
-    ``GROUP_CHAT_IDS`` decides whether a chat is a room.
+    ``GROUP_CHAT_IDS`` decides whether a chat is a room. ``nickname`` replaces
+    the nickname placeholder in text previews.
     """
     # Group: a room is one chat keyed by group_id; a 1:1 member is its own chat.
     grouped: dict[tuple[str, str], list[CollectedChat]] = {}
@@ -190,7 +198,7 @@ def plan_toasts(
         if hide_content:
             body = strings["hidden_body"]
         else:
-            body = preview_text(newest, strings)
+            body = preview_text(newest, strings, nickname)
             if is_room:
                 body = f"{newest_chat.member_name}: {body}"
         if count > 1:

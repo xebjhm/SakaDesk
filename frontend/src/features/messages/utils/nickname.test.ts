@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import type { Message } from '../../../types';
+import { readFileSync } from 'node:fs';
+import path from 'node:path';
 import { applyNickname } from './nickname';
 
 const msg = (id: number, content: string | null): Message => ({ id, timestamp: '2026-01-01T00:00:00Z', type: 'text', is_favorite: false, content });
@@ -18,5 +20,15 @@ describe('applyNickname', () => {
 
     it('inserts the nickname literally (no $ patterns)', () => {
         expect(applyNickname([msg(1, '%%%!')], '$&$1')[0].content).toBe('$&$1!');
+    });
+});
+
+describe('nickname coverage in the chat screen', () => {
+    // 0.4.1: Favorites showed raw %%% because MessagesFeature handed the raw
+    // list to ConversationMenu. Children that show message text get displayMessages.
+    it('MessagesFeature never passes the raw message list to a child', () => {
+        const src = readFileSync(path.resolve(process.cwd(), 'src/features/messages/MessagesFeature.tsx'), 'utf-8');
+        expect(src).not.toMatch(/messages=\{messages\}/);
+        expect(src).toMatch(/messages=\{displayMessages\}/);
     });
 });
