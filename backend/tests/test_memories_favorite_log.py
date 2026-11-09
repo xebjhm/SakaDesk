@@ -66,3 +66,46 @@ def test_favorited_at_chunks_large_id_lists(tmp_path):
     result = s.favorited_at("hinatazaka46", list(range(1200)))
     assert set(result) == logged
     assert all(v == at.isoformat() for v in result.values())
+
+
+def test_app_state_closes_every_connection(tmp_path, monkeypatch):
+    import sqlite3
+
+    opened: list = []
+    real_connect = sqlite3.connect
+
+    class Tracked:
+        def __init__(self, conn):
+            self.conn, self.closed = conn, False
+
+        def close(self):
+            self.closed = True
+            self.conn.close()
+
+        def __getattr__(self, name):
+            return getattr(self.conn, name)
+
+        def __enter__(self):
+            return self.conn.__enter__()
+
+        def __exit__(self, *a):
+            return self.conn.__exit__(*a)
+
+    def tracking(*a, **kw):
+        t = Tracked(real_connect(*a, **kw))
+        opened.append(t)
+        return t
+
+    s = _fresh(tmp_path)
+    monkeypatch.setattr(app_state.sqlite3, "connect", tracking)
+    s.init_db()
+    s.record_favorite("hinatazaka46", 1, True)
+    s.record_favorite("hinatazaka46", 1, False)
+    s.favorited_at("hinatazaka46", [1])
+    s.set_prefs({"a": 1})
+    s.get_prefs()
+    s.set_conversation("p", {"k": "日本語"})
+    s.get_conversation("p")
+    s.put_translations({"k": "v"})
+    s.get_translations(["k"])
+    assert len(opened) == 10 and all(t.closed for t in opened)

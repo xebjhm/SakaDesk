@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from contextlib import closing
 import sqlite3
 import time
 from datetime import datetime, timezone
@@ -28,6 +29,9 @@ def _path() -> Path:
 
 
 def _connect() -> sqlite3.Connection:
+    """New connection. Callers use ``with closing(_connect()) as c, c:`` --
+    the inner ``with`` commits (or rolls back) and ``closing`` releases the
+    handle, which sqlite3's own context manager does not."""
     conn = sqlite3.connect(_path())
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA busy_timeout=5000")
@@ -35,7 +39,7 @@ def _connect() -> sqlite3.Connection:
 
 
 def init_db() -> None:
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         c.executescript(
             """
             CREATE TABLE IF NOT EXISTS prefs (key TEXT PRIMARY KEY, value TEXT);
@@ -56,11 +60,17 @@ def record_favorite(
 ) -> None:
     """Record when a message was favourited (UTC ISO string).
 
+    ``is_favorite`` in ``messages.json`` / the favourites API is the truth
+    about WHETHER a message is favourited; ``favorite_log.favorited_at`` is
+    only a hint about WHEN. Rows exist only for favourites toggled in this
+    app since the log was added, so a missing row means "unknown time" (use
+    the message time), never "not favourited".
+
     Re-favouriting upserts the timestamp; un-favouriting deletes the row.
     ``at`` defaults to the current UTC time. Blocking I/O: call via
     ``asyncio.to_thread`` from async handlers.
     """
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         if not is_favorite:
             c.execute(
                 "DELETE FROM favorite_log WHERE service=? AND message_id=?",
@@ -79,11 +89,14 @@ _IN_CHUNK = 500
 
 
 def favorited_at(service: str, message_ids: list[int]) -> dict[int, str]:
-    """Map of message_id -> UTC ISO favourite time, for the ids that are logged."""
+    """Map of message_id -> UTC ISO favourite time, for the ids that are logged.
+
+    A hint only: check ``is_favorite`` for whether a message is favourited.
+    """
     if not message_ids:
         return {}
     out: dict[int, str] = {}
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         # Chunked: SQLite caps bound variables per statement.
         for i in range(0, len(message_ids), _IN_CHUNK):
             chunk = message_ids[i : i + _IN_CHUNK]
@@ -98,13 +111,13 @@ def favorited_at(service: str, message_ids: list[int]) -> dict[int, str]:
 
 
 def get_prefs() -> dict[str, Any]:
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         rows = c.execute("SELECT key, value FROM prefs").fetchall()
     return {k: json.loads(v) for k, v in rows}
 
 
 def set_prefs(patch: dict[str, Any]) -> None:
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         for k, v in patch.items():
             c.execute(
                 "INSERT INTO prefs(key,value) VALUES(?,?) "
@@ -114,7 +127,7 @@ def set_prefs(patch: dict[str, Any]) -> None:
 
 
 def get_conversation(path: str) -> dict[str, Any]:
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         row = c.execute(
             "SELECT data FROM conversation_state WHERE path=?", (path,)
         ).fetchone()
@@ -127,7 +140,7 @@ def set_conversation(path: str, patch: dict[str, Any]) -> None:
     # connections, so concurrent PATCHes to the same path could drop keys the
     # moment these ran off the single event-loop thread. `dict.update` semantics
     # are preserved (a null/None value SETS the key, it is not a delete).
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         row = c.execute(
             "SELECT data FROM conversation_state WHERE path=?", (path,)
         ).fetchone()
@@ -142,7 +155,7 @@ def set_conversation(path: str, patch: dict[str, Any]) -> None:
 
 def get_all_conversations() -> dict[str, dict]:
     """Every conversation_state row as {path: data-dict}. Small; loaded once at startup."""
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         rows = c.execute("SELECT path, data FROM conversation_state").fetchall()
     return {path: json.loads(data) for path, data in rows}
 
@@ -152,7 +165,7 @@ def get_translations(keys: list[str]) -> dict[str, str]:
         return {}
     q = ",".join("?" * len(keys))
     now = time.time()
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         rows = c.execute(
             f"SELECT k, v FROM translation_cache WHERE k IN ({q})", keys
         ).fetchall()
@@ -167,7 +180,7 @@ def get_translations(keys: list[str]) -> dict[str, str]:
 
 def put_translations(items: dict[str, str]) -> None:
     now = time.time()
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         for k, v in items.items():
             c.execute(
                 "INSERT INTO translation_cache(k,v,last_used) VALUES(?,?,?) "
@@ -184,7 +197,7 @@ def put_translations(items: dict[str, str]) -> None:
 
 
 def clear_translations() -> None:
-    with _connect() as c:
+    with closing(_connect()) as c, c:
         c.execute("DELETE FROM translation_cache")
 
 
