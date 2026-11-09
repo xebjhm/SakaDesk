@@ -43,8 +43,20 @@ export const patchConversationBeacon = (path: string, p: Record<string, unknown>
     return false;
   }
 };
-export const getTranslations = (keys: string[]) =>
-  fetch(`${BASE}/translations?keys=${keys.map(encodeURIComponent).join(',')}`).then(j<Record<string, string>>);
+/** Mirrors `MAX_TRANSLATION_KEYS` in `backend/api/app_state.py`. */
+export const TRANSLATION_LOOKUP_MAX_KEYS = 100;
+// Rejects on a non-2xx answer (e.g. 422) so a refused lookup is not mistaken for
+// "nothing cached". Lookups above the backend's key limit are split into several requests.
+export const getTranslations = async (keys: string[]): Promise<Record<string, string>> => {
+  const out: Record<string, string> = {};
+  for (let i = 0; i < keys.length; i += TRANSLATION_LOOKUP_MAX_KEYS) {
+    const chunk = keys.slice(i, i + TRANSLATION_LOOKUP_MAX_KEYS);
+    const r = await fetch(`${BASE}/translations?keys=${chunk.map(encodeURIComponent).join(',')}`);
+    if (!r.ok) throw new Error(`get translations failed: ${r.status}`);
+    Object.assign(out, await r.json() as Record<string, string>);
+  }
+  return out;
+};
 export const patchTranslations = (items: Record<string, string>) =>
   fetch(`${BASE}/translations`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(items) }).then(() => undefined);
 // Rejects when the backend refuses (non-2xx) or is unreachable, so callers can report it.

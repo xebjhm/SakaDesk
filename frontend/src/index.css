@@ -82,6 +82,14 @@
     border-width: 1px;
   }
 
+  /* Scrollers that reach a rounded sheet's bottom corner (the chat timeline, a Modal body with no footer)
+     keep the track's bottom clear of the corner radius, so the thumb is not clipped into a wedge when
+     scrolled to the end. A header always sits above them, so there is no top inset.
+     --ds-radius-xl is the sheet radius (24px). */
+  .sd-sheet-scroll::-webkit-scrollbar-track {
+    margin-bottom: var(--ds-radius-xl, 24px);
+  }
+
   /* Dark surfaces (the image/video viewer and the call screen) take the light thumb. */
   [data-surface="dark"] ::-webkit-scrollbar-thumb,
   .sd-call-overlay ::-webkit-scrollbar-thumb {

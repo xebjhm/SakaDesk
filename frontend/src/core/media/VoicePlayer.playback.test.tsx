@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, afterEach, beforeAll, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import i18n from '../../i18n';
 import { VoicePlayer } from './VoicePlayer';
@@ -90,5 +90,24 @@ describe('VoicePlayer variant change', () => {
         expect(second.getAttribute('src')).toBe('/api/media/v.m4a');
         act(() => { second.dispatchEvent(new Event('waiting')); });
         expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'waiting', surface: 'voice' }));
+    });
+});
+
+describe('VoicePlayer duration when metadata is already loaded', () => {
+    const proto = HTMLMediaElement.prototype;
+    const native = {
+        readyState: Object.getOwnPropertyDescriptor(proto, 'readyState')!,
+        duration: Object.getOwnPropertyDescriptor(proto, 'duration')!,
+    };
+    afterEach(() => {
+        Object.defineProperty(proto, 'readyState', native.readyState);
+        Object.defineProperty(proto, 'duration', native.duration);
+    });
+
+    it('shows the length without waiting for loadedmetadata', () => {
+        Object.defineProperty(HTMLMediaElement.prototype, 'readyState', { configurable: true, get: () => 1 });
+        Object.defineProperty(HTMLMediaElement.prototype, 'duration', { configurable: true, get: () => 65 });
+        render(<VoicePlayer src="/api/media/voice.m4a" variant="premium" />);
+        expect(screen.getAllByText(/1:05/).length).toBeGreaterThan(0);
     });
 });

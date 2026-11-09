@@ -1,4 +1,4 @@
-import { useLayoutEffect, type RefObject } from 'react';
+import { useEffect, useLayoutEffect, useState, type RefObject } from 'react';
 
 /**
  * Stop a media element and drop its network connection: pause, remove `src`
@@ -39,8 +39,37 @@ export function useMediaSource(
     }, [ref, src, elementKey]);
 }
 
-/** An exception's class name as a log code: `NotAllowedError` → `notallowederror`. */
-export function errorCode(err: unknown): string {
-    const name = err instanceof Error || err instanceof DOMException ? err.name : 'unknown';
-    return name.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40) || 'unknown';
+/**
+ * The duration (seconds) of the media element in `ref`, 0 until known.
+ *
+ * Read at once when the element already has its metadata (`readyState >= HAVE_METADATA`: the
+ * `loadedmetadata` event can fire before the listener is bound, which left "0:00 / 0:00"), and
+ * again on `loadedmetadata` and `durationchange`. Non-finite values (`Infinity` for a stream
+ * whose length is not yet known, `NaN` before metadata) are ignored. A new `src` (or
+ * `elementKey`) starts again from 0. Call it after `useMediaSource`, whose layout effect has
+ * already bound the source.
+ */
+export function useMediaDuration(
+    ref: RefObject<HTMLMediaElement | null>,
+    src: string | undefined,
+    /** Change this when the element behind `ref` is replaced (e.g. a variant that renders a different `<audio>`). */
+    elementKey?: unknown,
+): number {
+    const [duration, setDuration] = useState(0);
+    useEffect(() => {
+        setDuration(0);
+        const el = ref.current;
+        if (!el) return;
+        const read = () => {
+            if (Number.isFinite(el.duration)) setDuration(el.duration);
+        };
+        el.addEventListener('loadedmetadata', read);
+        el.addEventListener('durationchange', read);
+        if (el.readyState >= HTMLMediaElement.HAVE_METADATA) read();
+        return () => {
+            el.removeEventListener('loadedmetadata', read);
+            el.removeEventListener('durationchange', read);
+        };
+    }, [ref, src, elementKey]);
+    return duration;
 }

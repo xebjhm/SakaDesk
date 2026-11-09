@@ -9,6 +9,8 @@ import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
+import { clientLog } from '../../../utils/clientLog';
+import { pollJson, pollLogKey, SIDEBAR_POLL_TIMEOUT_MS, useUnmountSignal } from '../../../utils/pollJson';
 import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
 import { resizedAvatarUrl } from '../mediaUrl';
 import { useAvatarWidth } from '../hooks/useAvatarWidth';
@@ -69,6 +71,9 @@ const SectionHeading: React.FC<{ children: React.ReactNode }> = ({ children }) =
     </div>
 );
 
+/** `/api/content/groups`: legacy array, or object with groups + last_sync. */
+type GroupsResponse = GroupInfo[] | { groups: GroupInfo[]; last_sync?: Record<string, string> };
+
 export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow }) => {
     const { t } = useTranslation();
     const [groups, setGroups] = useState<GroupInfo[]>([]);
@@ -98,24 +103,49 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             });
     };
 
-    const loadGroups = () => {
-        const url = activeService
-            ? `/api/content/groups?service=${encodeURIComponent(activeService)}`
+    const unmountSignal = useUnmountSignal();
+
+    // The service the list currently shows: a late response for another one is dropped.
+    const activeServiceRef = useRef(activeService);
+    activeServiceRef.current = activeService;
+    const serviceKey = (base: string, service: string | undefined) => `${base}_${service ?? 'all'}`;
+
+    /**
+     * `replace`: event-driven load (mount, service switch, post-sync refresh) that
+     * supersedes a request still in flight; interval ticks skip while one is pending.
+     */
+    const loadGroups = async (replace = false) => {
+        const service = activeService;
+        const url = service
+            ? `/api/content/groups?service=${encodeURIComponent(service)}`
             : '/api/content/groups';
-        fetch(url)
-            .then(res => res.json())
-            .then(data => {
-                // Support both old format (array) and new format (object with groups + last_sync)
-                const groupList = Array.isArray(data) ? data : data.groups;
-                setGroups(groupList);
-                if (data.last_sync) setLastSyncMap(data.last_sync);
-                checkUnread(groupList);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
+        const result = await pollJson<GroupsResponse>(serviceKey('groups', service), url, {
+            signal: unmountSignal(),
+            timeoutMs: SIDEBAR_POLL_TIMEOUT_MS,
+            replace,
+        });
+        // Skipped: a request is already in flight and will update the state.
+        // Aborted: unmounted or superseded; the newer request sets the state.
+        if (result.status === 'skipped' || result.status === 'aborted') return;
+        if (service !== activeServiceRef.current) { // switched service meanwhile
+            clientLog('poll_skipped', { key: pollLogKey(serviceKey('groups', service)), reason: 'stale_service' });
+            return;
+        }
+        if (result.status === 'ok') {
+            const data = result.data;
+            // Support both old format (array) and new format (object with groups + last_sync)
+            const groupList = Array.isArray(data) ? data : data.groups;
+            setGroups(groupList);
+            if (!Array.isArray(data) && data.last_sync) setLastSyncMap(data.last_sync);
+            checkUnread(groupList, replace);
+        }
+        // A timeout is not an answer: keep the spinner (an empty list would read
+        // as data loss) until a later tick succeeds or fails for real.
+        if (result.status !== 'timeout') setLoading(false);
     };
 
-    const checkUnread = async (groupList: GroupInfo[]) => {
+    const checkUnread = async (groupList: GroupInfo[], replace = false) => {
+        const service = activeService;
         // Build a map of path -> full read state from localStorage
         // Read state includes both lastReadId AND revealedIds for accurate counting
         const readStates: Record<string, { lastReadId: number; revealedIds: number[] }> = {};
@@ -143,15 +173,24 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             const url = activeService
                 ? `/api/content/unread_counts?service=${encodeURIComponent(activeService)}`
                 : '/api/content/unread_counts';
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(readStates)
+            const result = await pollJson<Record<string, number>>(serviceKey('unread_counts', service), url, {
+                signal: unmountSignal(),
+                timeoutMs: SIDEBAR_POLL_TIMEOUT_MS,
+                replace,
+                init: {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(readStates),
+                },
             });
-
-            if (!res.ok) throw new Error('Failed to fetch unread counts');
-
-            const backendCounts: Record<string, number> = await res.json();
+            // Skipped / aborted / failed: keep the last known counts (the failure
+            // breadcrumb is logged by pollJson); the next poll tick retries.
+            if (result.status !== 'ok') return;
+            if (service !== activeServiceRef.current) { // switched service meanwhile
+                clientLog('poll_skipped', { key: pollLogKey(serviceKey('unread_counts', service)), reason: 'stale_service' });
+                return;
+            }
+            const backendCounts = result.data;
 
             // Key unread by unique conversation PATH, not by group id: talk-room
             // ids are only unique within a service, so a shared id (e.g. 79 in two
@@ -174,16 +213,25 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         }
     };
 
-    useVisiblePolling(loadGroups, UI_CONSTANTS.polling.sidebarMs, [activeService]);
+    useVisiblePolling(
+        trigger => { void loadGroups(trigger === 'immediate'); },
+        UI_CONSTANTS.polling.sidebarMs,
+        [activeService],
+    );
 
+    // Refresh when a sync ends. Only a true -> false transition counts: mount is
+    // already covered by the polling hook's immediate load, and a second request
+    // would start a concurrent cold scan on the backend.
+    const wasSyncing = useRef(isSyncing);
     useEffect(() => {
-        if (isSyncing === false) {
-            loadGroups();
+        if (wasSyncing.current === true && isSyncing === false) {
+            void loadGroups(true);
         }
+        wasSyncing.current = isSyncing;
     }, [isSyncing]);
 
     useEffect(() => {
-        if (groups.length > 0) checkUnread(groups);
+        if (groups.length > 0) checkUnread(groups, true);
     }, [selectedGroupDir, readStateVersion]);
 
     // The backend is the single source of truth for group-vs-member

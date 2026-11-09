@@ -69,6 +69,12 @@ ClientEvent = Literal[
     "diagnostics_disk_usage",
     "calendar_picker",
     "media_playback",
+    "poll_timeout",
+    "poll_skipped",
+    "poll_failed",
+    "poll_retry",
+    "poll_gave_up",
+    "translation_batch_failed",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -102,10 +108,22 @@ ALLOWED_FIELDS = frozenset(
         "network_state",
         "error_code",
         "aborted",
+        "key",
+        "timeout_ms",
+        "caller",
     }
 )
 WARNING_EVENTS = frozenset(
-    {"call_error", "app_load_failed", "design_tokens_fallback", "design_fonts_fallback"}
+    {
+        "call_error",
+        "app_load_failed",
+        "design_tokens_fallback",
+        "design_fonts_fallback",
+        "poll_timeout",
+        "poll_failed",
+        "poll_gave_up",
+        "translation_batch_failed",
+    }
 )
 
 CodeStr = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")]

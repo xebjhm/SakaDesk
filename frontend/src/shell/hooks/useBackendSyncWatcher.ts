@@ -10,6 +10,8 @@
  *   while nobody was looking, so call `follow` once. Its single progress check
  *   runs the normal terminal branch (message refresh, profile refresh, and for a
  *   failed sync the session-expired modal and disconnected marking) and stops.
+ * Each check uses `pollJson` (uncached, skipped while the previous check for the
+ * service is pending, aborted after `POLL_TIMEOUT_MS` and on unmount).
  * The first observation of a service only records its `run_id`.
  * A terminal run whose `run_id` the frontend poller already handled (reported by
  * `lastHandledRunId`, e.g. a short frontend-started sync that began and ended
@@ -21,6 +23,7 @@
 import { useEffect, useRef } from 'react';
 import { useVisiblePolling } from '../../hooks/useVisiblePolling';
 import { clientLog } from '../../utils/clientLog';
+import { pollJson, useUnmountSignal } from '../../utils/pollJson';
 
 export interface UseBackendSyncWatcherOptions {
     /** Connected service IDs to watch */
@@ -49,6 +52,7 @@ export function useBackendSyncWatcher({
 }: UseBackendSyncWatcherOptions): void {
     const lastRunIdRef = useRef<Record<string, number>>({});
     const aliveRef = useRef(true);
+    const unmountSignal = useUnmountSignal();
     const isPollingRef = useRef(isPolling);
     const followRef = useRef(follow);
     const lastHandledRunIdRef = useRef(lastHandledRunId);
@@ -68,18 +72,15 @@ export function useBackendSyncWatcher({
             delete lastRunIdRef.current[service];
             return;
         }
-        let data: ProgressResponse;
-        try {
-            const res = await fetch(`/api/sync/progress?service=${encodeURIComponent(service)}`);
-            if (!res.ok) {
-                console.debug('[backendSyncWatcher] progress rejected', service, res.status);
-                return;
-            }
-            data = await res.json();
-        } catch (err) {
-            console.debug('[useBackendSyncWatcher] progress check failed', service, err);
-            return;
-        }
+        const result = await pollJson<ProgressResponse>(
+            `watch_progress_${service}`,
+            `/api/sync/progress?service=${encodeURIComponent(service)}`,
+            { signal: unmountSignal() },
+        );
+        // Skipped (previous check still pending), timed out, failed or unmounted:
+        // pollJson already left its breadcrumb; the next tick checks again.
+        if (result.status !== 'ok') return;
+        const data = result.data;
         if (!aliveRef.current || isPollingRef.current(service)) return;
 
         const runId = typeof data.run_id === 'number' ? data.run_id : undefined;

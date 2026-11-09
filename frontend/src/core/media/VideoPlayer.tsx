@@ -5,7 +5,7 @@ import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { copyVideoToClipboard } from '../../utils/clipboard';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
-import { useMediaSource } from './mediaElement';
+import { useMediaDuration, useMediaSource } from './mediaElement';
 import { useMediaPlayback } from './useMediaPlayback';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
@@ -136,7 +136,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [showSubtitles, setShowSubtitles] = useState(true);
-    const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [showControls, setShowControls] = useState(true);
@@ -158,13 +157,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             setCurrentTime(video.currentTime);
             onTimeUpdate?.(video.currentTime);
         };
-        const handleLoadedMetadata = () => setDuration(video.duration);
         const handleEnded = () => setIsPlaying(false);
         const handlePlay = () => setIsPlaying(true);
         const handlePause = () => setIsPlaying(false);
 
         video.addEventListener('timeupdate', handleTimeUpdate);
-        video.addEventListener('loadedmetadata', handleLoadedMetadata);
         video.addEventListener('ended', handleEnded);
         video.addEventListener('play', handlePlay);
         video.addEventListener('pause', handlePause);
@@ -174,7 +171,6 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
         return () => {
             video.removeEventListener('timeupdate', handleTimeUpdate);
-            video.removeEventListener('loadedmetadata', handleLoadedMetadata);
             video.removeEventListener('ended', handleEnded);
             video.removeEventListener('play', handlePlay);
             video.removeEventListener('pause', handlePause);
@@ -185,6 +181,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // src, load) before the source changes and on unmount: an abandoned video
     // must not keep one of the browser's few media connections open.
     useMediaSource(videoRef, src);
+    const duration = useMediaDuration(videoRef, src);
 
     // Build the amplification graph (first play) before starting playback.
     const startPlayback = useCallback(() => {

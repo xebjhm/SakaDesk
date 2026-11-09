@@ -5,7 +5,7 @@ import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, Rotat
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
-import { useMediaSource } from './mediaElement';
+import { useMediaDuration, useMediaSource } from './mediaElement';
 import { useMediaPlayback } from './useMediaPlayback';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
@@ -169,7 +169,6 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     }, []);
 
     const [isPlaying, setIsPlaying] = useState(false);
-    const [duration, setDuration] = useState(0);
     const [currentTime, setCurrentTime] = useState(0);
     const { volume, setVolume, isMuted: isVolumeMuted, toggleMute: handleMuteToggle, connectElement, prepareForPlayback } = useAmplifiedVolume(VOLUME_STORAGE_KEY);
     const { status: playbackStatus, play, retry } = useMediaPlayback(audioRef, 'voice', src, variant);
@@ -192,13 +191,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             setCurrentTime(audio.currentTime);
             onTimeUpdate?.(audio.currentTime);
         };
-        const handleLoadedMetadata = () => setDuration(audio.duration);
         const handleEnded = () => setIsPlaying(false);
         const handlePlay = () => setIsPlaying(true);
         const handlePause = () => setIsPlaying(false);
 
         audio.addEventListener('timeupdate', handleTimeUpdate);
-        audio.addEventListener('loadedmetadata', handleLoadedMetadata);
         audio.addEventListener('ended', handleEnded);
         audio.addEventListener('play', handlePlay);
         audio.addEventListener('pause', handlePause);
@@ -209,7 +206,6 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
         return () => {
             audio.removeEventListener('timeupdate', handleTimeUpdate);
-            audio.removeEventListener('loadedmetadata', handleLoadedMetadata);
             audio.removeEventListener('ended', handleEnded);
             audio.removeEventListener('play', handlePlay);
             audio.removeEventListener('pause', handlePause);
@@ -223,6 +219,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     // src, load) before the source changes and on unmount (matches VideoPlayer).
     // `variant` renders a different <audio> element, so it rebinds the source too.
     useMediaSource(audioRef, src, variant);
+    const duration = useMediaDuration(audioRef, src, variant);
 
     // Build the amplification graph (first play) before starting playback.
     const startPlayback = useCallback(() => {

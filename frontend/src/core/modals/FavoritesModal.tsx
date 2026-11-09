@@ -20,26 +20,15 @@ interface FavoritesModalProps extends BaseModalProps {
 }
 
 /**
- * Inline video thumbnail. The `<video>` is mounted only once the card nears the
- * viewport (IntersectionObserver rooted at the dialog body, the scroll container,
- * so the `rootMargin` pre-load applies inside it), so opening Favourites does not load
- * every video at once. Until the first frame is available a neutral placeholder
- * shows a shimmer sweep (hidden under reduced motion) and a centred Film icon.
- * The loading video stays laid out but invisible (never `display:none`),
- * mirroring SafeImage's skeleton mode. The placeholder goes away on whichever
- * of `loadeddata` / `loadedmetadata` fires first (some engines stop at
- * metadata). A failed video drops the placeholder, logs `favorite_video_error`
- * and leaves the native element. Without IntersectionObserver the video mounts
- * immediately (the parent logs `favorite_video_lazy_unsupported` once per open).
- * The video is released (pause, drop src, load) on unmount so closing
- * Favourites never leaves media connections open.
+ * True once the element behind the returned ref nears the viewport (an
+ * IntersectionObserver rooted at the dialog body, the scroll container, so the
+ * `rootMargin` pre-load applies inside it). It never goes back to false.
+ * Without IntersectionObserver it is true immediately (the parent logs
+ * `favorite_video_lazy_unsupported` once per open).
  */
-const FavoriteVideoThumb: React.FC<{ src: string; root: HTMLElement | null }> = ({ src, root }) => {
-    const [ready, setReady] = useState(false);
+function useInViewOnce(root: HTMLElement | null) {
     const [inView, setInView] = useState(() => typeof IntersectionObserver === 'undefined');
     const holderRef = useRef<HTMLDivElement>(null);
-    const videoRef = useRef<HTMLVideoElement>(null);
-    useMediaSource(videoRef, inView ? src : undefined);
 
     useEffect(() => {
         const el = holderRef.current;
@@ -57,6 +46,29 @@ const FavoriteVideoThumb: React.FC<{ src: string; root: HTMLElement | null }> = 
         observer.observe(el);
         return () => observer.disconnect();
     }, [inView, root]);
+
+    return { holderRef, inView };
+}
+
+/**
+ * Inline video thumbnail. The `<video>` is mounted only once the card nears the
+ * viewport ({@link useInViewOnce}), so opening Favourites does not load
+ * every video at once. Until the first frame is available a neutral placeholder
+ * shows a shimmer sweep (hidden under reduced motion) and a centred Film icon.
+ * The loading video stays laid out but invisible (never `display:none`),
+ * mirroring SafeImage's skeleton mode. The placeholder goes away on whichever
+ * of `loadeddata` / `loadedmetadata` fires first (some engines stop at
+ * metadata). A failed video drops the placeholder, logs `favorite_video_error`
+ * and leaves the native element. Without IntersectionObserver the video mounts
+ * immediately (the parent logs `favorite_video_lazy_unsupported` once per open).
+ * The video is released (pause, drop src, load) on unmount so closing
+ * Favourites never leaves media connections open.
+ */
+const FavoriteVideoThumb: React.FC<{ src: string; root: HTMLElement | null }> = ({ src, root }) => {
+    const [ready, setReady] = useState(false);
+    const { holderRef, inView } = useInViewOnce(root);
+    const videoRef = useRef<HTMLVideoElement>(null);
+    useMediaSource(videoRef, inView ? src : undefined);
 
     return (
         <div ref={holderRef} className="relative">
@@ -90,6 +102,20 @@ const FavoriteVideoThumb: React.FC<{ src: string; root: HTMLElement | null }> = 
     );
 };
 
+/**
+ * Voice card. The player (and so its `<audio>` and metadata request) mounts
+ * only once the card nears the viewport ({@link useInViewOnce}); until then a
+ * same-height placeholder holds the layout and no request is made.
+ */
+const FavoriteVoice: React.FC<{ src: string; root: HTMLElement | null }> = ({ src, root }) => {
+    const { holderRef, inView } = useInViewOnce(root);
+    return (
+        <div ref={holderRef} className="max-w-md">
+            {inView ? <VoicePlayer src={src} /> : <div data-testid="voice-placeholder" aria-hidden="true" className="h-14" />}
+        </div>
+    );
+};
+
 /** The viewer's native-controls video, released (pause, drop src, load) on unmount. */
 const FavoriteVideoDetail: React.FC<{ src: string; allowDownload: boolean }> = ({ src, allowDownload }) => {
     const videoRef = useRef<HTMLVideoElement>(null);
@@ -116,10 +142,11 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 }) => {
     const { t } = useTranslation();
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
-    // The dialog body is the scroll container: it is the IntersectionObserver root for video cards.
+    // The dialog body is the scroll container: it is the IntersectionObserver root for the video and voice cards.
     const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
 
-    // Without IntersectionObserver every video mounts eagerly; leave one breadcrumb per modal open.
+    // Without IntersectionObserver every video and voice card mounts eagerly; leave one
+    // breadcrumb per modal open (the event name predates voice cards and covers both).
     useEffect(() => {
         if (isOpen && typeof IntersectionObserver === 'undefined') {
             clientLog('favorite_video_lazy_unsupported');
@@ -217,9 +244,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                         </button>
                     )}
                     {message.type === 'voice' && mediaUrl && (
-                        <div className="max-w-md">
-                            <VoicePlayer src={mediaUrl} />
-                        </div>
+                        <FavoriteVoice key={mediaUrl} src={mediaUrl} root={bodyEl} />
                     )}
                 </div>
             </Card>

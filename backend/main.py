@@ -76,6 +76,7 @@ from backend.api import (  # noqa: E402
     app_state as app_state_api,
     archive,
 )
+from backend.api_no_store import ApiNoStoreMiddleware  # noqa: E402
 from backend.services import app_state  # noqa: E402
 from backend.services.data_lock import DataDirLock  # noqa: E402
 from backend.services.platform import get_app_data_dir  # noqa: E402
@@ -158,12 +159,30 @@ async def lifespan(app: FastAPI):
     # downloads) instead of leaving them half-open. Keeps the Proactor loop,
     # which login's Playwright subprocess needs. See proactor_resets.
     # Best effort: a failure here must never stop the server from starting.
-    from backend.services.proactor_resets import install_proactor_reset_guard
+    from backend.services import proactor_resets
 
     try:
-        install_proactor_reset_guard()
+        proactor_resets.install_proactor_reset_guard()
     except Exception as exc:
         logger.warning("proactor_reset_guard_failed", error_type=type(exc).__name__)
+
+    # Windows only: a browser that resets a connection before it is accepted
+    # must not make CPython close the listening socket (the backend would stop
+    # accepting for good). Same best-effort rule as above.
+    try:
+        proactor_resets.install_proactor_accept_guard()
+    except Exception as exc:
+        logger.warning("proactor_accept_guard_failed", error_type=type(exc).__name__)
+
+    # Windows only: the re-armed resets above would each still log CPython's
+    # "Task exception was never retrieved" at ERROR; downgrade exactly that
+    # report to a debug breadcrumb. Same best-effort rule as above.
+    try:
+        proactor_resets.install_accept_reset_log_filter(asyncio.get_running_loop())
+    except Exception as exc:
+        logger.warning(
+            "proactor_accept_log_filter_failed", error_type=type(exc).__name__
+        )
 
     # Port-independent app state (SQLite) must exist before any reader/writer
     # touches it.
@@ -411,6 +430,9 @@ app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["127.0.0.1", "localhost", "testserver"],
 )
+
+# API JSON must never enter the browser HTTP cache (cache-lock stalls on polls).
+app.add_middleware(ApiNoStoreMiddleware)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])

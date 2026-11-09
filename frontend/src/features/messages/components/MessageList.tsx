@@ -241,6 +241,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                 key={virtuosoKey}
                 ref={virtuosoRef}
                 scrollerRef={setScroller}
+                className="sd-sheet-scroll"
                 style={{ height: '100%' }}
                 groupCounts={timeline.groupCounts}
                 components={LIST_COMPONENTS}

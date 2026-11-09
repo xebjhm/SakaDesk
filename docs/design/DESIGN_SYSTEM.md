@@ -234,12 +234,16 @@ group accent says where you are; a meaning colour says what a thing is.
   cross-checks them against `design/tokens/color.ts`). Older Windows keeps the default bar.
 - **Scrollbars** are slim and app-wide (`index.css`): a constant 10 px scrollbar box with a 6 px
   rounded thumb drawn inside a transparent border, which grows to 8 px and darkens on hover (no
-  layout change). Thumb colours are the `--ds-scrollbar-thumb*`
+  layout change). Scrollers that reach a rounded sheet's bottom corner (the chat timeline and a Modal body with no footer and not `tone="viewer"`) carry
+  `sd-sheet-scroll`, which insets the track bottom by `--ds-radius-xl` (24 px, the sheet
+  radius) so the thumb is not clipped by the corner; there is no top inset (a header sits above). Thumb colours are the `--ds-scrollbar-thumb*`
   tokens (`color.scrollbar`: translucent ink on light surfaces; `thumbOnDark*`, translucent white, inside
   `[data-surface="dark"]`, which `Modal tone="viewer"` sets, the call overlay and the Diagnostics console). Firefox gets
   `scrollbar-width: thin` + `scrollbar-color` only where `::-webkit-scrollbar` is unsupported.
 - **Favourites video cards** show a shimmer sweep and a centred `Film` icon (`text-secondary`) on `bg-skeleton`
   (`--ds-border-strong`) and mount the `<video>` only when the card nears the dialog body's visible area.
+  Favourites voice cards lazy-mount the same way: until the card nears the visible area a same-height
+  placeholder holds the layout and the voice player (and its audio request) is not mounted.
 - **推 (oshi)** hearts and the Favorite filter use the global oshi pink,
   `color.semantic.oshi`: subtle `#fff0f8`, border `#ffcbe1`, solid `#de5f99`
   (white glyph 3.4:1, icons only), text `#aa376f` (6.0:1 on white, 5.5:1 on

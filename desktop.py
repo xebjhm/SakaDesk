@@ -19,6 +19,7 @@ import ctypes  # noqa: E402
 import platform  # noqa: E402
 from dataclasses import asdict  # noqa: E402
 from pathlib import Path  # noqa: E402
+from typing import Any, Callable  # noqa: E402
 
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app  # noqa: E402
@@ -55,6 +56,15 @@ HOST = "127.0.0.1"
 # ready. A 10s health window collided with that exactly and produced a spurious
 # "Server failed to start" crash dialog on every second launch / quick reopen.
 SERVER_STARTUP_TIMEOUT = 30  # seconds; > backend data-lock acquire timeout (10s)
+
+# How long the server keeps an idle HTTP connection open. It must outlast
+# Chromium's own idle-socket lifetime (300 s), so the browser always closes an
+# idle connection first. With uvicorn's 5 s default, the server closed idle
+# connections just as the 5 s progress poll reused them. On Windows the browser
+# was then left with a half-open socket: the poll it had just sent was never
+# answered until Chromium's TCP keep-alive gave up 495 s later, and the stuck
+# request blocked other requests to the same URL.
+KEEP_ALIVE_TIMEOUT_S = 600
 
 # Global reference so cleanup can signal graceful shutdown
 _uvicorn_server: uvicorn.Server | None = None
@@ -836,6 +846,18 @@ def wait_for_server(
     return False
 
 
+def build_server_config(asgi_app: Callable[..., Any]) -> uvicorn.Config:
+    """uvicorn settings for the local backend.
+
+    ``timeout_keep_alive`` is KEEP_ALIVE_TIMEOUT_S rather than uvicorn's
+    5 s default: the browser always closes an idle connection before the
+    server does, so the server never closes one the browser is reusing.
+    """
+    return uvicorn.Config(
+        asgi_app, log_level="error", timeout_keep_alive=KEEP_ALIVE_TIMEOUT_S
+    )
+
+
 def start_server(sock: socket.socket) -> None:
     """Start uvicorn with a pre-bound SO_REUSEADDR socket.
 
@@ -844,7 +866,8 @@ def start_server(sock: socket.socket) -> None:
     in TIME_WAIT state and would force a new port on quick restarts.
     """
     global _uvicorn_server
-    config = uvicorn.Config(app, log_level="error")
+    config = build_server_config(app)
+    logger.info("server_config", keep_alive_s=config.timeout_keep_alive)
     _uvicorn_server = uvicorn.Server(config)
     _uvicorn_server.run(sockets=[sock])
 

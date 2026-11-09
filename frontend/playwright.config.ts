@@ -28,8 +28,8 @@ export default defineConfig({
   // SAKADESK_TEST_MODE is set via env var (CI step or shell), not inline in the command
   webServer: {
     command: process.platform === 'win32'
-      ? 'cd .. && uv run uvicorn backend.main:app --port 8000'
-      : 'cd .. && SAKADESK_TEST_MODE=true uv run uvicorn backend.main:app --port 8000',
+      ? 'cd .. && uv run uvicorn backend.main:app --port 8000 --timeout-keep-alive 600'
+      : 'cd .. && SAKADESK_TEST_MODE=true uv run uvicorn backend.main:app --port 8000 --timeout-keep-alive 600',
     url: 'http://localhost:8000/api/auth/status',
     reuseExistingServer: !process.env.CI,
     timeout: 30000,

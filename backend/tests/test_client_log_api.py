@@ -737,3 +737,61 @@ def test_media_playback_rejects_urls_and_unknown_keys(fields):
         "/api/client-log", json={"event": "media_playback", "fields": fields}
     )
     assert res.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("event", "fields", "level"),
+    [
+        (
+            "poll_timeout",
+            {"key": "sync_progress_hinatazaka46", "timeout_ms": 4000},
+            "warning",
+        ),
+        ("poll_skipped", {"key": "groups", "count": 3}, "info"),
+        ("poll_skipped", {"key": "groups_a46", "reason": "stale_service"}, "info"),
+        ("poll_failed", {"key": "groups", "error_type": "typeerror"}, "warning"),
+        ("poll_failed", {"key": "groups", "error_code": 500}, "warning"),
+        ("poll_retry", {"key": "sync_progress_hinatazaka46", "count": 1}, "info"),
+        ("poll_gave_up", {"key": "sync_progress_hinatazaka46", "count": 3}, "warning"),
+        (
+            "translation_batch_failed",
+            {"count": 12, "error_type": "typeerror"},
+            "warning",
+        ),
+        (
+            "translation_batch_failed",
+            {"count": 1, "error_type": "error", "caller": "trigger"},
+            "warning",
+        ),
+    ],
+)
+def test_poll_breadcrumbs_are_accepted(event, fields, level):
+    with capture_logs() as logs:
+        res = client.post("/api/client-log", json={"event": event, "fields": fields})
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == event
+    assert entry["log_level"] == level
+    assert {key: entry[key] for key in fields} == fields
+
+
+def test_poll_breadcrumb_rejects_a_url_as_key():
+    res = client.post(
+        "/api/client-log",
+        json={
+            "event": "poll_timeout",
+            "fields": {"key": "/api/sync/progress?service=x"},
+        },
+    )
+    assert res.status_code == 422
+
+
+def test_allowed_fields_never_shadow_log_call_keywords():
+    """Field keys are splatted into ``log(event, source="client", **fields)``.
+
+    A field named like one of those keywords would raise ``TypeError`` and turn
+    the breadcrumb into a 500, so the allow-list must never contain them.
+    """
+    from backend.api.client_log import ALLOWED_FIELDS
+
+    assert not ALLOWED_FIELDS & {"source", "event"}

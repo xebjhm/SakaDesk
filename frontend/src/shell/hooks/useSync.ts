@@ -35,6 +35,7 @@ import type { SyncProgress, AppSettings } from '../../features/messages/Messages
 import { useAppStore } from '../../store/appStore';
 import i18n from '../../i18n';
 import { clientLog } from '../../utils/clientLog';
+import { pollJson, pollLogKey, useUnmountSignal } from '../../utils/pollJson';
 
 // Debug flag - set localStorage.setItem('DEBUG_SYNC', 'true') to enable
 const SYNC_DEBUG = typeof localStorage !== 'undefined' && localStorage.getItem('DEBUG_SYNC') === 'true';
@@ -139,6 +140,30 @@ export interface UseSyncReturn {
     lastHandledRunId: (service: string) => number | undefined;
 }
 
+/** Consecutive timed-out / failed progress reads tolerated (when not running) before "lost connection". */
+const MAX_PROGRESS_RETRIES = 3;
+/** Spacing between progress read retries. */
+const PROGRESS_RETRY_MS = 1000;
+
+/** `/api/sync/progress` body (every field optional: an unknown state is handled). */
+interface SyncProgressResponse {
+    run_id?: number;
+    state?: string;
+    phase?: string;
+    phase_name?: string;
+    phase_number?: number;
+    completed?: number;
+    total?: number;
+    elapsed_seconds?: number;
+    eta_seconds?: number;
+    speed?: number;
+    speed_unit?: string;
+    detail?: string;
+    detail_extra?: string;
+    error_code?: string;
+    result?: SyncProgress['result'];
+}
+
 /** Options for the useSync hook. */
 interface UseSyncOptions {
     /** Whether any service is authenticated */
@@ -199,6 +224,10 @@ export function useSync({
     // Callbacks invoked when a service's sync polling finishes (used by startSequentialSync)
     const syncCompleteCallbacks = useRef<Record<string, (completed: boolean) => void>>({});
 
+    const unmountSignal = useUnmountSignal();
+    // Per-service generation of the progress chain: a chain that was cancelled and
+    // replaced by a restart (while one of its reads was pending) must stop.
+    const pollGenRef = useRef<Record<string, number>>({});
     const isPollingRef = useRef<Record<string, boolean>>({});
     // Per-service "a blocking modal owns this poll": set (never cleared) by any
     // pollSyncProgress(service, true) call, even one that returns early because a
@@ -279,11 +308,64 @@ export function useSync({
         if (blocking) blockingRef.current[service] = true;
         if (isPollingRef.current[service]) return;
         isPollingRef.current[service] = true;
+        const gen = (pollGenRef.current[service] ?? 0) + 1;
+        pollGenRef.current[service] = gen;
+        const superseded = () => pollGenRef.current[service] !== gen;
+        const progressKey = `sync_progress_${service}`;
+        let failures = 0;
+
+        const declareLostConnection = () => {
+            const blocking = !!blockingRef.current[service];
+            setSyncProgressByService(prev => ({
+                ...prev,
+                [service]: { state: 'error', detail: i18n.t('sync.lostConnection') }
+            }));
+            const currentActiveService = activeServiceRef.current;
+            if (service === currentActiveService) {
+                setSyncProgress({ state: 'error', detail: i18n.t('sync.lostConnection') });
+            }
+            isPollingRef.current[service] = false;
+            blockingRef.current[service] = false;
+            useAppStore.getState().removeInitialSyncService(service);
+            resolveSyncCallback(service, false);
+            if (blocking && service === currentActiveService) setShowSyncModal(false);
+        };
 
         const check = async () => {
+            if (superseded()) return;
             try {
-                const res = await fetch(`/api/sync/progress?service=${encodeURIComponent(service)}`);
-                const data = await res.json();
+                // Uncached, 4 s timeout, aborted on unmount. `replace`: a restarted
+                // chain supersedes a read still pending from the cancelled one.
+                const result = await pollJson<SyncProgressResponse>(
+                    progressKey,
+                    `/api/sync/progress?service=${encodeURIComponent(service)}`,
+                    { signal: unmountSignal(), replace: true },
+                );
+                // Aborted: unmounted or superseded by a newer chain. (`skipped`
+                // cannot happen with `replace`.) No state updates either way.
+                if (result.status === 'aborted' || result.status === 'skipped' || superseded()) return;
+                if (result.status !== 'ok') {
+                    // Timeout / network error / non-2xx: pollJson logged why. A missed
+                    // read must not end the check. While the service is known to be
+                    // running (a long sync on a busy backend) keep retrying as long as
+                    // it takes; otherwise (follow / terminal checks) retry a bounded
+                    // number of times before declaring the connection lost.
+                    failures += 1;
+                    const running = syncProgressByServiceRef.current[service]?.state === 'running';
+                    if (running || failures <= MAX_PROGRESS_RETRIES) {
+                        // Rate-limited while running: the first few, then every 10th.
+                        if (failures <= MAX_PROGRESS_RETRIES || failures % 10 === 0) {
+                            clientLog('poll_retry', { key: pollLogKey(progressKey), count: failures });
+                        }
+                        if (isPollingRef.current[service]) setTimeout(check, PROGRESS_RETRY_MS);
+                    } else {
+                        clientLog('poll_gave_up', { key: pollLogKey(progressKey), count: MAX_PROGRESS_RETRIES });
+                        declareLostConnection();
+                    }
+                    return;
+                }
+                failures = 0;
+                const data = result.data;
                 if (typeof data.run_id === 'number') handledRunIdRef.current[service] = data.run_id;
 
                 const currentActiveService = activeServiceRef.current;
@@ -415,25 +497,12 @@ export function useSync({
                 if (currentServiceProgress?.state === 'running') {
                     setTimeout(check, 1000);
                 } else {
-                    const blocking = !!blockingRef.current[service];
-                    setSyncProgressByService(prev => ({
-                        ...prev,
-                        [service]: { state: 'error', detail: i18n.t('sync.lostConnection') }
-                    }));
-                    const currentActiveService = activeServiceRef.current;
-                    if (service === currentActiveService) {
-                        setSyncProgress({ state: 'error', detail: i18n.t('sync.lostConnection') });
-                    }
-                    isPollingRef.current[service] = false;
-                    blockingRef.current[service] = false;
-                    useAppStore.getState().removeInitialSyncService(service);
-                    resolveSyncCallback(service, false);
-                    if (blocking && service === currentActiveService) setShowSyncModal(false);
+                    declareLostConnection();
                 }
             }
         };
         check();
-    }, [refreshUserProfile, resolveSyncCallback]);
+    }, [refreshUserProfile, resolveSyncCallback, unmountSignal]);
 
     // startSync: reads activeService and syncProgressByService from refs
     // to avoid recreating on every progress update.

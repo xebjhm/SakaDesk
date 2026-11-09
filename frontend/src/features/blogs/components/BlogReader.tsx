@@ -21,6 +21,7 @@ import { IconButton } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
 import { aiErrorKey } from '../../../i18n/aiError';
 import { persisted } from '../../../core/persistence/persisted';
+import { readCachedTranslation } from '../../../core/persistence/translationLoader';
 import { formatBlogDate } from '../../../utils/dateFormatters';
 import { resolveWash } from '../memberWash';
 import { clientLog } from '../../../utils/clientLog';
@@ -142,8 +143,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
 
         // Check cache first
         const cacheKey = `translation:blog:${blog.id}:${translationTargetLanguage}`;
-        const cachedMap = await persisted.getTranslations([cacheKey]);
-        const cached = cachedMap[cacheKey] ?? null;
+        const cached = (await readCachedTranslation(cacheKey, 'blog')) ?? null;
         if (cached) {
             try {
                 const parsed = JSON.parse(cached);

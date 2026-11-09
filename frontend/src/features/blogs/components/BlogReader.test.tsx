@@ -1,9 +1,11 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { BlogReader, type BlogReaderProps } from './BlogReader';
 import { formatBlogDate } from '../../../utils/dateFormatters';
 import { clientLog } from '../../../utils/clientLog';
+import { persisted } from '../../../core/persistence/persisted';
+import { useAppStore } from '../../../store/appStore';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
@@ -117,5 +119,21 @@ describe('BlogReader', () => {
     it('keeps the rail column even before the member post list arrives', () => {
         const { container } = render(<BlogReader {...props()} />);
         expect(container.querySelector('.w-14.shrink-0')).not.toBeNull();
+    });
+});
+
+describe('BlogReader translate with a failing cache read', () => {
+    afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); useAppStore.setState({ translationEnabled: false }); });
+
+    it('treats the failed read as a miss, logs it and still calls the translate API', async () => {
+        useAppStore.setState({ translationEnabled: true });
+        vi.spyOn(persisted, 'getTranslations').mockRejectedValue(new TypeError('Failed to fetch'));
+        vi.spyOn(persisted, 'putTranslations').mockResolvedValue(undefined);
+        const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: true, translations: ['spring'] }) });
+        vi.stubGlobal('fetch', fetchMock);
+        render(<BlogReader {...props()} />);
+        fireEvent.click(screen.getByRole('button', { name: /translate/i }));
+        await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/translation/translate', expect.anything()));
+        expect(clientLog).toHaveBeenCalledWith('translation_batch_failed', { count: 1, error_type: 'typeerror', caller: 'blog' });
     });
 });
