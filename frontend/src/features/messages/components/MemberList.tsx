@@ -9,6 +9,7 @@ import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
+import { pollJson, useUnmountSignal } from '../../../utils/pollJson';
 import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
 import { resizedAvatarUrl } from '../mediaUrl';
 import { useAvatarWidth } from '../hooks/useAvatarWidth';
@@ -69,6 +70,9 @@ const SectionHeading: React.FC<{ children: React.ReactNode }> = ({ children }) =
     </div>
 );
 
+/** `/api/content/groups`: legacy array, or object with groups + last_sync. */
+type GroupsResponse = GroupInfo[] | { groups: GroupInfo[]; last_sync?: Record<string, string> };
+
 export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow }) => {
     const { t } = useTranslation();
     const [groups, setGroups] = useState<GroupInfo[]>([]);
@@ -98,21 +102,25 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             });
     };
 
-    const loadGroups = () => {
+    const unmountSignal = useUnmountSignal();
+
+    const loadGroups = async () => {
         const url = activeService
             ? `/api/content/groups?service=${encodeURIComponent(activeService)}`
             : '/api/content/groups';
-        fetch(url)
-            .then(res => res.json())
-            .then(data => {
-                // Support both old format (array) and new format (object with groups + last_sync)
-                const groupList = Array.isArray(data) ? data : data.groups;
-                setGroups(groupList);
-                if (data.last_sync) setLastSyncMap(data.last_sync);
-                checkUnread(groupList);
-            })
-            .catch(console.error)
-            .finally(() => setLoading(false));
+        const result = await pollJson<GroupsResponse>('groups', url, { signal: unmountSignal() });
+        // Skipped: a request is already in flight and will update the state.
+        // Aborted: unmounted, no state updates.
+        if (result.status === 'skipped' || result.status === 'aborted') return;
+        if (result.status === 'ok') {
+            const data = result.data;
+            // Support both old format (array) and new format (object with groups + last_sync)
+            const groupList = Array.isArray(data) ? data : data.groups;
+            setGroups(groupList);
+            if (!Array.isArray(data) && data.last_sync) setLastSyncMap(data.last_sync);
+            checkUnread(groupList);
+        }
+        setLoading(false);
     };
 
     const checkUnread = async (groupList: GroupInfo[]) => {
@@ -143,15 +151,18 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             const url = activeService
                 ? `/api/content/unread_counts?service=${encodeURIComponent(activeService)}`
                 : '/api/content/unread_counts';
-            const res = await fetch(url, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(readStates)
+            const result = await pollJson<Record<string, number>>('unread_counts', url, {
+                signal: unmountSignal(),
+                init: {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(readStates),
+                },
             });
-
-            if (!res.ok) throw new Error('Failed to fetch unread counts');
-
-            const backendCounts: Record<string, number> = await res.json();
+            // Skipped / aborted / failed: keep the last known counts (the failure
+            // breadcrumb is logged by pollJson); the next poll tick retries.
+            if (result.status !== 'ok') return;
+            const backendCounts = result.data;
 
             // Key unread by unique conversation PATH, not by group id: talk-room
             // ids are only unique within a service, so a shared id (e.g. 79 in two

@@ -342,6 +342,53 @@ describe('useSync', () => {
         expect(result.current.lastHandledRunId('sakurazaka46')).toBeUndefined()
     })
 
+    describe('progress polling', () => {
+        const hanging = () => vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_res, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')))
+        }))
+
+        afterEach(() => { vi.useRealTimers() })
+
+        it('reads progress uncached', async () => {
+            const fetchMock = vi.fn().mockResolvedValue({
+                ok: true,
+                json: () => Promise.resolve({ state: 'complete', run_id: 3 }),
+            })
+            vi.stubGlobal('fetch', fetchMock)
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            await waitFor(() => expect(result.current.lastHandledRunId('hinatazaka46')).toBe(3))
+            const call = fetchMock.mock.calls.find(c => String(c[0]).startsWith('/api/sync/progress'))
+            expect(call?.[1]).toMatchObject({ cache: 'no-store' })
+        })
+
+        it('a progress request that never answers times out after 4 s and ends as lost connection', async () => {
+            vi.useFakeTimers()
+            vi.stubGlobal('fetch', hanging())
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            await act(async () => { await vi.advanceTimersByTimeAsync(3999) })
+            expect(result.current.isPolling('hinatazaka46')).toBe(true)
+            await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+            expect(clientLog).toHaveBeenCalledWith('poll_timeout', { key: 'sync_progress_hinatazaka46', timeout_ms: 4000 })
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('error')
+        })
+
+        it('unmounting aborts the pending request without a timeout breadcrumb or state change', async () => {
+            vi.useFakeTimers()
+            const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
+            vi.stubGlobal('fetch', hanging())
+            const { result, unmount } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            unmount()
+            await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+            expect(clientLog).not.toHaveBeenCalledWith('poll_timeout', expect.anything())
+            expect(errors).not.toHaveBeenCalled()
+            errors.mockRestore()
+        })
+    })
+
     describe('startSync racing the backend sync watcher', () => {
         afterEach(() => { vi.useRealTimers() })
 

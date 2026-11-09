@@ -76,6 +76,7 @@ from backend.api import (  # noqa: E402
     app_state as app_state_api,
     archive,
 )
+from backend.api_no_store import ApiNoStoreMiddleware  # noqa: E402
 from backend.services import app_state  # noqa: E402
 from backend.services.data_lock import DataDirLock  # noqa: E402
 from backend.services.platform import get_app_data_dir  # noqa: E402
@@ -429,6 +430,9 @@ app.add_middleware(
     TrustedHostMiddleware,
     allowed_hosts=["127.0.0.1", "localhost", "testserver"],
 )
+
+# API JSON must never enter the browser HTTP cache (cache-lock stalls on polls).
+app.add_middleware(ApiNoStoreMiddleware)
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])

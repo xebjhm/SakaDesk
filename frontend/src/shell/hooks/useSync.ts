@@ -35,6 +35,7 @@ import type { SyncProgress, AppSettings } from '../../features/messages/Messages
 import { useAppStore } from '../../store/appStore';
 import i18n from '../../i18n';
 import { clientLog } from '../../utils/clientLog';
+import { pollJson, useUnmountSignal } from '../../utils/pollJson';
 
 // Debug flag - set localStorage.setItem('DEBUG_SYNC', 'true') to enable
 const SYNC_DEBUG = typeof localStorage !== 'undefined' && localStorage.getItem('DEBUG_SYNC') === 'true';
@@ -140,6 +141,25 @@ export interface UseSyncReturn {
 }
 
 /** Options for the useSync hook. */
+/** `/api/sync/progress` body (every field optional: an unknown state is handled). */
+interface SyncProgressResponse {
+    run_id?: number;
+    state?: string;
+    phase?: string;
+    phase_name?: string;
+    phase_number?: number;
+    completed?: number;
+    total?: number;
+    elapsed_seconds?: number;
+    eta_seconds?: number;
+    speed?: number;
+    speed_unit?: string;
+    detail?: string;
+    detail_extra?: string;
+    error_code?: string;
+    result?: SyncProgress['result'];
+}
+
 interface UseSyncOptions {
     /** Whether any service is authenticated */
     isAuthenticated: boolean | null;
@@ -199,6 +219,7 @@ export function useSync({
     // Callbacks invoked when a service's sync polling finishes (used by startSequentialSync)
     const syncCompleteCallbacks = useRef<Record<string, (completed: boolean) => void>>({});
 
+    const unmountSignal = useUnmountSignal();
     const isPollingRef = useRef<Record<string, boolean>>({});
     // Per-service "a blocking modal owns this poll": set (never cleared) by any
     // pollSyncProgress(service, true) call, even one that returns early because a
@@ -282,8 +303,22 @@ export function useSync({
 
         const check = async () => {
             try {
-                const res = await fetch(`/api/sync/progress?service=${encodeURIComponent(service)}`);
-                const data = await res.json();
+                // Uncached, 4 s timeout, aborted on unmount. Timeouts, network
+                // errors and non-2xx answers take the catch path below (the same
+                // as a failed fetch did); pollJson leaves the breadcrumb.
+                const result = await pollJson<SyncProgressResponse>(
+                    `sync_progress_${service}`,
+                    `/api/sync/progress?service=${encodeURIComponent(service)}`,
+                    { signal: unmountSignal() },
+                );
+                if (result.status === 'aborted') return; // unmounted: no state updates
+                if (result.status === 'skipped') {
+                    // Cannot normally happen (this chain is sequential): retry shortly.
+                    if (isPollingRef.current[service]) setTimeout(check, 1000);
+                    return;
+                }
+                if (result.status !== 'ok') throw new Error(`progress_${result.status}`);
+                const data = result.data;
                 if (typeof data.run_id === 'number') handledRunIdRef.current[service] = data.run_id;
 
                 const currentActiveService = activeServiceRef.current;
@@ -433,7 +468,7 @@ export function useSync({
             }
         };
         check();
-    }, [refreshUserProfile, resolveSyncCallback]);
+    }, [refreshUserProfile, resolveSyncCallback, unmountSignal]);
 
     // startSync: reads activeService and syncProgressByService from refs
     // to avoid recreating on every progress update.

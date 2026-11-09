@@ -737,3 +737,37 @@ def test_media_playback_rejects_urls_and_unknown_keys(fields):
         "/api/client-log", json={"event": "media_playback", "fields": fields}
     )
     assert res.status_code == 422
+
+
+@pytest.mark.parametrize(
+    ("event", "fields", "level"),
+    [
+        (
+            "poll_timeout",
+            {"key": "sync_progress_hinatazaka46", "timeout_ms": 4000},
+            "warning",
+        ),
+        ("poll_skipped", {"key": "groups", "count": 3}, "info"),
+        ("poll_failed", {"key": "groups", "error_type": "typeerror"}, "warning"),
+        ("poll_failed", {"key": "groups", "error_code": 500}, "warning"),
+    ],
+)
+def test_poll_breadcrumbs_are_accepted(event, fields, level):
+    with capture_logs() as logs:
+        res = client.post("/api/client-log", json={"event": event, "fields": fields})
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == event
+    assert entry["log_level"] == level
+    assert {key: entry[key] for key in fields} == fields
+
+
+def test_poll_breadcrumb_rejects_a_url_as_key():
+    res = client.post(
+        "/api/client-log",
+        json={
+            "event": "poll_timeout",
+            "fields": {"key": "/api/sync/progress?service=x"},
+        },
+    )
+    assert res.status_code == 422

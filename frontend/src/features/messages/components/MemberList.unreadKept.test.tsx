@@ -3,6 +3,9 @@ import { render, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../../__tests__/mocks/server';
 import { MemberList } from './MemberList';
+import { clientLog } from '../../../utils/clientLog';
+
+vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 // Poll fast so the failing second poll happens within the test.
 vi.mock('../../../config/uiConstants', async (importOriginal) => {
@@ -37,21 +40,15 @@ describe('MemberList unread badge — poll failure', () => {
                     : new HttpResponse(null, { status: 500 });
             }),
         );
-        const consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
+        render(<MemberList activeService="hinatazaka46" onSelectGroup={vi.fn()} />);
 
-        try {
-            render(<MemberList activeService="hinatazaka46" onSelectGroup={vi.fn()} />);
-
-            expect(await screen.findByText('3')).toBeInTheDocument();
-            // Wait until at least two further (failing) polls have happened and
-            // the failure has been logged.
-            await waitFor(() => expect(calls).toBeGreaterThanOrEqual(3));
-            await waitFor(() =>
-                expect(consoleError).toHaveBeenCalledWith('Failed to fetch unread counts:', expect.anything()),
-            );
-            expect(screen.getByText('3')).toBeInTheDocument();
-        } finally {
-            consoleError.mockRestore();
-        }
+        expect(await screen.findByText('3')).toBeInTheDocument();
+        // Wait until at least two further (failing) polls have happened and
+        // the failure has been logged.
+        await waitFor(() => expect(calls).toBeGreaterThanOrEqual(3));
+        await waitFor(() =>
+            expect(clientLog).toHaveBeenCalledWith('poll_failed', { key: 'unread_counts', error_code: 500 }),
+        );
+        expect(screen.getByText('3')).toBeInTheDocument();
     });
 });
