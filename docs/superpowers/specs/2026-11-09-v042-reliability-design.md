@@ -121,7 +121,7 @@ The popup window (`call_popup_window.py`) is a frameless WebView2 window. It had
 ### Verification
 
 - Unit tests: create kwargs, the DWM preference, the transparency seam (called before show on both paths; sets both colours via `Invoke` when `InvokeRequired`; logs and never raises on failure), and the frontend CSS/radius tests.
-- Verified on the user's machine with a real call (to be confirmed by the user before merge).
+- Verified on the user's machine with a real call (to be confirmed by the user on the released build).
 
 ## Out of scope
 
