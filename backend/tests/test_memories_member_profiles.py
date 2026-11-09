@@ -56,23 +56,24 @@ def test_load_corrupt_is_empty(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_failure_keeps_old_file(tmp_path):
+async def test_failure_keeps_old_birthdays(tmp_path):
     (tmp_path / "memories").mkdir()
     p = tmp_path / "memories" / "member_profiles.json"
-    old = json.dumps(
-        {
-            "updated_at": (NOW - timedelta(days=9)).isoformat(),
-            "birthdays": {"a": "2000-01-01"},
-        }
+    updated = (NOW - timedelta(days=9)).isoformat()
+    p.write_text(
+        json.dumps({"updated_at": updated, "birthdays": {"a": "2000-01-01"}}),
+        encoding="utf-8",
     )
-    p.write_text(old, encoding="utf-8")
     scraper = AsyncMock()
     scraper.get_member_birthdays = AsyncMock(side_effect=RuntimeError("boom"))
     with patch.object(mp, "_scraper_for", return_value=scraper):
         assert (
             await mp.refresh_member_profiles("hinatazaka46", tmp_path, now=NOW) is False
         )
-    assert p.read_text(encoding="utf-8") == old
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["birthdays"] == {"a": "2000-01-01"}
+    assert data["updated_at"] == updated  # still stale
+    assert data["last_attempt_at"] == NOW.isoformat()
 
 
 @pytest.mark.asyncio
@@ -95,33 +96,100 @@ async def test_stale_and_force_refresh(tmp_path):
 
 
 @pytest.mark.asyncio
-async def test_empty_scrape_keeps_old_file_and_retries_next_time(tmp_path):
+async def test_empty_scrape_keeps_old_data_and_backs_off_24h(tmp_path):
     p = tmp_path / "memories" / "member_profiles.json"
     p.parent.mkdir()
-    old = json.dumps(
-        {
-            "updated_at": (NOW - timedelta(days=9)).isoformat(),
-            "birthdays": {"a": "2000-01-01"},
-        }
+    updated = (NOW - timedelta(days=9)).isoformat()
+    p.write_text(
+        json.dumps({"updated_at": updated, "birthdays": {"a": "2000-01-01"}}),
+        encoding="utf-8",
     )
-    p.write_text(old, encoding="utf-8")
     scraper = AsyncMock()
     scraper.get_member_birthdays = AsyncMock(return_value={})
     with (
         patch.object(mp, "_scraper_for", return_value=scraper),
-        patch.object(mp, "_write_atomic") as write,
         capture_logs() as logs,
     ):
         assert (
             await mp.refresh_member_profiles("hinatazaka46", tmp_path, now=NOW) is False
         )
-        # Still stale, so the next call scrapes again.
+        # Within 24 h of the last attempt: no scrape.
+        later = NOW + timedelta(hours=23)
+        assert (
+            await mp.refresh_member_profiles("hinatazaka46", tmp_path, now=later)
+            is False
+        )
+        assert scraper.get_member_birthdays.await_count == 1
+        # After 24 h: retried.
+        after = NOW + timedelta(hours=24)
+        await mp.refresh_member_profiles("hinatazaka46", tmp_path, now=after)
+        assert scraper.get_member_birthdays.await_count == 2
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert data["birthdays"] == {"a": "2000-01-01"} and data["updated_at"] == updated
+    reasons = [e["reason"] for e in logs if e["event"] == "member_profiles_skipped"]
+    assert reasons == ["empty", "backoff", "empty"]
+
+
+@pytest.mark.asyncio
+async def test_force_ignores_backoff(tmp_path):
+    p = tmp_path / "memories" / "member_profiles.json"
+    p.parent.mkdir()
+    p.write_text(
+        json.dumps({"last_attempt_at": NOW.isoformat(), "birthdays": {}}),
+        encoding="utf-8",
+    )
+    scraper = AsyncMock()
+    scraper.get_member_birthdays = AsyncMock(return_value={"A": "2000-01-01"})
+    with patch.object(mp, "_scraper_for", return_value=scraper):
         assert (
             await mp.refresh_member_profiles("hinatazaka46", tmp_path, now=NOW) is False
         )
-    write.assert_not_called()
-    assert scraper.get_member_birthdays.await_count == 2
-    assert p.read_text(encoding="utf-8") == old
-    assert any(
-        e["event"] == "member_profiles_skipped" and e["reason"] == "empty" for e in logs
+        assert (
+            await mp.refresh_member_profiles(
+                "hinatazaka46", tmp_path, now=NOW, force=True
+            )
+            is True
+        )
+
+
+@pytest.mark.asyncio
+async def test_partial_scrape_merges_into_previous(tmp_path):
+    p = tmp_path / "memories" / "member_profiles.json"
+    p.parent.mkdir()
+    p.write_text(
+        json.dumps(
+            {
+                "updated_at": (NOW - timedelta(days=8)).isoformat(),
+                "birthdays": {"金村美玖": "2002-09-10", "小坂菜緒": "2002-09-07"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
     )
+    scraper = AsyncMock()
+    # Partial: one member missing, one corrected, one new.
+    scraper.get_member_birthdays = AsyncMock(
+        return_value={"金村 美玖": "2002-09-11", "正源司 陽子": "2007-02-14"}
+    )
+    with (
+        patch.object(mp, "_scraper_for", return_value=scraper),
+        capture_logs() as logs,
+    ):
+        assert (
+            await mp.refresh_member_profiles("hinatazaka46", tmp_path, now=NOW) is True
+        )
+    assert mp.load_birthdays(tmp_path) == {
+        "金村美玖": "2002-09-11",  # new value wins
+        "小坂菜緒": "2002-09-07",  # kept
+        "正源司陽子": "2007-02-14",
+    }
+    (ev,) = [e for e in logs if e["event"] == "member_profiles_refreshed"]
+    assert ev["count"] == 3 and ev["scraped"] == 2 and ev["kept"] == 1
+    assert "金村" not in str(ev)
+
+
+def test_load_missing_logs_debug(tmp_path):
+    with capture_logs() as logs:
+        assert mp.load_birthdays(tmp_path) == {}
+    assert [e["event"] for e in logs] == ["member_profiles_missing"]
+    assert logs[0]["log_level"] == "debug"

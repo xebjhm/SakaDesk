@@ -1,7 +1,13 @@
 """Per-service member birthday cache for Memories.
 
 Stored at ``<service_data_dir>/memories/member_profiles.json`` as
-``{"updated_at": iso, "birthdays": {normalized_name: "YYYY-MM-DD"}}``.
+``{"updated_at": iso, "last_attempt_at": iso, "birthdays": {normalized_name: "YYYY-MM-DD"}}``.
+
+- ``updated_at``: the last scrape that returned birthdays. Fresh for 7 days.
+- ``last_attempt_at``: the last scrape attempt of any outcome. An empty or
+  failed scrape is retried only after 24 h (no scraping on every sync).
+- ``birthdays``: merged across scrapes. New values win, and nothing is
+  dropped, so a partial scrape never loses members found earlier.
 """
 
 import json
@@ -24,6 +30,7 @@ logger = structlog.get_logger(__name__)
 
 _FILE_NAME = "member_profiles.json"
 _REFRESH_INTERVAL = timedelta(days=7)
+_RETRY_INTERVAL = timedelta(hours=24)
 _SUPPORTED = (Group.HINATAZAKA46, Group.SAKURAZAKA46, Group.NOGIZAKA46)
 
 
@@ -44,15 +51,38 @@ def _profiles_path(service_data_dir: Path) -> Path:
     return service_data_dir / "memories" / _FILE_NAME
 
 
-def _is_fresh(path: Path, now: datetime) -> bool:
+def _read(path: Path) -> dict[str, Any]:
+    """The stored file as a dict; ``{}`` when missing or corrupt."""
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
-        updated = datetime.fromisoformat(data["updated_at"])
-        if updated.tzinfo is None:
-            updated = updated.replace(tzinfo=timezone.utc)
-    except (OSError, ValueError, KeyError, TypeError):
-        return False
-    return timedelta(0) <= now - updated < _REFRESH_INTERVAL
+    except FileNotFoundError:
+        return {}
+    except (OSError, ValueError) as e:
+        logger.warning("member_profiles_unreadable", error_type=type(e).__name__)
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _parse_time(raw: Any) -> datetime | None:
+    if not isinstance(raw, str):
+        return None
+    try:
+        ts = datetime.fromisoformat(raw)
+    except ValueError:
+        return None
+    return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
+
+
+def _within(raw: Any, now: datetime, interval: timedelta) -> bool:
+    ts = _parse_time(raw)
+    return ts is not None and timedelta(0) <= now - ts < interval
+
+
+def _birthdays_of(data: dict[str, Any]) -> dict[str, str]:
+    raw = data.get("birthdays")
+    if not isinstance(raw, dict):
+        return {}
+    return {str(k): str(v) for k, v in raw.items()}
 
 
 def _write_atomic(path: Path, payload: dict) -> None:
@@ -76,7 +106,12 @@ async def refresh_member_profiles(
     now: datetime | None = None,
     force: bool = False,
 ) -> bool:
-    """Refresh the birthday cache; return True when the file was written."""
+    """Refresh the birthday cache; return True when new birthdays were stored.
+
+    Skips when the data is fresh (7 days) or the last attempt was under 24 h
+    ago (unless ``force``). Every attempt records ``last_attempt_at``; an
+    empty or failed scrape keeps the old birthdays and ``updated_at``.
+    """
     now = now or datetime.now(timezone.utc)
     path = _profiles_path(service_data_dir)
 
@@ -84,38 +119,62 @@ async def refresh_member_profiles(
         logger.info("member_profiles_skipped", service=service, reason="unsupported")
         return False
 
-    if not force and _is_fresh(path, now):
+    old = _read(path)
+    if not force and _within(old.get("updated_at"), now, _REFRESH_INTERVAL):
         logger.info("member_profiles_skipped", service=service, reason="fresh")
         return False
+    if not force and _within(old.get("last_attempt_at"), now, _RETRY_INTERVAL):
+        logger.info("member_profiles_skipped", service=service, reason="backoff")
+        return False
 
+    previous = _birthdays_of(old)
+    record: dict[str, Any] = {
+        "updated_at": old.get("updated_at"),
+        "last_attempt_at": now.isoformat(),
+        "birthdays": previous,
+    }
+    raw: dict[str, str] | None = None
     try:
         async with aiohttp.ClientSession() as session:
             raw = await _scraper_for(service, session).get_member_birthdays()
-        if not raw:
-            # Keep the old file and leave it stale so the next sync retries.
-            logger.info("member_profiles_skipped", service=service, reason="empty")
-            return False
-        birthdays = {normalize_member_name(k): v for k, v in raw.items()}
-        _write_atomic(path, {"updated_at": now.isoformat(), "birthdays": birthdays})
-    except Exception as e:  # keep the old file on any failure
+    except Exception as e:  # keep the old birthdays on any failure
         logger.warning(
             "member_profiles_failed", service=service, error_type=type(e).__name__
         )
-        return False
 
-    logger.info("member_profiles_refreshed", service=service, count=len(birthdays))
-    return True
+    stored = False
+    kept = 0
+    if raw:
+        fresh = {normalize_member_name(k): v for k, v in raw.items()}
+        record["birthdays"] = {**previous, **fresh}
+        record["updated_at"] = now.isoformat()
+        kept = len(set(previous) - set(fresh))  # earlier names this scrape missed
+        stored = True
+    elif raw is not None:
+        logger.info("member_profiles_skipped", service=service, reason="empty")
+
+    try:
+        _write_atomic(path, record)
+    except OSError as e:
+        logger.warning(
+            "member_profiles_write_failed", service=service, error_type=type(e).__name__
+        )
+        return False
+    if stored:
+        logger.info(
+            "member_profiles_refreshed",
+            service=service,
+            count=len(record["birthdays"]),
+            scraped=len(raw or {}),
+            kept=kept,
+        )
+    return stored
 
 
 def load_birthdays(service_data_dir: Path) -> dict[str, str]:
     """Return normalized name -> "YYYY-MM-DD"; ``{}`` when missing or corrupt."""
     path = _profiles_path(service_data_dir)
     if not path.exists():
+        logger.debug("member_profiles_missing")
         return {}
-    try:
-        data = json.loads(path.read_text(encoding="utf-8"))
-        birthdays = data["birthdays"]
-        return {str(k): str(v) for k, v in birthdays.items()}
-    except (OSError, ValueError, KeyError, TypeError, AttributeError):
-        logger.warning("member_profiles_unreadable")
-        return {}
+    return _birthdays_of(_read(path))
