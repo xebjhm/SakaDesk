@@ -24,12 +24,14 @@ from typing import Any, Optional
 
 import structlog
 
+from backend.services.chat_kind import is_group_chat
 from backend.services.memories import lexicon
 from backend.services.memories import selection as sel
 from backend.services.memories.member_profiles import load_birthdays
 from backend.services.memories.names import normalize_member_name
 from backend.services.memories.subscriptions import load_subscription_starts
 from backend.services.platform import get_app_data_dir
+from backend.services.service_utils import get_service_identifier
 
 logger = structlog.get_logger(__name__)
 
@@ -89,8 +91,18 @@ def _connect() -> sqlite3.Connection:
 
 @dataclass
 class MemberIndex:
+    """Derived data for ONE ROOM FOLDER (``<gid> <room>/<mid> <name>``).
+
+    It is per room, not per person: a member with two 1:1 rooms (a re-opened
+    room under a new id) or with messages in a communal room has one
+    MemberIndex per folder. Use :func:`list_members` for the person-level
+    view, and skip ``is_group_chat`` entries for member-centric features.
+    """
+
     member_dir: str = ""  # POSIX, relative to the service dir
     member_id: str = ""
+    group_id: str = ""
+    is_group_chat: bool = False  # communal / multi-sender room
     name_norm: str = ""
     hour_hist: list[int] = field(default_factory=lambda: [0] * 24)  # JST, non-promo
     first_ts: dict[str, str] = field(default_factory=dict)  # type -> UTC ISO
@@ -110,6 +122,8 @@ class MemberIndex:
     greeting_counts: dict[str, int] = field(default_factory=dict)
     birthday: str | None = None
     subscription_start: str | None = None
+    # 1:1 rooms only: the room's group is closed and no open 1:1 room holds the
+    # same name. Always False for group chats (prefer a missed graduation).
     graduated: bool = False
     data_hash: str = ""
 
@@ -135,6 +149,35 @@ class _Inputs:
     birthdays: dict[str, str]
     sub_starts: dict[str, str]
     closed_groups: frozenset[str]
+    service_id: str = ""
+    room_sizes: dict[str, int] = field(default_factory=dict)  # gid -> senders
+    open_solo_names: frozenset[str] = frozenset()  # name_norm in open 1:1 rooms
+    rooms: tuple[tuple[Path, tuple[Path, ...]], ...] = ()
+    scan_ok: bool = True
+
+
+def _scan_rooms(
+    service_data_dir: Path,
+) -> tuple[tuple[tuple[Path, tuple[Path, ...]], ...], bool]:
+    """``((group_dir, member_dirs), ...)`` with ``messages.json``; ``ok`` flag."""
+    root = service_data_dir / "messages"
+    out: list[tuple[Path, tuple[Path, ...]]] = []
+    try:
+        for group in sorted(root.iterdir()):
+            if not group.is_dir():
+                continue
+            members = tuple(
+                m for m in sorted(group.iterdir()) if (m / "messages.json").is_file()
+            )
+            if members:
+                out.append((group, members))
+    except FileNotFoundError:
+        logger.info("memory_index_no_messages_dir")
+        return (), True
+    except OSError as e:
+        logger.warning("memory_index_scan_failed", error_type=type(e).__name__)
+        return tuple(out), False
+    return tuple(out), True
 
 
 def _load_inputs(service_data_dir: Path) -> _Inputs:
@@ -152,11 +195,31 @@ def _load_inputs(service_data_dir: Path) -> _Inputs:
         logger.warning(
             "memory_index_sync_metadata_unreadable", error_type=type(e).__name__
         )
+    service_id = get_service_identifier(service_data_dir.name) or ""
+    rooms, scan_ok = _scan_rooms(service_data_dir)
+    sizes: dict[str, int] = {}
+    open_solo: set[str] = set()
+    for group, members in rooms:
+        gid = _leading_id(group.name)
+        sizes[gid] = len(members)
+        if gid in closed or is_group_chat(service_id, gid, len(members)):
+            continue
+        open_solo.update(_name_norm(m) for m in members)
     return _Inputs(
         birthdays=load_birthdays(service_data_dir),
         sub_starts=load_subscription_starts(service_data_dir),
         closed_groups=frozenset(closed),
+        service_id=service_id,
+        room_sizes=sizes,
+        open_solo_names=frozenset(open_solo),
+        rooms=rooms,
+        scan_ok=scan_ok,
     )
+
+
+def _name_norm(member_dir: Path) -> str:
+    _, _, raw_name = member_dir.name.partition(" ")
+    return normalize_member_name(raw_name)
 
 
 def _leading_id(name: str) -> str:
@@ -174,15 +237,22 @@ def _rel(service_data_dir: Path, member_dir: Path) -> str:
 def _identity(service_data_dir: Path, member_dir: Path, inputs: _Inputs) -> MemberIndex:
     """Empty index carrying everything derivable without reading messages."""
     gid = _leading_id(member_dir.parent.name)
-    _, _, raw_name = member_dir.name.partition(" ")
-    name_norm = normalize_member_name(raw_name)
+    name_norm = _name_norm(member_dir)
+    group_chat = is_group_chat(inputs.service_id, gid, inputs.room_sizes.get(gid, 1))
+    graduated = (
+        not group_chat
+        and gid in inputs.closed_groups
+        and name_norm not in inputs.open_solo_names
+    )
     return MemberIndex(
         member_dir=_rel(service_data_dir, member_dir),
         member_id=_leading_id(member_dir.name),
+        group_id=gid,
+        is_group_chat=group_chat,
         name_norm=name_norm,
         birthday=inputs.birthdays.get(name_norm),
         subscription_start=inputs.sub_starts.get(gid),
-        graduated=gid in inputs.closed_groups,
+        graduated=graduated,
     )
 
 
@@ -196,6 +266,7 @@ def _data_hash(messages_path: Path, base: MemberIndex) -> str:
             base.birthday or "",
             base.subscription_start or "",
             "1" if base.graduated else "0",
+            "1" if base.is_group_chat else "0",
         ]
     )
     return hashlib.sha256(key.encode("utf-8")).hexdigest()
@@ -433,6 +504,8 @@ def _get_sync(
         empty = MemberIndex(
             member_dir=base.member_dir,
             member_id=base.member_id,
+            group_id=base.group_id,
+            is_group_chat=base.is_group_chat,
             name_norm=base.name_norm,
             birthday=base.birthday,
             subscription_start=base.subscription_start,
@@ -457,18 +530,63 @@ async def get_member_index(service_data_dir: Path, member_dir: Path) -> MemberIn
 
 
 def _member_dirs(service_data_dir: Path) -> list[Path]:
-    root = service_data_dir / "messages"
-    out: list[Path] = []
-    try:
-        for group in sorted(root.iterdir()):
-            if not group.is_dir():
+    rooms, _ = _scan_rooms(service_data_dir)
+    return [m for _, members in rooms for m in members]
+
+
+@dataclass(frozen=True)
+class MemberSummary:
+    """One person across her 1:1 rooms (communal rooms are excluded)."""
+
+    name_norm: str
+    name: str  # folder name of her newest room, as written by pysaka
+    member_dirs: tuple[str, ...]  # POSIX, relative; oldest room (lowest gid) first
+    member_ids: tuple[str, ...]
+    group_ids: tuple[str, ...]
+    subscription_start: str | None  # earliest across her rooms
+    birthday: str | None
+    graduated: bool  # every one of her rooms is graduated
+
+
+def _list_members_sync(service_data_dir: Path) -> list[MemberSummary]:
+    inputs = _load_inputs(service_data_dir)
+    by_name: dict[str, list[tuple[MemberIndex, str]]] = {}
+    for _, members in inputs.rooms:
+        for m in members:
+            ident = _identity(service_data_dir, m, inputs)
+            if ident.is_group_chat:
                 continue
-            out.extend(
-                m for m in sorted(group.iterdir()) if (m / "messages.json").is_file()
+            raw = m.name.partition(" ")[2]
+            by_name.setdefault(ident.name_norm, []).append((ident, raw))
+    out: list[MemberSummary] = []
+    for name_norm, rooms in by_name.items():
+        rooms.sort(key=lambda r: (int(r[0].group_id or 0), r[0].member_dir))
+        starts = [r.subscription_start for r, _ in rooms if r.subscription_start]
+        out.append(
+            MemberSummary(
+                name_norm=name_norm,
+                name=rooms[-1][1],
+                member_dirs=tuple(r.member_dir for r, _ in rooms),
+                member_ids=tuple(r.member_id for r, _ in rooms),
+                group_ids=tuple(r.group_id for r, _ in rooms),
+                subscription_start=min(starts) if starts else None,
+                birthday=rooms[0][0].birthday,
+                graduated=all(r.graduated for r, _ in rooms),
             )
-    except OSError as e:
-        logger.warning("memory_index_scan_failed", error_type=type(e).__name__)
+        )
+    out.sort(key=lambda s: (int(s.group_ids[0] or 0), s.name_norm))
+    merged = sum(1 for s in out if len(s.member_dirs) > 1)
+    logger.info("memory_members_listed", members=len(out), merged=merged)
     return out
+
+
+async def list_members(service_data_dir: Path) -> list[MemberSummary]:
+    """Person-level view keyed by ``name_norm`` over 1:1 rooms only.
+
+    Rooms of the same person are merged, with the earliest subscription start
+    across them. Reads folder names and side inputs only, never messages.
+    """
+    return await asyncio.to_thread(_list_members_sync, service_data_dir)
 
 
 async def build_all(service_data_dir: Path) -> int:

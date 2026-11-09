@@ -283,3 +283,97 @@ def test_index_version_tracks_lexicon(monkeypatch):
     assert mi.INDEX_VERSION.endswith(before)
     monkeypatch.setattr(mi.lexicon, "EMOTION_WORDS", ("ありがとう",))
     assert mi._lexicon_fingerprint() != before
+
+
+def _room(service_dir, group, member, msgs=None):
+    d = service_dir / "messages" / group / member
+    d.mkdir(parents=True)
+    (d / "messages.json").write_text(
+        json.dumps({"member": {}, "messages": msgs or []}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return d
+
+
+def _hinata(tmp_path):
+    svc = tmp_path / "日向坂46"
+    solo = _room(svc, "34 金村 美玖", "58 金村 美玖")
+    old_room = _room(svc, "40 松田 好花", "64 松田 好花")
+    new_room = _room(svc, "94 松田 好花", "64 松田 好花")
+    grad = _room(svc, "20 潮 紗理菜", "22 潮 紗理菜")
+    communal = _room(svc, "43 日向坂46", "0 日向坂46")
+    in_communal = _room(svc, "43 日向坂46", "22 潮 紗理菜")
+    event_a = _room(svc, "70 新参者 四期生", "120 石塚 瑶季")
+    event_b = _room(svc, "70 新参者 四期生", "124 正源司 陽子")
+    (svc / "sync_metadata.json").write_text(
+        json.dumps(
+            {
+                "server_groups": {
+                    g: {"state": "closed"} for g in ("40", "20", "43", "70")
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    (svc / "memories").mkdir()
+    (svc / "memories" / "subscriptions.json").write_text(
+        json.dumps(
+            {
+                "groups": {
+                    "40": {"earliest_start": "2021-05-01"},
+                    "94": {"earliest_start": "2024-01-10"},
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    return svc, dict(
+        solo=solo,
+        old_room=old_room,
+        new_room=new_room,
+        grad=grad,
+        communal=communal,
+        in_communal=in_communal,
+        event_a=event_a,
+        event_b=event_b,
+    )
+
+
+@pytest.mark.asyncio
+async def test_graduated_only_for_closed_solo_rooms(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    svc, r = _hinata(tmp_path)
+    got = {k: await mi.get_member_index(svc, d) for k, d in r.items()}
+    assert got["grad"].graduated is True and got["grad"].is_group_chat is False
+    # Closed old room, but an open 1:1 room holds the same name.
+    assert got["old_room"].graduated is False
+    assert got["new_room"].graduated is False
+    assert got["solo"].graduated is False
+    # Closed communal / event rooms never mark anyone graduated.
+    for k in ("communal", "in_communal", "event_a", "event_b"):
+        assert got[k].is_group_chat is True and got[k].graduated is False, k
+    assert got["communal"].group_id == "43" and got["event_a"].group_id == "70"
+
+
+@pytest.mark.asyncio
+async def test_list_members_merges_rooms_and_skips_communal(tmp_path):
+    svc, _ = _hinata(tmp_path)
+    members = await mi.list_members(svc)
+    by_name = {m.name_norm: m for m in members}
+    assert set(by_name) == {"金村美玖", "松田好花", "潮紗理菜"}  # no 日向坂46 / 4期生
+    matsuda = by_name["松田好花"]
+    assert matsuda.member_dirs == (
+        "messages/40 松田 好花/64 松田 好花",
+        "messages/94 松田 好花/64 松田 好花",
+    )
+    assert matsuda.group_ids == ("40", "94") and matsuda.member_ids == ("64", "64")
+    assert matsuda.subscription_start == "2021-05-01"  # earliest across rooms
+    assert matsuda.graduated is False and matsuda.name == "松田 好花"
+    sari = by_name["潮紗理菜"]
+    assert sari.graduated is True
+    assert sari.member_dirs == ("messages/20 潮 紗理菜/22 潮 紗理菜",)
+
+
+@pytest.mark.asyncio
+async def test_list_members_empty_service(tmp_path):
+    assert await mi.list_members(tmp_path) == []
