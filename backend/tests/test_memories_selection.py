@@ -201,3 +201,37 @@ def test_special_dates():
     # Feb 29 birthday in a non-leap year falls back to Feb 28.
     assert date(2026, 2, 28) in special_dates(2026, "2000-02-29", None)
     assert date(2028, 2, 29) in special_dates(2028, "2000-02-29", None)
+
+
+def test_konnichiwa_is_not_an_ohiru_greeting():
+    assert greeting_class("こんにちは！") is None
+    assert greeting_class("お昼ごはん🍙") == "ohiru"
+    assert greeting_class("ランチ行ってきた") == "ohiru"
+
+
+def test_promo_counts_distinct_words():
+    # The same word twice is one signal; two different words are promo.
+    assert not is_promo("発売発売")
+    assert not is_promo("予約したよ、予約できた！")
+    assert is_promo("発売と予約")
+
+
+def test_special_dates_logs_unparsable_field_only():
+    from structlog.testing import capture_logs
+
+    with capture_logs() as logs:
+        out = special_dates(2026, "not-a-date", "2025-13-45")
+    assert out == {date(2026, 12, 31)}
+    events = [e for e in logs if e["event"] == "special_date_unparsable"]
+    assert [e["field"] for e in events] == ["birthday", "subscription_start"]
+    assert all(
+        "not-a-date" not in str(e) and "2025-13-45" not in str(e) for e in events
+    )
+
+
+def test_jst_rejects_naive_datetime():
+    import pytest
+
+    with pytest.raises(ValueError):
+        jst(datetime(2026, 9, 14, 12, 0))
+    assert jst(T0).hour == 21

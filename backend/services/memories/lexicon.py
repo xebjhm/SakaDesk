@@ -45,7 +45,7 @@ GREETING_RES = {
     "daisuki": re.compile(r"大好き|だいすき|好き"),
     "arigato": re.compile(r"ありがとう|ありがと|感謝"),
     "otsukare": re.compile(r"お疲れ|おつかれ"),
-    "ohiru": re.compile(r"お昼|ランチ|こんにちは"),
+    "ohiru": re.compile(r"お昼|ランチ"),
 }
 
 # Greeting word + polite ending only, followed by punctuation / emoji / spaces.

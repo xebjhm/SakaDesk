@@ -8,6 +8,8 @@ from dataclasses import dataclass
 from datetime import date, datetime, timedelta
 from zoneinfo import ZoneInfo
 
+import structlog
+
 from backend.services.memories.lexicon import (
     CAPTION_BONUS_WORDS,
     DATE_HEADING_RE,
@@ -19,6 +21,8 @@ from backend.services.memories.lexicon import (
     TIME_RE,
     URL_RE,
 )
+
+logger = structlog.get_logger(__name__)
 
 JST = ZoneInfo("Asia/Tokyo")
 BURST_GAP = timedelta(minutes=10)
@@ -42,6 +46,9 @@ def normalize(text: str) -> str:
 
 
 def jst(ts: datetime) -> datetime:
+    """Convert an aware datetime to JST; naive input is a bug, not a guess."""
+    if ts.tzinfo is None or ts.utcoffset() is None:
+        raise ValueError("jst() requires a timezone-aware datetime")
     return ts.astimezone(JST)
 
 
@@ -49,7 +56,8 @@ def is_promo(text: str) -> bool:
     t = normalize(text)
     if URL_RE.search(t):
         return True
-    hits = len(PROMO_WORDS_RE.findall(t))
+    # DISTINCT promo words: one word repeated is still one signal.
+    hits = len(set(PROMO_WORDS_RE.findall(t)))
     if hits >= 2 or (hits == 1 and len(t) > 80):
         return True
     if len(TIME_RE.findall(t)) >= 3:
@@ -173,12 +181,16 @@ def special_dates(year: int, birthday: str | None, sub_start: str | None) -> set
     ``birthday`` / ``sub_start`` are ``YYYY-MM-DD`` strings; unparsable values are ignored.
     """
     out = {date(year, 12, 31)}
-    for raw, with_next in ((birthday, True), (sub_start, False)):
+    for field_name, raw, with_next in (
+        ("birthday", birthday, True),
+        ("subscription_start", sub_start, False),
+    ):
         if not raw:
             continue
         try:
             d = date.fromisoformat(raw)
         except ValueError:
+            logger.warning("special_date_unparsable", field=field_name)
             continue
         day = _safe_date(year, d.month, d.day)
         out.add(day)

@@ -33,7 +33,7 @@ from backend.services.platform import get_app_data_dir
 logger = structlog.get_logger(__name__)
 
 # Bump when the derivation rules change so stale cache rows are rebuilt.
-INDEX_VERSION = "1"
+INDEX_VERSION = "2"
 _LEADING_INT = re.compile(r"^\s*(\d+)")
 _SYNC_METADATA = "sync_metadata.json"
 
