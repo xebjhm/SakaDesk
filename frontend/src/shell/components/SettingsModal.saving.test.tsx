@@ -229,6 +229,36 @@ describe('sync tab saving', () => {
         }
     });
 
+    it('does not start a second stats read while the previous one is pending, and aborts it on close', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            useAppStore.setState({ selectedServices: ['hinatazaka46'] });
+            const signals: AbortSignal[] = [];
+            fetchMock.mockImplementation((url: string, init?: RequestInit) => {
+                if (url === '/api/blogs/backup/status') return Promise.resolve({ ok: true, json: async () => ({ running: { hinatazaka46: true } }) });
+                if (url.startsWith('/api/blogs/cache-stats')) {
+                    signals.push(init!.signal!);
+                    expect(init?.cache).toBe('no-store');
+                    return new Promise(() => {}); // a slow scan: never answers within the test
+                }
+                return Promise.resolve({ ok: false, json: async () => ({}) });
+            });
+            const statusReads = () => fetchMock.mock.calls.filter(([url]) => url === '/api/blogs/backup/status').length;
+            const { unmount } = render(
+                <SettingsModal appSettings={{ ...base, blogs_full_backup: true }} outputDirInput="/out" setOutputDirInput={vi.fn()}
+                    onSaveSettings={vi.fn()} onClose={vi.fn()} activeService="hinatazaka46" onVerifyAndFix={vi.fn()} onDeepResync={vi.fn()} />,
+            );
+            await waitFor(() => expect(signals).toHaveLength(1));
+            await act(async () => { await vi.advanceTimersByTimeAsync(6000); });
+            expect(statusReads()).toBeGreaterThanOrEqual(2);
+            expect(signals).toHaveLength(1);
+            unmount();
+            expect(signals[0].aborted).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('logs a failed backup status read as an error', async () => {
         useAppStore.setState({ selectedServices: ['hinatazaka46'] });
         fetchMock.mockRejectedValue(new Error('offline'));

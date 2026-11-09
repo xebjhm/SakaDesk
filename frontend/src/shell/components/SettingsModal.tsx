@@ -13,6 +13,7 @@ import { apiKeyStatus } from './apiKeyStatus';
 import { persisted } from '../../core/persistence/persisted';
 import { useGroupMarker } from '../../design/useGroupMarker';
 import { getServiceDisplayName } from '../../data/services';
+import { pollJson, SIDEBAR_POLL_TIMEOUT_MS } from '../../utils/pollJson';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -168,6 +169,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         }
         let cancelled = false;
         let pollTimer: ReturnType<typeof setTimeout> | undefined;
+        // Aborts a stats read still pending when the dialog closes.
+        const statsAbort = new AbortController();
         // One `ok` breadcrumb per open, not one per 5 s poll while a backup runs.
         let logged = false;
         // The stats breadcrumb repeats only when its outcome changes between polls.
@@ -187,16 +190,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     const running = Object.keys(data.running ?? {}).length > 0;
                     setBlogBackupRunning(running);
                     if (running) pollTimer = setTimeout(check, 5000);
-                    // Fetch aggregate cache stats for all services
+                    // Fetch aggregate cache stats for all services. A read still
+                    // pending from the previous 5 s poll is skipped, not repeated:
+                    // stats on a large archive can take longer than the interval.
                     if (running || appSettings.blogs_full_backup) {
                         Promise.all(
                             selectedServices.map(s =>
-                                fetch(`/api/blogs/cache-stats?service=${encodeURIComponent(s)}`)
-                                    .then(r => r.ok ? r.json() : null)
-                                    .catch(() => null)
+                                pollJson<{ cached_blogs?: number; available_blogs?: number }>(
+                                    `blog_stats_${s}`,
+                                    `/api/blogs/cache-stats?service=${encodeURIComponent(s)}`,
+                                    { timeoutMs: SIDEBAR_POLL_TIMEOUT_MS, signal: statsAbort.signal },
+                                )
                             )
-                        ).then(results => {
+                        ).then(polls => {
                             if (cancelled) return;
+                            // The pending read from the earlier poll updates the stats when it lands.
+                            if (polls.some(p => p.status === 'skipped' || p.status === 'aborted')) return;
+                            const results = polls.map(p => (p.status === 'ok' ? p.data : null));
                             const failed = results.filter(r => r === null).length;
                             const outcome = batchOutcome(failed, results.length);
                             if (results.length > 0 && outcome.join() !== lastStats) {
@@ -217,7 +227,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         };
         check();
         // Stop the poll when the dialog closes: no status request after it is gone.
-        return () => { cancelled = true; clearTimeout(pollTimer); };
+        return () => { cancelled = true; clearTimeout(pollTimer); statsAbort.abort(); };
     }, [appSettings.blogs_full_backup, selectedServices]);
 
     // Runs after both in-app confirmations (see the ConfirmDialog below).
