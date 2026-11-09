@@ -140,6 +140,11 @@ export interface UseSyncReturn {
     lastHandledRunId: (service: string) => number | undefined;
 }
 
+/** Consecutive timed-out / failed progress reads tolerated (when not running) before "lost connection". */
+const MAX_PROGRESS_RETRIES = 3;
+/** Spacing between progress read retries. */
+const PROGRESS_RETRY_MS = 1000;
+
 /** `/api/sync/progress` body (every field optional: an unknown state is handled). */
 interface SyncProgressResponse {
     run_id?: number;
@@ -203,9 +208,6 @@ export function useSync({
     // Maps service ID → timestamp of successful reconnection.
     const recentlyReconnectedRef = useRef<Record<string, number>>({});
     const RECONNECT_COOLDOWN_MS = 10_000; // 10 seconds
-    /** Consecutive timed-out / failed progress reads tolerated (when not running) before "lost connection". */
-    const MAX_PROGRESS_RETRIES = 3;
-    const PROGRESS_RETRY_MS = 1000;
 
     const clearSessionExpired = useCallback((reconnectedService?: string) => {
         setSessionExpiredService(null);

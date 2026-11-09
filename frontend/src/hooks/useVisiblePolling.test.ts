@@ -29,6 +29,18 @@ describe('useVisiblePolling', () => {
         expect(cb).toHaveBeenCalledTimes(2);
     });
 
+    it('passes the trigger: immediate on mount and dep change, tick on the interval, visible on visibilitychange', () => {
+        const cb = vi.fn();
+        const { rerender } = renderHook(({ dep }) => useVisiblePolling(cb, 1000, [dep]), { initialProps: { dep: 'a' } });
+        expect(cb.mock.calls.map(c => c[0])).toEqual(['immediate']);
+        vi.advanceTimersByTime(1000);
+        expect(cb.mock.calls.map(c => c[0])).toEqual(['immediate', 'tick']);
+        setVisibility('visible');
+        expect(cb.mock.calls.map(c => c[0])).toEqual(['immediate', 'tick', 'visible']);
+        rerender({ dep: 'b' });
+        expect(cb.mock.calls.map(c => c[0])).toEqual(['immediate', 'tick', 'visible', 'immediate']);
+    });
+
     it('stops on unmount', () => {
         const cb = vi.fn();
         const { unmount } = renderHook(() => useVisiblePolling(cb, 1000, []));

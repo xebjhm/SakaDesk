@@ -9,7 +9,8 @@ import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
-import { pollJson, useUnmountSignal } from '../../../utils/pollJson';
+import { clientLog } from '../../../utils/clientLog';
+import { pollJson, pollLogKey, useUnmountSignal } from '../../../utils/pollJson';
 import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
 import { resizedAvatarUrl } from '../mediaUrl';
 import { useAvatarWidth } from '../hooks/useAvatarWidth';
@@ -125,7 +126,10 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         // Skipped: a request is already in flight and will update the state.
         // Aborted: unmounted or superseded; the newer request sets the state.
         if (result.status === 'skipped' || result.status === 'aborted') return;
-        if (service !== activeServiceRef.current) return; // switched service meanwhile
+        if (service !== activeServiceRef.current) { // switched service meanwhile
+            clientLog('poll_skipped', { key: pollLogKey(serviceKey('groups', service)), reason: 'stale_service' });
+            return;
+        }
         if (result.status === 'ok') {
             const data = result.data;
             // Support both old format (array) and new format (object with groups + last_sync)
@@ -178,7 +182,10 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             // Skipped / aborted / failed: keep the last known counts (the failure
             // breadcrumb is logged by pollJson); the next poll tick retries.
             if (result.status !== 'ok') return;
-            if (service !== activeServiceRef.current) return; // switched service meanwhile
+            if (service !== activeServiceRef.current) { // switched service meanwhile
+                clientLog('poll_skipped', { key: pollLogKey(serviceKey('unread_counts', service)), reason: 'stale_service' });
+                return;
+            }
             const backendCounts = result.data;
 
             // Key unread by unique conversation PATH, not by group id: talk-room

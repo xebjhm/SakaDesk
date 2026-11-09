@@ -53,7 +53,7 @@ describe('MemberList request supersession', () => {
         await act(async () => { await new Promise(r => setTimeout(r, 50)); });
         expect(screen.queryByText(/AlphaMember/)).not.toBeInTheDocument();
         expect(screen.getByText(/BetaMember/)).toBeInTheDocument();
-        expect(clientLog).not.toHaveBeenCalledWith('poll_skipped', expect.anything());
+        expect(clientLog).toHaveBeenCalledWith('poll_skipped', { key: 'groups_a46', reason: 'stale_service' });
     });
 
     it('a post-sync refresh while a request is in flight issues a fresh request', async () => {

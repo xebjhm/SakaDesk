@@ -748,6 +748,7 @@ def test_media_playback_rejects_urls_and_unknown_keys(fields):
             "warning",
         ),
         ("poll_skipped", {"key": "groups", "count": 3}, "info"),
+        ("poll_skipped", {"key": "groups_a46", "reason": "stale_service"}, "info"),
         ("poll_failed", {"key": "groups", "error_type": "typeerror"}, "warning"),
         ("poll_failed", {"key": "groups", "error_code": 500}, "warning"),
         ("poll_retry", {"key": "sync_progress_hinatazaka46", "count": 1}, "info"),
