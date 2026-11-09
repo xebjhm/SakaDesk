@@ -35,11 +35,21 @@ socket. A browser that resets a connection before the server has accepted it
 (WinError 64, ERROR_NETNAME_DELETED) therefore stopped the backend from
 accepting any new connection for the rest of the session. ``retry_reset_accepts``
 wraps ``IocpProactor.accept`` so that such a per-connection reset re-arms
-accept instead (``proactor_accept_reset`` breadcrumb). Other errors, and resets
-that arrive after the listener was closed (shutdown), still reach CPython's
-own handling. ``install_proactor_accept_guard`` installs it with the same
-Windows-only, missing-names-tolerant rules as the reset guard (breadcrumb
+accept instead (``proactor_accept_reset`` breadcrumb), whether ``AcceptEx``
+reports it on completion or raises it synchronously (a reset connection
+already waiting in the backlog). Other errors, and resets that arrive after
+the listener was closed (shutdown), still reach CPython's own handling.
+``install_proactor_accept_guard`` installs it with the same Windows-only,
+missing-names-tolerant rules as the reset guard (breadcrumb
 ``proactor_accept_guard``).
+
+CPython's internal ``accept_coro`` task still re-raises each such reset and
+reports it at ERROR as "Task exception was never retrieved", which would put
+one misleading error line in the log per re-armed reset.
+``install_accept_reset_log_filter`` wraps the loop's exception handler so that
+exactly that report becomes a debug ``proactor_accept_reset_task`` breadcrumb;
+every other context reaches the previous handler unchanged (breadcrumb
+``proactor_accept_log_filter``).
 """
 
 from __future__ import annotations
@@ -58,6 +68,7 @@ logger = structlog.get_logger(__name__)
 
 _GUARD_MARK = "_saka_reset_guard"
 _ACCEPT_GUARD_MARK = "_saka_accept_guard"
+_ACCEPT_LOG_FILTER_MARK = "_saka_accept_log_filter"
 
 # Errors that mean one pending connection went away before accept completed
 # (not that the listener is broken): ERROR_NETNAME_DELETED,
@@ -66,6 +77,7 @@ _PER_CONNECTION_ACCEPT_ERRORS = frozenset({64, 1236, 10053, 10054})
 
 CallConnectionLost = Callable[[Any, "BaseException | None"], None]
 Accept = Callable[[Any, Any], "asyncio.Future[Any]"]
+ExceptionHandler = Callable[["asyncio.AbstractEventLoop", "dict[str, Any]"], object]
 
 
 def _detach(server: Any, transport: Any) -> None:
@@ -157,24 +169,79 @@ def _is_connection_reset(exc: BaseException) -> bool:
     return getattr(exc, "winerror", None) in _PER_CONNECTION_ACCEPT_ERRORS
 
 
+class _AcceptFuture(asyncio.Future[Any]):
+    """The future ``retry_reset_accepts`` returns.
+
+    ``cancel()`` cancels the pending ``AcceptEx`` attempt *before* this
+    future, in the same call. CPython's ``_stop_serving`` cancels the accept
+    future and then closes the listener; unpatched, that cancel reaches the
+    overlapped ``AcceptEx`` before the close, and this keeps that order.
+    """
+
+    _inner: asyncio.Future[Any] | None = None
+
+    def cancel(self, msg: Any = None) -> bool:
+        if self.done():
+            return False
+        inner = self._inner
+        if inner is not None:
+            inner.cancel()
+        return super().cancel(msg)
+
+
 def retry_reset_accepts(original: Accept) -> Accept:
     """Wrap ``IocpProactor.accept`` so a connection reset before accept
     completed re-arms accept instead of failing the listener.
 
+    A per-connection reset can arrive two ways: as the result of the
+    overlapped ``AcceptEx`` (``synchronous=False``), or raised by ``AcceptEx``
+    itself when a reset connection is already waiting in the backlog
+    (``synchronous=True``). Both log ``proactor_accept_reset`` and re-arm
+    accept on the next loop turn while the listener is still open.
+
     The returned future resolves with the first connection that is accepted.
-    It fails only for errors that are not per-connection resets, or when the
-    listener is already closed. Cancelling it cancels the pending attempt.
+    It fails with any error that is not a per-connection reset, with a reset
+    once the listener is closed, and with any non-``OSError`` exception raised
+    while re-arming. On the first call, such an error raised synchronously
+    propagates from this call, as it did before. Cancelling the returned
+    future cancels the pending attempt first; a cancelled attempt cancels it.
     """
 
     @functools.wraps(original)
     def guarded(self: Any, listener: Any) -> asyncio.Future[Any]:
-        outer: asyncio.Future[Any] = self._loop.create_future()
-        pending: list[asyncio.Future[Any]] = []
+        loop = self._loop
+        outer = _AcceptFuture(loop=loop)
 
-        def attempt() -> None:
+        def is_retryable(exc: BaseException) -> bool:
+            return _is_connection_reset(exc) and listener.fileno() != -1
+
+        def log_reset(exc: BaseException, synchronous: bool) -> None:
+            logger.debug(
+                "proactor_accept_reset",
+                winerror=getattr(exc, "winerror", None),
+                error_type=type(exc).__name__,
+                synchronous=synchronous,
+            )
+
+        def start_attempt() -> None:
             inner = original(self, listener)
-            pending[:] = [inner]
+            outer._inner = inner
             inner.add_done_callback(on_attempt_done)
+
+        def rearm() -> None:
+            if outer.done():
+                return  # cancelled (stopped serving) while waiting to re-arm
+            try:
+                start_attempt()
+            except OSError as err:
+                if not is_retryable(err):
+                    outer.set_exception(err)
+                    return
+                log_reset(err, synchronous=True)
+                loop.call_soon(rearm)
+            except Exception as err:  # e.g. RuntimeError from a closing loop
+                if not outer.done():
+                    outer.set_exception(err)
 
         def on_attempt_done(inner: asyncio.Future[Any]) -> None:
             if outer.done():
@@ -186,30 +253,92 @@ def retry_reset_accepts(original: Accept) -> Accept:
             if exc is None:
                 outer.set_result(inner.result())
                 return
-            if not (_is_connection_reset(exc) and listener.fileno() != -1):
+            if not is_retryable(exc):
                 outer.set_exception(exc)
                 return
-            logger.debug(
-                "proactor_accept_reset",
-                winerror=getattr(exc, "winerror", None),
-                error_type=type(exc).__name__,
-            )
-            try:
-                attempt()
-            except OSError as err:
-                outer.set_exception(err)
+            log_reset(exc, synchronous=False)
+            loop.call_soon(rearm)
 
-        def on_outer_done(fut: asyncio.Future[Any]) -> None:
-            if fut.cancelled():
-                for inner in pending:
-                    inner.cancel()
-
-        attempt()  # a synchronous failure propagates as it did before
-        outer.add_done_callback(on_outer_done)
+        try:
+            start_attempt()
+        except OSError as err:
+            if not is_retryable(err):
+                raise  # CPython's own handling, exactly as before
+            log_reset(err, synchronous=True)
+            loop.call_soon(rearm)
         return outer
 
     setattr(guarded, _ACCEPT_GUARD_MARK, True)
     return guarded
+
+
+def _is_accept_reset_noise(context: dict[str, Any]) -> bool:
+    """True for CPython's "Task exception was never retrieved" report of a
+    per-connection reset from ``IocpProactor.accept``'s ``accept_coro`` task.
+    """
+    exc = context.get("exception")
+    if exc is None or not _is_connection_reset(exc):
+        return False
+    get_coro = getattr(context.get("future"), "get_coro", None)
+    if get_coro is None:
+        return False
+    qualname = getattr(get_coro(), "__qualname__", None)
+    return isinstance(qualname, str) and qualname.split(".")[-1] == "accept_coro"
+
+
+def quiet_accept_resets(previous: ExceptionHandler | None) -> ExceptionHandler:
+    """Build a loop exception handler that downgrades accept-reset noise.
+
+    CPython's ``accept_coro`` task re-raises the reset of an ``AcceptEx`` it
+    awaited, and nothing retrieves that exception, so every reset that
+    ``retry_reset_accepts`` re-arms is also reported at ERROR as "Task
+    exception was never retrieved". Only that report (see
+    ``_is_accept_reset_noise``) becomes a debug ``proactor_accept_reset_task``
+    breadcrumb. Every other context goes to ``previous``, or to
+    ``loop.default_exception_handler`` when there was none.
+    """
+
+    def handler(loop: asyncio.AbstractEventLoop, context: dict[str, Any]) -> None:
+        if _is_accept_reset_noise(context):
+            exc = context["exception"]
+            logger.debug(
+                "proactor_accept_reset_task",
+                winerror=getattr(exc, "winerror", None),
+                error_type=type(exc).__name__,
+            )
+            return
+        if previous is not None:
+            previous(loop, context)
+        else:
+            loop.default_exception_handler(context)
+
+    setattr(handler, _ACCEPT_LOG_FILTER_MARK, True)
+    return handler
+
+
+def install_accept_reset_log_filter(
+    loop: asyncio.AbstractEventLoop, platform: str = sys.platform
+) -> bool:
+    """Install ``quiet_accept_resets`` on ``loop`` (idempotent).
+
+    Returns True when this call installed it. No-op off Windows. Wraps the
+    loop's current exception handler. Logs one ``proactor_accept_log_filter``
+    breadcrumb with the decision.
+    """
+    if platform != "win32":
+        logger.debug(
+            "proactor_accept_log_filter", installed=False, reason="not_windows"
+        )
+        return False
+    current = loop.get_exception_handler()
+    if getattr(current, _ACCEPT_LOG_FILTER_MARK, False):
+        logger.debug(
+            "proactor_accept_log_filter", installed=False, reason="already_installed"
+        )
+        return False
+    loop.set_exception_handler(quiet_accept_resets(current))
+    logger.info("proactor_accept_log_filter", installed=True, reason="installed")
+    return True
 
 
 def _import_windows_events() -> ModuleType:

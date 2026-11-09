@@ -173,6 +173,16 @@ async def lifespan(app: FastAPI):
     except Exception as exc:
         logger.warning("proactor_accept_guard_failed", error_type=type(exc).__name__)
 
+    # Windows only: the re-armed resets above would each still log CPython's
+    # "Task exception was never retrieved" at ERROR; downgrade exactly that
+    # report to a debug breadcrumb. Same best-effort rule as above.
+    try:
+        proactor_resets.install_accept_reset_log_filter(asyncio.get_running_loop())
+    except Exception as exc:
+        logger.warning(
+            "proactor_accept_log_filter_failed", error_type=type(exc).__name__
+        )
+
     # Port-independent app state (SQLite) must exist before any reader/writer
     # touches it.
     app_state.init_db()
