@@ -5,6 +5,13 @@ import pytest
 from backend.services.memories import oshi
 
 
+@pytest.fixture(autouse=True)
+def _clear_members_cache():
+    oshi._members_cache.clear()
+    yield
+    oshi._members_cache.clear()
+
+
 @pytest.mark.asyncio
 async def test_resolves_blog_ids_to_normalized_names():
     with (
@@ -45,3 +52,42 @@ async def test_blog_members_swallows_errors():
 
     with patch.object(oshi, "BlogService", Boom):
         assert await oshi._blog_members("s") == {}
+
+
+class _Counting:
+    calls = 0
+    result: dict = {"12": "金村 美玖"}
+
+    async def get_blog_members(self, service):
+        type(self).calls += 1
+        return type(self).result
+
+
+@pytest.mark.asyncio
+async def test_blog_members_cached_for_an_hour():
+    _Counting.calls = 0
+    _Counting.result = {"12": "金村 美玖"}
+    now = [1000.0]
+    with (
+        patch.object(oshi, "BlogService", _Counting),
+        patch.object(oshi.time, "monotonic", lambda: now[0]),
+    ):
+        assert await oshi._blog_members("s") == {"12": "金村 美玖"}
+        now[0] += 3599
+        await oshi._blog_members("s")
+        assert _Counting.calls == 1
+        assert await oshi._blog_members("other") == {"12": "金村 美玖"}
+        assert _Counting.calls == 2  # per service
+        now[0] += 2
+        await oshi._blog_members("s")
+        assert _Counting.calls == 3  # expired
+
+
+@pytest.mark.asyncio
+async def test_blog_members_empty_is_not_cached():
+    _Counting.calls = 0
+    _Counting.result = {}
+    with patch.object(oshi, "BlogService", _Counting):
+        await oshi._blog_members("s")
+        await oshi._blog_members("s")
+    assert _Counting.calls == 2
