@@ -16,7 +16,7 @@ vi.mock('../../core/persistence/persisted', () => ({
 }));
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
-import { saveReadState, mergeReadStates, readStateKey } from './readStateStore';
+import { saveReadState, mergeReadStates, readStateKey, subscribeReadState } from './readStateStore';
 import { clientLog } from '../../utils/clientLog';
 
 const PATH = '日向坂46/messages/34 金村 美玖/58 金村 美玖';
@@ -55,5 +55,20 @@ describe('deferred read-state saves (spec B2 §2-3)', () => {
         ready.value = true;
         listeners.forEach((fn) => fn());
         expect(clientLog).toHaveBeenCalledWith('read_state_pending_flushed', { written: 0, dropped: 1 });
+    });
+
+    it('notifies read-state subscribers once per written path, after the writes', () => {
+        const OTHER = '日向坂46/messages/35 丹生 明里/59 丹生 明里';
+        store[readStateKey(PATH)] = { value: JSON.stringify({ lastReadId: 100, readCount: 50, revealedIds: [] }) };
+        saveReadState(PATH, { lastReadId: 0, readCount: 2, revealedIds: [120] });
+        saveReadState(OTHER, { lastReadId: 0, readCount: 0, revealedIds: [] }); // dropped: nothing ahead
+        const seen: Array<{ path: string; lastReadId: number }> = [];
+        const unsubscribe = subscribeReadState((path) => {
+            seen.push({ path, lastReadId: JSON.parse((store[readStateKey(path)] as { value: string }).value).lastReadId });
+        });
+        ready.value = true;
+        listeners.forEach((fn) => fn());
+        unsubscribe();
+        expect(seen).toEqual([{ path: PATH, lastReadId: 100 }]);
     });
 });

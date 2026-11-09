@@ -63,7 +63,15 @@ export function loadReadState(path: string): ReadState {
 /** Newest deferred state per chat while the conversation cache is not ready. */
 const pendingReadStates = new Map<string, ReadState>();
 
-/** Merge two read states without ever moving backwards (spec B2 §3). */
+/**
+ * Merge two read states without ever moving backwards (spec B2 §3). Used to
+ * combine deferred saves and to compare them with the stored row on recovery.
+ * Unlike `mergeReadState` (which reconciles the open chat with a bridge write,
+ * returns `base` itself when nothing changed and counts each newly added reveal
+ * into `readCount`), this is symmetric: `readCount` is the plain max of both,
+ * `revealedIds` is the sorted union above the larger `lastReadId`, and it always
+ * returns a new object.
+ */
 export function mergeReadStates(stored: ReadState, pending: ReadState): ReadState {
     const lastReadId = Math.max(stored.lastReadId, pending.lastReadId);
     const revealed = new Set([...stored.revealedIds, ...pending.revealedIds].filter((id) => id > lastReadId));
@@ -134,11 +142,16 @@ export function saveReadState(path: string, state: ReadState): void {
     }
 }
 
-/** Write deferred states that are ahead of the stored rows; drop the rest. */
+/**
+ * Write deferred states that are ahead of the stored rows; drop the rest. Each
+ * written path is announced to the `subscribeReadState` listeners (after all
+ * writes), so an open chat merges the recovered row into its own state.
+ */
 export function flushPendingReadStates(): void {
     if (pendingReadStates.size === 0) return;
     let written = 0;
     let dropped = 0;
+    const writtenPaths: string[] = [];
     for (const [path, pending] of pendingReadStates) {
         const stored = loadReadState(path);
         const merged = mergeReadStates(stored, pending);
@@ -146,9 +159,11 @@ export function flushPendingReadStates(): void {
         if (sameReadState(merged, storedSorted)) { dropped += 1; continue; }
         saveReadState(path, merged);
         written += 1;
+        writtenPaths.push(path);
     }
     pendingReadStates.clear();
     clientLog('read_state_pending_flushed', { written, dropped });
+    writtenPaths.forEach(notifyReadState);
 }
 
 persisted.onConversationsReady(flushPendingReadStates);
@@ -231,6 +246,13 @@ export function subscribeReadState(listener: ReadStateListener): () => void {
     return () => { listeners.delete(listener); };
 }
 
+/** Tell every subscriber that `path`'s stored row changed outside the open chat. */
+function notifyReadState(path: string): void {
+    for (const l of [...listeners]) {
+        try { l(path); } catch (err) { console.debug('[readStateStore] listener failed', err); }
+    }
+}
+
 /**
  * Mark one voice heard in the primary store (used by the main window when the
  * popup answered it). Consolidation happens the next time the chat is open.
@@ -239,8 +261,6 @@ export function revealInStore(path: string, msgId: number): boolean {
     const prev = loadReadState(path);
     if (!isUnreadIn(prev)(msgId)) return false;
     saveReadState(path, applyReveal(prev, msgId, []));
-    for (const l of [...listeners]) {
-        try { l(path); } catch (err) { console.debug('[readStateStore] listener failed', err); }
-    }
+    notifyReadState(path);
     return true;
 }

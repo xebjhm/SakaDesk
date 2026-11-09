@@ -1,5 +1,5 @@
 // frontend/src/features/messages/MessagesFeature.tsx
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
 import { useMilestone } from './milestones';
 import { MilestoneFooter } from './components/MilestoneFooter';
 import type { Message, MemberInfo, BackgroundSettings } from '../../types';
@@ -178,10 +178,6 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // (never on the cached render, which may be stale).
     const [freshFetch, setFreshFetch] = useState<{ seq: number; dir: string } | null>(null);
     const [readStateVersion, setReadStateVersion] = useState(0); // Increments on read state change to trigger sidebar refresh
-    // The conversation cache recovered after a failed startup load: re-read unread counts.
-    // Order matters: readStateStore (imported above) registered its flush listener at import
-    // time, before this effect subscribes, so deferred saves are written before this bump.
-    useEffect(() => persisted.onConversationsReady(() => setReadStateVersion((v) => v + 1)), []);
     const [showRevealConfirm, setShowRevealConfirm] = useState(false);
     const [maxMessageId, setMaxMessageId] = useState(0); // Highest message ID (for reveal all)
 
@@ -523,6 +519,22 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         });
     }, [selectedGroupDir, saveAndBump]);
     useReadStateSubscription(selectedGroupDir, mergeLoadedReadState, () => setReadStateVersion(v => v + 1));
+
+    // The conversation cache recovered after a failed startup load. A chat opened
+    // meanwhile holds a state derived from the empty fallback; merge the now-loaded
+    // row into it (monotonic, never backwards) so its next reveal cannot write the
+    // fallback-derived state over stored progress. Then re-read unread counts.
+    // Order matters: readStateStore (imported above) registered its flush listener at
+    // import time, before this effect subscribes, so deferred saves are written first.
+    const recoveryRef = useRef({ selectedGroupDir, mergeLoadedReadState });
+    useLayoutEffect(() => {
+        recoveryRef.current = { selectedGroupDir, mergeLoadedReadState };
+    });
+    useEffect(() => persisted.onConversationsReady(() => {
+        const cur = recoveryRef.current;
+        if (cur.selectedGroupDir) cur.mergeLoadedReadState(loadReadState(cur.selectedGroupDir));
+        setReadStateVersion((v) => v + 1);
+    }), []);
 
     const revealAllMessages = useCallback(() => {
         if (maxMessageId === 0) return;
