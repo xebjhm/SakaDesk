@@ -13,6 +13,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   of only saying a new version is available. A version you skipped on the
   update icon can still be installed there.
 
+### Fixed
+- **No more needless re-logins after the PC wakes up.** An expired sign-in is
+  now renewed automatically in the background, so syncing continues without
+  asking you to log in again.
+- **A clear alert when you really need to log in again.** If a group's sign-in
+  can no longer be renewed, SakaDesk shows one Windows notification (click it
+  to log in) and a warning dot on the tray icon until you do. If you were only
+  offline, the warning clears by itself once SakaDesk can reach the service
+  again.
+- **Read progress is no longer lost after a slow start.** If SakaDesk could not
+  load your read progress at startup, it keeps trying and saves what you read
+  in the meantime.
+- **The bottom-right call window is just the call card.** The dark frame
+  around it is gone.
+
 ## [0.4.1] - 2026-11-09
 
 ### Added

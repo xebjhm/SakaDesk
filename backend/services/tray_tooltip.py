@@ -17,6 +17,7 @@ import structlog
 from backend.services import desktop_bridge
 from backend.services.background_tasks import track_background_task
 from backend.services.i18n import get_strings, resolve_ui_language
+from backend.services.service_utils import get_service_display_name
 from backend.services.settings_store import load_config
 from backend.services.unread_summary import tooltip_text, unread_total
 
@@ -48,7 +49,8 @@ async def refresh_tray_tooltip() -> None:
     ``tray_tooltip_failed`` (error type only) on failure. When the unread total
     is unknown (:func:`unread_total` returned ``None``) the previous tooltip is
     kept rather than shown as "no unread", and ``tray_tooltip_failed
-    reason=unread_unavailable`` is logged.
+    reason=unread_unavailable`` is logged. While ``session_alert`` marks services
+    as needing a login, a "Login needed: ..." line comes first.
     """
     if not desktop_bridge.has_tray_tooltip_handler():
         return
@@ -60,9 +62,18 @@ async def refresh_tray_tooltip() -> None:
                 return
             config = await load_config()
             language = await asyncio.to_thread(resolve_ui_language, config)
-            text = tooltip_text(unread, get_strings("tray", language))
+            strings = get_strings("tray", language)
+            text = tooltip_text(unread, strings)
+            from backend.services import session_alert  # local: it imports this module
+
+            marked = session_alert.needs_login_services()
+            if marked:
+                names = ", ".join(get_service_display_name(s) for s in marked)
+                # First, so the tray's tooltip length clamp (127 chars) can
+                # only ever cut the unread summary, never the login line.
+                text = f"{strings['tooltip_login'].format(services=names)}\n{text}"
             desktop_bridge.set_tray_tooltip(text)
-            logger.info("tray_tooltip", unread=unread)
+            logger.info("tray_tooltip", unread=unread, login_needed=len(marked))
     except Exception as e:
         logger.warning("tray_tooltip_failed", error_type=type(e).__name__)
 

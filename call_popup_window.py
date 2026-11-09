@@ -6,8 +6,11 @@ so the main window's title lookup cannot find it), created hidden once and
 reused for every call:
 
 - :meth:`CallPopupWindow.ensure` creates it with ``focus=False``, ``hidden=True``
-  and ``on_top=True``, adds ``WS_EX_TOOLWINDOW`` (no taskbar button, not in
-  Alt+Tab) and asks DWM for rounded corners, then waits for the page to load.
+  ``on_top=True``, ``transparent=True`` and ``shadow=False``, adds
+  ``WS_EX_TOOLWINDOW`` (no taskbar button, not in Alt+Tab), turns DWM's own
+  corner rounding off (the page draws a 16px rounded card on a colour-keyed
+  transparent window) and swaps pywebview's red transparency key for
+  :data:`TRANSPARENCY_KEY`, then waits for the page to load.
   Two failed creations in a row make the host unavailable for the process.
 - :meth:`CallPopupWindow.reveal` places it with :func:`popup_rect` (the primary
   monitor's work area, ``POPUP_WIDTH_DIP`` wide at 9:16, ``POPUP_MARGIN_DIP``
@@ -25,7 +28,7 @@ reused for every call:
 
 pywebview, ``ctypes.WinDLL``, ``ctypes.wintypes`` and pythonnet are imported
 lazily inside the default seams, and every native seam (``create_window``,
-``user32``, ``dwmapi``, ``work_area``, ``system_dpi``, ``app_exit``) is
+``user32``, ``dwmapi``, ``apply_transparency``, ``work_area``, ``system_dpi``, ``app_exit``) is
 injectable, so Linux CI imports this module without any of them. So is
 ``report_lost``, which tells the backend controller that the window of an
 active call was lost.
@@ -53,6 +56,11 @@ logger = structlog.get_logger(__name__)
 
 TITLE = "SakaDesk Call"
 BACKGROUND_COLOR = "#0D0F14"
+# pywebview's transparent=True colour-keys the form on pure red, so antialiased
+# card corners would blend into a red fringe. Near-black instead: a photo under
+# the call screen's gradients is very unlikely to hit it exactly, and the
+# antialiased card edge blends into a faint dark edge rather than red.
+TRANSPARENCY_KEY = (3, 1, 2)
 POPUP_WIDTH_DIP = 300
 POPUP_MARGIN_DIP = 12
 POPUP_LOAD_TIMEOUT_S = 15.0
@@ -73,7 +81,7 @@ SWP_NOZORDER = 0x0004
 SWP_NOACTIVATE = 0x0010
 SPI_GETWORKAREA = 0x0030
 DWMWA_WINDOW_CORNER_PREFERENCE = 33
-DWMWCP_ROUND = 2
+DWMWCP_DONOTROUND = 1
 LOGPIXELSX = 88
 
 _START_JS = "window.__sakadeskCallPopup ? (window.__sakadeskCallPopup.start({call_id}), true) : false"
@@ -195,6 +203,34 @@ def _load_dwmapi() -> Any:
     return dwmapi
 
 
+def _apply_transparency_key(window: Any) -> None:
+    """Swap pywebview's red colour key for :data:`TRANSPARENCY_KEY` on ``window``.
+
+    Sets ``BackColor`` and ``TransparencyKey`` of the WinForms form on its GUI
+    thread (``Invoke`` when ``InvokeRequired``). pythonnet is imported lazily.
+    Never raises: success logs ``call_popup_transparency`` (``applied=True``),
+    failure logs ``call_popup_transparency_failed`` with ``error_type``.
+    """
+    try:
+        import System  # type: ignore[import-not-found]
+        from System.Drawing import Color  # type: ignore[import-not-found]
+
+        form = window.native
+        key = Color.FromArgb(255, *TRANSPARENCY_KEY)
+
+        def apply() -> None:
+            form.BackColor = key
+            form.TransparencyKey = key
+
+        if form.InvokeRequired:
+            form.Invoke(System.Action(apply))
+        else:
+            apply()
+        logger.info("call_popup_transparency", applied=True)
+    except Exception as e:
+        logger.warning("call_popup_transparency_failed", error_type=type(e).__name__)
+
+
 def _default_work_area(user32: Any) -> Rect:
     """The primary monitor's work area (desktop minus taskbar), physical px."""
     from ctypes import wintypes
@@ -268,6 +304,7 @@ class CallPopupWindow:
         create_window: Callable[..., Any] | None = None,
         user32: Any = None,
         dwmapi: Any = None,
+        apply_transparency: Callable[[Any], None] | None = None,
         work_area: Callable[[], Rect] | None = None,
         system_dpi: Callable[[], int] | None = None,
         app_exit: Callable[[], None] | None = None,
@@ -281,6 +318,7 @@ class CallPopupWindow:
         self._create_window = create_window or _default_create_window
         self._user32_obj = user32
         self._dwmapi_obj = dwmapi
+        self._apply_transparency = apply_transparency or _apply_transparency_key
         self._work_area = work_area or (lambda: _default_work_area(self._user32))
         self._system_dpi = system_dpi or (lambda: _default_system_dpi(self._user32))
         self._app_exit = app_exit or _default_app_exit
@@ -359,7 +397,8 @@ class CallPopupWindow:
                     focus=False,
                     on_top=True,
                     hidden=True,
-                    shadow=True,
+                    shadow=False,
+                    transparent=True,
                     background_color=BACKGROUND_COLOR,
                 )
                 created = window
@@ -369,10 +408,14 @@ class CallPopupWindow:
                     # pywebview 5.3.2 creates the form synchronously after
                     # start(): it exists and is still hidden here.
                     self._apply_styles(hwnd)
+                    self._apply_transparency(window)
                 else:
-                    window.events.before_show += lambda *_: self._apply_styles(
-                        _hwnd_of(created)
-                    )
+
+                    def on_before_show(*_: Any) -> None:
+                        self._apply_styles(_hwnd_of(created))
+                        self._apply_transparency(created)
+
+                    window.events.before_show += on_before_show
                 if not window.events.loaded.wait(self._load_timeout):
                     raise TimeoutError
                 if window.events.closed.is_set():
@@ -657,18 +700,19 @@ class CallPopupWindow:
             logger.warning("call_popup_app_exit_failed", error_type=type(e).__name__)
 
     def _apply_styles(self, hwnd: int | None) -> None:
-        """``WS_EX_TOOLWINDOW`` and DWM rounded corners on ``hwnd``.
+        """``WS_EX_TOOLWINDOW`` and DWM "do not round" on ``hwnd``.
 
-        Uses the style bit, never ``Form.ShowInTaskbar`` (which recreates the
-        handle under WebView2). A failing corner preference (Windows 10 has
-        none) is logged at debug as ``call_popup_corner_skipped`` and ignored.
+        The page draws its own 16px rounded card on a transparent window, so DWM
+        must not round (or clip) the window itself. Uses the style bit, never
+        ``Form.ShowInTaskbar`` (which recreates the handle under WebView2). A
+        failing corner preference (Windows 10 has none) is logged at debug as ``call_popup_corner_skipped`` and ignored.
         """
         if not hwnd:
             return
         style = self._user32.GetWindowLongW(hwnd, GWL_EXSTYLE)
         self._user32.SetWindowLongW(hwnd, GWL_EXSTYLE, style | WS_EX_TOOLWINDOW)
         try:
-            pref = ctypes.c_int(DWMWCP_ROUND)
+            pref = ctypes.c_int(DWMWCP_DONOTROUND)
             hr = self._dwmapi.DwmSetWindowAttribute(
                 hwnd,
                 DWMWA_WINDOW_CORNER_PREFERENCE,

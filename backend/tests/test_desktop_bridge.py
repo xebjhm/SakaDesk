@@ -17,8 +17,12 @@ TARGET = ChatTarget(
 @pytest.fixture(autouse=True)
 def _reset():
     desktop_bridge.set_open_chat_handler(None)
+    desktop_bridge.set_open_login_handler(None)
+    desktop_bridge.set_tray_alert_handler(None)
     yield
     desktop_bridge.set_open_chat_handler(None)
+    desktop_bridge.set_open_login_handler(None)
+    desktop_bridge.set_tray_alert_handler(None)
 
 
 def test_open_chat_calls_the_handler() -> None:
@@ -209,3 +213,52 @@ def test_run_on_server_loop_runs_on_the_loop_thread() -> None:
         loop.call_soon_threadsafe(loop.stop)
         thread.join(timeout=5)
         loop.close()
+
+
+def test_open_login_calls_the_handler() -> None:
+    seen: list[str] = []
+    desktop_bridge.set_open_login_handler(seen.append)
+    desktop_bridge.open_login("yodel")
+    assert seen == ["yodel"]
+
+
+def test_open_login_without_handler_logs_once() -> None:
+    with capture_logs() as logs:
+        desktop_bridge.open_login("yodel")
+        desktop_bridge.open_login("yodel")
+    assert [e["event"] for e in logs] == ["login_open_unhandled"]
+
+
+def test_open_login_handler_error_is_caught() -> None:
+    def boom(_service: str) -> None:
+        raise RuntimeError("secret")
+
+    desktop_bridge.set_open_login_handler(boom)
+    with capture_logs() as logs:
+        desktop_bridge.open_login("yodel")
+    (event,) = [e for e in logs if e["event"] == "login_open_failed"]
+    assert event["error_type"] == "RuntimeError"
+    assert "secret" not in repr(logs)
+
+
+def test_set_tray_alert_passes_the_flag() -> None:
+    seen: list[bool] = []
+    desktop_bridge.set_tray_alert_handler(seen.append)
+    desktop_bridge.set_tray_alert(True)
+    desktop_bridge.set_tray_alert(False)
+    assert seen == [True, False]
+
+
+def test_set_tray_alert_without_handler_logs_once_and_failure_is_caught() -> None:
+    with capture_logs() as logs:
+        desktop_bridge.set_tray_alert(True)
+        desktop_bridge.set_tray_alert(True)
+    assert [e["event"] for e in logs] == ["tray_alert_unhandled"]
+
+    def boom(_on: bool) -> None:
+        raise RuntimeError("x")
+
+    desktop_bridge.set_tray_alert_handler(boom)
+    with capture_logs() as logs:
+        desktop_bridge.set_tray_alert(True)
+    assert [e["event"] for e in logs] == ["tray_alert_failed"]

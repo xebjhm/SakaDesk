@@ -6,5 +6,7 @@
   "hidden_body": "傳了新訊息",
   "more": "另外 {n} 則",
   "test_title": "SakaDesk",
-  "test_body": "通知運作正常"
+  "test_body": "通知運作正常",
+  "login_title": "{service} 需要重新登入",
+  "login_body": "背景同步已暫停，點一下重新登入。"
 }

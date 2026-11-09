@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
 import { AlertCircle, Loader2, X } from 'lucide-react'
@@ -19,6 +19,7 @@ import type { SearchModalHandle } from '../features/search'
 import { persisted } from '../core/persistence/persisted'
 import { applyStartupLanguage } from './language'
 import { openChatFromToast } from './openChat'
+import { clientLog } from '../utils/clientLog'
 import { markVoiceHeard } from './markVoiceHeard'
 
 import { useAuth } from './hooks/useAuth'
@@ -203,8 +204,10 @@ function App() {
     // so this can never break startup even if the endpoint is unavailable; a
     // failing conversation-cache load retries with backoff first, delaying the
     // first render by at most the sum of CONV_HYDRATE_RETRY_DELAYS_MS plus the
-    // request times. The conversation cache is therefore loaded (or known
-    // failed) before any chat can save read progress.
+    // request times. If every try fails, the first render proceeds with the cache
+    // not ready and persisted.ts keeps retrying in the background
+    // (CONV_BACKGROUND_RETRY_DELAYS_MS, then every CONV_BACKGROUND_RETRY_MAX_MS),
+    // notifying persisted.onConversationsReady listeners once it loads.
     const [prefsHydrated, setPrefsHydrated] = useState(false);
     useEffect(() => {
         persisted.hydratePrefs()
@@ -255,6 +258,38 @@ function App() {
     useEffect(() => {
         window.__sakadeskOpenChat = openChatFromToast;
         return () => { delete window.__sakadeskOpenChat; };
+    }, []);
+
+    // Desktop "log in again" toast click: show that service and its login dialog.
+    // The disconnected-service LoginModal only renders when no session-expired
+    // modal and no onboarding step is up. Refuse (false) when onboarding or another
+    // service's session-expired modal would hide it, rather than report a dialog the
+    // user never sees; that service's own session-expired modal already asks to log in.
+    const openLoginStateRef = useRef({ sessionExpiredService, onboarding: false });
+    useLayoutEffect(() => {
+        openLoginStateRef.current = { sessionExpiredService, onboarding: loginCarousel !== null || showSetupWizard };
+    });
+    useEffect(() => {
+        window.__sakadeskOpenLogin = (service: string) => {
+            if (!useAppStore.getState().selectedServices.includes(service)) {
+                clientLog('notify_open_login', { delivered: false, reason: 'unknown_service' });
+                return false;
+            }
+            const { sessionExpiredService: expired, onboarding } = openLoginStateRef.current;
+            if (onboarding) {
+                clientLog('notify_open_login', { delivered: false, reason: 'onboarding', service });
+                return false;
+            }
+            if (expired && expired !== service) {
+                clientLog('notify_open_login', { delivered: false, reason: 'session_expired_modal', service });
+                return false;
+            }
+            useAppStore.getState().setActiveService(service);
+            setDisconnectedLoginService(service);
+            clientLog('notify_open_login', { delivered: true, service });
+            return true;
+        };
+        return () => { delete window.__sakadeskOpenLogin; };
     }, []);
 
     // Desktop popup answered a voice: the main window (sole writer) marks it heard.

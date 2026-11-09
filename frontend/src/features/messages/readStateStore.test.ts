@@ -212,7 +212,7 @@ describe('saveReadState', () => {
         saveReadState(PATH, state);
         expect(setConv).not.toHaveBeenCalled();
         expect(fetchMock).not.toHaveBeenCalled();
-        expect(clientLog).toHaveBeenCalledWith('read_state_save_skipped', {
+        expect(clientLog).toHaveBeenCalledWith('read_state_save_deferred', {
             reason: 'not_ready', service: 'hinatazaka46', group_id: 34, member_id: 58,
         });
         expect(JSON.stringify(vi.mocked(clientLog).mock.calls)).not.toMatch(/金村|messages/);
@@ -223,7 +223,7 @@ describe('saveReadState', () => {
         const other = '日向坂46/messages/35 小坂 菜緒/59 小坂 菜緒';
         saveReadState(other, state);
         saveReadState(other, state);
-        const skips = () => vi.mocked(clientLog).mock.calls.filter(([event]) => event === 'read_state_save_skipped');
+        const skips = () => vi.mocked(clientLog).mock.calls.filter(([event]) => event === 'read_state_save_deferred');
         expect(skips()).toHaveLength(1);
         saveReadState('日向坂46/messages/36 正源司 陽子/60 正源司 陽子', state);
         expect(skips()).toHaveLength(2);

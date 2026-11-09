@@ -16,7 +16,7 @@ const CLIENT_LOG_TIMEOUT_MS = 4000;
 export type ClientLogEvent =
     | 'call_ring' | 'call_skip' | 'call_answer' | 'call_decline'
     | 'call_timeout' | 'call_end' | 'call_cancel' | 'call_error'
-    | 'notify_open_chat' | 'backend_sync_followed' | 'backend_sync_skipped'
+    | 'notify_open_chat' | 'notify_open_login' | 'backend_sync_followed' | 'backend_sync_skipped'
     | 'call_popup_start' | 'call_popup_error'
     | 'call_popup_heard_applied' | 'call_popup_heard_ignored'
     | 'app_load_failed'
@@ -30,17 +30,17 @@ export type ClientLogEvent =
     | 'poll_timeout' | 'poll_skipped' | 'poll_failed'
     | 'poll_retry' | 'poll_gave_up'
     | 'translation_batch_failed'
-    | 'conv_hydrate_retry' | 'conv_hydrate_failed' | 'conv_write_failed'
-    | 'read_state_save_skipped' | 'read_state_sync_failed'
+    | 'conv_hydrate_retry' | 'conv_hydrate_failed' | 'conv_hydrate_recovered' | 'conv_write_failed'
+    | 'read_state_save_deferred' | 'read_state_pending_flushed' | 'read_state_sync_failed'
     | 'sidebar_load';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
     | 'phase' | 'ring_ms' | 'talk_ms' | 'error_type'
-    | 'surface' | 'call_id' | 'changed' | 'has_target'
+    | 'surface' | 'call_id' | 'changed' | 'has_target' | 'delivered'
     | 'theme' | 'size'
     | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path' | 'count' | 'history' | 'fallback' | 'dppx_pct'
-    | 'ready_state' | 'network_state' | 'error_code' | 'aborted' | 'key' | 'timeout_ms' | 'caller';
+    | 'ready_state' | 'network_state' | 'error_code' | 'aborted' | 'key' | 'timeout_ms' | 'caller' | 'written' | 'dropped';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 

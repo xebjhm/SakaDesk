@@ -6,6 +6,7 @@ Supports per-service progress tracking for multi-service sync.
 import structlog
 from fastapi import APIRouter, HTTPException, Query
 from pysaka import RefreshFailedError, SessionExpiredError
+from backend.services import session_alert
 from backend.services.sync_service import SyncService
 from backend.services.service_utils import validate_service
 from backend.services.background_tasks import track_background_task
@@ -30,17 +31,33 @@ def get_sync_service(service: str) -> SyncService:
 
 
 async def run_sync_task(service: str, include_inactive: bool, force_resync: bool):
-    """Wrapper to run sync in background properly."""
+    """Run one sync in the background and feed its result to session_alert.
+
+    Only a sync that completed (``start_sync`` returned True) counts: it calls
+    ``session_alert.clear_unless_expired`` (resets strikes and cooldown and
+    removes a ``refresh_failed`` mark; an ``expired`` mark stays, because pysaka
+    reads a persistent 401/403 as "no groups"). A no-op (already running, not
+    configured) or a swallowed generic failure logs
+    ``sync_session_success_skipped`` instead.
+    """
     sync_service = get_sync_service(service)
     progress = progress_manager.get(service)
     try:
-        await sync_service.start_sync(include_inactive, force_resync)
+        completed = await sync_service.start_sync(include_inactive, force_resync)
+        if completed:
+            await session_alert.clear_unless_expired(service)
+        else:
+            logger.info(
+                "sync_session_success_skipped", service=service, reason="not_completed"
+            )
     except SessionExpiredError:
-        logger.warning(f"Sync failed for {service}: Session expired")
+        logger.warning("sync_failed", service=service, reason="session_expired")
         progress.error("SESSION_EXPIRED")
+        await session_alert.report(service, "expired")
     except RefreshFailedError:
-        logger.error(f"Sync failed for {service}: All refresh attempts failed")
+        logger.error("sync_failed", service=service, reason="refresh_failed")
         progress.error("REFRESH_FAILED")
+        await session_alert.report(service, "refresh_failed")
     except Exception as e:
         logger.error(f"Background sync error for {service}: {e}")
         progress.error(str(e))
@@ -60,9 +77,11 @@ async def run_verify_task(service: str):
     except SessionExpiredError:
         logger.warning(f"Verify failed for {service}: Session expired")
         progress.error("SESSION_EXPIRED")
+        await session_alert.report(service, "expired")
     except RefreshFailedError:
         logger.error(f"Verify failed for {service}: All refresh attempts failed")
         progress.error("REFRESH_FAILED")
+        await session_alert.report(service, "refresh_failed")
     except Exception as e:
         logger.error(f"Background verify error for {service}: {e}")
         progress.error(str(e))

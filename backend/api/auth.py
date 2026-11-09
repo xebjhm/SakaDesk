@@ -66,7 +66,7 @@ async def logout(service: str = Query(..., description="Service to logout from")
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    auth_service.logout(service)
+    await auth_service.logout(service)
     return {"status": "ok", "service": service}
 
 

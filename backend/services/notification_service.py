@@ -59,6 +59,8 @@ class Notifier(Protocol):
 
     def show_simple(self, title: str, body: str) -> bool: ...
 
+    def show_login(self, service: str, title: str, body: str) -> bool: ...
+
     def status(self) -> dict: ...
 
 
@@ -92,6 +94,9 @@ class NullNotifier:
         return False
 
     def show_simple(self, title: str, body: str) -> bool:
+        return False
+
+    def show_login(self, service: str, title: str, body: str) -> bool:
         return False
 
     def status(self) -> dict:
@@ -165,6 +170,28 @@ class WindowsToastNotifier:
         self._last_error = None
         return True
 
+    def show_login(self, service: str, title: str, body: str) -> bool:
+        """Show a "log in again" toast for ``service``; raises on failure.
+
+        A click opens that service's login dialog through
+        :func:`desktop_bridge.open_login`. One slot per service: a newer toast
+        for the same service replaces the older one.
+        """
+        wt = self._wt
+        try:
+            toast = wt.Toast(text_fields=[title, body])
+            toast.tag = f"login-{service}"
+            toast.group = _SIMPLE_GROUP
+            toast.on_activated = lambda _args: self._on_login_click(service)
+            toast.on_failed = lambda args: self._on_login_failed(args)
+            self._live.append(toast)
+            self._toaster.show_toast(toast)
+        except Exception as e:
+            self._last_error = type(e).__name__
+            raise
+        self._last_error = None
+        return True
+
     def status(self) -> dict:
         return {
             "available": True,
@@ -224,6 +251,27 @@ class WindowsToastNotifier:
             desktop_bridge.open_window()
         except Exception as e:  # pragma: no cover - open_window never raises
             logger.warning("window_open_failed", error_type=type(e).__name__)
+
+    def _on_login_click(self, service: str) -> None:
+        """WinRT-thread ``on_activated`` callback for a login toast. Never raises."""
+        try:
+            logger.info("notify_clicked", kind="login", service=service)
+            desktop_bridge.open_login(service)
+        except Exception as e:  # pragma: no cover - open_login never raises
+            logger.warning("login_open_failed", error_type=type(e).__name__)
+
+    def _on_login_failed(self, event_args: Any) -> None:
+        """WinRT-thread callback for a login toast. Never raises."""
+        self._last_error = "ToastFailed"
+        try:
+            logger.warning(
+                "notify_failed",
+                kind="login",
+                error_type="ToastFailed",
+                error_code=getattr(event_args, "error_code", None),
+            )
+        except Exception:  # pragma: no cover - logging must not break WinRT
+            pass
 
     def _on_simple_failed(self, event_args: Any) -> None:
         """WinRT-thread callback for a hint toast. Never raises."""
@@ -488,6 +536,33 @@ async def send_simple(title: str, body: str) -> bool:
     return await _run_guarded(
         lambda: notifier.show_simple(title, body),
         {"kind": "simple"},
+        skip_extra={},
+        sent_extra={},
+    )
+
+
+async def send_login_alert(service: str, title: str, body: str) -> bool:
+    """Show the "log in again" toast for ``service``; return whether it showed.
+
+    Same worker thread, queue, stuck guard and timeout as other toasts. The
+    caller (session_alert) applies the notifications setting. Skipped when the
+    notifier is unavailable (``notify_skip reason=unavailable kind=login``).
+    Outcomes are logged as ``notify_sent`` / ``notify_failed`` with
+    ``kind=login``; the title and body are never logged. Never raises.
+    """
+    notifier = await asyncio.to_thread(get_notifier)
+    status = notifier.status()
+    if not status.get("available", True):
+        logger.info(
+            "notify_skip",
+            reason="unavailable",
+            kind="login",
+            backend_reason=status.get("last_error"),
+        )
+        return False
+    return await _run_guarded(
+        lambda: notifier.show_login(service, title, body),
+        {"kind": "login", "service": service},
         skip_extra={},
         sent_extra={},
     )

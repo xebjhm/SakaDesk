@@ -605,10 +605,11 @@ class TestStartSyncGuards:
             patch("backend.services.sync_service.progress_manager") as mock_pm,
         ):
             mock_pm.get.return_value = mock_progress
-            await svc.start_sync()
+            result = await svc.start_sync()
 
         mock_progress.error.assert_called_once()
         assert svc.running is False
+        assert result is False
 
     @pytest.mark.asyncio
     async def test_resets_running_flag_after_auth_error(self):
@@ -635,9 +636,10 @@ class TestStartSyncGuards:
             patch("backend.services.sync_service.progress_manager") as mock_pm,
         ):
             mock_pm.get.return_value = mock_progress
-            await svc.start_sync()
+            result = await svc.start_sync()
 
         assert svc.running is False
+        assert result is False  # the swallowed generic error is not a success
 
 
 # ---------------------------------------------------------------------------
@@ -905,9 +907,10 @@ class TestFreshVsIncrementalSync:
             mock_sess_ctx.__aexit__ = AsyncMock(return_value=False)
             mock_sess_cls.return_value = mock_sess_ctx
 
-            await svc.start_sync()
+            result = await svc.start_sync()
 
         mock_progress.complete.assert_called()
+        assert result is True  # completed ("no groups") proves the session works
 
     @pytest.mark.asyncio
     async def test_account_dir_does_not_defeat_fresh_detection(self, tmp_path):
@@ -1534,7 +1537,7 @@ async def _run_start_sync(
     progress_mock=None,
     **start_kwargs,
 ):
-    """Run start_sync with the standard set of patches. Returns nothing;
+    """Run start_sync with the standard set of patches. Returns its result;
     inspect the passed mock_manager / mock_client for assertions. Pass
     ``metadata`` to seed load_metadata and a dict as ``saved`` to capture the
     last metadata written by save_metadata; pass ``notify_mock`` to observe
@@ -1597,7 +1600,7 @@ async def _run_start_sync(
         mock_sess_ctx.__aenter__ = AsyncMock(return_value=AsyncMock())
         mock_sess_ctx.__aexit__ = AsyncMock(return_value=False)
         mock_sess_cls.return_value = mock_sess_ctx
-        await svc.start_sync(**start_kwargs)
+        return await svc.start_sync(**start_kwargs)
 
 
 class TestSessionExpirySurfacing:
@@ -1696,10 +1699,11 @@ class TestNewMemberFullHistory:
         mock_manager.client = mock_client
         mock_manager.process_media_queue = AsyncMock(return_value={})
 
-        await _run_start_sync(
+        result = await _run_start_sync(
             svc, tmp_path, groups=groups, members=members, mock_manager=mock_manager
         )
 
+        assert result is True  # a full sync that completed
         assert mock_client.get_messages.await_count == 1
         _, kwargs = mock_client.get_messages.await_args
         assert kwargs.get("since_ts") is None

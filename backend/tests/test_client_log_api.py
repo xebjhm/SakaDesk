@@ -267,6 +267,20 @@ def test_notify_open_chat_accepts_has_target():
     assert event["has_target"] is True
 
 
+def test_notify_open_login_accepts_delivered():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={
+                "event": "notify_open_login",
+                "fields": {"service": "sakurazaka46", "delivered": True},
+            },
+        )
+    assert res.status_code == 204
+    (event,) = _client_events(logs)
+    assert event["delivered"] is True
+
+
 @pytest.mark.parametrize(
     ("event", "fields", "level"),
     [
@@ -807,6 +821,17 @@ def test_allowed_fields_never_shadow_log_call_keywords():
         ),
         ("conv_hydrate_retry", {"index": 2, "error_type": "typeerror"}, "info"),
         (
+            "conv_hydrate_retry",
+            {
+                "index": 5,
+                "phase": "background",
+                "error_type": "appstatehttperror",
+                "error_code": 503,
+            },
+            "info",
+        ),
+        ("conv_hydrate_recovered", {"count": 6}, "info"),
+        (
             "conv_hydrate_failed",
             {"count": 4, "error_type": "appstatehttperror", "error_code": 500},
             "warning",
@@ -816,8 +841,9 @@ def test_allowed_fields_never_shadow_log_call_keywords():
             {"error_type": "appstatehttperror", "error_code": 500},
             "warning",
         ),
+        ("read_state_pending_flushed", {"written": 1, "dropped": 0}, "info"),
         (
-            "read_state_save_skipped",
+            "read_state_save_deferred",
             {
                 "reason": "not_ready",
                 "service": "hinatazaka46",

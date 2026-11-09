@@ -2,7 +2,8 @@
 
 ``desktop.py`` registers handlers once the window exists. Toast callbacks run
 on a WinRT thread and call :func:`open_chat` or :func:`open_window`, which
-never raise. The backend pushes the tray tooltip with :func:`set_tray_tooltip`,
+never raise (so do :func:`open_login`, which shows a service's login dialog,
+and :func:`set_tray_alert`, the tray warning badge). The backend pushes the tray tooltip with :func:`set_tray_tooltip`,
 and desktop threads (the tray) schedule coroutines on the uvicorn event loop
 with :func:`run_on_server_loop`. The call popup host
 (``set_call_popup_host``) runs blocking GUI calls; every async ``call_popup_*``
@@ -28,6 +29,10 @@ logger = structlog.get_logger(__name__)
 _open_chat_handler: Callable[[ChatTarget, int | None], None] | None = None
 _open_window_handler: Callable[[], None] | None = None
 _tray_tooltip_handler: Callable[[str], None] | None = None
+_open_login_handler: Callable[[str], None] | None = None
+_tray_alert_handler: Callable[[bool], None] | None = None
+_open_login_unhandled_logged = False
+_tray_alert_unhandled_logged = False
 _tray_tooltip_unhandled_logged = False
 _server_loop: asyncio.AbstractEventLoop | None = None
 
@@ -401,3 +406,57 @@ def call_popup_ensure() -> None:
             )
 
     threading.Thread(target=run, name="call_popup_ensure", daemon=True).start()
+
+
+def set_open_login_handler(handler: Callable[[str], None] | None) -> None:
+    """Register (or clear) the host function that opens the login dialog for a service."""
+    global _open_login_handler, _open_login_unhandled_logged
+    _open_login_handler = handler
+    _open_login_unhandled_logged = False
+
+
+def open_login(service: str) -> None:
+    """Show the main window on ``service``'s login dialog. Never raises.
+
+    Logs ``login_open_unhandled`` once (until a handler is registered or cleared
+    again) when no handler is registered, and ``login_open_failed`` (error type
+    only) when the handler raises.
+    """
+    global _open_login_unhandled_logged
+    handler = _open_login_handler
+    if handler is None:
+        if not _open_login_unhandled_logged:
+            _open_login_unhandled_logged = True
+            logger.info("login_open_unhandled", reason="no_handler")
+        return
+    try:
+        handler(service)
+    except Exception as e:
+        logger.warning("login_open_failed", error_type=type(e).__name__)
+
+
+def set_tray_alert_handler(handler: Callable[[bool], None] | None) -> None:
+    """Register (or clear) the tray's warning-badge switch."""
+    global _tray_alert_handler, _tray_alert_unhandled_logged
+    _tray_alert_handler = handler
+    _tray_alert_unhandled_logged = False
+
+
+def set_tray_alert(on: bool) -> None:
+    """Turn the tray warning badge on or off. Never raises; no-op without a tray.
+
+    Logs ``tray_alert_unhandled`` once (until a handler is registered or cleared
+    again) when no handler is registered, and ``tray_alert_failed`` (error type
+    only) when the handler raises.
+    """
+    global _tray_alert_unhandled_logged
+    handler = _tray_alert_handler
+    if handler is None:
+        if not _tray_alert_unhandled_logged:
+            _tray_alert_unhandled_logged = True
+            logger.info("tray_alert_unhandled", reason="no_handler")
+        return
+    try:
+        handler(on)
+    except Exception as e:
+        logger.warning("tray_alert_failed", error_type=type(e).__name__)

@@ -1,5 +1,5 @@
 // frontend/src/features/messages/MessagesFeature.tsx
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
 import { useMilestone } from './milestones';
 import { MilestoneFooter } from './components/MilestoneFooter';
 import type { Message, MemberInfo, BackgroundSettings } from '../../types';
@@ -23,6 +23,7 @@ import { FadeOnChange } from '../../core/layout/FadeOnChange';
 import { ChatHeaderPill } from './components/ChatHeaderPill';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
+import { persisted } from '../../core/persistence/persisted';
 import { loadReadState, saveReadState, applyReveal, mergeReadState, readStateEquals } from './readStateStore';
 import type { ReadState } from './readStateStore';
 import { useReadStateSubscription } from './hooks/useReadStateSubscription';
@@ -518,6 +519,22 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         });
     }, [selectedGroupDir, saveAndBump]);
     useReadStateSubscription(selectedGroupDir, mergeLoadedReadState, () => setReadStateVersion(v => v + 1));
+
+    // The conversation cache recovered after a failed startup load. A chat opened
+    // meanwhile holds a state derived from the empty fallback; merge the now-loaded
+    // row into it (monotonic, never backwards) so its next reveal cannot write the
+    // fallback-derived state over stored progress. Then re-read unread counts.
+    // Order matters: readStateStore (imported above) registered its flush listener at
+    // import time, before this effect subscribes, so deferred saves are written first.
+    const recoveryRef = useRef({ selectedGroupDir, mergeLoadedReadState });
+    useLayoutEffect(() => {
+        recoveryRef.current = { selectedGroupDir, mergeLoadedReadState };
+    });
+    useEffect(() => persisted.onConversationsReady(() => {
+        const cur = recoveryRef.current;
+        if (cur.selectedGroupDir) cur.mergeLoadedReadState(loadReadState(cur.selectedGroupDir));
+        setReadStateVersion((v) => v + 1);
+    }), []);
 
     const revealAllMessages = useCallback(() => {
         if (maxMessageId === 0) return;

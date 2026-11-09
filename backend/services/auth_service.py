@@ -16,12 +16,16 @@ from pysaka import (
     BrowserAuth,
     Group,
     Client,
+    RefreshFailedError,
+    SessionExpiredError,
     is_jwt_expired,
     parse_jwt_expiry,
     get_jwt_remaining_seconds,
 )
 from pysaka.credentials import get_token_manager
 
+from backend.services import refresh_gate, session_alert
+from backend.services.background_tasks import track_background_task
 from backend.services.platform import get_session_dir, is_dev_mode, is_test_mode
 from backend.services.service_utils import (
     get_all_services,
@@ -30,6 +34,11 @@ from backend.services.service_utils import (
 )
 
 logger = structlog.get_logger(__name__)
+
+# How long the status path (``get_status``, which the app's loading screen waits
+# on) waits for an in-line renewal. A slower renewal keeps running in the
+# background and saves its result; this status call answers outcome ``error``.
+STATUS_RENEW_TIMEOUT_SECONDS = 20.0
 
 
 def _region_is_blocked(country_code: Optional[str]) -> bool:
@@ -84,6 +93,14 @@ class AuthService:
             self._session_cache.clear()
         else:
             self._session_cache.pop(group_value, None)
+
+    def _reload_session_fresh(self, group_value: str) -> Optional[Dict[str, Any]]:
+        """Drop the cache entry and re-read the stored session (blocking keyring read).
+
+        Run via ``asyncio.to_thread`` when called from the event loop.
+        """
+        self._invalidate_session_cache(group_value)
+        return self._load_session_cached(group_value)
 
     def invalidate_session(self, service: str) -> None:
         """Drop the cached session of ``service`` after another component changed it.
@@ -227,7 +244,8 @@ class AuthService:
             # SD-BE-API-04: the keyring read happens inside _get_service_auth_status
             # (via _load_session_cached). Offload it so a cold read never blocks
             # the event loop; a warm cache hit returns almost immediately.
-            return await asyncio.to_thread(self._get_service_auth_status, service)
+            status = await asyncio.to_thread(self._get_service_auth_status, service)
+            return await self._settle(service, status)
 
         # Return status for all services. One thread hop reads them all (each may
         # be a WCM round-trip on a cold cache), keeping the polled endpoint off
@@ -235,7 +253,230 @@ class AuthService:
         def _all_status() -> Dict[str, Any]:
             return {s: self._get_service_auth_status(s) for s in get_all_services()}
 
-        return {"services": await asyncio.to_thread(_all_status)}
+        statuses = await asyncio.to_thread(_all_status)
+        # Settle concurrently: each renewal is bounded by
+        # STATUS_RENEW_TIMEOUT_SECONDS, so the loading screen waits for the
+        # slowest one rather than the sum.
+        names = list(statuses)
+        settled = await asyncio.gather(*(self._settle(s, statuses[s]) for s in names))
+        return {"services": dict(zip(names, settled))}
+
+    async def _renew_and_report(self, service: str) -> str:
+        """``renew_expired`` plus the ``session_alert`` report its outcome calls for.
+
+        ``dead`` / ``no_cookies`` report ``expired``; ``refresh_failed`` reports
+        ``refresh_failed`` (a mark on the second strike). Runs to completion
+        even when the status call that started it stopped waiting.
+        """
+        outcome = await self.renew_expired(service)
+        if outcome in ("dead", "no_cookies"):
+            await session_alert.report(service, "expired")
+        elif outcome == "refresh_failed":
+            await session_alert.report(service, "refresh_failed")
+        return outcome
+
+    async def _renew_for_status(self, service: str) -> str:
+        """Wait at most ``STATUS_RENEW_TIMEOUT_SECONDS`` for a renewal.
+
+        The renewal runs as a tracked background task (``_renew_and_report``)
+        and is awaited through ``asyncio.shield``: the timeout only stops this
+        status call from waiting. The renewal itself keeps running inside the
+        gate and saves (or reports) its result, because cancelling a refresh
+        after the server rotated the session cookie would lose the new cookie
+        and kill the session. On timeout the 60 s retry cooldown starts (so
+        polls do not pile up behind the busy gate meanwhile; a success clears
+        it), ``session_renew`` (outcome ``timeout``) is logged and ``error`` is
+        returned for this call.
+        """
+        task = track_background_task(
+            self._renew_and_report(service), name="session_renew_status"
+        )
+        try:
+            return await asyncio.wait_for(
+                asyncio.shield(task), STATUS_RENEW_TIMEOUT_SECONDS
+            )
+        except TimeoutError:
+            session_alert.note_renew_failure(service)
+            logger.info(
+                "session_renew",
+                service=service,
+                outcome="timeout",
+                timeout_s=STATUS_RENEW_TIMEOUT_SECONDS,
+                renewal="continues_in_background",
+            )
+            return "error"
+
+    async def _settle(self, service: str, status: dict) -> dict:
+        """Renew an expired token, then report the live status (spec B1 §1).
+
+        Adds ``session_expired: True`` only for a dead session. ``token_expired``
+        without ``session_expired`` means "not renewed this time, will retry"
+        (outcome ``error``, ``skipped``, a timeout, or a first
+        ``refresh_failed`` strike). A marked service reads ``session_expired``
+        unless its slow retry (``refresh_failed`` marks only, see
+        ``session_alert.MARKED_RETRY_SECONDS``) is due and refreshes for real
+        (outcome ``ok``).
+        """
+        marked = session_alert.needs_login(service)
+        if marked and not session_alert.may_renew(service):
+            return {**status, "authenticated": False, "session_expired": True}
+        if not marked and not status.get("token_expired"):
+            return status
+        outcome = await self._renew_for_status(service)
+        if outcome in ("ok", "not_expired") and not session_alert.needs_login(service):
+            fresh = await asyncio.to_thread(self._get_service_auth_status, service)
+            if fresh.get("token_expired"):
+                # Renewed (or found renewed) yet the stored token still reads
+                # expired (e.g. clock skew): back off so the next poll does not
+                # refresh again at once.
+                session_alert.note_renew_failure(service)
+                logger.warning("session_renew_still_expired", service=service)
+            return fresh
+        # _renew_and_report already fed session_alert: dead / no_cookies always
+        # mark; otherwise a mark (second strike, or a retry that failed) means a
+        # dead session for now.
+        if outcome in ("dead", "no_cookies") or session_alert.needs_login(service):
+            return {**status, "authenticated": False, "session_expired": True}
+        return status
+
+    def _load_token_for_renewal(self, service: str) -> tuple[Optional[dict], bool]:
+        """Fresh (uncached) stored session and whether its token is expired."""
+        group = self._get_group(service)
+        self._invalidate_session_cache(group.value)
+        data = self._load_session_cached(group.value)
+        token = (data or {}).get("access_token")
+        if not token:
+            return data, False
+        return data, self._is_token_expired(token)
+
+    def _save_refreshed(self, service: str, client: Client) -> float:
+        """Persist the credentials ``client`` just refreshed; return remaining seconds.
+
+        A successful refresh always sets ``access_token`` (pysaka raises rather than
+        returning success without one), so narrow ``str | None`` to ``str`` here.
+        """
+        group = self._get_group(service)
+        new_token = cast(str, client.access_token)
+        get_token_manager().save_session(
+            group.value,
+            new_token,
+            client.refresh_token,  # persist any refresh_token returned; parity with sync_service
+            client.cookies,
+        )
+        # SD-BE-API-04: refresh rotated the stored token; invalidate the cache so
+        # status reads pick up the new (longer-lived) one.
+        self._invalidate_session_cache(group.value)
+        return self._get_token_remaining_seconds(new_token)
+
+    async def renew_expired(self, service: str) -> str:
+        """Renew ``service``'s expired token with its session cookie, single-flight.
+
+        Returns ``ok`` (renewed and saved), ``not_expired`` (another caller renewed
+        it while we waited, or the stored token is not expired), ``no_cookies``,
+        ``dead`` (SessionExpiredError), ``refresh_failed`` (RefreshFailedError or
+        a ``False`` refresh), ``error`` (anything else, e.g. offline or a gate
+        timeout) or ``skipped`` (``session_alert.renew_block_reason``: an
+        ``expired`` mark, a ``refresh_failed`` mark before its slow retry, or the
+        retry cooldown; checked before and again right after acquiring the gate,
+        so a caller that waited behind a failed refresh does not refresh again).
+        Only ``ok`` (a real refresh) calls ``session_alert.clear``, removing a
+        ``refresh_failed`` mark and its tray alert. ``not_expired`` resets
+        strikes and cooldown for an unmarked service; a marked service keeps its
+        mark (no network proof) and waits for its next slow retry. Logs
+        ``session_renew`` (with ``reason`` when skipped, ``after_wait`` when the
+        re-check skipped, ``mark_kept`` for an unproven marked retry) and
+        ``session_renew_retry`` when a marked service is retried; never raises.
+        Cancellation propagates (a refreshed save still finishes first).
+        """
+        reason = session_alert.renew_block_reason(service)
+        if reason is not None:
+            logger.info(
+                "session_renew", service=service, outcome="skipped", reason=reason
+            )
+            return "skipped"
+        if session_alert.needs_login(service):
+            logger.info(
+                "session_renew_retry",
+                service=service,
+                kind=session_alert.mark_kind(service),
+            )
+        try:
+            async with refresh_gate.hold(service):
+                # Another caller may have failed while we waited at the gate.
+                reason = session_alert.renew_block_reason(service)
+                if reason is not None:
+                    logger.info(
+                        "session_renew",
+                        service=service,
+                        outcome="skipped",
+                        reason=reason,
+                        after_wait=True,
+                    )
+                    return "skipped"
+                data, expired = await asyncio.to_thread(
+                    self._load_token_for_renewal, service
+                )
+                if not data or not expired:
+                    outcome = "not_expired"
+                elif not data.get("cookies"):
+                    outcome = "no_cookies"
+                else:
+                    client = Client(
+                        group=self._get_group(service),
+                        access_token=data["access_token"],
+                        cookies=data.get("cookies"),
+                        auth_dir=self._session_dir,
+                    )
+                    async with aiohttp.ClientSession() as session:
+                        refreshed = await client.refresh_access_token(session)
+                    if refreshed:
+                        await self._save_refreshed_uncancellable(service, client)
+                        outcome = "ok"
+                    else:
+                        outcome = "refresh_failed"
+        except SessionExpiredError:
+            outcome = "dead"
+        except RefreshFailedError:
+            outcome = "refresh_failed"
+        except Exception as e:
+            logger.warning(
+                "session_renew_error", service=service, error_type=type(e).__name__
+            )
+            outcome = "error"
+        if outcome == "ok":
+            await session_alert.clear(service)
+        elif outcome == "not_expired" and session_alert.needs_login(service):
+            # No refresh ran, so nothing proves the session alive: keep the
+            # mark and wait for the next slow retry.
+            session_alert.note_renew_failure(service)
+            logger.info(
+                "session_renew", service=service, outcome=outcome, mark_kept=True
+            )
+            return outcome
+        elif outcome == "not_expired":
+            session_alert.report_success(service)
+        elif outcome in ("refresh_failed", "error"):
+            session_alert.note_renew_failure(service)
+        logger.info("session_renew", service=service, outcome=outcome)
+        return outcome
+
+    async def _save_refreshed_uncancellable(
+        self, service: str, client: Client
+    ) -> float:
+        """Run ``_save_refreshed`` in a thread and finish it even when cancelled.
+
+        The refresh already rotated the session cookie, so the save must land
+        before the caller's ``refresh_gate`` opens; a cancellation (status-path
+        timeout) waits for the save, then propagates.
+        """
+        save = asyncio.ensure_future(
+            asyncio.to_thread(self._save_refreshed, service, client)
+        )
+        try:
+            return await asyncio.shield(save)
+        except asyncio.CancelledError:
+            await save
+            raise
 
     async def login_with_browser(self, service: str):
         """
@@ -270,11 +511,16 @@ class AuthService:
                 )
 
                 if creds:
-                    self._save_credentials(service, creds)
+                    # The browser flow stays outside the gate; only the save is
+                    # held, so a renewal in flight can never write its older
+                    # rotated credentials over this fresh login.
+                    async with refresh_gate.hold(service):
+                        self._save_credentials(service, creds)
                     logger.info(
                         "Login successful, credentials saved to TokenManager",
                         service=service,
                     )
+                    await session_alert.clear(service)
                     return True
 
             except asyncio.CancelledError:
@@ -283,7 +529,9 @@ class AuthService:
                 )
                 raise
             except Exception as e:
-                logger.error("Login error", service=service, error=str(e))
+                logger.error(
+                    "Login error", service=service, error_type=type(e).__name__
+                )
                 return False
             finally:
                 if self._active_login_task is asyncio.current_task():
@@ -324,9 +572,9 @@ class AuthService:
             logger.error("Failed to save credentials", service=service, error=str(e))
             raise
 
-    def logout(self, service: str):
+    async def logout(self, service: str):
         """
-        Clear credentials for a specific service.
+        Clear credentials for a specific service and forget its needs-login mark.
 
         Args:
             service: The service to log out of (e.g., 'hinatazaka46').
@@ -343,6 +591,8 @@ class AuthService:
             logger.info("Credentials cleared from TokenManager", service=service)
         except Exception as e:
             logger.error("Failed to clear credentials", service=service, error=str(e))
+        # A logged-out service must not keep reporting session_expired.
+        await session_alert.clear(service)
 
     def _get_token_remaining_seconds(self, token: str) -> float:
         """Get seconds remaining until token expires. Uses shared pysaka utility."""
@@ -364,7 +614,17 @@ class AuthService:
             threshold_minutes: Refresh if token expires within this many minutes.
 
         Returns:
-            dict with 'refreshed' (bool), 'remaining_seconds' (float), 'status' (str)
+            dict with 'refreshed' (bool), 'remaining_seconds' (float) and 'status':
+            ``valid``, ``refreshed``, ``no_token``, ``refresh_failed`` (the refresh
+            returned False), ``skipped`` (``session_alert.renew_block_reason``
+            blocks a refresh: marked, or inside the retry cooldown), ``error``
+            (an exception; logged by type only) or ``test_mode``.
+
+        Failures feed ``session_alert`` like ``renew_expired`` does:
+        ``SessionExpiredError`` reports ``expired``; ``RefreshFailedError`` or a
+        ``False`` refresh starts the cooldown and reports ``refresh_failed``; any
+        other error starts the cooldown. A refresh that worked calls
+        ``session_alert.clear``.
         """
         validate_service(service)
         group = self._get_group(service)
@@ -383,105 +643,127 @@ class AuthService:
             }
 
         try:
-            tm = get_token_manager()
-            # SD-BE-API-04: served from the in-process cache when warm (this is a
-            # polled path); saves below invalidate it so we never refresh a stale
-            # token twice.
-            token_data = self._load_session_cached(group.value)
+            async with refresh_gate.hold(service):
+                # Re-read inside the gate: a waiter must see a token another
+                # caller just renewed, not a stale cached one.
+                token_data = await asyncio.to_thread(
+                    self._reload_session_fresh, group.value
+                )
 
-            if not token_data or not token_data.get("access_token"):
-                logger.warning("No token found for refresh check", service=service)
-                return {
-                    "refreshed": False,
-                    "remaining_seconds": 0,
-                    "status": "no_token",
-                }
-
-            token = token_data["access_token"]
-            remaining_seconds = self._get_token_remaining_seconds(token)
-            threshold_seconds = threshold_minutes * 60
-
-            logger.debug(
-                "Token status",
-                service=service,
-                remaining_seconds=round(remaining_seconds),
-                threshold_seconds=threshold_seconds,
-            )
-
-            # If token is still valid and not within threshold, no refresh needed
-            if remaining_seconds > threshold_seconds:
-                logger.debug("Token still valid, no refresh needed", service=service)
-                return {
-                    "refreshed": False,
-                    "remaining_seconds": remaining_seconds,
-                    "status": "valid",
-                }
-
-            # Token is expired or within threshold - attempt refresh
-            logger.info(
-                "Token expiring soon, attempting refresh",
-                service=service,
-                remaining_seconds=round(remaining_seconds),
-            )
-
-            # Proper API-based refresh via Client.refresh_access_token()
-            # using the web request profile (cookie/session refresh with
-            # headless-browser fallback).
-            client = Client(
-                group=group,
-                access_token=token,
-                cookies=token_data.get("cookies"),
-                auth_dir=self._session_dir,
-            )
-
-            async with aiohttp.ClientSession() as session:
-                refresh_success = await client.refresh_access_token(session)
-
-                if refresh_success:
-                    # Client.refresh_access_token() updates client.access_token and client.cookies
-                    # Save the refreshed credentials. A successful refresh always
-                    # sets access_token (and 0.4.3 raises rather than returning
-                    # success without one), so narrow str | None -> str here.
-                    new_token = cast(str, client.access_token)
-                    new_cookies = client.cookies
-
-                    tm.save_session(
-                        group.value,
-                        new_token,
-                        client.refresh_token,  # persist any refresh_token returned; parity with sync_service
-                        new_cookies,
-                    )
-                    # SD-BE-API-04: refresh rotated the stored token — invalidate
-                    # the cache so status reads pick up the new (longer-lived) one.
-                    self._invalidate_session_cache(group.value)
-
-                    new_remaining = self._get_token_remaining_seconds(new_token)
-                    logger.info(
-                        "Token refreshed successfully via API",
-                        service=service,
-                        new_remaining_seconds=round(new_remaining),
-                    )
+                if not token_data or not token_data.get("access_token"):
+                    logger.warning("No token found for refresh check", service=service)
                     return {
-                        "refreshed": True,
-                        "remaining_seconds": new_remaining,
-                        "status": "refreshed",
+                        "refreshed": False,
+                        "remaining_seconds": 0,
+                        "status": "no_token",
                     }
-                else:
-                    logger.warning(
-                        "API-based refresh failed, session may require re-login",
-                        service=service,
+
+                token = token_data["access_token"]
+                remaining_seconds = self._get_token_remaining_seconds(token)
+                threshold_seconds = threshold_minutes * 60
+
+                logger.debug(
+                    "Token status",
+                    service=service,
+                    remaining_seconds=round(remaining_seconds),
+                    threshold_seconds=threshold_seconds,
+                )
+
+                # If token is still valid and not within threshold, no refresh needed
+                if remaining_seconds > threshold_seconds:
+                    logger.debug(
+                        "Token still valid, no refresh needed", service=service
                     )
                     return {
                         "refreshed": False,
                         "remaining_seconds": remaining_seconds,
-                        "status": "refresh_failed",
+                        "status": "valid",
                     }
 
+                # Token is expired or within threshold - attempt refresh, unless
+                # the service is marked or inside its retry cooldown.
+                reason = session_alert.renew_block_reason(service)
+                if reason is not None:
+                    logger.info(
+                        "session_renew",
+                        service=service,
+                        outcome="skipped",
+                        reason=reason,
+                        path="refresh_if_needed",
+                    )
+                    return {
+                        "refreshed": False,
+                        "remaining_seconds": remaining_seconds,
+                        "status": "skipped",
+                    }
+                logger.info(
+                    "Token expiring soon, attempting refresh",
+                    service=service,
+                    remaining_seconds=round(remaining_seconds),
+                )
+
+                # Proper API-based refresh via Client.refresh_access_token()
+                # using the web request profile (cookie/session refresh with
+                # headless-browser fallback).
+                client = Client(
+                    group=group,
+                    access_token=token,
+                    cookies=token_data.get("cookies"),
+                    auth_dir=self._session_dir,
+                )
+
+                async with aiohttp.ClientSession() as session:
+                    refresh_success = await client.refresh_access_token(session)
+
+                    if refresh_success:
+                        new_remaining = await asyncio.to_thread(
+                            self._save_refreshed, service, client
+                        )
+                        await session_alert.clear(service)
+                        logger.info(
+                            "Token refreshed successfully via API",
+                            service=service,
+                            new_remaining_seconds=round(new_remaining),
+                        )
+                        return {
+                            "refreshed": True,
+                            "remaining_seconds": new_remaining,
+                            "status": "refreshed",
+                        }
+                    else:
+                        logger.warning(
+                            "API-based refresh failed, session may require re-login",
+                            service=service,
+                        )
+                        session_alert.note_renew_failure(service)
+                        await session_alert.report(service, "refresh_failed")
+                        return {
+                            "refreshed": False,
+                            "remaining_seconds": remaining_seconds,
+                            "status": "refresh_failed",
+                        }
+
+        except SessionExpiredError:
+            logger.warning(
+                "refresh_if_needed error",
+                service=service,
+                error_type="SessionExpiredError",
+            )
+            await session_alert.report(service, "expired")
+        except RefreshFailedError:
+            logger.warning(
+                "refresh_if_needed error",
+                service=service,
+                error_type="RefreshFailedError",
+            )
+            session_alert.note_renew_failure(service)
+            await session_alert.report(service, "refresh_failed")
         except Exception as e:
             logger.error(
-                "refresh_if_needed error", service=service, error=str(e), exc_info=True
+                "refresh_if_needed error", service=service, error_type=type(e).__name__
             )
-            return {"refreshed": False, "remaining_seconds": 0, "status": f"error: {e}"}
+            session_alert.note_renew_failure(service)
+        return {"refreshed": False, "remaining_seconds": 0, "status": "error"}
 
     def get_config(self, service: str) -> dict:
         """
