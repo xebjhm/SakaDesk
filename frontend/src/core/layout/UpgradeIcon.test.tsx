@@ -54,4 +54,22 @@ describe('UpgradeIcon while downloading', () => {
         await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
         expect(starts()).toBe(1);
     });
+
+    it('keeps showing the download when the cancel fails', async () => {
+        const failing = mockBackend(calls);
+        vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+            if (url === '/api/version/upgrade/cancel') {
+                calls.push({ url, method: 'POST' });
+                return { ok: false, status: 500, json: async () => ({}) } as Response;
+            }
+            return failing(url, init);
+        }));
+        render(<UpgradeIcon />);
+        await waitFor(() => expect(starts()).toBe(1));
+        fireEvent.click(await screen.findByRole('button', { name: 'Cancel download' }));
+        await waitFor(() => expect(cancels()).toBe(1));
+        // Still downloading: the cancel × is still there and no new download started.
+        expect(await screen.findByRole('button', { name: 'Cancel download' })).toBeInTheDocument();
+        expect(starts()).toBe(1);
+    });
 });

@@ -394,9 +394,10 @@ class TestDownloadInstaller:
             result = await download_installer(info)
 
         assert result is None
-        # Partial file should be cleaned up
+        # Neither an installer nor the partial .part file is left behind
         upgrade_dir = tmp_path / "upgrade"
         assert not any(upgrade_dir.glob("*.exe"))
+        assert not any(upgrade_dir.glob("*.part"))
 
     @respx.mock
     @pytest.mark.asyncio
@@ -871,3 +872,78 @@ class TestLaunchRetry:
     def test_other_os_error_is_not_retried(self, tmp_path):
         result, calls = self._run(tmp_path, OSError("blocked"))
         assert (result, calls) == (False, 1)
+
+
+class TestReplaceFailure:
+    """The rename of the verified .part file to the installer name."""
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_locked_old_installer_returns_none_and_logs(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        upgrade_dir = tmp_path / "upgrade"
+        upgrade_dir.mkdir()
+        existing = upgrade_dir / "SakaDesk-1.0.0-Setup.exe"
+        existing.write_bytes(b"MZ-earlier")
+        content = _make_installer_content()
+        info = _make_info(content)
+        respx.get(info.url).respond(200, content=content)
+        denied = PermissionError("denied")
+        denied.winerror = 5  # type: ignore[attr-defined]
+        with (
+            capture_logs() as logs,
+            patch(
+                "backend.services.upgrade_service.get_app_data_dir",
+                return_value=tmp_path,
+            ),
+            patch("backend.services.upgrade_service.os.replace", side_effect=denied),
+        ):
+            assert await download_installer(info) is None
+        assert existing.read_bytes() == b"MZ-earlier"
+        assert list(upgrade_dir.glob("*.part")) == []
+        (failed,) = [e for e in logs if e["event"] == "installer_replace_failed"]
+        assert failed["winerror"] == 5
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_sharing_violation_on_replace_is_retried(self, tmp_path):
+        import os as _os
+
+        content = _make_installer_content()
+        info = _make_info(content)
+        respx.get(info.url).respond(200, content=content)
+        real_replace = _os.replace
+        calls: list[int] = []
+
+        def flaky(src, dst):
+            calls.append(1)
+            if len(calls) == 1:
+                raise _sharing_violation()
+            return real_replace(src, dst)
+
+        with (
+            patch(
+                "backend.services.upgrade_service.get_app_data_dir",
+                return_value=tmp_path,
+            ),
+            patch("backend.services.upgrade_service.os.replace", side_effect=flaky),
+            patch("backend.services.upgrade_service.LAUNCH_RETRY_DELAY_SECONDS", 0),
+        ):
+            result = await download_installer(info)
+        assert result is not None and result.read_bytes() == content
+        assert len(calls) == 2
+
+
+class TestLaunchLogsDirFailure:
+    def test_logs_dir_error_returns_false(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
+        with (
+            patch("backend.services.upgrade_service.is_windows", return_value=True),
+            patch(
+                "backend.services.upgrade_service.get_logs_dir",
+                side_effect=OSError("offline share"),
+            ),
+        ):
+            assert asyncio.run(launch_installer(installer)) is False

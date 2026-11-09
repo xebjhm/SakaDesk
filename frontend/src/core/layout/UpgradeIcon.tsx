@@ -177,14 +177,29 @@ export function UpgradeIcon() {
     }, [stage, versionInfo]);
 
     const handleCancel = useCallback(async () => {
+        let cancelled = false;
         try {
-            await fetch('/api/version/upgrade/cancel', { method: 'POST' });
+            const res = await fetch('/api/version/upgrade/cancel', { method: 'POST' });
+            const data = res.ok ? await res.json() : null;
+            cancelled = data?.success === true;
+            if (!cancelled) console.warn('[UpgradeIcon] Cancel refused:', res.status);
         } catch (err) {
             console.warn('[UpgradeIcon] Cancel request failed:', err);
         }
-        setUpgradeStatus(null);
         // Keep autoDownloadTriggered set: a user cancel must not make auto-download
         // start again right away (it restarts on the next app start).
+        if (cancelled) {
+            setUpgradeStatus(null);
+            return;
+        }
+        // The cancel did not go through: show what the backend is really doing
+        // (a download may still be running) instead of pretending it stopped.
+        try {
+            const res = await fetch('/api/version/upgrade/status');
+            if (res.ok) setUpgradeStatus(await res.json());
+        } catch (err) {
+            console.warn('[UpgradeIcon] Status after failed cancel failed:', err);
+        }
     }, []);
 
     // For non-Windows: open release page in browser

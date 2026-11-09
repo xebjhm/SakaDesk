@@ -898,3 +898,210 @@ class TestStartInstallHardening:
         assert seen[0]["success"] is False
         assert "launching" in seen[0]["error"]
         assert v._upgrade_state["state"] == "error"
+
+
+class TestGenerationGuardDuringDownload:
+    """Release review: the generation guard after download_installer and the
+    cancel timeout / task-error branches."""
+
+    def setup_method(self):
+        _reset_version_cache()
+
+    def _run(self, coro):
+        import asyncio
+
+        return asyncio.run(coro)
+
+    def test_superseded_while_downloading_does_not_report_ready(self, tmp_path):
+        import asyncio
+
+        import backend.api.version as v
+
+        async def scenario():
+            gate, reached = asyncio.Event(), asyncio.Event()
+
+            async def info(_version):
+                return object()
+
+            async def download(_info, _cb):
+                reached.set()
+                await gate.wait()
+                return tmp_path / "x.exe"
+
+            with (
+                patch.object(v, "get_installer_info", info),
+                patch.object(v, "download_installer", download),
+            ):
+                v._upgrade_generation += 1
+                v._upgrade_state["state"] = "downloading"
+                task = asyncio.create_task(
+                    v._download_and_prepare_upgrade("1.0.0", v._upgrade_generation)
+                )
+                await reached.wait()
+                v._upgrade_generation += 1  # a cancel / new start mid-stream
+                gate.set()
+                await task
+
+        self._run(scenario())
+        assert v._upgrade_state["state"] == "downloading"
+        assert v._upgrade_state["installer_path"] is None
+
+    def test_superseded_download_failure_does_not_mark_error(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        async def scenario():
+            gate = asyncio.Event()
+
+            async def info(_version):
+                return object()
+
+            async def download(_info, _cb):
+                await gate.wait()
+                raise OSError("folder removed under me")
+
+            with (
+                patch.object(v, "get_installer_info", info),
+                patch.object(v, "download_installer", download),
+            ):
+                v._upgrade_generation += 1
+                task = asyncio.create_task(
+                    v._download_and_prepare_upgrade("1.0.0", v._upgrade_generation)
+                )
+                await asyncio.sleep(0)
+                v._upgrade_generation += 1
+                v._upgrade_state["state"] = "downloading"  # the newer attempt
+                gate.set()
+                await task
+
+        self._run(scenario())
+        assert v._upgrade_state["state"] == "downloading"
+        assert v._upgrade_state["error"] is None
+
+    def test_cancel_wait_timeout_still_cleans_up_and_ignores_late_result(
+        self, tmp_path
+    ):
+        import asyncio
+
+        from structlog.testing import capture_logs
+
+        import backend.api.version as v
+
+        cleaned: list[bool] = []
+
+        async def scenario():
+            gate = asyncio.Event()
+
+            async def info(_version):
+                return object()
+
+            async def stubborn(_info, _cb):
+                try:
+                    await asyncio.sleep(30)
+                except asyncio.CancelledError:
+                    await gate.wait()  # ignores the cancel for a while
+                return tmp_path / "x.exe"
+
+            with (
+                patch.object(v, "_CANCEL_WAIT_SECONDS", 0.01),
+                patch.object(v, "get_installer_info", info),
+                patch.object(v, "download_installer", stubborn),
+                patch.object(v, "cleanup_upgrade_files", lambda: cleaned.append(True)),
+            ):
+                v._upgrade_generation += 1
+                v._upgrade_state["state"] = "downloading"
+                task = asyncio.create_task(
+                    v._download_and_prepare_upgrade("1.0.0", v._upgrade_generation)
+                )
+                v._download_task = task
+                await asyncio.sleep(0)
+                result = await v.cancel_upgrade()
+                assert result["success"] is True
+                gate.set()
+                await task
+
+        with capture_logs() as logs:
+            self._run(scenario())
+        assert cleaned == [True]
+        assert any(e["event"] == "upgrade_cancel_wait_timeout" for e in logs)
+        assert v._upgrade_state["state"] == "idle"
+
+    def test_cancel_when_task_raises_its_own_error(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        cleaned: list[bool] = []
+
+        async def scenario():
+            async def info(_version):
+                return object()
+
+            async def broken(_info, _cb):
+                try:
+                    await asyncio.sleep(30)
+                except asyncio.CancelledError:
+                    raise RuntimeError("boom on cancel")
+
+            async def runner():
+                # Not _download_and_prepare_upgrade: its except would swallow it.
+                await broken(None, None)
+
+            with patch.object(v, "cleanup_upgrade_files", lambda: cleaned.append(True)):
+                v._download_task = asyncio.create_task(runner())
+                await asyncio.sleep(0)
+                result = await v.cancel_upgrade()
+            assert result["success"] is True
+
+        self._run(scenario())
+        assert cleaned == [True]
+        assert v._upgrade_state["state"] == "idle"
+
+    def test_cancel_handler_cancelled_itself_reraises(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        cleaned: list[bool] = []
+
+        async def scenario():
+            async def slow():
+                try:
+                    await asyncio.sleep(30)
+                except asyncio.CancelledError:
+                    await asyncio.sleep(30)  # slow to unwind
+
+            with patch.object(v, "cleanup_upgrade_files", lambda: cleaned.append(True)):
+                v._download_task = asyncio.create_task(slow())
+                await asyncio.sleep(0)
+                handler = asyncio.create_task(v.cancel_upgrade())
+                await asyncio.sleep(0.01)
+                handler.cancel()  # e.g. server shutdown
+                try:
+                    await handler
+                    raised = False
+                except asyncio.CancelledError:
+                    raised = True
+            return raised
+
+        assert self._run(scenario()) is True
+        assert cleaned == []  # the data dir is not touched after the cancel
+
+    def test_install_exception_does_not_stick_in_launching(self, tmp_path):
+        import asyncio
+
+        import backend.api.version as v
+
+        installer = tmp_path / "SakaDesk-9.0.0-Setup.exe"
+        installer.touch()
+        v._upgrade_state["state"] = "ready"
+        v._upgrade_state["installer_path"] = installer
+
+        async def explode(_path):
+            raise OSError("logs dir unavailable")
+
+        with patch.object(v, "launch_installer", explode):
+            result = asyncio.run(v.install_upgrade())
+        assert result["success"] is False
+        assert v._upgrade_state["state"] == "error"
