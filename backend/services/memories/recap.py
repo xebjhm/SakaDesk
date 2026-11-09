@@ -17,14 +17,23 @@ A message is identified by ``(member_dir, id)``: ids are per room. Message
 objects in the payload carry ``member_path`` (the room's display-name path, as
 the chat uses it) next to ``id``.
 
-Each message is the hero of at most one slide. Slides are selected in this
-order, each skipping messages already taken: s13 and s01 first (their whole
-claim is "the last" / "the first" message, so nothing may take them), then s12
-(the one sentence), then the other positional picks (s02, s04, s06), then the
-rest. A positional pick ("the first おはよう") whose message is already taken
-is left out (``None``) rather than replaced by a message that is not the
-first. Every selection, fallback and skip writes a ``recap.select`` breadcrumb
-with ids, codes and scores only -- never text, names or paths.
+Each message is the hero of at most one slide. Before any slide picks, the
+positional candidates of s01 (the first message, with the new-year preference)
+and s13 (the last おやすみ, or her final message when she graduated in ``Y``)
+are computed and held. Slides are then selected in this order, each skipping
+messages already taken: s12 first (the one sentence is reserved first, but it
+skips the held candidates so "the first" / "the last" stay true), then s01 and
+s13 (each takes its own candidate), then the other positional picks (s02, s04,
+s06), then the rest. A positional pick ("the first おはよう") whose message is
+already taken is left out (``None``) rather than replaced by a message that is
+not the first. s04's evening message is not positional: it is the free
+おやすみ with the latest clock time of night (00:00-04:59 counts as later than
+23:59; ties go to the more recent date). Every selection, fallback and skip
+writes a ``recap.select`` breadcrumb with ids, codes and scores only -- never
+text, names or paths.
+
+"Graduated in ``Y``" uses the person's full facts: ``summary.graduated`` and
+the JST year of her very last message overall equals ``Y``.
 
 Text is read lazily: :class:`_Texts` calls :func:`facts.load_texts` at most
 once per room, for the text-bearing ids up to the end of the window. The
@@ -326,7 +335,9 @@ class _Ctx:
     fav_at: dict[int, str]
     letters: tuple[tuple[datetime, str], ...]
     sub_start: date | None
+    last_overall: date | None  # JST date of her very last message, any year
     used: set[Key] = field(default_factory=set)
+    held: set[Key] = field(default_factory=set)  # s01/s13 candidates
 
     # helpers
 
@@ -406,6 +417,7 @@ def _first_free(ctx: _Ctx, items: Iterable[Item]) -> Item | None:
 def _positional(ctx: _Ctx, slide: str, rule: str, item: Item | None) -> Item | None:
     """Take ``item`` if free; a taken positional pick is left out, never replaced."""
     if item is None:
+        _log(slide, rule, fallback="none")
         return None
     if not ctx.free(item):
         _log(slide, rule, fallback="taken", message_id=item[1].id)
@@ -418,13 +430,12 @@ def _positional(ctx: _Ctx, slide: str, rule: str, item: Item | None) -> Item | N
 # --- slides ---------------------------------------------------------------------
 
 
-def _s01_first(ctx: _Ctx) -> dict | None:
-    slide = "s01_first"
+def _s01_candidate(ctx: _Ctx) -> tuple[Item | None, str, bool, bool]:
+    """``(pick, rule, joined_this_year, new_year_midnight)`` of slide 1."""
     msgs = ctx.nonpromo()
-    if not msgs:
-        _log(slide, "skip", fallback="skip")
-        return None
     joined = ctx.start > datetime(ctx.year, 1, 1, tzinfo=JST)
+    if not msgs:
+        return None, "first", joined, False
     midnight = [
         i
         for i in msgs
@@ -435,6 +446,15 @@ def _s01_first(ctx: _Ctx) -> dict | None:
     new_year = bool(midnight) and not joined
     pick = midnight[0] if new_year else msgs[0]
     rule = "new_year_midnight" if new_year else "first"
+    return pick, rule, joined, new_year
+
+
+def _s01_first(ctx: _Ctx) -> dict | None:
+    slide = "s01_first"
+    pick, rule, joined, new_year = _s01_candidate(ctx)
+    if pick is None:
+        _log(slide, "skip", fallback="skip")
+        return None
     got = _positional(ctx, slide, rule, pick)
     if got is None:
         _log(slide, "skip", fallback="skip")
@@ -519,6 +539,7 @@ def _s03_clock(ctx: _Ctx) -> dict | None:
         slide,
         "peak_hour",
         score=rep[1].importance if rep else None,
+        fallback=None if rep else "none",
         message_id=rep[1].id if rep else None,
     )
     data: dict[str, Any] = {
@@ -569,10 +590,8 @@ def _s04_greetings(ctx: _Ctx) -> dict | None:
         if alts[alt]:
             variant, evening_pool = alt, alts[alt]
             fallback = fallback or "variant"
-    evening = _positional(
-        ctx, slide, f"latest_{variant}", evening_pool[-1] if evening_pool else None
-    )
-    if morning is None and not evening_pool:
+    evening = _latest_at_night(ctx, slide, f"latest_{variant}", evening_pool)
+    if morning is None and evening is None:
         _log(slide, "skip", fallback="skip")
         return None
     data = {
@@ -583,6 +602,29 @@ def _s04_greetings(ctx: _Ctx) -> dict | None:
         "variant": variant,
     }
     return _slide(slide, data, fallback)
+
+
+def _night_minute(f: Fact) -> int:
+    """Clock time of night in minutes: 00:00-04:59 sorts after 23:59."""
+    return ((f.hour - 5) % 24) * 60 + f.minute
+
+
+def _latest_at_night(
+    ctx: _Ctx, slide: str, rule: str, pool: Sequence[Item]
+) -> Item | None:
+    """The free message of ``pool`` with the latest clock time of night.
+
+    Ties go to the more recent date. Not positional: a taken message (for
+    example s13's おやすみ) is simply skipped.
+    """
+    free = [i for i in pool if ctx.free(i)]
+    if not free:
+        _log(slide, rule, fallback="none")
+        return None
+    pick = max(free, key=lambda i: (_night_minute(i[1]), i[1].ts))
+    ctx.take(pick)
+    _log(slide, rule, score=_night_minute(pick[1]), message_id=pick[1].id)
+    return pick
 
 
 def _special_days(ctx: _Ctx) -> set[date]:
@@ -847,7 +889,7 @@ def _s08_echo(ctx: _Ctx) -> dict | None:
                 "then": ctx.message(week_then),
                 "now": ctx.message(week_now),
                 "shared_keyword": None,
-                "years_apart": 0,
+                "years_apart": None,
                 "mode": "first_week",
             }
             return _slide(slide, data, "first_week")
@@ -898,6 +940,8 @@ def _s09_special(ctx: _Ctx) -> dict | None:
         )
         if stub:
             stubs.append(stub)
+        else:
+            _log(slide, "birthday_none", fallback="none")
     if not ctx.christmas_open:
         stubs.append(
             {
@@ -925,6 +969,8 @@ def _s09_special(ctx: _Ctx) -> dict | None:
                     seconds=False,
                 )
             )
+        else:
+            _log(slide, "christmas_none", fallback="none")
     ny = [
         i
         for i in ctx.nonpromo()
@@ -935,11 +981,15 @@ def _s09_special(ctx: _Ctx) -> dict | None:
     ]
     if ny:
         stubs.append(_stub(ctx, "newyear", ny[0], "midnight", seconds=True))
+    else:
+        _log(slide, "newyear_none", fallback="none")
     if ctx.sub_start is not None and ctx.sub_start.year < ctx.year:
         day = sel._safe_date(ctx.year, ctx.sub_start.month, ctx.sub_start.day)
         stub = _day_stub(ctx, "anniversary", day, early=False)
         if stub:
             stubs.append(stub)
+        else:
+            _log(slide, "anniversary_none", fallback="none")
     if not stubs:
         _log(slide, "skip", fallback="skip")
         return None
@@ -989,9 +1039,9 @@ def _s10_you(ctx: _Ctx) -> dict:
         message_id=favs[0][1][1].id if favs else None,
     )
     data = {
-        "favorites_count": len(favs),
+        "favorites_count": len(favs) or None,
         "first_favorite": first,
-        "letters_count": len(letters),
+        "letters_count": len(letters) or None,
         "letters": letters,
         "invite": False,
     }
@@ -1043,16 +1093,23 @@ def _s11_daisuki(ctx: _Ctx) -> dict | None:
             fallback=fallback,
             message_id=final[1].id,
         )
+    else:
+        _log(slide, "final", fallback="none")
     data = {"petals": petals, "final": ctx.message(final), "variant": variant}
     return _slide(slide, data, fallback)
 
 
 def _s12_sentence(ctx: _Ctx) -> dict | None:
     slide = "s12_sentence"
-    pool = [i for i in ctx.words() if i[1].importance is not None and ctx.free(i)]
+    pool = [
+        i
+        for i in ctx.words()
+        if i[1].importance is not None and ctx.free(i) and _key(i) not in ctx.held
+    ]
     if not pool:
         _log(slide, "skip", fallback="skip")
         return None
+    special = _special_days(ctx)
     repeats = sel.sentence_counts(ctx.text(i) for i in pool)
     stars = [i for i in pool if i[1].favorited]
     for rule, group in (("star", stars), ("importance", pool)):
@@ -1067,6 +1124,7 @@ def _s12_sentence(ctx: _Ctx) -> dict | None:
                 msg = sel.Msg(item[1].id, item[1].ts, "text", s, item[1].favorited)
                 score = sel.importance(
                     msg,
+                    special=item[1].jst_date in special,
                     repeated=repeats.get(sel.normalize(s).strip(), 0) >= sel.REPEAT_MIN,
                 )
                 cand = (score, len(s), s)
@@ -1089,19 +1147,19 @@ def _s12_sentence(ctx: _Ctx) -> dict | None:
 
 
 def _graduated_in_year(ctx: _Ctx) -> bool:
+    """She graduated and her very last message (any year) is in ``Y``."""
     return (
         ctx.summary.graduated
-        and bool(ctx.all_facts)
-        and ctx.all_facts[-1][1].jst_date.year == ctx.year
+        and ctx.last_overall is not None
+        and ctx.last_overall.year == ctx.year
     )
 
 
-def _s13_oyasumi(ctx: _Ctx) -> dict | None:
-    slide = "s13_oyasumi"
+def _s13_candidate(ctx: _Ctx) -> tuple[Item | None, str, str | None]:
+    """``(pick, rule, fallback)`` of slide 13."""
     final = ctx.phase == "final"
-    graduated = _graduated_in_year(ctx)
     fallback = None
-    if graduated:
+    if _graduated_in_year(ctx):
         pool = ctx.nonpromo()
         rule = "graduated_last"
     else:
@@ -1110,7 +1168,15 @@ def _s13_oyasumi(ctx: _Ctx) -> dict | None:
         if not pool:
             pool = [i for i in ctx.words() if i[1].type == "text"]
             rule, fallback = "last_text", "last_text"
-    got = _positional(ctx, slide, rule, pool[-1] if pool else None)
+    return (pool[-1] if pool else None), rule, fallback
+
+
+def _s13_oyasumi(ctx: _Ctx) -> dict | None:
+    slide = "s13_oyasumi"
+    final = ctx.phase == "final"
+    graduated = _graduated_in_year(ctx)
+    pick, rule, fallback = _s13_candidate(ctx)
+    got = _positional(ctx, slide, rule, pick)
     if got is None:
         _log(slide, "skip", fallback="skip")
         return None
@@ -1205,9 +1271,9 @@ def _poster(ctx: _Ctx, slides: dict[str, dict], years: int | None) -> dict:
 
 # Selection order (see the module docstring); output order is SLIDE_KEYS.
 _ORDER: tuple[tuple[str, Callable[[_Ctx], dict | None]], ...] = (
-    ("s13_oyasumi", _s13_oyasumi),
-    ("s01_first", _s01_first),
     ("s12_sentence", _s12_sentence),
+    ("s01_first", _s01_first),
+    ("s13_oyasumi", _s13_oyasumi),
     ("s02_name", _s02_name),
     ("s04_greetings", _s04_greetings),
     ("s06_voice", _s06_voice),
@@ -1246,6 +1312,9 @@ def _compose(ctx: _Ctx, tier: str) -> dict:
     base = {"year": ctx.year, "phase": ctx.phase, "tier": tier, "member": member}
     if tier == "none":
         return {**base, "slides": [], "poster": None}
+    for pick in (_s01_candidate(ctx)[0], _s13_candidate(ctx)[0]):
+        if pick is not None:
+            ctx.held.add(_key(pick))
     built: dict[str, dict] = {}
     for key, fn in _ORDER:
         slide = fn(ctx)
@@ -1261,13 +1330,16 @@ def _display_path(service_data_dir: Path, rel: str) -> str:
 
 
 def _read_letters(
-    service: str, service_data_dir: Path, rels: Sequence[str]
+    service: str,
+    service_data_dir: Path,
+    rels: Sequence[str],
+    member_ids: Sequence[str] = (),
 ) -> list[tuple[datetime, str]]:
     from backend.api.chat_features import read_local_letters
 
     out: list[tuple[datetime, str]] = []
     output_dir = service_data_dir.parent
-    for rel in rels:
+    for n, rel in enumerate(rels):
         outcome, letters, _, _ = read_local_letters(
             output_dir, service_data_dir / rel, service, rel.split("/")
         )
@@ -1276,7 +1348,11 @@ def _read_letters(
             if created is not None:
                 out.append((created, letter.text))
         if outcome == "invalid":
-            logger.warning("recap.letters_invalid")
+            logger.warning(
+                "recap.letters_invalid",
+                member_id=member_ids[n] if n < len(member_ids) else None,
+                room_index=n,
+            )
     return out
 
 
@@ -1428,10 +1504,13 @@ def _build_sync(
         avatars=_avatars(service_data_dir, rels),
         rooms=rooms,
         fav_at=_fav_times(service, fav_ids) if tier != "none" else {},
-        letters=tuple(_read_letters(service, service_data_dir, rels))
+        letters=tuple(
+            _read_letters(service, service_data_dir, rels, summary.member_ids)
+        )
         if tier != "none"
         else (),
         sub_start=_parse_day(summary.subscription_start),
+        last_overall=tagged[-1][1].jst_date if tagged else None,
     )
     payload = _compose(ctx, tier)
     logger.info(

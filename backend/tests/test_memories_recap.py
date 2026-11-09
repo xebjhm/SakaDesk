@@ -334,6 +334,8 @@ async def test_full_member_partial(full):
     s04 = s["s04_greetings"]["data"]
     assert s04["first_ohayo"]["id"] == 12 and s04["oyasumi_count"] == 3
     assert s04["variant"] == "oyasumi"
+    # s13 holds 28 (the latest おやすみ); s04 shows the latest-at-night free one.
+    assert s04["latest_oyasumi"]["id"] == 27
 
     s05 = s["s05_photos"]["data"]
     assert [b["id"] for b in s05["burst"]] == [15, 17, 18]
@@ -409,6 +411,7 @@ async def test_full_member_final(full):
     s = slides_of(p)
     s13 = s["s13_oyasumi"]["data"]
     assert s13["message"]["id"] == 31 and s13["final"] is True
+    assert s["s04_greetings"]["data"]["latest_oyasumi"]["id"] == 28
     xmas = [st for st in s["s09_special"]["data"]["stubs"] if st["kind"] == "christmas"]
     assert len(xmas) == 1 and xmas[0]["sealed"] is False
     assert xmas[0]["message"]["id"] == 32  # 30 is the latest nickname sentence
@@ -443,6 +446,9 @@ async def test_joined_this_year_and_first_week_echo(svc):
     s08 = s["s08_echo"]["data"]
     assert s08["mode"] == "first_week" and s08["then"]["id"] == 3
     assert s08["now"]["id"] == 39 and s08["shared_keyword"] is None
+    assert s08["years_apart"] is None  # never "0"
+    s10 = s["s10_you"]["data"]
+    assert s10["favorites_count"] == 1 and s10["letters_count"] is None
     assert p["member"]["years_together"] == 1
 
 
@@ -517,6 +523,85 @@ async def test_graduated_in_year_shows_her_last_message(svc):
     assert p["member"]["graduated"] is True
     s13 = slides_of(p)["s13_oyasumi"]["data"]
     assert s13["graduated"] is True and s13["message"]["id"] == 31
+
+
+@pytest.mark.asyncio
+async def test_graduated_in_2026_is_not_graduated_in_her_2025_recap(svc):
+    room = ("20 潮 紗理菜", "22 潮 紗理菜")
+    rows = [
+        *[
+            m(k, f"2025-02-{1 + k:02d} 20:00", content=f"きょうの話{k}")
+            for k in range(12)
+        ],
+        m(30, "2025-11-01 23:00", content="おやすみ"),
+        m(31, "2025-12-20 20:00", content="今年もありがとう"),
+        *[
+            m(20 + k, f"2026-01-{1 + k:02d} 20:00", content=f"きょうの話{k}")
+            for k in range(10)
+        ],
+        m(40, "2026-03-31 20:00", content="今まで本当にありがとう、ずっと大好きです"),
+    ]
+    write_room(svc, room, rows)
+    write_closed(svc, ["20"])
+    p = await build(svc, "潮紗理菜", PARTIAL, year=2025)
+    assert p["phase"] == "final"
+    s13 = slides_of(p)["s13_oyasumi"]["data"]
+    assert s13["graduated"] is False and s13["message"]["id"] == 30
+    p26 = await build(svc, "潮紗理菜", PARTIAL)
+    s13_26 = slides_of(p26)["s13_oyasumi"]["data"]
+    assert s13_26["graduated"] is True and s13_26["message"]["id"] == 40
+
+
+def _plain(n, month=3):
+    return [
+        m(100 + k, f"2026-{month:02d}-{1 + k:02d} 20:00", content=f"きょうの話{k}")
+        for k in range(n)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_s12_skips_the_first_message_so_s01_stays_true(svc):
+    rows = [
+        m(1, "2026-01-02 20:00", content=STAR, fav=True),  # ★, and the first
+        *_plain(10),
+        m(50, "2026-05-01 20:00", content="今日は楽しいレッスンでした"),
+        m(60, "2026-06-01 20:00", content="またあした"),
+    ]
+    write_room(svc, KANEMURA, rows)
+    s = slides_of(await build(svc, "金村美玖", PARTIAL))
+    assert s["s01_first"]["data"]["message"]["id"] == 1
+    assert s["s12_sentence"]["data"]["message_id"] == 50
+
+
+@pytest.mark.asyncio
+async def test_s12_skips_the_last_oyasumi_so_s13_stays_true(svc):
+    rows = [
+        m(1, "2026-01-02 20:00", content="はじめの一歩"),
+        *_plain(10),
+        m(50, "2026-05-01 20:00", content="今日は楽しいレッスンでした"),
+        m(60, "2026-11-30 23:00", content=STAR + "、おやすみ", fav=True),
+    ]
+    write_room(svc, KANEMURA, rows)
+    s = slides_of(await build(svc, "金村美玖", PARTIAL))
+    assert s["s13_oyasumi"]["data"]["message"]["id"] == 60
+    assert s["s12_sentence"]["data"]["message_id"] == 50
+
+
+@pytest.mark.asyncio
+async def test_s04_latest_oyasumi_is_latest_clock_time_of_night(svc):
+    rows = [
+        *_plain(10),
+        m(1, "2026-02-01 01:30", content="おやすみ"),
+        m(2, "2026-03-15 23:59", content="おやすみ"),
+        m(3, "2026-04-01 01:30", content="おやすみなさい"),  # ties 1, more recent
+        m(4, "2026-11-30 22:00", content="おやすみ〜"),  # s13's latest
+    ]
+    write_room(svc, KANEMURA, rows)
+    s = slides_of(await build(svc, "金村美玖", PARTIAL))
+    assert s["s13_oyasumi"]["data"]["message"]["id"] == 4
+    s04 = s["s04_greetings"]
+    assert s04["data"]["latest_oyasumi"]["id"] == 3
+    assert s04["data"]["first_ohayo"] is None and s04["fallback"] == "morning"
 
 
 @pytest.mark.asyncio
@@ -627,6 +712,40 @@ async def test_logs_carry_no_text_names_or_paths(full):
         assert text not in blob
     for frag in ("%%%", "金村", "美玖", "messages/", "messages\\", "手紙", "花火"):
         assert frag not in blob, frag
+
+
+@pytest.mark.asyncio
+async def test_fallback_and_skip_paths_leave_breadcrumbs(svc):
+    rows = [
+        m(1, "2026-01-02 20:00", content="いつもありがとう"),  # s01's first
+        *_plain(10),
+        m(30, "2026-04-01 21:00", content="%%%、元気？"),  # single nickname
+        m(40, "2026-05-01 20:00", content="またあした"),  # s13's last text
+    ]
+    write_room(svc, KANEMURA, rows)
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", PARTIAL)
+    s = slides_of(p)
+    assert s["s02_name"]["data"]["last"] is None
+    assert s["s11_daisuki"]["data"]["final"] is None
+    assert "s04_greetings" not in s
+    selects = [e for e in logs if e["event"] == "recap.select"]
+    for e in selects:
+        assert {"slide", "rule", "score", "fallback", "message_id"} <= set(e)
+    nones = {(e["slide"], e["rule"]) for e in selects if e["fallback"] == "none"}
+    assert {
+        ("s02_name", "nickname_last"),
+        ("s04_greetings", "first_morning"),
+        ("s04_greetings", "latest_arigato"),
+        ("s11_daisuki", "final"),
+        ("s09_special", "newyear_none"),
+    } <= nones
+    assert ("s04_greetings", "skip") in {
+        (e["slide"], e["rule"]) for e in selects if e["fallback"] == "skip"
+    }
+    blob = json.dumps(logs, ensure_ascii=False, default=str)
+    for r in rows:
+        assert r["content"] not in blob
 
 
 @pytest.mark.asyncio
