@@ -2,7 +2,7 @@ import React from 'react';
 import { useTranslation } from '../../../../i18n';
 import { cn } from '../../../../utils/classnames';
 import type { RecapMessage, S04GreetingsData } from '../api';
-import { s04Copy, type CopyLine } from '../recapCopy';
+import { formatTimeOfDay, s04Copy, type CopyLine } from '../recapCopy';
 import { Headline, MessageBody, Narration, type SlideProps } from './common';
 import { reveal } from './style';
 
@@ -15,11 +15,17 @@ interface CardProps {
 }
 
 const GreetingCard: React.FC<CardProps> = ({ label, message, nickname, reducedMotion, delayMs }) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const r = reveal(reducedMotion, delayMs);
+    const time = formatTimeOfDay(message.ts, i18n.language);
     return (
         <div data-testid="s04-card" className={cn('flex w-full flex-col gap-2 rounded-lg bg-card px-4 py-3 shadow-card', r.className)} style={r.style}>
-            <Narration className="text-muted">{t(label.key, label.params)}</Narration>
+            <div className="flex items-baseline justify-center gap-2">
+                <Narration className="text-muted">{t(label.key, label.params)}</Narration>
+                {time && (
+                    <time data-testid="s04-time" dateTime={message.ts} className="text-caption tabular-nums text-muted">{time}</time>
+                )}
+            </div>
             <MessageBody message={message} nickname={nickname} quoteClassName="line-clamp-3 text-title" />
         </div>
     );
@@ -27,7 +33,8 @@ const GreetingCard: React.FC<CardProps> = ({ label, message, nickname, reducedMo
 
 /**
  * Slide 4, おはようと、おやすみ: her first おはよう of the year and the おやすみ
- * she sent latest in the night, then the おやすみ count. Fallbacks: her first
+ * she sent latest in the night, each with its JST clock time (HH:MM, metadata,
+ * not the slide's number), then the おやすみ count. Fallbacks: her first
  * morning words, the ありがとう / おつかれさま variants, or only one side.
  */
 export const S04Greetings: React.FC<SlideProps<S04GreetingsData>> = ({ data, fallback, nickname, reducedMotion }) => {

@@ -11,7 +11,7 @@ const renderS13 = (d: Omit<S13OyasumiData, 'message'>, fallback: string | null =
     render(
         <S13Oyasumi
             data={{ ...d, message: message(4, 'おやすみ、%%%') }}
-            fallback={fallback} recap={payload()} nickname="ゆき" reducedMotion={false} onMediaEnd={() => {}}
+            fallback={fallback} recap={payload()} nickname="ゆき" reducedMotion={false} paused={false} onMediaEnd={() => {}}
         />,
     );
 

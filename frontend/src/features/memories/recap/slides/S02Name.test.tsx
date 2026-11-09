@@ -12,7 +12,7 @@ const base: S02NameData = {
     fragments: ['%%%、がんばったね'], single: false,
 };
 const renderS02 = (data: S02NameData) =>
-    render(<S02Name data={data} fallback={null} recap={payload()} nickname="ゆき" reducedMotion={false} onMediaEnd={() => {}} />);
+    render(<S02Name data={data} fallback={null} recap={payload()} nickname="ゆき" reducedMotion={false} paused={false} onMediaEnd={() => {}} />);
 
 describe('S02Name', () => {
     it('spells the nickname, shows the first and latest sentence and the count', () => {

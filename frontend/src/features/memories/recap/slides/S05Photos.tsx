@@ -18,6 +18,12 @@ const WALL_MAX = 24;
 const FAN_DEG = 14;
 const FAN_PX = 56;
 
+/** At most `max` items spread evenly over the whole list (the wall runs through the year in order). */
+function sampleEvenly<T>(items: readonly T[], max: number): T[] {
+    if (items.length <= max) return [...items];
+    return Array.from({ length: max }, (_, i) => items[Math.floor((i * items.length) / max)]);
+}
+
 /**
  * When each photo appears: the real offsets from the first photo scaled into
  * {@link FAN_MS}, plus a fixed minimum gap per step. The order of the gaps is
@@ -48,10 +54,10 @@ const Media: React.FC<{ message: RecapMessage; className?: string }> = ({ messag
  * burst fanned out at compressed real timing with its caption. Without a burst:
  * one treasured photo. With reduced motion the burst is a still row.
  */
-export const S05Photos: React.FC<SlideProps<S05PhotosData>> = ({ data, fallback, nickname, reducedMotion }) => {
+export const S05Photos: React.FC<SlideProps<S05PhotosData>> = ({ data, nickname, reducedMotion }) => {
     const { t } = useTranslation();
-    const copy = s05Copy(data, fallback);
-    const wall = (data.wall ?? []).filter((u): u is string => !!u).slice(0, WALL_MAX);
+    const copy = s05Copy(data);
+    const wall = sampleEvenly((data.wall ?? []).filter((u): u is string => !!u), WALL_MAX);
     const burst = data.burst.filter((m) => m.media_url).slice(0, FAN_MAX);
     const best = burst.length === 0 && data.best_photo?.media_url ? data.best_photo : null;
     const delays = fanDelays(burst);

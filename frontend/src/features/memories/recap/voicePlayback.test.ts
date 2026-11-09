@@ -148,6 +148,75 @@ describe('ClipSequencer', () => {
         expect(ev.onEnd).toHaveBeenCalledTimes(1);
     });
 
+    it('pause() holds the playing clip and resume() plays it on', () => {
+        const f = fakeAudioFactory();
+        const seq = new ClipSequencer(clips(2), events(), f.create);
+        seq.start();
+        const [a, b] = f.made;
+        a.tick(2);
+        seq.pause();
+        expect(a.paused).toBe(true);
+        expect(b.paused).toBe(true);
+        seq.resume();
+        expect(a.paused).toBe(false);
+        expect(b.paused).toBe(true);
+    });
+
+    it('pause() during a crossfade holds both elements and both ramps', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(3), ev, f.create);
+        seq.start();
+        const [a, b] = f.made;
+        a.tick(5.8);
+        vi.advanceTimersByTime(150);
+        seq.pause();
+        expect(a.paused).toBe(true);
+        expect(b.paused).toBe(true);
+        const [va, vb] = [a.volume, b.volume];
+        vi.advanceTimersByTime(5000);
+        expect(a.volume).toBe(va);
+        expect(b.volume).toBe(vb);
+        seq.resume();
+        expect(a.paused).toBe(false);
+        expect(b.paused).toBe(false);
+        vi.advanceTimersByTime(CROSSFADE_MS);
+        expect(a.volume).toBe(0);
+        expect(a.paused).toBe(true);
+        expect(b.volume).toBe(1);
+        expect(b.paused).toBe(false);
+    });
+
+    it('pause() during the final fade holds onEnd until resume()', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(1), ev, f.create);
+        seq.start();
+        f.made[0].tick(5.8);
+        vi.advanceTimersByTime(100);
+        seq.pause();
+        vi.advanceTimersByTime(5000);
+        expect(ev.onEnd).not.toHaveBeenCalled();
+        seq.resume();
+        vi.advanceTimersByTime(CROSSFADE_MS);
+        expect(ev.onEnd).toHaveBeenCalledTimes(1);
+        expect(f.made[0].paused).toBe(true);
+    });
+
+    it('a play() rejected on resume skips the clip', async () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(2), ev, f.create);
+        seq.start();
+        const [a] = f.made;
+        seq.pause();
+        a.rejectPlay = new Error('NotAllowedError');
+        seq.resume();
+        await flush();
+        expect(ev.onClipError).toHaveBeenCalledWith(0, 'play_rejected');
+        expect(ev.onClip).toHaveBeenLastCalledWith(1);
+    });
+
     it('stop() silences both elements and nothing fires afterwards', () => {
         const f = fakeAudioFactory();
         const ev = events();

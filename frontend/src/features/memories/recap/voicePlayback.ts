@@ -3,7 +3,9 @@
  * elements, crossfading each hand-over with volume ramps.
  *
  * Pure DOM, no React: the slide owns one sequencer per press of ▶ and stops
- * it when it unmounts. Tests pass a fake element factory.
+ * it when it unmounts. `pause()` / `resume()` follow the recap player's pause:
+ * every sounding element, every volume ramp and the final fade-out timer hold
+ * where they are. Tests pass a fake element factory.
  */
 import type { RecapTranscriptSegment } from './api';
 
@@ -44,6 +46,10 @@ interface Slot {
     el: HTMLAudioElement;
     ramp: ReturnType<typeof setInterval> | null;
     detach: (() => void) | null;
+    /** The element is sounding (playing, or fading out): `resume()` plays it again. */
+    live: boolean;
+    /** Skips the slot's clip; a no-op once it has handed over. */
+    fail: ((code: ClipErrorCode) => void) | null;
 }
 
 export class ClipSequencer {
@@ -51,6 +57,10 @@ export class ClipSequencer {
     private index = -1;
     private stopped = false;
     private subtitle: string | null = null;
+    private paused = false;
+    /** The final fade-out timer, and whether it still has to run (it is re-armed on resume). */
+    private endTimer: ReturnType<typeof setTimeout> | null = null;
+    private endPending = false;
 
     constructor(
         private readonly clips: readonly SequencerClip[],
@@ -58,8 +68,8 @@ export class ClipSequencer {
         create: () => HTMLAudioElement = createAudioElement,
     ) {
         this.slots = [
-            { el: create(), ramp: null, detach: null },
-            { el: create(), ramp: null, detach: null },
+            { el: create(), ramp: null, detach: null, live: false, fail: null },
+            { el: create(), ramp: null, detach: null, live: false, fail: null },
         ];
     }
 
@@ -76,12 +86,39 @@ export class ClipSequencer {
     stop(): void {
         if (this.stopped) return;
         this.stopped = true;
+        this.clearEndTimer();
         for (const slot of this.slots) {
             this.cancelRamp(slot);
             slot.detach?.();
             slot.detach = null;
+            slot.live = false;
             slot.el.pause();
         }
+    }
+
+    /** Holds playback: sounding elements pause, ramps and the final fade-out stop where they are. */
+    pause(): void {
+        if (this.paused || this.stopped) return;
+        this.paused = true;
+        for (const slot of this.slots) if (slot.live) slot.el.pause();
+        if (this.endTimer !== null) {
+            clearTimeout(this.endTimer);
+            this.endTimer = null;
+        }
+    }
+
+    /** Plays on from where {@link pause} held; a clip whose `play()` is now rejected is skipped. */
+    resume(): void {
+        if (!this.paused || this.stopped) return;
+        this.paused = false;
+        for (const slot of this.slots) {
+            if (!slot.live) continue;
+            const played = slot.el.play();
+            if (played && typeof played.catch === 'function') {
+                played.catch(() => slot.fail?.('play_rejected'));
+            }
+        }
+        if (this.endPending) this.armEndTimer();
     }
 
     private slotOf(index: number): Slot {
@@ -101,8 +138,10 @@ export class ClipSequencer {
             handed = true;
             slot.detach?.();
             slot.detach = null;
+            slot.fail = null;
             this.next(index, error);
         };
+        slot.fail = handOver;
         const onTime = () => {
             this.showSubtitle(clip, el.currentTime);
             if (el.currentTime >= clip.end - CROSSFADE_MS / 1000) handOver(null);
@@ -121,6 +160,7 @@ export class ClipSequencer {
         el.currentTime = clip.start;
         el.volume = fadeIn ? 0 : 1;
         this.events.onClip(index);
+        slot.live = true;
         const played = el.play();
         if (played && typeof played.catch === 'function') {
             played.catch(() => handOver('play_rejected'));
@@ -133,9 +173,13 @@ export class ClipSequencer {
         if (error) {
             this.events.onClipError(index, error);
             this.cancelRamp(slot);
+            slot.live = false;
             slot.el.pause();
         } else {
-            this.rampTo(slot, 0, () => slot.el.pause());
+            this.rampTo(slot, 0, () => {
+                slot.live = false;
+                slot.el.pause();
+            });
         }
         this.setSubtitle(null);
         if (index + 1 < this.clips.length) {
@@ -143,9 +187,24 @@ export class ClipSequencer {
             return;
         }
         // The last clip: let its fade-out finish, then hand back to the player.
-        setTimeout(() => {
-            if (!this.stopped) this.events.onEnd();
+        this.endPending = true;
+        if (!this.paused) this.armEndTimer();
+    }
+
+    /** (Re)starts the final fade-out wait; a resume gives it its full length again. */
+    private armEndTimer(): void {
+        this.clearEndTimer();
+        this.endTimer = setTimeout(() => {
+            this.endTimer = null;
+            if (this.stopped || this.paused) return;
+            this.endPending = false;
+            this.events.onEnd();
         }, CROSSFADE_MS);
+    }
+
+    private clearEndTimer(): void {
+        if (this.endTimer !== null) clearTimeout(this.endTimer);
+        this.endTimer = null;
     }
 
     private showSubtitle(clip: SequencerClip, t: number): void {
@@ -174,6 +233,8 @@ export class ClipSequencer {
                 this.cancelRamp(slot);
                 return;
             }
+            // Paused: the ramp holds its volume and carries on from this step on resume.
+            if (this.paused) return;
             step += 1;
             const v = from + (to - from) * Math.min(1, step / RAMP_STEPS);
             slot.el.volume = Math.max(0, Math.min(1, v));

@@ -1,12 +1,12 @@
 import { describe, it, expect } from 'vitest';
 import {
-    clipWindow, formatClock, formatMonthDay, s01Copy, s02Copy, s03Copy, s04Copy, s05Copy, s06Copy, s12Copy, s13Copy,
+    formatClock, formatMonthDay, formatTimeOfDay, s01Copy, s02Copy, s03Copy, s04Copy, s05Copy, s06Copy, s12Copy, s13Copy,
     withNickname,
 } from './recapCopy';
 import { payload } from './__fixtures__/payload';
 import { message } from './__fixtures__/payload';
 import type {
-    RecapClip, S01FirstData, S02NameData, S03ClockData, S04GreetingsData, S05PhotosData, S06VoiceData, S13OyasumiData,
+    S01FirstData, S02NameData, S03ClockData, S04GreetingsData, S05PhotosData, S06VoiceData, S13OyasumiData,
 } from './api';
 
 const member = payload().member;
@@ -80,6 +80,14 @@ describe('recapCopy', () => {
         expect(formatClock('2025-12-31T15:00:07Z', 'ja')).toBe('0:00:07');
         expect(formatMonthDay('nope', 'ja')).toBeNull();
         expect(formatClock('nope', 'ja')).toBeNull();
+    });
+
+    it('formats a JST time of day as HH:MM in every locale', () => {
+        for (const lang of ['ja', 'en', 'zh-TW', 'zh-CN', 'yue']) {
+            expect(formatTimeOfDay('2026-03-04T16:47:30Z', lang)).toBe('01:47');
+            expect(formatTimeOfDay('2026-01-02T21:05:00Z', lang)).toBe('06:05');
+        }
+        expect(formatTimeOfDay('nope', 'ja')).toBeNull();
     });
 
     it('replaces the nickname placeholder (ASCII and fullwidth, literally)', () => {
@@ -165,16 +173,26 @@ describe('recapCopy', () => {
 
     describe('s05', () => {
         const p = (over: Partial<S05PhotosData> = {}): S05PhotosData => ({
-            burst: [message(1, null, { type: 'picture' })], burst_caption: null, mostly_bursts: false, ...over,
+            burst: [message(1, null, { type: 'picture', media_url: '/api/media/b1.jpg' })], burst_caption: null, mostly_bursts: false, ...over,
         });
 
         it('the mostly-bursts line when she mostly sends bursts', () => {
-            expect(s05Copy(p({ mostly_bursts: true }), null).line).toEqual({ key: 'recap.s05.mostlyBursts' });
-            expect(s05Copy(p(), null)).toEqual({ title: { key: 'recap.s05.title' }, line: null });
+            expect(s05Copy(p({ mostly_bursts: true })).line).toEqual({ key: 'recap.s05.mostlyBursts' });
+            expect(s05Copy(p())).toEqual({ title: { key: 'recap.s05.title' }, line: null });
         });
 
         it('the best-photo fallback has its own line', () => {
-            expect(s05Copy(p({ burst: [], best_photo: message(2, null) }), 'best_photo').line).toEqual({ key: 'recap.s05.bestPhoto' });
+            const best = message(2, null, { type: 'picture', media_url: '/api/media/best.jpg' });
+            expect(s05Copy(p({ burst: [], best_photo: best })).line).toEqual({ key: 'recap.s05.bestPhoto' });
+        });
+
+        it('under a single best photo, never the mostly-bursts line', () => {
+            const best = message(2, null, { type: 'picture', media_url: '/api/media/best.jpg' });
+            expect(s05Copy(p({ burst: [], best_photo: best, mostly_bursts: true })).line).toEqual({ key: 'recap.s05.bestPhoto' });
+            // A burst whose items have no media shows no fan, so it is not a burst on screen either.
+            const unshown = [message(3, null, { type: 'picture' })];
+            expect(s05Copy(p({ burst: unshown, best_photo: best, mostly_bursts: true })).line).toEqual({ key: 'recap.s05.bestPhoto' });
+            expect(s05Copy(p({ burst: unshown, best_photo: null, mostly_bursts: true })).line).toBeNull();
         });
     });
 
@@ -191,14 +209,5 @@ describe('recapCopy', () => {
             expect(s06Copy(v({ voice_count: null }), 'video').sub).toEqual({ key: 'recap.s06.video' });
         });
 
-        it('clip windows default a missing start to 0 and a missing end to the clip length', () => {
-            const clip = (start: number | null, end: number | null): RecapClip => ({
-                message: message(1, null, { type: 'voice' }), start, end, transcript_segments: null,
-            });
-            expect(clipWindow(clip(0, 6), 3)).toEqual({ start: 0, end: 6 });
-            expect(clipWindow(clip(null, null), 3)).toEqual({ start: 0, end: 6 });
-            expect(clipWindow(clip(null, null), 1)).toEqual({ start: 0, end: 12 });
-            expect(clipWindow(clip(2, 1), 3)).toEqual({ start: 2, end: 8 });
-        });
     });
 });

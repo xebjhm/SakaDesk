@@ -1,16 +1,17 @@
 /**
  * Shared pieces of the recap slides.
  *
- * Two voices, never mixed up: her words are serif display type marked
- * `lang="ja"` (`Quote`); the app's own copy is the smaller sans UI face
- * (`Headline`, `Narration`). `data-voice` names the voice for tests and later
- * renderers (the share canvas).
+ * Three type roles, never mixed up: her words are serif display type marked
+ * `lang="ja"` (`Quote`); a slide's title is serif display in the UI language,
+ * semibold and unmarked (`Headline`, `data-voice="title"`); the app's narration
+ * is the smaller sans UI face (`Narration`), so it is never mistaken for her
+ * words. `data-voice` names the role for tests and later renderers (the share canvas).
  */
 import React from 'react';
 import { cn } from '../../../../utils/classnames';
 import type { RecapMessage, RecapPayload } from '../api';
 import { withNickname } from '../recapCopy';
-import { HEADLINE_CLASS, NARRATION_CLASS, QUOTE_CLASS } from './style';
+import { NARRATION_CLASS, QUOTE_CLASS, TITLE_CLASS } from './style';
 
 export interface SlideProps<D> {
     data: D;
@@ -19,7 +20,12 @@ export interface SlideProps<D> {
     /** The fan's nickname, already resolved (never empty). */
     nickname: string;
     reducedMotion: boolean;
-    /** A slide that waits for media (the voice slide) calls this when playback ends. */
+    /** The player is paused (Space or its pause button): media on the slide holds until it resumes. */
+    paused: boolean;
+    /**
+     * A slide that waits for media (the voice slide) calls this when playback ends. While the
+     * player is paused the player holds the step and takes it on resume.
+     */
     onMediaEnd: () => void;
 }
 
@@ -35,8 +41,9 @@ export const Quote: React.FC<TextProps> = ({ children, className, style }) => (
     </p>
 );
 
+/** A slide's title. `className` may override the colour (the dark s12 stage). */
 export const Headline: React.FC<TextProps> = ({ children, className, style }) => (
-    <p data-voice="narration" className={cn(HEADLINE_CLASS, 'text-primary', className)} style={style}>
+    <p data-voice="title" className={cn(TITLE_CLASS, 'text-primary', className)} style={style}>
         {children}
     </p>
 );

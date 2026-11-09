@@ -381,7 +381,11 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 
 - **Faces:** `font-sans` (default, body and UI) and `font-display` (serif, for
   brand-moment headings only: landing hero, empty-state titles, about,
-  celebration numbers). `font-reading` is the Japanese serif for blog titles
+  celebration numbers, year-recap slide titles).
+  The year recap (`features/memories/recap/slides/common.tsx`) has three type roles: the slide
+  title (`Headline`: `font-display text-heading font-semibold`, UI language, never `lang="ja"`),
+  her quoted words (`Quote`: `font-display` marked `lang="ja"`) and the app's narration
+  (`Narration`: `font-sans text-small`, so it never reads as her words). `font-reading` is the Japanese serif for blog titles
   only; post bodies stay in the sans.
 - **Per UI language** (`design/fonts.ts`, `fontStacks`): the UI language picks
   the glyph set, and only that language's family is loaded from Google Fonts

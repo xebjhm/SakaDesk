@@ -105,7 +105,9 @@ export interface RecapPlayerProps {
  * orbs, IG-style progress segments, → / click right for the next slide, ← / click
  * left for the previous one, Space to pause, Esc to close. Slides advance after
  * {@link AUTO_ADVANCE_MS}; a slide that waits for media advances when its
- * playback ends. With prefers-reduced-motion nothing animates.
+ * playback ends. The pause reaches the slide (`paused`), so media holds too, and
+ * playback that ends while paused advances only on resume. The player takes
+ * focus when it opens. With prefers-reduced-motion nothing animates.
  */
 export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClose, onEnd, registry = SLIDE_REGISTRY }) => {
     const { t } = useTranslation();
@@ -124,7 +126,15 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
     const [pausedAt, setPausedAt] = useState(0);
     const [restart, setRestart] = useState(0);
     const endedRef = useRef(false);
+    // A media slide that finished while the player was paused: its index, stepped past on resume.
+    const mediaHeld = useRef<number | null>(null);
     const rootRef = useRef<HTMLDivElement>(null);
+
+    // Take focus on open: keys aimed at a widget outside the player are not ours, so a sidebar
+    // button the fan just clicked would otherwise keep ← / → / Space / Esc.
+    useEffect(() => {
+        rootRef.current?.focus({ preventScroll: true });
+    }, []);
 
     useEffect(() => {
         for (const s of recap.slides) {
@@ -153,6 +163,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
             finish();
             return;
         }
+        mediaHeld.current = null;
         const target = Math.max(0, next);
         elapsed.current = { index: target, ms: 0, gen: elapsed.current.gen + 1 };
         setPausedAt(0);
@@ -171,7 +182,8 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
         pausedRef.current = next;
         logRecapPlay(next ? 'pause' : 'resume', { index, member_id: memberId });
         setPaused(next);
-    }, [index, memberId]);
+        if (!next && mediaHeld.current === index) go(1, 'media');
+    }, [index, memberId, go]);
 
     const close = useCallback(() => {
         logRecapPlay('close', { index, member_id: memberId });
@@ -222,9 +234,17 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
         return () => window.removeEventListener('keydown', onKey, true);
     }, [go, togglePause, close]);
 
+    // A paused story never moves: playback that ends while paused (a clip error, or a slide with
+    // nothing to play reached by a manual step) is held and taken on resume.
     const onMediaEnd = useCallback(() => {
-        if (slides[index] === slide) go(1, 'media');
-    }, [slides, index, slide, go]);
+        if (slides[index] !== slide) return;
+        if (pausedRef.current) {
+            mediaHeld.current = index;
+            logRecapPlay('media_held', { index, key: slide?.key, member_id: memberId });
+            return;
+        }
+        go(1, 'media');
+    }, [slides, index, slide, go, memberId]);
 
     if (!slide || !entry) return null;
     const Slide = entry.component;
@@ -234,7 +254,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
 
     return (
         <Atmosphere className="flex h-full min-h-0 flex-1">
-            <div ref={rootRef} className="flex h-full items-center justify-center p-6">
+            <div ref={rootRef} data-testid="recap-root" tabIndex={-1} className="flex h-full items-center justify-center p-6 outline-none">
                 <section
                     data-testid="recap-stage"
                     data-slide={slide.key}
@@ -259,6 +279,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
                             recap={recap}
                             nickname={nickname}
                             reducedMotion={reducedMotion}
+                            paused={paused}
                             onMediaEnd={onMediaEnd}
                         />
                     </div>

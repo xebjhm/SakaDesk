@@ -8,7 +8,7 @@ import type { S05PhotosData } from '../api';
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 
 const renderS05 = (data: S05PhotosData, fallback: string | null = null, reducedMotion = false) =>
-    render(<S05Photos data={data} fallback={fallback} recap={payload()} nickname="ゆき" reducedMotion={reducedMotion} onMediaEnd={() => {}} />);
+    render(<S05Photos data={data} fallback={fallback} recap={payload()} nickname="ゆき" reducedMotion={reducedMotion} paused={false} onMediaEnd={() => {}} />);
 
 const delayOf = (el: HTMLElement) => parseFloat(el.style.animationDelay || '0');
 
@@ -35,6 +35,16 @@ describe('S05Photos', () => {
         expect(items[0].querySelector('img')).toHaveAttribute('src', '/api/media/b10.jpg');
         expect(screen.getByText('ゆきに見せたかった海')).toHaveAttribute('data-voice', 'quote');
         expect(screen.getByRole('group', { name: '一度に届いた写真' })).toBeInTheDocument();
+    });
+
+    it('a wall longer than the stage holds is sampled across the whole year, not just its start', () => {
+        const wall = Array.from({ length: 120 }, (_, i) => `/api/media/w${i}.jpg`);
+        renderS05(photosData({ wall }));
+        const srcs = Array.from(screen.getByTestId('s05-wall').querySelectorAll('img')).map((img) => img.getAttribute('src'));
+        expect(srcs).toHaveLength(24);
+        expect(srcs[0]).toBe('/api/media/w0.jpg');
+        expect(srcs[srcs.length - 1]).toBe('/api/media/w115.jpg');
+        expect(new Set(srcs).size).toBe(24);
     });
 
     it('the mostly-bursts line', () => {

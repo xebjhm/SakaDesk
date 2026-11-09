@@ -8,7 +8,7 @@ import type { S01FirstData } from '../api';
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 
 const renderS01 = (data: S01FirstData, recap = payload()) =>
-    render(<S01First data={data} fallback={null} recap={recap} nickname="ゆき" reducedMotion={false} onMediaEnd={() => {}} />);
+    render(<S01First data={data} fallback={null} recap={recap} nickname="ゆき" reducedMotion={false} paused={false} onMediaEnd={() => {}} />);
 
 describe('S01First', () => {
     it('shows her first message with the nickname, the seconds clock and the year line', () => {

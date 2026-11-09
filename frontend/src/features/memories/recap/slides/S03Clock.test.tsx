@@ -4,11 +4,12 @@ import i18n from '../../../../i18n';
 import { S03Clock } from './S03Clock';
 import { clockData, payload } from '../__fixtures__/payload';
 import type { S03ClockData } from '../api';
+import { staticTokenVars } from '../../../../design/cssVars';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 
 const renderS03 = (data: S03ClockData, reducedMotion = false) =>
-    render(<S03Clock data={data} fallback={data.band ? 'flat' : null} recap={payload()} nickname="ゆき" reducedMotion={reducedMotion} onMediaEnd={() => {}} />);
+    render(<S03Clock data={data} fallback={data.band ? 'flat' : null} recap={payload()} nickname="ゆき" reducedMotion={reducedMotion} paused={false} onMediaEnd={() => {}} />);
 
 describe('S03Clock', () => {
     it('draws one star per message on a clock with no axis numbers and four faint cardinal dots', () => {
@@ -22,7 +23,7 @@ describe('S03Clock', () => {
 
     it('glows the peak hour and shows its message under the night title', () => {
         renderS03(clockData());
-        expect(screen.getByText('彼女の夜は、あなたの夜。')).toHaveAttribute('data-voice', 'narration');
+        expect(screen.getByText('彼女の夜は、あなたの夜。')).toHaveAttribute('data-voice', 'title');
         expect(screen.getByTestId('s03-glow')).toBeInTheDocument();
         expect(screen.getAllByTestId('s03-star').filter((s) => s.getAttribute('data-peak') === 'true')).toHaveLength(3);
         expect(screen.getByText('いちばん星が集まる時間の、ひとこと。')).toBeInTheDocument();
@@ -65,6 +66,25 @@ describe('S03Clock', () => {
             expect((s as unknown as HTMLElement).style.fill).toMatch(/^var\(--ds-/);
         }
         expect(document.body.innerHTML).not.toMatch(/#[0-9a-f]{3,8}\b|rgb\(|hsl\(/i);
+    });
+
+    it('glows with a soft gradient whose stops read a solid neutral colour token, never a gradient or group variable', () => {
+        renderS03(clockData());
+        const glow = screen.getByTestId('s03-glow');
+        const ref = /^url\(#([\w-]+)\)$/.exec(glow.getAttribute('fill') ?? '');
+        expect(ref).not.toBeNull();
+        const gradient = document.getElementById(ref![1]);
+        expect(gradient?.tagName.toLowerCase()).toBe('radialgradient');
+        const stops = Array.from(gradient!.querySelectorAll('stop'));
+        expect(stops.length).toBeGreaterThanOrEqual(2);
+        const tokens = staticTokenVars();
+        for (const stop of stops) {
+            const name = /stop-color:\s*var\((--ds-[\w-]+)\)/.exec(stop.getAttribute('style') ?? '')?.[1];
+            expect(name).toBeDefined();
+            // A static (context-neutral) token whose value is one solid colour.
+            expect(tokens[name!]).toMatch(/^#[0-9a-f]{6}$/i);
+            expect(name).not.toMatch(/accent|group|expressive|orb|gradient/);
+        }
     });
 
     it('never prints null or a zero without a message or a streak', () => {

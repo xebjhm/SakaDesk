@@ -9,6 +9,14 @@ import type { RecapSlide } from './api';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
+import { fakeAudioFactory } from './__fixtures__/fakeAudio';
+import { CROSSFADE_MS } from './voicePlayback';
+
+const audio = vi.hoisted(() => ({ factory: null as null | { create: () => HTMLAudioElement } }));
+vi.mock('./voicePlayback', async (importOriginal) => {
+    const mod = await importOriginal<typeof import('./voicePlayback')>();
+    return { ...mod, createAudioElement: () => audio.factory!.create() };
+});
 
 const playLogs = () => vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'recap_play');
 
@@ -271,6 +279,57 @@ describe('RecapPlayer', () => {
         expect(current()).toBe('s12_sentence');
     });
 
+    it('passes its pause to the slide', () => {
+        const registry: SlideRegistry = {
+            ...SLIDE_REGISTRY,
+            s01_first: { component: ({ paused }) => <p data-testid="probe" data-paused={String(paused)} /> },
+        };
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} registry={registry} />);
+        expect(screen.getByTestId('probe')).toHaveAttribute('data-paused', 'false');
+        fireEvent.keyDown(window, { key: ' ' });
+        expect(screen.getByTestId('probe')).toHaveAttribute('data-paused', 'true');
+    });
+
+    it('media that ends while paused does not advance; the step waits for resume', () => {
+        vi.useFakeTimers();
+        const voice: RecapSlide = { key: 's06_voice', fallback: null, data: { clips: [], voice_count: 3 } };
+        const registry: SlideRegistry = {
+            ...SLIDE_REGISTRY,
+            s06_voice: {
+                waitsForMedia: true,
+                component: ({ onMediaEnd }) => <button type="button" onClick={onMediaEnd}>ended</button>,
+            },
+        };
+        render(<RecapPlayer recap={payload({ slides: [voice, s12] })} nickname="ゆき" onClose={() => {}} registry={registry} />);
+        fireEvent.keyDown(window, { key: ' ' });
+        fireEvent.click(screen.getByRole('button', { name: 'ended' }));
+        act(() => { vi.advanceTimersByTime(AUTO_ADVANCE_MS * 3); });
+        expect(current()).toBe('s06_voice');
+        expect(playLogs()).toContainEqual(['recap_play', expect.objectContaining({ phase: 'media_held', index: 0, key: 's06_voice' })]);
+        fireEvent.keyDown(window, { key: ' ' });
+        expect(current()).toBe('s12_sentence');
+        expect(playLogs()).toContainEqual(['recap_play', expect.objectContaining({ phase: 'step', index: 1, reason: 'media' })]);
+    });
+
+    it('a held media end is dropped by a manual step', () => {
+        const voice: RecapSlide = { key: 's06_voice', fallback: null, data: { clips: [], voice_count: 3 } };
+        const registry: SlideRegistry = {
+            ...SLIDE_REGISTRY,
+            s06_voice: {
+                waitsForMedia: true,
+                component: ({ onMediaEnd }) => <button type="button" onClick={onMediaEnd}>ended</button>,
+            },
+        };
+        render(<RecapPlayer recap={payload({ slides: [s01, voice, s12, s13(true, false)] })} nickname="ゆき" onClose={() => {}} registry={registry} />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        fireEvent.keyDown(window, { key: ' ' });
+        fireEvent.click(screen.getByRole('button', { name: 'ended' }));
+        fireEvent.keyDown(window, { key: 'ArrowLeft' });
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        fireEvent.keyDown(window, { key: ' ' });
+        expect(current()).toBe('s06_voice');
+    });
+
     it('skips slides that have no renderer yet and logs it', () => {
         const letter: RecapSlide = {
             key: 's07_letter', fallback: null, data: { message: null, char_count: 120, photo_url: null },
@@ -353,6 +412,46 @@ describe('RecapPlayer', () => {
         act(() => { vi.advanceTimersByTime(AUTO_ADVANCE_MS * 3); });
         expect(current()).toBe('s06_voice');
         expect(screen.getByRole('button', { name: '声を聴く' })).toBeInTheDocument();
+    });
+
+    it('▶ in the real player plays without stepping, Space holds the voice, and the end advances once', () => {
+        vi.useFakeTimers();
+        const f = fakeAudioFactory();
+        audio.factory = f;
+        const slides: RecapSlide[] = [{ key: 's06_voice', fallback: null, data: voiceData() }, s12];
+        render(<RecapPlayer recap={payload({ slides })} nickname="ゆき" onClose={() => {}} />);
+        fireEvent.click(screen.getByRole('button', { name: '声を聴く' }));
+        expect(current()).toBe('s06_voice');
+        const [a, b] = f.made;
+        expect(a.paused).toBe(false);
+        fireEvent.keyDown(window, { key: ' ' });
+        expect(a.paused).toBe(true);
+        act(() => { vi.advanceTimersByTime(AUTO_ADVANCE_MS * 3); });
+        expect(current()).toBe('s06_voice');
+        fireEvent.keyDown(window, { key: ' ' });
+        expect(a.paused).toBe(false);
+        act(() => { a.tick(5.8); });
+        act(() => { vi.advanceTimersByTime(CROSSFADE_MS); });
+        act(() => { b.tick(5.8); });
+        act(() => { vi.advanceTimersByTime(CROSSFADE_MS); });
+        act(() => { a.tick(5.8); });
+        act(() => { vi.advanceTimersByTime(CROSSFADE_MS); });
+        expect(current()).toBe('s12_sentence');
+        expect(playLogs().filter(([, x]) => x?.phase === 'step' && x?.reason === 'media')).toHaveLength(1);
+    });
+
+    it('takes focus when it opens, so its keys work after a click elsewhere in the app', () => {
+        render(
+            <>
+                <button type="button">sidebar</button>
+                <RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />
+            </>,
+        );
+        const root = screen.getByTestId('recap-root');
+        expect(document.activeElement).toBe(root);
+        expect(root).toHaveAttribute('tabindex', '-1');
+        fireEvent.keyDown(document.activeElement!, { key: 'ArrowRight' });
+        expect(current()).toBe('s02_name');
     });
 
     it('the slide layer lets clicks through to the step zones', () => {

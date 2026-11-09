@@ -11,7 +11,7 @@ const data: S12SentenceData = {
     sentence: '%%%と歩いた一年でした。', message_id: 3, member_path: 'x', ts: '2026-06-01T12:00:00Z', photo_url: '/api/media/p.jpg',
 };
 const renderS12 = (d: S12SentenceData) =>
-    render(<S12Sentence data={d} fallback={null} recap={payload()} nickname="ゆき" reducedMotion={false} onMediaEnd={() => {}} />);
+    render(<S12Sentence data={d} fallback={null} recap={payload()} nickname="ゆき" reducedMotion={false} paused={false} onMediaEnd={() => {}} />);
 
 describe('S12Sentence', () => {
     it('sets her sentence in vertical serif type, nickname applied', () => {
@@ -21,7 +21,7 @@ describe('S12Sentence', () => {
         expect(sentence).toHaveAttribute('data-voice', 'quote');
         expect(sentence).toHaveAttribute('lang', 'ja');
         expect(sentence.className).toMatch(/font-display/);
-        expect(screen.getByText('2026年、彼女のひとこと')).toHaveAttribute('data-voice', 'narration');
+        expect(screen.getByText('2026年、彼女のひとこと')).toHaveAttribute('data-voice', 'title');
     });
 
     it('shows that day\'s photo faintly behind, or nothing', () => {

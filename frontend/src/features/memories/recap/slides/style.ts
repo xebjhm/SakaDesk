@@ -1,10 +1,13 @@
-/** Type classes and the reveal motion of the recap slides (see `common.tsx` for the two voices). */
+/** Type classes and the reveal motion of the recap slides (see `common.tsx` for the voices). */
 import type React from 'react';
 
 /** Her words: serif display. */
 export const QUOTE_CLASS = 'font-display text-heading font-medium';
-/** App copy that leads a slide: sans, a step above the narration. */
-export const HEADLINE_CLASS = 'font-sans text-title font-medium';
+/**
+ * A slide's title (app copy): serif display (`font-display`, the UI language's Noto Serif), the
+ * heading size, semibold. Never marked `lang="ja"`: it is the app speaking, not her.
+ */
+export const TITLE_CLASS = 'font-display text-heading font-semibold';
 /** App narration: smaller sans, so it never reads as her words. */
 export const NARRATION_CLASS = 'font-sans text-small';
 

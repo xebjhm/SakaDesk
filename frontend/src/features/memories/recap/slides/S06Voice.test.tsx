@@ -27,10 +27,13 @@ beforeEach(() => {
 });
 afterEach(() => { vi.useRealTimers(); });
 
-const renderS06 = (data: S06VoiceData, fallback: string | null = null, onMediaEnd = vi.fn()) => ({
-    onMediaEnd,
-    ...render(<S06Voice data={data} fallback={fallback} recap={payload()} nickname="ゆき" reducedMotion={false} onMediaEnd={onMediaEnd} />),
-});
+const renderS06 = (data: S06VoiceData, fallback: string | null = null, onMediaEnd = vi.fn()) => {
+    const view = (paused: boolean) => (
+        <S06Voice data={data} fallback={fallback} recap={payload()} nickname="ゆき" reducedMotion={false} paused={paused} onMediaEnd={onMediaEnd} />
+    );
+    const r = render(view(false));
+    return { onMediaEnd, ...r, setPaused: (paused: boolean) => r.rerender(view(paused)) };
+};
 
 const press = () => fireEvent.click(screen.getByRole('button', { name: '声を聴く' }));
 
@@ -72,8 +75,8 @@ describe('S06Voice', () => {
         expect(onMediaEnd).toHaveBeenCalledTimes(1);
     });
 
-    it('a clip with no start or end plays its opening from 0', () => {
-        const { onMediaEnd } = renderS06(voiceData({ clips: [clip(40, { start: null, end: null })], voice_count: 1 }), 'single');
+    it('a single clip plays its opening up to the end the backend sent', () => {
+        const { onMediaEnd } = renderS06(voiceData({ clips: [clip(40, { start: 0, end: 12 })], voice_count: 1 }), 'single');
         press();
         const [a] = f.made;
         expect(a.currentTime).toBe(0);
@@ -86,7 +89,7 @@ describe('S06Voice', () => {
     });
 
     it('video audio says where the voice came from and shows no count', () => {
-        const video = clip(50, { message: { ...clip(50).message!, type: 'video', media_url: '/api/media/m50.mp4' } });
+        const video = clip(50, { message: { ...clip(50).message, type: 'video', media_url: '/api/media/m50.mp4' } });
         renderS06({ clips: [video], voice_count: null }, 'video');
         expect(screen.getByText('動画から届いた声。')).toBeInTheDocument();
         press();
@@ -94,14 +97,57 @@ describe('S06Voice', () => {
     });
 
     it('stops playback when the slide goes away', () => {
-        const { unmount } = renderS06(voiceData());
+        const { unmount, onMediaEnd } = renderS06(voiceData());
         press();
+        act(() => { f.made[0].tick(5.8); });
         unmount();
         expect(f.made.every((a) => a.paused)).toBe(true);
+        act(() => { vi.advanceTimersByTime(10_000); });
+        expect(onMediaEnd).not.toHaveBeenCalled();
+    });
+
+    it('the player\'s pause holds the voice and its resume plays on', () => {
+        const { setPaused } = renderS06(voiceData());
+        press();
+        const [a] = f.made;
+        act(() => { a.tick(2); });
+        setPaused(true);
+        expect(a.paused).toBe(true);
+        setPaused(false);
+        expect(a.paused).toBe(false);
+    });
+
+    it('the player\'s pause holds both voices of a crossfade and the end', () => {
+        const { setPaused, onMediaEnd } = renderS06(voiceData({ clips: [clip(20), clip(21)], voice_count: 2 }));
+        press();
+        const [a, b] = f.made;
+        act(() => { a.tick(5.8); });
+        act(() => { vi.advanceTimersByTime(100); });
+        setPaused(true);
+        expect(a.paused).toBe(true);
+        expect(b.paused).toBe(true);
+        act(() => { vi.advanceTimersByTime(10_000); });
+        expect(onMediaEnd).not.toHaveBeenCalled();
+        setPaused(false);
+        expect(a.paused).toBe(false);
+        expect(b.paused).toBe(false);
+        act(() => { vi.advanceTimersByTime(CROSSFADE_MS); });
+        act(() => { b.tick(5.8); });
+        act(() => { vi.advanceTimersByTime(CROSSFADE_MS); });
+        expect(onMediaEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('▶ is disabled while the player is paused', () => {
+        const { setPaused } = renderS06(voiceData());
+        setPaused(true);
+        const button = screen.getByRole('button', { name: '声を聴く' });
+        expect(button).toBeDisabled();
+        fireEvent.click(button);
+        expect(f.made.every((a) => a.playCalls === 0)).toBe(true);
     });
 
     it('no playable clip: skips on to the next slide and logs it', () => {
-        const { onMediaEnd } = renderS06({ clips: [clip(60, { message: null })], voice_count: 3 });
+        const { onMediaEnd } = renderS06({ clips: [clip(60, { message: { ...clip(60).message, media_url: null } })], voice_count: 3 });
         expect(onMediaEnd).toHaveBeenCalledTimes(1);
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('recap_play', expect.objectContaining({ phase: 'skip', key: 's06_voice', reason: 'no_media' }));
     });

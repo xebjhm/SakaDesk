@@ -104,11 +104,15 @@ export interface RecapTranscriptSegment {
     text: string;
 }
 
-/** One voice (or video audio) opening; `start` / `end` are seconds into the media, or null. */
+/**
+ * One voice (or video audio) opening (`_clip`): `start` / `end` are seconds into the media.
+ * `start` is 0 (the opening); `end` is the clip length capped at the media's duration.
+ * `transcript_segments` is null when there is no readable transcript or no speech.
+ */
 export interface RecapClip {
-    message: RecapMessage | null;
-    start: number | null;
-    end: number | null;
+    message: RecapMessage;
+    start: number;
+    end: number;
     transcript_segments: RecapTranscriptSegment[] | null;
 }
 

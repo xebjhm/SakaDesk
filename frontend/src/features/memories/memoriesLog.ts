@@ -29,7 +29,7 @@ export function logRecapLoad(
 }
 
 export type RecapPlayPhase =
-    | 'open' | 'step' | 'pause' | 'resume' | 'end' | 'close' | 'skip'
+    | 'open' | 'step' | 'pause' | 'resume' | 'end' | 'close' | 'skip' | 'media_held'
     | 'voice_start' | 'voice_clip' | 'voice_error' | 'voice_end';
 
 /**
@@ -38,7 +38,8 @@ export type RecapPlayPhase =
  * skipped (`not_built`, `no_media`) or a voice clip failed (`media_error`,
  * `play_rejected`), `fallback` a fallback code. The `voice_*` phases trace the
  * voice slide: ▶ pressed (`count` clips), a clip started (`index`), a clip
- * failed, the sequence finished. Ids and codes only.
+ * failed, the sequence finished. `media_held`: a media slide's playback ended
+ * while the player was paused, so the step waits for resume. Ids and codes only.
  */
 export function logRecapPlay(
     phase: RecapPlayPhase,

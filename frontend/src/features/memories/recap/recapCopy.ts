@@ -7,7 +7,7 @@
  */
 import { replaceNickname } from '../../messages/utils/nickname';
 import type {
-    RecapClip, RecapMemberBlock, S01FirstData, S02NameData, S03ClockData, S04GreetingsData, S05PhotosData,
+    RecapMemberBlock, S01FirstData, S02NameData, S03ClockData, S04GreetingsData, S05PhotosData,
     S06VoiceData, S13OyasumiData,
 } from './api';
 
@@ -29,6 +29,18 @@ export function formatMonthDay(day: string, lang: string): string | null {
     if (!m) return null;
     const date = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
     return new Intl.DateTimeFormat(lang, { month: 'long', day: 'numeric', timeZone: 'UTC' }).format(date);
+}
+
+/**
+ * A UTC ISO timestamp as a JST time of day, `HH:MM` with a leading zero ("01:47"), or null. A
+ * message's clock time is metadata, so it does not count against the one-number-per-slide rule.
+ */
+export function formatTimeOfDay(ts: string, lang: string): string | null {
+    const date = new Date(ts);
+    if (Number.isNaN(date.getTime())) return null;
+    return new Intl.DateTimeFormat(lang, {
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: RECAP_TIME_ZONE,
+    }).format(date);
 }
 
 /** A UTC ISO timestamp as a JST clock with seconds ("0:00:07"), or null. */
@@ -129,11 +141,14 @@ export function s04Copy(
     };
 }
 
-/** s05. No number: the mostly-bursts line, or the best-photo fallback's own line. */
-export function s05Copy(data: S05PhotosData, fallback: string | null): { title: CopyLine; line: CopyLine | null } {
+/** s05. No number: the mostly-bursts line under a fanned burst, or the best-photo line under the single photo. */
+export function s05Copy(data: S05PhotosData): { title: CopyLine; line: CopyLine | null } {
+    // Follow what the slide shows: a fan needs burst items with media, the best photo needs its media.
+    // The mostly-bursts line sits only under a fanned burst, never under one photo.
+    const fanned = data.burst.some((m) => m.media_url);
     let line: CopyLine | null = null;
-    if (data.mostly_bursts) line = { key: 'recap.s05.mostlyBursts' };
-    else if (fallback === 'best_photo' || (data.burst.length === 0 && data.best_photo)) line = { key: 'recap.s05.bestPhoto' };
+    if (fanned) line = data.mostly_bursts ? { key: 'recap.s05.mostlyBursts' } : null;
+    else if (data.best_photo?.media_url) line = { key: 'recap.s05.bestPhoto' };
     return { title: { key: 'recap.s05.title' }, line };
 }
 
@@ -145,17 +160,6 @@ export function s06Copy(data: S06VoiceData, fallback: string | null): { title: C
     return { title: { key: 'recap.s06.title' }, sub };
 }
 
-/** Opening length when the payload has no end: ~6 s of each of three, 12 s of a single one (the backend's values). */
-const CLIP_SECONDS = 6;
-const SINGLE_CLIP_SECONDS = 12;
-
-/** The part of the media a clip plays, in seconds. A missing or inverted end takes the default length. */
-export function clipWindow(clip: RecapClip, total: number): { start: number; end: number } {
-    const start = clip.start ?? 0;
-    const length = total === 1 ? SINGLE_CLIP_SECONDS : CLIP_SECONDS;
-    const end = clip.end !== null && clip.end > start ? clip.end : start + length;
-    return { start, end };
-}
 
 export function s12Copy(year: number): { title: CopyLine } {
     return { title: { key: 'recap.s12.title', params: { year } } };

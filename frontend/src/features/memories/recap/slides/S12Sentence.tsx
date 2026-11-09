@@ -3,8 +3,8 @@ import { useTranslation } from '../../../../i18n';
 import { cn } from '../../../../utils/classnames';
 import type { S12SentenceData } from '../api';
 import { s12Copy, withNickname } from '../recapCopy';
-import type { SlideProps } from './common';
-import { NARRATION_CLASS, QUOTE_CLASS, reveal } from './style';
+import { Headline, type SlideProps } from './common';
+import { QUOTE_CLASS, reveal } from './style';
 
 /** Slide 12, 今年の、ひとこと: the one sentence in vertical serif type on black, her photo of that day faintly behind. */
 export const S12Sentence: React.FC<SlideProps<S12SentenceData>> = ({ data, recap, nickname, reducedMotion }) => {
@@ -21,9 +21,7 @@ export const S12Sentence: React.FC<SlideProps<S12SentenceData>> = ({ data, recap
                     className="pointer-events-none absolute inset-0 h-full w-full object-cover opacity-20"
                 />
             )}
-            <p data-voice="narration" className={cn(NARRATION_CLASS, 'relative text-viewer-muted')}>
-                {t(copy.title.key, copy.title.params)}
-            </p>
+            <Headline className="relative text-viewer-muted">{t(copy.title.key, copy.title.params)}</Headline>
             <p
                 lang="ja"
                 data-voice="quote"

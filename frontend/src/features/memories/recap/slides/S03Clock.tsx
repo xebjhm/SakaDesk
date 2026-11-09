@@ -17,13 +17,20 @@ const INNER = 28;
 const OUTER = 86;
 const CARDINAL_R = 94;
 
-/** Colours come from the design tokens' CSS variables (the canvas rule applies to SVG too). */
+/**
+ * Colours come from the design tokens' CSS variables (the canvas rule applies to SVG too). Each is a
+ * solid colour: an SVG fill cannot take a gradient variable such as `--ds-expressive-orb-1`. The
+ * peak glow is neutral light (the card white fading out), not the group colour: it is a highlight,
+ * not identity, state or the primary action.
+ */
 const INK = {
     star: 'var(--ds-text-secondary)',
     peak: 'var(--ds-text-primary)',
     faint: 'var(--ds-text-muted)',
-    glow: 'var(--ds-expressive-orb-1)',
+    glow: 'var(--ds-surface-card)',
 } as const;
+
+const GLOW_ID = 's03-glow-gradient';
 
 const STAR_R: Record<RecapMessageType, number> = { text: 1.3, picture: 1.7, video: 1.7, voice: 1.9 };
 
@@ -61,18 +68,20 @@ export const S03Clock: React.FC<SlideProps<S03ClockData>> = ({ data, nickname, r
                 className="aspect-square w-4/5 max-w-xs"
             >
                 <defs>
-                    <filter id="s03-glow-blur" x="-50%" y="-50%" width="200%" height="200%">
-                        <feGaussianBlur stdDeviation="8" />
-                    </filter>
+                    {/* A soft glow: the solid glow colour fading to transparent from the centre. */}
+                    <radialGradient id={GLOW_ID}>
+                        <stop offset="0%" style={{ stopColor: INK.glow, stopOpacity: 0.95 }} />
+                        <stop offset="55%" style={{ stopColor: INK.glow, stopOpacity: 0.5 }} />
+                        <stop offset="100%" style={{ stopColor: INK.glow, stopOpacity: 0 }} />
+                    </radialGradient>
                 </defs>
                 {copy.glow && (
                     <circle
                         data-testid="s03-glow"
                         cx={CENTRE + Math.cos(peakAngle) * (INNER + OUTER) / 2}
                         cy={CENTRE + Math.sin(peakAngle) * (INNER + OUTER) / 2}
-                        r={30}
-                        filter="url(#s03-glow-blur)"
-                        style={{ fill: INK.glow, opacity: 0.9 }}
+                        r={34}
+                        fill={`url(#${GLOW_ID})`}
                     />
                 )}
                 {[0, 6, 12, 18].map((h) => {

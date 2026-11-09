@@ -5,7 +5,7 @@ import { IconButton } from '../../../../design/primitives';
 import { cn } from '../../../../utils/classnames';
 import { logRecapPlay } from '../../memoriesLog';
 import type { S06VoiceData } from '../api';
-import { clipWindow, s06Copy, withNickname } from '../recapCopy';
+import { s06Copy, withNickname } from '../recapCopy';
 import { ClipSequencer, createAudioElement, type SequencerClip } from '../voicePlayback';
 import { Headline, Narration, Quote, type SlideProps } from './common';
 import { reveal } from './style';
@@ -19,15 +19,17 @@ type Phase = 'idle' | 'playing' | 'done';
  * longest mid-year, latest), or video audio as the fallback. Nothing plays
  * until the fan presses ▶; then the clips play in sequence with a 300 ms
  * crossfade, transcript subtitles show when present, and the player moves on
- * when the last clip has faded out (`waitsForMedia`).
+ * when the last clip has faded out (`waitsForMedia`). The player's pause holds
+ * the voices (a crossfade included) until it resumes; ▶ is disabled while the
+ * player is paused, so nothing starts behind a paused story.
  */
-export const S06Voice: React.FC<SlideProps<S06VoiceData>> = ({ data, fallback, nickname, reducedMotion, onMediaEnd }) => {
+export const S06Voice: React.FC<SlideProps<S06VoiceData>> = ({ data, fallback, nickname, reducedMotion, paused, onMediaEnd }) => {
     const { t } = useTranslation();
     const copy = s06Copy(data, fallback);
     const clips = useMemo<SequencerClip[]>(
         () => data.clips.flatMap((c) => {
-            const url = c.message?.media_url;
-            return url ? [{ url, ...clipWindow(c, data.clips.length), segments: c.transcript_segments }] : [];
+            const url = c.message.media_url;
+            return url ? [{ url, start: c.start, end: c.end, segments: c.transcript_segments }] : [];
         }),
         [data.clips],
     );
@@ -52,8 +54,14 @@ export const S06Voice: React.FC<SlideProps<S06VoiceData>> = ({ data, fallback, n
         seq.current = null;
     }, []);
 
+    // Follow the player's pause, mid-clip or mid-crossfade.
+    useEffect(() => {
+        if (paused) seq.current?.pause();
+        else seq.current?.resume();
+    }, [paused]);
+
     const play = useCallback(() => {
-        if (seq.current || clips.length === 0) return;
+        if (seq.current || clips.length === 0 || paused) return;
         logRecapPlay('voice_start', { key: KEY, count: clips.length, fallback: fallback ?? undefined });
         setPhase('playing');
         const s = new ClipSequencer(clips, {
@@ -72,7 +80,7 @@ export const S06Voice: React.FC<SlideProps<S06VoiceData>> = ({ data, fallback, n
         }, createAudioElement);
         seq.current = s;
         s.start();
-    }, [clips, fallback]);
+    }, [clips, fallback, paused]);
 
     const lines = reveal(reducedMotion, 400);
     return (
@@ -86,6 +94,7 @@ export const S06Voice: React.FC<SlideProps<S06VoiceData>> = ({ data, fallback, n
                         aria-label={t('recap.s06.play')}
                         icon={<Play />}
                         onClick={play}
+                        disabled={paused}
                         className="pointer-events-auto"
                     />
                     <Narration>{t('recap.s06.hint')}</Narration>
