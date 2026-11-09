@@ -15,7 +15,7 @@ def tooltips(monkeypatch):
     seen: list[str] = []
     state = {"unread": 3, "lang": "en", "calls": 0}
 
-    async def fake_total() -> int:
+    async def fake_total() -> int | None:
         state["calls"] += 1
         return state["unread"]
 
@@ -113,6 +113,25 @@ async def test_refresh_never_raises_and_logs_the_error_type(tooltips, monkeypatc
     (event,) = [e for e in logs if e["event"] == "tray_tooltip_failed"]
     assert event["error_type"] == "RuntimeError"
     assert "secret" not in repr(logs)
+
+
+@pytest.mark.asyncio
+async def test_unknown_total_keeps_the_previous_tooltip(tooltips, monkeypatch):
+    """A failed count must not turn the tooltip into "no unread"."""
+    seen, state = tooltips
+    await tray_tooltip.refresh_tray_tooltip()
+    assert seen == ["SakaDesk — 3 unread"]
+
+    async def unknown() -> None:
+        return None
+
+    monkeypatch.setattr(tray_tooltip, "unread_total", unknown)
+    with capture_logs() as logs:
+        await tray_tooltip.refresh_tray_tooltip()
+    assert seen == ["SakaDesk — 3 unread"]  # not replaced by the idle text
+    assert not [e for e in logs if e["event"] == "tray_tooltip"]
+    (event,) = [e for e in logs if e["event"] == "tray_tooltip_failed"]
+    assert event["reason"] == "unread_unavailable"
 
 
 @pytest.mark.asyncio

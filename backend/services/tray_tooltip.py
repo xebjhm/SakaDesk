@@ -45,13 +45,19 @@ async def refresh_tray_tooltip() -> None:
     Does nothing when no tooltip handler is registered. Concurrent calls run one
     at a time (compute and set together), so the last call to start is the last
     to set. Logs ``tray_tooltip`` (``unread``) on success and
-    ``tray_tooltip_failed`` (error type only) on failure.
+    ``tray_tooltip_failed`` (error type only) on failure. When the unread total
+    is unknown (:func:`unread_total` returned ``None``) the previous tooltip is
+    kept rather than shown as "no unread", and ``tray_tooltip_failed
+    reason=unread_unavailable`` is logged.
     """
     if not desktop_bridge.has_tray_tooltip_handler():
         return
     try:
         async with _get_refresh_lock():
             unread = await unread_total()
+            if unread is None:
+                logger.warning("tray_tooltip_failed", reason="unread_unavailable")
+                return
             config = await load_config()
             language = await asyncio.to_thread(resolve_ui_language, config)
             text = tooltip_text(unread, get_strings("tray", language))

@@ -338,7 +338,7 @@ async def test_missing_output_dir_is_zero(env, monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_store_failure_returns_zero_and_logs_the_error_type(
+async def test_store_failure_returns_none_and_logs_the_error_type(
     env, monkeypatch
 ) -> None:
     def boom():
@@ -346,14 +346,14 @@ async def test_store_failure_returns_zero_and_logs_the_error_type(
 
     monkeypatch.setattr(app_state, "get_all_conversations", boom)
     with capture_logs() as logs:
-        assert await unread_total() == 0
+        assert await unread_total() is None  # unknown, never "nothing unread"
     (event,) = [e for e in logs if e["event"] == "tray_tooltip_failed"]
     assert event["error_type"] == "RuntimeError"
     assert "金村" not in repr(logs)
 
 
 @pytest.mark.asyncio
-async def test_scan_failure_returns_zero_and_logs_the_error_type(
+async def test_scan_failure_returns_none_and_logs_the_error_type(
     env, monkeypatch
 ) -> None:
     _write_member(env, REL, [{"id": 1}])
@@ -363,7 +363,7 @@ async def test_scan_failure_returns_zero_and_logs_the_error_type(
 
     monkeypatch.setattr("backend.api.content._list_group_refs", boom)
     with capture_logs() as logs:
-        assert await unread_total() == 0
+        assert await unread_total() is None
     (event,) = [e for e in logs if e["event"] == "tray_tooltip_failed"]
     assert event["error_type"] == "OSError"
     assert "金村" not in repr(logs)

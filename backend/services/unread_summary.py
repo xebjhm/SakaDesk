@@ -134,13 +134,14 @@ def _compute_total() -> int:
     return _total(get_output_dir(), app_state.get_all_conversations())
 
 
-async def unread_total() -> int:
+async def unread_total() -> Optional[int]:
     """Total unread messages across all stored conversations. Never raises.
 
-    Returns 0 and logs ``tray_tooltip_failed`` (error type only) on failure.
+    Returns ``None`` (the total is unknown, which is not the same as nothing
+    unread) and logs ``tray_tooltip_failed`` (error type only) on failure.
     """
     try:
         return await asyncio.to_thread(_compute_total)
     except Exception as e:
         logger.warning("tray_tooltip_failed", error_type=type(e).__name__)
-        return 0
+        return None
