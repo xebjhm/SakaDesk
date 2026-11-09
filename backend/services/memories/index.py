@@ -1,9 +1,19 @@
-"""Per-member memory index: derived once, cached in SQLite (spec 3.3).
+"""Per-room memory index: derived once, cached in SQLite (spec 3.2 / 3.3).
 
-Every Memories screen reads :class:`MemberIndex` instead of re-scanning
-``messages.json``. The cache key is ``data_hash``: size + mtime of the member's
-``messages.json`` plus the values derived from the side inputs (birthday,
-subscription start, graduation), so a change in any of them rebuilds the entry.
+Every Memories screen reads the cache instead of re-scanning ``messages.json``.
+Two tables live in ``memories_index.db`` (app data dir):
+
+- ``member_index``: one JSON :class:`MemberIndex` per room folder (lifetime
+  aggregates, avatar history, last message).
+- ``message_facts``: one compact row per message (JST date/hour, flags,
+  scores, burst / caption links, media file, duration). Query it through
+  :mod:`backend.services.memories.facts`.
+
+Both are written in one transaction and keyed by ``(service_dir,
+member_dir)``. The cache key is ``data_hash``: ``INDEX_VERSION`` (which folds
+in a lexicon hash), size + mtime of ``messages.json`` and of the
+``profile_images`` index, plus the side inputs (birthday, subscription start,
+graduation, group-chat flag), so a change in any of them rebuilds the entry.
 """
 
 from __future__ import annotations
@@ -30,6 +40,7 @@ from backend.services.memories import selection as sel
 from backend.services.memories.member_profiles import load_birthdays
 from backend.services.memories.names import normalize_member_name
 from backend.services.memories.subscriptions import load_subscription_starts
+from backend.services import profile_images_service
 from backend.services.platform import get_app_data_dir
 from backend.services.service_utils import get_service_identifier
 
@@ -76,16 +87,53 @@ def _path() -> Path:
     return _db_path or (get_app_data_dir() / "memories_index.db")
 
 
+# Column order of ``message_facts`` after the (service_dir, member_dir) key.
+FACT_COLUMNS = (
+    "id",
+    "ts_utc",
+    "jst_date",
+    "hour",
+    "minute",
+    "type",
+    "is_promo",
+    "has_nickname",
+    "greeting_mask",
+    "chars",
+    "importance",
+    "photo_score",
+    "burst_id",
+    "caption_id",
+    "favorited",
+    "media_file",
+    "duration_s",
+)
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS member_index (
+    service_dir TEXT, member_dir TEXT, data_hash TEXT, payload TEXT,
+    PRIMARY KEY(service_dir, member_dir));
+CREATE TABLE IF NOT EXISTS message_facts (
+    service_dir TEXT NOT NULL, member_dir TEXT NOT NULL, id INTEGER NOT NULL,
+    ts_utc TEXT NOT NULL, jst_date TEXT NOT NULL,
+    hour INTEGER NOT NULL, minute INTEGER NOT NULL, type TEXT NOT NULL,
+    is_promo INTEGER NOT NULL, has_nickname INTEGER NOT NULL,
+    greeting_mask INTEGER NOT NULL, chars INTEGER NOT NULL,
+    importance INTEGER, photo_score INTEGER, burst_id INTEGER, caption_id INTEGER,
+    favorited INTEGER NOT NULL, media_file TEXT, duration_s REAL,
+    PRIMARY KEY(service_dir, member_dir, id)) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS message_facts_by_date
+    ON message_facts(service_dir, member_dir, jst_date);
+CREATE INDEX IF NOT EXISTS message_facts_by_type
+    ON message_facts(service_dir, member_dir, type, jst_date);
+"""
+
+
 def _connect() -> sqlite3.Connection:
     conn = sqlite3.connect(_path())
     # busy_timeout first: the journal_mode switch itself can hit a locked DB.
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute(
-        "CREATE TABLE IF NOT EXISTS member_index ("
-        "service_dir TEXT, member_dir TEXT, data_hash TEXT, payload TEXT, "
-        "PRIMARY KEY(service_dir, member_dir))"
-    )
+    conn.executescript(_SCHEMA)  # IF NOT EXISTS: cheap, survives a deleted DB
     return conn
 
 
@@ -106,6 +154,12 @@ class MemberIndex:
     name_norm: str = ""
     hour_hist: list[int] = field(default_factory=lambda: [0] * 24)  # JST, non-promo
     first_ts: dict[str, str] = field(default_factory=dict)  # type -> UTC ISO
+    last_ts: dict[str, str] = field(default_factory=dict)  # type -> UTC ISO
+    # {"id", "ts" (UTC ISO), "type"} of her newest message of any type.
+    last_message: dict[str, Any] | None = None
+    # profile_images history, oldest first: {"kind", "file", "first_seen"}.
+    # The oldest entry per kind is when archiving began, not a change.
+    avatar_changes: list[dict[str, Any]] = field(default_factory=list)
     first_nickname_id: int | None = None  # includes promo texts
     counts_by_year: dict[int, dict[str, int]] = field(default_factory=dict)
     longest_streak_days: int = 0
@@ -256,6 +310,14 @@ def _identity(service_data_dir: Path, member_dir: Path, inputs: _Inputs) -> Memb
     )
 
 
+def _stat_part(path: Path) -> str:
+    try:
+        st = path.stat()
+    except OSError:
+        return "-"
+    return f"{st.st_size}:{st.st_mtime_ns}"
+
+
 def _data_hash(messages_path: Path, base: MemberIndex) -> str:
     st = messages_path.stat()
     key = "|".join(
@@ -263,6 +325,11 @@ def _data_hash(messages_path: Path, base: MemberIndex) -> str:
             INDEX_VERSION,
             str(st.st_size),
             str(st.st_mtime_ns),
+            _stat_part(
+                messages_path.parent
+                / profile_images_service.DIR_NAME
+                / profile_images_service.INDEX_NAME
+            ),
             base.birthday or "",
             base.subscription_start or "",
             "1" if base.graduated else "0",
@@ -282,9 +349,19 @@ def _parse_ts(raw: Any) -> datetime | None:
     return ts if ts.tzinfo else ts.replace(tzinfo=timezone.utc)
 
 
-def _load_msgs(messages_path: Path) -> tuple[list[sel.Msg], int]:
+_Extras = dict[int, tuple[str | None, float | None]]  # id -> (media_file, seconds)
+
+
+def _duration(raw: Any) -> float | None:
+    if isinstance(raw, bool) or not isinstance(raw, (int, float)):
+        return None
+    return float(raw) if raw >= 0 else None
+
+
+def _load_msgs(messages_path: Path) -> tuple[list[sel.Msg], int, _Extras]:
     data = json.loads(messages_path.read_text(encoding="utf-8"))
     out: list[sel.Msg] = []
+    extras: _Extras = {}
     skipped = 0
     for m in data["messages"]:
         ts = _parse_ts(m.get("timestamp"))
@@ -304,8 +381,15 @@ def _load_msgs(messages_path: Path) -> tuple[list[sel.Msg], int]:
                 favorited=bool(m.get("is_favorite")),
             )
         )
+        media_file = m.get("media_file")
+        duration = _duration(m.get("media_duration"))
+        if isinstance(media_file, str) or duration is not None:
+            extras[mid] = (
+                media_file if isinstance(media_file, str) else None,
+                duration,
+            )
     out.sort(key=lambda m: (m.ts, m.id))
-    return out, skipped
+    return out, skipped, extras
 
 
 def _is_holiday(d: date, birthday: date | None, sub_start: date | None) -> bool:
@@ -340,8 +424,16 @@ def _longest_streak(days: set[date]) -> int:
     return best
 
 
-def _derive(msgs: list[sel.Msg], idx: MemberIndex) -> None:
+def _utc_iso(ts: datetime) -> str:
+    return ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def _derive(
+    msgs: list[sel.Msg], idx: MemberIndex, extras: _Extras | None = None
+) -> list[tuple[Any, ...]]:
     """Single pass over time-sorted messages; fills ``idx`` in place.
+
+    Returns one ``message_facts`` row per message (``FACT_COLUMNS`` order).
 
     "Words" are every message with its own non-empty text: texts, and
     photo/video/voice messages that carry a caption. A media message's own
@@ -362,6 +454,7 @@ def _derive(msgs: list[sel.Msg], idx: MemberIndex) -> None:
     bursts = sel.find_bursts(media)
     idx.bursts = [[m.id for m in b] for b in bursts]
     burst_of = {m.id: b for b in bursts for m in b}
+    burst_id = {m.id: b[0].id for b in bursts for m in b}
     window = sel.CAPTION_WINDOW
     for p in media:
         burst = burst_of.get(p.id)
@@ -400,9 +493,13 @@ def _derive(msgs: list[sel.Msg], idx: MemberIndex) -> None:
     repeats = {y: sel.sentence_counts(ts) for y, ts in by_year.items()}
     specials: dict[int, set[date]] = {}
     greetings: Counter[str] = Counter()
+    nick_ids: set[int] = set()
+    masks: dict[int, int] = {}
     for w in words:
         local = sel.jst(w.ts)
+        masks[w.id] = sel.greeting_mask(w.text)
         if sel.has_nickname(w.text):
+            nick_ids.add(w.id)
             idx.nickname_count += 1
             if idx.first_nickname_id is None:
                 idx.first_nickname_id = w.id
@@ -417,32 +514,64 @@ def _derive(msgs: list[sel.Msg], idx: MemberIndex) -> None:
             special=local.date() in specials[local.year],
             repeated=sel.is_repeated(sentences[w.id], repeats[local.year]),
         )
-        greetings.update(sel.greeting_classes(w.text))
+        greetings.update(sel.classes_from_mask(masks[w.id]))
     idx.greeting_counts = dict(greetings)
 
-    # Histogram, firsts, per-year counts, streak.
+    # Histogram, firsts / lasts, per-year counts, streak, fact rows.
+    extras = extras or {}
     days: set[date] = set()
+    rows: list[tuple[Any, ...]] = []
     for m in msgs:
         local = sel.jst(m.ts)
+        iso = _utc_iso(m.ts)
         days.add(local.date())
-        if m.id not in idx.promo_ids:
+        promo = m.id in idx.promo_ids
+        if not promo:
             idx.hour_hist[local.hour] += 1
-        idx.first_ts.setdefault(
-            m.type, m.ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-        )
+        idx.first_ts.setdefault(m.type, iso)
+        idx.last_ts[m.type] = iso
         by_type = idx.counts_by_year.setdefault(local.year, {})
         by_type[m.type] = by_type.get(m.type, 0) + 1
+        media_file, duration = extras.get(m.id, (None, None))
+        rows.append(
+            (
+                m.id,
+                iso,
+                local.date().isoformat(),
+                local.hour,
+                local.minute,
+                m.type,
+                int(promo),
+                int(m.id in nick_ids),
+                masks.get(m.id, 0),
+                len(m.text),
+                idx.importance.get(m.id),
+                idx.photo_scores.get(m.id),
+                burst_id.get(m.id),
+                idx.captions.get(m.id),
+                int(m.favorited),
+                media_file,
+                duration,
+            )
+        )
+    if msgs:
+        last = msgs[-1]
+        idx.last_message = {"id": last.id, "ts": _utc_iso(last.ts), "type": last.type}
     idx.longest_streak_days = _longest_streak(days)
+    return rows
 
 
-def _build(messages_path: Path, base: MemberIndex) -> tuple[MemberIndex, int]:
-    msgs, skipped = _load_msgs(messages_path)
+def _build(
+    messages_path: Path, base: MemberIndex
+) -> tuple[MemberIndex, list[tuple[Any, ...]]]:
+    msgs, skipped, extras = _load_msgs(messages_path)
     if skipped:
         logger.warning(
             "memory_index_messages_skipped", member_id=base.member_id, count=skipped
         )
-    _derive(msgs, base)
-    return base, len(msgs)
+    rows = _derive(msgs, base, extras)
+    base.avatar_changes = profile_images_service.history(messages_path.parent)
+    return base, rows
 
 
 def _cache_get(service_dir: str, member_dir: str, data_hash: str) -> MemberIndex | None:
@@ -460,10 +589,22 @@ def _cache_get(service_dir: str, member_dir: str, data_hash: str) -> MemberIndex
     return None
 
 
-def _cache_put(service_dir: str, idx: MemberIndex) -> None:
+_INSERT_FACTS = (
+    f"INSERT INTO message_facts(service_dir, member_dir, {', '.join(FACT_COLUMNS)}) "
+    f"VALUES ({', '.join('?' * (len(FACT_COLUMNS) + 2))})"
+)
+
+
+def _cache_put(service_dir: str, idx: MemberIndex, rows: list[tuple[Any, ...]]) -> None:
+    """Replace the room's index row and fact rows in one transaction."""
+    key = (service_dir, idx.member_dir)
     try:
         # closing() releases the handle; the inner ``with`` commits.
         with contextlib.closing(_connect()) as c, c:
+            c.execute(
+                "DELETE FROM message_facts WHERE service_dir=? AND member_dir=?", key
+            )
+            c.executemany(_INSERT_FACTS, (key + r for r in rows))
             c.execute(
                 "INSERT OR REPLACE INTO member_index"
                 "(service_dir, member_dir, data_hash, payload) VALUES (?,?,?,?)",
@@ -488,13 +629,13 @@ def _get_sync(
             logger.info("memory_index_hit", member_id=base.member_id)
             return cached, False
         start = time.perf_counter()
-        idx, count = _build(messages_path, base)
-        _cache_put(service_dir, idx)
+        idx, rows = _build(messages_path, base)
+        _cache_put(service_dir, idx, rows)
         logger.info(
             "memory_index_built",
             member_id=idx.member_id,
             elapsed_ms=round((time.perf_counter() - start) * 1000),
-            msgs=count,
+            msgs=len(rows),
         )
         return idx, True
     except Exception as e:  # noqa: BLE001 - the index must never raise
