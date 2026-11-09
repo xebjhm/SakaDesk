@@ -212,3 +212,74 @@ async def test_connections_are_closed(tmp_path, monkeypatch):
     await mi.get_member_index(tmp_path, d)  # miss: read + write
     await mi.get_member_index(tmp_path, d)  # hit: read
     assert len(opened) == 3 and all(t.closed for t in opened)
+
+
+@pytest.mark.asyncio
+async def test_media_own_text_is_its_caption(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(
+        tmp_path,
+        [
+            msg(1, "2026-06-01T03:00:00Z", content="近くのテキスト"),
+            # Own caption wins over the text 1 min away.
+            msg(2, "2026-06-01T03:01:00Z", "picture", content="%%%ちゃんおやすみ🌙"),
+            # Own promo caption -> promo photo, even with a normal text nearby.
+            msg(
+                3, "2026-06-01T03:02:00Z", "video", content="詳細はコチラ https://x.jp"
+            ),
+            # No own text -> paired with the nearest text.
+            msg(4, "2026-07-01T03:00:00Z", "picture"),
+            msg(5, "2026-07-01T03:01:00Z", content="ふつう"),
+        ],
+    )
+    idx = await mi.get_member_index(tmp_path, d)
+    assert idx.captions[2] == 2 and idx.captions[4] == 5
+    assert 3 in idx.promo_ids and 3 not in idx.photo_scores and 3 not in idx.captions
+    # Captions are her words: importance, nickname and greetings count them.
+    caption = "%%%ちゃんおやすみ🌙"
+    assert idx.importance[2] == len(caption) + 80
+    assert idx.nickname_count == 1 and idx.first_nickname_id == 2
+    assert idx.greeting_counts == {"oyasumi": 1}
+    assert idx.photo_scores[2] == 150 + 80  # caption + caption bonus word
+    assert 3 not in idx.importance
+
+
+@pytest.mark.asyncio
+async def test_greeting_counts_are_multi_label(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(
+        tmp_path,
+        [
+            msg(1, "2026-06-01T12:00:00Z", content="おやすみ、%%%大好きだよ"),
+            msg(2, "2026-06-02T12:00:00Z", content="好きな食べ物はカレー"),
+        ],
+    )
+    idx = await mi.get_member_index(tmp_path, d)
+    assert idx.greeting_counts == {"oyasumi": 1, "daisuki": 1}
+
+
+@pytest.mark.asyncio
+async def test_repeat_penalty_counts_sentences(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    rows = [
+        msg(1, "2026-03-01T12:00:00Z", content="今日もお疲れさま！おやすみ"),
+        msg(2, "2026-03-02T12:00:00Z", content="雨だった。おやすみ"),
+        msg(3, "2026-03-03T12:00:00Z", content="ライブ楽しかった！おやすみ"),
+        msg(4, "2026-03-04T12:00:00Z", content="今日もお疲れさま！"),
+        msg(5, "2026-03-05T12:00:00Z", content="今日もお疲れさま"),
+        # Same sentence in another year does not count toward 2026.
+        msg(6, "2027-03-05T12:00:00Z", content="今日もお疲れさま"),
+    ]
+    d = write_member(tmp_path, rows)
+    idx = await mi.get_member_index(tmp_path, d)
+    # Every message differs, but its sentences repeat >= 3 times in 2026.
+    assert idx.importance[1] == len("今日もお疲れさま！おやすみ") - 300
+    assert idx.importance[5] == len("今日もお疲れさま") - 300
+    assert idx.importance[6] == len("今日もお疲れさま")
+
+
+def test_index_version_tracks_lexicon(monkeypatch):
+    before = mi._lexicon_fingerprint()
+    assert mi.INDEX_VERSION.endswith(before)
+    monkeypatch.setattr(mi.lexicon, "EMOTION_WORDS", ("ありがとう",))
+    assert mi._lexicon_fingerprint() != before

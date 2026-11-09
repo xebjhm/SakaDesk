@@ -24,6 +24,7 @@ from typing import Any, Optional
 
 import structlog
 
+from backend.services.memories import lexicon
 from backend.services.memories import selection as sel
 from backend.services.memories.member_profiles import load_birthdays
 from backend.services.memories.names import normalize_member_name
@@ -32,8 +33,32 @@ from backend.services.platform import get_app_data_dir
 
 logger = structlog.get_logger(__name__)
 
-# Bump when the derivation rules change so stale cache rows are rebuilt.
-INDEX_VERSION = "2"
+
+def _lexicon_fingerprint() -> str:
+    """Short hash of every public constant in ``lexicon``.
+
+    Any pattern or word-list edit changes it, so cached rows derived with the
+    old lexicon are rebuilt without anyone remembering to bump the version.
+    """
+    parts: list[str] = []
+    for name in sorted(vars(lexicon)):
+        if not name.isupper():
+            continue
+        value = getattr(lexicon, name)
+        if isinstance(value, re.Pattern):
+            value = (value.pattern, value.flags)
+        elif isinstance(value, dict):
+            value = sorted(
+                (k, (v.pattern, v.flags) if isinstance(v, re.Pattern) else v)
+                for k, v in value.items()
+            )
+        parts.append(f"{name}={value!r}")
+    return hashlib.sha256("\n".join(parts).encode("utf-8")).hexdigest()[:12]
+
+
+# Bump the leading number when the derivation rules change; the lexicon hash
+# is folded in automatically. Either change rebuilds every cached row.
+INDEX_VERSION = f"3-{_lexicon_fingerprint()}"
 _LEADING_INT = re.compile(r"^\s*(\d+)")
 _SYNC_METADATA = "sync_metadata.json"
 
@@ -73,11 +98,15 @@ class MemberIndex:
     counts_by_year: dict[int, dict[str, int]] = field(default_factory=dict)
     longest_streak_days: int = 0
     bursts: list[list[int]] = field(default_factory=list)
-    captions: dict[int, int] = field(default_factory=dict)  # photo id -> text id
-    importance: dict[int, int] = field(default_factory=dict)  # non-promo texts
+    # photo/video id -> caption id: its own id when the media message carries
+    # its own (non-promo) text, else the paired text's id.
+    captions: dict[int, int] = field(default_factory=dict)
+    # Non-promo "words": texts plus media/voice messages with their own text.
+    importance: dict[int, int] = field(default_factory=dict)
     photo_scores: dict[int, int] = field(default_factory=dict)  # non-promo photos
     promo_ids: set[int] = field(default_factory=set)
-    nickname_count: int = 0  # includes promo texts (unlike greeting_counts)
+    nickname_count: int = 0  # all words, promo included (unlike greeting_counts)
+    # Multi-label (a message counts for every class it contains); non-promo words.
     greeting_counts: dict[str, int] = field(default_factory=dict)
     birthday: str | None = None
     subscription_start: str | None = None
@@ -209,7 +238,12 @@ def _load_msgs(messages_path: Path) -> tuple[list[sel.Msg], int]:
 
 
 def _is_holiday(d: date, birthday: date | None, sub_start: date | None) -> bool:
-    """12/24, 12/25, 1/1, her birthday, or the fan's subscription anniversary."""
+    """12/24, 12/25, 1/1, her birthday, or the fan's subscription anniversary.
+
+    A fixed list on purpose: the backend has no Japanese public-holiday data
+    (only the frontend calendar bundles ``@holiday-jp/holiday_jp``), and the
+    photo-score bonus is about personal special days rather than public ones.
+    """
     if (d.month, d.day) in ((12, 24), (12, 25), (1, 1)):
         return True
     return any(
@@ -236,18 +270,22 @@ def _longest_streak(days: set[date]) -> int:
 
 
 def _derive(msgs: list[sel.Msg], idx: MemberIndex) -> None:
-    """Single pass over time-sorted messages; fills ``idx`` in place."""
+    """Single pass over time-sorted messages; fills ``idx`` in place.
+
+    "Words" are every message with its own non-empty text: texts, and
+    photo/video/voice messages that carry a caption. A media message's own
+    text is its caption first (and decides whether it is promo); only media
+    without text fall back to the nearest text within +-3 min.
+    """
     birthday = _parse_date(idx.birthday)
     sub_start = _parse_date(idx.subscription_start)
-    texts = [m for m in msgs if m.type == "text" and m.text.strip()]
+    words = [m for m in msgs if m.text.strip()]
+    texts = [m for m in words if m.type == "text"]  # pairing candidates
     media = [m for m in msgs if m.type in sel.MEDIA_TYPES]
     text_ts = [t.ts for t in texts]
 
-    repeats: Counter[tuple[int, str]] = Counter(
-        (sel.jst(t.ts).year, sel.normalize(t.text).strip()) for t in texts
-    )
-    promo_text = {t.id for t in texts if sel.is_promo(t.text)}
-    idx.promo_ids = set(promo_text)
+    promo_words = {w.id for w in words if sel.is_promo(w.text)}
+    idx.promo_ids = set(promo_words)
 
     # Bursts, captions, photo scores.
     bursts = sel.find_bursts(media)
@@ -256,13 +294,19 @@ def _derive(msgs: list[sel.Msg], idx: MemberIndex) -> None:
     window = sel.CAPTION_WINDOW
     for p in media:
         burst = burst_of.get(p.id)
-        lo = (min(m.ts for m in burst) if burst else p.ts) - window
-        hi = (max(m.ts for m in burst) if burst else p.ts) + window
-        near = texts[bisect_left(text_ts, lo) : bisect_right(text_ts, hi)]
-        if sel.photo_is_promo(p, near, burst):
-            idx.promo_ids.add(p.id)
-            continue
-        cap = sel.caption_for(p, near, burst)
+        cap: sel.Msg | None
+        if p.text.strip():
+            if p.id in promo_words:
+                continue  # a promo caption makes a promo photo
+            cap = p
+        else:
+            lo = (min(m.ts for m in burst) if burst else p.ts) - window
+            hi = (max(m.ts for m in burst) if burst else p.ts) + window
+            near = texts[bisect_left(text_ts, lo) : bisect_right(text_ts, hi)]
+            if sel.photo_is_promo(p, near, burst):
+                idx.promo_ids.add(p.id)
+                continue
+            cap = sel.caption_for(p, near, burst)
         if cap is not None:
             idx.captions[p.id] = cap.id
         day = sel.jst(p.ts).date()
@@ -273,32 +317,36 @@ def _derive(msgs: list[sel.Msg], idx: MemberIndex) -> None:
             holiday=_is_holiday(day, birthday, sub_start),
         )
 
-    # Texts: importance, nickname, greetings.
+    # Words: importance, nickname, greetings.
     # Promo scope differs by field: ``nickname_count`` / ``first_nickname_id``
-    # INCLUDE promo texts (a nickname is a nickname wherever it appears), while
+    # INCLUDE promo words (a nickname is a nickname wherever it appears), while
     # ``greeting_counts`` / ``importance`` / ``hour_hist`` EXCLUDE promo.
+    sentences = {w.id: sel.split_sentences(w.text) for w in words}
+    by_year: dict[int, list[str]] = {}
+    for w in words:
+        if w.id not in promo_words:
+            by_year.setdefault(sel.jst(w.ts).year, []).append(w.text)
+    repeats = {y: sel.sentence_counts(ts) for y, ts in by_year.items()}
     specials: dict[int, set[date]] = {}
     greetings: Counter[str] = Counter()
-    for t in texts:
-        year = sel.jst(t.ts).year
-        if sel.has_nickname(t.text):
+    for w in words:
+        local = sel.jst(w.ts)
+        if sel.has_nickname(w.text):
             idx.nickname_count += 1
             if idx.first_nickname_id is None:
-                idx.first_nickname_id = t.id
-        if t.id in promo_text:
+                idx.first_nickname_id = w.id
+        if w.id in promo_words:
             continue
-        if year not in specials:
-            specials[year] = sel.special_dates(
-                year, idx.birthday, idx.subscription_start
+        if local.year not in specials:
+            specials[local.year] = sel.special_dates(
+                local.year, idx.birthday, idx.subscription_start
             )
-        idx.importance[t.id] = sel.importance(
-            t,
-            special=sel.jst(t.ts).date() in specials[year],
-            repeated=repeats[(year, sel.normalize(t.text).strip())] >= 3,
+        idx.importance[w.id] = sel.importance(
+            w,
+            special=local.date() in specials[local.year],
+            repeated=sel.is_repeated(sentences[w.id], repeats[local.year]),
         )
-        g = sel.greeting_class(t.text)
-        if g:
-            greetings[g] += 1
+        greetings.update(sel.greeting_classes(w.text))
     idx.greeting_counts = dict(greetings)
 
     # Histogram, firsts, per-year counts, streak.
