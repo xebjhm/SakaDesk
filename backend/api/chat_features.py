@@ -98,7 +98,7 @@ def _positive_int(value: object) -> Optional[int]:
     return value
 
 
-def _read_local_letters(
+def read_local_letters(
     output_dir: Path, member_dir: Path, service: str, member_parts: list[str]
 ) -> tuple[str, list[LocalLetter], int, int]:
     """Read ``<member_dir>/letters.json``.
@@ -355,7 +355,7 @@ async def get_letters_local(service: str, path: str):
         logger.warning("letters_local", outcome="wrong_service", service=service)
         raise HTTPException(status_code=400, detail="Path is not in this service")
     outcome, letters, skipped, bad_images = await asyncio.to_thread(
-        _read_local_letters, output_dir, member_dir, service, parts[1:]
+        read_local_letters, output_dir, member_dir, service, parts[1:]
     )
     log = logger.warning if outcome == "invalid" or bad_images > 0 else logger.info
     log(
