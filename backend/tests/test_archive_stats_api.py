@@ -1,4 +1,4 @@
-"""Tests for GET /api/archive/stats and the archive totals behind it (About, R-d)."""
+"""Tests for GET /api/archive/stats and the archive totals behind it (first-sync toast)."""
 
 import json
 from pathlib import Path

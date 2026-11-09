@@ -1,4 +1,4 @@
-"""Totals for the About dialog's "your archive" stats.
+"""Archive totals (messages, photos, first message time) for the first-sync toast.
 
 Counts the chat messages the app shows (``message_visibility``), the photos
 among them (``type == "picture"``) and the earliest message time, over every
@@ -8,7 +8,7 @@ member's ``messages.json`` under the output folder::
 
 Group chats keep one file per member, so each member's posts count once.
 Blogs are not counted. Per-file totals are cached on the file's stat key
-(``messages_cache.StatCache``), so reopening About re-reads only files a sync
+(``messages_cache.StatCache``), so a repeat request re-reads only files a sync
 changed. Timestamps are compared as strings: the archive writes them in one
 UTC ISO 8601 format. Logs carry counts and error types only: paths contain
 member names.

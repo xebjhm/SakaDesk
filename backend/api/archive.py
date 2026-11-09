@@ -1,4 +1,4 @@
-"""About's "your archive" stats: GET /api/archive/stats."""
+"""Archive totals for the first-sync toast: GET /api/archive/stats."""
 
 import asyncio
 from typing import Optional
