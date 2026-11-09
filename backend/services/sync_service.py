@@ -10,6 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 from pysaka import (
     Client,
     Group,
@@ -41,6 +42,7 @@ from backend.services.nickname import nickname_for
 from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
 from backend.services.chat_kind import is_member_dir
+from backend.services.memories.subscriptions import archive_subscription_starts
 from backend.services.i18n import get_strings, resolve_ui_language
 from backend.services.quiet_state import query_quiet_state
 from backend.services.ui_state import get_ui_state
@@ -1078,6 +1080,23 @@ class SyncService:
                         if (k := (t["group"]["id"], t["member"]["id"])) in reported_new
                     ),
                 )
+
+                # Best-effort: archive the earliest subscription start for
+                # Memories. Auth errors propagate; anything else is logged.
+                try:
+                    await archive_subscription_starts(
+                        client,
+                        session,
+                        sorted({int(g) for g in tasks_by_group}),
+                        self.service_data_dir,
+                        today=datetime.now(ZoneInfo("Asia/Tokyo")).date(),
+                    )
+                except (SessionExpiredError, RefreshFailedError):
+                    raise
+                except Exception as e:
+                    logger.warning(
+                        "subscription_starts_failed", error_type=type(e).__name__
+                    )
 
                 # Update Metadata from results (the cursor moves whenever
                 # sync_member processed rows, new or not).

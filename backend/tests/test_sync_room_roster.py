@@ -1074,3 +1074,36 @@ async def test_unreadable_scan_flag_scans_room(tmp_path):
     assert _synced_group_ids(m) == [43, 44]
     m.mark_history_scanned.assert_called_once_with(43)
     assert _events(logs, "sync_complete")
+
+
+_ARCHIVE = "backend.services.sync_service.archive_subscription_starts"
+
+
+async def test_subscription_archive_called_with_synced_group_ids(tmp_path):
+    m = _manager(scanned=True, extra=[])
+    with patch(_ARCHIVE, new=AsyncMock(return_value=1)) as archive:
+        await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+    archive.assert_awaited_once()
+    assert archive.await_args.args[2] == [43]
+
+
+async def test_subscription_archive_failure_does_not_fail_sync(tmp_path):
+    m = _manager(scanned=True, extra=[])
+    saved: dict = {}
+    with (
+        patch(_ARCHIVE, new=AsyncMock(side_effect=RuntimeError("boom"))),
+        capture_logs() as logs,
+    ):
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=API_MEMBERS,
+            mock_manager=m,
+            saved=saved,
+        )
+    assert "last_sync" in saved
+    (ev,) = _events(logs, "subscription_starts_failed")
+    assert ev["error_type"] == "RuntimeError"
