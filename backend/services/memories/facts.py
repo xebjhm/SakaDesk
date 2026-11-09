@@ -13,8 +13,8 @@ pure helpers on the returned list::
     voices = voice_durations(facts, min_seconds=4)
     texts = load_texts(service_data_dir, member_dir, [f.id for f in picks])
 
-Table ``message_facts`` (key ``(service_dir, member_dir, id)``; indexes on
-``(service_dir, member_dir, jst_date)`` and ``(…, type, jst_date)``):
+Table ``message_facts`` (key ``(service_dir, member_dir, id)``, no secondary
+indexes: every query is scoped by the key prefix):
 
 ==============  =========  ====================================================
 column          type       meaning
@@ -51,6 +51,10 @@ API (dates are JST calendar dates, inclusive; results sorted by ``(ts, id)``):
   / favourited / hours / date range filters), ``on_date``, ``first_last``,
   ``by_year``, ``aggregate`` -> :class:`Aggregate`, ``year_aggregates``,
   ``bursts``, ``voice_durations``.
+- ``get_person_facts(sdir, summary) -> [(member_dir, Fact)]`` -- the facts of
+  all of a person's 1:1 rooms (``MemberSummary.member_dirs``) merged and
+  sorted by ``(ts, id)``; each fact is tagged with its room's ``member_dir``
+  (relative POSIX string) so ``load_texts`` can be called per room.
 - ``load_texts(sdir, mdir, ids=None) -> {id: text}`` -- one read of
   ``messages.json`` for the message text, which the table does not store.
 
@@ -214,6 +218,8 @@ async def get_facts(
     if not idx.data_hash:  # the index could not be built (already logged)
         logger.info("memory_facts_unavailable", member_id=idx.member_id)
         return []
+    if idx.cache_stale:
+        logger.warning("memory_facts_stale", member_id=idx.member_id)
     type_list = list(types) if types is not None else None
     try:
         facts = await asyncio.to_thread(
@@ -235,6 +241,23 @@ async def get_facts(
         return []
     logger.debug("memory_facts_read", member_id=idx.member_id, count=len(facts))
     return facts
+
+
+async def get_person_facts(
+    service_data_dir: Path, summary: mi.MemberSummary
+) -> list[tuple[str, Fact]]:
+    """Facts of every 1:1 room of one person, ``(member_dir, fact)``, by ``(ts, id)``.
+
+    ``member_dir`` is the relative POSIX string from ``summary.member_dirs``;
+    resolve it with ``service_data_dir / member_dir`` for :func:`load_texts`.
+    Message ids are per room, so the key of a fact is ``(member_dir, id)``.
+    """
+    tagged: list[tuple[str, Fact]] = []
+    for rel in summary.member_dirs:
+        facts = await get_facts(service_data_dir, service_data_dir / rel)
+        tagged.extend((rel, f) for f in facts)
+    tagged.sort(key=lambda t: (t[1].ts, t[1].id, t[0]))
+    return tagged
 
 
 # --- pure helpers -----------------------------------------------------------

@@ -35,7 +35,7 @@ from typing import Any, Optional
 
 import structlog
 
-from backend.services.chat_kind import is_group_chat
+from backend.services.chat_kind import GROUP_CHAT_IDS, is_group_chat
 from backend.services.memories import lexicon
 from backend.services.memories import selection as sel
 from backend.services.memories.member_profiles import load_birthdays
@@ -44,7 +44,10 @@ from backend.services.memories.subscriptions import load_subscription_starts
 from backend.services import profile_images_service, shutdown_state
 from backend.services.memories.locks import keyed_lock
 from backend.services.platform import get_app_data_dir
-from backend.services.service_utils import get_service_identifier
+from backend.services.service_utils import (
+    get_service_display_name,
+    get_service_identifier,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -73,7 +76,7 @@ def _lexicon_fingerprint() -> str:
 
 # Bump the leading number when the derivation rules change; the lexicon hash
 # is folded in automatically. Either change rebuilds every cached row.
-INDEX_VERSION = f"3-{_lexicon_fingerprint()}"
+INDEX_VERSION = f"4-{_lexicon_fingerprint()}"
 _LEADING_INT = re.compile(r"^\s*(\d+)")
 _SYNC_METADATA = "sync_metadata.json"
 
@@ -123,11 +126,11 @@ CREATE TABLE IF NOT EXISTS message_facts (
     importance INTEGER, photo_score INTEGER, burst_id INTEGER, caption_id INTEGER,
     favorited INTEGER NOT NULL, media_file TEXT, duration_s REAL,
     PRIMARY KEY(service_dir, member_dir, id)) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS message_facts_by_date
-    ON message_facts(service_dir, member_dir, jst_date);
-CREATE INDEX IF NOT EXISTS message_facts_by_type
-    ON message_facts(service_dir, member_dir, type, jst_date);
 """
+
+# Every fact query is scoped by the primary-key prefix (service_dir,
+# member_dir), so secondary indexes only cost space. Older DBs still have them.
+_DROPPED_INDEXES = ("message_facts_by_date", "message_facts_by_type")
 
 
 def _connect() -> sqlite3.Connection:
@@ -136,6 +139,8 @@ def _connect() -> sqlite3.Connection:
     conn.execute("PRAGMA busy_timeout=5000")
     conn.execute("PRAGMA journal_mode=WAL")
     conn.executescript(_SCHEMA)  # IF NOT EXISTS: cheap, survives a deleted DB
+    for name in _DROPPED_INDEXES:
+        conn.execute(f"DROP INDEX IF EXISTS {name}")
     return conn
 
 
@@ -166,12 +171,8 @@ class MemberIndex:
     counts_by_year: dict[int, dict[str, int]] = field(default_factory=dict)
     longest_streak_days: int = 0
     bursts: list[list[int]] = field(default_factory=list)
-    # photo/video id -> caption id: its own id when the media message carries
-    # its own (non-promo) text, else the paired text's id.
-    captions: dict[int, int] = field(default_factory=dict)
-    # Non-promo "words": texts plus media/voice messages with their own text.
-    importance: dict[int, int] = field(default_factory=dict)
-    photo_scores: dict[int, int] = field(default_factory=dict)  # non-promo photos
+    # Per-message importance, photo score and caption link live in the
+    # ``message_facts`` rows (``importance`` / ``photo_score`` / ``caption_id``).
     promo_ids: set[int] = field(default_factory=set)
     nickname_count: int = 0  # all words, promo included (unlike greeting_counts)
     # Multi-label (a message counts for every class it contains); non-promo words.
@@ -182,9 +183,13 @@ class MemberIndex:
     # same name. Always False for group chats (prefer a missed graduation).
     graduated: bool = False
     data_hash: str = ""
+    # Runtime only (not stored): the cache write failed, so the fact rows are
+    # missing or stale until the next successful build.
+    cache_stale: bool = field(default=False, compare=False)
 
     def to_json(self) -> str:
         d = {f.name: getattr(self, f.name) for f in fields(self)}
+        d.pop("cache_stale")
         d["promo_ids"] = sorted(self.promo_ids)
         return json.dumps(d, ensure_ascii=False)
 
@@ -193,8 +198,9 @@ class MemberIndex:
         d = json.loads(payload)
         d["counts_by_year"] = {int(y): v for y, v in d["counts_by_year"].items()}
         for key in ("captions", "importance", "photo_scores"):
-            d[key] = {int(k): v for k, v in d[key].items()}
+            d.pop(key, None)  # written by index versions before 4
         d["promo_ids"] = set(d["promo_ids"])
+        d.pop("cache_stale", None)
         return cls(**d)
 
 
@@ -206,7 +212,7 @@ class _Inputs:
     sub_starts: dict[str, str]
     closed_groups: frozenset[str]
     service_id: str = ""
-    room_sizes: dict[str, int] = field(default_factory=dict)  # gid -> senders
+    room_sizes: dict[str, int] = field(default_factory=dict)  # gid -> members
     open_solo_names: frozenset[str] = frozenset()  # name_norm in open 1:1 rooms
     rooms: _Rooms = ()
     scan_ok: bool = True
@@ -280,13 +286,18 @@ def _load_inputs(service_data_dir: Path, *, fresh_scan: bool = True) -> _Inputs:
     service_id = get_service_identifier(service_data_dir.name) or ""
     rooms, scan_ok = _scan_rooms(service_data_dir, fresh=fresh_scan)
     sizes: dict[str, int] = {}
+    for group, members in rooms:
+        sizes[_leading_id(group.name)] = sum(
+            not _is_official(service_id, m) for m in members
+        )
     open_solo: set[str] = set()
     for group, members in rooms:
         gid = _leading_id(group.name)
-        sizes[gid] = len(members)
-        if gid in closed or is_group_chat(service_id, gid, len(members)):
+        if gid in closed:
             continue
-        open_solo.update(_name_norm(m) for m in members)
+        open_solo.update(
+            _name_norm(m) for m in members if not _group_chat(service_id, m, sizes)
+        )
     return _Inputs(
         birthdays=load_birthdays(service_data_dir),
         sub_starts=load_subscription_starts(service_data_dir),
@@ -297,6 +308,41 @@ def _load_inputs(service_data_dir: Path, *, fresh_scan: bool = True) -> _Inputs:
         rooms=rooms,
         scan_ok=scan_ok,
     )
+
+
+def _is_official(service_id: str, member_dir: Path) -> bool:
+    """An official-account folder (e.g. ``33 櫻坂46``) inside a member's room.
+
+    pysaka's extra-author recovery writes it next to the member's own folder.
+    It is not a member, so it must not count toward the room's size.
+    """
+    if _leading_id(member_dir.name) in GROUP_CHAT_IDS.get(service_id, set()):
+        return True
+    if not service_id:
+        return False
+    try:
+        display = normalize_member_name(get_service_display_name(service_id))
+    except ValueError:
+        return False
+    return _name_norm(member_dir) == display
+
+
+def _group_chat(service_id: str, member_dir: Path, sizes: dict[str, int]) -> bool:
+    """Is this folder part of a group chat (rather than a 1:1 room)?
+
+    Official-account folders always count as group chats (never listed as
+    members). In a non-communal room, a folder named like the room itself is
+    its owner's 1:1 chat, whatever other senders were recovered next to it.
+    """
+    gid = _leading_id(member_dir.parent.name)
+    if _is_official(service_id, member_dir) or gid in GROUP_CHAT_IDS.get(
+        service_id, set()
+    ):
+        return True
+    room_raw = member_dir.parent.name.partition(" ")[2]
+    if _name_norm(member_dir) == normalize_member_name(room_raw):
+        return False
+    return is_group_chat(service_id, gid, sizes.get(gid, 1))
 
 
 def _name_norm(member_dir: Path) -> str:
@@ -320,7 +366,7 @@ def _identity(service_data_dir: Path, member_dir: Path, inputs: _Inputs) -> Memb
     """Empty index carrying everything derivable without reading messages."""
     gid = _leading_id(member_dir.parent.name)
     name_norm = _name_norm(member_dir)
-    group_chat = is_group_chat(inputs.service_id, gid, inputs.room_sizes.get(gid, 1))
+    group_chat = _group_chat(inputs.service_id, member_dir, inputs.room_sizes)
     graduated = (
         not group_chat
         and gid in inputs.closed_groups
@@ -475,6 +521,10 @@ def _derive(
     media = [m for m in msgs if m.type in sel.MEDIA_TYPES]
     text_ts = [t.ts for t in texts]
 
+    captions: dict[int, int] = {}  # media id -> caption id (own id, or paired text)
+    importance: dict[int, int] = {}  # non-promo words only
+    photo_scores: dict[int, int] = {}  # non-promo photos / videos
+
     promo_words = {w.id for w in words if sel.is_promo(w.text)}
     idx.promo_ids = set(promo_words)
 
@@ -500,9 +550,9 @@ def _derive(
                 continue
             cap = sel.caption_for(p, near, burst)
         if cap is not None:
-            idx.captions[p.id] = cap.id
+            captions[p.id] = cap.id
         day = sel.jst(p.ts).date()
-        idx.photo_scores[p.id] = sel.photo_score(
+        photo_scores[p.id] = sel.photo_score(
             p,
             cap,
             last_in_burst=burst is not None and burst[-1].id == p.id,
@@ -537,7 +587,7 @@ def _derive(
             specials[local.year] = sel.special_dates(
                 local.year, idx.birthday, idx.subscription_start
             )
-        idx.importance[w.id] = sel.importance(
+        importance[w.id] = sel.importance(
             w,
             special=local.date() in specials[local.year],
             repeated=sel.is_repeated(sentences[w.id], repeats[local.year]),
@@ -573,10 +623,10 @@ def _derive(
                 int(m.id in nick_ids),
                 masks.get(m.id, 0),
                 len(m.text),
-                idx.importance.get(m.id),
-                idx.photo_scores.get(m.id),
+                importance.get(m.id),
+                photo_scores.get(m.id),
                 burst_id.get(m.id),
-                idx.captions.get(m.id),
+                captions.get(m.id),
                 int(m.favorited),
                 media_file,
                 duration,
@@ -623,8 +673,12 @@ _INSERT_FACTS = (
 )
 
 
-def _cache_put(service_dir: str, idx: MemberIndex, rows: list[tuple[Any, ...]]) -> None:
-    """Replace the room's index row and fact rows in one transaction."""
+def _cache_put(service_dir: str, idx: MemberIndex, rows: list[tuple[Any, ...]]) -> bool:
+    """Replace the room's index row and fact rows in one transaction.
+
+    Returns False when the write failed (logged); the caller then holds the
+    only copy of the freshly derived data.
+    """
     key = (service_dir, idx.member_dir)
     try:
         # closing() releases the handle; the inner ``with`` commits.
@@ -640,6 +694,8 @@ def _cache_put(service_dir: str, idx: MemberIndex, rows: list[tuple[Any, ...]]) 
             )
     except sqlite3.Error as e:
         logger.warning("memory_index_cache_write_failed", error_type=type(e).__name__)
+        return False
+    return True
 
 
 def _get_sync(
@@ -658,7 +714,7 @@ def _get_sync(
             return cached, False
         start = time.perf_counter()
         idx, rows = _build(messages_path, base)
-        _cache_put(service_dir, idx, rows)
+        idx.cache_stale = not _cache_put(service_dir, idx, rows)
         logger.info(
             "memory_index_built",
             member_id=idx.member_id,
@@ -794,6 +850,8 @@ async def build_all(service_data_dir: Path) -> int:
     built = 0
     service_dir = str(service_data_dir)
     for d in dirs:
+        # A cancelled build_all may still finish writing the room that is in
+        # flight (the thread cannot be interrupted) after the shutdown barrier.
         if stop.is_set():
             logger.info(
                 "memory_index_build_all_stopped",
@@ -814,7 +872,11 @@ async def build_all(service_data_dir: Path) -> int:
         pruned = await asyncio.to_thread(_prune, service_dir, present)
     else:
         logger.info("memory_index_prune_skipped", reason="scan_failed")
-    solo = {_name_norm(d) for d in dirs}
+    solo = {
+        _name_norm(d)
+        for d in dirs
+        if not _group_chat(inputs.service_id, d, inputs.room_sizes)
+    }
     logger.info(
         "memory_index_birthdays",
         matched=len(solo & set(inputs.birthdays)),

@@ -1,13 +1,18 @@
 """Per-service member birthday cache for Memories.
 
 Stored at ``<service_data_dir>/memories/member_profiles.json`` as
-``{"updated_at": iso, "last_attempt_at": iso, "birthdays": {normalized_name: "YYYY-MM-DD"}}``.
+``{"updated_at": iso, "last_attempt_at": iso, "birthdays": {normalized_name: "YYYY-MM-DD"},
+"seen_at": {normalized_name: iso}}``.
 
 - ``updated_at``: the last scrape that returned birthdays. Fresh for 7 days.
 - ``last_attempt_at``: the last scrape attempt of any outcome. An empty or
   failed scrape is retried only after 24 h (no scraping on every sync).
-- ``birthdays``: merged across scrapes. New values win, and nothing is
-  dropped, so a partial scrape never loses members found earlier.
+- ``birthdays``: merged across scrapes. New values win, and a partial scrape
+  never loses members found earlier.
+- ``seen_at``: when a scrape last returned each name. After a successful
+  scrape, names not seen for 90 days are dropped (graduates, renames, and
+  stale spellings such as the kana-suffixed names from before pysaka 0.4.7).
+  Names stored before ``seen_at`` existed count as seen at ``updated_at``.
 """
 
 import json
@@ -31,6 +36,7 @@ logger = structlog.get_logger(__name__)
 _FILE_NAME = "member_profiles.json"
 _REFRESH_INTERVAL = timedelta(days=7)
 _RETRY_INTERVAL = timedelta(hours=24)
+_FORGET_AFTER = timedelta(days=90)
 _SUPPORTED = (Group.HINATAZAKA46, Group.SAKURAZAKA46, Group.NOGIZAKA46)
 
 
@@ -85,6 +91,21 @@ def _birthdays_of(data: dict[str, Any]) -> dict[str, str]:
     return {str(k): str(v) for k, v in raw.items()}
 
 
+def _seen_of(
+    data: dict[str, Any], birthdays: dict[str, str], now: datetime
+) -> dict[str, str]:
+    """``name -> last seen`` for every stored birthday (legacy names: updated_at)."""
+    raw = data.get("seen_at")
+    stored = raw if isinstance(raw, dict) else {}
+    fallback = data.get("updated_at")
+    if _parse_time(fallback) is None:
+        fallback = now.isoformat()
+    return {
+        k: str(stored[k]) if _parse_time(stored.get(k)) else str(fallback)
+        for k in birthdays
+    }
+
+
 def _write_atomic(path: Path, payload: dict) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(
@@ -128,10 +149,12 @@ async def refresh_member_profiles(
         return False
 
     previous = _birthdays_of(old)
+    seen = _seen_of(old, previous, now)
     record: dict[str, Any] = {
         "updated_at": old.get("updated_at"),
         "last_attempt_at": now.isoformat(),
         "birthdays": previous,
+        "seen_at": seen,
     }
     raw: dict[str, str] | None = None
     try:
@@ -146,9 +169,17 @@ async def refresh_member_profiles(
     kept = 0
     if raw:
         fresh = {normalize_member_name(k): v for k, v in raw.items()}
-        record["birthdays"] = {**previous, **fresh}
+        merged = {**previous, **fresh}
+        seen.update(dict.fromkeys(fresh, now.isoformat()))
+        expired = {k for k in merged if not _within(seen.get(k), now, _FORGET_AFTER)}
+        for k in expired:
+            del merged[k]
+            seen.pop(k, None)
+        record["birthdays"] = merged
         record["updated_at"] = now.isoformat()
-        kept = len(set(previous) - set(fresh))  # earlier names this scrape missed
+        kept = len(set(previous) - set(fresh) - expired)  # missed by this scrape
+        if expired:
+            logger.info("member_profiles_expired", service=service, count=len(expired))
         stored = True
     elif raw is not None:
         logger.info("member_profiles_skipped", service=service, reason="empty")

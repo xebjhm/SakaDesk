@@ -210,3 +210,36 @@ async def test_last_message_and_avatar_changes(tmp_path):
     )
     again = await mi.get_member_index(tmp_path, d)
     assert again.data_hash != idx.data_hash and len(again.avatar_changes) == 3
+
+
+@pytest.mark.asyncio
+async def test_get_facts_logs_stale_when_cache_write_failed(member, monkeypatch):
+    from structlog.testing import capture_logs
+
+    svc, d = member
+    monkeypatch.setattr(mi, "_cache_put", lambda *a, **k: False)
+    with capture_logs() as logs:
+        await mf.get_facts(svc, d)
+    (ev,) = [e for e in logs if e["event"] == "memory_facts_stale"]
+    assert ev["member_id"] == "58" and set(ev) == {"event", "log_level", "member_id"}
+
+
+@pytest.mark.asyncio
+async def test_get_person_facts_merges_rooms_sorted(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    svc = tmp_path / "日向坂46"
+    for room, msgs in (
+        ("40 松田 好花", [m(1, "2026-01-01T03:00:00Z"), m(2, "2026-03-01T03:00:00Z")]),
+        ("94 松田 好花", [m(1, "2026-02-01T03:00:00Z"), m(2, "2026-03-01T03:00:00Z")]),
+    ):
+        d = svc / "messages" / room / "64 松田 好花"
+        d.mkdir(parents=True)
+        (d / "messages.json").write_text(
+            json.dumps({"member": {}, "messages": msgs}), encoding="utf-8"
+        )
+    (summary,) = await mi.list_members(svc)
+    assert len(summary.member_dirs) == 2
+    got = await mf.get_person_facts(svc, summary)
+    old, new = summary.member_dirs
+    assert [(r, f.id) for r, f in got] == [(old, 1), (new, 1), (old, 2), (new, 2)]
+    assert [f.ts.month for _, f in got] == [1, 2, 3, 3]

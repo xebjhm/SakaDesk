@@ -193,3 +193,57 @@ def test_load_missing_logs_debug(tmp_path):
         assert mp.load_birthdays(tmp_path) == {}
     assert [e["event"] for e in logs] == ["member_profiles_missing"]
     assert logs[0]["log_level"] == "debug"
+
+
+@pytest.mark.asyncio
+async def test_names_unseen_for_90_days_are_dropped(tmp_path):
+    p = tmp_path / "memories" / "member_profiles.json"
+    p.parent.mkdir()
+    p.write_text(
+        json.dumps(
+            {
+                "updated_at": (NOW - timedelta(days=8)).isoformat(),
+                "birthdays": {
+                    "金村美玖": "2002-09-10",
+                    "小坂菜緒": "2002-09-07",  # seen recently, missed now: kept
+                    "金村美玖かなかな": "2002-09-10",  # old kana-suffixed name
+                },
+                "seen_at": {
+                    "金村美玖": (NOW - timedelta(days=8)).isoformat(),
+                    "小坂菜緒": (NOW - timedelta(days=30)).isoformat(),
+                    "金村美玖かなかな": (NOW - timedelta(days=100)).isoformat(),
+                },
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    scraper = AsyncMock()
+    scraper.get_member_birthdays = AsyncMock(return_value={"金村 美玖": "2002-09-10"})
+    with patch.object(mp, "_scraper_for", return_value=scraper):
+        assert await mp.refresh_member_profiles("hinatazaka46", tmp_path, now=NOW)
+    data = json.loads(p.read_text(encoding="utf-8"))
+    assert set(data["birthdays"]) == {"金村美玖", "小坂菜緒"}
+    assert data["seen_at"]["金村美玖"] == NOW.isoformat()
+    assert set(data["seen_at"]) == set(data["birthdays"])
+
+
+@pytest.mark.asyncio
+async def test_legacy_names_without_seen_at_age_from_updated_at(tmp_path):
+    p = tmp_path / "memories" / "member_profiles.json"
+    p.parent.mkdir()
+    p.write_text(
+        json.dumps(
+            {
+                "updated_at": (NOW - timedelta(days=120)).isoformat(),
+                "birthdays": {"旧名": "2000-01-01"},
+            },
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    scraper = AsyncMock()
+    scraper.get_member_birthdays = AsyncMock(return_value={"金村 美玖": "2002-09-10"})
+    with patch.object(mp, "_scraper_for", return_value=scraper):
+        await mp.refresh_member_profiles("hinatazaka46", tmp_path, now=NOW)
+    assert mp.load_birthdays(tmp_path) == {"金村美玖": "2002-09-10"}

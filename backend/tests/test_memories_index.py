@@ -18,6 +18,13 @@ def write_member(root, msgs):
     return d
 
 
+def facts_of(root, d):
+    """Fact rows of one room folder, by message id (reads the cache as is)."""
+    from backend.services.memories import facts as mf
+
+    return {f.id: f for f in mf.facts_in_range(root, d)}
+
+
 def msg(i, ts, type_="text", content=""):
     return {
         "id": i,
@@ -47,7 +54,7 @@ async def test_builds_and_caches(tmp_path):
     idx = await mi.get_member_index(tmp_path, d)
     assert idx.hour_hist[21] == 4 and idx.nickname_count == 1
     assert idx.first_nickname_id == 2 and idx.bursts == [[3, 4, 5]]
-    assert idx.captions[3] == 2 and 6 in idx.promo_ids
+    assert facts_of(tmp_path, d)[3].caption_id == 2 and 6 in idx.promo_ids
     assert idx.greeting_counts["oyasumi"] == 1 and idx.longest_streak_days == 2
     again = await mi.get_member_index(tmp_path, d)  # cache hit
     assert again.data_hash == idx.data_hash
@@ -146,9 +153,10 @@ async def test_importance_special_repeated_and_scores(tmp_path):
     rows.append(msg(12, "2026-06-01T10:01:00Z", "picture"))
     d = write_member(tmp_path, rows)
     idx = await mi.get_member_index(tmp_path, d)
-    assert idx.importance[1] == 4 - 300  # repeated 3x in the same year
-    assert idx.importance[10] == 8 + 100 + 150  # emotion word + 12/31 special
-    assert idx.captions[12] == 11 and idx.photo_scores[12] >= 150
+    f = facts_of(tmp_path, d)
+    assert f[1].importance == 4 - 300  # repeated 3x in the same year
+    assert f[10].importance == 8 + 100 + 150  # emotion word + 12/31 special
+    assert f[12].caption_id == 11 and f[12].photo_score >= 150
     assert idx.counts_by_year[2026]["text"] == 5
     assert idx.first_ts["picture"] == "2026-06-01T10:01:00Z"
 
@@ -159,8 +167,9 @@ async def test_favorited_read_from_messages(tmp_path):
     fav = msg(1, "2026-09-14T03:00:00Z", content="a")
     fav["is_favorite"] = True
     d = write_member(tmp_path, [fav, msg(2, "2026-09-14T03:01:00Z", content="a")])
-    idx = await mi.get_member_index(tmp_path, d)
-    assert idx.importance[1] == idx.importance[2] + 300
+    await mi.get_member_index(tmp_path, d)
+    f = facts_of(tmp_path, d)
+    assert f[1].importance == f[2].importance + 300
 
 
 @pytest.mark.asyncio
@@ -233,15 +242,16 @@ async def test_media_own_text_is_its_caption(tmp_path):
         ],
     )
     idx = await mi.get_member_index(tmp_path, d)
-    assert idx.captions[2] == 2 and idx.captions[4] == 5
-    assert 3 in idx.promo_ids and 3 not in idx.photo_scores and 3 not in idx.captions
+    f = facts_of(tmp_path, d)
+    assert f[2].caption_id == 2 and f[4].caption_id == 5
+    assert 3 in idx.promo_ids and f[3].photo_score is None and f[3].caption_id is None
     # Captions are her words: importance, nickname and greetings count them.
     caption = "%%%ちゃんおやすみ🌙"
-    assert idx.importance[2] == len(caption) + 80
+    assert f[2].importance == len(caption) + 80
     assert idx.nickname_count == 1 and idx.first_nickname_id == 2
     assert idx.greeting_counts == {"oyasumi": 1}
-    assert idx.photo_scores[2] == 150 + 80  # caption + caption bonus word
-    assert 3 not in idx.importance
+    assert f[2].photo_score == 150 + 80  # caption + caption bonus word
+    assert f[3].importance is None
 
 
 @pytest.mark.asyncio
@@ -271,11 +281,12 @@ async def test_repeat_penalty_counts_sentences(tmp_path):
         msg(6, "2027-03-05T12:00:00Z", content="今日もお疲れさま"),
     ]
     d = write_member(tmp_path, rows)
-    idx = await mi.get_member_index(tmp_path, d)
+    await mi.get_member_index(tmp_path, d)
     # Every message differs, but its sentences repeat >= 3 times in 2026.
-    assert idx.importance[1] == len("今日もお疲れさま！おやすみ") - 300
-    assert idx.importance[5] == len("今日もお疲れさま") - 300
-    assert idx.importance[6] == len("今日もお疲れさま")
+    f = facts_of(tmp_path, d)
+    assert f[1].importance == len("今日もお疲れさま！おやすみ") - 300
+    assert f[5].importance == len("今日もお疲れさま") - 300
+    assert f[6].importance == len("今日もお疲れさま")
 
 
 def test_index_version_tracks_lexicon(monkeypatch):
@@ -452,7 +463,7 @@ async def test_build_all_logs_birthday_match(tmp_path):
     with capture_logs() as logs:
         await mi.build_all(svc)
     (ev,) = [e for e in logs if e["event"] == "memory_index_birthdays"]
-    assert ev["matched"] == 1 and ev["members"] >= 3
+    assert ev["matched"] == 1 and ev["members"] == 3  # 1:1 people only
     assert "金村" not in str(logs)
 
 
@@ -499,3 +510,57 @@ async def test_single_member_reads_reuse_recent_room_scan(tmp_path, monkeypatch)
     mi._rooms_cache[str(tmp_path)] = (0.0, ())
     idx = await mi.get_member_index(tmp_path, d)
     assert idx.member_id == "58"
+
+
+@pytest.mark.asyncio
+async def test_official_account_folder_does_not_make_room_a_group(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    svc = tmp_path / "櫻坂46"
+    own = _room(svc, "79 中川 智尋", "134 中川 智尋")
+    official = _room(svc, "79 中川 智尋", "33 櫻坂46")
+    a = await mi.get_member_index(svc, own)
+    b = await mi.get_member_index(svc, official)
+    assert a.is_group_chat is False and a.member_id == "134"
+    assert b.is_group_chat is True  # official account, never a member
+    (m,) = await mi.list_members(svc)
+    assert m.name_norm == "中川智尋"
+    assert m.member_dirs == ("messages/79 中川 智尋/134 中川 智尋",)
+
+
+def test_real_group_room_still_counts_members(tmp_path):
+    svc = tmp_path / "日向坂46"
+    _room(svc, "70 新参者 四期生", "120 石塚 瑶季")
+    _room(svc, "70 新参者 四期生", "124 正源司 陽子")
+    _room(svc, "70 新参者 四期生", "43 日向坂46")  # official: not counted
+    inputs = mi._load_inputs(svc)
+    assert inputs.room_sizes == {"70": 2}
+
+
+@pytest.mark.asyncio
+async def test_old_secondary_indexes_are_dropped(tmp_path):
+    import sqlite3
+
+    db = tmp_path / "idx.db"
+    mi.set_db_path(db)
+    with sqlite3.connect(db) as c:
+        c.executescript(mi._SCHEMA)
+        c.execute(
+            "CREATE INDEX message_facts_by_date ON message_facts(service_dir, jst_date)"
+        )
+        c.execute(
+            "CREATE INDEX message_facts_by_type ON message_facts(service_dir, type)"
+        )
+    mi._connect().close()
+    with sqlite3.connect(db) as c:
+        names = {r[0] for r in c.execute("SELECT name FROM sqlite_master")}
+    assert not names & {"message_facts_by_date", "message_facts_by_type"}
+
+
+@pytest.mark.asyncio
+async def test_failed_cache_write_marks_index_stale(tmp_path, monkeypatch):
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", content="a")])
+    monkeypatch.setattr(mi, "_cache_put", lambda *a, **k: False)
+    idx = await mi.get_member_index(tmp_path, d)
+    assert idx.cache_stale is True and idx.data_hash
+    assert "cache_stale" not in idx.to_json()
