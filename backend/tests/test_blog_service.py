@@ -192,3 +192,66 @@ def test_clear_cache_preserves_index(blog_service, tmp_path):
     assert index_path.exists()
     assert index_path.read_text(encoding="utf-8") == index_content
     assert not cache_dir.exists()  # Cache should be deleted
+
+
+def _index_with_blogs(count: int) -> dict:
+    return {
+        "members": {
+            "1": {
+                "name": "メンバー",
+                "blogs": [
+                    {
+                        "id": str(i),
+                        "title": f"t{i}",
+                        "url": f"https://example.invalid/{i}",
+                        "published_at": "2025-01-02T00:00:00",
+                    }
+                    for i in range(count)
+                ],
+            }
+        }
+    }
+
+
+def test_blog_loops_read_the_output_dir_once(blog_service, tmp_path):
+    """Per-blog loops resolve the output folder once, not once per blog.
+
+    ``get_output_dir`` reads settings.json from disk; per-blog calls on a full
+    archive blocked the event loop for seconds.
+    """
+    index = _index_with_blogs(5)
+    with (
+        patch(
+            "backend.services.blog_service.get_output_dir", return_value=tmp_path
+        ) as out,
+        patch.object(blog_service, "load_blog_index", AsyncMock(return_value=index)),
+    ):
+        asyncio.run(blog_service.get_cache_stats("hinatazaka46"))
+        assert out.call_count == 1
+        out.reset_mock()
+        asyncio.run(blog_service.get_blog_list("hinatazaka46", "1"))
+        assert out.call_count == 1
+        out.reset_mock()
+        queue = blog_service.build_download_queue("hinatazaka46", index)
+        assert out.call_count == 1
+        assert len(queue) == 5
+        assert queue[0].cache_path == blog_service.get_blog_cache_path(
+            "hinatazaka46", "メンバー", "0", "20250102"
+        )
+
+
+def test_get_blog_list_marks_cached_blogs(blog_service, tmp_path):
+    """get_blog_list flags blogs whose blog.json exists."""
+    index = _index_with_blogs(2)
+    with (
+        patch("backend.services.blog_service.get_output_dir", return_value=tmp_path),
+        patch.object(blog_service, "load_blog_index", AsyncMock(return_value=index)),
+    ):
+        cached = blog_service.get_blog_cache_path(
+            "hinatazaka46", "メンバー", "1", "20250102"
+        )
+        cached.mkdir(parents=True)
+        (cached / "blog.json").write_text("{}", encoding="utf-8")
+        result = asyncio.run(blog_service.get_blog_list("hinatazaka46", "1"))
+    flags = {b["id"]: b["cached"] for b in result["blogs"]}
+    assert flags == {"0": False, "1": True}

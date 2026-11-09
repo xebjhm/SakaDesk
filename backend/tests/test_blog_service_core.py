@@ -525,7 +525,7 @@ class TestBuildDownloadQueue:
                 }
             }
         }
-        with patch.object(svc, "get_blog_cache_path", return_value=tmp_path / "no"):
+        with patch.object(svc, "get_blogs_base_path", return_value=tmp_path):
             queue = svc.build_download_queue("hinatazaka46", index, skip_cached=True)
         assert len(queue) == 1
         assert isinstance(queue[0], BlogDownloadItem)
@@ -533,7 +533,7 @@ class TestBuildDownloadQueue:
         assert queue[0].member_name == "Test Member"
 
     def test_skips_cached_when_flag_set(self, svc, tmp_path):
-        cache_dir = tmp_path / "cached"
+        cache_dir = tmp_path / "Test" / "20250101_b1"
         cache_dir.mkdir(parents=True)
         (cache_dir / "blog.json").write_text("{}", encoding="utf-8")
 
@@ -552,12 +552,12 @@ class TestBuildDownloadQueue:
                 }
             }
         }
-        with patch.object(svc, "get_blog_cache_path", return_value=cache_dir):
+        with patch.object(svc, "get_blogs_base_path", return_value=tmp_path):
             queue = svc.build_download_queue("hinatazaka46", index, skip_cached=True)
         assert len(queue) == 0
 
     def test_includes_cached_when_flag_off(self, svc, tmp_path):
-        cache_dir = tmp_path / "cached"
+        cache_dir = tmp_path / "Test" / "20250101_b1"
         cache_dir.mkdir(parents=True)
         (cache_dir / "blog.json").write_text("{}", encoding="utf-8")
 
@@ -576,7 +576,7 @@ class TestBuildDownloadQueue:
                 }
             }
         }
-        with patch.object(svc, "get_blog_cache_path", return_value=cache_dir):
+        with patch.object(svc, "get_blogs_base_path", return_value=tmp_path):
             queue = svc.build_download_queue("hinatazaka46", index, skip_cached=False)
         assert len(queue) == 1
 
@@ -597,7 +597,7 @@ class TestBuildDownloadQueue:
                 }
             }
         }
-        with patch.object(svc, "get_blog_cache_path", return_value=tmp_path / "no"):
+        with patch.object(svc, "get_blogs_base_path", return_value=tmp_path):
             queue = svc.build_download_queue("hinatazaka46", index, skip_cached=False)
         assert len(queue) == 0
 
@@ -618,7 +618,7 @@ class TestBuildDownloadQueue:
                 }
             }
         }
-        with patch.object(svc, "get_blog_cache_path", return_value=tmp_path / "no"):
+        with patch.object(svc, "get_blogs_base_path", return_value=tmp_path):
             queue = svc.build_download_queue("hinatazaka46", index, skip_cached=False)
         assert len(queue) == 0
 
