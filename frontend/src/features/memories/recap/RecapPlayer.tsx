@@ -28,11 +28,20 @@ function useReducedMotion(): boolean {
     return reduced;
 }
 
-/** Keys belong to the player only when nothing else wants them (a field, a dialog, an IME). */
+/**
+ * Keys belong to the player only when nothing else wants them: not a held (repeating) key, not
+ * a field, an IME, a dialog or a menu. Space on a focused button is the button's own (it clicks
+ * natively), so it never also toggles pause.
+ */
 function keyIsOurs(e: KeyboardEvent): boolean {
-    if (e.defaultPrevented || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return false;
-    const el = e.target as HTMLElement | null;
-    if (el && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName))) return false;
+    if (e.defaultPrevented || e.repeat || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return false;
+    const el = e.target instanceof Element ? e.target : null;
+    if (el) {
+        if ((el as HTMLElement).isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return false;
+        if (el.closest('[role="dialog"], [role="menu"]')) return false;
+        if ((e.key === ' ' || e.key === 'Spacebar') && el.closest('button')) return false;
+    }
+    if (e.key === 'Escape' && document.querySelector('[role="menu"]') !== null) return false;
     return document.querySelector('[aria-modal="true"]') === null;
 }
 
@@ -43,10 +52,12 @@ interface SegmentProps {
     /** Remaining time of the current slide, or null when it is not counting down. */
     remainingMs: number | null;
     reducedMotion: boolean;
+    /** Bumped when the current slide restarts, so the fill starts over even if `from` and `remainingMs` match. */
+    run: number;
 }
 
 /** One IG-style progress segment; the current one fills linearly over the remaining time. */
-const Segment: React.FC<SegmentProps> = ({ state, from, remainingMs, reducedMotion }) => {
+const Segment: React.FC<SegmentProps> = ({ state, from, remainingMs, reducedMotion, run }) => {
     const [armed, setArmed] = useState(false);
     const counting = state === 'current' && remainingMs !== null && !reducedMotion;
     useEffect(() => {
@@ -54,7 +65,7 @@ const Segment: React.FC<SegmentProps> = ({ state, from, remainingMs, reducedMoti
         if (!counting) return;
         const id = requestAnimationFrame(() => setArmed(true));
         return () => cancelAnimationFrame(id);
-    }, [counting, from, remainingMs]);
+    }, [counting, from, remainingMs, run]);
     let width = 0;
     if (state === 'done') width = 1;
     else if (state === 'current') width = reducedMotion ? 1 : counting && armed ? 1 : from;
@@ -100,8 +111,11 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
     const [index, setIndex] = useState(0);
     const [paused, setPaused] = useState(false);
     const [ended, setEnded] = useState(false);
-    // Time already shown of the slide at `index` (kept across pauses).
-    const elapsed = useRef<{ index: number; ms: number }>({ index: 0, ms: 0 });
+    // Time already shown of the slide at `index` (kept across pauses). `gen` changes on every
+    // manual step or restart, so a countdown that was running before it never banks its time
+    // over the reset.
+    const elapsed = useRef<{ index: number; ms: number; gen: number }>({ index: 0, ms: 0, gen: 0 });
+    const pausedRef = useRef(false);
     const [pausedAt, setPausedAt] = useState(0);
     const [restart, setRestart] = useState(0);
     const endedRef = useRef(false);
@@ -134,7 +148,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
             return;
         }
         const target = Math.max(0, next);
-        elapsed.current = { index: target, ms: 0 };
+        elapsed.current = { index: target, ms: 0, gen: elapsed.current.gen + 1 };
         setPausedAt(0);
         if (target === index) {
             setRestart((n) => n + 1);
@@ -147,10 +161,10 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
     }, [index, slides, finish, memberId]);
 
     const togglePause = useCallback(() => {
-        setPaused((p) => {
-            logRecapPlay(p ? 'resume' : 'pause', { index, member_id: memberId });
-            return !p;
-        });
+        const next = !pausedRef.current;
+        pausedRef.current = next;
+        logRecapPlay(next ? 'pause' : 'resume', { index, member_id: memberId });
+        setPaused(next);
     }, [index, memberId]);
 
     const close = useCallback(() => {
@@ -165,28 +179,40 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
     useEffect(() => {
         if (paused || ended || waits || !slide) return;
         const at = index;
+        const { gen } = elapsed.current;
         const shown = elapsed.current.index === at ? elapsed.current.ms : 0;
         const started = Date.now();
         const timer = setTimeout(() => goRef.current(1, 'auto'), Math.max(0, AUTO_ADVANCE_MS - shown));
         return () => {
             clearTimeout(timer);
-            if (elapsed.current.index === at) {
-                elapsed.current = { index: at, ms: shown + (Date.now() - started) };
+            // Bank only while this countdown is still the live one (a pause); a step or a
+            // restart already reset the clock and must not be overwritten.
+            if (elapsed.current.index === at && elapsed.current.gen === gen) {
+                elapsed.current = { index: at, ms: shown + (Date.now() - started), gen };
                 setPausedAt(Math.min(1, elapsed.current.ms / AUTO_ADVANCE_MS));
             }
         };
     }, [index, paused, ended, waits, slide, restart]);
 
+    // Window, capture phase: while the player is open its keys are its own. A handled key is
+    // claimed and stopped here, so Esc closes only the player and no app-level Esc handler
+    // (document or window, either phase) also fires. Dialogs and menus keep their keys
+    // (`keyIsOurs`).
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
             if (!keyIsOurs(e)) return;
-            if (e.key === 'ArrowRight') { e.preventDefault(); go(1, 'key'); }
-            else if (e.key === 'ArrowLeft') { e.preventDefault(); go(-1, 'key'); }
-            else if (e.key === ' ' || e.key === 'Spacebar') { e.preventDefault(); togglePause(); }
-            else if (e.key === 'Escape') { e.preventDefault(); close(); }
+            let handled = true;
+            if (e.key === 'ArrowRight') go(1, 'key');
+            else if (e.key === 'ArrowLeft') go(-1, 'key');
+            else if (e.key === ' ' || e.key === 'Spacebar') togglePause();
+            else if (e.key === 'Escape') close();
+            else handled = false;
+            if (!handled) return;
+            e.preventDefault();
+            e.stopPropagation();
         };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
+        window.addEventListener('keydown', onKey, true);
+        return () => window.removeEventListener('keydown', onKey, true);
     }, [go, togglePause, close]);
 
     const onMediaEnd = useCallback(() => {
@@ -249,6 +275,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
                                     from={i === index ? pausedAt : 0}
                                     remainingMs={i === index ? remaining : null}
                                     reducedMotion={reducedMotion}
+                                    run={i === index ? restart : 0}
                                 />
                             ))}
                         </div>

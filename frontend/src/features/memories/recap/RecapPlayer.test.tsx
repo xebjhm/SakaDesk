@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
+import { StrictMode } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { RecapPlayer, AUTO_ADVANCE_MS } from './RecapPlayer';
@@ -29,6 +30,11 @@ function setReducedMotion(reduce: boolean) {
 }
 
 const current = () => screen.getByTestId('recap-stage').getAttribute('data-slide');
+/** The fill of the current progress segment. */
+const fill = () => {
+    const seg = screen.getAllByTestId('recap-progress-segment').find((el) => el.getAttribute('data-state') === 'current');
+    return (seg?.firstElementChild as HTMLElement).style;
+};
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 beforeEach(() => { setReducedMotion(false); vi.mocked(clientLog).mockClear(); });
@@ -99,6 +105,124 @@ describe('RecapPlayer', () => {
         render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={onClose} />);
         fireEvent.keyDown(window, { key: 'Escape' });
         expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('← on slide 1 restarts the countdown while playing', () => {
+        vi.useFakeTimers();
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        act(() => { vi.advanceTimersByTime(5000); });
+        act(() => { fireEvent.keyDown(window, { key: 'ArrowLeft' }); });
+        act(() => { vi.advanceTimersByTime(6900); });
+        expect(current()).toBe('s01_first');
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(current()).toBe('s02_name');
+    });
+
+    it('← on slide 1 restarts the progress bar while playing', () => {
+        vi.useFakeTimers();
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        act(() => { vi.advanceTimersByTime(5000); });
+        expect(fill().width).toBe('100%');
+        act(() => { fireEvent.keyDown(window, { key: 'ArrowLeft' }); });
+        expect(fill().width).toBe('0%');
+        act(() => { vi.advanceTimersByTime(50); });
+        expect(fill().width).toBe('100%');
+        expect(fill().transitionDuration).toBe(`${AUTO_ADVANCE_MS}ms`);
+    });
+
+    it('← on slide 1 restarts the countdown and the bar while paused', () => {
+        vi.useFakeTimers();
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        act(() => { vi.advanceTimersByTime(3000); });
+        act(() => { fireEvent.keyDown(window, { key: ' ' }); });
+        expect(fill().width).not.toBe('0%');
+        act(() => { fireEvent.keyDown(window, { key: 'ArrowLeft' }); });
+        expect(fill().width).toBe('0%');
+        act(() => { fireEvent.keyDown(window, { key: ' ' }); });
+        act(() => { vi.advanceTimersByTime(6900); });
+        expect(current()).toBe('s01_first');
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(current()).toBe('s02_name');
+    });
+
+    it('a manual step gives the new slide its full time', () => {
+        vi.useFakeTimers();
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        act(() => { fireEvent.keyDown(window, { key: 'ArrowRight' }); });
+        act(() => { vi.advanceTimersByTime(5000); });
+        act(() => { fireEvent.keyDown(window, { key: 'ArrowLeft' }); });
+        act(() => { fireEvent.keyDown(window, { key: 'ArrowRight' }); });
+        act(() => { vi.advanceTimersByTime(6900); });
+        expect(current()).toBe('s02_name');
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(current()).toBe('s12_sentence');
+    });
+
+    it('ignores held (repeating) keys', () => {
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        fireEvent.keyDown(window, { key: 'ArrowRight', repeat: true });
+        expect(current()).toBe('s01_first');
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        fireEvent.keyDown(window, { key: 'ArrowLeft', repeat: true });
+        expect(current()).toBe('s02_name');
+        fireEvent.keyDown(window, { key: ' ', repeat: true });
+        expect(screen.getByTestId('recap-stage')).toHaveAttribute('data-paused', 'false');
+    });
+
+    it('Space on a focused button is left to the button and does not also toggle pause', () => {
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        const next = screen.getByRole('button', { name: '次へ' });
+        next.focus();
+        expect(fireEvent.keyDown(next, { key: ' ' })).toBe(true);
+        expect(screen.getByTestId('recap-stage')).toHaveAttribute('data-paused', 'false');
+        const pause = screen.getByRole('button', { name: '一時停止' });
+        pause.focus();
+        expect(fireEvent.keyDown(pause, { key: ' ' })).toBe(true);
+        expect(screen.getByTestId('recap-stage')).toHaveAttribute('data-paused', 'false');
+    });
+
+    it('logs pause and resume once each, even under StrictMode', () => {
+        render(<StrictMode><RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} /></StrictMode>);
+        // Two presses in one batch: the second update is computed while rendering, where
+        // StrictMode runs updaters twice, so a log inside an updater would be doubled.
+        act(() => {
+            fireEvent.keyDown(window, { key: ' ' });
+            fireEvent.keyDown(window, { key: ' ' });
+        });
+        expect(screen.getByTestId('recap-stage')).toHaveAttribute('data-paused', 'false');
+        const phases = playLogs().map(([, f]) => (f as { phase: string }).phase);
+        expect(phases.filter((p) => p === 'pause')).toHaveLength(1);
+        expect(phases.filter((p) => p === 'resume')).toHaveLength(1);
+    });
+
+    it('Esc closes only the player: other app-level Esc handlers do not fire', () => {
+        const onClose = vi.fn();
+        const onDocument = vi.fn();
+        const onWindow = vi.fn();
+        document.addEventListener('keydown', onDocument);
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={onClose} />);
+        window.addEventListener('keydown', onWindow);
+        try {
+            fireEvent.keyDown(document.body, { key: 'Escape' });
+            expect(onClose).toHaveBeenCalledTimes(1);
+            expect(onDocument).not.toHaveBeenCalled();
+            expect(onWindow).not.toHaveBeenCalled();
+        } finally {
+            document.removeEventListener('keydown', onDocument);
+            window.removeEventListener('keydown', onWindow);
+        }
+    });
+
+    it('leaves Esc to an open menu', () => {
+        const onClose = vi.fn();
+        render(
+            <>
+                <RecapPlayer recap={payload()} nickname="ゆき" onClose={onClose} />
+                <div role="menu" tabIndex={-1} />
+            </>,
+        );
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it('a slide that waits for media does not auto-advance until its playback ends', () => {
