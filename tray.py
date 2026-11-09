@@ -229,7 +229,7 @@ class TrayController:
         """Show (or remove) the login-needed badge on the icon. Never raises.
 
         Logs ``tray_alert`` (``on``), ``tray_alert_skipped`` (``reason``) or
-        ``tray_alert_failed`` (``error_type``).
+        ``tray_alert_icon_failed`` (``error_type``).
         """
         icon = self._icon
         if icon is None or self._base_image is None:
@@ -239,7 +239,7 @@ class TrayController:
             icon.icon = _alert_image(self._base_image) if on else self._base_image
             logger.info("tray_alert", on=on)
         except Exception as e:
-            logger.warning("tray_alert_failed", error_type=type(e).__name__)
+            logger.warning("tray_alert_icon_failed", error_type=type(e).__name__)
 
     def stop(self) -> None:
         """Remove the icon. Idempotent; never raises."""

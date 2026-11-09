@@ -412,6 +412,6 @@ def test_set_alert_failure_is_logged_with_the_error_type_only(fake_pystray):
     icon.fail_on_icon = True
     with capture_logs() as logs:
         tray.set_alert(True)
-    failed = [e for e in logs if e["event"] == "tray_alert_failed"]
+    failed = [e for e in logs if e["event"] == "tray_alert_icon_failed"]
     assert failed and failed[0]["error_type"] == "OSError"
     assert "shell gone" not in str(logs)
