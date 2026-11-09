@@ -20,7 +20,7 @@ from pysaka import (
 )
 from pysaka.credentials import get_token_manager
 from backend.api.progress import progress_manager
-from backend.services import desktop_bridge
+from backend.services import desktop_bridge, refresh_gate
 from backend.services.background_tasks import track_background_task
 from backend.services.call_popup import (
     PendingCall,
@@ -278,82 +278,89 @@ class SyncService:
         """Build an authenticated Client for this service, refreshing the token if
         needed. Verifies a failed refresh with a live get_groups call before giving
         up; deletes a truly-expired session and raises SessionExpiredError."""
-        config = await self.load_config()
-        token = config.get("access_token")
-        if not token:
-            raise Exception("Not authenticated")
+        async with refresh_gate.hold(self._service):
+            config = await self.load_config()
+            token = config.get("access_token")
+            if not token:
+                raise Exception("Not authenticated")
 
-        auth_dir = str(get_session_dir())
-        client = Client(
-            group=self._get_group(),
-            access_token=token,
-            cookies=config.get("cookies"),
-            app_id=config.get("x-talk-app-id"),
-            user_agent=config.get("user-agent"),
-            auth_dir=auth_dir,
-        )
-
-        try:
-            await client.refresh_if_needed(session, min_seconds_remaining=300)
-        except (SessionExpiredError, RefreshFailedError) as refresh_err:
-            logger.warning(
-                "Token refresh failed - verifying token validity",
-                error_type=type(refresh_err).__name__,
-                error=str(refresh_err),
+            auth_dir = str(get_session_dir())
+            client = Client(
+                group=self._get_group(),
+                access_token=token,
+                cookies=config.get("cookies"),
+                app_id=config.get("x-talk-app-id"),
+                user_agent=config.get("user-agent"),
+                auth_dir=auth_dir,
             )
+
             try:
-                test_groups = await client.get_groups(session, include_inactive=False)
-                if test_groups is not None:
-                    logger.info(
-                        "Token is still valid despite refresh failure - continuing",
-                        groups_found=len(test_groups),
+                await client.refresh_if_needed(session, min_seconds_remaining=300)
+            except (SessionExpiredError, RefreshFailedError) as refresh_err:
+                logger.warning(
+                    "Token refresh failed - verifying token validity",
+                    error_type=type(refresh_err).__name__,
+                    error=str(refresh_err),
+                )
+                try:
+                    test_groups = await client.get_groups(
+                        session, include_inactive=False
                     )
-                else:
-                    logger.error("Token verification failed - session is truly expired")
+                    if test_groups is not None:
+                        logger.info(
+                            "Token is still valid despite refresh failure - continuing",
+                            groups_found=len(test_groups),
+                        )
+                    else:
+                        logger.error(
+                            "Token verification failed - session is truly expired"
+                        )
+                        tm = get_token_manager()
+                        tm.delete_session(self._service)
+                        self._invalidate_auth_cache()
+                        raise SessionExpiredError("Session expired") from refresh_err
+                except SessionExpiredError:
+                    logger.error("Token verification confirmed session is expired")
                     tm = get_token_manager()
                     tm.delete_session(self._service)
                     self._invalidate_auth_cache()
-                    raise SessionExpiredError("Session expired") from refresh_err
-            except SessionExpiredError:
-                logger.error("Token verification confirmed session is expired")
-                tm = get_token_manager()
-                tm.delete_session(self._service)
-                self._invalidate_auth_cache()
-                raise
+                    raise
 
-        if client.access_token != token:
-            logger.info(
-                "Tokens refreshed during auth check - saving to storage",
-                extra={
-                    "has_new_cookies": bool(client.cookies),
-                    "cookie_count": len(client.cookies) if client.cookies else 0,
-                    "cookie_keys": list(client.cookies.keys())
-                    if client.cookies
-                    else [],
-                },
-            )
-            try:
-                tm = get_token_manager()
-                access_token = client.access_token
-                if access_token is None:
-                    logger.warning(
-                        "No access token to persist after refresh; skipping save"
-                    )
-                else:
-                    tm.save_session(
-                        self._service,
-                        access_token,
-                        client.refresh_token,
-                        client.cookies,
-                    )
-                    self._invalidate_auth_cache()
-                    logger.info("Refreshed tokens saved successfully to TokenManager")
-            except Exception as e:
-                logger.error(
-                    "Failed to save refreshed tokens", error=str(e), exc_info=True
+            if client.access_token != token:
+                logger.info(
+                    "Tokens refreshed during auth check - saving to storage",
+                    extra={
+                        "has_new_cookies": bool(client.cookies),
+                        "cookie_count": len(client.cookies) if client.cookies else 0,
+                        "cookie_keys": list(client.cookies.keys())
+                        if client.cookies
+                        else [],
+                    },
                 )
-        else:
-            logger.debug("Token unchanged after refresh check, no save needed")
+                try:
+                    tm = get_token_manager()
+                    access_token = client.access_token
+                    if access_token is None:
+                        logger.warning(
+                            "No access token to persist after refresh; skipping save"
+                        )
+                    else:
+                        tm.save_session(
+                            self._service,
+                            access_token,
+                            client.refresh_token,
+                            client.cookies,
+                        )
+                        self._invalidate_auth_cache()
+                        logger.info(
+                            "Refreshed tokens saved successfully to TokenManager"
+                        )
+                except Exception as e:
+                    logger.error(
+                        "Failed to save refreshed tokens", error=str(e), exc_info=True
+                    )
+            else:
+                logger.debug("Token unchanged after refresh check, no save needed")
 
         return client
 

@@ -55,6 +55,7 @@ REASON_SHUTTING_DOWN = "shutting_down"
 REASON_DISABLED = "disabled"
 REASON_NOT_CONFIGURED = "not_configured"
 REASON_NOT_AUTHENTICATED = "not_authenticated"
+REASON_SESSION_EXPIRED = "session_expired"
 
 SleepFn = Callable[[float], Awaitable[Any]]
 LoadSettingsFn = Callable[[], Awaitable[Mapping[str, Any]]]
@@ -185,7 +186,13 @@ class AutoSyncScheduler:
         if not settings["is_configured"]:
             return REASON_NOT_CONFIGURED
         if not await self._is_authenticated(service):
-            return REASON_NOT_AUTHENTICATED
+            from backend.services import session_alert
+
+            return (
+                REASON_SESSION_EXPIRED
+                if session_alert.needs_login(service)
+                else REASON_NOT_AUTHENTICATED
+            )
         return await self._launch(service, origin="scheduler")
 
     async def _run(self, service: str) -> None:

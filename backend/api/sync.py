@@ -6,6 +6,7 @@ Supports per-service progress tracking for multi-service sync.
 import structlog
 from fastapi import APIRouter, HTTPException, Query
 from pysaka import RefreshFailedError, SessionExpiredError
+from backend.services import session_alert
 from backend.services.sync_service import SyncService
 from backend.services.service_utils import validate_service
 from backend.services.background_tasks import track_background_task
@@ -35,12 +36,15 @@ async def run_sync_task(service: str, include_inactive: bool, force_resync: bool
     progress = progress_manager.get(service)
     try:
         await sync_service.start_sync(include_inactive, force_resync)
+        session_alert.report_success(service)
     except SessionExpiredError:
-        logger.warning(f"Sync failed for {service}: Session expired")
+        logger.warning("sync_failed", service=service, reason="session_expired")
         progress.error("SESSION_EXPIRED")
+        await session_alert.report(service, "expired")
     except RefreshFailedError:
-        logger.error(f"Sync failed for {service}: All refresh attempts failed")
+        logger.error("sync_failed", service=service, reason="refresh_failed")
         progress.error("REFRESH_FAILED")
+        await session_alert.report(service, "refresh_failed")
     except Exception as e:
         logger.error(f"Background sync error for {service}: {e}")
         progress.error(str(e))
@@ -60,9 +64,11 @@ async def run_verify_task(service: str):
     except SessionExpiredError:
         logger.warning(f"Verify failed for {service}: Session expired")
         progress.error("SESSION_EXPIRED")
+        await session_alert.report(service, "expired")
     except RefreshFailedError:
         logger.error(f"Verify failed for {service}: All refresh attempts failed")
         progress.error("REFRESH_FAILED")
+        await session_alert.report(service, "refresh_failed")
     except Exception as e:
         logger.error(f"Background verify error for {service}: {e}")
         progress.error(str(e))
