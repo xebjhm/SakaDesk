@@ -203,7 +203,7 @@ export function useSync({
     // Maps service ID → timestamp of successful reconnection.
     const recentlyReconnectedRef = useRef<Record<string, number>>({});
     const RECONNECT_COOLDOWN_MS = 10_000; // 10 seconds
-    /** Consecutive timed-out / failed progress reads tolerated before "lost connection". */
+    /** Consecutive timed-out / failed progress reads tolerated (when not running) before "lost connection". */
     const MAX_PROGRESS_RETRIES = 3;
     const PROGRESS_RETRY_MS = 1000;
 
@@ -344,11 +344,17 @@ export function useSync({
                 if (result.status === 'aborted' || result.status === 'skipped' || superseded()) return;
                 if (result.status !== 'ok') {
                     // Timeout / network error / non-2xx: pollJson logged why. A missed
-                    // read must not end a follow or terminal check, so retry a few
-                    // times before declaring the connection lost.
+                    // read must not end the check. While the service is known to be
+                    // running (a long sync on a busy backend) keep retrying as long as
+                    // it takes; otherwise (follow / terminal checks) retry a bounded
+                    // number of times before declaring the connection lost.
                     failures += 1;
-                    if (failures <= MAX_PROGRESS_RETRIES) {
-                        clientLog('poll_retry', { key: pollLogKey(progressKey), count: failures });
+                    const running = syncProgressByServiceRef.current[service]?.state === 'running';
+                    if (running || failures <= MAX_PROGRESS_RETRIES) {
+                        // Rate-limited while running: the first few, then every 10th.
+                        if (failures <= MAX_PROGRESS_RETRIES || failures % 10 === 0) {
+                            clientLog('poll_retry', { key: pollLogKey(progressKey), count: failures });
+                        }
                         if (isPollingRef.current[service]) setTimeout(check, PROGRESS_RETRY_MS);
                     } else {
                         clientLog('poll_gave_up', { key: pollLogKey(progressKey), count: MAX_PROGRESS_RETRIES });

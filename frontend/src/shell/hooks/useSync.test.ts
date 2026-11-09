@@ -381,7 +381,29 @@ describe('useSync', () => {
             expect(clientLog).not.toHaveBeenCalledWith('poll_gave_up', expect.anything())
         })
 
-        it('gives up after MAX retries and reports lost connection', async () => {
+        it('a running sync survives more than MAX consecutive timeouts and then completes', async () => {
+            vi.useFakeTimers()
+            const running = { ok: true, json: () => Promise.resolve({ state: 'running', run_id: 6, phase: 'x', completed: 1, total: 5 }) }
+            const fetchMock = vi.fn().mockResolvedValueOnce(running)
+            vi.stubGlobal('fetch', fetchMock)
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            await act(async () => { await vi.advanceTimersByTimeAsync(0) })
+            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('running')
+            // Then the backend stops answering: 6 timed-out reads (> MAX_PROGRESS_RETRIES).
+            fetchMock.mockImplementation(hanging().getMockImplementation()!)
+            await act(async () => { await vi.advanceTimersByTimeAsync(1000 + 6 * 5000) })
+            expect(clientLog).toHaveBeenCalledWith('poll_retry', { key: 'sync_progress_hinatazaka46', count: 3 })
+            expect(clientLog).not.toHaveBeenCalledWith('poll_gave_up', expect.anything())
+            expect(result.current.isPolling('hinatazaka46')).toBe(true)
+            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('running')
+            fetchMock.mockResolvedValue(completeBody as unknown as Response)
+            await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
+            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('complete')
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+        })
+
+        it('a non-running follow gives up after MAX retries and reports lost connection', async () => {
             vi.useFakeTimers()
             const fetchMock = hanging()
             vi.stubGlobal('fetch', fetchMock)
