@@ -449,7 +449,7 @@ async def get_cache_size(service: str = Query(...)):
 
 @router.get("/cache-stats")
 async def get_cache_stats(service: str = Query(...)):
-    """Get blog cache statistics for a service."""
+    """Get blog counts (total, available, cached, removed, pending) for a service."""
     try:
         validate_service(service)
         stats = await blog_service.get_cache_stats(service)

@@ -166,6 +166,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   has been open a while.
 - **Voice and video durations always show** instead of sometimes reading
   0:00 / 0:00.
+- **Blog backup totals in Settings load quickly.** With a large blog archive,
+  the cache size and backup counts took up to 20 seconds to appear and briefly
+  slowed the rest of the app; they now load in about a second.
 - **Zoom and scrollbar polish.** The zoom-out and fit buttons turn off once a
   photo fits the window, and a scrollbar no longer gets clipped by the rounded
   corner when you scroll to the end.
