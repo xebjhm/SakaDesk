@@ -905,3 +905,26 @@ def test_memories_events_are_allowlisted():
     ):
         r = client.post("/api/client-log", json={"event": event, "fields": fields})
         assert r.status_code == 204
+
+
+def test_recap_events_are_allowlisted():
+    for event, fields in (
+        (
+            "recap_load",
+            {"target": "member", "outcome": "ok", "count": 4, "member_id": "58"},
+        ),
+        ("recap_load", {"target": "members", "outcome": "rejected", "error_code": 500}),
+        (
+            "recap_play",
+            {
+                "phase": "step",
+                "index": 1,
+                "key": "s02_name",
+                "reason": "key",
+                "member_id": "58",
+            },
+        ),
+        ("recap_play", {"phase": "skip", "key": "s03_clock", "reason": "not_built"}),
+    ):
+        r = client.post("/api/client-log", json={"event": event, "fields": fields})
+        assert r.status_code == 204

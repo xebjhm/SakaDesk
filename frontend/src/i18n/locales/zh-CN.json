@@ -742,5 +742,67 @@
     "home": {
       "recapCard": "年度回顾"
     }
+  },
+  "recap": {
+    "entry": {
+      "heading": "走在同一条坡道上的一年",
+      "year": "{{year}}年",
+      "olderYear": "上一年",
+      "newerYear": "下一年",
+      "back": "返回",
+      "choose": "想回顾和谁的这一年？",
+      "partial": "{{year}}年，到目前为止",
+      "loadFailed": "无法加载回顾。",
+      "oshi": "推し",
+      "emptyTitle": "给明年的你",
+      "emptyBody": "{{year}}年的话语还只有一点点。接下来的每一封，都会在这里等你。"
+    },
+    "titles": {
+      "morning": "最常对你说早安的晨光",
+      "nickname": "叫你名字最多次的羁绊",
+      "longest": "写下最长真心话的笔迹",
+      "voice": "最常传来声音的人",
+      "night": "最常照亮你夜晚的月光",
+      "photos": "让你看见最多风景的窗",
+      "steady": "日复一日叠加的步伐",
+      "first": "在你身旁走得最久的人"
+    },
+    "player": {
+      "label": "年度回顾",
+      "prev": "上一张",
+      "next": "下一张",
+      "pause": "暂停",
+      "play": "播放",
+      "progress": "{{current}} / {{total}}"
+    },
+    "youFallback": "你",
+    "s01": {
+      "title": "{{year}}年，两人的故事从这一封开始。",
+      "sub": "你和她的第{{count}}年。",
+      "joined": "你和她的{{year}}年，从{{date}}开始。",
+      "notification": "新消息"
+    },
+    "s02": {
+      "title": "即使季节更替，她呼唤你名字的声音始终是同样的温度。",
+      "daisukiTitle": "即使季节更替，“大好き”的温度始终没有改变。",
+      "count": "今年，她叫了你的名字{{count}}次。",
+      "single": "今年只有一次。但她确实呼唤了你。",
+      "daisuki": "“大好き”，{{count}}次。",
+      "daisukiWord": "大好き"
+    },
+    "s12": {
+      "title": "{{year}}年，她的一句话"
+    },
+    "s13": {
+      "title": "{{year}}年，最后的晚安。",
+      "partialTitle": "最新的一句晚安",
+      "partialNote": "等到12月31日的晚安，就会完成。",
+      "narration": "明年也请多多关照。",
+      "graduatedTitle": "最后的消息",
+      "graduatedLine": "一直都在这里。",
+      "lastTextTitle": "{{year}}年，最后的话语。",
+      "lastTextPartialTitle": "最新的话语",
+      "lastTextPartialNote": "等到12月31日的话语，就会完成。"
+    }
   }
 }

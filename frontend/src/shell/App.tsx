@@ -557,6 +557,7 @@ function App() {
                         syncProgressByService={syncProgressByService}
                         initialSyncServices={initialSyncServices}
                         blogBackupEnabled={appSettings?.blogs_full_backup}
+                        userNicknames={appSettings?.user_nicknames}
                         messagesContent={
                             <MessagesFeature
                                 appSettings={appSettings}

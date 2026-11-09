@@ -87,6 +87,8 @@ ClientEvent = Literal[
     "sidebar_load",
     "memories_open",
     "memories_page",
+    "recap_load",
+    "recap_play",
 ]
 
 ALLOWED_FIELDS = frozenset(

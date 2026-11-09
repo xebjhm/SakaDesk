@@ -746,5 +746,69 @@
     "home": {
       "recapCard": "Year recap"
     }
+  },
+  "recap": {
+    "entry": {
+      "heading": "A year on the same slope",
+      "year": "{{year}}",
+      "olderYear": "Previous year",
+      "newerYear": "Next year",
+      "back": "Back",
+      "choose": "Whose year would you like to look back on?",
+      "partial": "{{year}}, so far",
+      "loadFailed": "Could not load the recap.",
+      "oshi": "Oshi",
+      "emptyTitle": "To you, next year",
+      "emptyBody": "Her words in {{year}} are still only a few. The next message will be waiting here."
+    },
+    "titles": {
+      "morning": "The morning light who said \"good morning\" most",
+      "nickname": "The bond who called your name most",
+      "longest": "The hand that wrote the longest heartfelt words",
+      "voice": "The one who sent her voice most",
+      "night": "The moonlight who lit your nights most",
+      "photos": "The window who showed you the most views",
+      "steady": "The steady steps, day after day",
+      "first": "The one who has walked beside you longest"
+    },
+    "player": {
+      "label": "Year recap",
+      "prev": "Previous",
+      "next": "Next",
+      "pause": "Pause",
+      "play": "Play",
+      "progress": "{{current}} of {{total}}"
+    },
+    "youFallback": "you",
+    "s01": {
+      "title": "In {{year}}, your story together began with this message.",
+      "sub": "Year {{count}} of you and her.",
+      "joined": "Your {{year}} with her began on {{date}}.",
+      "notification": "New message"
+    },
+    "s02": {
+      "title": "Through every season, the warmth of her voice calling your name never changed.",
+      "daisukiTitle": "Through every season, the warmth of her \"daisuki\" never changed.",
+      "count": "This year, she called your name {{count}} time.",
+      "count_other": "This year, she called your name {{count}} times.",
+      "single": "Just once this year. But she truly called it.",
+      "daisuki": "\"Daisuki\", {{count}} time.",
+      "daisuki_other": "\"Daisuki\", {{count}} times.",
+      "daisukiWord": "大好き"
+    },
+    "s12": {
+      "title": "Her words of {{year}}"
+    },
+    "s13": {
+      "title": "The last \"oyasumi\" of {{year}}.",
+      "partialTitle": "The newest \"oyasumi\"",
+      "partialNote": "It will be complete with the \"oyasumi\" of December 31.",
+      "narration": "See you next year, too.",
+      "graduatedTitle": "Her last message",
+      "graduatedLine": "Always here.",
+      "lastTextTitle": "Her last words of {{year}}.",
+      "lastTextPartialTitle": "Her newest words",
+      "lastTextPartialNote": "It will be complete with her words of December 31."
+    }
   }
 }

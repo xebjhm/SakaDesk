@@ -1,6 +1,8 @@
-import { describe, it, expect, beforeAll, vi } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
+import { server } from '../../__tests__/mocks/server';
 import i18n from '../../i18n';
 import { SERVICE_FEATURES, getAvailableFeatures } from '../../config/features';
 import { MemoriesFeature } from './MemoriesFeature';
@@ -8,6 +10,12 @@ import { MemoriesFeature } from './MemoriesFeature';
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
+beforeEach(() => {
+    server.use(http.get('/api/memories/:service/recap/:year/members', ({ params }) => HttpResponse.json({
+        year: Number(params.year), phase: 'partial', christmas_open: false, members: [],
+        opening: { star_order: [], first_message: null, oyasumi_total: null },
+    })));
+});
 
 describe('Memories feature', () => {
     it('is offered for every service', () => {

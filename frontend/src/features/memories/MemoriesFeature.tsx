@@ -12,9 +12,11 @@ const HOME: MemoriesRoute = { page: 'home' };
 
 interface MemoriesFeatureProps {
     service: string;
+    /** The fan's nickname for this service (`%%%` in her messages). */
+    nickname?: string;
 }
 
-export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service }) => {
+export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickname }) => {
     // The route is tagged with its service so a service change falls back to home
     // on the same render (no flash of the old service's page).
     const [state, setState] = useState<{ service: string; route: MemoriesRoute }>({ service, route: HOME });
@@ -35,6 +37,7 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service }) => 
                 service={service}
                 year={route.year}
                 memberPath={route.memberPath}
+                nickname={nickname}
                 onBack={() => go(HOME)}
             />
         );

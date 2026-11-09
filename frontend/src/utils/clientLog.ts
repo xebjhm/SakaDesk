@@ -33,7 +33,7 @@ export type ClientLogEvent =
     | 'conv_hydrate_retry' | 'conv_hydrate_failed' | 'conv_hydrate_recovered' | 'conv_write_failed'
     | 'read_state_save_deferred' | 'read_state_pending_flushed' | 'read_state_sync_failed'
     | 'sidebar_load' | 'oshi_mirror_failed'
-    | 'memories_open' | 'memories_page';
+    | 'memories_open' | 'memories_page' | 'recap_load' | 'recap_play';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'

@@ -15,6 +15,8 @@ interface ContentAreaProps {
     syncProgress?: SyncProgress;
     isInitialSyncing?: boolean;
     blogBackupEnabled?: boolean;
+    /** The fan's nickname for this service. */
+    userNickname?: string;
 }
 
 const ComingSoon: React.FC<{ feature: FeatureId }> = ({ feature }) => {
@@ -40,6 +42,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
     syncProgress,
     isInitialSyncing,
     blogBackupEnabled,
+    userNickname,
 }) => {
     const { getActiveFeature } = useAppStore();
     const activeFeature = getActiveFeature(service);
@@ -50,7 +53,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
     } else if (activeFeature === 'blogs') {
         content = <ContentSheet><BlogsFeature blogBackupEnabled={blogBackupEnabled} /></ContentSheet>;
     } else if (activeFeature === 'memories') {
-        content = <ContentSheet><MemoriesFeature service={service} /></ContentSheet>;
+        content = <ContentSheet><MemoriesFeature service={service} nickname={userNickname} /></ContentSheet>;
     } else if (activeFeature === 'news' || activeFeature === 'fanclub' || activeFeature === 'ai') {
         content = <ContentSheet><ComingSoon feature={activeFeature} /></ContentSheet>;
     } else {

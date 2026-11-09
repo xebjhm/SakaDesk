@@ -742,5 +742,67 @@
     "home": {
       "recapCard": "年度回顧"
     }
+  },
+  "recap": {
+    "entry": {
+      "heading": "行喺同一條斜路上嘅一年",
+      "year": "{{year}}年",
+      "olderYear": "上一年",
+      "newerYear": "下一年",
+      "back": "返回",
+      "choose": "想回顧同邊個嘅呢一年？",
+      "partial": "{{year}}年，到而家為止",
+      "loadFailed": "載入唔到回顧。",
+      "oshi": "推し",
+      "emptyTitle": "俾明年嘅你",
+      "emptyBody": "{{year}}年嘅說話仲係得少少。之後嘅每一封，都會喺度等你。"
+    },
+    "titles": {
+      "morning": "最常同你講早晨嘅晨光",
+      "nickname": "叫你個名最多次嘅羈絆",
+      "longest": "寫低最長真心說話嘅筆跡",
+      "voice": "最常傳嚟把聲嘅人",
+      "night": "最常照亮你夜晚嘅月光",
+      "photos": "俾你睇到最多風景嘅窗",
+      "steady": "日復一日疊埋嘅腳步",
+      "first": "喺你身邊行得最耐嘅人"
+    },
+    "player": {
+      "label": "年度回顧",
+      "prev": "上一張",
+      "next": "下一張",
+      "pause": "暫停",
+      "play": "播放",
+      "progress": "{{current}} / {{total}}"
+    },
+    "youFallback": "你",
+    "s01": {
+      "title": "{{year}}年，兩個人嘅故事由呢一封開始。",
+      "sub": "你同佢嘅第{{count}}年。",
+      "joined": "你同佢嘅{{year}}年，由{{date}}開始。",
+      "notification": "新訊息"
+    },
+    "s02": {
+      "title": "就算季節轉換，佢叫你個名嘅聲音都一直係同一個溫度。",
+      "daisukiTitle": "就算季節轉換，「大好き」嘅溫度都冇變過。",
+      "count": "今年，佢叫咗你個名{{count}}次。",
+      "single": "今年得一次。但佢真係叫過你。",
+      "daisuki": "「大好き」，{{count}}次。",
+      "daisukiWord": "大好き"
+    },
+    "s12": {
+      "title": "{{year}}年，佢嘅一句說話"
+    },
+    "s13": {
+      "title": "{{year}}年，最後嘅晚安。",
+      "partialTitle": "最新嘅一句晚安",
+      "partialNote": "等到12月31日嘅晚安，就會完成。",
+      "narration": "明年都請多多指教。",
+      "graduatedTitle": "最後嘅訊息",
+      "graduatedLine": "一直都喺度。",
+      "lastTextTitle": "{{year}}年，最後嘅說話。",
+      "lastTextPartialTitle": "最新嘅說話",
+      "lastTextPartialNote": "等到12月31日嘅說話，就會完成。"
+    }
   }
 }

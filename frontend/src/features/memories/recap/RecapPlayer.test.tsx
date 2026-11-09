@@ -1,0 +1,183 @@
+import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
+import i18n from '../../../i18n';
+import { RecapPlayer, AUTO_ADVANCE_MS } from './RecapPlayer';
+import { SLIDE_REGISTRY, type SlideRegistry } from './slideRegistry';
+import { payload, s01, s02, s12, s13 } from './__fixtures__/payload';
+import type { RecapSlide } from './api';
+
+vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+import { clientLog } from '../../../utils/clientLog';
+
+const playLogs = () => vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'recap_play');
+
+function setReducedMotion(reduce: boolean) {
+    Object.defineProperty(window, 'matchMedia', {
+        configurable: true,
+        writable: true,
+        value: vi.fn((query: string) => ({
+            matches: reduce && query.includes('prefers-reduced-motion'),
+            media: query,
+            addEventListener: vi.fn(),
+            removeEventListener: vi.fn(),
+            addListener: vi.fn(),
+            removeListener: vi.fn(),
+            onchange: null,
+            dispatchEvent: vi.fn(),
+        })),
+    });
+}
+
+const current = () => screen.getByTestId('recap-stage').getAttribute('data-slide');
+
+beforeAll(async () => { await i18n.changeLanguage('ja'); });
+beforeEach(() => { setReducedMotion(false); vi.mocked(clientLog).mockClear(); });
+afterEach(() => { vi.useRealTimers(); });
+
+describe('RecapPlayer', () => {
+    it('renders slide 1 from the payload', () => {
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        expect(current()).toBe('s01_first');
+        expect(screen.getByTestId('slide-s01_first')).toBeInTheDocument();
+        expect(screen.getAllByTestId('recap-progress-segment')).toHaveLength(4);
+    });
+
+    it('steps with → and ←', () => {
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(current()).toBe('s02_name');
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(current()).toBe('s12_sentence');
+        fireEvent.keyDown(window, { key: 'ArrowLeft' });
+        expect(current()).toBe('s02_name');
+    });
+
+    it('steps with clicks on the right and left of the stage', () => {
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        fireEvent.click(screen.getByRole('button', { name: '次へ' }));
+        expect(current()).toBe('s02_name');
+        fireEvent.click(screen.getByRole('button', { name: '前へ' }));
+        expect(current()).toBe('s01_first');
+    });
+
+    it('auto-advances after 7 s', () => {
+        vi.useFakeTimers();
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        expect(AUTO_ADVANCE_MS).toBe(7000);
+        act(() => { vi.advanceTimersByTime(6900); });
+        expect(current()).toBe('s01_first');
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(current()).toBe('s02_name');
+    });
+
+    it('Space pauses and resumes with the remaining time', () => {
+        vi.useFakeTimers();
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        act(() => { vi.advanceTimersByTime(3000); });
+        fireEvent.keyDown(window, { key: ' ' });
+        expect(screen.getByTestId('recap-stage')).toHaveAttribute('data-paused', 'true');
+        act(() => { vi.advanceTimersByTime(20000); });
+        expect(current()).toBe('s01_first');
+        fireEvent.keyDown(window, { key: ' ' });
+        act(() => { vi.advanceTimersByTime(3900); });
+        expect(current()).toBe('s01_first');
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(current()).toBe('s02_name');
+    });
+
+    it('stops on the last slide', () => {
+        vi.useFakeTimers();
+        const onEnd = vi.fn();
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} onEnd={onEnd} />);
+        for (let i = 0; i < 10; i += 1) act(() => { vi.advanceTimersByTime(AUTO_ADVANCE_MS); });
+        expect(current()).toBe('s13_oyasumi');
+        expect(onEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('Esc closes', () => {
+        const onClose = vi.fn();
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={onClose} />);
+        fireEvent.keyDown(window, { key: 'Escape' });
+        expect(onClose).toHaveBeenCalledTimes(1);
+    });
+
+    it('a slide that waits for media does not auto-advance until its playback ends', () => {
+        vi.useFakeTimers();
+        const voice: RecapSlide = { key: 's06_voice', fallback: null, data: { clips: [], voice_count: 3 } };
+        const registry: SlideRegistry = {
+            ...SLIDE_REGISTRY,
+            s06_voice: {
+                waitsForMedia: true,
+                component: ({ onMediaEnd }) => <button type="button" onClick={onMediaEnd}>ended</button>,
+            },
+        };
+        render(<RecapPlayer recap={payload({ slides: [voice, s12] })} nickname="ゆき" onClose={() => {}} registry={registry} />);
+        act(() => { vi.advanceTimersByTime(AUTO_ADVANCE_MS * 3); });
+        expect(current()).toBe('s06_voice');
+        fireEvent.click(screen.getByRole('button', { name: 'ended' }));
+        expect(current()).toBe('s12_sentence');
+    });
+
+    it('skips slides that have no renderer yet and logs it', () => {
+        const clock: RecapSlide = {
+            key: 's03_clock', fallback: null, data: { stars: [], peak_hour: 22, representative: null, longest_streak: null },
+        };
+        render(<RecapPlayer recap={payload({ slides: [s01, clock, s02] })} nickname="ゆき" onClose={() => {}} />);
+        expect(screen.getAllByTestId('recap-progress-segment')).toHaveLength(2);
+        expect(playLogs()).toContainEqual(['recap_play', expect.objectContaining({ phase: 'skip', key: 's03_clock', reason: 'not_built' })]);
+    });
+
+    it('logs ids and codes only', () => {
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        for (const [, fields] of playLogs()) {
+            for (const v of Object.values(fields ?? {})) {
+                if (typeof v === 'string') expect(v).toMatch(/^[a-z0-9_]{1,40}$/);
+            }
+        }
+        expect(playLogs()).toContainEqual(['recap_play', expect.objectContaining({ phase: 'step', index: 1, key: 's02_name', reason: 'key' })]);
+    });
+
+    it('uses static transitions with prefers-reduced-motion', () => {
+        setReducedMotion(true);
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        const stage = screen.getByTestId('recap-stage');
+        expect(stage).toHaveAttribute('data-reduced-motion', 'true');
+        for (let i = 0; i < 4; i += 1) {
+            expect(stage.innerHTML).not.toMatch(/\banimate-/);
+            fireEvent.keyDown(window, { key: 'ArrowRight' });
+        }
+    });
+
+    it('animates without reduced motion', () => {
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        const stage = screen.getByTestId('recap-stage');
+        expect(stage).toHaveAttribute('data-reduced-motion', 'false');
+        expect(stage.innerHTML).toMatch(/\banimate-reveal/);
+    });
+
+    it('ignores keys while a dialog is open', () => {
+        render(
+            <>
+                <RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />
+                <div role="dialog" aria-modal="true" />
+            </>,
+        );
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(current()).toBe('s01_first');
+    });
+
+    it('replaces %%% with the nickname on every slide', () => {
+        render(<RecapPlayer recap={payload({ slides: [s01, s02, s13(true, false)] })} nickname="ゆき" onClose={() => {}} />);
+        for (let i = 0; i < 3; i += 1) {
+            expect(document.body.textContent).not.toMatch(/%%%|％％％/);
+            fireEvent.keyDown(window, { key: 'ArrowRight' });
+        }
+        expect(screen.getByText(/おやすみ、ゆき/)).toBeInTheDocument();
+    });
+
+    it('never prints null, undefined or 0 for missing fields', () => {
+        render(<RecapPlayer recap={payload({ slides: [s02, s12] })} nickname="ゆき" onClose={() => {}} />);
+        expect(document.body.textContent).not.toMatch(/null|undefined|NaN/);
+    });
+});

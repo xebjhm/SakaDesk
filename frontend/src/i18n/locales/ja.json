@@ -742,5 +742,67 @@
     "home": {
       "recapCard": "年度回顧"
     }
+  },
+  "recap": {
+    "entry": {
+      "heading": "同じ坂道を歩いた一年",
+      "year": "{{year}}年",
+      "olderYear": "前の年",
+      "newerYear": "次の年",
+      "back": "戻る",
+      "choose": "誰との一年を振り返りますか？",
+      "partial": "{{year}}年の、ここまで",
+      "loadFailed": "読み込めませんでした。",
+      "oshi": "推し",
+      "emptyTitle": "来年のあなたへ",
+      "emptyBody": "{{year}}年のことばは、まだ少しだけ。これから届く一通を、ここで待っています。"
+    },
+    "titles": {
+      "morning": "いちばん「おはよう」をくれた朝の光",
+      "nickname": "名前をいちばん呼んでくれた絆",
+      "longest": "いちばん長い真心を綴った筆跡",
+      "voice": "いちばん声を届けてくれた人",
+      "night": "夜をいちばん照らしてくれた月明かり",
+      "photos": "いちばん景色を見せてくれた窓",
+      "steady": "毎日をいちばん重ねてくれた歩幅",
+      "first": "いちばん長く、となりを歩いてきた人"
+    },
+    "player": {
+      "label": "年間の振り返り",
+      "prev": "前へ",
+      "next": "次へ",
+      "pause": "一時停止",
+      "play": "再生",
+      "progress": "{{current}} / {{total}}"
+    },
+    "youFallback": "あなた",
+    "s01": {
+      "title": "{{year}}年、ふたりの物語はこの一通から始まりました。",
+      "sub": "あなたと彼女の、{{count}}年目。",
+      "joined": "あなたと彼女の{{year}}年は、{{date}}から。",
+      "notification": "新着メッセージ"
+    },
+    "s02": {
+      "title": "季節が巡っても、彼女が名前を呼ぶ声だけは変わらない温度でした。",
+      "daisukiTitle": "季節が巡っても、“大好き”の温度は変わりませんでした。",
+      "count": "今年、{{count}}回 名前を呼んでくれた。",
+      "single": "今年、一度だけ。でも、確かに呼んでくれた。",
+      "daisuki": "“大好き”を、{{count}}回。",
+      "daisukiWord": "大好き"
+    },
+    "s12": {
+      "title": "{{year}}年、彼女のひとこと"
+    },
+    "s13": {
+      "title": "{{year}}年、最後のおやすみ。",
+      "partialTitle": "いちばん新しい、おやすみ",
+      "partialNote": "12月31日のおやすみで、完成します。",
+      "narration": "来年も、よろしくね。",
+      "graduatedTitle": "最後のメッセージ",
+      "graduatedLine": "ずっと、ここに。",
+      "lastTextTitle": "{{year}}年、最後のことば。",
+      "lastTextPartialTitle": "いちばん新しい、ことば",
+      "lastTextPartialNote": "12月31日のことばで、完成します。"
+    }
   }
 }
