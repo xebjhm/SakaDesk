@@ -17,6 +17,8 @@ KEYS = {
     "more",
     "test_title",
     "test_body",
+    "login_title",
+    "login_body",
 }
 
 
@@ -33,6 +35,7 @@ TRAY_KEYS = {
     "tooltip_unread",
     "still_running_title",
     "still_running_body",
+    "tooltip_login",
 }
 
 
@@ -51,6 +54,13 @@ def test_tray_locale_has_same_keys_as_en(lang):
 def test_tray_tooltip_unread_has_n_placeholder(lang):
     assert "{n}" in _load_tray(lang)["tooltip_unread"]
     assert "{n}" not in _load_tray(lang)["tooltip_idle"]
+
+
+@pytest.mark.parametrize("lang", SUPPORTED)
+def test_login_strings_have_placeholders(lang):
+    assert "{services}" in _load_tray(lang)["tooltip_login"]
+    assert "{service}" in _load(lang)["login_title"]
+    assert _load(lang)["login_body"]
 
 
 @pytest.mark.parametrize("lang", SUPPORTED)

@@ -461,6 +461,7 @@ class FakeNotifier:
     def __init__(self, results=None, exc=None, simple_result=True, simple_exc=None):
         self.shown: list[ToastPlan] = []
         self.simple: list[tuple[str, str]] = []
+        self.login: list[tuple[str, str, str]] = []
         self._simple_result = simple_result
         self._simple_exc = simple_exc
         self._results = results
@@ -479,6 +480,10 @@ class FakeNotifier:
         if self._simple_exc is not None:
             raise self._simple_exc
         return self._simple_result
+
+    def show_login(self, service, title, body):
+        self.login.append((service, title, body))
+        return True
 
     def status(self):
         return {}
@@ -956,3 +961,60 @@ def test_enabled_flag_round_trip() -> None:
     assert ns.get_notifications_enabled() is False
     ns.set_notifications_enabled(True)
     assert ns.get_notifications_enabled() is True
+
+
+# ------------------------------------------------------------------ send_login_alert
+
+
+def test_send_login_alert_calls_show_login_and_logs_kind_login() -> None:
+    fake = FakeNotifier()
+    with patch.object(ns, "get_notifier", lambda: fake):
+        with capture_logs() as logs:
+            assert (
+                asyncio.run(ns.send_login_alert("yodel", "標題 金村", "内容")) is True
+            )
+    assert fake.login == [("yodel", "標題 金村", "内容")]
+    (sent,) = [e for e in logs if e["event"] == "notify_sent"]
+    assert sent["kind"] == "login"
+    assert "金村" not in repr(logs)
+
+
+def test_send_login_alert_unavailable_is_skipped() -> None:
+    class Down(FakeNotifier):
+        def status(self):
+            return {"available": False, "last_error": "not_windows"}
+
+    fake = Down()
+    with patch.object(ns, "get_notifier", lambda: fake):
+        with capture_logs() as logs:
+            assert asyncio.run(ns.send_login_alert("yodel", "t", "b")) is False
+    assert fake.login == []
+    (skip,) = [e for e in logs if e["event"] == "notify_skip"]
+    assert skip["kind"] == "login"
+
+
+def test_null_notifier_show_login_returns_false() -> None:
+    assert ns.NullNotifier("x").show_login("yodel", "t", "b") is False
+
+
+def test_windows_notifier_show_login_builds_toast_and_click_opens_login(
+    fake_wt,
+) -> None:
+    n = ns.WindowsToastNotifier()
+    assert n.show_login("yodel", "タイトル", "本文") is True
+    (toast,) = fake_wt.shown
+    assert toast.text_fields == ["タイトル", "本文"]
+    assert toast.tag == "login-yodel"
+    assert toast.group == "app"
+    calls: list[str] = []
+    with patch.object(ns.desktop_bridge, "open_login", calls.append):
+        toast.on_activated(types.SimpleNamespace(arguments="x"))
+    assert calls == ["yodel"]
+
+
+def test_windows_notifier_show_login_failure_sets_last_error(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n._toaster.show_toast = lambda _t: (_ for _ in ()).throw(RuntimeError("x"))
+    with pytest.raises(RuntimeError):
+        n.show_login("yodel", "t", "b")
+    assert n.status()["last_error"] == "RuntimeError"

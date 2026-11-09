@@ -201,3 +201,18 @@ async def test_cancel_pending_stops_a_waiting_debounce(tooltips, monkeypatch):
 
 def test_default_debounce_is_two_seconds():
     assert tray_tooltip.DEBOUNCE_SECONDS == 2.0
+
+
+@pytest.mark.asyncio
+async def test_refresh_appends_the_login_line_for_marked_services(
+    tooltips, monkeypatch
+):
+    from backend.services import session_alert
+
+    seen, _ = tooltips
+    monkeypatch.setattr(session_alert, "needs_login_services", lambda: ["sakurazaka46"])
+    with capture_logs() as logs:
+        await tray_tooltip.refresh_tray_tooltip()
+    assert seen == ["SakaDesk — 3 unread\nLogin needed: 櫻坂46"]
+    (event,) = [e for e in logs if e["event"] == "tray_tooltip"]
+    assert event["login_needed"] == 1
