@@ -111,7 +111,6 @@
     "autoDownloadUpdates": "Auto-Download Updates",
     "autoDownloadUpdatesDesc": "Automatically download new versions in the background",
     "checkForUpdates": "Check Now",
-    "updateFound": "v{{version}} available!",
     "upToDate": "You're up to date",
     "updateCheckFailed": "Check failed",
     "transcriptionDevice": "Transcription",
@@ -285,7 +284,11 @@
     "updateAvailable": "Update available!",
     "upgradeNow": "Update Now",
     "skipVersion": "Skip this version",
-    "cancelDownload": "Cancel download"
+    "cancelDownload": "Cancel download",
+    "download": "Download update",
+    "installHint": "SakaDesk closes and reopens when the install finishes.",
+    "retry": "Try again",
+    "openReleasePage": "Open download page"
   },
   "memberList": {
     "title": "Talk",

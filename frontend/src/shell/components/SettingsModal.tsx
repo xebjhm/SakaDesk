@@ -14,6 +14,8 @@ import { persisted } from '../../core/persistence/persisted';
 import { useGroupMarker } from '../../design/useGroupMarker';
 import { getServiceDisplayName } from '../../data/services';
 import { pollJson, SIDEBAR_POLL_TIMEOUT_MS } from '../../utils/pollJson';
+import { useUpgradeStore } from '../../core/upgrade/upgradeStore';
+import { UpdateActions } from '../../core/upgrade/UpdateActions';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -596,31 +598,23 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload, saveError }: {
     const [checking, setChecking] = useState(false);
     const [result, setResult] = useState<string | null>(null);
 
+    const checkVersion = useUpgradeStore((st) => st.checkVersion);
+
     const handleCheckNow = async () => {
         setChecking(true);
         setResult(null);
-        try {
-            // force=true bypasses the 1h cache so a manual check is always live
-            // (automatic startup/hourly checks stay cached to respect rate limits).
-            const res = await fetch('/api/version?force=true');
-            if (res.ok) {
-                const data = await res.json();
-                logDialogLoad('settings_update_check', 'ok');
-                if (data.update_available) {
-                    setResult(t('settings.updateFound', { version: data.latest_version }));
-                } else {
-                    setResult(t('settings.upToDate'));
-                }
-            } else {
-                logDialogLoad('settings_update_check', 'error');
-                setResult(t('settings.updateCheckFailed'));
-            }
-        } catch {
+        // A manual check is always live (force) and goes through the shared upgrade
+        // store, so the rail icon and the actions below update too.
+        const data = await checkVersion(true);
+        if (data) {
+            logDialogLoad('settings_update_check', 'ok');
+            // When an update exists, UpdateActions below says so with its button.
+            setResult(data.update_available ? null : t('settings.upToDate'));
+        } else {
             logDialogLoad('settings_update_check', 'error');
             setResult(t('settings.updateCheckFailed'));
-        } finally {
-            setChecking(false);
         }
+        setChecking(false);
     };
 
     return (
@@ -641,6 +635,7 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload, saveError }: {
                 {/* Mounted empty so the result is announced when it arrives. */}
                 <span role="status" className="text-small text-secondary">{result}</span>
             </div>
+            <UpdateActions />
         </SettingRow>
     );
 }

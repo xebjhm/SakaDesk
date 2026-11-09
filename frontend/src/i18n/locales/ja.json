@@ -111,7 +111,6 @@
     "autoDownloadUpdates": "自動ダウンロード更新",
     "autoDownloadUpdatesDesc": "新しいバージョンをバックグラウンドで自動ダウンロード",
     "checkForUpdates": "今すぐ確認",
-    "updateFound": "v{{version}} が利用可能です！",
     "upToDate": "最新版です",
     "updateCheckFailed": "確認に失敗しました",
     "transcriptionDevice": "文字起こし",
@@ -285,7 +284,11 @@
     "updateAvailable": "アップデートがあります",
     "upgradeNow": "今すぐ更新",
     "skipVersion": "このバージョンをスキップ",
-    "cancelDownload": "ダウンロードを中止"
+    "cancelDownload": "ダウンロードを中止",
+    "download": "アップデートをダウンロード",
+    "installHint": "インストールが終わると SakaDesk は自動で再起動します。",
+    "retry": "再試行",
+    "openReleasePage": "ダウンロードページを開く"
   },
   "memberList": {
     "title": "トーク",
