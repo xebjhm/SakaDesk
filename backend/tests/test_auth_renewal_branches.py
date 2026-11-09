@@ -55,10 +55,13 @@ async def test_marked_service_short_circuits_without_renewing(alert_io):
 @pytest.mark.asyncio
 async def test_refresh_failed_marks_only_on_second_strike(alert_io):
     svc = _svc([EXPIRED, EXPIRED], "refresh_failed")
-    first = await svc.get_status(SVC)
-    assert first.get("session_expired") is None
-    assert not session_alert.needs_login(SVC)
-    second = await svc.get_status(SVC)
+    clock = {"now": 0.0}
+    with patch("backend.services.session_alert.time.monotonic", lambda: clock["now"]):
+        first = await svc.get_status(SVC)
+        assert first.get("session_expired") is None
+        assert not session_alert.needs_login(SVC)
+        clock["now"] = session_alert.REFRESH_FAILED_STRIKE_GAP_SECONDS
+        second = await svc.get_status(SVC)
     assert second["session_expired"] is True
     assert session_alert.needs_login(SVC)
 

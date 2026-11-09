@@ -45,9 +45,9 @@ async def test_expired_marks_and_toasts_once():
 async def test_refresh_failed_needs_two_strikes():
     p1, p2, p3, p4 = _patches()
     with p1, p2 as toast, p3, p4:
-        assert await session_alert.report("yodel", "refresh_failed") is False
+        assert await session_alert.report("yodel", "refresh_failed", now=0.0) is False
         assert not session_alert.needs_login("yodel")
-        assert await session_alert.report("yodel", "refresh_failed") is True
+        assert await session_alert.report("yodel", "refresh_failed", now=300.0) is True
     toast.assert_awaited_once()
 
 
@@ -139,7 +139,7 @@ async def test_toast_not_sent_logs_toast_failed():
 async def test_refresh_failed_mark_allows_a_slow_retry():
     p1, p2, p3, p4 = _patches()
     with p1, p2, p3, p4:
-        await session_alert.report("yodel", "refresh_failed", now=0.0)
+        await session_alert.report("yodel", "refresh_failed", now=-300.0)
         assert await session_alert.report("yodel", "refresh_failed", now=0.0)
     assert session_alert.mark_kind("yodel") == "refresh_failed"
     retry = session_alert.MARKED_RETRY_SECONDS
@@ -159,7 +159,7 @@ async def test_expired_mark_is_never_retried_and_upgrades_refresh_failed():
     p1, p2, p3, p4 = _patches()
     with p1, p2 as toast, p3, p4, capture_logs() as logs:
         await session_alert.report("hinatazaka46", "expired")
-        await session_alert.report("yodel", "refresh_failed", now=0.0)
+        await session_alert.report("yodel", "refresh_failed", now=-300.0)
         await session_alert.report("yodel", "refresh_failed", now=0.0)
         await session_alert.report("yodel", "expired")
     assert toast.await_count == 2  # the upgrade does not toast again
@@ -173,7 +173,7 @@ async def test_expired_mark_is_never_retried_and_upgrades_refresh_failed():
 async def test_clear_removes_refresh_failed_mark_and_retry_wait():
     p1, p2, p3, p4 = _patches()
     with p1, p2, p3 as tray, p4 as tooltip, capture_logs() as logs:
-        await session_alert.report("yodel", "refresh_failed", now=0.0)
+        await session_alert.report("yodel", "refresh_failed", now=-300.0)
         await session_alert.report("yodel", "refresh_failed", now=0.0)
         await session_alert.clear("yodel")
     tray.assert_called_with(False)
@@ -182,3 +182,45 @@ async def test_clear_removes_refresh_failed_mark_and_retry_wait():
     assert session_alert.may_renew("yodel", now=1.0)
     cleared = [e for e in logs if e.get("action") == "cleared"]
     assert cleared and cleared[0]["kind"] == "refresh_failed"
+
+
+@pytest.mark.asyncio
+async def test_strikes_inside_the_gap_do_not_count():
+    p1, p2, p3, p4 = _patches()
+    with p1, p2 as toast, p3, p4, capture_logs() as logs:
+        assert not await session_alert.report("yodel", "refresh_failed", now=0.0)
+        assert not await session_alert.report("yodel", "refresh_failed", now=60.0)
+        assert not await session_alert.report("yodel", "refresh_failed", now=299.0)
+    toast.assert_not_awaited()
+    assert not session_alert.needs_login("yodel")
+    assert session_alert._strikes["yodel"] == 1
+    gaps = [e for e in logs if e.get("reason") == "strike_gap"]
+    assert len(gaps) == 2
+
+
+@pytest.mark.asyncio
+async def test_strikes_past_the_gap_mark():
+    assert session_alert.REFRESH_FAILED_STRIKE_GAP_SECONDS == 300
+    p1, p2, p3, p4 = _patches()
+    with p1, p2 as toast, p3, p4:
+        assert not await session_alert.report("yodel", "refresh_failed", now=0.0)
+        assert await session_alert.report("yodel", "refresh_failed", now=301.0)
+    toast.assert_awaited_once()
+    assert session_alert.mark_kind("yodel") == "refresh_failed"
+
+
+@pytest.mark.asyncio
+async def test_clear_unless_expired_keeps_expired_and_clears_refresh_failed():
+    p1, p2, p3, p4 = _patches()
+    with p1, p2, p3 as tray, p4, capture_logs() as logs:
+        await session_alert.report("hinatazaka46", "expired")
+        await session_alert.report("yodel", "refresh_failed", now=-300.0)
+        await session_alert.report("yodel", "refresh_failed", now=0.0)
+        session_alert.note_renew_failure("hinatazaka46", now=0.0)
+        await session_alert.clear_unless_expired("hinatazaka46")
+        await session_alert.clear_unless_expired("yodel")
+    assert session_alert.mark_kind("hinatazaka46") == "expired"
+    assert "hinatazaka46" not in session_alert._cooldown_until
+    assert not session_alert.needs_login("yodel")
+    tray.assert_called_with(True)  # hinatazaka46 still marked
+    assert any(e.get("reason") == "expired_sticky" for e in logs)

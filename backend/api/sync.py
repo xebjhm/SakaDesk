@@ -33,17 +33,19 @@ def get_sync_service(service: str) -> SyncService:
 async def run_sync_task(service: str, include_inactive: bool, force_resync: bool):
     """Run one sync in the background and feed its result to session_alert.
 
-    Only a sync that completed (``start_sync`` returned True) proves the session
-    alive: it calls ``session_alert.clear`` (resets strikes and cooldown and
-    removes a needs-login mark). A no-op (already running, not configured) or a
-    swallowed generic failure logs ``sync_session_success_skipped`` instead.
+    Only a sync that completed (``start_sync`` returned True) counts: it calls
+    ``session_alert.clear_unless_expired`` (resets strikes and cooldown and
+    removes a ``refresh_failed`` mark; an ``expired`` mark stays, because pysaka
+    reads a persistent 401/403 as "no groups"). A no-op (already running, not
+    configured) or a swallowed generic failure logs
+    ``sync_session_success_skipped`` instead.
     """
     sync_service = get_sync_service(service)
     progress = progress_manager.get(service)
     try:
         completed = await sync_service.start_sync(include_inactive, force_resync)
         if completed:
-            await session_alert.clear(service)
+            await session_alert.clear_unless_expired(service)
         else:
             logger.info(
                 "sync_session_success_skipped", service=service, reason="not_completed"

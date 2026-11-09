@@ -314,7 +314,8 @@ class AuthService:
         (outcome ``error``, ``skipped``, a timeout, or a first
         ``refresh_failed`` strike). A marked service reads ``session_expired``
         unless its slow retry (``refresh_failed`` marks only, see
-        ``session_alert.MARKED_RETRY_SECONDS``) is due and succeeds.
+        ``session_alert.MARKED_RETRY_SECONDS``) is due and refreshes for real
+        (outcome ``ok``).
         """
         marked = session_alert.needs_login(service)
         if marked and not session_alert.may_renew(service):
@@ -322,7 +323,7 @@ class AuthService:
         if not marked and not status.get("token_expired"):
             return status
         outcome = await self._renew_for_status(service)
-        if outcome in ("ok", "not_expired"):
+        if outcome in ("ok", "not_expired") and not session_alert.needs_login(service):
             fresh = await asyncio.to_thread(self._get_service_auth_status, service)
             if fresh.get("token_expired"):
                 # Renewed (or found renewed) yet the stored token still reads
@@ -376,9 +377,14 @@ class AuthService:
         a ``False`` refresh), ``error`` (anything else, e.g. offline or a gate
         timeout) or ``skipped`` (``session_alert.renew_block_reason``: an
         ``expired`` mark, a ``refresh_failed`` mark before its slow retry, or the
-        retry cooldown). ``ok`` / ``not_expired`` call ``session_alert.clear``
-        (removing a ``refresh_failed`` mark and its tray alert). Logs
-        ``session_renew`` (with ``reason`` when skipped) and
+        retry cooldown; checked before and again right after acquiring the gate,
+        so a caller that waited behind a failed refresh does not refresh again).
+        Only ``ok`` (a real refresh) calls ``session_alert.clear``, removing a
+        ``refresh_failed`` mark and its tray alert. ``not_expired`` resets
+        strikes and cooldown for an unmarked service; a marked service keeps its
+        mark (no network proof) and waits for its next slow retry. Logs
+        ``session_renew`` (with ``reason`` when skipped, ``after_wait`` when the
+        re-check skipped, ``mark_kept`` for an unproven marked retry) and
         ``session_renew_retry`` when a marked service is retried; never raises.
         Cancellation propagates (a refreshed save still finishes first).
         """
@@ -396,6 +402,17 @@ class AuthService:
             )
         try:
             async with refresh_gate.hold(service):
+                # Another caller may have failed while we waited at the gate.
+                reason = session_alert.renew_block_reason(service)
+                if reason is not None:
+                    logger.info(
+                        "session_renew",
+                        service=service,
+                        outcome="skipped",
+                        reason=reason,
+                        after_wait=True,
+                    )
+                    return "skipped"
                 data, expired = await asyncio.to_thread(
                     self._load_token_for_renewal, service
                 )
@@ -426,8 +443,18 @@ class AuthService:
                 "session_renew_error", service=service, error_type=type(e).__name__
             )
             outcome = "error"
-        if outcome in ("ok", "not_expired"):
+        if outcome == "ok":
             await session_alert.clear(service)
+        elif outcome == "not_expired" and session_alert.needs_login(service):
+            # No refresh ran, so nothing proves the session alive: keep the
+            # mark and wait for the next slow retry.
+            session_alert.note_renew_failure(service)
+            logger.info(
+                "session_renew", service=service, outcome=outcome, mark_kept=True
+            )
+            return outcome
+        elif outcome == "not_expired":
+            session_alert.report_success(service)
         elif outcome in ("refresh_failed", "error"):
             session_alert.note_renew_failure(service)
         logger.info("session_renew", service=service, outcome=outcome)

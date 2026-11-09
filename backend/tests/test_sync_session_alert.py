@@ -42,7 +42,9 @@ async def test_completed_sync_clears_session_alert():
     with (
         patch.object(sync_api, "get_sync_service", return_value=svc),
         patch.object(sync_api, "schedule_refresh"),
-        patch("backend.api.sync.session_alert.clear", AsyncMock()) as clear,
+        patch(
+            "backend.api.sync.session_alert.clear_unless_expired", AsyncMock()
+        ) as clear,
     ):
         await sync_api.run_sync_task("sakurazaka46", False, False)
     clear.assert_awaited_once_with("sakurazaka46")
@@ -64,7 +66,9 @@ async def test_sync_that_did_not_complete_reports_no_success(start):
     with (
         patch.object(sync_api, "get_sync_service", return_value=svc),
         patch.object(sync_api, "schedule_refresh"),
-        patch("backend.api.sync.session_alert.clear", AsyncMock()) as clear,
+        patch(
+            "backend.api.sync.session_alert.clear_unless_expired", AsyncMock()
+        ) as clear,
         patch("backend.api.sync.session_alert.report_success") as ok,
         capture_logs() as logs,
     ):
@@ -156,3 +160,23 @@ async def test_decide_not_authenticated_without_alert():
         ):
             reason = await sched._decide("yodel", settings)
     assert reason == REASON_NOT_AUTHENTICATED
+
+
+@pytest.mark.asyncio
+async def test_completed_sync_keeps_an_expired_mark_but_clears_refresh_failed():
+    """pysaka reads a persistent 401/403 as "no groups": that is no proof."""
+    svc = MagicMock(start_sync=AsyncMock(return_value=True))
+    with (
+        patch.object(sync_api, "get_sync_service", return_value=svc),
+        patch.object(sync_api, "schedule_refresh"),
+        patch.object(session_alert, "_toast", AsyncMock()),
+        patch.object(session_alert.desktop_bridge, "set_tray_alert"),
+        patch.object(session_alert, "schedule_refresh"),
+    ):
+        await session_alert.report("sakurazaka46", "expired")
+        await session_alert.report("yodel", "refresh_failed", now=-300.0)
+        await session_alert.report("yodel", "refresh_failed", now=0.0)
+        await sync_api.run_sync_task("sakurazaka46", False, False)
+        await sync_api.run_sync_task("yodel", False, False)
+    assert session_alert.mark_kind("sakurazaka46") == "expired"
+    assert not session_alert.needs_login("yodel")

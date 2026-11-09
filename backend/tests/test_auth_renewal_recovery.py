@@ -84,7 +84,7 @@ async def test_offline_strikes_mark_then_slow_retry_clears_mark_and_tray(alert_i
     ):
         first = await svc.get_status(SVC)
         assert first.get("session_expired") is None  # first strike
-        clock.now = session_alert.RENEW_RETRY_SECONDS + 1
+        clock.now = session_alert.REFRESH_FAILED_STRIKE_GAP_SECONDS
         second = await svc.get_status(SVC)
         assert second["session_expired"] is True
         assert session_alert.mark_kind(SVC) == "refresh_failed"
@@ -117,7 +117,9 @@ async def test_failed_slow_retry_stays_marked(alert_io):
     svc, patched = _renewable_service(refresh)
     clock = Clock()
     with patched, patch("backend.services.session_alert.time.monotonic", clock):
+        clock.now = -session_alert.REFRESH_FAILED_STRIKE_GAP_SECONDS
         await session_alert.report(SVC, "refresh_failed")
+        clock.now = 0.0
         await session_alert.report(SVC, "refresh_failed")
         clock.now = session_alert.MARKED_RETRY_SECONDS
         status = await svc.get_status(SVC)
@@ -378,7 +380,7 @@ async def test_refresh_if_needed_false_refresh_counts_a_strike(alert_io):
 
 @pytest.mark.asyncio
 async def test_refresh_if_needed_success_clears_a_refresh_failed_mark(alert_io):
-    await session_alert.report(SVC, "refresh_failed", now=-1e6)
+    await session_alert.report(SVC, "refresh_failed", now=-2e6)
     await session_alert.report(SVC, "refresh_failed", now=-1e6)
     assert session_alert.needs_login(SVC) and session_alert.may_renew(SVC)
     with patch(
@@ -389,3 +391,86 @@ async def test_refresh_if_needed_success_clears_a_refresh_failed_mark(alert_io):
     assert result["status"] == "refreshed"
     assert not session_alert.needs_login(SVC)
     alert_io["tray"].assert_called_with(False)
+
+
+@pytest.mark.asyncio
+async def test_gate_waiter_after_a_failed_refresh_neither_refreshes_nor_strikes(
+    alert_io,
+):
+    svc = AuthService()
+    svc._load_token_for_renewal = lambda s: (  # type: ignore[method-assign]
+        {"access_token": "t", "cookies": {"session": "c"}},
+        True,
+    )
+    release = asyncio.Event()
+    calls = 0
+
+    async def failing_refresh(self, session):
+        nonlocal calls
+        calls += 1
+        await release.wait()
+        raise RefreshFailedError("offline")
+
+    with (
+        patch(
+            "backend.services.auth_service.Client.refresh_access_token",
+            failing_refresh,
+        ),
+        capture_logs() as logs,
+    ):
+        first = asyncio.ensure_future(svc._renew_and_report(SVC))
+        await asyncio.sleep(0.01)
+        waiter = asyncio.ensure_future(svc._renew_and_report(SVC))  # passes pre-check
+        await asyncio.sleep(0.01)
+        release.set()
+        outcomes = await asyncio.gather(first, waiter)
+    assert outcomes == ["refresh_failed", "skipped"]
+    assert calls == 1
+    assert session_alert._strikes.get(SVC) == 1
+    assert not session_alert.needs_login(SVC)
+    after = [e for e in logs if e.get("after_wait")]
+    assert after and after[0]["reason"] == "cooldown"
+
+
+@pytest.mark.asyncio
+async def test_marked_retry_with_unexpired_token_keeps_the_mark(alert_io):
+    svc = AuthService()
+    svc._get_service_auth_status = lambda s: dict(VALID)  # type: ignore[method-assign]
+    svc._load_token_for_renewal = lambda s: (  # type: ignore[method-assign]
+        {"access_token": "t", "cookies": {"session": "c"}},
+        False,
+    )
+    refresh = AsyncMock(return_value=True)
+    clock = Clock()
+    with (
+        patch("backend.services.auth_service.Client.refresh_access_token", refresh),
+        patch("backend.services.session_alert.time.monotonic", clock),
+        capture_logs() as logs,
+    ):
+        clock.now = -session_alert.REFRESH_FAILED_STRIKE_GAP_SECONDS
+        await session_alert.report(SVC, "refresh_failed")
+        clock.now = 0.0
+        await session_alert.report(SVC, "refresh_failed")
+        clock.now = session_alert.MARKED_RETRY_SECONDS
+        status = await svc.get_status(SVC)
+        assert session_alert.renew_block_reason(SVC) == "marked_retry_wait"
+    refresh.assert_not_awaited()
+    assert status["session_expired"] is True and status["authenticated"] is False
+    assert session_alert.needs_login(SVC)
+    kept = [e for e in logs if e.get("mark_kept")]
+    assert kept and kept[0]["outcome"] == "not_expired"
+    alert_io["tray"].assert_called_with(True)
+
+
+@pytest.mark.asyncio
+async def test_unmarked_not_expired_resets_strikes_and_cooldown(alert_io):
+    svc = AuthService()
+    svc._load_token_for_renewal = lambda s: (  # type: ignore[method-assign]
+        {"access_token": "t"},
+        False,
+    )
+    await session_alert.report(SVC, "refresh_failed", now=0.0)
+    session_alert.note_renew_failure(SVC, now=-1000.0)
+    assert await svc.renew_expired(SVC) == "not_expired"
+    assert SVC not in session_alert._strikes
+    assert SVC not in session_alert._cooldown_until
