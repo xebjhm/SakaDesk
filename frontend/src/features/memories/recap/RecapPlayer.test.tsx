@@ -213,6 +213,35 @@ describe('RecapPlayer', () => {
         }
     });
 
+    it('leaves Arrow, Space and Esc to a focusable widget outside the player', () => {
+        const onClose = vi.fn();
+        const onWidgetKey = vi.fn();
+        render(
+            <>
+                <RecapPlayer recap={payload()} nickname="ゆき" onClose={onClose} />
+                <div role="slider" aria-valuenow={1} tabIndex={0} onKeyDown={(e) => onWidgetKey(e.key)}>widget</div>
+            </>,
+        );
+        const widget = screen.getByRole('slider');
+        widget.focus();
+        for (const key of ['ArrowRight', 'ArrowLeft', ' ', 'Escape']) {
+            expect(fireEvent.keyDown(widget, { key })).toBe(true);
+        }
+        expect(onWidgetKey.mock.calls.map(([k]) => k)).toEqual(['ArrowRight', 'ArrowLeft', ' ', 'Escape']);
+        expect(current()).toBe('s01_first');
+        expect(screen.getByTestId('recap-stage')).toHaveAttribute('data-paused', 'false');
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('still claims keys whose target is the document body or inside the player', () => {
+        const onClose = vi.fn();
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={onClose} />);
+        fireEvent.keyDown(document.body, { key: 'ArrowRight' });
+        expect(current()).toBe('s02_name');
+        fireEvent.keyDown(screen.getByTestId('recap-stage'), { key: 'ArrowRight' });
+        expect(current()).toBe('s12_sentence');
+    });
+
     it('leaves Esc to an open menu', () => {
         const onClose = vi.fn();
         render(

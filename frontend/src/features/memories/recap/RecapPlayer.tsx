@@ -29,14 +29,19 @@ function useReducedMotion(): boolean {
 }
 
 /**
- * Keys belong to the player only when nothing else wants them: not a held (repeating) key, not
- * a field, an IME, a dialog or a menu. Space on a focused button is the button's own (it clicks
+ * Keys belong to the player only when nothing else wants them: the key is aimed at the page body
+ * (or the window) or inside the player, and it is not a held (repeating) key, a field, an IME, a
+ * dialog or a menu. Space on a focused button is the button's own (it clicks
  * natively), so it never also toggles pause.
  */
-function keyIsOurs(e: KeyboardEvent): boolean {
+function keyIsOurs(e: KeyboardEvent, root: Element | null): boolean {
     if (e.defaultPrevented || e.repeat || e.isComposing || e.altKey || e.ctrlKey || e.metaKey) return false;
     const el = e.target instanceof Element ? e.target : null;
     if (el) {
+        // Only keys aimed at nothing in particular (the body) or at the player itself. A focused
+        // widget elsewhere (a tab list, a slider, a listbox) keeps its own Arrow / Space / Esc.
+        const atPage = el === document.body || el === document.documentElement;
+        if (!atPage && !root?.contains(el)) return false;
         if ((el as HTMLElement).isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName)) return false;
         if (el.closest('[role="dialog"], [role="menu"]')) return false;
         if ((e.key === ' ' || e.key === 'Spacebar') && el.closest('button')) return false;
@@ -119,6 +124,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
     const [pausedAt, setPausedAt] = useState(0);
     const [restart, setRestart] = useState(0);
     const endedRef = useRef(false);
+    const rootRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         for (const s of recap.slides) {
@@ -194,13 +200,14 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
         };
     }, [index, paused, ended, waits, slide, restart]);
 
-    // Window, capture phase: while the player is open its keys are its own. A handled key is
-    // claimed and stopped here, so Esc closes only the player and no app-level Esc handler
-    // (document or window, either phase) also fires. Dialogs and menus keep their keys
-    // (`keyIsOurs`).
+    // Window, capture phase, so the player sees its keys before any element handler. A handled
+    // key is claimed (preventDefault) and stopped here: stopPropagation keeps it from reaching
+    // document listeners, element handlers and window bubble-phase listeners, so Esc closes only
+    // the player. Other window capture-phase listeners still fire. Keys aimed at a widget outside
+    // the player, a dialog or a menu are left alone (`keyIsOurs`).
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => {
-            if (!keyIsOurs(e)) return;
+            if (!keyIsOurs(e, rootRef.current)) return;
             let handled = true;
             if (e.key === 'ArrowRight') go(1, 'key');
             else if (e.key === 'ArrowLeft') go(-1, 'key');
@@ -227,7 +234,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
 
     return (
         <Atmosphere className="flex h-full min-h-0 flex-1">
-            <div className="flex h-full items-center justify-center p-6">
+            <div ref={rootRef} className="flex h-full items-center justify-center p-6">
                 <section
                     data-testid="recap-stage"
                     data-slide={slide.key}
