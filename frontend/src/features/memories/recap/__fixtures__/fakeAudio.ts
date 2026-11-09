@@ -11,6 +11,8 @@ export class FakeAudio extends EventTarget {
     /** Set to make the next `play()` reject. */
     rejectPlay: Error | null = null;
     playCalls = 0;
+    /** Test hook: a custom `play()` stores its rejector here. */
+    abort: () => void = () => {};
 
     play(): Promise<void> {
         this.playCalls += 1;

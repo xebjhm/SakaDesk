@@ -133,6 +133,48 @@ describe('ClipSequencer', () => {
         expect(ev.onClip).toHaveBeenLastCalledWith(1);
     });
 
+    it('keeps the clip through an AbortError from a pause during a pending play()', async () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(2), ev, f.create);
+        const [a] = f.made;
+        a.play = function (this: typeof a) {
+            this.playCalls += 1;
+            return new Promise<void>((_, reject) => {
+                this.abort = () => reject(new DOMException('interrupted', 'AbortError'));
+            });
+        };
+        seq.start();
+        seq.pause();
+        a.abort();
+        await flush();
+        expect(ev.onClipError).not.toHaveBeenCalled();
+        expect(ev.onClip).toHaveBeenCalledTimes(1);
+        expect(f.made[1].playCalls).toBe(0);
+        a.play = function (this: typeof a) { this.playCalls += 1; this.paused = false; return Promise.resolve(); };
+        seq.resume();
+        await flush();
+        expect(a.playCalls).toBe(2);
+        expect(a.paused).toBe(false);
+        expect(ev.onClipError).not.toHaveBeenCalled();
+        expect(f.made[1].playCalls).toBe(0);
+    });
+
+    it('holds an ended event that arrives while paused until resume', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(2), ev, f.create);
+        seq.start();
+        seq.pause();
+        f.made[0].fire('ended');
+        expect(f.made[1].playCalls).toBe(0);
+        expect(ev.onClip).toHaveBeenCalledTimes(1);
+        seq.resume();
+        expect(f.made[1].playCalls).toBe(1);
+        expect(f.made[1].src).toBe('/api/media/v1.m4a');
+        expect(ev.onClip).toHaveBeenLastCalledWith(1);
+    });
+
     it('skips a clip whose play() is rejected', async () => {
         const f = fakeAudioFactory();
         const ev = events();

@@ -49,7 +49,9 @@ interface Slot {
     /** The element is sounding (playing, or fading out): `resume()` plays it again. */
     live: boolean;
     /** Skips the slot's clip; a no-op once it has handed over. */
-    fail: ((code: ClipErrorCode) => void) | null;
+    fail: ((code: ClipErrorCode | null) => void) | null;
+    /** A hand-over that arrived while paused (`null` = the clip ended); `resume()` runs it. */
+    deferred: { code: ClipErrorCode | null } | null;
 }
 
 export class ClipSequencer {
@@ -68,8 +70,8 @@ export class ClipSequencer {
         create: () => HTMLAudioElement = createAudioElement,
     ) {
         this.slots = [
-            { el: create(), ramp: null, detach: null, live: false, fail: null },
-            { el: create(), ramp: null, detach: null, live: false, fail: null },
+            { el: create(), ramp: null, detach: null, live: false, fail: null, deferred: null },
+            { el: create(), ramp: null, detach: null, live: false, fail: null, deferred: null },
         ];
     }
 
@@ -92,6 +94,7 @@ export class ClipSequencer {
             slot.detach?.();
             slot.detach = null;
             slot.live = false;
+            slot.deferred = null;
             slot.el.pause();
         }
     }
@@ -111,13 +114,23 @@ export class ClipSequencer {
     resume(): void {
         if (!this.paused || this.stopped) return;
         this.paused = false;
+        const handOvers: Array<() => void> = [];
         for (const slot of this.slots) {
             if (!slot.live) continue;
+            const deferred = slot.deferred;
+            slot.deferred = null;
+            if (deferred && slot.fail) {
+                const fail = slot.fail;
+                handOvers.push(() => fail(deferred.code));
+                continue;
+            }
             const played = slot.el.play();
             if (played && typeof played.catch === 'function') {
                 played.catch(() => slot.fail?.('play_rejected'));
             }
         }
+        // After the loop: a hand-over starts the other slot, which must not be played twice.
+        for (const run of handOvers) run();
         if (this.endPending) this.armEndTimer();
     }
 
@@ -135,10 +148,18 @@ export class ClipSequencer {
         let handed = false;
         const handOver = (error: ClipErrorCode | null) => {
             if (handed || this.stopped) return;
+            if (this.paused) {
+                // A paused player never moves on: a pending play() is rejected with
+                // AbortError by the pause itself, and a queued ended/error event is late.
+                // Resume plays this clip again, or moves on if it had ended.
+                if (error !== 'play_rejected') slot.deferred = { code: error };
+                return;
+            }
             handed = true;
             slot.detach?.();
             slot.detach = null;
             slot.fail = null;
+            slot.deferred = null;
             this.next(index, error);
         };
         slot.fail = handOver;
