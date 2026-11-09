@@ -22,6 +22,7 @@ import asyncio
 import contextlib
 import hashlib
 import json
+import os
 import re
 import sqlite3
 import time
@@ -207,26 +208,44 @@ class _Inputs:
     service_id: str = ""
     room_sizes: dict[str, int] = field(default_factory=dict)  # gid -> senders
     open_solo_names: frozenset[str] = frozenset()  # name_norm in open 1:1 rooms
-    rooms: tuple[tuple[Path, tuple[Path, ...]], ...] = ()
+    rooms: _Rooms = ()
     scan_ok: bool = True
 
 
-def _scan_rooms(
-    service_data_dir: Path,
-) -> tuple[tuple[tuple[Path, tuple[Path, ...]], ...], bool]:
+_Rooms = tuple[tuple[Path, tuple[Path, ...]], ...]
+
+# Single-member reads reuse a recent room scan: listing every room folder
+# costs a stat per folder (hundreds of ms on a slow or network drive) and
+# rooms appear rarely. ``build_all`` always scans fresh (it prunes on it).
+_ROOMS_TTL_SECONDS = 30.0
+_rooms_cache: dict[str, tuple[float, _Rooms]] = {}
+
+
+def _scan_rooms(service_data_dir: Path, *, fresh: bool = True) -> tuple[_Rooms, bool]:
     """``((group_dir, member_dirs), ...)`` with ``messages.json``; ``ok`` flag.
 
     ``ok`` is False when the listing failed or ``messages/`` is missing; the
-    caller must then not treat absent rooms as deleted.
+    caller must then not treat absent rooms as deleted. With ``fresh=False``
+    a successful scan younger than ``_ROOMS_TTL_SECONDS`` is reused.
     """
+    key = str(service_data_dir)
+    if not fresh:
+        hit = _rooms_cache.get(key)
+        if hit is not None and hit[0] > time.monotonic():
+            return hit[1], True
     root = service_data_dir / "messages"
     out: list[tuple[Path, tuple[Path, ...]]] = []
     try:
-        for group in sorted(root.iterdir()):
-            if not group.is_dir():
-                continue
+        with os.scandir(root) as groups:
+            group_entries = sorted(
+                (g for g in groups if g.is_dir()), key=lambda g: g.name
+            )
+        for g in group_entries:
+            with os.scandir(g.path) as entries:
+                names = sorted(e.name for e in entries if e.is_dir())
+            group = root / g.name
             members = tuple(
-                m for m in sorted(group.iterdir()) if (m / "messages.json").is_file()
+                group / n for n in names if (group / n / "messages.json").is_file()
             )
             if members:
                 out.append((group, members))
@@ -238,10 +257,12 @@ def _scan_rooms(
     except OSError as e:
         logger.warning("memory_index_scan_failed", error_type=type(e).__name__)
         return tuple(out), False
-    return tuple(out), True
+    rooms = tuple(out)
+    _rooms_cache[key] = (time.monotonic() + _ROOMS_TTL_SECONDS, rooms)
+    return rooms, True
 
 
-def _load_inputs(service_data_dir: Path) -> _Inputs:
+def _load_inputs(service_data_dir: Path, *, fresh_scan: bool = True) -> _Inputs:
     closed: set[str] = set()
     try:
         meta = json.loads(
@@ -257,7 +278,7 @@ def _load_inputs(service_data_dir: Path) -> _Inputs:
             "memory_index_sync_metadata_unreadable", error_type=type(e).__name__
         )
     service_id = get_service_identifier(service_data_dir.name) or ""
-    rooms, scan_ok = _scan_rooms(service_data_dir)
+    rooms, scan_ok = _scan_rooms(service_data_dir, fresh=fresh_scan)
     sizes: dict[str, int] = {}
     open_solo: set[str] = set()
     for group, members in rooms:
@@ -673,7 +694,9 @@ async def get_member_index(service_data_dir: Path, member_dir: Path) -> MemberIn
 
         def run() -> MemberIndex:
             return _get_sync(
-                service_data_dir, member_dir, _load_inputs(service_data_dir)
+                service_data_dir,
+                member_dir,
+                _load_inputs(service_data_dir, fresh_scan=False),
             )[0]
 
         return await asyncio.to_thread(run)

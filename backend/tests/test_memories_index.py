@@ -475,3 +475,27 @@ async def test_get_member_index_single_flight(tmp_path, monkeypatch):
         *(mi.get_member_index(tmp_path, d) for _ in range(5))
     )
     assert builds == 1 and len({r.data_hash for r in results}) == 1
+
+
+@pytest.mark.asyncio
+async def test_single_member_reads_reuse_recent_room_scan(tmp_path, monkeypatch):
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", content="a")])
+    scans = []
+    real = mi._scan_rooms
+
+    def counting(sdir, *, fresh=True):
+        scans.append(fresh)
+        return real(sdir, fresh=fresh)
+
+    monkeypatch.setattr(mi, "_scan_rooms", counting)
+    mi._rooms_cache.clear()
+    await mi.get_member_index(tmp_path, d)
+    await mi.get_member_index(tmp_path, d)
+    assert scans == [False, False] and str(tmp_path) in mi._rooms_cache
+    await mi.build_all(tmp_path)
+    assert scans[-1] is True  # build_all never trusts the cached scan
+    # Expired entries are rescanned.
+    mi._rooms_cache[str(tmp_path)] = (0.0, ())
+    idx = await mi.get_member_index(tmp_path, d)
+    assert idx.member_id == "58"
