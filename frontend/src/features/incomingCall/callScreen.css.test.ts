@@ -25,9 +25,12 @@ describe('callScreen.css edges', () => {
         expect(rule('.sd-call-screen')).not.toContain('0 0 0 1px');
     });
 
-    it('keeps the popup halo off the window edge: inset 8px and no ring line', () => {
+    it('puts the popup glow on the window edge (0.4.2 B4): inset 0, the DWM corner radius, no ring line', () => {
         const r = rule('.sd-call-halo--inset');
-        expect(r).toMatch(/inset:\s*8px/);
+        // A dark band showed between the window edge and an 8px-inset glow; the glow now follows
+        // the window edge and its ~8px DWM corners, so the popup is only the call card.
+        expect(r).toMatch(/inset:\s*0;/);
+        expect(r).toMatch(/border-radius:\s*8px/);
         expect(css).not.toMatch(/\.sd-call-halo--inset\[[^{]*\{[^}]*inset 0 0 0 \d/);
     });
 });
