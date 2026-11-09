@@ -70,10 +70,17 @@ Slide keys, in order: `s01_first`, `s02_name`, `s03_clock`, `s04_greetings`, `s0
 
 **Files:**
 - Create: `backend/services/memories/recap.py`, `backend/tests/test_memories_recap.py`
-- Uses: `memories.index.get_member_index`, `memories.selection.*`, `memories.oshi.oshi_names`, the `app_state.favorited_at` chunked query, and `letters.json` (via the existing reader in `backend/api/chat_features.py` `letters_local`, refactored into a reusable function if needed)
+- Uses (the M1 data layer — read the `backend/services/memories/facts.py` module docstring first):
+  - `index.list_members(service_data_dir) -> list[MemberSummary]` (a person over their 1:1 rooms: `member_dirs`, `member_ids`, `group_ids`, earliest `subscription_start`, `birthday`, `graduated`)
+  - `facts.get_person_facts(service_data_dir, summary) -> list[tuple[member_dir, Fact]]` (all the person's rooms, merged and sorted by (ts, id); no date arguments, filter W(Y) yourself; message ids are per room, so a message's key — for slide uniqueness, payload ids and `load_texts` — is `(member_dir, id)`), `facts.select(...)`, `facts.aggregate(...)`, `facts.year_aggregates(...)`
+  - `facts.load_texts(service_data_dir, member_dir, ids)` (blocking; run in an executor) — once per room, only for slides that show her words (s01, s02, s03, s07, s08, s11, s12, s13)
+  - `MemberIndex.last_message`, `avatar_changes`; `selection.split_sentences`, `selection.importance`
+  - `memories.oshi.oshi_names`, the `app_state.favorited_at` chunked query, and `letters.json` (via the existing reader in `backend/api/chat_features.py` `letters_local`, refactored into a reusable function if needed)
+  - Media URLs: the existing `archive_urls` helper, from `Fact.media_file` (normalise backslashes to `/` first)
 
 **Interfaces:**
-- `async build_member_recap(service: str, service_data_dir: Path, member_dir: Path, year: int, *, now: datetime) -> dict` returns the per-member payload above.
+- `async build_member_recap(service: str, service_data_dir: Path, summary: MemberSummary, year: int, *, now: datetime) -> dict` returns the per-member payload above. A member is a person across all their 1:1 rooms; the API resolves the requested member to its `MemberSummary` via `list_members`.
+- Facts in W(Y) come only from `get_person_facts` (no direct messages.json reads except via `load_texts`). "Graduated in Y" = `summary.graduated` and the JST year of the person's last message equals Y.
 - `async build_members_overview(service: str, service_data_dir: Path, year: int, *, now: datetime) -> dict` returns the members payload above.
 - `phase`: `final` when `now ≥ Jan 1 00:00 JST of year+1`, else `partial`. `christmas_open`: `now ≥ Dec 25 00:00 JST of year`, or the phase is final.
 - `W(Y)` = max(Jan 1 JST, subscription start) → min(now, Dec 31 23:59:59 JST). Only non-promo messages count toward the tier: full ≥ 150, standard 30–149, short 10–29, none < 10.
@@ -118,7 +125,7 @@ Role titles for the overview: greedy assignment so that each member gets a disti
 
 Only titles are returned, never ranks or values.
 
-Caching: a table `recap_cache(service, member_dir, year, data_hash, payload)` in the memory-index DB, keyed on the member index `data_hash` plus `phase` plus `christmas_open` plus the date of `now` (partial recaps can change daily).
+Caching: a table `recap_cache(service, person_key, year, data_hash, payload)` in the memory-index DB. `person_key` = the summary's sorted `member_dirs` joined; `data_hash` combines every room's member-index `data_hash` plus `phase` plus `christmas_open` plus the date of `now` (partial recaps can change daily).
 
 - [ ] **Step 1:** Write failing tests with synthetic members, using `time-machine` at 2026-12-10 (partial, Christmas sealed) and 2027-01-02 (final). Cover:
   - tiers;
@@ -129,12 +136,13 @@ Caching: a table `recap_cache(service, member_dir, year, data_hash, payload)` in
   - s09 sealed Christmas;
   - s12 prefers ★;
   - s13 graduated;
+  - a person split across two rooms is one recap (facts merged, earliest start);
   - message uniqueness across slides;
   - role titles distinct;
   - no message text in the logs;
   - the phase flags.
 - [ ] **Step 2:** Run `uv run pytest backend/tests/test_memories_recap.py -q`. Expect FAIL.
-- [ ] **Step 3:** Implement `recap.py`. Make one pass over the member's messages within W(Y) and reuse the index (captions, bursts, importance, photo_scores). Keep each slide's selection in its own small function: `_s01_first(ctx)`, `_s02_name(ctx)`, and so on. `ctx` is a frozen dataclass with the messages, the index and the dates.
+- [ ] **Step 3:** Implement `recap.py`. Take the person's facts from `get_person_facts`, filtered to W(Y), and reuse the precomputed fields (captions, bursts, importance, photo_score). Keep each slide's selection in its own small function: `_s01_first(ctx)`, `_s02_name(ctx)`, and so on. `ctx` is a frozen dataclass with the facts, the summary, a lazy per-room text loader and the dates.
 - [ ] **Step 4:** Run the tests and `uv run mypy backend/services/memories`. Expect PASS.
 - [ ] **Step 5:** Commit `feat(memories): build the year recap payload`.
 
@@ -146,7 +154,7 @@ Caching: a table `recap_cache(service, member_dir, year, data_hash, payload)` in
 
 **Interfaces:**
 - `GET /api/memories/{service}/recap/{year}/members` calls `build_members_overview`.
-- `GET /api/memories/{service}/recap/{year}?member=<member_path>` calls `build_member_recap`.
+- `GET /api/memories/{service}/recap/{year}?member=<member_path>` resolves the path to the `MemberSummary` whose `member_dirs` contains it (any of the person's rooms), then calls `build_member_recap`.
 - `member_path` is the same display-name path the chat uses (`<display>/messages/<group>/<member>`). Validate it with `archive_urls.resolve_within` (path traversal → 400). An unknown service → 400. Year out of range (< 2020, or > current year + 1) → 400.
 - Media URLs come from `archive_urls.media_url`. Avatar URLs follow the same route as the chat header uses (check the `account` and profile-image helpers).
 
