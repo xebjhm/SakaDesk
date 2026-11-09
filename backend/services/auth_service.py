@@ -88,6 +88,14 @@ class AuthService:
         else:
             self._session_cache.pop(group_value, None)
 
+    def _reload_session_fresh(self, group_value: str) -> Optional[Dict[str, Any]]:
+        """Drop the cache entry and re-read the stored session (blocking keyring read).
+
+        Run via ``asyncio.to_thread`` when called from the event loop.
+        """
+        self._invalidate_session_cache(group_value)
+        return self._load_session_cached(group_value)
+
     def invalidate_session(self, service: str) -> None:
         """Drop the cached session of ``service`` after another component changed it.
 
@@ -256,7 +264,14 @@ class AuthService:
             return status
         outcome = await self.renew_expired(service)
         if outcome in ("ok", "not_expired"):
-            return await asyncio.to_thread(self._get_service_auth_status, service)
+            fresh = await asyncio.to_thread(self._get_service_auth_status, service)
+            if fresh.get("token_expired"):
+                # Renewed (or found renewed) yet the stored token still reads
+                # expired (e.g. clock skew): back off so the next poll does not
+                # refresh again at once.
+                session_alert.note_renew_failure(service)
+                logger.warning("session_renew_still_expired", service=service)
+            return fresh
         if outcome in ("dead", "no_cookies"):
             await session_alert.report(service, "expired")
             return {**status, "session_expired": True}
@@ -324,9 +339,12 @@ class AuthService:
                         auth_dir=self._session_dir,
                     )
                     async with aiohttp.ClientSession() as session:
-                        await client.refresh_access_token(session)
-                    await asyncio.to_thread(self._save_refreshed, service, client)
-                    outcome = "ok"
+                        refreshed = await client.refresh_access_token(session)
+                    if refreshed:
+                        await asyncio.to_thread(self._save_refreshed, service, client)
+                        outcome = "ok"
+                    else:
+                        outcome = "refresh_failed"
         except SessionExpiredError:
             outcome = "dead"
         except RefreshFailedError:
@@ -431,9 +449,9 @@ class AuthService:
             logger.error("Failed to save credentials", service=service, error=str(e))
             raise
 
-    def logout(self, service: str):
+    async def logout(self, service: str):
         """
-        Clear credentials for a specific service.
+        Clear credentials for a specific service and forget its needs-login mark.
 
         Args:
             service: The service to log out of (e.g., 'hinatazaka46').
@@ -450,6 +468,8 @@ class AuthService:
             logger.info("Credentials cleared from TokenManager", service=service)
         except Exception as e:
             logger.error("Failed to clear credentials", service=service, error=str(e))
+        # A logged-out service must not keep reporting session_expired.
+        await session_alert.clear(service)
 
     def _get_token_remaining_seconds(self, token: str) -> float:
         """Get seconds remaining until token expires. Uses shared pysaka utility."""
@@ -493,8 +513,9 @@ class AuthService:
             async with refresh_gate.hold(service):
                 # Re-read inside the gate: a waiter must see a token another
                 # caller just renewed, not a stale cached one.
-                self._invalidate_session_cache(group.value)
-                token_data = self._load_session_cached(group.value)
+                token_data = await asyncio.to_thread(
+                    self._reload_session_fresh, group.value
+                )
 
                 if not token_data or not token_data.get("access_token"):
                     logger.warning("No token found for refresh check", service=service)

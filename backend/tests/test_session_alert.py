@@ -8,13 +8,6 @@ from structlog.testing import capture_logs
 from backend.services import session_alert
 
 
-@pytest.fixture(autouse=True)
-def _reset():
-    session_alert._reset_for_tests()
-    yield
-    session_alert._reset_for_tests()
-
-
 def _patches(enabled=True):
     return (
         patch.object(

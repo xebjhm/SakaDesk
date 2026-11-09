@@ -25,12 +25,10 @@ VALID = {
 
 @pytest.fixture(autouse=True)
 def _reset():
-    session_alert._reset_for_tests()
     with patch.object(
         session_alert, "report", AsyncMock(side_effect=lambda s, k: k == "expired")
     ) as rep:
         yield rep
-    session_alert._reset_for_tests()
 
 
 def _svc(statuses, outcome):

@@ -51,7 +51,7 @@ def test_login_with_browser_requires_service(auth_service):
 def test_logout_requires_service(auth_service):
     """logout requires a service parameter."""
     with pytest.raises(TypeError):
-        auth_service.logout()
+        asyncio.run(auth_service.logout())
 
 
 def test_get_config_requires_service(auth_service):
@@ -97,5 +97,5 @@ def test_get_status_expired_token(auth_service):
 def test_logout_clears_credentials(auth_service):
     """logout calls TokenManager.delete_session with correct service."""
     with patch("backend.services.auth_service.get_token_manager") as mock_tm:
-        auth_service.logout(service="hinatazaka46")
+        asyncio.run(auth_service.logout(service="hinatazaka46"))
         mock_tm.return_value.delete_session.assert_called_once_with("hinatazaka46")
