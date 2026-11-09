@@ -114,3 +114,40 @@ describe('useMessageTranslation', () => {
         await expect(clearTranslationCache()).resolves.toBeUndefined();
     });
 });
+
+describe('useMessageTranslation batching', () => {
+    // The earlier describe never restores its spies; start these from a clean slate.
+    beforeEach(() => vi.restoreAllMocks());
+    afterEach(() => vi.restoreAllMocks());
+
+    it('mounting several bubbles together issues one cache lookup', async () => {
+        const getSpy = vi.spyOn(persisted, 'getTranslations').mockImplementation(async (keys: string[]) =>
+            Object.fromEntries(keys.filter((k) => k.endsWith(':2:en')).map((k) => [k, 'cached-two'])));
+        const results = [1, 2, 3].map((id) =>
+            renderHook(() => useMessageTranslation({ ...baseParams, messageId: id })).result);
+        await waitFor(() => expect(results[1].current.translation).toBe('cached-two'));
+        expect(getSpy).toHaveBeenCalledTimes(1);
+        expect(getSpy.mock.calls[0][0]).toHaveLength(3);
+        expect(results[0].current.state).toBe('idle');
+        expect(results[2].current.translation).toBeNull();
+    });
+
+    it('stays idle for every bubble when the batch lookup fails', async () => {
+        const getSpy = vi.spyOn(persisted, 'getTranslations').mockRejectedValue(new Error('down'));
+        const results = [11, 12].map((id) =>
+            renderHook(() => useMessageTranslation({ ...baseParams, messageId: id })).result);
+        await waitFor(() => expect(getSpy).toHaveBeenCalledTimes(1));
+        await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+        expect(results.map((r) => r.current.state)).toEqual(['idle', 'idle']);
+    });
+
+    it('does not set state for a bubble unmounted before the batch answers', async () => {
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => undefined);
+        vi.spyOn(persisted, 'getTranslations').mockResolvedValue({ 'translation:message:21:en': 'late' });
+        const { result, unmount } = renderHook(() => useMessageTranslation({ ...baseParams, messageId: 21 }));
+        unmount();
+        await act(async () => { await new Promise((r) => setTimeout(r, 120)); });
+        expect(result.current.translation).toBeNull();
+        expect(errors).not.toHaveBeenCalled();
+    });
+});

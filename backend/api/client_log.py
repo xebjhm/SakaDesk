@@ -74,6 +74,7 @@ ClientEvent = Literal[
     "poll_failed",
     "poll_retry",
     "poll_gave_up",
+    "translation_batch_failed",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -120,6 +121,7 @@ WARNING_EVENTS = frozenset(
         "poll_timeout",
         "poll_failed",
         "poll_gave_up",
+        "translation_batch_failed",
     }
 )
 

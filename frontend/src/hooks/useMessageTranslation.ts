@@ -3,6 +3,7 @@ import { useTranslation } from '../i18n';
 import { aiErrorKey } from '../i18n/aiError';
 import { persisted } from '../core/persistence/persisted';
 import * as api from '../core/persistence/appStateApi';
+import { loadCachedTranslation } from '../core/persistence/translationLoader';
 
 type TranslationState = 'idle' | 'loading' | 'done' | 'error';
 
@@ -59,9 +60,10 @@ export function useMessageTranslation(params: {
         setState('idle');
         setError(null);
         if (cacheKey) {
-            persisted.getTranslations([cacheKey]).then((m) => {
-                if (!cancelled && m[cacheKey]) {
-                    setTranslation(m[cacheKey]);
+            // Batched with the lookups of every other bubble mounting now.
+            loadCachedTranslation(cacheKey).then((cached) => {
+                if (!cancelled && cached) {
+                    setTranslation(cached);
                     setState('done');
                 }
             }).catch(() => {/* stay idle; trigger() will fall back to the API */});

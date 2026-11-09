@@ -131,3 +131,34 @@ describe('FavoritesModal video cards', () => {
         expect(clientLog).not.toHaveBeenCalledWith('favorite_video_lazy_unsupported');
     });
 });
+
+describe('FavoritesModal voice cards', () => {
+    const voice = { id: 7, content: null, timestamp: '2026-11-03T04:00:00Z', type: 'voice', is_favorite: true, media_file: 'messages/a/voice/7.m4a' } as unknown as Message;
+    const renderVoice = () => {
+        render(<FavoritesModal isOpen onClose={vi.fn()} messages={[voice]} memberName="春野 ひなた" serviceId="hinatazaka46" />);
+    };
+    const getAudio = () => screen.getByTestId('modal-body').querySelector('audio') as HTMLAudioElement | null;
+
+    it('mounts no <audio> (so no metadata request) until the card scrolls into view', () => {
+        renderVoice();
+        expect(observe).toHaveBeenCalled();
+        expect(getAudio()).toBeNull();
+        expect(screen.getByTestId('voice-placeholder')).toBeInTheDocument();
+        scrollIntoView();
+        expect(getAudio()).toHaveAttribute('src', expect.stringContaining('7.m4a'));
+        expect(screen.queryByTestId('voice-placeholder')).toBeNull();
+        expect(disconnect).toHaveBeenCalled();
+    });
+
+    it('uses the same observer settings as the video cards', () => {
+        renderVoice();
+        expect(ioOptions?.root).toBe(screen.getByTestId('modal-body'));
+        expect(ioOptions?.rootMargin).toBe('200px');
+    });
+
+    it('mounts the player immediately when IntersectionObserver is missing', () => {
+        vi.stubGlobal('IntersectionObserver', undefined);
+        renderVoice();
+        expect(getAudio()).toHaveAttribute('src', expect.stringContaining('7.m4a'));
+    });
+});

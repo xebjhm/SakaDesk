@@ -1,0 +1,76 @@
+/**
+ * Batched read of the backend translation cache.
+ *
+ * Every mounted message bubble looks up its own cached translation. Chromium
+ * (WebView2) allows six concurrent connections per host, so one request per
+ * bubble starves media. `loadCachedTranslation` collects the keys requested
+ * within `TRANSLATION_BATCH_WINDOW_MS` and answers them all from one
+ * `GET /api/app-state/translations?keys=a,b,c` call (split into chunks of at
+ * most `TRANSLATION_BATCH_MAX_KEYS`, the backend's limit). A key requested
+ * while the same key is queued or in flight shares that lookup.
+ *
+ * A failed batch rejects every caller waiting on it (they behave as the
+ * single-key request did before) and logs one `translation_batch_failed`
+ * breadcrumb with the key count and a code-like error type, never the keys.
+ *
+ * @module translationLoader
+ */
+
+import { clientLog } from '../../utils/clientLog';
+import { persisted } from './persisted';
+
+export const TRANSLATION_BATCH_WINDOW_MS = 50;
+/** Mirrors `MAX_TRANSLATION_KEYS` in `backend/api/app_state.py`. */
+export const TRANSLATION_BATCH_MAX_KEYS = 100;
+
+interface Waiter {
+    resolve: (value: string | undefined) => void;
+    reject: (reason: unknown) => void;
+}
+
+const lookups = new Map<string, Promise<string | undefined>>();
+const waiters = new Map<string, Waiter>();
+let queue: string[] = [];
+let timer: ReturnType<typeof setTimeout> | null = null;
+
+function errorType(err: unknown): string {
+    const name = err instanceof Error ? err.name : 'unknown';
+    return name.toLowerCase().replace(/[^a-z0-9_]/g, '').slice(0, 40) || 'unknown';
+}
+
+async function fetchChunk(keys: string[]): Promise<void> {
+    try {
+        const found = await persisted.getTranslations(keys);
+        for (const key of keys) waiters.get(key)?.resolve(found[key]);
+    } catch (err) {
+        clientLog('translation_batch_failed', { count: keys.length, error_type: errorType(err) });
+        for (const key of keys) waiters.get(key)?.reject(err);
+    } finally {
+        for (const key of keys) {
+            waiters.delete(key);
+            lookups.delete(key);
+        }
+    }
+}
+
+function flush(): void {
+    timer = null;
+    const keys = queue;
+    queue = [];
+    for (let i = 0; i < keys.length; i += TRANSLATION_BATCH_MAX_KEYS) {
+        void fetchChunk(keys.slice(i, i + TRANSLATION_BATCH_MAX_KEYS));
+    }
+}
+
+/** The cached translation for `key`, or `undefined` when not cached. Rejects when the batch lookup failed. */
+export function loadCachedTranslation(key: string): Promise<string | undefined> {
+    const existing = lookups.get(key);
+    if (existing) return existing;
+    const promise = new Promise<string | undefined>((resolve, reject) => {
+        waiters.set(key, { resolve, reject });
+    });
+    lookups.set(key, promise);
+    queue.push(key);
+    if (timer === null) timer = setTimeout(flush, TRANSLATION_BATCH_WINDOW_MS);
+    return promise;
+}
