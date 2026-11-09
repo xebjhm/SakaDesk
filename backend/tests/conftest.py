@@ -73,15 +73,23 @@ def _isolate_machine_state(tmp_path_factory: pytest.TempPathFactory):
 
 @pytest.fixture(autouse=True)
 def _no_memories_refresh(monkeypatch):
-    """A completed sync schedules Memories refreshes; never scrape or scan in tests."""
-    from unittest.mock import AsyncMock
+    """A completed sync schedules Memories refreshes; never scrape or scan in tests.
+
+    Autospecced from the real functions, so a signature change at the call
+    site in sync_service fails the tests instead of passing silently.
+    """
+    from unittest.mock import create_autospec
+
+    from backend.services.memories.index import build_all
+    from backend.services.memories.member_profiles import refresh_member_profiles
 
     monkeypatch.setattr(
         "backend.services.sync_service.refresh_member_profiles",
-        AsyncMock(return_value=False),
+        create_autospec(refresh_member_profiles, return_value=False),
     )
     monkeypatch.setattr(
-        "backend.services.sync_service.build_memory_index", AsyncMock(return_value=0)
+        "backend.services.sync_service.build_memory_index",
+        create_autospec(build_all, return_value=0),
     )
 
 
