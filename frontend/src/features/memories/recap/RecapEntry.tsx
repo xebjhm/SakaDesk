@@ -23,6 +23,9 @@ interface RecapEntryProps {
 
 type Load<T> = { status: 'loading' } | { status: 'ok'; data: T } | { status: 'error' };
 
+/** A member recap load, tagged with the member path it was requested for. */
+type MemberLoad = { path: string | null; load: Load<RecapPayload> };
+
 /** Outcome code of a finished request, or null when it was superseded (no breadcrumb). */
 function outcomeOf<T>(res: PollResult<T>): Exclude<RecapLoadOutcome, 'ok' | 'empty'> | 'ok' | null {
     switch (res.status) {
@@ -107,7 +110,10 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
     const [overview, setOverview] = useState<Load<RecapOverview>>({ status: 'loading' });
     const [selected, setSelected] = useState<string | null>(memberPath ?? null);
     const [memberAttempt, setMemberAttempt] = useState(0);
-    const [recap, setRecap] = useState<Load<RecapPayload>>({ status: 'loading' });
+    // Tagged with its member path: a payload is shown only for the member it was loaded for, so
+    // opening member B never mounts the player (or logs breadcrumbs) with member A's recap.
+    const [memberLoad, setMemberLoad] = useState<MemberLoad>({ path: null, load: { status: 'loading' } });
+    const recap: Load<RecapPayload> = memberLoad.path === selected ? memberLoad.load : { status: 'loading' };
     const resolvedNickname = nickname?.trim() || t('recap.youFallback');
 
     useEffect(() => {
@@ -131,7 +137,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
     useEffect(() => {
         if (!selected) return;
         const controller = new AbortController();
-        setRecap({ status: 'loading' });
+        setMemberLoad({ path: selected, load: { status: 'loading' } });
         void fetchMemberRecap(service, year, selected, controller.signal).then((res) => {
             const outcome = outcomeOf(res);
             if (outcome === null) return;
@@ -141,10 +147,10 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                 logRecapLoad('member', count ? 'ok' : 'empty', {
                     count, member_id: memberId, ...(nickname?.trim() ? {} : { fallback: 'no_nickname' }),
                 });
-                setRecap({ status: 'ok', data: res.data });
+                setMemberLoad({ path: selected, load: { status: 'ok', data: res.data } });
             } else {
                 logRecapLoad('member', outcome, res.status === 'rejected' ? { error_code: res.httpStatus } : {});
-                setRecap({ status: 'error' });
+                setMemberLoad({ path: selected, load: { status: 'error' } });
             }
         });
         return () => controller.abort();
@@ -152,7 +158,12 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
     // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [service, year, selected, memberAttempt]);
 
-    const backToList = () => setSelected(null);
+    // Closing drops the payload, so reopening (even the same member) loads and opens it afresh.
+    const openMember = (path: string | null) => {
+        setMemberLoad({ path: null, load: { status: 'loading' } });
+        setSelected(path);
+    };
+    const backToList = () => openMember(null);
 
     if (selected) {
         if (recap.status === 'loading') return <div data-testid="recap-entry" className="flex flex-1"><Status /></div>;
@@ -202,7 +213,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                     <p className="text-center text-small text-secondary">{t('recap.entry.choose')}</p>
                     <ul className="flex flex-col gap-3">
                         {members.map((m) => (
-                            <MemberRow key={m.member_path} member={m} onOpen={() => setSelected(m.member_path)} />
+                            <MemberRow key={m.member_path} member={m} onOpen={() => openMember(m.member_path)} />
                         ))}
                     </ul>
                 </section>

@@ -12,6 +12,10 @@ vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
 
 const loadLogs = () => vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'recap_load');
+const playLogs = () => vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'recap_play');
+const opens = () => playLogs().filter(([, f]) => (f as { phase?: string }).phase === 'open');
+
+const PATH_B = '日向坂46/messages/40 正源司 陽子/70 正源司 陽子';
 
 function serve(opts: { overview?: (year: number) => RecapOverview | null; recap?: RecapPayload } = {}) {
     const seen = { members: [] as number[], member: [] as string[] };
@@ -60,6 +64,51 @@ describe('RecapEntry', () => {
         expect(seen.member).toEqual([MEMBER_PATH]);
         await userEvent.keyboard('{Escape}');
         expect(await screen.findByRole('button', { name: /金村 美玖/ })).toBeInTheDocument();
+    });
+
+    it('reopening the same member logs open exactly once per opening', async () => {
+        serve();
+        render(<RecapEntry service="hinatazaka46" year={2026} nickname="ゆき" onBack={() => {}} />);
+        await userEvent.click(await screen.findByRole('button', { name: /金村 美玖/ }));
+        await screen.findByTestId('recap-stage');
+        expect(opens()).toHaveLength(1);
+        await userEvent.keyboard('{Escape}');
+        await userEvent.click(await screen.findByRole('button', { name: /金村 美玖/ }));
+        await screen.findByTestId('recap-stage');
+        expect(opens()).toHaveLength(2);
+    });
+
+    it('never mounts the player for member B with member A\'s recap', async () => {
+        let releaseB: () => void = () => {};
+        const bReady = new Promise<void>((resolve) => { releaseB = resolve; });
+        server.use(
+            http.get('/api/memories/:service/recap/:year/members', () => HttpResponse.json(overview({
+                members: [
+                    { member_path: MEMBER_PATH, member_id: '58', name: '金村 美玖', tier: 'full', oshi: true, title_key: null },
+                    { member_path: PATH_B, member_id: '70', name: '正源司 陽子', tier: 'full', oshi: false, title_key: null },
+                ],
+            }))),
+            http.get('/api/memories/:service/recap/:year', async ({ request }) => {
+                const member = new URL(request.url).searchParams.get('member');
+                if (member === PATH_B) {
+                    await bReady;
+                    return HttpResponse.json(payload({ member: { ...payload().member, id: '70', name: '正源司 陽子' } }));
+                }
+                return HttpResponse.json(payload());
+            }),
+        );
+        render(<RecapEntry service="hinatazaka46" year={2026} nickname="ゆき" onBack={() => {}} />);
+        await userEvent.click(await screen.findByRole('button', { name: /金村 美玖/ }));
+        await screen.findByTestId('recap-stage');
+        await userEvent.keyboard('{Escape}');
+        vi.mocked(clientLog).mockClear();
+        await userEvent.click(await screen.findByRole('button', { name: /正源司 陽子/ }));
+        expect(screen.queryByTestId('recap-stage')).toBeNull();
+        expect(screen.getByRole('status')).toBeInTheDocument();
+        expect(playLogs().filter(([, f]) => (f as { member_id?: string }).member_id === '58')).toEqual([]);
+        releaseB();
+        expect(await screen.findByTestId('recap-stage')).toBeInTheDocument();
+        expect(opens()).toEqual([['recap_play', expect.objectContaining({ phase: 'open', member_id: '70' })]]);
     });
 
     it('opens straight into the player for a routed member', async () => {
