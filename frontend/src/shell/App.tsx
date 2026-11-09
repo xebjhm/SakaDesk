@@ -204,8 +204,10 @@ function App() {
     // so this can never break startup even if the endpoint is unavailable; a
     // failing conversation-cache load retries with backoff first, delaying the
     // first render by at most the sum of CONV_HYDRATE_RETRY_DELAYS_MS plus the
-    // request times. The conversation cache is therefore loaded (or known
-    // failed) before any chat can save read progress.
+    // request times. If every try fails, the first render proceeds with the cache
+    // not ready and persisted.ts keeps retrying in the background
+    // (CONV_BACKGROUND_RETRY_DELAYS_MS, then every CONV_BACKGROUND_RETRY_MAX_MS),
+    // notifying persisted.onConversationsReady listeners once it loads.
     const [prefsHydrated, setPrefsHydrated] = useState(false);
     useEffect(() => {
         persisted.hydratePrefs()

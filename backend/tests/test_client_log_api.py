@@ -821,6 +821,17 @@ def test_allowed_fields_never_shadow_log_call_keywords():
         ),
         ("conv_hydrate_retry", {"index": 2, "error_type": "typeerror"}, "info"),
         (
+            "conv_hydrate_retry",
+            {
+                "index": 5,
+                "phase": "background",
+                "error_type": "appstatehttperror",
+                "error_code": 503,
+            },
+            "info",
+        ),
+        ("conv_hydrate_recovered", {"count": 6}, "info"),
+        (
             "conv_hydrate_failed",
             {"count": 4, "error_type": "appstatehttperror", "error_code": 500},
             "warning",

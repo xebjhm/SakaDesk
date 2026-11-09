@@ -76,23 +76,71 @@ export const CONV_HYDRATE_RETRY_DELAYS_MS: readonly number[] = [500, 1000, 2000]
 const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
 
 /**
+ * Background retry schedule after the foreground load gave up: the wait before
+ * retry i is CONV_BACKGROUND_RETRY_DELAYS_MS[i], and every retry past the end of
+ * the list waits CONV_BACKGROUND_RETRY_MAX_MS. Retries continue until one succeeds.
+ */
+export const CONV_BACKGROUND_RETRY_DELAYS_MS: readonly number[] = [5000, 15000, 30000];
+export const CONV_BACKGROUND_RETRY_MAX_MS = 60000;
+
+const readyListeners = new Set<() => void>();
+let backgroundRetrying = false;
+// Every conversation-cache load attempt this session, foreground and background.
+let totalAttempts = 0;
+
+/** Store a loaded cache and, on the not-ready to ready transition, run each listener once. */
+function markReady(cache: Record<string, Record<string, unknown>>): void {
+  const wasReady = convReady;
+  convCache = cache;
+  convReady = true;
+  if (!wasReady) readyListeners.forEach((fn) => { try { fn(); } catch { /* listener errors never break hydration */ } });
+}
+
+/** Keep loading the cache with backoff until it is ready; one loop at a time. */
+async function backgroundRetry(): Promise<void> {
+  if (backgroundRetrying) return;
+  backgroundRetrying = true;
+  try {
+    for (let i = 0; !convReady; i++) {
+      await wait(CONV_BACKGROUND_RETRY_DELAYS_MS[i] ?? CONV_BACKGROUND_RETRY_MAX_MS);
+      if (convReady) break; // a foreground load (e.g. migration) succeeded meanwhile
+      totalAttempts += 1;
+      try {
+        markReady(await api.getAllConversations());
+        clientLog('conv_hydrate_recovered', { count: totalAttempts });
+      } catch (err) {
+        clientLog('conv_hydrate_retry', { index: totalAttempts, phase: 'background', ...failureFields(err) });
+      }
+    }
+  } finally {
+    backgroundRetrying = false;
+  }
+}
+
+/**
  * Load every conversation row into the cache, retrying with backoff
  * (CONV_HYDRATE_RETRY_DELAYS_MS). Each retry logs `conv_hydrate_retry` and a
  * final failure `conv_hydrate_failed` (error class and HTTP status only). On
- * final failure the cache is empty and not ready. Never rejects.
+ * final failure the cache is empty and not ready, and a background loop keeps
+ * retrying (CONV_BACKGROUND_RETRY_DELAYS_MS, then every
+ * CONV_BACKGROUND_RETRY_MAX_MS), logging `conv_hydrate_retry` with
+ * `phase: 'background'` per failure and `conv_hydrate_recovered` on success.
+ * When the cache goes from not ready to ready, the listeners registered with
+ * onConversationsReady run once. Never rejects.
  */
 async function hydrateConversations(): Promise<void> {
   const attempts = CONV_HYDRATE_RETRY_DELAYS_MS.length + 1;
   for (let attempt = 1; ; attempt++) {
+    totalAttempts += 1;
     try {
-      convCache = await api.getAllConversations();
-      convReady = true;
+      markReady(await api.getAllConversations());
       return;
     } catch (err) {
       if (attempt >= attempts) {
         convCache = {};
         convReady = false;
         clientLog('conv_hydrate_failed', { count: attempts, ...failureFields(err) });
+        void backgroundRetry();
         return;
       }
       clientLog('conv_hydrate_retry', { index: attempt, ...failureFields(err) });
@@ -137,6 +185,14 @@ export const persisted = {
   getConversation: api.getConversation,
   setConversation: api.patchConversation,
   hydrateConversations,
+  /**
+   * Run `listener` each time the conversation cache goes from not ready to ready
+   * (a listener added while already ready is not called). Returns an unsubscribe function.
+   */
+  onConversationsReady(listener: () => void): () => void {
+    readyListeners.add(listener);
+    return () => { readyListeners.delete(listener); };
+  },
   /** True once the conversation cache loaded successfully (see convReady). */
   conversationsReady(): boolean {
     return convReady;
