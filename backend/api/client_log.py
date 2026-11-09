@@ -75,6 +75,11 @@ ClientEvent = Literal[
     "poll_retry",
     "poll_gave_up",
     "translation_batch_failed",
+    "conv_hydrate_retry",
+    "conv_hydrate_failed",
+    "conv_write_failed",
+    "read_state_save_skipped",
+    "read_state_sync_failed",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -123,6 +128,9 @@ WARNING_EVENTS = frozenset(
         "poll_failed",
         "poll_gave_up",
         "translation_batch_failed",
+        "conv_hydrate_failed",
+        "conv_write_failed",
+        "read_state_sync_failed",
     }
 )
 

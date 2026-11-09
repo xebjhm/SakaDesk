@@ -795,3 +795,50 @@ def test_allowed_fields_never_shadow_log_call_keywords():
     from backend.api.client_log import ALLOWED_FIELDS
 
     assert not ALLOWED_FIELDS & {"source", "event"}
+
+
+@pytest.mark.parametrize(
+    ("event", "fields", "level"),
+    [
+        (
+            "conv_hydrate_retry",
+            {"index": 1, "error_type": "appstatehttperror", "error_code": 503},
+            "info",
+        ),
+        ("conv_hydrate_retry", {"index": 2, "error_type": "typeerror"}, "info"),
+        (
+            "conv_hydrate_failed",
+            {"count": 4, "error_type": "appstatehttperror", "error_code": 500},
+            "warning",
+        ),
+        (
+            "conv_write_failed",
+            {"error_type": "appstatehttperror", "error_code": 500},
+            "warning",
+        ),
+        (
+            "read_state_save_skipped",
+            {
+                "reason": "not_ready",
+                "service": "hinatazaka46",
+                "group_id": 34,
+                "member_id": 58,
+            },
+            "info",
+        ),
+        ("read_state_sync_failed", {"error_type": "typeerror"}, "warning"),
+        (
+            "read_state_sync_failed",
+            {"error_type": "http", "error_code": 500},
+            "warning",
+        ),
+    ],
+)
+def test_read_progress_breadcrumbs_are_accepted(event, fields, level):
+    with capture_logs() as logs:
+        res = client.post("/api/client-log", json={"event": event, "fields": fields})
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == event
+    assert entry["log_level"] == level
+    assert {key: entry[key] for key in fields} == fields

@@ -1,8 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+
+vi.mock('../../utils/clientLog', async (orig) => ({
+    ...(await orig<typeof import('../../utils/clientLog')>()),
+    clientLog: vi.fn(),
+}));
+
+import { clientLog } from '../../utils/clientLog';
 import { persisted } from '../../core/persistence/persisted';
 import {
     EMPTY_READ_STATE, applyReveal, isUnreadIn, loadReadState, mergeReadState, parseReadState,
-    readStateEquals, readStateKey, revealInStore, subscribeReadState,
+    readStateEquals, readStateKey, revealInStore, saveReadState, subscribeReadState,
 } from './readStateStore';
 import type { ReadState } from './readStateStore';
 
@@ -116,6 +123,7 @@ describe('revealInStore', () => {
 
     beforeEach(() => {
         row = {};
+        vi.spyOn(persisted, 'conversationsReady').mockReturnValue(true);
         getConv = vi.spyOn(persisted, 'getConv').mockImplementation(((k: string, fb: unknown) => row[k] ?? fb) as never);
         setConv = vi.spyOn(persisted, 'setConv').mockImplementation(((k: string, v: unknown) => { row[k] = v; }) as never);
         fetchMock = vi.fn().mockResolvedValue({ ok: true });
@@ -177,5 +185,56 @@ describe('revealInStore', () => {
         row[`read_state_${PATH}`] = { value: 'null' };
         expect(revealInStore(PATH, 10)).toBe(true);
         expect(loadReadState(PATH)).toEqual({ lastReadId: 0, revealedIds: [10], readCount: 1 });
+    });
+});
+
+describe('saveReadState', () => {
+    let row: Record<string, unknown>;
+    let setConv: ReturnType<typeof vi.spyOn>;
+    let fetchMock: ReturnType<typeof vi.fn>;
+    const state: ReadState = { lastReadId: 3, readCount: 1, revealedIds: [] };
+
+    beforeEach(() => {
+        row = {};
+        vi.mocked(clientLog).mockClear();
+        vi.spyOn(persisted, 'getConv').mockImplementation(((k: string, fb: unknown) => row[k] ?? fb) as never);
+        setConv = vi.spyOn(persisted, 'setConv').mockImplementation(((k: string, v: unknown) => { row[k] = v; }) as never);
+        fetchMock = vi.fn().mockResolvedValue({ ok: true });
+        vi.stubGlobal('fetch', fetchMock);
+    });
+    afterEach(() => {
+        vi.restoreAllMocks();
+        vi.unstubAllGlobals();
+    });
+
+    it('skips the persist (row and search copy) while the conversation cache is not loaded', () => {
+        vi.spyOn(persisted, 'conversationsReady').mockReturnValue(false);
+        saveReadState(PATH, state);
+        expect(setConv).not.toHaveBeenCalled();
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(clientLog).toHaveBeenCalledWith('read_state_save_skipped', {
+            reason: 'not_ready', service: 'hinatazaka46', group_id: 34, member_id: 58,
+        });
+        expect(JSON.stringify(vi.mocked(clientLog).mock.calls)).not.toMatch(/金村|messages/);
+    });
+
+    it('writes the row and the search copy once the cache is loaded', () => {
+        vi.spyOn(persisted, 'conversationsReady').mockReturnValue(true);
+        saveReadState(PATH, state);
+        expect(setConv).toHaveBeenCalledWith(`read_state_${PATH}`, { value: JSON.stringify(state) });
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        expect(clientLog).not.toHaveBeenCalled();
+    });
+
+    it('logs read_state_sync_failed when the search copy PUT fails or is refused', async () => {
+        vi.spyOn(persisted, 'conversationsReady').mockReturnValue(true);
+        fetchMock.mockRejectedValueOnce(new TypeError('Failed to fetch')).mockResolvedValueOnce({ ok: false, status: 500 });
+        saveReadState(PATH, state);
+        saveReadState(PATH, state);
+        await vi.waitFor(() => expect(vi.mocked(clientLog).mock.calls).toHaveLength(2));
+        expect(vi.mocked(clientLog).mock.calls).toEqual(expect.arrayContaining([
+            ['read_state_sync_failed', { error_type: 'typeerror' }],
+            ['read_state_sync_failed', { error_type: 'http', error_code: 500 }],
+        ]));
     });
 });

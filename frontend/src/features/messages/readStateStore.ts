@@ -3,6 +3,8 @@
 // conversation row (parsed by the sidebar and the backend tray summary) plus the
 // search-copy PUT /api/read-states. Only the main window writes it.
 import { persisted } from '../../core/persistence/persisted';
+import { clientLog } from '../../utils/clientLog';
+import { breadcrumbCode } from '../../utils/breadcrumbCode';
 import { parseReadStatePath } from './readStatePath';
 
 export interface ReadState {
@@ -58,14 +60,28 @@ export function loadReadState(path: string): ReadState {
     return parseReadState(persisted.getConv<{ value?: string }>(readStateKey(path), {}));
 }
 
+/**
+ * Persist `state` as the chat's read row and PUT the search copy (fire-and-forget).
+ *
+ * Skipped while the conversation cache has not loaded (`conversationsReady()`
+ * is false: still loading, or the startup load failed): until then `state` may
+ * be derived from the empty fallback, and writing it would overwrite the
+ * stored progress. Logs `read_state_save_skipped` (reason `not_ready`, ids
+ * only). A failed or refused search-copy PUT logs `read_state_sync_failed`.
+ */
 export function saveReadState(path: string, state: ReadState): void {
+    const parsed = parseReadStatePath(path);
+    const ids = parsed ? { service: parsed.service, group_id: parsed.groupId, member_id: parsed.memberId } : {};
+    if (!persisted.conversationsReady()) {
+        clientLog('read_state_save_skipped', { reason: 'not_ready', ...ids });
+        return;
+    }
     try {
         persisted.setConv(readStateKey(path), { value: JSON.stringify(state) });
     } catch {
-        // Ignore localStorage errors
+        // Ignore cache errors; setConv logs a refused backend write itself
     }
     // Sync to backend for search filter support (fire-and-forget)
-    const parsed = parseReadStatePath(path);
     if (parsed) {
         fetch('/api/read-states', {
             method: 'PUT',
@@ -78,7 +94,12 @@ export function saveReadState(path: string, state: ReadState): void {
                 read_count: state.readCount,
                 revealed_ids: state.revealedIds,
             }),
-        }).catch(() => {}); // Silent fail - localStorage is still the source of truth
+        })
+            .then((res) => {
+                if (!res.ok) clientLog('read_state_sync_failed', { error_type: 'http', error_code: res.status });
+            })
+            // The conversation row stays the source of truth; only the search copy is stale.
+            .catch((err) => clientLog('read_state_sync_failed', { error_type: breadcrumbCode(err) }));
     }
 }
 

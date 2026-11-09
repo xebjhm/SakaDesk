@@ -36,6 +36,7 @@ describe('persisted.migrateOnce', () => {
     vi.spyOn(api, 'getMigrated').mockResolvedValue({ migrated: false });
     const post = vi.spyOn(api, 'postMigrate').mockResolvedValue(undefined as never);
     vi.spyOn(api, 'getPrefs').mockResolvedValue({});
+    vi.spyOn(api, 'getAllConversations').mockResolvedValue({});
 
     await persisted.migrateOnce();
 

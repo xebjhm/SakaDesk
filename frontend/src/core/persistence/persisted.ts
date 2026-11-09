@@ -1,4 +1,13 @@
 import * as api from './appStateApi';
+import { clientLog, type ClientLogFields } from '../../utils/clientLog';
+import { breadcrumbCode } from '../../utils/breadcrumbCode';
+
+/** Breadcrumb fields for a failed app-state call: the error class, plus the HTTP status when the backend answered. */
+function failureFields(err: unknown): ClientLogFields {
+  return err instanceof api.AppStateHttpError
+    ? { error_type: breadcrumbCode(err), error_code: err.status }
+    : { error_type: breadcrumbCode(err) };
+}
 
 let prefs: Record<string, unknown> = {};
 const pending: Record<string, unknown> = {};
@@ -56,13 +65,39 @@ let convCache: Record<string, Record<string, unknown>> = {};
 // value (the popup's heard bridge) must wait for this flag.
 let convReady = false;
 
+/**
+ * Wait before each retry of a failed conversation-cache load: one retry after
+ * each delay, so 1 + length attempts in all. A transient backend hiccup (SQLite
+ * lock, slow first start) must not leave the cache unready for the session,
+ * which would stop read progress from being saved (see saveReadState).
+ */
+export const CONV_HYDRATE_RETRY_DELAYS_MS: readonly number[] = [500, 1000, 2000];
+
+const wait = (ms: number) => new Promise<void>((resolve) => setTimeout(resolve, ms));
+
+/**
+ * Load every conversation row into the cache, retrying with backoff
+ * (CONV_HYDRATE_RETRY_DELAYS_MS). Each retry logs `conv_hydrate_retry` and a
+ * final failure `conv_hydrate_failed` (error class and HTTP status only). On
+ * final failure the cache is empty and not ready. Never rejects.
+ */
 async function hydrateConversations(): Promise<void> {
-  try {
-    convCache = await api.getAllConversations();
-    convReady = true;
-  } catch {
-    convCache = {};
-    convReady = false;
+  const attempts = CONV_HYDRATE_RETRY_DELAYS_MS.length + 1;
+  for (let attempt = 1; ; attempt++) {
+    try {
+      convCache = await api.getAllConversations();
+      convReady = true;
+      return;
+    } catch (err) {
+      if (attempt >= attempts) {
+        convCache = {};
+        convReady = false;
+        clientLog('conv_hydrate_failed', { count: attempts, ...failureFields(err) });
+        return;
+      }
+      clientLog('conv_hydrate_retry', { index: attempt, ...failureFields(err) });
+      await wait(CONV_HYDRATE_RETRY_DELAYS_MS[attempt - 1]);
+    }
   }
 }
 
@@ -111,7 +146,8 @@ export const persisted = {
   },
   setConv(key: string, patch: Record<string, unknown>): void {
     convCache[key] = { ...(convCache[key] || {}), ...patch };
-    api.patchConversation(key, patch).catch(() => {/* logged; cache already updated */});
+    // The cache is already updated; a refused write is logged (no key: it holds a path).
+    api.patchConversation(key, patch).catch((err) => clientLog('conv_write_failed', failureFields(err)));
   },
   // SD-FE-STATE-03: keepalive conversation write for the close-flush path (scroll
   // position, read state). The plain setConv above uses a non-keepalive PATCH

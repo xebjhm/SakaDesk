@@ -206,4 +206,16 @@ export const handlers = [
   http.post('/api/ui-state', () => {
     return new HttpResponse(null, { status: 204 })
   }),
+
+  // Backend app-state store (empty store, already migrated). Answered so the
+  // startup conversation-cache load succeeds instead of retrying with backoff.
+  http.get('/api/app-state/prefs', () => HttpResponse.json({})),
+  http.patch('/api/app-state/prefs', () => new HttpResponse(null, { status: 204 })),
+  http.get('/api/app-state/conversation-all', () => HttpResponse.json({})),
+  http.get('/api/app-state/conversation', () => HttpResponse.json({})),
+  http.patch('/api/app-state/conversation', () => new HttpResponse(null, { status: 204 })),
+  http.get('/api/app-state/migrate', () => HttpResponse.json({ migrated: true })),
+
+  // Read-state search copy (fire-and-forget)
+  http.put('/api/read-states', () => new HttpResponse(null, { status: 204 })),
 ]

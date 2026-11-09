@@ -1,5 +1,20 @@
 const BASE = '/api/app-state';
-async function j<T>(r: Response): Promise<T> { return r.json() as Promise<T>; }
+
+/** A non-2xx answer from the app-state API. The message carries the status only, never the request path. */
+export class AppStateHttpError extends Error {
+  readonly status: number;
+  constructor(status: number) {
+    super(`app-state request failed: ${status}`);
+    this.name = 'AppStateHttpError';
+    this.status = status;
+  }
+}
+
+/** Parse a JSON answer; rejects with {@link AppStateHttpError} on non-2xx so an error body is never taken for data. */
+async function j<T>(r: Response): Promise<T> {
+  if (!r.ok) throw new AppStateHttpError(r.status);
+  return r.json() as Promise<T>;
+}
 export const getPrefs = () => fetch(`${BASE}/prefs`).then(j<Record<string, unknown>>);
 export const patchPrefs = (p: Record<string, unknown>) =>
   fetch(`${BASE}/prefs`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(() => undefined);
@@ -25,8 +40,11 @@ export const getConversation = (path: string) =>
   fetch(`${BASE}/conversation?path=${encodeURIComponent(path)}`).then(j<Record<string, unknown>>);
 export const getAllConversations = () =>
   fetch(`${BASE}/conversation-all`).then(j<Record<string, Record<string, unknown>>>);
+// Rejects with AppStateHttpError on non-2xx, so a refused write reaches the caller's catch.
 export const patchConversation = (path: string, p: Record<string, unknown>) =>
-  fetch(`${BASE}/conversation?path=${encodeURIComponent(path)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then(() => undefined);
+  fetch(`${BASE}/conversation?path=${encodeURIComponent(path)}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(p) }).then((r) => {
+    if (!r.ok) throw new AppStateHttpError(r.status);
+  });
 // SD-FE-STATE-03: keepalive counterpart so the final scroll/conversation write
 // survives page teardown on close (the plain patchConversation above is
 // abandoned when pywebview tears down the JS context). Returns true if handed off.

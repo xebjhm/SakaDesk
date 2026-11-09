@@ -200,7 +200,11 @@ function App() {
 
     // Backend-backed prefs hydration — loads the app-state prefs cache before
     // the gated UI renders. Swallows fetch errors internally (see persisted.ts),
-    // so this can never block/break startup even if the endpoint is unavailable.
+    // so this can never break startup even if the endpoint is unavailable; a
+    // failing conversation-cache load retries with backoff first, delaying the
+    // first render by at most the sum of CONV_HYDRATE_RETRY_DELAYS_MS plus the
+    // request times. The conversation cache is therefore loaded (or known
+    // failed) before any chat can save read progress.
     const [prefsHydrated, setPrefsHydrated] = useState(false);
     useEffect(() => {
         persisted.hydratePrefs()

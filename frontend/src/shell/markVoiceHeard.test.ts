@@ -85,14 +85,18 @@ describe('markVoiceHeard', () => {
 
     it('stays not_ready after a failed cache load, and applies once a load succeeds', async () => {
         vi.mocked(persisted.conversationsReady).mockRestore();
-        const load = vi.spyOn(appStateApi, 'getAllConversations').mockRejectedValueOnce(new Error('down'));
-        await persisted.hydrateConversations();
+        vi.useFakeTimers();
+        const load = vi.spyOn(appStateApi, 'getAllConversations').mockRejectedValue(new Error('down'));
+        const hydrating = persisted.hydrateConversations();
+        await vi.runAllTimersAsync(); // every retry fails too
+        await hydrating;
+        vi.useRealTimers();
         const payload = { service: 'hinatazaka46', path: PATH, message_id: 10 };
         expect(markVoiceHeard(payload)).toBeNull();
         expect(clientLog).toHaveBeenLastCalledWith('call_popup_heard_ignored', { reason: 'not_ready' });
         expect(setConv).not.toHaveBeenCalled();
 
-        load.mockResolvedValueOnce({});
+        load.mockResolvedValue({});
         await persisted.hydrateConversations();
         expect(markVoiceHeard(payload)).toBe(true);
         expect(clientLog).toHaveBeenLastCalledWith('call_popup_heard_applied', expect.objectContaining({ changed: true }));

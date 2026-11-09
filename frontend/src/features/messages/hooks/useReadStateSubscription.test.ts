@@ -15,6 +15,7 @@ describe('useReadStateSubscription', () => {
     let row: Record<string, unknown>;
     beforeEach(() => {
         row = {};
+        vi.spyOn(persisted, 'conversationsReady').mockReturnValue(true);
         vi.spyOn(persisted, 'getConv').mockImplementation(((k: string, fb: unknown) => row[k] ?? fb) as never);
         vi.spyOn(persisted, 'setConv').mockImplementation(((k: string, v: unknown) => { row[k] = v; }) as never);
         vi.stubGlobal('fetch', vi.fn().mockResolvedValue({ ok: true }));
