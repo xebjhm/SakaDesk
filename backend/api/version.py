@@ -326,10 +326,12 @@ async def _download_and_prepare_upgrade(version: str):
         _upgrade_state["state"] = "ready"
         _upgrade_state["progress"] = 100.0
 
-        logger.info(f"Upgrade ready: {installer_path}")
+        # File name only: the full path holds the Windows account name.
+        logger.info("Upgrade ready", file_name=installer_path.name)
 
     except Exception as e:
-        logger.error(f"Upgrade preparation failed: {e}")
+        # Error type only: an OSError message carries the (user) file path.
+        logger.error("Upgrade preparation failed", error_type=type(e).__name__)
         _upgrade_state["state"] = "error"
         _upgrade_state["error"] = str(e)
 

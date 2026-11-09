@@ -220,11 +220,15 @@ async def download_installer(
             return None
 
         logger.info("SHA-256 verified OK")
-        logger.info(f"Installer downloaded to: {installer_path}")
+        # File name only: the full path holds the Windows account name.
+        logger.info("Installer downloaded", file_name=installer_path.name)
         return installer_path
 
     except (httpx.HTTPError, httpx.StreamError, OSError) as e:
-        logger.error("Error downloading installer", error=str(e), url=info.url)
+        # Error type only: an OSError message carries the (user) file path.
+        logger.error(
+            "Error downloading installer", error_type=type(e).__name__, url=info.url
+        )
         # Clean up partial download
         if installer_path.exists():
             installer_path.unlink()
@@ -257,7 +261,7 @@ def launch_installer(installer_path: Path) -> bool:
         return False
 
     if not installer_path.exists():
-        logger.error(f"Installer not found: {installer_path}")
+        logger.error("Installer not found", file_name=installer_path.name)
         return False
 
     try:
@@ -275,11 +279,12 @@ def launch_installer(installer_path: Path) -> bool:
             close_fds=True,
         )
 
-        logger.info("Installer launched successfully", log_path=str(log_path))
+        # File name only: the logs dir path holds the Windows account name.
+        logger.info("Installer launched successfully", log_file=log_path.name)
         return True
 
     except Exception as e:
-        logger.error(f"Failed to launch installer: {e}")
+        logger.error("Failed to launch installer", error_type=type(e).__name__)
         return False
 
 
@@ -293,7 +298,9 @@ def cleanup_upgrade_files():
             shutil.rmtree(upgrade_dir)
             logger.info("Cleaned up upgrade directory")
         except Exception as e:
-            logger.warning(f"Failed to clean up upgrade directory: {e}")
+            logger.warning(
+                "Failed to clean up upgrade directory", error_type=type(e).__name__
+            )
 
 
 def is_upgrade_supported() -> bool:
