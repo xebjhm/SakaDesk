@@ -34,10 +34,15 @@ A file that vanished between path validation and ``stat``/``open`` gets
 ``404``. ``HEAD`` is not handled (a body is always sent); the media routes are
 GET-only.
 
-Every response logs one ``media_request`` breadcrumb (status, range header
-capped to ``LOGGED_RANGE_MAX`` characters, whether it was ignored or capped,
-the ``If-Range`` outcome, bytes sent, size, elapsed ms, media kind and
-``client_disconnected``) — never the path or file name.
+Each response is counted, and every ``MEDIA_SUMMARY_EVERY`` requests an info
+``media_requests_summary`` line reports the counts per media kind and status.
+The detailed ``media_request`` breadcrumb (status, range header capped to
+``LOGGED_RANGE_MAX`` characters, whether it was ignored or capped, the
+``If-Range`` outcome, bytes sent, size, elapsed ms, media kind,
+``client_disconnected`` and ``truncated``) is written at info on every
+occurrence for a client disconnect, a truncated body or a status >= 400, and
+otherwise only at debug for 1 in ``MEDIA_LOG_SAMPLE_EVERY`` requests. Neither
+log carries the path or file name.
 """
 
 from __future__ import annotations
@@ -67,6 +72,15 @@ CHUNK_SIZE = 64 * 1024
 
 LOGGED_RANGE_MAX = 64
 """Longest raw ``Range`` header value written to the ``media_request`` log."""
+
+MEDIA_LOG_SAMPLE_EVERY = 25
+"""Routine (successful, connected) requests: one in this many is logged at debug."""
+
+MEDIA_SUMMARY_EVERY = 500
+"""A ``media_requests_summary`` info line is emitted every this many requests."""
+
+_request_count = 0
+_summary_counts: dict[tuple[str, int], int] = {}
 
 _RANGE_SPEC = re.compile(r"^(\d*)-(\d*)$")
 
@@ -356,24 +370,48 @@ class MediaFileResponse(Response):
                     raise
 
     def _log(self, stats: _ServeStats, started: float) -> None:
-        logger.debug(
-            "media_request",
-            status=stats.status,
-            range=(
-                None
-                if stats.range_header is None
-                else stats.range_header[:LOGGED_RANGE_MAX]
-            ),
-            range_ignored=stats.range_ignored,
-            if_range_matched=stats.if_range_matched,
-            capped=stats.capped,
-            bytes_sent=stats.bytes_sent,
-            size=stats.size,
-            media_kind=self.media_kind,
-            elapsed_ms=round((time.perf_counter() - started) * 1000, 1),
-            client_disconnected=stats.client_disconnected,
-            truncated=stats.truncated,
-        )
+        global _request_count
+        _request_count += 1
+        key = (self.media_kind, stats.status)
+        _summary_counts[key] = _summary_counts.get(key, 0) + 1
+
+        notable = stats.client_disconnected or stats.truncated or stats.status >= 400
+        if notable:
+            emit = logger.info
+        elif _request_count % MEDIA_LOG_SAMPLE_EVERY == 0:
+            emit = logger.debug
+        else:
+            emit = None
+        if emit is not None:
+            emit(
+                "media_request",
+                status=stats.status,
+                range=(
+                    None
+                    if stats.range_header is None
+                    else stats.range_header[:LOGGED_RANGE_MAX]
+                ),
+                range_ignored=stats.range_ignored,
+                if_range_matched=stats.if_range_matched,
+                capped=stats.capped,
+                bytes_sent=stats.bytes_sent,
+                size=stats.size,
+                media_kind=self.media_kind,
+                elapsed_ms=round((time.perf_counter() - started) * 1000, 1),
+                client_disconnected=stats.client_disconnected,
+                truncated=stats.truncated,
+            )
+
+        if _request_count % MEDIA_SUMMARY_EVERY == 0:
+            logger.info(
+                "media_requests_summary",
+                requests=MEDIA_SUMMARY_EVERY,
+                counts=[
+                    {"media_kind": kind, "status": status, "count": n}
+                    for (kind, status), n in sorted(_summary_counts.items())
+                ],
+            )
+            _summary_counts.clear()
 
 
 @dataclass

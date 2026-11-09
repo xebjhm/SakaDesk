@@ -33,6 +33,15 @@ client = TestClient(app)
 MiB = 1024 * 1024
 
 
+@pytest.fixture(autouse=True)
+def _log_every_request(monkeypatch):
+    """Existing tests inspect each request's breadcrumb: sample all, fresh counters."""
+    monkeypatch.setattr(media_range, "MEDIA_LOG_SAMPLE_EVERY", 1)
+    monkeypatch.setattr(media_range, "MEDIA_SUMMARY_EVERY", 10**9)
+    monkeypatch.setattr(media_range, "_request_count", 0)
+    monkeypatch.setattr(media_range, "_summary_counts", {})
+
+
 # ---------------------------------------------------------------------------
 # resolve_range — pure RFC 9110 parsing
 # ---------------------------------------------------------------------------
@@ -583,3 +592,64 @@ async def test_disconnect_through_real_app_stops_reading(tmp_path):
     assert len(entries) == 1
     assert entries[0]["client_disconnected"] is True
     assert entries[0]["bytes_sent"] < MEDIA_RANGE_CAP
+
+
+class TestMediaLogSampling:
+    """Per-request logs are sampled at debug; summaries and problems are not."""
+
+    def test_routine_requests_are_sampled_at_debug(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(media_range, "MEDIA_LOG_SAMPLE_EVERY", 5)
+        video = _make_file(tmp_path, "clip.mp4", 10)
+        with capture_logs() as logs:
+            for _ in range(10):
+                assert _get(video, {"Range": "bytes=0-"}).status_code == 206
+        lines = [e for e in logs if e["event"] == "media_request"]
+        assert len(lines) == 2
+        assert {e["log_level"] for e in lines} == {"debug"}
+
+    def test_summary_every_n_requests_with_counts(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(media_range, "MEDIA_LOG_SAMPLE_EVERY", 10**9)
+        monkeypatch.setattr(media_range, "MEDIA_SUMMARY_EVERY", 4)
+        video = _make_file(tmp_path, "clip.mp4", 10)
+        with capture_logs() as logs:
+            for _ in range(3):
+                _get(video, {"Range": "bytes=0-"})
+            _get(video, {"Range": "bytes=10-"})  # 416
+        (summary,) = [e for e in logs if e["event"] == "media_requests_summary"]
+        assert summary["log_level"] == "info"
+        assert summary["requests"] == 4
+        assert summary["counts"] == [
+            {"media_kind": "video", "status": 206, "count": 3},
+            {"media_kind": "video", "status": 416, "count": 1},
+        ]
+        assert media_range._summary_counts == {}
+
+    def test_errors_always_logged_at_info(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(media_range, "MEDIA_LOG_SAMPLE_EVERY", 10**9)
+        video = _make_file(tmp_path, "clip.mp4", 10)
+        with capture_logs() as logs:
+            for _ in range(3):
+                _get(video, {"Range": "bytes=10-"})
+        lines = [e for e in logs if e["event"] == "media_request"]
+        assert len(lines) == 3
+        assert {(e["status"], e["log_level"]) for e in lines} == {(416, "info")}
+
+    def test_disconnect_always_logged_at_info(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(media_range, "MEDIA_LOG_SAMPLE_EVERY", 10**9)
+        stats = media_range._ServeStats(range_header=None)
+        stats.client_disconnected = True
+        resp = MediaFileResponse(_make_file(tmp_path, "clip.mp4", 10))
+        with capture_logs() as logs:
+            resp._log(stats, 0.0)
+        (e,) = [e for e in logs if e["event"] == "media_request"]
+        assert e["log_level"] == "info" and e["client_disconnected"] is True
+
+    def test_truncated_always_logged_at_info(self, tmp_path, monkeypatch):
+        monkeypatch.setattr(media_range, "MEDIA_LOG_SAMPLE_EVERY", 10**9)
+        stats = media_range._ServeStats(range_header=None)
+        stats.truncated = True
+        resp = MediaFileResponse(_make_file(tmp_path, "clip.mp4", 10))
+        with capture_logs() as logs:
+            resp._log(stats, 0.0)
+        (e,) = [e for e in logs if e["event"] == "media_request"]
+        assert e["log_level"] == "info" and e["truncated"] is True
