@@ -1,6 +1,6 @@
 """ApiNoStoreMiddleware: no-store on API JSON only, everything else untouched."""
 
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from fastapi.testclient import TestClient
 
@@ -50,6 +50,10 @@ def _build_app(tmp_path) -> FastAPI:
             headers={"Cache-Control": "private, max-age=3600"},
         )
 
+    @app.get("/api/boom")
+    async def boom():
+        raise HTTPException(status_code=409, detail="conflict")
+
     @app.get("/other.json")
     async def other():
         return {"ok": True}
@@ -94,3 +98,12 @@ def test_streaming_response_keeps_header_and_body(tmp_path):
 def test_real_app_api_json_is_no_store():
     res = TestClient(real_app).get("/api/version")
     assert res.headers["cache-control"] == "no-store"
+
+
+def test_error_json_responses_under_api_get_no_store(tmp_path):
+    client = TestClient(_build_app(tmp_path))
+    for path in ("/api/boom", "/api/does-not-exist"):
+        res = client.get(path)
+        assert res.status_code in (404, 409)
+        assert res.headers["cache-control"] == "no-store", path
+    assert client.get("/api/boom").json() == {"detail": "conflict"}

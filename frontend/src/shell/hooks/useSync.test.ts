@@ -362,30 +362,54 @@ describe('useSync', () => {
             expect(call?.[1]).toMatchObject({ cache: 'no-store' })
         })
 
-        it('a progress request that never answers times out after 4 s and ends as lost connection', async () => {
+        const completeBody = { ok: true, json: () => Promise.resolve({ state: 'complete', run_id: 5 }) }
+
+        it('a timed-out read is retried and a later answer completes the follow normally', async () => {
             vi.useFakeTimers()
-            vi.stubGlobal('fetch', hanging())
+            const fetchMock = hanging()
+            vi.stubGlobal('fetch', fetchMock)
             const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
             await act(async () => { result.current.followSync('hinatazaka46') })
-            await act(async () => { await vi.advanceTimersByTimeAsync(3999) })
-            expect(result.current.isPolling('hinatazaka46')).toBe(true)
-            await act(async () => { await vi.advanceTimersByTimeAsync(1) })
+            await act(async () => { await vi.advanceTimersByTimeAsync(4000) })
             expect(clientLog).toHaveBeenCalledWith('poll_timeout', { key: 'sync_progress_hinatazaka46', timeout_ms: 4000 })
-            expect(result.current.isPolling('hinatazaka46')).toBe(false)
-            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('error')
+            expect(clientLog).toHaveBeenCalledWith('poll_retry', { key: 'sync_progress_hinatazaka46', count: 1 })
+            expect(result.current.isPolling('hinatazaka46')).toBe(true)
+            fetchMock.mockResolvedValueOnce(completeBody as unknown as Response)
+            await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
+            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('complete')
+            expect(result.current.lastHandledRunId('hinatazaka46')).toBe(5)
+            expect(clientLog).not.toHaveBeenCalledWith('poll_gave_up', expect.anything())
         })
 
-        it('unmounting aborts the pending request without a timeout breadcrumb or state change', async () => {
+        it('gives up after MAX retries and reports lost connection', async () => {
             vi.useFakeTimers()
-            const errors = vi.spyOn(console, 'error').mockImplementation(() => {})
-            vi.stubGlobal('fetch', hanging())
+            const fetchMock = hanging()
+            vi.stubGlobal('fetch', fetchMock)
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            // 4 reads (1 + 3 retries), each 4 s timeout + 1 s spacing between.
+            await act(async () => { await vi.advanceTimersByTimeAsync(4000 + 3 * 5000) })
+            expect(fetchMock).toHaveBeenCalledTimes(4)
+            expect(clientLog).toHaveBeenCalledWith('poll_retry', { key: 'sync_progress_hinatazaka46', count: 3 })
+            expect(clientLog).toHaveBeenCalledWith('poll_gave_up', { key: 'sync_progress_hinatazaka46', count: 3 })
+            expect(result.current.isPolling('hinatazaka46')).toBe(false)
+            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('error')
+            await act(async () => { await vi.advanceTimersByTimeAsync(20000) })
+            expect(fetchMock).toHaveBeenCalledTimes(4)
+        })
+
+        it('unmounting aborts the pending request: no timeout breadcrumb, no retry, no further fetch', async () => {
+            vi.useFakeTimers()
+            const fetchMock = hanging()
+            vi.stubGlobal('fetch', fetchMock)
             const { result, unmount } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
             await act(async () => { result.current.followSync('hinatazaka46') })
+            const callsBefore = fetchMock.mock.calls.length
             unmount()
             await act(async () => { await vi.advanceTimersByTimeAsync(10000) })
+            expect(fetchMock).toHaveBeenCalledTimes(callsBefore)
             expect(clientLog).not.toHaveBeenCalledWith('poll_timeout', expect.anything())
-            expect(errors).not.toHaveBeenCalled()
-            errors.mockRestore()
+            expect(clientLog).not.toHaveBeenCalledWith('poll_retry', expect.anything())
         })
     })
 

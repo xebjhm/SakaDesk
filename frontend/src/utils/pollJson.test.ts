@@ -111,4 +111,47 @@ describe('pollJson', () => {
         expect((await pollJson('t_bad', '/api/x')).status).toBe('failed');
         expect(clientLog).toHaveBeenCalledWith('poll_failed', { key: 't_bad', error_type: 'syntaxerror' });
     });
+
+    it('replace aborts the pending request, resolves the old caller aborted (no log) and starts a new one', async () => {
+        const fetchMock = vi.fn()
+            .mockImplementationOnce((_u: string, init: FetchInit) => new Promise<Response>((_r, reject) => {
+                init.signal.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+            }))
+            .mockResolvedValueOnce(json({ n: 2 }));
+        vi.stubGlobal('fetch', fetchMock);
+        const first = pollJson('t_replace', '/api/x');
+        const second = pollJson('t_replace', '/api/x', { replace: true });
+        expect(await first).toEqual({ status: 'aborted' });
+        expect(await second).toEqual({ status: 'ok', data: { n: 2 } });
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        await vi.advanceTimersByTimeAsync(POLL_TIMEOUT_MS * 2);
+        expect(clientLog).not.toHaveBeenCalled();
+    });
+
+    it('a late answer from a replaced request is reported aborted, never ok', async () => {
+        let resolveFirst!: (r: Response) => void;
+        const fetchMock = vi.fn()
+            .mockImplementationOnce(() => new Promise<Response>(r => { resolveFirst = r; })) // ignores abort
+            .mockResolvedValueOnce(json({ n: 2 }));
+        vi.stubGlobal('fetch', fetchMock);
+        const first = pollJson('t_late', '/api/x');
+        const second = pollJson('t_late', '/api/x', { replace: true });
+        resolveFirst(json({ n: 1 }));
+        expect(await first).toEqual({ status: 'aborted' });
+        expect(await second).toEqual({ status: 'ok', data: { n: 2 } });
+    });
+
+    it('frees the key synchronously when the caller aborts, so a remount starts at once', async () => {
+        const fetchMock = hangingFetch();
+        vi.stubGlobal('fetch', fetchMock);
+        const caller = new AbortController();
+        const first = pollJson('t_strict', '/api/x', { signal: caller.signal });
+        caller.abort();
+        const next = pollJson('t_strict', '/api/x'); // immediately, before first settles
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(clientLog).not.toHaveBeenCalled(); // no poll_skipped
+        expect(await first).toEqual({ status: 'aborted' });
+        await vi.advanceTimersByTimeAsync(POLL_TIMEOUT_MS);
+        expect((await next).status).toBe('timeout');
+    });
 });

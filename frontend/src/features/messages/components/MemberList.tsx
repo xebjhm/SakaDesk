@@ -104,26 +104,41 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
 
     const unmountSignal = useUnmountSignal();
 
-    const loadGroups = async () => {
-        const url = activeService
-            ? `/api/content/groups?service=${encodeURIComponent(activeService)}`
+    // The service the list currently shows: a late response for another one is dropped.
+    const activeServiceRef = useRef(activeService);
+    activeServiceRef.current = activeService;
+    const serviceKey = (base: string, service: string | undefined) => `${base}_${service ?? 'all'}`;
+
+    /**
+     * `replace`: event-driven load (mount, service switch, post-sync refresh) that
+     * supersedes a request still in flight; interval ticks skip while one is pending.
+     */
+    const loadGroups = async (replace = false) => {
+        const service = activeService;
+        const url = service
+            ? `/api/content/groups?service=${encodeURIComponent(service)}`
             : '/api/content/groups';
-        const result = await pollJson<GroupsResponse>('groups', url, { signal: unmountSignal() });
+        const result = await pollJson<GroupsResponse>(serviceKey('groups', service), url, {
+            signal: unmountSignal(),
+            replace,
+        });
         // Skipped: a request is already in flight and will update the state.
-        // Aborted: unmounted, no state updates.
+        // Aborted: unmounted or superseded; the newer request sets the state.
         if (result.status === 'skipped' || result.status === 'aborted') return;
+        if (service !== activeServiceRef.current) return; // switched service meanwhile
         if (result.status === 'ok') {
             const data = result.data;
             // Support both old format (array) and new format (object with groups + last_sync)
             const groupList = Array.isArray(data) ? data : data.groups;
             setGroups(groupList);
             if (!Array.isArray(data) && data.last_sync) setLastSyncMap(data.last_sync);
-            checkUnread(groupList);
+            checkUnread(groupList, replace);
         }
         setLoading(false);
     };
 
-    const checkUnread = async (groupList: GroupInfo[]) => {
+    const checkUnread = async (groupList: GroupInfo[], replace = false) => {
+        const service = activeService;
         // Build a map of path -> full read state from localStorage
         // Read state includes both lastReadId AND revealedIds for accurate counting
         const readStates: Record<string, { lastReadId: number; revealedIds: number[] }> = {};
@@ -151,8 +166,9 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             const url = activeService
                 ? `/api/content/unread_counts?service=${encodeURIComponent(activeService)}`
                 : '/api/content/unread_counts';
-            const result = await pollJson<Record<string, number>>('unread_counts', url, {
+            const result = await pollJson<Record<string, number>>(serviceKey('unread_counts', service), url, {
                 signal: unmountSignal(),
+                replace,
                 init: {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -162,6 +178,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             // Skipped / aborted / failed: keep the last known counts (the failure
             // breadcrumb is logged by pollJson); the next poll tick retries.
             if (result.status !== 'ok') return;
+            if (service !== activeServiceRef.current) return; // switched service meanwhile
             const backendCounts = result.data;
 
             // Key unread by unique conversation PATH, not by group id: talk-room
@@ -185,16 +202,20 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         }
     };
 
-    useVisiblePolling(loadGroups, UI_CONSTANTS.polling.sidebarMs, [activeService]);
+    useVisiblePolling(
+        trigger => { void loadGroups(trigger === 'immediate'); },
+        UI_CONSTANTS.polling.sidebarMs,
+        [activeService],
+    );
 
     useEffect(() => {
         if (isSyncing === false) {
-            loadGroups();
+            void loadGroups(true);
         }
     }, [isSyncing]);
 
     useEffect(() => {
-        if (groups.length > 0) checkUnread(groups);
+        if (groups.length > 0) checkUnread(groups, true);
     }, [selectedGroupDir, readStateVersion]);
 
     // The backend is the single source of truth for group-vs-member

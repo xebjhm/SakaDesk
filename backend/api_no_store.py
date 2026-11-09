@@ -11,10 +11,11 @@ headers. Implemented as pure ASGI (not ``BaseHTTPMiddleware``) so streaming
 responses are never buffered.
 """
 
+from starlette.datastructures import MutableHeaders
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 _API_PREFIX = "/api/"
-_JSON_MEDIA_TYPE = b"application/json"
+_JSON_MEDIA_TYPE = "application/json"
 
 
 class ApiNoStoreMiddleware:
@@ -30,24 +31,14 @@ class ApiNoStoreMiddleware:
 
         async def send_with_header(message: Message) -> None:
             if message["type"] == "http.response.start":
-                headers = message.get("headers", [])
-                names = {name.lower() for name, _ in headers}
-                content_type = next(
-                    (
-                        value
-                        for name, value in headers
-                        if name.lower() == b"content-type"
-                    ),
-                    b"",
-                )
-                is_json = (
-                    content_type.lower().split(b";")[0].strip() == _JSON_MEDIA_TYPE
-                )
-                if is_json and b"cache-control" not in names:
-                    message = {
-                        **message,
-                        "headers": [*headers, (b"cache-control", b"no-store")],
-                    }
+                message.setdefault("headers", [])
+                headers = MutableHeaders(scope=message)
+                media_type = headers.get("content-type", "").split(";")[0].strip()
+                if (
+                    media_type.lower() == _JSON_MEDIA_TYPE
+                    and "cache-control" not in headers
+                ):
+                    headers["Cache-Control"] = "no-store"
             await send(message)
 
         await self.app(scope, receive, send_with_header)

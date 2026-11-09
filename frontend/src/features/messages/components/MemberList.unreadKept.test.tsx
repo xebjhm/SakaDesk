@@ -47,7 +47,7 @@ describe('MemberList unread badge — poll failure', () => {
         // the failure has been logged.
         await waitFor(() => expect(calls).toBeGreaterThanOrEqual(3));
         await waitFor(() =>
-            expect(clientLog).toHaveBeenCalledWith('poll_failed', { key: 'unread_counts', error_code: 500 }),
+            expect(clientLog).toHaveBeenCalledWith('poll_failed', { key: 'unread_counts_hinatazaka46', error_code: 500 }),
         );
         expect(screen.getByText('3')).toBeInTheDocument();
     });

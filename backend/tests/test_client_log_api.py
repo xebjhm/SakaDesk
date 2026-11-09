@@ -750,6 +750,8 @@ def test_media_playback_rejects_urls_and_unknown_keys(fields):
         ("poll_skipped", {"key": "groups", "count": 3}, "info"),
         ("poll_failed", {"key": "groups", "error_type": "typeerror"}, "warning"),
         ("poll_failed", {"key": "groups", "error_code": 500}, "warning"),
+        ("poll_retry", {"key": "sync_progress_hinatazaka46", "count": 1}, "info"),
+        ("poll_gave_up", {"key": "sync_progress_hinatazaka46", "count": 3}, "warning"),
     ],
 )
 def test_poll_breadcrumbs_are_accepted(event, fields, level):

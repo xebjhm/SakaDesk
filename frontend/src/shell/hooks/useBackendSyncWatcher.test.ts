@@ -100,8 +100,8 @@ describe('useBackendSyncWatcher', () => {
         it('skips interval ticks that land while a check is pending and reports them', async () => {
             const { unmount } = mount();
             await flush();
-            // Make the pending request outlive the 5 s tick by hiding then showing.
-            setVisibility('visible'); // visibilitychange triggers an extra, skipped check
+            // Becoming visible triggers an extra check while the first is pending: skipped.
+            setVisibility('visible');
             await flush();
             expect(fetchMock).toHaveBeenCalledTimes(1);
             await tick(4000);

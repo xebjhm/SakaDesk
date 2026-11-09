@@ -17,7 +17,8 @@ export type ClientLogEvent =
     | 'letter_viewer' | 'letter_jump' | 'display_density_change'
     | 'favorite_video_error' | 'favorite_video_lazy_unsupported' | 'diagnostics_disk_usage' | 'calendar_picker'
     | 'media_playback'
-    | 'poll_timeout' | 'poll_skipped' | 'poll_failed';
+    | 'poll_timeout' | 'poll_skipped' | 'poll_failed'
+    | 'poll_retry' | 'poll_gave_up';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'

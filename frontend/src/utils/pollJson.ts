@@ -4,9 +4,11 @@
  * - `cache: 'no-store'`: concurrent requests to one cacheable URL queue behind
  *   the in-flight one in Chromium's HTTP cache lock (up to ~20 s).
  * - Never overlaps: a call whose `key` still has a request pending is skipped
- *   (not queued). Skips are counted and reported with the key's next completion.
+ *   (not queued) unless it passes `replace`. Skips are counted and reported with
+ *   the key's next completion.
  * - Aborts after `timeoutMs` and logs `poll_timeout`; an abort caused by the
- *   caller's `signal` (unmount) resolves `aborted` and logs nothing.
+ *   caller's `signal` (unmount) resolves `aborted` and logs nothing. The key is
+ *   freed synchronously so a remount (StrictMode) or `replace` starts at once.
  *
  * The result is a value, never a throw, so callers decide what each outcome
  * means for their own state.
@@ -31,13 +33,25 @@ export interface PollOptions {
     signal?: AbortSignal;
     /** Extra fetch options (method, headers, body). `cache` and `signal` are fixed. */
     init?: Omit<RequestInit, 'cache' | 'signal'>;
+    /**
+     * Latest wins: abort the request still pending for this key and start a new
+     * one. The superseded caller resolves `aborted` (no breadcrumb). Use for
+     * event-driven loads; interval ticks keep the default skip-while-pending.
+     */
+    replace?: boolean;
 }
 
-const pending = new Set<string>();
+interface Inflight {
+    controller: AbortController;
+    /** Aborted by the caller's signal or superseded by a `replace` call: not a timeout, not a failure. */
+    cancelled: boolean;
+}
+
+const inflight = new Map<string, Inflight>();
 const skippedCount = new Map<string, number>();
 
 /** Breadcrumb field values must match [a-z0-9_]{1,40}. */
-function logKey(key: string): string {
+export function pollLogKey(key: string): string {
     return key.toLowerCase().replace(/[^a-z0-9_]/g, '_').slice(0, 40);
 }
 
@@ -50,43 +64,57 @@ function reportSkips(key: string): void {
     const count = skippedCount.get(key);
     if (!count) return;
     skippedCount.delete(key);
-    clientLog('poll_skipped', { key: logKey(key), count });
+    clientLog('poll_skipped', { key: pollLogKey(key), count });
+}
+
+/** Abort a request and free its key at once (not when the rejection arrives). */
+function cancel(key: string, entry: Inflight): void {
+    entry.cancelled = true;
+    entry.controller.abort();
+    if (inflight.get(key) === entry) inflight.delete(key);
 }
 
 export async function pollJson<T>(key: string, url: string, options: PollOptions = {}): Promise<PollResult<T>> {
-    const { timeoutMs = POLL_TIMEOUT_MS, signal, init } = options;
+    const { timeoutMs = POLL_TIMEOUT_MS, signal, init, replace = false } = options;
     if (signal?.aborted) return { status: 'aborted' };
-    if (pending.has(key)) {
-        skippedCount.set(key, (skippedCount.get(key) ?? 0) + 1);
-        return { status: 'skipped' };
+    const current = inflight.get(key);
+    if (current) {
+        if (!replace) {
+            skippedCount.set(key, (skippedCount.get(key) ?? 0) + 1);
+            return { status: 'skipped' };
+        }
+        cancel(key, current); // latest wins: the superseded caller resolves `aborted`
     }
-    pending.add(key);
 
-    const controller = new AbortController();
+    const entry: Inflight = { controller: new AbortController(), cancelled: false };
+    inflight.set(key, entry);
     let timedOut = false;
-    const timer = setTimeout(() => { timedOut = true; controller.abort(); }, timeoutMs);
-    const onCallerAbort = () => controller.abort();
+    const timer = setTimeout(() => { timedOut = true; entry.controller.abort(); }, timeoutMs);
+    const onCallerAbort = () => cancel(key, entry);
     signal?.addEventListener('abort', onCallerAbort);
 
     try {
-        const res = await fetch(url, { ...init, cache: 'no-store', signal: controller.signal });
+        const res = await fetch(url, { ...init, cache: 'no-store', signal: entry.controller.signal });
+        if (entry.cancelled) return { status: 'aborted' };
         if (!res.ok) {
-            clientLog('poll_failed', { key: logKey(key), error_code: res.status });
+            clientLog('poll_failed', { key: pollLogKey(key), error_code: res.status });
             return { status: 'rejected', httpStatus: res.status };
         }
-        return { status: 'ok', data: (await res.json()) as T };
+        const data = (await res.json()) as T;
+        if (entry.cancelled) return { status: 'aborted' };
+        return { status: 'ok', data };
     } catch (error) {
+        if (entry.cancelled) return { status: 'aborted' };
         if (timedOut) {
-            clientLog('poll_timeout', { key: logKey(key), timeout_ms: timeoutMs });
+            clientLog('poll_timeout', { key: pollLogKey(key), timeout_ms: timeoutMs });
             return { status: 'timeout' };
         }
-        if (signal?.aborted) return { status: 'aborted' };
-        clientLog('poll_failed', { key: logKey(key), error_type: errorType(error) });
+        clientLog('poll_failed', { key: pollLogKey(key), error_type: errorType(error) });
         return { status: 'failed', error };
     } finally {
         clearTimeout(timer);
         signal?.removeEventListener('abort', onCallerAbort);
-        pending.delete(key);
+        if (inflight.get(key) === entry) inflight.delete(key);
         reportSkips(key);
     }
 }
