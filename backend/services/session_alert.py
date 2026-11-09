@@ -3,11 +3,17 @@
 ``report`` is called after a renewal or sync failed: ``expired`` (the server
 says the session is gone, ``SessionExpiredError`` / no cookies) marks at once;
 ``refresh_failed`` (``RefreshFailedError``: every refresh method failed, which
-also happens briefly offline) marks after ``REFRESH_FAILED_STRIKES`` in a row.
+also happens while offline) marks after ``REFRESH_FAILED_STRIKES`` in a row.
 Marking sends one Windows toast per expiry (when notifications are on), turns
 the tray badge on and refreshes the tray tooltip (which lists marked services).
-``clear`` runs after a successful login. State is in memory for this app run.
-Logs ids and reasons only.
+
+The kind of each mark is kept. An ``expired`` mark is sticky: no renewal is
+tried until a login or logout calls ``clear``. A ``refresh_failed`` mark still
+allows one renewal attempt every ``MARKED_RETRY_SECONDS``, so a session that was
+only unreachable (offline) recovers by itself: the caller calls ``clear`` when
+that retry (or a completed sync) proves the session alive, which removes the
+badge and the tooltip line. State is in memory for this app run. Logs ids,
+kinds and reasons only.
 """
 
 from __future__ import annotations
@@ -27,12 +33,17 @@ from backend.services.tray_tooltip import schedule_refresh
 
 logger = structlog.get_logger(__name__)
 
+AlertKind = Literal["expired", "refresh_failed"]
+
 RENEW_RETRY_SECONDS = 60.0
 REFRESH_FAILED_STRIKES = 2
+MARKED_RETRY_SECONDS = 600.0
 
-_marked: set[str] = set()
+_marked: dict[str, AlertKind] = {}
 _strikes: dict[str, int] = {}
 _cooldown_until: dict[str, float] = {}
+# Earliest retry of a ``refresh_failed`` mark (monotonic seconds).
+_marked_retry_at: dict[str, float] = {}
 
 
 async def _load_settings() -> dict[str, Any]:
@@ -49,36 +60,71 @@ def needs_login_services() -> list[str]:
     return sorted(_marked)
 
 
-def may_renew(service: str, now: float | None = None) -> bool:
-    """False while ``service`` is marked or inside its retry cooldown."""
-    if service in _marked:
-        return False
+def mark_kind(service: str) -> AlertKind | None:
+    """The kind of ``service``'s mark, or ``None`` when it is not marked."""
+    return _marked.get(service)
+
+
+def renew_block_reason(service: str, now: float | None = None) -> str | None:
+    """Why a renewal of ``service`` must not run now, or ``None`` when it may.
+
+    ``marked_expired`` (sticky until login), ``marked_retry_wait`` (a
+    ``refresh_failed`` mark inside ``MARKED_RETRY_SECONDS``) or ``cooldown``
+    (inside ``RENEW_RETRY_SECONDS`` after a failure).
+    """
     now = time.monotonic() if now is None else now
-    return now >= _cooldown_until.get(service, 0.0)
+    kind = _marked.get(service)
+    if kind == "expired":
+        return "marked_expired"
+    if kind == "refresh_failed" and now < _marked_retry_at.get(service, 0.0):
+        return "marked_retry_wait"
+    if now < _cooldown_until.get(service, 0.0):
+        return "cooldown"
+    return None
+
+
+def may_renew(service: str, now: float | None = None) -> bool:
+    """True when ``renew_block_reason`` finds nothing blocking a renewal."""
+    return renew_block_reason(service, now) is None
 
 
 def note_renew_failure(service: str, now: float | None = None) -> None:
-    """Start the ``RENEW_RETRY_SECONDS`` cooldown for ``service``."""
+    """Start the ``RENEW_RETRY_SECONDS`` cooldown (and, when marked, the slow retry wait)."""
     now = time.monotonic() if now is None else now
     _cooldown_until[service] = now + RENEW_RETRY_SECONDS
+    if _marked.get(service) == "refresh_failed":
+        _marked_retry_at[service] = now + MARKED_RETRY_SECONDS
+        logger.info("session_alert", action="marked_retry_scheduled", service=service)
     logger.info("session_alert", action="cooldown_started", service=service)
 
 
 def report_success(service: str) -> None:
-    """A renewal or sync worked: reset strikes and cooldown (a mark stays until login)."""
+    """A renewal or sync worked: reset strikes and cooldown (``clear`` removes a mark)."""
     _strikes.pop(service, None)
     _cooldown_until.pop(service, None)
 
 
-async def report(service: str, kind: Literal["expired", "refresh_failed"]) -> bool:
-    """Record a failure; return whether ``service`` is (now) marked as needing a login."""
-    if service in _marked:
-        logger.info(
-            "session_alert_skipped",
-            service=service,
-            reason="already_alerted",
-            kind=kind,
-        )
+async def report(service: str, kind: AlertKind, now: float | None = None) -> bool:
+    """Record a failure; return whether ``service`` is (now) marked as needing a login.
+
+    A second report on a marked service never toasts again. An ``expired``
+    report upgrades a ``refresh_failed`` mark to the sticky kind.
+    """
+    current = _marked.get(service)
+    if current is not None:
+        if kind == "expired" and current == "refresh_failed":
+            _marked[service] = "expired"
+            _marked_retry_at.pop(service, None)
+            logger.info(
+                "session_alert", action="mark_upgraded", service=service, kind=kind
+            )
+        else:
+            logger.info(
+                "session_alert_skipped",
+                service=service,
+                reason="already_alerted",
+                kind=kind,
+            )
         return True
     if kind == "refresh_failed":
         _strikes[service] = _strikes.get(service, 0) + 1
@@ -90,7 +136,9 @@ async def report(service: str, kind: Literal["expired", "refresh_failed"]) -> bo
                 kind=kind,
             )
             return False
-    _marked.add(service)
+        now = time.monotonic() if now is None else now
+        _marked_retry_at[service] = now + MARKED_RETRY_SECONDS
+    _marked[service] = kind
     _strikes.pop(service, None)
     logger.info("session_alert", action="marked", service=service, kind=kind)
     desktop_bridge.set_tray_alert(True)
@@ -123,13 +171,17 @@ async def _toast(service: str) -> None:
 
 
 async def clear(service: str) -> None:
-    """A login succeeded: forget the mark, strikes and cooldown."""
-    was_marked = service in _marked
-    _marked.discard(service)
+    """The session is alive again (login, logout, or a renewal / sync that worked).
+
+    Forgets the mark, strikes, cooldown and retry wait; when a mark was removed
+    the tray badge and tooltip are refreshed.
+    """
+    kind = _marked.pop(service, None)
+    _marked_retry_at.pop(service, None)
     report_success(service)
-    if not was_marked:
+    if kind is None:
         return
-    logger.info("session_alert", action="cleared", service=service)
+    logger.info("session_alert", action="cleared", service=service, kind=kind)
     desktop_bridge.set_tray_alert(bool(_marked))
     schedule_refresh()
 
@@ -138,3 +190,4 @@ def _reset_for_tests() -> None:
     _marked.clear()
     _strikes.clear()
     _cooldown_until.clear()
+    _marked_retry_at.clear()

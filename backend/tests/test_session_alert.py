@@ -121,3 +121,64 @@ async def test_clear_unmarked_is_quiet_and_resets_cooldown():
         await session_alert.clear("yodel")
         tray.assert_not_called()
     assert session_alert.may_renew("yodel", now=1.0)
+
+
+@pytest.mark.asyncio
+async def test_toast_not_sent_logs_toast_failed():
+    p1, p2, p3, p4 = _patches()
+    with p1, p2 as toast, p3, p4, capture_logs() as logs:
+        toast.return_value = False
+        assert await session_alert.report("yodel", "expired") is True
+    assert any(
+        e["event"] == "session_alert" and e["action"] == "toast_failed" for e in logs
+    )
+    assert not any(e.get("action") == "toast_sent" for e in logs)
+
+
+@pytest.mark.asyncio
+async def test_refresh_failed_mark_allows_a_slow_retry():
+    p1, p2, p3, p4 = _patches()
+    with p1, p2, p3, p4:
+        await session_alert.report("yodel", "refresh_failed", now=0.0)
+        assert await session_alert.report("yodel", "refresh_failed", now=0.0)
+    assert session_alert.mark_kind("yodel") == "refresh_failed"
+    retry = session_alert.MARKED_RETRY_SECONDS
+    assert retry == 600
+    assert session_alert.renew_block_reason("yodel", now=retry - 1) == (
+        "marked_retry_wait"
+    )
+    assert session_alert.may_renew("yodel", now=retry)
+    # A failed retry waits the full slow interval again.
+    session_alert.note_renew_failure("yodel", now=retry)
+    assert not session_alert.may_renew("yodel", now=retry + 61)
+    assert session_alert.may_renew("yodel", now=2 * retry)
+
+
+@pytest.mark.asyncio
+async def test_expired_mark_is_never_retried_and_upgrades_refresh_failed():
+    p1, p2, p3, p4 = _patches()
+    with p1, p2 as toast, p3, p4, capture_logs() as logs:
+        await session_alert.report("hinatazaka46", "expired")
+        await session_alert.report("yodel", "refresh_failed", now=0.0)
+        await session_alert.report("yodel", "refresh_failed", now=0.0)
+        await session_alert.report("yodel", "expired")
+    assert toast.await_count == 2  # the upgrade does not toast again
+    for svc in ("hinatazaka46", "yodel"):
+        assert session_alert.mark_kind(svc) == "expired"
+        assert session_alert.renew_block_reason(svc, now=1e9) == "marked_expired"
+    assert any(e.get("action") == "mark_upgraded" for e in logs)
+
+
+@pytest.mark.asyncio
+async def test_clear_removes_refresh_failed_mark_and_retry_wait():
+    p1, p2, p3, p4 = _patches()
+    with p1, p2, p3 as tray, p4 as tooltip, capture_logs() as logs:
+        await session_alert.report("yodel", "refresh_failed", now=0.0)
+        await session_alert.report("yodel", "refresh_failed", now=0.0)
+        await session_alert.clear("yodel")
+    tray.assert_called_with(False)
+    assert tooltip.call_count == 2
+    assert not session_alert.needs_login("yodel")
+    assert session_alert.may_renew("yodel", now=1.0)
+    cleared = [e for e in logs if e.get("action") == "cleared"]
+    assert cleared and cleared[0]["kind"] == "refresh_failed"
