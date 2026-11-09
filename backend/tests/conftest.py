@@ -72,6 +72,20 @@ def _isolate_machine_state(tmp_path_factory: pytest.TempPathFactory):
 
 
 @pytest.fixture(autouse=True)
+def _no_memories_refresh(monkeypatch):
+    """A completed sync schedules Memories refreshes; never scrape or scan in tests."""
+    from unittest.mock import AsyncMock
+
+    monkeypatch.setattr(
+        "backend.services.sync_service.refresh_member_profiles",
+        AsyncMock(return_value=False),
+    )
+    monkeypatch.setattr(
+        "backend.services.sync_service.build_memory_index", AsyncMock(return_value=0)
+    )
+
+
+@pytest.fixture(autouse=True)
 def _reset_session_alert():
     """session_alert keeps module-level state; never leak it between tests."""
     from backend.services import session_alert

@@ -42,6 +42,8 @@ from backend.services.nickname import nickname_for
 from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
 from backend.services.chat_kind import is_member_dir
+from backend.services.memories.index import build_all as build_memory_index
+from backend.services.memories.member_profiles import refresh_member_profiles
 from backend.services.memories.subscriptions import archive_subscription_starts
 from backend.services.i18n import get_strings, resolve_ui_language
 from backend.services.quiet_state import query_quiet_state
@@ -1339,6 +1341,7 @@ class SyncService:
                 )
 
             progress.complete()
+            self._schedule_memories_refresh()
             return True
 
         except asyncio.CancelledError:
@@ -1382,6 +1385,29 @@ class SyncService:
             if self._generation == my_generation:
                 self.running = False
                 self._task = None
+
+    def _schedule_memories_refresh(self) -> None:
+        """Refresh member profiles and the memory index in the background.
+
+        Scheduled as tracked tasks so they never block or fail the sync; each
+        task logs its own failures (``background_task.failed``).
+        """
+        try:
+            track_background_task(
+                refresh_member_profiles(self._service, self.service_data_dir),
+                name="memories_member_profiles",
+            )
+            track_background_task(
+                build_memory_index(self.service_data_dir),
+                name="memories_index",
+            )
+            logger.info("memories_refresh_scheduled", service=self._service)
+        except Exception as e:
+            logger.warning(
+                "memories_refresh_schedule_failed",
+                service=self._service,
+                error_type=type(e).__name__,
+            )
 
     async def _notify_new_messages(
         self, collector: NewMessageCollector, app_settings: dict[str, Any]

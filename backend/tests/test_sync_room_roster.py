@@ -1107,3 +1107,77 @@ async def test_subscription_archive_failure_does_not_fail_sync(tmp_path):
     assert "last_sync" in saved
     (ev,) = _events(logs, "subscription_starts_failed")
     assert ev["error_type"] == "RuntimeError"
+
+
+# --- Memories refresh hooks --------------------------------------------------
+
+
+async def test_completed_sync_schedules_memories_refreshes(tmp_path):
+    m = _manager(scanned=True, extra=[])
+    profiles = AsyncMock(return_value=True)
+    index = AsyncMock(return_value=2)
+    bg: list = []
+    progress = MagicMock()
+    with (
+        patch("backend.services.sync_service.refresh_member_profiles", profiles),
+        patch("backend.services.sync_service.build_memory_index", index),
+        patch(
+            "backend.services.sync_service.track_background_task",
+            lambda coro, name=None: bg.append((name, coro)),
+        ),
+    ):
+        ok = await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=API_MEMBERS,
+            mock_manager=m,
+            progress_mock=progress,
+        )
+        assert ok is True
+        progress.complete.assert_called_once()
+        # Scheduled, not awaited inline.
+        profiles.assert_called_once()
+        index.assert_called_once()
+        profiles.assert_not_awaited()
+        index.assert_not_awaited()
+        assert {n for n, _ in bg if n.startswith("memories_")} == {
+            "memories_member_profiles",
+            "memories_index",
+        }
+        for _, coro in bg:
+            await coro
+    assert profiles.await_args.args[0] == "hinatazaka46"
+    assert index.await_args.args[0] == profiles.await_args.args[1]
+
+
+async def test_failed_memories_refresh_does_not_affect_sync(tmp_path):
+    m = _manager(scanned=True, extra=[])
+    profiles = AsyncMock(side_effect=RuntimeError("scrape boom"))
+    index = AsyncMock(side_effect=RuntimeError("index boom"))
+    with (
+        patch("backend.services.sync_service.refresh_member_profiles", profiles),
+        patch("backend.services.sync_service.build_memory_index", index),
+    ):
+        ok = await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+    assert ok is True
+    profiles.assert_awaited_once()
+    index.assert_awaited_once()
+
+
+async def test_memories_scheduling_failure_does_not_fail_sync(tmp_path):
+    m = _manager(scanned=True, extra=[])
+
+    def _boom(coro, name=None):
+        coro.close()
+        raise RuntimeError("no loop")
+
+    with patch("backend.services.sync_service.track_background_task", _boom):
+        ok = await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+    assert ok is True
