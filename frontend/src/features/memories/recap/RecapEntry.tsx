@@ -1,17 +1,18 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, Heart, Image as ImageIcon, Loader2, Sparkles } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Button, Card, EmptyState, IconButton } from '../../../design/primitives';
-import { logRecapLoad, logRecapPoster, type RecapLoadOutcome } from '../memoriesLog';
+import { logRecapLoad, logRecapOpening, logRecapPoster, type RecapLoadOutcome } from '../memoriesLog';
 import type { PollResult } from '../../../utils/pollJson';
 import { fetchMemberRecap, fetchRecapMembers, type RecapOverview, type RecapOverviewMember, type RecapPayload } from './api';
+import { offeredRecapYears, recapAvailability } from './availability';
+import { Opening } from './Opening';
 import { PosterView, type PosterSurface } from './PosterView';
 import { safeMemberId } from './posterCopy';
 import { RecapPlayer } from './RecapPlayer';
 import { SLIDE_REGISTRY } from './slideRegistry';
 
-/** The first year the recap API accepts (`MIN_YEAR` in `backend/api/memories.py`). */
-export const RECAP_MIN_YEAR = 2020;
+export { RECAP_MIN_YEAR } from './availability';
 
 interface RecapEntryProps {
     service: string;
@@ -20,6 +21,11 @@ interface RecapEntryProps {
     memberPath?: string;
     /** The fan's nickname for this service (`%%%`); a gentle word stands in when unset. */
     nickname?: string;
+    /**
+     * The years the chooser offers, ascending (`offeredRecapYears`). When unset, every year up
+     * to the newest open one (JST unlocks) is offered.
+     */
+    years?: readonly number[];
     onBack: () => void;
 }
 
@@ -109,17 +115,40 @@ const MemberRow: React.FC<MemberRowProps> = ({ member, onOpen, onPoster }) => {
     );
 };
 
-/**
- * The year recap entry: a year chooser and the members who have a recap that
- * year (with their role-title chips); choosing one plays her recap, and the
- * year poster follows its last slide (with replay and close). A member whose
- * recap has loaded in this visit also gets a poster button in the list. The
- * multi-member opening is added by a later task.
- */
-export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYear, memberPath, nickname, onBack }) => {
+/** A member without a recap this year: a quiet, forward-looking card (never a count). */
+const QuietMember: React.FC<{ member: RecapOverviewMember }> = ({ member }) => {
     const { t } = useTranslation();
-    const maxYear = Math.max(initialYear, new Date().getFullYear());
+    return (
+        <li data-testid="recap-quiet-member">
+            <Card className="flex items-center gap-3 px-4 py-3">
+                <span lang="ja" className="min-w-0 flex-1 truncate text-body text-secondary">{member.name}</span>
+                <span className="text-caption text-muted">{t('recap.entry.emptyTitle')}</span>
+            </Card>
+        </li>
+    );
+};
+
+/**
+ * The year recap entry: a year chooser over the offered years and the members who
+ * have a recap that year (with their role-title chips), then the members without
+ * one as quiet 来年のあなたへ cards. When two or more members have a recap, the
+ * multi-member opening plays first (once per year in this visit; not when a
+ * member was opened straight away). Choosing a member plays her recap, and the
+ * year poster follows its last slide (with replay and close). A member whose
+ * recap has loaded in this visit also gets a poster button in the list.
+ */
+export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYear, memberPath, nickname, years, onBack }) => {
+    const { t } = useTranslation();
+    const yearList = useMemo(() => {
+        const list = new Set(years ?? offeredRecapYears(recapAvailability(), null));
+        list.add(initialYear);
+        return [...list].sort((a, b) => a - b);
+    }, [years, initialYear]);
     const [year, setYear] = useState(initialYear);
+    const olderYear = [...yearList].reverse().find((y) => y < year);
+    const newerYear = yearList.find((y) => y > year);
+    // Years whose opening has played (or was skipped by opening a member straight away) in this visit.
+    const [openingSeen, setOpeningSeen] = useState<ReadonlySet<number>>(() => new Set(memberPath ? [initialYear] : []));
     const [attempt, setAttempt] = useState(0);
     const [overview, setOverview] = useState<Load<RecapOverview>>({ status: 'loading' });
     const [selected, setSelected] = useState<string | null>(memberPath ?? null);
@@ -144,6 +173,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
             if (res.status === 'ok') {
                 const count = res.data.members.filter((m) => m.tier !== 'none').length;
                 logRecapLoad('members', count ? 'ok' : 'empty', { count });
+                if (count === 1) logRecapOpening('skip', { reason: 'single_member', count });
                 setOverview({ status: 'ok', data: res.data });
             } else {
                 logRecapLoad('members', outcome, res.status === 'rejected' ? { error_code: res.httpStatus } : {});
@@ -224,6 +254,17 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
     }
 
     const members = overview.status === 'ok' ? overview.data.members.filter((m) => m.tier !== 'none') : [];
+    const quiet = overview.status === 'ok' && members.length > 0 ? overview.data.members.filter((m) => m.tier === 'none') : [];
+    if (overview.status === 'ok' && overview.data.year === year && members.length >= 2 && !openingSeen.has(year)) {
+        const seenYear = year;
+        return (
+            <Opening
+                key={seenYear}
+                overview={overview.data}
+                onDone={() => setOpeningSeen((prev) => new Set(prev).add(seenYear))}
+            />
+        );
+    }
     return (
         <div data-testid="recap-entry" className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6">
             <div className="flex items-center gap-3">
@@ -235,12 +276,12 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
             <header className="flex flex-col items-center gap-3 text-center">
                 <h2 className="font-display text-heading text-primary">{t('recap.entry.heading')}</h2>
                 <div className="flex items-center gap-2">
-                    <span className={year > RECAP_MIN_YEAR ? undefined : 'invisible'}>
-                        <IconButton size="sm" aria-label={t('recap.entry.olderYear')} icon={<ChevronLeft />} onClick={() => setYear((y) => Math.max(RECAP_MIN_YEAR, y - 1))} />
+                    <span className={olderYear !== undefined ? undefined : 'invisible'}>
+                        <IconButton size="sm" aria-label={t('recap.entry.olderYear')} icon={<ChevronLeft />} onClick={() => { if (olderYear !== undefined) setYear(olderYear); }} />
                     </span>
                     <span className="min-w-20 text-title tabular-nums text-primary">{t('recap.entry.year', { year })}</span>
-                    <span className={year < maxYear ? undefined : 'invisible'}>
-                        <IconButton size="sm" aria-label={t('recap.entry.newerYear')} icon={<ChevronRight />} onClick={() => setYear((y) => Math.min(maxYear, y + 1))} />
+                    <span className={newerYear !== undefined ? undefined : 'invisible'}>
+                        <IconButton size="sm" aria-label={t('recap.entry.newerYear')} icon={<ChevronRight />} onClick={() => { if (newerYear !== undefined) setYear(newerYear); }} />
                     </span>
                 </div>
                 {overview.status === 'ok' && overview.data.phase === 'partial' && members.length > 0 && (
@@ -263,6 +304,11 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                             />
                         ))}
                     </ul>
+                    {quiet.length > 0 && (
+                        <ul className="flex flex-col gap-2">
+                            {quiet.map((m) => <QuietMember key={m.member_path} member={m} />)}
+                        </ul>
+                    )}
                 </section>
             )}
         </div>

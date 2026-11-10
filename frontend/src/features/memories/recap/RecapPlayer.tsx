@@ -4,8 +4,8 @@ import { useTranslation } from '../../../i18n';
 import { Atmosphere, IconButton } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { logRecapPlay } from '../memoriesLog';
-import type { RecapPayload, RecapSlide } from './api';
-import { SLIDE_REGISTRY, type SlideRegistry } from './slideRegistry';
+import type { RecapPayload } from './api';
+import { SLIDE_REGISTRY, type PlayerSlide, type SlideRegistry } from './slideRegistry';
 
 /** Each slide shows this long before the player moves on. */
 export const AUTO_ADVANCE_MS = 7000;
@@ -98,6 +98,10 @@ export interface RecapPlayerProps {
     onEnd?: () => void;
     /** Test seam / later tasks: the slide renderers. */
     registry?: SlideRegistry;
+    /** Play these slides instead of `recap.slides` (the multi-member opening). */
+    slides?: readonly PlayerSlide[];
+    /** The stage's accessible name; defaults to the year recap's. */
+    label?: string;
 }
 
 /**
@@ -107,14 +111,16 @@ export interface RecapPlayerProps {
  * {@link AUTO_ADVANCE_MS}; a slide that waits for media advances when its
  * playback ends. The pause reaches the slide (`paused`), so media holds too, and
  * playback that ends while paused advances only on resume. The player takes
- * focus when it opens. With prefers-reduced-motion nothing animates.
+ * focus when it opens. With prefers-reduced-motion nothing animates. The
+ * multi-member opening plays through it too, with its own `slides` and `registry`.
  */
-export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClose, onEnd, registry = SLIDE_REGISTRY }) => {
+export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClose, onEnd, registry = SLIDE_REGISTRY, slides: slidesProp, label }) => {
     const { t } = useTranslation();
     const reducedMotion = useReducedMotion();
     const memberId = /^[a-z0-9_]{1,40}$/.test(recap.member.id) ? recap.member.id : undefined;
 
-    const slides = useMemo(() => recap.slides.filter((s) => registry[s.key]), [recap.slides, registry]);
+    const source: readonly PlayerSlide[] = slidesProp ?? recap.slides;
+    const slides = useMemo(() => source.filter((s) => registry[s.key]), [source, registry]);
     const [index, setIndex] = useState(0);
     const [paused, setPaused] = useState(false);
     const [ended, setEnded] = useState(false);
@@ -137,7 +143,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
     }, []);
 
     useEffect(() => {
-        for (const s of recap.slides) {
+        for (const s of source) {
             if (!registry[s.key]) logRecapPlay('skip', { key: s.key, reason: 'not_built', member_id: memberId });
         }
         logRecapPlay('open', { count: slides.length, member_id: memberId });
@@ -145,7 +151,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [recap]);
 
-    const slide: RecapSlide | undefined = slides[index];
+    const slide: PlayerSlide | undefined = slides[index];
     const entry = slide ? registry[slide.key] : undefined;
     const waits = !!entry?.waitsForMedia;
 
@@ -260,7 +266,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
                     data-slide={slide.key}
                     data-paused={paused ? 'true' : 'false'}
                     data-reduced-motion={reducedMotion ? 'true' : 'false'}
-                    aria-label={t('recap.player.label')}
+                    aria-label={label ?? t('recap.player.label')}
                     aria-roledescription="carousel"
                     className="relative aspect-[9/16] h-full max-w-full overflow-hidden rounded-xl bg-aurora shadow-sheet"
                 >

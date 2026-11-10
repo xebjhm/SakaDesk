@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Look back on your year with each member.** The new Memories page has a
+  year recap: a short story of her messages, photos and voice from the year,
+  a poster you can save, and a share image or video that blurs her photos.
+  It opens on December 1 with the year so far, and past years stay on the
+  shelf; with several members it starts with all of them together.
 - **Update from Settings.** Settings → Updates now has buttons to download
   the new version, follow its progress or cancel it, and install it, instead
   of only saying a new version is available. A version you skipped on the

@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../__tests__/mocks/server';
@@ -10,12 +10,31 @@ import { MemoriesFeature } from './MemoriesFeature';
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
+let shelf: number[] | null = [2025];
+let membersYears: number[] = [];
 beforeEach(() => {
-    server.use(http.get('/api/memories/:service/recap/:year/members', ({ params }) => HttpResponse.json({
-        year: Number(params.year), phase: 'partial', christmas_open: false, members: [],
-        opening: { star_order: [], first_message: null, oyasumi_total: null },
-    })));
+    shelf = [2025];
+    membersYears = [];
+    server.use(
+        http.get('/api/memories/:service/recap/years', () => (
+            shelf ? HttpResponse.json({ years: shelf }) : HttpResponse.json({ detail: 'x' }, { status: 500 })
+        )),
+        http.get('/api/memories/:service/recap/:year/members', ({ params }) => {
+            membersYears.push(Number(params.year));
+            return HttpResponse.json({
+                year: Number(params.year), phase: 'partial', christmas_open: false, members: [],
+                opening: { star_order: [], first_message: null, oyasumi_total: null },
+            });
+        }),
+    );
 });
+afterEach(() => { vi.useRealTimers(); });
+
+/** Freeze the clock at a JST wall-clock instant (only `Date`, so msw and user-event keep their timers). */
+const at = (iso: string) => {
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date(`${iso}+09:00`));
+};
 
 describe('Memories feature', () => {
     it('is offered for every service', () => {
@@ -43,5 +62,57 @@ describe('Memories feature', () => {
         expect(screen.getByTestId('recap-entry')).toBeInTheDocument();
         rerender(<MemoriesFeature service="sakurazaka46" />);
         expect(screen.getByTestId('memories-home')).toBeInTheDocument();
+    });
+
+    describe('year-end unlocks (JST)', () => {
+        it('before Dec 1 opens the newest past year on the shelf', async () => {
+            at('2026-11-30T23:59:00');
+            shelf = [2024, 2025];
+            render(<MemoriesFeature service="hinatazaka46" />);
+            const card = await screen.findByRole('button', { name: /Year recap/ });
+            await waitFor(() => expect(card).toHaveTextContent('2025'));
+            await userEvent.click(card);
+            await waitFor(() => expect(membersYears).toEqual([2025]));
+            // The chooser offers the shelf only: the current year is still closed.
+            expect(screen.getByRole('button', { name: 'Next year' }).parentElement).toHaveClass('invisible');
+        });
+
+        it('before Dec 1 with no past year shows a gentle "opens on 12/1" card, never a 0', async () => {
+            at('2026-11-10T12:00:00');
+            shelf = [];
+            render(<MemoriesFeature service="hinatazaka46" />);
+            expect(await screen.findByText('Opens here on December 1.')).toBeInTheDocument();
+            expect(screen.queryByRole('button', { name: /Year recap/ })).toBeNull();
+            expect(screen.getByTestId('memories-home').textContent).not.toMatch(/\b0\b/);
+        });
+
+        it('from Dec 1 opens the current year as "so far"', async () => {
+            at('2026-12-01T00:00:00');
+            shelf = [];
+            render(<MemoriesFeature service="hinatazaka46" />);
+            const card = await screen.findByRole('button', { name: /Year recap/ });
+            expect(card).toHaveTextContent('2026, so far');
+            await userEvent.click(card);
+            await waitFor(() => expect(membersYears).toEqual([2026]));
+        });
+
+        it('from Jan 1 shows the year just ended first', async () => {
+            at('2027-01-01T00:00:00');
+            shelf = [2025, 2026];
+            render(<MemoriesFeature service="hinatazaka46" />);
+            const card = await screen.findByRole('button', { name: /Year recap/ });
+            await waitFor(() => expect(card).toHaveTextContent('2026'));
+            expect(card).not.toHaveTextContent('so far');
+            await userEvent.click(card);
+            await waitFor(() => expect(membersYears).toEqual([2026]));
+        });
+
+        it('still opens the default year when the shelf fails to load', async () => {
+            at('2026-11-10T12:00:00');
+            shelf = null;
+            render(<MemoriesFeature service="hinatazaka46" />);
+            await userEvent.click(await screen.findByRole('button', { name: /Year recap/ }));
+            await waitFor(() => expect(membersYears).toEqual([2025]));
+        });
     });
 });

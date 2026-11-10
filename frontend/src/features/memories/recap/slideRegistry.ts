@@ -1,5 +1,5 @@
 import type React from 'react';
-import type { RecapSlideKey } from './api';
+import type { RecapOverview, RecapSlide } from './api';
 import type { SlideProps } from './slides/common';
 import { S01First } from './slides/S01First';
 import { S02Name } from './slides/S02Name';
@@ -23,7 +23,19 @@ export interface SlideEntry {
     waitsForMedia?: boolean;
 }
 
-export type SlideRegistry = Partial<Record<RecapSlideKey, SlideEntry>>;
+/** The multi-member opening's slides (`Opening.tsx`): each renders the members overview. */
+export type OpeningSlideKey = 'o1_stars' | 'o2_titles';
+
+export interface OpeningSlide {
+    key: OpeningSlideKey;
+    fallback: null;
+    data: RecapOverview;
+}
+
+/** Anything the story player can play: a member's recap slide or an opening slide. */
+export type PlayerSlide = RecapSlide | OpeningSlide;
+
+export type SlideRegistry = Partial<Record<PlayerSlide['key'], SlideEntry>>;
 
 /** Every recap slide. A slide with no entry is skipped (and logged) by the player. */
 export const SLIDE_REGISTRY: SlideRegistry = {

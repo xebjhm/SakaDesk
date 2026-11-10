@@ -91,6 +91,7 @@ ClientEvent = Literal[
     "recap_play",
     "recap_poster",
     "recap_share",
+    "recap_opening",
 ]
 
 ALLOWED_FIELDS = frozenset(

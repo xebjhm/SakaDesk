@@ -740,7 +740,8 @@
   },
   "memories": {
     "home": {
-      "recapCard": "年度回顾"
+      "recapCard": "年度回顾",
+      "opensOn": "12月1日，这里就会打开。"
     }
   },
   "recap": {
@@ -761,11 +762,20 @@
       "morning": "最常对你说早安的晨光",
       "nickname": "叫你名字最多次的羁绊",
       "longest": "写下最长真心话的笔迹",
-      "voice": "最常传来声音的人",
-      "night": "最常照亮你夜晚的月光",
-      "photos": "让你看见最多风景的窗",
-      "steady": "日复一日叠加的步伐",
-      "first": "在你身旁走得最久的人"
+      "voice": "把声音留给你最多的人",
+      "night": "陪你度过最多夜晚的温柔",
+      "photos": "让你看最多风景的人",
+      "steady": "每天都在的陪伴",
+      "first": "陪你走得最久的那个人"
+    },
+    "opening": {
+      "label": "年度回顾・开场",
+      "starsTitle": "我的{{year}}",
+      "starsNarration": "今年，在你天空里的她们。",
+      "firstChip": "今年的第一封",
+      "starsLabel": "今年的星星",
+      "titlesTitle": "每一个人，各自的光",
+      "titlesNarration": "接下来，一个一个慢慢看。"
     },
     "player": {
       "label": "年度回顾",

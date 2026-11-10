@@ -42,8 +42,11 @@ describe('RecapEntry', () => {
         serve();
         render(<RecapEntry service="hinatazaka46" year={2026} onBack={() => {}} />);
         const row = await screen.findByRole('button', { name: /金村 美玖/ });
-        expect(row).toHaveTextContent('名前をいちばん呼んでくれた絆');
-        expect(screen.queryByText('小坂 菜緒')).toBeNull();
+        expect(row).toHaveTextContent('いちばん名前を呼んでくれた絆');
+        // A member without a recap is a quiet 来年のあなたへ card, not a recap to open.
+        expect(screen.queryByRole('button', { name: /小坂 菜緒/ })).toBeNull();
+        expect(screen.getByTestId('recap-quiet-member')).toHaveTextContent('小坂 菜緒');
+        expect(screen.getByTestId('recap-quiet-member')).toHaveTextContent('来年のあなたへ');
         expect(loadLogs()).toContainEqual(['recap_load', expect.objectContaining({ target: 'members', outcome: 'ok', count: 1 })]);
     });
 
@@ -98,6 +101,9 @@ describe('RecapEntry', () => {
             }),
         );
         render(<RecapEntry service="hinatazaka46" year={2026} nickname="ゆき" onBack={() => {}} />);
+        // Two members with a recap: the opening plays first; Esc goes on to the list.
+        expect(await screen.findByTestId('recap-stage')).toHaveAttribute('data-slide', 'o1_stars');
+        await userEvent.keyboard('{Escape}');
         await userEvent.click(await screen.findByRole('button', { name: /金村 美玖/ }));
         await screen.findByTestId('recap-stage');
         await userEvent.keyboard('{Escape}');
@@ -196,5 +202,62 @@ describe('RecapEntry', () => {
         expect(screen.getByTestId('recap-stage')).toBeInTheDocument();
         expect(screen.queryByTestId('recap-poster')).toBeNull();
         expect(vi.mocked(clientLog).mock.calls).toContainEqual(['recap_poster', expect.objectContaining({ phase: 'skip', reason: 'no_poster' })]);
+    });
+
+    describe('multi-member opening', () => {
+        const TWO = () => overview({
+            members: [
+                { member_path: MEMBER_PATH, member_id: '58', name: '金村 美玖', tier: 'full', oshi: true, title_key: 'recap.titles.first' },
+                { member_path: PATH_B, member_id: '70', name: '正源司 陽子', tier: 'short', oshi: false, title_key: 'recap.titles.morning' },
+                { member_path: '日向坂46/messages/12 小坂 菜緒/12 小坂 菜緒', member_id: '12', name: '小坂 菜緒', tier: 'none', oshi: false, title_key: null },
+            ],
+            opening: { star_order: ['58', '70', '12'], first_message: null, oyasumi_total: 120 },
+        });
+        const openingLogs = () => vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'recap_opening');
+
+        it('plays the opening first, then shows the list, and does not replay it on returning', async () => {
+            serve({ overview: (year) => ({ ...TWO(), year }) });
+            render(<RecapEntry service="hinatazaka46" year={2026} nickname="ゆき" onBack={() => {}} />);
+            expect(await screen.findByTestId('recap-stage')).toHaveAttribute('data-slide', 'o1_stars');
+            expect(screen.getAllByTestId('opening-star')).toHaveLength(3);
+            await userEvent.keyboard('{ArrowRight}');
+            expect(screen.getByTestId('recap-stage')).toHaveAttribute('data-slide', 'o2_titles');
+            await userEvent.keyboard('{ArrowRight}');
+            await userEvent.click(await screen.findByRole('button', { name: /金村 美玖/ }));
+            expect(await screen.findByTestId('recap-stage')).toHaveAttribute('data-slide', 's01_first');
+            await userEvent.keyboard('{Escape}');
+            expect(await screen.findByRole('button', { name: /金村 美玖/ })).toBeInTheDocument();
+            expect(screen.queryByTestId('opening-star')).toBeNull();
+            expect(openingLogs().map(([, f]) => (f as { phase: string }).phase)).toEqual(['show', 'end']);
+        });
+
+        it('skips the opening for a single member with a recap', async () => {
+            serve();
+            render(<RecapEntry service="hinatazaka46" year={2026} onBack={() => {}} />);
+            expect(await screen.findByRole('button', { name: /金村 美玖/ })).toBeInTheDocument();
+            expect(screen.queryByTestId('opening-star')).toBeNull();
+            expect(openingLogs()).toEqual([['recap_opening', { phase: 'skip', reason: 'single_member', count: 1 }]]);
+        });
+
+        it('skips the opening when a member is opened straight away', async () => {
+            serve({ overview: (year) => ({ ...TWO(), year }) });
+            render(<RecapEntry service="hinatazaka46" year={2026} memberPath={MEMBER_PATH} onBack={() => {}} />);
+            expect(await screen.findByTestId('recap-stage')).toHaveAttribute('data-slide', 's01_first');
+            await userEvent.keyboard('{Escape}');
+            expect(await screen.findByRole('button', { name: /金村 美玖/ })).toBeInTheDocument();
+            expect(screen.queryByTestId('opening-star')).toBeNull();
+        });
+    });
+
+    it('steps only between the offered years', async () => {
+        const seen = serve();
+        render(<RecapEntry service="hinatazaka46" year={2026} years={[2023, 2026]} onBack={() => {}} />);
+        await screen.findByRole('button', { name: /金村 美玖/ });
+        expect(screen.getByRole('button', { name: '次の年' }).parentElement).toHaveClass('invisible');
+        await userEvent.click(screen.getByRole('button', { name: '前の年' }));
+        await waitFor(() => expect(seen.members).toContain(2023));
+        expect(seen.members).not.toContain(2025);
+        expect(screen.getByText('2023年')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '前の年' }).parentElement).toHaveClass('invisible');
     });
 });

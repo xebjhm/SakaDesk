@@ -930,6 +930,30 @@ def test_recap_events_are_allowlisted():
         assert r.status_code == 204
 
 
+def test_recap_opening_events_are_allowlisted():
+    for fields in (
+        {"phase": "show", "count": 4},
+        {"phase": "skip", "reason": "single_member", "count": 1},
+        {"phase": "end", "count": 2},
+        {"phase": "close", "index": 0},
+    ):
+        r = client.post(
+            "/api/client-log", json={"event": "recap_opening", "fields": fields}
+        )
+        assert r.status_code == 204, fields
+
+
+def test_recap_years_load_is_allowlisted():
+    r = client.post(
+        "/api/client-log",
+        json={
+            "event": "recap_load",
+            "fields": {"target": "years", "outcome": "ok", "count": 3},
+        },
+    )
+    assert r.status_code == 204
+
+
 def test_recap_poster_events_are_allowlisted():
     for fields in (
         {"phase": "open", "count": 3, "member_id": "58", "surface": "list"},

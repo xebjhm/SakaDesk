@@ -12,12 +12,12 @@ export function logMemoriesPage(page: MemoriesPage): void {
     clientLog('memories_page', { target: page });
 }
 
-export type RecapLoadTarget = 'members' | 'member';
+export type RecapLoadTarget = 'members' | 'member' | 'years';
 export type RecapLoadOutcome = 'ok' | 'empty' | 'timeout' | 'rejected' | 'failed';
 
 /**
  * `recap_load`: a recap request finished. `count` is the members with a recap
- * (overview) or the playable slides (member); `error_code` the HTTP status;
+ * (overview), the playable slides (member) or the years on the shelf (years); `error_code` the HTTP status;
  * `fallback` is `no_nickname` when the fan's nickname is unset (a gentle word stands in).
  */
 export function logRecapLoad(
@@ -98,4 +98,19 @@ export function logRecapShare(
     } = {},
 ): void {
     clientLog('recap_share', { phase, ...extra });
+}
+
+export type RecapOpeningPhase = 'show' | 'skip' | 'end' | 'close';
+
+/**
+ * `recap_opening`: the multi-member opening. `show` carries `count` (stars drawn); `skip` a
+ * `reason` (`single_member`: fewer than two members have a recap) and `count` (members with a
+ * recap); `end` `count` (slides played through); `close` (Esc or ✕; the player's own `recap_play` close
+ * carries the slide index). Counts only.
+ */
+export function logRecapOpening(
+    phase: RecapOpeningPhase,
+    extra: { count?: number; reason?: string } = {},
+): void {
+    clientLog('recap_opening', { phase, ...extra });
 }

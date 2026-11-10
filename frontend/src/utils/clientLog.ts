@@ -34,7 +34,7 @@ export type ClientLogEvent =
     | 'read_state_save_deferred' | 'read_state_pending_flushed' | 'read_state_sync_failed'
     | 'sidebar_load' | 'oshi_mirror_failed'
     | 'memories_open' | 'memories_page' | 'recap_load' | 'recap_play'
-    | 'recap_poster' | 'recap_share';
+    | 'recap_poster' | 'recap_share' | 'recap_opening';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'

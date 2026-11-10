@@ -277,3 +277,15 @@ export function fetchMemberRecap(
     const url = `${base(service, year)}?member=${encodeURIComponent(memberPath)}`;
     return pollJson<RecapPayload>('recap_member', url, { timeoutMs: RECAP_TIMEOUT_MS, signal, replace: true });
 }
+
+/** `GET /api/memories/{service}/recap/years`: the years with a recap (the shelf), ascending. */
+export interface RecapYears {
+    years: number[];
+}
+
+/** The shelf of yearbooks of one service (latest call wins). */
+export function fetchRecapYears(service: string, signal?: AbortSignal): Promise<PollResult<RecapYears>> {
+    return pollJson<RecapYears>('recap_years', `/api/memories/${encodeURIComponent(service)}/recap/years`, {
+        timeoutMs: RECAP_TIMEOUT_MS, signal, replace: true,
+    });
+}

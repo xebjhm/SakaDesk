@@ -740,7 +740,8 @@
   },
   "memories": {
     "home": {
-      "recapCard": "年度回顧"
+      "recapCard": "年度回顧",
+      "opensOn": "12月1號，呢度就會打開。"
     }
   },
   "recap": {
@@ -760,12 +761,21 @@
     "titles": {
       "morning": "最常同你講早晨嘅晨光",
       "nickname": "叫你個名最多次嘅羈絆",
-      "longest": "寫低最長真心說話嘅筆跡",
-      "voice": "最常傳嚟把聲嘅人",
-      "night": "最常照亮你夜晚嘅月光",
-      "photos": "俾你睇到最多風景嘅窗",
-      "steady": "日復一日疊埋嘅腳步",
-      "first": "喺你身邊行得最耐嘅人"
+      "longest": "寫低最長真心話嘅筆跡",
+      "voice": "將聲音留俾你最多嘅人",
+      "night": "陪你度過最多夜晚嘅溫柔",
+      "photos": "俾你睇最多風景嘅人",
+      "steady": "每日都喺度嘅陪伴",
+      "first": "陪你行得最耐嘅嗰個人"
+    },
+    "opening": {
+      "label": "年度回顧・開場",
+      "starsTitle": "我嘅{{year}}",
+      "starsNarration": "今年，喺你天空入面嘅佢哋。",
+      "firstChip": "今年第一封",
+      "starsLabel": "今年嘅星星",
+      "titlesTitle": "每一個人，各自嘅光",
+      "titlesNarration": "跟住落嚟，一個一個慢慢睇。"
     },
     "player": {
       "label": "年度回顧",

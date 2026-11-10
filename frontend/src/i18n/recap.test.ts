@@ -14,6 +14,9 @@ const RECAP_KEYS: readonly string[] = [
     'recap.entry.emptyTitle', 'recap.entry.emptyBody',
     'recap.titles.morning', 'recap.titles.nickname', 'recap.titles.longest', 'recap.titles.voice',
     'recap.titles.night', 'recap.titles.photos', 'recap.titles.steady', 'recap.titles.first',
+    'recap.opening.label', 'recap.opening.starsTitle', 'recap.opening.starsNarration', 'recap.opening.starsLabel',
+    'recap.opening.firstChip', 'recap.opening.titlesTitle', 'recap.opening.titlesNarration',
+    'memories.home.recapCard', 'memories.home.opensOn',
     'recap.player.label', 'recap.player.prev', 'recap.player.next', 'recap.player.pause', 'recap.player.play',
     'recap.player.progress', 'recap.youFallback',
     'recap.s01.title', 'recap.s01.sub', 'recap.s01.joined', 'recap.s01.notification',
@@ -123,6 +126,32 @@ describe('recap strings', () => {
         // It names the anniversary of a start, not the start itself (the stub shows this year's day).
         for (const [code, data] of Object.entries(locales)) {
             expect(String(lookup(data, 'recap.s09.anniversary')), code).toMatch(/記念日|anniversary|紀念日|纪念日/i);
+        }
+    });
+
+    it('role titles and the opening never invent a meeting, a rank or a number', () => {
+        // `first` is the fan's subscription start: never "met". The opening shows no ranks or counts (spec §9.6).
+        const MET = /出会|出逢|巡り会|めぐりあ|邂逅|\bmet\b|\bmeet|encounter|遇見|遇见|相遇|相識|相识|認識|认识|識咗|识咗|結識|结识/i;
+        const RANK = /\d|第一名|冠軍|冠军|一位|ランキング|順位|rank|#|No\.|名次|排名/i;
+        const TITLE_KEYS = ['morning', 'nickname', 'longest', 'voice', 'night', 'photos', 'steady', 'first'].map((k) => `recap.titles.${k}`);
+        const OPENING_KEYS = ['label', 'starsNarration', 'starsLabel', 'firstChip', 'titlesTitle', 'titlesNarration'].map((k) => `recap.opening.${k}`);
+        for (const [code, data] of Object.entries(locales)) {
+            for (const dotted of [...TITLE_KEYS, ...OPENING_KEYS, 'recap.opening.starsTitle']) {
+                const text = String(lookup(data, dotted));
+                expect(text, `${code} ${dotted}`).not.toMatch(MET);
+            }
+            for (const dotted of [...TITLE_KEYS, ...OPENING_KEYS]) {
+                expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(RANK);
+            }
+            // The stars slide's only parameter is the year it names.
+            expect(String(lookup(data, 'recap.opening.starsTitle')).replace('{{year}}', ''), code).not.toMatch(/\d|\{\{/);
+        }
+    });
+
+    it('every role title is distinct within a locale', () => {
+        for (const [code, data] of Object.entries(locales)) {
+            const titles = Object.values(lookup(data, 'recap.titles') as Record<string, string>);
+            expect(new Set(titles).size, code).toBe(titles.length);
         }
     });
 

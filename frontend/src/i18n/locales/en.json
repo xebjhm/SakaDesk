@@ -744,7 +744,8 @@
   },
   "memories": {
     "home": {
-      "recapCard": "Year recap"
+      "recapCard": "Year recap",
+      "opensOn": "Opens here on December 1."
     }
   },
   "recap": {
@@ -765,11 +766,20 @@
       "morning": "The morning light who said \"good morning\" most",
       "nickname": "The bond who called your name most",
       "longest": "The hand that wrote the longest heartfelt words",
-      "voice": "The one who sent her voice most",
-      "night": "The moonlight who lit your nights most",
-      "photos": "The window who showed you the most views",
-      "steady": "The steady steps, day after day",
-      "first": "The one who has walked beside you longest"
+      "voice": "The one who left you her voice most",
+      "night": "The gentleness that stayed through the most nights",
+      "photos": "The one who showed you the most views",
+      "steady": "The one who was there every day",
+      "first": "The one who's been with you longest"
+    },
+    "opening": {
+      "label": "Year recap opening",
+      "starsTitle": "My {{year}}",
+      "starsNarration": "The ones in your sky this year.",
+      "firstChip": "First message of the year",
+      "starsLabel": "This year's stars",
+      "titlesTitle": "Each her own light",
+      "titlesNarration": "Now, one by one."
     },
     "player": {
       "label": "Year recap",
