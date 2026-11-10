@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach, onTestFinished } from 'vitest';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { VirtuosoMockContext } from 'react-virtuoso';
 import i18n from '../../../i18n';
@@ -75,8 +75,9 @@ describe('NameMoments', () => {
 
     it('filters by year through the backend, newest year first, and back to all', async () => {
         renderNames();
-        await screen.findAllByTestId('name-moment');
-        const group = screen.getByRole('group');
+        // Wait on the pills themselves, not only the rows: each is its own condition.
+        const group = await screen.findByRole('group');
+        expect(await screen.findAllByTestId('name-moment')).toHaveLength(3);
         const pills = within(group).getAllByRole('button').map((b) => b.textContent);
         expect(pills).toEqual(['すべて', '2025', '2024']);
         expect(within(group).getByRole('button', { name: 'すべて' })).toHaveAttribute('aria-pressed', 'true');
@@ -85,12 +86,29 @@ describe('NameMoments', () => {
         await waitFor(() => expect(vi.mocked(fetchNameMoments).mock.lastCall?.[2]).toBe(2024));
         await waitFor(() => expect(screen.getAllByTestId('name-moment')).toHaveLength(1));
         // the year pills stay while the filtered list loads and after it
-        expect(within(screen.getByRole('group')).getByRole('button', { name: '2025' })).toBeInTheDocument();
-        expect(within(screen.getByRole('group')).getByRole('button', { name: '2024' })).toHaveAttribute('aria-pressed', 'true');
+        const after = await screen.findByRole('group');
+        expect(within(after).getByRole('button', { name: '2025' })).toBeInTheDocument();
+        expect(within(after).getByRole('button', { name: '2024' })).toHaveAttribute('aria-pressed', 'true');
 
         await userEvent.click(within(screen.getByRole('group')).getByRole('button', { name: 'すべて' }));
         await waitFor(() => expect(vi.mocked(fetchNameMoments).mock.lastCall?.[2]).toBeUndefined());
         await waitFor(() => expect(screen.getAllByTestId('name-moment')).toHaveLength(3));
+    });
+
+    it('never shows the rows without the year pills (they land in the same commit)', async () => {
+        // Every DOM state is recorded: a `findAllBy` on the rows can resolve at any of them, so
+        // a state with rows but no pills made the year-filter test flaky.
+        const rowsWithoutPills: number[] = [];
+        const observer = new MutationObserver(() => {
+            const rows = document.querySelectorAll('[data-testid="name-moment"]').length;
+            if (rows > 0 && !document.querySelector('[role="group"]')) rowsWithoutPills.push(rows);
+        });
+        observer.observe(document.body, { childList: true, subtree: true });
+        onTestFinished(() => observer.disconnect());
+        renderNames();
+        expect(await screen.findAllByTestId('name-moment')).toHaveLength(3);
+        await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+        expect(rowsWithoutPills).toEqual([]);
     });
 
     it('opens the film strip of that day at the message', async () => {

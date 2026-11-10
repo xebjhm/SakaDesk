@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useState } from 'react';
 import { ChevronLeft, Sparkles } from 'lucide-react';
 import { Virtuoso, type ContextProp, type ItemProps, type ListProps } from 'react-virtuoso';
 import { useTranslation } from '../../../i18n';
@@ -79,11 +79,13 @@ export const NameMoments: React.FC<NameMomentsProps> = ({ service, memberPath, n
         count: (d) => d.items.length,
     });
     // `years` is the same for every filter: keep the person's last one for the pills.
+    // Adopted during render (not in an effect), so the pills land in the same commit as the
+    // list: an effect would leave one commit where the rows show and the pills do not yet.
     const [years, setYears] = useState<{ path: string; years: number[] } | null>(null);
     const loadedYears = query.data?.years;
-    useEffect(() => {
-        if (loadedYears) setYears({ path: memberPath, years: loadedYears });
-    }, [loadedYears, memberPath]);
+    if (loadedYears && (years?.path !== memberPath || years.years !== loadedYears)) {
+        setYears({ path: memberPath, years: loadedYears });
+    }
     const pills = years?.path === memberPath ? years.years : [];
 
     const [open, setOpen] = useState<NameMoment | null>(null);
