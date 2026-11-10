@@ -9,6 +9,7 @@ import json
 import asyncio
 import tempfile
 import os
+import re
 import sys
 import threading
 import time
@@ -46,11 +47,40 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
     "close_to_tray": True,  # The window's close button hides it to the tray instead of quitting
     "autostart": False,  # Start at Windows sign-in, hidden in the tray
     "tray_hint_shown": False,  # Internal: the "still running" toast has been shown once
+    # Memories notifications (spec 15): one toggle per kind, plus the JST daily time.
+    "memories_notify_on_this_day": True,
+    "memories_notify_birthday": True,  # Day-of plus the 7-day and 1-day reminders
+    "memories_notify_anniversary": True,  # Subscription anniversaries and milestones
+    "memories_notify_recap": True,  # Recap open / Christmas / ready
+    "memories_notify_cards": False,  # Foil card unlocks (opt-in)
+    "memories_notify_time": "12:00",  # JST "HH:MM"; read via resolve_memories_notify_time
     "translation_provider": None,  # "gemini" or "openai"
     "translation_model": None,  # e.g., "gemini-3.1-flash-lite", "gpt-4o-mini"
     "translation_target_language": None,  # Defaults to UI language at runtime
     # Note: translation API key stored in OS credential manager, not here
 }
+
+
+MEMORIES_NOTIFY_TIME_DEFAULT = "12:00"
+# Strict JST "HH:MM", 00:00-23:59. ``\Z`` (not ``$``) so a trailing newline fails.
+MEMORIES_NOTIFY_TIME_RE = re.compile(r"\A([01]\d|2[0-3]):[0-5]\d\Z")
+
+
+def resolve_memories_notify_time(value: Any) -> str:
+    """The stored ``memories_notify_time`` if valid, else ``"12:00"``.
+
+    settings.json can be hand-edited, so the read side validates too. An
+    invalid value logs ``memories_notify_time_invalid`` with its type only
+    (never the value) and falls back to the default.
+    """
+    if isinstance(value, str) and MEMORIES_NOTIFY_TIME_RE.match(value):
+        return value
+    logger.warning(
+        "memories_notify_time_invalid",
+        value_type=type(value).__name__,
+        fallback=MEMORIES_NOTIFY_TIME_DEFAULT,
+    )
+    return MEMORIES_NOTIFY_TIME_DEFAULT
 
 
 def _read_file(path: Path) -> dict:

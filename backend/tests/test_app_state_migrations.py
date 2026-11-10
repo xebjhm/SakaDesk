@@ -56,13 +56,13 @@ def db(tmp_path):
 
 
 def test_schema_version_matches_step_count():
-    assert app_state.SCHEMA_VERSION == len(app_state._MIGRATIONS) == 1
+    assert app_state.SCHEMA_VERSION == len(app_state._MIGRATIONS) == 2
     assert NEW_TABLES | NEW_INDEXES <= app_state._REQUIRED_SCHEMA
 
 
 def test_fresh_db_ends_at_current_version_with_all_tables(db):
     app_state.init_db()
-    assert _version(db) == app_state.SCHEMA_VERSION == 1
+    assert _version(db) == app_state.SCHEMA_VERSION == 2
     assert OLD_TABLES | NEW_TABLES <= _names(db, "table")
     assert NEW_INDEXES <= _names(db, "index")
 
@@ -78,15 +78,15 @@ def test_version0_db_keeps_rows_and_gains_tables(db):
     with capture_logs() as logs:
         app_state.init_db()
 
-    assert _version(db) == 1
+    assert _version(db) == 2
     assert NEW_TABLES <= _names(db, "table")
     assert app_state.get_prefs() == {"language": "ja"}
     assert app_state.favorited_at("hinatazaka46", [7]) == {7: "t"}
     assert app_state.get_translations(["1:ja"]) == {"1:ja": "こんにちは🌸"}
     migrated = [e for e in logs if e["event"] == "app_state_migrate"]
     assert migrated and migrated[-1]["from_version"] == 0
-    assert migrated[-1]["to_version"] == 1
-    assert migrated[-1]["steps"] == 1
+    assert migrated[-1]["to_version"] == 2
+    assert migrated[-1]["steps"] == 2
 
 
 def test_init_db_twice_is_a_noop(db):
@@ -94,7 +94,7 @@ def test_init_db_twice_is_a_noop(db):
     app_state.set_prefs({"k": 1})
     with capture_logs() as logs:
         app_state.init_db()
-    assert _version(db) == 1
+    assert _version(db) == 2
     assert app_state.get_prefs() == {"k": 1}
     events = [e for e in logs if e["event"] == "app_state_migrate"]
     assert events and events[-1]["outcome"] == "current"
@@ -105,10 +105,10 @@ def test_dropped_table_at_current_version_heals(db):
     app_state.init_db()
     with closing(sqlite3.connect(db)) as c, c:
         c.execute("DROP TABLE memories_capsule_notes")
-    assert _version(db) == 1
+    assert _version(db) == 2
     with capture_logs() as logs:
         app_state.init_db()
-    assert _version(db) == 1
+    assert _version(db) == 2
     assert NEW_TABLES <= _names(db, "table")
     assert NEW_INDEXES <= _names(db, "index")
     events = [e for e in logs if e["event"] == "app_state_migrate"]
@@ -122,7 +122,7 @@ def test_half_applied_step_at_old_version_heals(db):
         c.execute("DROP TABLE memories_capsule_notes")
         c.execute("PRAGMA user_version = 0")
     app_state.init_db()
-    assert _version(db) == 1
+    assert _version(db) == 2
     assert NEW_TABLES <= _names(db, "table")
     assert NEW_INDEXES <= _names(db, "index")
 
@@ -207,6 +207,6 @@ def test_concurrent_first_start(db):
     for t in threads:
         t.join()
     assert errors == []
-    assert _version(db) == 1
+    assert _version(db) == 2
     assert OLD_TABLES | NEW_TABLES <= _names(db, "table")
     assert NEW_INDEXES <= _names(db, "index")

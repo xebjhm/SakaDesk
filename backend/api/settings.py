@@ -20,11 +20,14 @@ from backend.services.platform import (
 from backend.services.service_utils import (
     validate_service,
 )
-from backend.services import autostart, desktop_bridge
+from backend.services import app_state, autostart, desktop_bridge
+from backend.services.memories import notify_scheduler
 from backend.services.auto_sync_scheduler import wake_scheduler
 from backend.services.call_popup import get_call_popup_controller
 from backend.services.notification_service import set_notifications_enabled
 from backend.services.settings_store import (
+    MEMORIES_NOTIFY_TIME_DEFAULT,
+    resolve_memories_notify_time,
     load_config as _store_load,
     update_config as _store_update,
 )
@@ -116,6 +119,13 @@ class SettingsResponse(BaseModel):
     )
     close_to_tray: bool = True  # Closing the window hides it to the tray
     autostart: bool = False  # Start at Windows sign-in, hidden in the tray
+    # Memories notifications (spec 15)
+    memories_notify_on_this_day: bool = True
+    memories_notify_birthday: bool = True
+    memories_notify_anniversary: bool = True
+    memories_notify_recap: bool = True
+    memories_notify_cards: bool = False
+    memories_notify_time: str = MEMORIES_NOTIFY_TIME_DEFAULT  # JST "HH:MM"
 
 
 class SettingsUpdate(BaseModel):
@@ -137,6 +147,15 @@ class SettingsUpdate(BaseModel):
     close_to_tray: Optional[bool] = None
     autostart: Optional[bool] = None
     oshi_members: Optional[dict[str, list[str]]] = None
+    memories_notify_on_this_day: Optional[bool] = None
+    memories_notify_birthday: Optional[bool] = None
+    memories_notify_anniversary: Optional[bool] = None
+    memories_notify_recap: Optional[bool] = None
+    memories_notify_cards: Optional[bool] = None
+    # JST "HH:MM", 00:00-23:59; anything else is a 422.
+    memories_notify_time: Optional[str] = Field(
+        default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$"
+    )
 
 
 class FreshCheckResponse(BaseModel):
@@ -155,6 +174,48 @@ class ServiceSettings(BaseModel):
 
 # Settings that change when the auto-sync scheduler should next run.
 _SCHEDULE_KEYS = ("auto_sync_enabled", "sync_interval_minutes", "adaptive_sync_enabled")
+
+# Settings that change what / when the Memories notify scheduler delivers.
+_MEMORIES_NOTIFY_KEYS = (
+    "memories_notify_on_this_day",
+    "memories_notify_birthday",
+    "memories_notify_anniversary",
+    "memories_notify_recap",
+    "memories_notify_cards",
+    "memories_notify_time",
+)
+
+
+def _settings_response(config: dict[str, Any]) -> SettingsResponse:
+    """Build the response from a loaded config (defaults already merged)."""
+    return SettingsResponse(
+        output_dir=config.get("output_dir", get_default_output_dir()),
+        auto_sync_enabled=config["auto_sync_enabled"],
+        sync_interval_minutes=config["sync_interval_minutes"],
+        adaptive_sync_enabled=config["adaptive_sync_enabled"],
+        is_configured=config["is_configured"],
+        user_nickname=config.get("user_nickname"),
+        user_nicknames=config.get("user_nicknames"),
+        oshi_members=config.get("oshi_members"),
+        notifications_enabled=config["notifications_enabled"],
+        notifications_hide_content=config.get("notifications_hide_content", False),
+        blogs_full_backup=config["blogs_full_backup"],
+        language=config.get("language"),
+        auto_download_updates=config["auto_download_updates"],
+        sync_read_to_phone=config.get("sync_read_to_phone", False),
+        incoming_call_enabled=config.get("incoming_call_enabled", True),
+        call_popup_enabled=config.get("call_popup_enabled", True),
+        close_to_tray=config.get("close_to_tray", True),
+        autostart=config.get("autostart", False),
+        memories_notify_on_this_day=config.get("memories_notify_on_this_day", True),
+        memories_notify_birthday=config.get("memories_notify_birthday", True),
+        memories_notify_anniversary=config.get("memories_notify_anniversary", True),
+        memories_notify_recap=config.get("memories_notify_recap", True),
+        memories_notify_cards=config.get("memories_notify_cards", False),
+        memories_notify_time=resolve_memories_notify_time(
+            config.get("memories_notify_time", MEMORIES_NOTIFY_TIME_DEFAULT)
+        ),
+    )
 
 
 async def _apply_autostart(enabled: bool) -> None:
@@ -179,31 +240,11 @@ async def _apply_autostart(enabled: bool) -> None:
 async def get_settings():
     """Get current settings."""
     config = await _store_load()
-    output_dir = config.get("output_dir", get_default_output_dir())
 
     # Sync notification service state with persisted setting
     set_notifications_enabled(config["notifications_enabled"])
 
-    return SettingsResponse(
-        output_dir=output_dir,
-        auto_sync_enabled=config["auto_sync_enabled"],
-        sync_interval_minutes=config["sync_interval_minutes"],
-        adaptive_sync_enabled=config["adaptive_sync_enabled"],
-        is_configured=config["is_configured"],
-        user_nickname=config.get("user_nickname"),
-        user_nicknames=config.get("user_nicknames"),
-        oshi_members=config.get("oshi_members"),
-        notifications_enabled=config["notifications_enabled"],
-        notifications_hide_content=config.get("notifications_hide_content", False),
-        blogs_full_backup=config["blogs_full_backup"],
-        language=config.get("language"),
-        auto_download_updates=config["auto_download_updates"],
-        sync_read_to_phone=config.get("sync_read_to_phone", False),
-        incoming_call_enabled=config.get("incoming_call_enabled", True),
-        call_popup_enabled=config.get("call_popup_enabled", True),
-        close_to_tray=config.get("close_to_tray", True),
-        autostart=config.get("autostart", False),
-    )
+    return _settings_response(config)
 
 
 @router.post("", response_model=SettingsResponse)
@@ -212,10 +253,15 @@ async def update_settings(update: SettingsUpdate):
     autostart_change: Optional[bool] = None
     call_popup_change: Optional[bool] = None
     schedule_changed = False
+    memories_notify_changed = False
+    cards_enabled = False
 
     def _apply(config: dict) -> None:
         nonlocal autostart_change, call_popup_change, schedule_changed
+        nonlocal memories_notify_changed, cards_enabled
         before = tuple(config.get(key) for key in _SCHEDULE_KEYS)
+        notify_before = tuple(config.get(key) for key in _MEMORIES_NOTIFY_KEYS)
+        cards_before = bool(config.get("memories_notify_cards", False))
         if update.output_dir is not None:
             config["output_dir"] = update.output_dir
             config["is_configured"] = True
@@ -250,13 +296,29 @@ async def update_settings(update: SettingsUpdate):
             config["autostart"] = update.autostart
         if update.oshi_members is not None:
             config["oshi_members"] = update.oshi_members
+        for key in _MEMORIES_NOTIFY_KEYS:
+            value = getattr(update, key)
+            if value is not None:
+                config[key] = value
         schedule_changed = before != tuple(config.get(key) for key in _SCHEDULE_KEYS)
+        memories_notify_changed = notify_before != tuple(
+            config.get(key) for key in _MEMORIES_NOTIFY_KEYS
+        )
+        cards_enabled = not cards_before and bool(config.get("memories_notify_cards"))
 
     config = await _store_update(_apply)
 
     if schedule_changed:
         # The scheduler would otherwise only notice after its current wait.
         wake_scheduler()
+
+    if cards_enabled:
+        # Re-seed silently: history earned while the toggle was off never floods in.
+        cleared = await app_state.aclear_card_baselines()
+        logger.info("memories_notify_cards_enabled", cleared=cleared)
+
+    if memories_notify_changed:
+        notify_scheduler.memories_notify_settings_changed()
 
     if autostart_change is not None:
         await _apply_autostart(autostart_change)
@@ -267,26 +329,7 @@ async def update_settings(update: SettingsUpdate):
     elif call_popup_change is False:
         await get_call_popup_controller().cancel(reason="disabled")
 
-    return SettingsResponse(
-        output_dir=config.get("output_dir", get_default_output_dir()),
-        auto_sync_enabled=config["auto_sync_enabled"],
-        sync_interval_minutes=config["sync_interval_minutes"],
-        adaptive_sync_enabled=config["adaptive_sync_enabled"],
-        is_configured=config["is_configured"],
-        user_nickname=config.get("user_nickname"),
-        user_nicknames=config.get("user_nicknames"),
-        oshi_members=config.get("oshi_members"),
-        notifications_enabled=config["notifications_enabled"],
-        notifications_hide_content=config.get("notifications_hide_content", False),
-        blogs_full_backup=config["blogs_full_backup"],
-        language=config.get("language"),
-        auto_download_updates=config["auto_download_updates"],
-        sync_read_to_phone=config.get("sync_read_to_phone", False),
-        incoming_call_enabled=config.get("incoming_call_enabled", True),
-        call_popup_enabled=config.get("call_popup_enabled", True),
-        close_to_tray=config.get("close_to_tray", True),
-        autostart=config.get("autostart", False),
-    )
+    return _settings_response(config)
 
 
 @router.get("/fresh", response_model=FreshCheckResponse)

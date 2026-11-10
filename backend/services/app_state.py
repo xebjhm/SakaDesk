@@ -13,6 +13,8 @@ Version Change
         ``conversation_state``, ``translation_cache``, ``favorite_log``.
 1       Memories user state: ``memories_capsule_notes`` (+ two indexes),
         ``memories_cover_overrides``, ``memories_gacha_pulls``.
+2       Memories notifications: ``memories_notify_log`` (the at-most-once
+        ledger) and ``memories_card_baseline`` (foil-card diff baseline).
 ======= =================================================================
 
 Rule: **append a step, never edit one.** A new schema change is a new
@@ -35,7 +37,7 @@ from __future__ import annotations
 
 import asyncio
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from contextlib import closing
 import sqlite3
 import time
@@ -124,9 +126,39 @@ def _step1_memories_user_state(c: sqlite3.Connection) -> None:
     )
 
 
+def _step2_memories_notify(c: sqlite3.Connection) -> None:
+    """Version 2: the Memories notify ledger and the card baseline.
+
+    Both tables hold ids, codes and card keys only, never names or text.
+    """
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS memories_notify_log (
+          kind TEXT NOT NULL, service TEXT NOT NULL, subject TEXT NOT NULL,
+          occasion TEXT NOT NULL,
+          outcome TEXT NOT NULL,
+          at TEXT NOT NULL,
+          PRIMARY KEY (kind, service, subject, occasion)
+        ) WITHOUT ROWID
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS memories_card_baseline (
+          service TEXT NOT NULL, member_id TEXT NOT NULL,
+          keys TEXT NOT NULL,
+          data_hash TEXT NOT NULL,
+          at TEXT NOT NULL,
+          PRIMARY KEY (service, member_id)
+        ) WITHOUT ROWID
+        """
+    )
+
+
 # Append-only: step N (1-based) brings the DB from version N-1 to N.
 _MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
     _step1_memories_user_state,
+    _step2_memories_notify,
 )
 SCHEMA_VERSION = len(_MIGRATIONS)
 # Tables and indexes the migration steps create; a missing one after the
@@ -138,6 +170,8 @@ _REQUIRED_SCHEMA: frozenset[str] = frozenset(
         "memories_gacha_pulls",
         "memories_capsule_by_anchor",
         "memories_capsule_by_created",
+        "memories_notify_log",
+        "memories_card_baseline",
     }
 )
 
@@ -294,6 +328,150 @@ def favorited_at(service: str, message_ids: list[int]) -> dict[int, str]:
             ).fetchall()
             out.update((mid, ts) for mid, ts in rows)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Memories notifications (M4): the at-most-once ledger and the card baseline.
+# ---------------------------------------------------------------------------
+
+# Ledger key: (kind, service, subject, occasion).
+NotifyKey = tuple[str, str, str, str]
+
+NOTIFY_OUTCOMES: frozenset[str] = frozenset(
+    {"pending", "sent", "failed", "suppressed", "empty"}
+)
+# Four bound variables per key; stays well under SQLite's variable cap.
+_KEY_CHUNK = _IN_CHUNK // 4
+
+
+def _utc_iso(at: datetime | None) -> str:
+    return (at or datetime.now(timezone.utc)).astimezone(timezone.utc).isoformat()
+
+
+def _check_outcome(outcome: str) -> None:
+    if outcome not in NOTIFY_OUTCOMES:
+        raise ValueError(f"unknown notify outcome: {outcome!r}")
+
+
+def claim_memory_notification(
+    kind: str,
+    service: str,
+    subject: str,
+    occasion: str,
+    outcome: str = "pending",
+    *,
+    at: datetime | None = None,
+) -> bool:
+    """Take an occasion in the ledger (``INSERT OR IGNORE``).
+
+    Returns True when this call inserted the row (the occasion was free) and
+    False when a row already existed, whose outcome is left as it was. ``at``
+    defaults to now and is stored as a UTC ISO string. Raises ``ValueError``
+    for an outcome outside :data:`NOTIFY_OUTCOMES`.
+    """
+    _check_outcome(outcome)
+    with closing(_connect()) as c, c:
+        cur = c.execute(
+            "INSERT OR IGNORE INTO memories_notify_log"
+            "(kind,service,subject,occasion,outcome,at) VALUES(?,?,?,?,?,?)",
+            (kind, service, subject, occasion, outcome, _utc_iso(at)),
+        )
+        return cur.rowcount == 1
+
+
+def finish_memory_notification(
+    kind: str,
+    service: str,
+    subject: str,
+    occasion: str,
+    outcome: str,
+    *,
+    at: datetime | None = None,
+) -> None:
+    """Set the outcome (and ``at``, default now) of a claimed occasion.
+
+    A key with no row is left absent. Raises ``ValueError`` for an outcome
+    outside :data:`NOTIFY_OUTCOMES`.
+    """
+    _check_outcome(outcome)
+    with closing(_connect()) as c, c:
+        c.execute(
+            "UPDATE memories_notify_log SET outcome=?, at=? "
+            "WHERE kind=? AND service=? AND subject=? AND occasion=?",
+            (outcome, _utc_iso(at), kind, service, subject, occasion),
+        )
+
+
+def memory_notifications_done(keys: list[NotifyKey]) -> set[NotifyKey]:
+    """The subset of ``keys`` that already have a ledger row (any outcome)."""
+    unique = list(dict.fromkeys(keys))
+    if not unique:
+        return set()
+    out: set[NotifyKey] = set()
+    with closing(_connect()) as c, c:
+        # Chunked: SQLite caps bound variables per statement.
+        for i in range(0, len(unique), _KEY_CHUNK):
+            chunk = unique[i : i + _KEY_CHUNK]
+            values = ",".join(["(?,?,?,?)"] * len(chunk))
+            rows = c.execute(
+                "SELECT kind, service, subject, occasion FROM memories_notify_log "
+                f"WHERE (kind, service, subject, occasion) IN (VALUES {values})",
+                [part for key in chunk for part in key],
+            ).fetchall()
+            out.update((k, s, sub, occ) for k, s, sub, occ in rows)
+    return out
+
+
+def prune_memory_notifications(before: datetime) -> int:
+    """Delete ledger rows whose last outcome write is older than ``before``.
+
+    Returns the number of rows deleted.
+    """
+    with closing(_connect()) as c, c:
+        cur = c.execute(
+            "DELETE FROM memories_notify_log WHERE at < ?", (_utc_iso(before),)
+        )
+        return cur.rowcount
+
+
+def get_card_baseline(
+    service: str, member_id: str
+) -> tuple[frozenset[str], str] | None:
+    """``(earned keys, data hash)`` of a person's last card check, or None."""
+    with closing(_connect()) as c, c:
+        row = c.execute(
+            "SELECT keys, data_hash FROM memories_card_baseline "
+            "WHERE service=? AND member_id=?",
+            (service, member_id),
+        ).fetchone()
+    if row is None:
+        return None
+    return frozenset(json.loads(row[0])), row[1]
+
+
+def put_card_baseline(
+    service: str, member_id: str, keys: Iterable[str], data_hash: str
+) -> None:
+    """Replace a person's card baseline; keys are stored as a sorted JSON array."""
+    with closing(_connect()) as c, c:
+        c.execute(
+            "INSERT INTO memories_card_baseline(service,member_id,keys,data_hash,at) "
+            "VALUES(?,?,?,?,?) ON CONFLICT(service,member_id) DO UPDATE SET "
+            "keys=excluded.keys, data_hash=excluded.data_hash, at=excluded.at",
+            (
+                service,
+                member_id,
+                json.dumps(sorted(set(keys)), ensure_ascii=False),
+                data_hash,
+                _utc_iso(None),
+            ),
+        )
+
+
+def clear_card_baselines() -> int:
+    """Delete every card baseline; returns how many were deleted."""
+    with closing(_connect()) as c, c:
+        return c.execute("DELETE FROM memories_card_baseline").rowcount
 
 
 def get_prefs() -> dict[str, Any]:
@@ -460,3 +638,58 @@ async def ais_migrated() -> bool:
 
 async def amigrate_dump(dump: dict) -> None:
     await asyncio.to_thread(migrate_dump, dump)
+
+
+async def aclaim_memory_notification(
+    kind: str,
+    service: str,
+    subject: str,
+    occasion: str,
+    outcome: str = "pending",
+    *,
+    at: datetime | None = None,
+) -> bool:
+    return await asyncio.to_thread(
+        claim_memory_notification, kind, service, subject, occasion, outcome, at=at
+    )
+
+
+async def afinish_memory_notification(
+    kind: str,
+    service: str,
+    subject: str,
+    occasion: str,
+    outcome: str,
+    *,
+    at: datetime | None = None,
+) -> None:
+    await asyncio.to_thread(
+        finish_memory_notification, kind, service, subject, occasion, outcome, at=at
+    )
+
+
+async def amemory_notifications_done(keys: list[NotifyKey]) -> set[NotifyKey]:
+    return await asyncio.to_thread(memory_notifications_done, keys)
+
+
+async def aprune_memory_notifications(before: datetime) -> int:
+    return await asyncio.to_thread(prune_memory_notifications, before)
+
+
+async def aget_card_baseline(
+    service: str, member_id: str
+) -> tuple[frozenset[str], str] | None:
+    return await asyncio.to_thread(get_card_baseline, service, member_id)
+
+
+async def aput_card_baseline(
+    service: str, member_id: str, keys: Iterable[str], data_hash: str
+) -> None:
+    # Materialise first: a generator must not be consumed on another thread.
+    await asyncio.to_thread(
+        put_card_baseline, service, member_id, list(keys), data_hash
+    )
+
+
+async def aclear_card_baselines() -> int:
+    return await asyncio.to_thread(clear_card_baselines)
