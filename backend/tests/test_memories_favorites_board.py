@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import contextlib
+import json
+import sqlite3
 from datetime import datetime, timezone
 
 import pytest
@@ -12,6 +15,7 @@ from backend.services import app_state
 from backend.services.memories import favorites_board as fb
 from backend.services.memories import index as mi
 from backend.services.memories import oshi as oshi_mod
+from backend.services.memories.view_cache import contains_text
 from backend.tests.memories_archive import msg, write_room
 
 SERVICE = "hinatazaka46"
@@ -82,8 +86,10 @@ def svc(tmp_path, monkeypatch):
     app_state.record_favorite(
         SERVICE, 1, True, at=datetime(2026, 10, 1, tzinfo=timezone.utc)
     )
+    # starred in this app in 2024: older than 11, which has no log row
+    # (starred on the phone), so 11 sorts by its own message time
     app_state.record_favorite(
-        SERVICE, 12, True, at=datetime(2026, 11, 1, tzinfo=timezone.utc)
+        SERVICE, 12, True, at=datetime(2024, 6, 1, tzinfo=timezone.utc)
     )
     set_oshi(monkeypatch, set())
     return sdir
@@ -106,13 +112,58 @@ async def person(sdir, room):
 
 
 @pytest.mark.asyncio
-async def test_known_favourite_times_first_then_message_time(svc):
+async def test_one_order_by_star_time_else_message_time(svc):
     payload = await board(svc)
-    assert [i["id"] for i in payload["items"]] == [12, 1, 11, 4, 3, 2]
-    times = [i["favorited_at"] for i in payload["items"]]
-    assert times[:2] == ["2026-11-01T00:00:00+00:00", "2026-10-01T00:00:00+00:00"]
-    assert times[2:] == [None] * 4
+    assert [i["id"] for i in payload["items"]] == [1, 11, 12, 4, 3, 2]
+    times = {i["id"]: i["favorited_at"] for i in payload["items"]}
+    assert times[1] == "2026-10-01T00:00:00+00:00"
+    assert times[12] == "2024-06-01T00:00:00+00:00"
+    assert [times[i] for i in (11, 4, 3, 2)] == [None] * 4
     assert payload["total"] == 6
+
+
+@pytest.mark.asyncio
+async def test_unreadable_favourite_log_means_unknown_times(svc, monkeypatch):
+    def broken(service, ids):
+        raise sqlite3.OperationalError("database is locked")
+
+    monkeypatch.setattr(app_state, "favorited_at", broken)
+    with capture_logs() as logs:
+        payload = await board(svc)
+    assert [i["id"] for i in payload["items"]] == [11, 4, 3, 2, 1, 12]
+    assert all(i["favorited_at"] is None for i in payload["items"])
+    assert any(e.get("reason") == "favorite_log_unreadable" for e in logs)
+
+
+@pytest.mark.asyncio
+async def test_board_is_cached_text_free_and_follows_new_stars(svc):
+    with capture_logs() as logs:
+        first = await board(svc)
+        second = await board(svc)
+    outcomes = [
+        e["outcome"]
+        for e in logs
+        if e["event"] == "memories_view_cache" and e["view"] == "favorites"
+    ]
+    assert outcomes == ["miss", "hit"] and first == second
+    assert second["items"][0]["text"] == WORDS
+    with contextlib.closing(mi._connect()) as c:
+        (row,) = c.execute(
+            "SELECT payload FROM memories_view_cache WHERE view='favorites'"
+        ).fetchall()
+    assert not contains_text(json.loads(row[0])) and WORDS not in row[0]
+    write_room(
+        svc,
+        "50 二部 ひな",
+        "51 二部 ひな",
+        [msg(21, "2024-06-01T03:00:00Z", content="おはよう", fav=True)],
+    )
+    with capture_logs() as logs:
+        third = await board(svc)
+    assert [e["outcome"] for e in logs if e["event"] == "memories_view_cache"] == [
+        "miss"
+    ]
+    assert third["total"] == 7 and 21 in [i["id"] for i in third["items"]]
 
 
 @pytest.mark.asyncio
@@ -151,7 +202,7 @@ async def test_oshi_is_listed_first(svc, monkeypatch):
 async def test_member_filter_limits_items_but_not_the_list(svc):
     matsu = await person(svc, MATSU)
     payload = await board(svc, member=matsu)
-    assert [i["id"] for i in payload["items"]] == [12, 11]
+    assert [i["id"] for i in payload["items"]] == [11, 12]
     assert len(payload["members"]) == 2 and payload["total"] == 6
 
 

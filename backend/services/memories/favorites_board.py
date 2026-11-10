@@ -6,11 +6,13 @@
   of ``member`` or, with ``member=None``, of everyone, as shared message
   objects (``people.message_ref`` with her avatar at that time, ``text`` /
   ``caption`` from one ``load_texts`` per room) plus ``favorited_at``: the
-  UTC ISO time the fan starred it (``app_state.favorited_at``, read in a
-  worker; message ids are per service so the lookup is valid), or ``None``
-  when the star predates the favourite log. Order: the known
-  ``favorited_at`` newest first, then the unknown ones by message ``ts``
-  newest first (a star without a logged time is older than the log).
+  UTC ISO time the fan starred it in this app (``app_state.favorited_at``,
+  read in a worker; message ids are per service so the lookup is valid), or
+  ``None`` when unknown. A star set in the official phone app (or before the
+  favourite log existed) has no log row, so its time is unknown; it is never
+  assumed to be old. Order: newest first by ``favorited_at`` when known, else
+  by the message ``ts`` (a lower bound of the star time, as
+  ``app_state.record_favorite`` documents); ties: the higher id first.
 - ``members`` -- the left list, always over everyone whatever ``member``
   is: ``{"member_path", "member_id", "name", "avatar_url", "count"}`` per
   person with at least one ★ (a person without any is left out, so a "0" is
@@ -18,8 +20,13 @@
   ``index.list_members`` order). ``avatar_url`` is her current icon.
 - ``total`` -- the ★ count over everyone.
 
-Not cached: ``favorited_at`` changes without touching the archive. Every
-person's facts are read once; filtering and ordering run in a worker.
+The text-free part (``total``, ``members`` and every starred message object
+of everyone, without ``favorited_at``) is cached (view ``favorites``, key
+``all``, hash over :data:`VERSION`, every person's room hashes, which cover
+``is_favorite``, and the oshi set). After the cache read the member filter,
+``favorited_at``, the order and the texts are applied. A failed favourite-log
+read is logged (``memories_skip``, ``reason=favorite_log_unreadable``) and
+every time is treated as unknown.
 
 Logs (ids, codes and counts only): ``memories_favorites`` with ``count``
 (items returned), ``members`` and ``with_time`` (items with a known
@@ -29,7 +36,9 @@ Logs (ids, codes and counts only): ``memories_favorites`` with ``count``
 from __future__ import annotations
 
 import asyncio
+import sqlite3
 from collections.abc import Sequence
+from datetime import datetime, timezone
 from pathlib import Path
 
 import structlog
@@ -39,8 +48,14 @@ from backend.services.archive_urls import parse_iso
 from backend.services.memories import index as mi
 from backend.services.memories import people
 from backend.services.memories.facts import Fact
+from backend.services.memories.view_cache import cached_view, view_hash
 
 logger = structlog.get_logger(__name__)
+
+VIEW = "favorites"
+# Bump on any rule or payload change of the cached part (the hash has it).
+VERSION = 1
+_NO_TIME = datetime.min.replace(tzinfo=timezone.utc)
 
 _Starred = tuple[mi.MemberSummary, str, Fact]
 
@@ -77,59 +92,85 @@ def _member_rows(
     return rows
 
 
+def _sort_key(item: dict) -> tuple[datetime, int]:
+    when = parse_iso(item["favorited_at"]) or parse_iso(item["ts"]) or _NO_TIME
+    return when, item["id"]
+
+
 def _ordered(items: list[dict]) -> list[dict]:
-    """Known ``favorited_at`` newest first, then message ``ts`` newest first. Pure."""
-    known = [i for i in items if parse_iso(i["favorited_at"]) is not None]
-    unknown = [i for i in items if parse_iso(i["favorited_at"]) is None]
-    known.sort(key=lambda i: (parse_iso(i["favorited_at"]), i["ts"]), reverse=True)
-    unknown.sort(key=lambda i: (i["ts"], i["id"]), reverse=True)
-    return known + unknown
+    """Newest first by ``favorited_at``, else by the message ``ts``. Pure."""
+    return sorted(items, key=_sort_key, reverse=True)
+
+
+def _fav_times(service: str, ids: list[int]) -> dict[int, str]:
+    """``app_state.favorited_at``; ``{}`` (logged) when the log is unreadable."""
+    try:
+        return app_state.favorited_at(service, ids)
+    except sqlite3.Error as e:
+        logger.warning(
+            "memories_skip",
+            view=VIEW,
+            reason="favorite_log_unreadable",
+            error_type=type(e).__name__,
+        )
+        return {}
+
+
+async def _board(service: str, sdir: Path) -> dict:
+    """The text-free board of everyone (cached); items in archive order."""
+    persons, _, hashes = await people.album_scope(sdir, None)
+    oshi = await people.oshi_rooms(service, persons)
+    data_hash = view_hash(VERSION, hashes, sorted(oshi))
+
+    async def build() -> dict:
+        tagged = [await people.scope_facts(sdir, [s]) for s in persons]
+        starred = await asyncio.to_thread(_starred, persons, tagged)
+        rows = await asyncio.to_thread(_member_rows, starred, persons, oshi)
+        avatars = await people.avatar_timelines_for(
+            sdir, {people.person_key(s): s for s, _ in rows}
+        )
+        items = [
+            people.message_ref(
+                service, sdir, room, f, avatar=avatars[people.person_key(s)]
+            )
+            for s, room, f in starred
+        ]
+        members = [
+            {
+                "member_path": people.chat_path(sdir, s.member_dirs[-1]),
+                "member_id": s.member_ids[-1] if s.member_ids else None,
+                "name": s.name,
+                "avatar_url": avatars[people.person_key(s)].current,
+                "count": n,
+            }
+            for s, n in rows
+        ]
+        return {"total": len(starred), "members": members, "items": items}
+
+    return await cached_view(sdir, VIEW, "all", data_hash, build)
 
 
 async def favorites_board(
     service: str, sdir: Path, *, member: mi.MemberSummary | None
 ) -> dict:
     """The cork board of ``member`` (or everyone); see the module docstring."""
-    persons = await mi.list_members(sdir)
-    oshi = await people.oshi_rooms(service, persons)
-    tagged = [await people.scope_facts(sdir, [s]) for s in persons]
-    starred = await asyncio.to_thread(_starred, persons, tagged)
-    rows = await asyncio.to_thread(_member_rows, starred, persons, oshi)
-    scope = people.person_key(member) if member is not None else None
-    shown = [t for t in starred if scope is None or people.person_key(t[0]) == scope]
-    avatars = await people.avatar_timelines_for(
-        sdir, {people.person_key(s): s for s, _ in rows}
-    )
-    items = [
-        people.message_ref(
-            service, sdir, room, f, avatar=avatars.get(people.person_key(s))
-        )
-        for s, room, f in shown
-    ]
+    board = await _board(service, sdir)
+    rooms = set(member.member_dirs) if member is not None else None
+    items = [i for i in board["items"] if rooms is None or i["room"] in rooms]
     times = await asyncio.to_thread(
-        app_state.favorited_at, service, sorted({i["id"] for i in items})
+        _fav_times, service, sorted({i["id"] for i in items})
     )
     for item in items:
         item["favorited_at"] = times.get(item["id"])
     items = await asyncio.to_thread(_ordered, items)
     await people.attach_texts(sdir, items)
-    members = [
-        {
-            "member_path": people.chat_path(sdir, s.member_dirs[-1]),
-            "member_id": s.member_ids[-1] if s.member_ids else None,
-            "name": s.name,
-            "avatar_url": avatars[people.person_key(s)].current,
-            "count": n,
-        }
-        for s, n in rows
-    ]
     logger.info(
         "memories_favorites",
         count=len(items),
-        members=len(members),
+        members=len(board["members"]),
         with_time=sum(1 for i in items if i["favorited_at"] is not None),
     )
-    return {"total": len(starred), "members": members, "items": items}
+    return {"total": board["total"], "members": board["members"], "items": items}
 
 
-__all__ = ["favorites_board"]
+__all__ = ["VERSION", "favorites_board"]
