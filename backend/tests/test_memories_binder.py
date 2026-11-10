@@ -354,6 +354,68 @@ def test_avatar_digest_handles_foreign_and_missing_files(tmp_path):
     assert binder._avatar_digest(tmp_path, "r", url) is None
 
 
+def test_avatar_digest_is_memoised_per_file_stat(tmp_path, monkeypatch):
+    path = tmp_path / "r" / "profile_images" / "thumbnail" / "a.jpg"
+    path.parent.mkdir(parents=True)
+    path.write_bytes(b"icon-1")
+    url = "/api/content/media/x/r/profile_images/thumbnail/a.jpg"
+    reads = []
+    real = type(path).read_bytes
+
+    def counting(self):
+        reads.append(self.name)
+        return real(self)
+
+    monkeypatch.setattr(type(path), "read_bytes", counting)
+    first = binder._avatar_digest(tmp_path, "r", url)
+    assert binder._avatar_digest(tmp_path, "r", url) == first
+    assert reads == ["a.jpg"]  # the second call hit the memo
+    path.write_bytes(b"icon-22")  # new size: re-hashed
+    second = binder._avatar_digest(tmp_path, "r", url)
+    assert second != first and len(reads) == 2
+
+
+def test_avatar_digest_memo_is_bounded(tmp_path, monkeypatch):
+    monkeypatch.setattr(binder, "_DIGEST_CACHE_MAX", 1)
+    monkeypatch.setattr(binder, "_digest_cache", type(binder._digest_cache)())
+    thumbs = tmp_path / "r" / "profile_images" / "thumbnail"
+    thumbs.mkdir(parents=True)
+    for name in ("a.jpg", "b.jpg"):
+        (thumbs / name).write_bytes(name.encode("utf-8"))
+        url = f"/api/content/media/x/r/profile_images/thumbnail/{name}"
+        assert binder._avatar_digest(tmp_path, "r", url) is not None
+    assert len(binder._digest_cache) == 1
+
+
+@pytest.mark.asyncio
+async def test_unreadable_icon_file_logs_the_minute_rule_fallback(svc, monkeypatch):
+    # listed files exist (the profile-image service drops missing ones), but a
+    # read can still fail, e.g. an antivirus lock on Windows
+    real = type(svc).read_bytes
+
+    def locked(self):
+        if self.name == "a.jpg":
+            raise PermissionError("locked")
+        return real(self)
+
+    monkeypatch.setattr(type(svc), "read_bytes", locked)
+    s = await matsuda(svc)
+    with capture_logs() as logs:
+        await binder.person_avatar_changes(svc, s)
+    skip = next(e for e in logs if e.get("reason") == "avatar_hash_missing")
+    assert skip["event"] == "memories_skip" and skip["view"] == "binder"
+    assert skip["count"] == 1 and skip["person"] == "64"
+    assert set(skip) == {"event", "log_level", "view", "reason", "count", "person"}
+
+
+@pytest.mark.asyncio
+async def test_readable_icons_log_no_hash_fallback(svc):
+    s = await matsuda(svc)
+    with capture_logs() as logs:
+        await binder.person_avatar_changes(svc, s)
+    assert not [e for e in logs if e.get("reason") == "avatar_hash_missing"]
+
+
 @pytest.mark.asyncio
 async def test_cache_holds_no_text_and_second_call_skips_facts(svc, monkeypatch):
     s = await matsuda(svc)

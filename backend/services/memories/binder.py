@@ -19,7 +19,9 @@ Logs (ids, codes, counts and scores only; ``person`` = first member id):
   ``year`` for an older year of a stack) per face that came from a fallback;
 - ``memories_skip`` (``view=binder``, ``reason``): ``no_face`` (``rule``) for
   an earned card with nothing to show, ``avatar_same_image`` (``count``) for
-  cross-room duplicate icon changes, ``bad_subscription_start`` for an
+  cross-room duplicate icon changes, ``avatar_hash_missing`` (``count``) for
+  icons whose file is missing or unreadable (they fall back to the URL /
+  one-minute rule), ``bad_subscription_start`` for an
   unparsable start date, and ``face_missing`` (``count``) for message keys the
   payload could not resolve.
 """
@@ -28,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
 from datetime import date, datetime, timedelta, timezone
@@ -93,17 +96,39 @@ class IconEntry:
     digest: str | None  # sha256 of the image file; None when unreadable
 
 
+_DIGEST_CACHE_MAX = 1024
+# (path, size, mtime_ns) -> sha256: a cache miss of the binder (any new
+# message) must not re-read and re-hash every archived icon.
+_digest_cache: OrderedDict[tuple[str, int, int], str] = OrderedDict()
+
+
 def _avatar_digest(sdir: Path, room: str, url: str) -> str | None:
-    """sha256 of an archived icon given its media URL, or ``None``. Blocking."""
+    """sha256 of an archived icon given its media URL, or ``None``. Blocking.
+
+    Memoised per file on ``(path, size, mtime_ns)`` (bounded LRU), so an
+    unchanged icon is hashed once. A foreign URL or a missing / unreadable
+    file gives ``None`` (never memoised).
+    """
     marker = f"/{profile_images_service.DIR_NAME}/"
     if marker not in url:
         return None
     rel = unquote(url.split(marker, 1)[1])
+    path = sdir / room / profile_images_service.DIR_NAME / rel
     try:
-        data = (sdir / room / profile_images_service.DIR_NAME / rel).read_bytes()
+        st = path.stat()
+        key = (str(path), st.st_size, st.st_mtime_ns)
+        hit = _digest_cache.get(key)
+        if hit is not None:
+            _digest_cache.move_to_end(key)
+            return hit
+        data = path.read_bytes()
     except OSError:
         return None
-    return hashlib.sha256(data).hexdigest()
+    digest = hashlib.sha256(data).hexdigest()
+    _digest_cache[key] = digest
+    while len(_digest_cache) > _DIGEST_CACHE_MAX:
+        _digest_cache.popitem(last=False)
+    return digest
 
 
 def icon_entries(sdir: Path, rooms: Sequence[str]) -> list[IconEntry]:
@@ -175,6 +200,16 @@ async def person_avatar_changes(
 ) -> list[cards_mod.AvatarChange]:
     """Her real icon changes across rooms (:func:`avatar_changes`), logged."""
     entries = await asyncio.to_thread(icon_entries, sdir, summary.member_dirs)
+    unhashed = sum(e.digest is None for e in entries)
+    if unhashed:
+        # these entries compare by URL / the one-minute rule instead of content
+        logger.info(
+            "memories_skip",
+            view=VIEW,
+            reason="avatar_hash_missing",
+            person=_member_id(summary),
+            count=unhashed,
+        )
     kept, dropped = avatar_changes(entries)
     if dropped:
         logger.info(
