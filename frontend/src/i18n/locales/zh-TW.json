@@ -839,7 +839,9 @@
       "keyword": "那時和現在，同樣的話語。",
       "years": "跨越了{{count}}年。",
       "firstWeekTitle": "最初的一週，與現在。",
+      "firstRecordedWeekTitle": "記錄裡最初的一週，與現在。",
       "firstWeek": "最初的一週",
+      "firstRecordedWeek": "記錄裡最初的一週",
       "now": "現在"
     },
     "s09": {
@@ -847,7 +849,7 @@
       "birthday": "她的生日",
       "christmas": "聖誕節",
       "newyear": "新的一年，開始",
-      "anniversary": "你遇見她的紀念日",
+      "anniversary": "她的訊息開始送達的紀念日",
       "anniversaryNote": "這一天，她的話語也送達了。",
       "sealed": "12月25日，這裡就會打開。"
     },
@@ -859,6 +861,7 @@
       "firstFavorite": "今年第一顆★，在{{date}}。",
       "bookLabel": "你加上的★",
       "inviteTitle": "明年，也留下你的足跡。",
+      "inviteTitleLater": "從今以後，也留下你的足跡。",
       "inviteFavorites": "為留在心裡的訊息加上★，就會排在這裡。",
       "inviteLetters": "你寄出的信，也會排在這裡。"
     },

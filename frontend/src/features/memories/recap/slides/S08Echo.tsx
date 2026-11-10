@@ -58,11 +58,12 @@ const EchoCard: React.FC<CardProps> = ({ message, label, older, keyword, nicknam
 /**
  * Slide 8, 去年の、同じ日: an earlier message beside one of this year, the older card sepia,
  * the shared keyword lit in both. "The same day" only when they share the JST day; otherwise
- * "then and now". `first_week`: the fan's first subscription week beside now (初見 vs 今).
+ * "then and now". `first_week`: the fan's first subscription week beside now (初見 vs 今), or the
+ * first week on record when the subscription start is unknown.
  */
-export const S08Echo: React.FC<SlideProps<S08EchoData>> = ({ data, nickname, reducedMotion, paused }) => {
+export const S08Echo: React.FC<SlideProps<S08EchoData>> = ({ data, recap, nickname, reducedMotion, paused }) => {
     const { t } = useTranslation();
-    const copy = s08Copy(data);
+    const copy = s08Copy(data, recap.member.subscription_start);
     const keyword = data.mode === 'echo' ? data.shared_keyword : null;
     const line = heldReveal(reducedMotion, paused, 1400);
     return (

@@ -17,7 +17,7 @@ describe('S09Special', () => {
         expect(screen.getAllByTestId('s09-stub')).toHaveLength(4);
         expect(screen.getByText('彼女の誕生日')).toBeInTheDocument();
         expect(screen.getByText('新しい年の、はじまり')).toBeInTheDocument();
-        expect(screen.getByText('あなたが出会った、記念の日')).toBeInTheDocument();
+        expect(screen.getByText('メッセージが届きはじめた記念日')).toBeInTheDocument();
     });
 
     it('a midnight stub shows the seconds in monospace', () => {

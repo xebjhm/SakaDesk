@@ -27,11 +27,12 @@ const RECAP_KEYS: readonly string[] = [
     'recap.s06.title', 'recap.s06.play', 'recap.s06.hint', 'recap.s06.playing', 'recap.s06.video', 'recap.s06.count',
     'recap.s07.title', 'recap.s07.count',
     'recap.s08.title', 'recap.s08.titleYears', 'recap.s08.titleEcho', 'recap.s08.keyword', 'recap.s08.years',
-    'recap.s08.firstWeekTitle', 'recap.s08.firstWeek', 'recap.s08.now',
+    'recap.s08.firstWeekTitle', 'recap.s08.firstWeek', 'recap.s08.firstRecordedWeekTitle', 'recap.s08.firstRecordedWeek',
+    'recap.s08.now',
     'recap.s09.title', 'recap.s09.birthday', 'recap.s09.christmas', 'recap.s09.newyear', 'recap.s09.anniversary',
     'recap.s09.anniversaryNote', 'recap.s09.sealed',
     'recap.s10.title', 'recap.s10.favorites', 'recap.s10.letters', 'recap.s10.lettersLabel', 'recap.s10.firstFavorite',
-    'recap.s10.bookLabel', 'recap.s10.inviteTitle', 'recap.s10.inviteFavorites', 'recap.s10.inviteLetters',
+    'recap.s10.bookLabel', 'recap.s10.inviteTitle', 'recap.s10.inviteTitleLater', 'recap.s10.inviteFavorites', 'recap.s10.inviteLetters',
     'recap.s11.title', 'recap.s11.joyTitle', 'recap.s11.petalsLabel',
     'recap.s12.title',
     'recap.s13.title', 'recap.s13.partialTitle', 'recap.s13.partialNote', 'recap.s13.narration',
@@ -98,9 +99,39 @@ describe('recap strings', () => {
         const KNEW = /読ん|見て|知って|覚え|気づ|read|saw|seen|knew|know|remember|notice|讀|读|看過|看过|睇過|睇过|知道|記得|记得|發現|发现/i;
         const KEYS = ['recap.s09.anniversary', 'recap.s09.anniversaryNote', 'recap.s10.title', 'recap.s10.favorites',
             'recap.s10.letters', 'recap.s10.lettersLabel', 'recap.s10.firstFavorite', 'recap.s10.bookLabel',
-            'recap.s10.inviteTitle', 'recap.s10.inviteFavorites', 'recap.s10.inviteLetters'];
+            'recap.s10.inviteTitle', 'recap.s10.inviteTitleLater', 'recap.s10.inviteFavorites', 'recap.s10.inviteLetters'];
         for (const [code, data] of Object.entries(locales)) {
             for (const dotted of KEYS) expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(KNEW);
+        }
+    });
+
+    it('the subscription anniversary is when her messages began reaching the fan, never a meeting', () => {
+        // The data is the fan's subscription start; "met" / 出会う / 遇見 invent a mutual encounter.
+        const MET = /出会|出逢|巡り会|めぐりあ|邂逅|\bmet\b|\bmeet|encounter|遇見|遇见|相遇|相識|相识|認識|认识|識咗|识咗|結識|结识/i;
+        const KEYS = ['recap.s09.title', 'recap.s09.anniversary', 'recap.s09.anniversaryNote',
+            'recap.s08.firstWeekTitle', 'recap.s08.firstWeek', 'recap.s08.firstRecordedWeekTitle', 'recap.s08.firstRecordedWeek'];
+        for (const [code, data] of Object.entries(locales)) {
+            for (const dotted of KEYS) expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(MET);
+        }
+        // It names the anniversary of a start, not the start itself (the stub shows this year's day).
+        for (const [code, data] of Object.entries(locales)) {
+            expect(String(lookup(data, 'recap.s09.anniversary')), code).toMatch(/記念日|anniversary|紀念日|纪念日/i);
+        }
+    });
+
+    it('the first week counted from the archive never claims to be the fan\'s own', () => {
+        const YOURS = /あなた|your|you|你|妳/i;
+        for (const [code, data] of Object.entries(locales)) {
+            for (const k of ['recap.s08.firstRecordedWeekTitle', 'recap.s08.firstRecordedWeek']) {
+                expect(String(lookup(data, k)), `${code} ${k}`).not.toMatch(YOURS);
+            }
+        }
+    });
+
+    it('the past-year invite title never speaks of "next year"', () => {
+        const NEXT = /来年|next year|明年|下一年|出年/i;
+        for (const [code, data] of Object.entries(locales)) {
+            expect(String(lookup(data, 'recap.s10.inviteTitleLater')), code).not.toMatch(NEXT);
         }
     });
 

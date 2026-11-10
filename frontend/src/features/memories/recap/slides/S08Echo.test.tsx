@@ -7,8 +7,8 @@ import type { S08EchoData } from '../api';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 
-const renderS08 = (data: S08EchoData, fallback: string | null = null, paused = false) =>
-    render(<S08Echo data={data} fallback={fallback} recap={payload()} nickname="ゆき" reducedMotion={false} paused={paused} onMediaEnd={() => {}} />);
+const renderS08 = (data: S08EchoData, fallback: string | null = null, paused = false, recap = payload()) =>
+    render(<S08Echo data={data} fallback={fallback} recap={recap} nickname="ゆき" reducedMotion={false} paused={paused} onMediaEnd={() => {}} />);
 
 describe('S08Echo', () => {
     it('last year on the same day: two cards, the older one sepia, dated in JST', () => {
@@ -62,6 +62,18 @@ describe('S08Echo', () => {
         expect(screen.getByText('いま')).toBeInTheDocument();
         expect(screen.getAllByTestId('s08-card')[0].className).toMatch(/\bsepia\b/);
         expect(screen.queryByText(/年前|null|undefined/)).toBeNull();
+    });
+
+    it('first_week mode without a subscription start says "the first week on record", never "yours"', () => {
+        const recap = payload({ member: { ...payload().member, subscription_start: null } });
+        renderS08(
+            echoData({ mode: 'first_week', years_apart: null, shared_keyword: null,
+                then: message(40, 'はじめまして', { ts: '2024-07-25T12:00:00Z' }) }),
+            'first_week', false, recap,
+        );
+        expect(screen.getByText('記録に残る、最初の一週間と、いま。')).toBeInTheDocument();
+        expect(screen.getByText('記録に残る最初の週')).toBeInTheDocument();
+        expect(screen.queryByText(/はじめての/)).toBeNull();
     });
 
     it('the reveal freezes while paused', () => {

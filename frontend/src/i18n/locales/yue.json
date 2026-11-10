@@ -839,7 +839,9 @@
       "keyword": "嗰陣同而家，同一句說話。",
       "years": "跨越咗{{count}}年。",
       "firstWeekTitle": "最初嗰個星期，同而家。",
+      "firstRecordedWeekTitle": "記錄入面最初嗰個星期，同而家。",
       "firstWeek": "最初嗰個星期",
+      "firstRecordedWeek": "記錄入面最初嗰個星期",
       "now": "而家"
     },
     "s09": {
@@ -847,7 +849,7 @@
       "birthday": "佢嘅生日",
       "christmas": "聖誕節",
       "newyear": "新一年，開始",
-      "anniversary": "你遇見佢嘅紀念日",
+      "anniversary": "佢嘅訊息開始送到嘅紀念日",
       "anniversaryNote": "呢日，佢嘅說話都送到咗。",
       "sealed": "12月25日，呢度就會打開。"
     },
@@ -859,6 +861,7 @@
       "firstFavorite": "今年第一粒★，喺{{date}}。",
       "bookLabel": "你加嘅★",
       "inviteTitle": "明年，都留低你嘅足跡。",
+      "inviteTitleLater": "由而家起，都留低你嘅足跡。",
       "inviteFavorites": "幫留喺心入面嘅訊息加★，就會排喺度。",
       "inviteLetters": "你寄出嘅信，都會排喺度。"
     },

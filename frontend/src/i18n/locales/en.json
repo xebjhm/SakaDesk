@@ -853,7 +853,9 @@
       "years": "Across {{count}} year.",
       "years_other": "Across {{count}} years.",
       "firstWeekTitle": "Your first week, and now.",
+      "firstRecordedWeekTitle": "The first week on record, and now.",
       "firstWeek": "Your first week",
+      "firstRecordedWeek": "The first week on record",
       "now": "Now"
     },
     "s09": {
@@ -861,7 +863,7 @@
       "birthday": "Her birthday",
       "christmas": "Christmas",
       "newyear": "The start of a new year",
-      "anniversary": "The anniversary of the day you met her",
+      "anniversary": "Anniversary of the day her messages began reaching you",
       "anniversaryNote": "Her words arrived on this day too.",
       "sealed": "This opens on December 25."
     },
@@ -875,6 +877,7 @@
       "firstFavorite": "Your first star this year: {{date}}.",
       "bookLabel": "Your stars",
       "inviteTitle": "Next year, your footprints too.",
+      "inviteTitleLater": "From here on, your footprints too.",
       "inviteFavorites": "Star a message that stays with you, and it will appear here.",
       "inviteLetters": "Letters you send will appear here too."
     },

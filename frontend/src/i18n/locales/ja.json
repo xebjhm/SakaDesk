@@ -839,7 +839,9 @@
       "keyword": "あの頃も、いまも、同じことば。",
       "years": "{{count}}年の時を越えて。",
       "firstWeekTitle": "はじめての一週間と、いま。",
+      "firstRecordedWeekTitle": "記録に残る、最初の一週間と、いま。",
       "firstWeek": "はじめての週",
+      "firstRecordedWeek": "記録に残る最初の週",
       "now": "いま"
     },
     "s09": {
@@ -847,7 +849,7 @@
       "birthday": "彼女の誕生日",
       "christmas": "クリスマス",
       "newyear": "新しい年の、はじまり",
-      "anniversary": "あなたが出会った、記念の日",
+      "anniversary": "メッセージが届きはじめた記念日",
       "anniversaryNote": "この日も、彼女のことばが届いていた。",
       "sealed": "12月25日に、ここが開きます。"
     },
@@ -859,6 +861,7 @@
       "firstFavorite": "今年はじめての★は、{{date}}。",
       "bookLabel": "あなたがつけた★",
       "inviteTitle": "来年は、あなたの足あとも。",
+      "inviteTitleLater": "これからは、あなたの足あとも。",
       "inviteFavorites": "心に残ったメッセージに★をつけると、ここに並びます。",
       "inviteLetters": "あなたが送った手紙も、ここに並びます。"
     },

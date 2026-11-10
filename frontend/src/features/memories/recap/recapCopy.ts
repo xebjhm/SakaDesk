@@ -207,15 +207,17 @@ export function s07Copy(data: S07LetterData, nickname: string, lang: string): { 
  * s08. "The same day" only when both messages really share the JST month and day; the backend
  * also pairs messages by keyword alone. Years apart is the one number (in the title on the same
  * day, else in the line when no keyword is shared). `first_week`: the fan's first week with her
- * messages and now, no number.
+ * messages and now, no number. Without a known subscription start the backend counts the week
+ * from the archive's first message, so the copy says "the first week on record", never "your".
  */
-export function s08Copy(data: S08EchoData): {
+export function s08Copy(data: S08EchoData, subscriptionStart: string | null): {
     title: CopyLine; line: CopyLine | null; thenLabel: CopyLine | null; nowLabel: CopyLine | null;
 } {
     if (data.mode === 'first_week') {
+        const yours = !!subscriptionStart;
         return {
-            title: { key: 'recap.s08.firstWeekTitle' }, line: null,
-            thenLabel: { key: 'recap.s08.firstWeek' }, nowLabel: { key: 'recap.s08.now' },
+            title: { key: yours ? 'recap.s08.firstWeekTitle' : 'recap.s08.firstRecordedWeekTitle' }, line: null,
+            thenLabel: { key: yours ? 'recap.s08.firstWeek' : 'recap.s08.firstRecordedWeek' }, nowLabel: { key: 'recap.s08.now' },
         };
     }
     const thenDay = data.then ? jstMonthDay(data.then.ts) : null;
@@ -260,19 +262,27 @@ export function s09StubCopy(stub: RecapStub): { label: CopyLine; sealed: CopyLin
     };
 }
 
+/** The current calendar year in JST, the time zone the recap's year is cut in. */
+export function currentJstYear(now: Date = new Date()): number {
+    return Number(new Intl.DateTimeFormat('en-CA', { year: 'numeric', timeZone: RECAP_TIME_ZONE }).format(now));
+}
+
 /**
  * s10, the fan's own traces. One number: the favourites count, else the letters count; letters
  * beside a favourites count get a label instead of their count. The first star's day shows only when its time was logged
  * (`favorited_at`); the message time that stands in for older stars is not the day it was starred.
- * Invite: forward-looking lines, never a claim about her seeing anything.
+ * Invite: forward-looking lines, never a claim about her seeing anything. Its "next year" title
+ * holds only for the running year's recap; a past year's recap (its next year has already come)
+ * gets the year-free "from here on" title.
  */
-export function s10Copy(data: S10YouData): {
+export function s10Copy(data: S10YouData, year: number, now: Date = new Date()): {
     title: CopyLine; stat: CopyLine | null; lettersLabel: CopyLine | null;
     firstFavorite: boolean; invite: CopyLine[];
 } {
     if (data.invite) {
+        const past = year < currentJstYear(now);
         return {
-            title: { key: 'recap.s10.inviteTitle' }, stat: null, lettersLabel: null,
+            title: { key: past ? 'recap.s10.inviteTitleLater' : 'recap.s10.inviteTitle' }, stat: null, lettersLabel: null,
             firstFavorite: false, invite: [{ key: 'recap.s10.inviteFavorites' }, { key: 'recap.s10.inviteLetters' }],
         };
     }

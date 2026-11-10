@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import i18n from '../../../../i18n';
 import { S10You } from './S10You';
@@ -7,8 +7,10 @@ import type { S10YouData } from '../api';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 
-const renderS10 = (data: S10YouData, fallback: string | null = null, paused = false) =>
-    render(<S10You data={data} fallback={fallback} recap={payload()} nickname="ゆき" reducedMotion={false} paused={paused} onMediaEnd={() => {}} />);
+const renderS10 = (data: S10YouData, fallback: string | null = null, paused = false, year = 2026) =>
+    render(<S10You data={data} fallback={fallback} recap={payload({ year })} nickname="ゆき" reducedMotion={false} paused={paused} onMediaEnd={() => {}} />);
+
+afterEach(() => { vi.useRealTimers(); });
 
 describe('S10You', () => {
     it('renders no message text from the payload, even if a message carries text', () => {
@@ -70,6 +72,8 @@ describe('S10You', () => {
     });
 
     it('invite: a gentle forward-looking line that never claims she saw any letter', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-12-10T03:00:00Z'));
         renderS10({ invite: true }, 'invite');
         expect(screen.getByText('来年は、あなたの足あとも。')).toHaveAttribute('data-voice', 'title');
         expect(screen.getByText('心に残ったメッセージに★をつけると、ここに並びます。')).toBeInTheDocument();
@@ -77,6 +81,14 @@ describe('S10You', () => {
         const text = document.body.textContent ?? '';
         expect(text).not.toMatch(/読ん|見て|知って|覚え|0/);
         expect(screen.queryByTestId('s10-bookmark')).toBeNull();
+    });
+
+    it('invite on a past year\'s recap never says "next year"', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2027-01-02T00:00:00Z'));
+        renderS10({ invite: true }, 'invite', false, 2026);
+        expect(screen.getByText('これからは、あなたの足あとも。')).toHaveAttribute('data-voice', 'title');
+        expect(screen.queryByText(/来年/)).toBeNull();
     });
 
     it('freezes while paused', () => {

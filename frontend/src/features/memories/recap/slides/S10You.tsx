@@ -18,9 +18,9 @@ const MAX_ENVELOPES = 6;
  * message object is rendered, only the day the first star was logged. Without stars or letters, a
  * gentle forward-looking invitation that never claims she saw anything.
  */
-export const S10You: React.FC<SlideProps<S10YouData>> = ({ data, reducedMotion, paused }) => {
+export const S10You: React.FC<SlideProps<S10YouData>> = ({ data, recap, reducedMotion, paused }) => {
     const { t, i18n } = useTranslation();
-    const copy = s10Copy(data);
+    const copy = s10Copy(data, recap.year);
     const lines = heldReveal(reducedMotion, paused, 1200);
     if (data.invite) {
         return (
