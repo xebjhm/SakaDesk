@@ -25,7 +25,7 @@ describe('rarityCopy', () => {
     });
 
     it('uses the Japanese reference copy for the fan-anniversary reason', () => {
-        expect(lookup(ja, reasonKey('sub_anniversary'))).toBe('あなたの記念日のメッセージ');
+        expect(lookup(ja, reasonKey('sub_anniversary'))).toBe('あなたの記念日に届いたメッセージ');
         expect(lookup(ja, reasonKey('last_message'))).toBe('最後のメッセージ');
     });
 });

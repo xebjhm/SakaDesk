@@ -102,6 +102,16 @@ describe('memories fun strings', () => {
         expect(String(lookup(data, 'memories.capsule.full'))).not.toMatch(/\d|\{\{/);
     });
 
+    it.each([
+        ['en', 'Voices from 10 am to 9 pm'],
+        ['ja', '朝10時から夜9時までの声'],
+        ['zh-TW', '早上10點到晚上9點的聲音'],
+        ['zh-CN', '早上10点到晚上9点的声音'],
+        ['yue', '朝早10點到夜晚9點嘅聲'],
+    ] as const)('%s names the おつかれ band by its real hours (10:00-20:59)', (code, text) => {
+        expect(lookup(locales[code], 'memories.radio.programs.otsukareSub')).toBe(text);
+    });
+
     it('uses the Japanese reference copy', () => {
         const expected: Record<string, string> = {
             'memories.home.radio': 'ボイスラジオ',
@@ -138,7 +148,7 @@ describe('memories fun strings', () => {
             'memories.radio.programs.ohayo': 'おはよう放送',
             'memories.radio.programs.ohayoSub': '朝5時から10時までの声',
             'memories.radio.programs.otsukare': 'おつかれチャージ',
-            'memories.radio.programs.otsukareSub': '昼から夜までの声',
+            'memories.radio.programs.otsukareSub': '朝10時から夜9時までの声',
             'memories.radio.programs.chrono': 'あの頃から順番に',
             'memories.radio.programs.chronoSub': '選んだ年を、はじめから',
             'memories.radio.programs.favorites': '★ お気に入りの声',
@@ -172,7 +182,7 @@ describe('memories fun strings', () => {
             'memories.gacha.rarity.sr': 'SR',
             'memories.gacha.reason.midnight': '日付が変わった瞬間',
             'memories.gacha.reason.birthday': 'お誕生日のメッセージ',
-            'memories.gacha.reason.subAnniversary': 'あなたの記念日のメッセージ',
+            'memories.gacha.reason.subAnniversary': 'あなたの記念日に届いたメッセージ',
             'memories.gacha.reason.lastMessage': '最後のメッセージ',
             'memories.gacha.reason.nickname': '名前を呼んでくれた',
             'memories.gacha.reason.favorite': '★をつけたメッセージ',

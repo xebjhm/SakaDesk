@@ -977,7 +977,7 @@
         "ohayo": "おはよう放送",
         "ohayoSub": "朝5時から10時までの声",
         "otsukare": "おつかれチャージ",
-        "otsukareSub": "昼から夜までの声",
+        "otsukareSub": "朝10時から夜9時までの声",
         "chrono": "あの頃から順番に",
         "chronoSub": "選んだ年を、はじめから",
         "favorites": "★ お気に入りの声",
@@ -1022,7 +1022,7 @@
       "reason": {
         "midnight": "日付が変わった瞬間",
         "birthday": "お誕生日のメッセージ",
-        "subAnniversary": "あなたの記念日のメッセージ",
+        "subAnniversary": "あなたの記念日に届いたメッセージ",
         "lastMessage": "最後のメッセージ",
         "nickname": "名前を呼んでくれた",
         "favorite": "★をつけたメッセージ",
