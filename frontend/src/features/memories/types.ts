@@ -604,6 +604,7 @@ export interface SameTimeMoment {
     date: string;
     member_path: string;
     name: string;
+    /** Her message; `message.ts` is its real time, shown as her JST `HH:MM` (metadata, like the date). */
     message: MemoryMessage;
 }
 

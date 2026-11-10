@@ -1081,8 +1081,8 @@
     },
     "sameTime": {
       "now": "いま {{clock}}",
-      "pastYear": "{{year}}年のこの時刻、{{name}}は",
-      "thisYear": "{{date}}のこの時刻、{{name}}は"
+      "pastYear": "{{date}} {{time}}、{{name}}は",
+      "thisYear": "{{date}} {{time}}、{{name}}は"
     },
     "thenNow": {
       "toggle": "ほかの年とならべる",

@@ -3,9 +3,8 @@ import { Clock } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import { fetchSameTime, MemoriesFetchError, MemoriesTimeoutError } from '../api';
-import { formatMonthDayLabel } from '../day/format';
 import { logMemoriesLoad, logMemoriesSkip } from '../memoriesLog';
-import { formatJstClock, jstNow } from '../shared/jst';
+import { formatJstClock, formatJstIsoDate, JST_TIME_ZONE, jstNow } from '../shared/jst';
 import { MemoryText } from '../shared/MemoryText';
 import type { SameTimeMoment } from '../types';
 
@@ -29,9 +28,10 @@ const isAbort = (err: unknown) => err instanceof DOMException && err.name === 'A
 
 /**
  * 同じ時刻 (spec 14.3), a quiet hub line: 「いま {{clock}}」 (now, JST) ·
- * 「{{year}}年のこの時刻、{{name}}は」 (「{{date}}のこの時刻、…」 for a moment of this JST year) ·
- * her words on one line. The year and date are the message's real ones (metadata, never chosen
- * for the fan). Click opens that day (`{page: 'day', date}`).
+ * 「{{date}} {{time}}、{{name}}は」 (the date with its year for an earlier year, without it for a
+ * moment of this JST year) · her words on one line. The date and the time are the message's real
+ * JST ones (`date`, and `message.ts` as `HH:MM`): metadata, never chosen for the fan. Click opens
+ * that day (`{page: 'day', date}`).
  *
  * It starts from the hub's moment and refetches `fetchSameTime` at each minute boundary with one
  * `setTimeout` at a time, only while the window is visible: hidden, the timer is cleared and the
@@ -121,9 +121,11 @@ export const SameTimeLine: React.FC<SameTimeLineProps> = ({ service, initial, go
     if (!moment) return null;
     const thisYear = moment.year === jstNow(new Date(now)).year;
     // Her name goes in as a marker, then becomes a `lang="ja"` span inside the translated label.
-    const label = thisYear
-        ? t('memories.sameTime.thisYear', { date: formatMonthDayLabel(moment.date.slice(5), i18n.language), name: NAME_MARK })
-        : t('memories.sameTime.pastYear', { year: moment.year, name: NAME_MARK });
+    const dateFormat = new Intl.DateTimeFormat(i18n.language, {
+        ...(thisYear ? {} : { year: 'numeric' }), month: 'long', day: 'numeric', timeZone: JST_TIME_ZONE,
+    });
+    const params = { date: formatJstIsoDate(dateFormat, moment.date), time: formatJstClock(moment.message.ts), name: NAME_MARK };
+    const label = t(thisYear ? 'memories.sameTime.thisYear' : 'memories.sameTime.pastYear', params);
     const [before, ...rest] = label.split(NAME_MARK);
     const labelNode = rest.length
         ? <>{before}<span lang="ja">{moment.name}</span>{rest.join(moment.name)}</>

@@ -1081,8 +1081,8 @@
     },
     "sameTime": {
       "now": "現在 {{clock}}",
-      "pastYear": "{{year}} 年的這個時刻，{{name}}說",
-      "thisYear": "{{date}}的這個時刻，{{name}}說"
+      "pastYear": "{{date}} {{time}}，{{name}}說",
+      "thisYear": "{{date}} {{time}}，{{name}}說"
     },
     "thenNow": {
       "toggle": "和其他年份並排",

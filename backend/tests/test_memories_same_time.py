@@ -202,6 +202,20 @@ async def test_midnight_wrap(svc):
 
 
 @pytest.mark.asyncio
+async def test_payload_carries_her_own_jst_time_not_nows_clock(svc):
+    """The line shows her message's real JST time: ``message.ts`` carries it."""
+    kane(
+        svc, [msg(1, "2024-06-02T15:01:00Z", content="00:01の言葉")]
+    )  # 00:01 JST Jun 3
+    # 2026-11-11 00:02 JST: the clock is now's, the time is hers.
+    got = await line(svc, datetime(2026, 11, 10, 15, 2, tzinfo=timezone.utc))
+    assert got["clock"] == "00:02" and got["date"] == "2024-06-03"
+    ts = datetime.fromisoformat(got["message"]["ts"].replace("Z", "+00:00"))
+    jst = ts.astimezone(timezone(timedelta(hours=9)))
+    assert (jst.date().isoformat(), jst.strftime("%H:%M")) == ("2024-06-03", "00:01")
+
+
+@pytest.mark.asyncio
 async def test_yesterday_at_23_59_is_an_earlier_date(svc):
     # 2026-11-10 23:59 JST, then 2026-11-11 00:00 JST
     kane(svc, [msg(1, "2026-11-10T14:59:00Z", content="昨日の夜")])

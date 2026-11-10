@@ -1081,8 +1081,8 @@
     },
     "sameTime": {
       "now": "而家 {{clock}}",
-      "pastYear": "{{year}} 年嘅呢個時刻，{{name}}講",
-      "thisYear": "{{date}}嘅呢個時刻，{{name}}講"
+      "pastYear": "{{date}} {{time}}，{{name}}講",
+      "thisYear": "{{date}} {{time}}，{{name}}講"
     },
     "thenNow": {
       "toggle": "同其他年份並排",

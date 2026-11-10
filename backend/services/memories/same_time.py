@@ -9,7 +9,8 @@
 or ``None`` when nothing matches (the frontend then hides the line).
 
 - ``clock`` is now's JST ``HH:MM``; ``year`` / ``date`` are the message's real
-  JST year and date, and ``message.ts`` its real time. The time is metadata:
+  JST year and date, and ``message.ts`` its real time (UTC ISO), which the
+  line shows as her JST ``HH:MM`` beside now's clock. The time is metadata:
   nothing says she chose it for the fan.
 - Candidates (``facts.get_rooms_facts_at_clock`` over every room, midnight
   wraps): non-promo

@@ -1106,8 +1106,8 @@
     },
     "sameTime": {
       "now": "Now {{clock}}",
-      "pastYear": "At this time in {{year}}, {{name}} wrote",
-      "thisYear": "At this time on {{date}}, {{name}} wrote"
+      "pastYear": "On {{date}} at {{time}}, {{name}} wrote",
+      "thisYear": "On {{date}} at {{time}}, {{name}} wrote"
     },
     "thenNow": {
       "toggle": "Set beside another year",

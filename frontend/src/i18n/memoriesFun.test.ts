@@ -215,8 +215,8 @@ describe('memories fun strings', () => {
             'memories.capsule.deleteFailed': 'メモをはがせませんでした',
             'memories.capsule.local': 'このメモはこのパソコンにだけ保存されます',
             'memories.sameTime.now': 'いま {{clock}}',
-            'memories.sameTime.pastYear': '{{year}}年のこの時刻、{{name}}は',
-            'memories.sameTime.thisYear': '{{date}}のこの時刻、{{name}}は',
+            'memories.sameTime.pastYear': '{{date}} {{time}}、{{name}}は',
+            'memories.sameTime.thisYear': '{{date}} {{time}}、{{name}}は',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, key), key).toBe(text);
     });

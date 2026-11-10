@@ -1081,8 +1081,8 @@
     },
     "sameTime": {
       "now": "现在 {{clock}}",
-      "pastYear": "{{year}} 年的这个时刻，{{name}}说",
-      "thisYear": "{{date}}的这个时刻，{{name}}说"
+      "pastYear": "{{date}} {{time}}，{{name}}说",
+      "thisYear": "{{date}} {{time}}，{{name}}说"
     },
     "thenNow": {
       "toggle": "和其他年份并排",

@@ -58,14 +58,30 @@ describe('SameTimeLine', () => {
         renderLine();
         const line = screen.getByTestId('memories-same-time');
         expect(line).toHaveTextContent('いま 21:03');
-        expect(line).toHaveTextContent('2024年のこの時刻、金村 美玖は');
+        expect(line).toHaveTextContent(/いま 21:03\s*·\s*2024年6月2日 21:02、金村 美玖は/);
         expect(screen.getByTestId('memory-text')).toHaveTextContent('みーぱん、いま帰ってきたよ');
         expect(fetchSameTime).not.toHaveBeenCalled();
     });
 
     it('uses the this-year copy with the date for a moment of this JST year', () => {
-        renderLine(moment({ year: 2026, date: '2026-03-01' }));
-        expect(screen.getByTestId('memories-same-time')).toHaveTextContent('3月1日のこの時刻、金村 美玖は');
+        renderLine(moment({ year: 2026, date: '2026-03-01', message: memoryMessage({ id: 5, ts: '2026-03-01T12:04:00Z', text: 'x' }) }));
+        expect(screen.getByTestId('memories-same-time')).toHaveTextContent('3月1日 21:04、金村 美玖は');
+    });
+
+    it('shows her message\'s own JST time, not now\'s clock, in every locale', async () => {
+        // 15:30 UTC on Jun 2 is 00:30 JST on Jun 3: the time and the date are both JST.
+        const late = moment({ date: '2024-06-03', message: memoryMessage({ id: 7, ts: '2024-06-02T15:30:00Z', text: 'x' }) });
+        try {
+            await i18n.changeLanguage('en');
+            const { unmount } = renderLine(late);
+            expect(screen.getByTestId('memories-same-time')).toHaveTextContent('On June 3, 2024 at 00:30, 金村 美玖 wrote');
+            unmount();
+            await i18n.changeLanguage('zh-TW');
+            renderLine(late);
+            expect(screen.getByTestId('memories-same-time')).toHaveTextContent('2024年6月3日 00:30，金村 美玖說');
+        } finally {
+            await i18n.changeLanguage('ja');
+        }
     });
 
     it('refetches at the next JST minute boundary, once per minute', async () => {
@@ -128,7 +144,7 @@ describe('SameTimeLine', () => {
         renderLine();
         const name = screen.getByText('金村 美玖');
         expect(name).toHaveAttribute('lang', 'ja');
-        expect(name.parentElement).toHaveTextContent('2024年のこの時刻、金村 美玖は');
+        expect(name.parentElement).toHaveTextContent('2024年6月2日 21:02、金村 美玖は');
     });
 
     it('hides instead of keeping an older minute\'s moment under a newer clock when a refetch fails', async () => {
