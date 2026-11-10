@@ -53,7 +53,8 @@ from backend.services.messages_cache import (
     get_messages_summary,
     stat_key,
 )
-from backend.services import avatar_resize, profile_images_service
+from backend.services import avatar_resize, photo_thumb, profile_images_service
+from backend.services.archive_urls import ArchiveReadError, archive_file_ok
 from backend.services.media_range import MediaFileResponse
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
@@ -905,6 +906,35 @@ async def get_avatar(file_path: str, w: int = Query(...)):
     served = await asyncio.to_thread(avatar_resize.resized_avatar, safe_path, w)
     if served == safe_path:
         return FileResponse(safe_path)
+    return FileResponse(served, media_type="image/webp")
+
+
+@router.get("/thumb/{file_path:path}")
+async def get_thumb(file_path: str, w: int = Query(...)):
+    """Serve an archived picture downscaled to fit ``w`` px (WebP, aspect kept).
+
+    ``file_path`` is the same as for ``/media/{file_path}`` and is validated
+    the same way (403 outside the output dir), then must be a regular file
+    inside it (``archive_file_ok``). ``w`` must be one of
+    ``photo_thumb.ALLOWED_WIDTHS`` (400 otherwise). A missing file, a
+    non-picture (video, voice, unknown) or a picture that cannot be decoded
+    safely answers 404, so the client falls back to the full media URL. The
+    variant is cached on disk (see ``backend.services.photo_thumb``).
+    """
+    if w not in photo_thumb.ALLOWED_WIDTHS:
+        logger.info("thumb_request_rejected", reason="width", width=w)
+        raise HTTPException(status_code=400, detail="Unsupported width")
+    safe_path = _resolve_media_path(file_path)
+    output_dir = get_output_dir()
+    try:
+        if not archive_file_ok(output_dir, safe_path):
+            raise HTTPException(status_code=404, detail="File not found")
+    except ArchiveReadError:
+        raise HTTPException(status_code=404, detail="File not found") from None
+    rel = safe_path.relative_to(output_dir.resolve()).as_posix()
+    served = await photo_thumb.thumbnail(safe_path, rel, w)
+    if served is None:
+        raise HTTPException(status_code=404, detail="No thumbnail")
     return FileResponse(served, media_type="image/webp")
 
 
