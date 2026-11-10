@@ -1000,6 +1000,34 @@
       "lengthHoursOnly": "{{hours}}時間",
       "lengthMinutes": "{{count}}分",
       "lengthUnder": "1分未満"
+    },
+    "gacha": {
+      "title": "思い出ガチャ",
+      "turn": "ハンドルを回す",
+      "left": "今日はあと {{count, number}} 回",
+      "tomorrow": "また明日",
+      "history": "これまでに出た思い出",
+      "context": "この日の前後を見る",
+      "favorite": "★をつける",
+      "unfavorite": "★をはずす",
+      "empty": "ガチャに入れる思い出が、まだありません。",
+      "missing": "このメッセージは見つかりませんでした",
+      "rarity": {
+        "n": "ノーマル",
+        "r": "R",
+        "sr": "SR"
+      },
+      "reason": {
+        "midnight": "日付が変わった瞬間",
+        "birthday": "お誕生日のメッセージ",
+        "subAnniversary": "あなたの記念日のメッセージ",
+        "lastMessage": "最後のメッセージ",
+        "nickname": "名前を呼んでくれた",
+        "favorite": "★をつけたメッセージ",
+        "voice": "声",
+        "message": "メッセージ",
+        "photo": "写真"
+      }
     }
   },
   "recap": {

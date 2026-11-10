@@ -5,10 +5,9 @@ import { PageHeader } from './shared/PageHeader';
 import { jstDateFormat } from './shared/jst';
 
 /** A fun-wave page route that has no screen yet. */
-export type FunRoute = Extract<MemoriesRoute, { page: 'gacha' | 'calendar' | 'day' }>;
+export type FunRoute = Extract<MemoriesRoute, { page: 'calendar' | 'day' }>;
 
 const TITLE_KEYS: Record<Exclude<FunRoute['page'], 'day'>, string> = {
-    gacha: 'memories.home.gacha',
     calendar: 'memories.home.calendar',
 };
 
@@ -19,8 +18,8 @@ interface FunPlaceholderProps {
 }
 
 /**
- * The stand-in for a fun-wave page until its task draws it (the gacha, the calendar and the day;
- * the radio has its own page): the page frame, its serif title and back. A day opened from the
+ * The stand-in for a fun-wave page until its task draws it (the calendar and the day; the radio
+ * and the gacha have their own pages): the page frame, its serif title and back. A day opened from the
  * calendar goes back to the calendar; everything else goes home. The day's title is its JST date, localized.
  */
 export const FunPlaceholder: React.FC<FunPlaceholderProps> = ({ service, route, go }) => {

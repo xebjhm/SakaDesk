@@ -1,0 +1,225 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { Gift } from 'lucide-react';
+import { useTranslation } from '../../../i18n';
+import { EmptyState } from '../../../design/primitives';
+import { setFavorite } from '../../../utils/favoriteApi';
+import type { MemoriesRoute } from '../MemoriesFeature';
+import { fetchGacha, postGachaPull } from '../api';
+import { FilmStrip } from '../favorites/FilmStrip';
+import { logMemoriesGacha } from '../memoriesLog';
+import { formatJstDate } from '../shared/jst';
+import { LoadState } from '../shared/LoadState';
+import { PageHeader } from '../shared/PageHeader';
+import { useMemoriesQuery } from '../shared/useMemoriesQuery';
+import { useReducedMotion } from '../shared/useReducedMotion';
+import { stopMemoriesVoices } from '../shared/voicePlayback';
+import type { GachaPull, GachaStatePayload, GachaRarity } from '../types';
+import { CapsuleMachine } from './CapsuleMachine';
+import { GachaCard } from './GachaCard';
+import { pullKey } from './keys';
+import { PullHistory } from './PullHistory';
+
+interface GachaPageProps {
+    service: string;
+    go: (next: MemoriesRoute) => void;
+}
+
+/** This visit's pulls on top of a loaded state (`base`); a refetch replaces both. */
+interface Session {
+    base: GachaStatePayload;
+    /** Newest first. */
+    pulls: GachaPull[];
+    left: number;
+}
+
+const messageKey = (p: GachaPull) => `${p.message.room}|${p.message.id}`;
+
+/**
+ * 思い出ガチャ (spec 12): the capsule machine on the left, the revealed card on the right (stacked
+ * under `md`), the pull history along the bottom. It opens on today's newest pull, if any.
+ *
+ * - **Pull:** one request at a time (a ref guard, so double clicks make one request; the server
+ *   is safe too). A pull logs `pull` (its index) and `reveal` (rarity, reason, index, id), drops
+ *   its capsule and opens its card. A 409 means today's pulls are used (also after a racing
+ *   click): 「また明日」, logged `refused` `no_pulls_left`. An empty pool logs `empty_pool`. Any
+ *   other failure (a timeout included) may still have been committed, so the state is refetched,
+ *   never the write retried (`request_failed`).
+ * - **★:** optimistic through the chat's `setFavorite`, reverted when it was not saved (logged
+ *   with `reason` `request_failed`); one request per message at a time. The page keeps the result,
+ *   so reopening a card from the history shows it.
+ * - **Context:** the film strip of her JST day at the message (`from` `gacha`); opening it or
+ *   leaving the page stops the card's voice.
+ * - Nothing to draw (`available: false`): the gentle empty copy. Pulls left 0 never shows a 0.
+ */
+export const GachaPage: React.FC<GachaPageProps> = ({ service, go }) => {
+    const { t } = useTranslation();
+    const reducedMotion = useReducedMotion();
+    const state = useMemoriesQuery('gacha', (signal) => fetchGacha(service, signal), [service], {
+        count: (d) => d.history.length,
+    });
+    const data = state.data;
+
+    const [session, setSession] = useState<Session | null>(null);
+    const live = session && data && session.base === data ? session : null;
+    const left = live ? live.left : (data?.pulls_left ?? 0);
+    const fresh = live?.pulls ?? [];
+    const freshKeys = new Set(fresh.map(pullKey));
+    const history = [...fresh, ...(data?.history ?? []).filter((p) => !freshKeys.has(pullKey(p)))];
+
+    const [selected, setSelected] = useState<string | null>(null);
+    const [dropped, setDropped] = useState<{ key: string; rarity: GachaRarity } | null>(null);
+    const [busy, setBusy] = useState(false);
+    const inFlight = useRef(false);
+    const [favs, setFavs] = useState<Record<string, boolean>>({});
+    const favPending = useRef(new Set<string>());
+    const [strip, setStrip] = useState<{ memberPath: string; date: string; focusId: number } | null>(null);
+
+    // One signal for the page's writes: leaving the page aborts them and silences the card.
+    const lifetime = useRef<AbortController | null>(null);
+    useEffect(() => {
+        const controller = new AbortController();
+        lifetime.current = controller;
+        return () => {
+            controller.abort();
+            stopMemoriesVoices();
+        };
+    }, []);
+
+    useEffect(() => {
+        if (!data) return;
+        logMemoriesGacha('open', { count: data.pulls_left });
+        if (!data.available) logMemoriesGacha('refused', { reason: 'empty_pool' });
+    }, [data]);
+
+    const todayNewest = fresh[0] ?? data?.today[data.today.length - 1] ?? null;
+    const openKey = selected ?? (todayNewest ? pullKey(todayNewest) : null);
+    const open = openKey ? history.find((p) => pullKey(p) === openKey) ?? null : null;
+
+    const pull = async () => {
+        if (inFlight.current || !data || left <= 0) return;
+        const signal = lifetime.current?.signal;
+        if (!signal || signal.aborted) return;
+        inFlight.current = true;
+        setBusy(true);
+        const base = data;
+        const keep = (s: Session | null) => (s && s.base === base ? s.pulls : []);
+        logMemoriesGacha('pull', { index: base.max_pulls - left });
+        try {
+            const res = await postGachaPull(service, signal);
+            if (signal.aborted) return;
+            if (res.status === 'no_pulls_left') {
+                logMemoriesGacha('refused', { reason: 'no_pulls_left' });
+                setSession((s) => ({ base, pulls: keep(s), left: 0 }));
+            } else if (!res.data.pull) {
+                logMemoriesGacha('refused', { reason: 'empty_pool' });
+                setSession((s) => ({ base, pulls: keep(s), left: res.data.pulls_left }));
+            } else {
+                const p = res.data.pull;
+                logMemoriesGacha('reveal', { kind: p.rarity, reason: p.reason, index: p.pull_index, message_id: p.message.id });
+                setSession((s) => ({ base, pulls: [p, ...keep(s)], left: res.data.pulls_left }));
+                setSelected(pullKey(p));
+                setDropped({ key: pullKey(p), rarity: p.rarity });
+            }
+        } catch {
+            if (signal.aborted) return;
+            // A timed-out write may already be committed: read the state again, never re-pull.
+            logMemoriesGacha('refused', { reason: 'request_failed' });
+            state.retry();
+        } finally {
+            if (!signal.aborted) {
+                inFlight.current = false;
+                setBusy(false);
+            }
+        }
+    };
+
+    const isFavorite = (p: GachaPull) => favs[messageKey(p)] ?? p.message.favorited;
+
+    const toggleFavorite = async (p: GachaPull) => {
+        const key = messageKey(p);
+        const signal = lifetime.current?.signal;
+        if (!signal || favPending.current.has(key)) return;
+        const was = isFavorite(p);
+        const next = !was;
+        const outcome = next ? 'on' : 'off';
+        favPending.current.add(key);
+        setFavs((f) => ({ ...f, [key]: next }));
+        let saved: boolean;
+        try {
+            saved = await setFavorite(service, p.message.id, next, signal);
+        } catch {
+            return; // aborted: the page is gone
+        } finally {
+            favPending.current.delete(key);
+        }
+        if (saved) {
+            logMemoriesGacha('favorite', { outcome, message_id: p.message.id });
+        } else {
+            setFavs((f) => ({ ...f, [key]: was }));
+            logMemoriesGacha('favorite', { outcome, reason: 'request_failed', message_id: p.message.id });
+        }
+    };
+
+    const openContext = (p: GachaPull) => {
+        if (!p.message.ts) return;
+        stopMemoriesVoices();
+        logMemoriesGacha('context', { message_id: p.message.id });
+        setStrip({ memberPath: p.message.member_path, date: formatJstDate(p.message.ts), focusId: p.message.id });
+    };
+
+    let body: React.ReactNode;
+    if (state.status !== 'ready' || !data) {
+        body = <LoadState status={state.status === 'error' ? 'error' : 'loading'} onRetry={state.retry} />;
+    } else if (!data.available) {
+        body = (
+            <div className="flex flex-1 items-center justify-center">
+                <EmptyState icon={<Gift />} title={t('memories.gacha.title')} description={t('memories.gacha.empty')} />
+            </div>
+        );
+    } else {
+        body = (
+            <>
+                <div className="flex min-h-0 flex-1 flex-col items-center gap-8 overflow-y-auto p-6 md:flex-row md:justify-center md:gap-12">
+                    <CapsuleMachine pullsLeft={left} busy={busy} onPull={() => { void pull(); }} dropped={dropped} reducedMotion={reducedMotion} />
+                    <div className="flex w-full max-w-sm shrink-0 justify-center">
+                        {open ? (
+                            <GachaCard
+                                key={pullKey(open)}
+                                pull={open}
+                                favorited={isFavorite(open)}
+                                onToggleFavorite={() => { void toggleFavorite(open); }}
+                                onContext={() => openContext(open)}
+                                reducedMotion={reducedMotion}
+                            />
+                        ) : (
+                            <div aria-hidden="true" className="h-64 w-full rounded-lg border-2 border-dashed border-subtle" />
+                        )}
+                    </div>
+                </div>
+                {history.length > 0 && (
+                    <section className="shrink-0 border-t border-subtle">
+                        <h2 className="px-4 pt-2 text-caption text-muted">{t('memories.gacha.history')}</h2>
+                        <PullHistory pulls={history} selectedKey={open ? pullKey(open) : null} onSelect={(p) => setSelected(pullKey(p))} />
+                    </section>
+                )}
+            </>
+        );
+    }
+
+    return (
+        <div data-testid="memories-page-gacha" data-service={service} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+            <PageHeader title={t('memories.gacha.title')} onBack={() => go({ page: 'home' })} />
+            <div className="flex min-h-0 flex-1 flex-col">{body}</div>
+            {strip && (
+                <FilmStrip
+                    service={service}
+                    memberPath={strip.memberPath}
+                    date={strip.date}
+                    focusId={strip.focusId}
+                    from="gacha"
+                    onClose={() => setStrip(null)}
+                />
+            )}
+        </div>
+    );
+};

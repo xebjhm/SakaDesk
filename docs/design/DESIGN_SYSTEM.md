@@ -815,7 +815,8 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   you need to read at full contrast. `sepiaClass` returns literal class names from a lookup, so
   Tailwind sees them; never build a `sepia-memories-${n}` name at runtime.
 - **Foil only for special cards.** `bg-memories-foil` marks a binder card the catalogue flags as
-  foil (`foil: true`) and nothing else: not hover states, not headings, not the hub.
+  foil (`foil: true`) and a gacha SR card, and nothing else: not hover states, not headings, not
+  the hub.
 - **The fun-wave surfaces are semantic.** Rarity, night, on-air, sky and note have fixed meanings
   and never follow the group accent; none of them reuses the oshi pink, the favourite star yellow
   or danger red. Group colour stays for identity, the current state and one primary action. The
@@ -871,6 +872,18 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   (`opacity-60`) and scroll inside their own box. The cassette tapes take the year's probe colour
   through `style` (the album ribbon's data-driven exception; a `null` year is the neutral
   `bg-sunken` tape) under a `bg-memories-paper` label. The sleep timer is a `Pill` with a `Menu`.
+- **The gacha** (`features/memories/gacha/`): the capsule machine is CSS shapes from tokens: a
+  `bg-frost backdrop-blur-frost` dome of capsules over a neutral `bg-card` base with a
+  `bg-memories-paper` knob and a `bg-sunken` slot. A capsule's top half is its rarity fill
+  (`bg-memories-rarity-n/r/sr`, from a literal lookup), its bottom half paper; the history row
+  repeats the capsules with their JST pull dates and scrolls inside itself. The knob turns by
+  drag, click, Enter or Space and shows 「今日はあと {{count}} 回」 under it, or 「また明日」 at 0
+  (never the number). The capsule rolls out (`duration-base`) and the card opens; under reduced
+  motion both fade. The card is `bg-memories-paper` with `shadow-memories-polaroid`: the rarity
+  label in its fill with the reason line, her words, photo or voice (`LazyVoice`), her name and
+  the message's real JST date and time, the context link (the film strip) and the ★ in the yellow
+  `text-semantic-star`. SR wears the still `bg-memories-foil` sheen with one `animate-shimmer`
+  sweep (removed under reduced motion).
 - **The memoir binder** (`features/memories/memoir/`): each shelf has a serif Japanese title
   (`lang="ja"`, an `h3` under her name, Japanese in every language) and a localised subtitle.
   Every card has a condition line for its silhouette. An earned card is a

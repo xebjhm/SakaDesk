@@ -1000,6 +1000,34 @@
       "lengthHoursOnly": "{{hours}} 個鐘",
       "lengthMinutes": "{{count}} 分鐘",
       "lengthUnder": "唔夠 1 分鐘"
+    },
+    "gacha": {
+      "title": "回憶扭蛋",
+      "turn": "扭個把手",
+      "left": "今日仲可以扭 {{count, number}} 次",
+      "tomorrow": "聽日見",
+      "history": "抽過嘅回憶",
+      "context": "睇吓呢日嘅前後",
+      "favorite": "加★",
+      "unfavorite": "除★",
+      "empty": "仲未有可以放入扭蛋嘅回憶。",
+      "missing": "搵唔到呢個訊息",
+      "rarity": {
+        "n": "普通",
+        "r": "R",
+        "sr": "SR"
+      },
+      "reason": {
+        "midnight": "轉日嗰一刻",
+        "birthday": "生日當日嘅訊息",
+        "subAnniversary": "你訂閱紀念日嗰日嘅訊息",
+        "lastMessage": "最後一個訊息",
+        "nickname": "叫咗你個名",
+        "favorite": "你加咗★嘅訊息",
+        "voice": "語音",
+        "message": "訊息",
+        "photo": "相片"
+      }
     }
   },
   "recap": {

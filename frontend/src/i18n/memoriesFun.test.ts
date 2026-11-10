@@ -26,6 +26,13 @@ export const MEMORIES_FUN_KEYS: string[] = [
     'memories.radio.sleep', 'memories.radio.sleepOff', 'memories.radio.sleepMinutes', 'memories.radio.sleepLeft',
     'memories.radio.cassette', 'memories.radio.cassetteLength', 'memories.radio.cassettes', 'memories.radio.empty',
     'memories.radio.lengthHours', 'memories.radio.lengthHoursOnly', 'memories.radio.lengthMinutes', 'memories.radio.lengthUnder',
+    // F10: the gacha
+    'memories.gacha.title', 'memories.gacha.turn', 'memories.gacha.left', 'memories.gacha.tomorrow', 'memories.gacha.history',
+    'memories.gacha.context', 'memories.gacha.favorite', 'memories.gacha.unfavorite', 'memories.gacha.empty', 'memories.gacha.missing',
+    'memories.gacha.rarity.n', 'memories.gacha.rarity.r', 'memories.gacha.rarity.sr',
+    'memories.gacha.reason.midnight', 'memories.gacha.reason.birthday', 'memories.gacha.reason.subAnniversary',
+    'memories.gacha.reason.lastMessage', 'memories.gacha.reason.nickname', 'memories.gacha.reason.favorite',
+    'memories.gacha.reason.voice', 'memories.gacha.reason.message', 'memories.gacha.reason.photo',
 ];
 
 /** Fun keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
@@ -33,6 +40,8 @@ export const MEMORIES_FUN_EN_PLURALS: string[] = [
     'memories.home.countVoices', 'memories.home.countDays',
     // F9
     'memories.radio.trackCount', 'memories.radio.sleepMinutes',
+    // F10
+    'memories.gacha.left',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -58,6 +67,7 @@ describe('memories fun strings', () => {
 
     it.each(Object.entries(locales))('%s never prints a number in the gacha spent line', (_code, data) => {
         expect(String(lookup(data, 'memories.home.gachaTomorrow'))).not.toMatch(/\d|\{\{/);
+        expect(String(lookup(data, 'memories.gacha.tomorrow'))).not.toMatch(/\d|\{\{/);
     });
 
     it('uses the Japanese reference copy', () => {
@@ -100,6 +110,28 @@ describe('memories fun strings', () => {
             'memories.radio.cassette': '{{year}}年のテープ',
             'memories.radio.cassetteLength': '{{length}}',
             'memories.radio.empty': 'ここで流せる声は、まだありません。',
+            'memories.gacha.title': '思い出ガチャ',
+            'memories.gacha.turn': 'ハンドルを回す',
+            'memories.gacha.left': '今日はあと {{count, number}} 回',
+            'memories.gacha.tomorrow': 'また明日',
+            'memories.gacha.history': 'これまでに出た思い出',
+            'memories.gacha.context': 'この日の前後を見る',
+            'memories.gacha.favorite': '★をつける',
+            'memories.gacha.unfavorite': '★をはずす',
+            'memories.gacha.empty': 'ガチャに入れる思い出が、まだありません。',
+            'memories.gacha.missing': 'このメッセージは見つかりませんでした',
+            'memories.gacha.rarity.n': 'ノーマル',
+            'memories.gacha.rarity.r': 'R',
+            'memories.gacha.rarity.sr': 'SR',
+            'memories.gacha.reason.midnight': '日付が変わった瞬間',
+            'memories.gacha.reason.birthday': 'お誕生日のメッセージ',
+            'memories.gacha.reason.subAnniversary': 'あなたの記念日のメッセージ',
+            'memories.gacha.reason.lastMessage': '最後のメッセージ',
+            'memories.gacha.reason.nickname': '名前を呼んでくれた',
+            'memories.gacha.reason.favorite': '★をつけたメッセージ',
+            'memories.gacha.reason.voice': '声',
+            'memories.gacha.reason.message': 'メッセージ',
+            'memories.gacha.reason.photo': '写真',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, key), key).toBe(text);
     });

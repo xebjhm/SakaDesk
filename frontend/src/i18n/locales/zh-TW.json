@@ -1000,6 +1000,34 @@
       "lengthHoursOnly": "{{hours}} 小時",
       "lengthMinutes": "{{count}} 分鐘",
       "lengthUnder": "不到 1 分鐘"
+    },
+    "gacha": {
+      "title": "回憶扭蛋",
+      "turn": "轉動把手",
+      "left": "今天還能轉 {{count, number}} 次",
+      "tomorrow": "明天見",
+      "history": "抽到過的回憶",
+      "context": "看這一天的前後",
+      "favorite": "加上★",
+      "unfavorite": "取消★",
+      "empty": "還沒有能放進扭蛋的回憶。",
+      "missing": "找不到這則訊息",
+      "rarity": {
+        "n": "普通",
+        "r": "R",
+        "sr": "SR"
+      },
+      "reason": {
+        "midnight": "換日的瞬間",
+        "birthday": "生日當天的訊息",
+        "subAnniversary": "你訂閱紀念日那天的訊息",
+        "lastMessage": "最後一則訊息",
+        "nickname": "叫了你的名字",
+        "favorite": "你加了★的訊息",
+        "voice": "語音",
+        "message": "訊息",
+        "photo": "照片"
+      }
     }
   },
   "recap": {

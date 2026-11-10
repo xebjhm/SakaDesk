@@ -1021,6 +1021,35 @@
       "lengthUnder": "Under 1 min",
       "trackCount_other": "{{count, number}} voices",
       "sleepMinutes_other": "Stop in {{count}} minutes"
+    },
+    "gacha": {
+      "title": "Memory gacha",
+      "turn": "Turn the handle",
+      "left": "{{count, number}} pull left today",
+      "left_other": "{{count, number}} pulls left today",
+      "tomorrow": "See you tomorrow",
+      "history": "Memories drawn so far",
+      "context": "See the rest of this day",
+      "favorite": "Add ★",
+      "unfavorite": "Remove ★",
+      "empty": "There are no memories for the gacha yet.",
+      "missing": "This message could not be found",
+      "rarity": {
+        "n": "Normal",
+        "r": "R",
+        "sr": "SR"
+      },
+      "reason": {
+        "midnight": "The moment the date changed",
+        "birthday": "A message on her birthday",
+        "subAnniversary": "Sent on your membership anniversary",
+        "lastMessage": "Her last message",
+        "nickname": "She called your name",
+        "favorite": "A message you starred",
+        "voice": "Voice",
+        "message": "Message",
+        "photo": "Photo"
+      }
     }
   },
   "recap": {

@@ -38,6 +38,8 @@ beforeEach(() => {
         // The radio page (F9) loads its member list and the first program.
         http.get('/api/memories/:service/radio/members', () => HttpResponse.json({ total_seconds: null, members: [] })),
         http.get('/api/memories/:service/radio/program', () => HttpResponse.json({ program: 'oyasumi', programs: [], years: [], tracks: [] })),
+        // The gacha page (F10) loads its state.
+        http.get('/api/memories/:service/gacha', () => HttpResponse.json({ available: false, pulls_left: 3, max_pulls: 3, today: [], history: [] })),
         // The memoir page (C11) loads its member list.
         http.get('/api/memories/:service/memoir/members', () => HttpResponse.json({ members: [] })),
         http.get('/api/memories/:service/recap/years', () => (
@@ -112,6 +114,7 @@ describe('Memories feature', () => {
             { route: { page: 'memoir', tab: 'binder' }, testId: 'memories-page-memoir', title: 'Member memories' },
             { route: { page: 'favorites' }, testId: 'memories-page-favorites', title: 'Favorites' },
             { route: { page: 'radio' }, testId: 'memories-page-radio', title: 'Voice radio' },
+            { route: { page: 'gacha' }, testId: 'memories-page-gacha', title: 'Memory gacha' },
         ] as const;
 
         it.each(PAGES)('opens the $route.page page with its header and returns home', async ({ route, testId, title }) => {
@@ -157,7 +160,6 @@ describe('Memories feature', () => {
 
     describe('fun-wave routes (placeholders until their tasks)', () => {
         const FUN = [
-            { route: { page: 'gacha' }, testId: 'memories-page-gacha', title: 'Memory gacha', code: 'gacha' },
             { route: { page: 'calendar', month: '2024-09' }, testId: 'memories-page-calendar', title: 'Calendar', code: 'calendar' },
             // JST midnight on Jan 1: a title formatted in UTC would read "Dec 31, 2023".
             { route: { page: 'day', date: '2024-01-01' }, testId: 'memories-page-day', title: 'Jan 1, 2024', code: 'day' },
