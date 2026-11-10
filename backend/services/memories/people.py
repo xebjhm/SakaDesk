@@ -52,6 +52,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import sqlite3
 from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -60,7 +61,7 @@ from pathlib import Path
 
 import structlog
 
-from backend.services import path_resolver, profile_images_service
+from backend.services import app_state, path_resolver, profile_images_service
 from backend.services.archive_urls import (
     MEDIA_PREFIX,
     ArchiveReadError,
@@ -337,8 +338,30 @@ def current_avatars(sdir: Path, rooms: Sequence[str]) -> dict[str, str | None]:
 # --- message objects ---------------------------------------------------------------
 
 
-def _iso(ts: datetime) -> str:
+def iso_utc(ts: datetime) -> str:
+    """``ts`` as the payloads' UTC ISO string (``YYYY-MM-DDTHH:MM:SSZ``)."""
     return ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def favorited_at(service: str, ids: list[int], *, view: str) -> dict[int, str]:
+    """``app_state.favorited_at``; ``{}`` when the log is unreadable.
+
+    The failure is logged as ``memories_skip`` (``view``,
+    ``reason=favorite_log_unreadable``, ``error_type``). Keyed by id alone,
+    which is safe: message ids are unique per service (the official API stars
+    ``/messages/{id}/favorite`` with no room, and the log is keyed
+    ``(service, message_id)``), so ids never collide across rooms.
+    """
+    try:
+        return app_state.favorited_at(service, ids)
+    except sqlite3.Error as e:
+        logger.warning(
+            "memories_skip",
+            view=view,
+            reason="favorite_log_unreadable",
+            error_type=type(e).__name__,
+        )
+        return {}
 
 
 def message_ref(
@@ -367,7 +390,7 @@ def message_ref(
         "room": room,
         "member_path": chat_path(sdir, room),
         "service": service,
-        "ts": _iso(fact.ts),
+        "ts": iso_utc(fact.ts),
         "type": fact.type,
         "text": None,
         "caption": None,
@@ -568,6 +591,8 @@ __all__ = [
     "avatar_timelines_for",
     "chat_path",
     "current_avatars",
+    "favorited_at",
+    "iso_utc",
     "letters_of",
     "media_file_for",
     "media_url_for",

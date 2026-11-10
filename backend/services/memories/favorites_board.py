@@ -38,14 +38,12 @@ Logs (ids, codes and counts only): ``memories_favorites`` with ``count``
 from __future__ import annotations
 
 import asyncio
-import sqlite3
 from collections.abc import Sequence
 from datetime import datetime, timezone
 from pathlib import Path
 
 import structlog
 
-from backend.services import app_state
 from backend.services.archive_urls import parse_iso
 from backend.services.memories import index as mi
 from backend.services.memories import people
@@ -105,22 +103,8 @@ def _ordered(items: list[dict]) -> list[dict]:
 
 
 def _fav_times(service: str, ids: list[int]) -> dict[int, str]:
-    """``app_state.favorited_at``; ``{}`` (logged) when the log is unreadable.
-
-    Keyed by id alone, which is safe: message ids are unique per service (the
-    official API stars ``/messages/{id}/favorite`` with no room, and the log is
-    keyed ``(service, message_id)``), so ids never collide across rooms.
-    """
-    try:
-        return app_state.favorited_at(service, ids)
-    except sqlite3.Error as e:
-        logger.warning(
-            "memories_skip",
-            view=VIEW,
-            reason="favorite_log_unreadable",
-            error_type=type(e).__name__,
-        )
-        return {}
+    """``people.favorited_at`` for this view (``{}``, logged, when unreadable)."""
+    return people.favorited_at(service, ids, view=VIEW)
 
 
 async def _board(service: str, sdir: Path) -> dict:

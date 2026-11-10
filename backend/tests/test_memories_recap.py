@@ -1455,7 +1455,8 @@ async def test_unreadable_favorite_log_keeps_the_recap(full, monkeypatch):
         p = await build(full, "金村美玖", PARTIAL)
     first = slides_of(p)["s10_you"]["data"]["first_favorite"]
     assert first["id"] == 19 and first["favorited_at"] is None
-    [warn] = [e for e in logs if e["event"] == "recap.favorite_log_unreadable"]
+    [warn] = [e for e in logs if e.get("reason") == "favorite_log_unreadable"]
+    assert warn["event"] == "memories_skip" and warn["view"] == "recap"
     assert warn["error_type"] == "OperationalError"
 
 

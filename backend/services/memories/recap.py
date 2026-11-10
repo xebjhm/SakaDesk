@@ -71,7 +71,6 @@ from typing import Any
 
 import structlog
 
-from backend.services import app_state
 from backend.services.archive_urls import media_url
 from backend.services.memories import facts as mf
 from backend.services.memories import index as mi
@@ -119,7 +118,6 @@ TITLE_ORDER = (
     "first",
 )
 
-MEDIA = frozenset({"picture", "video"})
 MAX_STARS = 600
 MAX_WALL = 120
 MAX_FRAGMENTS = 24
@@ -300,10 +298,6 @@ def _log(
     )
 
 
-def _iso(ts: datetime) -> str:
-    return ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
-
-
 def _spread(seq: Sequence[Any], k: int) -> list[Any]:
     """At most ``k`` items picked evenly over ``seq`` (order kept); ``k`` >= 2."""
     n = len(seq)
@@ -390,11 +384,11 @@ class _Ctx:
         rel, f = item
         own = self.text(item) if text else ""
         caption: str | None = None
-        if text and f.type in MEDIA and f.caption_id is not None:
+        if text and f.type in people.MEDIA_TYPES and f.caption_id is not None:
             caption = self.texts.get(rel, f.caption_id) or None
         return {
             "id": f.id,
-            "ts": _iso(f.ts),
+            "ts": people.iso_utc(f.ts),
             "type": f.type,
             "text": own or None,
             "media_url": people.media_url_of(self.service, f.media_file)
@@ -661,7 +655,9 @@ def _special_days(ctx: _Ctx) -> set[date]:
 
 def _s05_photos(ctx: _Ctx) -> dict | None:
     slide = "s05_photos"
-    media = [i for i in ctx.nonpromo() if i[1].type in MEDIA and i[1].media_file]
+    media = [
+        i for i in ctx.nonpromo() if i[1].type in people.MEDIA_TYPES and i[1].media_file
+    ]
     if not media:
         _log(slide, "skip", fallback="skip")
         return None
@@ -820,7 +816,7 @@ def _photo_linked(items: Iterable[Item]) -> set[Key]:
     """Keys of photos and of texts that caption a photo."""
     out: set[Key] = set()
     for rel, f in items:
-        if f.type in MEDIA:
+        if f.type in people.MEDIA_TYPES:
             out.add((rel, f.id))
             if f.caption_id is not None:
                 out.add((rel, f.caption_id))
@@ -1063,7 +1059,7 @@ def _s10_you(ctx: _Ctx) -> dict:
         when, item, recorded = favs[0]
         first = ctx.message(item, text=False)
         if first is not None:
-            first["favorited_at"] = _iso(when) if recorded else None
+            first["favorited_at"] = people.iso_utc(when) if recorded else None
     _log(
         slide,
         "favorites_letters",
@@ -1170,7 +1166,7 @@ def _s12_sentence(ctx: _Ctx) -> dict | None:
                 "sentence": best[2],
                 "message_id": item[1].id,
                 "member_path": ctx.paths.get(item[0]),
-                "ts": _iso(item[1].ts),
+                "ts": people.iso_utc(item[1].ts),
                 "photo_url": ctx.photo_near(item, same_day=True),
             }
             return _slide(slide, data)
@@ -1243,7 +1239,7 @@ def _avatar_change(ctx: _Ctx) -> tuple[str, str] | None:
                 )
                 for e in (prev, cur)
             ]
-            stamp = _iso(seen)
+            stamp = people.iso_utc(seen)
             if latest is None or stamp > latest[0]:
                 latest = (stamp, urls[0], urls[1])
     return (latest[1], latest[2]) if latest else None
@@ -1384,14 +1380,6 @@ def _read_letters(
                 room_index=n,
             )
     return out
-
-
-def _fav_times(service: str, ids: list[int]) -> dict[int, str]:
-    try:
-        return app_state.favorited_at(service, ids)
-    except sqlite3.Error as e:
-        logger.warning("recap.favorite_log_unreadable", error_type=type(e).__name__)
-        return {}
 
 
 def _window_split(
@@ -1561,7 +1549,9 @@ def _build_sync(
         paths={rel: people.chat_path(service_data_dir, rel) for rel in rels},
         avatars=people.current_avatars(service_data_dir, rels),
         rooms=rooms,
-        fav_at=_fav_times(service, fav_ids) if tier != "none" else {},
+        fav_at=people.favorited_at(service, fav_ids, view="recap")
+        if tier != "none"
+        else {},
         letters=tuple(
             _read_letters(service, service_data_dir, rels, summary.member_ids)
         )
@@ -1776,7 +1766,7 @@ def _overview_sync(
             "star_order": star_order,
             "first_message": {
                 "member_id": first[1].member_ids[0],
-                "ts": _iso(first[0][1].ts),
+                "ts": people.iso_utc(first[0][1].ts),
             }
             if first
             else None,
