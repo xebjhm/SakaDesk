@@ -47,7 +47,8 @@ serves a WebP no wider or taller than one of :data:`ALLOWED_WIDTHS` instead
   JPEG / MPO) at the largest missing width and downsizes that image in memory
   for each smaller width; it also returns the source's :class:`Placeholder`
   (:func:`placeholder_of`: mean colour and a 16 px WebP blur of at most
-  :data:`BLUR_MAX_BYTES`) and its header size. The background pre-generation
+  :data:`BLUR_MAX_BYTES`) and its display size (the header size with EXIF
+  orientation applied). The background pre-generation
   worker (``media_pregen``) writes :data:`PREGEN_WIDTHS` (plus
   :data:`LARGE_WIDTH` for starred items and covers) through it: the **same
   files under the same keys** the route serves, so a pre-generated variant is
@@ -223,10 +224,14 @@ class Placeholder:
 def placeholder_of(img: Image.Image) -> Placeholder:
     """The mean colour of ``img`` and a :data:`BLUR_PX` px WebP of it (``quality=40``).
 
-    A blur over :data:`BLUR_MAX_BYTES` is dropped (``None``). ``img`` is not
-    modified. Pure and blocking.
+    Transparency is flattened over white first (as for a toast JPEG,
+    :func:`_flatten`), so a transparent pixel counts as white, not as its
+    hidden colour. A blur over :data:`BLUR_MAX_BYTES` is dropped (``None``).
+    ``img`` is not modified. Pure and blocking.
     """
-    rgb_img = img.convert("RGB")  # always a copy
+    rgb_img = _flatten(img)
+    if rgb_img is img:  # already RGB: copy, thumbnail() works in place
+        rgb_img = img.copy()
     mean = ImageStat.Stat(rgb_img).mean
     r, g, b = (max(0, min(255, round(c))) for c in mean[:3])
     rgb_img.thumbnail((BLUR_PX, BLUR_PX), Image.Resampling.LANCZOS)

@@ -781,9 +781,26 @@ class TestPlaceholder:
         assert blur.format == "WEBP" and max(blur.size) <= 16
         assert img.size == (100, 100)  # the input is left untouched
 
-    def test_alpha_images_are_measured_as_rgb(self):
+    def test_transparency_is_flattened_over_white(self):
+        # A fully transparent pixel shows as white (like the toast JPEG), not its colour.
         ph = photo_thumb.placeholder_of(Image.new("RGBA", (20, 20), (10, 20, 30, 0)))
-        assert ph.rgb == (10, 20, 30)
+        assert ph.rgb == (255, 255, 255)
+        half = Image.new("RGBA", (20, 20), (0, 0, 0, 255))
+        half.paste((0, 0, 0, 0), (10, 0, 20, 20))
+        ph = photo_thumb.placeholder_of(half)
+        assert all(abs(c - 128) <= 2 for c in ph.rgb)
+        assert half.getpixel((15, 5)) == (0, 0, 0, 0)  # the input is left untouched
+
+    def test_palette_and_grey_images_are_measured_as_rgb(self):
+        assert photo_thumb.placeholder_of(Image.new("L", (8, 8), 40)).rgb == (
+            40,
+            40,
+            40,
+        )
+        pal = Image.new("RGB", (8, 8), (10, 200, 30)).convert(
+            "P", palette=Image.Palette.ADAPTIVE
+        )
+        assert photo_thumb.placeholder_of(pal).rgb == (10, 200, 30)
 
     def test_an_oversized_blur_is_dropped(self):
         noisy = Image.effect_noise((64, 64), 120).convert("RGB")
