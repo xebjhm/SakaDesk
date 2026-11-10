@@ -61,12 +61,20 @@ export const MEMORIES_CORE_KEYS: string[] = [
     'memories.timeline.count', 'memories.timeline.top', 'memories.timeline.late', 'memories.timeline.nickname',
     'memories.timeline.milestones', 'memories.timeline.rail', 'memories.timeline.older', 'memories.timeline.newer',
     'memories.names.empty', 'memories.timeline.empty',
+    // C13: the hub board
+    'memories.home.title', 'memories.home.yearsAgo', 'memories.home.thisWeek', 'memories.home.firstMessage',
+    'memories.home.open', 'memories.home.album', 'memories.home.memoir', 'memories.home.favorites',
+    'memories.home.countAlbum', 'memories.home.countMembers', 'memories.home.countFavorites',
+    'memories.home.birthdayIn', 'memories.home.birthdayToday', 'memories.home.anniversaryIn',
+    'memories.home.anniversaryToday',
 ];
 
 /** Core keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
 export const MEMORIES_CORE_EN_PLURALS: string[] = [
     'memories.onThisDay.more', 'memories.day.count', 'memories.album.burst', 'memories.cards.letters', 'memories.memoir.chipNames',
     'memories.timeline.count',
+    'memories.home.yearsAgo', 'memories.home.thisWeek', 'memories.home.countAlbum', 'memories.home.countMembers',
+    'memories.home.countFavorites', 'memories.home.birthdayIn', 'memories.home.anniversaryIn',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -96,6 +104,27 @@ describe('memories core strings', () => {
             const numbers = text.match(/\{\{[^}]+\}\}|\d+(?:[.,]\d+)*/g) ?? [];
             expect(numbers.length, key).toBeLessThanOrEqual(1);
         }
+    });
+
+    it.each(Object.entries(locales))('%s keeps every hub line to one number', (_code, data) => {
+        const home = lookup(data, 'memories.home') as Record<string, string>;
+        for (const [key, text] of Object.entries(home)) {
+            const numbers = text.match(/\{\{(?!name)[^}]+\}\}|\d+(?:[.,]\d+)*/g) ?? [];
+            // 12月1日 in the recap card's closed line is a date, not a count
+            if (key !== 'opensOn') expect(numbers.length, key).toBeLessThanOrEqual(1);
+        }
+    });
+
+    it('uses the hub reference copy (countdown lines carry one number each)', () => {
+        const expected: Record<string, string> = {
+            title: '思い出', yearsAgo: '{{count}}年前の今日', thisWeek: '{{count}}年前の、この週', firstMessage: 'はじまりの一通',
+            open: 'ひらく', album: 'アルバム', memoir: 'メンバーの思い出', favorites: 'お気に入り',
+            countAlbum: '{{count, number}} 枚', countMembers: '{{count, number}} 人', countFavorites: '{{count, number}} 件',
+            birthdayIn: '{{name}}の誕生日まで、あと {{count, number}} 日', birthdayToday: '今日は{{name}}の誕生日',
+            anniversaryIn: '{{name}}とのメンバーシップ記念日まで、あと {{count, number}} 日',
+            anniversaryToday: '今日は {{years}} 年目の記念日', recapCard: '一年の振り返り',
+        };
+        for (const [key, text] of Object.entries(expected)) expect(lookup(ja, `memories.home.${key}`), key).toBe(text);
     });
 
     it('lists every key once', () => {

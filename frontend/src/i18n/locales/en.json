@@ -745,7 +745,29 @@
   "memories": {
     "home": {
       "recapCard": "Year recap",
-      "opensOn": "Opens here on December 1."
+      "opensOn": "Opens here on December 1.",
+      "title": "Memories",
+      "yearsAgo": "{{count}} year ago today",
+      "yearsAgo_other": "{{count}} years ago today",
+      "thisWeek": "This week, {{count}} year ago",
+      "thisWeek_other": "This week, {{count}} years ago",
+      "firstMessage": "The first message",
+      "open": "Open",
+      "album": "Album",
+      "memoir": "Member memories",
+      "favorites": "Favorites",
+      "countAlbum": "{{count, number}} photo",
+      "countAlbum_other": "{{count, number}} photos",
+      "countMembers": "{{count, number}} member",
+      "countMembers_other": "{{count, number}} members",
+      "countFavorites": "{{count, number}} favorite",
+      "countFavorites_other": "{{count, number}} favorites",
+      "birthdayIn": "{{count, number}} day until {{name}}'s birthday",
+      "birthdayIn_other": "{{count, number}} days until {{name}}'s birthday",
+      "birthdayToday": "Today is {{name}}'s birthday",
+      "anniversaryIn": "{{count, number}} day until your membership anniversary with {{name}}",
+      "anniversaryIn_other": "{{count, number}} days until your membership anniversary with {{name}}",
+      "anniversaryToday": "Today is your {{years}}-year membership anniversary"
     },
     "common": {
       "back": "Back",

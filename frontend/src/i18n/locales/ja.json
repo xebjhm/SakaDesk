@@ -741,7 +741,22 @@
   "memories": {
     "home": {
       "recapCard": "一年の振り返り",
-      "opensOn": "12月1日に、ここが開きます。"
+      "opensOn": "12月1日に、ここが開きます。",
+      "title": "思い出",
+      "yearsAgo": "{{count}}年前の今日",
+      "thisWeek": "{{count}}年前の、この週",
+      "firstMessage": "はじまりの一通",
+      "open": "ひらく",
+      "album": "アルバム",
+      "memoir": "メンバーの思い出",
+      "favorites": "お気に入り",
+      "countAlbum": "{{count, number}} 枚",
+      "countMembers": "{{count, number}} 人",
+      "countFavorites": "{{count, number}} 件",
+      "birthdayIn": "{{name}}の誕生日まで、あと {{count, number}} 日",
+      "birthdayToday": "今日は{{name}}の誕生日",
+      "anniversaryIn": "{{name}}とのメンバーシップ記念日まで、あと {{count, number}} 日",
+      "anniversaryToday": "今日は {{years}} 年目の記念日"
     },
     "common": {
       "back": "戻る",

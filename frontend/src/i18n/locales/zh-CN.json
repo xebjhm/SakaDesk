@@ -741,7 +741,22 @@
   "memories": {
     "home": {
       "recapCard": "年度回顾",
-      "opensOn": "12月1日，这里就会打开。"
+      "opensOn": "12月1日，这里就会打开。",
+      "title": "回忆",
+      "yearsAgo": "{{count}}年前的今天",
+      "thisWeek": "{{count}}年前的这一周",
+      "firstMessage": "最初的一封",
+      "open": "打开",
+      "album": "相册",
+      "memoir": "成员回忆",
+      "favorites": "收藏",
+      "countAlbum": "{{count, number}} 张",
+      "countMembers": "{{count, number}} 位",
+      "countFavorites": "{{count, number}} 条",
+      "birthdayIn": "距离{{name}}的生日，还有 {{count, number}} 天",
+      "birthdayToday": "今天是{{name}}的生日",
+      "anniversaryIn": "距离和{{name}}的会员纪念日，还有 {{count, number}} 天",
+      "anniversaryToday": "今天是第 {{years}} 年的纪念日"
     },
     "common": {
       "back": "返回",
