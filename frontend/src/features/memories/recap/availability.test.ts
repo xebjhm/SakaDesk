@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll, afterEach, beforeAll, vi } from 'vitest';
-import { defaultRecapYear, formatJstClock, jstNow, offeredRecapYears, recapAvailability } from './availability';
+import { defaultRecapYear, formatJstClock, formatJstDate, jstNow, offeredRecapYears, recapAvailability } from './availability';
 
 // Run under a zone west of UTC so an implementation built on local getters (plus 9 h)
 // would fail here even when CI runs in UTC.
@@ -94,5 +94,15 @@ describe('formatJstClock', () => {
     });
     it('is empty for an invalid timestamp', () => {
         expect(formatJstClock('nope')).toBe('');
+    });
+});
+
+describe('formatJstDate', () => {
+    it('shows the Tokyo calendar date, which may be the next UTC day', () => {
+        expect(formatJstDate('2023-12-31T14:59:00Z')).toBe('2023-12-31');
+        expect(formatJstDate('2023-12-31T15:00:00Z')).toBe('2024-01-01');
+    });
+    it('is empty for an invalid timestamp', () => {
+        expect(formatJstDate('nope')).toBe('');
     });
 });

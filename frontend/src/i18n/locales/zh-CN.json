@@ -785,7 +785,16 @@
       "title": "成员回忆"
     },
     "favorites": {
-      "title": "收藏"
+      "title": "收藏",
+      "all": "全部收藏",
+      "voice": "语音",
+      "empty": "标上 ★ 的消息，会贴在这里。",
+      "play": "播放语音"
+    },
+    "filmStrip": {
+      "older": "上一条消息",
+      "newer": "下一条消息",
+      "title": "这一天的前前后后"
     }
   },
   "recap": {

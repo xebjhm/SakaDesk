@@ -20,6 +20,9 @@ export const MEMORIES_CORE_KEYS: string[] = [
     // C9: the album
     'memories.album.filterAll', 'memories.album.filterPhotos', 'memories.album.filterVideos', 'memories.album.filterFavorites',
     'memories.album.burst', 'memories.album.monthLabel', 'memories.album.ribbonLabel', 'memories.album.ribbon', 'memories.album.empty',
+    // C10: the favorites cork board and the film strip
+    'memories.favorites.all', 'memories.favorites.voice', 'memories.favorites.empty', 'memories.favorites.play',
+    'memories.filmStrip.older', 'memories.filmStrip.newer', 'memories.filmStrip.title',
 ];
 
 /** Core keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
@@ -78,6 +81,13 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.album.monthLabel')).toBe('{{year}}年{{month}}月');
         expect(lookup(ja, 'memories.album.ribbonLabel')).toBe('{{year}}年{{month}}月へ');
         expect(lookup(ja, 'memories.album.empty')).toBe('ここに並べる写真は、まだありません。');
+        expect(lookup(ja, 'memories.favorites.title')).toBe('お気に入り');
+        expect(lookup(ja, 'memories.favorites.all')).toBe('すべてのお気に入り');
+        expect(lookup(ja, 'memories.favorites.voice')).toBe('ボイス');
+        expect(lookup(ja, 'memories.favorites.empty')).toBe('★をつけたメッセージが、ここに飾られます。');
+        expect(lookup(ja, 'memories.filmStrip.older')).toBe('前のメッセージ');
+        expect(lookup(ja, 'memories.filmStrip.newer')).toBe('次のメッセージ');
+        expect(lookup(ja, 'memories.filmStrip.title')).toBe('この日のつづき');
         expect(lookup(zhTW, 'memories.onThisDay.title')).toBe('那年今日');
         expect(lookup(zhTW, 'memories.onThisDay.noMessages')).toBe('這天沒有訊息');
         expect(lookup(zhTW, 'memories.day.otherGroups')).toBe('包含其他團體');

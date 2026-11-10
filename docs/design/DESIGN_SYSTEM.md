@@ -832,6 +832,16 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   one `tone="star"`. The ribbon on the right is a scrubber (click, drag, ↑ / ↓ / Home / End, one
   Tab stop) whose segments share its height; its jumps are instant (never an animated scroll
   through every band) and the tilt is static under reduced motion.
+- **The favorites board** (`features/memories/favorites/`): a `bg-memories-cork` board scrolling
+  inside the pane. Text favourites are `bg-memories-paper` notes (her words clamped to six
+  lines), photos and videos are paper prints with her words as the caption, voices are paper
+  cards whose `VoicePlayer` (and its audio) mounts only on ▶. Each item is held by a
+  `bg-memories-washi` strip, names her and the JST date, and leans by a tilt picked from a
+  literal class list by its id (`tiltClass`, −2…2°; upright under reduced motion). The board
+  carries no ★ on every item (they all are); the film strip (`FilmStrip`, a `Modal`) shows the
+  focused message larger on paper with the yellow `text-semantic-star` when it is a favourite,
+  its neighbours of that day as dimmed frames, ‹ / › (and ← / →) for older / newer. Long boards
+  mount only the chunks near the viewport.
 
 ### The group rail and the profile card
 

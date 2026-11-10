@@ -785,7 +785,16 @@
       "title": "成員回憶"
     },
     "favorites": {
-      "title": "我的最愛"
+      "title": "我的最愛",
+      "all": "全部收藏",
+      "voice": "語音",
+      "empty": "標上 ★ 的訊息，會貼在這裡。",
+      "play": "播放語音"
+    },
+    "filmStrip": {
+      "older": "上一則訊息",
+      "newer": "下一則訊息",
+      "title": "這一天的前前後後"
     }
   },
   "recap": {

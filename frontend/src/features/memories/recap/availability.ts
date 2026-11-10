@@ -95,3 +95,11 @@ export function formatJstClock(ts: string | number | Date): string {
     const { hour, minute } = jstNow(d);
     return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }
+
+/** A timestamp's Tokyo calendar date as `YYYY-MM-DD` (the day view's date), or '' when invalid. */
+export function formatJstDate(ts: string | number | Date): string {
+    const d = ts instanceof Date ? ts : new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    const { year, month, day } = jstNow(d);
+    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}

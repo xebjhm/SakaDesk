@@ -16,7 +16,9 @@ export function logMemoriesPage(page: MemoriesPage): void {
 export type MemoriesView =
     | 'hub' | 'on_this_day' | 'day' | 'album' | 'favorites' | 'memoir' | 'binder' | 'names' | 'timeline'
     /** The album's member list, one month's grid and the colour ribbon (`album` is its months). */
-    | 'album_members' | 'album_month' | 'album_colors';
+    | 'album_members' | 'album_month' | 'album_colors'
+    /** The film strip's day (favorites, names). */
+    | 'film_strip';
 
 /**
  * `memories_load`: a core view's request finished. `outcome` `ok` carries `count` (the view's
@@ -43,9 +45,11 @@ export function logMemoriesJump(target: MemoriesView, hasTarget: boolean): void 
  * toggle (`on` = lanes B, `off` = merged A); `member_filter` a day-view member chip or an album
  * member row (`on` = one person, `off` = everyone); `lane_card` a swimlane card (`on` = expanded,
  * `off` = collapsed); `album_filter` an album filter pill (`on` = narrowed, `off` = all; `kind`
- * carries the filter code); `album_burst` a burst's sequence (`on` = opened, `off` = closed).
+ * carries the filter code); `album_burst` a burst's sequence (`on` = opened, `off` = closed); `film_strip` the film strip of a
+ * favourite or a name moment (`on` = opened, `off` = closed).
  */
-export type MemoriesToggle = 'other_services' | 'day_mode' | 'member_filter' | 'lane_card' | 'album_filter' | 'album_burst';
+export type MemoriesToggle =
+    | 'other_services' | 'day_mode' | 'member_filter' | 'lane_card' | 'album_filter' | 'album_burst' | 'film_strip';
 
 /** `memories_toggle`: a Memories control was switched. `target` is the control code; `kind` a filter code. */
 export function logMemoriesToggle(target: MemoriesToggle, on: boolean, extra: { kind?: string } = {}): void {

@@ -792,7 +792,16 @@
       "title": "Member memories"
     },
     "favorites": {
-      "title": "Favorites"
+      "title": "Favorites",
+      "all": "All favorites",
+      "voice": "Voice",
+      "empty": "Messages you star with ★ will be pinned up here.",
+      "play": "Play voice"
+    },
+    "filmStrip": {
+      "older": "Previous message",
+      "newer": "Next message",
+      "title": "The rest of this day"
     }
   },
   "recap": {

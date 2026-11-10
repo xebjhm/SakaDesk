@@ -7,6 +7,7 @@ import { logMemoriesOpen, logMemoriesPage, logRecapLoad } from './memoriesLog';
 import { PagePlaceholder } from './PagePlaceholder';
 import { OnThisDayPage } from './onThisDay/OnThisDayPage';
 import { AlbumPage } from './album/AlbumPage';
+import { FavoritesPage } from './favorites/FavoritesPage';
 import { NicknameProvider } from './shared/useNickname';
 
 /** Pages of the Memories router; wave 4 adds `{ page: 'day'; date: string }`. */
@@ -130,6 +131,8 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
         page = <OnThisDayPage service={service} route={route} go={go} />;
     } else if (route.page === 'album') {
         page = <AlbumPage service={service} route={route} go={go} />;
+    } else if (route.page === 'favorites') {
+        page = <FavoritesPage service={service} route={route} go={go} />;
     } else {
         page = <PagePlaceholder service={service} route={route} go={go} />;
     }
