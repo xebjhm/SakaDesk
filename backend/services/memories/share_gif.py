@@ -11,7 +11,12 @@ dozens of identical frames. Without it every frame lasts ``1000 / fps`` ms.
 
 Every frame must be a PNG (magic bytes) whose header declares exactly ``width`` ×
 ``height``; the size is checked before the pixels are decoded, so a decompression
-bomb never reaches ``load()``. The GIF is written with an adaptive palette per frame,
+bomb never reaches ``load()``. Pillow's own bomb guard (``DecompressionBombError``
+and ``DecompressionBombWarning``, the latter raised as an error here) is mapped to
+``decompression_bomb``. The whole request has a pixel budget, ``frames × width ×
+height ≤ MAX_TOTAL_PIXELS`` (160 frames at 540×960), checked before any frame is
+opened, so a body of many tiny, well-compressed but large frames cannot make the
+worker decode hundreds of megapixels. The GIF is written with an adaptive palette per frame,
 ``optimize=True`` and ``loop=0`` (loop forever). Assembly is CPU work: callers run
 :func:`assemble_gif` in a worker thread.
 
@@ -25,6 +30,7 @@ import base64
 import binascii
 import io
 import json
+import warnings
 from typing import Any
 
 from PIL import Image, UnidentifiedImageError
@@ -36,6 +42,8 @@ MAX_FPS = 60
 MIN_DURATION_MS = 20
 MAX_DURATION_MS = 10_000
 PNG_MAGIC = b"\x89PNG\r\n\x1a\n"
+# The frontend's GIF is 540×960; 160 such frames is the most one request may decode.
+MAX_TOTAL_PIXELS = MAX_FRAMES * 540 * 960
 
 
 class ShareGifError(ValueError):
@@ -83,13 +91,18 @@ def _decode_frame(raw: Any, width: int, height: int) -> Image.Image:
     if not data.startswith(PNG_MAGIC):
         raise ShareGifError("not_png")
     try:
-        img = Image.open(io.BytesIO(data), formats=["PNG"])
-        # The header's size, read before any pixel is decoded.
-        if img.size != (width, height):
-            raise ShareGifError("frame_size")
-        img.load()
+        with warnings.catch_warnings():
+            # Pillow only warns between 1× and 2× MAX_IMAGE_PIXELS; treat it as fatal.
+            warnings.simplefilter("error", Image.DecompressionBombWarning)
+            img = Image.open(io.BytesIO(data), formats=["PNG"])
+            # The header's size, read before any pixel is decoded.
+            if img.size != (width, height):
+                raise ShareGifError("frame_size")
+            img.load()
     except ShareGifError:
         raise
+    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        raise ShareGifError("decompression_bomb") from None
     except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
         raise ShareGifError("bad_frame") from None
     return img.convert("RGB")
@@ -115,6 +128,9 @@ def assemble_gif(payload: bytes) -> tuple[bytes, int]:
     width = _int_field(body, "width", 1, MAX_SIDE, "bad_size")
     height = _int_field(body, "height", 1, MAX_SIDE, "bad_size")
     durations = _durations(body, len(frames), fps)
+    # Every frame must match the declared size, so this bounds the decode up front.
+    if len(frames) * width * height > MAX_TOTAL_PIXELS:
+        raise ShareGifError("pixel_budget")
 
     images = [
         _decode_frame(f, width, height).convert(
