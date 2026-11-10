@@ -1,10 +1,11 @@
 import React, { useEffect, useState } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Heart, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Heart, Image as ImageIcon, Loader2, Sparkles } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Button, Card, EmptyState, IconButton } from '../../../design/primitives';
-import { logRecapLoad, type RecapLoadOutcome } from '../memoriesLog';
+import { logRecapLoad, logRecapPoster, type RecapLoadOutcome } from '../memoriesLog';
 import type { PollResult } from '../../../utils/pollJson';
 import { fetchMemberRecap, fetchRecapMembers, type RecapOverview, type RecapOverviewMember, type RecapPayload } from './api';
+import { PosterView } from './PosterView';
 import { RecapPlayer } from './RecapPlayer';
 import { SLIDE_REGISTRY } from './slideRegistry';
 
@@ -74,15 +75,22 @@ const NotYet: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
     );
 };
 
-const MemberRow: React.FC<{ member: RecapOverviewMember; onOpen: () => void }> = ({ member, onOpen }) => {
+interface MemberRowProps {
+    member: RecapOverviewMember;
+    onOpen: () => void;
+    /** Set once this member's recap (with a poster) has loaded: opens the poster straight away. */
+    onPoster?: () => void;
+}
+
+const MemberRow: React.FC<MemberRowProps> = ({ member, onOpen, onPoster }) => {
     const { t } = useTranslation();
     return (
         <li>
-            <Card className="p-0">
+            <Card className="flex items-center gap-1 p-0 pr-2">
                 <button
                     type="button"
                     onClick={onOpen}
-                    className="flex w-full items-center gap-3 rounded-card px-4 py-3 text-left transition-shadow hover:shadow-accent-glow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    className="flex min-w-0 flex-1 items-center gap-3 rounded-card px-4 py-3 text-left transition-shadow hover:shadow-accent-glow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                 >
                     <span lang="ja" className="min-w-0 flex-1 truncate font-display text-title text-primary">{member.name}</span>
                     {member.oshi && (
@@ -92,6 +100,9 @@ const MemberRow: React.FC<{ member: RecapOverviewMember; onOpen: () => void }> =
                         <span className="rounded-full bg-expressive-soft px-3 py-1 text-caption text-secondary">{t(member.title_key)}</span>
                     )}
                 </button>
+                {onPoster && (
+                    <IconButton size="sm" variant="ghost" aria-label={t('recap.poster.open')} icon={<ImageIcon />} onClick={onPoster} />
+                )}
             </Card>
         </li>
     );
@@ -99,7 +110,9 @@ const MemberRow: React.FC<{ member: RecapOverviewMember; onOpen: () => void }> =
 
 /**
  * The year recap entry: a year chooser and the members who have a recap that
- * year (with their role-title chips); choosing one plays her recap. The
+ * year (with their role-title chips); choosing one plays her recap, and the
+ * year poster follows its last slide (with replay and close). A member whose
+ * recap has loaded in this visit also gets a poster button in the list. The
  * multi-member opening is added by a later task.
  */
 export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYear, memberPath, nickname, onBack }) => {
@@ -114,6 +127,10 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
     // opening member B never mounts the player (or logs breadcrumbs) with member A's recap.
     const [memberLoad, setMemberLoad] = useState<MemberLoad>({ path: null, load: { status: 'loading' } });
     const recap: Load<RecapPayload> = memberLoad.path === selected ? memberLoad.load : { status: 'loading' };
+    // What the selected member shows: the story, or the poster after it (`run` remounts the player on replay).
+    const [view, setView] = useState<{ kind: 'player' | 'poster'; run: number }>({ kind: 'player', run: 0 });
+    // `year:path` of each recap (with a poster) loaded in this visit, so the list can open its poster.
+    const [withPoster, setWithPoster] = useState<ReadonlySet<string>>(() => new Set());
     const resolvedNickname = nickname?.trim() || t('recap.youFallback');
 
     useEffect(() => {
@@ -148,6 +165,10 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                     count, member_id: memberId, ...(nickname?.trim() ? {} : { fallback: 'no_nickname' }),
                 });
                 setMemberLoad({ path: selected, load: { status: 'ok', data: res.data } });
+                if (res.data.poster && res.data.tier !== 'none') {
+                    const tag = `${year}:${selected}`;
+                    setWithPoster((prev) => (prev.has(tag) ? prev : new Set(prev).add(tag)));
+                }
             } else {
                 logRecapLoad('member', outcome, res.status === 'rejected' ? { error_code: res.httpStatus } : {});
                 setMemberLoad({ path: selected, load: { status: 'error' } });
@@ -159,8 +180,9 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
     }, [service, year, selected, memberAttempt]);
 
     // Closing drops the payload, so reopening (even the same member) loads and opens it afresh.
-    const openMember = (path: string | null) => {
+    const openMember = (path: string | null, kind: 'player' | 'poster' = 'player') => {
         setMemberLoad({ path: null, load: { status: 'loading' } });
+        setView((v) => ({ kind, run: v.run + 1 }));
         setSelected(path);
     };
     const backToList = () => openMember(null);
@@ -171,6 +193,16 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
             return <div data-testid="recap-entry" className="flex flex-1"><Failed onRetry={() => setMemberAttempt((n) => n + 1)} /></div>;
         }
         const data = recap.data;
+        if (view.kind === 'poster' && data.poster && data.tier !== 'none') {
+            return (
+                <PosterView
+                    recap={data}
+                    nickname={resolvedNickname}
+                    onReplay={() => setView((v) => ({ kind: 'player', run: v.run + 1 }))}
+                    onClose={backToList}
+                />
+            );
+        }
         if (data.tier === 'none' || playable(data) === 0) {
             return (
                 <div data-testid="recap-entry" className="flex flex-1">
@@ -178,7 +210,14 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                 </div>
             );
         }
-        return <RecapPlayer key={selected} recap={data} nickname={resolvedNickname} onClose={backToList} />;
+        const memberId = /^[a-z0-9_]{1,40}$/.test(data.member.id) ? data.member.id : undefined;
+        const onEnd = () => {
+            if (data.poster) setView((v) => ({ kind: 'poster', run: v.run }));
+            else logRecapPoster('skip', { reason: 'no_poster', member_id: memberId });
+        };
+        return (
+            <RecapPlayer key={`${selected}:${view.run}`} recap={data} nickname={resolvedNickname} onClose={backToList} onEnd={onEnd} />
+        );
     }
 
     const members = overview.status === 'ok' ? overview.data.members.filter((m) => m.tier !== 'none') : [];
@@ -213,7 +252,12 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                     <p className="text-center text-small text-secondary">{t('recap.entry.choose')}</p>
                     <ul className="flex flex-col gap-3">
                         {members.map((m) => (
-                            <MemberRow key={m.member_path} member={m} onOpen={() => openMember(m.member_path)} />
+                            <MemberRow
+                                key={m.member_path}
+                                member={m}
+                                onOpen={() => openMember(m.member_path)}
+                                onPoster={withPoster.has(`${year}:${m.member_path}`) ? () => openMember(m.member_path, 'poster') : undefined}
+                            />
                         ))}
                     </ul>
                 </section>

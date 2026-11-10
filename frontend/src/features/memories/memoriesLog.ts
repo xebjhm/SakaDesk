@@ -47,3 +47,19 @@ export function logRecapPlay(
 ): void {
     clientLog('recap_play', { phase, ...extra });
 }
+
+export type RecapPosterPhase = 'open' | 'skip' | 'replay' | 'close' | 'save' | 'save_failed';
+
+/**
+ * `recap_poster`: a year-poster decision. `open` carries `count` (numbers shown);
+ * `skip` a `reason` (`no_poster`: the recap ended without one); `save` an
+ * `outcome` (`saved`, `downloaded`, `cancelled`) and, when the save picker was
+ * refused or fonts fell back, `fallback`; `save_failed` a `reason`
+ * (`render_failed`, `encode_failed`, `write_failed`). Ids and codes only.
+ */
+export function logRecapPoster(
+    phase: RecapPosterPhase,
+    extra: { count?: number; reason?: string; outcome?: string; fallback?: string; member_id?: string } = {},
+): void {
+    clientLog('recap_poster', { phase, ...extra });
+}

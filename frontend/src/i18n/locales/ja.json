@@ -883,6 +883,29 @@
       "lastTextTitle": "{{year}}年、最後のことば。",
       "lastTextPartialTitle": "いちばん新しい、ことば",
       "lastTextPartialNote": "12月31日のことばで、完成します。"
+    },
+    "poster": {
+      "label": "{{year}}年のポスター",
+      "with": "with {{nickname}}",
+      "numbers": {
+        "nickname": "{{count}}回、名前を呼んでくれた。",
+        "oyasumi": "{{count}}回の『おやすみ』で一日を締めくくった。",
+        "photos": "{{count}}枚の景色を見せてくれた。",
+        "voice": "{{count}}回、声が届いた。",
+        "daisuki": "“大好き”を、{{count}}回。"
+      },
+      "start": "はじまり",
+      "mid": "まんなか",
+      "recent": "さいきん",
+      "avatarChanged": "今年、アイコンが変わった。",
+      "years": "メッセージを受け取って、{{count}}年目。",
+      "dedicated": "Dedicated to {{nickname}}",
+      "since": "{{date}}から購読",
+      "save": "画像を保存",
+      "saved": "保存しました。",
+      "saveFailed": "保存できませんでした。",
+      "replay": "もう一度見る",
+      "open": "ポスターを見る"
     }
   }
 }

@@ -94,7 +94,7 @@ export interface RecapPlayerProps {
     /** The fan's nickname, already resolved (never empty). */
     nickname: string;
     onClose: () => void;
-    /** The last slide finished (the poster follows in a later task). */
+    /** The last slide finished (called once); the entry shows the year poster next. */
     onEnd?: () => void;
     /** Test seam / later tasks: the slide renderers. */
     registry?: SlideRegistry;

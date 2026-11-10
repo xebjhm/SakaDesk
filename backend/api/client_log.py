@@ -89,6 +89,7 @@ ClientEvent = Literal[
     "memories_page",
     "recap_load",
     "recap_play",
+    "recap_poster",
 ]
 
 ALLOWED_FIELDS = frozenset(

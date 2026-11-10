@@ -883,6 +883,29 @@
       "lastTextTitle": "{{year}}年，最後嘅說話。",
       "lastTextPartialTitle": "最新嘅說話",
       "lastTextPartialNote": "等到12月31日嘅說話，就會完成。"
+    },
+    "poster": {
+      "label": "{{year}}年嘅海報",
+      "with": "同{{nickname}}一齊",
+      "numbers": {
+        "nickname": "佢叫咗你個名{{count}}次。",
+        "oyasumi": "用{{count}}次「晚安」為一日劃上句號。",
+        "photos": "佢分享咗{{count}}張風景。",
+        "voice": "收到{{count}}次佢把聲。",
+        "daisuki": "「大好き」，{{count}}次。"
+      },
+      "start": "起點",
+      "mid": "途中",
+      "recent": "最近",
+      "avatarChanged": "今年，佢換咗頭像。",
+      "years": "收佢訊息嘅第{{count}}年。",
+      "dedicated": "送畀{{nickname}}",
+      "since": "由{{date}}開始訂閱",
+      "save": "儲存圖片",
+      "saved": "已經儲存。",
+      "saveFailed": "儲存唔到圖片。",
+      "replay": "再睇一次",
+      "open": "睇海報"
     }
   }
 }

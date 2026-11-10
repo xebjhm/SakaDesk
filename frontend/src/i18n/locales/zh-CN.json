@@ -883,6 +883,29 @@
       "lastTextTitle": "{{year}}年，最后的话语。",
       "lastTextPartialTitle": "最新的话语",
       "lastTextPartialNote": "等到12月31日的话语，就会完成。"
+    },
+    "poster": {
+      "label": "{{year}}年的海报",
+      "with": "与{{nickname}}一起",
+      "numbers": {
+        "nickname": "她叫了你的名字{{count}}次。",
+        "oyasumi": "用{{count}}次“晚安”为一天画上句号。",
+        "photos": "她分享了{{count}}张风景。",
+        "voice": "收到了{{count}}次她的声音。",
+        "daisuki": "“大好き”，{{count}}次。"
+      },
+      "start": "起点",
+      "mid": "途中",
+      "recent": "最近",
+      "avatarChanged": "今年，她换了头像。",
+      "years": "收到她消息的第{{count}}年。",
+      "dedicated": "献给{{nickname}}",
+      "since": "自{{date}}开始订阅",
+      "save": "保存图片",
+      "saved": "已保存。",
+      "saveFailed": "无法保存图片。",
+      "replay": "再看一次",
+      "open": "查看海报"
     }
   }
 }

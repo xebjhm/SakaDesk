@@ -928,3 +928,32 @@ def test_recap_events_are_allowlisted():
     ):
         r = client.post("/api/client-log", json={"event": event, "fields": fields})
         assert r.status_code == 204
+
+
+def test_recap_poster_events_are_allowlisted():
+    for fields in (
+        {"phase": "open", "count": 3, "member_id": "58"},
+        {"phase": "skip", "reason": "no_poster", "member_id": "58"},
+        {
+            "phase": "save",
+            "outcome": "downloaded",
+            "fallback": "picker_securityerror",
+            "member_id": "58",
+        },
+        {"phase": "save_failed", "reason": "render_failed", "member_id": "58"},
+    ):
+        r = client.post(
+            "/api/client-log", json={"event": "recap_poster", "fields": fields}
+        )
+        assert r.status_code == 204
+
+
+def test_recap_poster_rejects_file_names():
+    r = client.post(
+        "/api/client-log",
+        json={
+            "event": "recap_poster",
+            "fields": {"phase": "save", "outcome": "sakadesk-recap-2026-58.png"},
+        },
+    )
+    assert r.status_code == 422

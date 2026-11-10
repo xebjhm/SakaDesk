@@ -899,6 +899,35 @@
       "lastTextTitle": "Her last words of {{year}}.",
       "lastTextPartialTitle": "Her newest words",
       "lastTextPartialNote": "It will be complete with her words of December 31."
+    },
+    "poster": {
+      "label": "Your {{year}} poster",
+      "with": "with {{nickname}}",
+      "numbers": {
+        "nickname": "She called your name {{count}} time.",
+        "nickname_other": "She called your name {{count}} times.",
+        "oyasumi": "\"Oyasumi\" closed the day {{count}} time.",
+        "oyasumi_other": "\"Oyasumi\" closed the day {{count}} times.",
+        "photos": "She shared {{count}} view.",
+        "photos_other": "She shared {{count}} views.",
+        "voice": "Her voice arrived {{count}} time.",
+        "voice_other": "Her voice arrived {{count}} times.",
+        "daisuki": "\"Daisuki\", {{count}} time.",
+        "daisuki_other": "\"Daisuki\", {{count}} times."
+      },
+      "start": "Beginning",
+      "mid": "Middle",
+      "recent": "Lately",
+      "avatarChanged": "Her icon changed this year.",
+      "years": "Year {{count}} of receiving her messages.",
+      "years_other": "Year {{count}} of receiving her messages.",
+      "dedicated": "Dedicated to {{nickname}}",
+      "since": "Subscribed since {{date}}",
+      "save": "Save image",
+      "saved": "Saved.",
+      "saveFailed": "Could not save the image.",
+      "replay": "Watch again",
+      "open": "View poster"
     }
   }
 }

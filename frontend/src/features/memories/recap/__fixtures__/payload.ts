@@ -1,5 +1,5 @@
 import type {
-    RecapClip, RecapMessage, RecapOverview, RecapPayload, RecapSlide, RecapStub, S03ClockData, S04GreetingsData, S05PhotosData,
+    RecapClip, RecapMessage, RecapOverview, RecapPayload, RecapPoster, RecapSlide, RecapStub, S03ClockData, S04GreetingsData, S05PhotosData,
     S06VoiceData, S07LetterData, S08EchoData, S09SpecialData, S10YouData, S11DaisukiData,
 } from '../api';
 
@@ -168,6 +168,31 @@ export const s13 = (final: boolean, graduated: boolean, fallback: string | null 
     data: { message: message(4, 'おやすみ、%%%🌙'), final, graduated },
 });
 
+export const posterData = (over: Partial<RecapPoster> = {}): RecapPoster => ({
+    best_photo: message(20, null, { type: 'picture', media_url: '/api/content/media/best.jpg', caption: '%%%に見せたかった空' }),
+    sentence: {
+        sentence: '一緒に歩いてくれて、ありがとう。',
+        message_id: 3,
+        member_path: MEMBER_PATH,
+        ts: '2026-06-01T12:00:00Z',
+        photo_url: null,
+    },
+    numbers: [{ key: 'nickname', count: 42 }, { key: 'oyasumi', count: 180 }, { key: 'photos', count: 96 }],
+    stubs: [{ kind: 'birthday', message: message(21, 'お誕生日、ありがとう', { ts: '2026-09-02T15:00:07Z' }), seconds_after_midnight: 7, sealed: false }],
+    start_mid_recent: [
+        message(22, null, { type: 'picture', media_url: '/api/content/media/s.jpg', ts: '2026-01-03T03:00:00Z' }),
+        message(23, null, { type: 'picture', media_url: '/api/content/media/m.jpg', ts: '2026-06-03T03:00:00Z' }),
+        message(24, null, { type: 'picture', media_url: '/api/content/media/r.jpg', ts: '2026-11-03T03:00:00Z' }),
+    ],
+    favorites_count: 12,
+    letters_count: 3,
+    avatar_changed: false,
+    avatar_old_url: null,
+    avatar_new_url: null,
+    years_together: 3,
+    ...over,
+});
+
 export const payload = (over: Partial<RecapPayload> = {}): RecapPayload => ({
     year: 2026,
     phase: 'partial',
@@ -181,7 +206,7 @@ export const payload = (over: Partial<RecapPayload> = {}): RecapPayload => ({
         years_together: 3,
     },
     slides: [s01, s02, s12, s13(false, false)],
-    poster: {},
+    poster: posterData(),
     ...over,
 });
 

@@ -37,6 +37,11 @@ const RECAP_KEYS: readonly string[] = [
     'recap.s12.title',
     'recap.s13.title', 'recap.s13.partialTitle', 'recap.s13.partialNote', 'recap.s13.narration',
     'recap.s13.graduatedTitle', 'recap.s13.graduatedLine', 'recap.s13.lastTextTitle', 'recap.s13.lastTextPartialTitle', 'recap.s13.lastTextPartialNote',
+    'recap.poster.label', 'recap.poster.with', 'recap.poster.numbers.nickname', 'recap.poster.numbers.oyasumi',
+    'recap.poster.numbers.photos', 'recap.poster.numbers.voice', 'recap.poster.numbers.daisuki',
+    'recap.poster.start', 'recap.poster.mid', 'recap.poster.recent', 'recap.poster.avatarChanged', 'recap.poster.years',
+    'recap.poster.dedicated', 'recap.poster.since', 'recap.poster.save', 'recap.poster.saved', 'recap.poster.saveFailed',
+    'recap.poster.replay', 'recap.poster.open',
 ];
 
 /** Recap keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
@@ -44,6 +49,8 @@ const EN_PLURALS: readonly string[] = [
     'recap.s02.count', 'recap.s02.daisuki', 'recap.s03.streak',
     'recap.s04.countOyasumi', 'recap.s04.countArigato', 'recap.s04.countOtsukare', 'recap.s06.count',
     'recap.s07.count', 'recap.s08.titleYears', 'recap.s08.years', 'recap.s10.favorites', 'recap.s10.letters',
+    'recap.poster.numbers.nickname', 'recap.poster.numbers.oyasumi', 'recap.poster.numbers.photos',
+    'recap.poster.numbers.voice', 'recap.poster.numbers.daisuki', 'recap.poster.years',
 ];
 
 const lookup = (data: unknown, dotted: string): unknown =>
@@ -139,6 +146,15 @@ describe('recap strings', () => {
         for (const [code, data] of Object.entries(locales)) {
             expect(String(lookup(data, 'recap.s07.count')), code).toContain('{{n}}');
             expect(String(lookup(data, 'recap.s07.count')), code).not.toContain('{{count}}');
+        }
+    });
+
+    it('the poster footer speaks only of the fan\'s own subscription and never of a reply or of her knowing', () => {
+        const KNEW = /返事|返信|reply|replied|answer|回覆|回复|覆你|読ん|知って|覚え|read|knew|know|remember|知道|記得|记得/i;
+        const KEYS = ['recap.poster.with', 'recap.poster.years', 'recap.poster.dedicated', 'recap.poster.since', 'recap.poster.avatarChanged'];
+        for (const [code, data] of Object.entries(locales)) {
+            for (const dotted of KEYS) expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(KNEW);
+            expect(String(lookup(data, 'recap.poster.since')), code).toMatch(/購読|subscribed|訂閱|订阅/i);
         }
     });
 });

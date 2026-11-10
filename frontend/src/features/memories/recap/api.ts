@@ -201,8 +201,28 @@ export type RecapSlide =
 
 export type RecapSlideKey = RecapSlide['key'];
 
-/** The poster block; rendered by a later task, kept loose here. */
-export type RecapPoster = Record<string, unknown>;
+/** A poster number key, in the backend's priority order (`_poster` in `recap.py`). */
+export type PosterNumberKey = 'nickname' | 'oyasumi' | 'photos' | 'voice' | 'daisuki';
+
+/**
+ * `_poster`: the private year poster. `numbers` holds at most three
+ * relationship counts (sparse ones already dropped); `sentence` is the s12
+ * data or null; `start_mid_recent` is empty or exactly three pictures; the
+ * avatar URLs are set only when `avatar_changed`.
+ */
+export interface RecapPoster {
+    best_photo: RecapMessage | null;
+    sentence: S12SentenceData | null;
+    numbers: { key: PosterNumberKey; count: number }[];
+    stubs: RecapStub[];
+    start_mid_recent: RecapMessage[];
+    favorites_count: number | null;
+    letters_count: number | null;
+    avatar_changed: boolean;
+    avatar_old_url: string | null;
+    avatar_new_url: string | null;
+    years_together: number | null;
+}
 
 /** `GET /api/memories/{service}/recap/{year}?member=...`. Tier `none`: no slides, no poster. */
 export interface RecapPayload {
