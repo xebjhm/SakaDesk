@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { ArrowRight, Download, Mail, RotateCcw, Star, X } from 'lucide-react';
+import { ArrowRight, Download, Mail, RotateCcw, Share2, Star, X } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Atmosphere, Button, IconButton } from '../../../design/primitives';
 import { logRecapPoster } from '../memoriesLog';
@@ -7,6 +7,7 @@ import type { RecapMessage, RecapPayload, RecapStub, S03ClockData } from './api'
 import { formatCount, formatMessageDate, formatSecondsOfDay, s03Copy, s09StubCopy, withNickname } from './recapCopy';
 import { posterFilename, posterNumbers, posterSince, posterYears, safeMemberId } from './posterCopy';
 import { canvasToPng, renderToCanvas, SaveError, savePng } from './posterImage';
+import { ShareDialog } from './share/ShareDialog';
 import { StarDial } from './slides/StarDial';
 import { NARRATION_CLASS } from './slides/style';
 
@@ -70,7 +71,8 @@ const SMR_KEYS = ['recap.poster.start', 'recap.poster.mid', 'recap.poster.recent
  * star dial of slide 3; up to three relationship numbers; the special-day stubs; three photos
  * from the start, middle and end of the year; her avatar change (only in a year it happened);
  * and the fan's own ★ and letters as a footer signature with "Dedicated to … · Subscribed
- * since …" (the fan's subscription, never something she knew). It can be saved as a PNG.
+ * since …" (the fan's subscription, never something she knew). It can be saved as a PNG, and
+ * "シェア用に書き出す" opens the share export (`share/ShareDialog`: frosted photos, opt-in identity).
  * Renders nothing without a poster (tier none).
  */
 export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, surface = 'end', onReplay, onClose }) => {
@@ -80,6 +82,7 @@ export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, surface
     const posterRef = useRef<HTMLDivElement>(null);
     const rootRef = useRef<HTMLDivElement>(null);
     const [save, setSave] = useState<SaveState>('idle');
+    const [shareOpen, setShareOpen] = useState(false);
     const numbers = poster ? posterNumbers(poster) : [];
 
     useEffect(() => {
@@ -152,7 +155,8 @@ export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, surface
                 ref={rootRef}
                 tabIndex={-1}
                 onKeyDown={(e) => {
-                    if (e.key === 'Escape') {
+                    // A dialog above (the share export) claims its own Escape.
+                    if (e.key === 'Escape' && !e.defaultPrevented) {
                         e.preventDefault();
                         close();
                     }
@@ -262,6 +266,10 @@ export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, surface
                         <RotateCcw aria-hidden="true" className="h-4 w-4" />
                         {t('recap.poster.replay')}
                     </Button>
+                    <Button variant="secondary" size="sm" onClick={() => setShareOpen(true)}>
+                        <Share2 aria-hidden="true" className="h-4 w-4" />
+                        {t('recap.share.open')}
+                    </Button>
                     <Button variant="primary" size="sm" loading={save === 'saving'} onClick={() => void saveImage()}>
                         <Download aria-hidden="true" className="h-4 w-4" />
                         {t('recap.poster.save')}
@@ -273,6 +281,8 @@ export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, surface
                     {save === 'failed' && t('recap.poster.saveFailed')}
                 </p>
             </div>
+            {/* Outside the poster root, so keys in the dialog never reach the poster's Escape handler. */}
+            <ShareDialog isOpen={shareOpen} recap={recap} nickname={nickname} onClose={() => setShareOpen(false)} />
         </Atmosphere>
     );
 };

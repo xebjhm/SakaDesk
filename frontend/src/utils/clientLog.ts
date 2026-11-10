@@ -34,7 +34,7 @@ export type ClientLogEvent =
     | 'read_state_save_deferred' | 'read_state_pending_flushed' | 'read_state_sync_failed'
     | 'sidebar_load' | 'oshi_mirror_failed'
     | 'memories_open' | 'memories_page' | 'recap_load' | 'recap_play'
-    | 'recap_poster';
+    | 'recap_poster' | 'recap_share';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
@@ -42,7 +42,8 @@ export type ClientLogFieldKey =
     | 'surface' | 'call_id' | 'changed' | 'has_target' | 'delivered'
     | 'theme' | 'size'
     | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path' | 'count' | 'history' | 'fallback' | 'dppx_pct'
-    | 'ready_state' | 'network_state' | 'error_code' | 'aborted' | 'key' | 'timeout_ms' | 'caller' | 'written' | 'dropped';
+    | 'ready_state' | 'network_state' | 'error_code' | 'aborted' | 'key' | 'timeout_ms' | 'caller' | 'written' | 'dropped'
+    | 'kind' | 'style';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 

@@ -385,7 +385,7 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   The year recap (`features/memories/recap/slides/common.tsx`) has three type roles: the slide
   title (`Headline`: `font-display text-heading font-semibold`, UI language, never `lang="ja"`),
   her quoted words (`Quote`: `font-display` marked `lang="ja"`) and the app's narration
-  (`Narration`: `font-sans text-small`, so it never reads as her words). The year poster (`recap/PosterView.tsx`) keeps the same roles; its polaroid caption uses `font-display` (there is no handwritten face in the stack). `font-reading` is the Japanese serif for blog titles
+  (`Narration`: `font-sans text-small`, so it never reads as her words). The year poster (`recap/PosterView.tsx`) keeps the same roles; its polaroid caption uses `font-display` (there is no handwritten face in the stack). The share export (`recap/share/ShareRenderer.ts`) draws on a canvas with the same roles: the UI language's display serif for headings and numbers, the Japanese serif (`fontFamily.reading`) for her words, the sans for narration; it loads them with `document.fonts.load` (with a timeout, else system fonts) and reads every colour from the token CSS variables. `font-reading` is the Japanese serif for blog titles
   only; post bodies stay in the sans.
 - **Per UI language** (`design/fonts.ts`, `fontStacks`): the UI language picks
   the glyph set, and only that language's family is loaded from Google Fonts

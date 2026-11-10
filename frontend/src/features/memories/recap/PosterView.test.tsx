@@ -13,6 +13,8 @@ vi.mock('./posterImage', async (importOriginal) => {
     const actual = await importOriginal<typeof import('./posterImage')>();
     return {
         SaveError: actual.SaveError,
+        readCssVar: actual.readCssVar,
+        saveBlob: actual.saveBlob,
         renderToCanvas: vi.fn(async () => ({ canvas: {}, fontFallbacks: [], fontTruncation: null })),
         canvasToPng: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
         savePng: vi.fn(async () => ({ outcome: 'handed_off' })),
@@ -174,5 +176,17 @@ describe('PosterView', () => {
         await userEvent.click(screen.getByRole('button', { name: '画像を保存' }));
         expect(await screen.findByRole('status')).toHaveTextContent('保存できませんでした。');
         expect(posterLogs()).toContainEqual(expect.objectContaining({ phase: 'save_failed', reason: 'render_failed' }));
+    });
+
+    it('opens the share export, and Escape there closes only the share dialog', async () => {
+        const onClose = vi.fn();
+        renderPoster({}, {}, { onClose });
+        await userEvent.click(screen.getByRole('button', { name: 'シェア用に書き出す' }));
+        const dialog = await screen.findByRole('dialog', { name: 'シェア用に書き出す' });
+        expect(within(dialog).getByRole('switch', { name: 'ニックネームを入れる' })).toHaveAttribute('aria-checked', 'false');
+        await userEvent.keyboard('{Escape}');
+        await waitFor(() => expect(screen.queryByRole('dialog', { name: 'シェア用に書き出す' })).toBeNull());
+        expect(onClose).not.toHaveBeenCalled();
+        expect(screen.getByTestId('recap-poster')).toBeInTheDocument();
     });
 });

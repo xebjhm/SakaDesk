@@ -38,6 +38,7 @@ const FILES = [
     '../features/incomingCall/CallScreen.tsx',
     'common/SettingsMenu.tsx',
     '../features/search/SearchModal.tsx',
+    '../features/memories/recap/share/ShareDialog.tsx',
     '../features/search/components/SearchInput.tsx',
     '../features/search/components/SearchFilterBar.tsx',
     '../features/search/components/SearchResultItem.tsx',

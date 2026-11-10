@@ -70,3 +70,30 @@ export function logRecapPoster(
 ): void {
     clientLog('recap_poster', { phase, ...extra });
 }
+
+export type RecapSharePhase =
+    | 'open' | 'close' | 'option' | 'style' | 'sentence' | 'font_fallback' | 'photo_skip' | 'video_unsupported'
+    | 'export_start' | 'export' | 'export_failed';
+
+/**
+ * `recap_share`: a share-export decision. `open` carries `count` (sentence candidates); `option`
+ * a toggle `key` (`nickname`, `avatar`, `years`, `footer`) and `outcome` (`on`, `off`) or, for
+ * the avatar picker, `outcome` `picked` / `rejected`; `style` the `style` (`collage`, `colour`);
+ * `sentence` an `outcome` (`added`, `removed`) and `count` chosen; `font_fallback` a `fallback`
+ * (`font_timeout`, `font_failed`, `font_unsupported`); `photo_skip` a `reason` (`load_failed`)
+ * and `count`; `video_unsupported` a `reason` (`no_media_recorder`, `no_capture_stream`,
+ * `no_codec`); `export_start` the `kind` (`gif`, `webm`, `png`; a video that came out as MP4 reports `mp4` afterwards), `style` and `count` (sentences);
+ * `export` the `kind` and `outcome` (`handed_off`: the save dialog was asked to open); and
+ * `export_failed` the `kind`, a `reason` (`render_failed`, `encode_failed`, `record_failed`,
+ * `write_failed`) and `error_code` (the handoff's code, or the server's reason
+ * code). Ids, codes and counts only: never her words, the nickname or file names.
+ */
+export function logRecapShare(
+    phase: RecapSharePhase,
+    extra: {
+        kind?: string; style?: string; key?: string; outcome?: string; reason?: string; error_code?: string;
+        fallback?: string; count?: number; member_id?: string;
+    } = {},
+): void {
+    clientLog('recap_share', { phase, ...extra });
+}
