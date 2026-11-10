@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 
 import pytest
@@ -163,6 +164,74 @@ async def test_members_of_an_empty_service(tmp_path, oshi):
     sdir = tmp_path / "out" / SVC_NAME
     sdir.mkdir(parents=True)
     assert await memoir.list_memoir_members(SERVICE, sdir, now=NOW) == {"members": []}
+
+
+def _view_outcomes(logs, view):
+    return [
+        e["outcome"]
+        for e in logs
+        if e["event"] == "memories_view_cache" and e["view"] == view
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_change_in_one_room_reevaluates_only_that_person(svc, monkeypatch):
+    evaluated: list[str] = []
+    real = binder._evaluate
+
+    async def counting(service, sdir, summary, now):
+        evaluated.append(summary.name_norm)
+        return await real(service, sdir, summary, now)
+
+    monkeypatch.setattr(binder, "_evaluate", counting)
+    await memoir.list_memoir_members(SERVICE, svc, now=NOW)
+    assert sorted(evaluated) == ["松田好花", "金村美玖"]
+    evaluated.clear()
+    write_room(  # a sync adds one message to her newest room
+        svc,
+        "94 松田 好花",
+        "64 松田 好花",
+        [
+            msg(1, "2025-12-02T03:00:00Z", content="新しいお部屋だよ"),
+            msg(2, "2026-11-09T03:00:00Z", content="また明日"),
+        ],
+    )
+    with capture_logs() as logs:
+        rows = (await memoir.list_memoir_members(SERVICE, svc, now=NOW))["members"]
+    assert evaluated == ["松田好花"]
+    assert _view_outcomes(logs, "memoir_members") == ["miss"]
+    assert sorted(_view_outcomes(logs, "binder")) == ["hit", "miss"]
+    assert [r["name"] for r in rows] == ["金村 美玖", "松田 好花"]
+
+
+@pytest.mark.asyncio
+async def test_member_evaluations_run_with_bounded_concurrency(
+    tmp_path, oshi, monkeypatch
+):
+    mi.set_db_path(tmp_path / "idx.db")
+    sdir = tmp_path / "out" / SVC_NAME
+    for k in range(6):
+        write_room(
+            sdir,
+            f"{10 + k} メンバー{k}",
+            f"{60 + k} メンバー{k}",
+            [msg(1, "2025-01-01T03:00:00Z", content="こんにちは")],
+        )
+    active = peak = 0
+
+    async def slow(service, sdir, summary, *, now, data_hash=None):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        await asyncio.sleep(0.01)
+        active -= 1
+        return {"progress": {"earned": 1, "total": 2}, "shelves": []}
+
+    monkeypatch.setattr(binder, "binder_payload", slow)
+    rows = (await memoir.list_memoir_members(SERVICE, sdir, now=NOW))["members"]
+    assert len(rows) == 6
+    assert all(r["progress"] == {"earned": 1, "total": 2} for r in rows)
+    assert peak == memoir.EVAL_CONCURRENCY == 4
 
 
 # --- header -----------------------------------------------------------------------

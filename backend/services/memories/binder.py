@@ -6,10 +6,13 @@
   subscription start and her birthday), computes the Christmas / Valentine
   keyword hits with one ``load_texts`` per room (only for facts on 02-14 and
   12-24/25), and evaluates the cards.
-- :func:`build_binder` renders the cards as the ``/memoir/cards`` payload. The
-  text-free payload is built in a worker thread and cached (``view_cache``,
-  view ``binder``; the hash includes :data:`cards.CARDS_VERSION`), and her
-  words are attached after the cache read with ``people.attach_texts``.
+- :func:`binder_payload` renders the cards as the text-free ``/memoir/cards``
+  payload, built in a worker thread and cached (``view_cache``, view
+  ``binder``, key ``person_key``, hash :func:`binder_hash`, which includes
+  :data:`cards.CARDS_VERSION`). The memoir list reads each person's
+  ``progress`` from it, so one cache serves both views.
+- :func:`build_binder` is :func:`binder_payload` with her words attached after
+  the cache read (``people.attach_texts``).
 
 Logs (ids, codes, counts and scores only; ``person`` = first member id):
 
@@ -440,8 +443,8 @@ async def binder_hash(sdir: Path, summary: mi.MemberSummary, *, now: datetime) -
 
     :data:`cards.CARDS_VERSION`, the rooms' index hashes, the JST date, the
     letters and profile-image index stats, the start date, birthday and
-    graduation. Views that embed card results (memoir list, timeline months)
-    reuse it.
+    graduation. Views that embed card results (the memoir list through
+    :func:`binder_payload`, the timeline month) reuse it.
     """
     today = now.astimezone(JST).date()
     stats = await asyncio.to_thread(_side_stats, sdir, summary.member_dirs)
@@ -456,20 +459,35 @@ async def binder_hash(sdir: Path, summary: mi.MemberSummary, *, now: datetime) -
     )
 
 
-async def build_binder(
-    service: str, sdir: Path, summary: mi.MemberSummary, *, now: datetime
+async def binder_payload(
+    service: str,
+    sdir: Path,
+    summary: mi.MemberSummary,
+    *,
+    now: datetime,
+    data_hash: str | None = None,
 ) -> dict:
-    """The ``/memoir/cards`` payload: cached text-free, her words attached after."""
-    data_hash = await binder_hash(sdir, summary, now=now)
+    """The text-free ``/memoir/cards`` payload, cached per person.
+
+    ``data_hash`` is :func:`binder_hash` when the caller already has it (it is
+    computed here otherwise). A hit evaluates nothing.
+    """
+    if data_hash is None:
+        data_hash = await binder_hash(sdir, summary, now=now)
 
     async def build() -> dict:
         cards, inputs, timeline = await _evaluate(service, sdir, summary, now)
         # one message object per face over every fact: keep it off the loop
         return await asyncio.to_thread(_payload, service, sdir, cards, inputs, timeline)
 
-    payload = await cached_view(
-        sdir, VIEW, people.person_key(summary), data_hash, build
-    )
+    return await cached_view(sdir, VIEW, people.person_key(summary), data_hash, build)
+
+
+async def build_binder(
+    service: str, sdir: Path, summary: mi.MemberSummary, *, now: datetime
+) -> dict:
+    """The ``/memoir/cards`` payload: cached text-free, her words attached after."""
+    payload = await binder_payload(service, sdir, summary, now=now)
     await people.attach_texts(sdir, _message_refs(payload))
     return payload
 
@@ -478,6 +496,7 @@ __all__ = [
     "IconEntry",
     "avatar_changes",
     "binder_hash",
+    "binder_payload",
     "build_binder",
     "evaluate_person",
     "keyword_hits",

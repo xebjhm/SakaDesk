@@ -627,3 +627,19 @@ def test_avatar_digest_memo_is_used_under_its_lock(tmp_path, monkeypatch):
     first = binder._avatar_digest(tmp_path, "r", url)
     assert first is not None
     assert binder._avatar_digest(tmp_path, "r", url) == first
+
+
+@pytest.mark.asyncio
+async def test_binder_payload_is_the_cached_text_free_binder(svc):
+    s = (await mi.list_members(svc))[0]
+    with capture_logs() as logs:
+        bare = await binder.binder_payload(SERVICE, svc, s, now=NOW)
+        full = await binder.build_binder(SERVICE, svc, s, now=NOW)
+    assert not vc.contains_text(bare)
+    assert bare["progress"] == full["progress"]
+    outcomes = [
+        e["outcome"]
+        for e in logs
+        if e["event"] == "memories_view_cache" and e["view"] == "binder"
+    ]
+    assert outcomes == ["miss", "hit"]  # one cache serves both

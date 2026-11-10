@@ -2,11 +2,15 @@
 
 - :func:`list_memoir_members` -- the left list: every person of the service,
   oshi first (``people.sort_people``), each with her current avatar and her
-  binder progress (``cards.progress_summary`` over ``binder.evaluate_person``).
-  ``member_path`` is the chat path of her newest room. The whole list is one
-  text-free ``view_cache`` row (view ``memoir_members``, key ``all``) whose
-  hash covers every person's ``binder.binder_hash`` (room hashes, the JST
-  date, letters / icon stats, ...) and the oshi set.
+  binder progress (the ``progress`` of ``binder.binder_payload``).
+  ``member_path`` is the chat path of her newest room. Progress is cached per
+  person by the binder view itself (key ``person_key``, hash
+  ``binder.binder_hash``), so after a sync only the people whose hash changed
+  are evaluated, at most :data:`EVAL_CONCURRENCY` at a time. The assembled
+  list is one more text-free ``view_cache`` row (view ``memoir_members``, key
+  ``all``) whose hash covers :data:`MEMBERS_VERSION`, every person's
+  ``binder_hash`` (room hashes, the JST date, letters / icon stats, ...) and
+  the oshi set.
 - :func:`memoir_header` -- the header: name, current avatar, graduation and
   three chips. A chip is ``None`` when its value would be 0 or is unknown, so
   the UI hides it (spec 1.1: never show "0"):
@@ -25,13 +29,13 @@ Logs (ids, codes and counts only; ``person`` = first member id):
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime
 from pathlib import Path
 
 import structlog
 
 from backend.services.memories import binder
-from backend.services.memories import cards as cards_mod
 from backend.services.memories import index as mi
 from backend.services.memories import people
 from backend.services.memories.facts import aggregate, get_person_facts
@@ -41,6 +45,10 @@ from backend.services.memories.view_cache import cached_view, view_hash
 logger = structlog.get_logger(__name__)
 
 VIEW_MEMBERS = "memoir_members"
+# Bump on any rule or payload change of the list.
+MEMBERS_VERSION = 1
+# Binder evaluations run at once on a members-list miss.
+EVAL_CONCURRENCY = 4
 
 
 def _member_id(summary: mi.MemberSummary) -> str | None:
@@ -58,25 +66,28 @@ async def list_memoir_members(service: str, sdir: Path, *, now: datetime) -> dic
     oshi = await people.oshi_rooms(service, summaries)
     ordered = people.sort_people(summaries, oshi)
     hashes = [await binder.binder_hash(sdir, s, now=now) for s in ordered]
-    data_hash = view_hash(hashes, sorted(oshi))
+    data_hash = view_hash(MEMBERS_VERSION, hashes, sorted(oshi))
+    gate = asyncio.Semaphore(EVAL_CONCURRENCY)
+
+    async def row(s: mi.MemberSummary, binder_hash: str) -> dict:
+        async with gate:
+            # a per-person binder cache hit evaluates nothing
+            payload = await binder.binder_payload(
+                service, sdir, s, now=now, data_hash=binder_hash
+            )
+            timeline = await people.avatar_timelines(sdir, s)
+        return {
+            "member_path": people.chat_path(sdir, _newest_room(s)),
+            "member_id": s.member_ids[-1] if s.member_ids else None,
+            "name": s.name,
+            "avatar_url": timeline.current,
+            "oshi": s.name_norm in oshi,
+            "graduated": s.graduated,
+            "progress": payload["progress"],  # {"earned", "total"}
+        }
 
     async def build() -> dict:
-        rows = []
-        for s in ordered:
-            cards = await binder.evaluate_person(service, sdir, s, now=now)
-            earned, total = cards_mod.progress_summary(cards)
-            timeline = await people.avatar_timelines(sdir, s)
-            rows.append(
-                {
-                    "member_path": people.chat_path(sdir, _newest_room(s)),
-                    "member_id": s.member_ids[-1] if s.member_ids else None,
-                    "name": s.name,
-                    "avatar_url": timeline.current,
-                    "oshi": s.name_norm in oshi,
-                    "graduated": s.graduated,
-                    "progress": {"earned": earned, "total": total},
-                }
-            )
+        rows = list(await asyncio.gather(*map(row, ordered, hashes)))
         logger.info("memories_memoir_members", count=len(rows), oshi=len(oshi))
         return {"members": rows}
 
