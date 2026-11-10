@@ -19,3 +19,18 @@ export function reveal(reducedMotion: boolean, delayMs = 0): { className: string
         style: delayMs ? { animationDelay: `${delayMs}ms`, animationFillMode: 'both' } : undefined,
     };
 }
+
+/**
+ * Holds a slide's CSS animations while the player is paused (Space or the pause button), so a
+ * scroll, a fall or a reveal never runs on behind a paused story. Merge it into the element's style.
+ */
+export function playState(paused: boolean): React.CSSProperties {
+    return { animationPlayState: paused ? 'paused' : 'running' };
+}
+
+/** `reveal` that also holds while paused. */
+export function heldReveal(reducedMotion: boolean, paused: boolean, delayMs = 0): { className: string; style?: React.CSSProperties } {
+    const r = reveal(reducedMotion, delayMs);
+    if (reducedMotion) return r;
+    return { className: r.className, style: { ...r.style, ...playState(paused) } };
+}

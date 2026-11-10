@@ -2,7 +2,9 @@ import { describe, it, expect, beforeAll } from 'vitest';
 import { render } from '@testing-library/react';
 import i18n from '../../../../i18n';
 import { SLIDE_REGISTRY } from '../slideRegistry';
-import { clockData, greetingsData, payload, photosData, s01, s02, s12, s13, voiceData } from '../__fixtures__/payload';
+import {
+    clockData, daisukiData, echoData, greetingsData, letterData, payload, photosData, s01, s02, s12, s13, specialData, voiceData, youData,
+} from '../__fixtures__/payload';
 import type { RecapSlide } from '../api';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
@@ -14,12 +16,18 @@ const SLIDES: RecapSlide[] = [
     { key: 's04_greetings', fallback: null, data: greetingsData() },
     { key: 's05_photos', fallback: null, data: photosData() },
     { key: 's06_voice', fallback: null, data: voiceData() },
+    { key: 's07_letter', fallback: null, data: letterData() },
+    { key: 's08_echo', fallback: null, data: echoData() },
+    { key: 's09_special', fallback: null, data: specialData() },
+    { key: 's10_you', fallback: null, data: youData() },
+    { key: 's10_you', fallback: 'invite', data: { invite: true } },
+    { key: 's11_daisuki', fallback: null, data: daisukiData() },
     s12,
     s13(true, false),
 ];
 
 describe('recap slide type voices', () => {
-    it.each(SLIDES.map((s) => [s.key, s] as const))('%s: the title is serif display, narration stays the smaller sans', (_key, slide) => {
+    it.each(SLIDES.map((s) => [`${s.key}${s.fallback ? ` (${s.fallback})` : ''}`, s] as const))('%s: the title is serif display, narration stays the smaller sans', (_key, slide) => {
         const Slide = SLIDE_REGISTRY[slide.key]!.component;
         const { container } = render(
             <Slide data={slide.data} fallback={slide.fallback} recap={payload()} nickname="ゆき" reducedMotion paused={false} onMediaEnd={() => {}} />,

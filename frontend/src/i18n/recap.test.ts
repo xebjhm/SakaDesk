@@ -25,6 +25,14 @@ const RECAP_KEYS: readonly string[] = [
     'recap.s04.latestOtsukare', 'recap.s04.countOyasumi', 'recap.s04.countArigato', 'recap.s04.countOtsukare',
     'recap.s05.title', 'recap.s05.mostlyBursts', 'recap.s05.bestPhoto', 'recap.s05.burstLabel',
     'recap.s06.title', 'recap.s06.play', 'recap.s06.hint', 'recap.s06.playing', 'recap.s06.video', 'recap.s06.count',
+    'recap.s07.title', 'recap.s07.count',
+    'recap.s08.title', 'recap.s08.titleYears', 'recap.s08.titleEcho', 'recap.s08.keyword', 'recap.s08.years',
+    'recap.s08.firstWeekTitle', 'recap.s08.firstWeek', 'recap.s08.now',
+    'recap.s09.title', 'recap.s09.birthday', 'recap.s09.christmas', 'recap.s09.newyear', 'recap.s09.anniversary',
+    'recap.s09.anniversaryNote', 'recap.s09.sealed',
+    'recap.s10.title', 'recap.s10.favorites', 'recap.s10.letters', 'recap.s10.lettersLabel', 'recap.s10.firstFavorite',
+    'recap.s10.bookLabel', 'recap.s10.inviteTitle', 'recap.s10.inviteFavorites', 'recap.s10.inviteLetters',
+    'recap.s11.title', 'recap.s11.joyTitle', 'recap.s11.petalsLabel',
     'recap.s12.title',
     'recap.s13.title', 'recap.s13.partialTitle', 'recap.s13.partialNote', 'recap.s13.narration',
     'recap.s13.graduatedTitle', 'recap.s13.graduatedLine', 'recap.s13.lastTextTitle', 'recap.s13.lastTextPartialTitle', 'recap.s13.lastTextPartialNote',
@@ -34,6 +42,7 @@ const RECAP_KEYS: readonly string[] = [
 const EN_PLURALS: readonly string[] = [
     'recap.s02.count', 'recap.s02.daisuki', 'recap.s03.streak',
     'recap.s04.countOyasumi', 'recap.s04.countArigato', 'recap.s04.countOtsukare', 'recap.s06.count',
+    'recap.s07.count', 'recap.s08.titleYears', 'recap.s08.years', 'recap.s10.favorites', 'recap.s10.letters',
 ];
 
 const lookup = (data: unknown, dotted: string): unknown =>
@@ -81,6 +90,24 @@ describe('recap strings', () => {
             for (const v of ['Oyasumi', 'Arigato', 'Otsukare']) {
                 expect(String(lookup(data, `recap.s04.latest${v}`)), `${code} ${v}`).not.toMatch(YEAR_LATEST);
             }
+        }
+    });
+
+    it('the fan\'s own days and traces never say or imply that she saw, read or knew them', () => {
+        // Messages are broadcast: s09's anniversary and every s10 line speak only of the fan's side.
+        const KNEW = /読ん|見て|知って|覚え|気づ|read|saw|seen|knew|know|remember|notice|讀|读|看過|看过|睇過|睇过|知道|記得|记得|發現|发现/i;
+        const KEYS = ['recap.s09.anniversary', 'recap.s09.anniversaryNote', 'recap.s10.title', 'recap.s10.favorites',
+            'recap.s10.letters', 'recap.s10.lettersLabel', 'recap.s10.firstFavorite', 'recap.s10.bookLabel',
+            'recap.s10.inviteTitle', 'recap.s10.inviteFavorites', 'recap.s10.inviteLetters'];
+        for (const [code, data] of Object.entries(locales)) {
+            for (const dotted of KEYS) expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(KNEW);
+        }
+    });
+
+    it('the letter count shows the grouped number parameter, so 1,240 keeps its separator', () => {
+        for (const [code, data] of Object.entries(locales)) {
+            expect(String(lookup(data, 'recap.s07.count')), code).toContain('{{n}}');
+            expect(String(lookup(data, 'recap.s07.count')), code).not.toContain('{{count}}');
         }
     });
 });

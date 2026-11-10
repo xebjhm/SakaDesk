@@ -839,6 +839,50 @@
       "count": "Her voice arrived {{count}} time this year.",
       "count_other": "Her voice arrived {{count}} times this year."
     },
+    "s07": {
+      "title": "The longest letter.",
+      "count": "{{n}} character of feeling",
+      "count_other": "{{n}} characters of feeling"
+    },
+    "s08": {
+      "title": "The same day, last year.",
+      "titleYears": "The same day, {{count}} year ago.",
+      "titleYears_other": "The same day, {{count}} years ago.",
+      "titleEcho": "Back then, and now.",
+      "keyword": "Then and now, the same words.",
+      "years": "Across {{count}} year.",
+      "years_other": "Across {{count}} years.",
+      "firstWeekTitle": "Your first week, and now.",
+      "firstWeek": "Your first week",
+      "now": "Now"
+    },
+    "s09": {
+      "title": "Special days.",
+      "birthday": "Her birthday",
+      "christmas": "Christmas",
+      "newyear": "The start of a new year",
+      "anniversary": "The anniversary of the day you met her",
+      "anniversaryNote": "Her words arrived on this day too.",
+      "sealed": "This opens on December 25."
+    },
+    "s10": {
+      "title": "You were here too.",
+      "favorites": "This year, you left {{count}} star.",
+      "favorites_other": "This year, you left {{count}} stars.",
+      "letters": "This year, you wrote {{count}} letter.",
+      "letters_other": "This year, you wrote {{count}} letters.",
+      "lettersLabel": "Letters you wrote",
+      "firstFavorite": "Your first star this year: {{date}}.",
+      "bookLabel": "Your stars",
+      "inviteTitle": "Next year, your footprints too.",
+      "inviteFavorites": "Star a message that stays with you, and it will appear here.",
+      "inviteLetters": "Letters you send will appear here too."
+    },
+    "s11": {
+      "title": "Daisuki and arigato.",
+      "joyTitle": "Warm words.",
+      "petalsLabel": "Petals of her words this year"
+    },
     "s12": {
       "title": "Her words of {{year}}"
     },

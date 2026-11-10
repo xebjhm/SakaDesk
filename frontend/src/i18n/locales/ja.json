@@ -828,6 +828,45 @@
       "video": "動画から届いた声。",
       "count": "今年、{{count}}回 声が届いた。"
     },
+    "s07": {
+      "title": "いちばん長い手紙。",
+      "count": "{{n}} 文字の想い"
+    },
+    "s08": {
+      "title": "去年の、同じ日。",
+      "titleYears": "{{count}}年前の、同じ日。",
+      "titleEcho": "あの頃と、いま。",
+      "keyword": "あの頃も、いまも、同じことば。",
+      "years": "{{count}}年の時を越えて。",
+      "firstWeekTitle": "はじめての一週間と、いま。",
+      "firstWeek": "はじめての週",
+      "now": "いま"
+    },
+    "s09": {
+      "title": "特別な日。",
+      "birthday": "彼女の誕生日",
+      "christmas": "クリスマス",
+      "newyear": "新しい年の、はじまり",
+      "anniversary": "あなたが出会った、記念の日",
+      "anniversaryNote": "この日も、彼女のことばが届いていた。",
+      "sealed": "12月25日に、ここが開きます。"
+    },
+    "s10": {
+      "title": "あなたも、ここにいた。",
+      "favorites": "今年、{{count}}回の★を残した。",
+      "letters": "今年、{{count}}通の手紙を書いた。",
+      "lettersLabel": "あなたが書いた手紙",
+      "firstFavorite": "今年はじめての★は、{{date}}。",
+      "bookLabel": "あなたがつけた★",
+      "inviteTitle": "来年は、あなたの足あとも。",
+      "inviteFavorites": "心に残ったメッセージに★をつけると、ここに並びます。",
+      "inviteLetters": "あなたが送った手紙も、ここに並びます。"
+    },
+    "s11": {
+      "title": "大好き と ありがとう。",
+      "joyTitle": "あたたかい、ことばたち。",
+      "petalsLabel": "今年のことばの花びら"
+    },
     "s12": {
       "title": "{{year}}年、彼女のひとこと"
     },

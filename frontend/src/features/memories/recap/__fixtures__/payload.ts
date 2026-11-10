@@ -1,6 +1,6 @@
 import type {
-    RecapClip, RecapMessage, RecapOverview, RecapPayload, RecapSlide, S03ClockData, S04GreetingsData, S05PhotosData,
-    S06VoiceData,
+    RecapClip, RecapMessage, RecapOverview, RecapPayload, RecapSlide, RecapStub, S03ClockData, S04GreetingsData, S05PhotosData,
+    S06VoiceData, S07LetterData, S08EchoData, S09SpecialData, S10YouData, S11DaisukiData,
 } from '../api';
 
 export const MEMBER_PATH = '日向坂46/messages/34 金村 美玖/58 金村 美玖';
@@ -85,6 +85,68 @@ export const voiceData = (over: Partial<S06VoiceData> = {}): S06VoiceData => ({
         clip(22),
     ],
     voice_count: 24,
+    ...over,
+});
+
+export const LETTER_TEXT = '%%%へ\n今年もたくさんありがとう。\nライブで会えた日のこと、ずっと覚えています。\nこれからも一緒に歩いてください。';
+
+export const letterData = (over: Partial<S07LetterData> = {}): S07LetterData => ({
+    message: message(30, LETTER_TEXT, { ts: '2026-08-20T13:30:00Z' }),
+    char_count: LETTER_TEXT.length,
+    photo_url: null,
+    ...over,
+});
+
+export const echoData = (over: Partial<S08EchoData> = {}): S08EchoData => ({
+    then: message(40, '今日は花火を見たよ', { ts: '2025-07-30T12:00:00Z' }),
+    now: message(41, '%%%、今年も花火！', { ts: '2026-07-30T12:30:00Z' }),
+    shared_keyword: '花火',
+    years_apart: 1,
+    mode: 'echo',
+    ...over,
+});
+
+export const stub = (kind: RecapStub['kind'], over: Partial<RecapStub> = {}): RecapStub => ({
+    kind,
+    message: message(50, `${kind}のことば`, { ts: '2026-03-02T15:00:07Z' }),
+    seconds_after_midnight: null,
+    sealed: false,
+    ...over,
+});
+
+export const specialData = (over: Partial<S09SpecialData> = {}): S09SpecialData => ({
+    stubs: [
+        stub('birthday', { message: message(51, 'お誕生日、ありがとう', { ts: '2026-03-01T15:00:07Z' }), seconds_after_midnight: 7 }),
+        { kind: 'christmas', message: null, seconds_after_midnight: null, sealed: true },
+        stub('newyear', { message: message(52, 'あけましておめでとう', { ts: '2025-12-31T15:00:03Z' }), seconds_after_midnight: 3 }),
+        stub('anniversary', { message: message(53, '今日もおつかれさま', { ts: '2026-07-24T11:00:00Z' }) }),
+    ],
+    ...over,
+});
+
+export const youData = (over: Partial<Extract<S10YouData, { invite: false }>> = {}): S10YouData => ({
+    invite: false,
+    favorites_count: 12,
+    first_favorite: {
+        ...message(60, null, { ts: '2026-02-01T10:00:00Z' }),
+        favorited_at: '2026-02-03T10:00:00Z',
+    },
+    letters_count: 2,
+    letters: [
+        { date: '2026-03-01', first_line: '美玖ちゃんへ' },
+        { date: '2026-09-15', first_line: 'お誕生日おめでとう' },
+    ],
+    ...over,
+});
+
+export const daisukiData = (over: Partial<S11DaisukiData> = {}): S11DaisukiData => ({
+    petals: [
+        { text: '大好きだよ', date: '2026-02-14' },
+        { text: '%%%、ありがとう', date: '2026-05-01' },
+        { text: 'いつも感謝してます', date: '2026-09-09' },
+    ],
+    final: message(70, '%%%、大好き。いつもありがとう。', { ts: '2026-11-01T12:00:00Z' }),
+    variant: null,
     ...over,
 });
 

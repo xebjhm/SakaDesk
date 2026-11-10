@@ -334,7 +334,10 @@ describe('RecapPlayer', () => {
         const letter: RecapSlide = {
             key: 's07_letter', fallback: null, data: { message: null, char_count: 120, photo_url: null },
         };
-        render(<RecapPlayer recap={payload({ slides: [s01, letter, s02] })} nickname="ゆき" onClose={() => {}} />);
+        // Every slide has a renderer now; a registry without the letter stands in for an unbuilt one.
+        const registry: SlideRegistry = { ...SLIDE_REGISTRY };
+        delete registry.s07_letter;
+        render(<RecapPlayer recap={payload({ slides: [s01, letter, s02] })} nickname="ゆき" onClose={() => {}} registry={registry} />);
         expect(screen.getAllByTestId('recap-progress-segment')).toHaveLength(2);
         expect(playLogs()).toContainEqual(['recap_play', expect.objectContaining({ phase: 'skip', key: 's07_letter', reason: 'not_built' })]);
     });

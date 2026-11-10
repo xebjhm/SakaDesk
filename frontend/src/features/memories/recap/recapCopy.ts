@@ -7,8 +7,8 @@
  */
 import { replaceNickname } from '../../messages/utils/nickname';
 import type {
-    RecapMemberBlock, S01FirstData, S02NameData, S03ClockData, S04GreetingsData, S05PhotosData,
-    S06VoiceData, S13OyasumiData,
+    RecapMemberBlock, RecapStub, S01FirstData, S02NameData, S03ClockData, S04GreetingsData, S05PhotosData,
+    S06VoiceData, S07LetterData, S08EchoData, S10YouData, S11DaisukiData, S13OyasumiData,
 } from './api';
 
 export interface CopyLine {
@@ -160,6 +160,140 @@ export function s06Copy(data: S06VoiceData, fallback: string | null): { title: C
     return { title: { key: 'recap.s06.title' }, sub };
 }
 
+/** A count grouped in the UI language ("1,240"). */
+export function formatCount(n: number, lang: string): string {
+    return new Intl.NumberFormat(lang).format(n);
+}
+
+/**
+ * A UTC ISO timestamp as its JST calendar day ("8月21日", or "2026年8月21日" with the year), or
+ * null. A message's date is metadata, not the slide's number.
+ */
+export function formatMessageDate(ts: string, lang: string, withYear = false): string | null {
+    const date = new Date(ts);
+    if (Number.isNaN(date.getTime())) return null;
+    return new Intl.DateTimeFormat(lang, {
+        ...(withYear ? { year: 'numeric' } : {}), month: 'long', day: 'numeric', timeZone: RECAP_TIME_ZONE,
+    }).format(date);
+}
+
+/** The JST month and day of a UTC ISO timestamp ("07-30"), or null. */
+function jstMonthDay(ts: string): string | null {
+    const date = new Date(ts);
+    if (Number.isNaN(date.getTime())) return null;
+    return new Intl.DateTimeFormat('en-CA', { month: '2-digit', day: '2-digit', timeZone: RECAP_TIME_ZONE }).format(date);
+}
+
+/**
+ * Length of her letter as the fan reads it: after the nickname replacement, in code points (as
+ * the backend's `len()`), so the count matches the text on the paper. The backend's `char_count`
+ * counts the raw `%%%` and is not shown.
+ */
+export function letterCharCount(text: string, nickname: string): number {
+    return Array.from(withNickname(text, nickname)).length;
+}
+
+/** s07. The count of the letter (after the nickname replacement) is the one number. */
+export function s07Copy(data: S07LetterData, nickname: string, lang: string): { title: CopyLine; count: CopyLine | null } {
+    const text = data.message?.text;
+    const n = text ? letterCharCount(text, nickname) : 0;
+    return {
+        title: { key: 'recap.s07.title' },
+        count: n > 0 ? { key: 'recap.s07.count', params: { count: n, n: formatCount(n, lang) } } : null,
+    };
+}
+
+/**
+ * s08. "The same day" only when both messages really share the JST month and day; the backend
+ * also pairs messages by keyword alone. Years apart is the one number (in the title on the same
+ * day, else in the line when no keyword is shared). `first_week`: the fan's first week with her
+ * messages and now, no number.
+ */
+export function s08Copy(data: S08EchoData): {
+    title: CopyLine; line: CopyLine | null; thenLabel: CopyLine | null; nowLabel: CopyLine | null;
+} {
+    if (data.mode === 'first_week') {
+        return {
+            title: { key: 'recap.s08.firstWeekTitle' }, line: null,
+            thenLabel: { key: 'recap.s08.firstWeek' }, nowLabel: { key: 'recap.s08.now' },
+        };
+    }
+    const thenDay = data.then ? jstMonthDay(data.then.ts) : null;
+    const sameDay = thenDay !== null && data.now !== null && thenDay === jstMonthDay(data.now.ts);
+    const years = data.years_apart !== null && data.years_apart >= 1 ? data.years_apart : null;
+    const keyword: CopyLine | null = data.shared_keyword ? { key: 'recap.s08.keyword' } : null;
+    if (sameDay && years !== null) {
+        const title = years === 1 ? { key: 'recap.s08.title' } : { key: 'recap.s08.titleYears', params: { count: years } };
+        return { title, line: keyword, thenLabel: null, nowLabel: null };
+    }
+    const line = keyword ?? (years !== null ? { key: 'recap.s08.years', params: { count: years } } : null);
+    return { title: { key: 'recap.s08.titleEcho' }, line, thenLabel: null, nowLabel: null };
+}
+
+/** Seconds after JST midnight as a clock with seconds ("0:00:07"), or null when out of range. */
+export function formatSecondsOfDay(seconds: number): string | null {
+    if (!Number.isInteger(seconds) || seconds < 0 || seconds >= 86400) return null;
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    return `${h}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
+}
+
+export function s09Copy(): { title: CopyLine } {
+    return { title: { key: 'recap.s09.title' } };
+}
+
+const STUB_LABEL: Record<RecapStub['kind'], string> = {
+    birthday: 'recap.s09.birthday', christmas: 'recap.s09.christmas',
+    newyear: 'recap.s09.newyear', anniversary: 'recap.s09.anniversary',
+};
+
+/**
+ * One s09 ticket stub. A sealed stub has only its opening line. The anniversary is the fan's own
+ * day: its note says only that her words arrived that day too, never that she knew it.
+ */
+export function s09StubCopy(stub: RecapStub): { label: CopyLine; sealed: CopyLine | null; note: CopyLine | null } {
+    return {
+        label: { key: STUB_LABEL[stub.kind] },
+        sealed: stub.sealed ? { key: 'recap.s09.sealed' } : null,
+        note: !stub.sealed && stub.kind === 'anniversary' ? { key: 'recap.s09.anniversaryNote' } : null,
+    };
+}
+
+/**
+ * s10, the fan's own traces. One number: the favourites count, else the letters count; letters
+ * beside a favourites count get a label instead of their count. The first star's day shows only when its time was logged
+ * (`favorited_at`); the message time that stands in for older stars is not the day it was starred.
+ * Invite: forward-looking lines, never a claim about her seeing anything.
+ */
+export function s10Copy(data: S10YouData): {
+    title: CopyLine; stat: CopyLine | null; lettersLabel: CopyLine | null;
+    firstFavorite: boolean; invite: CopyLine[];
+} {
+    if (data.invite) {
+        return {
+            title: { key: 'recap.s10.inviteTitle' }, stat: null, lettersLabel: null,
+            firstFavorite: false, invite: [{ key: 'recap.s10.inviteFavorites' }, { key: 'recap.s10.inviteLetters' }],
+        };
+    }
+    const favs = data.favorites_count !== null && data.favorites_count > 0 ? data.favorites_count : null;
+    const letters = data.letters_count !== null && data.letters_count > 0 && data.letters.length > 0 ? data.letters_count : null;
+    let stat: CopyLine | null = null;
+    if (favs !== null) stat = { key: 'recap.s10.favorites', params: { count: favs } };
+    else if (letters !== null) stat = { key: 'recap.s10.letters', params: { count: letters } };
+    return {
+        title: { key: 'recap.s10.title' },
+        stat,
+        lettersLabel: favs !== null && letters !== null ? { key: 'recap.s10.lettersLabel' } : null,
+        firstFavorite: favs !== null && !!data.first_favorite?.favorited_at,
+        invite: [],
+    };
+}
+
+/** s11. The joy variant's petals are not all 大好き / ありがとう, so its title names neither. */
+export function s11Copy(data: S11DaisukiData): { title: CopyLine } {
+    return { title: { key: data.variant === 'joy' ? 'recap.s11.joyTitle' : 'recap.s11.title' } };
+}
 
 export function s12Copy(year: number): { title: CopyLine } {
     return { title: { key: 'recap.s12.title', params: { year } } };

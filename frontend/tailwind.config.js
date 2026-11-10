@@ -317,6 +317,13 @@ export default {
                 'star-fall': { '0%': { opacity: '0', transform: 'translateY(-14px)' } },
                 // Recap burst: a photo fans out from the stack (the end state is the element's own transform).
                 'fan-in': { '0%': { opacity: '0', transform: 'translateY(12px) rotate(0deg) scale(0.92)' } },
+                // Recap long letter: hold the top, scroll to the bottom (--letter-scroll, set by the slide), hold.
+                'letter-scroll': {
+                    '0%, 12%': { transform: 'translateY(0)' },
+                    '88%, 100%': { transform: 'translateY(var(--letter-scroll, 0))' },
+                },
+                // Recap petals: a petal drifts down into place (the end state is the element's own transform).
+                'petal-fall': { '0%': { opacity: '0', transform: 'translateY(-160px) rotate(-40deg)' } },
                 heartbeat: {
                     '0%, 100%': { transform: 'scale(1)' },
                     '15%': { transform: 'scale(1.3)' },
@@ -336,6 +343,8 @@ export default {
                 heartbeat: 'heartbeat 1.2s ease-in-out infinite',
                 'star-fall': 'star-fall 600ms var(--ds-ease-standard) both',
                 'fan-in': 'fan-in 500ms var(--ds-ease-standard) both',
+                'letter-scroll': 'letter-scroll 6s ease-in-out both',
+                'petal-fall': 'petal-fall 1600ms var(--ds-ease-standard) both',
                 shimmer: 'shimmer 1.2s 300ms var(--ds-ease-standard) both',
                 'shimmer-sweep': 'shimmer-sweep 1.4s var(--ds-ease-standard) infinite',
                 pop: 'pop 500ms cubic-bezier(0.2, 1.4, 0.4, 1) both',

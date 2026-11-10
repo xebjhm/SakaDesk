@@ -828,6 +828,45 @@
       "video": "來自影片的聲音。",
       "count": "今年，收到了{{count}}次她的聲音。"
     },
+    "s07": {
+      "title": "最長的一封信。",
+      "count": "{{n}} 字的心意"
+    },
+    "s08": {
+      "title": "去年的，同一天。",
+      "titleYears": "{{count}}年前的，同一天。",
+      "titleEcho": "那時，與現在。",
+      "keyword": "那時和現在，同樣的話語。",
+      "years": "跨越了{{count}}年。",
+      "firstWeekTitle": "最初的一週，與現在。",
+      "firstWeek": "最初的一週",
+      "now": "現在"
+    },
+    "s09": {
+      "title": "特別的日子。",
+      "birthday": "她的生日",
+      "christmas": "聖誕節",
+      "newyear": "新的一年，開始",
+      "anniversary": "你遇見她的紀念日",
+      "anniversaryNote": "這一天，她的話語也送達了。",
+      "sealed": "12月25日，這裡就會打開。"
+    },
+    "s10": {
+      "title": "你也在這裡。",
+      "favorites": "今年，你留下了{{count}}顆★。",
+      "letters": "今年，你寫了{{count}}封信。",
+      "lettersLabel": "你寫的信",
+      "firstFavorite": "今年第一顆★，在{{date}}。",
+      "bookLabel": "你加上的★",
+      "inviteTitle": "明年，也留下你的足跡。",
+      "inviteFavorites": "為留在心裡的訊息加上★，就會排在這裡。",
+      "inviteLetters": "你寄出的信，也會排在這裡。"
+    },
+    "s11": {
+      "title": "最喜歡，與謝謝。",
+      "joyTitle": "溫暖的話語。",
+      "petalsLabel": "今年話語的花瓣"
+    },
     "s12": {
       "title": "{{year}}年，她的一句話"
     },

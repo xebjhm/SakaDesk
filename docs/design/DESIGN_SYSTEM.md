@@ -539,7 +539,11 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   `animate-heartbeat` 1.2 s), and the celebrations: `animate-toast-in` 350 ms
   (the toast entrance), `animate-shimmer` 1.2 s, `animate-shimmer-sweep` 1.4 s (the looping
   loading sweep on a Favourites video placeholder; hidden under reduced motion), `animate-pop` 500 ms,
-  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, and the blog feed's
+  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, the year recap's slide motion
+  (`animate-star-fall` 600 ms, `animate-fan-in` 500 ms, `animate-petal-fall` 1.6 s and the
+  long letter's `animate-letter-scroll` 6 s, which reads its distance from `--letter-scroll`;
+  the petals, the letter scroll and slides 7-11's reveals hold while the player is paused through
+  `animation-play-state`), and the blog feed's
   original motion (`duration-lift` 500 ms, `duration-zoom` 700 ms and the
   caption's `transition-caption` on the feed tile, `duration-lens` 300 ms on the
   timeline rail's zoom; see "The blog feed"). All stop or become static with reduced motion
