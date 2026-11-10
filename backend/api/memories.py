@@ -1,11 +1,12 @@
-"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board, the hub, the voice radio and the gacha for the active service, the export handoff and the share GIF."""
+"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board, the hub, the voice radio, the gacha, the calendar album and album cover overrides for the active service, the export handoff and the share GIF."""
 
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from datetime import date, datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import structlog
 from fastapi import APIRouter, HTTPException, Query, Request
@@ -17,6 +18,8 @@ from backend.services.memories import (
     album,
     album_colors,
     binder,
+    calendar_album,
+    covers,
     day_view,
     exports,
     favorites_board,
@@ -448,6 +451,131 @@ async def gacha_pull_route(service: str) -> dict:
         logger.info("memories.api.reject", reason="no_pulls_left")
         raise HTTPException(status_code=409, detail="no_pulls_left")
     return body
+
+
+def _check_month(month: str) -> None:
+    if not timeline.MONTH_RE.match(month):
+        logger.warning("memories.api.reject", reason="bad_month")
+        raise HTTPException(status_code=400, detail="Invalid month")
+
+
+@router.get("/{service}/calendar/months")
+async def calendar_months_route(service: str, member: str | None = Query(None)) -> dict:
+    """The JST months with at least one message, oldest first (``calendar_album``).
+
+    Registered before ``/{service}/calendar/{month}`` so ``months`` is not read
+    as a month.
+    """
+    service_data_dir = _service_dir(service)
+    summary = await _optional_person(service_data_dir, member, "calendar")
+    return await calendar_album.calendar_months(
+        service, service_data_dir, member=summary
+    )
+
+
+@router.get("/{service}/calendar/{month}")
+async def calendar_month_route(
+    service: str, month: str, member: str | None = Query(None)
+) -> dict:
+    """One calendar month's day cells (``calendar_album.calendar_month``).
+
+    A malformed ``month`` is 400; a month without messages gives ``days: []``.
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    _check_month(month)
+    summary = await _optional_person(service_data_dir, member, "calendar")
+    return await calendar_album.calendar_month(
+        service, service_data_dir, month, member=summary, now=now
+    )
+
+
+COVER_BODY_MAX = 4096
+_COVER_KEYS = frozenset({"member", "month", "room", "id"})
+
+
+def _bad_body() -> HTTPException:
+    logger.warning("memories.api.reject", reason="bad_body")
+    return HTTPException(status_code=400, detail="bad_body")
+
+
+def _safe_room(room: object) -> bool:
+    """A non-empty relative POSIX room path without ``..``, ``\\`` or a root."""
+    if not isinstance(room, str) or not room or "\\" in room:
+        return False
+    parts = PurePosixPath(room)
+    return not parts.is_absolute() and ".." not in parts.parts
+
+
+def _parse_cover_body(raw: bytes) -> tuple[str | None, str, str, int]:
+    """``(member, month, room, id)`` of a ``PUT /album/cover`` body; 400 otherwise.
+
+    The body must be a JSON object with exactly ``member`` (string or
+    ``null``), ``month`` (``YYYY-MM``), ``room`` (a relative room path) and
+    ``id`` (a non-negative integer).
+    """
+    try:
+        body = json.loads(raw.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise _bad_body() from None
+    if not isinstance(body, dict) or set(body) != _COVER_KEYS:
+        raise _bad_body()
+    member, month, room, mid = body["member"], body["month"], body["room"], body["id"]
+    if member is not None and not isinstance(member, str):
+        raise _bad_body()
+    if not isinstance(month, str) or not timeline.MONTH_RE.match(month):
+        raise _bad_body()
+    if not _safe_room(room):
+        raise _bad_body()
+    if not isinstance(mid, int) or isinstance(mid, bool) or mid < 0:
+        raise _bad_body()
+    return member, month, room, mid
+
+
+@router.put("/{service}/album/cover", status_code=204)
+async def album_cover_set_route(service: str, request: Request) -> Response:
+    """Set the album cover of a month (``covers.set_cover_override``).
+
+    Body ``{"member": str | null, "month": "YYYY-MM", "room": str, "id": int}``
+    (``member`` = chat path of any of her rooms; ``null`` = the 全員 album).
+    A malformed body is 400 ``bad_body``; a message that is not a picture /
+    video of that month in that scope is 400 ``not_in_month``.
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    chunks = await _read_capped(request, COVER_BODY_MAX)
+    if chunks is None:
+        raise _bad_body()
+    member, month, room, mid = _parse_cover_body(_join_body(chunks))
+    summary = await _optional_person(service_data_dir, member, "album_cover")
+    try:
+        await covers.set_cover_override(
+            service,
+            service_data_dir,
+            member=summary,
+            month=month,
+            room=room,
+            message_id=mid,
+            now=now,
+        )
+    except ValueError:
+        logger.info("memories.api.reject", reason="not_in_month")
+        raise HTTPException(status_code=400, detail="not_in_month") from None
+    return Response(status_code=204)
+
+
+@router.delete("/{service}/album/cover", status_code=204)
+async def album_cover_clear_route(
+    service: str, month: str = Query(...), member: str | None = Query(None)
+) -> Response:
+    """Clear a month's album cover override (idempotent: 204 either way)."""
+    service_data_dir = _service_dir(service)
+    _check_month(month)
+    summary = await _optional_person(service_data_dir, member, "album_cover")
+    await covers.clear_cover_override(
+        service, service_data_dir, member=summary, month=month
+    )
+    return Response(status_code=204)
 
 
 @router.get("/{service}/hub")
