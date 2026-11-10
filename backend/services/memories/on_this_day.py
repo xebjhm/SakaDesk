@@ -2,11 +2,15 @@
 
 :func:`on_this_day` returns ``{"month_day", "years": [...]}``:
 
-- ``years`` runs from the first JST year of any message in the service (the
-  earliest ``first_ts`` of every room's member index) to the latest year in
-  which ``month_day`` is on or before today (JST), oldest first. ``02-29`` is
-  compared as ``(2, 29)``, so every year is listed and non-leap years are
-  simply empty. Without any message the list is empty.
+- ``years`` runs oldest first from the first JST year whose ``month_day``
+  is on or after the service's first message date (the earliest
+  ``first_ts`` of every room's member index, as a JST date), so no empty year
+  appears before the archive starts, to the latest year in which
+  ``month_day`` is on or before today (JST). This year's date is listed only
+  when it has messages. ``02-29`` is compared as ``(2, 29)``: non-leap years
+  in the range are listed and simply empty. Without any message, or when
+  the range is empty, ``years`` is ``[]`` (``memories_skip``,
+  ``reason=no_messages|before_first_year``) and nothing is cached.
 - A year without messages on that date is ``{"year", "has_messages": False}``
   and nothing else: the UI dims it and never shows "0" (spec 1.1).
 - A year with messages has:
@@ -17,19 +21,22 @@
     her highest-importance non-promo words (ties: the earlier); the people
     are ordered oshi first, then by that importance (ties: the earlier
     message). Each carries her avatar at its time;
-  - ``more`` = ``message_count - len(preview)``;
-  - ``thumb``: the highest ``photo_score`` picture / video of that date-year
-    (ties: the earlier), text-free, or ``None``.
+  - ``more`` = ``message_count - len(preview)``, or ``None`` when that is 0
+    (the payload never carries a renderable zero);
+  - ``thumb``: the highest ``photo_score`` picture of that date-year (ties:
+    the earlier); a video only when the date-year has no scored picture;
+    text-free, or ``None``.
 
-The text-free part is cached (view ``on_this_day``, key ``month_day|JST
-date``, hash over :data:`VERSION`, the JST date, the oshi set and every
-room's member-index ``data_hash``). Preview texts are attached after the cache
+The text-free part is cached (view ``on_this_day``, key ``month_day`` so a
+new day replaces the row instead of adding one; hash over :data:`VERSION`,
+the last year, whether it is this year, the oshi set and every room's
+member-index ``data_hash``, so it also hits across days). Preview texts are attached after the cache
 read with one ``load_texts`` per room for the preview ids only.
 
 Logs (ids, codes, counts and scores only): ``memories_select``
 (``view=on_this_day``, ``rule=preview|thumb``, ``score``, ``fallback=None``,
 ``message_id``, ``year``) and ``memories_skip`` (``reason=no_preview|no_thumb``,
-``year``) when the payload is built, and ``memories_on_this_day`` (``years``,
+``year``) when the payload is built, the early-return skip above, and ``memories_on_this_day`` (``years``,
 ``with_messages``, ``count``) on every call.
 """
 
@@ -54,7 +61,7 @@ logger = structlog.get_logger(__name__)
 
 VIEW = "on_this_day"
 # Bump on any rule or payload change (the cache hash has it).
-VERSION = 1
+VERSION = 2
 PREVIEW_CAP = 3
 MONTH_DAY_RE = re.compile(r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
 
@@ -78,15 +85,15 @@ def month_day_of(now: datetime) -> str:
     return now.astimezone(JST).strftime("%m-%d")
 
 
-def _first_year(indexes: Sequence[mi.MemberIndex]) -> int | None:
-    """JST year of the service's earliest message, or ``None`` without messages."""
+def _first_date(indexes: Sequence[mi.MemberIndex]) -> date | None:
+    """JST date of the service's earliest message, or ``None`` without messages."""
     stamps = [
         ts
         for idx in indexes
         for raw in idx.first_ts.values()
         if (ts := parse_iso(raw)) is not None
     ]
-    return min(stamps).astimezone(JST).year if stamps else None
+    return min(stamps).astimezone(JST).date() if stamps else None
 
 
 def _words_key(t: _Tagged) -> tuple[int, datetime, int]:
@@ -115,7 +122,14 @@ def _pick_year(
         and t[2].photo_score is not None
     ]
     thumb = min(
-        photos, key=lambda t: (-(t[2].photo_score or 0), t[2].ts, t[2].id), default=None
+        photos,
+        key=lambda t: (
+            t[2].type != "picture",  # a video only without a picture
+            -(t[2].photo_score or 0),
+            t[2].ts,
+            t[2].id,
+        ),
+        default=None,
     )
     return ranked[:PREVIEW_CAP], thumb
 
@@ -139,6 +153,7 @@ def _compose(
     avatars: dict[str, people.AvatarTimeline],
     first: int,
     last: int,
+    last_is_current: bool,
 ) -> list[dict]:
     """The text-free ``years`` list. Blocking (runs in a worker)."""
     by_year = _group_years(tagged, first, last)
@@ -151,7 +166,12 @@ def _compose(
     for year in range(first, last + 1):
         facts = by_year.get(year)
         if not facts:
-            years.append({"year": year, "has_messages": False})
+            if year == last and last_is_current:
+                logger.info(
+                    "memories_skip", view=VIEW, reason="current_year_empty", year=year
+                )
+            else:
+                years.append({"year": year, "has_messages": False})
             continue
         preview, thumb = _pick_year(facts, oshi)
         for t in preview:
@@ -185,11 +205,18 @@ def _compose(
                 "message_count": len(facts),
                 "member_count": len({people.person_key(t[0]) for t in facts}),
                 "preview": [ref(t) for t in preview],
-                "more": len(facts) - len(preview),
+                "more": (len(facts) - len(preview)) or None,
                 "thumb": ref(thumb) if thumb is not None else None,
             }
         )
     return years
+
+
+def _empty(month_day: str, reason: str) -> dict:
+    """The empty payload of an early return, with its breadcrumb."""
+    logger.info("memories_skip", view=VIEW, reason=reason)
+    logger.info("memories_on_this_day", years=0, with_messages=0, count=0)
+    return {"month_day": month_day, "years": []}
 
 
 async def on_this_day(
@@ -209,30 +236,39 @@ async def on_this_day(
         for s in summaries
         for room in s.member_dirs
     ]
-    first = _first_year(indexes)
+    first_date = _first_date(indexes)
+    if first_date is None:
+        return _empty(month_day, "no_messages")
+    first = first_date.year + ((month, day) < (first_date.month, first_date.day))
+    if first > last:
+        return _empty(month_day, "before_first_year")
+    last_is_current = last == today.year
     data_hash = view_hash(
         VERSION,
-        today.isoformat(),
+        last,
+        last_is_current,
         sorted(oshi),
         [(idx.member_dir, idx.data_hash) for idx in indexes],
     )
 
     async def build() -> dict:
-        if first is None or first > last:
-            return {"month_day": month_day, "years": []}
         tagged = await people.service_facts_on(sdir, summaries, month_day=month_day)
         posted = {people.person_key(t[0]): t[0] for t in tagged}
-        avatars = {
-            key: await people.avatar_timelines(sdir, s) for key, s in posted.items()
-        }
+        avatars = await people.avatar_timelines_for(sdir, posted)
         years = await asyncio.to_thread(
-            _compose, service, sdir, tagged, oshi, avatars, first, last
+            _compose,
+            service,
+            sdir,
+            tagged,
+            oshi,
+            avatars,
+            first,
+            last,
+            last_is_current,
         )
         return {"month_day": month_day, "years": years}
 
-    payload = await cached_view(
-        sdir, VIEW, f"{month_day}|{today.isoformat()}", data_hash, build
-    )
+    payload = await cached_view(sdir, VIEW, month_day, data_hash, build)
     previews = [r for y in payload["years"] for r in y.get("preview", [])]
     await people.attach_texts(sdir, previews)
     with_messages = [y for y in payload["years"] if y["has_messages"]]
