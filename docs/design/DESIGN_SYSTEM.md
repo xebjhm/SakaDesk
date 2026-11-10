@@ -574,7 +574,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Group background behind everything | `Canvas` |
 | Main content area or dialog body | `Sheet` / `Modal` |
 | A boxed item on a sheet | `Card` |
-| Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for a 推 filter). The blog feed's All / Favorite is its own segmented control (see "The blog feed") |
+| Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for a 推 filter; `tone="star"` for a ★ favourite filter: a neutral `bg-sunken` / `text-primary` / `ring-strong` selected state beside the yellow `text-semantic-star` icon, never the accent). The blog feed's All / Favorite is its own segmented control (see "The blog feed") |
 | Unread count | `Badge count={n}` (hidden at 0, `99+` cap, unread glow) |
 | Person or member | `Avatar` (`selected`: accent ring with a white gap + halo; a muted look or hover zoom goes on the image via `imgClassName` / `imgStyle`, never on a wrapper, so the ring stays sharp and in place; an archived avatar drawn small gets `resizedAvatarUrl(url, useAvatarWidth(<drawn CSS px>))`, a resized copy matched to the screen density, never the ~1000 px original) |
 | Timeline date | `DatePill` (`sticky` inside scrolling timelines) |
