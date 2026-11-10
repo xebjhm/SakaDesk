@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from contextlib import closing
 
 import pytest
@@ -56,7 +57,7 @@ def db(tmp_path):
 
 def test_schema_version_matches_step_count():
     assert app_state.SCHEMA_VERSION == len(app_state._MIGRATIONS) == 1
-    assert NEW_TABLES <= app_state._REQUIRED_TABLES
+    assert NEW_TABLES | NEW_INDEXES <= app_state._REQUIRED_SCHEMA
 
 
 def test_fresh_db_ends_at_current_version_with_all_tables(db):
@@ -112,7 +113,7 @@ def test_dropped_table_at_current_version_heals(db):
     assert NEW_INDEXES <= _names(db, "index")
     events = [e for e in logs if e["event"] == "app_state_migrate"]
     assert events[-1]["outcome"] == "healed"
-    assert events[-1]["missing"] == 1
+    assert events[-1]["missing"] == 3  # the table and its two indexes
 
 
 def test_half_applied_step_at_old_version_heals(db):
@@ -158,3 +159,54 @@ def test_failing_step_rolls_back_and_reraises(db, monkeypatch):
 
 def test_connect_alias_kept():
     assert app_state._connect is app_state.connect
+
+
+def test_dropped_index_at_current_version_heals(db):
+    app_state.init_db()
+    with closing(sqlite3.connect(db)) as c, c:
+        c.execute("DROP INDEX memories_capsule_by_created")
+    with capture_logs() as logs:
+        app_state.init_db()
+    assert NEW_INDEXES <= _names(db, "index")
+    events = [e for e in logs if e["event"] == "app_state_migrate"]
+    assert events[-1]["outcome"] == "healed"
+
+
+def test_begin_lock_failure_leaves_breadcrumb(db, monkeypatch):
+    app_state.init_db()
+
+    class LockedConn:
+        def execute(self, sql, *a):
+            raise sqlite3.OperationalError("database is locked")
+
+        def rollback(self):
+            pass
+
+    with capture_logs() as logs, pytest.raises(sqlite3.OperationalError):
+        app_state._migrate(LockedConn())  # type: ignore[arg-type]
+    err = [e for e in logs if e.get("outcome") == "error"]
+    assert err and err[-1]["step"] == 0
+    assert err[-1]["error_type"] == "OperationalError"
+
+
+def test_concurrent_first_start(db):
+    n = 8
+    barrier = threading.Barrier(n)
+    errors: list[BaseException] = []
+
+    def worker():
+        barrier.wait()
+        try:
+            app_state.init_db()
+        except BaseException as exc:  # noqa: BLE001 - collected for the assert
+            errors.append(exc)
+
+    threads = [threading.Thread(target=worker) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert errors == []
+    assert _version(db) == 1
+    assert OLD_TABLES | NEW_TABLES <= _names(db, "table")
+    assert NEW_INDEXES <= _names(db, "index")

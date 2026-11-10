@@ -38,6 +38,7 @@ SALT_PREF = "memories_gacha_salt"
 _SALT_RE = re.compile(r"^[0-9a-f]{16}$")
 _MONTH_DAY_RE = re.compile(r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
 _EVENT = "memories_user_store"
+HISTORY_MAX = 200
 
 
 @dataclass(frozen=True)
@@ -327,29 +328,41 @@ def clear_cover_override(service_dir: str, scope: str, month: str) -> bool:
 # ----------------------------------------------------------------- gacha
 
 
+def _read_salt(c: sqlite3.Connection) -> tuple[bool, str | None]:
+    """``(row_exists, valid_salt_or_None)`` for the salt pref."""
+    row = c.execute("SELECT value FROM prefs WHERE key=?", (SALT_PREF,)).fetchone()
+    if not row:
+        return False, None
+    try:
+        value = json.loads(row[0])
+    except (TypeError, ValueError):
+        return True, None
+    return True, value if isinstance(value, str) and _SALT_RE.match(value) else None
+
+
 def gacha_salt() -> str:
     """The per-install gacha salt (16 hex chars), created once in ``prefs``.
 
-    A missing, non-JSON or malformed value is replaced. Never log the result.
+    The common path is a plain read; only a missing, non-JSON or malformed
+    value takes the write lock (``BEGIN IMMEDIATE``, re-checked under the
+    lock so racing callers mint exactly one salt). Never log the result.
     """
     with _db("salt") as c:
+        _, salt = _read_salt(c)
+        if salt is not None:
+            return salt
+    with _db("salt") as c:
         c.execute("BEGIN IMMEDIATE")
-        row = c.execute("SELECT value FROM prefs WHERE key=?", (SALT_PREF,)).fetchone()
-        current: object = None
-        if row:
-            try:
-                current = json.loads(row[0])
-            except (TypeError, ValueError):
-                current = None
-        if isinstance(current, str) and _SALT_RE.match(current):
-            return current
+        existed, salt = _read_salt(c)
+        if salt is not None:
+            return salt
         salt = secrets.token_hex(8)
         c.execute(
             "INSERT INTO prefs(key, value) VALUES(?,?) "
             "ON CONFLICT(key) DO UPDATE SET value=excluded.value",
             (SALT_PREF, json.dumps(salt)),
         )
-    logger.info(_EVENT, op="salt_reset" if row else "salt_create")
+    logger.info(_EVENT, op="salt_reset" if existed else "salt_create")
     return salt
 
 
@@ -365,7 +378,8 @@ def gacha_pulls_on(service: str, jst_date: date) -> list[GachaPull]:
 
 
 def gacha_history(service: str, *, limit: int) -> list[GachaPull]:
-    """Newest first (by JST date, then pull index)."""
+    """Newest first (by JST date, then pull index); ``limit`` is clamped to 1..200."""
+    limit = max(1, min(HISTORY_MAX, limit))
     with _db("gacha_read") as c:
         rows = c.execute(
             f"SELECT {_PULL_COLS} FROM memories_gacha_pulls WHERE service=? "
@@ -402,6 +416,8 @@ def record_gacha_pull(
     ``BEGIN IMMEDIATE`` serialises the count + insert, so two racing clicks
     cannot both take the last pull.
     """
+    if max_pulls <= 0:
+        raise ValueError("max_pulls must be positive")
     ts = _utc_iso(now)
     day = jst_date.isoformat()
     with _db("gacha_pull") as c:
@@ -565,6 +581,7 @@ async def arecord_gacha_pull(
 
 
 __all__ = [
+    "HISTORY_MAX",
     "SALT_PREF",
     "CapsuleNote",
     "GachaPull",

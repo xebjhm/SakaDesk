@@ -21,11 +21,21 @@ MAX_TRANSLATION_KEYS = 100
 # loop (SD-BE-SVC-10 wiring), rather than stalling every concurrent request.
 @router.get("/prefs")
 async def get_prefs() -> dict[str, Any]:
-    return await app_state.aget_prefs()
+    """Frontend prefs. Backend-internal ``memories_*`` keys are never returned."""
+    prefs = await app_state.aget_prefs()
+    return {k: v for k, v in prefs.items() if not app_state.is_internal_pref(k)}
 
 
 @router.patch("/prefs")
 async def patch_prefs(patch: dict[str, Any] = Body(...)) -> dict[str, bool]:
+    """Merge ``patch`` into prefs. A patch naming any internal ``memories_*``
+    key is refused as a whole (400) and nothing is written."""
+    internal = [k for k in patch if app_state.is_internal_pref(k)]
+    if internal:
+        logger.warning(
+            "app_state_internal_prefs_refused", source="patch", count=len(internal)
+        )
+        raise HTTPException(status_code=400, detail="internal_pref_key")
     await app_state.aset_prefs(patch)
     return {"ok": True}
 

@@ -17,10 +17,18 @@ Version Change
 
 Rule: **append a step, never edit one.** A new schema change is a new
 function appended to ``_MIGRATIONS`` (``SCHEMA_VERSION`` follows its length)
-and its tables added to ``_REQUIRED_TABLES``. Every step must be idempotent
-(``CREATE ... IF NOT EXISTS``) so a half-applied or hand-damaged DB heals;
-steps run inside one ``BEGIN IMMEDIATE`` transaction and must use
-``Connection.execute`` (``executescript`` would commit mid-migration).
+and the tables / indexes it creates added to ``_REQUIRED_SCHEMA``. Every
+step must be idempotent (``CREATE ... IF NOT EXISTS``): when a required
+object is missing (half-applied or hand-damaged DB) ``_migrate`` re-runs
+**all** steps from 1 to heal it. A future step that is not naturally
+idempotent (e.g. ``ALTER TABLE ... ADD COLUMN``) must guard itself (check
+``PRAGMA table_info`` first) or that re-run fails. Steps run inside one
+``BEGIN IMMEDIATE`` transaction and must use ``Connection.execute``
+(``executescript`` would commit mid-migration).
+
+Prefs keys starting with ``memories_`` (``INTERNAL_PREF_PREFIX``) are
+backend-internal (e.g. the gacha salt): the prefs API never returns or
+accepts them, and ``migrate_dump`` drops them.
 """
 
 from __future__ import annotations
@@ -59,8 +67,9 @@ def connect() -> sqlite3.Connection:
     the inner ``with`` commits (or rolls back) and ``closing`` releases the
     handle, which sqlite3's own context manager does not."""
     conn = sqlite3.connect(_path())
-    conn.execute("PRAGMA journal_mode=WAL")
+    # busy_timeout first, so a concurrent first start waits on the WAL switch.
     conn.execute("PRAGMA busy_timeout=5000")
+    conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 
@@ -120,15 +129,34 @@ _MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
     _step1_memories_user_state,
 )
 SCHEMA_VERSION = len(_MIGRATIONS)
-# Objects the migration steps create; a missing one at the current version
-# (hand-damaged DB) re-runs the idempotent steps.
-_REQUIRED_TABLES: frozenset[str] = frozenset(
+# Tables and indexes the migration steps create; a missing one after the
+# pending steps ran (half-applied / hand-damaged DB) re-runs all steps.
+_REQUIRED_SCHEMA: frozenset[str] = frozenset(
     {
         "memories_capsule_notes",
         "memories_cover_overrides",
         "memories_gacha_pulls",
+        "memories_capsule_by_anchor",
+        "memories_capsule_by_created",
     }
 )
+
+INTERNAL_PREF_PREFIX = "memories_"
+
+
+def is_internal_pref(key: str) -> bool:
+    """True for backend-internal prefs keys the frontend must never see or set."""
+    return key.startswith(INTERNAL_PREF_PREFIX)
+
+
+def _missing_schema(c: sqlite3.Connection) -> int:
+    present = {
+        r[0]
+        for r in c.execute(
+            "SELECT name FROM sqlite_master WHERE type IN ('table','index')"
+        ).fetchall()
+    }
+    return len(_REQUIRED_SCHEMA - present)
 
 
 def _migrate(c: sqlite3.Connection) -> None:
@@ -136,15 +164,15 @@ def _migrate(c: sqlite3.Connection) -> None:
 
     - ``user_version > SCHEMA_VERSION`` (a newer app wrote this DB): touch
       nothing, never lower the version.
-    - ``user_version == SCHEMA_VERSION``: re-run all steps only when a
-      required table is missing (they are idempotent).
-    - otherwise run steps ``user_version+1 .. SCHEMA_VERSION`` and set
-      ``user_version``. Any ``sqlite3.Error`` rolls everything back and is
-      re-raised.
+    - otherwise run steps ``user_version+1 .. SCHEMA_VERSION``; then, if any
+      ``_REQUIRED_SCHEMA`` object is still missing, re-run all steps (they
+      are idempotent) to heal it; then set ``user_version``.
+    - Any ``sqlite3.Error`` (including failing to take the lock) rolls
+      everything back, is logged and is re-raised.
     """
-    c.execute("BEGIN IMMEDIATE")
     step = 0
     try:
+        c.execute("BEGIN IMMEDIATE")
         current = int(c.execute("PRAGMA user_version").fetchone()[0])
         if current > SCHEMA_VERSION:
             c.rollback()
@@ -155,25 +183,16 @@ def _migrate(c: sqlite3.Connection) -> None:
                 to_version=SCHEMA_VERSION,
             )
             return
-        start = current
-        missing = 0
-        if current == SCHEMA_VERSION:
-            present = {
-                r[0]
-                for r in c.execute(
-                    "SELECT name FROM sqlite_master WHERE type='table'"
-                ).fetchall()
-            }
-            missing = len(_REQUIRED_TABLES - present)
-            if not missing:
-                c.rollback()
-                logger.debug(
-                    "app_state_migrate", outcome="current", from_version=current
-                )
-                return
-            start = 0
-        for step in range(start + 1, SCHEMA_VERSION + 1):
+        for step in range(current + 1, SCHEMA_VERSION + 1):
             _MIGRATIONS[step - 1](c)
+        missing = _missing_schema(c)
+        if missing:
+            for step in range(1, SCHEMA_VERSION + 1):
+                _MIGRATIONS[step - 1](c)
+        if current == SCHEMA_VERSION and not missing:
+            c.rollback()
+            logger.debug("app_state_migrate", outcome="current", from_version=current)
+            return
         c.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
         c.commit()
     except sqlite3.Error as exc:
@@ -190,6 +209,7 @@ def _migrate(c: sqlite3.Connection) -> None:
             "app_state_migrate",
             outcome="healed",
             from_version=current,
+            steps=SCHEMA_VERSION - current,
             missing=missing,
         )
     else:
@@ -374,7 +394,15 @@ def is_migrated() -> bool:
 def migrate_dump(dump: dict) -> None:
     if is_migrated():
         return
-    set_prefs(dump.get("prefs", {}))
+    prefs = dump.get("prefs", {})
+    public = {k: v for k, v in prefs.items() if not is_internal_pref(k)}
+    if len(public) != len(prefs):
+        logger.warning(
+            "app_state_internal_prefs_dropped",
+            source="migrate",
+            count=len(prefs) - len(public),
+        )
+    set_prefs(public)
     for path, data in dump.get("conversations", {}).items():
         set_conversation(path, data)
     if dump.get("translations"):

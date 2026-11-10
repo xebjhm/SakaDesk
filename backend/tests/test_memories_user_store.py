@@ -376,3 +376,58 @@ async def test_async_wrappers():
     assert await us.agacha_pulls_on(SVC, d) == [p]
     assert await us.agacha_history(SVC, limit=5) == [p]
     assert await us.agacha_recent_keys(SVC, since=d) == {("r", 1)}
+
+
+def test_concurrent_salt_creation_yields_one_salt():
+    n = 8
+    barrier = threading.Barrier(n)
+    salts: list[str] = []
+
+    def worker():
+        barrier.wait()
+        salts.append(us.gacha_salt())
+
+    threads = [threading.Thread(target=worker) for _ in range(n)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    assert len(salts) == n and len(set(salts)) == 1
+    assert us.gacha_salt() == salts[0]
+
+
+def test_existing_salt_read_takes_no_write_lock(db):
+    salt = us.gacha_salt()
+    # Hold the write lock in another connection; a plain read must not wait.
+    with closing(sqlite3.connect(db, timeout=0.1)) as other:
+        other.execute("BEGIN IMMEDIATE")
+        try:
+            assert us.gacha_salt() == salt
+        finally:
+            other.rollback()
+
+
+@pytest.mark.parametrize(("asked", "got"), [(-1, 1), (0, 1), (2, 2), (10_000, 200)])
+def test_gacha_history_limit_is_clamped(db, asked, got):
+    rows = [
+        (
+            SVC,
+            (date(2026, 1, 1) + timedelta(days=i)).isoformat(),
+            0,
+            "r",
+            i,
+            "n",
+            "x",
+            NOW.isoformat(),
+        )
+        for i in range(201)
+    ]
+    with closing(sqlite3.connect(db)) as c, c:
+        c.executemany("INSERT INTO memories_gacha_pulls VALUES(?,?,?,?,?,?,?,?)", rows)
+    assert len(us.gacha_history(SVC, limit=asked)) == got
+
+
+@pytest.mark.parametrize("bad", [0, -1])
+def test_record_gacha_pull_rejects_nonpositive_max(bad):
+    with pytest.raises(ValueError):
+        _pull(0, max_pulls=bad)
