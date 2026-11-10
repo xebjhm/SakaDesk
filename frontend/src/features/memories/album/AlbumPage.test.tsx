@@ -440,16 +440,20 @@ describe('AlbumPage cover choice', () => {
     });
 
     it.each([
-        ['a rejected write', () => new MemoriesFetchError(400, 'not_in_month')],
-        ['a timed-out write (which may have landed: refetch, never retry)', () => new MemoriesTimeoutError()],
-    ])('%s shows the inline toast, logs album_cover off and refetches', async (_name, error) => {
+        ['a refused cover', () => new MemoriesFetchError(400, 'not_in_month'), { reason: 'not_in_month', error_code: 400 }],
+        ['a failed request', () => new MemoriesFetchError(503, null), { reason: 'request_failed', error_code: 503 }],
+        ['a network failure', () => new TypeError('Failed to fetch'), { reason: 'request_failed' }],
+        ['a timed-out write (which may have landed: refetch, never retry)', () => new MemoriesTimeoutError(), { reason: 'timeout' }],
+    ])('%s shows the inline toast, logs album_cover off with its reason and refetches', async (_name, error, why) => {
         vi.mocked(putAlbumCover).mockRejectedValue(error());
         renderAlbum();
         fireEvent.contextMenu(await tile('2026-10', 1));
         vi.mocked(clientLog).mockClear();
         await userEvent.click(screen.getByRole('menuitem', { name: 'Make this the month cover' }));
         expect(await screen.findByText("Couldn't change the cover")).toHaveAttribute('role', 'status');
-        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'album_cover', outcome: 'off' });
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'album_cover', outcome: 'off', ...why });
+        // Never the bare `off` of a successful reset, never `on`.
+        expect(vi.mocked(clientLog)).not.toHaveBeenCalledWith('memories_toggle', { target: 'album_cover', outcome: 'off' });
         expect(vi.mocked(clientLog)).not.toHaveBeenCalledWith('memories_toggle', { target: 'album_cover', outcome: 'on' });
         await waitFor(() => expect(fetchAlbumMonths).toHaveBeenCalledTimes(2));
         expect(putAlbumCover).toHaveBeenCalledTimes(1);

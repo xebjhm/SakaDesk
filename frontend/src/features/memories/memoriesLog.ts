@@ -85,7 +85,8 @@ export function logMemoriesJump(target: MemoriesView, hasTarget: boolean): void 
  * `cassette` a cassette year (`on` = loaded, `off` = ejected); `sleep_timer` the sleep timer
  * (`on` = set, `off` = cancelled); `then_now` the ⇆ toggle (`on` = あの日と今日 shown); `then_now_mode`
  * day / 初見 vs 今 (`on` = first week); `calendar_member` the calendar's member filter (`on` = one
- * person); `album_cover` 「この月の表紙にする」 (`on` = set, `off` = cleared).
+ * person); `album_cover` 「この月の表紙にする」 (`on` = set, `off` = cleared; a failed write is `off`
+ * with a `reason`).
  */
 export const MEMORIES_TOGGLES = [
     'other_services', 'day_mode', 'member_filter', 'lane_card', 'album_filter', 'album_burst', 'film_strip',
@@ -97,10 +98,24 @@ export type MemoriesToggle = (typeof MEMORIES_TOGGLES)[number];
 export type MemoriesToggleKind = AlbumKind | RadioProgram;
 
 /**
- * `memories_toggle`: a Memories control was switched. `target` is the control code; `kind` a filter
- * code (an album kind or a radio program).
+ * Why a Memories control's write failed (`memories_toggle` `reason`, with `outcome` `off`):
+ * `not_in_month` the backend refused the album cover (400 `not_in_month`), `timeout` no answer
+ * within the API timeout (the write may have landed), `request_failed` anything else.
  */
-export function logMemoriesToggle(target: MemoriesToggle, on: boolean, extra: { kind?: MemoriesToggleKind } = {}): void {
+export const MEMORIES_TOGGLE_REASONS = ['request_failed', 'timeout', 'not_in_month'] as const;
+export type MemoriesToggleReason = (typeof MEMORIES_TOGGLE_REASONS)[number];
+
+/**
+ * `memories_toggle`: a Memories control was switched. `target` is the control code; `kind` a filter
+ * code (an album kind or a radio program). A failed write (the album cover) logs `off` with a
+ * `reason` and, when the backend answered, `error_code` (the HTTP status), so it never reads as a
+ * successful `off`.
+ */
+export function logMemoriesToggle(
+    target: MemoriesToggle,
+    on: boolean,
+    extra: { kind?: MemoriesToggleKind; reason?: MemoriesToggleReason; error_code?: number } = {},
+): void {
     clientLog('memories_toggle', { target, outcome: on ? 'on' : 'off', ...extra });
 }
 

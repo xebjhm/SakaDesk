@@ -3,8 +3,10 @@ import { ImageIcon, Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { EmptyState, Pill } from '../../../design/primitives';
 import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
-import { deleteAlbumCover, fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonths, putAlbumCover } from '../api';
-import { logMemoriesToggle } from '../memoriesLog';
+import {
+    deleteAlbumCover, fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonths, MemoriesFetchError, MemoriesTimeoutError, putAlbumCover,
+} from '../api';
+import { logMemoriesToggle, type MemoriesToggleReason } from '../memoriesLog';
 import { LoadState } from '../shared/LoadState';
 import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { messageName } from '../shared/nameFromRoom';
@@ -41,6 +43,15 @@ interface AlbumGridProps {
 
 /** How long the cover-failure toast stays (ms). */
 const TOAST_MS = 4000;
+
+/** The `reason` / `error_code` of a failed cover write (codes and the HTTP status only). */
+function failureOf(err: unknown): { reason: MemoriesToggleReason; error_code?: number } {
+    if (err instanceof MemoriesTimeoutError) return { reason: 'timeout' };
+    if (err instanceof MemoriesFetchError) {
+        return { reason: err.code === 'not_in_month' ? 'not_in_month' : 'request_failed', error_code: err.httpStatus };
+    }
+    return { reason: 'request_failed' };
+}
 
 /**
  * The month bands in the pane's own scroll container, with the colour ribbon on the right edge.
@@ -95,8 +106,9 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
  * person on screen or 全員), an override cover's menu clears it (`deleteAlbumCover`). Either
  * way the months refetch (`coverVersion`; the bands stay on screen meanwhile), also after a
  * failure, since a timed-out write may have landed: never retried. Success logs
- * `memories_toggle` `album_cover` (`on` = set, `off` = cleared); a failure logs `off` and shows
- * the inline toast.
+ * `memories_toggle` `album_cover` (`on` = set, `off` = cleared); a failure logs `off` with its
+ * `reason` (`not_in_month`, `timeout`, `request_failed`) and `error_code` (HTTP status, when the
+ * backend answered) and shows the inline toast.
  */
 export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     const { t } = useTranslation();
@@ -134,9 +146,9 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
             if (controller.signal.aborted) return;
             logMemoriesToggle('album_cover', on);
             setCoverFailure(0);
-        } catch {
+        } catch (err) {
             if (controller.signal.aborted) return;
-            logMemoriesToggle('album_cover', false);
+            logMemoriesToggle('album_cover', false, failureOf(err));
             setCoverFailure((n) => n + 1);
         }
         setCoverVersion((n) => n + 1);

@@ -1118,6 +1118,7 @@ def test_the_memories_fun_events_post_every_fixture_code():
         "memories_capsule.kind",
         "memories_capsule.outcome",
         "memories_capsule.error_code",
+        "memories_toggle.reason",
     ):
         assert codes.get(key), key
         event, field = key.split(".")
@@ -1141,6 +1142,15 @@ def test_the_memories_fun_events_take_their_numeric_fields():
             {"phase": "reveal", "kind": "sr", "index": 0, "message_id": 42},
         ),
         ("memories_capsule", {"phase": "save", "kind": "day", "count": 1}),
+        (
+            "memories_toggle",
+            {
+                "target": "album_cover",
+                "outcome": "off",
+                "reason": "not_in_month",
+                "error_code": 400,
+            },
+        ),
     ):
         r = client.post("/api/client-log", json={"event": event, "fields": fields})
         assert r.status_code == 204, event

@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../utils/clientLog';
 import {
-    MEMORIES_PAGES, MEMORIES_PAGE_CODES, MEMORIES_VIEWS, MEMORIES_TOGGLES, MEMORIES_SKIP_REASONS,
+    MEMORIES_PAGES, MEMORIES_PAGE_CODES, MEMORIES_VIEWS, MEMORIES_TOGGLES, MEMORIES_SKIP_REASONS, MEMORIES_TOGGLE_REASONS,
     RECAP_LOAD_TARGETS, RECAP_LOAD_OUTCOMES, RECAP_PLAY_PHASES, RECAP_POSTER_PHASES, RECAP_SHARE_PHASES,
     RECAP_OPENING_PHASES, logMemoriesPage,
     MEMORIES_RADIO_PHASES, MEMORIES_RADIO_REASONS, MEMORIES_RADIO_OUTCOMES,
@@ -29,6 +29,7 @@ function emitted(): Record<string, string[]> {
         'memories_toggle.target': [...MEMORIES_TOGGLES],
         'memories_toggle.outcome': ['on', 'off'],
         'memories_toggle.kind': [...ALBUM_KINDS, ...RADIO_PROGRAMS],
+        'memories_toggle.reason': [...MEMORIES_TOGGLE_REASONS],
         'memories_skip.target': [...MEMORIES_VIEWS],
         'memories_skip.reason': [...MEMORIES_SKIP_REASONS],
         'memories_radio.phase': [...MEMORIES_RADIO_PHASES],
