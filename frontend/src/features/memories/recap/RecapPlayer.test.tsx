@@ -2,7 +2,7 @@ import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vite
 import { StrictMode } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import i18n from '../../../i18n';
-import { RecapPlayer, AUTO_ADVANCE_MS } from './RecapPlayer';
+import { RecapPlayer, AUTO_ADVANCE_MS, STILL_CLASS } from './RecapPlayer';
 import { SLIDE_REGISTRY, type SlideRegistry } from './slideRegistry';
 import { clockData, greetingsData, payload, photosData, s01, s02, s12, s13, voiceData } from './__fixtures__/payload';
 import type { RecapSlide } from './api';
@@ -97,6 +97,31 @@ describe('RecapPlayer', () => {
         expect(current()).toBe('s01_first');
         act(() => { vi.advanceTimersByTime(200); });
         expect(current()).toBe('s02_name');
+    });
+
+    it('a step while paused shows the target slide fully revealed, not frozen at frame 0 (D3)', () => {
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        // Paused mid-animation: the slide holds where it is (no still frame).
+        fireEvent.keyDown(window, { key: ' ' });
+        expect(screen.getByTestId('slide-s01_first')).not.toHaveAttribute('data-still');
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        const stepped = screen.getByTestId('slide-s02_name');
+        expect(stepped).toHaveAttribute('data-still', 'true');
+        expect(stepped).toHaveClass(STILL_CLASS);
+        expect(stepped).not.toHaveClass('animate-reveal');
+        fireEvent.click(screen.getByRole('button', { name: '前へ' }));
+        expect(screen.getByTestId('slide-s01_first')).toHaveAttribute('data-still', 'true');
+        // Resumed, the next step animates normally again.
+        fireEvent.keyDown(window, { key: ' ' });
+        expect(screen.getByTestId('slide-s01_first')).toHaveAttribute('data-still', 'true');
+        fireEvent.keyDown(window, { key: 'ArrowRight' });
+        expect(screen.getByTestId('slide-s02_name')).not.toHaveAttribute('data-still');
+        expect(screen.getByTestId('slide-s02_name')).toHaveClass('animate-reveal');
+    });
+
+    it('centres the stage in the pane (D2)', () => {
+        render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
+        expect(screen.getByTestId('recap-root')).toHaveClass('w-full', 'flex-1', 'justify-center');
     });
 
     it('stops on the last slide', () => {

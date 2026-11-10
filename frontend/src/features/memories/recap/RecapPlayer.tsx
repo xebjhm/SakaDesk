@@ -99,6 +99,13 @@ export interface RecapPlayerProps {
  * focus when it opens. With prefers-reduced-motion nothing animates. The
  * multi-member opening plays through it too, with its own `slides` and `registry`.
  */
+/**
+ * A slide shown at its final frame: every animation inside it starts far in the past, so a reveal
+ * or a fall has already finished (`!important` beats the slides' inline stagger delays) and a
+ * looping ambience just runs on from some phase. Its play state still follows `paused`.
+ */
+export const STILL_CLASS = '[&_*]:![animation-delay:-1000s]';
+
 export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClose, onEnd, registry = SLIDE_REGISTRY, slides: slidesProp, label }) => {
     const { t } = useTranslation();
     const reducedMotion = useReducedMotion();
@@ -119,6 +126,9 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
     const endedRef = useRef(false);
     // A media slide that finished while the player was paused: its index, stepped past on resume.
     const mediaHeld = useRef<number | null>(null);
+    // The slide reached by a manual step while paused: shown at its final frame (fully revealed),
+    // never frozen at frame 0. The pause hold is for a slide that was mid-animation when paused.
+    const [still, setStill] = useState<number | null>(null);
     const rootRef = useRef<HTMLDivElement>(null);
 
     // Take focus on open: keys aimed at a widget outside the player are not ours, so a sidebar
@@ -158,6 +168,7 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
         const target = Math.max(0, next);
         elapsed.current = { index: target, ms: 0, gen: elapsed.current.gen + 1 };
         setPausedAt(0);
+        setStill(pausedRef.current ? target : null);
         if (target === index) {
             setRestart((n) => n + 1);
             return;
@@ -241,11 +252,12 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
     const Slide = entry.component;
     const counting = !paused && !ended && !waits;
     const remaining = counting ? Math.max(0, AUTO_ADVANCE_MS - (elapsed.current.index === index ? elapsed.current.ms : 0)) : null;
-    const enter = reducedMotion ? '' : 'animate-reveal motion-reduce:animate-none';
+    const isStill = still === index;
+    const enter = reducedMotion || isStill ? '' : 'animate-reveal motion-reduce:animate-none';
 
     return (
         <Atmosphere className="flex h-full min-h-0 flex-1">
-            <div ref={rootRef} data-testid="recap-root" tabIndex={-1} className="flex h-full items-center justify-center p-6 outline-none">
+            <div ref={rootRef} data-testid="recap-root" tabIndex={-1} className="flex h-full w-full min-w-0 flex-1 items-center justify-center p-6 outline-none">
                 <section
                     data-testid="recap-stage"
                     data-slide={slide.key}
@@ -261,7 +273,8 @@ export const RecapPlayer: React.FC<RecapPlayerProps> = ({ recap, nickname, onClo
                     <div
                         key={`${index}:${restart}`}
                         data-testid={`slide-${slide.key}`}
-                        className={cn('pointer-events-none absolute inset-0 z-20', enter)}
+                        data-still={isStill ? 'true' : undefined}
+                        className={cn('pointer-events-none absolute inset-0 z-20', enter, isStill && STILL_CLASS)}
                         aria-live="polite"
                     >
                         <Slide
