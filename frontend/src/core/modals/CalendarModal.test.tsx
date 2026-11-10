@@ -513,6 +513,26 @@ describe('CalendarModal component', () => {
       expect([picked.getFullYear(), picked.getMonth(), picked.getDate()]).toEqual([YEAR, 5, 3])
     })
 
+    it('opens on the initial month each time', async () => {
+      const { rerender } = render(<CalendarModal isOpen onClose={vi.fn()} dates={[]} selectAnyDay initialMonth={new Date(YEAR, 8, 14)} onSelectDate={vi.fn()} />)
+      expect(screen.getByRole('button', { name: /September 2026/ })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: /next month/i }))
+      rerender(<CalendarModal isOpen={false} onClose={vi.fn()} dates={[]} selectAnyDay initialMonth={new Date(YEAR, 8, 14)} onSelectDate={vi.fn()} />)
+      rerender(<CalendarModal isOpen onClose={vi.fn()} dates={[]} selectAnyDay initialMonth={new Date(YEAR, 8, 14)} onSelectDate={vi.fn()} />)
+      expect(screen.getByRole('button', { name: /September 2026/ })).toBeInTheDocument()
+    })
+
+    it('shows every picker month as available, without the no-messages hint', async () => {
+      render(<CalendarModal isOpen onClose={vi.fn()} dates={[]} selectAnyDay onSelectDate={vi.fn()} />)
+      await userEvent.click(screen.getByRole('button', { name: /June 2026/ }))
+      const grid = screen.getByRole('group', { name: /month/i })
+      for (const btn of within(grid).getAllByRole('button')) {
+        if (btn.getAttribute('aria-pressed') === 'true') continue
+        expect(btn.className).toContain('text-primary')
+        expect(btn.textContent).not.toMatch(/no messages/i)
+      }
+    })
+
     it('keeps days without dates disabled by default', () => {
       render(<CalendarModal isOpen onClose={vi.fn()} dates={[]} onSelectDate={vi.fn()} />)
       expect(document.querySelector('button[data-day="3"]:not([data-outside])')).toBeDisabled()

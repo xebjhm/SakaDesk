@@ -687,7 +687,9 @@ pre-D2 panel's values; use them for developer tooling only.
   renders (unless the user has moved focus elsewhere). `calendar_picker` breadcrumbs: `phase` `open` (`count` years),
   `select` (`has_target`: the month has dates) and `back` (`reason` `escape` / `button`).
 - **Free date picker:** in Dates mode, `selectAnyDay` makes every day selectable and
-  `text-primary` (On This Day's 日付をえらぶ picks any month-day); dated days keep their count.
+  `text-primary` (On This Day's 日付をえらぶ picks any month-day); dated days keep their count, and
+  the year / month picker shows every year and month as available. `initialMonth` (any mode)
+  sets the month shown on each open (On This Day opens on the month being viewed).
 
 ### Menus
 

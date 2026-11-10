@@ -33,6 +33,8 @@ export interface DateCount {
  * 2. Messages mode: Pass `messages` array to compute dates locally (for media gallery)
  * 3. Dates mode: Pass `dates` array of pre-computed DateCount objects (for blog photo gallery)
  *    With `selectAnyDay`, every day is selectable (a free date picker, e.g. On This Day)
+ *    and the year / month picker shows every year and month as available.
+ * `initialMonth` (any mode) sets the month shown on each open.
  *
  * The onSelectDate callback receives either:
  * - A date string "YYYY-MM-DD" (API mode)
@@ -41,6 +43,8 @@ export interface DateCount {
 interface CalendarModalPropsBase extends BaseModalProps {
     /** Title for the modal (default: "Date Search") */
     title?: string;
+    /** The month shown each time the modal opens (default: the month it was last on, first this month). */
+    initialMonth?: Date;
 }
 
 interface CalendarModalPropsAPI extends CalendarModalPropsBase {
@@ -103,6 +107,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
         isOpen,
         onClose,
         title,
+        initialMonth,
     } = props;
 
     const { t } = useTranslation();
@@ -202,10 +207,16 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
         return Array.from({ length: last - first + 1 }, (_, i) => first + i);
     }, [currentDate, yearsWithMessages]);
 
-    // Every open starts on the day grid.
+    // Every open starts on the day grid (on `initialMonth` when given).
+    const initialMonthTime = initialMonth && !Number.isNaN(initialMonth.getTime()) ? initialMonth.getTime() : null;
     useEffect(() => {
         if (!isOpen) setView('days');
-    }, [isOpen]);
+        else if (initialMonthTime !== null) {
+            const start = new Date(initialMonthTime);
+            setCurrentDate(new Date(start.getFullYear(), start.getMonth(), 1));
+            setPickerYear(start.getFullYear());
+        }
+    }, [isOpen, initialMonthTime]);
 
     // Move focus with the view: into the picker (the shown month, with the shown year scrolled
     // into view) and back to the title button. A picker opened while the dates are loading keeps
@@ -424,7 +435,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                         focusRing,
                                         selected
                                             ? 'bg-accent-subtle font-semibold text-accent-strong'
-                                            : cn('hover:bg-sunken', yearsWithMessages.has(year) ? 'text-primary' : 'text-muted'),
+                                            : cn('hover:bg-sunken', anyDay || yearsWithMessages.has(year) ? 'text-primary' : 'text-muted'),
                                     )}
                                 >
                                     {t('calendar.yearValue', { year })}
@@ -449,11 +460,11 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                         focusRing,
                                         selected
                                             ? 'bg-accent-subtle font-semibold text-accent-strong'
-                                            : cn('hover:bg-sunken', hasMessages ? 'text-primary' : 'text-muted'),
+                                            : cn('hover:bg-sunken', anyDay || hasMessages ? 'text-primary' : 'text-muted'),
                                     )}
                                 >
                                     <span>{monthLabel(month)}</span>
-                                    {!hasMessages && <span className="sr-only">, {t('calendar.noMessages')}</span>}
+                                    {!hasMessages && !anyDay && <span className="sr-only">, {t('calendar.noMessages')}</span>}
                                     {hasMessages && <span aria-hidden="true" className="absolute bottom-1 h-1.5 w-1.5 rounded-pill bg-accent" />}
                                 </button>
                             );
