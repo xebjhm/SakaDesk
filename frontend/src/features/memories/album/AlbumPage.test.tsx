@@ -27,7 +27,7 @@ import {
 import { NicknameProvider } from '../shared/useNickname';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import { AlbumPage } from './AlbumPage';
-import { ALBUM_GRID_COLS } from './MonthSection';
+import { MEDIA_GRID_COLS } from '../../../core/media/tileGrid';
 import { MAX_IN_FLIGHT } from './useAlbumWindow';
 import { MEMBER_PANE_WIDTH } from '../shared/MemberPane';
 import {
@@ -253,12 +253,12 @@ describe('AlbumPage', () => {
         renderAlbum();
         const recent = await screen.findByTestId('album-month-2026-10');
         const grid = await within(recent).findByTestId('album-grid');
-        // Columns come from the grid's own width at a 6rem minimum tile, never from the window.
-        expect(grid).toHaveClass(ALBUM_GRID_COLS);
+        // Columns come from the grid's own width (the shared media density), never from the window.
+        expect(grid).toHaveClass(MEDIA_GRID_COLS);
         expect(grid.className).not.toMatch(/(^|\s)(\w+:)?grid-cols-\d/);
         // The band wraps the grid below the polaroid instead of squeezing it to nothing.
         expect(within(recent).getByTestId('album-band-row')).toHaveClass('flex-wrap');
-        expect(within(recent).getByTestId('album-band-body')).toHaveClass('min-w-[12.5rem]');
+        expect(within(recent).getByTestId('album-band-body')).toHaveClass('min-w-[18.5rem]');
         expect(screen.getByTestId('album-scroller')).toHaveClass('overflow-x-hidden');
         // The member pane yields width at a small window (no fixed w-60).
         const pane = screen.getByRole('navigation');

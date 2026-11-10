@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../../../i18n';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
+import { MEDIA_GRID_COLS, MEDIA_GRID_GAP, MEDIA_GRID_MIN } from '../../../core/media/tileGrid';
 import { cn } from '../../../utils/classnames';
 import { fetchAlbumMonth } from '../api';
 import { LoadState } from '../shared/LoadState';
@@ -36,18 +37,6 @@ interface MonthSectionProps {
     /** 「表紙を自動にもどす」 on this month's cover (offered when its rule is `override`). */
     onResetCover?: (month: string) => void;
 }
-
-/**
- * The grid's columns follow its own width, never the window's: as many as fit at a 6rem (96 px)
- * minimum tile (room for the 「N 枚」 badge, the ★ and the video mark inside the tile), so a narrow
- * pane gets fewer, never tinier, tiles.
- */
-export const ALBUM_GRID_COLS = 'grid-cols-[repeat(auto-fill,minmax(6rem,1fr))]';
-/**
- * The smallest grid width beside the polaroid (two minimum tiles and the gap): a band narrower
- * than polaroid + this wraps the grid below the polaroid instead of squeezing it.
- */
-export const ALBUM_GRID_MIN = 'min-w-[12.5rem] basis-[12.5rem]';
 
 /** The band tint from the cover photo (the data-driven exception, DESIGN_SYSTEM.md). */
 const tintOf = (color: string | null): string | undefined =>
@@ -102,7 +91,7 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
 
     return (
         <>
-            <div data-testid="album-grid" className={cn('grid w-full min-w-0 grid-flow-row-dense gap-2', ALBUM_GRID_COLS)}>
+            <div data-testid="album-grid" className={cn('grid w-full min-w-0 grid-flow-row-dense', MEDIA_GRID_GAP, MEDIA_GRID_COLS)}>
                 {entries.map((entry) => (entry.kind === 'burst'
                     ? <BurstStack key={entry.key} items={entry.items} title={label} nameOf={nameOf} sepia={sepia} onSetCover={onSetCover} />
                     : (
@@ -133,8 +122,8 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
  * One month band of the album (spec 8): tinted from its cover photo (`cover_color`, the
  * data-driven exception; neutral `bg-sunken` without one), the polaroid cover beside the grid,
  * photos aged with `sepiaClass` by year. The grid's columns come from its own width
- * (`ALBUM_GRID_COLS`); a band too narrow for the polaroid and a two-tile grid side by side wraps
- * the grid below the polaroid (`ALBUM_GRID_MIN`). The month label is the band's heading: above the band
+ * (`MEDIA_GRID_COLS`, the shared media tile density); a band too narrow for the polaroid and a
+ * two-tile grid side by side wraps the grid below the polaroid (`MEDIA_GRID_MIN`). The month label is the band's heading: above the band
  * when the polaroid carries her words, else the polaroid's own caption (never shown twice).
  * The grid is fetched once `requested` and mounted only while `live`; a band that is not live
  * keeps its last measured height, so the scroll position holds while its grid is released.
@@ -191,7 +180,7 @@ export const MonthSection = React.memo<MonthSectionProps>(({
             {hasWords && <h2 className="mb-3 font-display text-title text-primary">{label}</h2>}
             <div data-testid="album-band-row" className="flex flex-wrap items-start gap-4">
                 <PolaroidCover cover={summary.cover} label={label} sepia={sepia} onResetCover={resetCover} />
-                <div data-testid="album-band-body" className={cn('flex min-w-0 flex-1', ALBUM_GRID_MIN)}>{body}</div>
+                <div data-testid="album-band-body" className={cn('flex min-w-0 flex-1', MEDIA_GRID_MIN)}>{body}</div>
             </div>
         </section>
     );

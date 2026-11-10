@@ -34,8 +34,8 @@ BASE_LOGICAL: dict[str, int] = {"width": 1200, "height": 800}
 # Smallest window in LOGICAL units. Handed to pywebview unscaled (WinForms
 # applies the DPI itself, see min_window_size). 960 wide leaves
 # the content sheet about 840 px beside the service and feature rails (64 + 48
-# + 8): enough for a Memories member pane (11-15rem) plus a grid of at least
-# three 6rem album tiles beside the polaroid, and for the chat's member list
+# + 8): enough for a Memories member pane (12.5-15rem) plus a grid of at least
+# two 9rem album tiles beside the polaroid, and for the chat's member list
 # beside a readable bubble column. 640 tall keeps the page header, the filter
 # row and about two tile rows (or a chat composer plus several bubbles) on
 # screen. pywebview's own default (200 x 100) let the album collapse.
