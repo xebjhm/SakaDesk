@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import threading
+
 import pytest
 from structlog.testing import capture_logs
 
@@ -153,9 +155,52 @@ async def test_texts_load_once_per_room_and_a_missing_text_is_skipped(svc, monke
         payload = await nm.nickname_moments(SERVICE, svc, s, year=None)
     assert calls == [[2, 3, 4]]
     assert [i for i, _ in sentences(payload)] == [3, 2, 2]
-    skip = next(e for e in logs if e.get("view") == "names")
-    assert skip["event"] == "memories_skip" and skip["reason"] == "text_missing"
-    assert skip["count"] == 1
+    # logged once, by attach_texts; not again as a names skip
+    skip = next(e for e in logs if e.get("reason") == "text_missing")
+    assert skip["event"] == "memories_skip" and skip["view"] == "attach_texts"
+    assert not [e for e in logs if e.get("view") == "names"]
+
+
+@pytest.mark.asyncio
+async def test_a_text_without_a_nickname_sentence_is_a_distinct_skip(svc, monkeypatch):
+    s = await kanemura(svc)
+    monkeypatch.setattr(nm, "has_nickname", lambda sentence: False)
+    with capture_logs() as logs:
+        payload = await nm.nickname_moments(SERVICE, svc, s, year=None)
+    assert payload == {"years": [], "items": []}
+    skips = [e for e in logs if e.get("view") == "names"]
+    assert skips == [
+        {
+            "event": "memories_skip",
+            "log_level": "info",
+            "view": "names",
+            "reason": "no_sentence",
+            "count": 3,
+        }
+    ]
+
+
+@pytest.mark.asyncio
+async def test_filtering_and_splitting_run_off_the_event_loop(svc, monkeypatch):
+    s = await kanemura(svc)
+    loop_thread = threading.get_ident()
+    threads: dict[str, set[int]] = {"ref": set(), "split": set()}
+    real_ref, real_split = people.message_ref, nm.raw_sentences
+
+    def ref(*a, **kw):
+        threads["ref"].add(threading.get_ident())
+        return real_ref(*a, **kw)
+
+    def split(text):
+        threads["split"].add(threading.get_ident())
+        return real_split(text)
+
+    monkeypatch.setattr(people, "message_ref", ref)
+    monkeypatch.setattr(nm, "raw_sentences", split)
+    payload = await nm.nickname_moments(SERVICE, svc, s, year=None)
+    assert len(payload["items"]) == 4
+    assert threads["ref"] and threads["split"]
+    assert loop_thread not in threads["ref"] | threads["split"]
 
 
 @pytest.mark.asyncio
