@@ -138,6 +138,12 @@ async def test_merges_every_person_in_time_order(out):
     assert members[0]["member_id"] == "64" and members[0]["service"] == SERVICE
     assert members[0]["name"] and members[0]["avatar_url"] is None
     assert members[1]["avatar_url"].endswith("thumbnail/a.jpg")
+    # one person key per person, shared by her messages, unique per service
+    assert members[1]["person_key"] == f"{SERVICE}|{KANE}"
+    assert members[0]["person_key"] == f"{SERVICE}|{MATSU}"
+    assert {m["person_key"] for m in payload["messages"] if m["room"] == KANE} == {
+        f"{SERVICE}|{KANE}"
+    }
     assert str(out) not in json.dumps(payload, ensure_ascii=False)
 
 
@@ -177,6 +183,9 @@ async def test_other_services_included_with_their_own_texts(out, monkeypatch):
     assert by[(SAKU, KANE, 1)]["member_path"] == f"{SAKU_NAME}/{KANE}"
     saku_member = next(m for m in payload["members"] if m["service"] == SAKU)
     assert saku_member["member_path"] == f"{SAKU_NAME}/{KANE}"
+    # same rooms in two services: two people
+    assert saku_member["person_key"] == f"{SAKU}|{KANE}"
+    assert by[(SAKU, KANE, 1)]["person_key"] != by[(SERVICE, KANE, 1)]["person_key"]
     assert payload["members"][0]["oshi"] is True  # oshi first across services
     skips = [e for e in logs if e["event"] == "memories_skip"]
     (skip,) = [e for e in skips if e["reason"] == "other_service_failed"]

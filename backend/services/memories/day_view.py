@@ -13,7 +13,10 @@
   active service first, then :func:`service_utils.get_all_services` order,
   each in :func:`index.list_members` order): ``member_path`` (chat path of
   her newest room), ``member_id`` (of that room), ``name``, ``avatar_url``
-  (her avatar at her first message of the day), ``service`` and ``oshi``.
+  (her avatar at her first message of the day), ``service``, ``oshi`` and
+  ``person_key`` (:func:`day_person_key`).
+- every message also carries its sender's ``person_key``, so the UI groups
+  a person's rooms (chips, swimlanes) without matching names.
 - ``include_other_services`` (ignored when ``member`` is set): every other
   service of :func:`service_utils.get_all_services` whose data dir exists
   (``<output dir>/<display name>``, the output dir being ``sdir.parent``,
@@ -52,6 +55,11 @@ VIEW = "day"
 _Tagged = tuple[mi.MemberSummary, str, Fact]
 
 
+def day_person_key(service: str, summary: mi.MemberSummary) -> str:
+    """A person's key in the day payload: unique across services. Never logged."""
+    return f"{service}|{people.person_key(summary)}"
+
+
 def _compose(
     service: str,
     sdir: Path,
@@ -67,7 +75,9 @@ def _compose(
         key = people.person_key(s)
         by_key.setdefault(key, s)
         first_ts.setdefault(key, fact.ts)
-        refs.append(people.message_ref(service, sdir, room, fact, avatar=avatars[key]))
+        ref = people.message_ref(service, sdir, room, fact, avatar=avatars[key])
+        ref["person_key"] = day_person_key(service, s)
+        refs.append(ref)
     members = []
     for s in people.sort_people(list(by_key.values()), oshi):
         key = people.person_key(s)
@@ -79,6 +89,7 @@ def _compose(
                 "avatar_url": avatars[key].at(first_ts[key]),
                 "service": service,
                 "oshi": s.name_norm in oshi,
+                "person_key": day_person_key(service, s),
             }
         )
     return members, refs
@@ -171,4 +182,4 @@ async def day_view(
     }
 
 
-__all__ = ["day_view"]
+__all__ = ["day_person_key", "day_view"]
