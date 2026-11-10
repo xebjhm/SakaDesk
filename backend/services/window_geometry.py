@@ -31,7 +31,8 @@ from typing import Any, NamedTuple, Optional
 # the same apparent size for every user regardless of their display scaling.
 BASE_LOGICAL: dict[str, int] = {"width": 1200, "height": 800}
 
-# Smallest window in LOGICAL units (scaled like BASE_LOGICAL). 960 wide leaves
+# Smallest window in LOGICAL units. Handed to pywebview unscaled (WinForms
+# applies the DPI itself, see min_window_size). 960 wide leaves
 # the content sheet about 840 px beside the service and feature rails (64 + 48
 # + 8): enough for a Memories member pane (11-15rem) plus a grid of at least
 # three 6rem album tiles beside the polaroid, and for the chat's member list
@@ -177,10 +178,21 @@ def min_window_size(
     scale: Optional[float] = None,
     work: Any = _SCREEN_UNSET_MIN,
 ) -> tuple[int, int]:
-    """pywebview ``min_size`` in DEVICE pixels: ``MIN_LOGICAL`` x the DPI scale,
-    capped to the primary monitor's usable area so a small or heavily scaled
-    screen (e.g. 1920x1080 at 175%) can still hold the window. ``scale`` and
-    ``work`` default to the live values; ``work=None`` means "unknown" (no cap).
+    """pywebview ``min_size`` in LOGICAL (96-DPI) pixels.
+
+    Unlike ``create_window``'s size, pywebview's WinForms backend hands
+    ``min_size`` to ``Form.MinimumSize`` BEFORE switching the form to
+    ``AutoScaleMode.Dpi`` (pywebview 5.3.2, ``BrowserForm.__init__``), so
+    WinForms multiplies it by the DPI scale once more. A device-pixel value was
+    therefore scaled twice (N1: 1680 x 1120 at 175% became 2922 x 1912 device
+    px). This returns the logical size, so the EFFECTIVE minimum is
+    ``MIN_LOGICAL`` (960 x 640 CSS px) at any DPI.
+
+    The cap and the sanity floor are applied in device pixels, where the screen
+    is measured: the minimum is capped to the primary monitor's usable area so a
+    small or heavily scaled screen (e.g. 1920x1080 at 175%) can still hold the
+    window, then divided back by ``scale``. ``scale`` and ``work`` default to
+    the live values; ``work=None`` means "unknown" (no cap).
     """
     if scale is None:
         scale = dpi_scale()
@@ -190,7 +202,10 @@ def min_window_size(
     h = round(MIN_LOGICAL["height"] * scale)
     if work is not None:
         w, h = min(w, work[0]), min(h, work[1])
-    return max(w, _MIN_W), max(h, _MIN_H)
+    w, h = max(w, _MIN_W), max(h, _MIN_H)
+    # Floor, not round: WinForms re-applies ``scale``, and rounding up could
+    # push a capped minimum one pixel past the usable area.
+    return int(w / scale), int(h / scale)
 
 
 # Sentinel distinguishing "caller passed no screen" from an explicit ``None``

@@ -8,6 +8,8 @@ the position (keeping the size) so the window can never restore off-screen.
 
 from __future__ import annotations
 
+import pytest
+
 from backend.services import window_geometry as wg
 
 
@@ -92,16 +94,33 @@ class TestPositionOnScreen:
 class TestMinWindowSize:
     """D4b: the window may not shrink below 960 x 640 logical (album collapse)."""
 
-    def test_scales_the_logical_minimum_to_device_pixels(self):
-        assert wg.min_window_size(scale=1.0, work=None) == (960, 640)
-        assert wg.min_window_size(scale=1.75, work=(3840, 2100)) == (1680, 1120)
+    @pytest.mark.parametrize("scale", [1.0, 1.5, 1.75])
+    def test_returns_logical_pixels_at_any_dpi(self, scale):
+        """N1: WinForms scales ``min_size`` by the DPI itself (AutoScaleMode.Dpi),
+        so a device-pixel value was scaled twice. The logical minimum is handed
+        over unchanged at 100%, 150% and 175%."""
+        assert wg.min_window_size(scale=scale, work=(7680, 4320)) == (960, 640)
+        assert wg.min_window_size(scale=scale, work=None) == (960, 640)
+
+    @pytest.mark.parametrize("scale", [1.0, 1.5, 1.75])
+    def test_effective_minimum_after_winforms_scaling(self, scale):
+        """What WinForms applies (logical x scale) is 960 x 640 CSS px in device
+        pixels, not that times the scale again."""
+        w, h = wg.min_window_size(scale=scale, work=None)
+        assert (round(w * scale), round(h * scale)) == (
+            round(960 * scale),
+            round(640 * scale),
+        )
 
     def test_capped_to_a_small_or_heavily_scaled_screen(self):
-        # 1920x1080 at 175%: 1680x1120 would not fit the usable area.
-        assert wg.min_window_size(scale=1.75, work=(1920, 1017)) == (1680, 1017)
+        # 1920x1080 at 175%: 1680x1120 device px would not fit 1017 px tall.
+        w, h = wg.min_window_size(scale=1.75, work=(1920, 1017))
+        assert (w, h) == (960, 581)
+        assert h * 1.75 <= 1017  # still fits once WinForms re-scales it
 
     def test_never_below_the_sanity_floor(self):
-        assert wg.min_window_size(scale=0.5, work=(300, 200)) == (400, 300)
+        assert wg.min_window_size(scale=0.5, work=(300, 200)) == (800, 600)
+        assert wg.min_window_size(scale=1.0, work=(300, 200)) == (400, 300)
 
     def test_non_windows_has_no_work_area(self, monkeypatch):
         monkeypatch.setattr(wg.platform, "system", lambda: "Linux")

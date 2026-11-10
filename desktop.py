@@ -1032,9 +1032,10 @@ def show_error_dialog(error_msg: str, tb: str):
 def _main_window_kwargs(geom: dict, port: int, background: bool) -> dict[str, Any]:
     """``webview.create_window`` arguments of the main window.
 
-    ``min_size`` (device pixels, like the geometry) keeps the window at least
-    ``window_geometry.MIN_LOGICAL`` (960 x 640 logical) so no page collapses;
-    pywebview's default minimum is 200 x 100.
+    ``min_size`` keeps the window at least ``window_geometry.MIN_LOGICAL``
+    (960 x 640 CSS px) so no page collapses; pywebview's default minimum is
+    200 x 100. Unlike the geometry (device pixels), ``min_size`` is LOGICAL:
+    WinForms DPI-scales it itself (see ``window_geometry.min_window_size``).
     """
     min_size = window_geometry.min_window_size()
     logger.info("window_min_size", width=min_size[0], height=min_size[1])

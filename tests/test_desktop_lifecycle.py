@@ -120,12 +120,12 @@ class TestMainWindowKwargs:
     def test_sets_a_minimum_size(self, monkeypatch):
         """D4b: pywebview's default minimum (200 x 100) let the album collapse."""
         monkeypatch.setattr(
-            desktop.window_geometry, "min_window_size", lambda: (1680, 1120)
+            desktop.window_geometry, "min_window_size", lambda: (960, 640)
         )
         kwargs = desktop._main_window_kwargs(
             {"width": 2100, "height": 1400, "x": 10, "y": 20}, 8000, False
         )
-        assert kwargs["min_size"] == (1680, 1120)
+        assert kwargs["min_size"] == (960, 640)
         assert kwargs["width"] == 2100 and kwargs["x"] == 10
         assert kwargs["resizable"] is True and kwargs["hidden"] is False
         assert kwargs["url"].endswith(":8000")
