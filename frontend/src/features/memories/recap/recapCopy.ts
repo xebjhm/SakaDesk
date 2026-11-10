@@ -6,6 +6,7 @@
  * computed in (a New Year 0:00 message stays 0:00).
  */
 import { replaceNickname } from '../../messages/utils/nickname';
+import { JST_TIME_ZONE } from '../shared/jst';
 import type {
     RecapMemberBlock, RecapStub, S01FirstData, S02NameData, S03ClockData, S04GreetingsData, S05PhotosData,
     S06VoiceData, S07LetterData, S08EchoData, S10YouData, S11DaisukiData, S13OyasumiData,
@@ -15,8 +16,6 @@ export interface CopyLine {
     key: string;
     params?: Record<string, string | number>;
 }
-
-const RECAP_TIME_ZONE = 'Asia/Tokyo';
 
 /** Her raw text with the nickname placeholder replaced. */
 export function withNickname(text: string, nickname: string): string {
@@ -39,7 +38,7 @@ export function formatTimeOfDay(ts: string, lang: string): string | null {
     const date = new Date(ts);
     if (Number.isNaN(date.getTime())) return null;
     return new Intl.DateTimeFormat(lang, {
-        hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: RECAP_TIME_ZONE,
+        hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone: JST_TIME_ZONE,
     }).format(date);
 }
 
@@ -48,7 +47,7 @@ export function formatClock(ts: string, lang: string): string | null {
     const date = new Date(ts);
     if (Number.isNaN(date.getTime())) return null;
     return new Intl.DateTimeFormat(lang, {
-        hour: 'numeric', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: RECAP_TIME_ZONE,
+        hour: 'numeric', minute: '2-digit', second: '2-digit', hourCycle: 'h23', timeZone: JST_TIME_ZONE,
     }).format(date);
 }
 
@@ -169,7 +168,7 @@ export function formatCount(n: number, lang: string): string {
 function jstMonthDay(ts: string): string | null {
     const date = new Date(ts);
     if (Number.isNaN(date.getTime())) return null;
-    return new Intl.DateTimeFormat('en-CA', { month: '2-digit', day: '2-digit', timeZone: RECAP_TIME_ZONE }).format(date);
+    return new Intl.DateTimeFormat('en-CA', { month: '2-digit', day: '2-digit', timeZone: JST_TIME_ZONE }).format(date);
 }
 
 /**
@@ -252,7 +251,7 @@ export function s09StubCopy(stub: RecapStub): { label: CopyLine; sealed: CopyLin
 
 /** The current calendar year in JST, the time zone the recap's year is cut in. */
 export function currentJstYear(now: Date = new Date()): number {
-    return Number(new Intl.DateTimeFormat('en-CA', { year: 'numeric', timeZone: RECAP_TIME_ZONE }).format(now));
+    return Number(new Intl.DateTimeFormat('en-CA', { year: 'numeric', timeZone: JST_TIME_ZONE }).format(now));
 }
 
 /**

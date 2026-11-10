@@ -5,7 +5,7 @@ import { useTranslation } from '../../../i18n';
 import { Button, IconButton } from '../../../design/primitives';
 import { motion } from '../../../design/tokens/motion';
 import { cn } from '../../../utils/classnames';
-import { jstDateFormat } from '../shared/jst';
+import { formatJstIsoDate, jstDateFormat } from '../shared/jst';
 import { LazyVoice } from '../shared/LazyVoice';
 import { memoryMediaSrc } from '../shared/mediaSrc';
 import { MemoryText } from '../shared/MemoryText';
@@ -95,7 +95,7 @@ export const GachaCard: React.FC<GachaCardProps> = ({ pull, favorited, onToggleF
                 {missing ? (
                     <>
                         <p className="text-body text-secondary">{t('memories.gacha.missing')}</p>
-                        <p className="text-caption tabular-nums text-muted">{dateOnly.format(new Date(`${pull.jst_date}T00:00:00+09:00`))}</p>
+                        <p className="text-caption tabular-nums text-muted">{formatJstIsoDate(dateOnly, pull.jst_date)}</p>
                     </>
                 ) : (
                     <>

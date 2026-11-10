@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
-import { JST_TIME_ZONE } from '../shared/jst';
+import { formatJstIsoDate, JST_TIME_ZONE } from '../shared/jst';
 import type { GachaPull } from '../types';
 import { Capsule } from './CapsuleMachine';
 import { pullKey } from './keys';
@@ -31,7 +31,7 @@ export const PullHistory: React.FC<PullHistoryProps> = ({ pulls, selectedKey, on
         <ul aria-label={t('memories.gacha.history')} className="flex gap-2 overflow-x-auto px-4 py-2">
             {pulls.map((p) => {
                 const key = pullKey(p);
-                const date = day.format(new Date(`${p.jst_date}T00:00:00+09:00`));
+                const date = formatJstIsoDate(day, p.jst_date);
                 const current = key === selectedKey;
                 return (
                     <li key={key} className="shrink-0">

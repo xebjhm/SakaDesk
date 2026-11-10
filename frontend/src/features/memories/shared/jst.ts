@@ -49,6 +49,28 @@ export function formatJstDate(ts: string | number | Date): string {
     return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
+/** A JST calendar date `YYYY-MM-DD`. */
+const JST_DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+
+/**
+ * The instant a JST calendar date `YYYY-MM-DD` begins (00:00 in Tokyo), to hand to a JST
+ * formatter. null when `date` is not a real `YYYY-MM-DD` date.
+ */
+export function jstDateFromIso(date: string): Date | null {
+    const match = JST_DATE_RE.exec(date);
+    if (!match) return null;
+    const [year, month, day] = [Number(match[1]), Number(match[2]), Number(match[3])];
+    const utc = new Date(Date.UTC(year, month - 1, day));
+    if (utc.getUTCFullYear() !== year || utc.getUTCMonth() !== month - 1 || utc.getUTCDate() !== day) return null;
+    return new Date(utc.getTime() - JST_OFFSET_MS);
+}
+
+/** A JST calendar date `YYYY-MM-DD` through a JST `format` (e.g. {@link jstDateFormat}); `date` as is when malformed. */
+export function formatJstIsoDate(format: Intl.DateTimeFormat, date: string): string {
+    const start = jstDateFromIso(date);
+    return start ? format.format(start) : date;
+}
+
 /**
  * A UTC ISO timestamp as its JST calendar day ("8月21日", or "2026年8月21日" with the year), or
  * null. A message's date is metadata, not a screen's number.

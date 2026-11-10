@@ -21,6 +21,7 @@
  * recap window ({@link assignMonths}); timed photos use their real month. A month with no photo
  * is simply not drawn (the export never shows an absence).
  */
+import { jstNow } from '../../shared/jst';
 import type { RecapPayload, S05PhotosData } from '../api';
 
 /** Longest side of the only copy of a photo the export keeps. */
@@ -219,7 +220,7 @@ export function colourHex(rgb: [number, number, number]): string {
 export function jstMonth(ts: string): number | null {
     const d = new Date(ts);
     if (Number.isNaN(d.getTime())) return null;
-    return Number(new Intl.DateTimeFormat('en-CA', { month: 'numeric', timeZone: 'Asia/Tokyo' }).format(d));
+    return jstNow(d).month;
 }
 
 export interface MonthWindow {
