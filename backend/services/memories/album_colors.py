@@ -2,10 +2,11 @@
 
 - :func:`probe_image` (blocking) opens one picture with Pillow and returns an
   :class:`ImageProbe`: size, format and a representative colour. The picture
-  is untrusted input: ``DecompressionBombError``, Pillow's
-  ``DecompressionBombWarning`` (turned into an error by a ``warnings`` filter
-  local to the decode) and pictures over the pixel bound
-  (:data:`PROBE_MAX_PIXELS` for formats without draft decoding) are refused;
+  is untrusted input: ``DecompressionBombError`` and pictures whose header
+  size is over the pixel bound are refused before any decode. The bound is
+  Pillow's ``MAX_IMAGE_PIXELS`` for draft formats, so its warning band is
+  refused too, and :data:`PROBE_MAX_PIXELS` caps the formats without draft
+  decoding. No ``warnings`` filter is touched (process-wide state);
   JPEG / MPO pictures are decoded at draft size. Every failure gives ``None``
   plus a ``memories_skip`` breadcrumb (``view=album_color``, ``error_type``)
   that never carries the path: ``reason=unreadable`` for a decode failure,
@@ -45,7 +46,6 @@ import asyncio
 import colorsys
 import contextlib
 import sqlite3
-import warnings
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -141,21 +141,23 @@ def _skip(reason: str, e: BaseException) -> None:
 
 
 def _decode(fh: BinaryIO) -> ImageProbe:
-    """Decode an open picture; raises on any failure. Blocking."""
-    with warnings.catch_warnings():
-        # a picture in Pillow's warning band is refused like a bomb; the
-        # filter is local to this call (and the explicit bound below holds
-        # even if another thread resets the process-wide filters meanwhile)
-        warnings.simplefilter("error", Image.DecompressionBombWarning)
-        with Image.open(fh) as img:
-            fmt = img.format or ""
-            width, height = img.size
-            limit = _pixel_limit(fmt)
-            if limit is not None and width * height > limit:
-                raise Image.DecompressionBombError("pixel bound")
-            if fmt in DRAFT_FORMATS:
-                img.draft("RGB", DRAFT_SIZE)
-            rgb_img = img.convert("RGB")
+    """Decode an open picture; raises on any failure. Blocking.
+
+    The size bound is checked from the header before any pixel is decoded.
+    It equals Pillow's ``MAX_IMAGE_PIXELS`` for draft formats (lower for the
+    rest), so a picture in Pillow's warning band is refused here as a
+    ``DecompressionBombError``. No ``warnings`` filter is installed: filters
+    are process-wide and not thread-safe in a worker.
+    """
+    with Image.open(fh) as img:
+        fmt = img.format or ""
+        width, height = img.size
+        limit = _pixel_limit(fmt)
+        if limit is not None and width * height > limit:
+            raise Image.DecompressionBombError("pixel bound")
+        if fmt in DRAFT_FORMATS:
+            img.draft("RGB", DRAFT_SIZE)
+        rgb_img = img.convert("RGB")
     rgb_img.thumbnail(THUMB_SIZE)
     return ImageProbe(width=width, height=height, fmt=fmt, rgb=_dominant(rgb_img))
 

@@ -291,3 +291,79 @@ def test_logs_carry_counts_and_codes_only(caplog):
             "reason",
             "evicted",
         }
+
+
+def test_assembly_leaves_warning_filters_alone(monkeypatch):
+    import warnings
+
+    # filters are process-wide: the worker-thread assembly must never touch them
+    import sys
+
+    callers: list[str] = []
+
+    def spying(real):
+        def wrapper(*a, **k):
+            name = sys._getframe(1).f_globals.get("__name__", "")
+            if name == "backend.services.memories.share_gif":
+                callers.append(real.__name__)
+            return real(*a, **k)
+
+        return wrapper
+
+    before = list(warnings.filters)
+    monkeypatch.setattr(warnings, "simplefilter", spying(warnings.simplefilter))
+    monkeypatch.setattr(warnings, "catch_warnings", spying(warnings.catch_warnings))
+    share_gif.assemble_gif(json.dumps(body([png(), png(shade=50)])).encode())
+    with pytest.raises(share_gif.ShareGifError):
+        share_gif.assemble_gif(
+            json.dumps(body([header_only_png(10_000, 10_000)])).encode()
+        )
+    assert callers == []
+    assert warnings.filters == before
+
+
+def test_a_frame_just_above_the_bound_is_never_opened(monkeypatch):
+    opened: list[int] = []
+    real_open = Image.open
+
+    def spy(*a, **k):
+        opened.append(1)
+        return real_open(*a, **k)
+
+    monkeypatch.setattr(share_gif.Image, "open", spy)
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 54 * 96 - 1)
+    with pytest.raises(share_gif.ShareGifError) as exc:
+        share_gif.assemble_gif(json.dumps(body([png()])).encode())
+    assert exc.value.code == "decompression_bomb"
+    assert opened == []
+
+
+def test_a_frame_without_ihdr_is_a_bad_frame():
+    raw = base64.b64encode(share_gif.PNG_MAGIC + b"\x00" * 20).decode("ascii")
+    with pytest.raises(share_gif.ShareGifError) as exc:
+        share_gif.assemble_gif(json.dumps(body([raw])).encode())
+    assert exc.value.code == "bad_frame"
+
+
+def test_pillows_own_bomb_error_is_still_mapped(monkeypatch):
+    def bomb(*a, **k):
+        raise Image.DecompressionBombError("too big")
+
+    monkeypatch.setattr(share_gif.Image, "open", bomb)
+    with pytest.raises(share_gif.ShareGifError) as exc:
+        share_gif.assemble_gif(json.dumps(body([png()])).encode())
+    assert exc.value.code == "decompression_bomb"
+
+
+def test_a_png_with_a_valid_header_but_no_pixels_is_a_bad_frame():
+    # the IHDR matches the declared size, so Pillow opens it and fails to decode
+    r = post(body([header_only_png(54, 96)]))
+    assert r.json()["detail"] == "bad_frame"
+
+
+def test_a_non_string_frame_is_a_bad_frame():
+    assert post(body([123])).json()["detail"] == "bad_frame"
+
+
+def test_a_json_body_that_is_not_an_object_is_bad_json():
+    assert post(b"[1, 2]").json()["detail"] == "bad_json"

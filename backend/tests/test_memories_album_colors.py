@@ -114,19 +114,75 @@ def test_probe_bounds_non_jpeg_pixels(tmp_path, monkeypatch):
     assert skip["error_type"] == "DecompressionBombError"
 
 
-def test_probe_bomb_warning_band_is_an_error(tmp_path, monkeypatch):
+@pytest.mark.filterwarnings("ignore::PIL.Image.DecompressionBombWarning")
+def test_probe_warning_band_is_refused_from_the_header(tmp_path, monkeypatch):
     # 120 000 px: over MAX_IMAGE_PIXELS but under twice it, where Pillow only
-    # warns; the probe turns that warning into a refusal
+    # warns; the probe's own header bound refuses it before any decode
+    from PIL import ImageFile
+
     path = jpeg(tmp_path / "band.jpg", RED, size=(400, 300))
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100_000)
-    with warnings.catch_warnings(record=True) as seen:
-        warnings.simplefilter("always")
-        with capture_logs() as logs:
-            assert ac.probe_image(path) is None
+    loads: list[int] = []
+    real_load = ImageFile.ImageFile.load
+
+    def spy(self):
+        loads.append(1)
+        return real_load(self)
+
+    monkeypatch.setattr(ImageFile.ImageFile, "load", spy)
+    with capture_logs() as logs:
+        assert ac.probe_image(path) is None
     (skip,) = [e for e in logs if e["event"] == "memories_skip"]
-    assert skip["error_type"] == "DecompressionBombWarning"
+    assert skip["error_type"] == "DecompressionBombError"
     assert skip["reason"] == "unreadable"
-    assert not [w for w in seen if w.category is Image.DecompressionBombWarning]
+    assert loads == []  # refused without decoding
+
+
+def test_probe_just_above_the_non_draft_bound_is_not_decoded(tmp_path, monkeypatch):
+    from PIL import ImageFile
+
+    path = png(tmp_path / "edge.png", RED, (101, 100))
+    monkeypatch.setattr(ac, "PROBE_MAX_PIXELS", 100 * 100)
+    loads: list[int] = []
+    real_load = ImageFile.ImageFile.load
+
+    def spy(self):
+        loads.append(1)
+        return real_load(self)
+
+    monkeypatch.setattr(ImageFile.ImageFile, "load", spy)
+    assert ac.probe_image(path) is None
+    assert loads == []
+    exact = png(tmp_path / "exact.png", RED, (100, 100))
+    assert ac.probe_image(exact) is not None  # at the bound: allowed
+
+
+@pytest.mark.filterwarnings("ignore::PIL.Image.DecompressionBombWarning")
+def test_probe_leaves_warning_filters_alone(tmp_path, monkeypatch):
+    # filters are process-wide: a worker thread must never touch them
+    import sys
+
+    callers: list[str] = []
+
+    def spying(real):
+        def wrapper(*a, **k):
+            name = sys._getframe(1).f_globals.get("__name__", "")
+            if name == "backend.services.memories.album_colors":
+                callers.append(real.__name__)
+            return real(*a, **k)
+
+        return wrapper
+
+    before = list(warnings.filters)
+    monkeypatch.setattr(warnings, "simplefilter", spying(warnings.simplefilter))
+    monkeypatch.setattr(warnings, "catch_warnings", spying(warnings.catch_warnings))
+    ac.probe_image(jpeg(tmp_path / "ok.jpg", RED))
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 5_000)
+    ac.probe_image(jpeg(tmp_path / "band.jpg", RED, size=(100, 80)))
+    (tmp_path / "bad.jpg").write_bytes(b"junk")
+    ac.probe_image(tmp_path / "bad.jpg")
+    assert callers == []
+    assert warnings.filters == before
 
 
 def test_probe_mpo_uses_draft(tmp_path, monkeypatch):

@@ -9,11 +9,13 @@ them here as base64 PNGs in one JSON body::
 ``durations_ms`` lets a held scene be sent once with a long duration instead of as
 dozens of identical frames. Without it every frame lasts ``1000 / fps`` ms.
 
-Every frame must be a PNG (magic bytes) whose header declares exactly ``width`` ×
-``height``; the size is checked before the pixels are decoded, so a decompression
-bomb never reaches ``load()``. Pillow's own bomb guard (``DecompressionBombError``
-and ``DecompressionBombWarning``, the latter raised as an error here) is mapped to
-``decompression_bomb``. The whole request has a pixel budget, ``frames × width ×
+Every frame must be a PNG (magic bytes) whose IHDR declares exactly ``width`` ×
+``height``. The IHDR size is read from the raw bytes before Pillow opens the
+frame: a size over Pillow's ``MAX_IMAGE_PIXELS`` (its warning band included) is
+``decompression_bomb`` and any other mismatch is ``frame_size``, so a bomb never
+reaches Pillow at all. Pillow's own ``DecompressionBombError`` is still mapped to
+``decompression_bomb``. No ``warnings`` filter is installed: filters are
+process-wide and not thread-safe, and this runs in a worker thread. The whole request has a pixel budget, ``frames × width ×
 height ≤ MAX_TOTAL_PIXELS`` (160 frames at 540×960), checked before any frame is
 opened, so a body of many tiny, well-compressed but large frames cannot make the
 worker decode hundreds of megapixels. The GIF is written with an adaptive palette per frame,
@@ -30,7 +32,7 @@ import base64
 import binascii
 import io
 import json
-import warnings
+import struct
 from typing import Any
 
 from PIL import Image, UnidentifiedImageError
@@ -81,6 +83,14 @@ def _durations(body: dict[str, Any], count: int, fps: int) -> list[int]:
     return out
 
 
+def _ihdr_size(data: bytes) -> tuple[int, int]:
+    """``(width, height)`` from a PNG's IHDR chunk, read without Pillow."""
+    if len(data) < 24 or data[12:16] != b"IHDR":
+        raise ShareGifError("bad_frame")
+    width, height = struct.unpack(">II", data[16:24])
+    return width, height
+
+
 def _decode_frame(raw: Any, width: int, height: int) -> Image.Image:
     if not isinstance(raw, str):
         raise ShareGifError("bad_frame")
@@ -90,18 +100,16 @@ def _decode_frame(raw: Any, width: int, height: int) -> Image.Image:
         raise ShareGifError("bad_frame") from None
     if not data.startswith(PNG_MAGIC):
         raise ShareGifError("not_png")
+    w, h = _ihdr_size(data)
+    limit = Image.MAX_IMAGE_PIXELS
+    if limit is not None and w * h > limit:
+        raise ShareGifError("decompression_bomb")
+    if (w, h) != (width, height):
+        raise ShareGifError("frame_size")
     try:
-        with warnings.catch_warnings():
-            # Pillow only warns between 1× and 2× MAX_IMAGE_PIXELS; treat it as fatal.
-            warnings.simplefilter("error", Image.DecompressionBombWarning)
-            img = Image.open(io.BytesIO(data), formats=["PNG"])
-            # The header's size, read before any pixel is decoded.
-            if img.size != (width, height):
-                raise ShareGifError("frame_size")
-            img.load()
-    except ShareGifError:
-        raise
-    except (Image.DecompressionBombError, Image.DecompressionBombWarning):
+        img = Image.open(io.BytesIO(data), formats=["PNG"])
+        img.load()
+    except Image.DecompressionBombError:
         raise ShareGifError("decompression_bomb") from None
     except (UnidentifiedImageError, OSError, SyntaxError, ValueError):
         raise ShareGifError("bad_frame") from None
