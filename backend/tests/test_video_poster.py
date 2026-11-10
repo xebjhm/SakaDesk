@@ -653,3 +653,74 @@ def test_source_tag(env, shell):
     Image.new("RGB", (8, 8)).save(plain, format="WEBP", exif=exif.tobytes())
     assert video_poster._source_of(plain) == "client"
     assert video_poster._source_of(env / "gone.webp") == "client"
+
+
+# --- M4 carry-overs ---------------------------------------------------------------------
+
+
+def test_shell_state_never_waits_for_the_shell_lock():
+    """The status endpoint reads it; the lock can be held for SHELL_TIMEOUT_S."""
+    got: list[dict] = []
+    with video_poster._shell_lock:
+        t = threading.Thread(target=lambda: got.append(video_poster.shell_state()))
+        t.start()
+        t.join(1)
+        assert not t.is_alive()
+    assert got == [{"off": False, "skipped": 0}]
+
+
+def test_disable_shell_opens_the_breaker_once(env):
+    src, rel = _video(env)
+    with capture_logs() as logs:
+        video_poster.disable_shell("pregen_watchdog")
+        video_poster.disable_shell("pregen_watchdog")
+    assert video_poster.shell_state()["off"] is True
+    assert [e for e in logs if e["event"] == "video_poster_shell_off"] == [
+        {
+            "event": "video_poster_shell_off",
+            "reason": "pregen_watchdog",
+            "hung_threads": 0,
+            "log_level": "warning",
+        }
+    ]
+    with patch.object(win_shell_thumb, "available", return_value=True):
+        assert video_poster.generate_shell(src, rel) is None
+    assert media_meta.get_many([rel]) == {}
+
+
+def test_client_upload_decodes_are_bounded(env):
+    """A burst of uploads decodes at most UPLOAD_DECODE_SLOTS frames at once."""
+    assert video_poster.UPLOAD_DECODE_SLOTS == 2
+    active = 0
+    peak = 0
+    lock = threading.Lock()
+    gate = threading.Event()
+    real = video_poster._decode_upload
+
+    def slow(body):
+        nonlocal active, peak
+        with lock:
+            active += 1
+            peak = max(peak, active)
+        gate.wait(0.3)
+        try:
+            return real(body)
+        finally:
+            with lock:
+                active -= 1
+
+    videos = [_video(env, f"{i}.mp4") for i in range(6)]
+    body = _bytes("JPEG", (64, 36))
+    with patch.object(video_poster, "_decode_upload", side_effect=slow):
+        threads = [
+            threading.Thread(
+                target=video_poster.ingest_client, args=(s, r, body, "image/jpeg")
+            )
+            for s, r in videos
+        ]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(5)
+    assert peak == 2
+    assert all(_row(r).poster == "ready" for _, r in videos)

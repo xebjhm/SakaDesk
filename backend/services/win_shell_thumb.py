@@ -386,7 +386,9 @@ def shell_thumbnail(
     Blocking; call it from a worker thread only. Never raises; see the
     module docstring for the refusal reasons.
     """
-    if len(str(path).encode("utf-16-le")) // 2 > MAX_SHELL_PATH:
+    # surrogatepass: a lone surrogate (os.fsdecode of undecodable bytes) is
+    # measured, never raised on.
+    if len(str(path).encode("utf-16-le", "surrogatepass")) // 2 > MAX_SHELL_PATH:
         _log_failed("long_path")
         return None
     if api is not None:

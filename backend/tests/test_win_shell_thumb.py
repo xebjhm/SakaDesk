@@ -507,3 +507,17 @@ def test_apartment_loads_ole32_on_windows():
     ):
         assert ok is True
     assert ole.log == ["init", "uninit"]
+
+
+def test_an_unpaired_surrogate_never_raises():
+    """M3 review carry-over: ``encode("utf-16-le")`` raised on a lone surrogate
+    (``os.fsdecode`` of undecodable bytes gives one); now it is measured."""
+    fake = FakeShell()
+    p = Path("C:/v/\udc80.mp4")
+    with capture_logs():
+        out = wst.shell_thumbnail(p, 640, fake.api())
+    assert out is not None and len(fake.calls) > 0
+    long = Path("C:/" + "\udc80" * 300 + ".mp4")
+    with capture_logs() as logs:
+        assert wst.shell_thumbnail(long, 640, fake.api()) is None
+    assert logs[-1]["reason"] == "long_path"

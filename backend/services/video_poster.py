@@ -42,8 +42,9 @@ from it (``photo_thumb.thumbnail``).
   is dropped), no Shell job starts again until the app restarts, and one
   ``video_poster_shell_off`` breadcrumb is logged. So at most one blocked
   thread exists per process, and every later video falls through to the
-  client capture (:func:`shell_state` reports the breaker). A daemon thread
-  never blocks process exit.
+  client capture (:func:`shell_state` reports the breaker, lock-free). A
+  daemon thread never blocks process exit. The pre-generation watchdog can
+  open the same breaker (:func:`disable_shell`) when a whole batch hangs.
 
 **One writer, and the file wins.** Shell and client writes (and their meta
 updates) are serialised by one lock, and the first poster of a version
@@ -99,6 +100,10 @@ MAX_SIDE = win_shell_thumb.MAX_SIDE
 """Largest side of an uploaded frame (the same bound as a Shell bitmap)."""
 SHELL_TIMEOUT_S = 20
 """Longest wait for one Shell thumbnail call before the provider counts as hung."""
+UPLOAD_DECODE_SLOTS = 2
+"""Client uploads decoded at once. A frame may be up to 16 MP (~64 MB as RGBA
+while converting), so a burst of tile captures is bounded to two decodes
+(~130 MB) instead of one per request thread (~2 GB)."""
 
 
 def _default_poster_dir() -> Path:
@@ -258,12 +263,34 @@ _shell_lock = threading.Lock()
 """Serialises Shell jobs (and the breaker state)."""
 _write_lock = threading.Lock()
 """Serialises poster writes and their meta updates, Shell and client alike."""
+_upload_slots = threading.BoundedSemaphore(UPLOAD_DECODE_SLOTS)
+"""Bounds concurrent client-upload decodes (:data:`UPLOAD_DECODE_SLOTS`)."""
 
 
 def shell_state() -> dict[str, object]:
-    """``{"off": bool, "skipped": int}``: the session breaker, for the status endpoint (M4)."""
-    with _shell_lock:
-        return {"off": _shell_off, "skipped": _skipped}
+    """``{"off": bool, "skipped": int}``: the session breaker, for the status endpoint.
+
+    Lock-free on purpose: :data:`_shell_lock` is held for a whole Shell call
+    (up to :data:`SHELL_TIMEOUT_S`), and the status endpoint must never wait
+    on it. Each field is one atomic read of a module global; the pair may be
+    one job apart, which a status line tolerates.
+    """
+    return {"off": _shell_off, "skipped": _skipped}
+
+
+def disable_shell(reason: str) -> None:
+    """Open the session breaker from outside (the pre-generation watchdog).
+
+    Used when a whole worker batch hung outside this module's own hang
+    guard. Idempotent: logs ``video_poster_shell_off`` (``reason``,
+    ``hung_threads=0``: no runner of ours was abandoned) only on the first
+    call. Lock-free (one atomic store), so it never waits on a hung call.
+    """
+    global _shell_off
+    if _shell_off:
+        return
+    _shell_off = True
+    logger.warning("video_poster_shell_off", reason=reason, hung_threads=0)
 
 
 def reset_for_tests() -> None:
@@ -403,7 +430,8 @@ def ingest_client(
     :data:`POSTER_PX` px and recorded with ``media_meta.set_poster(...,
     "ready", "client")``; on ``exists`` a meta row that disagrees with the
     poster file is repaired to ``ready``. The decode runs outside the write
-    lock; the existence check is repeated under it. Blocking; never raises.
+    lock, at most :data:`UPLOAD_DECODE_SLOTS` at once; the existence check
+    is repeated under the lock. Blocking; never raises.
     """
     if not photo_thumb.is_video(source):
         _log("client", "failed", "not_video")
@@ -425,8 +453,9 @@ def ingest_client(
     existing = poster_for_stat(rel_path, *stat)
     if existing is not None:  # cheap pre-check: no decode for a known poster
         return _exists(rel_path, key, existing, v)
-    try:  # outside the write lock: uploads of several tiles decode in parallel
-        img = _decode_upload(body)
+    try:  # outside the write lock; at most UPLOAD_DECODE_SLOTS decodes at once
+        with _upload_slots:
+            img = _decode_upload(body)
     except _TooLarge:
         _log("client", "failed", "too_large")
         return "bad_image", None
