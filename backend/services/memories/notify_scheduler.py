@@ -11,8 +11,11 @@ Each :meth:`MemoriesNotifyScheduler.tick`:
    dir is resolved once, in a thread;
 2. stops when shutdown has begun or :meth:`~MemoriesNotifyScheduler.stop`
    was called (``reason=shutting_down``);
-3. builds the candidate occasions (``notify_rules``) from every service with a
-   data dir and keeps only those whose window is open now;
+3. lists every service with a data dir (once per tick; the listing is shared
+   by every builder), then keeps only the groups the fan currently has
+   selected (:func:`read_selected_services`, see *Selected groups* below);
+   builds the candidate occasions (``notify_rules``) from those and keeps
+   only those whose window is open now;
 4. with ``notifications_enabled`` off, logs ``notifications_off`` (debug),
    records nothing and only runs the due card checks silently (step 8);
 5. drops the kinds whose toggle is off (``kind_off``, debug, nothing
@@ -22,14 +25,18 @@ Each :meth:`MemoriesNotifyScheduler.tick`:
    recorded ``empty``; a recap year without a recap ``no_recap``; every other
    explicit :class:`~notify_content.Skipped` ``skipped`` (one row each, so
    the skip is not re-logged every tick). The 12/25 ``christmas`` occasion
-   before its stub exists gets **no** row and is asked again next tick;
+   before its stub exists gets **no** row; that "no stub yet" answer is kept
+   per service for :data:`CHRISTMAS_RECHECK_S`, so the recaps are not rebuilt
+   on every tick, and the occasion is asked again after that;
 8. runs the card checks that are due: every service with data on the first
    tick after start, and each service :data:`CARD_CHECK_DELAY_S` after
    :meth:`request_card_check` (a finished sync). They run whatever the
    settings: with ``notifications_enabled`` or ``memories_notify_cards`` off
    they advance the baselines **silently** (no toast, no ledger row), so
-   turning notifications back on never floods old cards. When live, a
-   toast's baseline advance is applied only after its keys are claimed;
+   turning notifications back on never floods old cards. A group that is not
+   selected is checked silently in the same way, so adding it back never
+   floods either. When live, a toast's baseline advance is applied only
+   after its keys are claimed;
 9. delivers recap, birthday, anniversary, birthday_soon, on_this_day, card.
    Each plan claims every occasion it covers before the toast (at most once:
    a failed or interrupted show is never retried) and finishes only the keys
@@ -40,12 +47,25 @@ Each :meth:`MemoriesNotifyScheduler.tick`:
     enabled and not yet in the ledger, plus card toasts; ``sent``,
     ``suppressed``, ``next_in_s``).
 
+Selected groups (spec 1.2, Memories follow the active services): the backend
+has no list of its own of the groups the fan shows. The auto-sync scheduler
+and the message toasts run for every authenticated group, and removing a group
+from the rail only drops it from the frontend's persisted store, keeping its
+login and archive. So the scheduler reads that store's ``state.selectedServices``
+from the ``sakadesk-app-state`` pref (:func:`read_selected_services`, in a
+thread). When the pref is missing or unreadable it falls back to every group
+(``memories_notify_selected_fallback``, debug, with ``reason``). A group with
+data that is not selected is skipped before any occasion is built:
+``memories_notify_skip reason=not_selected`` (debug, once per tick, with
+``count``), and no ledger row is written, so adding it back the same day
+still delivers that day's toasts.
+
 Failures are isolated: each service's listing, each On This Day build, each
 per-service birthday / anniversary block, each recap occasion, each
 per-service card check and each delivery unit catches its own error, so one
 bad file, builder or claim never silences the others. ``memories_notify_failed``
-carries ``stage`` (``list`` / ``build`` / ``cards`` / ``deliver`` / ``send``
-inside a tick; ``tick`` / ``prune`` for the loop; ``card_request`` for
+carries ``stage`` (``list`` / ``selected`` / ``build`` / ``cards`` /
+``deliver`` / ``send`` inside a tick; ``tick`` / ``prune`` for the loop; ``card_request`` for
 :func:`request_card_check`), ``kind``, ``service``, ``error_type`` and
 ``where`` (the innermost frame as ``module:function:line``; code, never
 data). A repeat of the same (``stage``, ``kind``, ``error_type``) is logged
@@ -70,6 +90,7 @@ per person per JST day, on every path.)
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -108,6 +129,8 @@ STOP_TIMEOUT_S = 5.0
 PRUNE_AFTER = timedelta(days=400)
 RETRY_AFTER_FAILURE_S = 60.0  # the wait after a tick that raised
 FAILURE_LOG_INTERVAL = timedelta(hours=1)  # one line per repeating failure
+CHRISTMAS_RECHECK_S = 600.0  # keep a "no Christmas stub yet" answer this long
+APP_STATE_PREF = "sakadesk-app-state"  # the frontend's persisted zustand store
 
 DELIVERY_ORDER = (
     "recap",
@@ -123,12 +146,45 @@ ClockFn = Callable[[], datetime]
 SleepFn = Callable[[float], Awaitable[Any]]
 LoadSettingsFn = Callable[[], Awaitable[Mapping[str, Any]]]
 SendFn = Callable[[MemoryToastPlan], Awaitable[bool]]
+SelectedFn = Callable[[], Awaitable[Optional[frozenset[str]]]]
 
 _active: Optional["MemoriesNotifyScheduler"] = None
 
 
 def _utc_now() -> datetime:
     return datetime.now(timezone.utc)
+
+
+def _selected_from_prefs() -> tuple[Optional[frozenset[str]], str]:
+    """``(selected services, "")`` or ``(None, reason code)``. Blocking."""
+    try:
+        raw = app_state.get_prefs().get(APP_STATE_PREF)
+    except Exception:
+        return None, "unreadable"
+    if raw is None:
+        return None, "missing"
+    try:
+        bundle = json.loads(raw) if isinstance(raw, str) else raw
+        selected = bundle["state"]["selectedServices"]
+    except (ValueError, KeyError, TypeError):
+        return None, "unreadable"
+    if not isinstance(selected, list) or not all(isinstance(s, str) for s in selected):
+        return None, "unreadable"
+    return frozenset(selected), ""
+
+
+async def read_selected_services() -> Optional[frozenset[str]]:
+    """The groups the fan has selected in the app, or ``None`` = every group.
+
+    Read from the frontend's persisted store (the ``sakadesk-app-state``
+    pref, ``state.selectedServices``) in a thread; see *Selected groups* in
+    the module docstring. ``None`` when the pref is missing or unreadable,
+    with a ``memories_notify_selected_fallback`` debug breadcrumb (``reason``).
+    """
+    selected, reason = await asyncio.to_thread(_selected_from_prefs)
+    if selected is None:
+        logger.debug("memories_notify_selected_fallback", reason=reason)
+    return selected
 
 
 def _key(occ: Occasion) -> NotifyKey:
@@ -215,6 +271,7 @@ class MemoriesNotifyScheduler:
         load_settings: LoadSettingsFn = settings_store.load_config,
         send: SendFn = notification_service.send_memory,
         in_memories: Callable[[], bool] = ui_state.memories_in_view,
+        selected_services: SelectedFn = read_selected_services,
     ) -> None:
         self._services = list(services)
         self._clock = clock
@@ -222,12 +279,15 @@ class MemoriesNotifyScheduler:
         self._load_settings = load_settings
         self._send = send
         self._in_memories = in_memories
+        self._selected_services = selected_services
         self._task: asyncio.Task[None] | None = None
         self._wake = asyncio.Event()
         self._stopping = False
         self._first_card_check = True
         self._card_pending: dict[str, datetime] = {}
         self._bad_birthdays: set[tuple[str, str]] = set()
+        # service -> when its 12/25 recap last showed no Christmas stub
+        self._christmas_pending: dict[str, datetime] = {}
         # (stage, kind, error_type) -> (last logged at, suppressed since)
         self._failure_log: dict[tuple[str, str, str], tuple[datetime, int]] = {}
 
@@ -357,20 +417,23 @@ class MemoriesNotifyScheduler:
             self._check()
             base = await asyncio.to_thread(people.output_dir)
             data = await self._service_data(base)
+            shown = await self._only_selected(data)
             occasions = [
-                o for o in self._occasions(data, now, slot) if is_open(o.window, now)
+                o for o in self._occasions(shown, now, slot) if is_open(o.window, now)
             ]
             ctx = await nc.load_context(settings, now)
             if not notify_on:
                 if occasions:
                     _quiet_skip("*", "*", "notifications_off", len(occasions))
-                await self._check_cards(ctx, data, now, counts, live=False)
+                await self._check_cards(ctx, data, set(), now, counts)
                 return self._result(now, slot, counts)
             occasions = self._drop_kinds_off(occasions, settings)
             occasions = await self._drop_done(occasions)
             counts.due = len(occasions)
-            await self._build(ctx, data, base, occasions, counts)
-            await self._check_cards(ctx, data, now, counts, live=cards_on)
+            await self._build(ctx, shown, base, occasions, counts)
+            await self._check_cards(
+                ctx, data, set(shown) if cards_on else set(), now, counts
+            )
             counts.due += sum(1 for u in counts.units if u.plan.kind == "card")
             await self._deliver(counts)
         except _Halted:
@@ -413,6 +476,24 @@ class MemoriesNotifyScheduler:
             out[service] = _ServiceData(sdir, summaries)
         self._check()
         return out
+
+    async def _only_selected(
+        self, data: Mapping[str, _ServiceData]
+    ) -> dict[str, _ServiceData]:
+        """``data`` limited to the selected groups (all when unknown); the
+        rest is logged once, at debug (``not_selected``, ``count``)."""
+        try:
+            selected = await self._selected_services()
+        except Exception as exc:
+            self._failed("selected", "*", "*", exc)
+            selected = None
+        if selected is None:
+            return dict(data)
+        shown = {s: d for s, d in data.items() if s in selected}
+        hidden = len(data) - len(shown)
+        if hidden:
+            _quiet_skip("*", "*", "not_selected", hidden)
+        return shown
 
     def _occasions(
         self, data: Mapping[str, _ServiceData], now: datetime, slot: time
@@ -486,10 +567,13 @@ class MemoriesNotifyScheduler:
         for occ in occasions:
             by_kind.setdefault((occ.kind, occ.service), []).append(occ)
 
+        listed = {s: (sd.sdir, sd.summaries) for s, sd in data.items()}
         for occ in by_kind.get(("on_this_day", "*"), []):
             self._check()
             try:
-                otd = await nc.on_this_day_plan(ctx, list(data), occ, base=base)
+                otd = await nc.on_this_day_plan(
+                    ctx, list(data), occ, base=base, listed=listed
+                )
                 if otd is None:
                     _skip("on_this_day", "*", "empty")
                     await self._record(occ, "empty")
@@ -533,26 +617,48 @@ class MemoriesNotifyScheduler:
             for occ in by_kind.get(("recap", service), []):
                 self._check()
                 try:
-                    got = await nc.recap_plan(ctx, service, sd.sdir, occ)
-                    if isinstance(got, nc.Skipped):
-                        await self._record_skipped([got])
-                    elif got is not None:
-                        counts.units.append(_Unit(got, [_key(occ)]))
+                    await self._build_recap(ctx, service, sd, occ, counts)
                 except Exception as exc:
                     self._failed("build", "recap", service, exc)
+
+    async def _build_recap(
+        self,
+        ctx: nc.Context,
+        service: str,
+        sd: _ServiceData,
+        occ: Occasion,
+        counts: _Counts,
+    ) -> None:
+        christmas = occ.subject == "christmas"
+        if christmas:
+            pending_at = self._christmas_pending.get(service)
+            if pending_at is not None and ctx.now - pending_at < timedelta(
+                seconds=CHRISTMAS_RECHECK_S
+            ):
+                _quiet_skip("recap", service, "christmas_pending_cached", 1)
+                return
+        got = await nc.recap_plan(ctx, service, sd.sdir, occ)
+        if isinstance(got, nc.Skipped):
+            await self._record_skipped([got])
+        elif got is not None:
+            counts.units.append(_Unit(got, [_key(occ)]))
+        elif christmas:
+            self._christmas_pending[service] = ctx.now
+            return
+        self._christmas_pending.pop(service, None)
 
     async def _check_cards(
         self,
         ctx: nc.Context,
         data: Mapping[str, _ServiceData],
+        live: set[str],
         now: datetime,
         counts: _Counts,
-        *,
-        live: bool,
     ) -> None:
-        """Run the due card checks. ``live``: card toasts become delivery units
-        whose advance waits for the claim; otherwise every advance is applied
-        at once, silently (no toast, no ledger row)."""
+        """Run the due card checks of every service in ``data``. A service in
+        ``live``: card toasts become delivery units whose advance waits for the
+        claim; any other (notifications or cards off, group not selected):
+        every advance is applied at once, silently (no toast, no ledger row)."""
         ready = now - timedelta(seconds=CARD_CHECK_DELAY_S)
         due = {s for s, at in self._card_pending.items() if at <= ready}
         if self._first_card_check:
@@ -564,7 +670,9 @@ class MemoriesNotifyScheduler:
             sd = data.get(service)
             try:
                 if sd is not None:
-                    await self._check_service_cards(ctx, service, sd, counts, live)
+                    await self._check_service_cards(
+                        ctx, service, sd, counts, service in live
+                    )
             except Exception as exc:
                 self._failed("cards", "card", service, exc)
                 # Keep the mark, re-armed: retry CARD_CHECK_DELAY_S from now.

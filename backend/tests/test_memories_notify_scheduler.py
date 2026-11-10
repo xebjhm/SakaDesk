@@ -9,6 +9,7 @@ the waits and moves the travelled clock.
 from __future__ import annotations
 
 import asyncio
+import json
 import re
 from contextlib import closing
 from datetime import datetime, timedelta, timezone
@@ -1461,3 +1462,171 @@ async def test_repeated_failure_is_logged_once_per_hour(busy, monkeypatch, safe_
 
 def test_where_without_a_traceback_is_unknown():
     assert ns._where(RuntimeError("x")) == "unknown"
+
+
+# --- wave fixes: selected groups, shared listing, Christmas cache --------------------------
+
+SAKURA = "sakurazaka46"
+SAKURA_NAME = "櫻坂46"
+FUJI = "messages/43 藤吉 夏鈴/67 藤吉 夏鈴"
+
+
+def select(services):
+    """Store the frontend's persisted bundle as the app does (a JSON string)."""
+    bundle = {"state": {"selectedServices": list(services)}, "version": 4}
+    app_state.set_prefs({ns.APP_STATE_PREF: json.dumps(bundle)})
+
+
+@pytest.fixture
+def two_groups(out, svc, clock):
+    """Hinata (On This Day moment) and Sakura (a birthday today, an OTD moment)."""
+    sakura = out / SAKURA_NAME
+    room(sakura, FUJI, [msg(1, "2023-11-10T03:00:00Z", content=WORDS)])
+    write_side_inputs(sakura, birthdays={"藤吉夏鈴": "2001-11-10"})
+    return Harness(clock)
+
+
+@pytest.mark.asyncio
+async def test_unselected_group_with_data_never_notifies(two_groups, safe_logs):
+    hh = two_groups
+    select([HINATA])  # Sakura removed from the rail; its archive stays
+    s = hh.make(services=(HINATA, SAKURA))
+    await s.tick()
+    assert [(p.kind, p.service) for p in hh.sent] == [("on_this_day", HINATA)]
+    assert not [k for k in rows() if k[1] == SAKURA]  # no ledger row at all
+    (skip,) = skips(safe_logs, "not_selected")
+    assert skip["log_level"] == "debug" and skip["count"] == 1
+    # added back the same day: that day's birthday is still delivered
+    select([HINATA, SAKURA])
+    hh.clock.move(jst(2026, 11, 10, 12, 15))
+    await s.tick()
+    assert [(p.kind, p.service) for p in hh.sent[1:]] == [("birthday", SAKURA)]
+
+
+@pytest.mark.asyncio
+async def test_unselected_group_never_takes_the_on_this_day_slot(
+    two_groups, monkeypatch
+):
+    hh = two_groups
+    hh.settings["memories_notify_birthday"] = False
+
+    async def oshi(service):  # both oshi: the first listed group wins the tie
+        return {"金村美玖", "藤吉夏鈴"}
+
+    monkeypatch.setattr(oshi_mod, "oshi_names", oshi)
+    await hh.make(services=(SAKURA, HINATA)).tick()
+    assert [p.service for p in hh.sent] == [SAKURA]  # sanity: Sakura would win
+    app_state.set_prefs({})
+    with closing(app_state._connect()) as c, c:
+        c.execute("DELETE FROM memories_notify_log")
+    select([HINATA])
+    hh.sent.clear()
+    await hh.make(services=(SAKURA, HINATA)).tick()
+    assert [(p.kind, p.service) for p in hh.sent] == [("on_this_day", HINATA)]
+
+
+@pytest.mark.asyncio
+async def test_unselected_group_cards_advance_silently(out, svc, clock):
+    sakura = out / SAKURA_NAME
+    days = [
+        msg(1, "2024-11-10T03:00:00Z", content=WORDS),
+        msg(2, "2025-06-01T03:00:00Z", content=WORDS),
+    ]
+    room(sakura, FUJI, days)
+    hh = Harness(clock, memories_notify_cards=True, memories_notify_on_this_day=False)
+    select([HINATA])
+    s = hh.make(services=(HINATA, SAKURA))
+    await s.tick()  # first tick seeds both groups' baselines
+    assert app_state.get_card_baseline(SAKURA, "67") is not None
+    room(sakura, FUJI, [*days, msg(3, "2026-11-09T15:03:00Z", content=WORDS)])
+    s.request_card_check(SAKURA)
+    hh.clock.move(NOON + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert hh.sent == [] and not [k for k in rows() if k[1] == SAKURA]
+    assert "moment.midnight" in app_state.get_card_baseline(SAKURA, "67")[0]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("stored", "reason"),
+    [
+        (None, "missing"),
+        ("not json", "unreadable"),
+        (json.dumps({"state": {}}), "unreadable"),
+        (json.dumps({"state": {"selectedServices": "hinatazaka46"}}), "unreadable"),
+        (json.dumps({"state": {"selectedServices": [1]}}), "unreadable"),
+    ],
+)
+async def test_unreadable_selection_falls_back_to_every_group(
+    two_groups, safe_logs, stored, reason
+):
+    if stored is not None:
+        app_state.set_prefs({ns.APP_STATE_PREF: stored})
+    assert await ns.read_selected_services() is None
+    (fallback,) = [
+        e for e in safe_logs if e["event"] == "memories_notify_selected_fallback"
+    ]
+    assert fallback["reason"] == reason and fallback["log_level"] == "debug"
+    await two_groups.make(services=(HINATA, SAKURA)).tick()
+    assert {(p.kind, p.service) for p in two_groups.sent} == {
+        ("on_this_day", HINATA),
+        ("birthday", SAKURA),
+    }
+
+
+@pytest.mark.asyncio
+async def test_selection_read_from_the_stored_bundle(out):
+    select([HINATA, SAKURA])
+    assert await ns.read_selected_services() == frozenset({HINATA, SAKURA})
+    app_state.set_prefs({ns.APP_STATE_PREF: {"state": {"selectedServices": []}}})
+    assert await ns.read_selected_services() == frozenset()
+
+
+@pytest.mark.asyncio
+async def test_failing_selection_reader_falls_back_and_is_logged(two_groups, safe_logs):
+    async def boom():
+        raise RuntimeError("prefs")
+
+    await two_groups.make(services=(HINATA, SAKURA), selected_services=boom).tick()
+    assert len(two_groups.sent) == 2
+    assert failures(safe_logs, "selected") == [("*", "*")]
+
+
+@pytest.mark.asyncio
+async def test_members_are_listed_once_per_tick(two_groups, monkeypatch):
+    real = mi.list_members
+    calls: list[str] = []
+
+    async def listing(sdir):
+        calls.append(sdir.name)
+        return await real(sdir)
+
+    monkeypatch.setattr(mi, "list_members", listing)
+    await two_groups.make(services=(HINATA, SAKURA)).tick()
+    assert kinds(two_groups.sent) == ["birthday", "on_this_day"]
+    assert sorted(calls) == sorted([HINATA_NAME, SAKURA_NAME])
+
+
+@pytest.mark.asyncio
+async def test_no_christmas_stub_is_cached_for_ten_minutes(h, monkeypatch):
+    h.settings["memories_notify_on_this_day"] = False
+    stub_recap_years(monkeypatch, [2026])
+    calls: list[datetime] = []
+    ready = {"v": False}
+
+    async def christmas_ready(service, sdir, *, now):
+        calls.append(now)
+        return ready["v"]
+
+    monkeypatch.setattr(nc, "christmas_ready", christmas_ready)
+    s = h.make()
+    h.clock.move(jst(2026, 12, 25, 12))
+    await s.tick()
+    h.clock.move(jst(2026, 12, 25, 12, 9, 59))
+    await s.tick()  # within the cache: the recaps are not rebuilt
+    assert len(calls) == 1 and h.sent == [] and rows() == {}
+    ready["v"] = True
+    h.clock.move(jst(2026, 12, 25, 12, 10))
+    await s.tick()
+    assert len(calls) == 2
+    assert [(p.subject, p.occasion) for p in h.sent] == [("christmas", "2026")]
