@@ -16,7 +16,7 @@ import { getServiceDisplayName } from '../../data/services';
 import { pollJson, SIDEBAR_POLL_TIMEOUT_MS } from '../../utils/pollJson';
 import { useUpgradeStore } from '../../core/upgrade/upgradeStore';
 import { UpdateActions } from '../../core/upgrade/UpdateActions';
-import { jstSlotToLocal } from '../../features/memories/shared/jst';
+import { isJstSlot, jstSlotToLocal } from '../../features/memories/shared/jst';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -33,7 +33,7 @@ type SettingsTab = 'general' | 'sync' | 'ai' | 'updates';
 
 /** A settings row that saves app settings (the failure shows on that row). */
 type SaveRow = 'outputDir' | 'incomingCall' | 'callPopup' | 'closeToTray' | 'autostart' | 'notifications'
-    | 'notificationsHideContent' | 'memoriesNotify' | 'syncMode' | 'blogFullBackup' | 'syncReadToPhone' | 'autoDownload' | 'reset';
+    | 'notificationsHideContent' | MemoriesNotifyRow | 'syncMode' | 'blogFullBackup' | 'syncReadToPhone' | 'autoDownload' | 'reset';
 
 /** The Memories notification kinds with a switch each: the i18n key under `settings.memoriesNotify`, the settings key, its default. */
 const MEMORIES_NOTIFY_KINDS = [
@@ -44,15 +44,21 @@ const MEMORIES_NOTIFY_KINDS = [
     { id: 'cards', key: 'memories_notify_cards', fallback: false },
 ] as const;
 
+/** A Memories notification row (its own save-failure slot): the time or one kind. */
+type MemoriesNotifyRow = `memoriesNotify.${'time' | (typeof MEMORIES_NOTIFY_KINDS)[number]['id']}`;
+
+/** The kinds that fire at the configurable JST time (cards are event-driven). */
+const MEMORIES_TIMED_KINDS = MEMORIES_NOTIFY_KINDS.filter(({ id }) => id !== 'cards');
+
 /** The default JST time of the daily Memories notifications. */
 const MEMORIES_NOTIFY_TIME_DEFAULT = '12:00';
 
 /** The hourly JST times the Memories time select offers (`00:00`–`23:00`). */
 const MEMORIES_NOTIFY_HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
 
-/** The time options: every hour, plus a saved value that is not on the hour, in time order. */
+/** The time options: every hour, plus a well-formed saved value that is not on the hour, in time order. */
 function memoriesTimeOptions(value: string): string[] {
-    if (MEMORIES_NOTIFY_HOURS.includes(value)) return MEMORIES_NOTIFY_HOURS;
+    if (MEMORIES_NOTIFY_HOURS.includes(value) || !isJstSlot(value)) return MEMORIES_NOTIFY_HOURS;
     return [...MEMORIES_NOTIFY_HOURS, value].sort();
 }
 
@@ -125,8 +131,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const notificationsEnabled = appSettings.notifications_enabled ?? true;
     const notificationsHideContent = appSettings.notifications_hide_content ?? false;
     const syncReadToPhone = appSettings.sync_read_to_phone ?? false;
-    const memoriesOnThisDay = appSettings.memories_notify_on_this_day ?? true;
-    const memoriesTime = appSettings.memories_notify_time ?? MEMORIES_NOTIFY_TIME_DEFAULT;
+    // The time drives every timed kind: it is idle only when all of them are off.
+    const memoriesTimeIdle = MEMORIES_TIMED_KINDS.every(({ key, fallback }) => !(appSettings[key] ?? fallback));
+    // A malformed saved time (never written by the backend) shows as the default.
+    const savedMemoriesTime = appSettings.memories_notify_time ?? MEMORIES_NOTIFY_TIME_DEFAULT;
+    const memoriesTime = isJstSlot(savedMemoriesTime) ? savedMemoriesTime : MEMORIES_NOTIFY_TIME_DEFAULT;
     const memoriesTimeLocal = jstSlotToLocal(memoriesTime);
     // Clear pending state once appSettings catches up
     React.useEffect(() => {
@@ -422,46 +431,46 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         <p className="max-w-md text-small text-muted">{t('settings.memoriesNotify.desc')}</p>
                     </section>
 
+                    <SettingRow
+                        label={t('settings.memoriesNotify.time')}
+                        error={rowError('memoriesNotify.time')}
+                        description={
+                            <>
+                                <span className="block">{t('settings.memoriesNotify.timeDesc')}</span>
+                                {memoriesTimeLocal && <span className="block">{t('settings.memoriesNotify.timeHint', { local: memoriesTimeLocal })}</span>}
+                            </>
+                        }
+                        control={
+                            <Select
+                                aria-label={t('settings.memoriesNotify.time')}
+                                value={memoriesTime}
+                                onChange={(e) => save('memoriesNotify.time', { memories_notify_time: e.target.value })}
+                                disabled={!notificationsEnabled || memoriesTimeIdle}
+                                className="w-auto"
+                            >
+                                {memoriesTimeOptions(memoriesTime).map((hhmm) => (
+                                    <option key={hhmm} value={hhmm}>{hhmm}</option>
+                                ))}
+                            </Select>
+                        }
+                    />
+
                     {MEMORIES_NOTIFY_KINDS.map(({ id, key, fallback }) => (
-                        <React.Fragment key={id}>
-                            <SettingRow
-                                label={t(`settings.memoriesNotify.${id}`)}
-                                description={t(`settings.memoriesNotify.${id}Desc`)}
-                                control={
-                                    <Switch
-                                        checked={appSettings[key] ?? fallback}
-                                        onCheckedChange={(v) => save('memoriesNotify', { [key]: v })}
-                                        disabled={!notificationsEnabled}
-                                        aria-disabled={!notificationsEnabled}
-                                        aria-label={t(`settings.memoriesNotify.${id}`)}
-                                    />
-                                }
-                            />
-                            {id === 'onThisDay' && (
-                                <SettingRow
-                                    label={t('settings.memoriesNotify.time')}
-                                    description={memoriesTimeLocal ? t('settings.memoriesNotify.timeHint', { local: memoriesTimeLocal }) : undefined}
-                                    control={
-                                        <Select
-                                            aria-label={t('settings.memoriesNotify.time')}
-                                            value={memoriesTime}
-                                            onChange={(e) => save('memoriesNotify', { memories_notify_time: e.target.value })}
-                                            disabled={!notificationsEnabled || !memoriesOnThisDay}
-                                            aria-disabled={!notificationsEnabled || !memoriesOnThisDay}
-                                            className="w-auto"
-                                        >
-                                            {memoriesTimeOptions(memoriesTime).map((hhmm) => (
-                                                <option key={hhmm} value={hhmm}>{hhmm}</option>
-                                            ))}
-                                        </Select>
-                                    }
+                        <SettingRow
+                            key={id}
+                            label={t(`settings.memoriesNotify.${id}`)}
+                            error={rowError(`memoriesNotify.${id}`)}
+                            description={t(`settings.memoriesNotify.${id}Desc`)}
+                            control={
+                                <Switch
+                                    checked={appSettings[key] ?? fallback}
+                                    onCheckedChange={(v) => save(`memoriesNotify.${id}`, { [key]: v })}
+                                    disabled={!notificationsEnabled}
+                                    aria-label={t(`settings.memoriesNotify.${id}`)}
                                 />
-                            )}
-                        </React.Fragment>
+                            }
+                        />
                     ))}
-                    {failedRow === 'memoriesNotify' && (
-                        <p role="status" className="text-small text-status-danger">{t('settings.saveFailed')}</p>
-                    )}
                 </>)}
 
                 {activeTab === 'sync' && (<>

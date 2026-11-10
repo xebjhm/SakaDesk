@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { jstSlotToLocal } from './jst';
+import { isJstSlot, jstSlotToLocal } from './jst';
 
 describe('jstSlotToLocal', () => {
     it('shows the New York time of the JST slot (the day before, time only)', () => {
@@ -33,5 +33,11 @@ describe('jstSlotToLocal', () => {
 
     it.each(['25:00', '12:60', '7:00', '', '１２:００', '12:00:00'])('returns null for the malformed %j', (value) => {
         expect(jstSlotToLocal(value, { now: new Date('2026-07-01T00:00:00Z'), timeZone: 'Europe/London' })).toBeNull();
+    });
+});
+
+describe('isJstSlot', () => {
+    it.each([['00:00', true], ['23:59', true], ['24:00', false], ['7:00', false], ['１２:００', false]])('%j -> %s', (value, ok) => {
+        expect(isJstSlot(value)).toBe(ok);
     });
 });

@@ -91,11 +91,9 @@ describe('SettingsModal Memories notifications', () => {
         for (const { name } of Object.values(SWITCHES)) {
             const toggle = screen.getByRole('switch', { name });
             expect(toggle, name).toBeDisabled();
-            expect(toggle, name).toHaveAttribute('aria-disabled', 'true');
             fireEvent.click(toggle);
         }
         expect(timeSelect()).toBeDisabled();
-        expect(timeSelect()).toHaveAttribute('aria-disabled', 'true');
         expect(save).not.toHaveBeenCalled();
     });
 
@@ -107,11 +105,40 @@ describe('SettingsModal Memories notifications', () => {
         expect(timeSelect()).not.toBeDisabled();
     });
 
-    it('disables the time while On This Day is off', () => {
-        renderModal({ ...base, memories_notify_on_this_day: false });
+    it('keeps the time enabled while any timed kind is on', () => {
+        renderModal({ ...base, memories_notify_on_this_day: false, memories_notify_birthday: false, memories_notify_anniversary: false });
+        expect(timeSelect()).not.toBeDisabled();
+    });
+
+    it('disables the time only when every timed kind is off (cards do not count)', () => {
+        renderModal({
+            ...base,
+            memories_notify_on_this_day: false,
+            memories_notify_birthday: false,
+            memories_notify_anniversary: false,
+            memories_notify_recap: false,
+            memories_notify_cards: true,
+        });
         expect(timeSelect()).toBeDisabled();
-        expect(timeSelect()).toHaveAttribute('aria-disabled', 'true');
-        expect(screen.getByRole('switch', { name: 'Birthdays' })).not.toBeDisabled();
+        expect(screen.getByRole('switch', { name: 'Foil cards' })).not.toBeDisabled();
+    });
+
+    it('places the time under the heading, before the five switches', () => {
+        renderModal();
+        const heading = screen.getByText('Memories notifications');
+        const firstSwitch = screen.getByRole('switch', { name: 'On This Day, daily' });
+        const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
+        expect(follows(heading, timeSelect())).toBe(true);
+        expect(follows(timeSelect(), firstSwitch)).toBe(true);
+        expect(screen.getByText(/^The time for On This Day, birthday reminders, anniversaries and the recap/)).toBeInTheDocument();
+    });
+
+    it('does not offer a malformed saved time and shows the default', () => {
+        renderModal({ ...base, memories_notify_time: '7:00' });
+        const values = Array.from(timeSelect().options).map((o) => o.value);
+        expect(values).toHaveLength(24);
+        expect(values).not.toContain('7:00');
+        expect(timeSelect().value).toBe('12:00');
     });
 
     it('keeps a saved time that is not on the hour as an option', () => {
@@ -124,9 +151,15 @@ describe('SettingsModal Memories notifications', () => {
     });
 
     it('shows the local equivalent outside Japan', () => {
-        stubZone('America/New_York');
-        renderModal();
-        expect(screen.getByText(/^Japan time \((22|23):00 where you are\)$/)).toBeInTheDocument();
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2026-07-01T00:00:00Z'));
+        try {
+            stubZone('America/New_York');
+            renderModal();
+            expect(screen.getByText('Japan time (23:00 where you are)')).toBeInTheDocument();
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('leaves the hint out in Asia/Tokyo', () => {
@@ -159,9 +192,18 @@ describe('SettingsModal Memories notifications', () => {
         }));
     });
 
-    it('shows the row error when a save fails', async () => {
+    it('shows the save error on the failing switch row only', async () => {
         renderModal(base, vi.fn().mockResolvedValue(false));
         fireEvent.click(screen.getByRole('switch', { name: 'Foil cards' }));
-        expect(await screen.findByText("Couldn't save this setting. Try again.")).toBeInTheDocument();
+        const error = await screen.findByText("Couldn't save this setting. Try again.");
+        expect(error.closest('section')).toContainElement(screen.getByRole('switch', { name: 'Foil cards' }));
+        expect(screen.getAllByText("Couldn't save this setting. Try again.")).toHaveLength(1);
+    });
+
+    it('shows the save error on the time row when the time fails', async () => {
+        renderModal(base, vi.fn().mockResolvedValue(false));
+        fireEvent.change(timeSelect(), { target: { value: '07:00' } });
+        const error = await screen.findByText("Couldn't save this setting. Try again.");
+        expect(error.closest('section')).toContainElement(timeSelect());
     });
 });

@@ -78,6 +78,11 @@ export function jstDateFormat(language: string, { time = false }: { time?: boole
 /** A JST wall-clock slot `HH:MM` (24 h, ASCII digits only: full-width digits are refused). */
 const JST_SLOT_RE = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;
 
+/** True when `value` is a well-formed JST slot `HH:MM` (24 h, ASCII digits). */
+export function isJstSlot(value: string): boolean {
+    return JST_SLOT_RE.test(value);
+}
+
 /**
  * The local `HH:MM` (24 h) of today's JST slot `hhmm` in `timeZone` (default: the machine's
  * resolved zone), for the Settings hint beside a JST time. Today is the JST calendar day at
