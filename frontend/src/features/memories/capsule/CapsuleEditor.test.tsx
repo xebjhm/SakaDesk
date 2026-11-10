@@ -6,10 +6,10 @@ import i18n from '../../../i18n';
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
-    return { ...real, postCapsule: vi.fn(), putCapsule: vi.fn(), deleteCapsule: vi.fn() };
+    return { ...real, fetchCapsule: vi.fn(), postCapsule: vi.fn(), putCapsule: vi.fn(), deleteCapsule: vi.fn() };
 });
 import { clientLog } from '../../../utils/clientLog';
-import { deleteCapsule, MemoriesFetchError, MemoriesTimeoutError, postCapsule, putCapsule } from '../api';
+import { deleteCapsule, fetchCapsule, MemoriesFetchError, MemoriesTimeoutError, postCapsule, putCapsule } from '../api';
 import type { CapsuleAnchorInput, CapsuleNote } from '../types';
 import { CapsuleEditor } from './CapsuleEditor';
 import { capsuleNote } from './__fixtures__';
@@ -23,6 +23,7 @@ beforeEach(() => {
     vi.mocked(postCapsule).mockReset();
     vi.mocked(putCapsule).mockReset();
     vi.mocked(deleteCapsule).mockReset();
+    vi.mocked(fetchCapsule).mockReset().mockResolvedValue({ notes: [] });
 });
 
 function renderEditor(note: CapsuleNote | null = null) {
@@ -71,7 +72,8 @@ describe('CapsuleEditor', () => {
         fireEvent.change(textarea(), { target: { value: '🌸'.repeat(2005) } });
         // Counted in characters (code points), cut at 2000, and the counter never says 0.
         expect(Array.from(textarea().value)).toHaveLength(2000);
-        expect(screen.getByTestId('capsule-limit')).not.toHaveTextContent(/\b0\b|あと 0/);
+        expect(screen.getByTestId('capsule-limit')).toHaveTextContent('これ以上は書けません');
+        expect(screen.getByTestId('capsule-limit').textContent).not.toMatch(/\d/);
     });
 
     it('blocks an empty body without sending it', async () => {
@@ -109,6 +111,59 @@ describe('CapsuleEditor', () => {
         expect(capsuleLogs()).toEqual([['memories_capsule', { phase: 'failed', kind: 'day', error_code: 'timeout' }]]);
     });
 
+    it('treats a timed-out create as done when the note is there, written just now', async () => {
+        vi.mocked(postCapsule).mockRejectedValue(new MemoriesTimeoutError());
+        vi.mocked(fetchCapsule).mockResolvedValue({
+            notes: [capsuleNote({ id: 9, body: SECRET, created_at: new Date(Date.now() - 30_000).toISOString() })],
+        });
+        const { onClose, onRefetch } = renderEditor();
+        await userEvent.type(textarea(), `  ${SECRET} `);
+        await userEvent.click(screen.getByRole('button', { name: 'しまう' }));
+        await waitFor(() => expect(onClose).toHaveBeenCalled());
+        expect(onRefetch).toHaveBeenCalled();
+        expect(postCapsule).toHaveBeenCalledTimes(1);
+        expect(fetchCapsule).toHaveBeenCalledWith('hinatazaka46', { date: '2024-09-14' }, expect.any(AbortSignal));
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(capsuleLogs()).toEqual([
+            ['memories_capsule', { phase: 'failed', kind: 'day', error_code: 'timeout' }],
+            ['memories_capsule', { phase: 'save', kind: 'day', outcome: 'created' }],
+        ]);
+    });
+
+    it('keeps the draft after a timed-out create when the same body is older than two minutes', async () => {
+        vi.mocked(postCapsule).mockRejectedValue(new MemoriesTimeoutError());
+        vi.mocked(fetchCapsule).mockResolvedValue({
+            notes: [capsuleNote({ id: 9, body: SECRET, created_at: new Date(Date.now() - 3 * 60_000).toISOString() })],
+        });
+        const { onClose } = renderEditor();
+        await userEvent.type(textarea(), SECRET);
+        await userEvent.click(screen.getByRole('button', { name: 'しまう' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('メモを保存できませんでした');
+        expect(onClose).not.toHaveBeenCalled();
+        expect(textarea().value).toBe(SECRET);
+    });
+
+    it('treats a timed-out edit as done when the note has the body and a new updated_at', async () => {
+        vi.mocked(putCapsule).mockRejectedValue(new MemoriesTimeoutError());
+        vi.mocked(fetchCapsule).mockResolvedValue({
+            notes: [capsuleNote({ body: 'あたらしい', updated_at: '2026-11-10T00:00:00Z' })],
+        });
+        const { onClose } = renderEditor(capsuleNote());
+        fireEvent.change(textarea(), { target: { value: 'あたらしい' } });
+        await userEvent.click(screen.getByRole('button', { name: 'しまう' }));
+        await waitFor(() => expect(onClose).toHaveBeenCalled());
+    });
+
+    it('keeps the draft after a timed-out edit when the note was not updated', async () => {
+        vi.mocked(putCapsule).mockRejectedValue(new MemoriesTimeoutError());
+        vi.mocked(fetchCapsule).mockResolvedValue({ notes: [capsuleNote()] });
+        const { onClose } = renderEditor(capsuleNote());
+        fireEvent.change(textarea(), { target: { value: capsuleNote().body } });
+        await userEvent.click(screen.getByRole('button', { name: 'しまう' }));
+        expect(await screen.findByRole('alert')).toBeInTheDocument();
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
     it('maps a 404 to `not_found`', async () => {
         vi.mocked(putCapsule).mockRejectedValue(new MemoriesFetchError(404));
         renderEditor(capsuleNote());
@@ -128,6 +183,42 @@ describe('CapsuleEditor', () => {
         expect(onRefetch).toHaveBeenCalled();
         expect(deleteCapsule).toHaveBeenCalledWith('hinatazaka46', 7, expect.any(AbortSignal));
         expect(capsuleLogs()).toEqual([['memories_capsule', { phase: 'delete', kind: 'day' }]]);
+    });
+
+    it('says the delete failed (not the save) and keeps the note open', async () => {
+        vi.mocked(deleteCapsule).mockRejectedValue(new MemoriesFetchError(503, 'store_unavailable'));
+        const { onClose } = renderEditor(capsuleNote());
+        await userEvent.click(screen.getByRole('button', { name: 'はがす' }));
+        await userEvent.click(screen.getByRole('button', { name: 'はがす' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('メモをはがせませんでした');
+        expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('treats a delete answered 404 as done (the note is already gone)', async () => {
+        vi.mocked(deleteCapsule).mockRejectedValue(new MemoriesFetchError(404));
+        const { onClose, onRefetch } = renderEditor(capsuleNote());
+        await userEvent.click(screen.getByRole('button', { name: 'はがす' }));
+        await userEvent.click(screen.getByRole('button', { name: 'はがす' }));
+        await waitFor(() => expect(onClose).toHaveBeenCalled());
+        expect(onRefetch).toHaveBeenCalled();
+    });
+
+    it('refetches when it is closed mid-write and the write then settles', async () => {
+        let resolve: (n: CapsuleNote) => void = () => {};
+        vi.mocked(postCapsule).mockImplementation((_s, _b, signal) => new Promise((res, rej) => {
+            resolve = res;
+            signal.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')));
+        }));
+        const onClose = vi.fn();
+        const onRefetch = vi.fn();
+        const view = render(<CapsuleEditor service="hinatazaka46" anchor={DAY} note={null} onClose={onClose} onRefetch={onRefetch} />);
+        await userEvent.type(textarea(), SECRET);
+        await userEvent.click(screen.getByRole('button', { name: 'しまう' }));
+        view.unmount();
+        resolve(capsuleNote({ body: SECRET }));
+        await waitFor(() => expect(onRefetch).toHaveBeenCalledTimes(1));
+        // Unmounted: it never closes whatever editor the host may have opened since.
+        expect(onClose).not.toHaveBeenCalled();
     });
 
     it('backs out of the delete confirm with やめる', async () => {

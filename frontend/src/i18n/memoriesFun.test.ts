@@ -42,7 +42,7 @@ export const MEMORIES_FUN_KEYS: string[] = [
     'memories.capsule.add', 'memories.capsule.edit', 'memories.capsule.save', 'memories.capsule.delete',
     'memories.capsule.deleteConfirm', 'memories.capsule.cancel', 'memories.capsule.placeholder', 'memories.capsule.written',
     'memories.capsule.yearsAgo', 'memories.capsule.limit', 'memories.capsule.full', 'memories.capsule.failed',
-    'memories.capsule.local',
+    'memories.capsule.deleteFailed', 'memories.capsule.local',
     'memories.sameTime.now', 'memories.sameTime.pastYear', 'memories.sameTime.thisYear',
 ];
 
@@ -174,6 +174,7 @@ describe('memories fun strings', () => {
             'memories.capsule.yearsAgo': '{{count}}年前のあなたが書いたメモ',
             'memories.capsule.limit': 'あと {{count}} 文字',
             'memories.capsule.failed': 'メモを保存できませんでした',
+            'memories.capsule.deleteFailed': 'メモをはがせませんでした',
             'memories.capsule.local': 'このメモはこのパソコンにだけ保存されます',
             'memories.sameTime.now': 'いま {{clock}}',
             'memories.sameTime.pastYear': '{{year}}年のこの時刻、{{name}}は',

@@ -2,9 +2,9 @@ import React, { useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from '../../../i18n';
 import { Button, FIELD_CLASS, Modal } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
-import { deleteCapsule, MemoriesFetchError, MemoriesTimeoutError, postCapsule, putCapsule } from '../api';
+import { deleteCapsule, fetchCapsule, MemoriesFetchError, MemoriesTimeoutError, postCapsule, putCapsule } from '../api';
 import { logMemoriesCapsule, logMemoriesSkip, MEMORIES_CAPSULE_ERROR_CODES, type MemoriesCapsuleErrorCode } from '../memoriesLog';
-import type { CapsuleAnchorInput, CapsuleNote } from '../types';
+import type { CapsuleAnchorInput, CapsuleNote, CapsuleQuery } from '../types';
 
 /** The longest note the backend keeps (`capsule.MAX_CHARS`), in characters (code points, as Python counts). */
 const CAPSULE_MAX_CHARS = 2000;
@@ -24,7 +24,10 @@ function errorCode(err: unknown): MemoriesCapsuleErrorCode {
     return 'request_failed';
 }
 
-const isAbort = (err: unknown) => err instanceof DOMException && err.name === 'AbortError';
+/** A timed-out write counts as committed when its note shows up written within this. */
+const COMMITTED_WINDOW_MS = 2 * 60 * 1000;
+
+type WriteOp = 'create' | 'update' | 'delete';
 
 interface CapsuleEditorProps {
     service: string;
@@ -45,25 +48,36 @@ interface CapsuleEditorProps {
  *
  * - An empty body (after trimming) is not sent: the field is marked and `memories_skip`
  *   `note_empty` is logged (the save button stays enabled; forms validate on click).
- * - A failed write keeps the draft and shows 「メモを保存できませんでした」. A write that timed
- *   out may already be stored, so it is never retried here: the anchor's notes are refetched.
- * - Logs `memories_capsule` `save` (`created` / `updated`), `delete` and `failed` (`error_code`)
- *   with the anchor kind. The body is never logged.
- * - The request in flight is aborted on unmount.
+ * - A failed write keeps the draft and shows 「メモを保存できませんでした」 (a delete:
+ *   「メモをはがせませんでした」). A write that timed out may already be stored, so it is never
+ *   retried: the notes are read back and, when the write is there (a new note on this anchor with
+ *   this body written in the last two minutes, this note with this body and a new `updated_at`,
+ *   or this note gone), it counts as done; either way the anchor's notes are refetched. A delete
+ *   answered 404 counts as done (the note is already gone).
+ * - Logs `memories_capsule` `save` (`created` / `updated`), `delete` and `failed` (`error_code`;
+ *   a timeout found committed logs `failed` then `save` / `delete`) with the anchor kind. The body
+ *   is never logged.
+ * - Writes are never aborted. Closing the dialog mid-write (やめる, Escape, the backdrop) lets
+ *   the write settle, then the anchor's notes are refetched.
  */
 export const CapsuleEditor: React.FC<CapsuleEditorProps> = ({ service, anchor, note, onClose, onRefetch }) => {
     const { t } = useTranslation();
     const [draft, setDraft] = useState(note?.body ?? '');
     const [busy, setBusy] = useState(false);
-    const [failed, setFailed] = useState(false);
+    const [failure, setFailure] = useState<'save' | 'delete' | null>(null);
     const [invalid, setInvalid] = useState(false);
     const [confirming, setConfirming] = useState(false);
     const fieldRef = useRef<HTMLTextAreaElement>(null);
-    const controllerRef = useRef<AbortController | null>(null);
+    const mountedRef = useRef(true);
     const localId = useId();
     const kind = anchor.kind;
 
-    useEffect(() => () => controllerRef.current?.abort(), []);
+    // Writes are never aborted: a write may be committed whatever happens to the dialog, so
+    // closing it mid-write lets the write settle and the anchor's notes are refetched then.
+    useEffect(() => {
+        mountedRef.current = true;
+        return () => { mountedRef.current = false; };
+    }, []);
 
     const length = chars(draft).length;
     const left = CAPSULE_MAX_CHARS - length;
@@ -74,29 +88,67 @@ export const CapsuleEditor: React.FC<CapsuleEditorProps> = ({ service, anchor, n
         setInvalid(false);
     };
 
-    /** Run one write; true when it went through (the caller then refetches and closes). */
-    const run = async (write: (signal: AbortSignal) => Promise<unknown>): Promise<boolean> => {
-        controllerRef.current?.abort();
-        const controller = new AbortController();
-        controllerRef.current = controller;
-        setBusy(true);
-        setFailed(false);
+    /**
+     * After a timeout, whether the write is in the store after all: a new note on this anchor
+     * with this body written in the last {@link COMMITTED_WINDOW_MS}, this note with this body
+     * and a new `updated_at`, or this note gone. False when the notes cannot be read.
+     */
+    const committed = async (op: WriteOp, body: string): Promise<boolean> => {
+        const query: CapsuleQuery = anchor.kind === 'day'
+            ? { date: anchor.date }
+            : { member: anchor.member, card: anchor.card_key };
         try {
-            await write(controller.signal);
-            return !controller.signal.aborted;
-        } catch (err) {
-            if (controller.signal.aborted || isAbort(err)) return false;
-            const code = errorCode(err);
-            logMemoriesCapsule('failed', { kind, error_code: code });
-            setFailed(true);
-            if (code === 'timeout') onRefetch();
+            const { notes } = await fetchCapsule(service, query, new AbortController().signal);
+            const now = Date.now();
+            if (op === 'create') {
+                return notes.some((n) => n.anchor.date === anchor.date && n.body.trim() === body
+                    && now - Date.parse(n.created_at) <= COMMITTED_WINDOW_MS);
+            }
+            if (!note) return false;
+            if (op === 'update') {
+                return notes.some((n) => n.id === note.id && n.body.trim() === body && n.updated_at !== note.updated_at);
+            }
+            return !notes.some((n) => n.id === note.id);
+        } catch {
             return false;
-        } finally {
-            if (!controller.signal.aborted) setBusy(false);
         }
     };
 
-    const save = async () => {
+    /** Run one write to its end, then close (done) or keep the draft with the error (failed). */
+    const write = async (op: WriteOp, send: (signal: AbortSignal) => Promise<unknown>, body: string) => {
+        setBusy(true);
+        setFailure(null);
+        let done = false;
+        let timedOut = false;
+        try {
+            await send(new AbortController().signal);
+            done = true;
+        } catch (err) {
+            const code = errorCode(err);
+            // A note that is already gone is what a delete asked for (e.g. an earlier timed-out delete went through).
+            if (op === 'delete' && code === 'not_found') {
+                done = true;
+            } else {
+                logMemoriesCapsule('failed', { kind, error_code: code });
+                timedOut = code === 'timeout';
+                if (timedOut) done = await committed(op, body);
+            }
+        }
+        if (done) {
+            if (op === 'delete') logMemoriesCapsule('delete', { kind });
+            else logMemoriesCapsule('save', { kind, outcome: op === 'create' ? 'created' : 'updated' });
+        }
+        if (done || timedOut || !mountedRef.current) onRefetch();
+        if (!mountedRef.current) return;
+        if (done) {
+            onClose();
+            return;
+        }
+        setBusy(false);
+        setFailure(op === 'delete' ? 'delete' : 'save');
+    };
+
+    const save = () => {
         if (busy) return;
         const body = draft.trim();
         if (!body) {
@@ -105,22 +157,13 @@ export const CapsuleEditor: React.FC<CapsuleEditorProps> = ({ service, anchor, n
             fieldRef.current?.focus();
             return;
         }
-        const ok = await run((signal) => (note
-            ? putCapsule(service, note.id, draft, signal)
-            : postCapsule(service, { anchor, body: draft }, signal)));
-        if (!ok) return;
-        logMemoriesCapsule('save', { kind, outcome: note ? 'updated' : 'created' });
-        onRefetch();
-        onClose();
+        if (note) void write('update', (signal) => putCapsule(service, note.id, draft, signal), body);
+        else void write('create', (signal) => postCapsule(service, { anchor, body: draft }, signal), body);
     };
 
-    const remove = async () => {
+    const remove = () => {
         if (!note || busy) return;
-        const ok = await run((signal) => deleteCapsule(service, note.id, signal));
-        if (!ok) return;
-        logMemoriesCapsule('delete', { kind });
-        onRefetch();
-        onClose();
+        void write('delete', (signal) => deleteCapsule(service, note.id, signal), '');
     };
 
     let footer: React.ReactNode;
@@ -129,7 +172,7 @@ export const CapsuleEditor: React.FC<CapsuleEditorProps> = ({ service, anchor, n
             <div className="flex w-full flex-wrap items-center justify-end gap-2">
                 <span className="mr-auto text-small text-primary">{t('memories.capsule.deleteConfirm')}</span>
                 <Button variant="ghost" size="sm" onClick={() => setConfirming(false)}>{t('memories.capsule.cancel')}</Button>
-                <Button variant="danger" size="sm" loading={busy} onClick={() => { void remove(); }}>{t('memories.capsule.delete')}</Button>
+                <Button variant="danger" size="sm" loading={busy} onClick={remove}>{t('memories.capsule.delete')}</Button>
             </div>
         );
     } else {
@@ -139,7 +182,7 @@ export const CapsuleEditor: React.FC<CapsuleEditorProps> = ({ service, anchor, n
                     <Button variant="ghost" size="sm" className="mr-auto" onClick={() => setConfirming(true)}>{t('memories.capsule.delete')}</Button>
                 )}
                 <Button variant="ghost" size="sm" onClick={onClose}>{t('memories.capsule.cancel')}</Button>
-                <Button variant="primary" size="sm" loading={busy} onClick={() => { void save(); }}>{t('memories.capsule.save')}</Button>
+                <Button variant="primary" size="sm" loading={busy} onClick={save}>{t('memories.capsule.save')}</Button>
             </div>
         );
     }
@@ -175,7 +218,11 @@ export const CapsuleEditor: React.FC<CapsuleEditorProps> = ({ service, anchor, n
                     <span id={localId} className="text-muted">{t('memories.capsule.local')}</span>
                     {limit && <span data-testid="capsule-limit" className="shrink-0 tabular-nums text-secondary">{limit}</span>}
                 </div>
-                {failed && <p role="alert" className="text-small text-semantic-danger">{t('memories.capsule.failed')}</p>}
+                {failure && (
+                    <p role="alert" className="text-small text-semantic-danger">
+                        {failure === 'delete' ? t('memories.capsule.deleteFailed') : t('memories.capsule.failed')}
+                    </p>
+                )}
             </div>
         </Modal>
     );

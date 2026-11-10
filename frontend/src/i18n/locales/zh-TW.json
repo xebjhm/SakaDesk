@@ -1056,6 +1056,7 @@
       "limit": "還可以寫 {{count}} 字",
       "full": "已經寫滿了",
       "failed": "無法儲存便條",
+      "deleteFailed": "無法撕下便條",
       "local": "這張便條只會儲存在這台電腦上"
     },
     "sameTime": {

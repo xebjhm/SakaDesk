@@ -1081,6 +1081,7 @@
       "limit_other": "{{count}} characters left",
       "full": "That's as long as a note can be",
       "failed": "Couldn't save the note",
+      "deleteFailed": "Couldn't peel off the note",
       "local": "This note is saved only on this computer"
     },
     "sameTime": {

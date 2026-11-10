@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { StickyNote } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Button } from '../../../design/primitives';
@@ -33,7 +33,8 @@ const keyOf = (a: CapsuleStripAnchor) => (a.kind === 'day' ? `day|${a.date}` : `
 /**
  * The fan's 時光膠囊 notes on one day or card (spec 14.4), with 「メモを貼る」. A note opens the
  * editor to rewrite or peel it off; after a save or delete the notes are refetched (`fetchCapsule`,
- * view `capsule`), and the list on screen stays while they reload. Opening the editor logs
+ * view `capsule`), and the list on screen stays while they reload. A failed load (the first or a
+ * reload) shows a retry next to whatever list is kept. Opening the editor logs
  * `memories_capsule` `open` with the anchor kind and its note count.
  */
 export const CapsuleStrip: React.FC<CapsuleStripProps> = ({ service, anchor }) => {
@@ -46,31 +47,31 @@ export const CapsuleStrip: React.FC<CapsuleStripProps> = ({ service, anchor }) =
         [service, key],
         { count: (d) => d.notes.length },
     );
-    // The last list of this anchor, kept on screen while a refetch runs.
-    const last = useRef<{ key: string; notes: CapsuleNote[] } | null>(null);
-    if (query.status === 'ready' && query.data) last.current = { key: `${service}|${key}`, notes: query.data.notes };
-    const notes = last.current?.key === `${service}|${key}` ? last.current.notes : null;
+    const scope = `${service}|${key}`;
+    // The last list of this anchor, kept on screen while a refetch runs (and after a failed one).
+    const [kept, setKept] = useState<{ scope: string; notes: CapsuleNote[] } | null>(null);
+    const loaded = query.status === 'ready' && query.data ? query.data.notes : null;
+    useEffect(() => {
+        if (loaded) setKept({ scope, notes: loaded });
+    }, [loaded, scope]);
+    const notes = loaded ?? (kept?.scope === scope ? kept.notes : null);
 
     const open = (note: CapsuleNote | null) => {
         logMemoriesCapsule('open', { kind: anchor.kind, count: notes?.length ?? 0 });
         setEditing({ note });
     };
 
-    let list: React.ReactNode = null;
-    if (query.status === 'error' && notes === null) {
-        list = (
-            <span className="flex items-center gap-2 text-small text-secondary">
-                {t('memories.common.loadError')}
-                <Button variant="ghost" size="sm" onClick={query.retry}>{t('memories.common.retry')}</Button>
-            </span>
-        );
-    } else if (notes && notes.length > 0) {
-        list = notes.map((n) => <CapsuleNoteCard key={n.id} note={n} onOpen={open} className="w-48 shrink-0" />);
-    }
+    const error = query.status === 'error' ? (
+        <span className="flex items-center gap-2 self-center text-small text-secondary">
+            {t('memories.common.loadError')}
+            <Button variant="ghost" size="sm" onClick={query.retry}>{t('memories.common.retry')}</Button>
+        </span>
+    ) : null;
 
     return (
         <section data-testid="capsule-strip" className="flex flex-wrap items-start gap-4">
-            {list}
+            {notes?.map((n) => <CapsuleNoteCard key={n.id} note={n} onOpen={open} className="w-48 shrink-0" />)}
+            {error}
             {notes !== null && (
                 <Button variant="ghost" size="sm" className="self-center" onClick={() => open(null)}>
                     <StickyNote aria-hidden="true" className="h-4 w-4" />

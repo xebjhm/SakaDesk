@@ -104,6 +104,34 @@ describe('CapsuleStrip', () => {
         ));
     });
 
+    it('shows a note added mid-write after the editor was closed (やめる)', async () => {
+        let resolve: () => void = () => {};
+        vi.mocked(postCapsule).mockImplementation((_s, body, signal) => new Promise((res, rej) => {
+            resolve = () => { const note = capsuleNote({ id: 8, body: body.body }); stored.push(note); res(note); };
+            signal.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')));
+        }));
+        render(<CapsuleStrip service="hinatazaka46" anchor={{ kind: 'day', date: '2024-09-14' }} />);
+        await userEvent.click(await screen.findByRole('button', { name: 'メモを貼る' }));
+        await userEvent.type(screen.getByPlaceholderText('この日のこと、あなたの言葉で。'), 'まだ届いてない');
+        await userEvent.click(screen.getByRole('button', { name: 'しまう' }));
+        await userEvent.click(screen.getByRole('button', { name: 'やめる' }));
+        expect(screen.queryByPlaceholderText('この日のこと、あなたの言葉で。')).toBeNull();
+        resolve();
+        expect(await screen.findByTestId('capsule-note-8')).toHaveTextContent('まだ届いてない');
+    });
+
+    it('says so, with a retry, when the reload after a save fails', async () => {
+        render(<CapsuleStrip service="hinatazaka46" anchor={{ kind: 'day', date: '2024-09-14' }} />);
+        await screen.findByTestId('capsule-note-7');
+        vi.mocked(fetchCapsule).mockRejectedValueOnce(new Error('down'));
+        await userEvent.click(screen.getByRole('button', { name: 'メモを貼る' }));
+        await userEvent.type(screen.getByPlaceholderText('この日のこと、あなたの言葉で。'), 'また会いたい');
+        await userEvent.click(screen.getByRole('button', { name: 'しまう' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'もう一度' }));
+        expect(await screen.findByTestId('capsule-note-8')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'もう一度' })).toBeNull();
+    });
+
     it('offers a retry when the notes cannot load', async () => {
         vi.mocked(fetchCapsule).mockRejectedValueOnce(new Error('down'));
         render(<CapsuleStrip service="hinatazaka46" anchor={{ kind: 'day', date: '2024-09-14' }} />);
