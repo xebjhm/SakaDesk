@@ -13,7 +13,10 @@
   the oshi set.
 - :func:`memoir_header` -- the header: name, current avatar, graduation and
   three chips. A chip is ``None`` when its value would be 0 or is unknown, so
-  the UI hides it (spec 1.1: never show "0"):
+  the UI hides it (spec 1.1: never show "0"). The chips are cached (view
+  ``memoir_header``, key ``person_key``, hash over :data:`HEADER_VERSION`,
+  ``people.room_hashes``, the JST date and the start date); the fact
+  aggregation runs in a worker:
 
   - ``subscription_days`` = ``(today_jst - start).days + 1`` from the archived
     earliest subscription start; ``None`` without a (parsable) start or when
@@ -30,7 +33,8 @@ Logs (ids, codes and counts only; ``person`` = first member id):
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime
+from collections.abc import Sequence
+from datetime import date, datetime
 from pathlib import Path
 
 import structlog
@@ -38,15 +42,17 @@ import structlog
 from backend.services.memories import binder
 from backend.services.memories import index as mi
 from backend.services.memories import people
-from backend.services.memories.facts import aggregate, get_person_facts
+from backend.services.memories.facts import Fact, aggregate, get_person_facts
 from backend.services.memories.selection import JST
 from backend.services.memories.view_cache import cached_view, view_hash
 
 logger = structlog.get_logger(__name__)
 
 VIEW_MEMBERS = "memoir_members"
-# Bump on any rule or payload change of the list.
+VIEW_HEADER = "memoir_header"
+# Bump on any rule or payload change of the list / the header chips.
 MEMBERS_VERSION = 1
+HEADER_VERSION = 1
 # Binder evaluations run at once on a members-list miss.
 EVAL_CONCURRENCY = 4
 
@@ -94,26 +100,38 @@ async def list_memoir_members(service: str, sdir: Path, *, now: datetime) -> dic
     return await cached_view(sdir, VIEW_MEMBERS, "all", data_hash, build)
 
 
-def _subscription_days(summary: mi.MemberSummary, now: datetime) -> int | None:
-    start = binder.subscription_start(summary)
-    if start is None:
-        return None
-    days = (now.astimezone(JST).date() - start).days + 1
-    return days if days > 0 else None
+def _chips(tagged: Sequence[tuple[str, Fact]], start: date | None, today: date) -> dict:
+    """The header chips (see the module docstring). Pure; runs in a worker."""
+    agg = aggregate(f for _, f in tagged)
+    days = (today - start).days + 1 if start is not None else 0
+    return {
+        "subscription_days": days if days > 0 else None,
+        "nickname_count": agg.nickname_count or None,
+        "voice_seconds": agg.voice_seconds or None,
+    }
 
 
 async def memoir_header(
     service: str, sdir: Path, summary: mi.MemberSummary, *, now: datetime
 ) -> dict:
     """The memoir header of one person (see the module docstring)."""
-    tagged = await get_person_facts(sdir, summary)
-    agg = aggregate(f for _, f in tagged)
+    today = now.astimezone(JST).date()
+    data_hash = view_hash(
+        HEADER_VERSION,
+        await people.room_hashes(sdir, summary),
+        today.isoformat(),
+        summary.subscription_start,
+    )
+
+    async def build() -> dict:
+        tagged = await get_person_facts(sdir, summary)
+        start = binder.subscription_start(summary)
+        return await asyncio.to_thread(_chips, tagged, start, today)
+
+    chips = await cached_view(
+        sdir, VIEW_HEADER, people.person_key(summary), data_hash, build
+    )
     timeline = await people.avatar_timelines(sdir, summary)
-    chips = {
-        "subscription_days": _subscription_days(summary, now),
-        "nickname_count": agg.nickname_count or None,
-        "voice_seconds": agg.voice_seconds or None,
-    }
     logger.info(
         "memories_memoir_header",
         person=_member_id(summary),

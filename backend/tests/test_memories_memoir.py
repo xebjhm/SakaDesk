@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import threading
 from datetime import datetime, timezone
 
 import pytest
@@ -278,3 +279,26 @@ async def test_header_hides_a_start_after_today(svc):
     first_day = datetime(2026, 10, 31, 15, 30, tzinfo=timezone.utc)  # 11-01 JST
     header = await memoir.memoir_header(SERVICE, svc, s, now=first_day)
     assert header["chips"]["subscription_days"] == 1
+
+
+@pytest.mark.asyncio
+async def test_header_chips_are_cached_and_aggregated_off_the_loop(svc, monkeypatch):
+    s = await person(svc, "金村美玖")
+    loop_thread = threading.get_ident()
+    threads: list[int] = []
+    real = memoir.aggregate
+
+    def spy(facts):
+        threads.append(threading.get_ident())
+        return real(facts)
+
+    monkeypatch.setattr(memoir, "aggregate", spy)
+    tomorrow = datetime(2026, 11, 11, 3, tzinfo=timezone.utc)
+    with capture_logs() as logs:
+        first = await memoir.memoir_header(SERVICE, svc, s, now=NOW)
+        again = await memoir.memoir_header(SERVICE, svc, s, now=NOW)
+        later = await memoir.memoir_header(SERVICE, svc, s, now=tomorrow)
+    assert first == again
+    assert later["chips"]["subscription_days"] == 11
+    assert _view_outcomes(logs, "memoir_header") == ["miss", "hit", "miss"]
+    assert len(threads) == 2 and loop_thread not in threads
