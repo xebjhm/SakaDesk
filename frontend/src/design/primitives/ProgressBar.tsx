@@ -15,6 +15,8 @@ export interface ProgressBarProps {
     /** Shows the label above the bar. An indeterminate bar shows it under reduced motion regardless. */
     showLabel?: boolean;
     className?: string;
+    /** Extra classes for the visible label (e.g. a token pill when the bar floats over content). */
+    labelClassName?: string;
 }
 
 const SIZE: Record<ProgressBarSize, string> = { thin: 'h-0.5', sm: 'h-2', md: 'h-4' };
@@ -25,13 +27,13 @@ const SIZE: Record<ProgressBarSize, string> = { thin: 'h-0.5', sm: 'h-2', md: 'h
  * and stands still under reduced motion, where the label becomes visible so the static segment is
  * never shown alone.
  */
-export const ProgressBar: React.FC<ProgressBarProps> = ({ value, label, valueText, size = 'sm', showLabel = false, className }) => {
+export const ProgressBar: React.FC<ProgressBarProps> = ({ value, label, valueText, size = 'sm', showLabel = false, className, labelClassName }) => {
     const determinate = typeof value === 'number' && Number.isFinite(value);
     const pct = determinate ? Math.round(Math.min(1, Math.max(0, value)) * 100) : 0;
     return (
         <div className={cn('flex w-full flex-col gap-1', className)}>
             {(showLabel || !determinate) && (
-                <span aria-hidden="true" className={cn('text-small text-secondary', !showLabel && 'sr-only motion-reduce:not-sr-only')}>
+                <span aria-hidden="true" className={cn('text-small text-secondary', !showLabel && 'sr-only motion-reduce:not-sr-only', labelClassName)}>
                     {label}
                 </span>
             )}

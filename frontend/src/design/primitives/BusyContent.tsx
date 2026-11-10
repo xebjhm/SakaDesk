@@ -19,14 +19,24 @@ export interface BusyContentProps {
 /**
  * Keep-previous visual: the previous content stays, `aria-busy` while `busy`. After the reveal
  * delay (fast steps never flash) the content dims to `opacity-60` and a thin indeterminate
- * `ProgressBar` sits on the top edge; once shown, both stay at least `minVisible`.
+ * `ProgressBar` sits on the top edge (under reduced motion with its label on a sheet pill below it);
+ * once shown, both stay at least `minVisible`. The bar never takes clicks.
  */
 export const BusyContent: React.FC<BusyContentProps> = ({ busy, label, children, className, contentClassName }) => {
     const { t } = useTranslation();
     const shown = useDelayedLoading(busy);
     return (
         <div className={cn('relative', className)} aria-busy={busy || undefined}>
-            {shown && <ProgressBar label={label ?? t('loading.label')} size="thin" className="absolute inset-x-0 top-0 z-10" />}
+            {shown && (
+                <ProgressBar
+                    label={label ?? t('loading.label')}
+                    size="thin"
+                    // Under reduced motion the label shows (the segment is static); it sits on a small
+                    // sheet pill at the top-left so it stays readable over the kept content.
+                    labelClassName="order-last mx-2 mt-1 self-start rounded-pill bg-sheet px-2 shadow-pill"
+                    className="pointer-events-none absolute inset-x-0 top-0 z-10"
+                />
+            )}
             <div className={cn('transition-opacity duration-base ease-standard motion-reduce:transition-none', shown && 'opacity-60', contentClassName)}>
                 {children}
             </div>

@@ -165,6 +165,13 @@ describe('BusyContent', () => {
         expect(screen.getByText('前の内容').parentElement).toHaveClass('opacity-60');
     });
 
+    it('puts the reduced-motion label on a token pill so it never paints over the content', () => {
+        render(<BusyContent busy label="次の月を読み込み中…"><p>前の内容</p></BusyContent>);
+        advance(200);
+        const label = screen.getByText('次の月を読み込み中…');
+        expect(label).toHaveClass('motion-reduce:not-sr-only', 'bg-sheet', 'rounded-pill', 'shadow-pill', 'self-start');
+    });
+
     it('is plain content when idle', () => {
         const { container } = render(<BusyContent busy={false}><p>ready</p></BusyContent>);
         expect(container.firstElementChild).not.toHaveAttribute('aria-busy');
@@ -185,6 +192,26 @@ describe('StatusBlock loading', () => {
         expect(box).toHaveAttribute('aria-busy', 'true');
         expect(container.querySelector('svg')).toBeNull();
         expect(box).not.toHaveTextContent('Loading');
+    });
+
+    it('drops aria-busy once revealed so its label and hints are announced', () => {
+        render(<StatusBlock kind="loading" surface="chat_room" label="トークを読み込み中…" />);
+        advance(200);
+        const region = screen.getByRole('status', { name: 'トークを読み込み中…' });
+        expect(region).not.toHaveAttribute('aria-busy');
+        expect(region).toHaveTextContent('トークを読み込み中…');
+        advance(2800);
+        expect(screen.getByRole('status')).not.toHaveAttribute('aria-busy');
+        expect(screen.getByRole('status')).toHaveTextContent('Still loading…');
+        advance(7000);
+        expect(screen.getByRole('status')).not.toHaveAttribute('aria-busy');
+        expect(screen.getByRole('status')).toHaveTextContent('This is taking longer than usual. Thanks for waiting.');
+    });
+
+    it('does not repeat its label on the very-slow bar', () => {
+        render(<StatusBlock kind="loading" surface="chat_room" stage="verySlow" />);
+        const visibleLabels = screen.getAllByText('Loading…').filter((el) => !el.classList.contains('hidden'));
+        expect(visibleLabels).toHaveLength(1);
     });
 
     it('shows the spinner with its label at 200 ms', () => {
@@ -327,10 +354,14 @@ describe('StatusBlock error, timeout and empty', () => {
         expect(screen.getByRole('alert')).toHaveClass(...classes);
     });
 
-    it('requires onRetry for error and timeout', () => {
+    it('requires onRetry for error and timeout, and a title for empty', () => {
         // @ts-expect-error: an error state always offers Retry.
         const bad: StatusBlockProps = { kind: 'error', surface: 'x' };
-        expect(bad.kind).toBe('error');
+        // @ts-expect-error: a timeout always offers Retry.
+        const late: StatusBlockProps = { kind: 'timeout', surface: 'x' };
+        // @ts-expect-error: an empty state always has a title.
+        const blank: StatusBlockProps = { kind: 'empty', surface: 'x' };
+        expect([bad.kind, late.kind, blank.kind]).toEqual(['error', 'timeout', 'empty']);
     });
 });
 

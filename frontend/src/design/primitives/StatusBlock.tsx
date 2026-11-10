@@ -48,7 +48,8 @@ export type StatusBlockLoadingProps = {
     stage?: LoadingStage;
 };
 
-export type StatusBlockEmptyProps = { kind: 'empty'; action?: React.ReactNode };
+/** `title` is required: an empty state always names what is missing. */
+export type StatusBlockEmptyProps = { kind: 'empty'; title: string; action?: React.ReactNode };
 
 export type StatusBlockProblemProps = {
     kind: 'error' | 'timeout';
@@ -103,7 +104,9 @@ const LoadingBlock: React.FC<Common & StatusBlockLoadingProps> = ({
     const hint = verySlowNow ? (verySlowHint ?? t('loading.verySlow')) : stage === 'slow' ? (slowHint ?? t('loading.slow')) : null;
 
     return (
-        <div role="status" aria-busy="true" aria-labelledby={labelId} data-stage={stage} className={cn(VARIANT[variant], className)}>
+        // No aria-busy once revealed: screen readers hold back a busy live region's updates, and this
+        // region must announce its label, then the slow line, then the explanation.
+        <div role="status" aria-labelledby={labelId} data-stage={stage} className={cn(VARIANT[variant], className)}>
             {skeleton ?? <Loader2 aria-hidden="true" data-spinner className={cn(SPINNER_SIZE[size], inline ? 'text-muted' : 'text-accent', SPIN)} />}
             <span
                 id={labelId}
@@ -119,7 +122,8 @@ const LoadingBlock: React.FC<Common & StatusBlockLoadingProps> = ({
                 <ProgressBar value={progress} label={name} className={inline ? 'w-24' : 'w-48'} />
             )}
             {verySlowNow && progress === undefined && !onCancel && (
-                <ProgressBar label={name} className={inline ? 'w-24' : 'w-48'} />
+                // Its reduced-motion label would repeat the spinner label shown just above.
+                <ProgressBar label={name} labelClassName="hidden" className={inline ? 'w-24' : 'w-48'} />
             )}
             {verySlowNow && onCancel && (
                 <Button variant="ghost" size="sm" onClick={cancel}>{cancelLabel ?? t('loading.cancel')}</Button>
@@ -160,7 +164,7 @@ const ProblemBlock: React.FC<Common & StatusBlockProblemProps> = ({
  * The one loading / empty / error / timeout state (replaces `LoadState`, `DialogStatus`,
  * `BlogStatus` and the recap `Status`).
  *
- * - loading: an empty `role="status"` box until `reveal`, then the `skeleton` or a spinner with its
+ * - loading: an empty `role="status"` box (`aria-busy`) until `reveal`, then the `skeleton` or a spinner with its
  *   label; the slow hint from `slow`; from `verySlow` the very-slow hint plus Cancel (`onCancel`)
  *   or a `ProgressBar` (`progress`), and an indeterminate bar when neither is given. Logs `ui_wait`
  *   (`slow`, `very_slow` once per mount, `cancelled` on Cancel).
@@ -173,8 +177,8 @@ export const StatusBlock: React.FC<StatusBlockProps> = (props) => {
     if (props.kind !== 'empty') return <ProblemBlock {...props} />;
     const { variant = 'dialog', title, hint, icon, action, className } = props;
     return (
-        <div role="status" className={cn(variant === 'inline' ? VARIANT.inline : VARIANT[variant], className)}>
-            <EmptyState icon={icon ?? <Inbox />} title={title ?? ''} description={hint} action={action} />
+        <div role="status" className={cn(VARIANT[variant], className)}>
+            <EmptyState icon={icon ?? <Inbox />} title={title} description={hint} action={action} />
         </div>
     );
 };
