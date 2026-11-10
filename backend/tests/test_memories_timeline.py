@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 import threading
 from datetime import date, datetime, timezone
 
@@ -13,6 +14,7 @@ from backend.services.memories import index as mi
 from backend.services.memories import timeline as tl
 from backend.services.memories import view_cache as vc
 from backend.tests.memories_archive import msg, write_room
+from backend.tests.test_memories_cards import fact
 
 SERVICE = "hinatazaka46"
 SVC_NAME = "日向坂46"
@@ -345,3 +347,33 @@ async def test_month_counting_runs_off_the_event_loop(svc, monkeypatch):
     months = (await tl.timeline_months(SERVICE, svc, s))["months"]
     assert months[0] == {"month": "2025-01", "count": 1}
     assert threads and loop_thread not in threads
+
+
+def _pic(i, when, score, caption=None, promo=False):
+    return dataclasses.replace(
+        fact(i, when, "picture", promo=promo, importance=None),
+        photo_score=score,
+        caption_id=caption,
+    )
+
+
+def test_a_photo_caption_message_never_fills_a_slot():
+    words = fact(1, "2025-03-01 12:00", importance=90)  # the photo's caption
+    pic = _pic(2, "2025-03-01 12:01", 100, caption=1)
+    other = fact(3, "2025-03-02 12:00", importance=10)
+    photos, slots = tl._pick([("r", words), ("r", pic), ("r", other)])
+    assert [f.id for _, f in photos] == [2]
+    top = slots["top"]
+    assert top is not None and top[1].id == 3  # not 1, shown under the photo
+
+
+def test_promo_media_and_words_are_left_out_of_photos_and_slots():
+    promo_pic = _pic(1, "2025-03-01 12:00", 500, promo=True)
+    promo_words = fact(2, "2025-03-01 13:00", promo=True, importance=99)
+    pic = _pic(3, "2025-03-02 12:00", 10)
+    words = fact(4, "2025-03-02 13:00", importance=5)
+    month = [("r", f) for f in (promo_pic, promo_words, pic, words)]
+    photos, slots = tl._pick(month)
+    assert [f.id for _, f in photos] == [3]
+    top = slots["top"]
+    assert top is not None and top[1].id == 4

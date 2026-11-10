@@ -13,7 +13,8 @@
   - ``photos``: up to :data:`PHOTO_CAP` non-promo pictures / videos with the
     highest ``photo_score`` (ties: the earlier), shown in time order;
   - ``messages``: three words slots (*words* = non-promo with an importance;
-    photos already shown are left out), filled in the order top -> nickname
+    photos already shown, and their paired caption messages, are left out),
+    filled in the order top -> nickname
     -> late so a message appears in at most one slot:
 
     - ``top``: the highest importance;
@@ -65,7 +66,7 @@ VIEW = "timeline"
 VIEW_MONTHS = "timeline_months"
 VIEW_MONTH = "timeline_month"
 # Bump on any rule or payload change of the month view (its cache hash has it).
-TIMELINE_VERSION = 1
+TIMELINE_VERSION = 2
 # Bump on any rule or payload change of the rail (its cache hash has it).
 TIMELINE_MONTHS_VERSION = 1
 PHOTO_CAP = 12
@@ -201,7 +202,9 @@ def _pick(
     ]
     ranked = sorted(media, key=lambda t: (-(t[1].photo_score or 0), *_order(t)))
     photos = sorted(ranked[:PHOTO_CAP], key=_order)
+    # a photo's words (own or a paired caption message) never show twice
     used = {(r, f.id) for r, f in photos}
+    used |= {(r, f.caption_id) for r, f in photos if f.caption_id is not None}
     words = [
         t for t in month_facts if not t[1].is_promo and t[1].importance is not None
     ]
