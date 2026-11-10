@@ -32,7 +32,7 @@ The run shows three separate faults.
 
 ### Design
 
-1. **`backend/services/sync_coordinator.py`** owns a FIFO queue of jobs `{service, kind: "sync" | "verify", include_inactive, force_resync, origin, sequence_id?}` and runs **one job at a time across all services** (`MAX_CONCURRENT_JOBS = 1`, a module constant). Every writer path goes through it: `POST /api/sync/start`, `POST /api/sync/verify`, the scheduler and the tray. `sync_launcher.launch_sync` becomes a thin call to `coordinator.enqueue(...)`.
+1. **`backend/services/sync_coordinator.py`** owns a FIFO queue of jobs `{service, kind: "sync" | "verify", include_inactive, force_resync, origin, sequence_id?}` and runs **one job at a time across all services** (a single serial runner). Every writer path goes through it: `POST /api/sync/start`, the scheduler and the tray through `sync_launcher` (a thin call to `coordinator.enqueue(...)`), `POST /api/sync/verify` and `/start-all` directly.
    - **Results:** `started` (the slot was free), `queued` (with `position`), `already_running`, `already_queued` (dedup: one queued or running job per service and kind; a queued `force_resync` upgrades an existing queued sync instead of adding a second job), `shutting_down`.
    - **Runner.** A single runner task pops the next job and awaits `run_sync_task` / `run_verify_task`, unchanged. `SyncService._task` and `_generation` keep their meaning, so `/cancel` still reaches the running job with a real `task.cancel()`.
    - **Progress of a queued service.** When a job is enqueued its tracker is `reset()` and set to the new state `queued` with `queue_position` (1-based) in `/api/sync/progress`. When the job starts, the tracker moves to `starting` as today.
@@ -114,5 +114,21 @@ The run shows three separate faults.
 ## Decisions (user, 2026-11-10)
 
 1. **Verify & Fix joins the same queue** (S1.1). It waits behind a running sync instead of being refused with "already running".
-2. **`MAX_CONCURRENT_JOBS = 1` applies to every job**, including scheduled incremental syncs.
+2. **One job at a time applies to every job**, including scheduled incremental syncs.
 3. **Service order is 乃木坂46 → 櫻坂46 → 日向坂46 → Yodel** (S1.2).
+
+## Implementation notes (release review, 2026-11-10)
+
+Where the shipped code differs from or refines the design above:
+
+- **Queued tracker.** A job's tracker is reset and set to `queued` at enqueue only when no other job of that service is running or queued. Otherwise it keeps that job's progress until this one starts. Each tracker reports `job_kind` (`sync` / `verify`), and the frontend waits for the kind it started. A Verify & Fix queued behind a sync therefore shows its own findings, not the sync's completion.
+- **Queue snapshot.** `GET /api/sync/queue` also returns `origin` for `running` and each `queued` job.
+- **Cancel.** `cancel?sequence=` drops the sequence's own jobs and any job adopted into it. Jobs outside the sequence stay queued. A cancelled sequence stops counting as active at once, so the scheduler and a new start-all no longer wait for it, and a new start-all is never joined to it. A cancel that lands after enqueue reserved the slot, but before the job's task exists, is honoured (the job never runs). The frontend applies a Cancel pressed before the start-all answered once the sequence id arrives. A cancel that did not take effect is logged (`sync_cancel_failed`).
+- **Lost sequence.** A sequence that disappears from the backend (restart) ends the frontend watch as `lost`, never as complete.
+- **i18n.** The queued state uses `sync.phaseQueued` ("Waiting") and `sync.queuedDetail` ("Waiting for another sync to finish (#n in line)"), not a single `sync.queued` key.
+- **Breadcrumbs.** `sync_queue` also emits `refused`, `cancel_not_running`, `job_failed` and `runner_failed`; `sync_sequence` also emits `joined` and `cancelled`.
+- **Progress (S2).**
+  - Run elapsed starts at the run's first `start_phase`, so time spent queued is not counted.
+  - Failed downloads are a separate `failed` field (shown as "· n failed"), not `detail_extra`.
+  - The discovering bar moves once per group handled (closed, failed or read).
+- **S3.** pysaka's `finalize_deferred_media` also returns `saved`, which SakaDesk logs.

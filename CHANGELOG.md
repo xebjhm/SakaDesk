@@ -14,10 +14,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   update icon can still be installed there.
 
 ### Fixed
-- **Sync progress now matches what is really happening.** Groups sync one at a
-  time (乃木坂46, 櫻坂46, 日向坂46, then Yodel), so the sync window no longer shows
-  one group while another downloads in the background. A group waiting its turn
-  says so, and the remaining time only appears once it can be estimated honestly.
+- **Sync progress now matches what is really happening.** Groups now sync one at
+  a time (乃木坂46, 櫻坂46, 日向坂46, then Yodel when several start together), so
+  the sync window no longer shows one group while another downloads in the
+  background. A group waiting its turn says so, the download bar always reaches
+  the end (failed files are counted apart), and the remaining time only appears
+  once it can be estimated honestly.
 - **No more needless re-logins after the PC wakes up.** An expired sign-in is
   now renewed automatically in the background, so syncing continues without
   asking you to log in again.

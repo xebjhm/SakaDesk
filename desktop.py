@@ -664,7 +664,7 @@ async def sync_all_authenticated(
     Yodel) and run one at a time by the sync coordinator. Logs
     ``tray_sync_now`` (``services`` = how many were authenticated, ``started``
     = how many were started or queued; the rest were already running or
-    queued).
+    queued, refused for shutdown, or failed).
     A failing service is logged (``tray_sync_now_failed``, service and error
     type) and does not stop the others.
     """

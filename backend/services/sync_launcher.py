@@ -1,9 +1,11 @@
 """Shared sync launch used by the HTTP API, the auto-sync scheduler and the tray.
 
-``launch_sync`` is the single place that starts a background sync. Since the
-sync coordinator (spec 2026-11-10, S1) it enqueues the sync in
-:mod:`backend.services.sync_coordinator`, which runs one job at a time across all
-services and applies the shutdown guard and the one-job-per-service dedup. The
+``launch`` / ``launch_sync`` enqueue a *sync* in
+:mod:`backend.services.sync_coordinator` (spec 2026-11-10, S1) for
+``POST /api/sync/start``, the scheduler and the tray; Verify & Fix and start-all
+sequences enqueue on the coordinator directly. The coordinator runs one job at a
+time across all services and applies the shutdown guard and the
+one-job-per-service-and-kind dedup. The
 ``POST /api/sync/start`` endpoint maps the result onto HTTP responses; the
 scheduler and the tray act on the result directly.
 """
@@ -48,7 +50,8 @@ def launch(
         include_inactive: Fetch lapsed subscriptions too, so their status flips
             to offline (default True, as for ``POST /api/sync/start``).
         force_resync: Re-fetch everything instead of resuming.
-        origin: Who asked: ``"api"``, ``"scheduler"`` or ``"tray"``. Logged only.
+        origin: Who asked: ``"api"``, ``"scheduler"`` or ``"tray"``. Logged, and
+            shown in ``GET /api/sync/queue``.
 
     Returns:
         The :class:`EnqueueResult` (``started``, ``queued`` with its position,

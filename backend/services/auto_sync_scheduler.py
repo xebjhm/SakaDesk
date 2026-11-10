@@ -8,14 +8,16 @@ the backend so syncing continues while the window is hidden in the tray.
 Decision order for each tick (the first match is the logged ``reason``):
 ``shutting_down`` -> ``disabled`` -> ``not_configured`` -> ``sequence_active``
 (a first-launch / start-all sequence is running in the sync coordinator) ->
-``not_authenticated`` -> launch (``started`` / ``queued`` / ``already_running`` /
+``session_expired`` (not authenticated and session_alert says a new login is
+needed) / ``not_authenticated`` -> launch (``started`` / ``queued`` / ``already_running`` /
 ``already_queued`` / ``shutting_down`` from
 :func:`backend.services.sync_launcher.launch_sync`). When a sequence ends the
 coordinator wakes the scheduler, so the next wait starts from there.
 
 The wait between ticks is at least :data:`MIN_INTERVAL_MINUTES`, whatever the
 stored interval says. :meth:`AutoSyncScheduler.wake` (called when the auto-sync
-settings change) ends the current wait early: the settings are re-read and a
+settings change, and by the sync coordinator when a sequence ends) ends the
+current wait early: the settings are re-read and a
 full new wait starts, without a tick.
 
 Logging uses ids and codes only: ``auto_sync_tick`` (service, reason,
@@ -164,7 +166,8 @@ class AutoSyncScheduler:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     def wake(self) -> None:
-        """End every service's current wait early so changed settings apply now.
+        """End every service's current wait early (changed settings, or the end of
+        a sync sequence) so a full new wait starts now.
 
         Safe to call from the event loop thread only. Each task re-reads the
         settings and starts a full new wait (no tick). A no-op while stopped.
@@ -272,7 +275,8 @@ _active: Optional[AutoSyncScheduler] = None
 
 
 def wake_scheduler() -> bool:
-    """Wake the running scheduler after the auto-sync settings changed.
+    """Wake the running scheduler after the auto-sync settings changed or a sync
+    sequence ended (sync coordinator).
 
     Returns True when a scheduler was woken, False when none is running (tests,
     E2E mode, shutdown). Logs ``auto_sync_wake_requested`` (woken).
