@@ -37,6 +37,7 @@ export function staticTokenVars(): Record<string, string> {
     }
     for (const [name, ms] of Object.entries(motion.duration)) vars[`--ds-duration-${name}`] = `${ms}ms`;
     vars['--ds-ease-standard'] = easingCss(motion.easing.standard);
+    for (const [name, ms] of Object.entries(motion.loading)) vars[`--ds-loading-${kebab(name)}`] = `${ms}ms`;
     vars['--ds-font-family-reading'] = fontFamily.reading;
     // First-paint defaults; installLanguageFonts() overrides them per UI language.
     vars['--ds-font-family-sans'] = fontFamily.sansJp;

@@ -22,10 +22,14 @@ describe('cssVars', () => {
         expect(vars['--ds-ease-standard']).toBe('cubic-bezier(0.2, 0, 0, 1)');
         expect(Object.keys(vars).every((k) => k.startsWith('--ds-'))).toBe(true);
         expect(vars['--ds-overlay-scrim']).toBe('rgba(0, 0, 0, 0.4)');
-        expect(Object.keys(vars)).toHaveLength(6 + 4 + 2 + 1 + 3 + 5 + 4 + 12 + 2 + 1 + 2 + 3 + 1 + 3 + 1 + 4 + 7 + 2 + 1 + 1 - 3 - 4 + 20 + 6 + 2 + 2 + 1 + 2 + 1 + 4 + 1 + 1 + 14 + 3 + 2 + 8 + 1 + 4 + 10 + 8); // memories fun-wave surfaces (+8: 3 rarity tiers, night + its ink, on-air, sky, note); memories keepsake surfaces (+10: 3 sepia steps, paper + hairline, cork, washi, foil, polaroid shadow, silhouette); scrollbar thumbs (+4: thumb, hover, on dark, on dark hover); calendar holiday + Saturday replace decor Sunday (+1); developer console (+8: bg, text, muted text, prompt, error, warning, badge, badge text); rail lens duration + centre (+2); blog feed segmented control (+3: track, shadow, size); blog feed tile (+14: 6 caption sizes, 2 shadows, glass + border + vignette, 2 durations, spring); frost hairline (+1), frost (+1), oshi (+4), star (+1); toast duration (+1); radius 11 (was 5); semantic (4 kinds x 5 steps) replaces feedback (3) and status (4); display step (+2 vars) and sans/serif family defaults (+2); header pill overlays (+2)
+        expect(Object.keys(vars)).toHaveLength(6 + 4 + 2 + 1 + 3 + 5 + 4 + 12 + 2 + 1 + 2 + 3 + 1 + 3 + 1 + 4 + 7 + 2 + 1 + 1 - 3 - 4 + 20 + 6 + 2 + 2 + 1 + 2 + 1 + 4 + 1 + 1 + 14 + 3 + 2 + 8 + 1 + 4 + 10 + 8 + 4); // loading wait timing (+4: reveal, slow, very slow, min visible); memories fun-wave surfaces (+8: 3 rarity tiers, night + its ink, on-air, sky, note); memories keepsake surfaces (+10: 3 sepia steps, paper + hairline, cork, washi, foil, polaroid shadow, silhouette); scrollbar thumbs (+4: thumb, hover, on dark, on dark hover); calendar holiday + Saturday replace decor Sunday (+1); developer console (+8: bg, text, muted text, prompt, error, warning, badge, badge text); rail lens duration + centre (+2); blog feed segmented control (+3: track, shadow, size); blog feed tile (+14: 6 caption sizes, 2 shadows, glass + border + vignette, 2 durations, spring); frost hairline (+1), frost (+1), oshi (+4), star (+1); toast duration (+1); radius 11 (was 5); semantic (4 kinds x 5 steps) replaces feedback (3) and status (4); display step (+2 vars) and sans/serif family defaults (+2); header pill overlays (+2)
         expect(vars['--ds-duration-glide']).toBe('400ms');
         expect(vars['--ds-duration-landing']).toBe('1400ms');
         expect(vars['--ds-duration-toast']).toBe('350ms');
+        expect(vars['--ds-loading-reveal']).toBe('200ms');
+        expect(vars['--ds-loading-slow']).toBe('3000ms');
+        expect(vars['--ds-loading-very-slow']).toBe('10000ms');
+        expect(vars['--ds-loading-min-visible']).toBe('400ms');
     });
 
     it.each(GROUP_IDS)('maps every %s group token', (id) => {
