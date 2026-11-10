@@ -64,3 +64,11 @@ PURE_GREETING_RE = re.compile(
 
 # Words that earn the caption bonus in the photo score.
 CAPTION_BONUS_WORDS = (NICKNAME_TOKEN, "おはよ", "おやすみ", "好き")
+
+# Sentence boundaries on RAW (un-normalised) text: full-width ！？ are listed
+# because NFKC has not run. Used where her words are shown as written.
+RAW_SENTENCE_SPLIT_RE = re.compile(r"[。！？!?\n]+")
+
+# Seasonal words for the Christmas and Valentine's Day moments.
+CHRISTMAS_RE = re.compile(r"クリスマス|メリクリ|🎄")
+VALENTINE_RE = re.compile(r"バレンタイン|チョコ")

@@ -243,3 +243,77 @@ async def test_get_person_facts_merges_rooms_sorted(tmp_path):
     old, new = summary.member_dirs
     assert [(r, f.id) for r, f in got] == [(old, 1), (new, 1), (old, 2), (new, 2)]
     assert [f.ts.month for _, f in got] == [1, 2, 3, 3]
+
+
+# --- date-scoped queries (get_facts_on / facts_on_month_day) -----------------
+
+ON_THIS_DAY_ROWS = [
+    m(1, "2024-11-10T03:00:00Z", content="2024年の今日"),  # 11-10 JST
+    m(2, "2024-11-11T03:00:00Z", content="翌日"),
+    m(3, "2025-11-09T16:30:00Z", content="JSTでは11-10"),  # 11-10 01:30 JST
+    m(4, "2025-11-10T15:30:00Z", content="JSTでは11-11"),  # 11-11 00:30 JST
+    m(5, "2026-11-10T12:00:00Z", "picture"),
+    m(6, "2026-11-10T01:00:00Z", content="同じ日の朝"),
+]
+
+
+@pytest.fixture
+def on_this_day(tmp_path):
+    from backend.tests.memories_archive import write_room
+
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_room(tmp_path, "34 金村 美玖", "58 金村 美玖", ON_THIS_DAY_ROWS)
+    return tmp_path, d
+
+
+@pytest.mark.asyncio
+async def test_get_facts_on_month_day_spans_years(on_this_day):
+    svc, d = on_this_day
+    got = await mf.get_facts_on(svc, d, month_day="11-10")
+    assert [f.id for f in got] == [1, 3, 6, 5]  # by (ts, id), JST dates
+    assert {f.jst_date.year for f in got} == {2024, 2025, 2026}
+    assert [f.id for f in mf.facts_on_month_day(svc, d, "11-11")] == [2, 4]
+
+
+@pytest.mark.asyncio
+async def test_get_facts_on_day_returns_one_date(on_this_day):
+    svc, d = on_this_day
+    got = await mf.get_facts_on(svc, d, day=date(2026, 11, 10))
+    assert [f.id for f in got] == [6, 5]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "kwargs", [{}, {"day": date(2026, 11, 10), "month_day": "11-10"}]
+)
+async def test_get_facts_on_needs_exactly_one_argument(on_this_day, kwargs):
+    svc, d = on_this_day
+    with pytest.raises(ValueError):
+        await mf.get_facts_on(svc, d, **kwargs)
+
+
+@pytest.mark.asyncio
+async def test_get_facts_on_unavailable_index_is_empty(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    d = tmp_path / "messages" / "1 x" / "2 x"
+    d.mkdir(parents=True)
+    (d / "messages.json").write_text("{bad", encoding="utf-8")
+    assert await mf.get_facts_on(tmp_path, d, month_day="11-10") == []
+
+
+@pytest.mark.asyncio
+async def test_get_facts_on_read_error_is_empty_and_logged(on_this_day, monkeypatch):
+    import sqlite3
+
+    from structlog.testing import capture_logs
+
+    svc, d = on_this_day
+
+    def broken(*a, **k):
+        raise sqlite3.OperationalError("locked")
+
+    monkeypatch.setattr(mf, "facts_on_month_day", broken)
+    with capture_logs() as logs:
+        assert await mf.get_facts_on(svc, d, month_day="11-10") == []
+    (ev,) = [e for e in logs if e["event"] == "memory_facts_read_failed"]
+    assert ev["error_type"] == "OperationalError" and ev["member_id"] == "58"

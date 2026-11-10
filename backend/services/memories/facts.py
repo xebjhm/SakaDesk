@@ -47,6 +47,13 @@ API (dates are JST calendar dates, inclusive; results sorted by ``(ts, id)``):
   could not be built.
 - ``facts_in_range(...)`` -- same query without the freshness check (blocking;
   call via ``asyncio.to_thread``). ``facts_for_date(sdir, mdir, day)``.
+- ``async get_facts_on(service_data_dir, member_dir, *, day=None,
+  month_day=None) -> list[Fact]`` -- exactly one of ``day`` (one JST date) or
+  ``month_day`` (``MM-DD`` in every year, for On This Day) must be given, else
+  ``ValueError``. Same freshness check as ``get_facts``; ``[]`` when the index
+  is unavailable or the read fails (``memory_facts_read_failed``).
+- ``facts_on_month_day(sdir, mdir, month_day)`` -- the ``MM-DD`` query without
+  the freshness check (blocking).
 - Pure helpers on a fact list: ``select`` (types / promo / nickname / greeting
   / favourited / hours / date range filters), ``on_date``, ``first_last``,
   ``by_year``, ``aggregate`` -> :class:`Aggregate`, ``year_aggregates``,
@@ -69,10 +76,11 @@ import asyncio
 import contextlib
 import json
 from collections import Counter
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+from typing import Any
 
 import structlog
 
@@ -203,6 +211,50 @@ def facts_for_date(service_data_dir: Path, member_dir: Path, day: date) -> list[
     return facts_in_range(service_data_dir, member_dir, day, day)
 
 
+def facts_on_month_day(
+    service_data_dir: Path, member_dir: Path, month_day: str
+) -> list[Fact]:
+    """Facts whose JST date is ``MM-DD`` in any year, by ``(ts, id)``. Blocking."""
+    sql = (
+        f"{_SELECT} WHERE service_dir=? AND member_dir=? AND substr(jst_date, 6)=? "
+        "ORDER BY ts_utc, id"
+    )
+    args = (str(service_data_dir), mi._rel(service_data_dir, member_dir), month_day)
+    with contextlib.closing(mi._connect()) as c:
+        rows = c.execute(sql, args).fetchall()
+    return [_row_to_fact(r) for r in rows]
+
+
+async def _fresh_index(
+    service_data_dir: Path, member_dir: Path
+) -> mi.MemberIndex | None:
+    """The room's index after the freshness check, or ``None`` when unavailable."""
+    idx = await mi.get_member_index(service_data_dir, member_dir)
+    if not idx.data_hash:  # the index could not be built (already logged)
+        logger.info("memory_facts_unavailable", member_id=idx.member_id)
+        return None
+    if idx.cache_stale:
+        logger.warning("memory_facts_stale", member_id=idx.member_id)
+    return idx
+
+
+async def _read(
+    idx: mi.MemberIndex, fn: Callable[..., list[Fact]], *args: Any, **kwargs: Any
+) -> list[Fact]:
+    """Run a blocking fact query in a worker; ``[]`` (logged) when it fails."""
+    try:
+        facts = await asyncio.to_thread(fn, *args, **kwargs)
+    except Exception as e:  # noqa: BLE001 - a cache read must never raise
+        logger.warning(
+            "memory_facts_read_failed",
+            member_id=idx.member_id,
+            error_type=type(e).__name__,
+        )
+        return []
+    logger.debug("memory_facts_read", member_id=idx.member_id, count=len(facts))
+    return facts
+
+
 async def get_facts(
     service_data_dir: Path,
     member_dir: Path,
@@ -214,33 +266,43 @@ async def get_facts(
     until: datetime | None = None,
 ) -> list[Fact]:
     """Fresh facts for one room: rebuilds the index when stale, then queries."""
-    idx = await mi.get_member_index(service_data_dir, member_dir)
-    if not idx.data_hash:  # the index could not be built (already logged)
-        logger.info("memory_facts_unavailable", member_id=idx.member_id)
+    idx = await _fresh_index(service_data_dir, member_dir)
+    if idx is None:
         return []
-    if idx.cache_stale:
-        logger.warning("memory_facts_stale", member_id=idx.member_id)
     type_list = list(types) if types is not None else None
-    try:
-        facts = await asyncio.to_thread(
-            facts_in_range,
-            service_data_dir,
-            member_dir,
-            start,
-            end,
-            types=type_list,
-            include_promo=include_promo,
-            until=until,
-        )
-    except Exception as e:  # noqa: BLE001 - a cache read must never raise
-        logger.warning(
-            "memory_facts_read_failed",
-            member_id=idx.member_id,
-            error_type=type(e).__name__,
-        )
+    return await _read(
+        idx,
+        facts_in_range,
+        service_data_dir,
+        member_dir,
+        start,
+        end,
+        types=type_list,
+        include_promo=include_promo,
+        until=until,
+    )
+
+
+async def get_facts_on(
+    service_data_dir: Path,
+    member_dir: Path,
+    *,
+    day: date | None = None,
+    month_day: str | None = None,
+) -> list[Fact]:
+    """Fresh facts of one room on one JST ``day`` or on ``month_day`` in every year.
+
+    Exactly one of ``day`` / ``month_day`` (``MM-DD``) must be given, else
+    ``ValueError``. ``[]`` when the index is unavailable or the read fails.
+    """
+    if (day is None) == (month_day is None):
+        raise ValueError("pass exactly one of day or month_day")
+    idx = await _fresh_index(service_data_dir, member_dir)
+    if idx is None:
         return []
-    logger.debug("memory_facts_read", member_id=idx.member_id, count=len(facts))
-    return facts
+    if day is not None:
+        return await _read(idx, facts_for_date, service_data_dir, member_dir, day)
+    return await _read(idx, facts_on_month_day, service_data_dir, member_dir, month_day)
 
 
 async def get_person_facts(
