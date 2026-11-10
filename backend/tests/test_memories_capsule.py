@@ -377,6 +377,27 @@ async def test_resurfacing_is_oldest_written_first(svc):
 
 
 @pytest.mark.asyncio
+async def test_resurfacing_limit_attaches_text_for_the_shown_notes_only(
+    svc, monkeypatch
+):
+    older = await write_day(svc, when=datetime(2023, 11, 10, 3, 0, tzinfo=timezone.utc))
+    await write_day(svc)
+    await write_card(svc)
+    attached: list[int] = []
+    real = people.attach_texts
+
+    async def spy(sdir, refs):
+        attached.append(len(refs))
+        await real(sdir, refs)
+
+    monkeypatch.setattr(people, "attach_texts", spy)
+    now = datetime(2026, 11, 10, 3, 0, tzinfo=timezone.utc)
+    got = await at(now, capsule.resurfacing, SERVICE, svc, month_day="11-10", limit=1)
+    assert [i["note"]["id"] for i in got["notes"]] == [older["id"]]
+    assert attached == [1]
+
+
+@pytest.mark.asyncio
 async def test_due_notes_match_resurfacing_without_text(svc):
     await write_day(svc)
     await write_card(svc)

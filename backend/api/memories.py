@@ -648,6 +648,17 @@ def _note_not_found(note_id: int) -> HTTPException:
     return HTTPException(status_code=404, detail="Note not found")
 
 
+# SQLite's INTEGER PRIMARY KEY range: an id outside it names no note (and
+# would overflow the driver), so it is 404 like any other unknown note.
+NOTE_ID_MAX = 2**63 - 1
+
+
+def _check_note_id(note_id: int) -> None:
+    if not 1 <= note_id <= NOTE_ID_MAX:
+        logger.info("memories.api.note_not_found", reason="note_id_range")
+        raise HTTPException(status_code=404, detail="Note not found")
+
+
 @router.get("/{service}/capsule")
 async def capsule_list_route(
     service: str,
@@ -739,10 +750,12 @@ async def capsule_create_route(service: str, request: Request) -> dict:
 
 @router.put("/{service}/capsule/{note_id}")
 async def capsule_update_route(service: str, note_id: int, request: Request) -> dict:
-    """Replace a note's body (``{"body": str}``); 404 for an unknown note or
-    another service's, 400 ``bad_note`` / ``bad_body`` for a bad body."""
+    """Replace a note's body (``{"body": str}``); 404 for an unknown note,
+    another service's or an id outside 1..2^63-1, 400 ``bad_note`` /
+    ``bad_body`` for a bad body."""
     now = datetime.now(timezone.utc)
     service_data_dir = _service_dir(service)
+    _check_note_id(note_id)
     body = await _capsule_body(request, _CAPSULE_UPDATE_KEYS)
     try:
         with _store_guard("capsule_update"):
@@ -758,8 +771,10 @@ async def capsule_update_route(service: str, note_id: int, request: Request) -> 
 
 @router.delete("/{service}/capsule/{note_id}", status_code=204)
 async def capsule_delete_route(service: str, note_id: int) -> Response:
-    """Delete a note; 404 for an unknown note or another service's."""
+    """Delete a note; 404 for an unknown note, another service's or an id
+    outside 1..2^63-1."""
     service_data_dir = _service_dir(service)
+    _check_note_id(note_id)
     with _store_guard("capsule_delete"):
         found = await capsule.delete_note(service, service_data_dir, note_id=note_id)
     if not found:

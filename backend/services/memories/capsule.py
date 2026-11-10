@@ -38,11 +38,12 @@ API:
   ``None`` (unknown id or another service's); ``async delete_note(service,
   sdir, *, note_id)`` -> whether it existed. ``anchor`` is ``{"kind": "day",
   "date"}`` or ``{"kind": "card", "member", "card_key", "date"}``.
-- ``async resurfacing(service, sdir, *, month_day, now)`` -> ``{"notes":
-  [{"note", "years_ago", "message", "member_path", "name"}]}``, oldest written
-  first. ``message`` is the shared message object (with her words) or
+- ``async resurfacing(service, sdir, *, month_day, now, limit=None)`` ->
+  ``{"notes": [{"note", "years_ago", "message", "member_path", "name"}]}``,
+  oldest written first. ``message`` is the shared message object (with her words) or
   ``None``; ``member_path`` / ``name`` are the message's person, for a card
-  anchor its person even without a message, else ``None``.
+  anchor its person even without a message, else ``None``. ``limit`` keeps
+  the first ``limit`` notes (the hub passes :data:`HUB_LIMIT`).
 - ``async due_notes(service, today) -> list[user_store.CapsuleNote]`` -- the
   M4 hook: the notes due on JST ``today`` (same set and order as
   :func:`resurfacing`), a pure query with no message attached. M4's
@@ -265,17 +266,26 @@ def _best_words(tagged: Sequence[_Tagged], oshi: set[str]) -> _Tagged | None:
 
 
 async def resurfacing(
-    service: str, sdir: Path, *, month_day: str, now: datetime
+    service: str,
+    sdir: Path,
+    *,
+    month_day: str,
+    now: datetime,
+    limit: int | None = None,
 ) -> dict:
     """The notes resurfacing on ``month_day`` this JST year (module docstring).
 
-    ``ValueError`` for an invalid ``month_day``.
+    ``limit`` keeps only the first ``limit`` notes before any message is
+    picked, so her words are read for the shown notes only. ``ValueError``
+    for an invalid ``month_day``.
     """
     parse_month_day(month_day)
     year = now.astimezone(JST).year
     notes = await user_store.anotes_created_on_month_day(
         service, month_day, before_year=year
     )
+    if limit is not None:
+        notes = notes[:limit]
     summaries = await mi.list_members(sdir) if notes else []
     oshi = await people.oshi_rooms(service, summaries) if notes else set()
     picks: dict[tuple[date, str | None], _Tagged | None] = {}

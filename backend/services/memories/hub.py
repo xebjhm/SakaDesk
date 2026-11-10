@@ -68,8 +68,8 @@ by the memory index).
 her message at this JST time of day on an earlier date, or ``None``.
 
 ``capsule`` -- 時光膠囊 (spec 14.4): the first of
-``capsule.resurfacing(month_day=today)`` (``capsule.HUB_LIMIT`` = 1), the
-fan's own note with her message of the anchor day, or ``None``.
+``capsule.resurfacing(month_day=today, limit=capsule.HUB_LIMIT)`` (1, so her
+words are read for the shown note only), the fan's own note with her message of the anchor day, or ``None``.
 
 ``gacha_left`` -- ``gacha.MAX_PULLS`` minus today's recorded pulls (JST day),
 never below 0. It may be 0: the frontend shows 「また明日」, never the number.
@@ -457,7 +457,11 @@ async def _capsule_note(
     """The hub's resurfacing note, or ``None`` (none due, or the store failed)."""
     try:
         due = await capsule.resurfacing(
-            service, sdir, month_day=today.strftime("%m-%d"), now=now
+            service,
+            sdir,
+            month_day=today.strftime("%m-%d"),
+            now=now,
+            limit=capsule.HUB_LIMIT,
         )
     except sqlite3.Error as e:
         logger.warning(
@@ -468,7 +472,7 @@ async def _capsule_note(
             error_type=type(e).__name__,
         )
         return None
-    notes = due["notes"][: capsule.HUB_LIMIT]
+    notes = due["notes"]
     return notes[0] if notes else None
 
 

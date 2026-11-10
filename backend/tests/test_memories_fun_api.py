@@ -562,6 +562,12 @@ def test_capsule_note_of_another_service_is_404(out):
     assert put(f"{CAPSULE}/999", {"body": "x"}).status_code == 404
 
 
+@pytest.mark.parametrize("note_id", [0, -1, 2**63, 2**64])
+def test_capsule_note_id_out_of_range_is_404(out, note_id):
+    assert put(f"{CAPSULE}/{note_id}", {"body": "x"}).status_code == 404
+    assert delete(f"{CAPSULE}/{note_id}").status_code == 404
+
+
 def test_capsule_unknown_service_is_400(out):
     url = "/api/memories/nope/capsule"
     assert get(url, date="2025-01-06").status_code == 400
