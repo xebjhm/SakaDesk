@@ -23,6 +23,9 @@ beforeEach(() => {
     shelf = [2025];
     membersYears = [];
     server.use(
+        http.get('/api/memories/:service/on-this-day', ({ request }) => (
+            HttpResponse.json({ month_day: new URL(request.url).searchParams.get('date'), years: [] })
+        )),
         http.get('/api/memories/:service/recap/years', () => (
             shelf ? HttpResponse.json({ years: shelf }) : HttpResponse.json({ detail: 'x' }, { status: 500 })
         )),
