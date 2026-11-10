@@ -1173,6 +1173,17 @@ async def test_completed_sync_schedules_memories_refreshes(tmp_path):
     assert index.await_args.args[0] == profiles.await_args.args[1]
 
 
+async def test_completed_sync_requests_a_memories_card_check(tmp_path):
+    m = _manager(scanned=True, extra=[])
+    check = MagicMock()
+    with patch("backend.services.sync_service.request_card_check", check):
+        ok = await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+    assert ok is True
+    check.assert_called_once_with("hinatazaka46")
+
+
 async def test_failed_memories_refresh_does_not_affect_sync(tmp_path):
     m = _manager(scanned=True, extra=[])
     profiles = AsyncMock(side_effect=RuntimeError("scrape boom"))

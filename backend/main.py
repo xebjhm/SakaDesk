@@ -257,6 +257,16 @@ async def lifespan(app: FastAPI):
     else:
         logger.info("auto_sync_scheduler_skipped", reason="env")
 
+    # Memories notifications (spec 15): one background task, same env gate.
+    from backend.services.memories import notify_scheduler
+
+    memories_notifier: notify_scheduler.MemoriesNotifyScheduler | None = None
+    if scheduler_allowed_in_env():
+        memories_notifier = notify_scheduler.MemoriesNotifyScheduler(get_all_services())
+        memories_notifier.start()
+    else:
+        logger.info("memories_notify_skipped", reason="env")
+
     yield
 
     # --- Shutdown ---
@@ -303,6 +313,11 @@ async def lifespan(app: FastAPI):
     # begin_shutdown() has run).
     if auto_sync_scheduler is not None:
         await auto_sync_scheduler.stop()
+
+    # The Memories notifier writes app_state.db (ledger, card baselines) under
+    # the data lock, so it must stop before the write barrier below.
+    if memories_notifier is not None:
+        await memories_notifier.stop()
 
     # Ordered write barrier (must not be reordered): quiesce+drain every
     # writer registered above, THEN allow final synchronous writes (window

@@ -337,8 +337,10 @@ def favorited_at(service: str, message_ids: list[int]) -> dict[int, str]:
 # Ledger key: (kind, service, subject, occasion).
 NotifyKey = tuple[str, str, str, str]
 
+# ``skipped``: an occasion notify_content will never send (graduated, lapsed,
+# no longer listed); ``no_recap``: a recap occasion whose year has no recap.
 NOTIFY_OUTCOMES: frozenset[str] = frozenset(
-    {"pending", "sent", "failed", "suppressed", "empty"}
+    {"pending", "sent", "failed", "suppressed", "empty", "skipped", "no_recap"}
 )
 # Four bound variables per key; stays well under SQLite's variable cap.
 _KEY_CHUNK = _IN_CHUNK // 4

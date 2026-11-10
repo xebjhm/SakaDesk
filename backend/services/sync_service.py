@@ -44,6 +44,7 @@ from backend.services.notification_service import send_planned
 from backend.services.chat_kind import is_member_dir
 from backend.services.memories.index import build_all as build_memory_index
 from backend.services.memories.member_profiles import refresh_member_profiles
+from backend.services.memories.notify_scheduler import request_card_check
 from backend.services.memories.subscriptions import archive_subscription_starts
 from backend.services.i18n import get_strings, resolve_ui_language
 from backend.services.quiet_state import query_quiet_state
@@ -1396,7 +1397,9 @@ class SyncService:
         """Refresh member profiles and the memory index in the background.
 
         Scheduled as tracked tasks so they never block or fail the sync; each
-        task logs its own failures (``background_task.failed``).
+        task logs its own failures (``background_task.failed``). Then asks the
+        Memories notifier for a foil card check of this service
+        (``request_card_check``, a no-op when no notifier runs).
         """
         try:
             track_background_task(
@@ -1407,6 +1410,8 @@ class SyncService:
                 build_memory_index(self.service_data_dir),
                 name="memories_index",
             )
+            # Foil card unlocks: checked once the index above has had time to build.
+            request_card_check(self._service)
             logger.info("memories_refresh_scheduled", service=self._service)
         except Exception as e:
             logger.warning(
