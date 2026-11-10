@@ -156,3 +156,12 @@ def test_transcripts_stat_changes_with_the_file(sdir):
     st = path.stat()
     os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 1_000_000))
     assert tr.transcripts_stat(sdir, [ROOM, other]) != first
+
+
+def test_keyword_hits_give_segment_indexes():
+    segments = {
+        5: [seg(0, 1, "ねえ"), seg(1, 2, "おやすみ🌙")],
+        7: [seg(0, 1, "ｵﾔｽﾐ"), seg(1, 2, "おやすみなさい")],
+    }
+    assert tr.keyword_hits(segments, OYASUMI) == [(5, 1), (7, 1)]
+    assert tr.keyword_hits({}, OYASUMI) == []

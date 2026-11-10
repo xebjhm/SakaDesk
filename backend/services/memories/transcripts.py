@@ -2,14 +2,16 @@
 
 The only way Memories reads a room's ``transcriptions.json``: every read goes
 through ``TranscriptionStorage().load_all`` (the one parser). All functions
-except :func:`keyword_clips` are blocking; call them via ``asyncio.to_thread``.
+except :func:`keyword_hits` / :func:`keyword_clips` are blocking; call them via ``asyncio.to_thread``.
 
 - ``transcript_ids(sdir, room)`` -- ids with at least one segment and
   ``no_speech`` false.
 - ``segments_for(sdir, room, ids)`` -- ``{id: [{"start", "end", "text"}]}``
   for the wanted ids (``no_speech`` entries excluded).
+- ``keyword_hits(segments, pattern)`` -- pure: ``(message_id, segment
+  index)`` of every segment whose NFKC text matches ``pattern``.
 - ``keyword_clips(segments, pattern, *, pad_s=0.3)`` -- pure: one clip per
-  segment whose NFKC text matches ``pattern``.
+  matching segment.
 - ``transcripts_stat(sdir, rooms)`` -- ``(size, mtime_ns)`` per room's file
   (``None`` when absent), for cache hashes.
 
@@ -70,21 +72,35 @@ def segments_for(sdir: Path, room: str, ids: Iterable[int]) -> dict[int, list[di
     }
 
 
+def keyword_hits(
+    segments: Mapping[int, list[dict]], pattern: re.Pattern
+) -> list[tuple[int, int]]:
+    """``(message_id, segment index)`` of every segment whose NFKC text matches.
+
+    Pure. Order: ``segments`` order, then segment order. The index is
+    text-free, so callers may cache it and re-find the segment later.
+    """
+    return [
+        (mid, i)
+        for mid, segs in segments.items()
+        for i, s in enumerate(segs)
+        if pattern.search(normalize(s["text"]))
+    ]
+
+
 def keyword_clips(
     segments: Mapping[int, list[dict]], pattern: re.Pattern, *, pad_s: float = 0.3
 ) -> list[Clip]:
     """``(message_id, max(0, start - pad), end + pad, text)`` per matching segment.
 
-    Matching runs on the NFKC-normalised text; the returned text is the
-    segment's own. Order: ``segments`` order, then segment order.
+    Matching runs on the NFKC-normalised text (:func:`keyword_hits`); the
+    returned text is the segment's own. Order: ``segments`` order, then
+    segment order.
     """
     out: list[Clip] = []
-    for mid, segs in segments.items():
-        for s in segs:
-            if pattern.search(normalize(s["text"])):
-                out.append(
-                    (mid, max(0, s["start"] - pad_s), s["end"] + pad_s, s["text"])
-                )
+    for mid, i in keyword_hits(segments, pattern):
+        s = segments[mid][i]
+        out.append((mid, max(0, s["start"] - pad_s), s["end"] + pad_s, s["text"]))
     return out
 
 
@@ -103,4 +119,10 @@ def transcripts_stat(
     return tuple(out)
 
 
-__all__ = ["keyword_clips", "segments_for", "transcript_ids", "transcripts_stat"]
+__all__ = [
+    "keyword_clips",
+    "keyword_hits",
+    "segments_for",
+    "transcript_ids",
+    "transcripts_stat",
+]

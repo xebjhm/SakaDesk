@@ -18,6 +18,7 @@ from backend.services.memories import transcripts as tr
 from backend.services.memories.view_cache import contains_text
 from backend.tests.memories_archive import msg, write_room
 from backend.tests.test_memories_cards import fact
+from backend.services.transcription_service import TranscriptionStorage
 from backend.tests.test_memories_transcripts import entry, seg, write_transcripts
 
 SERVICE = "hinatazaka46"
@@ -182,14 +183,20 @@ async def test_scoped_programs_omit_empty_ones(svc):
 
 
 @pytest.mark.asyncio
-async def test_daily_shuffle_stable_today_and_differs_tomorrow(svc):
+async def test_daily_shuffle_stable_through_the_night(svc):
     async def order_at(when):
         with time_machine.travel(when, tick=False):
             return ids(await program(svc, "oyasumi", now=datetime.now(timezone.utc)))
 
-    base = await order_at(datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc))
-    # same JST day (2026-11-11 00:00 .. 23:59): the same broadcast on reopen
-    assert await order_at(datetime(2026, 11, 11, 14, 59, tzinfo=timezone.utc)) == base
+    # broadcast day 2026-11-10 runs JST 11-10 05:00 .. 11-11 04:59
+    base = await order_at(datetime(2026, 11, 9, 20, 0, tzinfo=timezone.utc))
+    for when in (
+        datetime(2026, 11, 10, 12, 0, tzinfo=timezone.utc),  # JST 21:00
+        datetime(2026, 11, 10, 14, 30, tzinfo=timezone.utc),  # JST 23:30
+        datetime(2026, 11, 10, 15, 30, tzinfo=timezone.utc),  # JST 00:30
+        datetime(2026, 11, 10, 19, 59, tzinfo=timezone.utc),  # JST 04:59
+    ):
+        assert await order_at(when) == base  # tonight's order holds past midnight
     days = {
         tuple(await order_at(datetime(2026, 11, d, 3, 0, tzinfo=timezone.utc)))
         for d in range(12, 20)
@@ -197,6 +204,35 @@ async def test_daily_shuffle_stable_today_and_differs_tomorrow(svc):
     assert len(days | {tuple(base)}) > 1  # another day, another order
     for order in days:
         assert sorted(order) == [101, 104, 105, 201]
+
+
+@pytest.mark.parametrize(
+    ("utc", "day"),
+    [
+        (datetime(2026, 11, 10, 19, 59, tzinfo=timezone.utc), "2026-11-10"),  # 04:59
+        (datetime(2026, 11, 10, 20, 0, tzinfo=timezone.utc), "2026-11-11"),  # 05:00
+        (datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc), "2026-11-10"),  # 00:00
+    ],
+)
+def test_broadcast_day_rolls_over_at_five_jst(utc, day):
+    with time_machine.travel(utc, tick=False):
+        assert radio.broadcast_day(datetime.now(timezone.utc)) == day
+
+
+@pytest.mark.asyncio
+async def test_program_cache_row_is_replaced_not_added(svc):
+    for d in (10, 11, 12):
+        await program(svc, "oyasumi", now=datetime(2026, 11, d, 3, tzinfo=timezone.utc))
+    # year is ignored outside chrono: no extra rows, and the log says None
+    with capture_logs() as logs:
+        await program(svc, "oyasumi", year=2024)
+    assert next(e for e in logs if e["event"] == "memories_radio")["year"] is None
+    assert len(cached_payloads("radio_program")) == 1
+    await program(svc, "chrono", year=2024)
+    await program(
+        svc, "chrono", year=2024, now=datetime(2026, 11, 12, 3, tzinfo=timezone.utc)
+    )
+    assert len(cached_payloads("radio_program")) == 2
 
 
 @pytest.mark.asyncio
@@ -418,3 +454,132 @@ async def test_cassettes_without_voices_skip_colours(tmp_path, monkeypatch):
         }
     ev = next(e for e in logs if e["event"] == "memories_radio")
     assert ev["view"] == "cassettes" and ev["count"] == 0
+
+
+@pytest.mark.asyncio
+async def test_cassette_colour_fills_in_when_pictures_arrive(svc, monkeypatch):
+    colors: dict[str, str | None] = {"2023-05": None}
+
+    async def fake(service, sdir, member):
+        return {"colors": dict(colors)}
+
+    monkeypatch.setattr(album_colors, "month_colors_for", fake)
+    first = await radio.radio_cassettes(SERVICE, svc, member=None)
+    assert first["cassettes"][0]["color"] is None
+    colors["2023-05"] = "#336699"
+    (svc / ROOM_A / "picture").mkdir()  # media repair adds the pictures
+    again = await radio.radio_cassettes(SERVICE, svc, member=None)
+    assert again["cassettes"][0]["color"] == "#336699"
+
+
+# --- clip windows -------------------------------------------------------------------------
+
+
+def clip_room(sdir, segments, dur=30.0):
+    write_room(
+        sdir,
+        "34 金村 美玖",
+        "58 金村 美玖",
+        [voice(101, "2023-05-01T13:00:00Z", dur)],
+    )
+    write_transcripts(sdir, ROOM_A, [entry(101, segments)])
+
+
+@pytest.fixture
+def bare(tmp_path, oshi_names, monkeypatch):
+    mi.set_db_path(tmp_path / "idx.db")
+    out = tmp_path / "out"
+    monkeypatch.setattr(people, "output_dir", lambda: out)
+    return out / SVC_NAME
+
+
+def windows(body):
+    return [
+        (t["start"], t["end"], [s["text"] for s in t["segments"]])
+        for t in body["tracks"]
+    ]
+
+
+@pytest.mark.asyncio
+async def test_clip_end_is_clamped_to_the_voice_length(bare):
+    clip_room(bare, [seg(29.0, 29.9, "おやすみ"), seg(31.0, 32.0, "おやすみ")])
+    body = await program(bare, "oyasumi_clips")
+    # the second segment lies past the 30 s voice: its window is empty, dropped
+    assert windows(body) == [(pytest.approx(28.7), 30.0, ["おやすみ"])]
+
+
+@pytest.mark.asyncio
+async def test_clip_end_unclamped_without_a_length(bare):
+    clip_room(bare, [seg(29.0, 29.9, "おやすみ")], dur=None)
+    body = await program(bare, "oyasumi_clips")
+    assert windows(body) == [(pytest.approx(28.7), pytest.approx(30.2), ["おやすみ"])]
+
+
+@pytest.mark.asyncio
+async def test_overlapping_and_touching_clips_merge(bare):
+    clip_room(
+        bare,
+        [
+            seg(0.0, 1.0, "おやすみ"),
+            seg(1.2, 2.0, "おやすみなさい"),  # overlaps the first window
+            seg(2.6, 3.0, "おやすみ〜"),  # touches: 2.0 + 0.3 == 2.6 - 0.3
+            seg(5.0, 6.0, "ふふ"),
+            seg(9.0, 10.0, "おやすみ🌙"),  # separate
+        ],
+    )
+    for _ in range(2):  # miss, then hit (re-found by index)
+        body = await program(bare, "oyasumi_clips")
+        assert windows(body) == [
+            (0, pytest.approx(3.3), ["おやすみ", "おやすみなさい", "おやすみ〜"]),
+            (pytest.approx(8.7), pytest.approx(10.3), ["おやすみ🌙"]),
+        ]
+        assert all("segment_indexes" not in t for t in body["tracks"])
+    stored = cached_payloads("radio_program")[0]
+    assert [t["segment_indexes"] for t in stored["tracks"]] == [[0, 1, 2], [4]]
+
+
+@pytest.mark.asyncio
+async def test_clips_are_refound_by_index_not_by_window(bare, monkeypatch):
+    clip_room(bare, [seg(0.0, 1.0, "ねえ"), seg(2.0, 3.0, "おやすみ")])
+    await program(bare, "oyasumi_clips")  # cache index 1
+    real = tr.segments_for
+
+    def shifted(sdir, room, ids):  # same segments, times nudged
+        return {
+            mid: [{**s, "start": s["start"] + 0.01} for s in segs]
+            for mid, segs in real(sdir, room, ids).items()
+        }
+
+    monkeypatch.setattr(tr, "segments_for", shifted)
+    body = await program(bare, "oyasumi_clips")
+    assert body["tracks"][0]["segments"][0]["text"] == "おやすみ"
+
+    def reworded(sdir, room, ids):  # index 1 no longer matches
+        return {mid: [seg(0, 1, "ねえ"), seg(2, 3, "またね")] for mid in ids}
+
+    monkeypatch.setattr(tr, "segments_for", reworded)
+    with capture_logs() as logs:
+        assert (await program(bare, "oyasumi_clips"))["tracks"] == []
+    assert any(e.get("reason") == "clip_missing" for e in logs)
+
+
+@pytest.mark.asyncio
+async def test_each_sidecar_is_read_once_per_miss(svc, monkeypatch):
+    add_transcripts(svc)
+    write_transcripts(svc, ROOM_B, [entry(201, [seg(0.0, 1.0, "おやすみ")])])
+    calls: list[str] = []
+    real = TranscriptionStorage.load_all
+
+    def counting(self, member_dir):
+        calls.append(member_dir.name)
+        return real(self, member_dir)
+
+    monkeypatch.setattr(TranscriptionStorage, "load_all", counting)
+    await program(svc, "oyasumi_clips")  # miss
+    assert sorted(calls) == ["58 金村 美玖", "60 小坂 菜緒"]
+    calls.clear()
+    await program(svc, "oyasumi_clips")  # hit: only the attach reads
+    assert sorted(calls) == ["58 金村 美玖", "60 小坂 菜緒"]
+    calls.clear()
+    await program(svc, "oyasumi")  # a miss on another program: once per room
+    assert sorted(calls) == ["58 金村 美玖", "60 小坂 菜緒"]
