@@ -3,6 +3,7 @@
 ``desktop.py`` registers handlers once the window exists. Toast callbacks run
 on a WinRT thread and call :func:`open_chat` or :func:`open_window`, which
 never raise (so do :func:`open_login`, which shows a service's login dialog,
+:func:`open_memories`, which opens Memories at a route,
 and :func:`set_tray_alert`, the tray warning badge). The backend pushes the tray tooltip with :func:`set_tray_tooltip`,
 and desktop threads (the tray) schedule coroutines on the uvicorn event loop
 with :func:`run_on_server_loop`. The call popup host
@@ -30,6 +31,8 @@ _open_chat_handler: Callable[[ChatTarget, int | None], None] | None = None
 _open_window_handler: Callable[[], None] | None = None
 _tray_tooltip_handler: Callable[[str], None] | None = None
 _open_login_handler: Callable[[str], None] | None = None
+_open_memories_handler: Callable[[str, dict], None] | None = None
+_open_memories_unhandled_logged = False
 _tray_alert_handler: Callable[[bool], None] | None = None
 _open_login_unhandled_logged = False
 _tray_alert_unhandled_logged = False
@@ -433,6 +436,33 @@ def open_login(service: str) -> None:
         handler(service)
     except Exception as e:
         logger.warning("login_open_failed", error_type=type(e).__name__)
+
+
+def set_open_memories_handler(handler: Callable[[str, dict], None] | None) -> None:
+    """Register (or clear) the host function that opens Memories at a route."""
+    global _open_memories_handler, _open_memories_unhandled_logged
+    _open_memories_handler = handler
+    _open_memories_unhandled_logged = False
+
+
+def open_memories(service: str, route: dict) -> None:
+    """Show the main window on Memories for ``service`` at ``route``. Never raises.
+
+    Logs ``memories_open_unhandled`` once (until a handler is registered or
+    cleared again) when no handler is registered, and ``memories_open_failed``
+    (error type only) when the handler raises. The route is never logged.
+    """
+    global _open_memories_unhandled_logged
+    handler = _open_memories_handler
+    if handler is None:
+        if not _open_memories_unhandled_logged:
+            _open_memories_unhandled_logged = True
+            logger.info("memories_open_unhandled", reason="no_handler")
+        return
+    try:
+        handler(service, route)
+    except Exception as e:
+        logger.warning("memories_open_failed", error_type=type(e).__name__)
 
 
 def set_tray_alert_handler(handler: Callable[[bool], None] | None) -> None:

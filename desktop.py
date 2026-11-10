@@ -316,6 +316,71 @@ def make_open_login_handler(window, focus_fn):
     return handler
 
 
+_MEMORIES_TARGETS = {"onThisDay": "on_this_day", "memoir": "memoir", "recap": "recap"}
+
+
+def _memories_target(route: object) -> str:
+    """The snake_case log code of ``route``'s page, else ``unknown``."""
+    page = route.get("page") if isinstance(route, dict) else None
+    return (
+        _MEMORIES_TARGETS.get(page, "unknown") if isinstance(page, str) else "unknown"
+    )
+
+
+def make_open_memories_handler(window, focus_fn):
+    """Build the Memories toast-click handler: show ``window``, open Memories.
+
+    Like :func:`make_open_login_handler`: shows the window (never
+    ``restore()``), calls ``focus_fn(hwnd)``, then asks the frontend to open
+    Memories via ``window.__sakadeskOpenMemories({"service", "route"})``,
+    which returns whether it navigated. The payload is JSON-encoded, so a
+    member path can never break out of the script. Logs
+    ``notify_open_memories`` (``service``, ``target`` = page code,
+    ``delivered=True``) or ``notify_open_memories_failed`` with
+    ``reason=not_ready`` or ``error_type``. Never logs the route; never raises.
+    """
+
+    def handler(service: str, route: dict) -> None:
+        target = _memories_target(route)
+        try:
+            window.show()
+            focus_fn(_native_hwnd(window))
+            payload = json.dumps(
+                {"service": service, "route": route}, ensure_ascii=False
+            )
+            # json.dumps leaves "</" alone; escape it so the payload can never
+            # close a <script> element wherever the string ends up.
+            payload = payload.replace("</", "<\\/")
+            delivered = window.evaluate_js(
+                "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
+                + payload
+                + ") === true : false"
+            )
+            if delivered is True:
+                logger.info(
+                    "notify_open_memories",
+                    service=service,
+                    target=target,
+                    delivered=True,
+                )
+            else:
+                logger.warning(
+                    "notify_open_memories_failed",
+                    service=service,
+                    target=target,
+                    reason="not_ready",
+                )
+        except Exception as e:
+            logger.warning(
+                "notify_open_memories_failed",
+                service=service,
+                target=target,
+                error_type=type(e).__name__,
+            )
+
+    return handler
+
+
 def parse_background(argv: list[str]) -> bool:
     """True when ``--background`` is among the command-line arguments.
 
@@ -1121,6 +1186,10 @@ def main() -> None:
         # "Log in again" toast click -> show, focus and open that login dialog.
         desktop_bridge.set_open_login_handler(
             make_open_login_handler(window, _focus_window)
+        )
+        # Memories toast click -> show, focus and open Memories at the route.
+        desktop_bridge.set_open_memories_handler(
+            make_open_memories_handler(window, _focus_window)
         )
 
         show_window = make_open_window_handler(window, _focus_window)

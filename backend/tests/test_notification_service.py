@@ -11,7 +11,11 @@ import pytest
 from structlog.testing import capture_logs
 
 from backend.services import notification_service as ns
-from backend.services.notification_planner import ChatTarget, ToastPlan
+from backend.services.notification_planner import (
+    ChatTarget,
+    MemoryToastPlan,
+    ToastPlan,
+)
 
 CJK_TARGET = ChatTarget(
     service="hinatazaka46",
@@ -184,6 +188,7 @@ def _fake_windows_toasts() -> types.ModuleType:
 
     class ToastImagePosition:
         AppLogo = "AppLogo"
+        Hero = "Hero"
 
     mod.InteractableWindowsToaster = Toaster
     mod.Toast = Toast
@@ -462,6 +467,8 @@ class FakeNotifier:
         self.shown: list[ToastPlan] = []
         self.simple: list[tuple[str, str]] = []
         self.login: list[tuple[str, str, str]] = []
+        self.memory: list[MemoryToastPlan] = []
+        self.memory_threads: list[str] = []
         self._simple_result = simple_result
         self._simple_exc = simple_exc
         self._results = results
@@ -483,6 +490,11 @@ class FakeNotifier:
 
     def show_login(self, service, title, body):
         self.login.append((service, title, body))
+        return True
+
+    def show_memory(self, plan):
+        self.memory.append(plan)
+        self.memory_threads.append(threading.current_thread().name)
         return True
 
     def status(self):
@@ -1018,3 +1030,212 @@ def test_windows_notifier_show_login_failure_sets_last_error(fake_wt) -> None:
     with pytest.raises(RuntimeError):
         n.show_login("yodel", "t", "b")
     assert n.status()["last_error"] == "RuntimeError"
+
+
+# ------------------------------------------------------------------ send_memory
+
+
+def _memory_plan(
+    *,
+    kind: str = "on_this_day",
+    subject: str = "",
+    avatar: Path | None = None,
+    hero: Path | None = None,
+) -> MemoryToastPlan:
+    return MemoryToastPlan(
+        kind=kind,
+        service="hinatazaka46",
+        subject=subject,
+        occasion="2026-11-10",
+        title="3年前の今日 金村 美玖",
+        body="「秘密のことば 🎉」",
+        avatar=avatar,
+        hero=hero,
+        route={"page": "onThisDay", "monthDay": "11-10", "year": 2023},
+        member_id="58",
+    )
+
+
+def test_send_memory_shows_on_the_toast_thread_and_logs_kind() -> None:
+    fake = FakeNotifier()
+    plan = _memory_plan()
+    with patch.object(ns, "get_notifier", lambda: fake):
+        with capture_logs() as logs:
+            assert asyncio.run(ns.send_memory(plan)) is True
+    assert fake.memory == [plan]
+    assert fake.memory_threads[0].startswith("toast")
+    (sent,) = [e for e in logs if e["event"] == "notify_sent"]
+    assert sent["kind"] == "memories"
+    assert sent["memory_kind"] == "on_this_day"
+    assert sent["service"] == "hinatazaka46"
+    text = repr(logs)
+    assert "金村" not in text and "秘密" not in text and "onThisDay" not in text
+
+
+def test_send_memory_unavailable_notifier_is_skipped() -> None:
+    class Down(FakeNotifier):
+        def status(self):
+            return {"available": False, "last_error": "not_windows"}
+
+    fake = Down()
+    with patch.object(ns, "get_notifier", lambda: fake):
+        with capture_logs() as logs:
+            assert asyncio.run(ns.send_memory(_memory_plan(kind="recap"))) is False
+    assert fake.memory == []
+    (skip,) = [e for e in logs if e["event"] == "notify_skip"]
+    assert skip["reason"] == "unavailable"
+    assert skip["kind"] == "memories"
+    assert skip["memory_kind"] == "recap"
+    assert skip["backend_reason"] == "not_windows"
+
+
+def test_send_memory_is_busy_behind_a_stuck_show() -> None:
+    release = threading.Event()
+
+    class Stuck(FakeNotifier):
+        def show_simple(self, title, body):
+            release.wait(5)
+            return True
+
+    fake = Stuck()
+
+    async def run() -> tuple[bool, bool]:
+        first = await ns.send_simple("t", "b")
+        second = await ns.send_memory(_memory_plan())
+        return first, second
+
+    try:
+        with patch.object(ns, "_SHOW_TIMEOUT_S", 0.05):
+            with patch.object(ns, "get_notifier", lambda: fake):
+                with capture_logs() as logs:
+                    assert asyncio.run(run()) == (False, False)
+    finally:
+        release.set()
+    assert fake.memory == []
+    (busy,) = [e for e in logs if e["event"] == "notify_skip"]
+    assert busy["reason"] == "busy"
+    assert busy["kind"] == "memories" and busy["memory_kind"] == "on_this_day"
+
+
+def test_null_notifier_show_memory_returns_false() -> None:
+    assert ns.NullNotifier("x").show_memory(_memory_plan()) is False
+
+
+def test_windows_notifier_show_memory_builds_the_toast(fake_wt, tmp_path) -> None:
+    avatar = tmp_path / "a.jpg"
+    hero = tmp_path / "h.jpg"
+    n = ns.WindowsToastNotifier()
+    plan = _memory_plan(avatar=avatar, hero=hero)
+    assert n.show_memory(plan) is True
+    (toast,) = fake_wt.shown
+    assert toast.text_fields == [plan.title, plan.body]
+    assert toast.launch_action_set == []
+    assert toast.tag == "mem-on_this_day-all"
+    assert toast.group == "memories"
+    assert [(i.position, i.image.path) for i in toast.images] == [
+        ("AppLogo", avatar),
+        ("Hero", hero),
+    ]
+
+
+def test_windows_notifier_show_memory_without_images(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n.show_memory(_memory_plan(kind="birthday", subject="58"))
+    (toast,) = fake_wt.shown
+    assert toast.images == []
+    assert toast.tag == "mem-birthday-58"
+
+
+def test_windows_notifier_show_memory_tag_is_at_most_64_chars(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n.show_memory(_memory_plan(kind="anniversary", subject="9" * 100))
+    assert len(fake_wt.shown[0].tag) == 64
+
+
+@pytest.mark.parametrize("stage", ["avatar", "hero"])
+def test_windows_notifier_show_memory_bad_image_still_shows(
+    fake_wt, tmp_path, stage
+) -> None:
+    good = tmp_path / "ok.jpg"
+    bad = tmp_path / "金村.jpg"
+    real = fake_wt.ToastImage
+
+    def image(path):
+        if path == bad:
+            raise ValueError("cannot read 金村.jpg")
+        return real(path)
+
+    fake_wt.ToastImage = image
+    n = ns.WindowsToastNotifier()
+    plan = _memory_plan(
+        avatar=bad if stage == "avatar" else good,
+        hero=bad if stage == "hero" else good,
+    )
+    with capture_logs() as logs:
+        assert n.show_memory(plan) is True
+    (toast,) = fake_wt.shown
+    assert len(toast.images) == 1
+    (failed,) = [e for e in logs if e["event"] == "notify_failed"]
+    assert failed["stage"] == stage
+    assert failed["kind"] == "memories"
+    assert failed["memory_kind"] == "on_this_day"
+    assert failed["error_type"] == "ValueError"
+    assert "金村" not in repr(logs)
+
+
+def test_windows_notifier_show_memory_failure_sets_last_error(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n._toaster.show_toast = lambda _t: (_ for _ in ()).throw(RuntimeError("x"))
+    with pytest.raises(RuntimeError):
+        n.show_memory(_memory_plan())
+    assert n.status()["last_error"] == "RuntimeError"
+
+
+def test_memory_toast_click_opens_memories_at_the_route(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    plan = _memory_plan()
+    n.show_memory(plan)
+    calls: list[tuple[str, dict]] = []
+    with patch.object(
+        ns.desktop_bridge, "open_memories", lambda s, r: calls.append((s, r))
+    ):
+        with capture_logs() as logs:
+            fake_wt.shown[0].on_activated(types.SimpleNamespace(arguments="x"))
+    assert calls == [("hinatazaka46", dict(plan.route))]
+    assert isinstance(calls[0][1], dict)
+    (clicked,) = [e for e in logs if e["event"] == "notify_clicked"]
+    assert clicked == {
+        "event": "notify_clicked",
+        "kind": "memories",
+        "memory_kind": "on_this_day",
+        "service": "hinatazaka46",
+        "log_level": "info",
+    }
+
+
+def test_memory_toast_click_never_raises(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n.show_memory(_memory_plan())
+
+    def boom(_s, _r):
+        raise RuntimeError("route 金村")
+
+    with patch.object(ns.desktop_bridge, "open_memories", boom):
+        with capture_logs() as logs:
+            fake_wt.shown[0].on_activated(None)
+    (failed,) = [e for e in logs if e["event"] == "memories_open_failed"]
+    assert failed["error_type"] == "RuntimeError"
+    assert "金村" not in repr(logs)
+
+
+def test_memory_toast_failure_callback_logs_codes_only(fake_wt) -> None:
+    n = ns.WindowsToastNotifier()
+    n.show_memory(_memory_plan(kind="card"))
+    with capture_logs() as logs:
+        fake_wt.shown[0].on_failed(types.SimpleNamespace(error_code=7))
+    (failed,) = [e for e in logs if e["event"] == "notify_failed"]
+    assert failed["kind"] == "memories"
+    assert failed["memory_kind"] == "card"
+    assert failed["error_type"] == "ToastFailed"
+    assert failed["error_code"] == 7
+    assert n.status()["last_error"] == "ToastFailed"
