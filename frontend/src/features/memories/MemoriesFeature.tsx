@@ -54,7 +54,9 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
                 const years = Array.isArray(res.data.years) ? res.data.years.filter((y) => Number.isInteger(y)) : [];
                 logRecapLoad('years', years.length ? 'ok' : 'empty', { count: years.length });
                 setShelf({ service, attempt, state: { status: 'ready', years } });
-            } else if (res.status === 'timeout' || res.status === 'rejected' || res.status === 'failed') {
+            } else if (res.status !== 'aborted') {
+                // A `skipped` poll (the same request already in flight) is a failure here too: the
+                // card offers a retry rather than spinning forever. `aborted` is our own cleanup.
                 logRecapLoad('years', res.status, res.status === 'rejected' ? { error_code: res.httpStatus } : {});
                 setShelf({ service, attempt, state: { status: 'failed' } });
             }

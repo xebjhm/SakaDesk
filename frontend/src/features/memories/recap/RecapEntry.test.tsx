@@ -10,6 +10,12 @@ import type { RecapOverview, RecapPayload } from './api';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
+// The real client, wrapped so a test can make one poll come back `skipped`.
+vi.mock('./api', async (importOriginal) => {
+    const real = await importOriginal<typeof import('./api')>();
+    return { ...real, fetchRecapMembers: vi.fn(real.fetchRecapMembers), fetchMemberRecap: vi.fn(real.fetchMemberRecap) };
+});
+import { fetchMemberRecap, fetchRecapMembers } from './api';
 
 const loadLogs = () => vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'recap_load');
 const playLogs = () => vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'recap_play');
@@ -174,6 +180,24 @@ describe('RecapEntry', () => {
         fail = false;
         await userEvent.click(retry);
         expect(await screen.findByRole('button', { name: /金村 美玖/ })).toBeInTheDocument();
+    });
+
+    it('shows the retry state and logs it when the overview poll is skipped', async () => {
+        serve();
+        vi.mocked(fetchRecapMembers).mockResolvedValueOnce({ status: 'skipped' });
+        render(<RecapEntry service="hinatazaka46" year={2026} onBack={() => {}} />);
+        await userEvent.click(await screen.findByRole('button', { name: '再試行' }));
+        expect(await screen.findByRole('button', { name: /金村 美玖/ })).toBeInTheDocument();
+        expect(loadLogs()).toContainEqual(['recap_load', { target: 'members', outcome: 'skipped' }]);
+    });
+
+    it('shows the retry state and logs it when the member poll is skipped', async () => {
+        serve();
+        vi.mocked(fetchMemberRecap).mockResolvedValueOnce({ status: 'skipped' });
+        render(<RecapEntry service="hinatazaka46" year={2026} memberPath={MEMBER_PATH} onBack={() => {}} />);
+        await userEvent.click(await screen.findByRole('button', { name: '再試行' }));
+        expect(await screen.findByTestId('recap-stage')).toBeInTheDocument();
+        expect(loadLogs()).toContainEqual(['recap_load', { target: 'member', outcome: 'skipped' }]);
     });
 
     it('goes back to the hub', async () => {

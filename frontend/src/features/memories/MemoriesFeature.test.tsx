@@ -8,6 +8,13 @@ import { SERVICE_FEATURES, getAvailableFeatures } from '../../config/features';
 import { MemoriesFeature } from './MemoriesFeature';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+import { clientLog } from '../../utils/clientLog';
+// The real client, wrapped so a test can make one poll come back `skipped`.
+vi.mock('./recap/api', async (importOriginal) => {
+    const real = await importOriginal<typeof import('./recap/api')>();
+    return { ...real, fetchRecapYears: vi.fn(real.fetchRecapYears) };
+});
+import { fetchRecapYears } from './recap/api';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 let shelf: number[] | null = [2025];
@@ -128,6 +135,18 @@ describe('Memories feature', () => {
             const card = await screen.findByRole('button', { name: /Year recap/ });
             expect(card).toHaveTextContent('2023');
             expect(screen.queryByTestId('memories-recap-loading')).toBeNull();
+        });
+
+        it('when the shelf poll is skipped shows a retry and logs it, never an endless spinner', async () => {
+            at('2026-11-10T12:00:00');
+            vi.mocked(clientLog).mockClear();
+            vi.mocked(fetchRecapYears).mockResolvedValueOnce({ status: 'skipped' });
+            render(<MemoriesFeature service="hinatazaka46" />);
+            expect(await screen.findByTestId('memories-recap-failed')).toBeInTheDocument();
+            expect(screen.queryByTestId('memories-recap-loading')).toBeNull();
+            expect(vi.mocked(clientLog)).toHaveBeenCalledWith('recap_load', { target: 'years', outcome: 'skipped' });
+            await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+            expect(await screen.findByRole('button', { name: /Year recap/ })).toHaveTextContent('2025');
         });
 
         it('when the shelf fails shows a retry, never an unconfirmed year', async () => {

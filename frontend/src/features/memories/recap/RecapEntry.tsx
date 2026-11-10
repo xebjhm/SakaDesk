@@ -34,14 +34,19 @@ type Load<T> = { status: 'loading' } | { status: 'ok'; data: T } | { status: 'er
 /** A member recap load, tagged with the member path it was requested for. */
 type MemberLoad = { path: string | null; load: Load<RecapPayload> };
 
-/** Outcome code of a finished request, or null when it was superseded (no breadcrumb). */
+/**
+ * Outcome code of a finished request, or null when it was aborted by our own cleanup (no
+ * breadcrumb). A `skipped` poll (the same request already in flight) shows the retry state, so a
+ * load can never hang on the spinner.
+ */
 function outcomeOf<T>(res: PollResult<T>): Exclude<RecapLoadOutcome, 'ok' | 'empty'> | 'ok' | null {
     switch (res.status) {
         case 'ok': return 'ok';
         case 'timeout': return 'timeout';
         case 'rejected': return 'rejected';
         case 'failed': return 'failed';
-        default: return null;
+        case 'skipped': return 'skipped';
+        case 'aborted': return null;
     }
 }
 

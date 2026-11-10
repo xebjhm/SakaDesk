@@ -13,10 +13,12 @@ export function logMemoriesPage(page: MemoriesPage): void {
 }
 
 export type RecapLoadTarget = 'members' | 'member' | 'years';
-export type RecapLoadOutcome = 'ok' | 'empty' | 'timeout' | 'rejected' | 'failed';
+export type RecapLoadOutcome = 'ok' | 'empty' | 'timeout' | 'rejected' | 'failed' | 'skipped';
 
 /**
- * `recap_load`: a recap request finished. `count` is the members with a recap
+ * `recap_load`: a recap request finished. `outcome` `skipped`: the poll was refused because the
+ * same request was already in flight (shown as the retry state, never an endless spinner).
+ * `count` is the members with a recap
  * (overview), the playable slides (member) or the years on the shelf (years); `error_code` the HTTP status;
  * `fallback` is `no_nickname` when the fan's nickname is unset (a gentle word stands in).
  */
