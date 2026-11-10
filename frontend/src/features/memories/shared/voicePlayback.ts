@@ -8,7 +8,8 @@ export interface PlayerHandle {
 
 /**
  * The only place that decides which Memories voice plays: one voice at a time, across every
- * Memories player (`LazyVoice`, the recap's voice slide, the radio). A player calls
+ * Memories player (`LazyVoice`, the recap's voice slide, the radio, and the chat bubbles of the
+ * day view and binder detail through `useBubbleVoices`). A player calls
  * `play(key, handle)` before it sounds; that stops the previous player's handle. A player that
  * mounts its audio only while its key is `playing` ({@link LazyVoice}) is also unmounted by the
  * key change. `stop()` silences every Memories voice. Keys are codes built from room and id

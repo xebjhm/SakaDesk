@@ -12,6 +12,7 @@ import { MergedTimeline, WINDOW_FROM } from './MergedTimeline';
 import { dayPeople } from './people';
 import { dayMessage, dayPayload, MIKU, NAO } from './__fixtures__';
 import type { DayMessage } from '../types';
+import { useVoicePlayback } from '../shared/voicePlayback';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 beforeEach(() => {
@@ -66,5 +67,28 @@ describe('MergedTimeline windowing', () => {
     it('renders a short day, or one without a scroll parent, in full', () => {
         render(<MergedTimeline messages={many} people={peopleOf(many)} service="hinatazaka46" />);
         expect(screen.getAllByTestId('day-merged-row')).toHaveLength(many.length);
+    });
+});
+
+describe('MergedTimeline voices', () => {
+    it('plays one voice at a time with the other Memories voices', () => {
+        const voice = (id: number) => dayMessage(MIKU, {
+            id, ts: `2024-09-14T0${id}:00:00Z`, type: 'voice', text: null,
+            media_file: `messages/x/voice/${id}.m4a`,
+            media_url: `/api/content/media/hinatazaka46/messages/1/voice/${id}.m4a`,
+        });
+        const messages = [voice(1), voice(2)];
+        const radio = { stop: vi.fn(), fadeOut: vi.fn() };
+        useVoicePlayback.getState().play('radio', radio);
+        const { container } = render(<MergedTimeline messages={messages} people={peopleOf(messages)} service="hinatazaka46" />);
+        const [a, b] = Array.from(container.querySelectorAll('audio'));
+        const pauseA = vi.fn();
+        a.pause = pauseA;
+        b.pause = vi.fn();
+        a.dispatchEvent(new Event('play'));
+        expect(radio.stop).toHaveBeenCalledTimes(1);
+        b.dispatchEvent(new Event('play'));
+        expect(pauseA).toHaveBeenCalledTimes(1);
+        useVoicePlayback.getState().stop();
     });
 });

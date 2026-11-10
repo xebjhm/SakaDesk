@@ -11,6 +11,7 @@ import { openChat } from '../../../shell/openChat';
 import { clientLog } from '../../../utils/clientLog';
 import { Swimlanes } from './Swimlanes';
 import { dayMessage, dayPayload, MIKU, NAO } from './__fixtures__';
+import { useVoicePlayback } from '../shared/voicePlayback';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 // MessageBubble asks for cached translations and transcripts of what it shows (and saves a translation).
@@ -99,5 +100,26 @@ describe('Swimlanes', () => {
         render(<Swimlanes members={data.members} messages={data.messages} />);
         const header = screen.getAllByTestId('day-lane')[0].querySelector('header')!;
         expect(header.className).toContain('z-20');
+    });
+});
+
+describe('Swimlanes voices', () => {
+    it('an expanded voice joins the Memories voice coordinator', async () => {
+        const voice = dayMessage(MIKU, {
+            id: 9, type: 'voice', text: null,
+            media_file: 'messages/x/voice/9.m4a',
+            media_url: '/api/content/media/hinatazaka46/messages/1/voice/9.m4a',
+        });
+        const radio = { stop: vi.fn(), fadeOut: vi.fn() };
+        useVoicePlayback.getState().play('radio', radio);
+        const { container } = render(<Swimlanes members={[MIKU]} messages={[voice]} />);
+        await userEvent.click(screen.getByRole('button', { expanded: false }));
+        const audio = container.querySelector('audio')!;
+        audio.pause = vi.fn();
+        audio.dispatchEvent(new Event('play'));
+        expect(radio.stop).toHaveBeenCalledTimes(1);
+        expect(useVoicePlayback.getState().playing).toMatch(/^lanes\|bubble\|/);
+        useVoicePlayback.getState().stop();
+        expect(audio.pause).toHaveBeenCalled();
     });
 });

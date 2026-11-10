@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import { useTranslation } from '../../../i18n';
 import { maskedNickname } from '../shared/nicknameMask';
@@ -16,6 +16,7 @@ import { jumpToChat } from '../shared/jumpToChat';
 import { isViewableMedia, viewerSrc } from '../shared/mediaSrc';
 import { contextCaption, shownTexts } from '../shared/captions';
 import { JST_TIME_ZONE } from '../shared/jst';
+import { useBubbleVoices } from '../shared/useBubbleVoices';
 import type { DayPerson } from './people';
 import type { DayMessage } from '../types';
 
@@ -62,7 +63,8 @@ const Indented: React.FC<{ children: React.ReactNode }> = ({ children }) => (
  * through `memberPath`; pictures from 640-px thumbnails, loaded lazily), times on the JST clock, her words through the nickname (or the mask), a
  * picture's paired words under it with `MemoryText` (unless their own message is in the list, so
  * they show once). Pictures and videos open the media viewer
- * over the day's media, whose source link opens her chat at that message.
+ * over the day's media, whose source link opens her chat at that message. Bubble voices join the
+ * Memories voice coordinator (`useBubbleVoices`), so only one voice plays.
  */
 export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people, service, scrollParent }) => {
     const { t } = useTranslation();
@@ -70,6 +72,8 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
     const nickname = ownNickname ?? maskedNickname(t);
     const avatarWidth = useAvatarWidth(AVATAR_PX);
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+    const rootRef = useRef<HTMLDivElement>(null);
+    useBubbleVoices(rootRef, 'day');
 
     const nameOf = (m: DayMessage) => people.get(m.person_key)?.name ?? '';
     const media = useMemo(() => messages.filter(isViewableMedia), [messages]);
@@ -141,7 +145,7 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
     const windowed = Boolean(scrollParent) && messages.length > WINDOW_FROM;
 
     return (
-        <div data-testid="day-merged" className="flex flex-col pb-4">
+        <div ref={rootRef} data-testid="day-merged" className="flex flex-col pb-4">
             {windowed && scrollParent ? (
                 <Virtuoso
                     customScrollParent={scrollParent}

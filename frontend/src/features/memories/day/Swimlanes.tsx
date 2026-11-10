@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Image as ImageIcon, Video, Volume2 } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
@@ -12,6 +12,7 @@ import { contextCaption, shownTexts } from '../shared/captions';
 import { useNickname } from '../shared/useNickname';
 import { toChatMessage } from '../shared/toMessage';
 import { jumpToChat } from '../shared/jumpToChat';
+import { useBubbleVoices } from '../shared/useBubbleVoices';
 import { logMemoriesToggle } from '../memoriesLog';
 import { JST_TIME_ZONE, formatJstClock } from '../shared/jst';
 import { hourLabel, rulerSpan } from './ruler';
@@ -112,10 +113,13 @@ const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, 
  * at their time (`laneLayout` pushes overlapping ones down); a click expands one with her full
  * words (a caption whose own message is a card of the day is not repeated), a read-only bubble for media and the jump to her chat (`memories_toggle` `lane_card`).
  * Columns keep a minimum width, so past five people the lanes scroll sideways inside the pane.
+ * Bubble voices join the Memories voice coordinator (`useBubbleVoices`), so only one voice plays.
  */
 export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
     const avatarWidth = useAvatarWidth(AVATAR_PX);
     const [expanded, setExpanded] = useState<string | null>(null);
+    const rootRef = useRef<HTMLDivElement>(null);
+    useBubbleVoices(rootRef, 'lanes');
     const people = useMemo(() => dayPeople(members, messages), [members, messages]);
     const { start, hours } = useMemo(() => rulerSpan(messages), [messages]);
     const shown = useMemo(() => shownTexts(messages), [messages]);
@@ -138,7 +142,7 @@ export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
     const height = Math.max(rulerHeight, lastBottom) + CARD_HEIGHT;
 
     return (
-        <div data-testid="day-lanes" className="flex min-w-0">
+        <div ref={rootRef} data-testid="day-lanes" className="flex min-w-0">
             <div aria-hidden="true" className="sticky left-0 z-20 w-12 shrink-0 bg-sheet">
                 <div className="h-16" />
                 <div className="relative" style={{ height }}>
