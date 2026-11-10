@@ -6,6 +6,9 @@ describe('MemoryThumb', () => {
     it('shows a picture as an image', () => {
         const { container } = render(<MemoryThumb message={{ type: 'picture', media_url: '/p.jpg' }} />);
         expect(container.querySelector('img')).toHaveAttribute('src', '/p.jpg');
+        // grids of thousands of stills: load and decode off the critical path
+        expect(container.querySelector('img')).toHaveAttribute('loading', 'lazy');
+        expect(container.querySelector('img')).toHaveAttribute('decoding', 'async');
     });
 
     it('never puts a video into an image', () => {
