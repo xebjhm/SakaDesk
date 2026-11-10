@@ -49,13 +49,17 @@ const Trailing: React.FC<{ member: MemoirMember }> = ({ member }) => {
  * The binder of the selected person, with its card detail. `cardKey` (a notification deep link)
  * opens that earned card's detail once the binder is loaded, once per link: `link` is the route
  * object the key came with, and every toast click makes a new one, so a repeat click opens the
- * card again while a re-render does not. A key that is not an earned card of hers logs
- * `memories_skip` `card_missing` (again on a repeat click) and shows the binder.
+ * card again while a re-render does not. Each link also reloads the binder first, so a toast for
+ * a member whose binder is already on screen still finds a card she earned since it was loaded.
+ * A key that is not an earned card of hers logs `memories_skip` `card_missing` (again on a repeat
+ * click) and shows the binder.
  */
 const BinderPane: React.FC<{ service: string; memberPath: string; name: string; cardKey?: string; link: object }> = ({
     service, memberPath, name, cardKey, link,
 }) => {
-    const binder = useMemoriesQuery('binder', (signal) => fetchMemoirCards(service, memberPath, signal), [service, memberPath], {
+    // A deep link refetches even when her binder is already loaded: a card earned since then
+    // (e.g. an anniversary across midnight) must be found. A re-render keeps the same link object.
+    const binder = useMemoriesQuery('binder', (signal) => fetchMemoirCards(service, memberPath, signal), [service, memberPath, cardKey ? link : null], {
         count: (d) => d.progress.earned,
     });
     const [open, setOpen] = useState<{ path: string; card: BinderCard } | null>(null);

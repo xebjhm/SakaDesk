@@ -182,6 +182,27 @@ describe('MemoirPage', () => {
             expect(await screen.findByRole('dialog')).toBeInTheDocument();
         });
 
+        it('refetches an already open binder for a link, so a card earned since then opens', async () => {
+            vi.mocked(clientLog).mockClear();
+            const plain: MemoirRoute = { page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder' };
+            const { rerender } = renderPage(plain);
+            expect(await screen.findAllByTestId('binder-shelf')).not.toHaveLength(0);
+            const loads = () => vi.mocked(fetchMemoirCards).mock.calls.filter((c) => c[1] === MEMBER_PATH).length;
+            const before = loads();
+            // midnight passed: her 1-year card is earned now, and the toast links to it
+            vi.mocked(fetchMemoirCards).mockResolvedValue(withAnniversary());
+            const linked: MemoirRoute = { ...plain, cardKey: 'anniv.y1' };
+            rerender(linked);
+            const dialog = await screen.findByRole('dialog');
+            expect((await within(dialog).findAllByText(/1年ありがとう/)).length).toBeGreaterThan(0);
+            expect(loads()).toBe(before + 1);
+            expect(clientLog).not.toHaveBeenCalledWith('memories_skip', expect.anything());
+            // a re-render of the same link does not load again
+            rerender(linked);
+            await new Promise((r) => setTimeout(r, 20));
+            expect(loads()).toBe(before + 1);
+        });
+
         it('logs card_missing again for a repeat link to an unknown card', async () => {
             vi.mocked(clientLog).mockClear();
             const linked: MemoirRoute = { page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder', cardKey: 'anniv.y9' };
