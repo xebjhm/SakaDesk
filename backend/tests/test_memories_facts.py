@@ -371,3 +371,127 @@ async def test_get_facts_at_clock_unavailable_index_is_empty(tmp_path):
     d.mkdir(parents=True)
     (d / "messages.json").write_text("{bad", encoding="utf-8")
     assert await mf.get_facts_at_clock(tmp_path, d, 0, 4) == []
+
+
+@pytest.fixture
+def counted(monkeypatch):
+    """Count index freshness checks; start with an empty freshness memo."""
+    monkeypatch.setattr(mf, "_clock_fresh", {})
+    calls = []
+    real = mi.get_member_index
+
+    async def spy(sdir, d):
+        calls.append(d)
+        return await real(sdir, d)
+
+    monkeypatch.setattr(mi, "get_member_index", spy)
+    return calls
+
+
+@pytest.mark.asyncio
+async def test_rooms_clock_read_skips_unchanged_rooms(clock_member, counted):
+    import os
+
+    svc, d = clock_member
+    got = await mf.get_rooms_facts_at_clock(svc, [d], 21 * 60 + 1, 21 * 60 + 5)
+    assert [f.id for f in got[d]] == [6, 7] and len(counted) == 1
+    got = await mf.get_rooms_facts_at_clock(svc, [d], 23 * 60 + 57, 1)
+    assert [f.id for f in got[d]] == [1, 2, 3] and len(counted) == 1  # memo hit
+    # a changed messages.json is checked (and rebuilt) again
+    rows = [*CLOCK_ROWS, m(10, "2024-06-03T12:04:00Z", content="新しい")]
+    _member(svc, rows)
+    st = (d / "messages.json").stat()
+    os.utime(d / "messages.json", ns=(st.st_atime_ns, st.st_mtime_ns + 10**9))
+    got = await mf.get_rooms_facts_at_clock(svc, [d], 21 * 60 + 1, 21 * 60 + 5)
+    assert [f.id for f in got[d]] == [6, 7, 10] and len(counted) == 2
+
+
+@pytest.mark.asyncio
+async def test_rooms_clock_read_rechecks_after_the_ttl(clock_member, counted):
+    import time
+
+    svc, d = clock_member
+    await mf.get_rooms_facts_at_clock(svc, [d], 0, 4)
+    key = next(iter(mf._clock_fresh))
+    sig, _ = mf._clock_fresh[key]
+    mf._clock_fresh[key] = (sig, time.monotonic() - mf.CLOCK_FRESH_TTL_S - 1)
+    await mf.get_rooms_facts_at_clock(svc, [d], 0, 4)
+    assert len(counted) == 2
+
+
+@pytest.mark.asyncio
+async def test_rooms_clock_read_leaves_out_unavailable_rooms(clock_member, counted):
+    svc, d = clock_member
+    bad = svc / "messages" / "1 x" / "2 x"
+    bad.mkdir(parents=True)
+    (bad / "messages.json").write_text("{bad", encoding="utf-8")
+    missing = svc / "messages" / "3 y" / "4 y"
+    got = await mf.get_rooms_facts_at_clock(svc, [bad, missing, d], 0, 4)
+    assert set(got) == {d}
+    # unavailable rooms are never memoised: they are checked every time
+    await mf.get_rooms_facts_at_clock(svc, [bad, missing, d], 0, 4)
+    assert counted.count(bad) == 2 and counted.count(d) == 1
+
+
+@pytest.mark.asyncio
+async def test_rooms_clock_read_does_not_memoise_a_stale_index(
+    clock_member, counted, monkeypatch
+):
+    svc, d = clock_member
+    monkeypatch.setattr(mi, "_cache_put", lambda *a, **k: False)
+    await mf.get_rooms_facts_at_clock(svc, [d], 0, 4)
+    await mf.get_rooms_facts_at_clock(svc, [d], 0, 4)
+    assert len(counted) == 2 and mf._clock_fresh == {}
+
+
+@pytest.mark.asyncio
+async def test_rooms_clock_read_memo_is_bounded(clock_member, counted, monkeypatch):
+    svc, d = clock_member
+    monkeypatch.setattr(mf, "_CLOCK_FRESH_MAX", 1)
+    mf._clock_fresh[("x", "y", "z")] = ((1, 1), 0.0)
+    await mf.get_rooms_facts_at_clock(svc, [d], 0, 4)
+    assert len(mf._clock_fresh) == 1 and ("x", "y", "z") not in mf._clock_fresh
+
+
+@pytest.mark.asyncio
+async def test_rooms_clock_read_failure_is_empty_and_logged(
+    clock_member, counted, monkeypatch
+):
+    import sqlite3
+
+    from structlog.testing import capture_logs
+
+    svc, d = clock_member
+
+    def broken(*a, **k):
+        raise sqlite3.OperationalError("locked")
+
+    monkeypatch.setattr(mf, "facts_at_clock_rooms", broken)
+    with capture_logs() as logs:
+        assert await mf.get_rooms_facts_at_clock(svc, [d], 0, 4) == {}
+    (ev,) = [e for e in logs if e["event"] == "memory_facts_read_failed"]
+    assert ev["error_type"] == "OperationalError" and ev["rooms"] == 1
+
+
+@pytest.mark.asyncio
+async def test_rooms_clock_read_validates_before_io(clock_member, counted):
+    svc, d = clock_member
+    with pytest.raises(ValueError):
+        await mf.get_rooms_facts_at_clock(svc, [d], 0, 1440)
+    assert counted == []
+
+
+@pytest.mark.asyncio
+async def test_fact_jst_date_filters_and_bad_ids(clock_member):
+    svc, d = clock_member
+    facts = await mf.get_facts(svc, d)
+    first = facts[0]
+    assert first.jst.utcoffset().total_seconds() == 9 * 3600
+    day = date(2024, 6, 3)
+    assert {f.id for f in mf.select(facts, start=day)} == {2, 3, 4}
+    assert {f.id for f in mf.select(facts, end=date(2024, 6, 2))} == {1, 5, 6, 7, 8, 9}
+    (d / "messages.json").write_text(
+        json.dumps({"messages": [{"id": "x"}, {"content": "a"}, {"id": 3}]}),
+        encoding="utf-8",
+    )
+    assert mf.load_texts(svc, d) == {3: ""}

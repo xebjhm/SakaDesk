@@ -65,6 +65,13 @@ API (dates are JST calendar dates, inclusive; results sorted by ``(ts, id)``):
 - ``async get_facts_at_clock(sdir, mdir, start_minute, end_minute)`` -- the
   same after the freshness check; ``[]`` when the index is unavailable or the
   read fails (同じ時刻, spec 14.3).
+- ``facts_at_clock_rooms(sdir, mdirs, start_minute, end_minute)`` -- the
+  clock query for several rooms over one connection (blocking), ``{mdir:
+  [Fact]}``.
+- ``async get_rooms_facts_at_clock(sdir, mdirs, start_minute, end_minute)``
+  -- the per-minute 同じ時刻 read: skips the freshness check of a room whose
+  ``messages.json`` size + mtime are unchanged since its last check (within
+  :data:`CLOCK_FRESH_TTL_S`), then reads every room over one connection.
 - Pure helpers on a fact list: ``select`` (types / promo / nickname / greeting
   / favourited / hours / date range filters), ``on_date``, ``first_last``,
   ``by_year``, ``aggregate`` -> :class:`Aggregate`, ``year_aggregates``,
@@ -86,10 +93,11 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import json
+import time
 from collections import Counter
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -158,7 +166,9 @@ def _row_to_fact(row: tuple) -> Fact:
     ) = row
     return Fact(
         id=mid,
-        ts=datetime.strptime(ts, "%Y-%m-%dT%H:%M:%SZ").replace(tzinfo=timezone.utc),
+        # ``ts_utc`` is always ``YYYY-MM-DDTHH:MM:SSZ`` (``index._utc_iso``);
+        # fromisoformat reads it as aware UTC, ~50x faster than strptime.
+        ts=datetime.fromisoformat(ts),
         jst_date=date.fromisoformat(jst_date),
         hour=hour,
         minute=minute,
@@ -262,6 +272,32 @@ def _clock_query(
     return sql, args
 
 
+def _clock_ranges(start_minute: int, end_minute: int) -> list[tuple[int, int]]:
+    """One or (across midnight) two non-wrapping ranges; ``ValueError`` if invalid."""
+    for minute in (start_minute, end_minute):
+        if not 0 <= minute < MINUTES_PER_DAY:
+            raise ValueError("minute must be 0..1439")
+    if start_minute <= end_minute:
+        return [(start_minute, end_minute)]
+    return [(start_minute, MINUTES_PER_DAY - 1), (0, end_minute)]
+
+
+def _clock_facts(
+    c: Any,
+    service_data_dir: Path,
+    member_dir: Path,
+    ranges: list[tuple[int, int]],
+) -> list[Fact]:
+    rows: list[tuple] = []
+    for start, end in ranges:
+        sql, args = _clock_query(service_data_dir, member_dir, start, end)
+        rows.extend(c.execute(sql, args).fetchall())
+    facts = [_row_to_fact(r) for r in rows]
+    if len(ranges) > 1:
+        facts.sort(key=lambda f: (f.ts, f.id))
+    return facts
+
+
 def facts_at_clock(
     service_data_dir: Path, member_dir: Path, start_minute: int, end_minute: int
 ) -> list[Fact]:
@@ -270,22 +306,21 @@ def facts_at_clock(
     Minutes of the day (0..1439); ``start_minute > end_minute`` wraps
     midnight. Sorted by ``(ts, id)``. ``ValueError`` for an out-of-range minute.
     """
-    for minute in (start_minute, end_minute):
-        if not 0 <= minute < MINUTES_PER_DAY:
-            raise ValueError("minute must be 0..1439")
-    if start_minute <= end_minute:
-        ranges = [(start_minute, end_minute)]
-    else:
-        ranges = [(start_minute, MINUTES_PER_DAY - 1), (0, end_minute)]
-    rows: list[tuple] = []
+    ranges = _clock_ranges(start_minute, end_minute)
     with contextlib.closing(mi._connect()) as c:
-        for start, end in ranges:
-            sql, args = _clock_query(service_data_dir, member_dir, start, end)
-            rows.extend(c.execute(sql, args).fetchall())
-    facts = [_row_to_fact(r) for r in rows]
-    if len(ranges) > 1:
-        facts.sort(key=lambda f: (f.ts, f.id))
-    return facts
+        return _clock_facts(c, service_data_dir, member_dir, ranges)
+
+
+def facts_at_clock_rooms(
+    service_data_dir: Path,
+    member_dirs: Sequence[Path],
+    start_minute: int,
+    end_minute: int,
+) -> dict[Path, list[Fact]]:
+    """:func:`facts_at_clock` for several rooms over one connection. Blocking."""
+    ranges = _clock_ranges(start_minute, end_minute)
+    with contextlib.closing(mi._connect()) as c:
+        return {d: _clock_facts(c, service_data_dir, d, ranges) for d in member_dirs}
 
 
 async def _fresh_index(
@@ -381,6 +416,83 @@ async def get_facts_at_clock(
     return await _read(
         idx, facts_at_clock, service_data_dir, member_dir, start_minute, end_minute
     )
+
+
+# (index db, service dir, room) -> (messages.json (mtime_ns, size), checked at)
+_clock_fresh: dict[tuple[str, str, str], tuple[tuple[int, int], float]] = {}
+CLOCK_FRESH_TTL_S = 600.0
+_CLOCK_FRESH_MAX = 4096
+
+
+def _messages_sigs(member_dirs: Sequence[Path]) -> list[tuple[int, int] | None]:
+    """``(mtime_ns, size)`` of each room's ``messages.json``; ``None`` if unreadable."""
+    out: list[tuple[int, int] | None] = []
+    for d in member_dirs:
+        try:
+            st = (d / "messages.json").stat()
+        except OSError:
+            out.append(None)
+        else:
+            out.append((st.st_mtime_ns, st.st_size))
+    return out
+
+
+async def get_rooms_facts_at_clock(
+    service_data_dir: Path,
+    member_dirs: Sequence[Path],
+    start_minute: int,
+    end_minute: int,
+) -> dict[Path, list[Fact]]:
+    """Fresh clock facts of several rooms (同じ時刻's per-minute read).
+
+    Like :func:`get_facts_at_clock` per room, but cheap enough to run every
+    minute: a room whose ``messages.json`` size + mtime are unchanged since
+    its last successful freshness check (within :data:`CLOCK_FRESH_TTL_S`)
+    skips the check, and every room is then read over one connection. The
+    rows of a clock query depend only on ``messages.json`` and the derivation
+    rules (fixed per process), so an unchanged file means unchanged rows.
+    Rooms whose index is unavailable are left out. ``{}`` (logged) when the
+    read fails. ``ValueError`` for an out-of-range minute.
+    """
+    _clock_ranges(start_minute, end_minute)  # validate before any I/O
+    sigs = await asyncio.to_thread(_messages_sigs, member_dirs)
+    db = str(mi._path())
+    now = time.monotonic()
+    ready: list[Path] = []
+    checked = 0
+    for d, sig in zip(member_dirs, sigs):
+        key = (db, str(service_data_dir), str(d))
+        seen = _clock_fresh.get(key)
+        if sig is not None and seen is not None and seen[0] == sig:
+            if now - seen[1] < CLOCK_FRESH_TTL_S:
+                ready.append(d)
+                continue
+        checked += 1
+        idx = await _fresh_index(service_data_dir, d)
+        if idx is None:
+            _clock_fresh.pop(key, None)
+            continue
+        if sig is not None and not idx.cache_stale:
+            if len(_clock_fresh) >= _CLOCK_FRESH_MAX:
+                _clock_fresh.clear()
+            _clock_fresh[key] = (sig, now)
+        ready.append(d)
+    try:
+        out = await asyncio.to_thread(
+            facts_at_clock_rooms, service_data_dir, ready, start_minute, end_minute
+        )
+    except Exception as e:  # noqa: BLE001 - a cache read must never raise
+        logger.warning(
+            "memory_facts_read_failed", rooms=len(ready), error_type=type(e).__name__
+        )
+        return {}
+    logger.debug(
+        "memory_facts_read",
+        rooms=len(ready),
+        checked=checked,
+        count=sum(len(v) for v in out.values()),
+    )
+    return out
 
 
 async def get_person_facts(
