@@ -87,3 +87,54 @@ class TestDownloadEndpoint:
         """Downloading a file that does not exist should return 404, not 500."""
         response = client.get("/api/content/download/nonexistent/file.jpg")
         assert response.status_code == 404
+
+
+class TestMediaRouteResolution:
+    """``GET /media`` keeps its 200 / 403 / 404 answers after the shared resolver refactor."""
+
+    @pytest.fixture
+    def out(self, tmp_path: Path):
+        from unittest.mock import patch
+
+        root = tmp_path / "out"
+        (root / "日向坂46" / "messages").mkdir(parents=True)
+        (root / "日向坂46" / "messages" / "a.jpg").write_bytes(b"\xff\xd8\xff\xe0")
+        (root / "loose.jpg").write_bytes(b"\xff\xd8\xff\xe0")
+        (tmp_path / "secret.jpg").write_bytes(b"secret")
+        with patch("backend.api.content.get_output_dir", return_value=root):
+            yield root
+
+    def test_service_id_maps_to_the_display_dir(self, out: Path):
+        r = client.get("/api/content/media/hinatazaka46/messages/a.jpg")
+        assert r.status_code == 200 and r.content == b"\xff\xd8\xff\xe0"
+
+    def test_an_unknown_service_is_still_used_literally(self, out: Path):
+        assert (
+            client.get("/api/content/media/日向坂46/messages/a.jpg").status_code == 200
+        )
+        assert client.get("/api/content/media/unknown46/a.jpg").status_code == 404
+
+    def test_a_single_segment_is_relative_to_the_output_dir(self, out: Path):
+        assert client.get("/api/content/media/loose.jpg").status_code == 200
+
+    def test_missing_is_404(self, out: Path):
+        assert client.get("/api/content/media/hinatazaka46/none.jpg").status_code == 404
+
+    def test_traversal_is_403(self, out: Path):
+        r = client.get("/api/content/media/hinatazaka46/%2e%2e/%2e%2e/secret.jpg")
+        assert r.status_code == 403
+        assert b"secret" not in r.content
+
+    def test_resolver_unit(self, out: Path):
+        from backend.api.content import _resolve_media_path
+
+        assert (
+            _resolve_media_path("hinatazaka46/messages/a.jpg")
+            == (out / "日向坂46" / "messages" / "a.jpg").resolve()
+        )
+        with pytest.raises(HTTPException) as e:
+            _resolve_media_path("hinatazaka46/../../secret.jpg")
+        assert e.value.status_code == 403
+        with pytest.raises(HTTPException) as e:
+            _resolve_media_path("hinatazaka46/a\x00.jpg")
+        assert e.value.status_code == 400

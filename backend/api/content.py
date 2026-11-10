@@ -54,13 +54,16 @@ from backend.services.messages_cache import (
     stat_key,
 )
 from backend.services import avatar_resize, photo_thumb, profile_images_service
-from backend.services.archive_urls import ArchiveReadError, archive_file_ok
+from backend.services.archive_urls import (
+    ArchiveReadError,
+    archive_file_ok,
+    media_disk_path,
+)
 from backend.services.media_range import MediaFileResponse
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
     get_service_identifier,
-    get_service_display_name,
 )
 
 router = APIRouter()
@@ -851,20 +854,14 @@ def _compute_unread_counts(
 def _resolve_media_path(file_path: str) -> Path:
     """Resolve a media file path, translating service ID to display name.
 
-    Raises HTTPException 404 if the resolved path does not exist.
+    Raises HTTPException 400 for control characters, 403 outside the output
+    dir and 404 if the resolved path does not exist. A path whose first
+    segment is not a known service id is read relative to the output dir.
     """
     output_dir = get_output_dir()
-
-    parts = file_path.split("/", 1)
-    if len(parts) == 2:
-        service_part, rest = parts
-        try:
-            display_name = get_service_display_name(service_part)
-            file_path = f"{display_name}/{rest}"
-        except ValueError:
-            pass
-
-    safe_path = validate_path_within_dir(output_dir, file_path)
+    # The translation is shared with archive_urls.media_route_path (POST /api/media/meta).
+    disk_path, _service = media_disk_path(file_path)
+    safe_path = validate_path_within_dir(output_dir, disk_path)
     if not safe_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     return safe_path

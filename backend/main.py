@@ -76,6 +76,7 @@ from backend.api import (  # noqa: E402
     app_state as app_state_api,
     memories,
     archive,
+    media,
 )
 from backend.api_no_store import ApiNoStoreMiddleware  # noqa: E402
 from backend.services import app_state  # noqa: E402
@@ -473,6 +474,7 @@ app.add_middleware(ApiNoStoreMiddleware)
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(content.router, prefix="/api/content", tags=["content"])
+app.include_router(media.router, prefix="/api/media", tags=["media"])
 app.include_router(settings.router)
 app.include_router(diagnostics.router)
 app.include_router(profile.router)
