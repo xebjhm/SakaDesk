@@ -1,0 +1,3910 @@
+{
+ "member_recaps": {
+  "flat_band": {
+   "member": {
+    "avatar_url": null,
+    "graduated": false,
+    "id": "58",
+    "name": "金村 美玖",
+    "subscription_start": null,
+    "years_together": null
+   },
+   "phase": "final",
+   "poster": {
+    "avatar_changed": false,
+    "avatar_new_url": null,
+    "avatar_old_url": null,
+    "best_photo": null,
+    "favorites_count": null,
+    "letters_count": null,
+    "numbers": [],
+    "sentence": null,
+    "start_mid_recent": [],
+    "stubs": [],
+    "years_together": null
+   },
+   "slides": [
+    {
+     "data": {
+      "joined_this_year": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 0,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "話0",
+       "ts": "2026-01-31T15:15:00Z",
+       "type": "text"
+      },
+      "new_year_midnight": false
+     },
+     "fallback": null,
+     "key": "s01_first"
+    },
+    {
+     "data": {
+      "band": "night",
+      "longest_streak": null,
+      "peak_hour": 23,
+      "representative": null,
+      "stars": [
+       {
+        "h": 0,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 1,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 2,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 3,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 4,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 5,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 6,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 7,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 8,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 9,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 10,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 11,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 13,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 14,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 15,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 16,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 17,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 18,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 19,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 22,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 23,
+        "m": 15,
+        "type": "text"
+       }
+      ]
+     },
+     "fallback": "flat",
+     "key": "s03_clock"
+    },
+    {
+     "data": {
+      "distinct_days": null,
+      "first_ohayo": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 5,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "話5",
+       "ts": "2026-02-05T20:15:00Z",
+       "type": "text"
+      },
+      "latest_oyasumi": null,
+      "oyasumi_count": null,
+      "variant": "oyasumi"
+     },
+     "fallback": "morning",
+     "key": "s04_greetings"
+    },
+    {
+     "data": {
+      "invite": true
+     },
+     "fallback": "invite",
+     "key": "s10_you"
+    },
+    {
+     "data": {
+      "final": true,
+      "graduated": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 23,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "話23",
+       "ts": "2026-02-24T14:15:00Z",
+       "type": "text"
+      }
+     },
+     "fallback": "last_text",
+     "key": "s13_oyasumi"
+    }
+   ],
+   "tier": "short",
+   "year": 2026
+  },
+  "full_final": {
+   "member": {
+    "avatar_url": null,
+    "graduated": false,
+    "id": "58",
+    "name": "金村 美玖",
+    "subscription_start": "2024-07-24",
+    "years_together": 3
+   },
+   "phase": "final",
+   "poster": {
+    "avatar_changed": false,
+    "avatar_new_url": null,
+    "avatar_old_url": null,
+    "best_photo": {
+     "avatar_url": null,
+     "caption": "今日の景色、見せたかったんだ",
+     "id": 18,
+     "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/18.jpg",
+     "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+     "text": null,
+     "ts": "2026-05-03T09:04:00Z",
+     "type": "picture"
+    },
+    "favorites_count": 1,
+    "letters_count": 1,
+    "numbers": [
+     {
+      "count": 8,
+      "key": "photos"
+     }
+    ],
+    "sentence": {
+     "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+     "message_id": 19,
+     "photo_url": null,
+     "sentence": "ずっと応援してくれて本当にありがとう",
+     "ts": "2026-06-01T11:00:00Z"
+    },
+    "start_mid_recent": [
+     {
+      "avatar_url": null,
+      "caption": null,
+      "id": 40,
+      "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/40.jpg",
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "text": null,
+      "ts": "2026-02-02T12:00:00Z",
+      "type": "picture"
+     },
+     {
+      "avatar_url": null,
+      "caption": null,
+      "id": 43,
+      "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/43.jpg",
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "text": null,
+      "ts": "2026-07-07T12:00:00Z",
+      "type": "picture"
+     },
+     {
+      "avatar_url": null,
+      "caption": null,
+      "id": 44,
+      "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/44.jpg",
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "text": null,
+      "ts": "2026-10-10T12:00:00Z",
+      "type": "picture"
+     }
+    ],
+    "stubs": [
+     {
+      "kind": "christmas",
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 32,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "メリクリ！素敵な一日を",
+       "ts": "2026-12-25T01:00:00Z",
+       "type": "text"
+      },
+      "sealed": false,
+      "seconds_after_midnight": null
+     }
+    ],
+    "years_together": 3
+   },
+   "slides": [
+    {
+     "data": {
+      "joined_this_year": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 10,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "あけましておめでとう！今年もよろしくね",
+       "ts": "2025-12-31T15:00:07Z",
+       "type": "text"
+      },
+      "new_year_midnight": true
+     },
+     "fallback": null,
+     "key": "s01_first"
+    },
+    {
+     "data": {
+      "count": 4,
+      "first": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 11,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "%%%、今日もお疲れさま。明日も頑張ろうね",
+       "ts": "2026-01-05T12:00:00Z",
+       "type": "text"
+      },
+      "fragments": [
+       "%%%、今日もお疲れさま",
+       "%%%大好きだよ、いつもありがとう",
+       "%%%に会えて嬉しかった",
+       "メリークリスマス🎄%%%"
+      ],
+      "last": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 30,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "メリークリスマス🎄%%%",
+       "ts": "2026-12-24T11:00:00Z",
+       "type": "text"
+      },
+      "mode": "nickname",
+      "single": false
+     },
+     "fallback": null,
+     "key": "s02_name"
+    },
+    {
+     "data": {
+      "longest_streak": 56,
+      "peak_hour": 12,
+      "representative": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 259,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "レッスン159回目、がんばったよ",
+       "ts": "2026-07-20T03:39:00Z",
+       "type": "text"
+      },
+      "stars": [
+       {
+        "h": 0,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 7,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 22,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 1,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 2,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 3,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 4,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 5,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 6,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 7,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 8,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 9,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 10,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 11,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 12,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 13,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "voice"
+       },
+       {
+        "h": 12,
+        "m": 14,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 16,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 17,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 18,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 19,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 20,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 21,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 22,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 23,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 24,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 25,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 26,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 27,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 28,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 29,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 30,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 31,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 32,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 33,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 34,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 35,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 36,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 37,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 38,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 39,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 40,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 41,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 42,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 43,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 44,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 45,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 46,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 47,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 48,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 49,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 50,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 51,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 52,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 53,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 54,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 55,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 56,
+        "type": "text"
+       },
+       {
+        "h": 23,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 57,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 58,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 59,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 1,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 2,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 3,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 4,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 5,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 6,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 7,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 8,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 9,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 10,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 11,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 12,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 13,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 14,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 16,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 17,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 18,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 19,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 20,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 21,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 22,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 23,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 24,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 25,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 26,
+        "type": "text"
+       },
+       {
+        "h": 18,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 18,
+        "m": 1,
+        "type": "text"
+       },
+       {
+        "h": 18,
+        "m": 2,
+        "type": "picture"
+       },
+       {
+        "h": 18,
+        "m": 4,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 27,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 28,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 29,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 30,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 31,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 32,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 33,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 34,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 35,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 36,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 37,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 38,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 39,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 40,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 41,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 42,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 43,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 44,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 45,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 46,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 47,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 48,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 49,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 50,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 51,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 52,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 53,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 54,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 55,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 56,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 57,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 58,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 59,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 1,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 2,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 3,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 4,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 5,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 6,
+        "type": "text"
+       },
+       {
+        "h": 19,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 7,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 8,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 9,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 10,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 11,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 12,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 13,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 14,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 16,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 17,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 18,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 19,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 20,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 21,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 22,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 23,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 24,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 25,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 26,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 27,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 28,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 29,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 30,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 31,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 32,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 33,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 34,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 35,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 36,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 37,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 38,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 39,
+        "type": "text"
+       },
+       {
+        "h": 22,
+        "m": 30,
+        "type": "voice"
+       },
+       {
+        "h": 20,
+        "m": 30,
+        "type": "text"
+       },
+       {
+        "h": 23,
+        "m": 10,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 23,
+        "m": 0,
+        "type": "voice"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 23,
+        "m": 30,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 10,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 23,
+        "m": 50,
+        "type": "text"
+       }
+      ]
+     },
+     "fallback": null,
+     "key": "s03_clock"
+    },
+    {
+     "data": {
+      "distinct_days": 4,
+      "first_ohayo": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 12,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "おはよう☀️今日も一日がんばろう",
+       "ts": "2026-01-09T22:00:00Z",
+       "type": "text"
+      },
+      "latest_oyasumi": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 28,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "今日もありがとう、おやすみ",
+       "ts": "2026-12-05T14:30:00Z",
+       "type": "text"
+      },
+      "oyasumi_count": 4,
+      "variant": "oyasumi"
+     },
+     "fallback": null,
+     "key": "s04_greetings"
+    },
+    {
+     "data": {
+      "burst": [
+       {
+        "avatar_url": null,
+        "caption": "今日の景色、見せたかったんだ",
+        "id": 15,
+        "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/15.jpg",
+        "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+        "text": null,
+        "ts": "2026-05-03T09:00:00Z",
+        "type": "picture"
+       },
+       {
+        "avatar_url": null,
+        "caption": "今日の景色、見せたかったんだ",
+        "id": 17,
+        "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/17.jpg",
+        "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+        "text": null,
+        "ts": "2026-05-03T09:02:00Z",
+        "type": "picture"
+       },
+       {
+        "avatar_url": null,
+        "caption": "今日の景色、見せたかったんだ",
+        "id": 18,
+        "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/18.jpg",
+        "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+        "text": null,
+        "ts": "2026-05-03T09:04:00Z",
+        "type": "picture"
+       }
+      ],
+      "burst_caption": "今日の景色、見せたかったんだ",
+      "mostly_bursts": false,
+      "wall": [
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/40.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/41.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/42.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/15.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/17.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/18.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/43.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/44.jpg"
+      ]
+     },
+     "fallback": null,
+     "key": "s05_photos"
+    },
+    {
+     "data": {
+      "clips": [
+       {
+        "end": 6.0,
+        "message": {
+         "avatar_url": null,
+         "caption": null,
+         "id": 22,
+         "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/voice/22.m4a",
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": null,
+         "ts": "2026-02-14T12:00:00Z",
+         "type": "voice"
+        },
+        "start": 0,
+        "transcript_segments": null
+       },
+       {
+        "end": 6.0,
+        "message": {
+         "avatar_url": null,
+         "caption": null,
+         "id": 21,
+         "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/voice/21.m4a",
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": null,
+         "ts": "2026-07-20T13:30:00Z",
+         "type": "voice"
+        },
+        "start": 0,
+        "transcript_segments": null
+       },
+       {
+        "end": 5.0,
+        "message": {
+         "avatar_url": null,
+         "caption": null,
+         "id": 23,
+         "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/voice/23.m4a",
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": null,
+         "ts": "2026-11-01T14:00:00Z",
+         "type": "voice"
+        },
+        "start": 0,
+        "transcript_segments": null
+       }
+      ],
+      "voice_count": 3
+     },
+     "fallback": null,
+     "key": "s06_voice"
+    },
+    {
+     "data": {
+      "char_count": 394,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 20,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "今日はとても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。本当に嬉しい一日でした",
+       "ts": "2026-06-15T10:00:00Z",
+       "type": "text"
+      },
+      "photo_url": null
+     },
+     "fallback": null,
+     "key": "s07_letter"
+    },
+    {
+     "data": {
+      "mode": "echo",
+      "now": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 24,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "今年も花火を見たよ、きれいだった",
+       "ts": "2026-08-11T11:30:00Z",
+       "type": "text"
+      },
+      "shared_keyword": "花火",
+      "then": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 1,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "花火きれいだったね、また見たいな",
+       "ts": "2025-08-10T11:00:00Z",
+       "type": "text"
+      },
+      "years_apart": 1
+     },
+     "fallback": null,
+     "key": "s08_echo"
+    },
+    {
+     "data": {
+      "stubs": [
+       {
+        "kind": "christmas",
+        "message": {
+         "avatar_url": null,
+         "caption": null,
+         "id": 32,
+         "media_url": null,
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": "メリクリ！素敵な一日を",
+         "ts": "2026-12-25T01:00:00Z",
+         "type": "text"
+        },
+        "sealed": false,
+        "seconds_after_midnight": null
+       }
+      ]
+     },
+     "fallback": null,
+     "key": "s09_special"
+    },
+    {
+     "data": {
+      "favorites_count": 1,
+      "first_favorite": {
+       "avatar_url": null,
+       "caption": null,
+       "favorited_at": null,
+       "id": 19,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": null,
+       "ts": "2026-06-01T11:00:00Z",
+       "type": "text"
+      },
+      "invite": false,
+      "letters": [
+       {
+        "date": "2026-03-01",
+        "first_line": "はじめてのお手紙です"
+       }
+      ],
+      "letters_count": 1
+     },
+     "fallback": null,
+     "key": "s10_you"
+    },
+    {
+     "data": {
+      "final": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 13,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "%%%大好きだよ、いつもありがとう",
+       "ts": "2026-01-20T13:00:00Z",
+       "type": "text"
+      },
+      "petals": [
+       {
+        "date": "2026-01-20",
+        "text": "%%%大好きだよ、いつもありがとう"
+       },
+       {
+        "date": "2026-03-03",
+        "text": "ありがとう、ほんとうに感謝してます"
+       },
+       {
+        "date": "2026-06-01",
+        "text": "ずっと応援してくれて本当にありがとう"
+       },
+       {
+        "date": "2026-12-05",
+        "text": "今日もありがとう、おやすみ"
+       },
+       {
+        "date": "2026-12-31",
+        "text": "今年もありがとう、おやすみ"
+       }
+      ],
+      "variant": null
+     },
+     "fallback": null,
+     "key": "s11_daisuki"
+    },
+    {
+     "data": {
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "message_id": 19,
+      "photo_url": null,
+      "sentence": "ずっと応援してくれて本当にありがとう",
+      "ts": "2026-06-01T11:00:00Z"
+     },
+     "fallback": null,
+     "key": "s12_sentence"
+    },
+    {
+     "data": {
+      "final": true,
+      "graduated": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 31,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "今年もありがとう、おやすみ",
+       "ts": "2026-12-31T14:50:00Z",
+       "type": "text"
+      }
+     },
+     "fallback": null,
+     "key": "s13_oyasumi"
+    }
+   ],
+   "tier": "full",
+   "year": 2026
+  },
+  "full_partial": {
+   "member": {
+    "avatar_url": null,
+    "graduated": false,
+    "id": "58",
+    "name": "金村 美玖",
+    "subscription_start": "2024-07-24",
+    "years_together": 3
+   },
+   "phase": "partial",
+   "poster": {
+    "avatar_changed": false,
+    "avatar_new_url": null,
+    "avatar_old_url": null,
+    "best_photo": {
+     "avatar_url": null,
+     "caption": "今日の景色、見せたかったんだ",
+     "id": 18,
+     "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/18.jpg",
+     "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+     "text": null,
+     "ts": "2026-05-03T09:04:00Z",
+     "type": "picture"
+    },
+    "favorites_count": 1,
+    "letters_count": 1,
+    "numbers": [
+     {
+      "count": 8,
+      "key": "photos"
+     }
+    ],
+    "sentence": {
+     "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+     "message_id": 19,
+     "photo_url": null,
+     "sentence": "ずっと応援してくれて本当にありがとう",
+     "ts": "2026-06-01T11:00:00Z"
+    },
+    "start_mid_recent": [
+     {
+      "avatar_url": null,
+      "caption": null,
+      "id": 40,
+      "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/40.jpg",
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "text": null,
+      "ts": "2026-02-02T12:00:00Z",
+      "type": "picture"
+     },
+     {
+      "avatar_url": null,
+      "caption": null,
+      "id": 43,
+      "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/43.jpg",
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "text": null,
+      "ts": "2026-07-07T12:00:00Z",
+      "type": "picture"
+     },
+     {
+      "avatar_url": null,
+      "caption": null,
+      "id": 44,
+      "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/44.jpg",
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "text": null,
+      "ts": "2026-10-10T12:00:00Z",
+      "type": "picture"
+     }
+    ],
+    "stubs": [
+     {
+      "kind": "christmas",
+      "message": null,
+      "sealed": true,
+      "seconds_after_midnight": null
+     }
+    ],
+    "years_together": 3
+   },
+   "slides": [
+    {
+     "data": {
+      "joined_this_year": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 10,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "あけましておめでとう！今年もよろしくね",
+       "ts": "2025-12-31T15:00:07Z",
+       "type": "text"
+      },
+      "new_year_midnight": true
+     },
+     "fallback": null,
+     "key": "s01_first"
+    },
+    {
+     "data": {
+      "count": 3,
+      "first": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 11,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "%%%、今日もお疲れさま。明日も頑張ろうね",
+       "ts": "2026-01-05T12:00:00Z",
+       "type": "text"
+      },
+      "fragments": [
+       "%%%、今日もお疲れさま",
+       "%%%大好きだよ、いつもありがとう",
+       "%%%に会えて嬉しかった"
+      ],
+      "last": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 25,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "%%%に会えて嬉しかった！また会おうね",
+       "ts": "2026-11-20T12:00:00Z",
+       "type": "text"
+      },
+      "mode": "nickname",
+      "single": false
+     },
+     "fallback": null,
+     "key": "s02_name"
+    },
+    {
+     "data": {
+      "longest_streak": 56,
+      "peak_hour": 12,
+      "representative": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 259,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "レッスン159回目、がんばったよ",
+       "ts": "2026-07-20T03:39:00Z",
+       "type": "text"
+      },
+      "stars": [
+       {
+        "h": 0,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 7,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 22,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 1,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 2,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 3,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 4,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 5,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 6,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 7,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 8,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 9,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 10,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 11,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 12,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 13,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "voice"
+       },
+       {
+        "h": 12,
+        "m": 14,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 16,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 17,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 18,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 19,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 20,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 21,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 22,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 23,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 24,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 25,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 26,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 27,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 28,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 29,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 30,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 31,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 32,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 33,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 34,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 35,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 36,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 37,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 38,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 39,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 40,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 41,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 42,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 43,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 44,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 45,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 46,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 47,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 48,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 49,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 50,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 51,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 52,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 53,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 54,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 55,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 56,
+        "type": "text"
+       },
+       {
+        "h": 23,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 57,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 58,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 59,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 1,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 2,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 3,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 4,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 5,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 6,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 7,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 8,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 9,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 10,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 11,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 12,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 13,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 14,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 16,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 17,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 18,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 19,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 20,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 21,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 22,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 23,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 24,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 25,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 26,
+        "type": "text"
+       },
+       {
+        "h": 18,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 18,
+        "m": 1,
+        "type": "text"
+       },
+       {
+        "h": 18,
+        "m": 2,
+        "type": "picture"
+       },
+       {
+        "h": 18,
+        "m": 4,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 27,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 28,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 29,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 30,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 31,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 32,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 33,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 34,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 35,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 36,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 37,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 38,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 39,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 40,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 41,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 42,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 43,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 44,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 45,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 46,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 47,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 48,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 49,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 50,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 51,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 52,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 53,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 54,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 55,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 56,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 57,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 58,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 59,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 1,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 2,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 3,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 4,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 5,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 6,
+        "type": "text"
+       },
+       {
+        "h": 19,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 7,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 8,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 9,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 10,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 11,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 12,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 13,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 14,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 15,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 16,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 17,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 18,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 19,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 20,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 21,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 22,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 23,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 24,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 25,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 26,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 27,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 28,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 29,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 30,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 31,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 32,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 33,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 34,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 35,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 36,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 37,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 38,
+        "type": "text"
+       },
+       {
+        "h": 12,
+        "m": 39,
+        "type": "text"
+       },
+       {
+        "h": 22,
+        "m": 30,
+        "type": "voice"
+       },
+       {
+        "h": 20,
+        "m": 30,
+        "type": "text"
+       },
+       {
+        "h": 23,
+        "m": 10,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 23,
+        "m": 0,
+        "type": "voice"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 23,
+        "m": 30,
+        "type": "text"
+       }
+      ]
+     },
+     "fallback": null,
+     "key": "s03_clock"
+    },
+    {
+     "data": {
+      "distinct_days": 3,
+      "first_ohayo": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 12,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "おはよう☀️今日も一日がんばろう",
+       "ts": "2026-01-09T22:00:00Z",
+       "type": "text"
+      },
+      "latest_oyasumi": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 27,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "おやすみなさい",
+       "ts": "2026-09-01T14:10:00Z",
+       "type": "text"
+      },
+      "oyasumi_count": 3,
+      "variant": "oyasumi"
+     },
+     "fallback": null,
+     "key": "s04_greetings"
+    },
+    {
+     "data": {
+      "burst": [
+       {
+        "avatar_url": null,
+        "caption": "今日の景色、見せたかったんだ",
+        "id": 15,
+        "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/15.jpg",
+        "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+        "text": null,
+        "ts": "2026-05-03T09:00:00Z",
+        "type": "picture"
+       },
+       {
+        "avatar_url": null,
+        "caption": "今日の景色、見せたかったんだ",
+        "id": 17,
+        "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/17.jpg",
+        "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+        "text": null,
+        "ts": "2026-05-03T09:02:00Z",
+        "type": "picture"
+       },
+       {
+        "avatar_url": null,
+        "caption": "今日の景色、見せたかったんだ",
+        "id": 18,
+        "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/18.jpg",
+        "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+        "text": null,
+        "ts": "2026-05-03T09:04:00Z",
+        "type": "picture"
+       }
+      ],
+      "burst_caption": "今日の景色、見せたかったんだ",
+      "mostly_bursts": false,
+      "wall": [
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/40.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/41.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/42.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/15.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/17.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/18.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/43.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/44.jpg"
+      ]
+     },
+     "fallback": null,
+     "key": "s05_photos"
+    },
+    {
+     "data": {
+      "clips": [
+       {
+        "end": 6.0,
+        "message": {
+         "avatar_url": null,
+         "caption": null,
+         "id": 22,
+         "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/voice/22.m4a",
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": null,
+         "ts": "2026-02-14T12:00:00Z",
+         "type": "voice"
+        },
+        "start": 0,
+        "transcript_segments": null
+       },
+       {
+        "end": 6.0,
+        "message": {
+         "avatar_url": null,
+         "caption": null,
+         "id": 21,
+         "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/voice/21.m4a",
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": null,
+         "ts": "2026-07-20T13:30:00Z",
+         "type": "voice"
+        },
+        "start": 0,
+        "transcript_segments": null
+       },
+       {
+        "end": 5.0,
+        "message": {
+         "avatar_url": null,
+         "caption": null,
+         "id": 23,
+         "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/voice/23.m4a",
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": null,
+         "ts": "2026-11-01T14:00:00Z",
+         "type": "voice"
+        },
+        "start": 0,
+        "transcript_segments": null
+       }
+      ],
+      "voice_count": 3
+     },
+     "fallback": null,
+     "key": "s06_voice"
+    },
+    {
+     "data": {
+      "char_count": 394,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 20,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "今日はとても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。とても長い日記のような文章が続きます。本当に嬉しい一日でした",
+       "ts": "2026-06-15T10:00:00Z",
+       "type": "text"
+      },
+      "photo_url": null
+     },
+     "fallback": null,
+     "key": "s07_letter"
+    },
+    {
+     "data": {
+      "mode": "echo",
+      "now": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 24,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "今年も花火を見たよ、きれいだった",
+       "ts": "2026-08-11T11:30:00Z",
+       "type": "text"
+      },
+      "shared_keyword": "花火",
+      "then": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 1,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "花火きれいだったね、また見たいな",
+       "ts": "2025-08-10T11:00:00Z",
+       "type": "text"
+      },
+      "years_apart": 1
+     },
+     "fallback": null,
+     "key": "s08_echo"
+    },
+    {
+     "data": {
+      "stubs": [
+       {
+        "kind": "christmas",
+        "message": null,
+        "sealed": true,
+        "seconds_after_midnight": null
+       }
+      ]
+     },
+     "fallback": null,
+     "key": "s09_special"
+    },
+    {
+     "data": {
+      "favorites_count": 1,
+      "first_favorite": {
+       "avatar_url": null,
+       "caption": null,
+       "favorited_at": null,
+       "id": 19,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": null,
+       "ts": "2026-06-01T11:00:00Z",
+       "type": "text"
+      },
+      "invite": false,
+      "letters": [
+       {
+        "date": "2026-03-01",
+        "first_line": "はじめてのお手紙です"
+       }
+      ],
+      "letters_count": 1
+     },
+     "fallback": null,
+     "key": "s10_you"
+    },
+    {
+     "data": {
+      "final": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 13,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "%%%大好きだよ、いつもありがとう",
+       "ts": "2026-01-20T13:00:00Z",
+       "type": "text"
+      },
+      "petals": [
+       {
+        "date": "2026-01-20",
+        "text": "%%%大好きだよ、いつもありがとう"
+       },
+       {
+        "date": "2026-03-03",
+        "text": "ありがとう、ほんとうに感謝してます"
+       },
+       {
+        "date": "2026-06-01",
+        "text": "ずっと応援してくれて本当にありがとう"
+       },
+       {
+        "date": "2026-12-05",
+        "text": "今日もありがとう、おやすみ"
+       }
+      ],
+      "variant": null
+     },
+     "fallback": null,
+     "key": "s11_daisuki"
+    },
+    {
+     "data": {
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "message_id": 19,
+      "photo_url": null,
+      "sentence": "ずっと応援してくれて本当にありがとう",
+      "ts": "2026-06-01T11:00:00Z"
+     },
+     "fallback": null,
+     "key": "s12_sentence"
+    },
+    {
+     "data": {
+      "final": false,
+      "graduated": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 28,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "今日もありがとう、おやすみ",
+       "ts": "2026-12-05T14:30:00Z",
+       "type": "text"
+      }
+     },
+     "fallback": null,
+     "key": "s13_oyasumi"
+    }
+   ],
+   "tier": "full",
+   "year": 2026
+  },
+  "media_only": {
+   "member": {
+    "avatar_url": null,
+    "graduated": false,
+    "id": "58",
+    "name": "金村 美玖",
+    "subscription_start": null,
+    "years_together": null
+   },
+   "phase": "final",
+   "poster": {
+    "avatar_changed": false,
+    "avatar_new_url": null,
+    "avatar_old_url": null,
+    "best_photo": {
+     "avatar_url": null,
+     "caption": null,
+     "id": 11,
+     "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/11.jpg",
+     "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+     "text": null,
+     "ts": "2026-12-10T03:00:00Z",
+     "type": "picture"
+    },
+    "favorites_count": null,
+    "letters_count": null,
+    "numbers": [
+     {
+      "count": 11,
+      "key": "photos"
+     }
+    ],
+    "sentence": null,
+    "start_mid_recent": [
+     {
+      "avatar_url": null,
+      "caption": null,
+      "id": 1,
+      "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/1.jpg",
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "text": null,
+      "ts": "2026-02-10T03:00:00Z",
+      "type": "picture"
+     },
+     {
+      "avatar_url": null,
+      "caption": null,
+      "id": 6,
+      "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/6.jpg",
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "text": null,
+      "ts": "2026-07-10T03:00:00Z",
+      "type": "picture"
+     },
+     {
+      "avatar_url": null,
+      "caption": null,
+      "id": 11,
+      "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/11.jpg",
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "text": null,
+      "ts": "2026-12-10T03:00:00Z",
+      "type": "picture"
+     }
+    ],
+    "stubs": [],
+    "years_together": null
+   },
+   "slides": [
+    {
+     "data": {
+      "joined_this_year": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 1,
+       "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/1.jpg",
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": null,
+       "ts": "2026-02-10T03:00:00Z",
+       "type": "picture"
+      },
+      "new_year_midnight": false
+     },
+     "fallback": null,
+     "key": "s01_first"
+    },
+    {
+     "data": {
+      "longest_streak": null,
+      "peak_hour": 12,
+      "representative": null,
+      "stars": [
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       },
+       {
+        "h": 12,
+        "m": 0,
+        "type": "picture"
+       }
+      ]
+     },
+     "fallback": null,
+     "key": "s03_clock"
+    },
+    {
+     "data": {
+      "best_photo": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 11,
+       "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/11.jpg",
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": null,
+       "ts": "2026-12-10T03:00:00Z",
+       "type": "picture"
+      },
+      "burst": [],
+      "burst_caption": null,
+      "mostly_bursts": false,
+      "wall": [
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/1.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/2.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/3.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/4.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/5.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/6.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/7.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/8.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/9.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/10.jpg",
+       "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/11.jpg"
+      ]
+     },
+     "fallback": "best_photo",
+     "key": "s05_photos"
+    },
+    {
+     "data": {
+      "invite": true
+     },
+     "fallback": "invite",
+     "key": "s10_you"
+    }
+   ],
+   "tier": "short",
+   "year": 2026
+  },
+  "stubs_avatar": {
+   "member": {
+    "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+    "graduated": false,
+    "id": "58",
+    "name": "金村 美玖",
+    "subscription_start": "2024-07-24",
+    "years_together": 3
+   },
+   "phase": "final",
+   "poster": {
+    "avatar_changed": true,
+    "avatar_new_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+    "avatar_old_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/a.jpg",
+    "best_photo": null,
+    "favorites_count": 1,
+    "letters_count": null,
+    "numbers": [],
+    "sentence": {
+     "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+     "message_id": 90,
+     "photo_url": null,
+     "sentence": "ずっと応援してくれて本当にありがとう",
+     "ts": "2026-10-01T11:00:00Z"
+    },
+    "start_mid_recent": [],
+    "stubs": [
+     {
+      "kind": "birthday",
+      "message": {
+       "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+       "caption": null,
+       "id": 3,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "お誕生日を迎えました！",
+       "ts": "2026-03-09T15:00:07Z",
+       "type": "text"
+      },
+      "sealed": false,
+      "seconds_after_midnight": 7
+     },
+     {
+      "kind": "newyear",
+      "message": {
+       "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+       "caption": null,
+       "id": 2,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "今年もいっぱい話そうね",
+       "ts": "2025-12-31T15:05:00Z",
+       "type": "text"
+      },
+      "sealed": false,
+      "seconds_after_midnight": 300
+     },
+     {
+      "kind": "anniversary",
+      "message": {
+       "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+       "caption": null,
+       "id": 6,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "今日の撮影はとても楽しかったです",
+       "ts": "2026-07-24T11:00:00Z",
+       "type": "text"
+      },
+      "sealed": false,
+      "seconds_after_midnight": null
+     }
+    ],
+    "years_together": 3
+   },
+   "slides": [
+    {
+     "data": {
+      "joined_this_year": false,
+      "message": {
+       "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+       "caption": null,
+       "id": 1,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "あけおめ！",
+       "ts": "2025-12-31T15:00:03Z",
+       "type": "text"
+      },
+      "new_year_midnight": true
+     },
+     "fallback": null,
+     "key": "s01_first"
+    },
+    {
+     "data": {
+      "longest_streak": null,
+      "peak_hour": 20,
+      "representative": {
+       "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+       "caption": null,
+       "id": 109,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "きょうの話9",
+       "ts": "2026-04-10T11:00:00Z",
+       "type": "text"
+      },
+      "stars": [
+       {
+        "h": 0,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 0,
+        "m": 5,
+        "type": "text"
+       },
+       {
+        "h": 0,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "text"
+       }
+      ]
+     },
+     "fallback": null,
+     "key": "s03_clock"
+    },
+    {
+     "data": {
+      "stubs": [
+       {
+        "kind": "birthday",
+        "message": {
+         "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+         "caption": null,
+         "id": 3,
+         "media_url": null,
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": "お誕生日を迎えました！",
+         "ts": "2026-03-09T15:00:07Z",
+         "type": "text"
+        },
+        "sealed": false,
+        "seconds_after_midnight": 7
+       },
+       {
+        "kind": "newyear",
+        "message": {
+         "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+         "caption": null,
+         "id": 2,
+         "media_url": null,
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": "今年もいっぱい話そうね",
+         "ts": "2025-12-31T15:05:00Z",
+         "type": "text"
+        },
+        "sealed": false,
+        "seconds_after_midnight": 300
+       },
+       {
+        "kind": "anniversary",
+        "message": {
+         "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+         "caption": null,
+         "id": 6,
+         "media_url": null,
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": "今日の撮影はとても楽しかったです",
+         "ts": "2026-07-24T11:00:00Z",
+         "type": "text"
+        },
+        "sealed": false,
+        "seconds_after_midnight": null
+       }
+      ]
+     },
+     "fallback": null,
+     "key": "s09_special"
+    },
+    {
+     "data": {
+      "favorites_count": 1,
+      "first_favorite": {
+       "avatar_url": null,
+       "caption": null,
+       "favorited_at": null,
+       "id": 90,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": null,
+       "ts": "2026-10-01T11:00:00Z",
+       "type": "text"
+      },
+      "invite": false,
+      "letters": [],
+      "letters_count": null
+     },
+     "fallback": null,
+     "key": "s10_you"
+    },
+    {
+     "data": {
+      "final": null,
+      "petals": [
+       {
+        "date": "2026-10-01",
+        "text": "ずっと応援してくれて本当にありがとう"
+       }
+      ],
+      "variant": "joy"
+     },
+     "fallback": "joy",
+     "key": "s11_daisuki"
+    },
+    {
+     "data": {
+      "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+      "message_id": 90,
+      "photo_url": null,
+      "sentence": "ずっと応援してくれて本当にありがとう",
+      "ts": "2026-10-01T11:00:00Z"
+     },
+     "fallback": null,
+     "key": "s12_sentence"
+    },
+    {
+     "data": {
+      "final": true,
+      "graduated": false,
+      "message": {
+       "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
+       "caption": null,
+       "id": 99,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "またあした",
+       "ts": "2026-12-08T12:00:00Z",
+       "type": "text"
+      }
+     },
+     "fallback": "last_text",
+     "key": "s13_oyasumi"
+    }
+   ],
+   "tier": "short",
+   "year": 2026
+  },
+  "tier_none": {
+   "member": {
+    "avatar_url": null,
+    "graduated": false,
+    "id": "58",
+    "name": "金村 美玖",
+    "subscription_start": null,
+    "years_together": null
+   },
+   "phase": "final",
+   "poster": null,
+   "slides": [],
+   "tier": "none",
+   "year": 2026
+  },
+  "video_fallback": {
+   "member": {
+    "avatar_url": null,
+    "graduated": false,
+    "id": "58",
+    "name": "金村 美玖",
+    "subscription_start": null,
+    "years_together": null
+   },
+   "phase": "final",
+   "poster": {
+    "avatar_changed": false,
+    "avatar_new_url": null,
+    "avatar_old_url": null,
+    "best_photo": null,
+    "favorites_count": null,
+    "letters_count": null,
+    "numbers": [],
+    "sentence": null,
+    "start_mid_recent": [],
+    "stubs": [],
+    "years_together": null
+   },
+   "slides": [
+    {
+     "data": {
+      "joined_this_year": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 100,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "きょうの話0",
+       "ts": "2026-03-01T11:00:00Z",
+       "type": "text"
+      },
+      "new_year_midnight": false
+     },
+     "fallback": null,
+     "key": "s01_first"
+    },
+    {
+     "data": {
+      "longest_streak": null,
+      "peak_hour": 20,
+      "representative": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 109,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "きょうの話9",
+       "ts": "2026-03-10T11:00:00Z",
+       "type": "text"
+      },
+      "stars": [
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "video"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "text"
+       }
+      ]
+     },
+     "fallback": null,
+     "key": "s03_clock"
+    },
+    {
+     "data": {
+      "clips": [
+       {
+        "end": 12.0,
+        "message": {
+         "avatar_url": null,
+         "caption": null,
+         "id": 60,
+         "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/video/60.mp4",
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": null,
+         "ts": "2026-07-01T12:00:00Z",
+         "type": "video"
+        },
+        "start": 0,
+        "transcript_segments": null
+       }
+      ],
+      "voice_count": null
+     },
+     "fallback": "video",
+     "key": "s06_voice"
+    },
+    {
+     "data": {
+      "invite": true
+     },
+     "fallback": "invite",
+     "key": "s10_you"
+    },
+    {
+     "data": {
+      "final": true,
+      "graduated": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 99,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "またあした",
+       "ts": "2026-12-08T12:00:00Z",
+       "type": "text"
+      }
+     },
+     "fallback": "last_text",
+     "key": "s13_oyasumi"
+    }
+   ],
+   "tier": "short",
+   "year": 2026
+  },
+  "voice_single": {
+   "member": {
+    "avatar_url": null,
+    "graduated": false,
+    "id": "58",
+    "name": "金村 美玖",
+    "subscription_start": null,
+    "years_together": null
+   },
+   "phase": "final",
+   "poster": {
+    "avatar_changed": false,
+    "avatar_new_url": null,
+    "avatar_old_url": null,
+    "best_photo": null,
+    "favorites_count": null,
+    "letters_count": null,
+    "numbers": [],
+    "sentence": null,
+    "start_mid_recent": [],
+    "stubs": [],
+    "years_together": null
+   },
+   "slides": [
+    {
+     "data": {
+      "joined_this_year": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 100,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "きょうの話0",
+       "ts": "2026-03-01T11:00:00Z",
+       "type": "text"
+      },
+      "new_year_midnight": false
+     },
+     "fallback": null,
+     "key": "s01_first"
+    },
+    {
+     "data": {
+      "longest_streak": null,
+      "peak_hour": 20,
+      "representative": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 109,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "きょうの話9",
+       "ts": "2026-03-10T11:00:00Z",
+       "type": "text"
+      },
+      "stars": [
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 20,
+        "m": 0,
+        "type": "text"
+       },
+       {
+        "h": 22,
+        "m": 0,
+        "type": "voice"
+       },
+       {
+        "h": 21,
+        "m": 0,
+        "type": "text"
+       }
+      ]
+     },
+     "fallback": null,
+     "key": "s03_clock"
+    },
+    {
+     "data": {
+      "clips": [
+       {
+        "end": 12.0,
+        "message": {
+         "avatar_url": null,
+         "caption": null,
+         "id": 51,
+         "media_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/voice/51.m4a",
+         "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+         "text": null,
+         "ts": "2026-06-01T13:00:00Z",
+         "type": "voice"
+        },
+        "start": 0,
+        "transcript_segments": [
+         {
+          "end": 3.0,
+          "start": 0.0,
+          "text": "%%%、聞こえる？"
+         }
+        ]
+       }
+      ],
+      "voice_count": 1
+     },
+     "fallback": "single",
+     "key": "s06_voice"
+    },
+    {
+     "data": {
+      "invite": true
+     },
+     "fallback": "invite",
+     "key": "s10_you"
+    },
+    {
+     "data": {
+      "final": true,
+      "graduated": false,
+      "message": {
+       "avatar_url": null,
+       "caption": null,
+       "id": 99,
+       "media_url": null,
+       "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+       "text": "またあした",
+       "ts": "2026-12-08T12:00:00Z",
+       "type": "text"
+      }
+     },
+     "fallback": "last_text",
+     "key": "s13_oyasumi"
+    }
+   ],
+   "tier": "short",
+   "year": 2026
+  }
+ },
+ "overview": {
+  "christmas_open": false,
+  "members": [
+   {
+    "member_id": "58",
+    "member_path": "日向坂46/messages/34 金村 美玖/58 金村 美玖",
+    "name": "金村 美玖",
+    "oshi": true,
+    "tier": "full",
+    "title_key": "recap.titles.nickname"
+   },
+   {
+    "member_id": "64",
+    "member_path": "日向坂46/messages/40 松田 好花/64 松田 好花",
+    "name": "松田 好花",
+    "oshi": false,
+    "tier": "short",
+    "title_key": "recap.titles.morning"
+   }
+  ],
+  "opening": {
+   "first_message": {
+    "member_id": "58",
+    "ts": "2025-12-31T15:00:07Z"
+   },
+   "oyasumi_total": 3,
+   "star_order": [
+    "58",
+    "64"
+   ]
+  },
+  "phase": "partial",
+  "year": 2026
+ },
+ "years": {
+  "years": [
+   2026
+  ]
+ }
+}

@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 from datetime import datetime, timezone
+from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import pytest
@@ -1604,3 +1605,131 @@ async def test_sentence_fields_are_one_sentence_each(full):
     assert len(one) > 3
     for text in one:
         assert recap._sentences(text) == [text], text
+
+
+# --- cross-layer contract (wave review can-wait 3) ---------------------------------
+
+CONTRACT = (
+    Path(__file__).resolve().parents[2]
+    / "frontend/src/features/memories/recap/__fixtures__/contract/recap_payloads.json"
+)
+
+
+@pytest.mark.asyncio
+async def test_contract_fixture_for_the_frontend(tmp_path, monkeypatch):
+    """Real backend payloads, checked against the TS types by ``contract.test.ts``.
+
+    The JSON is committed. When the payload changes, this test rewrites it and
+    fails once so the change is reviewed (and the vitest re-run) before commit.
+    """
+
+    async def oshi(service):
+        return {"金村美玖"}
+
+    monkeypatch.setattr(oshi_mod, "oshi_names", oshi)
+    mi.set_db_path(tmp_path / "idx.db")
+    app_state.set_db_path(tmp_path / "app.db")
+    app_state.init_db()
+
+    def service(name):
+        d = tmp_path / name / SVC_NAME
+        d.mkdir(parents=True)
+        return d
+
+    full = service("full")
+    write_room(full, KANEMURA, FULL_ROWS, letters=LETTERS)
+    write_subs(full, {"34": "2024-07-24"})
+    write_room(
+        full,
+        ("40 松田 好花", "64 松田 好花"),
+        [
+            m(k, f"2026-01-{1 + k:02d} 06:00", content=f"おはよう{k}")
+            for k in range(1, 13)
+        ],
+    )
+
+    stubs = service("stubs")
+    write_birthdays(stubs, {"金村美玖": "2003-03-10"})
+    write_subs(stubs, {"34": "2024-07-24"})
+    d = write_room(
+        stubs,
+        KANEMURA,
+        [
+            m(1, "2026-01-01 00:00:03", content="あけおめ！"),
+            m(2, "2026-01-01 00:05:00", content="今年もいっぱい話そうね"),
+            m(3, "2026-03-10 00:00:07", content="お誕生日を迎えました！"),
+            m(6, "2026-07-24 20:00", content="今日の撮影はとても楽しかったです"),
+            *_plain(10, month=4),
+            _soak_s12(),
+            _closing_text(),
+        ],
+    )
+    write_avatars(d, AVATARS, "thumbnail/b.jpg")
+
+    voices = service("voices")
+    d = write_room(
+        voices,
+        KANEMURA,
+        [*_plain(10), voice(51, "2026-06-01 22:00", 20.0), _closing_text()],
+    )
+    write_transcripts(d, [transcript(51, [(0.0, 3.0, "%%%、聞こえる？")])])
+
+    videos = service("videos")
+    write_room(
+        videos,
+        KANEMURA,
+        [*_plain(10), video(60, "2026-07-01 21:00", 40.0), _closing_text()],
+    )
+
+    flat = service("flat")
+    write_room(
+        flat,
+        KANEMURA,
+        [
+            m(
+                k,
+                f"2026-{2 + k // 28:02d}-{1 + k % 28:02d} {k:02d}:15",
+                content=f"話{k}",
+            )
+            for k in range(24)
+        ],
+    )
+
+    media_only = service("media_only")
+    write_room(
+        media_only,
+        KANEMURA,
+        [pic(k, f"2026-{1 + k:02d}-10 12:00") for k in range(1, 12)],
+    )
+
+    none = service("none")
+    write_room(
+        none,
+        KANEMURA,
+        [m(k, f"2026-03-{1 + k:02d} 20:00", content=f"話{k}") for k in range(3)],
+    )
+
+    recaps = {
+        "full_partial": await build(full, "金村美玖", PARTIAL),
+        "full_final": await build(full, "金村美玖", FINAL),
+        "stubs_avatar": await build(stubs, "金村美玖", FINAL),
+        "voice_single": await build(voices, "金村美玖", FINAL),
+        "video_fallback": await build(videos, "金村美玖", FINAL),
+        "flat_band": await build(flat, "金村美玖", FINAL),
+        "media_only": await build(media_only, "金村美玖", FINAL),
+        "tier_none": await build(none, "金村美玖", FINAL),
+    }
+    with time_machine.travel(PARTIAL, tick=False):
+        now = datetime.now(timezone.utc)
+        overview = await recap.build_members_overview(SERVICE, full, 2026, now=now)
+        years = {"years": await recap.recap_years(full, now=now)}
+    doc = {"member_recaps": recaps, "overview": overview, "years": years}
+    text = json.dumps(doc, ensure_ascii=False, indent=1, sort_keys=True) + "\n"
+    old = CONTRACT.read_text(encoding="utf-8") if CONTRACT.exists() else None
+    if old != text:
+        CONTRACT.parent.mkdir(parents=True, exist_ok=True)
+        CONTRACT.write_text(text, encoding="utf-8")
+        pytest.fail(
+            "recap contract fixture regenerated: review the diff, run the vitest "
+            "contract test and commit it"
+        )
