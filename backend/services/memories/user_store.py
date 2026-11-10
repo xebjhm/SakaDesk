@@ -311,7 +311,9 @@ def set_cover_override(
             "room=excluded.room, message_id=excluded.message_id, set_at=excluded.set_at",
             (service_dir, scope, month, room, message_id, ts),
         )
-    logger.info(_EVENT, op="cover_set", message_id=message_id)
+    # ``service_dir`` is the service folder's name (never a path), like ``service``
+    # on the note and gacha logs.
+    logger.info(_EVENT, op="cover_set", service=service_dir, message_id=message_id)
 
 
 def clear_cover_override(service_dir: str, scope: str, month: str) -> bool:
@@ -321,7 +323,12 @@ def clear_cover_override(service_dir: str, scope: str, month: str) -> bool:
             (service_dir, scope, month),
         )
         cleared = cur.rowcount > 0
-    logger.info(_EVENT, op="cover_clear", outcome="cleared" if cleared else "not_found")
+    logger.info(
+        _EVENT,
+        op="cover_clear",
+        service=service_dir,
+        outcome="cleared" if cleared else "not_found",
+    )
     return cleared
 
 

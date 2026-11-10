@@ -345,6 +345,9 @@ def test_logs_never_carry_bodies_salt_paths_or_scopes():
     ]
     add = next(e for e in logs if e.get("op") == "note_add")
     assert add["note_id"] == n.id and add["chars"] == len(body)
+    store_logs = [e for e in logs if e["event"] == "memories_user_store"]
+    # every write carries its service, the cover ones included
+    assert all(e.get("service") == SVC for e in store_logs if e["op"] != "salt_create")
 
 
 # --------------------------------------------------------------- async
