@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import i18n from '../../../../i18n';
 import { S11Daisuki } from './S11Daisuki';
 import { daisukiData, payload } from '../__fixtures__/payload';
@@ -59,6 +59,23 @@ describe('S11Daisuki', () => {
         expect(screen.queryByTestId('s11-final')).toBeNull();
         expect(screen.getAllByTestId('s11-petal')).toHaveLength(3);
         expect(document.body.textContent).not.toMatch(/null|undefined/);
+    });
+
+    it('keeps every petal out of the title and the message: they lie in bands above and below (D6)', () => {
+        renderS11(daisukiData());
+        const top = screen.getByTestId('s11-band-top');
+        const bottom = screen.getByTestId('s11-band-bottom');
+        const title = screen.getByText('大好き と ありがとう。');
+        for (const p of screen.getAllByTestId('s11-petal')) {
+            expect(top.contains(p) || bottom.contains(p)).toBe(true);
+        }
+        expect(within(top).getAllByTestId('s11-petal').length).toBeGreaterThan(0);
+        expect(within(bottom).getAllByTestId('s11-petal').length).toBeGreaterThan(0);
+        expect(top.contains(title) || bottom.contains(title)).toBe(false);
+        // Document order: band, title, message, band.
+        const final = screen.getByTestId('s11-final');
+        expect(top.compareDocumentPosition(title) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(final.compareDocumentPosition(bottom) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
     });
 
     it('positions are stable between renders', () => {
