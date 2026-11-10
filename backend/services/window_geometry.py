@@ -31,6 +31,19 @@ from typing import Any, NamedTuple, Optional
 # the same apparent size for every user regardless of their display scaling.
 BASE_LOGICAL: dict[str, int] = {"width": 1200, "height": 800}
 
+# Smallest window in LOGICAL units (scaled like BASE_LOGICAL). 960 wide leaves
+# the content sheet about 840 px beside the service and feature rails (64 + 48
+# + 8): enough for a Memories member pane (11-15rem) plus a grid of at least
+# three 6rem album tiles beside the polaroid, and for the chat's member list
+# beside a readable bubble column. 640 tall keeps the page header, the filter
+# row and about two tile rows (or a chat composer plus several bubbles) on
+# screen. pywebview's own default (200 x 100) let the album collapse.
+MIN_LOGICAL: dict[str, int] = {"width": 960, "height": 640}
+
+# GetSystemMetrics: client area of a full-screen window on the primary monitor
+# (the screen minus the taskbar and a caption), in device pixels.
+_SM_CXFULLSCREEN, _SM_CYFULLSCREEN = 16, 17
+
 # Sanity bounds (device pixels) so a corrupt/absurd saved size falls back to the
 # default instead of an unusable window.
 _MIN_W, _MIN_H, _MAX_W, _MAX_H = 400, 300, 7680, 4320
@@ -140,6 +153,44 @@ def default_geometry(scale: Optional[float] = None) -> dict:
         "width": round(BASE_LOGICAL["width"] * scale),
         "height": round(BASE_LOGICAL["height"] * scale),
     }
+
+
+_SCREEN_UNSET_MIN: Any = object()
+
+
+def primary_work_size() -> Optional[tuple[int, int]]:
+    """The primary monitor's usable size in device pixels, or ``None`` when
+    unknown (non-Windows / failure)."""
+    if platform.system() != "Windows":
+        return None
+    try:
+        gsm = ctypes.windll.user32.GetSystemMetrics  # type: ignore[attr-defined]
+        w, h = int(gsm(_SM_CXFULLSCREEN)), int(gsm(_SM_CYFULLSCREEN))
+        if w > 0 and h > 0:
+            return w, h
+    except Exception:
+        pass
+    return None
+
+
+def min_window_size(
+    scale: Optional[float] = None,
+    work: Any = _SCREEN_UNSET_MIN,
+) -> tuple[int, int]:
+    """pywebview ``min_size`` in DEVICE pixels: ``MIN_LOGICAL`` x the DPI scale,
+    capped to the primary monitor's usable area so a small or heavily scaled
+    screen (e.g. 1920x1080 at 175%) can still hold the window. ``scale`` and
+    ``work`` default to the live values; ``work=None`` means "unknown" (no cap).
+    """
+    if scale is None:
+        scale = dpi_scale()
+    if work is _SCREEN_UNSET_MIN:
+        work = primary_work_size()
+    w = round(MIN_LOGICAL["width"] * scale)
+    h = round(MIN_LOGICAL["height"] * scale)
+    if work is not None:
+        w, h = min(w, work[0]), min(h, work[1])
+    return max(w, _MIN_W), max(h, _MIN_H)
 
 
 # Sentinel distinguishing "caller passed no screen" from an explicit ``None``

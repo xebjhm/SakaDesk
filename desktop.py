@@ -1029,6 +1029,29 @@ def show_error_dialog(error_msg: str, tb: str):
             print(f"FATAL ERROR: {error_msg}\n{tb}")
 
 
+def _main_window_kwargs(geom: dict, port: int, background: bool) -> dict[str, Any]:
+    """``webview.create_window`` arguments of the main window.
+
+    ``min_size`` (device pixels, like the geometry) keeps the window at least
+    ``window_geometry.MIN_LOGICAL`` (960 x 640 logical) so no page collapses;
+    pywebview's default minimum is 200 x 100.
+    """
+    min_size = window_geometry.min_window_size()
+    logger.info("window_min_size", width=min_size[0], height=min_size[1])
+    return {
+        "title": "SakaDesk",
+        "url": f"http://{HOST}:{port}",
+        "width": geom["width"],
+        "height": geom["height"],
+        "x": geom.get("x"),
+        "y": geom.get("y"),
+        "resizable": True,
+        "min_size": min_size,
+        "background_color": "#F0F2F5",
+        "hidden": background,
+    }
+
+
 def _load_window_geometry() -> dict:
     """Load saved window size/position from settings.json, or return defaults.
 
@@ -1147,17 +1170,7 @@ def main() -> None:
         # Create window
         # background_color matches app's bg-[#F0F2F5] to prevent white
         # showing through Windows 11 rounded corners
-        window = webview.create_window(
-            title="SakaDesk",
-            url=f"http://{HOST}:{port}",
-            width=geom["width"],
-            height=geom["height"],
-            x=geom.get("x"),
-            y=geom.get("y"),
-            resizable=True,
-            background_color="#F0F2F5",
-            hidden=background,
-        )
+        window = webview.create_window(**_main_window_kwargs(geom, port, background))
 
         # Windows 11: recolour the native title bar to the app surface. Only
         # non-locking events (``before_show`` is locking: the GUI thread waits

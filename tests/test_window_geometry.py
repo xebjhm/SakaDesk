@@ -87,3 +87,23 @@ class TestPositionOnScreen:
             screen=screen,
         )
         assert out["x"] == -1800 and out["y"] == 100
+
+
+class TestMinWindowSize:
+    """D4b: the window may not shrink below 960 x 640 logical (album collapse)."""
+
+    def test_scales_the_logical_minimum_to_device_pixels(self):
+        assert wg.min_window_size(scale=1.0, work=None) == (960, 640)
+        assert wg.min_window_size(scale=1.75, work=(3840, 2100)) == (1680, 1120)
+
+    def test_capped_to_a_small_or_heavily_scaled_screen(self):
+        # 1920x1080 at 175%: 1680x1120 would not fit the usable area.
+        assert wg.min_window_size(scale=1.75, work=(1920, 1017)) == (1680, 1017)
+
+    def test_never_below_the_sanity_floor(self):
+        assert wg.min_window_size(scale=0.5, work=(300, 200)) == (400, 300)
+
+    def test_non_windows_has_no_work_area(self, monkeypatch):
+        monkeypatch.setattr(wg.platform, "system", lambda: "Linux")
+        assert wg.primary_work_size() is None
+        assert wg.min_window_size(scale=1.0) == (960, 640)
