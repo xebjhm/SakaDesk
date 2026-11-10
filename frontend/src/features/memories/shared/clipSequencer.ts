@@ -104,13 +104,15 @@ export class ClipSequencer {
         this.slots = [newSlot(create()), newSlot(create())];
     }
 
-    start(): void {
+    /** Plays from clip `index` (default the first; clamped into range). */
+    start(index = 0): void {
         if (this.index !== -1 || this.stopped) return;
         if (this.clips.length === 0) {
             this.emitEnd();
             return;
         }
-        this.play(0, false);
+        const first = Number.isInteger(index) ? Math.min(Math.max(index, 0), this.clips.length - 1) : 0;
+        this.play(first, false);
     }
 
     /** Silences both elements and drops every pending callback; a pending `fadeOut` resolves. */
@@ -125,9 +127,16 @@ export class ClipSequencer {
         for (const resolve of waiters) resolve();
     }
 
-    /** Holds playback: sounding elements pause; ramps, the gap and the final fade-out stop where they are. */
+    /**
+     * Holds playback: sounding elements pause; ramps, the gap and the final fade-out stop where
+     * they are. A pause during {@link fadeOut} stops at once (and resolves the fade).
+     */
     pause(): void {
         if (this.paused || this.stopped) return;
+        if (this.fading) {
+            this.stop();
+            return;
+        }
         this.paused = true;
         for (const slot of this.slots) if (slot.live) slot.el.pause();
         if (this.endTimer !== null) {
@@ -154,9 +163,12 @@ export class ClipSequencer {
                 handOvers.push(() => fail(deferred.code));
                 continue;
             }
+            // Bind this clip's handler now: a jump onto this slot before the rejection arrives
+            // installs a new one, and the stale (epoch-dead) handler must be the one that runs.
+            const fail = slot.fail;
             const played = slot.el.play();
             if (played && typeof played.catch === 'function') {
-                played.catch(() => slot.fail?.('play_rejected'));
+                played.catch(() => fail?.('play_rejected'));
             }
         }
         // After the loop: a hand-over starts the other slot, which must not be played twice.
@@ -193,9 +205,16 @@ export class ClipSequencer {
         this.emitEnd();
     }
 
-    /** The previous clip, or the current one from its start once it is more than 3 s in (or the first). */
+    /**
+     * The previous clip, or the current one from its start once it is more than 3 s in (or the
+     * first). During a gap the clip that just ended counts as current, so it plays again.
+     */
     prev(): void {
         if (this.stopped || this.ended || this.fading || this.index < 0) return;
+        if (this.gapNext !== null) {
+            this.skipTo(this.index);
+            return;
+        }
         const slot = this.slotOf(this.index);
         const elapsed = slot.live ? slot.el.currentTime - this.clips[this.index].start : 0;
         this.skipTo(elapsed > PREV_RESTART_S || this.index === 0 ? this.index : this.index - 1);

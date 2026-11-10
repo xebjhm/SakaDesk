@@ -48,15 +48,21 @@ export const stopMemoriesVoices = (): void => useVoicePlayback.getState().stop()
 
 /**
  * Fade the playing Memories voice out over `ms` (the radio's sleep timer), or stop at once a
- * player that cannot fade. A voice started during the fade keeps playing.
+ * key-only player that has no handle to fade. A player without a volume ramp (`LazyVoice`) makes
+ * its `fadeOut` an immediate stop. A voice started during the fade keeps playing; the state is
+ * cleared even if the fade rejects.
  */
 export const fadeOutMemoriesVoices = async (ms: number): Promise<void> => {
     const { playing, handle, stop } = useVoicePlayback.getState();
     if (playing === null && handle === null) return;
-    if (!handle || typeof handle.fadeOut !== 'function') {
+    if (!handle) {
+        // A key-only player has no handle to fade.
         stop(playing ?? undefined);
         return;
     }
-    await handle.fadeOut(ms);
-    if (useVoicePlayback.getState().handle === handle) useVoicePlayback.setState({ playing: null, handle: null });
+    try {
+        await handle.fadeOut(ms);
+    } finally {
+        if (useVoicePlayback.getState().handle === handle) useVoicePlayback.setState({ playing: null, handle: null });
+    }
 };

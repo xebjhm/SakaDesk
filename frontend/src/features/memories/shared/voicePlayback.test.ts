@@ -65,15 +65,17 @@ describe('voice coordinator', () => {
         expect(useVoicePlayback.getState()).toMatchObject({ playing: null, handle: null });
     });
 
-    it('fadeOutMemoriesVoices stops a plain player that cannot fade', async () => {
-        const plain = { stop: vi.fn() } as unknown as PlayerHandle;
-        useVoicePlayback.getState().play('p', plain);
-        await fadeOutMemoriesVoices(2000);
-        expect(plain.stop).toHaveBeenCalledTimes(1);
-        expect(useVoicePlayback.getState().playing).toBeNull();
+    it('fadeOutMemoriesVoices stops a key-only player that cannot fade', async () => {
         useVoicePlayback.getState().play('k');
         await fadeOutMemoriesVoices(2000);
         expect(useVoicePlayback.getState().playing).toBeNull();
+    });
+
+    it('a rejected fade still clears the coordinator', async () => {
+        const a: PlayerHandle = { stop: vi.fn(), fadeOut: () => Promise.reject(new Error('x')) };
+        useVoicePlayback.getState().play('a', a);
+        await expect(fadeOutMemoriesVoices(2000)).rejects.toThrow();
+        expect(useVoicePlayback.getState()).toMatchObject({ playing: null, handle: null });
     });
 
     it('a voice started during the fade is not cleared by it', async () => {

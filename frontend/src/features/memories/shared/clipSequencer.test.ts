@@ -512,3 +512,72 @@ describe('ClipSequencer fadeOut / progress / analyser', () => {
         expect(seq.analyser()).toBeNull();
     });
 });
+
+describe('ClipSequencer review fixes', () => {
+    it('a stale play() rejection from resume() does not skip a clip jumped to on the same slot', async () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(3), ev, f.create);
+        seq.start();
+        const [a] = f.made;
+        seq.pause();
+        let abort: () => void = () => {};
+        a.play = function (this: typeof a) {
+            this.playCalls += 1;
+            return new Promise<void>((_, reject) => {
+                abort = () => reject(new DOMException('interrupted', 'AbortError'));
+            });
+        };
+        seq.resume();
+        const staleAbort = abort;
+        a.play = function (this: typeof a) { this.playCalls += 1; this.paused = false; return Promise.resolve(); };
+        seq.skipTo(2);
+        staleAbort();
+        await flush();
+        expect(ev.onClipError).not.toHaveBeenCalled();
+        expect(ev.onClip.mock.calls.map(([i]) => i)).toEqual([0, 2]);
+        expect(a.src).toBe('/api/media/v2.m4a');
+        expect(a.paused).toBe(false);
+        expect(seq.analyser()).toBe(a);
+    });
+
+    it('a pause during fadeOut stops at once and resolves the fade', async () => {
+        const f = fakeAudioFactory();
+        const seq = new ClipSequencer(clips(2), events(), f.create);
+        seq.start();
+        const done = vi.fn();
+        void seq.fadeOut(1000).then(done);
+        vi.advanceTimersByTime(300);
+        seq.pause();
+        await flush();
+        expect(done).toHaveBeenCalledTimes(1);
+        seq.resume();
+        expect(f.made[0].paused).toBe(true);
+    });
+
+    it('prev() during a gap plays the clip that just ended again', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(3), ev, f.create, { crossfadeMs: 0, gapMs: 500 });
+        seq.start();
+        seq.skipTo(1);
+        f.made[1].fire('ended');
+        seq.prev();
+        expect(ev.onClip).toHaveBeenLastCalledWith(1);
+        expect(f.made[1].paused).toBe(false);
+        vi.advanceTimersByTime(1000);
+        expect(ev.onClip).toHaveBeenLastCalledWith(1);
+    });
+
+    it('start(index) begins at that clip, clamped into range', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        new ClipSequencer(clips(3), ev, f.create).start(2);
+        expect(ev.onClip.mock.calls.map(([i]) => i)).toEqual([2]);
+        expect(f.made[0].src).toBe('/api/media/v2.m4a');
+        expect(f.made[0].playCalls).toBe(1);
+        const ev2 = events();
+        new ClipSequencer(clips(3), ev2, fakeAudioFactory().create).start(9);
+        expect(ev2.onClip).toHaveBeenLastCalledWith(2);
+    });
+});
