@@ -888,7 +888,7 @@
       "streak": "連續 {{days, number}} 日",
       "streakCondition": "連續 {{days, number}} 日收到訊息",
       "midnight": "日期轉換嘅一刻",
-      "midnightCondition": "零點後五分鐘內收到嘅訊息",
+      "midnightCondition": "日期啱啱轉咗嗰陣收到嘅訊息",
       "synchro": "同步",
       "synchroCondition": "唔同日子，同一個時刻嘅訊息",
       "oyasumiFirst": "第一次早唞",

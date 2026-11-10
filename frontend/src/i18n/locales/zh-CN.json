@@ -888,7 +888,7 @@
       "streak": "连续 {{days, number}} 天",
       "streakCondition": "连续 {{days, number}} 天收到消息",
       "midnight": "日期变换的瞬间",
-      "midnightCondition": "零点后五分钟内收到的消息",
+      "midnightCondition": "日期刚换过时收到的消息",
       "synchro": "同步",
       "synchroCondition": "不同的日子，同一个时刻的消息",
       "oyasumiFirst": "第一次晚安",

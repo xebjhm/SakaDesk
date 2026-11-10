@@ -888,7 +888,7 @@
       "streak": "{{days, number}}日つづけて",
       "streakCondition": "{{days, number}}日つづけてメッセージが届いたら",
       "midnight": "日付が変わった瞬間",
-      "midnightCondition": "0時から5分のあいだに届いたメッセージ",
+      "midnightCondition": "日付が変わってすぐに届いたメッセージ",
       "synchro": "シンクロ",
       "synchroCondition": "別々の日に、同じ時刻のメッセージ",
       "oyasumiFirst": "最初のおやすみ",

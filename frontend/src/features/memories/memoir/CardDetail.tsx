@@ -90,7 +90,10 @@ export interface CardDetailProps {
     memberPath: string;
     /** Her display name, for the chat the jump opens. */
     name: string;
-    /** An earned card (or one year of a stack); its `date` is the day shown. */
+    /**
+     * An earned card (or one year of a stack). Its `date` is the unlock date, shown in the header;
+     * the day column shows the JST day of its message (`face`), which can be another day.
+     */
     card: BinderCard;
     onClose: () => void;
 }

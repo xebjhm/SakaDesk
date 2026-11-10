@@ -80,6 +80,18 @@ describe('memories core strings', () => {
         for (const dotted of MEMORIES_CORE_EN_PLURALS) expect(lookup(en, `${dotted}_other`), dotted).toBeTruthy();
     });
 
+    it.each(Object.entries(locales))('%s keeps every binder condition to one number and never a 0', (_code, data) => {
+        const cards = lookup(data, 'memories.cards') as Record<string, string>;
+        const conditions = Object.entries(cards).filter(([key]) => key.endsWith('Condition'));
+        expect(conditions.length).toBeGreaterThan(30);
+        for (const [key, text] of conditions) {
+            expect(text, key).not.toMatch(/(?<![\d,.])0(?![\d,.])/);
+            // a digit run (1,000 / 1.5) or an interpolation placeholder each count as one number
+            const numbers = text.match(/\{\{[^}]+\}\}|\d+(?:[.,]\d+)*/g) ?? [];
+            expect(numbers.length, key).toBeLessThanOrEqual(1);
+        }
+    });
+
     it('lists every key once', () => {
         expect(new Set(MEMORIES_CORE_KEYS).size).toBe(MEMORIES_CORE_KEYS.length);
     });
@@ -199,7 +211,7 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.longestVoiceCondition')).toBe('いちばん長かったボイス');
         expect(lookup(ja, 'memories.cards.greetingPairCondition')).toBe('いちばん早い時刻のおはようと、いちばん遅い時刻のおやすみ');
         expect(lookup(ja, 'memories.cards.streakCondition')).toBe('{{days, number}}日つづけてメッセージが届いたら');
-        expect(lookup(ja, 'memories.cards.midnightCondition')).toBe('0時から5分のあいだに届いたメッセージ');
+        expect(lookup(ja, 'memories.cards.midnightCondition')).toBe('日付が変わってすぐに届いたメッセージ');
         expect(lookup(ja, 'memories.cards.synchroCondition')).toBe('別々の日に、同じ時刻のメッセージ');
         expect(lookup(ja, 'memories.cards.oyasumiFirstCondition')).toBe('最初の「おやすみ」が届いたら');
         expect(lookup(ja, 'memories.cards.oyasumi100Condition')).toBe('「おやすみ」が100回届いたら');

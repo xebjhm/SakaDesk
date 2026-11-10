@@ -896,7 +896,7 @@
       "streak": "{{days, number}} days in a row",
       "streakCondition": "When messages arrive {{days, number}} days in a row",
       "midnight": "The moment the date changed",
-      "midnightCondition": "A message in the first five minutes after midnight",
+      "midnightCondition": "A message just after the date changed",
       "synchro": "Synchro",
       "synchroCondition": "Messages at the same time on different days",
       "oyasumiFirst": "First good night",
