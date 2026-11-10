@@ -5,7 +5,8 @@ import { Pill } from '../../../design/primitives';
 import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
 import { fetchMemoirCards, fetchMemoirHeader, fetchMemoirMembers } from '../api';
 import { LoadState } from '../shared/LoadState';
-import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
+import { cn } from '../../../utils/classnames';
+import { MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { logMemoriesSkip } from '../memoriesLog';
@@ -176,7 +177,7 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
             <PageHeader title={t('memories.memoir.title')} onBack={() => go({ page: 'home' })} />
             <div className="flex min-h-0 flex-1">
                 <MemberPane
-                    className="w-64 shrink-0 border-r border-subtle"
+                    className={cn(MEMBER_PANE_WIDTH, 'shrink-0 border-r border-subtle')}
                     items={items}
                     selectedKey={memberPath ?? null}
                     onSelect={pickMember}

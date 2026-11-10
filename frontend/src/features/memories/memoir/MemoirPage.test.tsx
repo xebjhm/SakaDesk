@@ -5,6 +5,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../../__tests__/mocks/server';
 import { memoriesCapsuleEmpty } from '../../../__tests__/mocks/handlers';
 import i18n from '../../../i18n';
+import { MEMBER_PANE_WIDTH } from '../shared/MemberPane';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('react-virtuoso', async () => (await import('../../../__tests__/virtuosoMock')).virtuosoMock);
@@ -73,6 +74,10 @@ describe('MemoirPage', () => {
         expect(miku).toHaveTextContent('18 / 30 枚');
         expect(within(miku).getByTestId('member-pane-oshi')).toBeInTheDocument();
         expect(miku).toHaveAttribute('aria-current', 'true');
+        // N2: the same pane width as album, favorites and radio (no fixed w-64).
+        const pane = miku.closest('nav');
+        expect(pane).toHaveClass(MEMBER_PANE_WIDTH);
+        expect(pane).not.toHaveClass('w-64');
         // never "0 / 24 枚"
         expect(screen.getByRole('button', { name: /小坂 菜緒/ })).not.toHaveTextContent('枚');
         // a graduated member wears a quiet memorial marker

@@ -30,11 +30,15 @@ interface MemberPaneProps {
 
 const AVATAR_PX = 32;
 
+/** The pane's narrowest width, in rem: what it gets at the 960 x 640 minimum window. */
+export const MEMBER_PANE_MIN_REM = 12.5;
+
 /**
- * The pane's width beside a Memories page: about a quarter of the row, between 11rem and 15rem,
- * so the page's own content keeps room at the smallest window instead of a fixed 15rem.
+ * The pane's width beside a Memories page: about a quarter of the row, between 12.5rem and 15rem,
+ * so the page's own content keeps room at the smallest window instead of a fixed 15rem. At the
+ * minimum the name line still holds a five-character name plus the oshi heart (N2).
  */
-export const MEMBER_PANE_WIDTH = 'w-[clamp(11rem,24%,15rem)]';
+export const MEMBER_PANE_WIDTH = 'w-[clamp(12.5rem,24%,15rem)]';
 
 /** A trailing detail worth drawing: never a bare 0 (spec 1.1: no call-out of an absence). */
 const shown = (trailing: React.ReactNode) => trailing !== undefined && trailing !== null && trailing !== 0;
@@ -47,19 +51,21 @@ const ROW = cn(
     'transition-colors duration-fast ease-standard hover:bg-sunken',
     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
 );
-// The name takes the room first: it shrinks (and truncates) only once the trailing detail has
-// given up its width, which shrinks a thousand times faster and truncates on its own. The
-// trailing sits at the row's end (ml-auto) whatever the name's length.
-const NAME = 'min-w-0 shrink truncate';
-const TRAILING = 'ml-auto min-w-0 shrink-[1000] truncate text-small tabular-nums text-muted';
+// Name first (N2): the name (with the oshi heart) has the whole first line to itself and the
+// trailing detail sits on its own line below, so neither competes for the row's width. A narrow
+// pane truncates only a long name, never down to 「全…」 beside a 「3·」.
+const TEXT = 'flex min-w-0 flex-1 flex-col';
+const NAME_LINE = 'flex min-w-0 items-center gap-1';
+const NAME = 'min-w-0 truncate';
+const TRAILING = 'min-w-0 truncate text-small tabular-nums text-muted';
 // Group colour only on the selected row (identity / current state).
 const SELECTED = 'bg-accent-subtle font-semibold text-accent-strong hover:bg-accent-subtle';
 
 /**
  * The Memories left list (album, favorites, memoir): an optional all row, then one row per
  * person with her avatar, name (`lang="ja"`), an oshi heart in the semantic oshi tone (never
- * the group accent) and a trailing detail (never a 0). The name keeps its width first: a long
- * trailing detail (「1 小時 1 分」) truncates before the name does. Scrolls inside itself.
+ * the group accent) and a trailing detail (never a 0) on its own line below the name, so a long
+ * detail (「1 小時 1 分」) never takes the name's width. Scrolls inside itself.
  */
 export const MemberPane: React.FC<MemberPaneProps> = ({ items, selectedKey, onSelect, allLabel, allTrailing, className }) => {
     const width = useAvatarWidth(AVATAR_PX);
@@ -75,8 +81,12 @@ export const MemberPane: React.FC<MemberPaneProps> = ({ items, selectedKey, onSe
                     <span aria-hidden="true" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-pill bg-sunken text-secondary">
                         <Users className="h-4 w-4" />
                     </span>
-                    <span className="min-w-0 flex-1 truncate">{allLabel}</span>
-                    {shown(allTrailing) && <span className="shrink-0 text-small tabular-nums text-muted">{allTrailing}</span>}
+                    <span className={TEXT}>
+                        <span data-testid="member-pane-all-label" className={NAME}>{allLabel}</span>
+                        {shown(allTrailing) && (
+                            <span data-testid="member-pane-all-trailing" title={plain(allTrailing)} className={TRAILING}>{allTrailing}</span>
+                        )}
+                    </span>
                 </button>
             )}
             {items.map((item) => {
@@ -90,17 +100,21 @@ export const MemberPane: React.FC<MemberPaneProps> = ({ items, selectedKey, onSe
                         className={cn(ROW, selected && SELECTED)}
                     >
                         <Avatar src={resizedAvatarUrl(item.avatarUrl, width)} name={item.name} size="sm" decorative />
-                        <span lang="ja" title={item.name} data-testid="member-pane-name" className={NAME}>{item.name}</span>
-                        {item.oshi && (
-                            <Heart
-                                data-testid="member-pane-oshi"
-                                aria-hidden="true"
-                                className="h-3.5 w-3.5 shrink-0 fill-semantic-oshi text-semantic-oshi-solid"
-                            />
-                        )}
-                        {shown(item.trailing) && (
-                            <span data-testid="member-pane-trailing" title={plain(item.trailing)} className={TRAILING}>{item.trailing}</span>
-                        )}
+                        <span className={TEXT}>
+                            <span data-testid="member-pane-name-line" className={NAME_LINE}>
+                                <span lang="ja" title={item.name} data-testid="member-pane-name" className={NAME}>{item.name}</span>
+                                {item.oshi && (
+                                    <Heart
+                                        data-testid="member-pane-oshi"
+                                        aria-hidden="true"
+                                        className="h-3.5 w-3.5 shrink-0 fill-semantic-oshi text-semantic-oshi-solid"
+                                    />
+                                )}
+                            </span>
+                            {shown(item.trailing) && (
+                                <span data-testid="member-pane-trailing" title={plain(item.trailing)} className={TRAILING}>{item.trailing}</span>
+                            )}
+                        </span>
                     </button>
                 );
             })}

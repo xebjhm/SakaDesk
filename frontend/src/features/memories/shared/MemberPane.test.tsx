@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
-import { MemberPane, type MemberPaneItem } from './MemberPane';
+import { MEMBER_PANE_MIN_REM, MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from './MemberPane';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
@@ -20,7 +20,7 @@ describe('MemberPane', () => {
         expect(screen.getAllByTestId('member-pane-oshi')).toHaveLength(1);
     });
 
-    it('gives the name the room first: a long trailing detail truncates before the name (D1)', () => {
+    it('keeps the name on its own line and puts the trailing detail below it (D1, N2)', () => {
         render(
             <MemberPane
                 items={[{ key: 'c', name: '高井 俐香', oshi: true, trailing: '1 hour 1 min' }]}
@@ -29,15 +29,41 @@ describe('MemberPane', () => {
             />,
         );
         const name = screen.getByTestId('member-pane-name');
+        const line = screen.getByTestId('member-pane-name-line');
         const trailing = screen.getByTestId('member-pane-trailing');
-        // The name no longer grows into a fixed share and truncates only after the trailing.
-        expect(name).not.toHaveClass('flex-1');
-        expect(name).toHaveClass('min-w-0', 'shrink', 'truncate');
+        // The name line holds the name and the heart only; the trailing is not on it.
+        expect(line.contains(name)).toBe(true);
+        expect(line.contains(screen.getByTestId('member-pane-oshi'))).toBe(true);
+        expect(line.contains(trailing)).toBe(false);
+        // Name and detail stack in one column beside the avatar.
+        expect(line.parentElement).toBe(trailing.parentElement);
+        expect(line.parentElement).toHaveClass('flex-col', 'min-w-0', 'flex-1');
+        expect(name).toHaveClass('min-w-0', 'truncate');
         expect(name).toHaveAttribute('title', '高井 俐香');
-        // The trailing detail gives its width up first and truncates on its own.
-        expect(trailing).not.toHaveClass('shrink-0');
-        expect(trailing).toHaveClass('min-w-0', 'shrink-[1000]', 'truncate', 'ml-auto');
+        expect(trailing).toHaveClass('min-w-0', 'truncate');
         expect(trailing).toHaveAttribute('title', '1 hour 1 min');
+    });
+
+    it('stacks the all row the same way, so 「全員」 never truncates beside its total (N2)', () => {
+        render(<MemberPane items={items} selectedKey={null} onSelect={() => {}} allLabel="全員" allTrailing="7 小時 59 分" />);
+        const label = screen.getByTestId('member-pane-all-label');
+        const total = screen.getByTestId('member-pane-all-trailing');
+        expect(label.parentElement).toBe(total.parentElement);
+        expect(label.parentElement).toHaveClass('flex-col');
+        expect(total).toHaveAttribute('title', '7 小時 59 分');
+    });
+
+    it('at its minimum width the name line still fits a five-character name and the heart (N2)', () => {
+        // 960 x 640 is the smallest window; the pane then gets its clamp minimum.
+        expect(MEMBER_PANE_WIDTH).toBe(`w-[clamp(${MEMBER_PANE_MIN_REM}rem,24%,15rem)]`);
+        const rem = 16;
+        const body = 14; // --ds-font-body-size
+        const pane = MEMBER_PANE_MIN_REM * rem;
+        // nav p-2 (2 x 8), a scrollbar (8), row px-3 (2 x 12), avatar (32), gap-3 (12).
+        const nameLine = pane - 16 - 8 - 24 - 32 - 12;
+        // 「正源司 陽子」: five CJK glyphs and a space, then gap-1 (4) and the 14 px heart.
+        const longName = 5 * body + body / 3 + 4 + 14;
+        expect(nameLine).toBeGreaterThanOrEqual(longName);
     });
 
     it('fires onSelect with the item and marks the selected row', async () => {
