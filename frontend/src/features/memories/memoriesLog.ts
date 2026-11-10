@@ -1,7 +1,10 @@
 import { clientLog } from '../../utils/clientLog';
+import type { CapsuleAnchorKind, GachaRarity, GachaReason, RadioProgram } from './types';
 
 /** The Memories router's pages (route names, camelCase). */
-export const MEMORIES_PAGES = ['home', 'recap', 'onThisDay', 'album', 'memoir', 'favorites'] as const;
+export const MEMORIES_PAGES = [
+    'home', 'recap', 'onThisDay', 'album', 'memoir', 'favorites', 'radio', 'gacha', 'calendar', 'day',
+] as const;
 export type MemoriesPage = (typeof MEMORIES_PAGES)[number];
 
 /**
@@ -15,6 +18,10 @@ export const MEMORIES_PAGE_CODES: Record<MemoriesPage, string> = {
     album: 'album',
     memoir: 'memoir',
     favorites: 'favorites',
+    radio: 'radio',
+    gacha: 'gacha',
+    calendar: 'calendar',
+    day: 'day',
 };
 
 /** `memories_open`: the Memories feature was shown. Pass only the service id. */
@@ -33,10 +40,17 @@ export function logMemoriesPage(page: MemoriesPage): void {
  * ribbon (`album` is its months); `film_strip` the film strip's day (favorites, names);
  * `timeline_month` the memoir timeline's selected month (`timeline` is its month rail);
  * `memoir_members` the memoir's member list (`memoir` is the selected person's header).
+ * Fun wave: `radio` the radio page itself, `radio_members` / `radio_program` / `radio_cassettes`
+ * its member list, a program's tracks and the cassette shelf; `gacha` the gacha state;
+ * `calendar` one calendar month, `calendar_months` the month picker; `capsule` an anchor's notes,
+ * `capsule_due` the notes resurfacing on a date; `same_time` the 同じ時刻 line; `day24` her 24
+ * hours; `then_now` あの日と今日 (day mode and 初見 vs 今).
  */
 export const MEMORIES_VIEWS = [
     'hub', 'on_this_day', 'day', 'album', 'favorites', 'memoir', 'binder', 'names', 'timeline',
     'album_members', 'album_month', 'album_colors', 'film_strip', 'timeline_month', 'memoir_members',
+    'radio', 'radio_members', 'radio_program', 'radio_cassettes', 'gacha', 'calendar', 'calendar_months',
+    'capsule', 'capsule_due', 'same_time', 'day24', 'then_now',
 ] as const;
 export type MemoriesView = (typeof MEMORIES_VIEWS)[number];
 
@@ -67,13 +81,22 @@ export function logMemoriesJump(target: MemoriesView, hasTarget: boolean): void 
  * `off` = collapsed); `album_filter` an album filter pill (`on` = narrowed, `off` = all; `kind`
  * carries the filter code); `album_burst` a burst's sequence (`on` = opened, `off` = closed); `film_strip` the film strip of a
  * favourite or a name moment (`on` = opened, `off` = closed).
+ * Fun wave: `radio_program` a radio program was picked (`kind` = its {@link RadioProgram} code);
+ * `cassette` a cassette year (`on` = loaded, `off` = ejected); `sleep_timer` the sleep timer
+ * (`on` = set, `off` = cancelled); `then_now` the ⇆ toggle (`on` = あの日と今日 shown); `then_now_mode`
+ * day / 初見 vs 今 (`on` = first week); `calendar_member` the calendar's member filter (`on` = one
+ * person); `album_cover` 「この月の表紙にする」 (`on` = set, `off` = cleared).
  */
 export const MEMORIES_TOGGLES = [
     'other_services', 'day_mode', 'member_filter', 'lane_card', 'album_filter', 'album_burst', 'film_strip',
+    'radio_program', 'cassette', 'sleep_timer', 'then_now', 'then_now_mode', 'calendar_member', 'album_cover',
 ] as const;
 export type MemoriesToggle = (typeof MEMORIES_TOGGLES)[number];
 
-/** `memories_toggle`: a Memories control was switched. `target` is the control code; `kind` a filter code. */
+/**
+ * `memories_toggle`: a Memories control was switched. `target` is the control code; `kind` a filter
+ * code (an album kind or a radio program).
+ */
 export function logMemoriesToggle(target: MemoriesToggle, on: boolean, extra: { kind?: string } = {}): void {
     clientLog('memories_toggle', { target, outcome: on ? 'on' : 'off', ...extra });
 }
@@ -83,8 +106,15 @@ export function logMemoriesToggle(target: MemoriesToggle, on: boolean, extra: { 
  * `focus_missing` the film strip's message is not in its day (the strip opens on the day's first
  * message); `empty_note` a text favourite without text was left off the board; `unknown_card` binder
  * cards whose key this build has no copy for were left off the binder (`count`).
+ * Fun wave: `transcript_missing` a radio track has no transcript to show (the words line is left
+ * out); `pull_missing` a gacha pull's message is no longer in the archive (a date-only card);
+ * `day24_thin` her day is too thin (the thin-data card instead); `note_empty` an empty capsule note
+ * was not saved; `same_time_none` nothing at this JST minute (the line is hidden).
  */
-export const MEMORIES_SKIP_REASONS = ['focus_missing', 'empty_note', 'unknown_card'] as const;
+export const MEMORIES_SKIP_REASONS = [
+    'focus_missing', 'empty_note', 'unknown_card',
+    'transcript_missing', 'pull_missing', 'day24_thin', 'note_empty', 'same_time_none',
+] as const;
 export type MemoriesSkipReason = (typeof MEMORIES_SKIP_REASONS)[number];
 
 /** `memories_skip`: a Memories view skipped an item or fell back. Ids, codes and counts only. */
@@ -94,6 +124,82 @@ export function logMemoriesSkip(
     extra: { message_id?: number; count?: number } = {},
 ): void {
     clientLog('memories_skip', { target, reason, ...extra });
+}
+
+export const MEMORIES_RADIO_PHASES = ['play', 'track', 'track_error', 'pause', 'resume', 'sleep_set', 'sleep_fade', 'end'] as const;
+export type MemoriesRadioPhase = (typeof MEMORIES_RADIO_PHASES)[number];
+/** `memories_radio` `reason`: why a track failed (`media_error`, `play_rejected`) or the radio ended. */
+export const MEMORIES_RADIO_REASONS = ['media_error', 'play_rejected', 'queue_end', 'sleep_timer', 'user'] as const;
+export type MemoriesRadioReason = (typeof MEMORIES_RADIO_REASONS)[number];
+/** `memories_radio` `outcome`: whether a `play` / `resume` started audio. */
+export const MEMORIES_RADIO_OUTCOMES = ['ok', 'failed'] as const;
+export type MemoriesRadioOutcome = (typeof MEMORIES_RADIO_OUTCOMES)[number];
+
+/**
+ * `memories_radio`: a voice-radio decision. `kind` is the program code; `play` carries `count`
+ * (tracks) and `outcome`; `track` the `index` started; `track_error` the `index` and a `reason`
+ * (`media_error`, `play_rejected`; the radio moves on); `sleep_set` `count` (minutes); `sleep_fade`
+ * the timer's fade began; `end` a `reason` (`queue_end`, `sleep_timer`, `user`). Codes and counts only.
+ */
+export function logMemoriesRadio(
+    phase: MemoriesRadioPhase,
+    extra: { kind?: RadioProgram; index?: number; count?: number; reason?: MemoriesRadioReason; outcome?: MemoriesRadioOutcome } = {},
+): void {
+    clientLog('memories_radio', { phase, ...extra });
+}
+
+export const MEMORIES_GACHA_PHASES = ['open', 'pull', 'reveal', 'refused', 'favorite', 'context'] as const;
+export type MemoriesGachaPhase = (typeof MEMORIES_GACHA_PHASES)[number];
+/**
+ * `memories_gacha` `reason` for `refused` (a rarity's {@link GachaReason} otherwise):
+ * `no_pulls_left` (409), `empty_pool` (nothing to draw), `request_failed` (any other failure).
+ */
+export const MEMORIES_GACHA_REFUSALS = ['no_pulls_left', 'empty_pool', 'request_failed'] as const;
+export type MemoriesGachaRefusal = (typeof MEMORIES_GACHA_REFUSALS)[number];
+/** `memories_gacha` `outcome` for `favorite`: the ★ was set (`on`) or cleared (`off`). */
+export const MEMORIES_GACHA_OUTCOMES = ['on', 'off'] as const;
+export type MemoriesGachaOutcome = (typeof MEMORIES_GACHA_OUTCOMES)[number];
+
+/**
+ * `memories_gacha`: a gacha decision. `open` carries `count` (pulls left); `pull` the `index`;
+ * `reveal` the rarity `kind`, its `reason`, `index` and `message_id`; `refused` a refusal `reason`;
+ * `favorite` `outcome` and `message_id`; `context` the pull's message was opened in its day
+ * (`message_id`). Ids, codes and counts only.
+ */
+export function logMemoriesGacha(
+    phase: MemoriesGachaPhase,
+    extra: {
+        kind?: GachaRarity; reason?: GachaReason | MemoriesGachaRefusal; count?: number; index?: number;
+        outcome?: MemoriesGachaOutcome; message_id?: number;
+    } = {},
+): void {
+    clientLog('memories_gacha', { phase, ...extra });
+}
+
+export const MEMORIES_CAPSULE_PHASES = ['open', 'save', 'delete', 'failed', 'resurface_open'] as const;
+export type MemoriesCapsulePhase = (typeof MEMORIES_CAPSULE_PHASES)[number];
+/** `memories_capsule` `outcome` for `save`: a new note or an edit. */
+export const MEMORIES_CAPSULE_OUTCOMES = ['created', 'updated'] as const;
+export type MemoriesCapsuleOutcome = (typeof MEMORIES_CAPSULE_OUTCOMES)[number];
+/**
+ * `memories_capsule` `error_code` for `failed`: the server's reason (`bad_note`, `bad_body`,
+ * `store_unavailable`), `not_found` (404), `timeout`, or `request_failed` (anything else).
+ */
+export const MEMORIES_CAPSULE_ERROR_CODES = [
+    'bad_note', 'bad_body', 'store_unavailable', 'not_found', 'timeout', 'request_failed',
+] as const;
+export type MemoriesCapsuleErrorCode = (typeof MEMORIES_CAPSULE_ERROR_CODES)[number];
+
+/**
+ * `memories_capsule`: a capsule-note decision. `kind` is the anchor (`day`, `card`); `open` carries
+ * `count` (notes on the anchor); `save` an `outcome`; `failed` an `error_code`; `resurface_open` a
+ * resurfaced note was opened. Never the note body (the fan's own words): there is no field for it.
+ */
+export function logMemoriesCapsule(
+    phase: MemoriesCapsulePhase,
+    extra: { kind?: CapsuleAnchorKind; count?: number; outcome?: MemoriesCapsuleOutcome; error_code?: MemoriesCapsuleErrorCode } = {},
+): void {
+    clientLog('memories_capsule', { phase, ...extra });
 }
 
 export const RECAP_LOAD_TARGETS = ['members', 'member', 'years'] as const;

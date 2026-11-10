@@ -1095,3 +1095,60 @@ def test_translation_legacy_events_are_allowlisted():
         assert r.status_code == 204
         level = "warning" if event.endswith("_failed") else "info"
         assert logs[-1]["log_level"] == level
+
+
+def test_the_memories_fun_events_post_every_fixture_code():
+    """The fun-wave events (radio, gacha, capsule) are allowlisted with each code.
+
+    ``memoriesLog.test.ts`` keeps the fixture equal to the TS constants; here every
+    new ``event.field`` key must be present and each of its values accepted.
+    """
+    fixture = Path(__file__).parent / "fixtures" / "memories_log_codes.json"
+    codes = json.loads(fixture.read_text(encoding="utf-8"))
+    for key in (
+        "memories_radio.phase",
+        "memories_radio.kind",
+        "memories_radio.reason",
+        "memories_radio.outcome",
+        "memories_gacha.phase",
+        "memories_gacha.kind",
+        "memories_gacha.reason",
+        "memories_gacha.outcome",
+        "memories_capsule.phase",
+        "memories_capsule.kind",
+        "memories_capsule.outcome",
+        "memories_capsule.error_code",
+    ):
+        assert codes.get(key), key
+        event, field = key.split(".")
+        for value in codes[key]:
+            r = client.post(
+                "/api/client-log", json={"event": event, "fields": {field: value}}
+            )
+            assert r.status_code == 204, (key, value)
+    for page in ("radio", "gacha", "calendar", "day"):
+        assert page in codes["memories_page.target"], page
+
+
+def test_the_memories_fun_events_take_their_numeric_fields():
+    for event, fields in (
+        (
+            "memories_radio",
+            {"phase": "track", "kind": "oyasumi", "index": 2, "count": 9},
+        ),
+        (
+            "memories_gacha",
+            {"phase": "reveal", "kind": "sr", "index": 0, "message_id": 42},
+        ),
+        ("memories_capsule", {"phase": "save", "kind": "day", "count": 1}),
+    ):
+        r = client.post("/api/client-log", json={"event": event, "fields": fields})
+        assert r.status_code == 204, event
+
+
+def test_the_capsule_event_rejects_a_body_field():
+    r = client.post(
+        "/api/client-log",
+        json={"event": "memories_capsule", "fields": {"phase": "save", "body": "x"}},
+    )
+    assert r.status_code == 422

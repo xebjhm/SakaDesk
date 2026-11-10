@@ -36,6 +36,7 @@ export type ClientLogEvent =
     | 'read_state_save_deferred' | 'read_state_pending_flushed' | 'read_state_sync_failed'
     | 'sidebar_load' | 'oshi_mirror_failed'
     | 'memories_open' | 'memories_page' | 'memories_load' | 'memories_jump' | 'memories_toggle' | 'memories_skip'
+    | 'memories_radio' | 'memories_gacha' | 'memories_capsule'
     | 'recap_load' | 'recap_play'
     | 'recap_poster' | 'recap_share' | 'recap_opening';
 
