@@ -6,8 +6,23 @@ Supports per-service progress tracking for multi-service sync.
 """
 
 import time
+from collections import deque
 from threading import Lock
 from typing import Optional
+
+# S2 (spec 2026-11-10): speed is measured over a recent window, not since the
+# phase began, so stalls and bursts do not dominate it. After more than the
+# window with no update the window is empty and the phase average is used.
+SPEED_WINDOW_SECONDS = 30.0
+# At most one speed sample per this many seconds (updates arrive per item).
+_SAMPLE_MIN_GAP_SECONDS = 0.5
+# An ETA is given only in a sync's ``downloading`` phase, and only after this much
+# evidence (Verify & Fix's ``repairing`` reports "not_estimable").
+ETA_MIN_ITEMS = 20
+ETA_MIN_SECONDS = 10.0
+# Phases whose unit of work has a predictable cost; every other phase reports
+# eta_reason "not_estimable" (scanning, discovering, collecting metadata...).
+_ETA_PHASES = frozenset({"downloading"})
 
 
 # SD-CONTRACT-07: sync failures were historically smuggled as magic sentinel
@@ -32,12 +47,20 @@ class SyncProgress:
         # Incremented by every reset(), i.e. once per started run, so a client
         # that was not watching can tell that a run happened in between.
         self._run_id = 0
+        # Kind of the job this tracker shows ("sync" / "verify"), set by the sync
+        # coordinator. Kept across reset(): verify resets the tracker itself.
+        self._job_kind: Optional[str] = None
         self.reset()
 
     def reset(self):
         """Reset all progress state and start a new run (``run_id`` + 1)"""
         with self._lock:
             self._run_id += 1
+            # Set by the run's first start_phase: time spent queued is not elapsed.
+            self._run_started_at: Optional[float] = None
+            self._queue_position: Optional[int] = None
+            self._failed = 0
+            self._samples: deque[tuple[float, int]] = deque()
             self._state = "idle"
             self._phase = ""
             self._phase_name = ""
@@ -69,8 +92,13 @@ class SyncProgress:
             self._phase_number = phase_number
             self._total = total
             self._completed = 0
+            self._failed = 0
+            self._queue_position = None
+            self._samples.clear()
             self._speed_unit = speed_unit
             self._phase_start = time.time()
+            if self._run_started_at is None:
+                self._run_started_at = self._phase_start
             self._detail = ""
             self._detail_extra = ""
             self._detail_code = None
@@ -95,6 +123,7 @@ class SyncProgress:
         """Atomic increment like tqdm.update(n)"""
         with self._lock:
             self._completed += n
+            self._sample()
             if detail is not None:
                 self._detail = detail
             if detail_extra is not None:
@@ -110,8 +139,50 @@ class SyncProgress:
         """Set absolute completed count (for chunked updates)"""
         with self._lock:
             self._completed = completed
+            self._sample()
             if detail is not None:
                 self._detail = detail
+
+    def add_failed(self, n: int = 1):
+        """Count items that were processed but failed (shown next to the bar)."""
+        with self._lock:
+            self._failed += n
+
+    def set_job_kind(self, kind: Optional[str]):
+        """Record which kind of job ("sync" / "verify") this tracker shows, so a
+        client waiting for one kind can tell another job's end from its own."""
+        with self._lock:
+            self._job_kind = kind
+
+    def set_queued(self, position: int):
+        """Mark this service as waiting in the sync queue at ``position`` (1-based)."""
+        with self._lock:
+            self._state = "queued"
+            self._phase = "queued"
+            self._phase_name = "Queued"
+            self._queue_position = position
+
+    def _sample(self) -> None:
+        # Caller holds the lock. Keep (time, completed) samples for the window speed.
+        now = time.time()
+        if self._samples and now - self._samples[-1][0] < _SAMPLE_MIN_GAP_SECONDS:
+            self._samples[-1] = (self._samples[-1][0], self._completed)
+        else:
+            self._samples.append((now, self._completed))
+        while self._samples and now - self._samples[0][0] > SPEED_WINDOW_SECONDS:
+            self._samples.popleft()
+
+    def _speed(self, now: float, phase_elapsed: float) -> float:
+        # Caller holds the lock. Window speed from the oldest sample in the
+        # window to now; below 2 samples, the phase average.
+        while self._samples and now - self._samples[0][0] > SPEED_WINDOW_SECONDS:
+            self._samples.popleft()
+        if len(self._samples) >= 2:
+            t0, c0 = self._samples[0]
+            span = now - t0
+            if span > 0:
+                return max(self._completed - c0, 0) / span
+        return self._completed / phase_elapsed if phase_elapsed > 0 else 0.0
 
     def set_result(self, result: dict):
         """Attach a structured summary (rendered by the frontend, i18n-safe)."""
@@ -151,10 +222,24 @@ class SyncProgress:
     def get_status(self) -> dict:
         """Get current status (thread-safe read for polling)"""
         with self._lock:
-            elapsed = time.time() - self._phase_start if self._phase_start else 0
-            speed = self._completed / elapsed if elapsed > 0 else 0
-            remaining = self._total - self._completed
-            eta = int(remaining / speed) if speed > 0 else None
+            now = time.time()
+            elapsed = now - self._phase_start if self._phase_start else 0
+            run_elapsed = now - self._run_started_at if self._run_started_at else 0
+            speed = self._speed(now, elapsed)
+            remaining = max(self._total - self._completed, 0)
+            eta: Optional[int] = None
+            eta_reason: Optional[str] = None
+            if self._state == "running":
+                if self._phase not in _ETA_PHASES:
+                    eta_reason = "not_estimable"
+                elif (
+                    self._completed < ETA_MIN_ITEMS
+                    or elapsed < ETA_MIN_SECONDS
+                    or speed <= 0
+                ):
+                    eta_reason = "warming_up"
+                else:
+                    eta = int(remaining / speed)
 
             return {
                 "run_id": self._run_id,
@@ -165,7 +250,12 @@ class SyncProgress:
                 "completed": self._completed,
                 "total": self._total,
                 "elapsed_seconds": int(elapsed),
+                "run_elapsed_seconds": int(run_elapsed),
                 "eta_seconds": eta,
+                "eta_reason": eta_reason,
+                "failed": self._failed,
+                "queue_position": self._queue_position,
+                "job_kind": self._job_kind,
                 "speed": speed,
                 "speed_unit": self._speed_unit,
                 "detail": self._detail,

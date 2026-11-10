@@ -392,6 +392,14 @@ class SyncService:
         ``SessionExpiredError`` / ``RefreshFailedError`` / cancellation raise.
         """
         if self.running:
+            # The coordinator runs one job at a time, so this means a stale flag:
+            # end the run visibly instead of leaving the tracker at "Starting".
+            logger.warning(
+                "sync_skipped", service=self._service, reason="already_running"
+            )
+            progress_manager.get(self._service).error(
+                "Sync already running", code="already_running"
+            )
             return False
 
         self.running = True
@@ -407,6 +415,11 @@ class SyncService:
         # sync that stops before then scans them again and their recovered
         # photos/videos are not stranded (see _mark_scanned_rooms).
         scan_complete_gids: list[int] = []
+        # S3 (spec 2026-11-10): media of past-message backfills and letter cards
+        # is queued for phase 3 (pysaka media_queue) and their flags / cursors
+        # are applied by finalize_deferred_media once phase 3 ran.
+        deferred_media: list[int] = [0]
+        deferred_finalized = False
         # Per-sync 429 circuit breaker: once any call of a room is rate limited,
         # rooms that have not fetched their timeline yet are deferred to the
         # next sync (no cursor moves, no scan mark) instead of piling on.
@@ -524,6 +537,9 @@ class SyncService:
                     }
 
                 for g in groups:
+                    # S2: the discovering bar moves once per group handled
+                    # (closed, failed or read), so it reaches its total.
+                    progress.update(1)
                     # Skip closed groups — their timeline/members return 404
                     if g.get("state") == "closed":
                         continue
@@ -623,6 +639,9 @@ class SyncService:
                 # One-time room history scans re-read whole timelines; run them one
                 # at a time (paced, see below) to stay under the API rate limit.
                 scan_sem = asyncio.Semaphore(1)
+                # S2: while a room holds scan_sem, the detail line shows that
+                # room; member completions elsewhere only move the counter.
+                scan_holder: list[Optional[int]] = [None]
                 # pysaka 0.4.6: rooms whose history was never fully read are
                 # re-read once from the start (ignoring cursors) so authors
                 # missing from their member list and any gaps are archived.
@@ -767,6 +786,7 @@ class SyncService:
                                 group=g_name,
                                 group_id=gid,
                             )
+                            scan_holder[0] = gid
                             progress.set_detail_code("scanning_history")
                             progress.set_detail(g_name)
                             try:
@@ -784,6 +804,7 @@ class SyncService:
                                 )
                                 raise
                             finally:
+                                scan_holder[0] = None
                                 progress.set_detail_code(None)
                     else:
                         all_messages = await self.manager.client.get_messages(
@@ -923,9 +944,13 @@ class SyncService:
                         # before the first subscription (and their media). Free
                         # after the first success (flag in sync_state); never
                         # fails the sync.
+                        queued_before = len(media_queue)
                         try:
                             backfilled = await self.manager.backfill_past_messages(
-                                session, task["group"], task["member"]
+                                session,
+                                task["group"],
+                                task["member"],
+                                media_queue=media_queue,
                             )
                             if type(backfilled) is int and backfilled > 0:
                                 backfilled_members[(gid, member_id)] = (
@@ -946,7 +971,10 @@ class SyncService:
                         # this member (shown inline in the chat later).
                         try:
                             await self.manager.sync_letters(
-                                session, task["group"], task["member"]
+                                session,
+                                task["group"],
+                                task["member"],
+                                media_queue=media_queue,
                             )
                         except (SessionExpiredError, RefreshFailedError):
                             raise
@@ -958,10 +986,14 @@ class SyncService:
                                 member_id=member_id,
                                 error_type=type(e).__name__,
                             )
+                        deferred_media[0] += len(media_queue) - queued_before
                         m_name = task["member"]["name"]
-                        progress.update(
-                            1, detail=f"{m_name} ({count:,})", detail_extra=""
-                        )
+                        if scan_holder[0] is None:
+                            progress.update(
+                                1, detail=f"{m_name} ({count:,})", detail_extra=""
+                            )
+                        else:
+                            progress.update(1)
                         group_results.append((task, count))
 
                     # The one-time scan counts as done only once every
@@ -1072,6 +1104,7 @@ class SyncService:
                     groups=len(tasks_by_group),
                     failed_groups=len(group_errors),
                     deferred_groups=len(deferred_gids),
+                    deferred_media_items=deferred_media[0],
                     total_members=total_members,
                     # Diagnostics, not reported counts: recovered history
                     # (scanned rooms, first-seen extra authors) is indexed for
@@ -1169,8 +1202,19 @@ class SyncService:
                     "downloading", "Downloading Media", 3, media_count, "files"
                 )
 
-                # Track accumulation manually to ensure we report honest numbers
-                total_successed = 0
+                # S2: every processed file moves the bar (failures too, counted
+                # apart) so it always reaches 100 %; Verify & Fix repairs them.
+                downloaded = [0]
+                failed = [0]
+
+                async def on_item(ok: bool) -> None:
+                    if ok:
+                        downloaded[0] += 1
+                    else:
+                        failed[0] += 1
+                        progress.add_failed()
+                    done = downloaded[0] + failed[0]
+                    progress.set_completed(done, detail=f"{done:,} files")
 
                 # Collect all dimensions for batch update. Keyed by member dir,
                 # then by message id (int) -> metadata, matching
@@ -1194,21 +1238,14 @@ class SyncService:
                             for i in media_queue
                             if not any(i is v for v in voice_items)
                         ]
-                        voice_stats = [0]
-
-                        async def voice_cb(c, t):
-                            voice_stats[0] = c
-                            progress.set_completed(c, detail=f"{c:,} files")
-
                         voice_dims = await self.manager.process_media_queue(
-                            session, voice_items, progress_callback=voice_cb
+                            session, voice_items, item_callback=on_item
                         )
                         for member_dir, dims in voice_dims.items():
                             all_dimensions_by_dir.setdefault(member_dir, {}).update(
                                 dims
                             )
-                        voice_downloaded = voice_stats[0]
-                        total_successed += voice_downloaded
+                        voice_downloaded = downloaded[0]
                     logger.info(
                         "call_popup_voice_first",
                         call_id=pending_call.call_id,
@@ -1228,22 +1265,8 @@ class SyncService:
                     chunk_size = 50
                     for i in range(0, len(media_queue), chunk_size):
                         chunk = media_queue[i : i + chunk_size]
-
-                        # Use list to capture successes from callback scope
-                        chunk_stats = [0]
-
-                        async def chunk_cb(c, t):
-                            chunk_stats[0] = c
-                            # Show accumulated specific success count
-                            # Note: users might be confused if this lags behind 'i'.
-                            # But it's honest.
-                            current_total = total_successed + c
-                            progress.set_completed(
-                                current_total, detail=f"{current_total:,} files"
-                            )
-
                         chunk_dimensions = await self.manager.process_media_queue(
-                            session, chunk, progress_callback=chunk_cb
+                            session, chunk, item_callback=on_item
                         )
 
                         # Merge chunk dimensions into all_dimensions_by_dir
@@ -1251,9 +1274,6 @@ class SyncService:
                             if member_dir not in all_dimensions_by_dir:
                                 all_dimensions_by_dir[member_dir] = {}
                             all_dimensions_by_dir[member_dir].update(dims)
-
-                        # Add chunk's actual successes to total
-                        total_successed += chunk_stats[0]
 
                 else:
                     logger.info("No new media to download.")
@@ -1267,11 +1287,36 @@ class SyncService:
                     "phase3_complete",
                     elapsed=f"{time.monotonic() - phase3_t0:.1f}s",
                     media_count=media_count,
+                    downloaded=downloaded[0],
+                    failed=failed[0],
                 )
                 # Phase 3 ran to completion (single failed downloads do not
                 # raise; Verify & Fix covers them): the scanned rooms' media
                 # is queued and fetched, so the scans can be recorded.
                 self._mark_scanned_rooms(scan_complete_gids)
+                # S3: the deferred backfill / letter media went through phase 3;
+                # pysaka now sets their flags and cursors where every file is on
+                # disk (it logs each entry it leaves for the next sync).
+                try:
+                    report = self.manager.finalize_deferred_media()
+                    deferred_finalized = True
+                    logger.info(
+                        "deferred_media_finalized",
+                        items=deferred_media[0],
+                        backfill_marked=report.get("backfill_marked"),
+                        letters_marked=report.get("letters_marked"),
+                        still_pending=report.get("still_pending"),
+                        saved=report.get("saved"),
+                    )
+                except Exception as e:
+                    # The flags stay unset: the next sync queues these again.
+                    deferred_finalized = True  # reported here, not as "skipped"
+                    logger.warning(
+                        "deferred_media_finalize_failed",
+                        items=deferred_media[0],
+                        error_type=type(e).__name__,
+                        exc_info=True,
+                    )
 
                 metadata["last_sync"] = datetime.now(timezone.utc).isoformat()
                 await self.save_metadata(metadata)
@@ -1343,6 +1388,7 @@ class SyncService:
             call_abort_reason = "cancelled"
             logger.warning("Sync cancelled", service=self._service)
             self._defer_scan_marks(scan_complete_gids, "cancelled")
+            self._log_deferred_skip(deferred_media[0], deferred_finalized, "cancelled")
             with contextlib.suppress(Exception):
                 progress.error("CANCELLED")
             raise
@@ -1353,9 +1399,15 @@ class SyncService:
             # A generic progress.error(str(e)) here would make those detail
             # strings unreachable, so re-raise instead.
             self._defer_scan_marks(scan_complete_gids, type(e).__name__)
+            self._log_deferred_skip(
+                deferred_media[0], deferred_finalized, type(e).__name__
+            )
             raise
         except Exception as e:
             self._defer_scan_marks(scan_complete_gids, type(e).__name__)
+            self._log_deferred_skip(
+                deferred_media[0], deferred_finalized, type(e).__name__
+            )
             logger.error("Sync error", error=str(e))
             logger.error(traceback.format_exc())
             progress.error(str(e))
@@ -1553,6 +1605,14 @@ class SyncService:
                 continue
             logger.info("room_history_scan_marked", group_id=gid)
         gids.clear()
+
+    @staticmethod
+    def _log_deferred_skip(items: int, finalized: bool, reason: str) -> None:
+        """Breadcrumb for deferred backfill / letter media whose flags were not
+        finalized because the sync stopped first; the next sync fetches them
+        again (pysaka's merge is idempotent)."""
+        if items and not finalized:
+            logger.info("deferred_media_finalize_skipped", items=items, reason=reason)
 
     @staticmethod
     def _defer_scan_marks(gids: list[int], reason: str) -> None:
@@ -1764,6 +1824,12 @@ class SyncService:
             "unresolved_items": [],
         }
         if self.running:
+            logger.warning(
+                "verify_skipped", service=self._service, reason="already_running"
+            )
+            progress_manager.get(self._service).error(
+                "Sync already running", code="already_running"
+            )
             return totals
         self.running = True
         # SD-BE-SVC-02: claim ownership with the SAME machinery as start_sync so

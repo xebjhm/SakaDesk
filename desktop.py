@@ -728,17 +728,21 @@ async def sync_all_authenticated(
 ) -> None:
     """Start a sync (origin ``tray``) for each authenticated service. Never raises.
 
-    Logs ``tray_sync_now`` (``services`` = how many were authenticated,
-    ``started`` = how many actually started; the rest were already running).
+    Services are enqueued in the fixed sync order (乃木坂46, 櫻坂46, 日向坂46,
+    Yodel) and run one at a time by the sync coordinator. Logs
+    ``tray_sync_now`` (``services`` = how many were authenticated, ``started``
+    = how many were started or queued; the rest were already running or
+    queued, refused for shutdown, or failed).
     A failing service is logged (``tray_sync_now_failed``, service and error
     type) and does not stop the others.
     """
-    from backend.services.sync_launcher import LAUNCH_STARTED, launch_sync
+    from backend.services.sync_coordinator import order_services
+    from backend.services.sync_launcher import LAUNCH_ACCEPTED, launch_sync
 
     launch_fn = launch if launch is not None else launch_sync
     authenticated = 0
     started = 0
-    for service in services:
+    for service in order_services(services):
         try:
             if not await is_authenticated(service):
                 continue
@@ -749,7 +753,7 @@ async def sync_all_authenticated(
                 force_resync=False,
                 origin="tray",
             )
-            if result == LAUNCH_STARTED:
+            if result in LAUNCH_ACCEPTED:
                 started += 1
         except Exception as e:
             logger.warning(

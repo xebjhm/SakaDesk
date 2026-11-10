@@ -87,7 +87,8 @@ export function useBackendSyncWatcher({
         const previous = lastRunIdRef.current[service];
         if (runId !== undefined) lastRunIdRef.current[service] = runId;
 
-        if (data.state === 'running') {
+        // `queued`: waiting in the backend sync queue; follow it like a running one.
+        if (data.state === 'running' || data.state === 'queued') {
             clientLog('backend_sync_followed', { service });
             followRef.current(service);
         } else if (

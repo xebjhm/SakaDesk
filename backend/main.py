@@ -128,6 +128,13 @@ async def quiesce_writers() -> None:
             )
 
 
+async def _stop_sync_coordinator() -> None:
+    """Drop every queued sync/verify job and stop the coordinator's runner."""
+    from backend.services.sync_coordinator import get_coordinator
+
+    await get_coordinator().stop()
+
+
 async def _stop_all_sync_services() -> None:
     """Stop every lazily-created SyncService (SVC-S1 writer barrier).
 
@@ -220,6 +227,9 @@ async def lifespan(app: FastAPI):
     # the search executors, so draining tracked tasks before search is stopped
     # would let that write race stop_search_service's own teardown.
     _writer_stops.clear()
+    # The sync coordinator first: drop its queued jobs so cancelling the running
+    # sync below cannot start the next one (spec 2026-11-10 S1).
+    _writer_stops.append(_stop_sync_coordinator)
     _writer_stops.append(_stop_all_sync_services)
     _writer_stops.append(get_blog_backup_manager().stop_async)
     _writer_stops.append(stop_search_service)

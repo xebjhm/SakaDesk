@@ -313,6 +313,28 @@ async def test_sync_all_authenticated_isolates_failures():
     assert event["services"] == 1 and event["started"] == 1
 
 
+@pytest.mark.asyncio
+async def test_sync_all_authenticated_uses_the_fixed_order_and_counts_queued():
+    """S1 (spec 2026-11-10): services go to the coordinator in the fixed order
+    乃木坂46, 櫻坂46, 日向坂46, Yodel; a queued sync counts as started."""
+    launched: list[str] = []
+
+    async def is_auth(service):
+        return True
+
+    async def launch(service, **kw):
+        launched.append(service)
+        return "started" if not launched[:-1] else "queued"
+
+    with capture_logs() as logs:
+        await desktop.sync_all_authenticated(
+            ["hinatazaka46", "yodel", "nogizaka46", "sakurazaka46"], is_auth, launch
+        )
+    assert launched == ["nogizaka46", "sakurazaka46", "hinatazaka46", "yodel"]
+    (event,) = [e for e in logs if e["event"] == "tray_sync_now"]
+    assert event["started"] == 4
+
+
 def test_request_tray_sync_schedules_on_the_server_loop(monkeypatch):
     seen: list = []
 

@@ -1,5 +1,6 @@
 """Tests for backend/services/sync_launcher.py and the endpoints built on it."""
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -7,6 +8,7 @@ from structlog.testing import capture_logs
 
 from backend.api.progress import progress_manager
 from backend.services import shutdown_state
+from backend.services.sync_coordinator import get_coordinator
 from backend.services.sync_launcher import launch_sync
 
 
@@ -32,17 +34,17 @@ def _restore_shutdown_flag():
 @pytest.mark.asyncio
 async def test_launch_started(mock_sync_service):
     with (
-        patch("asyncio.create_task") as create_task,
-        patch("backend.api.sync.run_sync_task", new=MagicMock()) as run_task,
+        patch("backend.api.sync.run_sync_task", new=AsyncMock()) as run_task,
         capture_logs() as logs,
     ):
         result = await launch_sync("hinatazaka46", origin="scheduler")
+        assert progress_manager.get("hinatazaka46").get_status()["state"] == "running"
+        await get_coordinator().wait_idle()
 
     assert result == "started"
-    run_task.assert_called_once_with("hinatazaka46", True, False)
-    create_task.assert_called_once()
-    assert mock_sync_service._task is create_task.return_value
-    assert progress_manager.get("hinatazaka46").get_status()["state"] == "running"
+    run_task.assert_awaited_once_with("hinatazaka46", True, False)
+    # The job task is registered on the service so /cancel reaches it.
+    assert mock_sync_service._task is not None
     assert _launch_logs(logs) == [
         {
             "event": "sync_launch",
@@ -50,78 +52,74 @@ async def test_launch_started(mock_sync_service):
             "service": "hinatazaka46",
             "origin": "scheduler",
             "result": "started",
+            "position": None,
         }
     ]
 
 
 @pytest.mark.asyncio
 async def test_launch_force_resync_sets_detail(mock_sync_service):
-    with (
-        patch("asyncio.create_task"),
-        patch("backend.api.sync.run_sync_task", new=MagicMock()) as run_task,
-    ):
+    with patch("backend.api.sync.run_sync_task", new=AsyncMock()) as run_task:
         await launch_sync(
             "hinatazaka46", include_inactive=False, force_resync=True, origin="api"
         )
-    run_task.assert_called_once_with("hinatazaka46", False, True)
-    detail = progress_manager.get("hinatazaka46").get_status()["detail"]
+        detail = progress_manager.get("hinatazaka46").get_status()["detail"]
+        await get_coordinator().wait_idle()
+    run_task.assert_awaited_once_with("hinatazaka46", False, True)
     assert detail == "Initializing... (Resyncing)"
 
 
 @pytest.mark.asyncio
-async def test_launch_already_running(mock_sync_service):
-    mock_sync_service.running = True
-    with patch("asyncio.create_task") as create_task, capture_logs() as logs:
-        result = await launch_sync("hinatazaka46", origin="tray")
-    assert result == "already_running"
-    create_task.assert_not_called()
-    assert _launch_logs(logs)[0]["result"] == "already_running"
-    assert _launch_logs(logs)[0]["origin"] == "tray"
+async def test_launch_already_running_and_queued(mock_sync_service):
+    gate = asyncio.Event()
 
+    async def blocked(*args):
+        await gate.wait()
 
-@pytest.mark.asyncio
-async def test_launch_live_registered_task_counts_as_running(mock_sync_service):
-    """A task registered by a previous launch that has not started yet (so
-    ``running`` is still False) must block a second launch."""
-    mock_sync_service._task = MagicMock()
-    mock_sync_service._task.done.return_value = False
-    with patch("asyncio.create_task") as create_task:
-        result = await launch_sync("hinatazaka46", origin="scheduler")
-    assert result == "already_running"
-    create_task.assert_not_called()
-
-
-@pytest.mark.asyncio
-async def test_launch_finished_registered_task_does_not_block(mock_sync_service):
-    mock_sync_service._task = MagicMock()
-    mock_sync_service._task.done.return_value = True
     with (
-        patch("asyncio.create_task"),
-        patch("backend.api.sync.run_sync_task", new=MagicMock()),
+        patch("backend.api.sync.run_sync_task", new=blocked),
+        capture_logs() as logs,
     ):
-        result = await launch_sync("hinatazaka46", origin="scheduler")
-    assert result == "started"
+        assert await launch_sync("hinatazaka46", origin="api") == "started"
+        assert await launch_sync("hinatazaka46", origin="tray") == "already_running"
+        assert await launch_sync("nogizaka46", origin="scheduler") == "queued"
+        assert await launch_sync("nogizaka46", origin="tray") == "already_queued"
+        gate.set()
+        await get_coordinator().wait_idle()
+    results = [(e["origin"], e["result"], e["position"]) for e in _launch_logs(logs)]
+    assert results == [
+        ("api", "started", None),
+        ("tray", "already_running", None),
+        ("scheduler", "queued", 1),
+        ("tray", "already_queued", 1),
+    ]
 
 
 @pytest.mark.asyncio
 async def test_launch_shutting_down(mock_sync_service):
     shutdown_state.begin_shutdown()
-    with patch("asyncio.create_task") as create_task, capture_logs() as logs:
+    with (
+        patch("backend.api.sync.run_sync_task", new=AsyncMock()) as run_task,
+        capture_logs() as logs,
+    ):
         result = await launch_sync("hinatazaka46", origin="scheduler")
     assert result == "shutting_down"
-    create_task.assert_not_called()
+    run_task.assert_not_called()
     assert _launch_logs(logs)[0]["result"] == "shutting_down"
 
 
 def test_start_endpoint_logs_api_origin(client, mock_sync_service):
     with (
-        patch("asyncio.create_task"),
-        patch("backend.api.sync.run_sync_task", new=MagicMock()),
+        patch("backend.api.sync.run_sync_task", new=AsyncMock()),
         capture_logs() as logs,
     ):
         response = client.post("/api/sync/start?service=hinatazaka46")
     assert response.status_code == 200
-    assert response.json() == {"status": "started", "service": "hinatazaka46"}
+    assert response.json() == {
+        "status": "started",
+        "service": "hinatazaka46",
+        "position": None,
+    }
     entry = _launch_logs(logs)[0]
     assert entry["origin"] == "api"
     assert entry["result"] == "started"

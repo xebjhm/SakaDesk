@@ -6,7 +6,7 @@ import { Button, Modal } from '../../design/primitives';
 import { useGroupMarker } from '../../design/useGroupMarker';
 import { cn, formatDateTime } from '../../utils/classnames';
 import { getServiceById } from '../../data/services';
-import { getSyncPhaseName, getSyncUnitLabel } from '../../utils/syncFormatters';
+import { getSyncPhaseName, getSyncUnitLabel, isSyncActive } from '../../utils/syncFormatters';
 import { SyncProgressPanel } from '../../core/common/SyncProgressPanel';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 import type { SequentialSyncInfo } from '../hooks/useSync';
@@ -71,7 +71,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
     const footer = (syncProgress.state === 'complete' || syncProgress.state === 'error') && onClose
         ? <Button variant="secondary" onClick={onClose}>{t('common.done')}</Button>
         // SD-FE-GAP-B-08: while running, offer a Cancel so the user is never trapped by a spinner.
-        : syncProgress.state === 'running' && onCancel
+        : isSyncActive(syncProgress) && onCancel
             ? <Button variant="secondary" onClick={onCancel}>{t('common.cancel')}</Button>
             : undefined;
 

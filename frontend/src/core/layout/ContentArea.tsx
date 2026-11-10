@@ -8,6 +8,7 @@ import { ContentSheet } from './ContentSheet';
 import { FadeOnChange } from './FadeOnChange';
 import { useTranslation } from '../../i18n';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
+import { isSyncActive } from '../../utils/syncFormatters';
 
 interface ContentAreaProps {
     service: string;
@@ -48,7 +49,8 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
     const activeFeature = getActiveFeature(service);
 
     let content: React.ReactNode;
-    if (isInitialSyncing && syncProgress?.state === 'running') {
+    // A queued first sync (another service is syncing) shows its card too.
+    if (isInitialSyncing && isSyncActive(syncProgress)) {
         content = <ContentSheet><InlineSyncView service={service} syncProgress={syncProgress} /></ContentSheet>;
     } else if (activeFeature === 'blogs') {
         content = <ContentSheet><BlogsFeature blogBackupEnabled={blogBackupEnabled} /></ContentSheet>;

@@ -81,4 +81,27 @@ describe('SyncProgressPanel', () => {
         render(<SyncProgressPanel progress={{ ...RUNNING, phase: 'discovering' }} />);
         expect(screen.getByText('Scan').closest('li')).toHaveAttribute('aria-current', 'step');
     });
+
+    // S2 (spec 2026-11-10): honest progress.
+    it('shows the run elapsed, which does not reset per phase', () => {
+        render(<SyncProgressPanel progress={{ ...RUNNING, elapsed_seconds: 5, run_elapsed_seconds: 125 }} />);
+        expect(screen.getByText('02:05')).toBeInTheDocument();
+    });
+
+    it('shows a dash when the phase cannot be estimated and "Estimating…" while warming up', () => {
+        const { rerender } = render(<SyncProgressPanel progress={{ ...RUNNING, eta_seconds: null, eta_reason: 'not_estimable' }} />);
+        expect(screen.getByText('—')).toBeInTheDocument();
+        rerender(<SyncProgressPanel progress={{ ...RUNNING, phase: 'downloading', phase_number: 3, eta_seconds: null, eta_reason: 'warming_up' }} />);
+        expect(screen.getByText('Estimating…')).toBeInTheDocument();
+    });
+
+    it('counts failed downloads next to the media warning', () => {
+        render(<SyncProgressPanel progress={{ ...RUNNING, phase: 'downloading', phase_number: 3, failed: 2 }} />);
+        expect(screen.getByText(/· 2 failed/)).toBeInTheDocument();
+    });
+
+    it('a queued sync shows its place in line in the detail row', () => {
+        render(<SyncProgressPanel progress={{ state: 'queued', phase: 'queued', queue_position: 2 }} />);
+        expect(screen.getByText('Waiting for another sync to finish (#2 in line)')).toBeInTheDocument();
+    });
 });

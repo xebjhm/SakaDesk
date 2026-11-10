@@ -77,17 +77,18 @@ def _manager(
         )
         return 2
 
-    async def default_process(_s, queue, progress_callback=None):
+    async def default_process(_s, queue, item_callback=None):
         seen.append([int(i["message_id"]) for i in queue])
-        if progress_callback is not None:
-            await progress_callback(len(queue), len(queue))
+        if item_callback is not None:
+            for _ in queue:
+                await item_callback(True)
         return {md: {int(i["message_id"]): {"duration": 1} for i in queue}}
 
-    async def process_media_queue(s, queue, progress_callback=None):
+    async def process_media_queue(s, queue, item_callback=None):
         if process is not None:
             seen.append([int(i["message_id"]) for i in queue])
-            return await process(s, queue, progress_callback)
-        return await default_process(s, queue, progress_callback)
+            return await process(s, queue, item_callback)
+        return await default_process(s, queue, item_callback)
 
     mgr = _mock_sync_manager()
     client = MagicMock()
@@ -254,7 +255,7 @@ async def test_failure_after_dispatch_does_not_abandon(tmp_path: Path) -> None:
     md = tmp_path / "m"
     calls = 0
 
-    async def second_fails(_s, queue, progress_callback=None):
+    async def second_fails(_s, queue, item_callback=None):
         nonlocal calls
         calls += 1
         if calls > 1:

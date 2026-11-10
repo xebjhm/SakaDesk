@@ -54,6 +54,13 @@ describe('useBackendSyncWatcher', () => {
         expect(clientLog).toHaveBeenCalledWith('backend_sync_followed', { service: 'hinatazaka46' });
     });
 
+    it('follows a sync that waits in the backend queue (S1)', async () => {
+        progress.hinatazaka46 = { state: 'queued', run_id: 3 };
+        mount();
+        await flush();
+        expect(follow).toHaveBeenCalledWith('hinatazaka46');
+    });
+
     it('does not fetch or follow a service that is already polled', async () => {
         progress.hinatazaka46 = { state: 'running', run_id: 3 };
         isPolling.mockReturnValue(true);
