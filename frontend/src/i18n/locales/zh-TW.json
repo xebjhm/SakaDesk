@@ -1027,6 +1027,7 @@
     "gacha": {
       "title": "回憶扭蛋",
       "turn": "轉動把手",
+      "hint": "轉動把手，抽一個回憶吧",
       "left": "今天還能轉 {{count, number}} 次",
       "tomorrow": "明天見",
       "history": "抽到過的回憶",

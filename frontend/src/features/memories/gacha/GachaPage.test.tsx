@@ -55,6 +55,8 @@ describe('GachaPage', () => {
         expect(screen.getByRole('heading', { name: '思い出ガチャ' })).toBeInTheDocument();
         await knob();
         expect(screen.getByText('今日はあと 3 回')).toBeInTheDocument();
+        // A visible prompt says how to pull (D17), not only the knob's screen-reader name.
+        expect(screen.getByTestId('gacha-empty-card')).toHaveTextContent('ハンドルを回してね');
         // The `open` breadcrumb is logged from a passive effect that runs after the commit the
         // knob appears in; findBy can resolve first under load, so wait for the log itself.
         await waitFor(() => expect(gachaLogs()).toContainEqual({ phase: 'open', count: 3 }));

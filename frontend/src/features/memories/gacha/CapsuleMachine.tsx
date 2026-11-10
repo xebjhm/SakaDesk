@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { motion as fm } from 'framer-motion';
+import { RotateCw } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { motion } from '../../../design/tokens/motion';
 import { cn } from '../../../utils/classnames';
@@ -50,8 +51,9 @@ function angleAround(el: HTMLElement, e: React.PointerEvent): number {
 }
 
 /**
- * The capsule machine (spec 12): a glass dome of capsules over the base with the knob and the
- * slot, all CSS shapes from tokens. The knob (`role="button"`) pulls on a click, Enter or Space,
+ * The capsule machine (spec 12): a dome of capsules over the base with the knob and the slot, all
+ * CSS shapes from tokens, outlined with the strong border so it reads on any canvas; a turn arrow
+ * by the knob shows it turns while a pull is possible. The knob (`role="button"`) pulls on a click, Enter or Space,
  * or a pointer drag that turns it past {@link PULL_DEGREES} (either way; the angle is unwrapped
  * across the ±180° seam) and then rests on the next whole turn that way; a shorter drag springs
  * back without pulling, and the click that ends any drag is not a pull. It does nothing while `busy` or with no pulls left (`aria-disabled`).
@@ -123,10 +125,14 @@ export const CapsuleMachine: React.FC<CapsuleMachineProps> = ({ pullsLeft, busy,
 
     return (
         <div data-testid="capsule-machine" className="flex flex-col items-center gap-3">
-            <div className="relative h-40 w-48 overflow-hidden rounded-t-full rounded-b-lg border border-frost bg-frost shadow-card backdrop-blur-frost">
+            <div data-testid="gacha-dome" className="relative h-40 w-48 overflow-hidden rounded-t-full rounded-b-lg border-2 border-strong bg-sunken shadow-card">
                 {DOME.map((c, i) => <Capsule key={i} rarity={c.rarity} className={cn('absolute h-8 w-8', c.className)} />)}
             </div>
-            <div className="relative -mt-4 flex h-28 w-56 items-center justify-between rounded-lg border border-subtle bg-card px-5 shadow-card">
+            <div className="relative -mt-4 flex h-28 w-56 items-center justify-between rounded-lg border-2 border-strong bg-card px-5 shadow-card">
+                {/* A subtle turn arrow over the knob says it turns. */}
+                {!disabled && (
+                    <RotateCw data-testid="gacha-turn-hint" aria-hidden="true" className="pointer-events-none absolute left-3 top-1 h-4 w-4 text-secondary" />
+                )}
                 <div
                     role="button"
                     tabIndex={0}
@@ -141,13 +147,13 @@ export const CapsuleMachine: React.FC<CapsuleMachineProps> = ({ pullsLeft, busy,
                     onKeyDown={onKeyDown}
                     style={{ transform: `rotate(${angle}deg)` }}
                     className={cn(
-                        'relative h-16 w-16 touch-none select-none rounded-full border border-subtle bg-memories-paper shadow-pill',
+                        'relative h-16 w-16 touch-none select-none rounded-full border-2 border-strong bg-memories-paper shadow-pill',
                         'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                         turn === null && 'transition-transform duration-base ease-standard motion-reduce:transition-none',
                         disabled ? 'cursor-not-allowed opacity-60' : 'cursor-grab active:cursor-grabbing',
                     )}
                 >
-                    <span aria-hidden="true" className="absolute inset-x-6 inset-y-1 rounded-full bg-sunken" />
+                    <span aria-hidden="true" className="absolute inset-x-6 inset-y-1 rounded-full border border-strong bg-sunken" />
                 </div>
                 <div className="relative flex h-10 w-16 items-end justify-center rounded-md bg-sunken pb-1">
                     {dropped && (

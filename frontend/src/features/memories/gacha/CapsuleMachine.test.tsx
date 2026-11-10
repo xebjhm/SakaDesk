@@ -28,6 +28,19 @@ function drag(el: HTMLElement, degrees: number[]) {
 }
 
 describe('CapsuleMachine', () => {
+    it('reads clearly and shows that the knob turns while a pull is possible (D17)', () => {
+        renderMachine();
+        expect(screen.getByTestId('gacha-dome')).toHaveClass('border-strong');
+        expect(screen.getByTestId('gacha-dome')).not.toHaveClass('bg-frost');
+        expect(knob()).toHaveClass('border-strong');
+        expect(screen.getByTestId('gacha-turn-hint')).toBeInTheDocument();
+    });
+
+    it('hides the turn arrow when no pull is possible', () => {
+        renderMachine({ pullsLeft: 0 });
+        expect(screen.queryByTestId('gacha-turn-hint')).toBeNull();
+    });
+
     it('pulls once on a click', async () => {
         const { onPull } = renderMachine();
         await userEvent.click(knob());

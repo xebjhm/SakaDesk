@@ -1048,6 +1048,7 @@
     "gacha": {
       "title": "Memory gacha",
       "turn": "Turn the handle",
+      "hint": "Turn the handle to draw a memory",
       "left": "{{count, number}} pull left today",
       "left_other": "{{count, number}} pulls left today",
       "tomorrow": "See you tomorrow",

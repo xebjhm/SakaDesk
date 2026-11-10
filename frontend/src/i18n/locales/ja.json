@@ -1027,6 +1027,7 @@
     "gacha": {
       "title": "思い出ガチャ",
       "turn": "ハンドルを回す",
+      "hint": "ハンドルを回してね",
       "left": "今日はあと {{count, number}} 回",
       "tomorrow": "また明日",
       "history": "これまでに出た思い出",

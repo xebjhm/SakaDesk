@@ -233,7 +233,13 @@ export const GachaPage: React.FC<GachaPageProps> = ({ service, go }) => {
                                 reducedMotion={reducedMotion}
                             />
                         ) : (
-                            <div aria-hidden="true" className="h-64 w-full rounded-lg border-2 border-dashed border-subtle" />
+                            <div
+                                data-testid="gacha-empty-card"
+                                className="flex h-64 w-full items-center justify-center rounded-lg border-2 border-dashed border-strong p-6 text-center text-body text-secondary"
+                            >
+                                {/* How to pull (with no pulls left, the machine already says 「また明日」). */}
+                                {left > 0 && t('memories.gacha.hint')}
+                            </div>
                         )}
                     </div>
                 </div>
