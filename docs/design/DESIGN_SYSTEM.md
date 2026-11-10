@@ -677,9 +677,9 @@ A shown indicator stays at least 400 ms (`minVisible`; `settleDelay(elapsed)` gi
 
 | Hook | Use |
 |---|---|
-| `useLoadingStages(active, { surface?, startedAt? })` | `{ stage, waitMs }`: `hidden` → `shown` → `slow` → `verySlow`; resets when `active` turns off. With `surface` it logs `ui_wait` once for `slow` and once for `very_slow` |
+| `useLoadingStages(active, { surface?, startedAt? })` | `{ stage, waitMs }`: `hidden` → `shown` → `slow` → `verySlow`; resets when `active` turns off. With `surface` it logs `ui_wait` once for `slow` and once for `very_slow`. Measured on `performance.now()`, and an early timer is re-armed, so a wait never sticks. Keep `startedAt` stable (state or a ref): a new value restarts the wait |
 | `useDelayedLoading(active)` | true from `reveal` until `active` is off and the indicator has shown `minVisible`; for indicators that do not gate content |
-| `useKeepPrevious(data, { scope, loading })` | `{ shown, stale }`: while loading, the last ready payload of the same scope (`stale: true`); a new scope keeps nothing |
+| `useKeepPrevious(data, { scope, loading })` | `{ shown, stale }`: while loading, the last ready payload of the same scope (`stale: true`); a new scope keeps nothing. Pass a primitive `scope`; `data` may be rebuilt every render |
 | `settleDelay(elapsedMs)` | ms to hold a finished result so a shown indicator stays `minVisible` |
 | `logWait(surface, phase, waitMs)` | the `ui_wait` breadcrumb (`surface` a code `^[a-z0-9_]{1,40}$`, `phase` `slow` / `very_slow` / `timeout` / `cancelled`, `wait_ms`); never throws |
 
@@ -689,9 +689,9 @@ A shown indicator stays at least 400 ms (`minVisible`; `settleDelay(elapsed)` gi
 |---|---|---|
 | `Spinner` | `size` `sm` / `md` / `lg` (`h-4` / `h-6` / `h-8`), `tone` `accent` / `muted` / `current` / `viewer`, `label` (default `loading.label`), `labelVisibility` `auto` / `always` / `compact`, `decorative` | lucide `Loader2`, `animate-spin motion-reduce:animate-none`; `role="status"` named by its label. `decorative` (aria-hidden, no role, no label) only next to visible text that describes the wait |
 | `Skeleton` | `shape` `line` / `block` / `circle` / `tile`, `tone` `sunken` (default, `bg-sunken`) / `paper` (`bg-skeleton`) / `data` (no colour; the caller paints `style`), `className`, `style` | `SKELETON_PULSE` (`animate-pulse motion-reduce:animate-none`); always `aria-hidden`, the parent carries `role="status"` and a label |
-| `StatusBlock` | `kind` `loading` / `empty` / `error` / `timeout`, `surface` (a `ui_wait` code), `variant` `pane` / `dialog` (default) / `block` / `fill` / `inline`, `title`, `hint`, `icon`; loading: `label`, `skeleton`, `slowHint`, `verySlowHint`, `onCancel`, `cancelLabel`, `progress`, `stage` (previews only); empty: `action`; error and timeout: `onRetry` (required), `retryLabel`, `retryVariant` | loading: an empty `role="status"` box (same size) until `reveal`, then the skeleton or an accent spinner, then the hints, Cancel (ghost) and bar as in the timing table. error: `role="alert"`, danger icon tile, `loading.error`, Retry (`secondary`). timeout: `role="alert"`, neutral `Clock` tile (`bg-sunken text-muted`, never danger), `loading.timeout` + `loading.timeoutHint`, Retry. empty: `EmptyState` |
-| `ProgressBar` | `value` (0..1; null / undefined = indeterminate), `label` (required, the accessible name), `valueText`, `size` `thin` / `sm` / `md` (`h-0.5` / `h-2` / `h-4`), `showLabel` | `bg-sunken rounded-full` track, `bg-expressive-progress` fill (`transition-all duration-base`, none under reduced motion); indeterminate: a `w-1/3` segment on `animate-progress-indeterminate` |
-| `BusyContent` | `busy`, `label`, `children`, `className`, `contentClassName` | keeps the previous content, `aria-busy`; after `reveal` the content dims to `opacity-60` and a thin indeterminate `ProgressBar` sits on the top edge |
+| `StatusBlock` | `kind` `loading` / `empty` / `error` / `timeout`, `surface` (a `ui_wait` code), `variant` `pane` / `dialog` (default) / `block` / `fill` / `inline`, `title`, `hint`, `icon`; loading: `label`, `skeleton`, `slowHint`, `verySlowHint`, `onCancel`, `cancelLabel`, `progress`, `stage` (previews only); empty: `title` (required), `action`; error and timeout: `onRetry` (required), `retryLabel`, `retryVariant` | loading: an empty `role="status"` box with `aria-busy` (same size) until `reveal`, then (without `aria-busy`, so the label, the slow line and the explanation are announced) the skeleton or an accent spinner, then the hints, Cancel (ghost) and bar as in the timing table. error: `role="alert"`, danger icon tile, `loading.error`, Retry (`secondary`). timeout: `role="alert"`, neutral `Clock` tile (`bg-sunken text-muted`, never danger), `loading.timeout` + `loading.timeoutHint`, Retry. empty: `EmptyState` |
+| `ProgressBar` | `value` (0..1; null / undefined = indeterminate), `label` (required, the accessible name), `valueText`, `size` `thin` / `sm` / `md` (`h-0.5` / `h-2` / `h-4`), `showLabel`, `labelClassName` | `bg-sunken rounded-full` track, `bg-expressive-progress` fill (`transition-all duration-base`, none under reduced motion); indeterminate: a `w-1/3` segment on `animate-progress-indeterminate` |
+| `BusyContent` | `busy`, `label`, `children`, `className`, `contentClassName` | keeps the previous content, `aria-busy`; after `reveal` the content dims to `opacity-60` and a thin indeterminate `ProgressBar` sits on the top edge (no pointer events). Under reduced motion its label shows on a small `bg-sheet` pill under the bar, never painted straight over the content |
 
 Variants of `StatusBlock`: `pane` fills a flex pane (`flex-1 p-6`: Memories, chat), `dialog`
 sits in a dialog body (`px-6 py-12`), `block` is a fixed `h-72` block, `fill` fills the scroll
@@ -724,7 +724,10 @@ shimmer or spinner of their own):
 - The placeholder layer is `<Skeleton shape="tile" tone="data" style={{ backgroundColor: meta?.color ?? undefined }} />`,
   or `tone="sunken"` when there is no colour; it is static under reduced motion.
 - Under reduced motion a tile still waiting after `reveal` shows
-  `<Spinner size="sm" tone="muted" labelVisibility="compact" />` centred.
+  `<Spinner size="sm" tone="muted" labelVisibility="compact" />` centred. `Spinner` has no
+  reduced-motion-only mode: `MediaTile` itself wraps it in `hidden motion-reduce:inline-flex`
+  (so it shows only under reduced motion, where the skeleton stops pulsing) and gates it with
+  `useDelayedLoading`. Do not add a `Spinner` variant for this.
 - A failed tile uses the media plan's own retry state. Grid-level states (first page, more pages,
   pre-generation running) use `StatusBlock` (`variant="dialog"`, surfaces `media_gallery` /
   `blog_gallery` / `memories_album`), or a `ProgressBar` for the "Preparing thumbnails… done / total" row.
@@ -1138,9 +1141,10 @@ here.
 
 The same test file runs a second ratchet over hand-built loading indicators
 (`countLoadingViolations`, `isLoadingScanned` in `design/guard.ts`): a raw
-`animate-spin` (with any variant prefix, counted once) and a bare
-`{t('common.loading')}` text child (`aria-label={t('common.loading')}` is not
-counted). It scans the same files as the style guard minus `design/primitives/`
+`animate-spin` (with any variant prefix, counted once) and any use of the
+`common.loading` text (a child, a prop such as `sub=`, a ternary, a variable).
+Only a primitive's accessible name (`aria-label={t('common.loading')}`,
+`label={t('common.loading')}`) is not counted. It scans the same files as the style guard minus `design/primitives/`
 (the primitives own the animation) and compares them with
 `loading-guard-baseline.json` under the same rules: a new file must have 0,
 counts only go down, an improved count must be written back, and no `design/`
