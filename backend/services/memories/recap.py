@@ -92,7 +92,8 @@ from backend.services.memories.then_now import (
 
 logger = structlog.get_logger(__name__)
 
-RECAP_VERSION = "2"
+# "3": S08 echo keywords match NFKC text (then_now.keywords_in).
+RECAP_VERSION = "3"
 
 SLIDE_KEYS = (
     "s01_first",
