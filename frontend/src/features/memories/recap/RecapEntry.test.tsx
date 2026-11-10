@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest';
 import { render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -35,7 +35,13 @@ function serve(opts: { overview?: (year: number) => RecapOverview | null; recap?
 }
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
-beforeEach(() => { vi.mocked(clientLog).mockClear(); });
+beforeEach(() => {
+    vi.mocked(clientLog).mockClear();
+    // 2026 is the current (open, partial) year; only `Date` is faked so msw and user-event keep their timers.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-12-10T12:00:00+09:00'));
+});
+afterEach(() => { vi.useRealTimers(); });
 
 describe('RecapEntry', () => {
     it('lists members with a recap and their title chips', async () => {
@@ -145,6 +151,21 @@ describe('RecapEntry', () => {
         expect(await screen.findByText('来年のあなたへ')).toBeInTheDocument();
     });
 
+    it('a past year\'s quiet cards never speak of "next year"', async () => {
+        serve();
+        render(<RecapEntry service="hinatazaka46" year={2024} years={[2024, 2026]} onBack={() => {}} />);
+        const quiet = await screen.findByTestId('recap-quiet-member');
+        expect(quiet).toHaveTextContent('これからのあなたへ');
+        expect(quiet).not.toHaveTextContent('来年');
+    });
+
+    it('a past year with nobody to look back on uses the any-year wording', async () => {
+        serve({ overview: (year) => overview({ year, members: [] }) });
+        render(<RecapEntry service="hinatazaka46" year={2024} years={[2024]} onBack={() => {}} />);
+        expect(await screen.findByText('これからのあなたへ')).toBeInTheDocument();
+        expect(screen.queryByText('来年のあなたへ')).toBeNull();
+    });
+
     it('offers a retry when the overview fails', async () => {
         let fail = true;
         serve({ overview: (year) => (fail ? null : overview({ year })) });
@@ -237,6 +258,22 @@ describe('RecapEntry', () => {
             expect(await screen.findByRole('button', { name: /金村 美玖/ })).toBeInTheDocument();
             expect(screen.queryByTestId('opening-star')).toBeNull();
             expect(openingLogs()).toEqual([['recap_opening', { phase: 'skip', reason: 'single_member', count: 1 }]]);
+        });
+
+        it('logs the single-member skip once per year, not on every visit to it', async () => {
+            const seen = serve();
+            render(<RecapEntry service="hinatazaka46" year={2026} years={[2025, 2026]} onBack={() => {}} />);
+            await screen.findByRole('button', { name: /金村 美玖/ });
+            await userEvent.click(screen.getByRole('button', { name: '前の年' }));
+            await waitFor(() => expect(seen.members).toContain(2025));
+            await screen.findByRole('button', { name: /金村 美玖/ });
+            await userEvent.click(screen.getByRole('button', { name: '次の年' }));
+            await waitFor(() => expect(seen.members.filter((y) => y === 2026)).toHaveLength(2));
+            await screen.findByRole('button', { name: /金村 美玖/ });
+            expect(openingLogs()).toEqual([
+                ['recap_opening', { phase: 'skip', reason: 'single_member', count: 1 }],
+                ['recap_opening', { phase: 'skip', reason: 'single_member', count: 1 }],
+            ]);
         });
 
         it('skips the opening when a member is opened straight away', async () => {

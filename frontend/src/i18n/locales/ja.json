@@ -756,6 +756,7 @@
       "loadFailed": "読み込めませんでした。",
       "oshi": "推し",
       "emptyTitle": "来年のあなたへ",
+      "emptyTitlePast": "これからのあなたへ",
       "emptyBody": "これから届く一通を、ここで待っています。"
     },
     "titles": {

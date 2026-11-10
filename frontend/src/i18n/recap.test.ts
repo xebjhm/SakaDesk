@@ -173,6 +173,7 @@ describe('recap strings', () => {
         const NEXT = /来年|next year|明年|下一年|出年/i;
         for (const [code, data] of Object.entries(locales)) {
             expect(String(lookup(data, 'recap.s10.inviteTitleLater')), code).not.toMatch(NEXT);
+            expect(String(lookup(data, 'recap.entry.emptyTitlePast')), code).not.toMatch(NEXT);
         }
     });
 

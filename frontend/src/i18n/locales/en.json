@@ -760,6 +760,7 @@
       "loadFailed": "Could not load the recap.",
       "oshi": "Oshi",
       "emptyTitle": "To you, next year",
+      "emptyTitlePast": "To you, from here on",
       "emptyBody": "The next message will be waiting for you here."
     },
     "titles": {

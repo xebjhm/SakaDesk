@@ -1,11 +1,11 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ArrowLeft, ChevronLeft, ChevronRight, Heart, Image as ImageIcon, Loader2, Sparkles } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Button, Card, EmptyState, IconButton } from '../../../design/primitives';
 import { logRecapLoad, logRecapOpening, logRecapPoster, type RecapLoadOutcome } from '../memoriesLog';
 import type { PollResult } from '../../../utils/pollJson';
 import { fetchMemberRecap, fetchRecapMembers, type RecapOverview, type RecapOverviewMember, type RecapPayload } from './api';
-import { offeredRecapYears, recapAvailability } from './availability';
+import { jstNow, offeredRecapYears, recapAvailability } from './availability';
 import { Opening } from './Opening';
 import { PosterView, type PosterSurface } from './PosterView';
 import { safeMemberId } from './posterCopy';
@@ -67,14 +67,20 @@ const Failed: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
     );
 };
 
+/**
+ * The quiet card's title: 来年のあなたへ for the current year; a past year (where
+ * "next year" has already come) uses a wording true in any year.
+ */
+const emptyTitleKey = (past: boolean) => (past ? 'recap.entry.emptyTitlePast' : 'recap.entry.emptyTitle');
+
 /** Nothing (or too little) to look back on: a gentle card, never a "0". */
-const NotYet: React.FC<{ action?: React.ReactNode }> = ({ action }) => {
+const NotYet: React.FC<{ past: boolean; action?: React.ReactNode }> = ({ past, action }) => {
     const { t } = useTranslation();
     return (
         <div className="flex flex-1 items-center justify-center">
             <EmptyState
                 icon={<Sparkles />}
-                title={t('recap.entry.emptyTitle')}
+                title={t(emptyTitleKey(past))}
                 description={t('recap.entry.emptyBody')}
                 action={action}
             />
@@ -116,13 +122,13 @@ const MemberRow: React.FC<MemberRowProps> = ({ member, onOpen, onPoster }) => {
 };
 
 /** A member without a recap this year: a quiet, forward-looking card (never a count). */
-const QuietMember: React.FC<{ member: RecapOverviewMember }> = ({ member }) => {
+const QuietMember: React.FC<{ member: RecapOverviewMember; past: boolean }> = ({ member, past }) => {
     const { t } = useTranslation();
     return (
         <li data-testid="recap-quiet-member">
             <Card className="flex items-center gap-3 px-4 py-3">
                 <span lang="ja" className="min-w-0 flex-1 truncate text-body text-secondary">{member.name}</span>
-                <span className="text-caption text-muted">{t('recap.entry.emptyTitle')}</span>
+                <span className="text-caption text-muted">{t(emptyTitleKey(past))}</span>
             </Card>
         </li>
     );
@@ -131,7 +137,7 @@ const QuietMember: React.FC<{ member: RecapOverviewMember }> = ({ member }) => {
 /**
  * The year recap entry: a year chooser over the offered years and the members who
  * have a recap that year (with their role-title chips), then the members without
- * one as quiet 来年のあなたへ cards. When two or more members have a recap, the
+ * one as quiet 来年のあなたへ cards (a wording true in any year for past years). When two or more members have a recap, the
  * multi-member opening plays first (once per year in this visit; not when a
  * member was opened straight away). Choosing a member plays her recap, and the
  * year poster follows its last slide (with replay and close). A member whose
@@ -163,6 +169,9 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
     // `year:path` of each recap (with a poster) loaded in this visit, so the list can open its poster.
     const [withPoster, setWithPoster] = useState<ReadonlySet<string>>(() => new Set());
     const resolvedNickname = nickname?.trim() || t('recap.youFallback');
+    const past = year < jstNow().year;
+    // Years whose single-member skip was logged in this visit (retries and year steps don't repeat it).
+    const skipLogged = useRef<Set<number>>(new Set());
 
     useEffect(() => {
         const controller = new AbortController();
@@ -173,7 +182,10 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
             if (res.status === 'ok') {
                 const count = res.data.members.filter((m) => m.tier !== 'none').length;
                 logRecapLoad('members', count ? 'ok' : 'empty', { count });
-                if (count === 1) logRecapOpening('skip', { reason: 'single_member', count });
+                if (count === 1 && !skipLogged.current.has(year)) {
+                    skipLogged.current.add(year);
+                    logRecapOpening('skip', { reason: 'single_member', count });
+                }
                 setOverview({ status: 'ok', data: res.data });
             } else {
                 logRecapLoad('members', outcome, res.status === 'rejected' ? { error_code: res.httpStatus } : {});
@@ -239,7 +251,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
         if (data.tier === 'none' || playable(data) === 0) {
             return (
                 <div data-testid="recap-entry" className="flex flex-1">
-                    <NotYet action={<Button variant="secondary" onClick={backToList}>{t('recap.entry.back')}</Button>} />
+                    <NotYet past={past} action={<Button variant="secondary" onClick={backToList}>{t('recap.entry.back')}</Button>} />
                 </div>
             );
         }
@@ -290,7 +302,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
             </header>
             {overview.status === 'loading' && <Status />}
             {overview.status === 'error' && <Failed onRetry={() => setAttempt((n) => n + 1)} />}
-            {overview.status === 'ok' && members.length === 0 && <NotYet />}
+            {overview.status === 'ok' && members.length === 0 && <NotYet past={past} />}
             {members.length > 0 && (
                 <section className="mx-auto flex w-full max-w-md flex-col gap-3">
                     <p className="text-center text-small text-secondary">{t('recap.entry.choose')}</p>
@@ -306,7 +318,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                     </ul>
                     {quiet.length > 0 && (
                         <ul className="flex flex-col gap-2">
-                            {quiet.map((m) => <QuietMember key={m.member_path} member={m} />)}
+                            {quiet.map((m) => <QuietMember key={m.member_path} member={m} past={past} />)}
                         </ul>
                     )}
                 </section>

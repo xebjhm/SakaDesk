@@ -756,6 +756,7 @@
       "loadFailed": "无法加载回顾。",
       "oshi": "推し",
       "emptyTitle": "给明年的你",
+      "emptyTitlePast": "给往后的你",
       "emptyBody": "接下来的每一封，都会在这里等你。"
     },
     "titles": {
