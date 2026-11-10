@@ -19,6 +19,8 @@ export type MemoriesView =
     | 'album_members' | 'album_month' | 'album_colors'
     /** The film strip's day (favorites, names). */
     | 'film_strip'
+    /** The memoir timeline's selected month (`timeline` is its month rail). */
+    | 'timeline_month'
     /** The memoir's member list (`memoir` is the selected person's header). */
     | 'memoir_members';
 

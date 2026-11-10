@@ -1,0 +1,243 @@
+import React, { useEffect, useMemo, useState } from 'react';
+import { Play } from 'lucide-react';
+import { useTranslation } from '../../../i18n';
+import { Avatar, Button, Card } from '../../../design/primitives';
+import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
+import { cn } from '../../../utils/classnames';
+import { fetchTimelineMonth, fetchTimelineMonths } from '../api';
+import { albumViewerItems, formatMonth, viewerIndexOf } from '../album/albumViewer';
+import { logMemoriesSkip } from '../memoriesLog';
+import { formatJstDate } from '../recap/availability';
+import { jumpToChat } from '../shared/jumpToChat';
+import { LazyVoice } from '../shared/LazyVoice';
+import { LoadState } from '../shared/LoadState';
+import { memoryMediaSrc } from '../shared/mediaSrc';
+import { MemoryText } from '../shared/MemoryText';
+import { MemoryThumb } from '../shared/MemoryThumb';
+import { useMemoriesQuery } from '../shared/useMemoriesQuery';
+import type { MemoryMessage, TimelineMilestone, TimelineMonthPayload } from '../types';
+import { formatCardDate, useCopy } from './binderModel';
+import { cardCopy } from './cardCopy';
+import { MonthRail } from './MonthRail';
+
+/** A month held this long on the rail is fetched; quicker steps (a drag, a wheel run) are not. */
+const FETCH_DELAY_MS = 150;
+const PHOTO_PX = 96;
+const SLOT_PX = 160;
+
+type Slot = keyof TimelineMonthPayload['messages'];
+/** The word slots in display order, each with its label. */
+const SLOTS: Array<{ slot: Slot; label: string }> = [
+    { slot: 'top', label: 'memories.timeline.top' },
+    { slot: 'late', label: 'memories.timeline.late' },
+    { slot: 'nickname', label: 'memories.timeline.nickname' },
+];
+
+/** One labelled word slot: her words (or still / voice), the JST date and the jump to her chat. */
+const SlotCard: React.FC<{ slot: Slot; label: string; message: MemoryMessage; name: string }> = ({ slot, label, message: m, name }) => {
+    const { t, i18n } = useTranslation();
+    const words = m.type === 'text' ? m.text : (m.caption ?? m.text);
+    const src = memoryMediaSrc(m);
+    return (
+        <Card data-testid={`timeline-slot-${slot}`} className="flex min-w-0 flex-col gap-2 p-3">
+            <p className="text-caption font-medium text-muted">{t(label)}</p>
+            {(m.type === 'picture' || m.type === 'video') && (
+                <span className="relative block aspect-square w-40 overflow-hidden rounded-sm bg-sunken">
+                    <MemoryThumb message={m} px={SLOT_PX} className="h-full w-full" />
+                    {m.type === 'video' && <Play aria-hidden="true" className="absolute left-2 top-2 h-4 w-4 fill-current text-inverse drop-shadow-sm" />}
+                </span>
+            )}
+            {m.type === 'voice' && src && <LazyVoice playKey={`timeline|${m.room}|${m.id}`} src={src} durationS={m.duration_s} ts={m.ts} />}
+            {words && <MemoryText text={words} className="line-clamp-6 text-small text-primary" />}
+            <div className="mt-auto flex items-center justify-between gap-2">
+                <span className="text-caption tabular-nums text-muted">{formatCardDate(formatJstDate(m.ts), i18n.language)}</span>
+                <Button variant="ghost" size="sm" onClick={() => jumpToChat(m, name, 'timeline')}>{t('memories.common.jumpToChat')}</Button>
+            </div>
+        </Card>
+    );
+};
+
+/** The month's milestones (`cardCopy` titles); a foil card's chip wears the foil sheen. */
+const Milestones: React.FC<{ milestones: TimelineMilestone[]; month: string }> = ({ milestones, month }) => {
+    const { t } = useTranslation();
+    const copyText = useCopy();
+    const known = milestones.flatMap((m) => {
+        const copy = cardCopy(m.key);
+        return copy ? [{ ...m, title: copyText(copy.title) }] : [];
+    });
+    const unknown = milestones.length - known.length;
+    useEffect(() => {
+        if (unknown > 0) logMemoriesSkip('timeline_month', 'unknown_card', { count: unknown });
+    }, [unknown, month]);
+    if (known.length === 0) return null;
+    const headingId = `timeline-milestones-${month}`;
+    return (
+        <section className="flex flex-col gap-2">
+            <h4 id={headingId} className="font-display text-small text-secondary">{t('memories.timeline.milestones')}</h4>
+            <ul aria-labelledby={headingId} className="flex flex-wrap gap-2">
+                {known.map((m) => (
+                    <li
+                        key={`${m.key}|${m.date}`}
+                        className={cn(
+                            'rounded-pill border border-subtle px-3 py-1 font-display text-small text-primary',
+                            m.foil ? 'bg-memories-foil' : 'bg-card',
+                        )}
+                    >
+                        {m.title}
+                    </li>
+                ))}
+            </ul>
+        </section>
+    );
+};
+
+interface MonthViewProps {
+    service: string;
+    memberPath: string;
+    name: string;
+    /** The month selected on the rail (shown at once). */
+    month: string;
+    /** The month to fetch (the selection once it has settled). */
+    fetchMonth: string;
+}
+
+/**
+ * The selected month: her avatar then, the serif month label and the month's one number (never 0),
+ * then up to twelve photos (the media viewer, jump logged as `timeline`), the labelled word slots
+ * (empty ones left out) and the milestones. A month change aborts the fetch in flight.
+ */
+const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month, fetchMonth }) => {
+    const { t, i18n } = useTranslation();
+    const query = useMemoriesQuery(
+        'timeline_month',
+        (signal) => fetchTimelineMonth(service, memberPath, fetchMonth, signal),
+        [service, memberPath, fetchMonth],
+        { count: (d) => d.count },
+    );
+    const data = query.data?.month === month ? query.data : null;
+    const [viewer, setViewer] = useState<{ month: string; index: number } | null>(null);
+    const viewerItems = useMemo(() => albumViewerItems(data?.photos ?? [], {
+        nameOf: () => name,
+        sourceLabel: t('memories.common.jumpToChat'),
+        onBeforeJump: () => setViewer(null),
+        from: 'timeline',
+    }), [data, name, t]);
+    const viewerIndex = viewer?.month === month ? viewer.index : null;
+
+    let body: React.ReactNode;
+    if (!data) {
+        body = <LoadState status={query.status === 'error' && fetchMonth === month ? 'error' : 'loading'} onRetry={query.retry} />;
+    } else {
+        const slots = SLOTS.flatMap(({ slot, label }) => {
+            const m = data.messages[slot];
+            return m ? [{ slot, label, m }] : [];
+        });
+        body = (
+            <>
+                {viewerItems.viewable.length > 0 && (
+                    <ul data-testid="timeline-photos" className="flex gap-2 overflow-x-auto pb-1">
+                        {viewerItems.viewable.map((p) => (
+                            <li key={`${p.room}|${p.id}`} className="shrink-0">
+                                <button
+                                    type="button"
+                                    aria-label={formatCardDate(formatJstDate(p.ts), i18n.language)}
+                                    onClick={() => setViewer({ month, index: viewerIndexOf(viewerItems.viewable, p) })}
+                                    className="relative block h-24 w-24 overflow-hidden rounded-sm bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                >
+                                    <MemoryThumb message={p} px={PHOTO_PX} className="h-full w-full" />
+                                    {p.type === 'video' && <Play aria-hidden="true" className="absolute left-1 top-1 h-3.5 w-3.5 fill-current text-inverse drop-shadow-sm" />}
+                                </button>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+                {slots.length > 0 && (
+                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                        {slots.map(({ slot, label, m }) => <SlotCard key={slot} slot={slot} label={label} message={m} name={name} />)}
+                    </div>
+                )}
+                <Milestones milestones={data.milestones} month={month} />
+            </>
+        );
+    }
+
+    return (
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
+            <header className="flex items-center gap-3">
+                <Avatar src={data?.avatar_url ?? undefined} name={name} size="md" />
+                <h3 className="font-display text-heading text-primary">{formatMonth(t, 'memories.album.monthLabel', month, i18n.language)}</h3>
+                {data && data.count > 0 && (
+                    <span className="text-small tabular-nums text-secondary">{t('memories.timeline.count', { count: data.count })}</span>
+                )}
+            </header>
+            {body}
+            {data && viewerIndex !== null && viewerItems.items[viewerIndex] && (
+                <MediaViewerModal
+                    mediaItems={viewerItems.items}
+                    currentIndex={viewerIndex}
+                    onClose={() => setViewer(null)}
+                    onNavigate={(index) => setViewer({ month, index })}
+                />
+            )}
+        </div>
+    );
+};
+
+interface TimelineProps {
+    service: string;
+    /** Her chat path (any of her rooms). */
+    memberPath: string;
+    /** Her display name (avatar alt text, the viewer's and the chat jump's name). */
+    name: string;
+}
+
+/**
+ * The 時光軸 tab (spec 5.4): the selected month above, the `MonthRail` at the bottom. It starts
+ * at her newest month. The rail answers at once; the month is fetched once the selection holds
+ * for {@link FETCH_DELAY_MS} (the first one at once), and a newer selection aborts the old fetch.
+ */
+export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name }) => {
+    const { t, i18n } = useTranslation();
+    const months = useMemoriesQuery('timeline', (signal) => fetchTimelineMonths(service, memberPath, signal), [service, memberPath], {
+        count: (d) => d.months.length,
+    });
+    const list = months.data?.months;
+    const [picked, setPicked] = useState<{ path: string; month: string } | null>(null);
+    const pickedIndex = list && picked?.path === memberPath ? list.findIndex((m) => m.month === picked.month) : -1;
+    const index = list ? (pickedIndex >= 0 ? pickedIndex : list.length - 1) : -1;
+    const month = list && index >= 0 ? list[index].month : undefined;
+
+    const [fetchMonth, setFetchMonth] = useState<string | undefined>(undefined);
+    useEffect(() => {
+        if (month === fetchMonth) return undefined;
+        if (month === undefined || fetchMonth === undefined) {
+            setFetchMonth(month);
+            return undefined;
+        }
+        const id = setTimeout(() => setFetchMonth(month), FETCH_DELAY_MS);
+        return () => clearTimeout(id);
+    }, [month, fetchMonth]);
+
+    const label = useMemo(
+        () => (m: string) => formatMonth(t, 'memories.album.monthLabel', m, i18n.language),
+        [t, i18n.language],
+    );
+
+    if (months.status !== 'ready' || !list) {
+        return <LoadState status={months.status === 'error' ? 'error' : 'loading'} onRetry={months.retry} />;
+    }
+    if (!month) return null;
+    return (
+        <div className="flex min-h-0 flex-1 flex-col">
+            {fetchMonth
+                ? <MonthView service={service} memberPath={memberPath} name={name} month={month} fetchMonth={fetchMonth} />
+                : <LoadState status="loading" onRetry={months.retry} />}
+            <MonthRail
+                months={list}
+                index={index}
+                onSelect={(i) => setPicked({ path: memberPath, month: list[i].month })}
+                label={label}
+            />
+        </div>
+    );
+};

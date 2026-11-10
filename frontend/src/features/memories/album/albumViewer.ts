@@ -2,6 +2,7 @@ import type { TFunction } from 'i18next';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { jumpToChat } from '../shared/jumpToChat';
 import { memoryMediaSrc } from '../shared/mediaSrc';
+import type { MemoriesView } from '../memoriesLog';
 import type { MemoryMessage } from '../types';
 
 /** Message ids repeat across rooms: an album item is keyed by room and id. */
@@ -21,16 +22,18 @@ interface AlbumViewerOptions {
     sourceLabel: string;
     /** Runs before the jump (closes the viewer). */
     onBeforeJump?: () => void;
+    /** The view the jump is logged for (`memories_jump` `target`); default `album`. */
+    from?: MemoriesView;
 }
 
 /**
  * The media viewer's items for a month (or one burst): the viewable pictures and videos sorted
  * oldest first (the viewer's `oldest_first` order, so ← is older), each with a source link that
- * opens her chat at that message (`jumpToChat(…, 'album')`). `viewable[i]` is `items[i]`.
+ * opens her chat at that message (`jumpToChat(…, from)`, `album` by default). `viewable[i]` is `items[i]`.
  */
 export function albumViewerItems(
     messages: MemoryMessage[],
-    { nameOf, sourceLabel, onBeforeJump }: AlbumViewerOptions,
+    { nameOf, sourceLabel, onBeforeJump, from = 'album' }: AlbumViewerOptions,
 ): { viewable: MemoryMessage[]; items: MediaViewerItem[] } {
     const viewable = messages
         .filter(isViewable)
@@ -45,7 +48,7 @@ export function albumViewerItems(
         sourceLabel,
         onSourceJump: () => {
             onBeforeJump?.();
-            jumpToChat(m, nameOf(m), 'album');
+            jumpToChat(m, nameOf(m), from);
         },
         messageId: m.id,
         service: m.service,
