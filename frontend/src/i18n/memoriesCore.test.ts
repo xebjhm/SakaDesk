@@ -13,10 +13,14 @@ export const MEMORIES_CORE_KEYS: string[] = [
     'memories.common.back', 'memories.common.retry', 'memories.common.loadError', 'memories.common.jumpToChat',
     'memories.common.all', 'memories.common.nicknameMasked',
     'memories.onThisDay.title', 'memories.album.title', 'memories.memoir.title', 'memories.favorites.title',
+    // C8: On This Day and the day view
+    'memories.onThisDay.more', 'memories.onThisDay.noMessages', 'memories.onThisDay.empty', 'memories.onThisDay.pickDate',
+    'memories.onThisDay.prevDay', 'memories.onThisDay.nextDay', 'memories.onThisDay.olderYear', 'memories.onThisDay.newerYear',
+    'memories.day.count', 'memories.day.otherGroups', 'memories.day.modeMerged', 'memories.day.modeLanes', 'memories.day.expand',
 ];
 
 /** Core keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
-export const MEMORIES_CORE_EN_PLURALS: string[] = [];
+export const MEMORIES_CORE_EN_PLURALS: string[] = ['memories.onThisDay.more', 'memories.day.count'];
 
 /** Recursive dotted lookup (any depth). */
 const lookup = (data: unknown, dotted: string): unknown =>
@@ -50,5 +54,22 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.common.jumpToChat')).toBe('トークで見る');
         expect(lookup(ja, 'memories.common.all')).toBe('全員');
         expect(lookup(ja, 'memories.common.nicknameMasked')).toBe('＊＊＊');
+        expect(lookup(ja, 'memories.onThisDay.title')).toBe('あの年の今日');
+        expect(lookup(ja, 'memories.onThisDay.more')).toBe('ほか {{count}} 件');
+        expect(lookup(ja, 'memories.onThisDay.noMessages')).toBe('この日はメッセージがありません');
+        expect(lookup(ja, 'memories.onThisDay.empty')).toBe('この日の思い出は、まだここにありません。別の日を開いてみてください。');
+        expect(lookup(ja, 'memories.onThisDay.pickDate')).toBe('日付をえらぶ');
+        expect(lookup(ja, 'memories.onThisDay.prevDay')).toBe('前の日');
+        expect(lookup(ja, 'memories.onThisDay.nextDay')).toBe('次の日');
+        expect(lookup(ja, 'memories.day.count')).toBe('{{count}} 件のメッセージ');
+        expect(lookup(ja, 'memories.day.otherGroups')).toBe('ほかのグループも含める');
+        expect(lookup(ja, 'memories.day.modeMerged')).toBe('時系列');
+        expect(lookup(ja, 'memories.day.modeLanes')).toBe('メンバー別');
+        expect(lookup(ja, 'memories.day.expand')).toBe('ひらく');
+        expect(lookup(zhTW, 'memories.onThisDay.title')).toBe('那年今日');
+        expect(lookup(zhTW, 'memories.onThisDay.noMessages')).toBe('這天沒有訊息');
+        expect(lookup(zhTW, 'memories.day.otherGroups')).toBe('包含其他團體');
+        expect(lookup(zhTW, 'memories.day.modeMerged')).toBe('合流');
+        expect(lookup(zhTW, 'memories.day.modeLanes')).toBe('泳道');
     });
 });

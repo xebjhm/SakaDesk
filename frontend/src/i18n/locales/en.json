@@ -756,7 +756,24 @@
       "nicknameMasked": "＊＊＊"
     },
     "onThisDay": {
-      "title": "On this day, years ago"
+      "title": "On this day, years ago",
+      "more": "+{{count}} more",
+      "more_other": "+{{count}} more",
+      "noMessages": "No messages on this day",
+      "empty": "No memories from this day here yet. Try opening another day.",
+      "pickDate": "Choose a date",
+      "prevDay": "Previous day",
+      "nextDay": "Next day",
+      "olderYear": "Older year",
+      "newerYear": "Newer year"
+    },
+    "day": {
+      "count": "{{count}} message",
+      "count_other": "{{count}} messages",
+      "otherGroups": "Include other groups",
+      "modeMerged": "Timeline",
+      "modeLanes": "By member",
+      "expand": "Open"
     },
     "album": {
       "title": "Album"

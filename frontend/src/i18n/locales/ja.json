@@ -752,7 +752,22 @@
       "nicknameMasked": "＊＊＊"
     },
     "onThisDay": {
-      "title": "あの年の今日"
+      "title": "あの年の今日",
+      "more": "ほか {{count}} 件",
+      "noMessages": "この日はメッセージがありません",
+      "empty": "この日の思い出は、まだここにありません。別の日を開いてみてください。",
+      "pickDate": "日付をえらぶ",
+      "prevDay": "前の日",
+      "nextDay": "次の日",
+      "olderYear": "前の年",
+      "newerYear": "次の年"
+    },
+    "day": {
+      "count": "{{count}} 件のメッセージ",
+      "otherGroups": "ほかのグループも含める",
+      "modeMerged": "時系列",
+      "modeLanes": "メンバー別",
+      "expand": "ひらく"
     },
     "album": {
       "title": "アルバム"

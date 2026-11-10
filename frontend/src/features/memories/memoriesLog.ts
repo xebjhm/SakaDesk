@@ -35,8 +35,12 @@ export function logMemoriesJump(target: MemoriesView, hasTarget: boolean): void 
     clientLog('memories_jump', { target, has_target: hasTarget });
 }
 
-/** A Memories control, as logged in `memories_toggle` `target` (screen tasks add their codes). */
-export type MemoriesToggle = 'other_services';
+/**
+ * A Memories control, as logged in `memories_toggle` `target` (screen tasks add their codes):
+ * `other_services` the day view's 「包含其他團體」 switch; `day_mode` the day view's merged / lanes
+ * toggle (`on` = lanes B, `off` = merged A).
+ */
+export type MemoriesToggle = 'other_services' | 'day_mode';
 
 /** `memories_toggle`: a Memories control was switched. `target` is the control code. */
 export function logMemoriesToggle(target: MemoriesToggle, on: boolean): void {

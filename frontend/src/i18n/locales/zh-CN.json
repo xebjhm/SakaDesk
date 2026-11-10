@@ -752,7 +752,22 @@
       "nicknameMasked": "＊＊＊"
     },
     "onThisDay": {
-      "title": "那年今日"
+      "title": "那年今日",
+      "more": "还有 {{count}} 条",
+      "noMessages": "这天没有消息",
+      "empty": "这一天的回忆还不在这里。换一天看看吧。",
+      "pickDate": "选择日期",
+      "prevDay": "前一天",
+      "nextDay": "后一天",
+      "olderYear": "前一年",
+      "newerYear": "后一年"
+    },
+    "day": {
+      "count": "{{count}} 条消息",
+      "otherGroups": "包含其他团体",
+      "modeMerged": "合流",
+      "modeLanes": "泳道",
+      "expand": "展开"
     },
     "album": {
       "title": "相册"
