@@ -7,6 +7,12 @@ export const LOAD_MARGIN = '100% 0px';
 export const LIVE_MARGIN = '200% 0px';
 /** After a ribbon jump or drag, loading resumes this long after the last scroll event. */
 export const SETTLE_MS = 150;
+/**
+ * Month grids fetched at once. The first open used to fire one request per band within a screen
+ * (six to eight), which the backend answered all together after seconds; two at a time, in the
+ * order the bands were asked for (the top one first), the first grid arrives on its own.
+ */
+export const MAX_IN_FLIGHT = 2;
 
 type MonthSet = ReadonlySet<string>;
 
@@ -48,6 +54,9 @@ export interface AlbumWindow {
  *   requested, so a scrub across the whole ribbon fetches only where it ends. Until those bands
  *   settle, the target is re-aligned after each load (their heights change).
  *
+ * - at most {@link MAX_IN_FLIGHT} grids are fetched at once, in the order they were asked for;
+ *   the newest month (the top band) is asked for on mount, so the first grid comes first.
+ *
  * Without it, every band is live and the months load one after another in list order.
  * State changes only when a band enters or leaves a margin, so scrolling does not re-render.
  */
@@ -66,10 +75,17 @@ export function useAlbumWindow(months: string[], root: RefObject<HTMLElement>): 
     const pending = useRef<{ month: string; waiting: Set<string> } | null>(null);
     const cacheRef = useRef(cache);
     cacheRef.current = cache;
+    const settledRef = useRef(settled);
+    settledRef.current = settled;
 
+    // Months in the order they were first asked for (append-only): the queue of MAX_IN_FLIGHT.
+    const order = useRef<string[]>([]);
+    // Months whose fetch was granted a slot (see the grants below).
+    const started = useRef(new Set<string>());
     const request = useCallback((add: Iterable<string>) => {
         const list = [...add];
         if (!list.length) return;
+        for (const m of list) if (!order.current.includes(m)) order.current.push(m);
         setRequested((prev) => (list.every((m) => prev.has(m)) ? prev : new Set([...prev, ...list])));
     }, []);
 
@@ -124,6 +140,12 @@ export function useAlbumWindow(months: string[], root: RefObject<HTMLElement>): 
         };
     }, [lazy, root, request, armSettle]);
 
+    // The newest month (the band at the top) is asked for at once, before any observer reports.
+    const firstMonth = months[0];
+    useEffect(() => {
+        if (lazy && firstMonth !== undefined) request([firstMonth]);
+    }, [lazy, firstMonth, request]);
+
     const registerRef = useCallback((month: string, el: HTMLElement | null) => {
         const old = elements.current.get(month);
         if (old && old !== el) observers.current.forEach((o) => o.unobserve(old));
@@ -154,6 +176,12 @@ export function useAlbumWindow(months: string[], root: RefObject<HTMLElement>): 
 
     const jump = useCallback((month: string) => {
         suspended.current = true;
+        // Months asked for but not loaded yet are dropped: the jump decides anew where to load
+        // once it settles (a scrub never pays for the bands it passed, nor the first band).
+        const keep = (m: string) => cacheRef.current.has(m) || settledRef.current.has(m);
+        order.current = order.current.filter(keep);
+        started.current = new Set([...started.current].filter(keep));
+        setRequested((prev) => ([...prev].every(keep) ? prev : new Set([...prev].filter(keep))));
         // An already loaded target needs no re-align (a stale target would scroll later).
         pending.current = cacheRef.current.has(month) ? null : { month, waiting: new Set([month]) };
         scrollTo(month);
@@ -161,8 +189,22 @@ export function useAlbumWindow(months: string[], root: RefObject<HTMLElement>): 
     }, [scrollTo, armSettle]);
 
     const firstOpen = lazy ? -1 : months.findIndex((m) => !settled.has(m));
-    const isRequested = (month: string, index: number) =>
-        requested.has(month) || (!lazy && (firstOpen === -1 || index <= firstOpen));
+    // Grants: a started fetch keeps its slot while its band is mounted (never pre-empted); free
+    // slots go to asked-for, mounted months in the order they were asked for. A settled month
+    // stays requested, so its retry keeps working. Idempotent, so safe to run on every render.
+    if (lazy) {
+        const busy = [...started.current].filter((m) => live.has(m) && !settled.has(m) && !cache.has(m));
+        let free = MAX_IN_FLIGHT - busy.length;
+        for (const m of order.current) {
+            if (free <= 0) break;
+            if (started.current.has(m) || !requested.has(m) || !live.has(m) || settled.has(m) || cache.has(m)) continue;
+            started.current.add(m);
+            free -= 1;
+        }
+    }
+    const isRequested = (month: string, index: number) => (lazy
+        ? settled.has(month) || started.current.has(month)
+        : requested.has(month) || firstOpen === -1 || index <= firstOpen);
     const isLive = (month: string) => !lazy || live.has(month);
 
     return { registerRef, isRequested, isLive, cache, onLoaded, onSettled, jump };

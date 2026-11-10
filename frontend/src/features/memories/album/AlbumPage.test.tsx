@@ -28,6 +28,7 @@ import { NicknameProvider } from '../shared/useNickname';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import { AlbumPage } from './AlbumPage';
 import { ALBUM_GRID_COLS } from './MonthSection';
+import { MAX_IN_FLIGHT } from './useAlbumWindow';
 import { MEMBER_PANE_WIDTH } from '../shared/MemberPane';
 import {
     colorsPayload, MEMBER_PATH, membersPayload, monthPayload, monthsPayload, monthSummary, NAO_PATH,
@@ -168,6 +169,25 @@ describe('AlbumPage', () => {
         fire('2022-05');
         fire('2026-10');
         await waitFor(() => expect(fetchAlbumMonth).toHaveBeenCalledTimes(2));
+    });
+
+    it('fetches the newest band first and at most two grids at a time (D4)', async () => {
+        const fire = stubObserver();
+        const resolvers = new Map<string, () => void>();
+        vi.mocked(fetchAlbumMonth).mockImplementation((_s, month) => new Promise((resolve) => {
+            resolvers.set(month, () => resolve(monthPayload(month)));
+        }));
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload(MANY.map((m) => monthSummary(m))));
+        renderAlbum();
+        await screen.findByTestId('album-month-2026-10');
+        // A screen of bands reports at once (top first); only two are fetched, the newest first.
+        for (const m of MANY.slice(0, 6)) fire(m);
+        await waitFor(() => expect(fetchAlbumMonth).toHaveBeenCalledTimes(MAX_IN_FLIGHT));
+        expect(vi.mocked(fetchAlbumMonth).mock.calls.map((c) => c[1])).toEqual(['2026-10', '2026-09']);
+        await act(async () => { resolvers.get('2026-10')!(); });
+        await waitFor(() => expect(fetchAlbumMonth).toHaveBeenCalledTimes(3));
+        expect(vi.mocked(fetchAlbumMonth).mock.calls[2][1]).toBe('2026-08');
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
     });
 
     it('loads the sections in order without an IntersectionObserver', async () => {
