@@ -168,7 +168,8 @@
     "play_rejected",
     "queue_end",
     "sleep_timer",
-    "user"
+    "user",
+    "preempted"
   ],
   "memories_radio.outcome": [
     "ok",

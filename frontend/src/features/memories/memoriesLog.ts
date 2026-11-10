@@ -131,8 +131,12 @@ export function logMemoriesSkip(
 
 export const MEMORIES_RADIO_PHASES = ['play', 'track', 'track_error', 'pause', 'resume', 'sleep_set', 'sleep_fade', 'end'] as const;
 export type MemoriesRadioPhase = (typeof MEMORIES_RADIO_PHASES)[number];
-/** `memories_radio` `reason`: why a track failed (`media_error`, `play_rejected`) or the radio ended. */
-export const MEMORIES_RADIO_REASONS = ['media_error', 'play_rejected', 'queue_end', 'sleep_timer', 'user'] as const;
+/**
+ * `memories_radio` `reason`: why a track failed (`media_error`, `play_rejected`) or the radio ended
+ * (`queue_end`, `sleep_timer`, `user`: the fan left the page or switched member, `preempted`:
+ * another Memories voice started).
+ */
+export const MEMORIES_RADIO_REASONS = ['media_error', 'play_rejected', 'queue_end', 'sleep_timer', 'user', 'preempted'] as const;
 export type MemoriesRadioReason = (typeof MEMORIES_RADIO_REASONS)[number];
 /** `memories_radio` `outcome`: whether a `play` / `resume` started audio. */
 export const MEMORIES_RADIO_OUTCOMES = ['ok', 'failed'] as const;
@@ -142,7 +146,7 @@ export type MemoriesRadioOutcome = (typeof MEMORIES_RADIO_OUTCOMES)[number];
  * `memories_radio`: a voice-radio decision. `kind` is the program code; `play` carries `count`
  * (tracks) and `outcome`; `track` the `index` started; `track_error` the `index` and a `reason`
  * (`media_error`, `play_rejected`; the radio moves on); `sleep_set` `count` (minutes); `sleep_fade`
- * the timer's fade began; `end` a `reason` (`queue_end`, `sleep_timer`, `user`). Codes and counts only.
+ * the timer's fade began; `end` a `reason` (`queue_end`, `sleep_timer`, `user`, `preempted`). Codes and counts only.
  */
 export function logMemoriesRadio(
     phase: MemoriesRadioPhase,
