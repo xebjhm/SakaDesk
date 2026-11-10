@@ -55,6 +55,7 @@ export function radioProgramPayload(over: Partial<RadioProgramPayload> = {}): Ra
     return {
         program: 'oyasumi',
         programs: ['oyasumi', 'ohayo', 'otsukare', 'chrono', 'favorites'],
+        counts: { oyasumi: 3, ohayo: 12, otsukare: 7, chrono: 41, favorites: 1 },
         years: [2023, 2024],
         tracks: [radioTrack(1), radioTrack(2), radioTrack(3)],
         ...over,

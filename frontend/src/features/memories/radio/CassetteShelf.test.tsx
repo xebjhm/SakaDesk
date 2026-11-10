@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 
@@ -61,5 +61,13 @@ describe('CassetteShelf', () => {
         await Promise.resolve();
         expect(screen.queryByTestId('cassette')).toBeNull();
         expect(container.textContent).not.toMatch(/0/);
+    });
+
+    it('shows a failed load with a retry', async () => {
+        vi.mocked(fetchRadioCassettes).mockRejectedValueOnce(new Error('x'));
+        render(<CassetteShelf service="hinatazaka46" selectedYear={null} onLoad={vi.fn()} />);
+        const alert = await screen.findByTestId('cassette-error');
+        await userEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+        expect(await screen.findAllByTestId('cassette')).toHaveLength(3);
     });
 });

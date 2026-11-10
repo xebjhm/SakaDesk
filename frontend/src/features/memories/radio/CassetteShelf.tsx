@@ -1,5 +1,6 @@
 import React, { useRef } from 'react';
 import { useTranslation } from '../../../i18n';
+import { Button } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { fetchRadioCassettes } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
@@ -21,7 +22,7 @@ interface CassetteShelfProps {
  * `bg-sunken` tape. Each label names the year and its length (no voice count). The row is one Tab
  * stop: ← / → move to the older / newer tape, Enter (or a click) loads that year, and the loaded
  * tape is pressed. Logs `memories_toggle` `cassette`. Scrolls sideways inside itself; draws
- * nothing without tapes.
+ * nothing while loading or without tapes, and a failed load shows the error with a retry.
  */
 export const CassetteShelf: React.FC<CassetteShelfProps> = ({ service, member, selectedYear, onLoad }) => {
     const { t } = useTranslation();
@@ -30,6 +31,14 @@ export const CassetteShelf: React.FC<CassetteShelfProps> = ({ service, member, s
     });
     const refs = useRef<Array<HTMLButtonElement | null>>([]);
     const cassettes = query.data?.cassettes ?? [];
+    if (query.status === 'error') {
+        return (
+            <div role="alert" data-testid="cassette-error" className="mx-4 flex items-center gap-3 rounded-card bg-viewer-control p-3 text-small">
+                <span className="min-w-0 flex-1">{t('memories.common.loadError')}</span>
+                <Button variant="secondary" size="sm" onClick={query.retry}>{t('memories.common.retry')}</Button>
+            </div>
+        );
+    }
     if (cassettes.length === 0) return null;
 
     const selectedIndex = cassettes.findIndex((c) => c.year === selectedYear);

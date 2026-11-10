@@ -434,6 +434,8 @@ export interface RadioProgramPayload {
     program: RadioProgram;
     /** Programs with tracks in this scope, in {@link RADIO_PROGRAMS} order (精選 only with real clips). */
     programs: RadioProgram[];
+    /** Each listed program's track count (`chrono`: the requested year, else the first). */
+    counts: Partial<Record<RadioProgram, number>>;
     /** JST years with voices. */
     years: number[];
     tracks: RadioTrack[];

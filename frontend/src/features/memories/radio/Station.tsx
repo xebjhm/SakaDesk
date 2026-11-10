@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Pause, Play, Radio, SkipBack, SkipForward } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { EmptyState, IconButton } from '../../../design/primitives';
+import { Button, EmptyState, IconButton } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { fetchRadioProgram } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
@@ -15,6 +15,7 @@ import { NowPlaying } from './NowPlaying';
 import { createRadioAudioGraph } from './radioAudio';
 import { programCopy } from './radioFormat';
 import { SleepTimer } from './SleepTimer';
+import { useSleepTimer, type SleepTimerState } from './useSleepTimer';
 import { useRadioPlayer } from './useRadioPlayer';
 
 interface StationProps {
@@ -23,10 +24,25 @@ interface StationProps {
     member?: string;
     /** Her display name for the station title, or null / undefined for 全員. */
     memberName?: string | null;
+    /**
+     * The sleep timer, owned by the page so a member switch (which reloads the station) keeps
+     * it; without one the station keeps its own.
+     */
+    sleep?: SleepTimerState;
 }
+
+/** Splits the station title around her name so only the name is marked `lang="ja"`. */
+const NAME_SLOT = '\u0000';
 
 /** The program loaded before one is picked: it tells which programs exist in this scope. */
 const FIRST_LOAD: RadioProgram = 'oyasumi';
+
+interface Overview {
+    scope: string;
+    programs: RadioProgram[];
+    counts: Partial<Record<RadioProgram, number>>;
+    years: number[];
+}
 
 interface Selection {
     scope: string;
@@ -71,13 +87,16 @@ const ProgramCard: React.FC<ProgramCardProps> = ({ code, selected, count, onPick
  * The 深夜放送局 (spec 11 A): the radio's night surface, the station's brand moment at any hour.
  * The ON AIR lamp (lit only while sound plays, announced politely) beside the serif station
  * title, a row of program cards (only the programs the payload lists, so 精選 appears only with
- * real clips; a card shows its track count once its tracks are loaded), the cassette shelf while
+ * real clips; each card shows its track count from the payload's `counts`), the cassette shelf while
  * あの頃から順番に is picked, the track on air with its waveform and lyrics, the controls and the
  * sleep timer. Picking a program (or a tape) loads its tracks and plays them on a new sequencer.
- * Only the lyrics box and the cassette row scroll. The Web Audio graph for the waveform is made on
+ * A failed program load shows an inline error with a retry in the now-playing area, and the
+ * pressed card falls back to the program on air. A member switch clears the player, and a track
+ * is drawn only under the station it was started in. Only the lyrics box and the cassette row
+ * scroll. The Web Audio graph for the waveform is made on
  * the first click and closed on unmount.
  */
-export const Station: React.FC<StationProps> = ({ service, member, memberName }) => {
+export const Station: React.FC<StationProps> = ({ service, member, memberName, sleep }) => {
     const { t } = useTranslation();
     const scope = `${service}|${member ?? ''}`;
     const [selection, setSelection] = useState<Selection>({ scope, program: null, year: null });
@@ -95,8 +114,10 @@ export const Station: React.FC<StationProps> = ({ service, member, memberName })
     );
 
     // The program list and years stay from the last load of this scope while a program loads.
-    const overviewRef = useRef<{ scope: string; programs: RadioProgram[]; years: number[] } | null>(null);
-    if (query.data) overviewRef.current = { scope, programs: query.data.programs, years: query.data.years };
+    const overviewRef = useRef<Overview | null>(null);
+    if (query.data) {
+        overviewRef.current = { scope, programs: query.data.programs, counts: query.data.counts ?? {}, years: query.data.years };
+    }
     const overview = overviewRef.current?.scope === scope ? overviewRef.current : null;
 
     const graph = useMemo(() => createRadioAudioGraph(), []);
@@ -106,7 +127,29 @@ export const Station: React.FC<StationProps> = ({ service, member, memberName })
         graph.attach(el);
         return el;
     }, [graph]);
-    const player = useRadioPlayer({ createElement });
+    const releaseElement = useCallback((el: HTMLAudioElement) => graph.release(el), [graph]);
+    const player = useRadioPlayer({ createElement, releaseElement });
+    const playerRef = useRef(player);
+    playerRef.current = player;
+    const ownSleep = useSleepTimer();
+    const timer = sleep ?? ownSleep;
+
+    // The graph gave up on a suspended context: replay the track on air on fresh, unrouted
+    // elements so it never goes silent (a paused one is stopped; ▶ starts it again).
+    useEffect(() => graph.onUnroute(() => {
+        const p = playerRef.current;
+        if (p.status === 'playing' && p.program && p.index >= 0) p.play(p.program, p.tracks, p.index);
+        else if (p.status === 'paused' || p.status === 'fading') p.stop();
+    }), [graph]);
+
+    // The scope (member) the session on air belongs to: a track is drawn only under its own
+    // station, and a new scope clears the player (the page has already silenced it).
+    const [airScope, setAirScope] = useState<string | null>(null);
+    const stopPlayer = player.stop;
+    useEffect(() => {
+        stopPlayer();
+        setAirScope(null);
+    }, [scope, stopPlayer]);
 
     // A pick asks to play once its tracks are in: the request key, and a counter so a pick of the
     // program already loaded still runs the effect.
@@ -118,8 +161,9 @@ export const Station: React.FC<StationProps> = ({ service, member, memberName })
     useEffect(() => {
         if (wanted.current !== loadKey || status !== 'ready' || !data) return;
         wanted.current = null;
+        setAirScope(scope);
         play(loadProgram, data.tracks);
-    }, [data, status, loadKey, loadProgram, play, request]);
+    }, [data, status, loadKey, loadProgram, play, request, scope]);
 
     const ask = (program: RadioProgram, year: number | null) => {
         graph.ensure();
@@ -134,6 +178,11 @@ export const Station: React.FC<StationProps> = ({ service, member, memberName })
     const loadCassette = (year: number) => ask('chrono', year);
 
     const playing = player.status === 'playing';
+    const onAir = airScope === scope && (playing || player.status === 'paused' || player.status === 'fading');
+    // A failed pick: the card the fan pressed falls back to the program actually on air (or none),
+    // and the error with its retry shows in the now-playing area.
+    const loadFailed = query.status === 'error';
+    const pressed = loadFailed ? (onAir ? player.program : null) : current.program;
     const onMain = () => {
         if (player.status === 'playing' || player.status === 'paused') {
             graph.ensure();
@@ -144,7 +193,14 @@ export const Station: React.FC<StationProps> = ({ service, member, memberName })
         if (program) ask(program, current.year);
     };
 
-    const title = memberName ? t('memories.radio.station', { name: memberName }) : t('memories.radio.stationAll');
+    let title: React.ReactNode = t('memories.radio.stationAll');
+    if (memberName) {
+        const [before, after = ''] = t('memories.radio.station', { name: NAME_SLOT }).split(NAME_SLOT);
+        title = <>{before}<span lang="ja">{memberName}</span>{after}</>;
+    }
+    const element = player.currentElement();
+    const analyser = element && graph.isRouted(element) ? graph.analyser() : null;
+    const track = airScope === scope ? player.track : null;
 
     if (!overview) {
         return <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
@@ -177,7 +233,7 @@ export const Station: React.FC<StationProps> = ({ service, member, memberName })
                     />
                     {playing ? t('memories.radio.onAir') : t('memories.radio.offAir')}
                 </span>
-                <h2 lang={memberName ? 'ja' : undefined} className="min-w-0 truncate font-display text-heading">{title}</h2>
+                <h2 className="min-w-0 truncate font-display text-heading">{title}</h2>
             </header>
 
             <div role="group" aria-label={t('memories.radio.programsLabel')} className="grid shrink-0 grid-cols-2 gap-2 px-4 lg:grid-cols-3">
@@ -185,8 +241,8 @@ export const Station: React.FC<StationProps> = ({ service, member, memberName })
                     <ProgramCard
                         key={code}
                         code={code}
-                        selected={current.program === code}
-                        count={loadedProgram === code && data ? data.tracks.length : null}
+                        selected={pressed === code}
+                        count={loadedProgram === code && data ? data.tracks.length : overview.counts[code] ?? null}
                         onPick={pickProgram}
                     />
                 ))}
@@ -199,10 +255,16 @@ export const Station: React.FC<StationProps> = ({ service, member, memberName })
             )}
 
             <div className="mt-3 flex min-h-0 flex-1 flex-col gap-2">
-                {player.track && (
+                {loadFailed && (
+                    <div role="alert" data-testid="radio-load-error" className="mx-4 flex items-center gap-3 rounded-card bg-viewer-control p-3 text-small">
+                        <span className="min-w-0 flex-1">{t('memories.common.loadError')}</span>
+                        <Button variant="secondary" size="sm" onClick={query.retry}>{t('memories.common.retry')}</Button>
+                    </div>
+                )}
+                {track && (
                     <>
-                        <NowPlaying track={player.track} name={memberName ?? null} analyser={graph.analyser()} playing={playing} />
-                        <Lyrics service={service} track={player.track} currentTime={player.currentTime} />
+                        <NowPlaying track={track} name={memberName ?? null} analyser={analyser} playing={playing} />
+                        <Lyrics service={service} track={track} currentTime={player.currentTime} />
                     </>
                 )}
             </div>
@@ -217,7 +279,7 @@ export const Station: React.FC<StationProps> = ({ service, member, memberName })
                 />
                 <IconButton variant="overlay" aria-label={t('memories.radio.next')} icon={<SkipForward />} onClick={player.next} />
                 <div className="ml-auto">
-                    <SleepTimer />
+                    <SleepTimer timer={timer} />
                 </div>
             </div>
         </section>

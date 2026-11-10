@@ -11,6 +11,7 @@ import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { stopMemoriesVoices } from '../shared/voicePlayback';
 import { formatVoiceLength } from './radioFormat';
+import { useSleepTimer } from './useSleepTimer';
 import { Station } from './Station';
 
 export type RadioRoute = Extract<MemoriesRoute, { page: 'radio' }>;
@@ -25,12 +26,15 @@ interface RadioPageProps {
  * The voice radio (spec 11). Left: 「全員」 and every person with a voice, each with her total
  * voice length only (one number per row; unknown lengths draw nothing), the oshi heart as in the
  * core. Right: the station. Picking a person moves the route (`go`, logged `member_filter`);
- * switching person or leaving the page stops every Memories voice (`stopMemoriesVoices`).
+ * switching person or leaving the page stops every Memories voice (`stopMemoriesVoices`). The
+ * sleep timer belongs to the page, so it survives both program and member switches.
  * Nobody with a voice: the gentle empty copy, never a 0.
  */
 export const RadioPage: React.FC<RadioPageProps> = ({ service, route, go }) => {
     const { t } = useTranslation();
     const member = route.memberPath;
+    // The sleep timer lives here: a member switch reloads the station but keeps it running.
+    const sleep = useSleepTimer();
     const list = useMemoriesQuery('radio_members', (signal) => fetchRadioMembers(service, signal), [service], {
         count: (d) => d.members.length,
     });
@@ -65,7 +69,7 @@ export const RadioPage: React.FC<RadioPageProps> = ({ service, route, go }) => {
             </div>
         );
     } else {
-        body = <Station service={service} member={member} memberName={memberName} />;
+        body = <Station service={service} member={member} memberName={memberName} sleep={sleep} />;
     }
 
     return (

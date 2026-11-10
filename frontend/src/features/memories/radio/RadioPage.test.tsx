@@ -77,4 +77,15 @@ describe('RadioPage', () => {
         expect(await screen.findByText('ここで流せる声は、まだありません。')).toBeInTheDocument();
         expect(container.textContent).not.toMatch(/0/);
     });
+
+    it('keeps an armed sleep timer across a member switch', async () => {
+        const { rerender } = renderPage();
+        await userEvent.click(await screen.findByRole('button', { name: 'おやすみタイマー' }));
+        await userEvent.click(screen.getByRole('menuitemradio', { name: '30 分後に止める' }));
+        expect(screen.getByRole('button', { name: 'あと 30 分' })).toBeInTheDocument();
+        vi.mocked(clientLog).mockClear();
+        rerender({ page: 'radio', memberPath: MEMBER_PATH });
+        expect(await screen.findByRole('button', { name: 'あと 30 分' })).toBeInTheDocument();
+        expect(vi.mocked(clientLog)).not.toHaveBeenCalledWith('memories_toggle', { target: 'sleep_timer', outcome: 'off' });
+    });
 });

@@ -78,4 +78,26 @@ describe('Lyrics', () => {
         expect(screen.queryByTestId('lyrics')).toBeNull();
         expect(fetchCachedTranscription).not.toHaveBeenCalled();
     });
+
+    it('aborts the previous track\'s request and never shows its lines under the next track', async () => {
+        const signals: AbortSignal[] = [];
+        let resolveFirst: (t: Transcription) => void = () => {};
+        vi.mocked(fetchCachedTranscription)
+            .mockImplementationOnce((_s, _id, _m, signal) => {
+                signals.push(signal as AbortSignal);
+                return new Promise((resolve) => { resolveFirst = resolve; });
+            })
+            .mockImplementationOnce((_s, _id, _m, signal) => {
+                signals.push(signal as AbortSignal);
+                return Promise.resolve(transcription([[0, 5, 'つぎの声']]));
+            });
+        const { rerender } = render(ui(radioTrack(7, { has_transcript: true }), 1));
+        rerender(ui(radioTrack(8, { has_transcript: true }), 1));
+        expect(signals[0].aborted).toBe(true);
+        expect(await screen.findByText('つぎの声')).toBeInTheDocument();
+        resolveFirst(transcription([[0, 5, 'まえの声']]));
+        await Promise.resolve();
+        expect(screen.queryByText('まえの声')).toBeNull();
+        expect(signals[1].aborted).toBe(false);
+    });
 });

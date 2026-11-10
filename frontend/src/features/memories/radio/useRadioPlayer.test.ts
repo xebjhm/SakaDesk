@@ -172,4 +172,67 @@ describe('useRadioPlayer', () => {
         act(() => f.made[0].tick(12.5));
         expect(player().currentTime).toBe(12.5);
     });
+
+    it('clears the track and index when the queue ends', () => {
+        const { f, player } = setup();
+        act(() => player().play('favorites', [radioTrack(1)]));
+        expect(player().track?.message.id).toBe(1);
+        act(() => f.made[0].fire('ended'));
+        act(() => { vi.advanceTimersByTime(10); });
+        expect(player().status).toBe('ended');
+        expect(player().track).toBeNull();
+        expect(player().index).toBe(-1);
+    });
+
+    it('stop() clears an ended program\'s state too', () => {
+        const { f, player } = setup();
+        act(() => player().play('favorites', [radioTrack(1)]));
+        act(() => f.made[0].fire('ended'));
+        act(() => { vi.advanceTimersByTime(10); });
+        act(() => player().stop());
+        expect(player().status).toBe('idle');
+        expect(player().tracks).toEqual([]);
+    });
+
+    it('empties and releases a finished session\'s elements', () => {
+        const f = fakeAudioFactory();
+        const released: unknown[] = [];
+        const hook = renderHook(() => useRadioPlayer({ createElement: f.create, releaseElement: (el) => released.push(el) }));
+        act(() => hook.result.current.play('oyasumi', [radioTrack(1), radioTrack(2)]));
+        expect(hook.result.current.currentElement()).toBe(f.made[0]);
+        act(() => hook.result.current.stop());
+        expect(released).toEqual([f.made[0], f.made[1]]);
+        expect(f.made[0].src).toBe('');
+        expect(hook.result.current.currentElement()).toBeNull();
+    });
+
+    it('starting the radio stops another Memories voice', () => {
+        const other = { stop: vi.fn(), fadeOut: vi.fn(() => Promise.resolve()) };
+        useVoicePlayback.getState().play('lazy|room|1', other);
+        const { player } = setup();
+        act(() => player().play('oyasumi', [radioTrack(1)]));
+        expect(other.stop).toHaveBeenCalledTimes(1);
+        expect(useVoicePlayback.getState().playing).toBe(RADIO_VOICE_KEY);
+    });
+
+    it('steps while paused stay paused, and resume plays the new track', () => {
+        const { f, player } = setup();
+        act(() => player().play('chrono', [radioTrack(1), radioTrack(2), radioTrack(3)]));
+        act(() => player().toggle());
+        act(() => player().next());
+        expect(player().status).toBe('paused');
+        expect(player().index).toBe(1);
+        expect(f.made[1].paused).toBe(true);
+        act(() => player().toggle());
+        expect(player().status).toBe('playing');
+        expect(f.made[1].src).toBe('/api/media/hinatazaka46/voice/2.m4a');
+        expect(f.made[1].paused).toBe(false);
+    });
+
+    it('can start a program at a given track', () => {
+        const { f, player } = setup();
+        act(() => player().play('chrono', [radioTrack(1), radioTrack(2), radioTrack(3)], 2));
+        expect(player().index).toBe(2);
+        expect(f.made[0].src).toBe('/api/media/hinatazaka46/voice/3.m4a');
+    });
 });

@@ -1,4 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
+import React from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import i18n from '../../../i18n';
 
@@ -9,7 +10,11 @@ vi.mock('../shared/voicePlayback', async (importOriginal) => {
 });
 import { clientLog } from '../../../utils/clientLog';
 import { fadeOutMemoriesVoices } from '../shared/voicePlayback';
-import { SLEEP_FADE_MS, SleepTimer } from './SleepTimer';
+import { SleepTimer } from './SleepTimer';
+import { SLEEP_FADE_MS, useSleepTimer } from './useSleepTimer';
+
+/** The page owns the timer state; the control draws it. */
+const Harness: React.FC = () => <SleepTimer timer={useSleepTimer()} />;
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 beforeEach(() => {
@@ -26,7 +31,7 @@ const pick = (name: RegExp) => {
 
 describe('SleepTimer', () => {
     it('offers off / 15 / 30 / 60 minutes in a menu', () => {
-        render(<SleepTimer />);
+        render(<Harness />);
         fireEvent.click(screen.getByRole('button', { name: 'Sleep timer' }));
         const items = screen.getAllByRole('menuitemradio').map((el) => el.textContent);
         expect(items).toEqual(['No timer', 'Stop in 15 minutes', 'Stop in 30 minutes', 'Stop in 60 minutes']);
@@ -34,7 +39,7 @@ describe('SleepTimer', () => {
     });
 
     it('counts down while armed and fades every Memories voice over 10 s at expiry', () => {
-        render(<SleepTimer />);
+        render(<Harness />);
         pick(/15 minutes/);
         expect(screen.getByRole('button', { name: '15 min left' })).toBeInTheDocument();
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_radio', { phase: 'sleep_set', count: 15 });
@@ -53,7 +58,7 @@ describe('SleepTimer', () => {
     });
 
     it('can be cancelled before it fires', () => {
-        render(<SleepTimer />);
+        render(<Harness />);
         pick(/30 minutes/);
         pick(/No timer/);
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'sleep_timer', outcome: 'off' });
@@ -62,12 +67,26 @@ describe('SleepTimer', () => {
     });
 
     it('re-arming replaces the earlier deadline', () => {
-        render(<SleepTimer />);
+        render(<Harness />);
         pick(/60 minutes/);
         pick(/15 minutes/);
         act(() => { vi.advanceTimersByTime(15 * 60_000); });
         expect(fadeOutMemoriesVoices).toHaveBeenCalledTimes(1);
         act(() => { vi.advanceTimersByTime(60 * 60_000); });
         expect(fadeOutMemoriesVoices).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs the timer off when its owner unmounts while armed', () => {
+        const { unmount } = render(<Harness />);
+        pick(/15 minutes/);
+        vi.mocked(clientLog).mockClear();
+        unmount();
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'sleep_timer', outcome: 'off' });
+    });
+
+    it('logs nothing on unmount when off', () => {
+        const { unmount } = render(<Harness />);
+        unmount();
+        expect(vi.mocked(clientLog)).not.toHaveBeenCalled();
     });
 });
