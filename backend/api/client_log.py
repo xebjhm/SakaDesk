@@ -171,6 +171,7 @@ WARNING_EVENTS = frozenset(
 # The loading-UX wait breadcrumb (frontend design/loading.ts `logWait`): a slow, very slow,
 # timed-out or cancelled wait, with its surface code and how long it had waited.
 UI_WAIT_PHASES = frozenset({"slow", "very_slow", "timeout", "cancelled"})
+UI_WAIT_FIELDS = frozenset({"surface", "phase", "wait_ms"})
 
 CodeStr = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")]
 FieldValue = Union[StrictBool, StrictInt, CodeStr]
@@ -194,14 +195,14 @@ class ClientLogEntry(BaseModel):
         return value
 
     @model_validator(mode="after")
-    def _ui_wait_phase_is_known(self) -> "ClientLogEntry":
-        # Do not echo the value back: it is client-supplied text.
-        phase = self.fields.get("phase")
-        if (
-            self.event == "ui_wait"
-            and phase is not None
-            and phase not in UI_WAIT_PHASES
-        ):
+    def _ui_wait_is_complete(self) -> "ClientLogEntry":
+        # A wait breadcrumb is only useful with all three fields. Do not echo values back:
+        # they are client-supplied text.
+        if self.event != "ui_wait":
+            return self
+        if not UI_WAIT_FIELDS <= set(self.fields):
+            raise ValueError("ui_wait needs surface, phase and wait_ms")
+        if self.fields["phase"] not in UI_WAIT_PHASES:
             raise ValueError("unknown ui_wait phase")
         return self
 

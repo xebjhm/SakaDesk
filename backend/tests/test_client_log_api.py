@@ -1234,3 +1234,11 @@ def test_wait_ms_is_never_negative_on_any_event():
         json={"event": "dialog_load", "fields": {"wait_ms": -5}},
     )
     assert r.status_code == 422
+
+
+@pytest.mark.parametrize("missing", ["surface", "phase", "wait_ms"])
+def test_ui_wait_requires_surface_phase_and_wait(missing):
+    fields = {"surface": "chat_room", "phase": "slow", "wait_ms": 3000}
+    del fields[missing]
+    r = client.post("/api/client-log", json={"event": "ui_wait", "fields": fields})
+    assert r.status_code == 422
