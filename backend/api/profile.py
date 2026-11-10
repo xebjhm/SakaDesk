@@ -84,18 +84,23 @@ async def get_profile(service: str):
                     cfg["user_nicknames"][service] = nickname
 
                 await _store_update(_cache_nickname)
-                logger.info(
-                    f"Fetched and cached user nickname for {service}: {nickname}"
-                )
+                # Privacy: the nickname is the fan's own PII — log the
+                # service code and the outcome only, never the value.
+                logger.info("profile_nickname_cached", service=service)
                 return ProfileResponse(nickname=nickname)
             else:
+                # The raw profile payload can carry PII; log only its keys.
                 logger.warning(
-                    f"Profile API returned no name for {service}. Response: {profile}"
+                    "profile_nickname_missing",
+                    service=service,
+                    keys=sorted(profile.keys()) if isinstance(profile, dict) else [],
                 )
                 return ProfileResponse(error="No name in profile")
 
     except Exception as e:
-        logger.error(f"Failed to fetch profile for {service}: {e}")
+        logger.error(
+            "profile_fetch_failed", service=service, error_type=type(e).__name__
+        )
         return ProfileResponse(error=str(e))
 
 
