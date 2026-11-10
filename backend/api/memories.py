@@ -1,7 +1,7 @@
 """Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board, the hub, the voice radio, the gacha, the calendar album, album cover overrides, capsule notes, the same-time line, her 24 hours and then-and-now pairs for the active service, the export handoff and the share GIF.
 
-A ``sqlite3.Error`` from the fan's own store (``app_state.db``) on a cover or
-capsule route is 503 ``store_unavailable`` (``memories.api.reject``,
+A ``sqlite3.Error`` from the fan's own store (``app_state.db``) on a cover,
+capsule or gacha route is 503 ``store_unavailable`` (``memories.api.reject``,
 ``reason=store_unavailable``, ``op``), never a bare 500.
 """
 
@@ -461,7 +461,8 @@ async def gacha_state_route(service: str) -> dict:
     """Today's gacha pulls, the pulls left and the history (``gacha.gacha_state``)."""
     now = datetime.now(timezone.utc)
     service_data_dir = _service_dir(service)
-    return await gacha.gacha_state(service, service_data_dir, now=now)
+    with _store_guard("gacha_state"):
+        return await gacha.gacha_state(service, service_data_dir, now=now)
 
 
 @router.post("/{service}/gacha/pull")
@@ -469,11 +470,12 @@ async def gacha_pull_route(service: str) -> dict:
     """Draw the next gacha pull of the JST day (``gacha.pull``).
 
     409 ``no_pulls_left`` once the day's pulls are used (also when a racing
-    click took the last one).
+    click took the last one); 503 ``store_unavailable`` on a store error.
     """
     now = datetime.now(timezone.utc)
     service_data_dir = _service_dir(service)
-    body = await gacha.pull(service, service_data_dir, now=now)
+    with _store_guard("gacha_pull"):
+        body = await gacha.pull(service, service_data_dir, now=now)
     if body is None:
         logger.info("memories.api.reject", reason="no_pulls_left")
         raise HTTPException(status_code=409, detail="no_pulls_left")

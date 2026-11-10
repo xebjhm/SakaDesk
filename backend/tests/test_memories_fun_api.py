@@ -411,6 +411,27 @@ def test_album_cover_store_error_is_503(album_out, monkeypatch):
     assert {e["op"] for e in rejects} == {"cover_set", "cover_clear"}
 
 
+def test_gacha_store_error_is_503(out, monkeypatch):
+    from structlog.testing import capture_logs
+
+    _broken_store(
+        monkeypatch,
+        "gacha_salt",
+        "gacha_pulls_on",
+        "gacha_history",
+        "gacha_recent_keys",
+        "record_gacha_pull",
+    )
+    with capture_logs() as logs:
+        for r in (
+            get(f"/api/memories/{SERVICE}/gacha"),
+            post(f"/api/memories/{SERVICE}/gacha/pull"),
+        ):
+            assert r.status_code == 503 and r.json() == {"detail": "store_unavailable"}
+    rejects = [e for e in logs if e["event"] == "memories.api.reject"]
+    assert {e["op"] for e in rejects} == {"gacha_state", "gacha_pull"}
+
+
 def test_trailing_newline_in_month_or_date_is_400(album_out):
     body = {"member": MEMBER, "month": "2024-09\n", "room": ROOM, "id": 10}
     assert put(f"/api/memories/{SERVICE}/album/cover", body).status_code == 400
