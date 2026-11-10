@@ -47,7 +47,10 @@ Contract with the scheduler (M4 Task 5):
   failure before the claim never silently absorbs new cards.
 - **Images.** ``hero`` and ``avatar`` are absolute (``Path.resolve``) and
   existed at build time (checked in a worker); the delivery layer may still
-  find them gone and must drop them then.
+  find them gone and must drop them then. The hero is never the archive
+  original: it is a cached JPEG of at most ``photo_thumb.TOAST_WIDTH`` px and
+  ``photo_thumb.TOAST_MAX_BYTES`` (:func:`photo_thumb.toast_image`), within the
+  Windows toast limits; when that copy cannot be made the toast has no hero.
 
 Logs (ids, codes and counts only; never a name, a quote, a path or a raw card
 key): ``memories_notify_skip`` with ``kind``, ``service``, ``reason`` and
@@ -70,7 +73,7 @@ from typing import Any
 
 import structlog
 
-from backend.services import app_state
+from backend.services import app_state, photo_thumb
 from backend.services.i18n import get_strings, resolve_ui_language
 from backend.services.memories import binder, hub, people, recap
 from backend.services.memories import index as mi
@@ -200,15 +203,25 @@ def _by_member_id(
 # --- on this day ---------------------------------------------------------------------
 
 
+Listed = Mapping[str, tuple[Path, Sequence[mi.MemberSummary]]]
+"""A service's data dir and its people, as the scheduler already listed them."""
+
+
 async def _service_moment(
-    service: str, today_occasion: Occasion, base: Path | None
+    service: str,
+    today_occasion: Occasion,
+    base: Path | None,
+    listed: Listed | None,
 ) -> tuple[Path, Sequence[mi.MemberSummary], dict] | None:
-    try:
-        sdir = people.service_data_dir(service, base)
-    except ValueError:
-        _skip("on_this_day", service, "unavailable")
-        return None
-    summaries = await mi.list_members(sdir)
+    if listed is not None and service in listed:
+        sdir, summaries = listed[service]
+    else:
+        try:
+            sdir = people.service_data_dir(service, base)
+        except ValueError:
+            _skip("on_this_day", service, "unavailable")
+            return None
+        summaries = await mi.list_members(sdir)
     if not summaries:
         return None
     oshi = await people.oshi_rooms(service, summaries)
@@ -223,6 +236,25 @@ def _hero_candidates(sdir: Path, moment: dict) -> list[Path]:
         for ref in (moment["photo"], moment["message"])
         if ref is not None and ref["type"] == PICTURE and ref["media_file"]
     ]
+
+
+async def _toast_hero(candidates: Sequence[Path]) -> Path | None:
+    """The toast copy of the first existing candidate, or ``None`` (never the original)."""
+    source = await asyncio.to_thread(_first_file, candidates)
+    if source is None:
+        return None
+    try:
+        return await photo_thumb.toast_image(source)
+    except Exception as exc:  # noqa: BLE001 - a hero is optional
+        logger.info(
+            "memories_notify_skip",
+            kind="on_this_day",
+            service="*",
+            reason="hero_unavailable",
+            member_id=None,
+            error_type=type(exc).__name__,
+        )
+        return None
 
 
 def _rank(moment: dict, order: int) -> tuple[bool, bool, bool, int, int]:
@@ -246,6 +278,7 @@ async def on_this_day_plan(
     occasion: Occasion,
     *,
     base: Path | None = None,
+    listed: Listed | None = None,
 ) -> MemoryToastPlan | None:
     """One On This Day toast across ``services``, or ``None`` when none has a moment.
 
@@ -253,13 +286,15 @@ async def on_this_day_plan(
     :func:`_rank` (oshi, words before photos, score, then ``services`` order).
     The body quotes her words; a picture without words gets the photo copy;
     a video, voice or empty message gets the neutral copy (never a photo
-    claim). The hero is the first existing picture (her photo of the day,
-    then the message's own). ``base`` is the output dir when the caller
-    already resolved it (default: read from settings).
+    claim). The hero is a toast-sized copy of the first existing picture
+    (her photo of the day, then the message's own); none when that copy
+    fails. ``base`` is the output dir when the caller already resolved it
+    (default: read from settings); ``listed`` the services' data dirs and
+    people when the caller already listed them (default: listed here).
     """
     found: list[tuple[tuple, str, Path, Sequence, dict]] = []
     for order, service in enumerate(services):
-        got = await _service_moment(service, occasion, base)
+        got = await _service_moment(service, occasion, base, listed)
         if got is not None:
             sdir, summaries, moment = got
             found.append((_rank(moment, order), service, sdir, summaries, moment))
@@ -279,7 +314,7 @@ async def on_this_day_plan(
             body = ctx.strings["otd_body_photo"].format(name=name)
         else:  # a video, voice or empty message: no words, no photo claim
             body = ctx.strings["otd_body_hidden"].format(name=name)
-        hero = await asyncio.to_thread(_first_file, _hero_candidates(sdir, moment))
+        hero = await _toast_hero(_hero_candidates(sdir, moment))
     person = next(s for s in summaries if message["room"] in s.member_dirs)
     return MemoryToastPlan(
         kind="on_this_day",
@@ -548,6 +583,8 @@ async def card_plans(
     ``plan.occasion`` is the first new card's occasion key in shelf /
     catalogue order and ``keys`` every new occasion key it covers. A
     graduated person's new cards advance silently (``reason=graduated``).
+    The title counts the new cards (``card_title_one`` / ``_other``; the
+    count is the toast's one number).
     The counts are ``persons``, ``evaluated``, ``seeded`` and ``new_foil``.
     """
     counts = {"persons": 0, "evaluated": 0, "seeded": 0, "new_foil": 0}
@@ -592,7 +629,7 @@ async def card_plans(
             service=service,
             subject=mid,
             occasion=new[first],
-            title=ctx.strings["card_title"],
+            title=plural(ctx, "card_title", len(new)),
             body=ctx.strings["card_body"].format(name=person.name),
             avatar=await _avatar(sdir, person.member_dirs[-1]),
             hero=None,

@@ -20,7 +20,8 @@
   "recap_christmas_body": "喺回憶入面回顧今年",
   "recap_ready_title": "{year}年嘅回憶，齊晒喇",
   "recap_ready_body": "每一頁都打開咗，直到最後一頁",
-  "card_title": "相冊入面多咗張閃卡",
+  "card_title_one": "相冊入面多咗張閃卡",
+  "card_title_other": "相冊入面多咗{n}張閃卡",
   "card_body": "{name}嘅相冊",
   "nickname_masked": "『＊＊＊』"
 }

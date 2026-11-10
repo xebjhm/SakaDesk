@@ -20,7 +20,8 @@
   "recap_christmas_body": "在回忆里回顾今年",
   "recap_ready_title": "{year}年的回忆，完整了",
   "recap_ready_body": "每一页都打开了，直到最后一页",
-  "card_title": "相册里多了一张闪亮的卡",
+  "card_title_one": "相册里多了一张闪亮的卡",
+  "card_title_other": "相册里多了{n}张闪亮的卡",
   "card_body": "{name}的相册",
   "nickname_masked": "『＊＊＊』"
 }

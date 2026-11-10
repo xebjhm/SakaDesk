@@ -20,7 +20,8 @@
   "recap_christmas_body": "思い出で、今年をふりかえる",
   "recap_ready_title": "{year}年の思い出が、そろいました",
   "recap_ready_body": "最後のページまで、ひらけます",
-  "card_title": "生写真帳に、きらめくカード",
+  "card_title_one": "生写真帳に、きらめくカード",
+  "card_title_other": "生写真帳に、きらめくカードが{n}枚",
   "card_body": "{name}の生写真帳",
   "nickname_masked": "『＊＊＊』"
 }

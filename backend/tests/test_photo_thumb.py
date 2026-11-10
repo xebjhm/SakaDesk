@@ -588,3 +588,53 @@ class TestThumbRoute:
             log.info.assert_called_with(
                 "memories_skip", view="photo_thumb", reason="unreadable"
             )
+
+
+# --- toast images (Memories notification Hero) ------------------------------------------
+
+
+def test_toast_image_is_a_bounded_jpeg_and_cached(tmp_path):
+    root = tmp_path / "cache"
+    src = _jpeg(tmp_path / "a" / "big.jpg", (3000, 1500))
+    first = _run(photo_thumb.toast_image(src, root))
+    assert first is not None and first.parent == root and first.suffix == ".jpg"
+    with Image.open(first) as img:
+        assert img.format == "JPEG" and img.size == (photo_thumb.TOAST_WIDTH, 512)
+    assert first.stat().st_size <= photo_thumb.TOAST_MAX_BYTES
+    assert _run(photo_thumb.toast_image(src, root)) == first  # a cache hit
+
+
+def test_toast_image_flattens_transparency(tmp_path):
+    src = _png(tmp_path / "a" / "alpha.png", (40, 20), mode="RGBA")
+    out = _run(photo_thumb.toast_image(src, tmp_path / "cache"))
+    assert out is not None
+    with Image.open(out) as img:
+        assert img.format == "JPEG" and img.mode == "RGB"
+
+
+def test_toast_image_refuses_non_pictures_and_bad_files(tmp_path):
+    root = tmp_path / "cache"
+    video = tmp_path / "a" / "v.mp4"
+    video.parent.mkdir(parents=True)
+    video.write_bytes(b"\x00")
+    assert _run(photo_thumb.toast_image(video, root)) is None
+    broken = tmp_path / "a" / "b.jpg"
+    broken.write_bytes(b"\xff\xd8\xff")
+    assert _run(photo_thumb.toast_image(broken, root)) is None
+    assert _run(photo_thumb.toast_image(tmp_path / "a" / "gone.jpg", root)) is None
+
+
+def test_toast_image_over_the_byte_limit_is_refused(tmp_path):
+    src = _jpeg(tmp_path / "a" / "p.jpg", (64, 64))
+    with patch.object(photo_thumb, "TOAST_MAX_BYTES", 10):
+        assert _run(photo_thumb.toast_image(src, tmp_path / "cache")) is None
+
+
+def test_toast_jpegs_count_toward_the_cache_cap(tmp_path):
+    root = tmp_path / "cache"
+    src = _jpeg(tmp_path / "a" / "p.jpg", (600, 400))
+    out = _run(photo_thumb.toast_image(src, root))
+    assert out is not None
+    photo_thumb.reset_cache_state()
+    with photo_thumb._state_lock:
+        assert photo_thumb._state(root).total == out.stat().st_size

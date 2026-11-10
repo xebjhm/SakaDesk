@@ -20,7 +20,8 @@
   "recap_christmas_body": "Look back on this year in Memories",
   "recap_ready_title": "Your {year} in Memories is complete",
   "recap_ready_body": "Every page is open now, to the last one",
-  "card_title": "A foil card joined your binder",
+  "card_title_one": "A foil card joined your binder",
+  "card_title_other": "{n} foil cards joined your binder",
   "card_body": "{name}'s binder",
   "nickname_masked": "『＊＊＊』"
 }

@@ -114,6 +114,32 @@ def ctx(lang="ja", *, hide=False, nickname=None, now=NOW):
     )
 
 
+def jpeg(path: Path, size=(64, 48)) -> Path:
+    """A real JPEG at ``path`` (the hero is decoded and downscaled)."""
+    from PIL import Image
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", size, (200, 120, 90)).save(path, format="JPEG")
+    return path
+
+
+def is_toast_copy(hero: Path, original: Path) -> bool:
+    """The hero is a cached JPEG copy within the toast bounds, never the original."""
+    from PIL import Image
+
+    from backend.services import photo_thumb
+
+    with Image.open(hero) as img:
+        fits = max(img.size) <= photo_thumb.TOAST_WIDTH and img.format == "JPEG"
+    return (
+        hero.is_absolute()
+        and hero.resolve() != original.resolve()
+        and hero.parent == photo_thumb.cache_dir()
+        and hero.stat().st_size <= photo_thumb.TOAST_MAX_BYTES
+        and fits
+    )
+
+
 def otd(day=TODAY):
     return nr.on_this_day_occasion(day, SLOT)
 
@@ -235,12 +261,10 @@ async def test_otd_near_dates_only_is_none(svc):
 @pytest.mark.asyncio
 async def test_otd_photo_only_day_has_the_photo_body_and_hero(svc):
     room(svc, KANE, [pic(KANE, 1, "2024-11-10T12:00:00Z")])
-    photo = svc / KANE / "picture" / "1.jpg"
-    photo.parent.mkdir(parents=True)
-    photo.write_bytes(b"\xff\xd8\xff")
+    photo = jpeg(svc / KANE / "picture" / "1.jpg")
     plan = one_number(await nc.on_this_day_plan(ctx(), [HINATA], otd()))
     assert plan.body == "金村 美玖の写真が届いた日"
-    assert plan.hero == photo
+    assert is_toast_copy(plan.hero, photo)
     photo.unlink()  # a missing file never becomes the hero
     plan = await nc.on_this_day_plan(ctx(), [HINATA], otd())
     assert plan.hero is None and plan.body == "金村 美玖の写真が届いた日"
@@ -256,11 +280,10 @@ async def test_otd_words_with_her_photo_of_the_day_as_hero(svc):
             pic(KANE, 2, "2024-11-10T12:00:00Z", fav=True),
         ],
     )
-    photo = svc / KANE / "picture" / "2.jpg"
-    photo.parent.mkdir(parents=True)
-    photo.write_bytes(b"\xff\xd8\xff")
+    photo = jpeg(svc / KANE / "picture" / "2.jpg")
     plan = await nc.on_this_day_plan(ctx(), [HINATA], otd())
-    assert plan.body == f"金村 美玖「{KANE_WORDS}」" and plan.hero == photo
+    assert plan.body == f"金村 美玖「{KANE_WORDS}」"
+    assert is_toast_copy(plan.hero, photo)
     hidden = one_number(await nc.on_this_day_plan(ctx(hide=True), [HINATA], otd()))
     assert hidden.body == "金村 美玖のメッセージを振り返る"
     assert hidden.hero is None and hidden.title == "2年前の今日"
@@ -395,13 +418,11 @@ async def test_otd_hero_is_absolute_with_a_relative_output_dir(
     svc, tmp_path, monkeypatch
 ):
     room(svc, KANE, [pic(KANE, 1, "2024-11-10T12:00:00Z")], avatars=AVATAR)
-    photo = svc / KANE / "picture" / "1.jpg"
-    photo.parent.mkdir(parents=True)
-    photo.write_bytes(b"\xff\xd8\xff")
+    photo = jpeg(svc / KANE / "picture" / "1.jpg")
     monkeypatch.chdir(tmp_path)
     monkeypatch.setattr(people, "output_dir", lambda: Path("out"))
     plan = await nc.on_this_day_plan(ctx(), [HINATA], otd())
-    assert plan.hero.is_absolute() and plan.hero == photo.resolve()
+    assert is_toast_copy(plan.hero, photo)
     assert plan.avatar.is_absolute()
 
 
@@ -415,14 +436,76 @@ async def test_otd_hero_falls_back_to_the_message_picture(svc):
             pic(KANE, 2, "2024-11-10T12:00:00Z", fav=True),
         ],
     )
+    from PIL import Image
+
     folder = svc / KANE / "picture"
-    folder.mkdir(parents=True)
-    for i in (1, 2):
-        (folder / f"{i}.jpg").write_bytes(b"\xff\xd8\xff")
+    sizes = {1: (40, 30), 2: (80, 60)}
+    for i, size in sizes.items():
+        jpeg(folder / f"{i}.jpg", size)
     first = (await nc.on_this_day_plan(ctx(), [HINATA], otd())).hero
-    first.unlink()  # her photo of the day is gone: the message's own picture
+    with Image.open(first) as img:
+        source = next(i for i, size in sizes.items() if img.size == size)
+    (folder / f"{source}.jpg").unlink()  # her photo of the day is gone
     second = (await nc.on_this_day_plan(ctx(), [HINATA], otd())).hero
     assert second is not None and second != first and second.is_file()
+    with Image.open(second) as img:
+        assert img.size == sizes[3 - source]  # the message's own picture
+
+
+@pytest.mark.asyncio
+async def test_otd_hero_is_downscaled_within_the_toast_limits(svc):
+    from PIL import Image
+
+    from backend.services import photo_thumb
+
+    room(svc, KANE, [pic(KANE, 1, "2024-11-10T12:00:00Z")])
+    photo = jpeg(svc / KANE / "picture" / "1.jpg", (3000, 2000))
+    plan = await nc.on_this_day_plan(ctx(), [HINATA], otd())
+    assert is_toast_copy(plan.hero, photo)
+    with Image.open(plan.hero) as img:
+        assert img.size == (photo_thumb.TOAST_WIDTH, 683)
+
+
+@pytest.mark.asyncio
+async def test_otd_undecodable_photo_gives_no_hero_never_the_original(svc):
+    room(svc, KANE, [pic(KANE, 1, "2024-11-10T12:00:00Z")])
+    photo = svc / KANE / "picture" / "1.jpg"
+    photo.parent.mkdir(parents=True)
+    photo.write_bytes(b"\xff\xd8\xff")  # not a decodable JPEG
+    plan = await nc.on_this_day_plan(ctx(), [HINATA], otd())
+    assert plan.hero is None and plan.body == "金村 美玖の写真が届いた日"
+
+
+@pytest.mark.asyncio
+async def test_otd_hero_failure_is_isolated(svc, monkeypatch, no_text_in_logs):
+    from backend.services import photo_thumb
+
+    room(svc, KANE, [pic(KANE, 1, "2024-11-10T12:00:00Z")])
+    jpeg(svc / KANE / "picture" / "1.jpg")
+
+    async def boom(source, *a, **kw):
+        raise OSError("disk")
+
+    monkeypatch.setattr(photo_thumb, "toast_image", boom)
+    plan = await nc.on_this_day_plan(ctx(), [HINATA], otd())
+    assert plan.hero is None
+    (skip,) = [e for e in no_text_in_logs if e.get("reason") == "hero_unavailable"]
+    assert skip["error_type"] == "OSError"
+
+
+@pytest.mark.asyncio
+async def test_otd_reuses_the_listing_it_is_given(svc, monkeypatch):
+    room(svc, KANE, [msg(1, "2024-11-10T03:00:00Z", content=KANE_WORDS)])
+    summaries = await mi.list_members(svc)
+
+    async def no_listing(sdir):
+        raise AssertionError("listed again")
+
+    monkeypatch.setattr(mi, "list_members", no_listing)
+    plan = await nc.on_this_day_plan(
+        ctx(), [HINATA], otd(), listed={HINATA: (svc, summaries)}
+    )
+    assert plan is not None and plan.service == HINATA
 
 
 def test_quote_of_only_placeholders_is_not_her_words():
@@ -964,3 +1047,29 @@ def test_japanese_reference_wording():
     assert ja["anniv_years_title_one"] == "今日はメンバーシップ{n}年目の記念日"
     assert ja["nickname_masked"] == "『＊＊＊』"
     assert ja["name_join"] == "・"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("lang", "title"),
+    [
+        ("ja", "生写真帳に、きらめくカードが2枚"),
+        ("en", "2 foil cards joined your binder"),
+        ("zh-TW", "相冊裡多了2張閃亮的卡"),
+        ("zh-CN", "相册里多了2张闪亮的卡"),
+        ("yue", "相冊入面多咗2張閃卡"),
+    ],
+)
+async def test_card_toast_covering_two_cards_has_a_plural_title(svc, lang, title):
+    write_side_inputs(svc, birthdays={"金村美玖": "2002-11-10"})
+    room(svc, KANE, KANE_DAYS)
+    await check_cards(svc)
+    later = datetime(2027, 11, 10, 6, 0, tzinfo=timezone.utc)
+    # 00:03 JST on her birthday: the birthday card and the midnight card at once
+    room(svc, KANE, [*KANE_DAYS, msg(3, "2027-11-09T15:03:00Z", content=KANE_WORDS)])
+    summaries = await summaries_of(svc)
+    with time_machine.travel(later, tick=False):
+        check = await nc.card_plans(ctx(lang, now=later), HINATA, svc, summaries, set())
+    (toast,) = check.toasts
+    assert len(toast.keys) == 2, toast.keys
+    assert one_number(toast.plan).title == title

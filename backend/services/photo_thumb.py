@@ -34,7 +34,14 @@ serves a WebP no wider or taller than one of :data:`ALLOWED_WIDTHS` instead
   warning per :data:`WRITE_WARN_INTERVAL_S` (with the number suppressed), not
   one per tile. :func:`read_variant` reads a variant for the response, so an
   eviction between the lookup and the send gives a 404, never a 500.
-- **Concurrency.** :func:`thumbnail` decodes in ``asyncio.to_thread`` under a
+- **Toast images.** :func:`toast_image` writes a JPEG variant (no WebP: a
+  Windows toast cannot show one) no larger than :data:`TOAST_WIDTH` px on the
+  long side, for the Hero image of a Memories notification. It shares the
+  cache dir, the size cap, the eviction and the safety rules above; a variant
+  over :data:`TOAST_MAX_BYTES` (Windows refuses toast images over 3 MB) is
+  refused like any other failure. A failure gives ``None``, never the
+  original.
+- **Concurrency.** :func:`thumbnail` and :func:`toast_image` decode in ``asyncio.to_thread`` under a
   per-event-loop semaphore of :data:`DECODE_SLOTS`, so one album scroll cannot
   occupy every worker thread. A cache hit never waits for a slot.
 
@@ -82,6 +89,17 @@ DECODE_SLOTS = 2
 TMP_MAX_AGE_S = 3600
 WRITE_WARN_INTERVAL_S = 600
 _WEBP_QUALITY = 82
+_JPEG_QUALITY = 85
+
+TOAST_WIDTH = 1024
+"""Longest-side bound of a toast Hero image (Windows shows it at most ~1:2 of that)."""
+TOAST_MAX_BYTES = 3 * 1024 * 1024
+"""Windows refuses a toast image over 3 MB."""
+
+FORMAT_WEBP = "webp"
+FORMAT_JPEG = "jpeg"
+_SUFFIX = {FORMAT_WEBP: ".webp", FORMAT_JPEG: ".jpg"}
+_VARIANT_SUFFIXES = tuple(_SUFFIX.values())
 
 
 def picture_formats() -> tuple[str, ...]:
@@ -119,10 +137,14 @@ def _pixel_limit() -> int:
     return MAX_SOURCE_PIXELS if limit is None else min(limit, MAX_SOURCE_PIXELS)
 
 
-def variant_name(rel_path: str, size: int, mtime_ns: int, width: int) -> str:
+def variant_name(
+    rel_path: str, size: int, mtime_ns: int, width: int, fmt: str = FORMAT_WEBP
+) -> str:
     """The cache file name of one variant (a hash; the path never appears)."""
-    key = f"{rel_path}|{size}|{mtime_ns}|{width}".encode()
-    return f"{hashlib.sha256(key).hexdigest()}-{width}.webp"
+    key = f"{rel_path}|{size}|{mtime_ns}|{width}"
+    if fmt != FORMAT_WEBP:  # WebP names predate the format field: keep them
+        key += f"|{fmt}"
+    return f"{hashlib.sha256(key.encode()).hexdigest()}-{width}{_SUFFIX[fmt]}"
 
 
 # --- the size-capped cache ---------------------------------------------------------
@@ -142,7 +164,7 @@ _state_lock = threading.Lock()
 def _variants(root: Path) -> list[os.DirEntry[str]]:
     try:
         with os.scandir(root) as it:
-            return [e for e in it if e.name.endswith(".webp") and e.is_file()]
+            return [e for e in it if e.name.endswith(_VARIANT_SUFFIXES) and e.is_file()]
     except FileNotFoundError:
         return []
 
@@ -275,13 +297,26 @@ def _render(source: Path, width: int) -> Image.Image:
     return img
 
 
-def _write(img: Image.Image, root: Path, target: Path) -> int:
+def _flatten(img: Image.Image) -> Image.Image:
+    """``img`` as RGB, any transparency over white (JPEG has no alpha)."""
+    if img.mode == "RGB":
+        return img
+    rgba = img.convert("RGBA")
+    flat = Image.new("RGB", rgba.size, (255, 255, 255))
+    flat.paste(rgba, mask=rgba.getchannel("A"))
+    return flat
+
+
+def _write(img: Image.Image, root: Path, target: Path, fmt: str = FORMAT_WEBP) -> int:
     """Write ``img`` to ``target`` atomically; the bytes written. Blocking."""
     root.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=root, suffix=".tmp")
     try:
         with os.fdopen(fd, "wb") as out:
-            img.save(out, format="WEBP", quality=_WEBP_QUALITY, method=4)
+            if fmt == FORMAT_JPEG:
+                _flatten(img).save(out, format="JPEG", quality=_JPEG_QUALITY)
+            else:
+                img.save(out, format="WEBP", quality=_WEBP_QUALITY, method=4)
         size = Path(tmp_name).stat().st_size
         os.replace(tmp_name, target)
         return size
@@ -290,7 +325,7 @@ def _write(img: Image.Image, root: Path, target: Path) -> int:
 
 
 def lookup(
-    source: Path, rel_path: str, width: int, root: Path
+    source: Path, rel_path: str, width: int, root: Path, fmt: str = FORMAT_WEBP
 ) -> tuple[Path | None, Path | None]:
     """``(hit, target)``: the cached variant if present, and where it belongs.
 
@@ -303,7 +338,7 @@ def lookup(
     except OSError as e:
         _skip("unavailable", e)
         return None, None
-    target = root / variant_name(rel_path, st.st_size, st.st_mtime_ns, width)
+    target = root / variant_name(rel_path, st.st_size, st.st_mtime_ns, width, fmt)
     hit = target.is_file()
     with _state_lock:
         state = _state(root)
@@ -322,7 +357,12 @@ def read_variant(path: Path) -> bytes | None:
 
 
 def make(
-    source: Path, target: Path, width: int, root: Path, cap: int = CACHE_CAP_BYTES
+    source: Path,
+    target: Path,
+    width: int,
+    root: Path,
+    cap: int = CACHE_CAP_BYTES,
+    fmt: str = FORMAT_WEBP,
 ) -> Path | None:
     """Render ``source`` into ``target``; ``None`` on any failure. Blocking; never raises."""
     try:
@@ -337,7 +377,7 @@ def make(
         _skip("unreadable", e)
         return None
     try:
-        size = _write(img, root, target)
+        size = _write(img, root, target, fmt)
     except PermissionError as e:
         # Windows: another request is reading the same variant; same key, same content.
         if target.exists():
@@ -392,3 +432,47 @@ async def thumbnail(
     logger.debug("photo_thumb_cache", outcome="miss", width=width)
     async with _decode_slots():
         return await asyncio.to_thread(make, source, target, width, root, cap)
+
+
+async def toast_image(
+    source: Path, root: Path | None = None, cap: int = CACHE_CAP_BYTES
+) -> Path | None:
+    """A JPEG of ``source`` for a toast Hero image, or ``None`` (see the module docstring).
+
+    At most :data:`TOAST_WIDTH` px on the long side and :data:`TOAST_MAX_BYTES`.
+    The cache key is the absolute source path (hashed, never logged). ``None``
+    for a non-picture, any decode or write failure and an oversized result,
+    never the original.
+    """
+    if not is_picture(source):
+        _skip("not_picture")
+        return None
+    root = cache_dir() if root is None else root
+    key = source.resolve().as_posix()
+    hit, target = await asyncio.to_thread(
+        lookup, source, key, TOAST_WIDTH, root, FORMAT_JPEG
+    )
+    if hit is not None:
+        logger.debug("photo_thumb_cache", outcome="hit", width=TOAST_WIDTH)
+    elif target is None:
+        return None
+    else:
+        logger.debug("photo_thumb_cache", outcome="miss", width=TOAST_WIDTH)
+        async with _decode_slots():
+            hit = await asyncio.to_thread(
+                make, source, target, TOAST_WIDTH, root, cap, FORMAT_JPEG
+            )
+        if hit is None:
+            return None
+    size = await asyncio.to_thread(_size_or_none, hit)
+    if size is None or size > TOAST_MAX_BYTES:
+        _skip("too_large" if size is not None else "vanished")
+        return None
+    return hit
+
+
+def _size_or_none(path: Path) -> int | None:
+    try:
+        return path.stat().st_size
+    except OSError:
+        return None
