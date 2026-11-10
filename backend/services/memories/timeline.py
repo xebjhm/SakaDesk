@@ -72,7 +72,7 @@ TIMELINE_VERSION = 3
 # Bump on any rule or payload change of the rail (its cache hash has it).
 TIMELINE_MONTHS_VERSION = 1
 PHOTO_CAP = 12
-MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
+MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])\Z")
 SLOTS = ("top", "nickname", "late")  # fill order
 
 _Tagged = tuple[str, Fact]

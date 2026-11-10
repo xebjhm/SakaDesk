@@ -35,8 +35,8 @@ from backend.services.memories.selection import JST
 logger = structlog.get_logger(__name__)
 
 SALT_PREF = "memories_gacha_salt"
-_SALT_RE = re.compile(r"^[0-9a-f]{16}$")
-_MONTH_DAY_RE = re.compile(r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
+_SALT_RE = re.compile(r"^[0-9a-f]{16}\Z")
+_MONTH_DAY_RE = re.compile(r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\Z")
 _EVENT = "memories_user_store"
 HISTORY_MAX = 200
 

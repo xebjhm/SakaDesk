@@ -70,7 +70,7 @@ VIEW = "on_this_day"
 # Bump on any rule or payload change (the cache hash has it).
 VERSION = 4
 PREVIEW_CAP = 3
-MONTH_DAY_RE = re.compile(r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
+MONTH_DAY_RE = re.compile(r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])\Z")
 
 _Tagged = tuple[mi.MemberSummary, str, Fact]
 
