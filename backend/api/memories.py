@@ -1,4 +1,4 @@
-"""Memories API: year-recap payloads for the active service, the export handoff and the share GIF."""
+"""Memories API: year recaps and the memoir binder for the active service, the export handoff and the share GIF."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from fastapi.responses import Response
 
 from backend.api.content import get_output_dir
 from backend.services.archive_urls import ArchiveReadError
-from backend.services.memories import exports, people, share_gif
+from backend.services.memories import binder, exports, people, share_gif
 from backend.services.memories.index import MemberSummary
 from backend.services.memories.recap import (
     build_member_recap,
@@ -118,6 +118,20 @@ async def recap_member(service: str, year: int, member: str = Query(...)) -> dic
     _check_year(year, now)
     summary = await _person(service_data_dir, member, year=year)
     return await build_member_recap(service, service_data_dir, summary, year, now=now)
+
+
+@router.get("/{service}/memoir/cards")
+async def memoir_cards(service: str, member: str = Query(...)) -> dict:
+    """The person's 卡冊 photocard binder (``binder.build_binder``).
+
+    ``member`` is the chat path of any of her rooms; the binder covers the
+    whole person. Unknown service or an escaping path is 400; a room no
+    person owns (or another service's room) is 404.
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    summary = await _person(service_data_dir, member, view="binder")
+    return await binder.build_binder(service, service_data_dir, summary, now=now)
 
 
 @router.post("/export")
