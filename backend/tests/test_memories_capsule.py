@@ -301,6 +301,38 @@ async def test_feb_29_resurfaces_on_feb_28(svc):
 
 
 @pytest.mark.asyncio
+async def test_feb_29_does_not_repeat_on_feb_29_of_a_non_leap_year(svc):
+    await write_day(svc, when=datetime(2024, 2, 29, 3, 0, tzinfo=timezone.utc))
+    # 2025 has no Feb 29: the note came back on 02-28 and On This Day 02-29 is empty
+    got = await resurface(
+        svc, datetime(2025, 3, 5, 3, 0, tzinfo=timezone.utc), month_day="02-29"
+    )
+    assert got == {"notes": []}
+    got = await resurface(
+        svc, datetime(2025, 3, 5, 3, 0, tzinfo=timezone.utc), month_day="02-28"
+    )
+    assert len(got["notes"]) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_later_month_day_never_says_a_year_too_early(svc):
+    # written 2025-11-10 JST; on 2026-03-01 its first anniversary is still ahead
+    await write_day(svc)
+    march = datetime(2026, 3, 1, 3, 0, tzinfo=timezone.utc)
+    assert await resurface(svc, march) == {"notes": []}
+    # written 2024-11-10: one full year so far, not two
+    older = await write_day(svc, when=datetime(2024, 11, 10, 3, 0, tzinfo=timezone.utc))
+    got = await resurface(svc, march)
+    assert [(i["note"]["id"], i["years_ago"]) for i in got["notes"]] == [
+        (older["id"], 1)
+    ]
+    # an earlier month-day this year has passed its anniversary: the plain count
+    await write_day(svc, when=datetime(2024, 2, 10, 3, 0, tzinfo=timezone.utc))
+    got = await resurface(svc, march, month_day="02-10")
+    assert [i["years_ago"] for i in got["notes"]] == [2]
+
+
+@pytest.mark.asyncio
 async def test_card_anchor_resurfaces_with_the_cards_person(svc):
     await write_card(svc, room=KANE_OLD)
     got = await resurface(svc, datetime(2026, 11, 10, 3, 0, tzinfo=timezone.utc))

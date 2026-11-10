@@ -580,7 +580,7 @@ export interface CapsuleCreateBody {
 
 export interface CapsuleResurfaceItem {
     note: CapsuleNote;
-    /** This JST year minus the JST year written (>= 1): 「{{count}}年前のあなたが書いたメモ」. */
+    /** Full JST years since it was written (>= 1; a younger note is never listed): 「{{count}}年前のあなたが書いたメモ」. */
     years_ago: number;
     /** Her best words of the anchor day, or null (the note resurfaces alone). */
     message: MemoryMessage | null;

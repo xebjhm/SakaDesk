@@ -17,12 +17,16 @@ The fan can always read and edit a note on its anchor: it is not sealed.
 Resurfacing: a note resurfaces on every yearly anniversary of the JST date it
 was **written** (``created_at``), starting one year later; a note written on
 Feb 29 resurfaces on Feb 28 in non-leap years (``user_store.
-notes_created_on_month_day``, the ``cards.anniversary_date`` rule). It comes
+notes_created_on_month_day``, the ``cards.anniversary_date`` rule) and not
+again on ``02-29`` of that year. It comes
 back with her message of the **anchor** day: her best words of that date
 (``on_this_day.pick_year`` over ``people.service_facts_on(day=anchor_date)``),
 from the card's person for a card anchor, else oshi first, then importance.
-Without words that day the note resurfaces alone. ``years_ago`` = this JST
-year minus the JST year written (>= 1); the frontend's literal label is
+Without words that day the note resurfaces alone. ``years_ago`` = the full
+JST years from the written date to today: this JST year minus the JST year
+written, less one while this year's month-day is still ahead (On This Day can
+show a later month-day). A note with less than one full year is left out, so
+the label never says a year before one has passed; the frontend's literal label is
 「{{count}}年前のあなたが書いたメモ」. Nothing says she saw or answered the note.
 
 API:
@@ -44,10 +48,10 @@ API:
   ``None``; ``member_path`` / ``name`` are the message's person, for a card
   anchor its person even without a message, else ``None``. ``limit`` keeps
   the first ``limit`` notes (the hub passes :data:`HUB_LIMIT`).
-- ``async due_notes(service, today) -> list[user_store.CapsuleNote]`` -- the
-  M4 hook: the notes due on JST ``today`` (same set and order as
-  :func:`resurfacing`), a pure query with no message attached. M4's
-  notification calls it.
+- ``async due_notes(service, today) -> list[user_store.CapsuleNote]`` -- a
+  spare hook: the notes due on JST ``today`` (same set and order as
+  :func:`resurfacing`), a pure query with no message attached. Nothing calls
+  it yet (M4 has no capsule notification).
 
 Errors: :class:`CapsuleError` (a ``ValueError``) with ``code`` ``bad_note``
 (a body that is not a string, empty after stripping or over
@@ -65,6 +69,7 @@ card_person_missing``, ``note_id``).
 from __future__ import annotations
 
 import asyncio
+import calendar
 import re
 from collections.abc import Mapping, Sequence
 from datetime import date, datetime
@@ -232,15 +237,47 @@ async def delete_note(service: str, sdir: Path, *, note_id: int) -> bool:
     return found
 
 
-async def due_notes(service: str, today: date) -> list[user_store.CapsuleNote]:
-    """The notes due on JST ``today`` (the M4 hook; no message attached).
+def _occurrence(month_day: str, year: int) -> date | None:
+    """``month_day``'s date in ``year``; ``None`` for ``02-29`` in a non-leap year.
 
-    M4's notification calls this. Same set and order as :func:`resurfacing`
-    for today's month-day; a ``sqlite3.Error`` propagates.
+    Feb 29 notes come back on ``02-28`` in a non-leap year
+    (``user_store.notes_created_on_month_day``), so ``02-29`` has none then.
     """
-    return await user_store.anotes_created_on_month_day(
-        service, today.strftime("%m-%d"), before_year=today.year
+    month, day = (int(part) for part in month_day.split("-"))
+    if (month, day) == (2, 29) and not calendar.isleap(year):
+        return None
+    return date(year, month, day)
+
+
+async def _due(
+    service: str, month_day: str, today: date
+) -> list[tuple[user_store.CapsuleNote, int]]:
+    """``(note, years_ago)`` for the notes resurfacing on ``month_day`` this JST year.
+
+    ``years_ago`` is the full JST years from the written date to ``today``:
+    this year minus the year written, less one while this year's
+    ``month_day`` is still ahead of ``today``. A note with less than one full
+    year is left out, so 「1年前」 never shows early. Oldest written first.
+    """
+    occurrence = _occurrence(month_day, today.year)
+    if occurrence is None:
+        return []
+    notes = await user_store.anotes_created_on_month_day(
+        service, month_day, before_year=today.year
     )
+    ahead = 1 if occurrence > today else 0
+    due = [(n, today.year - n.created_at.astimezone(JST).year - ahead) for n in notes]
+    return [(n, years) for n, years in due if years >= 1]
+
+
+async def due_notes(service: str, today: date) -> list[user_store.CapsuleNote]:
+    """The notes due on JST ``today`` (a spare hook; no message attached).
+
+    Not consumed yet: M4 has no capsule notification (spec 15); kept for a
+    possible later kind. Same set and order as :func:`resurfacing` for
+    today's month-day; a ``sqlite3.Error`` propagates.
+    """
+    return [note for note, _ in await _due(service, today.strftime("%m-%d"), today)]
 
 
 async def _card_person(
@@ -280,12 +317,11 @@ async def resurfacing(
     for an invalid ``month_day``.
     """
     parse_month_day(month_day)
-    year = now.astimezone(JST).year
-    notes = await user_store.anotes_created_on_month_day(
-        service, month_day, before_year=year
-    )
+    due = await _due(service, month_day, now.astimezone(JST).date())
     if limit is not None:
-        notes = notes[:limit]
+        due = due[:limit]
+    notes = [note for note, _ in due]
+    years_ago = {note.id: years for note, years in due}
     summaries = await mi.list_members(sdir) if notes else []
     oshi = await people.oshi_rooms(service, summaries) if notes else set()
     picks: dict[tuple[date, str | None], _Tagged | None] = {}
@@ -310,7 +346,7 @@ async def resurfacing(
         pick = picks[key]
         item: dict = {
             "note": note_payload(note),
-            "years_ago": year - note.created_at.astimezone(JST).year,
+            "years_ago": years_ago[note.id],
             "message": None,
             "member_path": None,
             "name": None,
