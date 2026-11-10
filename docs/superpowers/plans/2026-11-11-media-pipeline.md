@@ -37,7 +37,7 @@
 
 ## Global Constraints
 
-- **Tile sizing (acceptance r2, 2026-11-11):** column/tile maths come from the single constant module `frontend/src/core/media/tileGrid.ts` (tiles ≥ 9rem, ≤ 6 per row; ~250 px wide on wide windows). `VirtualMediaGrid`/`useGridColumns` must import it instead of the `min 112 / max 180` defaults below, and tiles pick the thumbnail variant by rendered width × DPR (≈250 × 1.75 ≈ 440 → request the 640 variant on HiDPI; 320 where it suffices). Update the cache-per-item estimate accordingly in P9.
+- **Tile sizing (acceptance r2, 2026-11-11):** column/tile maths come from the single constant module `frontend/src/core/media/tileGrid.ts` (tiles ≥ 9rem, ≤ 6 per row; ~250 px wide on wide windows). `VirtualMediaGrid`/`useGridColumns` must import it instead of the `min 112 / max 180` defaults below, and tiles pick the thumbnail variant by rendered width × DPR using `thumbWidthFor` (smallest allowed width ≥ rendered width × DPR, capped at 480 for grid tiles; ★ items and album covers pass `large` and may use 640 — see the revised ruling under Cache budget). M9 measures the per-item estimate.
 
 - **User decisions (2026-11-11):** cache budget ~1.4 GB total as planned (thumbs 1 GiB + posters 256 MiB) is approved. Album keeps its own layout, tiles shared (D-1). On-demand fallback stays (D-3).
 - **Loading feedback is mandatory (user, 2026-11-11):** a tile waiting for its image must clearly look *loading*, never blank or frozen: the dominant-colour/blur placeholder carries a subtle shimmer/pulse (design-system motion token; static under `prefers-reduced-motion`, where a small spinner or progress indicator is used instead), and it fades into the image on load. A tile that failed shows a quiet retry state, never an empty box. Grid-level loading (first page, more pages, background pre-generation in progress) shows a visible indicator too. Every gallery task (P5–P8) must test the loading, loaded and failed states.
@@ -248,7 +248,7 @@ export interface VirtualMediaGridProps<T> { groups: MediaGridGroup<T>[]; itemKey
   mediaUrl(item: T): string | null | undefined;
   renderTile(item: T, flatIndex: number, tilePx: number): React.ReactNode;
   scrollParent: HTMLElement | null; grid: 'messages' | 'blogs';
-  minTilePx?: number /* 112 */; maxTilePx?: number /* 180 */; gapPx?: number /* 4 */ }
+  minTilePx?: number /* from tileGrid.ts */; maxTilePx?: number /* from tileGrid.ts */; gapPx?: number /* from tileGrid.ts */ }
 ```
 
 `thumbnailUrl(url, width, v?)` in `features/messages/mediaUrl.ts` gains an optional `v` and appends `&v=` when it is given.
@@ -640,7 +640,7 @@ cd frontend && npx vitest run src/shell/components src/i18n/mediaPipeline.test.t
   - `cols = max(1, ceil((width + gap) / (max + gap)))`, then reduced while the tile is narrower than `min`;
   - `tilePx = floor((width - gap × (cols - 1)) / cols)`;
   - the width comes from a `ResizeObserver` on the grid wrapper.
-  - With the default `max = 180`, one 320 px variant covers DPR ≤ 1.75 (180 × 1.75 = 315), which is the acceptance display.
+  - Defaults come from `tileGrid.ts` (≥ 9rem, ≤ 6 per row). Tiles request `thumbWidthFor(tilePx × DPR)`: 480 covers a ~250 px tile at DPR 1.75 (≈ 440); grid tiles never ask above 480 unless `large` (★ / covers → 640).
 - **`VirtualMediaGrid`:**
   - `GroupedVirtuoso` with `customScrollParent={scrollParent}` (the Modal body);
   - `groupCounts` = rows per group (`ceil(items / cols)`), and sticky group headers (`bg-sheet px-4 py-3 text-small font-semibold text-secondary`, as today);
