@@ -1273,3 +1273,19 @@ async def test_failing_finalize_never_fails_the_sync(tmp_path):
     assert result is True
     (warn,) = _events(logs, "deferred_media_finalize_failed")
     assert warn["error_type"] == "OSError"
+
+
+async def test_stale_running_flag_ends_the_run_visibly(tmp_path):
+    """A stale running flag (the coordinator runs one job at a time) must not
+    leave the tracker at "Starting" forever."""
+    from backend.api.progress import progress_manager
+
+    svc = SyncService(service="yodel")
+    svc.running = True
+    with capture_logs() as logs:
+        assert await svc.start_sync() is False
+    assert progress_manager.get("yodel").get_status()["error_code"] == "already_running"
+    assert _events(logs, "sync_skipped")[0]["reason"] == "already_running"
+    with capture_logs() as logs:
+        await svc.verify_and_fix_media()
+    assert _events(logs, "verify_skipped")[0]["reason"] == "already_running"

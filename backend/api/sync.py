@@ -50,14 +50,9 @@ async def run_sync_task(service: str, include_inactive: bool, force_resync: bool
     """
     sync_service = get_sync_service(service)
     progress = progress_manager.get(service)
+    completed = False
     try:
         completed = await sync_service.start_sync(include_inactive, force_resync)
-        if completed:
-            await session_alert.clear_unless_expired(service)
-        else:
-            logger.info(
-                "sync_session_success_skipped", service=service, reason="not_completed"
-            )
     except SessionExpiredError:
         logger.warning("sync_failed", service=service, reason="session_expired")
         progress.error("SESSION_EXPIRED")
@@ -67,8 +62,33 @@ async def run_sync_task(service: str, include_inactive: bool, force_resync: bool
         progress.error("REFRESH_FAILED")
         await session_alert.report(service, "refresh_failed")
     except Exception as e:
-        logger.error(f"Background sync error for {service}: {e}")
+        logger.error(
+            "sync_failed",
+            service=service,
+            reason="unexpected",
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         progress.error(str(e))
+    else:
+        # Session bookkeeping after the sync: a failure here must never turn a
+        # completed sync into an error (the progress already says complete).
+        try:
+            if completed:
+                await session_alert.clear_unless_expired(service)
+            else:
+                logger.info(
+                    "sync_session_success_skipped",
+                    service=service,
+                    reason="not_completed",
+                )
+        except Exception as e:
+            logger.warning(
+                "session_alert_clear_failed",
+                service=service,
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
     finally:
         # New messages change the tray tooltip's unread total. Scheduled in the
         # background so it never delays (or fails) the sync result.
@@ -91,7 +111,13 @@ async def run_verify_task(service: str):
         progress.error("REFRESH_FAILED")
         await session_alert.report(service, "refresh_failed")
     except Exception as e:
-        logger.error(f"Background verify error for {service}: {e}")
+        logger.error(
+            "verify_failed",
+            service=service,
+            reason="unexpected",
+            error_type=type(e).__name__,
+            exc_info=True,
+        )
         progress.error(str(e))
 
 

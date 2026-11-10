@@ -6,14 +6,15 @@ tray and the startup effect launched services in parallel. The dialog then showe
 one service while others downloaded, and the progress and ETA had nothing to do
 with the real work.
 
-:class:`SyncCoordinator` runs **one job at a time across all services**
-(:data:`MAX_CONCURRENT_JOBS`). Every writer path enqueues here: ``POST
-/api/sync/start`` and ``/verify`` (through :mod:`backend.services.sync_launcher`),
-the scheduler and the tray. A *sequence* (``POST /api/sync/start-all``) is an
-ordered batch, in :data:`SERVICE_SYNC_ORDER`, that the frontend displays from
-:meth:`SyncCoordinator.snapshot`. While a sequence runs the scheduler does not
-launch (``auto_sync_tick reason=sequence_active``), and when it ends the
-scheduler is woken so its next wait starts from there.
+:class:`SyncCoordinator` runs **one job at a time across all services** (a
+single serial runner; user decision, 2026-11-10). Every writer path enqueues
+here: ``POST /api/sync/start``, the scheduler and the tray through
+:mod:`backend.services.sync_launcher`, ``POST /api/sync/verify`` and
+``/start-all`` directly. A *sequence* (``/start-all``) is an ordered batch, in
+:data:`SERVICE_SYNC_ORDER`, that the frontend displays from
+:meth:`SyncCoordinator.snapshot`. While a sequence runs (and is not cancelled)
+the scheduler does not launch (``auto_sync_tick reason=sequence_active``), and
+when it ends the scheduler is woken so its next wait starts from there.
 
 Progress stays per service (``progress_manager``). A queued service reports
 ``state: "queued"`` with ``queue_position``; a service that is busy (its job runs,
@@ -21,9 +22,10 @@ or an earlier job of it is queued) keeps its current progress until its next job
 starts.
 
 Breadcrumbs (ids and codes only): ``sync_queue`` (action ``enqueued`` /
-``started`` / ``finished`` / ``deduped`` / ``dropped`` / ``cancelled`` /
-``job_failed``) and ``sync_sequence`` (action ``started`` / ``joined`` /
-``finished`` / ``cancelled``).
+``refused`` / ``started`` / ``finished`` / ``deduped`` / ``dropped`` /
+``cancelled`` / ``cancel_not_running`` / ``job_failed`` / ``runner_failed``)
+and ``sync_sequence`` (action ``started`` / ``joined`` / ``finished`` /
+``cancelled``).
 """
 
 from __future__ import annotations
@@ -42,9 +44,6 @@ from backend.services.background_tasks import track_background_task
 from backend.services.shutdown_state import is_shutting_down
 
 logger = structlog.get_logger(__name__)
-
-# One job at a time across all services (user decision, 2026-11-10).
-MAX_CONCURRENT_JOBS = 1
 
 # Order of a sequence (user decision, 2026-11-10): 乃木坂46, 櫻坂46, 日向坂46, Yodel.
 SERVICE_SYNC_ORDER: tuple[str, ...] = (
@@ -84,6 +83,11 @@ class SyncJob:
     owns_progress: bool = False
     # start_phase("starting") already ran at enqueue (the slot was free).
     progress_started: bool = False
+    # Set by a cancel. A job whose task was not created yet is then skipped by
+    # the runner, and a new job of the same service is not deduped against it.
+    cancel_requested: bool = False
+    # The job's task once the runner started it.
+    task: Optional["asyncio.Task[Any]"] = field(default=None, repr=False, compare=False)
 
 
 @dataclass
@@ -167,8 +171,9 @@ class SyncCoordinator:
     # --- queries ---------------------------------------------------------
 
     def sequence_active(self) -> bool:
-        """True while a sequence still has a queued or running job."""
-        return self._sequence is not None and self._sequence.state == "running"
+        """True while a sequence that was not cancelled still has a job left."""
+        seq = self._sequence
+        return seq is not None and seq.state == "running" and not seq.cancelled
 
     def _busy(self, service: str) -> bool:
         return (self._running is not None and self._running.service == service) or any(
@@ -238,10 +243,23 @@ class SyncCoordinator:
         in place), or ``shutting_down``.
         """
         if is_shutting_down():
+            logger.info(
+                "sync_queue",
+                action="refused",
+                service=service,
+                kind=kind,
+                origin=origin,
+                reason="shutting_down",
+            )
             return EnqueueResult(RESULT_SHUTTING_DOWN)
 
         running = self._running
-        if running is not None and running.service == service and running.kind == kind:
+        if (
+            running is not None
+            and running.service == service
+            and running.kind == kind
+            and not running.cancel_requested
+        ):
             self._adopt(running, sequence_id)
             logger.info(
                 "sync_queue",
@@ -292,6 +310,7 @@ class SyncCoordinator:
             position = self._position(job)
             if not busy:
                 progress.reset()
+                progress.set_job_kind(kind)
                 progress.set_queued(position)
                 job.owns_progress = True
             result = EnqueueResult(RESULT_QUEUED, position)
@@ -309,7 +328,9 @@ class SyncCoordinator:
         return result
 
     def _adopt(self, job: SyncJob, sequence_id: Optional[str]) -> None:
-        if sequence_id is not None and job.sequence_id is None:
+        # Only one sequence is current: a job from none (or from an older,
+        # finished or cancelled one) now belongs to the new sequence.
+        if sequence_id is not None:
             job.sequence_id = sequence_id
 
     def _runner_idle(self) -> bool:
@@ -321,6 +342,7 @@ class SyncCoordinator:
 
     def _start_progress(self, job: SyncJob) -> None:
         progress = self._progress.get(job.service)
+        progress.set_job_kind(job.kind)
         progress.start_phase("starting", "Starting", 0, 0, "")
         if job.kind == KIND_VERIFY:
             progress.set_detail("Scanning for missing media...")
@@ -342,8 +364,10 @@ class SyncCoordinator:
         """Enqueue ``services`` as one sequence in :data:`SERVICE_SYNC_ORDER`.
 
         A running sequence is joined (its id is returned; ``blocking`` only ever
-        upgrades). A job of a listed service that is already queued or running
-        (e.g. started by the scheduler) is adopted into the sequence. The
+        upgrades); a cancelled one never is, a new sequence starts instead. A
+        sync job of a listed service that is already queued or running (e.g.
+        started by the scheduler) is adopted into the sequence; a running job
+        whose cancel is pending is not, a new job queues behind it. The
         sequence's ``services`` are kept in execution order.
         """
         ordered = order_services(services)
@@ -418,7 +442,12 @@ class SyncCoordinator:
         try:
             self._on_sequence_end(seq)
         except Exception as e:
-            logger.warning("sync_sequence_end_hook_failed", error_type=type(e).__name__)
+            logger.warning(
+                "sync_sequence_end_hook_failed",
+                sequence_id=seq.id,
+                error_type=type(e).__name__,
+                exc_info=True,
+            )
 
     # --- cancel / stop ---------------------------------------------------
 
@@ -440,6 +469,20 @@ class SyncCoordinator:
         self._refresh_positions()
         return dropped
 
+    async def _cancel_job(self, job: SyncJob) -> None:
+        """Cancel the running job: a real task.cancel() once it started, or a
+        mark the runner honours before starting it (slot reserved, no task)."""
+        job.cancel_requested = True
+        logger.info(
+            "sync_queue",
+            action="cancelled",
+            service=job.service,
+            kind=job.kind,
+            started=job.task is not None,
+        )
+        if job.task is not None:
+            await self._cancel_running(job.service)
+
     async def cancel_service(self, service: str) -> str:
         """Drop the service's queued jobs and cancel its running one.
 
@@ -450,17 +493,20 @@ class SyncCoordinator:
             self._record_sequence_outcome(job, "cancelled")
         running = self._running
         if running is not None and running.service == service:
-            logger.info(
-                "sync_queue", action="cancelled", service=service, kind=running.kind
-            )
-            await self._cancel_running(service)
+            await self._cancel_job(running)
             return "cancelled"
-        return "cancelled" if dropped else "not_running"
+        if dropped:
+            return "cancelled"
+        logger.info("sync_queue", action="cancel_not_running", service=service)
+        return "not_running"
 
     async def cancel_sequence(self, sequence_id: str) -> str:
         """Cancel a running sequence: drop its queued jobs and cancel its running job.
 
-        Jobs from other origins stay queued. Returns ``cancelled`` or ``not_found``.
+        Jobs outside the sequence stay queued; a job adopted into it (e.g. a
+        scheduler sync that was already queued) is dropped like its own. The
+        sequence stops counting as active at once (the scheduler and a new
+        start-all no longer wait for it). Returns ``cancelled`` or ``not_found``.
         """
         seq = self._sequence
         if seq is None or seq.id != sequence_id or seq.state != "running":
@@ -473,24 +519,23 @@ class SyncCoordinator:
             seq.failed.append(job.service)
         running = self._running
         if running is not None and running.sequence_id == seq.id:
-            await self._cancel_running(running.service)
+            await self._cancel_job(running)
         elif not self._sequence_has_jobs(seq):
             self._finish_sequence(seq)
         return "cancelled"
 
     async def stop(self) -> None:
-        """Shutdown hook: drop every queued job, then stop the runner.
-
-        The running job itself is drained by the SyncService stop hook.
-        """
+        """Shutdown hook: drop every queued job, then cancel the runner, which
+        also cancels the running job (the SyncService stop hook then awaits
+        that job's unwind)."""
         self._stopping = True
         self._drop(lambda j: True, reason="shutdown")
         runner = self._runner
         if runner is not None and not runner.done():
-            # Cancelling the runner also cancels the job it awaits; the runner
-            # then sees _stopping and returns.
             runner.cancel()
             await asyncio.gather(runner, return_exceptions=True)
+        # A slot reserved by enqueue whose runner never stepped.
+        self._running = None
 
     async def wait_idle(self) -> None:
         """Wait until the queue is empty and nothing runs (tests, diagnostics)."""
@@ -509,6 +554,19 @@ class SyncCoordinator:
             return "cancelled"
         return "error"
 
+    def _end_job(self, job: SyncJob, outcome: str, t0: float) -> None:
+        self._running = None
+        logger.info(
+            "sync_queue",
+            action="finished",
+            service=job.service,
+            kind=job.kind,
+            outcome=outcome,
+            elapsed=f"{time.monotonic() - t0:.1f}s",
+            sequence_id=job.sequence_id,
+        )
+        self._record_sequence_outcome(job, outcome)
+
     async def _run(self) -> None:
         while not self._stopping:
             job = self._running  # reserved by enqueue when the slot was free
@@ -521,29 +579,56 @@ class SyncCoordinator:
                 job = self._queue.popleft()
                 self._running = job
                 self._refresh_positions()
-            if not job.progress_started:
-                if not job.owns_progress:
-                    self._progress.get(job.service).reset()
-                self._start_progress(job)
-            logger.info(
-                "sync_queue",
-                action="started",
-                service=job.service,
-                kind=job.kind,
-                origin=job.origin,
-                sequence_id=job.sequence_id,
-            )
             t0 = time.monotonic()
-            task = track_background_task(
-                self._run_job(job), name=f"sync_job_{job.service}_{job.kind}"
-            )
-            self._register_task(job, task)
+            if job.cancel_requested:
+                # Cancelled after enqueue reserved the slot, before it started.
+                if job.owns_progress:
+                    self._progress.get(job.service).error("CANCELLED")
+                self._end_job(job, "cancelled", t0)
+                continue
+            try:
+                if not job.progress_started:
+                    if not job.owns_progress:
+                        self._progress.get(job.service).reset()
+                    self._start_progress(job)
+                logger.info(
+                    "sync_queue",
+                    action="started",
+                    service=job.service,
+                    kind=job.kind,
+                    origin=job.origin,
+                    sequence_id=job.sequence_id,
+                )
+                task = track_background_task(
+                    self._run_job(job), name=f"sync_job_{job.service}_{job.kind}"
+                )
+                job.task = task
+                self._register_task(job, task)
+            except Exception as e:
+                # Never let one job's setup wedge the queue behind it.
+                logger.error(
+                    "sync_queue",
+                    action="runner_failed",
+                    service=job.service,
+                    kind=job.kind,
+                    error_type=type(e).__name__,
+                    exc_info=True,
+                )
+                self._progress.get(job.service).error(
+                    "Sync could not start", code="start_failed"
+                )
+                self._end_job(job, "error", t0)
+                continue
             try:
                 await task
             except asyncio.CancelledError:
-                # The job was cancelled: by /cancel, or by stop() cancelling
-                # this runner (the cancellation reaches the awaited job too).
-                pass
+                current = asyncio.current_task()
+                if current is not None and current.cancelling():
+                    # The runner itself is being cancelled (stop): the awaited
+                    # job is cancelled with it. Leave without bookkeeping.
+                    self._running = None
+                    raise
+                # Only the job was cancelled (/cancel): go on with the queue.
             except Exception as e:
                 logger.error(
                     "sync_queue",
@@ -551,18 +636,7 @@ class SyncCoordinator:
                     service=job.service,
                     error_type=type(e).__name__,
                 )
-            self._running = None
-            outcome = self._outcome(job, task)
-            logger.info(
-                "sync_queue",
-                action="finished",
-                service=job.service,
-                kind=job.kind,
-                outcome=outcome,
-                elapsed=f"{time.monotonic() - t0:.1f}s",
-                sequence_id=job.sequence_id,
-            )
-            self._record_sequence_outcome(job, outcome)
+            self._end_job(job, self._outcome(job, task), t0)
 
 
 _coordinator: Optional[SyncCoordinator] = None

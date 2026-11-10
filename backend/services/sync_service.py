@@ -387,6 +387,14 @@ class SyncService:
         ``SessionExpiredError`` / ``RefreshFailedError`` / cancellation raise.
         """
         if self.running:
+            # The coordinator runs one job at a time, so this means a stale flag:
+            # end the run visibly instead of leaving the tracker at "Starting".
+            logger.warning(
+                "sync_skipped", service=self._service, reason="already_running"
+            )
+            progress_manager.get(self._service).error(
+                "Sync already running", code="already_running"
+            )
             return False
 
         self.running = True
@@ -1284,9 +1292,9 @@ class SyncService:
                 # S3: the deferred backfill / letter media went through phase 3;
                 # pysaka now sets their flags and cursors where every file is on
                 # disk (it logs each entry it leaves for the next sync).
-                deferred_finalized = True
                 try:
                     report = self.manager.finalize_deferred_media()
+                    deferred_finalized = True
                     logger.info(
                         "deferred_media_finalized",
                         items=deferred_media[0],
@@ -1296,8 +1304,13 @@ class SyncService:
                         saved=report.get("saved"),
                     )
                 except Exception as e:
+                    # The flags stay unset: the next sync queues these again.
+                    deferred_finalized = True  # reported here, not as "skipped"
                     logger.warning(
-                        "deferred_media_finalize_failed", error_type=type(e).__name__
+                        "deferred_media_finalize_failed",
+                        items=deferred_media[0],
+                        error_type=type(e).__name__,
+                        exc_info=True,
                     )
 
                 metadata["last_sync"] = datetime.now(timezone.utc).isoformat()
@@ -1755,6 +1768,12 @@ class SyncService:
             "unresolved_items": [],
         }
         if self.running:
+            logger.warning(
+                "verify_skipped", service=self._service, reason="already_running"
+            )
+            progress_manager.get(self._service).error(
+                "Sync already running", code="already_running"
+            )
             return totals
         self.running = True
         # SD-BE-SVC-02: claim ownership with the SAME machinery as start_sync so

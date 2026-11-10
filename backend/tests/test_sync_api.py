@@ -458,6 +458,76 @@ class TestGetSyncServiceHelper:
 
 
 class TestRunSyncTask:
+    def test_a_failing_session_cleanup_keeps_a_completed_sync_complete(self):
+        """Release review: clear_unless_expired raising after a completed sync
+        must not flip its progress to error (the sequence counted it failed)."""
+        import asyncio
+        from structlog.testing import capture_logs
+
+        from backend.api.progress import SyncProgress
+        from backend.api.sync import run_sync_task
+
+        progress = SyncProgress()
+
+        async def completed_sync(*args):
+            progress.complete()
+            return True
+
+        mock_svc = MagicMock()
+        mock_svc.start_sync = AsyncMock(side_effect=completed_sync)
+        with (
+            patch("backend.api.sync.get_sync_service", return_value=mock_svc),
+            patch("backend.api.sync.progress_manager") as mock_pm,
+            patch(
+                "backend.api.sync.session_alert.clear_unless_expired",
+                AsyncMock(side_effect=RuntimeError("tray")),
+            ),
+            patch("backend.api.sync.schedule_refresh"),
+            capture_logs() as logs,
+        ):
+            mock_pm.get.return_value = progress
+            asyncio.run(run_sync_task("hinatazaka46", False, False))
+
+        assert progress.get_status()["state"] == "complete"
+        (warn,) = [e for e in logs if e["event"] == "session_alert_clear_failed"]
+        assert warn["error_type"] == "RuntimeError"
+
+    def test_unexpected_verify_error_is_logged_structured(self):
+        import asyncio
+        from structlog.testing import capture_logs
+
+        from backend.api.sync import run_verify_task
+
+        mock_svc = MagicMock()
+        mock_svc.verify_and_fix_media = AsyncMock(side_effect=ValueError("boom"))
+        with (
+            patch("backend.api.sync.get_sync_service", return_value=mock_svc),
+            patch("backend.api.sync.progress_manager") as mock_pm,
+            capture_logs() as logs,
+        ):
+            asyncio.run(run_verify_task("hinatazaka46"))
+        (entry,) = [e for e in logs if e["event"] == "verify_failed"]
+        assert (entry["reason"], entry["error_type"]) == ("unexpected", "ValueError")
+        mock_pm.get.return_value.error.assert_called_once_with("boom")
+
+    def test_unexpected_error_is_logged_structured(self):
+        import asyncio
+        from structlog.testing import capture_logs
+
+        from backend.api.sync import run_sync_task
+
+        mock_svc = MagicMock()
+        mock_svc.start_sync = AsyncMock(side_effect=ValueError("boom"))
+        with (
+            patch("backend.api.sync.get_sync_service", return_value=mock_svc),
+            patch("backend.api.sync.progress_manager"),
+            patch("backend.api.sync.schedule_refresh"),
+            capture_logs() as logs,
+        ):
+            asyncio.run(run_sync_task("hinatazaka46", False, False))
+        (entry,) = [e for e in logs if e["event"] == "sync_failed"]
+        assert (entry["reason"], entry["error_type"]) == ("unexpected", "ValueError")
+
     def test_session_expired_sets_error(self):
         """SessionExpiredError should be caught and reported to progress."""
         import asyncio

@@ -11,11 +11,13 @@ from threading import Lock
 from typing import Optional
 
 # S2 (spec 2026-11-10): speed is measured over a recent window, not since the
-# phase began, so stalls and bursts do not dominate it.
+# phase began, so stalls and bursts do not dominate it. After more than the
+# window with no update the window is empty and the phase average is used.
 SPEED_WINDOW_SECONDS = 30.0
 # At most one speed sample per this many seconds (updates arrive per item).
 _SAMPLE_MIN_GAP_SECONDS = 0.5
-# An ETA is shown only in the media phase, and only after this much evidence.
+# An ETA is given only in a sync's ``downloading`` phase, and only after this much
+# evidence (Verify & Fix's ``repairing`` reports "not_estimable").
 ETA_MIN_ITEMS = 20
 ETA_MIN_SECONDS = 10.0
 # Phases whose unit of work has a predictable cost; every other phase reports
@@ -45,6 +47,9 @@ class SyncProgress:
         # Incremented by every reset(), i.e. once per started run, so a client
         # that was not watching can tell that a run happened in between.
         self._run_id = 0
+        # Kind of the job this tracker shows ("sync" / "verify"), set by the sync
+        # coordinator. Kept across reset(): verify resets the tracker itself.
+        self._job_kind: Optional[str] = None
         self.reset()
 
     def reset(self):
@@ -142,6 +147,12 @@ class SyncProgress:
         """Count items that were processed but failed (shown next to the bar)."""
         with self._lock:
             self._failed += n
+
+    def set_job_kind(self, kind: Optional[str]):
+        """Record which kind of job ("sync" / "verify") this tracker shows, so a
+        client waiting for one kind can tell another job's end from its own."""
+        with self._lock:
+            self._job_kind = kind
 
     def set_queued(self, position: int):
         """Mark this service as waiting in the sync queue at ``position`` (1-based)."""
@@ -244,6 +255,7 @@ class SyncProgress:
                 "eta_reason": eta_reason,
                 "failed": self._failed,
                 "queue_position": self._queue_position,
+                "job_kind": self._job_kind,
                 "speed": speed,
                 "speed_unit": self._speed_unit,
                 "detail": self._detail,

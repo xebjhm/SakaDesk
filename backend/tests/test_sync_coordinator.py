@@ -427,3 +427,120 @@ async def test_default_hooks_reach_the_service_and_the_scheduler(monkeypatch):
 @pytest.mark.filterwarnings("ignore")
 def test_get_coordinator_is_a_singleton():
     assert sc.get_coordinator() is sc.get_coordinator()
+
+
+# --- release v0.4.2 review follow-ups ----------------------------------------
+
+
+async def test_cancel_before_the_job_started_is_honoured(h):
+    """enqueue reserved the slot; /cancel lands before the runner created the
+    task (SyncService.cancel would find no task). The job must never run."""
+    c = h.coordinator()
+    assert c.enqueue("yodel", origin="api").result == "started"
+    assert await c.cancel_service("yodel") == "cancelled"  # no _settle(): no task yet
+    await c.wait_idle()
+    assert h.started == []
+    assert h.progress.get("yodel").get_status()["error_code"] == "cancelled"
+
+
+async def test_cancel_sequence_before_its_first_job_started(h):
+    c = h.coordinator()
+    out = c.start_sequence(["nogizaka46", "yodel"], blocking=True, origin="api")
+    assert await c.cancel_sequence(out["sequence_id"]) == "cancelled"
+    await c.wait_idle()
+    assert h.started == []
+    assert c.snapshot()["sequence"]["state"] == "cancelled"
+
+
+async def test_start_all_during_a_cancel_unwind_starts_a_new_sequence(h):
+    """A start-all while the cancelled sequence's job still unwinds must not join
+    it (its successful run would be reported as cancelled)."""
+    unwind = asyncio.Event()
+
+    async def slow_unwinding(job):
+        h.started.append((job.service, job.kind))
+        gate = h.gates.setdefault(job.service, asyncio.Event())
+        try:
+            await gate.wait()
+            gate.clear()
+            h.progress.get(job.service).complete()
+        except asyncio.CancelledError:
+            await unwind.wait()  # flushing files
+            raise
+
+    c = h.coordinator()
+    c._run_job = slow_unwinding
+    first = c.start_sequence(
+        ["nogizaka46", "sakurazaka46"], blocking=True, origin="api"
+    )
+    await _settle()
+    cancelling = asyncio.create_task(c.cancel_sequence(first["sequence_id"]))
+    await _settle()
+    assert not c.sequence_active()  # the scheduler no longer waits for it
+
+    second = c.start_sequence(["nogizaka46"], blocking=True, origin="api")
+    assert second["sequence_id"] != first["sequence_id"]
+    # A new job queues behind the unwinding (cancel-pending) one, no dedup.
+    assert second["results"] == {"nogizaka46": "queued"}
+
+    unwind.set()
+    await cancelling
+    await _settle()
+    h.release("nogizaka46")
+    await c.wait_idle()
+    seq = c.snapshot()["sequence"]
+    assert seq["id"] == second["sequence_id"]
+    assert (seq["state"], seq["completed"]) == ("complete", ["nogizaka46"])
+
+
+async def test_a_failing_job_setup_never_wedges_the_queue(h):
+    c = h.coordinator()
+
+    def register(job, task):
+        if job.service == "hinatazaka46":
+            task.cancel()
+            raise RuntimeError("registry broken")
+        h.register_task(job, task)
+
+    c._register_task = register
+    c.start_sequence(["hinatazaka46", "yodel"], blocking=True, origin="api")
+    await _settle()
+    h.release("yodel")
+    await c.wait_idle()
+    assert h.progress.get("hinatazaka46").get_status()["error_code"] == "start_failed"
+    seq = c.snapshot()["sequence"]
+    assert (seq["failed"], seq["completed"]) == (["hinatazaka46"], ["yodel"])
+
+
+async def test_stop_before_the_runner_stepped_frees_the_slot(h):
+    c = h.coordinator()
+    c.enqueue("yodel", origin="api")
+    await c.stop()
+    assert c.snapshot()["running"] is None
+    assert h.started == []
+
+
+async def test_runner_reraises_its_own_cancellation(h):
+    c = h.coordinator()
+    c.enqueue("yodel", origin="api")
+    c.enqueue("nogizaka46", origin="api")
+    await _settle()
+    c._runner.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await c._runner
+    assert h.started == [("yodel", "sync")]  # the queue did not go on
+
+
+async def test_progress_says_which_kind_of_job_it_shows(h):
+    c = h.coordinator()
+    c.enqueue("hinatazaka46", origin="api")
+    c.enqueue("hinatazaka46", kind="verify", origin="api")
+    c.enqueue("yodel", kind="verify", origin="api")
+    assert h.progress.get("hinatazaka46").get_status()["job_kind"] == "sync"
+    assert h.progress.get("yodel").get_status()["job_kind"] == "verify"  # queued
+    h.release("hinatazaka46")
+    await _settle()
+    assert h.progress.get("hinatazaka46").get_status()["job_kind"] == "verify"
+    h.release("hinatazaka46")
+    h.release("yodel")
+    await c.wait_idle()
