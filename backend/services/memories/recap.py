@@ -82,7 +82,7 @@ from backend.services.memories.selection import JST
 
 logger = structlog.get_logger(__name__)
 
-RECAP_VERSION = "1"
+RECAP_VERSION = "2"
 
 SLIDE_KEYS = (
     "s01_first",
@@ -304,12 +304,10 @@ def _iso(ts: datetime) -> str:
 
 
 def _spread(seq: Sequence[Any], k: int) -> list[Any]:
-    """At most ``k`` items picked evenly over ``seq`` (order kept)."""
+    """At most ``k`` items picked evenly over ``seq`` (order kept); ``k`` >= 2."""
     n = len(seq)
     if n <= k:
         return list(seq)
-    if k <= 1:
-        return [seq[-1]] if k == 1 else []
     return [seq[round(i * (n - 1) / (k - 1))] for i in range(k)]
 
 
@@ -468,12 +466,14 @@ def _positional(ctx: _Ctx, slide: str, rule: str, item: Item | None) -> Item | N
 # --- slides ---------------------------------------------------------------------
 
 
-def _s01_candidate(ctx: _Ctx) -> tuple[Item | None, str, bool, bool]:
-    """``(pick, rule, joined_this_year, new_year_midnight)`` of slide 1."""
+def _s01_candidate(ctx: _Ctx) -> tuple[Item, str, bool, bool]:
+    """``(pick, rule, joined_this_year, new_year_midnight)`` of slide 1.
+
+    Only called for a tier above ``none``, so ``W(Y)`` holds at least
+    :data:`TIER_SHORT` non-promo messages and there is always a pick.
+    """
     msgs = ctx.nonpromo()
     joined = ctx.start > datetime(ctx.year, 1, 1, tzinfo=JST)
-    if not msgs:
-        return None, "first", joined, False
     midnight = [
         i
         for i in msgs
@@ -487,18 +487,15 @@ def _s01_candidate(ctx: _Ctx) -> tuple[Item | None, str, bool, bool]:
     return pick, rule, joined, new_year
 
 
-def _s01_first(ctx: _Ctx) -> dict | None:
+def _s01_first(ctx: _Ctx) -> dict:
     slide = "s01_first"
     pick, rule, joined, new_year = _s01_candidate(ctx)
-    if pick is None:
-        _log(slide, "skip", fallback="skip")
-        return None
-    got = _positional(ctx, slide, rule, pick)
-    if got is None:
-        _log(slide, "skip", fallback="skip")
-        return None
+    # s01 is selected right after s12, which skips the held s01/s13 candidates,
+    # so its pick is always still free.
+    ctx.take(pick)
+    _log(slide, rule, score=pick[1].importance, message_id=pick[1].id)
     data = {
-        "message": ctx.message(got),
+        "message": ctx.message(pick),
         "joined_this_year": joined,
         "new_year_midnight": new_year,
     }
@@ -551,12 +548,9 @@ def _s02_name(ctx: _Ctx) -> dict | None:
     return _slide(slide, data, fallback)
 
 
-def _s03_clock(ctx: _Ctx) -> dict | None:
+def _s03_clock(ctx: _Ctx) -> dict:
     slide = "s03_clock"
-    msgs = ctx.nonpromo()
-    if not msgs:
-        _log(slide, "skip", fallback="skip")
-        return None
+    msgs = ctx.nonpromo()  # never empty above tier ``none`` (see _s01_candidate)
     hist = [0] * 24
     for _, f in msgs:
         hist[f.hour] += 1
@@ -1234,13 +1228,17 @@ def _s13_oyasumi(ctx: _Ctx) -> dict | None:
 
 
 def _avatar_change(ctx: _Ctx) -> tuple[str, str] | None:
-    """(old url, new url) of the latest chat-icon change in ``Y``, if any."""
+    """(old url, new url) of the latest chat-icon change in ``W(Y)``, if any.
+
+    A change before the subscription start (a late subscriber's year) or after
+    ``now`` is not hers to show on this year's poster.
+    """
     latest: tuple[str, str, str] | None = None
     for rel, idx in ctx.rooms.items():
         entries = [e for e in idx.avatar_changes if e.get("kind") == "thumbnail"]
         for prev, cur in zip(entries, entries[1:]):
             seen = _parse_ts(cur.get("first_seen"))
-            if seen is None or seen.astimezone(JST).year != ctx.year or seen > ctx.end:
+            if seen is None or not ctx.start <= seen <= ctx.end:
                 continue
             urls = [
                 media_url(

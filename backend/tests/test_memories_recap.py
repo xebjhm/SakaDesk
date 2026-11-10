@@ -1040,3 +1040,567 @@ async def test_night_title_counts_nights_not_messages(svc, monkeypatch):
     by_name = {x["name"]: x["title_key"] for x in o["members"]}
     assert by_name["松田 好花"] == "recap.titles.night"
     assert by_name["金村 美玖"] == "recap.titles.longest"
+
+
+# --- wave review: builder branches (I2) -------------------------------------------
+
+MESSAGE_KEYS = {
+    "id",
+    "ts",
+    "type",
+    "text",
+    "media_url",
+    "caption",
+    "avatar_url",
+    "member_path",
+}
+STUB_KEYS = {"kind", "message", "seconds_after_midnight", "sealed"}
+KANE_MEDIA = (
+    "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96"
+    "/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96"
+)
+
+
+def write_birthdays(svc, birthdays):
+    (svc / "memories").mkdir(exist_ok=True)
+    (svc / "memories" / "member_profiles.json").write_text(
+        json.dumps(
+            {"updated_at": "2026-11-01T00:00:00+00:00", "birthdays": birthdays},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+def selects_of(logs):
+    return [e for e in logs if e["event"] == "recap.select"]
+
+
+def rules_of(logs, slide):
+    return [(e["rule"], e["fallback"]) for e in selects_of(logs) if e["slide"] == slide]
+
+
+def _soak_s12():
+    """A starred sentence: s12 takes it, so it never steals a stub's message."""
+    return m(90, "2026-10-01 20:00", content=STAR, fav=True)
+
+
+def _closing_text():
+    """The year's last text: s13's fallback pick."""
+    return m(99, "2026-12-08 21:00", content="またあした")
+
+
+@pytest.mark.asyncio
+async def test_s09_stubs_never_imply_she_knew_the_fan(svc):
+    write_birthdays(svc, {"金村美玖": "2003-03-10"})
+    write_subs(svc, {"34": "2024-07-24"})
+    rows = [
+        m(1, "2026-01-01 00:00:03", content="あけおめ！"),  # s01 (new year)
+        m(2, "2026-01-01 00:05:00", content="今年もいっぱい話そうね"),  # newyear stub
+        m(3, "2026-03-10 00:00:07", content="お誕生日を迎えました！"),
+        m(4, "2026-03-10 20:00", content="たくさんのお祝いをもらった一日でした"),
+        # The anniversary is the fan's day, not hers: even a message seconds after
+        # midnight is never framed as "sent at midnight".
+        m(5, "2026-07-24 00:00:05", content="撮影が終わったよ"),
+        m(6, "2026-07-24 20:00", content="今日の撮影はとても楽しかったです"),
+        *_plain(10, month=4),
+        _soak_s12(),
+        _closing_text(),
+    ]
+    write_room(svc, KANEMURA, rows)
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", FINAL)
+    stubs = {st["kind"]: st for st in slides_of(p)["s09_special"]["data"]["stubs"]}
+    assert set(stubs) == {"birthday", "newyear", "anniversary"}
+    for st in stubs.values():
+        # Nothing about the fan (no favourite time, no nickname, no "for you").
+        assert set(st) == STUB_KEYS
+        if st["message"] is not None:
+            assert set(st["message"]) == MESSAGE_KEYS
+    bday = stubs["birthday"]
+    assert bday["message"]["id"] == 3 and bday["seconds_after_midnight"] == 7
+    assert bday["sealed"] is False
+    assert bday["message"]["text"] == "お誕生日を迎えました！"
+    ny = stubs["newyear"]
+    assert ny["message"]["id"] == 2 and ny["seconds_after_midnight"] == 300
+    ann = stubs["anniversary"]
+    assert ann["message"]["id"] in {5, 6}
+    assert ann["seconds_after_midnight"] is None
+    rules = rules_of(logs, "s09_special")
+    assert ("birthday_midnight", None) in rules
+    assert ("anniversary_importance", None) in rules
+    assert ("christmas_none", "none") in rules
+    poster = p["poster"]
+    assert [st["kind"] for st in poster["stubs"]] == [
+        "birthday",
+        "newyear",
+        "anniversary",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_s09_birthday_without_midnight_and_no_anniversary_in_the_first_year(svc):
+    write_birthdays(svc, {"金村美玖": "2003-05-05"})
+    write_subs(svc, {"34": "2026-01-03"})  # joined in Y: no anniversary yet
+    rows = [
+        m(1, "2026-01-04 20:00", content="はじめまして"),
+        pic(2, "2026-05-05 12:00"),  # her birthday: only a picture
+        *_plain(10, month=6),
+        _soak_s12(),
+        _closing_text(),
+    ]
+    write_room(svc, KANEMURA, rows)
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", FINAL)
+    stubs = {st["kind"]: st for st in slides_of(p)["s09_special"]["data"]["stubs"]}
+    assert "anniversary" not in stubs
+    assert stubs["birthday"]["message"]["id"] == 2
+    assert stubs["birthday"]["seconds_after_midnight"] is None
+    rules = rules_of(logs, "s09_special")
+    assert ("birthday_first", None) in rules
+    assert not any(r.startswith("anniversary") for r, _ in rules)
+
+
+@pytest.mark.asyncio
+async def test_s09_birthday_and_anniversary_none_when_she_was_quiet(svc):
+    write_birthdays(svc, {"金村美玖": "2003-08-08"})
+    write_subs(svc, {"34": "2024-09-09"})
+    rows = [*_plain(12, month=3), _closing_text()]
+    write_room(svc, KANEMURA, rows)
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", PARTIAL)
+    stubs = slides_of(p)["s09_special"]["data"]["stubs"]
+    assert [st["kind"] for st in stubs] == ["christmas"]  # sealed, never hers
+    rules = rules_of(logs, "s09_special")
+    assert ("birthday_none", "none") in rules
+    assert ("anniversary_none", "none") in rules
+
+
+@pytest.mark.asyncio
+async def test_unparseable_birthday_is_ignored(svc):
+    write_birthdays(svc, {"金村美玖": "unknown"})
+    write_room(svc, KANEMURA, [*_plain(12), _closing_text()])
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", FINAL)
+    assert p["tier"] == "short"
+    assert not any(r.startswith("birthday") for r, _ in rules_of(logs, "s09_special"))
+
+
+def write_avatars(room_dir, entries, current_file):
+    root = room_dir / "profile_images"
+    (root / "thumbnail").mkdir(parents=True)
+    (root / current_file).write_bytes(b"\xff\xd8\xff")
+    (root / "index.json").write_text(
+        json.dumps(
+            {
+                "images": entries,
+                "current": {
+                    "thumbnail": "https://cdn.example.jp/icons/"
+                    + current_file.split("/")[-1]
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+
+
+AVATARS = [
+    {"kind": "thumbnail", "file": "thumbnail/u1.jpg", "first_seen": None},
+    {"kind": "thumbnail", "file": "thumbnail/u2.jpg", "first_seen": None},
+    {
+        "kind": "thumbnail",
+        "file": "thumbnail/a.jpg",
+        "first_seen": "2024-08-01T00:00:00Z",
+    },
+    {
+        "kind": "thumbnail",
+        "file": "thumbnail/b.jpg",
+        "first_seen": "2026-06-01T03:00:00Z",
+    },
+    {"kind": "thumbnail", "file": "thumbnail/z.jpg", "first_seen": "garbage"},
+    {
+        "kind": "phone_image",
+        "file": "phone_image/p.jpg",
+        "first_seen": "2026-07-01T00:00:00Z",
+    },
+]
+
+
+@pytest.mark.asyncio
+async def test_poster_avatar_change_urls(svc):
+    d = write_room(svc, KANEMURA, [*_plain(12), _closing_text()])
+    write_avatars(d, AVATARS, "thumbnail/b.jpg")
+    p = await build(svc, "金村美玖", FINAL)
+    poster = p["poster"]
+    assert poster["avatar_changed"] is True
+    assert poster["avatar_old_url"] == f"{KANE_MEDIA}/profile_images/thumbnail/a.jpg"
+    assert poster["avatar_new_url"] == f"{KANE_MEDIA}/profile_images/thumbnail/b.jpg"
+    # The hand-built URL is exactly what the profile-image service serves.
+    assert poster["avatar_new_url"] == p["member"]["avatar_url"]
+
+
+@pytest.mark.asyncio
+async def test_avatar_change_before_the_subscription_start_is_not_on_the_poster(svc):
+    # She changed her icon on 06-01; the fan subscribed on 08-01.
+    rows = [
+        m(k, f"2026-09-{1 + k:02d} 20:00", content=f"きょうの話{k}") for k in range(12)
+    ]
+    d = write_room(svc, KANEMURA, rows)
+    write_subs(svc, {"34": "2026-08-01"})
+    write_avatars(d, AVATARS, "thumbnail/b.jpg")
+    p = await build(svc, "金村美玖", FINAL)
+    assert p["tier"] == "short"
+    poster = p["poster"]
+    assert poster["avatar_changed"] is False
+    assert poster["avatar_old_url"] is None and poster["avatar_new_url"] is None
+
+
+@pytest.mark.asyncio
+async def test_avatar_change_after_now_is_not_on_the_poster(svc):
+    d = write_room(svc, KANEMURA, [*_plain(12), _closing_text()])
+    write_avatars(d, AVATARS, "thumbnail/b.jpg")
+    p = await build(svc, "金村美玖", datetime(2026, 5, 20, 12, 0, tzinfo=JST))
+    assert p["poster"]["avatar_changed"] is False
+
+
+@pytest.mark.asyncio
+async def test_s03_flat_day_shows_a_band(svc):
+    rows = [
+        m(k, f"2026-{2 + k // 28:02d}-{1 + k % 28:02d} {k:02d}:15", content=f"話{k}")
+        for k in range(24)
+    ]
+    write_room(svc, KANEMURA, rows)
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", FINAL)
+    s03 = slides_of(p)["s03_clock"]
+    assert s03["fallback"] == "flat" and s03["data"]["band"] == "night"
+    assert s03["data"]["peak_hour"] == 23  # ties go to the later hour
+    assert ("band", "flat") in rules_of(logs, "s03_clock")
+
+
+@pytest.mark.asyncio
+async def test_s03_a_peak_hour_has_no_band(full):
+    s03 = slides_of(await build(full, "金村美玖", FINAL))["s03_clock"]
+    assert s03["fallback"] is None and "band" not in s03["data"]
+
+
+def write_transcripts(room_dir, entries):
+    (room_dir / "transcriptions.json").write_text(
+        json.dumps({"transcriptions": entries}, ensure_ascii=False), encoding="utf-8"
+    )
+
+
+def transcript(mid, segments, media="voice", no_speech=False):
+    return {
+        "message_id": mid,
+        "media_type": media,
+        "language": "ja",
+        "model": "test",
+        "duration_seconds": 20.0,
+        "full_text": "".join(s[2] for s in segments),
+        "no_speech": no_speech,
+        "segments": [{"start": a, "end": b, "text": t} for a, b, t in segments],
+    }
+
+
+@pytest.mark.asyncio
+async def test_s06_single_voice_clip_with_transcript_segments(svc):
+    rows = [
+        *_plain(10),
+        voice(50, "2026-05-01 22:00", 2.0),  # too short to be "long"
+        voice(51, "2026-06-01 22:00", 20.0),
+        _closing_text(),
+    ]
+    d = write_room(svc, KANEMURA, rows)
+    write_transcripts(
+        d,
+        [
+            transcript(
+                51,
+                [
+                    (0.0, 3.0, "%%%、聞こえる？"),
+                    (5.0, 9.0, "今日もありがとう"),
+                    (13.0, 15.0, "その先"),
+                ],
+            )
+        ],
+    )
+    p = await build(svc, "金村美玖", FINAL)
+    s06 = slides_of(p)["s06_voice"]
+    assert s06["fallback"] == "single"
+    assert s06["data"]["voice_count"] == 2
+    [clip] = s06["data"]["clips"]
+    assert clip["message"]["id"] == 51
+    assert clip["start"] == 0 and clip["end"] == recap.SINGLE_CLIP_SECONDS
+    # Only the segments inside the opening are sent.
+    assert clip["transcript_segments"] == [
+        {"start": 0.0, "end": 3.0, "text": "%%%、聞こえる？"},
+        {"start": 5.0, "end": 9.0, "text": "今日もありがとう"},
+    ]
+
+
+@pytest.mark.asyncio
+async def test_s06_short_single_voice_ends_at_its_duration(svc):
+    rows = [*_plain(10), voice(50, "2026-05-01 22:00", 2.5), _closing_text()]
+    write_room(svc, KANEMURA, rows)
+    [clip] = slides_of(await build(svc, "金村美玖", FINAL))["s06_voice"]["data"][
+        "clips"
+    ]
+    assert clip["message"]["id"] == 50 and clip["end"] == 2.5
+    assert clip["transcript_segments"] is None  # no sidecar
+
+
+def video(i, jst, seconds=None):
+    media = f"messages/{KANEMURA[0]}/{KANEMURA[1]}/video/{i}.mp4"
+    extra = {"media_duration": seconds} if seconds is not None else {}
+    return m(i, jst, "video", media_file=media, **extra)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("sidecar", "segments"),
+    [
+        ("no_speech", None),  # a silent video: no fabricated words
+        ("unreadable", None),  # a broken entry is logged and skipped
+    ],
+)
+async def test_s06_video_audio_fallback(svc, sidecar, segments):
+    rows = [*_plain(10), video(60, "2026-07-01 21:00", 40.0), _closing_text()]
+    d = write_room(svc, KANEMURA, rows)
+    if sidecar == "no_speech":
+        write_transcripts(d, [transcript(60, [], media="video", no_speech=True)])
+    else:
+        write_transcripts(d, [{"message_id": 60}])  # missing required keys
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", FINAL)
+    s06 = slides_of(p)["s06_voice"]
+    assert s06["fallback"] == "video"  # video audio, never called a voice
+    assert s06["data"]["voice_count"] is None
+    [clip] = s06["data"]["clips"]
+    assert clip["message"]["id"] == 60 and clip["message"]["type"] == "video"
+    assert clip["end"] == recap.SINGLE_CLIP_SECONDS
+    assert clip["transcript_segments"] is segments
+    assert ("video_latest_single", None) in rules_of(logs, "s06_voice")
+    unreadable = [e for e in logs if e["event"] == "recap.transcript_unreadable"]
+    if sidecar == "unreadable":
+        assert [e["error_type"] for e in unreadable] == ["KeyError"]
+        assert set(unreadable[0]) == {"event", "log_level", "error_type"}
+    else:
+        assert unreadable == []
+
+
+@pytest.mark.asyncio
+async def test_media_only_member_skips_the_word_slides(svc):
+    rows = [pic(k, f"2026-{1 + k:02d}-10 12:00") for k in range(1, 12)]
+    write_room(svc, KANEMURA, rows)
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", FINAL)
+    assert p["tier"] == "short"
+    s = slides_of(p)
+    for key in ("s02_name", "s12_sentence", "s13_oyasumi", "s07_letter", "s11_daisuki"):
+        assert key not in s, key
+    assert s["s01_first"]["data"]["message"]["id"] == 1
+    assert s["s01_first"]["data"]["message"]["text"] is None
+    for slide in ("s02_name", "s12_sentence", "s13_oyasumi"):
+        assert ("skip", "skip") in rules_of(logs, slide), slide
+    assert ("last_text", "none") in rules_of(logs, "s13_oyasumi")
+    assert p["poster"]["sentence"] is None
+
+
+@pytest.mark.asyncio
+async def test_s05_never_reuses_a_photo_shown_as_a_stub(svc):
+    write_birthdays(svc, {"金村美玖": "2003-05-05"})
+    rows = [
+        *_plain(10),
+        # A birthday burst: s09 takes the midnight picture first.
+        pic(70, "2026-05-05 00:00:05"),
+        pic(71, "2026-05-05 00:00:30"),
+        pic(72, "2026-05-05 00:01:00"),
+        _closing_text(),
+    ]
+    write_room(svc, KANEMURA, rows)
+    p = await build(svc, "金村美玖", FINAL)
+    s = slides_of(p)
+    bday = next(
+        st for st in s["s09_special"]["data"]["stubs"] if st["kind"] == "birthday"
+    )
+    assert bday["message"]["id"] == 70 and bday["seconds_after_midnight"] == 5
+    s05 = s["s05_photos"]
+    # The burst holds a taken photo, so it is not shown; the best free one is.
+    assert s05["data"]["burst"] == [] and s05["fallback"] == "best_photo"
+    assert s05["data"]["best_photo"]["id"] in {71, 72}
+    keys = hero_keys(p)
+    assert len(keys) == len(set(keys))
+
+
+@pytest.mark.asyncio
+async def test_s05_skips_when_its_only_photo_is_a_stub(svc):
+    write_birthdays(svc, {"金村美玖": "2003-05-05"})
+    rows = [*_plain(10), pic(70, "2026-05-05 00:00:05"), _closing_text()]
+    write_room(svc, KANEMURA, rows)
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", FINAL)
+    assert "s05_photos" not in slides_of(p)
+    assert ("skip", "skip") in rules_of(logs, "s05_photos")
+
+
+@pytest.mark.asyncio
+async def test_photos_near_the_letter_and_on_the_sentence_day(svc):
+    rows = [
+        *FULL_ROWS,
+        pic(45, "2026-06-15 19:03"),  # three minutes after the letter (id 20)
+        pic(46, "2026-06-01 08:00"),  # the morning of the starred sentence (id 19)
+    ]
+    write_room(svc, KANEMURA, rows)
+    s = slides_of(await build(svc, "金村美玖", FINAL))
+    assert s["s07_letter"]["data"]["message"]["id"] == 20
+    assert s["s07_letter"]["data"]["photo_url"] == f"{KANE_MEDIA}/picture/45.jpg"
+    assert s["s12_sentence"]["data"]["message_id"] == 19
+    assert s["s12_sentence"]["data"]["photo_url"] == f"{KANE_MEDIA}/picture/46.jpg"
+
+
+@pytest.mark.asyncio
+async def test_unreadable_letters_are_logged_without_paths(svc):
+    d = write_room(svc, KANEMURA, [*_plain(12), _closing_text()])
+    (d / "letters.json").write_text("{not json", encoding="utf-8")
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", FINAL)
+    assert slides_of(p)["s10_you"]["data"] == {"invite": True}
+    [warn] = [e for e in logs if e["event"] == "recap.letters_invalid"]
+    assert warn["member_id"] == "58" and warn["room_index"] == 0
+    assert set(warn) == {"event", "log_level", "member_id", "room_index"}
+
+
+@pytest.mark.asyncio
+async def test_unreadable_favorite_log_keeps_the_recap(full, monkeypatch):
+    import sqlite3
+
+    def broken(service, ids):
+        raise sqlite3.OperationalError("disk I/O error")
+
+    monkeypatch.setattr(app_state, "favorited_at", broken)
+    with capture_logs() as logs:
+        p = await build(full, "金村美玖", PARTIAL)
+    first = slides_of(p)["s10_you"]["data"]["first_favorite"]
+    assert first["id"] == 19 and first["favorited_at"] is None
+    [warn] = [e for e in logs if e["event"] == "recap.favorite_log_unreadable"]
+    assert warn["error_type"] == "OperationalError"
+
+
+@pytest.mark.asyncio
+async def test_broken_recap_cache_rows_are_rebuilt(full):
+    import contextlib
+
+    first = await build(full, "金村美玖", PARTIAL)
+    with contextlib.closing(mi._connect()) as c, c:
+        c.execute("UPDATE recap_cache SET payload = '{broken'")
+        c.execute(
+            "CREATE TRIGGER no_cache BEFORE INSERT ON recap_cache "
+            "BEGIN SELECT RAISE(ABORT, 'read-only'); END"
+        )
+    with capture_logs() as logs:
+        again = await build(full, "金村美玖", PARTIAL)
+    assert again == first
+    events = {e["event"]: e for e in logs}
+    assert events["recap.cache_read_failed"]["error_type"] == "JSONDecodeError"
+    assert events["recap.cache_write_failed"]["error_type"] == "IntegrityError"
+
+
+@pytest.mark.asyncio
+async def test_recap_version_is_part_of_the_cache_key(full, monkeypatch):
+    # Bumped for the recap wave's payload changes: rows cached by an earlier
+    # dev build must not be served.
+    assert recap.RECAP_VERSION == "2"
+    monkeypatch.setattr(recap, "RECAP_VERSION", "1")
+    await build(full, "金村美玖", PARTIAL)
+    monkeypatch.undo()
+    with capture_logs() as logs:
+        await build(full, "金村美玖", PARTIAL)
+    outcomes = [e["outcome"] for e in logs if e["event"] == "recap.cache"]
+    assert outcomes == ["miss"]
+
+
+@pytest.mark.asyncio
+async def test_scans_without_a_room_index_are_not_cached(full, monkeypatch):
+    import dataclasses
+
+    real = mi.get_member_index
+
+    async def no_hash(service_data_dir, member_dir):
+        return dataclasses.replace(
+            await real(service_data_dir, member_dir), data_hash=""
+        )
+
+    monkeypatch.setattr(mi, "get_member_index", no_hash)
+    reads = _count_fact_reads(monkeypatch)
+    with time_machine.travel(PARTIAL, tick=False):
+        now = datetime.now(timezone.utc)
+        with capture_logs() as logs:
+            await recap.recap_years(full, now=now)
+            n = reads["n"]
+            await recap.recap_years(full, now=now)
+    assert reads["n"] == 2 * n  # nothing was cached
+    outcomes = [e["outcome"] for e in logs if e["event"] == "recap.years"]
+    assert outcomes == ["uncacheable", "uncacheable"]
+
+
+def test_scan_cache_keeps_the_most_recently_used(monkeypatch):
+    from collections import OrderedDict
+
+    monkeypatch.setattr(recap, "_scan_cache", OrderedDict())
+    for k in range(recap._SCAN_CACHE_MAX):
+        recap._scan_put(f"k{k}", k)
+    assert recap._scan_get("k0") == 0  # touched: now the newest
+    recap._scan_put("new", "x")
+    assert len(recap._scan_cache) == recap._SCAN_CACHE_MAX
+    assert recap._scan_get("k1") is None  # the least recently used went
+    assert recap._scan_get("k0") == 0 and recap._scan_get("new") == "x"
+    recap._scan_put(None, "ignored")
+    assert recap._scan_get(None) is None
+
+
+@pytest.mark.asyncio
+async def test_s06_skips_when_its_only_voice_is_the_first_message(svc):
+    rows = [voice(1, "2026-01-03 21:00", 9.0), *_plain(10), _closing_text()]
+    write_room(svc, KANEMURA, rows)
+    with capture_logs() as logs:
+        p = await build(svc, "金村美玖", FINAL)
+    s = slides_of(p)
+    assert s["s01_first"]["data"]["message"]["id"] == 1
+    assert "s06_voice" not in s  # never a second slide for the same voice
+    assert rules_of(logs, "s06_voice") == [
+        ("voice_latest_single", "taken"),
+        ("skip", "skip"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_s11_petals_are_spread_evenly_over_the_year(svc):
+    rows = [
+        m(
+            k,
+            f"2026-{1 + k // 2:02d}-{1 + 10 * (k % 2):02d} 20:00",
+            content=f"大好き{k}号",
+        )
+        for k in range(20)
+    ]
+    write_room(svc, KANEMURA, [*rows, _closing_text()])
+    s11 = slides_of(await build(svc, "金村美玖", FINAL))["s11_daisuki"]["data"]
+    petals = [x["text"] for x in s11["petals"]]
+    assert len(petals) == recap.MAX_PETALS
+    # The first and the last of the year are kept; the rest are even picks.
+    assert petals[0] == "大好き0号" and petals[-1] == "大好き19号"
+    assert petals == sorted(petals, key=lambda t: int(t[3:-1]))
+    assert all(len(recap._sentences(x)) == 1 for x in petals)  # one sentence each
+
+
+@pytest.mark.asyncio
+async def test_sentence_fields_are_one_sentence_each(full):
+    # The share export counts these as one sentence each (spec 9.5: at most two).
+    s = slides_of(await build(full, "金村美玖", FINAL))
+    one = [s["s12_sentence"]["data"]["sentence"]]
+    one += s["s02_name"]["data"]["fragments"]
+    one += [x["text"] for x in s["s11_daisuki"]["data"]["petals"]]
+    assert len(one) > 3
+    for text in one:
+        assert recap._sentences(text) == [text], text
