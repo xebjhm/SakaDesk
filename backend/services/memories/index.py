@@ -126,10 +126,16 @@ CREATE TABLE IF NOT EXISTS message_facts (
     importance INTEGER, photo_score INTEGER, burst_id INTEGER, caption_id INTEGER,
     favorited INTEGER NOT NULL, media_file TEXT, duration_s REAL,
     PRIMARY KEY(service_dir, member_dir, id)) WITHOUT ROWID;
+CREATE INDEX IF NOT EXISTS message_facts_by_clock
+    ON message_facts(service_dir, member_dir, hour, minute);
 """
 
-# Every fact query is scoped by the primary-key prefix (service_dir,
-# member_dir), so secondary indexes only cost space. Older DBs still have them.
+# Fact queries are scoped by the primary-key prefix (service_dir, member_dir).
+# The one secondary index, ``message_facts_by_clock``, serves the 同じ時刻
+# time-of-day query (``facts.facts_at_clock``, refreshed every minute), which
+# would otherwise scan every row of every room. The rows are unchanged, so it
+# needs no INDEX_VERSION bump: SQLite fills it from the existing rows once.
+# The older date / type indexes only cost space; older DBs still have them.
 _DROPPED_INDEXES = ("message_facts_by_date", "message_facts_by_type")
 
 

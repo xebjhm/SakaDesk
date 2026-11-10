@@ -301,3 +301,73 @@ async def test_get_facts_on_read_error_is_empty_and_logged(on_this_day, monkeypa
         assert await mf.get_facts_on(svc, d, month_day="11-10") == []
     (ev,) = [e for e in logs if e["event"] == "memory_facts_read_failed"]
     assert ev["error_type"] == "OperationalError" and ev["member_id"] == "58"
+
+
+# --- facts at a clock time (Task F5) ---------------------------------------------------
+
+CLOCK_ROWS = [
+    m(1, "2024-06-02T14:59:00Z", content="23:59 JST"),
+    m(2, "2024-06-02T15:00:00Z", content="00:00 JST"),
+    m(3, "2024-06-02T15:01:00Z", content="00:01 JST"),
+    m(4, "2024-06-02T15:02:00Z", content="00:02 JST"),
+    m(5, "2024-06-02T14:56:00Z", content="23:56 JST"),
+    m(6, "2024-06-02T12:03:00Z", content="21:03 JST"),
+    m(7, "2024-06-02T12:05:00Z", content="21:05 JST"),
+    m(8, "2024-06-02T12:06:00Z", content="21:06 JST"),
+    m(9, "2024-06-02T11:59:00Z", content="20:59 JST"),
+]
+
+
+@pytest.fixture
+def clock_member(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    return tmp_path, _member(tmp_path, CLOCK_ROWS)
+
+
+@pytest.mark.asyncio
+async def test_facts_at_clock_plain_range(clock_member):
+    svc, d = clock_member
+    await mf.get_facts(svc, d)  # build the index
+    got = mf.facts_at_clock(svc, d, 21 * 60 + 1, 21 * 60 + 5)
+    assert [f.id for f in got] == [6, 7]
+    # a range across the hour boundary
+    got = mf.facts_at_clock(svc, d, 20 * 60 + 58, 21 * 60 + 3)
+    assert [f.id for f in got] == [9, 6]
+
+
+@pytest.mark.asyncio
+async def test_facts_at_clock_wraps_midnight(clock_member):
+    svc, d = clock_member
+    # 23:59 +-2 min = 23:57 .. 00:01, passed as start > end
+    got = await mf.get_facts_at_clock(svc, d, 23 * 60 + 57, 1)
+    assert sorted(f.id for f in got) == [1, 2, 3]
+    assert [f.id for f in got] == [1, 2, 3]  # by (ts, id)
+
+
+@pytest.mark.asyncio
+async def test_facts_at_clock_rejects_bad_minutes(clock_member):
+    svc, d = clock_member
+    for start, end in ((-1, 5), (0, 1440), (1440, 3)):
+        with pytest.raises(ValueError):
+            mf.facts_at_clock(svc, d, start, end)
+
+
+@pytest.mark.asyncio
+async def test_facts_at_clock_uses_the_clock_index(clock_member):
+    import contextlib
+
+    svc, d = clock_member
+    await mf.get_facts(svc, d)
+    sql, args = mf._clock_query(svc, d, 21 * 60 + 1, 21 * 60 + 5)
+    with contextlib.closing(mi._connect()) as c:
+        plan = " ".join(str(r) for r in c.execute(f"EXPLAIN QUERY PLAN {sql}", args))
+    assert "message_facts_by_clock" in plan
+
+
+@pytest.mark.asyncio
+async def test_get_facts_at_clock_unavailable_index_is_empty(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    d = tmp_path / "messages" / "1 x" / "2 x"
+    d.mkdir(parents=True)
+    (d / "messages.json").write_text("{bad", encoding="utf-8")
+    assert await mf.get_facts_at_clock(tmp_path, d, 0, 4) == []

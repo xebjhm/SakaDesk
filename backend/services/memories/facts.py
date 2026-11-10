@@ -13,8 +13,9 @@ pure helpers on the returned list::
     voices = voice_durations(facts, min_seconds=4)
     texts = load_texts(service_data_dir, member_dir, [f.id for f in picks])
 
-Table ``message_facts`` (key ``(service_dir, member_dir, id)``, no secondary
-indexes: every query is scoped by the key prefix):
+Table ``message_facts`` (key ``(service_dir, member_dir, id)``; every query is
+scoped by the key prefix; one secondary index, ``message_facts_by_clock`` on
+``(service_dir, member_dir, hour, minute)``, serves :func:`facts_at_clock`):
 
 ==============  =========  ====================================================
 column          type       meaning
@@ -54,6 +55,16 @@ API (dates are JST calendar dates, inclusive; results sorted by ``(ts, id)``):
   is unavailable or the read fails (``memory_facts_read_failed``).
 - ``facts_on_month_day(sdir, mdir, month_day)`` -- the ``MM-DD`` query without
   the freshness check (blocking).
+- ``facts_at_clock(sdir, mdir, start_minute, end_minute) -> list[Fact]`` --
+  facts whose JST time of day ``hour*60+minute`` lies in
+  ``[start_minute, end_minute]`` (minutes of the day, 0..1439) on any date,
+  by ``(ts, id)``. ``start_minute > end_minute`` wraps midnight (split into
+  ``[start, 1439]`` and ``[0, end]``). Blocking, no freshness check; uses the
+  clock index, so a +-2 min window reads only those rows. ``ValueError`` for
+  a minute outside 0..1439.
+- ``async get_facts_at_clock(sdir, mdir, start_minute, end_minute)`` -- the
+  same after the freshness check; ``[]`` when the index is unavailable or the
+  read fails (同じ時刻, spec 14.3).
 - Pure helpers on a fact list: ``select`` (types / promo / nickname / greeting
   / favourited / hours / date range filters), ``on_date``, ``first_last``,
   ``by_year``, ``aggregate`` -> :class:`Aggregate`, ``year_aggregates``,
@@ -225,6 +236,58 @@ def facts_on_month_day(
     return [_row_to_fact(r) for r in rows]
 
 
+MINUTES_PER_DAY = 24 * 60
+
+
+def _clock_query(
+    service_data_dir: Path, member_dir: Path, start: int, end: int
+) -> tuple[str, list[object]]:
+    """SQL + args for one non-wrapping clock range ``start <= end``.
+
+    The ``hour BETWEEN`` bound lets SQLite seek the clock index; the exact
+    minute filter runs on the few rows of those hours.
+    """
+    sql = (
+        f"{_SELECT} WHERE service_dir=? AND member_dir=? AND hour BETWEEN ? AND ? "
+        "AND (hour*60+minute) BETWEEN ? AND ? ORDER BY ts_utc, id"
+    )
+    args: list[object] = [
+        str(service_data_dir),
+        mi._rel(service_data_dir, member_dir),
+        start // 60,
+        end // 60,
+        start,
+        end,
+    ]
+    return sql, args
+
+
+def facts_at_clock(
+    service_data_dir: Path, member_dir: Path, start_minute: int, end_minute: int
+) -> list[Fact]:
+    """Facts at a JST time of day in ``[start_minute, end_minute]``. Blocking.
+
+    Minutes of the day (0..1439); ``start_minute > end_minute`` wraps
+    midnight. Sorted by ``(ts, id)``. ``ValueError`` for an out-of-range minute.
+    """
+    for minute in (start_minute, end_minute):
+        if not 0 <= minute < MINUTES_PER_DAY:
+            raise ValueError("minute must be 0..1439")
+    if start_minute <= end_minute:
+        ranges = [(start_minute, end_minute)]
+    else:
+        ranges = [(start_minute, MINUTES_PER_DAY - 1), (0, end_minute)]
+    rows: list[tuple] = []
+    with contextlib.closing(mi._connect()) as c:
+        for start, end in ranges:
+            sql, args = _clock_query(service_data_dir, member_dir, start, end)
+            rows.extend(c.execute(sql, args).fetchall())
+    facts = [_row_to_fact(r) for r in rows]
+    if len(ranges) > 1:
+        facts.sort(key=lambda f: (f.ts, f.id))
+    return facts
+
+
 async def _fresh_index(
     service_data_dir: Path, member_dir: Path
 ) -> mi.MemberIndex | None:
@@ -303,6 +366,21 @@ async def get_facts_on(
     if day is not None:
         return await _read(idx, facts_for_date, service_data_dir, member_dir, day)
     return await _read(idx, facts_on_month_day, service_data_dir, member_dir, month_day)
+
+
+async def get_facts_at_clock(
+    service_data_dir: Path, member_dir: Path, start_minute: int, end_minute: int
+) -> list[Fact]:
+    """Fresh facts of one room at a JST time of day (see :func:`facts_at_clock`).
+
+    ``[]`` when the index is unavailable or the read fails.
+    """
+    idx = await _fresh_index(service_data_dir, member_dir)
+    if idx is None:
+        return []
+    return await _read(
+        idx, facts_at_clock, service_data_dir, member_dir, start_minute, end_minute
+    )
 
 
 async def get_person_facts(
