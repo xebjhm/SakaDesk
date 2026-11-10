@@ -57,8 +57,8 @@ function slideData(recap: RecapPayload, key: RecapSlide['key']): unknown {
 }
 
 /**
- * One sentence: a run of text up to its end mark. Mirrors the backend's `_SENTENCE_RE`
- * (`[。！？!?\n]+`, `backend/services/memories/recap.py`): the same boundaries, so a backend
+ * One sentence: a run of text up to its end mark. Mirrors the backend's `RAW_SENTENCE_SPLIT_RE`
+ * (`[。！？!?\n]+`, `backend/services/memories/lexicon.py`): the same boundaries, so a backend
  * sentence (s12, the s02 fragments, the s11 petals) is one sentence here too. The end marks stay
  * on the sentence for display; a newline is a boundary but is not kept.
  */

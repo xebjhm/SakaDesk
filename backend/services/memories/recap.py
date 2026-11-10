@@ -145,8 +145,7 @@ SENTENCE_SCAN = 200  # messages examined for the one sentence
 PHOTO_NEAR = timedelta(minutes=5)
 POSTER_NUMBER_MIN = 5  # a poster number below this is "sparse" and skipped
 
-# Raw sentence boundaries (spec: 。！？ and newlines). Splitting the raw text
-# keeps her characters exactly; ``selection.split_sentences`` NFKC-normalises.
+# Word cues for the recap's affection, joy and closing-word rules.
 _DAISUKI_RE = re.compile(r"大好き|だいすき|愛してる|ありがとう|感謝")
 _JOY_RE = re.compile(r"嬉しい|楽しい|幸せ|またね|これからもよろしく")
 _FINAL_WORD_RE = re.compile(r"大好き|ありがとう")
