@@ -23,6 +23,7 @@ const base: AppSettings = {
 type Status = {
     state: string;
     paused_reason: string | null;
+    thumbs_full: boolean;
     services: Record<string, { done: number; total: number }>;
     cache: { thumbs_bytes: number; posters_bytes: number; thumbs_cap: number; posters_cap: number };
 };
@@ -31,6 +32,7 @@ function status(over: Partial<Status> = {}): Status {
     return {
         state: 'idle',
         paused_reason: null,
+        thumbs_full: false,
         services: {},
         cache: { thumbs_bytes: 0, posters_bytes: 0, thumbs_cap: 1073741824, posters_cap: 268435456 },
         ...over,
@@ -151,6 +153,7 @@ describe('thumbnail cache row', () => {
         openSync();
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_media_cache', outcome: 'error' }));
         expect(screen.queryByText(/used$/)).toBeNull();
+        expect(screen.getByText("Couldn't read the cache size")).toBeInTheDocument();
     });
 
     it('a failed clear shows no toast and logs the error', async () => {
@@ -162,6 +165,42 @@ describe('thumbnail cache row', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_media_clean', outcome: 'error' }));
         expect(screen.queryByText('Thumbnail cache cleared')).toBeNull();
+        expect(screen.getByText("Couldn't clear the thumbnail cache")).toBeInTheDocument();
+        // a later successful clear removes the message
+        server.use(http.delete('/api/media/cache', () => HttpResponse.json({ freed_bytes: 0 })));
+        fireEvent.click(screen.getByRole('button', { name: 'Clear' }));
+        await waitFor(() => expect(screen.queryByText("Couldn't clear the thumbnail cache")).toBeNull());
+    });
+
+    it('a full cache shows the at-capacity line instead of progress, and stops polling when idle', async () => {
+        const seen = serveStatus(status({
+            state: 'idle', thumbs_full: true,
+            services: { hinatazaka46: { done: 100, total: 400 } },
+            cache: { thumbs_bytes: 900 * 1024 * 1024, posters_bytes: 0, thumbs_cap: 1, posters_cap: 1 },
+        }));
+        renderModal();
+        openSync();
+        expect(await screen.findByTestId('media-cache-full')).toHaveTextContent('Full. Older thumbnails are replaced as you browse');
+        expect(screen.queryByText(/Preparing thumbnails/)).toBeNull();
+        expect(seen.length).toBe(1);
+    });
+
+    it('a full cache never shows progress, even while placeholders are still being made', async () => {
+        serveStatus(status({ state: 'running', thumbs_full: true, services: { hinatazaka46: { done: 1, total: 9 } } }));
+        renderModal();
+        openSync();
+        expect(await screen.findByTestId('media-cache-full')).toBeInTheDocument();
+        expect(screen.queryByText(/Preparing thumbnails/)).toBeNull();
+    });
+
+    it('a status without the full flag reads as not full', async () => {
+        const body = status({ state: 'running', services: { hinatazaka46: { done: 1, total: 2 } } }) as Partial<Status>;
+        delete body.thumbs_full;
+        server.use(http.get('/api/media/status', () => HttpResponse.json(body)));
+        renderModal();
+        openSync();
+        expect(await screen.findByText('Preparing thumbnails… 1 / 2')).toBeInTheDocument();
+        expect(screen.queryByTestId('media-cache-full')).toBeNull();
     });
 
     it('uses the Japanese wording', async () => {

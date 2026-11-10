@@ -188,6 +188,7 @@ export const handlers = [
     return HttpResponse.json({
       state: 'idle',
       paused_reason: null,
+      thumbs_full: false,
       services: {},
       posters: { ready: 0, failed: 0, pending_client: 0, shell_off: false },
       cache: { thumbs_bytes: 0, posters_bytes: 0, thumbs_cap: 1073741824, posters_cap: 268435456 },

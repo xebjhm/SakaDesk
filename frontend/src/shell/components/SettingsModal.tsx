@@ -83,6 +83,8 @@ const DANGER_GHOST = 'text-status-danger hover:text-status-danger';
 /** `GET /api/media/status`, the parts the thumbnail cache row reads. */
 interface MediaCacheStatus {
     state: 'idle' | 'running' | 'paused' | 'stopped';
+    /** The thumbnail cache is at the worker's fill line: no new variants are made. */
+    thumbs_full: boolean;
     services: Record<string, { done: number; total: number }>;
     cache: { thumbs_bytes: number; posters_bytes: number };
 }
@@ -97,12 +99,15 @@ function asMediaStatus(data: unknown): MediaCacheStatus | null {
     const d = data as Partial<MediaCacheStatus> | null;
     if (!d || typeof d.state !== 'string' || typeof d.cache?.thumbs_bytes !== 'number'
         || typeof d.cache?.posters_bytes !== 'number') return null;
-    return { state: d.state, services: d.services ?? {}, cache: d.cache };
+    return { state: d.state, thumbs_full: d.thumbs_full === true, services: d.services ?? {}, cache: d.cache };
 }
 
-/** `{done, total}` over every service while the worker runs or pauses with work left, else null. */
+/**
+ * `{done, total}` over every service while the worker runs or pauses with work left, else null.
+ * A full cache shows its own line instead: the worker then makes no new thumbnails.
+ */
 function mediaProgress(status: MediaCacheStatus | null): { done: number; total: number } | null {
-    if (!status || (status.state !== 'running' && status.state !== 'paused')) return null;
+    if (!status || status.thumbs_full || (status.state !== 'running' && status.state !== 'paused')) return null;
     let done = 0;
     let total = 0;
     for (const s of Object.values(status.services)) {
@@ -158,6 +163,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const [mediaClearing, setMediaClearing] = useState(false);
     const [mediaReload, setMediaReload] = useState(0);
     const [mediaToast, setMediaToast] = useState<string | null>(null);
+    // The last thumbnail-cache request that failed (shown on the row), or null.
+    const [mediaError, setMediaError] = useState<'load' | 'clear' | null>(null);
     const mediaToastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     // Optimistic toggle: local override while the API call is in flight
     const [blogTogglePending, setBlogTogglePending] = useState<boolean | null>(null);
@@ -329,6 +336,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         logDialogLoad('settings_media_cache', 'ok');
                     }
                     setMediaStatus(data);
+                    setMediaError(e => (e === 'load' ? null : e));
                     if (data.state === 'running' || data.state === 'paused') {
                         pollTimer = setTimeout(load, MEDIA_STATUS_POLL_MS);
                     }
@@ -336,6 +344,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                 .catch(() => {
                     if (cancelled) return;
                     setMediaStatus(null);
+                    setMediaError('load');
                     logDialogLoad('settings_media_cache', 'error');
                 })
                 .finally(() => {
@@ -364,9 +373,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             const res = await fetch('/api/media/cache', { method: 'DELETE' });
             if (!res.ok) throw new Error('media cache clear refused');
             logDialogLoad('settings_media_clean', 'ok');
+            setMediaError(null);
             showMediaToast(t('settings.mediaCacheCleared'));
             setMediaReload(n => n + 1);
         } catch {
+            setMediaError('clear');
             logDialogLoad('settings_media_clean', 'error');
         } finally {
             setMediaClearing(false);
@@ -708,7 +719,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     {t('settings.mediaCachePreparing', mediaPreparing)}
                                 </span>
                             )}
+                            {mediaStatus?.thumbs_full && (
+                                <span data-testid="media-cache-full" className="text-caption font-normal text-secondary">
+                                    {t('settings.mediaCacheFull')}
+                                </span>
+                            )}
                         </>}
+                        error={mediaError === 'load'
+                            ? t('settings.mediaCacheLoadFailed')
+                            : mediaError === 'clear' ? t('settings.mediaCacheClearFailed') : undefined}
                         description={mediaLoadingShown
                             ? <span data-testid="media-cache-loading">
                                 <Spinner size="sm" tone="muted" label={t('common.loading')} labelVisibility="always" />
