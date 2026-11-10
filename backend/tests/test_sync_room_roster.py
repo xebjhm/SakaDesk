@@ -471,7 +471,7 @@ async def test_scan_marked_only_after_media_phase(tmp_path):
     order: list[str] = []
     m = _scan_with_media(_manager(scanned=False))
 
-    async def _media(session, chunk, progress_callback=None):
+    async def _media(session, chunk, item_callback=None):
         order.append("media")
         return {}
 
@@ -522,9 +522,10 @@ async def test_scan_marked_despite_failed_downloads(tmp_path):
     Verify & Fix covers the missing file."""
     m = _scan_with_media(_manager(scanned=False))
 
-    async def _media(session, chunk, progress_callback=None):
-        if progress_callback:
-            await progress_callback(0, len(chunk))  # nothing downloaded
+    async def _media(session, chunk, item_callback=None):
+        if item_callback:
+            for _ in chunk:
+                await item_callback(False)  # nothing downloaded
         return {}
 
     m.process_media_queue = AsyncMock(side_effect=_media)
@@ -1150,3 +1151,125 @@ async def test_scan_room_owns_the_detail_line(tmp_path):
     assert len(bare) == 3
     # After the scan released the slot, its own member set the detail.
     assert len(with_detail) == 1
+
+
+# --- S3 (spec 2026-11-10): deferred backfill / letter media -------------------
+
+
+def _deferring_manager():
+    m = _manager(scanned=True, extra=[])
+
+    async def _backfill(session, group, member, media_queue=None):
+        media_queue.append(
+            {"url": "u", "path": Path("b.jpg"), "timestamp": None, "message_id": 7}
+        )
+        return 0
+
+    async def _letters(session, group, member, media_queue=None):
+        media_queue.append(
+            {"url": "u", "path": Path("l.jpg"), "timestamp": None, "kind": "letter"}
+        )
+        return 0
+
+    m.backfill_past_messages = AsyncMock(side_effect=_backfill)
+    m.sync_letters = AsyncMock(side_effect=_letters)
+    m.finalize_deferred_media = MagicMock(
+        return_value={
+            "backfill_marked": 1,
+            "letters_marked": 1,
+            "still_pending": 0,
+            "saved": True,
+        }
+    )
+    return m
+
+
+async def test_backfill_and_letter_media_join_phase_3_then_finalize(tmp_path):
+    m = _deferring_manager()
+    order: list[str] = []
+    downloaded: list[list] = []
+
+    async def _media(session, chunk, item_callback=None):
+        order.append("download")
+        downloaded.append(list(chunk))
+        for _ in chunk:
+            await item_callback(True)
+        return {}
+
+    m.process_media_queue = AsyncMock(side_effect=_media)
+    m.finalize_deferred_media.side_effect = lambda: order.append("finalize") or {
+        "backfill_marked": 1,
+        "letters_marked": 1,
+        "still_pending": 0,
+        "saved": True,
+    }
+    with capture_logs() as logs:
+        await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+
+    # Phase 2 only queued them (media_queue passed); phase 3 downloaded them.
+    assert m.backfill_past_messages.await_args.kwargs["media_queue"] is not None
+    assert m.sync_letters.await_args.kwargs["media_queue"] is not None
+    assert [i["path"].name for i in downloaded[0]] == ["b.jpg", "l.jpg"]
+    assert order == ["download", "finalize"]
+    (p2,) = _events(logs, "phase2_complete")
+    assert p2["deferred_media_items"] == 2
+    (fin,) = _events(logs, "deferred_media_finalized")
+    assert (fin["items"], fin["backfill_marked"], fin["saved"]) == (2, 1, True)
+
+
+async def test_failed_downloads_count_as_processed(tmp_path):
+    m = _deferring_manager()
+
+    async def _media(session, chunk, item_callback=None):
+        await item_callback(True)
+        await item_callback(False)
+        return {}
+
+    m.process_media_queue = AsyncMock(side_effect=_media)
+    progress = MagicMock()
+    with capture_logs() as logs:
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=API_MEMBERS,
+            mock_manager=m,
+            progress_mock=progress,
+        )
+
+    progress.add_failed.assert_called_once_with()
+    assert progress.set_completed.call_args_list[-1].args == (2,)
+    (p3,) = _events(logs, "phase3_complete")
+    assert (p3["downloaded"], p3["failed"]) == (1, 1)
+
+
+async def test_cancelled_media_phase_skips_finalize_with_a_breadcrumb(tmp_path):
+    m = _deferring_manager()
+    m.process_media_queue = AsyncMock(side_effect=asyncio.CancelledError())
+    with capture_logs() as logs:
+        with pytest.raises(asyncio.CancelledError):
+            await _run_start_sync(
+                SyncService(),
+                tmp_path,
+                groups=[GROUP],
+                members=API_MEMBERS,
+                mock_manager=m,
+            )
+    m.finalize_deferred_media.assert_not_called()
+    (skip,) = _events(logs, "deferred_media_finalize_skipped")
+    assert (skip["items"], skip["reason"]) == (2, "cancelled")
+
+
+async def test_failing_finalize_never_fails_the_sync(tmp_path):
+    m = _deferring_manager()
+    m.process_media_queue = AsyncMock(return_value={})
+    m.finalize_deferred_media.side_effect = OSError("disk")
+    with capture_logs() as logs:
+        result = await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+    assert result is True
+    (warn,) = _events(logs, "deferred_media_finalize_failed")
+    assert warn["error_type"] == "OSError"
