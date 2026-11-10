@@ -815,8 +815,7 @@
       "chipNames": "她叫了你 {{count, number}} 次",
       "chipVoice": "语音 {{h}} 小时 {{m}} 分",
       "chipVoiceMinutes": "语音 {{m}} 分",
-      "chipVoiceHours": "语音 {{h}} 小时",
-      "tabDay24": "她的24小时"
+      "chipVoiceHours": "语音 {{h}} 小时"
     },
     "favorites": {
       "title": "收藏",
@@ -1063,6 +1062,29 @@
       "now": "现在 {{clock}}",
       "pastYear": "{{year}} 年的这个时刻，{{name}}说",
       "thisYear": "{{date}}的这个时刻，{{name}}说"
+    },
+    "thenNow": {
+      "toggle": "和今年并排",
+      "back": "回到原来的画面",
+      "modeDay": "那一天与今天",
+      "modeFirstWeek": "初见与现在",
+      "gap": "{{count}} 年",
+      "firstWeek": "最初的一周",
+      "latestWeek": "这一周",
+      "year": "{{year}} 年",
+      "rowPhoto": "照片",
+      "rowOhayo": "早安",
+      "rowVoice": "声音",
+      "none": "还没有可以并排的日子。"
+    },
+    "day24": {
+      "tab": "她的24小时",
+      "title": "{{name}}的一天",
+      "fromYears": "来自 {{count}} 个年份的消息",
+      "fromOneYear": "来自某一年的消息",
+      "reroll": "拼出另一天",
+      "thin": "再多收到一些消息，这里就会拼出她的一天。",
+      "year": "{{year}} 年"
     }
   },
   "recap": {

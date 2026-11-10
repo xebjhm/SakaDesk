@@ -832,8 +832,7 @@
       "chipNames_other": "Called your name {{count, number}} times",
       "chipVoice": "Voice {{h}} h {{m}} min",
       "chipVoiceMinutes": "Voice {{m}} min",
-      "chipVoiceHours": "Voice {{h}} h",
-      "tabDay24": "Her 24 hours"
+      "chipVoiceHours": "Voice {{h}} h"
     },
     "favorites": {
       "title": "Favorites",
@@ -1088,6 +1087,31 @@
       "now": "Now {{clock}}",
       "pastYear": "At this time in {{year}}, {{name}} wrote",
       "thisYear": "At this time on {{date}}, {{name}} wrote"
+    },
+    "thenNow": {
+      "toggle": "Set beside this year",
+      "back": "Back to the usual view",
+      "modeDay": "That day and today",
+      "modeFirstWeek": "First week and now",
+      "gap": "{{count}} year",
+      "gap_other": "{{count}} years",
+      "firstWeek": "The first week",
+      "latestWeek": "This week",
+      "year": "{{year}}",
+      "rowPhoto": "Photo",
+      "rowOhayo": "Good morning",
+      "rowVoice": "Voice",
+      "none": "Nothing to set side by side yet."
+    },
+    "day24": {
+      "tab": "Her 24 hours",
+      "title": "{{name}}'s day",
+      "fromYears": "From {{count}} year of messages",
+      "fromYears_other": "From {{count}} years of messages",
+      "fromOneYear": "From messages of one year",
+      "reroll": "Make another day",
+      "thin": "Once a few more messages arrive, a day will take shape here.",
+      "year": "{{year}}"
     }
   },
   "recap": {

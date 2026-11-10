@@ -51,4 +51,37 @@ describe('MemoryText', () => {
         render(<MemoryText text="%%%" nickname="$&$1" />);
         expect(screen.getByTestId('memory-text')).toHaveTextContent('$&$1');
     });
+
+    it('highlights a keyword with emoji and CJK around it, underlined like the nickname', () => {
+        render(<MemoryText text={'🎆花火🎆、今年も花火大会！'} highlight="花火" />);
+        const marks = screen.getAllByTestId('memory-text-highlight');
+        expect(marks).toHaveLength(2);
+        for (const m of marks) {
+            expect(m).toHaveTextContent('花火');
+            expect(m).toHaveClass('underline', 'decoration-accent', 'underline-offset-4');
+        }
+        expect(screen.getByTestId('memory-text')).toHaveTextContent('🎆花火🎆、今年も花火大会！');
+    });
+
+    it('never highlights the keyword inside the fan\'s nickname, and keeps the text runs whole', () => {
+        render(<MemoryText text={'%%%、花火きれい'} nickname="花火ちゃん" highlight="花火" />);
+        const p = screen.getByTestId('memory-text');
+        expect(screen.getAllByTestId('memory-text-highlight')).toHaveLength(1);
+        expect(p).toHaveTextContent('花火ちゃん、花火きれい');
+        // The nickname and the text up to the keyword are one text node.
+        expect(p.firstChild?.textContent).toBe('花火ちゃん、');
+    });
+
+    it('marks the keyword with the mark tone and passes the voice attribute', () => {
+        render(<MemoryText text="花火の夜" highlight="花火" highlightTone="mark" data-voice="quote" />);
+        const m = screen.getByTestId('memory-text-highlight');
+        expect(m.tagName).toBe('MARK');
+        expect(m).toHaveClass('bg-mark-exact');
+        expect(screen.getByTestId('memory-text')).toHaveAttribute('data-voice', 'quote');
+    });
+
+    it('highlights nothing for a blank or absent keyword', () => {
+        render(<MemoryText text="花火の夜" highlight="" />);
+        expect(screen.queryByTestId('memory-text-highlight')).toBeNull();
+    });
 });

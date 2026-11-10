@@ -13,11 +13,11 @@ vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
     return {
         ...real, fetchMemoirMembers: vi.fn(), fetchMemoirHeader: vi.fn(), fetchMemoirCards: vi.fn(), fetchDay: vi.fn(),
-        fetchNameMoments: vi.fn(), fetchTimelineMonths: vi.fn(), fetchTimelineMonth: vi.fn(),
+        fetchNameMoments: vi.fn(), fetchTimelineMonths: vi.fn(), fetchTimelineMonth: vi.fn(), fetchDay24: vi.fn(),
     };
 });
 import {
-    fetchDay, fetchMemoirCards, fetchMemoirHeader, fetchMemoirMembers, fetchNameMoments, fetchTimelineMonth, fetchTimelineMonths,
+    fetchDay, fetchDay24, fetchMemoirCards, fetchMemoirHeader, fetchMemoirMembers, fetchNameMoments, fetchTimelineMonth, fetchTimelineMonths,
 } from '../api';
 import { MEMBER_PATH, memoryMessage } from '../__fixtures__/memories';
 import { dayPayload } from '../day/__fixtures__';
@@ -45,6 +45,7 @@ beforeEach(() => {
     vi.mocked(fetchNameMoments).mockReset().mockResolvedValue({
         years: [2024], items: [{ message: memoryMessage(), sentence: '%%%、おはよう🌸' }],
     });
+    vi.mocked(fetchDay24).mockReset().mockResolvedValue({ slots: [] });
     vi.mocked(fetchTimelineMonths).mockReset().mockResolvedValue({ months: [{ month: '2024-09', count: 3 }] });
     vi.mocked(fetchTimelineMonth).mockReset().mockResolvedValue({
         month: '2024-09', count: 3, avatar_url: null, photos: [],
@@ -134,5 +135,20 @@ describe('MemoirPage', () => {
         expect(await screen.findByRole('slider', { name: '月をえらぶ' })).toBeInTheDocument();
         expect(await screen.findByRole('heading', { name: '2024年9月' })).toBeInTheDocument();
         await waitFor(() => expect(vi.mocked(fetchTimelineMonth).mock.calls[0]?.[2]).toBe('2024-09'));
+    });
+
+    it('the 彼女の24時間 chip routes to the day24 tab', async () => {
+        const { go } = renderPage({ page: 'memoir', memberPath: MEMBER_PATH });
+        await userEvent.click(await screen.findByRole('button', { name: '彼女の24時間' }));
+        expect(go).toHaveBeenCalledWith({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'day24' });
+    });
+
+    it('draws her 24 hours on the day24 tab with neither tab pill selected', async () => {
+        renderPage({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'day24' });
+        expect(await screen.findByText('もう少しメッセージが届いたら、ここに一日ができます。')).toBeInTheDocument();
+        expect(vi.mocked(fetchDay24).mock.calls[0]?.slice(0, 2)).toEqual(['hinatazaka46', MEMBER_PATH]);
+        expect(screen.getByRole('button', { name: '生写真帳' })).toHaveAttribute('aria-pressed', 'false');
+        expect(screen.getByRole('button', { name: 'タイムライン' })).toHaveAttribute('aria-pressed', 'false');
+        expect(vi.mocked(fetchMemoirCards)).not.toHaveBeenCalled();
     });
 });

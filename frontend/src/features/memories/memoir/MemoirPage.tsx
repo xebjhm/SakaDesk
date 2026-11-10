@@ -9,6 +9,7 @@ import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { BinderCard, MemoirMember } from '../types';
+import { Day24View } from '../day24/Day24View';
 import { Binder } from './Binder';
 import { CardDetail } from './CardDetail';
 import { MemoirHeader, MemoirHeaderPlaceholder } from './MemoirHeader';
@@ -65,10 +66,12 @@ const BinderPane: React.FC<{ service: string; memberPath: string; name: string }
  * The member memoir (spec 5). Left: every person, oshi first (`MemberPane`), each with her binder
  * progress and, for a graduated member, a small memorial marker in neutral ink. Without a
  * `memberPath` the first person is shown. Right: her header (`MemoirHeader`) over the 生写真帳 /
- * タイムライン / 彼女の24時間 tabs (`route.tab`, default the binder): the `Binder`, the `Timeline` with
- * its month rail, or her 24 hours (a placeholder until its task). The names chip routes to the `names` tab (`NameMoments`, neither pill selected),
- * whose back link returns to the binder. The binder and the names list scroll inside the pane;
- * the timeline keeps its rail fixed at the bottom and scrolls the month above it.
+ * タイムライン tabs (`route.tab`, default the binder): the `Binder` or the `Timeline` with its month
+ * rail. The names chip routes to the `names` tab (`NameMoments`) and the 「彼女の24時間」 chip to the
+ * `day24` tab (`Day24View`), neither pill selected on either; the names tab's back link returns to
+ * the binder. A person picked on the left keeps the timeline or day24 tab. The binder, the names
+ * list and her 24 hours scroll inside the pane; the timeline keeps its rail fixed at the bottom and
+ * scrolls the month above it.
  */
 export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) => {
     const { t } = useTranslation();
@@ -94,7 +97,7 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
 
     const pickMember = (key: string | null) => {
         if (!key || key === memberPath) return;
-        go({ page: 'memoir', memberPath: key, ...(tab === 'timeline' ? { tab } : {}) });
+        go({ page: 'memoir', memberPath: key, ...(tab === 'timeline' || tab === 'day24' ? { tab } : {}) });
     };
     const pickTab = (next: MemoirTab) => {
         if (next !== tab) go({ page: 'memoir', memberPath, tab: next });
@@ -109,14 +112,19 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
         pane = (
             <>
                 {header.status === 'ready' && header.data
-                    ? <MemoirHeader header={header.data} onNames={() => go({ page: 'memoir', memberPath, tab: 'names' })} />
+                    ? (
+                        <MemoirHeader
+                            header={header.data}
+                            onNames={() => go({ page: 'memoir', memberPath, tab: 'names' })}
+                            onDay24={() => go({ page: 'memoir', memberPath, tab: 'day24' })}
+                        />
+                    )
                     : header.status === 'error'
                         ? <LoadState status="error" onRetry={header.retry} />
                         : <MemoirHeaderPlaceholder />}
                 <div role="group" className="flex shrink-0 gap-2 px-4 pb-2">
                     <Pill selected={tab === 'binder'} onClick={() => pickTab('binder')}>{t('memories.memoir.tabBinder')}</Pill>
                     <Pill selected={tab === 'timeline'} onClick={() => pickTab('timeline')}>{t('memories.memoir.tabTimeline')}</Pill>
-                    <Pill selected={tab === 'day24'} onClick={() => pickTab('day24')}>{t('memories.memoir.tabDay24')}</Pill>
                 </div>
                 {tab === 'binder' && (
                     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -124,8 +132,7 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
                     </div>
                 )}
                 {tab === 'timeline' && <Timeline key={memberPath} service={service} memberPath={memberPath} name={name} />}
-                {/* 彼女の24時間: a placeholder until its task draws the day. */}
-                {tab === 'day24' && <div data-testid="memories-day24-placeholder" className="flex min-h-0 flex-1 flex-col" />}
+                {tab === 'day24' && <Day24View key={memberPath} service={service} memberPath={memberPath} name={name} go={go} />}
                 {tab === 'names' && (
                     <NameMoments
                         key={memberPath}

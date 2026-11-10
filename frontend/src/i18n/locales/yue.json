@@ -815,8 +815,7 @@
       "chipNames": "佢叫咗你 {{count, number}} 次",
       "chipVoice": "語音 {{h}} 個鐘 {{m}} 分",
       "chipVoiceMinutes": "語音 {{m}} 分",
-      "chipVoiceHours": "語音 {{h}} 個鐘",
-      "tabDay24": "佢嘅24小時"
+      "chipVoiceHours": "語音 {{h}} 個鐘"
     },
     "favorites": {
       "title": "收藏",
@@ -1063,6 +1062,29 @@
       "now": "而家 {{clock}}",
       "pastYear": "{{year}} 年嘅呢個時刻，{{name}}講",
       "thisYear": "{{date}}嘅呢個時刻，{{name}}講"
+    },
+    "thenNow": {
+      "toggle": "同今年並排",
+      "back": "返去原本嘅畫面",
+      "modeDay": "嗰一日同今日",
+      "modeFirstWeek": "初見同而家",
+      "gap": "{{count}} 年",
+      "firstWeek": "最初嗰個禮拜",
+      "latestWeek": "呢個禮拜",
+      "year": "{{year}} 年",
+      "rowPhoto": "相片",
+      "rowOhayo": "早晨",
+      "rowVoice": "聲",
+      "none": "仲未有可以並排嘅日子。"
+    },
+    "day24": {
+      "tab": "佢嘅24小時",
+      "title": "{{name}}嘅一日",
+      "fromYears": "嚟自 {{count}} 個年份嘅訊息",
+      "fromOneYear": "嚟自某一年嘅訊息",
+      "reroll": "砌過另一日",
+      "thin": "再多收到啲訊息，呢度就會砌出佢嘅一日。",
+      "year": "{{year}} 年"
     }
   },
   "recap": {

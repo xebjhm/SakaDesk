@@ -9,10 +9,9 @@ const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
 
 /** Every Memories fun-wave string (F7; every later fun task appends its keys). */
 export const MEMORIES_FUN_KEYS: string[] = [
-    // F7: the hub cards, the gacha card's spent line and the memoir's 24h tab
+    // F7: the hub cards and the gacha card's spent line (F13 replaced the memoir's 24h pill with a chip)
     'memories.home.radio', 'memories.home.gacha', 'memories.home.calendar',
     'memories.home.countVoices', 'memories.home.countGacha', 'memories.home.countDays', 'memories.home.gachaTomorrow',
-    'memories.memoir.tabDay24',
     // F9: the voice radio
     'memories.radio.title', 'memories.radio.all', 'memories.radio.station', 'memories.radio.stationAll',
     'memories.radio.onAir', 'memories.radio.offAir', 'memories.radio.programsLabel',
@@ -44,6 +43,12 @@ export const MEMORIES_FUN_KEYS: string[] = [
     'memories.capsule.yearsAgo', 'memories.capsule.limit', 'memories.capsule.full', 'memories.capsule.failed',
     'memories.capsule.deleteFailed', 'memories.capsule.local',
     'memories.sameTime.now', 'memories.sameTime.pastYear', 'memories.sameTime.thisYear',
+    // F13: あの日と今日 and 彼女の24時間
+    'memories.thenNow.toggle', 'memories.thenNow.back', 'memories.thenNow.modeDay', 'memories.thenNow.modeFirstWeek',
+    'memories.thenNow.gap', 'memories.thenNow.firstWeek', 'memories.thenNow.latestWeek', 'memories.thenNow.year',
+    'memories.thenNow.rowPhoto', 'memories.thenNow.rowOhayo', 'memories.thenNow.rowVoice', 'memories.thenNow.none',
+    'memories.day24.tab', 'memories.day24.title', 'memories.day24.fromYears', 'memories.day24.fromOneYear',
+    'memories.day24.reroll', 'memories.day24.thin', 'memories.day24.year',
 ];
 
 /** Fun keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
@@ -57,6 +62,8 @@ export const MEMORIES_FUN_EN_PLURALS: string[] = [
     'memories.calendar.members',
     // F12
     'memories.capsule.yearsAgo', 'memories.capsule.limit',
+    // F13
+    'memories.thenNow.gap', 'memories.day24.fromYears',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -85,6 +92,12 @@ describe('memories fun strings', () => {
         expect(String(lookup(data, 'memories.gacha.tomorrow'))).not.toMatch(/\d|\{\{/);
     });
 
+    it.each(Object.entries(locales))('%s never prints a number on a thin or one-year 24 hours, or without a pair', (_code, data) => {
+        for (const key of ['memories.day24.thin', 'memories.day24.fromOneYear', 'memories.thenNow.none']) {
+            expect(String(lookup(data, key)), key).not.toMatch(/\d|\{\{/);
+        }
+    });
+
     it.each(Object.entries(locales))('%s never prints a number when a capsule note is full', (_code, data) => {
         expect(String(lookup(data, 'memories.capsule.full'))).not.toMatch(/\d|\{\{/);
     });
@@ -98,7 +111,22 @@ describe('memories fun strings', () => {
             'memories.home.countGacha': '今日はあと {{count, number}} 回',
             'memories.home.countDays': '{{count, number}} 日分',
             'memories.home.gachaTomorrow': 'また明日',
-            'memories.memoir.tabDay24': '彼女の24時間',
+            'memories.thenNow.toggle': '今年とならべる',
+            'memories.thenNow.back': 'もとの表示へ',
+            'memories.thenNow.modeDay': 'あの日と今日',
+            'memories.thenNow.modeFirstWeek': '初見と今',
+            'memories.thenNow.gap': '{{count}}年',
+            'memories.thenNow.firstWeek': 'はじめの一週間',
+            'memories.thenNow.latestWeek': 'この一週間',
+            'memories.thenNow.rowPhoto': '写真',
+            'memories.thenNow.rowOhayo': 'おはよう',
+            'memories.thenNow.rowVoice': '声',
+            'memories.day24.tab': '彼女の24時間',
+            'memories.day24.title': '{{name}}の一日',
+            'memories.day24.fromYears': '{{count}}年分のメッセージから',
+            'memories.day24.fromOneYear': 'ある年のメッセージから',
+            'memories.day24.reroll': 'ほかの一日をつくる',
+            'memories.day24.thin': 'もう少しメッセージが届いたら、ここに一日ができます。',
             'memories.radio.title': 'ボイスラジオ',
             'memories.radio.all': '全員',
             'memories.radio.station': '{{name}}の深夜放送局',

@@ -15,15 +15,24 @@ interface MemoirHeaderProps {
     header: MemoirHeaderPayload;
     /** The names chip: opens the 被叫名字 tab (spec 5.2). */
     onNames: () => void;
+    /** The 彼女の24時間 chip: opens the `day24` tab (spec 14.1). Without it the chip is not drawn. */
+    onDay24?: () => void;
 }
+
+const CHIP_BUTTON = cn(
+    CHIP,
+    'transition-colors duration-fast ease-standard hover:text-primary',
+    'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+);
 
 /**
  * The memoir header (spec 5, 5.1): her current avatar, her serif name (`lang="ja"`) and up to
  * three chips, each its own small moment with one number: 「メンバーシップ N 日」, 「名前を呼んでくれた
  * N 回」 (a button to the names tab) and the voice time ({@link voiceChip}). A chip whose value is
- * null (0 or unknown) is not drawn.
+ * null (0 or unknown) is not drawn. After them, when the host routes to it, the 「彼女の24時間」 chip
+ * button (no number) opens her 24 hours.
  */
-export const MemoirHeader: React.FC<MemoirHeaderProps> = ({ header, onNames }) => {
+export const MemoirHeader: React.FC<MemoirHeaderProps> = ({ header, onNames, onDay24 }) => {
     const { t } = useTranslation();
     const width = useAvatarWidth(AVATAR_PX);
     const { subscription_days: days, nickname_count: names, voice_seconds: voice } = header.chips;
@@ -42,17 +51,18 @@ export const MemoirHeader: React.FC<MemoirHeaderProps> = ({ header, onNames }) =
                             type="button"
                             data-testid="memoir-chip"
                             onClick={onNames}
-                            className={cn(
-                                CHIP,
-                                'transition-colors duration-fast ease-standard hover:text-primary',
-                                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                            )}
+                            className={CHIP_BUTTON}
                         >
                             {t('memories.memoir.chipNames', { count: names })}
                         </button>
                     )}
                     {voiceCopy && (
                         <span data-testid="memoir-chip" className={CHIP}>{t(voiceCopy.key, voiceCopy.params)}</span>
+                    )}
+                    {onDay24 && (
+                        <button type="button" data-testid="memoir-chip-day24" onClick={onDay24} className={CHIP_BUTTON}>
+                            {t('memories.day24.tab')}
+                        </button>
                     )}
                 </div>
             </div>

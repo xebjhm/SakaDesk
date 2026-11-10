@@ -1,9 +1,11 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
 import { DayView } from '../day/DayView';
 import { sepiaClass } from '../shared/sepia';
 import { MemoryThumb } from '../shared/MemoryThumb';
+import { ThenNowPanel } from '../thenNow/ThenNowPanel';
+import { ThenNowToggle } from '../thenNow/ThenNowToggle';
 import type { OnThisDayPayload } from '../types';
 
 interface OnThisDayDetailProps {
@@ -21,11 +23,22 @@ const ROW = 'flex w-full items-center gap-3 rounded-md px-3 py-2 text-left';
 /**
  * On This Day A: the year list on the left (newest first; a year with messages shows its one
  * number and photo, a year without is dimmed with 「この日はメッセージがありません」 and cannot be
- * picked) and the 那一天 view of `YYYY-MM-DD` on the right.
+ * picked) and the 那一天 view of `YYYY-MM-DD` on the right. The day view's header carries the ⇆
+ * あの日と今日 toggle when a later year has messages on this month-day (so there is a pair to show;
+ * that needs at least two years with messages): toggled, the pane shows `ThenNowPanel` (day mode
+ * for the selected date) instead of the day view, with the toggle in its header to go back.
+ * Picking another year resets the toggle.
  */
 export const OnThisDayDetail: React.FC<OnThisDayDetailProps> = ({ service, monthDay, year, years, onSelectYear }) => {
     const { t } = useTranslation();
     const newestFirst = [...years].reverse();
+    // The year the comparison was opened on: another year reads as off (the toggle resets).
+    const [thenNowYear, setThenNowYear] = useState<number | null>(null);
+    const thenNow = thenNowYear === year;
+    const comparable = years.some((y) => y.has_messages && y.year > year);
+    const toggle = (
+        <ThenNowToggle on={thenNow} available={comparable} onChange={(on) => setThenNowYear(on ? year : null)} />
+    );
     const selectedRef = useRef<HTMLButtonElement>(null);
     // Entering from the strip unmounts the clicked column and drops focus to the body: put it on
     // the selected year so ← / → work at once (unless focus is already somewhere on purpose).
@@ -84,7 +97,9 @@ export const OnThisDayDetail: React.FC<OnThisDayDetailProps> = ({ service, month
                     );
                 })}
             </nav>
-            <DayView service={service} date={`${year}-${monthDay}`} />
+            {thenNow && comparable
+                ? <ThenNowPanel service={service} date={`${year}-${monthDay}`} headerSlot={toggle} />
+                : <DayView service={service} date={`${year}-${monthDay}`} headerSlot={toggle} />}
         </div>
     );
 };

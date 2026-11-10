@@ -7,7 +7,7 @@ import { cn } from '../../../utils/classnames';
 import { fetchTimelineMonth, fetchTimelineMonths } from '../api';
 import { albumViewerItems, formatMonth, viewerIndexOf } from '../album/albumViewer';
 import { logMemoriesSkip } from '../memoriesLog';
-import { formatJstDate } from '../shared/jst';
+import { formatJstDate, jstNow } from '../shared/jst';
 import { jumpToChat } from '../shared/jumpToChat';
 import { LazyVoice } from '../shared/LazyVoice';
 import { LoadState } from '../shared/LoadState';
@@ -15,6 +15,8 @@ import { memoryMediaSrc } from '../shared/mediaSrc';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
+import { ThenNowPanel } from '../thenNow/ThenNowPanel';
+import { ThenNowToggle } from '../thenNow/ThenNowToggle';
 import type { MemoryMessage, TimelineMilestone, TimelineMonthPayload } from '../types';
 import { formatCardDate, useCopy } from './binderModel';
 import { cardCopy } from './cardCopy';
@@ -104,6 +106,26 @@ interface MonthViewProps {
     month: string;
     /** The month to fetch (the selection once it has settled). */
     fetchMonth: string;
+    /** Header controls of the host (the ⇆ あの日と今日 toggle). */
+    headerSlot?: React.ReactNode;
+    /** Show あの日と今日 (`ThenNowPanel`) instead of the month's photos, words and milestones. */
+    thenNow?: boolean;
+}
+
+/** `YYYY-MM` of the current JST month. */
+function currentJstMonth(): string {
+    const { year, month } = jstNow();
+    return `${year}-${String(month).padStart(2, '0')}`;
+}
+
+/**
+ * The month's あの日と今日 anchor: the JST date of its top message, else of its first photo.
+ * None for the current month (its "now" is not a later year yet), so only 初見と今 can show.
+ */
+function anchorDate(view: TimelineMonthPayload): string | undefined {
+    if (view.month === currentJstMonth()) return undefined;
+    const source = view.messages.top ?? view.photos[0];
+    return source ? formatJstDate(source.ts) || undefined : undefined;
 }
 
 /**
@@ -111,9 +133,11 @@ interface MonthViewProps {
  * then up to twelve photos (the media viewer, jump logged as `timeline`), the labelled word slots
  * (empty ones left out) and the milestones. A month change aborts the fetch in flight; until the
  * new month arrives the last loaded one stays, dimmed and `aria-busy` (its number is not shown
- * under the new month's label).
+ * under the new month's label). The header holds the host's `headerSlot`; with `thenNow` the body
+ * is `ThenNowPanel` instead: the day mode for the month's anchor date ({@link anchorDate}) and
+ * 初見と今 for her.
  */
-const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month, fetchMonth }) => {
+const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month, fetchMonth, headerSlot, thenNow = false }) => {
     const { t, i18n } = useTranslation();
     const headerAvatar = useAvatarWidth(HEADER_AVATAR_PX);
     const query = useMemoriesQuery(
@@ -141,7 +165,11 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
     const viewerIndex = viewer?.month === month ? viewer.index : null;
 
     let body: React.ReactNode;
-    if (!view) {
+    if (thenNow) {
+        body = data
+            ? <ThenNowPanel key={data.month} service={service} date={anchorDate(data)} member={memberPath} />
+            : <LoadState status={failed ? 'error' : 'loading'} onRetry={query.retry} />;
+    } else if (!view) {
         body = <LoadState status={failed ? 'error' : 'loading'} onRetry={query.retry} />;
     } else {
         const slots = SLOTS.flatMap(({ slot, label }) => {
@@ -186,13 +214,13 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
 
     return (
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
-            {/* Wave 4 (spec 14.2) adds the あの日と今日 toggle to this header. */}
             <header className="flex items-center gap-3">
                 <Avatar src={resizedAvatarUrl(view?.avatar_url, headerAvatar)} name={name} size="md" />
                 <h3 className="font-display text-heading text-primary">{formatMonth(t, 'memories.album.monthLabel', month, i18n.language)}</h3>
                 {data && data.count > 0 && (
                     <span className="text-small tabular-nums text-secondary">{t('memories.timeline.count', { count: data.count })}</span>
                 )}
+                {headerSlot && <div className="ml-auto flex items-center gap-2">{headerSlot}</div>}
             </header>
             {body}
             {data && viewerIndex !== null && viewerItems.items[viewerIndex] && (
@@ -219,7 +247,8 @@ interface TimelineProps {
  * The 時光軸 tab (spec 5.4): the selected month above, the `MonthRail` at the bottom. It starts
  * at her newest month. The rail answers at once; the month is fetched once the selection holds
  * for {@link FETCH_DELAY_MS} (the first one at once), and a newer selection aborts the old fetch.
- * Without any month a gentle `EmptyState` (no number) replaces the tab.
+ * Without any month a gentle `EmptyState` (no number) replaces the tab. The month header carries
+ * the ⇆ あの日と今日 toggle (`ThenNowToggle`); it resets when another month is picked.
  */
 export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name }) => {
     const { t, i18n } = useTranslation();
@@ -233,6 +262,8 @@ export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name })
     const month = list && index >= 0 ? list[index].month : undefined;
 
     const [fetchMonth, setFetchMonth] = useState<string | undefined>(undefined);
+    // The month the comparison was opened on: another month reads as off.
+    const [thenNowMonth, setThenNowMonth] = useState<string | null>(null);
     useEffect(() => {
         if (month === fetchMonth) return undefined;
         if (month === undefined || fetchMonth === undefined) {
@@ -257,7 +288,23 @@ export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name })
     return (
         <div className="flex min-h-0 flex-1 flex-col">
             {fetchMonth
-                ? <MonthView service={service} memberPath={memberPath} name={name} month={month} fetchMonth={fetchMonth} />
+                ? (
+                    <MonthView
+                        service={service}
+                        memberPath={memberPath}
+                        name={name}
+                        month={month}
+                        fetchMonth={fetchMonth}
+                        thenNow={thenNowMonth === month}
+                        headerSlot={(
+                            <ThenNowToggle
+                                on={thenNowMonth === month}
+                                available
+                                onChange={(on) => setThenNowMonth(on ? month : null)}
+                            />
+                        )}
+                    />
+                )
                 : <LoadState status="loading" onRetry={months.retry} />}
             <MonthRail
                 months={list}

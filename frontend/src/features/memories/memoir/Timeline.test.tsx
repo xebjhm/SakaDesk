@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -9,11 +9,12 @@ vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
-    return { ...real, fetchTimelineMonths: vi.fn(), fetchTimelineMonth: vi.fn() };
+    return { ...real, fetchTimelineMonths: vi.fn(), fetchTimelineMonth: vi.fn(), fetchThenNowDay: vi.fn(), fetchThenNowFirstWeek: vi.fn() };
 });
 import { clientLog } from '../../../utils/clientLog';
 import { openChat } from '../../../shell/openChat';
-import { fetchTimelineMonth, fetchTimelineMonths } from '../api';
+import { fetchThenNowDay, fetchThenNowFirstWeek, fetchTimelineMonth, fetchTimelineMonths } from '../api';
+import { thenNowDay, thenNowFirstWeek } from '../thenNow/__fixtures__';
 import { MEMBER_PATH, memoryMessage } from '../__fixtures__/memories';
 import { NicknameProvider } from '../shared/useNickname';
 import type { TimelineMonthPayload, TimelineMonthsPayload } from '../types';
@@ -57,6 +58,8 @@ beforeEach(() => {
     vi.mocked(openChat).mockClear();
     vi.mocked(fetchTimelineMonths).mockReset().mockResolvedValue(MONTHS);
     vi.mocked(fetchTimelineMonth).mockReset().mockImplementation(async (_s, _m, month) => monthPayload(month));
+    vi.mocked(fetchThenNowDay).mockReset().mockResolvedValue(thenNowDay());
+    vi.mocked(fetchThenNowFirstWeek).mockReset().mockResolvedValue(thenNowFirstWeek());
 });
 
 function renderTimeline() {
@@ -157,5 +160,50 @@ describe('Timeline', () => {
         expect(await screen.findByText('ここには、月ごとの思い出が並びます')).toBeInTheDocument();
         expect(screen.queryByRole('slider')).not.toBeInTheDocument();
         expect(vi.mocked(fetchTimelineMonth)).not.toHaveBeenCalled();
+    });
+});
+
+describe('Timeline あの日と今日', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('puts the ⇆ toggle in the month header and swaps the month for the panel', async () => {
+        vi.mocked(fetchTimelineMonth).mockImplementation(async (_s, _m, month) => monthPayload(month, {
+            messages: { top: memoryMessage({ id: 7, ts: '2024-12-08T16:00:00Z', text: 'ずっと' }), late: null, nickname: null },
+        }));
+        renderTimeline();
+        const header = (await screen.findByRole('heading', { name: '2024年12月' })).closest('header') as HTMLElement;
+        await screen.findByText('37 件');
+        await userEvent.click(within(header).getByRole('button', { name: '今年とならべる' }));
+        expect(await screen.findAllByTestId('then-now-side')).toHaveLength(2);
+        expect(screen.queryByTestId('timeline-month-body')).toBeNull();
+        // the top message's JST date (16:00Z on 12-08 is 01:00 JST on 12-09)
+        expect(vi.mocked(fetchThenNowDay).mock.calls[0]?.[1]).toEqual({ date: '2024-12-09', member: MEMBER_PATH });
+        expect(vi.mocked(fetchThenNowFirstWeek).mock.calls[0]?.[1]).toBe(MEMBER_PATH);
+        expect(screen.getByRole('button', { name: 'あの日と今日' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '初見と今' })).toBeInTheDocument();
+        await userEvent.click(within(header).getByRole('button', { name: 'もとの表示へ' }));
+        expect(await screen.findByTestId('timeline-month-body')).toBeInTheDocument();
+    });
+
+    it('anchors on the first photo when the month has no top message', async () => {
+        vi.mocked(fetchTimelineMonth).mockImplementation(async (_s, _m, month) => monthPayload(month, {
+            messages: { top: null, late: null, nickname: null },
+        }));
+        renderTimeline();
+        await screen.findByText('37 件');
+        await userEvent.click(screen.getByRole('button', { name: '今年とならべる' }));
+        await screen.findAllByTestId('then-now-side');
+        expect(vi.mocked(fetchThenNowDay).mock.calls[0]?.[1]).toEqual({ date: '2024-12-01', member: MEMBER_PATH });
+    });
+
+    it('the current month offers only 初見と今', async () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2024-12-20T03:00:00Z'));
+        renderTimeline();
+        await screen.findByText('37 件');
+        await userEvent.click(screen.getByRole('button', { name: '今年とならべる' }));
+        expect(await screen.findByRole('button', { name: '初見と今' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('button', { name: 'あの日と今日' })).toBeNull();
+        expect(vi.mocked(fetchThenNowDay)).not.toHaveBeenCalled();
     });
 });

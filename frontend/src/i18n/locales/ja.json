@@ -815,8 +815,7 @@
       "chipNames": "名前を呼んでくれた {{count, number}} 回",
       "chipVoice": "声 {{h}}時間{{m}}分",
       "chipVoiceMinutes": "声 {{m}}分",
-      "chipVoiceHours": "声 {{h}}時間",
-      "tabDay24": "彼女の24時間"
+      "chipVoiceHours": "声 {{h}}時間"
     },
     "favorites": {
       "title": "お気に入り",
@@ -1063,6 +1062,29 @@
       "now": "いま {{clock}}",
       "pastYear": "{{year}}年のこの時刻、{{name}}は",
       "thisYear": "{{date}}のこの時刻、{{name}}は"
+    },
+    "thenNow": {
+      "toggle": "今年とならべる",
+      "back": "もとの表示へ",
+      "modeDay": "あの日と今日",
+      "modeFirstWeek": "初見と今",
+      "gap": "{{count}}年",
+      "firstWeek": "はじめの一週間",
+      "latestWeek": "この一週間",
+      "year": "{{year}}年",
+      "rowPhoto": "写真",
+      "rowOhayo": "おはよう",
+      "rowVoice": "声",
+      "none": "ならべられる日は、まだありません。"
+    },
+    "day24": {
+      "tab": "彼女の24時間",
+      "title": "{{name}}の一日",
+      "fromYears": "{{count}}年分のメッセージから",
+      "fromOneYear": "ある年のメッセージから",
+      "reroll": "ほかの一日をつくる",
+      "thin": "もう少しメッセージが届いたら、ここに一日ができます。",
+      "year": "{{year}}年"
     }
   },
   "recap": {

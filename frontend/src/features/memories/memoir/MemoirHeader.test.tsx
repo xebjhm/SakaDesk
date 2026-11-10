@@ -45,4 +45,13 @@ describe('MemoirHeader', () => {
         expect(voiceChip(42)).toBeNull();
         expect(voiceChip(null)).toBeNull();
     });
+
+    it('offers 彼女の24時間 as a chip button when the host routes to it', async () => {
+        const onDay24 = vi.fn();
+        render(<MemoirHeader header={headerPayload()} onNames={vi.fn()} onDay24={onDay24} />);
+        await userEvent.click(screen.getByRole('button', { name: '彼女の24時間' }));
+        expect(onDay24).toHaveBeenCalled();
+        // not one of the counted moments
+        expect(screen.getAllByTestId('memoir-chip')).toHaveLength(3);
+    });
 });

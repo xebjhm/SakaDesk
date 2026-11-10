@@ -236,14 +236,17 @@ describe('Memories feature', () => {
             expect(screen.getByTestId('day-view')).toBeInTheDocument();
         });
 
-        it('the memoir accepts the day24 tab and draws its placeholder', async () => {
-            server.use(http.get('/api/memories/:service/memoir', () => HttpResponse.json({
-                member_path: 'x', name: '金村 美玖', avatar_url: null, graduated: false,
-                chips: { subscription_days: null, nickname_count: null, voice_seconds: null },
-            })));
+        it('the memoir accepts the day24 tab and draws her day', async () => {
+            server.use(
+                http.get('/api/memories/:service/memoir', () => HttpResponse.json({
+                    member_path: 'x', name: '金村 美玖', avatar_url: null, graduated: false,
+                    chips: { subscription_days: null, nickname_count: null, voice_seconds: null },
+                })),
+                http.get('/api/memories/:service/memoir/day24', () => HttpResponse.json({ slots: [] })),
+            );
             render(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'memoir', memberPath: 'x', tab: 'day24' }} />);
-            expect(await screen.findByTestId('memories-day24-placeholder')).toBeInTheDocument();
-            expect(screen.getByRole('button', { name: 'Her 24 hours' })).toBeInTheDocument();
+            expect(await screen.findByTestId('memories-day24')).toBeInTheDocument();
+            expect(await screen.findByRole('button', { name: 'Her 24 hours' })).toBeInTheDocument();
         });
     });
 
