@@ -7,6 +7,7 @@ import { Card } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { formatBlogDate } from '../../../utils/dateFormatters';
 import { useTranslation } from '../../../i18n';
+import { fisheyeIndex, fisheyePosition, ZOOM_CONFIG } from './fisheye';
 
 interface TimelineRailProps {
     blogs: BlogMeta[];
@@ -20,14 +21,6 @@ interface YearGroup {
     startIndex: number;
     count: number;
 }
-
-// Fisheye zoom configuration
-const ZOOM_CONFIG = {
-    dwellTime: 800,
-    dwellTolerance: 10,
-    magnifiedWindow: 50,
-    magnification: 5,
-};
 
 /** Space above the newest and below the oldest post, in px. */
 const RAIL_PADDING = 30;
@@ -77,86 +70,16 @@ export const TimelineRail: React.FC<TimelineRailProps> = ({
         return groups;
     }, [blogs]);
 
-    // Fisheye mapping: index → normalized position (0-1)
-    const indexToNormalizedPosition = useCallback((index: number): number => {
-        if (blogs.length <= 1) return 0;
-        const normalizedIndex = index / (blogs.length - 1);
-
-        if (!isZoomed || zoomCenter === null) {
-            return normalizedIndex;
-        }
-
-        const center = zoomCenter / (blogs.length - 1);
-        // Clamp windowSize so magnified region doesn't exceed available space
-        const rawWindowSize = ZOOM_CONFIG.magnifiedWindow / (blogs.length - 1);
-        const mag = ZOOM_CONFIG.magnification;
-        const windowSize = Math.min(rawWindowSize, 0.45 / mag);
-
-        const dist = normalizedIndex - center;
-        const absDist = Math.abs(dist);
-
-        if (absDist <= windowSize) {
-            const t = absDist / windowSize;
-            const eased = t * t * (3 - 2 * t);
-            const expandedDist = dist * (1 + (mag - 1) * (1 - eased));
-            return Math.max(0, Math.min(1, center + expandedDist));
-        } else {
-            const magnifiedSpace = windowSize * mag;
-            const remainingSpace = Math.max((1 - magnifiedSpace * 2) / 2, 0.01);
-            const normalRemaining = Math.max(0.5 - windowSize, 0.001);
-
-            if (dist > 0) {
-                const outsideDist = absDist - windowSize;
-                const compressedDist = outsideDist * (remainingSpace / normalRemaining);
-                return Math.max(0, Math.min(1, center + magnifiedSpace + compressedDist));
-            } else {
-                const outsideDist = absDist - windowSize;
-                const compressedDist = outsideDist * (remainingSpace / normalRemaining);
-                return Math.max(0, Math.min(1, center - magnifiedSpace - compressedDist));
-            }
-        }
-    }, [blogs.length, isZoomed, zoomCenter]);
-
-    // Inverse fisheye mapping: normalized position (0-1) → index
-    const normalizedPositionToIndex = useCallback((pos: number): number => {
-        if (blogs.length <= 1) return 0;
-
-        if (!isZoomed || zoomCenter === null) {
-            return Math.round(pos * (blogs.length - 1));
-        }
-
-        const center = zoomCenter / (blogs.length - 1);
-        const rawWindowSize = ZOOM_CONFIG.magnifiedWindow / (blogs.length - 1);
-        const mag = ZOOM_CONFIG.magnification;
-        const windowSize = Math.min(rawWindowSize, 0.45 / mag);
-        const magnifiedSpace = windowSize * mag;
-
-        const dist = pos - center;
-        const absDist = Math.abs(dist);
-
-        let normalizedIndex: number;
-
-        if (absDist <= magnifiedSpace) {
-            const sign = dist >= 0 ? 1 : -1;
-            const originalDist = (absDist / mag);
-            normalizedIndex = center + sign * originalDist;
-        } else {
-            const remainingSpace = Math.max((1 - magnifiedSpace * 2) / 2, 0.01);
-            const normalRemaining = Math.max(0.5 - windowSize, 0.001);
-
-            if (dist > 0) {
-                const compressedDist = absDist - magnifiedSpace;
-                const originalDist = compressedDist * (normalRemaining / remainingSpace);
-                normalizedIndex = center + windowSize + originalDist;
-            } else {
-                const compressedDist = absDist - magnifiedSpace;
-                const originalDist = compressedDist * (normalRemaining / remainingSpace);
-                normalizedIndex = center - windowSize - originalDist;
-            }
-        }
-
-        return Math.round(Math.max(0, Math.min(1, normalizedIndex)) * (blogs.length - 1));
-    }, [blogs.length, isZoomed, zoomCenter]);
+    // Fisheye mapping (fisheye.ts): index ↔ normalized position (0-1), magnified around the zoom centre.
+    const center = isZoomed ? zoomCenter : null;
+    const indexToNormalizedPosition = useCallback(
+        (index: number): number => fisheyePosition(index, blogs.length, center),
+        [blogs.length, center],
+    );
+    const normalizedPositionToIndex = useCallback(
+        (pos: number): number => fisheyeIndex(pos, blogs.length, center),
+        [blogs.length, center],
+    );
 
     // Clear dwell timer on cleanup
     useEffect(() => {
