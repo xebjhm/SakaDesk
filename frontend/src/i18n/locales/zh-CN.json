@@ -204,7 +204,10 @@
     "loginAnyway": "仍要登录",
     "connectPromptTitle": "连接您的账户？",
     "connectPromptDesc": "登录以同步您的 {{service}} 消息。您也可以不登录直接浏览 Blog。",
-    "maybeLater": "以后再说"
+    "maybeLater": "以后再说",
+    "waitingSlow": "正在打开登录窗口…",
+    "waitingVerySlow": "请在打开的浏览器窗口中完成登录。你可以随时取消。",
+    "finishing": "即将完成…"
   },
   "tos": {
     "title": "服务条款",

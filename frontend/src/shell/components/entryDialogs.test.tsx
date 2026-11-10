@@ -177,26 +177,32 @@ describe('login in flight and breadcrumbs (D2d)', () => {
         return settle;
     }
 
-    it('disables the close paths while a login is in flight', async () => {
-        const settle = pendingLogin(500);
+    // L6 (F17): the close paths stay usable while connecting; they cancel the login, then close.
+    it('keeps the close paths usable while a login is in flight: Escape cancels and closes', async () => {
+        pendingLogin(500);
+        const cancels: string[] = [];
+        server.use(http.post('/api/auth/login/cancel', ({ request }) => {
+            cancels.push(new URL(request.url).searchParams.get('service') ?? '');
+            return HttpResponse.json({ cancelled: true });
+        }));
         const onClose = vi.fn();
         render(<LoginModal serviceId="hinatazaka46" {...props} onClose={onClose} />);
         await userEvent.click(screen.getByRole('button', { name: 'Connect Account' }));
-        expect(await screen.findByRole('button', { name: 'Connecting...' })).toBeDisabled();
-        expect(within(screen.getByTestId('login-banner')).getByRole('button', { name: 'Close' })).toBeDisabled();
+        expect(await screen.findByRole('button', { name: 'Connecting...' })).toHaveAttribute('aria-busy', 'true');
+        expect(within(screen.getByTestId('login-banner')).getByRole('button', { name: 'Close' })).toBeEnabled();
         await userEvent.keyboard('{Escape}');
-        expect(onClose).not.toHaveBeenCalled();
-        settle();
-        await screen.findByRole('alert');
+        expect(onClose).toHaveBeenCalledOnce();
+        await waitFor(() => expect(cancels).toEqual(['hinatazaka46']));
+        expect(screen.queryByRole('alert')).toBeNull();
     });
 
-    it('keeps Connect disabled on the next service until the first login settles, with no stale error', async () => {
+    it('keeps Connect busy on the next service until the first login settles, with no stale error', async () => {
         const settle = pendingLogin(500);
         const { rerender } = render(<LoginModal serviceId="hinatazaka46" {...props} />);
         await userEvent.click(screen.getByRole('button', { name: 'Connect Account' }));
         await screen.findByRole('button', { name: 'Connecting...' });
         rerender(<LoginModal serviceId="sakurazaka46" {...props} />);
-        expect(screen.getByRole('button', { name: 'Connecting...' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Connecting...' })).toHaveAttribute('aria-busy', 'true');
         expect(screen.queryByRole('alert')).toBeNull();
         settle();
         await waitFor(() => expect(screen.getByRole('button', { name: 'Connect Account' })).toBeEnabled());
@@ -292,7 +298,7 @@ describe('login lock across the Yodel geo check (D2d)', () => {
             fireEvent.click(connect);
             fireEvent.click(connect);
         });
-        expect(screen.getByRole('button', { name: 'Connecting...' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Connecting...' })).toHaveAttribute('aria-busy', 'true');
         settle();
         await screen.findByRole('alert');
         expect(calls.geo).toBe(1);
@@ -335,7 +341,7 @@ describe('login holds its lock until onSuccess settles (D2d)', () => {
         await screen.findByRole('button', { name: 'Connecting...' });
         await vi.advanceTimersByTimeAsync(1500);
         await waitFor(() => expect(onSuccess).toHaveBeenCalledOnce());
-        expect(screen.getByRole('button', { name: 'Connecting...' })).toBeDisabled();
+        expect(screen.getByRole('button', { name: 'Connecting...' })).toHaveAttribute('aria-busy', 'true');
         finish();
         await waitFor(() => expect(screen.getByRole('button', { name: 'Connect Account' })).toBeEnabled());
     });
@@ -379,7 +385,7 @@ describe('one login per app (D2d review)', () => {
         first.unmount();
 
         render(<LoginModal serviceId="sakurazaka46" {...props} isFreshPrompt={false} isDisconnected />);
-        expect(primary()).toBeDisabled();
+        expect(primary()).toHaveAttribute('aria-busy', 'true');
         act(() => { fireEvent.click(primary()); });
         expect(logins).toEqual(['hinatazaka46']);
 

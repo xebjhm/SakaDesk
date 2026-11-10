@@ -204,7 +204,10 @@
     "loginAnyway": "仍要登入",
     "connectPromptTitle": "連接您的帳戶？",
     "connectPromptDesc": "登入以同步您的 {{service}} 訊息。您也可以不登入直接瀏覽 Blog。",
-    "maybeLater": "以後再說"
+    "maybeLater": "以後再說",
+    "waitingSlow": "正在開啟登入視窗…",
+    "waitingVerySlow": "請在開啟的瀏覽器視窗中完成登入。你可以隨時取消。",
+    "finishing": "即將完成…"
   },
   "tos": {
     "title": "服務條款",

@@ -13,6 +13,8 @@ export const LOADING_UX_KEYS: string[] = [
     'loading.label', 'loading.slow', 'loading.verySlow', 'loading.timeout', 'loading.timeoutHint',
     'loading.error', 'loading.retry', 'loading.cancel',
     'designPage.loading', 'designPage.playWait',
+    // L6: login stays cancellable while connecting
+    'login.waitingSlow', 'login.waitingVerySlow', 'login.finishing',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -49,6 +51,9 @@ describe('loading UX strings', () => {
             'loading.cancel': 'キャンセル',
             'designPage.loading': '読み込み表示',
             'designPage.playWait': '待ち時間を再生',
+            'login.waitingSlow': 'ログイン画面を開いています…',
+            'login.waitingVerySlow': '開いたブラウザのウィンドウでログインを完了してください。いつでもキャンセルできます。',
+            'login.finishing': 'まもなく完了します…',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, key), key).toBe(text);
     });

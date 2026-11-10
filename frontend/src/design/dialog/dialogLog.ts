@@ -17,7 +17,7 @@ export type DialogLoadSurface =
     | 'report_issue'
     | 'search_status' | 'search_backup_status' | 'search_more' | 'search_members'
     | 'background_upload'
-    | 'login' | 'login_geo';
+    | 'login' | 'login_geo' | 'login_cancel';
 
 /** `skipped`: nothing to do (no images, a rejected file); `cancelled`: aborted or superseded. */
 export type DialogLoadOutcome = 'ok' | 'error' | 'partial' | 'cancelled' | 'skipped';

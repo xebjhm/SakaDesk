@@ -204,7 +204,10 @@
     "loginAnyway": "Log in anyway",
     "connectPromptTitle": "Connect Your Account?",
     "connectPromptDesc": "Log in to sync your {{service}} messages. You can also browse blogs without logging in.",
-    "maybeLater": "Maybe Later"
+    "maybeLater": "Maybe Later",
+    "waitingSlow": "Opening the sign-in window…",
+    "waitingVerySlow": "Finish signing in in the browser window that opened. You can cancel at any time.",
+    "finishing": "Almost done…"
   },
   "tos": {
     "title": "Terms of Service",

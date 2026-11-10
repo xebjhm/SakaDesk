@@ -204,7 +204,10 @@
     "loginAnyway": "このままログイン",
     "connectPromptTitle": "アカウントを連携しますか？",
     "connectPromptDesc": "ログインすると{{service}}のメッセージを同期できます。ログインせずにブログを閲覧することも可能です。",
-    "maybeLater": "あとで"
+    "maybeLater": "あとで",
+    "waitingSlow": "ログイン画面を開いています…",
+    "waitingVerySlow": "開いたブラウザのウィンドウでログインを完了してください。いつでもキャンセルできます。",
+    "finishing": "まもなく完了します…"
   },
   "tos": {
     "title": "利用規約",
