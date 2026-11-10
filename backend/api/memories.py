@@ -1,7 +1,8 @@
-"""Memories API: year-recap payloads for the active service, and the export handoff."""
+"""Memories API: year-recap payloads for the active service, the export handoff and the share GIF."""
 
 from __future__ import annotations
 
+import asyncio
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -11,7 +12,7 @@ from fastapi.responses import Response
 
 from backend.api.content import get_output_dir
 from backend.services.archive_urls import ArchiveReadError, resolve_within
-from backend.services.memories import exports, index
+from backend.services.memories import exports, index, share_gif
 from backend.services.memories.recap import (
     build_member_recap,
     build_members_overview,
@@ -113,6 +114,54 @@ async def export_store(
         "memories.export.stored",
         kind=kind,
         size_kb=total // 1024,
+        evicted=evicted,
+        outcome="stored",
+    )
+    return {"token": token}
+
+
+@router.post("/share/gif")
+async def share_gif_store(request: Request) -> dict[str, str]:
+    """Assemble the recap's share GIF from PNG frames and hold it for a download.
+
+    The body is ``{"frames": [b64 png, ...], "fps", "width", "height",
+    "durations_ms"?}`` (see ``share_gif``). It may be at most
+    ``share_gif.MAX_BODY_BYTES`` (else 413, checked while streaming); invalid input
+    is 400 with a reason code as the detail. The GIF goes straight into the export
+    store, so the response is ``{"token": ...}`` exactly like ``POST /export`` and
+    the frontend opens ``GET /export/{token}``. A GIF over ``exports.MAX_BYTES`` is
+    413. Nothing is written to disk.
+    """
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > share_gif.MAX_BODY_BYTES:
+        logger.warning("memories.share.reject", reason="too_large")
+        raise HTTPException(status_code=413, detail="too_large")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > share_gif.MAX_BODY_BYTES:
+            logger.warning("memories.share.reject", reason="too_large")
+            raise HTTPException(status_code=413, detail="too_large")
+        chunks.append(chunk)
+    try:
+        data, frames = await asyncio.to_thread(share_gif.assemble_gif, b"".join(chunks))
+    except share_gif.ShareGifError as e:
+        logger.warning("memories.share.reject", reason=e.code)
+        raise HTTPException(status_code=e.status, detail=e.code) from None
+    if len(data) > exports.MAX_BYTES:
+        logger.warning(
+            "memories.share.reject",
+            reason="gif_too_large",
+            frames=frames,
+            size_kb=len(data) // 1024,
+        )
+        raise HTTPException(status_code=413, detail="gif_too_large")
+    token, evicted = exports.store.put("gif", data)
+    logger.info(
+        "memories.share.gif",
+        frames=frames,
+        size_kb=len(data) // 1024,
         evicted=evicted,
         outcome="stored",
     )
