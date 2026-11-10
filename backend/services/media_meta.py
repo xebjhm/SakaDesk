@@ -20,7 +20,9 @@ path from :func:`photo_thumb.archive_rel` (never logged).
   then kept in memory.
 - **Freshness.** A row stores the ``stat_key`` (``"size:mtime_ns"``) of the
   source it was computed from (the video, for a video). A row whose key no
-  longer matches the file is stale and reported as unprocessed.
+  longer matches the file is stale and reported as unprocessed, and so is a
+  ``failed`` row whose ``reason`` is in :data:`PLACEHOLDER_PENDING_REASONS`
+  (a poster recorded before the placeholder was computed).
 - **Video posters.** ``poster`` is ``ready|failed|pending|none``.
   :func:`mark_poster_pending` commits *before* the Windows Shell call, so a
   crash inside Shell leaves a ``pending`` row that :func:`recover_pending`
@@ -33,7 +35,8 @@ path from :func:`photo_thumb.archive_rel` (never logged).
   so it processes them first.
 
 Logs carry counts and codes only: ``media_meta`` (``requested``, ``ready``,
-``stale``, ``missing``, ``invalid``, ``hinted``), ``media_meta_reset``
+``stale``, ``missing``, ``invalid``, ``hinted``), ``path_traversal_blocked``
+(``view=media_meta``, ``count``; at most one per request), ``media_meta_reset``
 (``reason``) and ``media_meta_failed`` (``op``, ``error_type``).
 """
 
@@ -43,6 +46,7 @@ import asyncio
 import base64
 import os
 import sqlite3
+import stat
 import threading
 import time
 from collections.abc import Callable, Sequence
@@ -75,9 +79,15 @@ _BLUR_URI_PREFIX = "data:image/webp;base64,"
 NO_PLACEHOLDER = "no_placeholder"
 """``reason`` of a row created by a poster update before any placeholder existed."""
 SHELL_CRASH_SUSPECT = "shell_crash_suspect"
+"""``reason`` set by :func:`recover_pending`: the process died inside a Shell poster call."""
+PLACEHOLDER_PENDING_REASONS: frozenset[str] = frozenset(
+    {NO_PLACEHOLDER, SHELL_CRASH_SUSPECT}
+)
+"""On a ``status='failed'`` row these codes mean "no placeholder computed yet", not
+a terminal failure: such a row is hinted and not counted as failed."""
 
-_SCHEMA = """
-CREATE TABLE IF NOT EXISTS media_meta (
+_DDL: tuple[str, ...] = (
+    """CREATE TABLE IF NOT EXISTS media_meta (
   rel_path TEXT PRIMARY KEY,
   stat_key TEXT NOT NULL,
   kind TEXT NOT NULL CHECK (kind IN ('picture','video')),
@@ -89,9 +99,9 @@ CREATE TABLE IF NOT EXISTS media_meta (
   poster TEXT CHECK (poster IN ('ready','failed','pending','none')),
   poster_source TEXT CHECK (poster_source IN ('shell','client')),
   updated_at INTEGER NOT NULL
-) WITHOUT ROWID;
-CREATE INDEX IF NOT EXISTS media_meta_by_updated ON media_meta(updated_at);
-"""
+) WITHOUT ROWID""",
+    "CREATE INDEX IF NOT EXISTS media_meta_by_updated ON media_meta(updated_at)",
+)
 _COLUMNS = (
     "rel_path, stat_key, kind, width, height, rgb, blur, status, reason, "
     "poster, poster_source, updated_at"
@@ -151,22 +161,48 @@ def _remove_db(path: Path) -> None:
         Path(f"{path}{suffix}").unlink(missing_ok=True)
 
 
+def _ensure_wal(conn: sqlite3.Connection) -> None:
+    """Switch the DB to WAL once (the mode is stored in the file).
+
+    The switch needs every other connection out of the file and does not
+    wait on the busy handler, so on a brand-new DB that several threads open
+    at once it can fail with "database is locked". WAL is only an
+    optimisation: the connection then works in the default journal mode and
+    a later connection makes the switch (``media_meta_wal_deferred``).
+    """
+    if str(conn.execute("PRAGMA journal_mode").fetchone()[0]).lower() == "wal":
+        return
+    try:
+        conn.execute("PRAGMA journal_mode=WAL")
+    except sqlite3.OperationalError as e:
+        logger.debug("media_meta_wal_deferred", error_type=type(e).__name__)
+
+
 def _ensure_schema(conn: sqlite3.Connection, path: Path) -> None:
     conn.execute(f"PRAGMA busy_timeout={BUSY_TIMEOUT_MS}")
-    conn.execute("PRAGMA journal_mode=WAL")
-    version = conn.execute("PRAGMA user_version").fetchone()[0]
-    if version == SCHEMA_VERSION:
+    _ensure_wal(conn)
+    if conn.execute("PRAGMA user_version").fetchone()[0] == SCHEMA_VERSION:
         return
-    tables = conn.execute(
-        "SELECT count(*) FROM sqlite_master WHERE type='table'"
-    ).fetchone()[0]
-    if tables:
-        logger.info("media_meta_reset", reason="schema")
-        conn.execute("DROP TABLE IF EXISTS media_meta")
-        _forget_count(path)
-    conn.executescript(_SCHEMA)
-    conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
-    conn.commit()
+    # Create (or reset) under the write lock and re-check: another connection
+    # may have created the schema between our read and the lock, and must not
+    # see a half-made one (the DDL and user_version commit together).
+    conn.execute("BEGIN IMMEDIATE")
+    try:
+        if conn.execute("PRAGMA user_version").fetchone()[0] != SCHEMA_VERSION:
+            tables = conn.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table'"
+            ).fetchone()[0]
+            if tables:
+                logger.info("media_meta_reset", reason="schema")
+                conn.execute("DROP TABLE IF EXISTS media_meta")
+                _forget_count(path)
+            for statement in _DDL:
+                conn.execute(statement)
+            conn.execute(f"PRAGMA user_version={SCHEMA_VERSION}")
+        conn.commit()
+    except BaseException:
+        conn.rollback()
+        raise
 
 
 def _open(path: Path) -> sqlite3.Connection:
@@ -241,10 +277,30 @@ def _stat_key_in_db(conn: sqlite3.Connection, rel_path: str) -> str | None:
     return None if found is None else str(found[0])
 
 
+_SAME_VERSION = "media_meta.stat_key = excluded.stat_key"
+_UPSERT = (
+    f"INSERT INTO media_meta ({_COLUMNS}) "
+    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+    "ON CONFLICT(rel_path) DO UPDATE SET "
+    "stat_key = excluded.stat_key, kind = excluded.kind, "
+    "width = excluded.width, height = excluded.height, rgb = excluded.rgb, "
+    "blur = excluded.blur, status = excluded.status, "
+    "updated_at = excluded.updated_at, "
+    # Same version: a row that names no poster keeps the stored poster state,
+    # and a row that names no reason keeps the Shell crash marker.
+    f"reason = CASE WHEN {_SAME_VERSION} AND excluded.reason IS NULL "
+    f"AND media_meta.reason = '{SHELL_CRASH_SUSPECT}' "
+    "THEN media_meta.reason ELSE excluded.reason END, "
+    f"poster = CASE WHEN {_SAME_VERSION} AND excluded.poster IS NULL "
+    "THEN media_meta.poster ELSE excluded.poster END, "
+    f"poster_source = CASE WHEN {_SAME_VERSION} AND excluded.poster IS NULL "
+    "THEN media_meta.poster_source ELSE excluded.poster_source END"
+)
+
+
 def _insert(conn: sqlite3.Connection, row: MetaRow) -> None:
     conn.execute(
-        f"INSERT OR REPLACE INTO media_meta ({_COLUMNS}) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+        _UPSERT,
         (
             row.rel_path,
             row.stat_key,
@@ -288,7 +344,15 @@ def _write(op: str, rel_path: str, write: Callable[[sqlite3.Connection], None]) 
 
 
 def put(row: MetaRow) -> None:
-    """Insert or replace ``row``, stamping ``updated_at`` with now. Blocking; never raises."""
+    """Store ``row``, stamping ``updated_at`` with now. Blocking; never raises.
+
+    A new path, or a new ``stat_key`` for a stored path, replaces the whole
+    row. For the **same** ``stat_key`` every column is replaced except that a
+    row with ``poster=None`` keeps the stored ``poster`` / ``poster_source``,
+    and a row with ``reason=None`` keeps a stored ``shell_crash_suspect``
+    marker. So the worker can store a video's placeholder without knowing
+    its poster state, and the Shell crash guard survives it.
+    """
     _write("put", row.rel_path, lambda conn: _insert(conn, row))
 
 
@@ -313,8 +377,10 @@ def set_poster(rel_path: str, stat_key: str, state: str, source: str) -> None:
 
     A row of the same ``stat_key`` keeps its placeholder and only gets the
     poster fields. A missing or stale row is replaced by a video row with no
-    placeholder yet (``status=failed``, ``reason=no_placeholder``), so a
-    later :func:`put` of the placeholder completes it.
+    placeholder yet (``status=failed``, ``reason=no_placeholder``): it counts
+    as unprocessed (:func:`placeholder_pending`; hinted, not counted as
+    failed), and a later :func:`put` of the placeholder (``poster=None``)
+    fills it in while keeping this poster state.
     """
 
     def write(conn: sqlite3.Connection) -> None:
@@ -336,17 +402,24 @@ def mark_poster_pending(rel_path: str, stat_key: str) -> None:
 
 
 def recover_pending() -> int:
-    """Turn every ``pending`` poster into ``failed`` (``reason=shell_crash_suspect``); the count.
+    """Turn every ``pending`` poster into ``failed``; the count.
 
     Run at worker start: a ``pending`` row means the process died inside the
-    Shell call, so that file is never tried with Shell again. Never raises.
+    Shell call, so that file is never tried with Shell again (the guard is
+    ``poster='failed'`` with ``poster_source='shell'``). ``reason`` becomes
+    ``shell_crash_suspect`` unless it holds a terminal placeholder failure
+    code (``too_large``, ``unreadable``, ...), which is kept. So on a video
+    row ``reason`` may carry this poster marker even when ``status='ready'``;
+    on a ``failed`` row it still reads as "placeholder not computed yet".
+    Never raises.
     """
 
     def op(conn: sqlite3.Connection) -> int:
         cur = conn.execute(
-            "UPDATE media_meta SET poster = 'failed', reason = ?, updated_at = ? "
+            "UPDATE media_meta SET poster = 'failed', updated_at = ?, "
+            "reason = CASE WHEN reason IS NULL OR reason = ? THEN ? ELSE reason END "
             "WHERE poster = 'pending'",
-            (SHELL_CRASH_SUSPECT, _now()),
+            (_now(), NO_PLACEHOLDER, SHELL_CRASH_SUSPECT),
         )
         return cur.rowcount
 
@@ -390,17 +463,34 @@ def clear() -> None:
 
 
 def counts() -> dict[str, int]:
-    """Row totals for the status endpoint (all zero when the DB cannot be read)."""
+    """Row totals for the status endpoint (all zero when the DB cannot be read).
+
+    ``failed`` counts terminal placeholder failures only; rows still waiting
+    for their placeholder (:data:`PLACEHOLDER_PENDING_REASONS`) are
+    ``placeholder_pending``.
+    """
     empty = dict.fromkeys(
-        ("rows", "ready", "failed", "poster_ready", "poster_failed", "poster_pending"),
+        (
+            "rows",
+            "ready",
+            "failed",
+            "placeholder_pending",
+            "poster_ready",
+            "poster_failed",
+            "poster_pending",
+        ),
         0,
+    )
+    pending = "status = 'failed' AND reason IN ({})".format(
+        ",".join(f"'{r}'" for r in sorted(PLACEHOLDER_PENDING_REASONS))
     )
 
     def op(conn: sqlite3.Connection) -> dict[str, int]:
         r = conn.execute(
             "SELECT count(*), "
             "count(*) FILTER (WHERE status = 'ready'), "
-            "count(*) FILTER (WHERE status = 'failed'), "
+            f"count(*) FILTER (WHERE status = 'failed' AND NOT ({pending})), "
+            f"count(*) FILTER (WHERE {pending}), "
             "count(*) FILTER (WHERE poster = 'ready'), "
             "count(*) FILTER (WHERE poster = 'failed'), "
             "count(*) FILTER (WHERE poster = 'pending') FROM media_meta"
@@ -421,6 +511,11 @@ def kind_of(path: Path) -> str | None:
     if suffix in VIDEO_SUFFIXES:
         return "video"
     return None
+
+
+def placeholder_pending(row: MetaRow) -> bool:
+    """True when ``row`` has no placeholder yet but is not a terminal failure."""
+    return row.status == "failed" and row.reason in PLACEHOLDER_PENDING_REASONS
 
 
 def stat_key_of(st: os.stat_result) -> str:
@@ -450,6 +545,7 @@ class _Batch:
     targets: list[_Target]
     rows: dict[str, MetaRow]
     invalid: int
+    outside: int
     missing: int
 
 
@@ -460,20 +556,20 @@ def _output_dir() -> Path:
 
 
 def _resolve(output_dir: Path, url: str) -> _Target | str:
-    """The target of ``url``, or the code ``invalid`` / ``missing``. Blocking."""
-    found = archive_urls.media_route_target(output_dir, url)
-    if found is None:
-        return "invalid"
-    service, path = found
+    """The target of ``url``, or the code ``invalid`` / ``outside`` / ``missing``. Blocking."""
+    found = archive_urls.classify_media_route(output_dir, url)
+    if isinstance(found, str):
+        return found
+    service, path = found  # already resolved and confined to its service folder
     kind = kind_of(path)
     if kind is None:
         return "invalid"
     try:
-        if not archive_urls.archive_file_ok(output_dir, path):
-            return "missing"
         st = path.stat()
+        if not stat.S_ISREG(st.st_mode):
+            return "missing"
         rel = photo_thumb.archive_rel(output_dir, path)
-    except (archive_urls.ArchiveReadError, OSError, ValueError):
+    except (OSError, ValueError):
         return "missing"
     v = photo_thumb.version_token(st.st_size, st.st_mtime_ns)
     return _Target(url, service, rel, stat_key_of(st), v, kind)
@@ -483,7 +579,7 @@ def _load(urls: list[str]) -> _Batch:
     """Resolve and stat every URL, then read their rows. Blocking; never decodes."""
     output_dir = _output_dir()
     targets: list[_Target] = []
-    codes = {"invalid": 0, "missing": 0}
+    codes = {"invalid": 0, "outside": 0, "missing": 0}
     for url in urls:
         res = _resolve(output_dir, url)
         if isinstance(res, str):
@@ -491,7 +587,7 @@ def _load(urls: list[str]) -> _Batch:
         else:
             targets.append(res)
     rows = get_many([t.rel for t in targets])
-    return _Batch(targets, rows, codes["invalid"], codes["missing"])
+    return _Batch(targets, rows, codes["invalid"], codes["outside"], codes["missing"])
 
 
 def _blur_uri(blur: bytes | None) -> str | None:
@@ -527,8 +623,11 @@ async def meta_for_urls(urls: Sequence[str]) -> dict[str, dict[str, Any] | None]
     ``/api/media/meta`` contract: ``v`` is always present for an existing
     picture or video; ``color``, ``blur``, ``w`` and ``h`` only for a fresh
     ``ready`` row; ``poster`` only for a video whose fresh row has a ready
-    poster. Missing and stale rows are hinted to the worker, grouped per
-    service. The blocking part runs in one ``asyncio.to_thread`` hop.
+    poster. Missing, stale and placeholder-pending rows
+    (:func:`placeholder_pending`) are hinted to the worker, grouped per
+    service. URLs that resolve outside their service folder count as
+    ``invalid`` and add up to one ``path_traversal_blocked`` warning per
+    request (``count``). The blocking part runs in one ``asyncio.to_thread`` hop.
     """
     unique = list(dict.fromkeys(urls))
     batch = await asyncio.to_thread(_load, unique)
@@ -541,17 +640,21 @@ async def meta_for_urls(urls: Sequence[str]) -> dict[str, dict[str, Any] | None]
         if row is None or row.stat_key != t.stat_key:
             stale += row is not None
             hints.setdefault(t.service, []).append(t.rel)
+        elif placeholder_pending(row):
+            hints.setdefault(t.service, []).append(t.rel)
         elif row.status == "ready":
             ready += 1
     for service, rels in hints.items():
         _hint(service, rels)
+    if batch.outside:
+        logger.warning("path_traversal_blocked", view="media_meta", count=batch.outside)
     logger.info(
         "media_meta",
         requested=len(urls),
         ready=ready,
         stale=stale,
         missing=batch.missing,
-        invalid=batch.invalid,
+        invalid=batch.invalid + batch.outside,
         hinted=sum(len(r) for r in hints.values()),
     )
     return items

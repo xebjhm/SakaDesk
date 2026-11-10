@@ -188,6 +188,59 @@ class TestStore:
         assert got["ok.mp4"].poster == "ready"
         assert media_meta.recover_pending() == 0
 
+    def test_recover_keeps_a_placeholder_reason(self):
+        # a terminal placeholder failure keeps its own code; only the poster fails
+        media_meta.put(
+            _row("t.mp4", kind="video", status="failed", reason="unreadable", rgb=None)
+        )
+        media_meta.mark_poster_pending("t.mp4", "1:2")
+        media_meta.put(_row("r.mp4", kind="video"))
+        media_meta.mark_poster_pending("r.mp4", "1:2")
+        assert media_meta.recover_pending() == 2
+        got = media_meta.get_many(["t.mp4", "r.mp4"])
+        assert (got["t.mp4"].poster, got["t.mp4"].reason) == ("failed", "unreadable")
+        assert (got["r.mp4"].poster, got["r.mp4"].status) == ("failed", "ready")
+        assert got["r.mp4"].reason == "shell_crash_suspect"
+
+    def test_put_after_set_poster_keeps_the_poster(self):
+        media_meta.set_poster("v.mp4", "1:2", "ready", "client")
+        media_meta.put(_row("v.mp4", kind="video"))  # the placeholder, no poster fields
+        row = media_meta.get_many(["v.mp4"])["v.mp4"]
+        assert (row.poster, row.poster_source) == ("ready", "client")
+        assert row.status == "ready" and row.reason is None and row.rgb == 0xA08070
+
+    def test_put_keeps_the_shell_crash_guard(self):
+        media_meta.mark_poster_pending("v.mp4", "1:2")
+        media_meta.recover_pending()
+        media_meta.put(_row("v.mp4", kind="video"))
+        row = media_meta.get_many(["v.mp4"])["v.mp4"]
+        assert (row.poster, row.poster_source) == ("failed", "shell")
+        assert row.reason == "shell_crash_suspect" and row.status == "ready"
+        # an explicit placeholder failure code still wins over the marker
+        media_meta.put(_row("v.mp4", kind="video", status="failed", reason="too_large"))
+        row = media_meta.get_many(["v.mp4"])["v.mp4"]
+        assert (row.reason, row.poster) == ("too_large", "failed")
+
+    def test_put_with_poster_fields_sets_them(self):
+        media_meta.set_poster("v.mp4", "1:2", "failed", "shell")
+        media_meta.put(
+            _row("v.mp4", kind="video", poster="ready", poster_source="client")
+        )
+        row = media_meta.get_many(["v.mp4"])["v.mp4"]
+        assert (row.poster, row.poster_source) == ("ready", "client")
+
+    def test_put_of_a_new_version_drops_the_old_poster(self):
+        media_meta.mark_poster_pending("v.mp4", "1:2")
+        media_meta.recover_pending()
+        media_meta.put(_row("v.mp4", "3:4", kind="video"))
+        row = media_meta.get_many(["v.mp4"])["v.mp4"]
+        assert (row.stat_key, row.poster, row.poster_source, row.reason) == (
+            "3:4",
+            None,
+            None,
+            None,
+        )
+
     def test_prune_keeps_the_newest_rows(self):
         with patch.object(media_meta, "MAX_ROWS", 10):
             for i in range(11):
@@ -224,11 +277,13 @@ class TestStore:
         media_meta.put(_row("c.mp4", kind="video", poster="ready"))
         media_meta.put(_row("d.mp4", kind="video", poster="failed"))
         media_meta.mark_poster_pending("e.mp4", "1:2")
+        media_meta.set_poster("f.mp4", "1:2", "ready", "client")
         assert media_meta.counts() == {
-            "rows": 5,
+            "rows": 6,
             "ready": 3,
-            "failed": 2,
-            "poster_ready": 1,
+            "failed": 1,
+            "placeholder_pending": 2,
+            "poster_ready": 2,
             "poster_failed": 1,
             "poster_pending": 1,
         }
@@ -258,6 +313,113 @@ class TestResilience:
             e["event"] == "media_meta_reset" and e["reason"] == "schema" for e in logs
         )
         assert set(media_meta.get_many(["a.jpg", "x"])) == {"a.jpg"}
+
+    def test_schema_setup_rechecks_the_version_under_the_write_lock(self):
+        media_meta.put(_row("a.jpg"))  # a complete DB
+        real = sqlite3.connect(media_meta.db_path(), isolation_level=None)
+
+        class StaleFirstRead:
+            """A connection whose first ``user_version`` read predates another creator."""
+
+            def __init__(self):
+                self.reads = 0
+
+            def execute(self, sql, *args):
+                if sql == "PRAGMA user_version":
+                    self.reads += 1
+                    if self.reads == 1:
+                        return real.execute("SELECT 0")
+                return real.execute(sql, *args)
+
+            def commit(self):
+                real.commit()
+
+            def rollback(self):
+                real.rollback()
+
+        stale = StaleFirstRead()
+        with capture_logs() as logs:
+            media_meta._ensure_schema(stale, media_meta.db_path())  # type: ignore[arg-type]
+        real.close()
+        assert stale.reads == 2
+        assert not any(e["event"] == "media_meta_reset" for e in logs)
+        assert set(media_meta.get_many(["a.jpg"])) == {"a.jpg"}
+
+    def test_a_failed_schema_setup_rolls_back(self):
+        path = media_meta.db_path()
+        path.parent.mkdir(parents=True)
+        real = sqlite3.connect(path, isolation_level=None)
+
+        class FailingCreate:
+            def execute(self, sql, *args):
+                if sql.startswith("CREATE INDEX"):
+                    raise sqlite3.OperationalError("disk I/O error")
+                return real.execute(sql, *args)
+
+            def commit(self):
+                real.commit()
+
+            def rollback(self):
+                real.rollback()
+
+        with pytest.raises(sqlite3.OperationalError):
+            media_meta._ensure_schema(FailingCreate(), path)  # type: ignore[arg-type]
+        assert real.execute("PRAGMA user_version").fetchone()[0] == 0
+        assert (
+            real.execute(
+                "SELECT count(*) FROM sqlite_master WHERE type='table'"
+            ).fetchone()[0]
+            == 0
+        )
+        real.close()
+
+    def test_a_contended_wal_switch_is_deferred(self):
+        path = media_meta.db_path()
+        path.parent.mkdir(parents=True)
+        real = sqlite3.connect(path, isolation_level=None)
+
+        class LockedSwitch:
+            def execute(self, sql, *args):
+                if sql == "PRAGMA journal_mode=WAL":
+                    raise sqlite3.OperationalError("database is locked")
+                return real.execute(sql, *args)
+
+            def commit(self):
+                real.commit()
+
+            def rollback(self):
+                real.rollback()
+
+        with capture_logs() as logs:
+            media_meta._ensure_schema(LockedSwitch(), path)  # type: ignore[arg-type]
+        assert real.execute("PRAGMA user_version").fetchone()[0] == 1
+        assert real.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+        real.close()
+        assert [e["event"] for e in logs] == ["media_meta_wal_deferred"]
+        media_meta.put(_row("a.jpg"))  # the next connection switches
+        with closing(sqlite3.connect(path)) as conn:
+            assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+
+    def test_concurrent_first_use_never_resets(self, tmp_path):
+        import threading
+
+        for attempt in range(10):  # each round starts from a brand-new DB
+            media_meta.set_db_path(tmp_path / f"race{attempt}" / media_meta.DB_NAME)
+            barrier = threading.Barrier(8)
+
+            def worker(i: int) -> None:
+                barrier.wait()
+                media_meta.put(_row(f"r/{i}.jpg"))
+
+            threads = [threading.Thread(target=worker, args=(i,)) for i in range(8)]
+            with capture_logs() as logs:
+                for t in threads:
+                    t.start()
+                for t in threads:
+                    t.join()
+            bad = {"media_meta_reset", "media_meta_failed"}
+            assert not [e for e in logs if e["event"] in bad], logs
+            assert len(media_meta.get_many([f"r/{i}.jpg" for i in range(8)])) == 8
 
     def test_a_new_db_is_not_reported_as_a_reset(self):
         with capture_logs() as logs:
@@ -376,6 +538,11 @@ class TestMediaRoutePath:
             "/api/content/media/unknown46/a.jpg",
             "/api/content/media/hinatazaka46",
             PREFIX + "a%00.jpg",
+            PREFIX,
+            PREFIX + ".",
+            PREFIX + "sub/..",
+            PREFIX + "../櫻坂46/b.jpg",
+            PREFIX + "%2e%2e/%E6%AB%BB%E5%9D%8246/b.jpg",
             PREFIX + "a%0A.jpg",
             "http://[::1/api/content/media/hinatazaka46/a.jpg",
             "",
@@ -384,8 +551,47 @@ class TestMediaRoutePath:
     def test_rejects(self, tmp_path, url):
         out = tmp_path / "out"
         _jpeg(out / "日向坂46" / "a.jpg")
+        _jpeg(out / "櫻坂46" / "b.jpg")
+        (out / "日向坂46" / "sub").mkdir()
         _jpeg(tmp_path / "secret.jpg")
         assert archive_urls.media_route_path(out, url) is None
+
+    def test_classify_tells_outside_from_invalid(self, tmp_path):
+        out = tmp_path / "out"
+        _jpeg(out / "日向坂46" / "a.jpg")
+        _jpeg(out / "櫻坂46" / "b.jpg")
+        assert (
+            archive_urls.classify_media_route(out, PREFIX + "../../x.jpg") == "outside"
+        )
+        assert (
+            archive_urls.classify_media_route(out, PREFIX + "../櫻坂46/b.jpg")
+            == "outside"
+        )
+        assert archive_urls.classify_media_route(out, "/etc/passwd") == "invalid"
+        assert archive_urls.classify_media_route(out, PREFIX + "a%00.jpg") == "invalid"
+        assert archive_urls.classify_media_route(out, PREFIX) == "invalid"
+
+    def test_a_resolve_error_is_invalid(self, tmp_path):
+        out = tmp_path / "out"
+        _jpeg(out / "日向坂46" / "a.jpg")
+        with patch.object(Path, "resolve", side_effect=OSError("loop")):
+            assert archive_urls.classify_media_route(out, PREFIX + "a.jpg") == "invalid"
+
+    def test_classification_never_logs_per_url(self, tmp_path):
+        out = tmp_path / "out"
+        (out / "日向坂46").mkdir(parents=True)
+        with capture_logs() as logs:
+            for _ in range(20):
+                archive_urls.media_route_path(out, PREFIX + "../../x.jpg")
+        assert logs == []
+
+    def test_a_service_folder_symlinked_outside_is_rejected(self, tmp_path):
+        out = tmp_path / "out"
+        out.mkdir()
+        elsewhere = tmp_path / "elsewhere"
+        _jpeg(elsewhere / "a.jpg")
+        (out / "日向坂46").symlink_to(elsewhere, target_is_directory=True)
+        assert archive_urls.classify_media_route(out, PREFIX + "a.jpg") == "outside"
 
 
 # --- meta_for_urls --------------------------------------------------------------------
@@ -458,6 +664,49 @@ class TestMetaForUrls:
         assert item["v"] == _v(src)
         assert hints == []
 
+    def test_a_poster_uploaded_before_the_placeholder_is_pending_and_hinted(
+        self, out, hints
+    ):
+        src = _video(out / "日向坂46" / "v" / "1.mp4")
+        rel = _rel(out, src)
+        media_meta.set_poster(rel, _stat_key(src), "ready", "client")
+        item = _run(media_meta.meta_for_urls([_url("v", "1.mp4")]))[_url("v", "1.mp4")]
+        assert item["poster"] is True and item["color"] is None and item["w"] is None
+        assert hints == [("hinatazaka46", [rel])]
+        assert media_meta.counts()["failed"] == 0
+
+    def test_a_recovered_shell_crash_without_placeholder_is_pending(self, out, hints):
+        src = _video(out / "日向坂46" / "v" / "1.mp4")
+        rel = _rel(out, src)
+        media_meta.mark_poster_pending(rel, _stat_key(src))
+        media_meta.recover_pending()
+        with capture_logs() as logs:
+            item = _run(media_meta.meta_for_urls([_url("v", "1.mp4")]))[
+                _url("v", "1.mp4")
+            ]
+        assert item["poster"] is False and item["color"] is None
+        assert hints == [("hinatazaka46", [rel])]
+        [event] = [e for e in logs if e["event"] == "media_meta"]
+        assert (event["stale"], event["hinted"], event["ready"]) == (0, 1, 0)
+        assert media_meta.counts()["placeholder_pending"] == 1
+
+    def test_traversal_attempts_log_one_summary(self, out, hints):
+        urls = [PREFIX + f"../../x{i}.jpg" for i in range(30)] + [PREFIX + "%00.jpg"]
+        with capture_logs() as logs:
+            items = _run(media_meta.meta_for_urls(urls))
+        assert all(v is None for v in items.values())
+        blocked = [e for e in logs if e["event"] == "path_traversal_blocked"]
+        assert blocked == [
+            {
+                "event": "path_traversal_blocked",
+                "log_level": "warning",
+                "view": "media_meta",
+                "count": 30,
+            }
+        ]
+        [event] = [e for e in logs if e["event"] == "media_meta"]
+        assert event["invalid"] == 31
+
     def test_video_poster_is_true_only_when_ready_and_fresh(self, out, hints):
         ok = _video(out / "日向坂46" / "v" / "1.mp4")
         bad = _video(out / "日向坂46" / "v" / "2.mp4")
@@ -515,10 +764,11 @@ class TestMetaForUrls:
     def test_a_stat_failure_counts_as_missing(self, out, hints):
         _jpeg(out / "日向坂46" / "a.jpg")
         with patch.object(
-            media_meta.archive_urls,
-            "archive_file_ok",
-            side_effect=archive_urls.ArchiveReadError("unreadable"),
+            media_meta.photo_thumb, "archive_rel", side_effect=ValueError("outside")
         ):
+            items = _run(media_meta.meta_for_urls([_url("a.jpg")]))
+        assert items == {_url("a.jpg"): None}
+        with patch.object(Path, "stat", side_effect=PermissionError()):
             items = _run(media_meta.meta_for_urls([_url("a.jpg")]))
         assert items == {_url("a.jpg"): None}
 

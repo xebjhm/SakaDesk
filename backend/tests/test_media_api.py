@@ -97,4 +97,4 @@ def test_meta_accepts_the_batch_limit(out: Path):
     "body", [{"urls": "x"}, {"urls": [1, 2]}, {}, [], {"urls": ["a" * 5000]}]
 )
 def test_meta_rejects_a_malformed_body(out: Path, body):
-    assert client.post(META, json=body).status_code in (400, 422)
+    assert client.post(META, json=body).status_code == 422

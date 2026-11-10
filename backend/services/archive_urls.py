@@ -2,8 +2,10 @@
 
 URLs point at the existing media route (``/api/content/media/<service id>/...``),
 which maps the service id to its display-name folder and re-validates that the
-path stays inside the output directory. Containment in the service folder holds
-because callers build URL parts only from already validated paths.
+path stays inside the output directory. URLs built here by :func:`media_url`
+stay in their service folder because callers build URL parts only from already
+validated paths; URLs sent back by a client are re-checked against both the
+output directory and the service folder by :func:`classify_media_route`.
 
 Reads of archive files go through :func:`read_archive_json` and
 :func:`archive_file_ok`, which resolve symlinks and require the file to stay
@@ -11,8 +13,8 @@ inside the output directory.
 
 :func:`media_disk_path` is the one translation of a media-route path
 (``<service id>/<rest>``) to its on-disk path (``<display name>/<rest>``),
-shared by the media route and :func:`media_route_path` (which maps a whole
-media-route URL sent by the client back to the archive file).
+shared by the media route and :func:`classify_media_route` (which maps a whole
+media-route URL sent by a client back to the archive file).
 """
 
 from __future__ import annotations
@@ -21,6 +23,7 @@ import json
 from collections.abc import Iterable
 from datetime import datetime
 from pathlib import Path
+from typing import Literal
 from urllib.parse import quote, unquote, urlsplit
 
 from fastapi import HTTPException
@@ -112,30 +115,65 @@ def media_disk_path(file_path: str) -> tuple[str, str | None]:
     return file_path, None
 
 
-def media_route_target(output_dir: Path, url: str) -> tuple[str, Path] | None:
-    """``(service id, resolved archive path)`` of a media-route URL, or ``None``.
+MediaRouteRejection = Literal["invalid", "outside"]
+_BAD_PATH_CHARS = ("\x00", "\n", "\r")
+
+
+def classify_media_route(
+    output_dir: Path, url: str
+) -> tuple[str, Path] | MediaRouteRejection:
+    """``(service id, resolved archive path)`` of a client media-route URL, or why not.
 
     Accepts only a same-origin path ``/api/content/media/<service id>/<rest>``
     (percent-decoded once, like the route; a query or fragment is ignored)
-    with a known service id, whose file stays inside ``output_dir`` after
-    resolving (:func:`resolve_within`). Anything else (another route, an
-    absolute or cross-origin URL, an unknown service, traversal, control
-    characters) gives ``None``; it never raises. Whether the file exists is
-    not checked. Blocking (it resolves).
+    with a known service id and a non-empty ``rest``. After resolving
+    (symlinks followed) the file must lie strictly inside the service's
+    display-name folder, which itself must lie inside ``output_dir``.
+
+    - ``"invalid"``: not such a URL (another route, an absolute or
+      cross-origin URL, an unknown service, an empty ``rest``, control
+      characters);
+    - ``"outside"``: it resolves outside the service folder or the output
+      dir (traversal, a symlink out, or the folder itself).
+
+    Never raises and never logs (a batch caller logs one summary). Whether
+    the file exists is not checked. Blocking (it resolves).
     """
     try:
         parts = urlsplit(url)
     except ValueError:
-        return None
+        return "invalid"
     if parts.scheme or parts.netloc or not parts.path.startswith(MEDIA_PREFIX):
-        return None
-    disk_path, service = media_disk_path(unquote(parts.path[len(MEDIA_PREFIX) :]))
+        return "invalid"
+    file_path = unquote(parts.path[len(MEDIA_PREFIX) :])
+    if any(c in file_path for c in _BAD_PATH_CHARS):
+        return "invalid"
+    disk_path, service = media_disk_path(file_path)
     if service is None:
-        return None
+        return "invalid"
+    display_name, rest = disk_path.split("/", 1)
+    if not rest:
+        return "invalid"
     try:
-        return service, resolve_within(output_dir, Path(disk_path))
-    except ArchiveReadError:
-        return None
+        base = output_dir.resolve()
+        folder = (output_dir / display_name).resolve()
+        target = (folder / rest).resolve()
+    except (OSError, ValueError, RuntimeError):
+        return "invalid"
+    if not folder.is_relative_to(base) or folder == base:
+        return "outside"
+    if not target.is_relative_to(folder) or target == folder:
+        return "outside"
+    return service, target
+
+
+def media_route_target(output_dir: Path, url: str) -> tuple[str, Path] | None:
+    """``(service id, resolved archive path)`` of a client media-route URL, or ``None``.
+
+    :func:`classify_media_route` without the rejection reason.
+    """
+    found = classify_media_route(output_dir, url)
+    return None if isinstance(found, str) else found
 
 
 def media_route_path(output_dir: Path, url: str) -> Path | None:
