@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { ImageIcon, Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { EmptyState, Pill } from '../../../design/primitives';
@@ -12,6 +12,7 @@ import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { AlbumKind, AlbumMonthSummary, MemoriesCountedMember, MemoryMessage } from '../types';
 import { ColorRibbon, type RibbonMonth } from './ColorRibbon';
 import { MonthSection } from './MonthSection';
+import { useAlbumWindow } from './useAlbumWindow';
 
 export type AlbumRoute = Extract<MemoriesRoute, { page: 'album' }>;
 
@@ -26,72 +27,8 @@ const FILTERS: { kind: AlbumKind; key: string }[] = [
     { kind: 'favorite', key: 'memories.album.filterFavorites' },
 ];
 
-/** Start loading a month's grid this far before it scrolls into view. */
-const NEAR_VIEWPORT = '600px 0px';
-
-const reducedMotion = () => window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
-
 /** Her name from a room dir's last segment (`58 金村 美玖` → `金村 美玖`), when the list does not know the room. */
 const nameFromRoom = (room: string) => (room.split('/').pop() ?? '').replace(/^\d+\s+/, '');
-
-/**
- * Which month grids may load. With `IntersectionObserver`, a month loads once its band nears the
- * scroll container's viewport (`NEAR_VIEWPORT`); without it, the months load one after another
- * in list order (each waits for the previous one to settle). State changes only when a month is
- * newly requested or settled, so scrolling does not re-render the album.
- */
-function useMonthLoading(months: string[], root: React.RefObject<HTMLElement>) {
-    const lazy = typeof IntersectionObserver !== 'undefined';
-    const [seen, setSeen] = useState<ReadonlySet<string>>(() => new Set());
-    const [settled, setSettled] = useState<ReadonlySet<string>>(() => new Set());
-    const elements = useRef(new Map<string, HTMLElement>());
-    const observer = useRef<IntersectionObserver | null>(null);
-
-    const request = useCallback((add: string[]) => {
-        setSeen((prev) => (add.every((m) => prev.has(m)) ? prev : new Set([...prev, ...add])));
-    }, []);
-
-    useEffect(() => {
-        if (!lazy) return undefined;
-        const io = new IntersectionObserver((entries) => {
-            const near = entries
-                .filter((e) => e.isIntersecting)
-                .map((e) => e.target.getAttribute('data-month'))
-                .filter((m): m is string => m !== null);
-            if (near.length) request(near);
-        }, { root: root.current, rootMargin: NEAR_VIEWPORT });
-        observer.current = io;
-        elements.current.forEach((el) => io.observe(el));
-        return () => { io.disconnect(); observer.current = null; };
-    }, [lazy, root, request]);
-
-    const registerRef = useCallback((month: string, el: HTMLElement | null) => {
-        const old = elements.current.get(month);
-        if (old && old !== el) observer.current?.unobserve(old);
-        if (el) {
-            elements.current.set(month, el);
-            observer.current?.observe(el);
-        } else {
-            elements.current.delete(month);
-        }
-    }, []);
-
-    const onSettled = useCallback((month: string) => {
-        setSettled((prev) => (prev.has(month) ? prev : new Set([...prev, month])));
-    }, []);
-
-    /** Scroll a month's band to the top of the scroll container. */
-    const scrollTo = useCallback((month: string, behavior: ScrollBehavior) => {
-        elements.current.get(month)?.scrollIntoView({ block: 'start', behavior });
-    }, []);
-
-    // In-order fallback: every month up to (and including) the first unsettled one.
-    const firstOpen = lazy ? -1 : months.findIndex((m) => !settled.has(m));
-    const isRequested = (month: string, index: number) =>
-        seen.has(month) || (!lazy && (firstOpen === -1 || index <= firstOpen));
-
-    return { isRequested, registerRef, onSettled, request, scrollTo };
-}
 
 interface AlbumGridProps {
     service: string;
@@ -102,28 +39,15 @@ interface AlbumGridProps {
     nameOf: (m: MemoryMessage) => string;
 }
 
-/** The month bands in the pane's own scroll container, with the colour ribbon on the right edge. */
+/**
+ * The month bands in the pane's own scroll container, with the colour ribbon on the right edge.
+ * Loading and windowing are `useAlbumWindow`'s: bands far from the viewport release their grids,
+ * and a ribbon jump scrolls instantly and loads only where it lands.
+ */
 const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, colors, nameOf }) => {
     const scroller = useRef<HTMLDivElement>(null);
     const monthKeys = useMemo(() => months.map((m) => m.month), [months]);
-    const loading = useMonthLoading(monthKeys, scroller);
-    // A ribbon jump re-aligns once the target's grid has loaded (its height changes then).
-    const pendingJump = useRef<string | null>(null);
-    const { onSettled: markSettled, request, scrollTo } = loading;
-
-    const onSettled = useCallback((month: string) => {
-        markSettled(month);
-        if (pendingJump.current === month) {
-            pendingJump.current = null;
-            scrollTo(month, 'auto');
-        }
-    }, [markSettled, scrollTo]);
-
-    const jump = useCallback((month: string) => {
-        pendingJump.current = month;
-        request([month]);
-        scrollTo(month, reducedMotion() ? 'auto' : 'smooth');
-    }, [request, scrollTo]);
+    const win = useAlbumWindow(monthKeys, scroller);
 
     const ribbon: RibbonMonth[] = useMemo(
         () => months.map((m) => ({ month: m.month, color: colors[m.month] ?? null })),
@@ -140,14 +64,17 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
                         summary={m}
                         member={member}
                         kind={kind}
-                        requested={loading.isRequested(m.month, i)}
+                        data={win.cache.get(m.month)}
+                        requested={win.isRequested(m.month, i)}
+                        live={win.isLive(m.month)}
                         nameOf={nameOf}
-                        registerRef={loading.registerRef}
-                        onSettled={onSettled}
+                        registerRef={win.registerRef}
+                        onLoaded={win.onLoaded}
+                        onSettled={win.onSettled}
                     />
                 ))}
             </div>
-            <ColorRibbon months={ribbon} onSelect={jump} />
+            <ColorRibbon months={ribbon} onSelect={win.jump} />
         </div>
     );
 };
@@ -186,7 +113,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
         [byPath, selectedName],
     );
     const items: MemberPaneItem[] = useMemo(() => (people ?? []).map((m) => ({
-        key: m.member_path, memberPath: m.member_path, name: m.name, avatarUrl: m.avatar_url, trailing: m.count,
+        key: m.member_path, memberPath: m.member_path, name: m.name, avatarUrl: m.avatar_url, oshi: m.oshi, trailing: m.count,
     })), [people]);
     const total = members.data?.total ?? 0;
 

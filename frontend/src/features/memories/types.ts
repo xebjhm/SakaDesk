@@ -45,6 +45,8 @@ export interface MemoriesCountedMember {
     avatar_url: string | null;
     /** Never 0: people without items are left out. */
     count: number;
+    /** Her oshi heart in the list (album; optional for payloads that do not send it). */
+    oshi?: boolean;
 }
 
 // --- hub (hub.build_hub) ---------------------------------------------------------------

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { act, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import i18n from '../../../i18n';
@@ -64,7 +64,10 @@ function renderAlbum(route: AlbumRoute = { page: 'album' }) {
 
 const section = (month: string) => screen.getByTestId(`album-month-${month}`);
 
-/** A controllable IntersectionObserver: `fire(month)` reports that section near the viewport. */
+/**
+ * A controllable IntersectionObserver: `fire(month)` reports that band near the viewport to every
+ * observer (the load and the live margin alike), `leave(month)` reports it gone.
+ */
 function stubObserver() {
     const observers: { cb: IntersectionObserverCallback; els: Set<Element> }[] = [];
     class FakeObserver {
@@ -76,13 +79,31 @@ function stubObserver() {
         takeRecords() { return []; }
     }
     vi.stubGlobal('IntersectionObserver', FakeObserver);
-    return (month: string) => act(() => {
+    const report = (month: string, hit: boolean) => act(() => {
         for (const o of observers) {
             const el = [...o.els].find((e) => e.getAttribute('data-month') === month);
-            if (el) o.cb([{ target: el, isIntersecting: true } as unknown as IntersectionObserverEntry], o as unknown as IntersectionObserver);
+            if (el) o.cb([{ target: el, isIntersecting: hit } as unknown as IntersectionObserverEntry], o as unknown as IntersectionObserver);
         }
     });
+    const fire = (month: string) => report(month, true);
+    const leave = (month: string) => report(month, false);
+    return Object.assign(fire, { leave });
 }
+
+/** Records which band each `scrollIntoView` call targets (restored after the test). */
+function spyScroll() {
+    const calls: string[] = [];
+    const original = Element.prototype.scrollIntoView;
+    Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+        calls.push(this.getAttribute('data-month') ?? '');
+    });
+    restoreScroll = () => { Element.prototype.scrollIntoView = original; };
+    return calls;
+}
+let restoreScroll: (() => void) | null = null;
+afterEach(() => { restoreScroll?.(); restoreScroll = null; });
+
+const MANY = ['2026-10', '2026-09', '2026-08', '2026-07', '2026-06', '2026-05', '2026-04', '2026-03'];
 
 describe('AlbumPage', () => {
     it('lists everyone with counts and refetches the months for a picked member', async () => {
@@ -223,9 +244,7 @@ describe('AlbumPage', () => {
     });
 
     it('scrolls the grid to a month from the ribbon by click and keyboard', async () => {
-        const calls: string[] = [];
-        const scrollIntoView = vi.fn(function (this: Element) { calls.push(this.getAttribute('data-month') ?? ''); });
-        Element.prototype.scrollIntoView = scrollIntoView;
+        const calls = spyScroll();
         renderAlbum();
         await screen.findByTestId('album-month-2026-10');
         const ribbon = await screen.findByTestId('album-ribbon');
@@ -235,8 +254,121 @@ describe('AlbumPage', () => {
         seg.focus();
         await userEvent.keyboard('{ArrowUp}');
         expect(calls[calls.length - 1]).toBe('2026-10');
+        // jumps are instant, never an animated scroll through every band
+        expect(vi.mocked(Element.prototype.scrollIntoView).mock.calls.every((c) => (c[0] as ScrollIntoViewOptions).behavior === 'auto')).toBe(true);
         // the ribbon colours: null falls back
         expect(within(ribbon).getByRole('button', { name: 'Go to October 2026' }).style.backgroundColor).toBe('coral');
         expect(seg.style.backgroundColor).toBe('');
+    });
+
+    it('a scrub across the ribbon loads only the months where it settles', async () => {
+        spyScroll();
+        const fire = stubObserver();
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload(MANY.map((m) => monthSummary(m))));
+        renderAlbum();
+        const ribbon = await screen.findByTestId('album-ribbon');
+        const scroller = screen.getByTestId('album-scroller');
+        vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+        ribbon.getBoundingClientRect = () => ({ top: 0, height: 800, bottom: 800, left: 0, right: 12, width: 12, x: 0, y: 0, toJSON: () => ({}) });
+        ribbon.setPointerCapture = vi.fn();
+        fireEvent.pointerDown(ribbon, { clientY: 10, pointerId: 1 });
+        // the scrub passes bands 0..6: each comes near, then goes as the grid scrolls on
+        for (let i = 0; i < 7; i += 1) {
+            fireEvent.pointerMove(ribbon, { clientY: i * 100 + 50, pointerId: 1 });
+            fire(MANY[i]);
+            fireEvent.scroll(scroller);
+            if (i > 0) fire.leave(MANY[i - 1]);
+            act(() => { vi.advanceTimersByTime(50); });
+        }
+        fireEvent.pointerUp(ribbon, { pointerId: 1 });
+        expect(fetchAlbumMonth).not.toHaveBeenCalled();
+        act(() => { vi.advanceTimersByTime(200); });
+        vi.useFakeTimers({ toFake: ['Date'] });
+        await waitFor(() => expect(fetchAlbumMonth).toHaveBeenCalled());
+        expect(vi.mocked(fetchAlbumMonth).mock.calls.map((c) => c[1])).toEqual(['2026-04']);
+    });
+
+    it('re-aligns a jump target after its grid loads, and not again once loaded', async () => {
+        const calls = spyScroll();
+        const fire = stubObserver();
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload(MANY.map((m) => monthSummary(m))));
+        renderAlbum();
+        const ribbon = await screen.findByTestId('album-ribbon');
+        vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout'] });
+        fireEvent.click(within(ribbon).getByRole('button', { name: 'Go to May 2026' }), { detail: 0 });
+        fire('2026-05');
+        act(() => { vi.advanceTimersByTime(200); });
+        vi.useFakeTimers({ toFake: ['Date'] });
+        await within(section('2026-05')).findByTestId('album-grid');
+        await waitFor(() => expect(calls.filter((m) => m === '2026-05')).toHaveLength(2));
+        // a later jump to the loaded month scrolls once; a retry elsewhere never pulls it back
+        fireEvent.click(within(ribbon).getByRole('button', { name: 'Go to May 2026' }), { detail: 0 });
+        expect(calls.filter((m) => m === '2026-05')).toHaveLength(3);
+    });
+
+    it('keeps the number of live month grids bounded and remounts from cache', async () => {
+        const fire = stubObserver();
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload(MANY.map((m) => monthSummary(m))));
+        renderAlbum();
+        await screen.findByTestId('album-month-2026-10');
+        let peak = 0;
+        for (let i = 0; i < MANY.length; i += 1) {
+            fire(MANY[i]);
+            if (i >= 2) fire.leave(MANY[i - 2]);
+            await within(section(MANY[i])).findByTestId('album-grid');
+            peak = Math.max(peak, screen.queryAllByTestId('album-grid').length);
+        }
+        expect(peak).toBeLessThanOrEqual(2);
+        expect(within(section(MANY[0])).queryByTestId('album-grid')).toBeNull();
+        expect(within(section(MANY[0])).getByTestId('album-month-placeholder')).toBeInTheDocument();
+        // scrolling back remounts from the kept payload: no second request
+        fire(MANY[0]);
+        await within(section(MANY[0])).findByTestId('album-grid');
+        expect(vi.mocked(fetchAlbumMonth).mock.calls.filter((c) => c[1] === MANY[0])).toHaveLength(1);
+    });
+
+    it('aborts an in-flight month request when the member changes', async () => {
+        const signals: AbortSignal[] = [];
+        vi.mocked(fetchAlbumMonth).mockImplementation((_s, _m, _q, signal) => {
+            signals.push(signal);
+            return new Promise(() => {});
+        });
+        const { rerender } = renderAlbum();
+        await waitFor(() => expect(signals).toHaveLength(1));
+        rerender({ page: 'album', memberPath: NAO_PATH });
+        expect(signals[0].aborted).toBe(true);
+    });
+
+    it('shows the oshi heart on her row', async () => {
+        vi.mocked(fetchAlbumMembers).mockResolvedValue(membersPayload({
+            members: membersPayload().members.map((m, i) => ({ ...m, oshi: i === 1 })),
+        }));
+        renderAlbum();
+        const nao = await screen.findByRole('button', { name: /小坂 菜緒/ });
+        expect(within(nao).getByTestId('member-pane-oshi')).toBeInTheDocument();
+        expect(within(screen.getByRole('button', { name: /金村 美玖/ })).queryByTestId('member-pane-oshi')).toBeNull();
+    });
+
+    it('does not pin every tile larger under the favourites filter', async () => {
+        renderAlbum();
+        await screen.findByTestId('album-month-2026-10');
+        await userEvent.click(screen.getByRole('button', { name: 'Favorites' }));
+        const grid = await within(await screen.findByTestId('album-month-2026-10')).findByTestId('album-grid');
+        const fav = within(grid).getByTestId('album-tile-2');
+        expect(fav).not.toHaveClass('col-span-2');
+        expect(within(fav).queryByTestId('album-washi')).toBeNull();
+        expect(within(fav).getByTestId('album-star')).toHaveClass('text-semantic-star');
+    });
+
+    it('shows the month label once when the cover has no words', async () => {
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([
+            monthSummary('2026-10', { cover: { ...monthSummary('2026-10').cover, caption: null, text: null } }),
+            monthSummary('2026-09'),
+        ]));
+        renderAlbum();
+        const bare = await screen.findByTestId('album-month-2026-10');
+        expect(within(bare).getAllByText('October 2026')).toHaveLength(1);
+        expect(within(bare).getByRole('heading', { name: 'October 2026' })).toBeInTheDocument();
+        expect(within(section('2026-09')).getByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
     });
 });

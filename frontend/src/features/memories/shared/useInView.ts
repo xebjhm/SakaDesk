@@ -9,7 +9,8 @@ export function useInView(ref: RefObject<Element>, rootMargin = '200px'): boolea
     const [inView, setInView] = useState(!supported);
     useEffect(() => {
         const el = ref.current;
-        if (!supported || !el) return undefined;
+        // Checked again here: the global can disappear between render and effect.
+        if (!supported || !el || typeof IntersectionObserver === 'undefined') return undefined;
         const io = new IntersectionObserver((entries) => {
             const last = entries[entries.length - 1];
             if (last) setInView(last.isIntersecting);

@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../../../i18n';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { cn } from '../../../utils/classnames';
@@ -12,74 +12,62 @@ import { BurstStack } from './BurstStack';
 import { PhotoTile } from './PhotoTile';
 import { PolaroidCover } from './PolaroidCover';
 import { albumItemKey, albumViewerItems, formatMonth, monthParts, viewerIndexOf } from './albumViewer';
+import { gridEntries } from './gridEntries';
 
 interface MonthSectionProps {
     service: string;
     summary: AlbumMonthSummary;
     member: string | undefined;
     kind: AlbumKind;
-    /** Load the month's grid now (it neared the viewport, or its turn came). */
+    /** The month's payload, once fetched (kept by the album, so a band that comes back does not refetch). */
+    data: AlbumMonthPayload | undefined;
+    /** Fetch the month's grid now (it neared the viewport, or its turn came). */
     requested: boolean;
+    /** Mount the grid (the band is within two screens); otherwise a placeholder of its measured height. */
+    live: boolean;
     nameOf: (m: MemoryMessage) => string;
-    /** Registers the band for lazy loading and ribbon jumps (null on unmount). */
+    /** Registers the band for the observers and ribbon jumps (null on unmount). */
     registerRef: (month: string, el: HTMLElement | null) => void;
-    /** The grid's request finished (ready or error): the in-order fallback loads the next one. */
+    onLoaded: (month: string, data: AlbumMonthPayload) => void;
+    /** The month's request finished (ready or error). */
     onSettled: (month: string) => void;
 }
 
 /** The band tint from the cover photo (the data-driven exception, DESIGN_SYSTEM.md). */
-const tintOf = (color: string | null): React.CSSProperties | undefined =>
-    color ? { backgroundColor: `color-mix(in srgb, ${color} 18%, transparent)` } : undefined;
+const tintOf = (color: string | null): string | undefined =>
+    color ? `color-mix(in srgb, ${color} 18%, transparent)` : undefined;
 
-type GridEntry =
-    | { kind: 'tile'; item: MemoryMessage }
-    | { kind: 'burst'; key: string; items: MemoryMessage[] };
-
-/** The month's items in time order, each burst collapsed into one entry at its first item. */
-function gridEntries(data: AlbumMonthPayload): GridEntry[] {
-    const burstOf = new Map<string, string>();
-    for (const b of data.bursts) for (const id of b.ids) burstOf.set(albumItemKey({ room: b.room, id }), `${b.room}|b${b.burst_id}`);
-    const bursts = new Map<string, MemoryMessage[]>();
-    const entries: GridEntry[] = [];
-    for (const item of data.items) {
-        const burst = burstOf.get(albumItemKey(item));
-        if (burst === undefined) {
-            entries.push({ kind: 'tile', item });
-            continue;
-        }
-        const members = bursts.get(burst);
-        if (members) {
-            members.push(item);
-        } else {
-            const first = [item];
-            bursts.set(burst, first);
-            entries.push({ kind: 'burst', key: burst, items: first });
-        }
-    }
-    return entries;
-}
-
-const MonthGrid: React.FC<Omit<MonthSectionProps, 'requested' | 'registerRef'> & { label: string; sepia: string }> = ({
-    service, summary, member, kind, nameOf, onSettled, label, sepia,
+/** Fetches one month and hands it to the album's cache; shows the loading line or the retry. */
+const MonthLoader: React.FC<Pick<MonthSectionProps, 'service' | 'member' | 'kind' | 'onLoaded' | 'onSettled'> & { month: string }> = ({
+    service, month, member, kind, onLoaded, onSettled,
 }) => {
-    const { t, i18n } = useTranslation();
-    const month = summary.month;
     const query = useMemoriesQuery(
         'album_month',
         (signal) => fetchAlbumMonth(service, month, { member, kind }, signal),
         [service, month, member, kind],
         { count: (d) => d.items.length },
     );
-    const [viewerIndex, setViewerIndex] = useState<number | null>(null);
-    const data = query.data;
-
     useEffect(() => {
+        if (query.status === 'ready' && query.data) onLoaded(month, query.data);
         if (query.status !== 'loading') onSettled(month);
-    }, [query.status, month, onSettled]);
+    }, [query.status, query.data, month, onLoaded, onSettled]);
+    return <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
+};
 
-    const entries = useMemo(() => (data ? gridEntries(data) : []), [data]);
+interface MonthGridProps {
+    data: AlbumMonthPayload;
+    kind: AlbumKind;
+    nameOf: (m: MemoryMessage) => string;
+    label: string;
+    sepia: string;
+}
+
+const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia }) => {
+    const { t, i18n } = useTranslation();
+    const [viewerIndex, setViewerIndex] = useState<number | null>(null);
+    const entries = useMemo(() => gridEntries(data), [data]);
     const viewer = useMemo(
-        () => albumViewerItems(data?.items ?? [], {
+        () => albumViewerItems(data.items, {
             nameOf,
             sourceLabel: t('memories.common.jumpToChat'),
             onBeforeJump: () => setViewerIndex(null),
@@ -94,10 +82,9 @@ const MonthGrid: React.FC<Omit<MonthSectionProps, 'requested' | 'registerRef'> &
     const dateLabel = useMemo(() => new Intl.DateTimeFormat(i18n.language, {
         timeZone: JST_TIME_ZONE, year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
     }), [i18n.language]);
+    // Under the ★ filter every photo is a favourite: pinning them all larger would mean nothing.
+    const pinFavorites = kind !== 'favorite';
 
-    if (query.status !== 'ready' || !data) {
-        return <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
-    }
     return (
         <>
             <div data-testid="album-grid" className="grid min-w-0 flex-1 grid-flow-row-dense grid-cols-3 gap-2 md:grid-cols-4 xl:grid-cols-6">
@@ -108,6 +95,7 @@ const MonthGrid: React.FC<Omit<MonthSectionProps, 'requested' | 'registerRef'> &
                             key={albumItemKey(entry.item)}
                             item={entry.item}
                             sepia={sepia}
+                            pinned={pinFavorites && entry.item.favorited}
                             label={entry.item.caption ?? entry.item.text ?? dateLabel.format(new Date(entry.item.ts))}
                             onOpen={onOpen}
                         />
@@ -128,17 +116,40 @@ const MonthGrid: React.FC<Omit<MonthSectionProps, 'requested' | 'registerRef'> &
 /**
  * One month band of the album (spec 8): tinted from its cover photo (`cover_color`, the
  * data-driven exception; neutral `bg-sunken` without one), the polaroid cover beside the grid,
- * photos aged with `sepiaClass` by year. The grid loads only once `requested`; until then a
- * placeholder holds some height. Memoised so a scroll that requests other months leaves it be.
+ * photos aged with `sepiaClass` by year. The month label is the band's heading: above the band
+ * when the polaroid carries her words, else the polaroid's own caption (never shown twice).
+ * The grid is fetched once `requested` and mounted only while `live`; a band that is not live
+ * keeps its last measured height, so the scroll position holds while its grid is released.
+ * Memoised: bands re-render only when their own props change.
  */
-export const MonthSection = React.memo<MonthSectionProps>((props) => {
-    const { summary, requested, registerRef } = props;
+export const MonthSection = React.memo<MonthSectionProps>(({
+    service, summary, member, kind, data, requested, live, nameOf, registerRef, onLoaded, onSettled,
+}) => {
     const { t, i18n } = useTranslation();
     const month = summary.month;
     const label = formatMonth(t, 'memories.album.monthLabel', month, i18n.language);
     const sepia = sepiaClass(monthParts(month).year);
-    const ref = useCallback((el: HTMLElement | null) => registerRef(month, el), [registerRef, month]);
+    const own = useRef<HTMLElement | null>(null);
+    const ref = useCallback((el: HTMLElement | null) => {
+        own.current = el;
+        registerRef(month, el);
+    }, [registerRef, month]);
+    const height = useRef<number | null>(null);
+    const showGrid = live && data !== undefined;
+    useLayoutEffect(() => {
+        if (showGrid && own.current) height.current = own.current.getBoundingClientRect().height;
+    });
     const tint = tintOf(summary.cover_color);
+    const hasWords = Boolean(summary.cover.caption ?? summary.cover.text);
+    const style: React.CSSProperties = {};
+    if (tint) style.backgroundColor = tint;
+    if (!showGrid && height.current) style.minHeight = height.current;
+
+    let body: React.ReactNode;
+    if (showGrid) body = <MonthGrid data={data} kind={kind} nameOf={nameOf} label={label} sepia={sepia} />;
+    else if (live && requested) {
+        body = <MonthLoader service={service} month={month} member={member} kind={kind} onLoaded={onLoaded} onSettled={onSettled} />;
+    } else body = <div aria-hidden="true" data-testid="album-month-placeholder" className="min-h-64 flex-1" />;
 
     return (
         <section
@@ -146,15 +157,13 @@ export const MonthSection = React.memo<MonthSectionProps>((props) => {
             data-month={month}
             data-testid={`album-month-${month}`}
             aria-label={label}
-            style={tint}
+            style={style}
             className={cn('scroll-mt-2 rounded-lg p-4', !tint && 'bg-sunken')}
         >
-            <h2 className="mb-3 font-display text-title text-primary">{label}</h2>
+            {hasWords && <h2 className="mb-3 font-display text-title text-primary">{label}</h2>}
             <div className="flex items-start gap-4">
                 <PolaroidCover cover={summary.cover} label={label} sepia={sepia} />
-                {requested
-                    ? <MonthGrid {...props} label={label} sepia={sepia} />
-                    : <div aria-hidden="true" className="min-h-64 flex-1" />}
+                {body}
             </div>
         </section>
     );

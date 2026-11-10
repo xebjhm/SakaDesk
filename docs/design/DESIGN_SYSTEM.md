@@ -821,12 +821,17 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
 - **The album** (`features/memories/album/`): month bands each hold a polaroid cover
   (`bg-memories-paper`, `shadow-memories-polaroid`, her nearby words in `font-display
   text-small` on one line, else the month label) and a square grid; photos are aged with
-  `sepiaClass` by year. A ★ photo spans 2×2 and wears a `bg-memories-washi` strip and the
-  yellow `text-semantic-star`; a burst of three or more is one stacked still with 「{{count}} 枚」
-  that opens the sequence (`Modal`) with each caption beside its frame. A tile's hover / focus
-  caption is a frosted card (`bg-frost backdrop-blur-frost`). The filters are `Pill`s, the ★
-  one `tone="star"`. The ribbon on the right is a scrubber (click, drag, ↑ / ↓); the jump
-  scroll is instant under reduced motion and the tilt is static.
+  `sepiaClass` by year. A ★ photo wears the yellow `text-semantic-star` and, except under the
+  ★ filter (where every photo is one), spans 2×2 with a `bg-memories-washi` strip; a burst of
+  three or more is one stacked still with 「{{count}} 枚」 (the star on the stack and beside the
+  frame when it holds a ★) that opens the sequence (`Modal`) with each caption beside its frame.
+  The month label is shown once: the band heading when the polaroid carries her words, else the
+  polaroid's caption. A tile's hover / focus caption is a frosted card (`bg-frost
+  backdrop-blur-frost`). Stills come from the thumbnail route (`thumbnailUrl`, full file on
+  error); a video still mounts its player only while in view. The filters are `Pill`s, the ★
+  one `tone="star"`. The ribbon on the right is a scrubber (click, drag, ↑ / ↓ / Home / End, one
+  Tab stop) whose segments share its height; its jumps are instant (never an animated scroll
+  through every band) and the tilt is static under reduced motion.
 
 ### The group rail and the profile card
 
