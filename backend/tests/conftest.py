@@ -91,6 +91,12 @@ def _no_memories_refresh(monkeypatch):
         "backend.services.sync_service.build_memory_index",
         create_autospec(build_all, return_value=0),
     )
+    from backend.services.memories.album import warm_album
+
+    monkeypatch.setattr(
+        "backend.services.sync_service.warm_album",
+        create_autospec(warm_album, return_value=None),
+    )
 
 
 @pytest.fixture(autouse=True)

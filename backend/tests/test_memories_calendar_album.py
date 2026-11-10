@@ -178,11 +178,11 @@ async def test_calendar_oshi_star_beats_a_higher_score(svc, oshi_names, monkeypa
 
     real = facts_mod.get_person_facts
 
-    async def scored(sdir, summary):
+    async def scored(sdir, summary, *args, **kwargs):
         import dataclasses
 
         out = []
-        for room, f in await real(sdir, summary):
+        for room, f in await real(sdir, summary, *args, **kwargs):
             if f.id == 3:
                 f = dataclasses.replace(f, photo_score=999, favorited=False)
             if f.id == 20:

@@ -505,12 +505,20 @@ def _sorted_scope(tagged: list[tuple[str, Fact]]) -> list[tuple[str, Fact]]:
 
 
 async def scope_facts(
-    sdir: Path, persons: Sequence[mi.MemberSummary]
+    sdir: Path,
+    persons: Sequence[mi.MemberSummary],
+    start: date | None = None,
+    end: date | None = None,
+    *,
+    types: Iterable[str] | None = None,
 ) -> list[tuple[str, Fact]]:
-    """``(room, fact)`` of every room of ``persons``, by ``(ts, id, room)``."""
+    """``(room, fact)`` of every room of ``persons``, by ``(ts, id, room)``.
+
+    ``start`` / ``end`` (JST dates, inclusive) and ``types`` narrow the query.
+    """
     tagged: list[tuple[str, Fact]] = []
     for s in persons:
-        tagged.extend(await get_person_facts(sdir, s))
+        tagged.extend(await get_person_facts(sdir, s, start, end, types=types))
     if len(persons) > 1:
         tagged = await asyncio.to_thread(_sorted_scope, tagged)
     return tagged

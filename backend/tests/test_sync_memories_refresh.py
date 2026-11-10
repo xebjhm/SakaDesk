@@ -18,13 +18,18 @@ async def test_index_builds_after_member_profiles(tmp_path, monkeypatch):
         calls.append("index")
         return 0
 
+    async def warm(service, sdir):
+        calls.append("warm")
+
     monkeypatch.setattr(sync_service, "refresh_member_profiles", profiles)
     monkeypatch.setattr(sync_service, "build_memory_index", build)
+    monkeypatch.setattr(sync_service, "warm_album", warm)
     svc = SyncService("hinatazaka46")
     svc.service_data_dir = tmp_path
     await svc._refresh_memories()
     # Birthdays are in the index hash: building first meant a second rebuild.
-    assert calls == ["profiles", "index"]
+    # The album caches are warmed on the fresh index (D4).
+    assert calls == ["profiles", "index", "warm"]
 
 
 @pytest.mark.asyncio

@@ -522,3 +522,67 @@ async def test_album_months_rebuilds_after_media_repair(svc):
     os.utime(pics, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
     again = (await album.album_months(SERVICE, svc, member=a, kind="all"))["months"]
     assert again[1]["cover_color"] is not None
+
+
+# --- D4: first open performance -----------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_month_reads_only_that_months_media_rows(svc, monkeypatch):
+    """album_month must not read the whole scope for one month."""
+    from datetime import date
+
+    calls = []
+    real = people.scope_facts
+
+    async def spy(sdir, persons, start=None, end=None, *, types=None):
+        calls.append((start, end, types))
+        return await real(sdir, persons, start, end, types=types)
+
+    monkeypatch.setattr(people, "scope_facts", spy)
+    assert album.month_bounds("2024-02") == (date(2024, 2, 1), date(2024, 2, 29))
+    body = await album.album_month(SERVICE, svc, "2024-09", member=None, kind="all")
+    assert calls == [(date(2024, 9, 1), date(2024, 9, 30), people.MEDIA_TYPES)]
+    assert {i["id"] for i in body["items"]} == {2, 10, 11, 12, 13}
+
+
+@pytest.mark.asyncio
+async def test_counts_and_months_read_media_rows_only(svc, monkeypatch):
+    seen = []
+    real = people.scope_facts
+
+    async def spy(sdir, persons, start=None, end=None, *, types=None):
+        seen.append(types)
+        return await real(sdir, persons, start, end, types=types)
+
+    monkeypatch.setattr(people, "scope_facts", spy)
+    await album.album_members(SERVICE, svc)
+    await album.album_months(SERVICE, svc, member=None, kind="all")
+    assert seen and all(t == people.MEDIA_TYPES for t in seen)
+
+
+@pytest.mark.asyncio
+async def test_warm_album_fills_the_caches_the_first_open_reads(svc):
+    with capture_logs() as logs:
+        await album.warm_album(SERVICE, svc)
+    (ev,) = [e for e in logs if e["event"] == "memories_album_warm"]
+    assert ev["months"] == 3 and isinstance(ev["elapsed_ms"], int)
+    with capture_logs() as logs:
+        await album.album_members(SERVICE, svc)
+        await album.album_months(SERVICE, svc, member=None, kind="all")
+        for month in ("2024-12", "2024-10"):
+            await album.album_month(SERVICE, svc, month, member=None, kind="all")
+    outcomes = [e["outcome"] for e in logs if e["event"] == "memories_view_cache"]
+    assert outcomes == ["hit"] * 4
+
+
+@pytest.mark.asyncio
+async def test_warm_album_never_raises(svc, monkeypatch):
+    async def boom(*a, **kw):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(album, "album_members", boom)
+    with capture_logs() as logs:
+        await album.warm_album(SERVICE, svc)
+    (ev,) = [e for e in logs if e["event"] == "memories_album_warm_failed"]
+    assert ev["error_type"] == "RuntimeError"

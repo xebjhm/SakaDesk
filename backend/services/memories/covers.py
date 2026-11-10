@@ -103,8 +103,11 @@ async def set_cover_override(
     del service  # the store is keyed by the service folder (``sdir.name``)
     _check_month(month)
     persons = [member] if member is not None else await list_members(sdir)
-    tagged = await people.scope_facts(sdir, persons)
-    # Up to ~50k facts for 全員: scan in a worker, off the event loop.
+    first, last = album.month_bounds(month)
+    tagged = await people.scope_facts(
+        sdir, persons, first, last, types=people.MEDIA_TYPES
+    )
+    # Only that month's media rows; still scanned in a worker, off the loop.
     found = await asyncio.to_thread(_in_month, tagged, room, message_id, month)
     scoped = member is not None
     if not found:

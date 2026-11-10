@@ -44,13 +44,22 @@ Logs (ids, codes, counts and scores only): ``memories_select``
 ``month``; ``fallback`` = a burst / first / promo / screenshot cover) per
 month when the months are built, and ``memories_album`` (``months``,
 ``count``, ``kind``) and ``memories_album_month`` per request.
+
+- :func:`warm_album` -- fills the 全員 caches (members, months, ribbon, the
+  newest grids) in the background after the post-sync index build, so the
+  first album open reads cache hits.
+
+Reads are narrowed in SQL: the counts and the months read only picture /
+video facts, and one month reads only that JST month's media rows.
 """
 
 from __future__ import annotations
 
 import asyncio
+import calendar
+import time
 from collections.abc import Callable, Sequence
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 
 import structlog
@@ -186,7 +195,7 @@ async def album_members(service: str, sdir: Path) -> dict:
     async def build() -> dict:
         counted: list[tuple[mi.MemberSummary, int]] = []
         for s in persons:
-            tagged = await people.scope_facts(sdir, [s])
+            tagged = await people.scope_facts(sdir, [s], types=people.MEDIA_TYPES)
             n = sum(1 for _, f in tagged if keep(f, "all"))
             if n:
                 counted.append((s, n))
@@ -215,6 +224,12 @@ async def album_members(service: str, sdir: Path) -> dict:
 
 
 # --- months ------------------------------------------------------------------------------
+
+
+def month_bounds(month: str) -> tuple[date, date]:
+    """The first and last JST date of ``YYYY-MM``."""
+    year, mon = int(month[:4]), int(month[5:7])
+    return date(year, mon, 1), date(year, mon, calendar.monthrange(year, mon)[1])
 
 
 def _by_month(tagged: Sequence[_Tagged], kind: str) -> dict[str, list[_Tagged]]:
@@ -351,9 +366,17 @@ def _months_payload(
 
 
 async def album_months(
-    service: str, sdir: Path, *, member: mi.MemberSummary | None, kind: str
+    service: str,
+    sdir: Path,
+    *,
+    member: mi.MemberSummary | None,
+    kind: str,
+    texts: bool = True,
 ) -> dict:
-    """The album's monthly sections, newest first (see the module docstring)."""
+    """The album's monthly sections, newest first (see the module docstring).
+
+    ``texts=False`` skips attaching the covers' words (cache warming only).
+    """
     _check_kind(kind)
     persons, scope, hashes = await people.album_scope(sdir, member)
     oshi_names = await people.oshi_rooms(service, persons)
@@ -370,7 +393,7 @@ async def album_months(
     )
 
     async def build() -> dict:
-        tagged = await people.scope_facts(sdir, persons)
+        tagged = await people.scope_facts(sdir, persons, types=people.MEDIA_TYPES)
         months = await asyncio.to_thread(_by_month, tagged, kind)
         found = await consulted_probes(sdir, months, overrides, oshi_rooms)
         chosen = await asyncio.to_thread(
@@ -390,7 +413,8 @@ async def album_months(
         )
 
     payload = await cached_view(sdir, VIEW_MONTHS, f"{scope}:{kind}", data_hash, build)
-    await people.attach_texts(sdir, [m["cover"] for m in payload["months"]])
+    if texts:
+        await people.attach_texts(sdir, [m["cover"] for m in payload["months"]])
     logger.info(
         "memories_album",
         months=len(payload["months"]),
@@ -442,8 +466,12 @@ async def album_month(
     *,
     member: mi.MemberSummary | None,
     kind: str,
+    texts: bool = True,
 ) -> dict:
-    """One month's items and bursts, with texts (see the module docstring)."""
+    """One month's items and bursts, with texts (see the module docstring).
+
+    ``texts=False`` skips attaching the words (cache warming only).
+    """
     if not MONTH_RE.match(month):
         raise ValueError("month must be YYYY-MM")
     _check_kind(kind)
@@ -451,7 +479,12 @@ async def album_month(
     data_hash = view_hash(ALBUM_VERSION, hashes, month)
 
     async def build() -> dict:
-        tagged = await people.scope_facts(sdir, persons)
+        # Only this JST month's pictures and videos: a month never reads the
+        # whole scope (~50k facts for 全員).
+        first, last = month_bounds(month)
+        tagged = await people.scope_facts(
+            sdir, persons, first, last, types=people.MEDIA_TYPES
+        )
         items = (await asyncio.to_thread(_by_month, tagged, kind)).get(month, [])
         avatars = await _avatars_by_room(sdir, persons, {room for room, _ in items})
         return await asyncio.to_thread(
@@ -466,7 +499,8 @@ async def album_month(
 
     key = f"{scope}:{kind}:{month}"
     payload = await cached_view(sdir, VIEW_MONTH, key, data_hash, build)
-    await people.attach_texts(sdir, payload["items"])
+    if texts:
+        await people.attach_texts(sdir, payload["items"])
     logger.info(
         "memories_album_month",
         month=month,
@@ -475,6 +509,41 @@ async def album_month(
         bursts=len(payload["bursts"]),
     )
     return payload
+
+
+# --- warming ---------------------------------------------------------------------------------
+
+WARM_MONTHS = 2
+
+
+async def warm_album(service: str, sdir: Path) -> None:
+    """Fill the 全員 album caches in the background (after the index build).
+
+    The first album open otherwise pays for every cold view at once: the
+    member counts, the months (cover probes decode pictures), the colour
+    ribbon (more probes) and the first grids. Each is cached by its data
+    hash, so a warm run on unchanged data is a string of cache hits. Never
+    raises: a failure is logged (``memories_album_warm_failed``) and the
+    album builds on open as before. Logs ``memories_album_warm`` with
+    ``months`` and ``elapsed_ms``.
+    """
+    start = time.perf_counter()
+    try:
+        await album_members(service, sdir)
+        months = await album_months(service, sdir, member=None, kind="all", texts=False)
+        await album_colors.month_colors_for(service, sdir, None)
+        for row in months["months"][:WARM_MONTHS]:
+            await album_month(
+                service, sdir, row["month"], member=None, kind="all", texts=False
+            )
+    except Exception as e:  # noqa: BLE001 - warming is best effort
+        logger.warning("memories_album_warm_failed", error_type=type(e).__name__)
+        return
+    logger.info(
+        "memories_album_warm",
+        months=len(months["months"]),
+        elapsed_ms=round((time.perf_counter() - start) * 1000),
+    )
 
 
 __all__ = [
@@ -486,4 +555,5 @@ __all__ = [
     "consulted_probes",
     "keep",
     "screenshot_fn",
+    "warm_album",
 ]

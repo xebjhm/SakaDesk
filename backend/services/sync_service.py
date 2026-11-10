@@ -44,6 +44,7 @@ from backend.services.notification_service import send_planned
 from backend.services.chat_kind import is_member_dir
 from backend.services.memories.index import build_all as build_memory_index
 from backend.services.memories import index as memory_index
+from backend.services.memories.album import warm_album
 from backend.services.memories.index import sync_writing as memory_index_sync_writing
 from backend.services.memories.member_profiles import refresh_member_profiles
 from backend.services.memories.notify_scheduler import request_card_check
@@ -1454,7 +1455,7 @@ class SyncService:
             logger.warning("subscription_starts_failed", error_type=type(e).__name__)
 
     async def _refresh_memories(self) -> None:
-        """Refresh member profiles, then rebuild the memory index.
+        """Refresh member profiles, rebuild the memory index, then warm the album.
 
         Sequential on purpose: birthdays are part of each room's index hash,
         so building the index while the profile refresh is still running made
@@ -1473,6 +1474,8 @@ class SyncService:
                     error_type=type(e).__name__,
                 )
             await build_memory_index(sdir)
+            # Fill the album caches now, so the first album open is warm.
+            await warm_album(self._service, sdir)
         finally:
             memory_index.end_refresh(sdir)
 
