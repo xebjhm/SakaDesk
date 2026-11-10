@@ -37,6 +37,8 @@
 
 ## Global Constraints
 
+- **Tile sizing (acceptance r2, 2026-11-11):** column/tile maths come from the single constant module `frontend/src/core/media/tileGrid.ts` (tiles ≥ 9rem, ≤ 6 per row; ~250 px wide on wide windows). `VirtualMediaGrid`/`useGridColumns` must import it instead of the `min 112 / max 180` defaults below, and tiles pick the thumbnail variant by rendered width × DPR (≈250 × 1.75 ≈ 440 → request the 640 variant on HiDPI; 320 where it suffices). Update the cache-per-item estimate accordingly in P9.
+
 - **User decisions (2026-11-11):** cache budget ~1.4 GB total as planned (thumbs 1 GiB + posters 256 MiB) is approved. Album keeps its own layout, tiles shared (D-1). On-demand fallback stays (D-3).
 - **Loading feedback is mandatory (user, 2026-11-11):** a tile waiting for its image must clearly look *loading*, never blank or frozen: the dominant-colour/blur placeholder carries a subtle shimmer/pulse (design-system motion token; static under `prefers-reduced-motion`, where a small spinner or progress indicator is used instead), and it fades into the image on load. A tile that failed shows a quiet retry state, never an empty box. Grid-level loading (first page, more pages, background pre-generation in progress) shows a visible indicator too. Every gallery task (P5–P8) must test the loading, loaded and failed states.
 
