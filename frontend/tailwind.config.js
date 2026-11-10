@@ -343,7 +343,7 @@ export default {
                 heartbeat: 'heartbeat 1.2s ease-in-out infinite',
                 'star-fall': 'star-fall 600ms var(--ds-ease-standard) both',
                 'fan-in': 'fan-in 500ms var(--ds-ease-standard) both',
-                'letter-scroll': 'letter-scroll 6s ease-in-out both',
+                'letter-scroll': 'letter-scroll 6s var(--ds-ease-standard) both',
                 'petal-fall': 'petal-fall 1600ms var(--ds-ease-standard) both',
                 shimmer: 'shimmer 1.2s 300ms var(--ds-ease-standard) both',
                 'shimmer-sweep': 'shimmer-sweep 1.4s var(--ds-ease-standard) infinite',

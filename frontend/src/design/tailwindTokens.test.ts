@@ -144,3 +144,14 @@ describe('accent and expressive utilities', () => {
         expect(config).toContain("const fadeY = 'linear-gradient(to bottom, transparent 0%, black 20%, black 65%, transparent 100%)';");
     });
 });
+
+describe('year recap slide motion', () => {
+    it('eases every recap animation with the design system easing token', () => {
+        for (const name of ['star-fall', 'fan-in', 'letter-scroll', 'petal-fall']) {
+            const line = config.match(new RegExp(`'${name}': '([^']+)'`))?.[1];
+            expect(line, name).toBeDefined();
+            expect(line, name).toContain('var(--ds-ease-standard)');
+            expect(line, name).not.toMatch(/\bease-in-out\b|\bease-out\b|\blinear\b/);
+        }
+    });
+});
