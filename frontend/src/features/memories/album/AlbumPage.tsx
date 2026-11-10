@@ -7,6 +7,7 @@ import { fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonths } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
 import { LoadState } from '../shared/LoadState';
 import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
+import { nameFromRoom } from '../shared/nameFromRoom';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { AlbumKind, AlbumMonthSummary, MemoriesCountedMember, MemoryMessage } from '../types';
@@ -26,9 +27,6 @@ const FILTERS: { kind: AlbumKind; key: string }[] = [
     { kind: 'video', key: 'memories.album.filterVideos' },
     { kind: 'favorite', key: 'memories.album.filterFavorites' },
 ];
-
-/** Her name from a room dir's last segment (`58 金村 美玖` → `金村 美玖`), when the list does not know the room. */
-const nameFromRoom = (room: string) => (room.split('/').pop() ?? '').replace(/^\d+\s+/, '');
 
 interface AlbumGridProps {
     service: string;
