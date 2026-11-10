@@ -10,11 +10,11 @@ import type { RecapSlide } from './api';
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
 import { fakeAudioFactory } from './__fixtures__/fakeAudio';
-import { CROSSFADE_MS } from './voicePlayback';
+import { CROSSFADE_MS } from '../shared/clipSequencer';
 
 const audio = vi.hoisted(() => ({ factory: null as null | { create: () => HTMLAudioElement } }));
-vi.mock('./voicePlayback', async (importOriginal) => {
-    const mod = await importOriginal<typeof import('./voicePlayback')>();
+vi.mock('../shared/clipSequencer', async (importOriginal) => {
+    const mod = await importOriginal<typeof import('../shared/clipSequencer')>();
     return { ...mod, createAudioElement: () => audio.factory!.create() };
 });
 

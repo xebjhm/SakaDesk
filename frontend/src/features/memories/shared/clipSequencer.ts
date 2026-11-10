@@ -7,7 +7,7 @@
  * every sounding element, every volume ramp and the final fade-out timer hold
  * where they are. Tests pass a fake element factory.
  */
-import type { RecapTranscriptSegment } from './api';
+import type { RecapTranscriptSegment } from '../recap/api';
 
 /** Length of each crossfade (and of the final fade-out). */
 export const CROSSFADE_MS = 300;

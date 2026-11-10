@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
-import { ClipSequencer, CROSSFADE_MS, type SequencerClip, type SequencerEvents } from './voicePlayback';
-import { fakeAudioFactory } from './__fixtures__/fakeAudio';
+import { ClipSequencer, CROSSFADE_MS, type SequencerClip, type SequencerEvents } from './clipSequencer';
+import { fakeAudioFactory } from '../recap/__fixtures__/fakeAudio';
 
 const clips = (n: number): SequencerClip[] =>
     Array.from({ length: n }, (_, i) => ({

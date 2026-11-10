@@ -6,7 +6,7 @@ import { cn } from '../../../../utils/classnames';
 import { logRecapPlay } from '../../memoriesLog';
 import type { S06VoiceData } from '../api';
 import { s06Copy, withNickname } from '../recapCopy';
-import { ClipSequencer, createAudioElement, type SequencerClip } from '../voicePlayback';
+import { ClipSequencer, createAudioElement, type SequencerClip } from '../../shared/clipSequencer';
 import { Headline, Narration, Quote, type SlideProps } from './common';
 import { heldReveal } from './style';
 
