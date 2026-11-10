@@ -4,10 +4,10 @@ import { RecapEntry } from './recap/RecapEntry';
 import { fetchRecapYears } from './recap/api';
 import { defaultRecapYear, offeredRecapYears, recapAvailability } from './recap/availability';
 import { logMemoriesOpen, logMemoriesPage, logRecapLoad } from './memoriesLog';
-import { PagePlaceholder } from './PagePlaceholder';
 import { OnThisDayPage } from './onThisDay/OnThisDayPage';
 import { AlbumPage } from './album/AlbumPage';
 import { FavoritesPage } from './favorites/FavoritesPage';
+import { MemoirPage } from './memoir/MemoirPage';
 import { NicknameProvider } from './shared/useNickname';
 
 /** Pages of the Memories router; wave 4 adds `{ page: 'day'; date: string }`. */
@@ -134,7 +134,7 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
     } else if (route.page === 'favorites') {
         page = <FavoritesPage service={service} route={route} go={go} />;
     } else {
-        page = <PagePlaceholder service={service} route={route} go={go} />;
+        page = <MemoirPage service={service} route={route} go={go} />;
     }
     return <NicknameProvider nickname={nickname}>{page}</NicknameProvider>;
 };

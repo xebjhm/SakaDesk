@@ -18,7 +18,9 @@ export type MemoriesView =
     /** The album's member list, one month's grid and the colour ribbon (`album` is its months). */
     | 'album_members' | 'album_month' | 'album_colors'
     /** The film strip's day (favorites, names). */
-    | 'film_strip';
+    | 'film_strip'
+    /** The memoir's member list (`memoir` is the selected person's header). */
+    | 'memoir_members';
 
 /**
  * `memories_load`: a core view's request finished. `outcome` `ok` carries `count` (the view's
@@ -59,9 +61,10 @@ export function logMemoriesToggle(target: MemoriesToggle, on: boolean, extra: { 
 /**
  * Why a Memories view skipped something or fell back (`memories_skip` `reason`):
  * `focus_missing` the film strip's message is not in its day (the strip opens on the day's first
- * message); `empty_note` a text favourite without text was left off the board.
+ * message); `empty_note` a text favourite without text was left off the board; `unknown_card` binder
+ * cards whose key this build has no copy for were left off the binder (`count`).
  */
-export type MemoriesSkipReason = 'focus_missing' | 'empty_note';
+export type MemoriesSkipReason = 'focus_missing' | 'empty_note' | 'unknown_card';
 
 /** `memories_skip`: a Memories view skipped an item or fell back. Ids, codes and counts only. */
 export function logMemoriesSkip(

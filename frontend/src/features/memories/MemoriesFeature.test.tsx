@@ -32,6 +32,8 @@ beforeEach(() => {
         http.get('/api/memories/:service/album/colors', () => HttpResponse.json({ colors: {} })),
         // The favorites page (C10) loads its board.
         http.get('/api/memories/:service/favorites', () => HttpResponse.json({ total: 0, members: [], items: [] })),
+        // The memoir page (C11) loads its member list.
+        http.get('/api/memories/:service/memoir/members', () => HttpResponse.json({ members: [] })),
         http.get('/api/memories/:service/recap/years', () => (
             shelf ? HttpResponse.json({ years: shelf }) : HttpResponse.json({ detail: 'x' }, { status: 500 })
         )),
