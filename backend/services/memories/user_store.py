@@ -410,11 +410,16 @@ def record_gacha_pull(
     reason: str,
     now: datetime,
     max_pulls: int,
+    expected_index: int | None = None,
 ) -> GachaPull | None:
-    """Insert the next pull of the day, or ``None`` when ``max_pulls`` are used.
+    """Insert the next pull of the day, or ``None`` when it was not recorded.
 
-    ``BEGIN IMMEDIATE`` serialises the count + insert, so two racing clicks
-    cannot both take the last pull.
+    ``None`` means ``max_pulls`` are used, or (with ``expected_index``) the
+    day's pull count is no longer ``expected_index``: another pull was
+    recorded since the caller read the count, so its draw is stale and the
+    caller re-reads and re-draws. ``BEGIN IMMEDIATE`` serialises the count +
+    check + insert, so two racing clicks can neither both take the last pull
+    nor record a draw made for an index that another click already took.
     """
     if max_pulls <= 0:
         raise ValueError("max_pulls must be positive")
@@ -426,7 +431,8 @@ def record_gacha_pull(
             "SELECT COUNT(*) FROM memories_gacha_pulls WHERE service=? AND jst_date=?",
             (service, day),
         ).fetchone()
-        if count >= max_pulls:
+        stale = expected_index is not None and count != expected_index
+        if count >= max_pulls or stale:
             pull = None
         else:
             c.execute(
@@ -448,7 +454,7 @@ def record_gacha_pull(
             _EVENT,
             op="gacha_pull",
             service=service,
-            outcome="no_pulls_left",
+            outcome="no_pulls_left" if count >= max_pulls else "stale_index",
             count=count,
         )
     else:
@@ -565,6 +571,7 @@ async def arecord_gacha_pull(
     reason: str,
     now: datetime,
     max_pulls: int,
+    expected_index: int | None = None,
 ) -> GachaPull | None:
     return await asyncio.to_thread(
         lambda: record_gacha_pull(
@@ -576,6 +583,7 @@ async def arecord_gacha_pull(
             reason=reason,
             now=now,
             max_pulls=max_pulls,
+            expected_index=expected_index,
         )
     )
 

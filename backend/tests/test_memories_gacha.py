@@ -229,14 +229,63 @@ def test_score_of():
     assert gacha.score_of(fact(1, "2024-01-01 12:00", "voice")) == 100
 
 
-def test_exclude_recent_keeps_a_min_pool():
-    pool = [cand(i) for i in range(12)]
-    kept, excluded = gacha.exclude_recent(pool, {(R, 0), (R, 1)})
-    assert excluded and len(kept) == 10
-    kept, excluded = gacha.exclude_recent(pool, {(R, 0), (R, 1), (R, 2)})
-    assert not excluded and kept == pool
-    kept, excluded = gacha.exclude_recent(pool, set())
-    assert not excluded and kept == pool
+def ids_of(cands):
+    return sorted(c.fact.id for c in cands)
+
+
+def test_exclude_recent_always_drops_todays_pulls():
+    pool = [cand(i) for i in range(5)]  # far below the 10-item floor
+    assert ids_of(gacha.exclude_recent(pool, {(R, 0), (R, 1)}, [])) == [2, 3, 4]
+    # The window cannot cut a pool already at or under 10.
+    assert ids_of(gacha.exclude_recent(pool, {(R, 0)}, [(R, 2)])) == [1, 2, 3, 4]
+    # Only when today's pulls are the whole pool may one repeat.
+    with capture_logs() as logs:
+        assert gacha.exclude_recent([cand(0)], {(R, 0)}, []) == [cand(0)]
+    assert logs == [
+        {
+            "event": "memories_select",
+            "log_level": "info",
+            "view": "gacha",
+            "fallback": "today_repeat",
+            "count": 1,
+        }
+    ]
+
+
+def test_exclude_recent_trims_the_window_oldest_first():
+    pool = [cand(i) for i in range(14)]
+    window = [(R, 5), (R, 6), (R, 5), (R, 7), (R, 99), (R, 8)]  # newest first
+    # 14 - today's 1 = 13 -> room for 3 window exclusions: the newest 5, 6, 7.
+    with capture_logs() as logs:
+        kept = gacha.exclude_recent(pool, {(R, 0)}, window)
+    assert ids_of(kept) == [1, 2, 3, 4, 8, 9, 10, 11, 12, 13]
+    assert logs[-1] == {
+        "event": "memories_select",
+        "log_level": "info",
+        "view": "gacha",
+        "fallback": "window_trimmed",
+        "count": 13,
+        "excluded": 3,
+        "repeatable": 1,
+    }
+    # A window that fits is excluded whole, without a log.
+    with capture_logs() as logs:
+        kept = gacha.exclude_recent(pool, set(), [(R, 5), (R, 6)])
+    assert ids_of(kept) == [0, 1, 2, 3, 4, 7, 8, 9, 10, 11, 12, 13] and logs == []
+
+
+def test_window_keys_newest_first_and_bounded():
+    def p(d, i, mid):
+        return us.GachaPull(SERVICE, d, i, R, mid, "n", "message", NOW)
+
+    pulls = [
+        p(TODAY - timedelta(days=30), 0, 1),  # outside the window
+        p(TODAY - timedelta(days=29), 0, 2),
+        p(TODAY - timedelta(days=1), 0, 3),
+        p(TODAY - timedelta(days=1), 1, 4),
+        p(TODAY, 0, 5),  # today's are handled separately
+    ]
+    assert gacha.window_keys(pulls, TODAY) == [(R, 4), (R, 3), (R, 2)]
 
 
 # --- pool -------------------------------------------------------------------------------
@@ -391,19 +440,45 @@ async def test_pull_payload_and_logs(svc):
 
 
 @pytest.mark.asyncio
-async def test_same_draw_after_restart(svc, tmp_path):
-    first = await gacha.pull(SERVICE, svc, now=NOW)
+async def test_same_draws_after_restart_at_every_index(svc, tmp_path):
+    def history_rows():
+        us.record_gacha_pull(
+            SERVICE,
+            TODAY - timedelta(days=3),
+            room=ROOM_A,
+            message_id=4,
+            rarity="n",
+            reason="photo",
+            now=NOW,
+            max_pulls=3,
+        )
+
+    def summary(body):
+        p = body["pull"]
+        m = p["message"]
+        return (
+            p["rarity"],
+            p["reason"],
+            p["jst_date"],
+            p["pull_index"],
+            m["room"],
+            m["id"],
+        )
+
+    history_rows()  # a non-empty no-repeat window
+    first = [await gacha.pull(SERVICE, svc, now=NOW) for _ in range(3)]
     salt = us.gacha_salt()
-    # "Restart": a fresh app-state DB with the same persisted salt, a cold view cache.
+    # "Restart": a fresh app-state DB with the same persisted salt and history,
+    # and a cold view cache.
     app_state.set_db_path(tmp_path / "app2.db")
     app_state.init_db()
     app_state.set_prefs({us.SALT_PREF: salt})
+    history_rows()
     mi.set_db_path(tmp_path / "idx2.db")
-    second = await gacha.pull(SERVICE, svc, now=NOW + timedelta(hours=5))
-    for k in ("rarity", "reason", "jst_date", "pull_index"):
-        assert first["pull"][k] == second["pull"][k]
-    assert first["pull"]["message"]["id"] == second["pull"]["message"]["id"]
-    assert first["pull"]["message"]["room"] == second["pull"]["message"]["room"]
+    later = NOW + timedelta(hours=5)
+    second = [await gacha.pull(SERVICE, svc, now=later) for _ in range(3)]
+    assert [summary(b) for b in first] == [summary(b) for b in second]
+    assert [summary(b)[3] for b in first] == [0, 1, 2]
 
 
 @pytest.mark.asyncio
@@ -446,6 +521,63 @@ def test_racing_last_pull_records_one_row(svc, monkeypatch):
     assert len(us.gacha_pulls_on(SERVICE, TODAY)) == 3
 
 
+def test_racing_middle_pulls_take_two_indexes_and_differ(svc, monkeypatch):
+    asyncio.run(gacha.pull(SERVICE, svc, now=NOW))
+    real = us.record_gacha_pull
+    barrier = threading.Barrier(2, timeout=10)
+    first_calls: set[int] = set()
+    lock = threading.Lock()
+
+    def gated(*a, **kw):
+        me = threading.get_ident()
+        with lock:
+            first = me not in first_calls
+            first_calls.add(me)
+        if first:
+            barrier.wait()  # both clicks drew for index 1 before either inserts
+        return real(*a, **kw)
+
+    monkeypatch.setattr(us, "record_gacha_pull", gated)
+    results: list[dict] = []
+
+    def click():
+        results.append(asyncio.run(gacha.pull(SERVICE, svc, now=NOW)))
+
+    threads = [threading.Thread(target=click) for _ in range(2)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+    rows = us.gacha_pulls_on(SERVICE, TODAY)
+    assert [p.pull_index for p in rows] == [0, 1, 2]
+    assert len({(p.room, p.message_id) for p in rows}) == 3  # no duplicate card
+    assert sorted(r["pull"]["pull_index"] for r in results) == [1, 2]
+    # Each payload is the row recorded at its index (not a stale draw).
+    for r in results:
+        row = rows[r["pull"]["pull_index"]]
+        assert r["pull"]["message"]["id"] == row.message_id
+
+
+@pytest.mark.asyncio
+async def test_pull_gives_up_when_the_store_keeps_refusing(svc, monkeypatch):
+    async def refuse(*a, **kw):
+        return None
+
+    async def none_today(service, day):
+        return []
+
+    monkeypatch.setattr(us, "arecord_gacha_pull", refuse)
+    monkeypatch.setattr(us, "agacha_pulls_on", none_today)
+    with capture_logs() as logs:
+        assert await gacha.pull(SERVICE, svc, now=NOW) is None
+    assert [e["outcome"] for e in logs if e.get("op") == "pull"] == [
+        "retry",
+        "retry",
+        "retry",
+        "gave_up",
+    ]
+
+
 @pytest.mark.asyncio
 async def test_recent_pulls_are_not_redrawn(tmp_path, monkeypatch):
     mi.set_db_path(tmp_path / "idx.db")
@@ -485,8 +617,8 @@ async def test_recent_pulls_are_not_redrawn(tmp_path, monkeypatch):
     )
     pool = await gacha.build_pool(SERVICE, sdir, today=TODAY)
     assert len(pool) == 14
-    recent = await gacha.recent_keys(SERVICE, today=TODAY)
-    assert recent == {(ROOM_A, 1), (ROOM_A, 2)}
+    window = gacha.window_keys(us.gacha_history(SERVICE, limit=90), TODAY)
+    assert window == [(ROOM_A, 2), (ROOM_A, 1)]
     drawn = []
     for i in range(3):
         drawn.append(
@@ -497,8 +629,8 @@ async def test_recent_pulls_are_not_redrawn(tmp_path, monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_small_pool_allows_repeats(svc):
-    # 5 items: excluding any recent one leaves < 10, so the whole pool is used.
+async def test_small_pool_keeps_todays_pulls_out(svc):
+    # 5 items: the window cannot exclude anything, but today's pulls stay out.
     for d in range(1, 6):
         us.record_gacha_pull(
             SERVICE,
@@ -511,10 +643,11 @@ async def test_small_pool_allows_repeats(svc):
             max_pulls=3,
         )
     with capture_logs() as logs:
-        body = await gacha.pull(SERVICE, svc, now=NOW)
-    assert body["pull"] is not None
+        bodies = [await gacha.pull(SERVICE, svc, now=NOW) for _ in range(3)]
+    drawn = [(b["pull"]["message"]["room"], b["pull"]["message"]["id"]) for b in bodies]
+    assert len(set(drawn)) == 3
     assert any(
-        e.get("event") == "memories_select" and e.get("fallback") == "repeat_allowed"
+        e.get("event") == "memories_select" and e.get("fallback") == "window_trimmed"
         for e in logs
     )
 
@@ -622,3 +755,72 @@ async def test_empty_pool(tmp_path, monkeypatch):
         for e in logs
     )
     assert us.gacha_pulls_on(SERVICE, TODAY) == []
+
+
+# --- fix wave 1 -------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_pool_cache_survives_a_new_day_but_not_a_new_year(svc):
+    await gacha.build_pool(SERVICE, svc, today=TODAY)
+
+    async def outcomes(today):
+        with capture_logs() as logs:
+            await gacha.build_pool(SERVICE, svc, today=today)
+        return [e["outcome"] for e in logs if e.get("event") == "memories_view_cache"]
+
+    assert await outcomes(TODAY + timedelta(days=1)) == ["hit"]
+    assert await outcomes(date(2027, 1, 1)) == ["miss"]
+
+
+@pytest.mark.asyncio
+async def test_state_reads_only_the_pulled_rooms(svc, monkeypatch):
+    await gacha.build_pool(SERVICE, svc, today=TODAY)  # warm the pool cache
+    us.record_gacha_pull(
+        SERVICE,
+        TODAY - timedelta(days=1),
+        room=ROOM_A,
+        message_id=1,
+        rarity="n",
+        reason="message",
+        now=NOW,
+        max_pulls=3,
+    )
+    from backend.services.memories import facts as facts_mod
+
+    real = facts_mod.get_facts
+    rooms: list[str] = []
+
+    async def spy(sdir, member_dir, *a, **kw):
+        rooms.append(member_dir.relative_to(sdir).as_posix())
+        return await real(sdir, member_dir, *a, **kw)
+
+    monkeypatch.setattr(facts_mod, "get_facts", spy)
+    state = await gacha.gacha_state(SERVICE, svc, now=NOW)
+    assert state["available"] is True
+    assert state["history"][0]["message"]["text"] == SECRET_TEXT
+    assert rooms == [ROOM_A]  # not ROOM_B, which has no pulls
+
+
+@pytest.mark.asyncio
+async def test_draw_and_pool_work_run_off_the_event_loop(svc, monkeypatch):
+    from backend.services.memories import view_cache
+
+    loop_thread = threading.get_ident()
+    seen: dict[str, list[bool]] = {}
+
+    def watch(module, name):
+        real = getattr(module, name)
+
+        def wrapper(*a, **kw):
+            seen.setdefault(name, []).append(threading.get_ident() != loop_thread)
+            return real(*a, **kw)
+
+        monkeypatch.setattr(module, name, wrapper)
+
+    for name in ("_classify_all", "_join", "_choose"):
+        watch(gacha, name)
+    watch(view_cache, "contains_text")
+    await gacha.pull(SERVICE, svc, now=NOW)
+    assert set(seen) == {"_classify_all", "_join", "_choose", "contains_text"}
+    assert all(all(flags) for flags in seen.values()), seen

@@ -125,7 +125,7 @@ async def cached_view(
     On a miss ``build()`` is awaited; its payload is stored unless it contains
     text (see the module docstring) or cannot be serialised as strict JSON
     (``outcome=unserialisable``; the built payload is still returned). The DB
-    is read and written in a worker.
+    is read and written, and the text check walks the payload, in a worker.
     """
     service_dir = str(sdir)
     hit = await asyncio.to_thread(_read, service_dir, view, key, data_hash)
@@ -133,7 +133,7 @@ async def cached_view(
         logger.info("memories_view_cache", view=view, outcome="hit")
         return hit
     payload = await build()
-    if contains_text(payload):
+    if await asyncio.to_thread(contains_text, payload):
         logger.warning("memories_view_cache", view=view, outcome="uncacheable")
         return payload
     try:

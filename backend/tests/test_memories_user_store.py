@@ -431,3 +431,28 @@ def test_gacha_history_limit_is_clamped(db, asked, got):
 def test_record_gacha_pull_rejects_nonpositive_max(bad):
     with pytest.raises(ValueError):
         _pull(0, max_pulls=bad)
+
+
+def test_record_gacha_pull_refuses_a_stale_expected_index():
+    def rec(i, expected):
+        return us.record_gacha_pull(
+            SVC,
+            date(2026, 11, 10),
+            room=f"room/{i}",
+            message_id=100 + i,
+            rarity="n",
+            reason="message",
+            now=NOW,
+            max_pulls=3,
+            expected_index=expected,
+        )
+
+    assert rec(0, 0).pull_index == 0
+    with capture_logs() as logs:
+        assert rec(1, 0) is None  # drawn for index 0, which is taken
+    assert any(e.get("outcome") == "stale_index" for e in logs)
+    assert rec(1, 1).pull_index == 1
+    assert [p.message_id for p in us.gacha_pulls_on(SVC, date(2026, 11, 10))] == [
+        100,
+        101,
+    ]

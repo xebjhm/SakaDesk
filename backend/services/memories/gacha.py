@@ -28,36 +28,45 @@ Draw (:func:`draw`, pure; all randomness is here and in the seed):
   (``1 + min(9, score / 200)``; :func:`score_of`). Candidates are sorted by
   ``(room, id)`` first, so read order never matters.
 - The seed is :func:`seed_for` = ``sha256(salt|service|jst_date|pull_index)``.
-- No repeats: messages pulled in the last :data:`RECENT_DAYS` JST days
-  (today included) are left out while at least :data:`MIN_POOL_AFTER_RECENT`
-  others remain (:func:`exclude_recent`; else ``fallback=repeat_allowed``).
+- No repeats (:func:`exclude_recent`): today's pulls are always left out.
+  Pulls of the :data:`RECENT_DAYS`-day window before today (newest first,
+  :func:`window_keys`) are left out while at least
+  :data:`MIN_POOL_AFTER_RECENT` items remain; past that, the oldest of them
+  become drawable again first (``fallback=window_trimmed``).
+- The whole draw (exclusion, tier, pick), the classification and the pool
+  join run in worker threads; only I/O awaits run on the event loop.
 
 API:
 
 - ``async build_pool(service, sdir, *, today)`` -- the candidates. The
   text-free part (keys, rarity, reason, score) is cached (view
-  ``gacha_pool``, key ``all``, hash over every room hash and ``today``, which
-  moves the anniversary years).
+  ``gacha_pool``, key ``all``, hash over every room hash and ``today.year``,
+  which moves the anniversary years).
 - ``async gacha_state(service, sdir, *, now)`` -- ``{"available",
   "pulls_left", "max_pulls", "today", "history"}``. ``history`` is newest
   first (at most :data:`HISTORY_LIMIT`, today included); ``today`` is
   today's pulls by index. A pull is ``{"jst_date", "pull_index", "rarity",
-  "reason", "pulled_at", "message"}``. A pulled message no longer in the
+  "reason", "pulled_at", "message"}``. ``today`` is filtered from
+  ``history`` (see :func:`gacha_state`). A pulled message no longer in the
   archive keeps its row with a message whose ``type``, ``ts`` and ``text``
   are ``None`` (a date-only card). ``pulls_left`` may be 0: the UI shows
   「また明日」, never the number.
 - ``async pull(service, sdir, *, now)`` -- ``{"pull", "pulls_left"}``, or
   ``None`` when no pulls are left (also when a racing click took the last
-  one). With an empty pool: ``{"pull": None, "pulls_left": n}``.
+  one). A click that loses a race for a middle index re-draws for the next
+  index (``expected_index`` in ``user_store.record_gacha_pull``), so a
+  double-click never records the same draw twice. With an empty pool:
+  ``{"pull": None, "pulls_left": n}``.
 
 Logs carry ids, codes, counts and scores only: never the salt, a seed, text,
-names, rooms or paths. ``memories_gacha`` once per call (``op=pool|state|
-pull``); ``memories_select`` (``view=gacha``) for each fallback;
+names, rooms or paths. ``memories_gacha`` per call (``op=pool|state|
+pull``; ``outcome=retry`` per lost race); ``memories_select`` (``view=gacha``) for each fallback;
 ``memories_skip`` (``view=gacha``, ``reason=pull_missing``).
 """
 
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import random
 from collections import Counter
@@ -69,6 +78,7 @@ from pathlib import Path
 import structlog
 
 from backend.services.memories import binder, people
+from backend.services.memories import facts as facts_mod
 from backend.services.memories import index as mi
 from backend.services.memories import user_store
 from backend.services.memories.cards import (
@@ -104,6 +114,9 @@ _PHOTOS = people.MEDIA_TYPES
 _MEDIA = _PHOTOS | {"voice"}
 
 
+_Key = tuple[str, int]  # (room, message id)
+
+
 @dataclass(frozen=True)
 class Candidate:
     room: str
@@ -111,6 +124,9 @@ class Candidate:
     rarity: str
     reason: str
     score: float
+
+
+_PersonFacts = list[tuple[mi.MemberSummary, list[tuple[str, Fact]]]]
 
 
 # --- pure ------------------------------------------------------------------------------
@@ -225,23 +241,55 @@ def _pick(pool: Sequence[Candidate], seed: int) -> Candidate:
     return rng.choices(cands, weights=[weight(c.score) for c in cands])[0]
 
 
+def _key(c: Candidate) -> _Key:
+    return c.room, c.fact.id
+
+
 def exclude_recent(
-    pool: Sequence[Candidate], recent: set[tuple[str, int]]
-) -> tuple[list[Candidate], bool]:
-    """``(pool without recent pulls, True)`` while it keeps >= 10, else ``(pool, False)``."""
-    kept = [c for c in pool if (c.room, c.fact.id) not in recent]
-    if len(kept) == len(pool):
-        return list(pool), False
-    if len(kept) >= MIN_POOL_AFTER_RECENT:
-        return kept, True
-    logger.info(
-        "memories_select",
-        view="gacha",
-        fallback="repeat_allowed",
-        count=len(pool),
-        recent=len(pool) - len(kept),
-    )
-    return list(pool), False
+    pool: Sequence[Candidate], today_keys: set[_Key], window: Sequence[_Key]
+) -> list[Candidate]:
+    """The pool without today's pulls and, as far as it keeps >= 10, the window's.
+
+    - Today's pulls are always left out. Only when that leaves nothing is the
+      whole pool used (``fallback=today_repeat``).
+    - ``window`` = the earlier pulls of the no-repeat window, newest first.
+      They are left out while at least :data:`MIN_POOL_AFTER_RECENT` items
+      remain; past that, the oldest stay drawable (``fallback=window_trimmed``).
+    """
+    base = [c for c in pool if _key(c) not in today_keys]
+    if not base:
+        logger.info(
+            "memories_select", view="gacha", fallback="today_repeat", count=len(pool)
+        )
+        return list(pool)
+    present = {_key(c) for c in base}
+    recent = list(dict.fromkeys(k for k in window if k in present))
+    room = max(0, len(base) - MIN_POOL_AFTER_RECENT)
+    excluded = set(recent[:room])
+    if len(recent) > room:
+        logger.info(
+            "memories_select",
+            view="gacha",
+            fallback="window_trimmed",
+            count=len(base),
+            excluded=len(excluded),
+            repeatable=len(recent) - len(excluded),
+        )
+    return [c for c in base if _key(c) not in excluded]
+
+
+def _choose(
+    pool: Sequence[Candidate], today_keys: set[_Key], window: Sequence[_Key], seed: int
+) -> Candidate:
+    """The whole draw for a non-empty ``pool``: exclusion, tier, pick. Pure; runs in a worker."""
+    return _pick(exclude_recent(pool, today_keys, window), seed)
+
+
+def window_keys(pulls: Sequence[user_store.GachaPull], today: date) -> list[_Key]:
+    """``(room, id)`` of ``pulls`` in the window before ``today``, newest first."""
+    since = today - timedelta(days=RECENT_DAYS - 1)
+    ordered = sorted(pulls, key=lambda p: (p.jst_date, p.pull_index), reverse=True)
+    return [(p.room, p.message_id) for p in ordered if since <= p.jst_date < today]
 
 
 # --- pool -------------------------------------------------------------------------------
@@ -273,54 +321,67 @@ def _classify_person(
     return out
 
 
-async def _load(
-    sdir: Path, today: date
-) -> tuple[list[Candidate], dict[tuple[str, int], Fact], dict[str, mi.MemberSummary]]:
-    """``(pool, every fact by (room, id), room -> person)``."""
-    persons, _, hashes = await people.album_scope(sdir, None)
-    tagged_by_person = [(s, await people.scope_facts(sdir, [s])) for s in persons]
+def _classify_all(tagged: _PersonFacts, today: date) -> list[dict]:
+    """The text-free pool items of every person. Pure; runs in a worker."""
+    return [it for s, facts in tagged for it in _classify_person(s, facts, today)]
 
-    async def build() -> dict:
-        items: list[dict] = []
-        for s, tagged in tagged_by_person:
-            items.extend(_classify_person(s, tagged, today))
-        return {"items": items}
 
-    data_hash = view_hash(GACHA_VERSION, hashes, today.isoformat())
-    body = await cached_view(sdir, VIEW_POOL, "all", data_hash, build)
-    facts = {(room, f.id): f for _, tagged in tagged_by_person for room, f in tagged}
+def _join(
+    items: Sequence[dict], tagged: _PersonFacts
+) -> tuple[list[Candidate], dict[str, int]]:
+    """``(candidates, count per tier)`` from cached items. Pure; runs in a worker."""
+    facts = {(room, f.id): f for _, fs in tagged for room, f in fs}
     pool = [
         Candidate(it["room"], facts[key], it["rarity"], it["reason"], it["score"])
-        for it in body["items"]
+        for it in items
         if (key := (it["room"], it["id"])) in facts
     ]
-    room_person = {room: s for s in persons for room in s.member_dirs}
-    return pool, facts, room_person
-
-
-def _log_pool(pool: Sequence[Candidate]) -> None:
     tiers = Counter(c.rarity for c in pool)
-    logger.info(
-        _EVENT,
-        op="pool",
-        count=len(pool),
-        sr=tiers["sr"],
-        r=tiers["r"],
-        n=tiers["n"],
-    )
+    return pool, {t: tiers[t] for t in TIERS}
+
+
+async def _person_facts(
+    sdir: Path, persons: Sequence[mi.MemberSummary]
+) -> _PersonFacts:
+    return [(s, await people.scope_facts(sdir, [s])) for s in persons]
+
+
+async def _pool_items(
+    sdir: Path, persons: Sequence[mi.MemberSummary], hashes: Sequence[str], today: date
+) -> tuple[list[dict], _PersonFacts | None]:
+    """``(cached pool items, the facts read by a cache miss or None)``.
+
+    The hash covers ``today.year`` only: the anniversary set changes by year
+    (facts are never in the future), so the pool is classified once a year
+    unless a room changes.
+    """
+    built: list[_PersonFacts] = []
+
+    async def build() -> dict:
+        tagged = await _person_facts(sdir, persons)
+        built.append(tagged)
+        return {"items": await asyncio.to_thread(_classify_all, tagged, today)}
+
+    data_hash = view_hash(GACHA_VERSION, list(hashes), today.year)
+    body = await cached_view(sdir, VIEW_POOL, "all", data_hash, build)
+    return body["items"], (built[0] if built else None)
+
+
+async def _load_pool(
+    sdir: Path, persons: Sequence[mi.MemberSummary], hashes: Sequence[str], today: date
+) -> list[Candidate]:
+    items, tagged = await _pool_items(sdir, persons, hashes, today)
+    if tagged is None:
+        tagged = await _person_facts(sdir, persons)
+    pool, tiers = await asyncio.to_thread(_join, items, tagged)
+    logger.info(_EVENT, op="pool", count=len(pool), **tiers)
+    return pool
 
 
 async def build_pool(service: str, sdir: Path, *, today: date) -> list[Candidate]:
     """The service's gacha candidates on JST ``today`` (see the module docstring)."""
-    pool, _, _ = await _load(sdir, today)
-    _log_pool(pool)
-    return pool
-
-
-async def recent_keys(service: str, *, today: date) -> set[tuple[str, int]]:
-    """``(room, id)`` pulled in the last :data:`RECENT_DAYS` JST days, today included."""
-    since = today - timedelta(days=RECENT_DAYS - 1)
-    return await user_store.agacha_recent_keys(service, since=since)
+    persons, _, hashes = await people.album_scope(sdir, None)
+    return await _load_pool(sdir, persons, hashes, today)
 
 
 # --- payloads ---------------------------------------------------------------------------
@@ -346,19 +407,38 @@ def _missing_ref(service: str, sdir: Path, room: str, message_id: int) -> dict:
     }
 
 
+def _keep_ids(fs: Sequence[Fact], ids: set[int]) -> list[Fact]:
+    return [f for f in fs if f.id in ids]
+
+
+async def _facts_of(
+    sdir: Path,
+    pulls: Sequence[user_store.GachaPull],
+    room_person: dict[str, mi.MemberSummary],
+) -> dict[_Key, Fact]:
+    """The facts of ``pulls`` only: one read per pulled room a person still owns."""
+    ids_by_room: dict[str, set[int]] = {}
+    for p in pulls:
+        if p.room in room_person:
+            ids_by_room.setdefault(p.room, set()).add(p.message_id)
+    out: dict[_Key, Fact] = {}
+    for room, ids in sorted(ids_by_room.items()):
+        fs = await facts_mod.get_facts(sdir, sdir / room)
+        out.update(
+            ((room, f.id), f) for f in await asyncio.to_thread(_keep_ids, fs, ids)
+        )
+    return out
+
+
 async def _pull_payloads(
     service: str,
     sdir: Path,
     pulls: Sequence[user_store.GachaPull],
-    facts: dict[tuple[str, int], Fact],
+    facts: dict[_Key, Fact],
     room_person: dict[str, mi.MemberSummary],
 ) -> list[dict]:
     """Pull payloads with texts attached (one ``attach_texts``, so one read per room)."""
-    used = {
-        room_person[p.room]
-        for p in pulls
-        if (p.room, p.message_id) in facts and p.room in room_person
-    }
+    used = {room_person[p.room] for p in pulls if (p.room, p.message_id) in facts}
     avatars = await people.avatar_timelines_for(
         sdir, {people.person_key(s): s for s in used}
     )
@@ -390,13 +470,25 @@ async def _pull_payloads(
     return out
 
 
+def _room_person(persons: Sequence[mi.MemberSummary]) -> dict[str, mi.MemberSummary]:
+    return {room: s for s in persons for room in s.member_dirs}
+
+
 async def gacha_state(service: str, sdir: Path, *, now: datetime) -> dict:
-    """Today's pulls, the pulls left and the history (see the module docstring)."""
+    """Today's pulls, the pulls left and the history (see the module docstring).
+
+    ``available`` comes from the cached pool items (no fact read on a hit);
+    only the pulled messages' rooms are read for the history. ``today`` is
+    filtered from ``history``: it is newest first and :data:`HISTORY_LIMIT`
+    (60) is far above :data:`MAX_PULLS` (3), so today's pulls are always in it.
+    """
     today = now.astimezone(JST).date()
-    pool, facts, room_person = await _load(sdir, today)
-    _log_pool(pool)
-    history_rows = await user_store.agacha_history(service, limit=HISTORY_LIMIT)
-    history = await _pull_payloads(service, sdir, history_rows, facts, room_person)
+    persons, _, hashes = await people.album_scope(sdir, None)
+    items, _ = await _pool_items(sdir, persons, hashes, today)
+    rows = await user_store.agacha_history(service, limit=HISTORY_LIMIT)
+    room_person = _room_person(persons)
+    facts = await _facts_of(sdir, rows, room_person)
+    history = await _pull_payloads(service, sdir, rows, facts, room_person)
     today_iso = today.isoformat()
     todays = sorted(
         (p for p in history if p["jst_date"] == today_iso),
@@ -406,13 +498,14 @@ async def gacha_state(service: str, sdir: Path, *, now: datetime) -> dict:
     logger.info(
         _EVENT,
         op="state",
-        available=bool(pool),
+        available=bool(items),
+        pool=len(items),
         pulls_left=left,
         today=len(todays),
         history=len(history),
     )
     return {
-        "available": bool(pool),
+        "available": bool(items),
         "pulls_left": left,
         "max_pulls": MAX_PULLS,
         "today": todays,
@@ -421,35 +514,66 @@ async def gacha_state(service: str, sdir: Path, *, now: datetime) -> dict:
 
 
 async def pull(service: str, sdir: Path, *, now: datetime) -> dict | None:
-    """Draw and record the next pull of the JST day (see the module docstring)."""
+    """Draw and record the next pull of the JST day (see the module docstring).
+
+    The draw is made for index ``n`` = today's count and recorded only while
+    the count is still ``n`` (``expected_index``). When a racing click
+    recorded first, the pull re-reads the day and re-draws for the new index,
+    with that click's message now excluded as one of today's pulls.
+    """
     today = now.astimezone(JST).date()
     done = await user_store.agacha_pulls_on(service, today)
     if len(done) >= MAX_PULLS:
         logger.info(_EVENT, op="pull", outcome="no_pulls_left", count=len(done))
         return None
-    pull_index = len(done)
-    pool, facts, room_person = await _load(sdir, today)
-    _log_pool(pool)
+    persons, _, hashes = await people.album_scope(sdir, None)
+    pool = await _load_pool(sdir, persons, hashes, today)
     if not pool:
         logger.info(_EVENT, op="pull", outcome="skipped", reason="empty_pool")
-        return {"pull": None, "pulls_left": MAX_PULLS - pull_index}
-    candidates, _ = exclude_recent(pool, await recent_keys(service, today=today))
+        return {"pull": None, "pulls_left": MAX_PULLS - len(done)}
     salt = await user_store.agacha_salt()
-    picked = _pick(candidates, seed_for(salt, service, today, pull_index))
-    row = await user_store.arecord_gacha_pull(
-        service,
-        today,
-        room=picked.room,
-        message_id=picked.fact.id,
-        rarity=picked.rarity,
-        reason=picked.reason,
-        now=now,
-        max_pulls=MAX_PULLS,
-    )
-    if row is None:
-        logger.info(_EVENT, op="pull", outcome="no_pulls_left", reason="race_lost")
+    for _ in range(MAX_PULLS):
+        index = len(done)
+        history = await user_store.agacha_history(
+            service, limit=MAX_PULLS * RECENT_DAYS
+        )
+        picked = await asyncio.to_thread(
+            _choose,
+            pool,
+            {(p.room, p.message_id) for p in done},
+            window_keys(history, today),
+            seed_for(salt, service, today, index),
+        )
+        row = await user_store.arecord_gacha_pull(
+            service,
+            today,
+            room=picked.room,
+            message_id=picked.fact.id,
+            rarity=picked.rarity,
+            reason=picked.reason,
+            now=now,
+            max_pulls=MAX_PULLS,
+            expected_index=index,
+        )
+        if row is not None:
+            break
+        done = await user_store.agacha_pulls_on(service, today)
+        if len(done) >= MAX_PULLS:
+            logger.info(_EVENT, op="pull", outcome="no_pulls_left", reason="race_lost")
+            return None
+        logger.info(_EVENT, op="pull", outcome="retry", pull_index=len(done))
+    else:
+        # Each retry follows another recorded pull, so this needs > MAX_PULLS
+        # records in one day; it only guards against a store that keeps refusing.
+        logger.warning(_EVENT, op="pull", outcome="gave_up", count=len(done))
         return None
-    (payload,) = await _pull_payloads(service, sdir, [row], facts, room_person)
+    (payload,) = await _pull_payloads(
+        service,
+        sdir,
+        [row],
+        {(row.room, row.message_id): picked.fact},
+        _room_person(persons),
+    )
     logger.info(
         _EVENT,
         op="pull",
@@ -479,8 +603,8 @@ __all__ = [
     "exclude_recent",
     "gacha_state",
     "pull",
-    "recent_keys",
     "score_of",
     "seed_for",
     "weight",
+    "window_keys",
 ]
