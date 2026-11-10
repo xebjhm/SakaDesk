@@ -22,7 +22,7 @@ Each notification is sent at most once. The sent state is kept in app_state SQLi
   - `desktop.py` gains `make_open_memories_handler`, which calls `window.__sakadeskOpenMemories(payload)`. It is modelled on `make_open_login_handler`.
 - **"In Memories" state:** a separate flag in `ui_state`, posted by a new `POST /api/ui-state/memories`. It never overwrites the chat `UiState` that the message toasts read.
 - **Storage:**
-  - two new app_state tables, `memories_notify_log` and `memories_card_baseline`, created as app_state migration step 2 (fun wave F1 added the versioned `_MIGRATIONS` / `_REQUIRED_TABLES` mechanism; append to both);
+  - two new app_state tables, `memories_notify_log` and `memories_card_baseline`, created as app_state migration step 2 (fun wave F1 added the versioned `_MIGRATIONS` / `_REQUIRED_SCHEMA` mechanism; append to both);
   - six new keys in `settings.json`, with their defaults in `settings_store._SETTINGS_DEFAULTS`, served by `/api/settings`.
 - **Frontend:**
   - `shell/openMemories.ts` holds the bridge entry;
@@ -124,7 +124,7 @@ Each notification is sent at most once. The sent state is kept in app_state SQLi
 | `recap` | service | `open` / `christmas` / `ready` | `YYYY` (the recap year) | 12-01 slot–24:00 / 12-25 slot–24:00 / Jan 1 00:00 – Jan 31 24:00 |
 | `card` | service | `member_id` | card key, e.g. `special.birthday@2026` | none (event-driven) |
 
-**Tables** (app_state SQLite, added as migration step 2 in `_MIGRATIONS` with `CREATE TABLE IF NOT EXISTS`, names added to `_REQUIRED_TABLES`; existing rows are untouched):
+**Tables** (app_state SQLite, added as migration step 2 in `_MIGRATIONS` with `CREATE TABLE IF NOT EXISTS`, names added to `_REQUIRED_SCHEMA`; existing rows are untouched):
 
 ```sql
 CREATE TABLE IF NOT EXISTS memories_notify_log (
