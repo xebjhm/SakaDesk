@@ -290,6 +290,32 @@ async def test_capsule_is_the_first_resurfacing_note(today_svc):
 
 
 @pytest.mark.asyncio
+async def test_capsule_reads_her_words_for_the_shown_note_only(today_svc, monkeypatch):
+    from backend.services.memories import capsule
+
+    written = datetime(2025, 11, 10, 3, 0, tzinfo=timezone.utc)
+    for body in (NOTE, "二つ目", "三つ目"):
+        user_store.add_note(
+            SERVICE,
+            anchor_kind="day",
+            anchor_date=datetime(2024, 11, 10).date(),
+            body=body,
+            now=written,
+        )
+    limits: list[int | None] = []
+    real_resurfacing = capsule.resurfacing
+
+    async def spy_resurfacing(*args, **kwargs):
+        limits.append(kwargs.get("limit"))
+        return await real_resurfacing(*args, **kwargs)
+
+    monkeypatch.setattr(capsule, "resurfacing", spy_resurfacing)
+    cap = (await build(today_svc))["capsule"]
+    assert cap["note"]["body"] == NOTE
+    assert limits == [capsule.HUB_LIMIT]  # her words read for one note only
+
+
+@pytest.mark.asyncio
 async def test_gacha_left_after_a_recorded_pull(today_svc):
     user_store.record_gacha_pull(
         SERVICE,
