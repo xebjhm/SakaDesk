@@ -30,6 +30,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are already in Memories. Each kind has its own switch in Settings, along
   with the time of day they arrive (Japan time).
 
+### Fixed
+- **No more red corner on the incoming-call window.** The rounded corners of
+  the bottom-right call card are see-through again instead of showing a solid
+  red patch, on every display scale.
+
 ## [0.4.2] - 2026-11-10
 
 ### Added
