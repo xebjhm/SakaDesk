@@ -272,3 +272,60 @@ def test_day_validates_member_and_service(out):
     r = get(url, date="2024-12-24", member="櫻坂46/messages/1 x/2 x")
     assert r.status_code == 404
     assert get("/api/memories/nope/day", date="2024-12-24").status_code == 400
+
+
+# --- album (C5) ------------------------------------------------------------------------
+
+
+def test_album_members_happy_path(out, no_oshi):
+    r = get(f"/api/memories/{SERVICE}/album/members")
+    assert r.status_code == 200
+    assert r.json() == {"total": 0, "members": []}  # text only: nobody is listed
+    assert get("/api/memories/nope/album/members").status_code == 400
+
+
+def test_album_months_member_optional_and_kind(out, no_oshi):
+    url = f"/api/memories/{SERVICE}/album/months"
+    assert get(url).json() == {"months": []}
+    for kind in ("all", "picture", "video", "favorite"):
+        r = get(url, kind=kind, member=MEMBER)
+        assert r.status_code == 200 and r.json() == {"months": []}
+    for bad in ("voice", "ALL", ""):
+        assert get(url, kind=bad).status_code == 400
+
+
+def test_album_month_route(out, no_oshi):
+    url = f"/api/memories/{SERVICE}/album/month/2024-12"
+    r = get(url)
+    assert r.status_code == 200
+    assert r.json() == {"month": "2024-12", "items": [], "bursts": []}
+    assert get(url, member=MEMBER, kind="picture").status_code == 200
+    assert get(url, kind="nope").status_code == 400
+
+
+@pytest.mark.parametrize("month", ["2024-13", "2024-7", "24-07", "2024-00", "x"])
+def test_album_month_bad_month_is_400(out, month):
+    r = get(f"/api/memories/{SERVICE}/album/month/{month}")
+    assert r.status_code == 400
+
+
+def test_album_colors_route(out, no_oshi):
+    r = get(f"/api/memories/{SERVICE}/album/colors")
+    assert r.status_code == 200 and r.json() == {"colors": {}}
+    r = get(f"/api/memories/{SERVICE}/album/colors", member=MEMBER)
+    assert r.status_code == 200 and r.json() == {"colors": {}}
+
+
+ALBUM_ROUTES = ("album/months", "album/month/2024-12", "album/colors")
+
+
+@pytest.mark.parametrize("route", ALBUM_ROUTES)
+def test_album_routes_validate_member(out, no_oshi, route):
+    url = f"/api/memories/{SERVICE}/{route}"
+    assert get(url, member="../../etc/passwd").status_code == 400
+    assert get(url, member=f"{SVC_NAME}/../../x").status_code == 400
+    (out / SVC_NAME / "messages" / "99 x" / "98 x").mkdir(parents=True, exist_ok=True)
+    assert get(url, member=f"{SVC_NAME}/messages/99 x/98 x").status_code == 404
+    (out / "櫻坂46" / "messages" / "1 x" / "2 x").mkdir(parents=True, exist_ok=True)
+    assert get(url, member="櫻坂46/messages/1 x/2 x").status_code == 404
+    assert get(f"/api/memories/nope/{route}").status_code == 400

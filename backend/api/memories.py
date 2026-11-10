@@ -1,4 +1,4 @@
-"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day and the day view for the active service, the export handoff and the share GIF."""
+"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view and the album for the active service, the export handoff and the share GIF."""
 
 from __future__ import annotations
 
@@ -14,6 +14,8 @@ from fastapi.responses import Response
 from backend.api.content import get_output_dir
 from backend.services.archive_urls import ArchiveReadError
 from backend.services.memories import (
+    album,
+    album_colors,
     binder,
     day_view,
     exports,
@@ -291,6 +293,73 @@ async def day_route(
         include_other_services=others,
         now=now,
     )
+
+
+async def _optional_person(
+    service_data_dir: Path, member: str | None, view: str
+) -> MemberSummary | None:
+    """The person owning ``member``, or ``None`` (全員) when it is absent."""
+    if member is None:
+        return None
+    return await _person(service_data_dir, member, view=view)
+
+
+def _check_kind(kind: str) -> None:
+    if kind not in album.KINDS:
+        logger.warning("memories.api.reject", reason="bad_kind")
+        raise HTTPException(status_code=400, detail="Invalid kind")
+
+
+@router.get("/{service}/album/members")
+async def album_members_route(service: str) -> dict:
+    """The album's member list with picture + video counts (``album``)."""
+    service_data_dir = _service_dir(service)
+    return await album.album_members(service, service_data_dir)
+
+
+@router.get("/{service}/album/months")
+async def album_months_route(
+    service: str, member: str | None = Query(None), kind: str = Query("all")
+) -> dict:
+    """The album's monthly sections, newest first.
+
+    ``member`` (chat path of any of her rooms) limits it to one person;
+    absent means everyone. ``kind`` is ``all|picture|video|favorite`` (400
+    otherwise).
+    """
+    service_data_dir = _service_dir(service)
+    _check_kind(kind)
+    summary = await _optional_person(service_data_dir, member, "album")
+    return await album.album_months(
+        service, service_data_dir, member=summary, kind=kind
+    )
+
+
+@router.get("/{service}/album/month/{month}")
+async def album_month_route(
+    service: str,
+    month: str,
+    member: str | None = Query(None),
+    kind: str = Query("all"),
+) -> dict:
+    """One album month: items in time order and bursts. A malformed month is 400."""
+    service_data_dir = _service_dir(service)
+    if not timeline.MONTH_RE.match(month):
+        logger.warning("memories.api.reject", reason="bad_month")
+        raise HTTPException(status_code=400, detail="Invalid month")
+    _check_kind(kind)
+    summary = await _optional_person(service_data_dir, member, "album")
+    return await album.album_month(
+        service, service_data_dir, month, member=summary, kind=kind
+    )
+
+
+@router.get("/{service}/album/colors")
+async def album_colors_route(service: str, member: str | None = Query(None)) -> dict:
+    """The album's monthly colour ribbon (``album_colors.month_colors_for``)."""
+    service_data_dir = _service_dir(service)
+    summary = await _optional_person(service_data_dir, member, "album")
+    return await album_colors.month_colors_for(service, service_data_dir, summary)
 
 
 @router.post("/export")
