@@ -726,4 +726,135 @@ describe('useSync', () => {
             expect(urls().some(u => u.includes('/api/sync/start?'))).toBe(false)
         })
     })
+
+    // --- release v0.4.2 review follow-ups ------------------------------------
+    describe('review follow-ups', () => {
+        const reply = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body })
+        const urls = () => vi.mocked(fetch).mock.calls.map(([url]) => String(url))
+        const unconfigured = { ...defaultOptions, appSettings: { ...defaultOptions.appSettings, is_configured: false } }
+
+        it('a verify queued behind a sync of the same service waits for its own result', async () => {
+            const steps = [
+                { state: 'running', phase: 'syncing', job_kind: 'sync', completed: 1, total: 4 },
+                { state: 'complete', job_kind: 'sync', completed: 4, total: 4 },
+                { state: 'running', phase: 'verifying', job_kind: 'verify', completed: 1, total: 2 },
+                { state: 'complete', job_kind: 'verify', completed: 2, total: 2, result: { members: 1, checked: 3, missing: 0, repaired: 0, failed: 0, still_missing: 0 } },
+            ]
+            let i = 0
+            vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input)
+                if (url.includes('/api/sync/verify')) return reply({ status: 'queued', position: 1 })
+                if (url.includes('/api/sync/progress')) return reply(steps[Math.min(i++, steps.length - 1)])
+                return reply({})
+            }))
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            await act(async () => { await result.current.verifyAndFix('hinatazaka46') })
+            await waitFor(() => expect(result.current.syncProgressByService['hinatazaka46']?.result).toBeTruthy(), { timeout: 8000 })
+            // The sync's completion did not end it; the verify findings are shown.
+            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('complete')
+            expect(result.current.showSyncModal).toBe(true)
+        }, 15000)
+
+        it('a sequence that disappears from the backend is reported as lost, not complete', async () => {
+            let reads = 0
+            vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input)
+                if (url.includes('/api/sync/start-all')) return reply({ sequence_id: 'seq1', results: {} })
+                if (url.includes('/api/sync/queue')) {
+                    reads += 1
+                    return reply(reads === 1
+                        ? { sequence: { id: 'seq1', services: ['yodel'], current_index: 0, blocking: true, state: 'running', completed: [], failed: [] } }
+                        : { sequence: null })
+                }
+                return reply({ state: 'running', phase: 'syncing', completed: 0, total: 1 })
+            }))
+            const { result } = renderHook(() => useSync(unconfigured))
+            let outcome: unknown
+            await act(async () => { outcome = await result.current.startSequentialSync(['yodel']) })
+            expect(outcome).toEqual({ completed: 0, failed: 1, cancelled: false, lost: true })
+            expect(clientLog).toHaveBeenCalledWith('sync_sequence', { outcome: 'lost', count: 0 })
+            expect(result.current.syncProgress.state).toBe('error')
+        })
+
+        it.each([
+            [500, {}, 'http_500'],
+            [200, { status: 'not_found' }, 'not_found'],
+        ])('a cancel that did not take effect leaves a breadcrumb (%s)', async (status, body, reason) => {
+            vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input)
+                if (url.includes('/api/sync/cancel')) return reply(body, status)
+                return reply({ state: 'running', phase: 'syncing', completed: 1, total: 4 })
+            }))
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            await act(async () => { await result.current.cancelSync('yodel') })
+            expect(clientLog).toHaveBeenCalledWith('sync_cancel_failed', { target: 'service', reason })
+        })
+
+        it('a cancel pressed while the start-all is in flight cancels the sequence once it exists', async () => {
+            let answer!: (r: unknown) => void
+            vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+                const url = String(input)
+                if (url.includes('/api/sync/start-all')) return new Promise(resolve => { answer = resolve })
+                return Promise.resolve(reply({ status: 'cancelled' }))
+            }))
+            const { result } = renderHook(() => useSync(unconfigured))
+            let pending: Promise<unknown> = Promise.resolve()
+            act(() => { pending = result.current.startSequentialSync(['nogizaka46', 'yodel']) })
+            await act(async () => { await result.current.cancelSync() })
+            let outcome: unknown
+            await act(async () => {
+                answer(reply({ sequence_id: 'seq9', results: {} }))
+                outcome = await pending
+            })
+            expect(outcome).toEqual({ completed: 0, failed: 2, cancelled: true })
+            expect(urls().filter(u => u.includes('/api/sync/cancel'))).toEqual(['/api/sync/cancel?sequence=seq9'])
+            expect(urls().some(u => u.includes('/api/sync/queue'))).toBe(false)
+        })
+
+        it('a second sequential start joins the running one', async () => {
+            let answer!: (r: unknown) => void
+            vi.stubGlobal('fetch', vi.fn((input: RequestInfo | URL) => {
+                const url = String(input)
+                if (url.includes('/api/sync/start-all')) return new Promise(resolve => { answer = resolve })
+                return Promise.resolve(reply({ sequence: { id: 's', services: ['yodel'], current_index: 0, blocking: true, state: 'complete', completed: ['yodel'], failed: [] } }))
+            }))
+            const { result } = renderHook(() => useSync(unconfigured))
+            let first: Promise<unknown> = Promise.resolve()
+            let second: Promise<unknown> = Promise.resolve()
+            act(() => {
+                first = result.current.startSequentialSync(['yodel'])
+                second = result.current.startSequentialSync(['yodel', 'nogizaka46'])
+            })
+            expect(second).toBe(first)
+            await act(async () => { answer(reply({ sequence_id: 's', results: {} })); await first })
+            expect(urls().filter(u => u.includes('/api/sync/start-all'))).toHaveLength(1)
+        })
+
+        it('a fresh output folder opens the blocking sequence at startup', async () => {
+            const bodies: unknown[] = []
+            vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+                const url = String(input)
+                if (url.includes('/api/settings/fresh')) return reply({ is_fresh: true })
+                if (url.includes('/api/sync/start-all')) { bodies.push(JSON.parse(String(init?.body))); return reply({ sequence_id: 's1', results: {} }) }
+                if (url.includes('/api/sync/queue')) return reply({ sequence: bodies.length ? { id: 's1', services: ['hinatazaka46'], current_index: 0, blocking: true, state: 'running', completed: [], failed: [] } : null })
+                return reply({ state: 'running', phase: 'syncing', completed: 0, total: 1 })
+            }))
+            const { result } = renderHook(() => useSync(defaultOptions))
+            await waitFor(() => expect(bodies).toEqual([{ services: ['hinatazaka46'], blocking: true }]))
+            expect(result.current.showSyncModal).toBe(true)
+        })
+
+        it('a refused background start-all marks each service as failed to start', async () => {
+            vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input)
+                if (url.includes('/api/sync/start-all')) return reply({ detail: 'boom' }, 503)
+                if (url.includes('/api/sync/queue')) return reply({ sequence: null })
+                return reply({ is_fresh: false })
+            }))
+            const { result } = renderHook(() => useSync({ ...defaultOptions, connectedServices: ['hinatazaka46', 'yodel'] }))
+            await waitFor(() => expect(result.current.syncProgressByService['yodel']?.state).toBe('error'))
+            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('error')
+            expect(clientLog).toHaveBeenCalledWith('sync_start_all_failed', { reason: 'http_503' })
+        })
+    })
 })

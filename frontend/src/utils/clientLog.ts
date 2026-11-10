@@ -24,7 +24,7 @@ export type ClientLogEvent =
     | 'timeline_jump' | 'letters_load' | 'account_profile_load' | 'letter_avatar' | 'streak_load'
     | 'blog_load' | 'dialog' | 'dialog_load' | 'call_layer' | 'sync_start_skipped'
     | 'menu_item_blocked' | 'blog_fallback' | 'group_marker_fallback' | 'entry_validation' | 'archive_stats_load' | 'celebration' | 'sync_sequence'
-    | 'sync_sequence_resumed' | 'sync_start_all_failed'
+    | 'sync_sequence_resumed' | 'sync_start_all_failed' | 'sync_cancel_failed'
     | 'letter_viewer' | 'letter_jump' | 'display_density_change'
     | 'favorite_video_error' | 'favorite_video_lazy_unsupported' | 'diagnostics_disk_usage' | 'calendar_picker'
     | 'media_playback'

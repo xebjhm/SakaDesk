@@ -82,15 +82,16 @@ export function isSyncActive(syncProgress: SyncProgress | undefined | null): syn
 }
 
 /**
- * The ETA tile's text: a time only when the backend could estimate one. `not_estimable`
- * (work per unit unknown: scanning, collecting metadata) shows a dash, `warming_up` (media
- * phase before enough evidence) shows "Estimating…".
+ * The ETA tile's text: a time only when the backend could estimate one (0 included).
+ * `not_estimable` (work per unit unknown: scanning, collecting metadata) shows a dash,
+ * `warming_up` (media phase before enough evidence) shows "Estimating…", and no estimate
+ * without a reason (not running) shows `--:--`.
  */
 export function formatSyncEta(
     syncProgress: SyncProgress,
     t: (key: string) => string,
 ): string {
-    if (syncProgress.eta_seconds) return formatSyncTime(syncProgress.eta_seconds);
+    if (syncProgress.eta_seconds != null) return formatSyncTime(syncProgress.eta_seconds);
     if (syncProgress.eta_reason === 'not_estimable') return '—';
     if (syncProgress.eta_reason === 'warming_up') return t('time.etaEstimating');
     return '--:--';
