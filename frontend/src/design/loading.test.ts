@@ -1,4 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { StrictMode } from 'react';
 import { act, renderHook } from '@testing-library/react';
 
 vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
@@ -84,6 +85,33 @@ describe('useLoadingStages', () => {
         expect(clientLog).not.toHaveBeenCalled();
     });
 
+    it('re-arms when a boundary timer fires before the clock reaches it', () => {
+        const { result } = renderHook(() => useLoadingStages(true));
+        // The clock steps back 5 ms after the wait started (sleep / resume, a timer firing early).
+        const realPerf = performance.now.bind(performance);
+        const realDate = Date.now.bind(Date);
+        const perf = vi.spyOn(performance, 'now').mockImplementation(() => realPerf() - 5);
+        const date = vi.spyOn(Date, 'now').mockImplementation(() => realDate() - 5);
+        advance(200);
+        expect(result.current.stage).toBe('hidden');
+        advance(5);
+        expect(result.current.stage).toBe('shown');
+        advance(2800);
+        expect(result.current.stage).toBe('slow');
+        advance(7000);
+        expect(result.current.stage).toBe('verySlow');
+        perf.mockRestore();
+        date.mockRestore();
+    });
+
+    it('logs once under StrictMode when the wait is already slow at mount', () => {
+        const startedAt = Date.now() - 3500;
+        renderHook(() => useLoadingStages(true, { surface: 'chat_room', startedAt }), { wrapper: StrictMode });
+        advance(0);
+        expect(clientLog).toHaveBeenCalledTimes(1);
+        expect(clientLog).toHaveBeenCalledWith('ui_wait', { surface: 'chat_room', phase: 'slow', wait_ms: 3500 });
+    });
+
     it('starts the clock at startedAt', () => {
         const startedAt = Date.now() - 2500;
         const { result } = renderHook(() => useLoadingStages(true, { startedAt }));
@@ -119,6 +147,19 @@ describe('useDelayedLoading', () => {
         expect(result.current).toBe(false);
     });
 
+    it('stays shown when a new wait starts during the min-visible hold', () => {
+        const { result, rerender } = renderHook(({ active }) => useDelayedLoading(active), { initialProps: { active: true } });
+        advance(250);
+        expect(result.current).toBe(true);
+        rerender({ active: false });
+        advance(100);
+        rerender({ active: true });
+        advance(1000);
+        expect(result.current).toBe(true);
+        rerender({ active: false });
+        expect(result.current).toBe(false);
+    });
+
     it('hides a 2 s wait when it ends', () => {
         const { result, rerender } = renderHook(({ active }) => useDelayedLoading(active), { initialProps: { active: true } });
         advance(2000);
@@ -144,6 +185,17 @@ describe('useKeepPrevious', () => {
         expect(result.current).toEqual({ shown: 'may', stale: true });
         rerender({ data: 'june', scope: 'm1', loading: false });
         expect(result.current).toEqual({ shown: 'june', stale: false });
+    });
+
+    it('survives a payload rebuilt on every render', () => {
+        const { result, rerender } = renderHook(
+            ({ loading }: { loading: boolean }) => useKeepPrevious(loading ? null : [{ id: 1, name: '日向坂 🌸' }], { scope: 'm1', loading }),
+            { initialProps: { loading: false } },
+        );
+        expect(result.current.shown).toEqual([{ id: 1, name: '日向坂 🌸' }]);
+        rerender({ loading: false });
+        rerender({ loading: true });
+        expect(result.current).toEqual({ shown: [{ id: 1, name: '日向坂 🌸' }], stale: true });
     });
 
     it('drops the payload on a new scope', () => {

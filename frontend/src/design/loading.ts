@@ -54,11 +54,17 @@ export function logWait(surface: string, phase: WaitPhase, waitMs: number): void
 interface StageState { stage: LoadingStage; waitMs: number }
 const HIDDEN: StageState = { stage: 'hidden', waitMs: 0 };
 
+const BOUNDARIES = [reveal, slow, verySlow] as const;
+
 /**
  * Stage clock for one wait. While `active`, `stage` steps `hidden` → `shown` (reveal) → `slow` →
  * `verySlow`; `waitMs` is the elapsed time when the stage last changed (it does not tick). Turning
  * `active` off resets to `hidden` / 0. `startedAt` (a `Date.now()` value) starts the clock in the
- * past. With `surface`, logs `ui_wait` once for `slow` and once for `very_slow` per wait.
+ * past; keep it stable (state or a ref), because a new `startedAt` or `surface` restarts the wait.
+ * With `surface`, logs `ui_wait` once for `slow` and once for `very_slow` per wait.
+ *
+ * Elapsed time is measured on the monotonic `performance.now()` clock, and a boundary timer that
+ * fires before its boundary is re-armed for the remainder, so a wait can never stick at a stage.
  */
 export function useLoadingStages(
     active: boolean,
@@ -72,28 +78,41 @@ export function useLoadingStages(
             setState(HIDDEN);
             return undefined;
         }
-        const start = startedAt ?? Date.now();
+        const origin = performance.now() - (startedAt === undefined ? 0 : Math.max(0, Date.now() - startedAt));
+        const elapsedNow = () => Math.max(0, performance.now() - origin);
         const logged = new Set<WaitPhase>();
-        const update = () => {
-            const elapsed = Math.max(0, Date.now() - start);
-            const stage = stageFor(elapsed);
-            setState((prev) => (prev.stage === stage ? prev : { stage, waitMs: elapsed }));
-            if (!surface) return;
-            if (elapsed >= slow && !logged.has('slow')) {
-                logged.add('slow');
-                logWait(surface, 'slow', elapsed);
-            }
-            if (elapsed >= verySlow && !logged.has('very_slow')) {
-                logged.add('very_slow');
-                logWait(surface, 'very_slow', elapsed);
-            }
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const pendingLogs: Array<ReturnType<typeof setTimeout>> = [];
+
+        const log = (phase: WaitPhase, elapsed: number, deferred: boolean) => {
+            if (!surface || logged.has(phase)) return;
+            logged.add(phase);
+            // On mount the post waits one tick: StrictMode's throw-away effect run clears it unsent.
+            if (deferred) pendingLogs.push(setTimeout(() => logWait(surface, phase, elapsed), 0));
+            else logWait(surface, phase, elapsed);
         };
-        update();
-        const timers = [reveal, slow, verySlow]
-            .map((boundary) => boundary - (Date.now() - start))
-            .filter((delay) => delay > 0)
-            .map((delay) => setTimeout(update, delay));
-        return () => timers.forEach(clearTimeout);
+        const update = (deferred: boolean) => {
+            const elapsed = elapsedNow();
+            const stage = stageFor(elapsed);
+            setState((prev) => (prev.stage === stage ? prev : { stage, waitMs: Math.round(elapsed) }));
+            if (elapsed >= slow) log('slow', elapsed, deferred);
+            if (elapsed >= verySlow) log('very_slow', elapsed, deferred);
+        };
+        const arm = () => {
+            const elapsed = elapsedNow();
+            const next = BOUNDARIES.find((boundary) => boundary > elapsed);
+            if (next === undefined) return;
+            timer = setTimeout(() => {
+                update(false);
+                arm(); // fired early (or the clock lagged): the same boundary is re-armed for the rest
+            }, Math.max(1, Math.ceil(next - elapsed)));
+        };
+        update(true);
+        arm();
+        return () => {
+            clearTimeout(timer);
+            pendingLogs.forEach(clearTimeout);
+        };
     }, [active, surface, startedAt]);
 
     return active ? state : HIDDEN;
@@ -136,24 +155,23 @@ export function useDelayedLoading(active: boolean): boolean {
 
 /**
  * Keep-previous (the calendar pattern, generalised). While `loading`, returns the last ready
- * payload of the same `scope` (compared with `Object.is`) with `stale: true`; a new scope has
- * nothing to keep (`shown: null`). Once ready, returns `data` with `stale: false`. Only ready,
- * non-null data is remembered.
+ * payload of the same `scope` (compared with `Object.is`; pass a primitive key) with
+ * `stale: true`; a new scope has nothing to keep (`shown: null`). Once ready, returns `data` with
+ * `stale: false`. Only ready, non-null data is remembered, after commit, so a payload rebuilt on
+ * every render (`items.filter(...)`) never causes an extra render.
  */
 export function useKeepPrevious<T>(
     data: T | null,
     options: { scope: unknown; loading: boolean },
 ): { shown: T | null; stale: boolean } {
     const { scope, loading } = options;
-    const [kept, setKept] = useState<{ scope: unknown; data: T } | null>(null);
+    const kept = useRef<{ scope: unknown; data: T } | null>(null);
 
-    if (!loading && data !== null && (kept === null || !Object.is(kept.scope, scope) || !Object.is(kept.data, data))) {
-        // Render-phase update of this component's own state (React's "storing information from
-        // previous renders" pattern): no extra effect pass, no stale frame.
-        setKept({ scope, data });
-    }
+    useEffect(() => {
+        if (!loading && data !== null) kept.current = { scope, data };
+    });
 
     if (!loading) return { shown: data, stale: false };
-    if (kept !== null && Object.is(kept.scope, scope)) return { shown: kept.data, stale: true };
+    if (kept.current !== null && Object.is(kept.current.scope, scope)) return { shown: kept.current.data, stale: true };
     return { shown: null, stale: false };
 }
