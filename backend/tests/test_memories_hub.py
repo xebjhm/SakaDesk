@@ -613,3 +613,30 @@ async def test_countdown_anniversary_already_passed_this_year(svc):
     countdown = (await build(svc))["countdown"]
     assert countdown["kind"] == "anniversary"
     assert countdown["date"] == "2027-03-01" and countdown["years"] == 3
+
+
+# --- M4: today_moment (the On This Day notification's pick) -----------------------------
+
+
+@pytest.mark.asyncio
+async def test_today_moment_is_the_today_rule_with_ranking_fields(today_svc):
+    summaries = await mi.list_members(today_svc)
+    hub_otd = (await build(today_svc))["on_this_day"]
+    moment = await hub.today_moment(
+        SERVICE, today_svc, summaries, {"金村美玖"}, NOW.date()
+    )
+    assert moment.pop("oshi") is True and moment.pop("score") is not None
+    assert moment == hub_otd
+    moment = await hub.today_moment(SERVICE, today_svc, summaries, set(), NOW.date())
+    assert moment["oshi"] is False and moment["message"]["text"] == MATSU_OTD
+
+
+@pytest.mark.asyncio
+async def test_today_moment_has_no_week_fallback(svc):
+    kane(svc, [msg(1, "2024-11-08T03:00:00Z", content=KANE_OTD)])
+    assert (await build(svc))["on_this_day"]["rule"] == "week"
+    summaries = await mi.list_members(svc)
+    with capture_logs() as logs:
+        moment = await hub.today_moment(SERVICE, svc, summaries, set(), NOW.date())
+    assert moment is None
+    assert any(e.get("reason") == "no_today" for e in logs)

@@ -64,6 +64,11 @@ graduation are in the room hashes). ``on_this_day`` is chosen and its text
 attached after the cache read (the On This Day facts it reads are cached
 by the memory index).
 
+:func:`today_moment` is the ``today`` rule alone (no fallback), for the
+daily On This Day notification; :func:`lapsed_groups` /
+:func:`still_subscribed` are the subscription-ended check, shared with the
+anniversary notification.
+
 ``same_time`` -- 同じ時刻 (spec 14.3), ``same_time.same_time`` for now:
 her message at this JST time of day on an earlier date, or ``None``.
 
@@ -361,6 +366,21 @@ async def _photo_of_day(
     return thumb
 
 
+async def _choose_today(
+    sdir: Path,
+    summaries: Sequence[mi.MemberSummary],
+    oshi: set[str],
+    today: date,
+) -> _Pick | None:
+    """Rule ``today`` alone; logs ``reason=no_today`` when it finds nothing."""
+    month_day = today.strftime("%m-%d")
+    tagged = await people.service_facts_on(sdir, summaries, month_day=month_day)
+    pick = await asyncio.to_thread(_pick_today, tagged, oshi, today)
+    if pick is None:
+        logger.info("memories_skip", view=VIEW_OTD, reason="no_today")
+    return pick
+
+
 async def _choose(
     sdir: Path,
     summaries: Sequence[mi.MemberSummary],
@@ -369,12 +389,9 @@ async def _choose(
     today: date,
 ) -> tuple[str, _Pick] | None:
     """``(rule, pick)`` of the first rule that finds a moment, or ``None``."""
-    month_day = today.strftime("%m-%d")
-    tagged = await people.service_facts_on(sdir, summaries, month_day=month_day)
-    pick = await asyncio.to_thread(_pick_today, tagged, oshi, today)
+    pick = await _choose_today(sdir, summaries, oshi, today)
     if pick is not None:
         return "today", pick
-    logger.info("memories_skip", view=VIEW_OTD, reason="no_today")
     near: list[_Tagged] = []
     for md in _week_month_days(today):
         near.extend(await people.service_facts_on(sdir, summaries, month_day=md))
@@ -401,7 +418,42 @@ async def _on_this_day(
     chosen = await _choose(sdir, summaries, ordered, oshi, today)
     if chosen is None:
         return None
-    rule, (person, room, fact, year) = chosen
+    return await _assemble(service, sdir, *chosen, oshi, today)
+
+
+async def today_moment(
+    service: str,
+    sdir: Path,
+    summaries: Sequence[mi.MemberSummary],
+    oshi: set[str],
+    today: date,
+) -> dict | None:
+    """The ``today`` rule's moment only (no ``week`` / ``first`` fallback).
+
+    The same object as the hub's ``on_this_day`` (``rule`` is always
+    ``today``), plus two ranking fields that the hub payload does not carry:
+    ``oshi`` (the moment is the oshi's) and ``score`` (the message's
+    importance, else its photo score, or ``None``). ``None`` when no past
+    year has a fact on today's month-day (``memories_skip``,
+    ``reason=no_today``). Used by the On This Day notification.
+    """
+    pick = await _choose_today(sdir, summaries, oshi, today)
+    if pick is None:
+        return None
+    moment = await _assemble(service, sdir, "today", pick, oshi, today)
+    return {**moment, "oshi": pick[0].name_norm in oshi, "score": _score(pick[2])}
+
+
+async def _assemble(
+    service: str,
+    sdir: Path,
+    rule: str,
+    pick: _Pick,
+    oshi: set[str],
+    today: date,
+) -> dict:
+    """The moment object of ``pick``: her message, her photo of the day, texts."""
+    person, room, fact, year = pick
     logger.info(
         "memories_select",
         view=VIEW_OTD,
@@ -538,4 +590,11 @@ async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
     }
 
 
-__all__ = ["VERSION", "WEEK_DAYS", "build_hub", "lapsed_groups", "still_subscribed"]
+__all__ = [
+    "VERSION",
+    "WEEK_DAYS",
+    "build_hub",
+    "lapsed_groups",
+    "still_subscribed",
+    "today_moment",
+]
