@@ -91,4 +91,34 @@ describe('Day24View', () => {
         // 22:30Z on 2022-05-01 is 07:30 JST on 2022-05-02.
         expect(go).toHaveBeenCalledWith({ page: 'day', date: '2022-05-02' });
     });
+
+    it('🎲 keeps the view and the focus while the next day loads', async () => {
+        renderView();
+        await screen.findAllByTestId('day24-slot');
+        let resolve: (d: Day24Full) => void = () => {};
+        vi.mocked(fetchDay24).mockImplementation(() => new Promise((r) => { resolve = r; }));
+        const dice = screen.getByRole('button', { name: 'ほかの一日をつくる' });
+        await userEvent.click(dice);
+        expect(dice).toBeInTheDocument();
+        expect(dice).toHaveFocus();
+        expect(screen.getByRole('heading', { name: '金村 美玖の一日' })).toBeInTheDocument();
+        expect(screen.getByTestId('day24-slots')).toHaveAttribute('aria-busy', 'true');
+        expect(screen.getAllByTestId('day24-slot')).toHaveLength(5);
+        resolve(day({ seed: 7, years: 2 }));
+        expect(await screen.findByText('2年分のメッセージから')).toBeInTheDocument();
+        expect(screen.getByTestId('day24-slots')).not.toHaveAttribute('aria-busy');
+        expect(screen.getByRole('button', { name: 'ほかの一日をつくる' })).toHaveFocus();
+    });
+
+    it('a failed reroll keeps the header and offers a retry inside the day', async () => {
+        renderView();
+        await screen.findAllByTestId('day24-slot');
+        vi.mocked(fetchDay24).mockRejectedValueOnce(new Error('boom'));
+        await userEvent.click(screen.getByRole('button', { name: 'ほかの一日をつくる' }));
+        const retry = await screen.findByRole('button', { name: 'もう一度' });
+        expect(screen.getByRole('heading', { name: '金村 美玖の一日' })).toBeInTheDocument();
+        expect(screen.queryByTestId('day24-slot')).toBeNull();
+        await userEvent.click(retry);
+        expect(await screen.findAllByTestId('day24-slot')).toHaveLength(5);
+    });
 });

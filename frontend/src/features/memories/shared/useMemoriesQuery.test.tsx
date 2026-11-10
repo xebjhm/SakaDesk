@@ -125,4 +125,19 @@ describe('useMemoriesQuery', () => {
         expect(signals[0].aborted).toBe(true);
         expect(vi.mocked(clientLog).mock.calls.filter((c) => c[0] === 'memories_load')).toHaveLength(1);
     });
+
+    it('a disabled query never loads or logs, and reads as ready with no data', async () => {
+        const load = vi.fn(async () => ({ items: [1] }));
+        const { result, rerender } = renderHook(({ on }) => useMemoriesQuery('then_now', load, [on], { enabled: on }), {
+            initialProps: { on: false },
+        });
+        expect(result.current).toMatchObject({ status: 'ready', data: null });
+        await act(async () => {});
+        expect(load).not.toHaveBeenCalled();
+        expect(clientLog).not.toHaveBeenCalled();
+        rerender({ on: true });
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        expect(result.current.data).toEqual({ items: [1] });
+        expect(clientLog).toHaveBeenCalledWith('memories_load', { target: 'then_now', outcome: 'ok', count: 1 });
+    });
 });

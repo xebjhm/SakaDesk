@@ -15,6 +15,11 @@ export interface MemoriesQuery<T> {
 export interface MemoriesQueryOptions<T> {
     /** The number logged as `count` (the view's main list); default: the first top-level array. */
     count?: (data: T) => number;
+    /**
+     * False skips the view (nothing to ask for, e.g. no date): no request, no log, and the query
+     * reads `ready` with null data. Default true.
+     */
+    enabled?: boolean;
 }
 
 /** The length of the payload's first top-level array (`members`, `items`, `months`, ...), if any. */
@@ -37,7 +42,8 @@ const sameKey = (a: readonly unknown[], b: readonly unknown[]) =>
  * deps' data. Every finished run logs `memories_load`: `outcome` `ok` with `count` (the
  * `count` option, else the first top-level list length), `timeout` (the API gave up, see
  * `MEMORIES_TIMEOUT_MS`) or `error` with `error_code` (the HTTP status of a rejected request).
- * `load` and `count` are read through refs: only `deps` and `retry` start a new run.
+ * `load` and `count` are read through refs: only `deps`, `retry` and `enabled` start a new run.
+ * A disabled query (`enabled: false`) never loads or logs and reads `ready` with null data.
  */
 export function useMemoriesQuery<T>(
     target: MemoriesView,
@@ -50,10 +56,12 @@ export function useMemoriesQuery<T>(
     const countRef = useRef(options.count);
     countRef.current = options.count;
     const [attempt, setAttempt] = useState(0);
-    const key: unknown[] = [target, attempt, ...deps];
+    const enabled = options.enabled ?? true;
+    const key: unknown[] = [target, attempt, enabled, ...deps];
     const [state, setState] = useState<{ key: unknown[]; status: MemoriesQueryStatus; data: T | null } | null>(null);
 
     useEffect(() => {
+        if (!enabled) return undefined;
         const runKey = key;
         const controller = new AbortController();
         loadRef.current(controller.signal).then(
@@ -75,6 +83,7 @@ export function useMemoriesQuery<T>(
     }, key);
 
     const retry = useCallback(() => setAttempt((n) => n + 1), []);
+    if (!enabled) return { status: 'ready', data: null, retry };
     return state && sameKey(state.key, key)
         ? { status: state.status, data: state.data, retry }
         : { status: 'loading', data: null, retry };

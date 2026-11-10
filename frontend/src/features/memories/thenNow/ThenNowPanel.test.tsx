@@ -74,6 +74,13 @@ describe('ThenNowPanel', () => {
         expect(screen.queryByText(/\d/)).toBeNull();
     });
 
+    it('logs only the loads it really made', async () => {
+        render(<ThenNowPanel service="hinatazaka46" member={MEMBER_PATH} />);
+        await screen.findByRole('button', { name: '初見と今' });
+        const loads = vi.mocked(clientLog).mock.calls.filter(([event]) => event === 'memories_load');
+        expect(loads).toEqual([['memories_load', { target: 'then_now', outcome: 'ok', count: 2 }]]);
+    });
+
     it('logs its loads as then_now', async () => {
         render(<ThenNowPanel service="hinatazaka46" date="2024-09-14" member={MEMBER_PATH} />);
         await screen.findAllByTestId('then-now-side');

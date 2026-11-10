@@ -56,8 +56,8 @@ const FirstWeek: React.FC<{ data: ThenNowFirstWeekPayload }> = ({ data }) => {
 
 /**
  * あの日と今日 in a pane (spec 14.2): loads the day pair (`fetchThenNowDay`, when there is a
- * `date`) and 初見と今 (`fetchThenNowFirstWeek`, when there is a `member`), both logged as
- * `memories_load` `then_now`. A mode pill (「あの日と今日」 / 「初見と今」) is shown only when its
+ * `date`) and 初見と今 (`fetchThenNowFirstWeek`, when there is a `member`), each real load logged
+ * as `memories_load` `then_now` (a mode it cannot ask for is skipped, never logged). A mode pill (「あの日と今日」 / 「初見と今」) is shown only when its
  * payload is non-null; the day mode is preferred. 初見と今 draws its rows (photo / おはよう / voice)
  * as stacked `ThenNowPair`s under their row labels. Without either pair a gentle line (no number)
  * says so. Switching logs `memories_toggle` `then_now_mode` (`on` = first week).
@@ -68,13 +68,13 @@ export const ThenNowPanel: React.FC<ThenNowPanelProps> = ({ service, date, membe
         'then_now',
         (signal) => (date ? fetchThenNowDay(service, { date, member }, signal) : Promise.resolve(null)),
         [service, date, member],
-        { count: (d) => (d ? 2 : 0) },
+        { count: (d) => (d ? 2 : 0), enabled: date !== undefined },
     );
     const week = useMemoriesQuery<ThenNowFirstWeekPayload | null>(
         'then_now',
         (signal) => (member ? fetchThenNowFirstWeek(service, member, signal) : Promise.resolve(null)),
         [service, member],
-        { count: (d) => d?.rows.length ?? 0 },
+        { count: (d) => d?.rows.length ?? 0, enabled: member !== undefined },
     );
     const [picked, setPicked] = useState<Mode | null>(null);
 

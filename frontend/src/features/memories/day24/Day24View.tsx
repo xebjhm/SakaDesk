@@ -13,7 +13,7 @@ import { memoryMediaSrc } from '../shared/mediaSrc';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
-import type { Day24Slot } from '../types';
+import type { Day24Full, Day24Payload, Day24Slot } from '../types';
 
 const PHOTO_PX = 96;
 /** Seeds stay positive 31-bit integers (the backend reads an int). */
@@ -29,6 +29,8 @@ interface Day24ViewProps {
     name: string;
     go: (next: MemoriesRoute) => void;
 }
+
+const isFull = (d: Day24Payload): d is Day24Full => d.slots.length > 0;
 
 /** A new random seed, never the one on screen (so 🎲 always asks for another day). */
 function nextSeed(current: number | undefined): number {
@@ -82,7 +84,9 @@ const Slot: React.FC<{ slot: Day24Slot; go: (next: MemoriesRoute) => void }> = (
  * no text on it) beside 5–7 slots. Each slot shows the message's real JST time and year (metadata,
  * never chosen for the fan) and her words, a still or a voice (`LazyVoice` key `day24|<room>|<id>`);
  * a click opens that JST day (`{page: 'day', date}`). 🎲 「ほかの一日をつくる」 refetches with a new
- * random seed (`memories_load` `day24`, as every load). A thin day (`{slots: []}`) shows the gentle
+ * random seed (`memories_load` `day24`, as every load); the day on screen stays, dimmed and
+ * `aria-busy`, until the next one arrives (a failure shows the retry in its place), so the header
+ * and 🎲 keep their place and focus. A thin day (`{slots: []}`) shows the gentle
  * card instead, with no number, and logs `memories_skip` `day24_thin`. No animation.
  */
 export const Day24View: React.FC<Day24ViewProps> = ({ service, memberPath, name, go }) => {
@@ -95,23 +99,28 @@ export const Day24View: React.FC<Day24ViewProps> = ({ service, memberPath, name,
         { count: (d) => d.slots.length },
     );
     const data = query.data;
-    const thin = data !== null && data.slots.length === 0;
+    const thin = data !== null && !isFull(data);
     useEffect(() => {
         if (thin) logMemoriesSkip('day24', 'day24_thin');
     }, [thin, data]);
+    // The last full day, kept on screen while 🎲 loads the next one.
+    const [shown, setShown] = useState<Day24Full | null>(null);
+    if (data && isFull(data) && data !== shown) setShown(data);
+    const view = data && isFull(data) ? data : shown;
 
-    if (query.status !== 'ready' || !data) {
-        return <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
-    }
-    if (data.slots.length === 0) {
+    if (thin) {
         return (
             <div data-testid="memories-day24" className="flex min-h-0 flex-1 flex-col">
                 <EmptyState icon={<Sunrise />} title={t('memories.day24.thin')} />
             </div>
         );
     }
+    if (!view) {
+        return <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
+    }
     const [before, after] = t('memories.day24.title', { name: NAME_MARK }).split(NAME_MARK);
-    const subtitle = data.years === 1 ? t('memories.day24.fromOneYear') : t('memories.day24.fromYears', { count: data.years });
+    const subtitle = view.years === 1 ? t('memories.day24.fromOneYear') : t('memories.day24.fromYears', { count: view.years });
+    const stale = view !== data;
     return (
         <div data-testid="memories-day24" className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">
             <header className="flex items-start gap-3">
@@ -126,15 +135,26 @@ export const Day24View: React.FC<Day24ViewProps> = ({ service, memberPath, name,
                     title={t('memories.day24.reroll')}
                     icon={<Dices />}
                     variant="secondary"
-                    onClick={() => setSeed(nextSeed(data.seed))}
+                    onClick={() => setSeed(nextSeed(view.seed))}
                 />
             </header>
-            <div className="mt-3 flex gap-3">
-                <span data-testid="day24-sky" aria-hidden="true" className="w-1.5 shrink-0 rounded-pill bg-memories-sky" />
-                <ol className="flex min-w-0 flex-1 flex-col gap-3">
-                    {data.slots.map((slot) => <Slot key={`${slot.message.room}|${slot.message.id}`} slot={slot} go={go} />)}
-                </ol>
-            </div>
+            {query.status === 'error' ? (
+                <LoadState status="error" onRetry={query.retry} />
+            ) : (
+                <div
+                    data-testid="day24-slots"
+                    aria-busy={stale ? 'true' : undefined}
+                    className={cn(
+                        'mt-3 flex gap-3 transition-opacity duration-fast motion-reduce:transition-none',
+                        stale ? 'pointer-events-none opacity-60' : 'opacity-100',
+                    )}
+                >
+                    <span data-testid="day24-sky" aria-hidden="true" className="w-1.5 shrink-0 rounded-pill bg-memories-sky" />
+                    <ol className="flex min-w-0 flex-1 flex-col gap-3">
+                        {view.slots.map((slot) => <Slot key={`${slot.message.room}|${slot.message.id}`} slot={slot} go={go} />)}
+                    </ol>
+                </div>
+            )}
         </div>
     );
 };
