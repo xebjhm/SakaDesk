@@ -14,16 +14,38 @@ describe('fisheye', () => {
         expect(fisheyeIndex(0.7, 0, null)).toBe(0);
     });
 
-    // The e4e4118 maths is kept verbatim: the inverse is exact only in the magnified
-    // neighbourhood of the centre (where the pointer is while zoomed), not across the whole rail.
-    it('round-trips within one index next to the centre', () => {
-        for (const count of [12, 42, 100]) {
-            for (const center of [Math.floor(count / 2), Math.floor(count / 3)]) {
-                for (let i = Math.max(0, center - 2); i <= Math.min(count - 1, center + 2); i += 1) {
-                    const back = fisheyeIndex(fisheyePosition(i, count, center), count, center);
-                    expect(Math.abs(back - i), `count ${count} centre ${center} index ${i}`).toBeLessThanOrEqual(1);
+    // fisheyePosition is the exact inverse of fisheyeIndex: piecewise linear, no folds or jumps.
+    it('keeps positions in order around any centre', () => {
+        for (const count of [12, 42, 60, 100, 500]) {
+            for (const center of [0, Math.floor(count / 3), Math.floor(count / 2), count - 1]) {
+                for (let i = 1; i < count; i += 1) {
+                    expect(
+                        fisheyePosition(i, count, center),
+                        `count ${count} centre ${center} index ${i}`,
+                    ).toBeGreaterThanOrEqual(fisheyePosition(i - 1, count, center));
                 }
             }
+        }
+    });
+
+    it('round-trips every index that is not pushed against an end', () => {
+        for (const count of [12, 42, 60, 100, 500]) {
+            for (const center of [0, Math.floor(count / 3), Math.floor(count / 2), count - 1]) {
+                for (let i = 0; i < count; i += 1) {
+                    const pos = fisheyePosition(i, count, center);
+                    if (pos <= 0 || pos >= 1) continue; // pushed against an end (the clamp)
+                    const back = fisheyeIndex(pos, count, center);
+                    expect(back, `count ${count} centre ${center} index ${i}`).toBe(i);
+                }
+            }
+        }
+    });
+
+    it('leaves no gap in a centred zoom: neighbours never jump far apart', () => {
+        const count = 60;
+        for (let i = 1; i < count; i += 1) {
+            const gap = fisheyePosition(i, count, 30) - fisheyePosition(i - 1, count, 30);
+            expect(gap, `index ${i}`).toBeLessThan(0.1);
         }
     });
 
@@ -32,17 +54,9 @@ describe('fisheye', () => {
         const center = 50;
         const plain = fisheyePosition(51, count, null) - fisheyePosition(50, count, null);
         const zoomed = fisheyePosition(51, count, center) - fisheyePosition(50, count, center);
-        expect(zoomed).toBeGreaterThan(plain * (ZOOM_CONFIG.magnification - 1));
+        expect(zoomed).toBeCloseTo(plain * ZOOM_CONFIG.magnification);
         expect(fisheyePosition(50, count, center)).toBeCloseTo(50 / 99);
-        const before = fisheyePosition(50, count, center) - fisheyePosition(49, count, center);
-        expect(before).toBeGreaterThan(plain * (ZOOM_CONFIG.magnification - 1));
-    });
-
-    it('stays inside the rail', () => {
-        for (let i = 0; i < 100; i += 1) {
-            const pos = fisheyePosition(i, 100, 10);
-            expect(pos).toBeGreaterThanOrEqual(0);
-            expect(pos).toBeLessThanOrEqual(1);
-        }
+        expect(fisheyePosition(0, count, center)).toBeCloseTo(0);
+        expect(fisheyePosition(99, count, center)).toBeCloseTo(1);
     });
 });
