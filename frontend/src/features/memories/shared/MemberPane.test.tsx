@@ -47,4 +47,19 @@ describe('MemberPane', () => {
         expect(screen.getByText('金村 美玖')).toHaveAttribute('lang', 'ja');
         expect(screen.getByText('12')).toBeInTheDocument();
     });
+
+    it('never shows a trailing 0 (a person or the all row without items shows no number)', () => {
+        render(
+            <MemberPane
+                items={[{ key: 'z', name: '二部 ひな', trailing: 0 }, { key: 'y', name: '小坂 菜緒', trailing: 3 }]}
+                selectedKey={null}
+                onSelect={() => {}}
+                allLabel="All"
+                allTrailing={0}
+            />,
+        );
+        expect(screen.getByRole('button', { name: /二部 ひな/ }).textContent).not.toContain('0');
+        expect(screen.getByRole('button', { name: /All/ }).textContent).not.toContain('0');
+        expect(screen.getByRole('button', { name: /小坂 菜緒/ })).toHaveTextContent('3');
+    });
 });

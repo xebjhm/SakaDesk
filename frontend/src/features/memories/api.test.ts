@@ -92,6 +92,24 @@ describe('memories api timeout', () => {
         }
     });
 
+    it.each([
+        ['fetchDay', (sig: AbortSignal) => api.fetchDay(S, { date: '2024-09-14', member: MEMBER_PATH }, sig)],
+        ['fetchFavorites', (sig: AbortSignal) => api.fetchFavorites(S, MEMBER_PATH, sig)],
+    ] as const)('%s hands the caller signal to fetch', async (_name, call) => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }));
+        try {
+            const controller = new AbortController();
+            const pending = call(controller.signal);
+            controller.abort();
+            await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+            expect(fetchSpy.mock.calls[0][1]?.signal?.aborted).toBe(true);
+        } finally {
+            fetchSpy.mockRestore();
+        }
+    });
+
     it('a caller abort is an AbortError, not a timeout', async () => {
         const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_, reject) => {
             init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));

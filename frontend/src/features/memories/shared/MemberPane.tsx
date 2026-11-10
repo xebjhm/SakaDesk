@@ -30,6 +30,9 @@ interface MemberPaneProps {
 
 const AVATAR_PX = 32;
 
+/** A trailing detail worth drawing: never a bare 0 (spec 1.1: no call-out of an absence). */
+const shown = (trailing: React.ReactNode) => trailing !== undefined && trailing !== null && trailing !== 0;
+
 const ROW = cn(
     'flex w-full items-center gap-3 rounded-md px-3 py-2 text-left text-body text-primary',
     'transition-colors duration-fast ease-standard hover:bg-sunken',
@@ -41,7 +44,7 @@ const SELECTED = 'bg-accent-subtle font-semibold text-accent-strong hover:bg-acc
 /**
  * The Memories left list (album, favorites, memoir): an optional all row, then one row per
  * person with her avatar, name (`lang="ja"`), an oshi heart in the semantic oshi tone (never
- * the group accent) and a trailing detail. Scrolls inside itself.
+ * the group accent) and a trailing detail (never a 0). Scrolls inside itself.
  */
 export const MemberPane: React.FC<MemberPaneProps> = ({ items, selectedKey, onSelect, allLabel, allTrailing, className }) => {
     const width = useAvatarWidth(AVATAR_PX);
@@ -58,7 +61,7 @@ export const MemberPane: React.FC<MemberPaneProps> = ({ items, selectedKey, onSe
                         <Users className="h-4 w-4" />
                     </span>
                     <span className="min-w-0 flex-1 truncate">{allLabel}</span>
-                    {allTrailing !== undefined && <span className="shrink-0 text-small tabular-nums text-muted">{allTrailing}</span>}
+                    {shown(allTrailing) && <span className="shrink-0 text-small tabular-nums text-muted">{allTrailing}</span>}
                 </button>
             )}
             {items.map((item) => {
@@ -80,7 +83,7 @@ export const MemberPane: React.FC<MemberPaneProps> = ({ items, selectedKey, onSe
                                 className="h-3.5 w-3.5 shrink-0 fill-semantic-oshi text-semantic-oshi-solid"
                             />
                         )}
-                        {item.trailing !== undefined && <span className="shrink-0 text-small tabular-nums text-muted">{item.trailing}</span>}
+                        {shown(item.trailing) && <span className="shrink-0 text-small tabular-nums text-muted">{item.trailing}</span>}
                     </button>
                 );
             })}
