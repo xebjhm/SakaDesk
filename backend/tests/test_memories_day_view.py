@@ -250,16 +250,18 @@ async def test_logs_carry_no_text_or_names(out):
 
 @pytest.mark.asyncio
 async def test_true_cross_service_tie_is_broken_by_service(out):
-    # same ts AND same id AND same relative room in two services
+    # same ts AND same id AND same relative room in two services. Sakurazaka is
+    # the active service, so it is merged first: only the service tie-break
+    # (hinatazaka46 < sakurazaka46) can put Hinatazaka's message ahead.
     write_room(
         out / SAKU_NAME,
         "34 金村 美玖",
         "58 金村 美玖",
         [msg(1, "2024-09-13T23:00:00Z", content=SAKU_WORDS)],
     )
-    hina = out / SVC_NAME
+    saku = out / SAKU_NAME
     payload = await dv.day_view(
-        SERVICE, hina, DAY, member=None, include_other_services=True, now=NOW
+        SAKU, saku, DAY, member=None, include_other_services=True, now=NOW
     )
     first, second = payload["messages"][:2]
     assert (first["ts"], first["id"], first["room"]) == (

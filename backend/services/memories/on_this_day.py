@@ -30,14 +30,16 @@
 The text-free part is cached (view ``on_this_day``, key ``month_day`` so a
 new day replaces the row instead of adding one; hash over :data:`VERSION`,
 the last year, whether it is this year, the oshi set and every room's
-member-index ``data_hash``, so it also hits across days). Preview texts are attached after the cache
-read with one ``load_texts`` per room for the preview ids only.
+member-index ``data_hash``, so it also hits across days). Preview texts
+are attached after the cache read with one ``load_texts`` per room for the
+preview ids only.
 
 Logs (ids, codes, counts and scores only): ``memories_select``
 (``view=on_this_day``, ``rule=preview|thumb``, ``score``, ``fallback=None``,
 ``message_id``, ``year``) and ``memories_skip`` (``reason=no_preview|no_thumb``,
-``year``) when the payload is built, the early-return skip above, and ``memories_on_this_day`` (``years``,
-``with_messages``, ``count``) on every call.
+``year``) when the payload is built, the early-return skip above, and
+``memories_on_this_day`` (``years``, ``with_messages``, ``count``) on every
+call.
 """
 
 from __future__ import annotations
