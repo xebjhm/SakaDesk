@@ -1113,6 +1113,7 @@
       "toggle": "Set beside another year",
       "back": "Back to the usual view",
       "modeDay": "That day and today",
+      "modeDayYears": "{{then}} ⇆ {{now}}",
       "modeFirstWeek": "First week and now",
       "gap": "{{count}} year",
       "gap_other": "{{count}} years",

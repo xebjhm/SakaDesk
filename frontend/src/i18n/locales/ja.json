@@ -1088,6 +1088,7 @@
       "toggle": "ほかの年とならべる",
       "back": "もとの表示へ",
       "modeDay": "あの日と今日",
+      "modeDayYears": "{{then}}年 ⇆ {{now}}年",
       "modeFirstWeek": "初見と今",
       "gap": "{{count}}年",
       "firstWeek": "はじめの一週間",

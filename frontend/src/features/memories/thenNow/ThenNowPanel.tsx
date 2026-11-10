@@ -5,6 +5,7 @@ import { fetchThenNowDay, fetchThenNowFirstWeek } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
 import { LoadState } from '../shared/LoadState';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
+import { jstNow } from '../shared/jst';
 import type { ThenNowDayPayload, ThenNowFirstWeekPayload, ThenNowRowKind, ThenNowSide } from '../types';
 import { ThenNowPair, type ThenNowSideView } from './ThenNowPair';
 
@@ -58,7 +59,8 @@ const FirstWeek: React.FC<{ data: ThenNowFirstWeekPayload }> = ({ data }) => {
  * あの日と今日 in a pane (spec 14.2): loads the day pair (`fetchThenNowDay`, when there is a
  * `date`) and 初見と今 (`fetchThenNowFirstWeek`, when there is a `member`), each real load logged
  * as `memories_load` `then_now` (a mode it cannot ask for is skipped, never logged). A mode pill (「あの日と今日」 / 「初見と今」) is shown only when its
- * payload is non-null; the day mode is preferred. 初見と今 draws its rows (photo / おはよう / voice)
+ * payload is non-null; the day pill reads 「{then} ⇆ {now}」 instead when the newer side is not this
+ * JST year (the pair is then not "today"). The day mode is preferred. 初見と今 draws its rows (photo / おはよう / voice)
  * as stacked `ThenNowPair`s under their row labels. Without either pair a gentle line (no number)
  * says so. Switching logs `memories_toggle` `then_now_mode` (`on` = first week).
  */
@@ -90,6 +92,11 @@ export const ThenNowPanel: React.FC<ThenNowPanelProps> = ({ service, date, membe
         setPicked(next);
         logMemoriesToggle('then_now_mode', next === 'first_week');
     };
+    // 「あの日と今日」 is true only when the newer side is this (JST) year; otherwise the pill
+    // names both years (「2024 ⇆ 2025」).
+    const dayLabel = day.data && day.data.now.year !== jstNow().year
+        ? t('memories.thenNow.modeDayYears', { then: day.data.then.year, now: day.data.now.year })
+        : t('memories.thenNow.modeDay');
     const retry = () => {
         if (day.status === 'error') day.retry();
         if (week.status === 'error') week.retry();
@@ -111,7 +118,7 @@ export const ThenNowPanel: React.FC<ThenNowPanelProps> = ({ service, date, membe
                 <header className="flex flex-wrap items-center gap-2 px-4 pt-3">
                     {!loading && !failed && available.map((m) => (
                         <Pill key={m} selected={m === mode} onClick={() => pick(m)}>
-                            {t(m === 'day' ? 'memories.thenNow.modeDay' : 'memories.thenNow.modeFirstWeek')}
+                            {m === 'day' ? dayLabel : t('memories.thenNow.modeFirstWeek')}
                         </Pill>
                     ))}
                     {headerSlot && <div className="ml-auto flex items-center gap-2">{headerSlot}</div>}

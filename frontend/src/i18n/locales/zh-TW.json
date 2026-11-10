@@ -1088,6 +1088,7 @@
       "toggle": "和其他年份並排",
       "back": "回到原本的畫面",
       "modeDay": "那一天與今天",
+      "modeDayYears": "{{then}} 年 ⇆ {{now}} 年",
       "modeFirstWeek": "初見與現在",
       "gap": "{{count}} 年",
       "firstWeek": "最初的一週",

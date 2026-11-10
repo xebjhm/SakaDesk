@@ -1088,6 +1088,7 @@
       "toggle": "同其他年份並排",
       "back": "返去原本嘅畫面",
       "modeDay": "嗰一日同今日",
+      "modeDayYears": "{{then}} 年 ⇆ {{now}} 年",
       "modeFirstWeek": "初見同而家",
       "gap": "{{count}} 年",
       "firstWeek": "最初嗰個禮拜",

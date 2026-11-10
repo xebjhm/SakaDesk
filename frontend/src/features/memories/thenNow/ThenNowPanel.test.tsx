@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
@@ -16,10 +16,15 @@ import { thenNowDay, thenNowFirstWeek } from './__fixtures__';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 beforeEach(() => {
+    // 「あの日と今日」 depends on this JST year: the fixture's newer side is 2026.
+    vi.useFakeTimers({ toFake: ['Date'] });
+    vi.setSystemTime(new Date('2026-11-10T03:00:00Z'));
     vi.mocked(clientLog).mockClear();
     vi.mocked(fetchThenNowDay).mockReset().mockResolvedValue(thenNowDay());
     vi.mocked(fetchThenNowFirstWeek).mockReset().mockResolvedValue(thenNowFirstWeek());
 });
+
+afterEach(() => { vi.useRealTimers(); });
 
 describe('ThenNowPanel', () => {
     it('loads the day pair for the date and the first week for the person', async () => {
@@ -29,6 +34,18 @@ describe('ThenNowPanel', () => {
         expect(vi.mocked(fetchThenNowFirstWeek).mock.calls[0]?.slice(0, 2)).toEqual(['hinatazaka46', MEMBER_PATH]);
         expect(screen.getByRole('button', { name: 'あの日と今日' })).toHaveAttribute('aria-pressed', 'true');
         expect(screen.getByTestId('then-now-gap')).toHaveTextContent('2年');
+    });
+
+    it('names both years instead of 「あの日と今日」 when the newer side is not this year (D7)', async () => {
+        const base = thenNowDay();
+        vi.mocked(fetchThenNowDay).mockResolvedValue({
+            ...base,
+            then: { ...base.then, year: 2023, date: '2023-09-14' },
+            now: { ...base.now, year: 2024, date: '2024-09-14' },
+        });
+        render(<ThenNowPanel service="hinatazaka46" date="2023-09-14" member={MEMBER_PATH} />);
+        expect(await screen.findByRole('button', { name: '2023年 ⇆ 2024年' })).toHaveAttribute('aria-pressed', 'true');
+        expect(screen.queryByRole('button', { name: 'あの日と今日' })).toBeNull();
     });
 
     it('switches to 初見と今 with labelled rows, and logs the mode', async () => {
