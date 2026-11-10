@@ -26,7 +26,12 @@ export function objectId(o: object): string {
     return id;
 }
 
-export function recordingCanvas(width = 540, height = 960): RecordingCanvas {
+export interface RecordingOptions {
+    /** False: the context ignores `filter` writes (reads stay `none`), like a webview without it. */
+    filter?: boolean;
+}
+
+export function recordingCanvas(width = 540, height = 960, opts: RecordingOptions = {}): RecordingCanvas {
     const log: LogEntry[] = [];
     const state: Record<string, unknown> = { font: '10px sans-serif', globalAlpha: 1, filter: 'none' };
     const canvas = { width, height } as unknown as HTMLCanvasElement;
@@ -59,7 +64,7 @@ export function recordingCanvas(width = 540, height = 960): RecordingCanvas {
             };
         },
         set(_t, prop: string, value: unknown) {
-            state[prop] = value;
+            if (!(prop === 'filter' && opts.filter === false)) state[prop] = value;
             // Gradients log as a marker (their stops are logged by addColorStop), so frames compare equal.
             const shown = typeof value === 'object' && value !== null
                 ? ('__gradient' in value ? GRADIENT : objectId(value))
@@ -73,13 +78,13 @@ export function recordingCanvas(width = 540, height = 960): RecordingCanvas {
 }
 
 /** A canvas factory whose canvases record; `made` keeps each one. */
-export function recordingEnv() {
+export function recordingEnv(opts: RecordingOptions = {}) {
     const made: RecordingCanvas[] = [];
     return {
         made,
         env: {
             createCanvas(width: number, height: number) {
-                const rc = recordingCanvas(width, height);
+                const rc = recordingCanvas(width, height, opts);
                 made.push(rc);
                 return rc.canvas;
             },
@@ -101,6 +106,13 @@ export function hashLog(log: LogEntry[]): string {
 /** The raw sources of every drawImage call in a log. */
 export function drawnSources(log: LogEntry[]): unknown[] {
     return log.filter((e) => e[0] === 'drawImage').map((e) => (e[e.length - 1] as { source: unknown }).source);
+}
+
+/** The `filter` in effect at each entry of a log (replaying its `set:filter` writes). */
+export function filterAt(log: LogEntry[], index: number): string {
+    let f = 'none';
+    for (let i = 0; i < index; i++) if (log[i][0] === 'set:filter') f = String(log[i][1]);
+    return f;
 }
 
 /** Every string written to the canvas with fillText / strokeText. */

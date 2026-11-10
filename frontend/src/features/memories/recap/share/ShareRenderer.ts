@@ -13,7 +13,8 @@
  *
  * Obfuscation: the renderer draws photos only through {@link isFrosted} images (tiny blurred
  * copies made by `sharePhotos.ts`), composed into a collage layer blurred again by
- * {@link COLLAGE_BLUR_PX} (scaled) under an {@link HAZE_ALPHA} white haze. Any other image
+ * {@link COLLAGE_BLUR_PX} (scaled) under an {@link HAZE_ALPHA} white haze. Where the canvas has no
+ * `filter`, the layer is box-blurred by rescaling ({@link COLLAGE_FALLBACK_PASSES}). Any other image
  * handed to it is ignored. The only unfrosted image it can draw is the fan's own avatar, and
  * only when the fan turned it on. Colours come from design-token CSS variables
  * ({@link readSharePalette}) or from the photos' sampled month colours; none is a literal.
@@ -21,7 +22,10 @@
 import { fontFamily } from '../../../../design/tokens/type';
 import { readCssVar } from '../posterImage';
 import { buildTimeline, sceneAt, timelineMs, type Scene, type SceneKind, type ShareFormat, type ShareModel, type ShareStyle } from './shareModel';
-import { browserCanvasEnv, isFrosted, markFrosted, type CanvasEnv, type FrostedImage, type MonthColour } from './sharePhotos';
+import {
+    boxBlurByRescale, browserCanvasEnv, canvasFilterSupported, isFrosted, markFrosted, type CanvasEnv, type FrostedImage,
+    type MonthColour,
+} from './sharePhotos';
 
 /** Logical stage size (9:16); the GIF is drawn at this size, the PNG at 2×. */
 export const SHARE_WIDTH = 540;
@@ -30,6 +34,8 @@ export const SHARE_HEIGHT = 960;
 export const COLLAGE_MAX_TILE_RATIO = 0.18;
 /** Collage blur in logical pixels (multiplied by the render scale). */
 export const COLLAGE_BLUR_PX = 6;
+/** Downscale factors of the collage's box blur where the canvas `filter` is unsupported. */
+export const COLLAGE_FALLBACK_PASSES = [8, 4] as const;
 /** Opacity of the white haze over the collage. */
 export const HAZE_ALPHA = 0.08;
 /** Fade-in of each scene. */
@@ -305,9 +311,10 @@ export class ShareRenderer {
             this.layer = null;
             return null;
         }
+        const filterOk = canvasFilterSupported(ctx, this.env);
         ctx.setTransform(s, 0, 0, s, 0, 0);
         ctx.imageSmoothingEnabled = true;
-        ctx.filter = `blur(${COLLAGE_BLUR_PX * s}px)`;
+        if (filterOk) ctx.filter = `blur(${COLLAGE_BLUR_PX * s}px)`;
         for (const tile of collageLayout(photos.length, this.model.seed, SHARE_WIDTH, SHARE_HEIGHT)) {
             ctx.save();
             ctx.translate(tile.x, tile.y);
@@ -315,7 +322,11 @@ export class ShareRenderer {
             ctx.drawImage(photos[tile.image], -tile.size / 2, -tile.size / 2, tile.size, tile.size);
             ctx.restore();
         }
-        ctx.filter = 'none';
+        if (filterOk) ctx.filter = 'none';
+        else if (!boxBlurByRescale(canvas, ctx, this.env, COLLAGE_FALLBACK_PASSES)) {
+            this.layer = null;
+            return null;
+        }
         ctx.globalAlpha = HAZE_ALPHA;
         ctx.fillStyle = this.opts.palette.haze;
         ctx.fillRect(0, 0, SHARE_WIDTH, SHARE_HEIGHT);

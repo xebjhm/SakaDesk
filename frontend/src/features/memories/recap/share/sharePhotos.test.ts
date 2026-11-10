@@ -1,8 +1,9 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
-    assignMonths, averageColour, colourHex, FROST_SOURCE_PX, frostImage, isFrosted, jstMonth, loadShareAssets,
-    monthlyColours, monthWindow, sharePhotoSources, type CanvasEnv,
+    assignMonths, canvasFilterSupported, colourBuckets, colourHex, dominantColour, FROST_SOURCE_PX, frostImage, isFrosted, jstMonth,
+    loadShareAssets, monthlyColours, monthWindow, sharePhotoSources, type CanvasEnv,
 } from './sharePhotos';
+import { drawnSources, filterAt, recordingEnv } from '../__fixtures__/recordingCanvas';
 import { payload, photosData, posterData } from '../__fixtures__/payload';
 import type { RecapPayload } from '../api';
 
@@ -57,10 +58,77 @@ describe('frostImage', () => {
     });
 });
 
+/** RGBA data of `n` pixels of each colour. */
+function pixels(...runs: [number, [number, number, number]][]): number[] {
+    return runs.flatMap(([n, [r, g, b]]) => Array.from({ length: n }, () => [r, g, b, 255]).flat());
+}
+
+describe('frostImage without canvas filter support', () => {
+    it('detects the missing filter once per canvas factory', () => {
+        const { env, made } = recordingEnv({ filter: false });
+        frostImage(img(), env);
+        frostImage(img(), env);
+        const probes = made.flatMap((m) => m.log.filter((e) => e[0] === 'set:filter' && e[1] === 'blur(1px)'));
+        expect(probes).toHaveLength(1);
+        expect(canvasFilterSupported(made[0].ctx, env)).toBe(false);
+        const fresh = recordingEnv();
+        expect(canvasFilterSupported(fresh.env.createCanvas(1, 1).getContext('2d')!, fresh.env)).toBe(true);
+    });
+
+    it('keeps the 32 px downscale and adds a box blur by downscale / upscale', () => {
+        const { env, made } = recordingEnv({ filter: false });
+        const raw = img();
+        const out = frostImage(raw, env);
+        expect(isFrosted(out)).toBe(true);
+        const tiny = made[0];
+        expect([tiny.canvas.width, tiny.canvas.height]).toEqual([FROST_SOURCE_PX, FROST_SOURCE_PX]);
+        // The raw photo is drawn once, into the tiny canvas only.
+        expect(made.flatMap((m) => drawnSources(m.log)).filter((s) => s === raw)).toHaveLength(1);
+        expect(drawnSources(tiny.log)[0]).toBe(raw);
+        // Then the tiny copy is shrunk into smaller scratch canvases and drawn back over itself.
+        const scratch = made.slice(1);
+        expect(scratch.length).toBeGreaterThanOrEqual(2);
+        for (const s of scratch) {
+            expect(s.canvas.width).toBeLessThan(FROST_SOURCE_PX);
+            expect(drawnSources(s.log)).toEqual([tiny.canvas]);
+        }
+        expect(drawnSources(tiny.log).slice(1)).toEqual(scratch.map((s) => s.canvas));
+    });
+
+    it('uses the filter blur, not the fallback, where filter works', () => {
+        const { env, made } = recordingEnv();
+        const raw = img();
+        frostImage(raw, env);
+        expect(made).toHaveLength(1);
+        const i = made[0].log.findIndex((e) => e[0] === 'drawImage');
+        expect(filterAt(made[0].log, i)).toMatch(/^blur\(/);
+    });
+
+    it('reports the fallback in the loaded assets', async () => {
+        const recap = payload({ slides: [{ key: 's05_photos', fallback: null, data: photosData() }] });
+        const off = await loadShareAssets(recap, { env: recordingEnv({ filter: false }).env, loadImage: async () => img() });
+        expect(off.blurFallback).toBe(true);
+        const on = await loadShareAssets(recap, { env: recordingEnv().env, loadImage: async () => img() });
+        expect(on.blurFallback).toBe(false);
+    });
+});
+
 describe('colour record', () => {
-    it('averages opaque pixels', () => {
-        expect(averageColour([10, 20, 30, 255, 30, 40, 50, 255, 0, 0, 0, 0])).toEqual([20, 30, 40]);
-        expect(averageColour([0, 0, 0, 0])).toBeNull();
+    it('takes the dominant colour bucket, not the mean', () => {
+        // 6 red, 4 blue: the mean would be a purple that is in neither photo.
+        const data = pixels([6, [200, 30, 40]], [4, [30, 40, 200]]);
+        expect(dominantColour(data)).toEqual([200, 30, 40]);
+    });
+
+    it('ignores near-white, near-black and transparent pixels', () => {
+        const data = [...pixels([10, [250, 250, 250]], [10, [5, 5, 5]], [2, [90, 160, 60]]), 120, 120, 120, 0];
+        expect(dominantColour(data)).toEqual([90, 160, 60]);
+        expect(dominantColour(pixels([4, [255, 255, 255]], [4, [0, 0, 0]]))).toBeNull();
+    });
+
+    it('groups close shades into one coarse bucket and averages within it', () => {
+        const data = pixels([2, [200, 30, 40]], [2, [210, 20, 50]], [3, [30, 40, 200]]);
+        expect(dominantColour(data)).toEqual([205, 25, 45]);
     });
 
     it('formats a colour without literals', () => {
@@ -84,11 +152,15 @@ describe('colour record', () => {
         expect(monthWindow(payload({ phase: 'final' }), ['2026-06-03T03:00:00Z']).last).toBe(12);
     });
 
-    it('averages per month and never lists an empty month', () => {
+    it('pools each month\'s photos and takes the dominant colour, never listing an empty month', () => {
         const m = monthlyColours([
-            { month: 3, rgb: [0, 0, 0] }, { month: 3, rgb: [100, 100, 100] }, { month: 1, rgb: [10, 10, 10] },
+            { month: 3, buckets: colourBuckets(pixels([3, [200, 30, 40]])) },
+            { month: 3, buckets: colourBuckets(pixels([2, [30, 40, 200]])) },
+            { month: 3, buckets: colourBuckets(pixels([2, [30, 40, 200]])) },
+            { month: 1, buckets: colourBuckets(pixels([1, [90, 160, 60]])) },
+            { month: 5, buckets: colourBuckets(pixels([4, [255, 255, 255]])) },
         ]);
-        expect(m).toEqual([{ month: 1, colour: '#0a0a0a' }, { month: 3, colour: '#323232' }]);
+        expect(m).toEqual([{ month: 1, colour: '#5aa03c' }, { month: 3, colour: '#1e28c8' }]);
     });
 });
 

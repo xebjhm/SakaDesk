@@ -1,13 +1,15 @@
 import { describe, it, expect, beforeAll } from 'vitest';
 import i18n from '../../../../i18n';
 import {
-    availableScenes, COLLAGE_MAX_TILE_RATIO, collageLayout, HAZE_ALPHA, SHARE_HEIGHT, SHARE_WIDTH, ShareRenderer,
+    availableScenes, COLLAGE_FALLBACK_PASSES, COLLAGE_MAX_TILE_RATIO, collageLayout, HAZE_ALPHA, SHARE_HEIGHT, SHARE_WIDTH, ShareRenderer,
     type SharePalette,
 } from './ShareRenderer';
 import { buildShareModel, defaultShareOptions, NICKNAME_MASK, type ShareOptions } from './shareModel';
-import { markFrosted, isFrosted, type ShareAssets } from './sharePhotos';
-import { drawnSources, drawnText, GRADIENT, hashLog, recordingCanvas, recordingEnv } from '../__fixtures__/recordingCanvas';
-import { clockData, greetingsData, message, payload, s02, s12, specialData } from '../__fixtures__/payload';
+import { FROST_SOURCE_PX, loadShareAssets, markFrosted, isFrosted, type FrostedImage, type ShareAssets } from './sharePhotos';
+import {
+    drawnSources, drawnText, filterAt, GRADIENT, hashLog, recordingCanvas, recordingEnv, type LogEntry,
+} from '../__fixtures__/recordingCanvas';
+import { clockData, greetingsData, message, payload, photosData, s02, s12, specialData } from '../__fixtures__/payload';
 import type { RecapPayload, RecapSlide } from '../api';
 
 const t = (key: string, params?: Record<string, string | number>) => i18n.t(key, params);
@@ -147,6 +149,25 @@ describe('ShareRenderer', () => {
         }
     });
 
+    it('box-blurs the collage by rescaling where the canvas has no filter', () => {
+        const r = recap();
+        const model = buildShareModel(r, defaultShareOptions(r), 'ゆき', t, 'ja');
+        const { env, made } = recordingEnv({ filter: false });
+        const renderer = new ShareRenderer(model, { photos: frostedPhotos(6), months: [], avatar: null }, {
+            format: 'video', scale: 2, palette: PALETTE, fonts: FONTS, env,
+        });
+        frame(renderer, 5000, 2);
+        const layer = made.find((m) => m.canvas.width === SHARE_WIDTH * 2)!;
+        expect(layer).toBeDefined();
+        const scratch = made.filter((m) => drawnSources(m.log).includes(layer.canvas));
+        expect(scratch.map((m) => m.canvas.width)).toEqual(COLLAGE_FALLBACK_PASSES.map((f) => Math.round((SHARE_WIDTH * 2) / f)));
+        // Each pass is drawn back over the whole layer before the haze.
+        const backAt = layer.log.findIndex((e) => e[0] === 'drawImage' && (e[e.length - 1] as { source: unknown }).source === scratch[0].canvas);
+        const hazeAt = layer.log.findIndex((e) => e[0] === 'set:globalAlpha' && e[1] === HAZE_ALPHA);
+        expect(backAt).toBeGreaterThan(-1);
+        expect(backAt).toBeLessThan(hazeAt);
+    });
+
     it('carries no voice or music: nothing audio is created', () => {
         const { renderer } = setup();
         const log = frame(renderer, 5000);
@@ -186,4 +207,54 @@ describe('collageLayout', () => {
         expect(collageLayout(8, 7, 540, 600)).toEqual(collageLayout(8, 7, 540, 600));
         expect(collageLayout(8, 7, 540, 600)).not.toEqual(collageLayout(8, 8, 540, 600));
     });
+});
+
+describe('privacy: a raw photo through loading and rendering', () => {
+    for (const filter of [true, false]) {
+        it(`draws the raw source only at <= 32 px, blurred, never at stage scale (filter ${filter ? 'on' : 'off'})`, async () => {
+            const raw = document.createElement('img');
+            raw.width = 1200;
+            raw.height = 900;
+            const r = payload({ slides: [...recap().slides, { key: 's05_photos', fallback: null, data: photosData() }] });
+            const { env, made } = recordingEnv({ filter });
+            const assets = await loadShareAssets(r, { env, loadImage: async () => raw });
+            expect(assets.photos.length).toBeGreaterThan(0);
+            const model = buildShareModel(r, { ...defaultShareOptions(r), style: 'collage' }, 'ゆき', t, 'ja');
+            // The raw image is also handed straight to the renderer, as a bug that skipped frosting would.
+            const renderer = new ShareRenderer(
+                model,
+                { ...assets, photos: [...assets.photos, raw as unknown as FrostedImage], avatar: null },
+                { format: 'video', scale: 2, palette: PALETTE, fonts: FONTS, env },
+            );
+            const stage: LogEntry[][] = [];
+            for (let ms = 0; ms < renderer.durationMs; ms += 250) stage.push(frame(renderer, ms, 2));
+            const poster = recordingCanvas(SHARE_WIDTH * 2, SHARE_HEIGHT * 2);
+            renderer.drawPoster(poster.ctx);
+            stage.push(poster.log);
+            // Never at stage scale: no frame, the poster or a stage-sized layer draws the raw source.
+            for (const log of stage) expect(drawnSources(log)).not.toContain(raw);
+            const rawDraws = made.flatMap((m) => m.log
+                .map((e, i) => ({ m, e, i }))
+                .filter(({ e }) => e[0] === 'drawImage' && (e[e.length - 1] as { source: unknown }).source === raw));
+            // Once per frosted copy, each into a tiny canvas, with blur applied.
+            expect(rawDraws).toHaveLength(assets.photos.length);
+            for (const { m, i } of rawDraws) {
+                expect(m.canvas.width).toBeLessThanOrEqual(FROST_SOURCE_PX);
+                expect(m.canvas.height).toBeLessThanOrEqual(FROST_SOURCE_PX);
+                if (filter) {
+                    expect(filterAt(m.log, i)).toMatch(/^blur\(/);
+                } else {
+                    // The box blur: the tiny copy is shrunk into scratch canvases and drawn back over itself.
+                    const back = drawnSources(m.log.slice(i + 1));
+                    expect(back.length).toBeGreaterThanOrEqual(2);
+                    expect(back).not.toContain(raw);
+                    for (const src of back) expect((src as HTMLCanvasElement).width).toBeLessThan(FROST_SOURCE_PX);
+                }
+            }
+            // The collage layer was composed (so the scene ran) from frosted copies only.
+            const layer = made.find((m) => m.canvas.width === SHARE_WIDTH * 2);
+            expect(layer).toBeDefined();
+            expect(drawnSources(layer!.log).filter((src) => src !== layer!.canvas).length).toBeGreaterThan(0);
+        });
+    }
 });

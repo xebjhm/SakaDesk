@@ -3,15 +3,20 @@
  *
  * **No raw member photo or avatar ever reaches the share renderer.** A photo is read once,
  * drawn into a canvas at most {@link FROST_SOURCE_PX} pixels on a side with a blur filter, and
- * only that tiny copy is kept (a {@link FrostedImage}). Even where the canvas `filter` is not
- * supported, nothing finer than 32 × 32 pixels survives; the collage then scales it up with
- * another blur. The renderer accepts only images registered by this module ({@link isFrosted}).
- * Avatars are never loaded here at all.
+ * only that tiny copy is kept (a {@link FrostedImage}). Where the canvas `filter` is not
+ * supported ({@link canvasFilterSupported}, probed once per canvas factory), nothing finer than
+ * 32 × 32 pixels survives either, and the copy is box-blurred by repeated downscale / upscale
+ * ({@link boxBlurByRescale}) instead; {@link ShareAssets.blurFallback} reports it so the caller
+ * can leave a breadcrumb. The collage then scales the copies up with another blur. The renderer
+ * accepts only images registered by this module ({@link isFrosted}). Avatars are never loaded
+ * here at all.
  *
  * Sources: the s05 photo wall (media URLs spread over the year in time order, without
  * timestamps) and the poster's start / mid / recent photos (with timestamps).
  *
- * Colour record: each photo's average colour, grouped by the JST month of its message. The wall
+ * Colour record: each month's dominant colour (the most common bucket of a coarse colour
+ * histogram over every photo of the month, near-white and near-black ignored; see
+ * {@link colourBuckets}), grouped by the JST month of its message. The wall
  * items carry no timestamp, so they are spread evenly, in their order, over the months of the
  * recap window ({@link assignMonths}); timed photos use their real month. A month with no photo
  * is simply not drawn (the export never shows an absence).
@@ -22,8 +27,16 @@ import type { RecapPayload, S05PhotosData } from '../api';
 export const FROST_SOURCE_PX = 32;
 /** Blur applied while shrinking (in pixels of the tiny copy). */
 const FROST_SOURCE_BLUR_PX = 1;
-/** Side of the canvas a photo's average colour is sampled on. */
-const SAMPLE_PX = 8;
+/** Side of the canvas a photo's colours are sampled on (the frosted copy's own size). */
+const SAMPLE_PX = 32;
+/** Downscale factors of the box blur used where the canvas `filter` is unsupported. */
+export const FROST_FALLBACK_PASSES = [3, 2] as const;
+/** Levels per channel of the colour histogram (8 → buckets 32 values wide). */
+const BUCKET_LEVELS = 8;
+/** A pixel whose channels are all at least this is near-white and ignored. */
+const NEAR_WHITE = 232;
+/** A pixel whose channels are all at most this is near-black and ignored. */
+const NEAR_BLACK = 24;
 /** At most this many photos are read for one export. */
 export const MAX_SHARE_PHOTOS = 24;
 
@@ -57,14 +70,62 @@ export function markFrosted(canvas: HTMLCanvasElement): FrostedImage {
     return canvas as FrostedImage;
 }
 
+const filterSupport = new WeakMap<CanvasEnv, boolean>();
+
+/**
+ * Whether this canvas factory's 2D contexts honour `filter`, probed once per factory on `ctx` (a
+ * context it made) by setting a blur and reading it back. The probe leaves `filter` at `none`.
+ */
+export function canvasFilterSupported(ctx: CanvasRenderingContext2D, env: CanvasEnv = browserCanvasEnv): boolean {
+    const known = filterSupport.get(env);
+    if (known !== undefined) return known;
+    let ok = false;
+    try {
+        ctx.filter = 'blur(1px)';
+        ok = ctx.filter === 'blur(1px)';
+        ctx.filter = 'none';
+    } catch {
+        ok = false;
+    }
+    filterSupport.set(env, ok);
+    return ok;
+}
+
+/**
+ * A box blur without `filter`: the canvas is shrunk by each factor (with smoothing) into a scratch
+ * canvas and drawn back up over itself. Returns false when a scratch context is unavailable.
+ */
+export function boxBlurByRescale(
+    canvas: HTMLCanvasElement, ctx: CanvasRenderingContext2D, env: CanvasEnv, factors: readonly number[],
+): boolean {
+    const { width: w, height: h } = canvas;
+    for (const f of factors) {
+        const sw = Math.max(1, Math.round(w / f));
+        const sh = Math.max(1, Math.round(h / f));
+        const scratch = env.createCanvas(sw, sh);
+        const sctx = scratch.getContext('2d');
+        if (!sctx) return false;
+        sctx.imageSmoothingEnabled = true;
+        sctx.drawImage(canvas, 0, 0, w, h, 0, 0, sw, sh);
+        ctx.save();
+        ctx.setTransform(1, 0, 0, 1, 0, 0);
+        ctx.imageSmoothingEnabled = true;
+        ctx.clearRect(0, 0, w, h);
+        ctx.drawImage(scratch, 0, 0, sw, sh, 0, 0, w, h);
+        ctx.restore();
+    }
+    return true;
+}
+
 function sizeOf(src: CanvasImageSource): { w: number; h: number } {
     const s = src as { naturalWidth?: number; naturalHeight?: number; width?: number; height?: number };
     return { w: s.naturalWidth || s.width || 0, h: s.naturalHeight || s.height || 0 };
 }
 
 /**
- * The frosted copy of a photo: its centre square shrunk to {@link FROST_SOURCE_PX} with a blur.
- * Returns null for an empty image or when no 2D context is available.
+ * The frosted copy of a photo: its centre square shrunk to {@link FROST_SOURCE_PX} with a blur
+ * (the `filter` blur, or {@link boxBlurByRescale} where `filter` is unsupported). Returns null
+ * for an empty image or when no 2D context is available.
  */
 export function frostImage(src: CanvasImageSource, env: CanvasEnv = browserCanvasEnv): FrostedImage | null {
     const { w, h } = sizeOf(src);
@@ -73,28 +134,80 @@ export function frostImage(src: CanvasImageSource, env: CanvasEnv = browserCanva
     const canvas = env.createCanvas(FROST_SOURCE_PX, FROST_SOURCE_PX);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
+    const filterOk = canvasFilterSupported(ctx, env);
     ctx.imageSmoothingEnabled = true;
     ctx.imageSmoothingQuality = 'low';
-    ctx.filter = `blur(${FROST_SOURCE_BLUR_PX}px)`;
+    if (filterOk) ctx.filter = `blur(${FROST_SOURCE_BLUR_PX}px)`;
     ctx.drawImage(src, (w - side) / 2, (h - side) / 2, side, side, 0, 0, FROST_SOURCE_PX, FROST_SOURCE_PX);
-    ctx.filter = 'none';
+    if (filterOk) ctx.filter = 'none';
+    else if (!boxBlurByRescale(canvas, ctx, env, FROST_FALLBACK_PASSES)) return null;
     return markFrosted(canvas);
 }
 
-/** The mean colour of the opaque pixels of RGBA data, or null when none is opaque. */
-export function averageColour(data: ArrayLike<number>): [number, number, number] | null {
-    let r = 0;
-    let g = 0;
-    let b = 0;
-    let n = 0;
+/** One bucket of the colour histogram: its pixel count and channel sums. */
+export interface ColourBucket {
+    n: number;
+    r: number;
+    g: number;
+    b: number;
+}
+
+/**
+ * A coarse colour histogram of RGBA data: each opaque pixel falls into one of
+ * {@link BUCKET_LEVELS}³ buckets. Transparent, near-white and near-black pixels are ignored (a
+ * sky, a wall or a shadow is not a photo's colour).
+ */
+export function colourBuckets(data: ArrayLike<number>): Map<number, ColourBucket> {
+    const out = new Map<number, ColourBucket>();
+    const width = 256 / BUCKET_LEVELS;
     for (let i = 0; i + 3 < data.length; i += 4) {
         if (data[i + 3] < 128) continue;
-        r += data[i];
-        g += data[i + 1];
-        b += data[i + 2];
-        n += 1;
+        const r = data[i];
+        const g = data[i + 1];
+        const b = data[i + 2];
+        if (r >= NEAR_WHITE && g >= NEAR_WHITE && b >= NEAR_WHITE) continue;
+        if (r <= NEAR_BLACK && g <= NEAR_BLACK && b <= NEAR_BLACK) continue;
+        const key = (Math.floor(r / width) * BUCKET_LEVELS + Math.floor(g / width)) * BUCKET_LEVELS + Math.floor(b / width);
+        const acc = out.get(key) ?? { n: 0, r: 0, g: 0, b: 0 };
+        acc.n += 1;
+        acc.r += r;
+        acc.g += g;
+        acc.b += b;
+        out.set(key, acc);
     }
-    return n ? [Math.round(r / n), Math.round(g / n), Math.round(b / n)] : null;
+    return out;
+}
+
+/** Adds `from`'s counts into `into`. */
+export function mergeBuckets(into: Map<number, ColourBucket>, from: Map<number, ColourBucket>): Map<number, ColourBucket> {
+    for (const [key, b] of from) {
+        const acc = into.get(key) ?? { n: 0, r: 0, g: 0, b: 0 };
+        acc.n += b.n;
+        acc.r += b.r;
+        acc.g += b.g;
+        acc.b += b.b;
+        into.set(key, acc);
+    }
+    return into;
+}
+
+/**
+ * The dominant colour of a histogram: the mean of its most common bucket (ties go to the lower
+ * bucket, so the result is deterministic), or null when every pixel was ignored.
+ */
+export function dominantOf(buckets: Map<number, ColourBucket>): [number, number, number] | null {
+    let best: [number, ColourBucket] | null = null;
+    for (const entry of buckets) {
+        if (!best || entry[1].n > best[1].n || (entry[1].n === best[1].n && entry[0] < best[0])) best = entry;
+    }
+    if (!best) return null;
+    const b = best[1];
+    return [Math.round(b.r / b.n), Math.round(b.g / b.n), Math.round(b.b / b.n)];
+}
+
+/** The dominant colour of RGBA data ({@link colourBuckets} then {@link dominantOf}). */
+export function dominantColour(data: ArrayLike<number>): [number, number, number] | null {
+    return dominantOf(colourBuckets(data));
 }
 
 /** A colour sampled from a photo as a CSS hex string (data, not a design literal). */
@@ -151,20 +264,20 @@ export interface MonthColour {
     colour: string;
 }
 
-/** One averaged colour per month that has photos, in month order. */
-export function monthlyColours(samples: { month: number; rgb: [number, number, number] }[]): MonthColour[] {
-    const sums = new Map<number, { r: number; g: number; b: number; n: number }>();
-    for (const s of samples) {
-        const acc = sums.get(s.month) ?? { r: 0, g: 0, b: 0, n: 0 };
-        acc.r += s.rgb[0];
-        acc.g += s.rgb[1];
-        acc.b += s.rgb[2];
-        acc.n += 1;
-        sums.set(s.month, acc);
-    }
-    return [...sums.entries()]
+/**
+ * One dominant colour per month that has photos, in month order: the histograms of the month's
+ * photos are pooled and the most common bucket wins (never a mean of means, which drifts grey).
+ * A month whose pixels were all ignored is not drawn.
+ */
+export function monthlyColours(samples: { month: number; buckets: Map<number, ColourBucket> }[]): MonthColour[] {
+    const pooled = new Map<number, Map<number, ColourBucket>>();
+    for (const s of samples) pooled.set(s.month, mergeBuckets(pooled.get(s.month) ?? new Map(), s.buckets));
+    return [...pooled.entries()]
         .sort(([a], [b]) => a - b)
-        .map(([month, a]) => ({ month, colour: colourHex([a.r / a.n, a.g / a.n, a.b / a.n]) }));
+        .flatMap(([month, buckets]) => {
+            const rgb = dominantOf(buckets);
+            return rgb ? [{ month, colour: colourHex(rgb) }] : [];
+        });
 }
 
 export interface SharePhotoSource {
@@ -205,12 +318,12 @@ export function loadImageElement(url: string): Promise<HTMLImageElement> {
     });
 }
 
-function sample(src: CanvasImageSource, env: CanvasEnv): [number, number, number] | null {
+function sample(src: CanvasImageSource, env: CanvasEnv): Map<number, ColourBucket> | null {
     const canvas = env.createCanvas(SAMPLE_PX, SAMPLE_PX);
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
     ctx.drawImage(src, 0, 0, SAMPLE_PX, SAMPLE_PX);
-    return averageColour(ctx.getImageData(0, 0, SAMPLE_PX, SAMPLE_PX).data);
+    return colourBuckets(ctx.getImageData(0, 0, SAMPLE_PX, SAMPLE_PX).data);
 }
 
 export interface ShareAssets {
@@ -220,6 +333,8 @@ export interface ShareAssets {
     months: MonthColour[];
     /** Photos that could not be read (a log count). */
     skipped: number;
+    /** True when the canvas has no `filter` and photos were box-blurred by rescaling instead. */
+    blurFallback?: boolean;
 }
 
 /**
@@ -243,7 +358,7 @@ export async function loadShareAssets(
         }
     }));
     const photos: FrostedImage[] = [];
-    const samples: { month: number; rgb: [number, number, number] }[] = [];
+    const samples: { month: number; buckets: Map<number, ColourBucket> }[] = [];
     let skipped = 0;
     loaded.forEach((img, i) => {
         const frost = img ? frostImage(img, env) : null;
@@ -252,8 +367,9 @@ export async function loadShareAssets(
             return;
         }
         photos.push(frost);
-        const rgb = sample(frost, env);
-        if (rgb) samples.push({ month: months[i], rgb });
+        const buckets = sample(frost, env);
+        if (buckets) samples.push({ month: months[i], buckets });
     });
-    return { photos, months: monthlyColours(samples), skipped };
+    const blurFallback = photos.length > 0 && filterSupport.get(env) === false;
+    return { photos, months: monthlyColours(samples), skipped, blurFallback };
 }
