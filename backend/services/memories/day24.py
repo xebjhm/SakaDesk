@@ -23,8 +23,10 @@ slots); the frontend then shows the gentle thin-data card, never a sparse day.
 - **Score** (:func:`score`): greeting match +200 (``has_greeting(code)``),
   picture / video +100 (+ ``photo_score // 10``), nickname +80, favourited
   +300, and -150 when the fact's year is already used by an earlier slot.
-- **Choice:** in time-of-day order, a weighted pick (``gacha.weight`` of the
-  score) among the top :data:`TOP_N` by score (ties: the earlier), with one
+- **Choice:** in time-of-day order, a weighted pick among the top
+  :data:`TOP_N` by score (ties: the earlier), weighted by
+  :func:`rank_weights` (dense rank of the score, so the year penalty changes
+  the odds and equal scores weigh the same), with one
   ``random.Random(seed)``. ``seed`` is the request's seed (🎲), else the JST
   date ordinal, so reopening on the same day shows the same day.
 
@@ -57,7 +59,6 @@ from backend.services.memories.facts import (
     aggregate,
     get_person_facts,
 )
-from backend.services.memories.gacha import weight
 from backend.services.memories.selection import JST
 
 logger = structlog.get_logger(__name__)
@@ -141,6 +142,17 @@ def score(f: Fact, code: str, used_years: set[int]) -> int:
     return s
 
 
+def rank_weights(scores: Sequence[int]) -> list[int]:
+    """Dense-rank weights: 1 for the lowest score, +1 per higher distinct score.
+
+    The order of the scores is kept after the year penalty (a penalised,
+    negative score still weighs less than a fresh one) and equal scores weigh
+    the same, so 🎲 still varies the day.
+    """
+    levels = {v: i + 1 for i, v in enumerate(sorted(set(scores)))}
+    return [levels[v] for v in scores]
+
+
 def _in_pool(f: Fact) -> bool:
     return not f.is_promo and (f.importance is not None or f.type in people.MEDIA_TYPES)
 
@@ -164,7 +176,8 @@ def _pick(tagged: Sequence[_Tagged], seed: int) -> list[tuple[str, int, _Tagged]
         )[:TOP_N]
         # Every slot hour holds pool facts (it comes from their histogram) and
         # a slot's window contains its whole hour, so ``ranked`` is non-empty.
-        s, pick = rng.choices(ranked, weights=[weight(c[0]) for c in ranked])[0]
+        weights = rank_weights([c[0] for c in ranked])
+        s, pick = rng.choices(ranked, weights=weights)[0]
         used.add(pick[1].jst_date.year)
         out.append((code, s, pick))
     return out
@@ -211,5 +224,6 @@ __all__ = [
     "choose_slots",
     "hour_distance",
     "in_window",
+    "rank_weights",
     "score",
 ]

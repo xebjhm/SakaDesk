@@ -224,6 +224,34 @@ async def test_years_vary_when_possible(svc):
     assert 20 in drawn
 
 
+def test_rank_weights_keep_order_after_the_penalty():
+    # Higher score, more weight; equal scores, equal weight; a penalised
+    # (negative) score still weighs less than a fresh one.
+    assert day24.rank_weights([0, -150, -150]) == [2, 1, 1]
+    assert day24.rank_weights([300, 200, 200, -70, -150]) == [4, 3, 3, 2, 1]
+    assert day24.rank_weights([5, 5]) == [1, 1]
+
+
+@pytest.mark.asyncio
+async def test_years_vary_through_the_weights(svc):
+    # 8 h: only 2024. 12 h: a 2024 picture (100 - 150 = -50) and a plain 2023
+    # word (0). Both are in the top 5; the fresh year must be drawn more often.
+    msgs = [msg(1, at(2024, 1, 1, 8, 10), content="おはよう")]
+    msgs += [
+        pic(10, at(2024, 2, 1, 12, 15)),
+        msg(20, at(2023, 2, 1, 12, 15), content="こんにちは"),
+        msg(30, at(2025, 1, 1, 15, 0), content="a"),
+        msg(31, at(2025, 1, 1, 18, 0), content="b"),
+        msg(32, at(2025, 1, 1, 22, 0), content="c"),
+    ]
+    kane(svc, msgs)
+    summary = await person(svc)
+    tagged = await day24.get_person_facts(svc, summary)
+    runs = 300
+    fresh = sum(day24._pick(tagged, seed)[1][2][1].id == 20 for seed in range(runs))
+    assert fresh > 0.6 * runs
+
+
 def test_score_rules():
     from backend.services.memories.facts import Fact
 
@@ -306,3 +334,26 @@ async def test_thin_day_is_empty(svc):
 async def test_a_person_with_no_messages_is_empty(svc):
     kane(svc, [])
     assert await build(svc) == {"slots": []}
+
+
+@pytest.mark.asyncio
+async def test_late_slot_window_crosses_midnight_end_to_end(svc):
+    # oyasumi slot at 23:30: 23:50 and 00:00 are candidates, a favourited
+    # 00:10 (40 min later) never is. Hour 0 is 1 h from 23, so no slot of its own.
+    msgs = [
+        msg(1, at(2025, 1, 1, 8), content="おはよう"),
+        msg(2, at(2025, 1, 1, 12), content="お昼"),
+        msg(3, at(2025, 1, 1, 15), content="レッスン"),
+        msg(4, at(2025, 1, 1, 18), content="お疲れ"),
+        msg(5, at(2024, 1, 1, 23, 50), content="まだ起きてる"),
+        msg(6, at(2023, 1, 2, 0, 0), content="日付変わった"),
+        msg(7, at(2022, 1, 2, 0, 10), content="寝るね", fav=True),
+    ]
+    kane(svc, msgs)
+    late = set()
+    for seed in range(30):
+        got = await build(svc, seed=seed)
+        assert [s["code"] for s in got["slots"]][-1] == "oyasumi"
+        assert 0 not in hours_of(got)[:-1]
+        late.add(got["slots"][-1]["message"]["id"])
+    assert late == {5, 6}
