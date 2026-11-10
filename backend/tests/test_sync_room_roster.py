@@ -1373,17 +1373,14 @@ async def test_completed_sync_schedules_memories_refreshes(tmp_path):
         )
         assert ok is True
         progress.complete.assert_called_once()
-        # Scheduled, not awaited inline.
-        profiles.assert_called_once()
-        index.assert_called_once()
+        # Scheduled as one background task, not awaited inline.
         profiles.assert_not_awaited()
         index.assert_not_awaited()
-        assert {n for n, _ in bg if n.startswith("memories_")} == {
-            "memories_member_profiles",
-            "memories_index",
-        }
+        assert {n for n, _ in bg if n.startswith("memories_")} == {"memories_index"}
         for _, coro in bg:
             await coro
+        profiles.assert_awaited_once()
+        index.assert_awaited_once()
     assert profiles.await_args.args[0] == "hinatazaka46"
     assert index.await_args.args[0] == profiles.await_args.args[1]
 

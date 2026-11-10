@@ -43,6 +43,7 @@ from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
 from backend.services.chat_kind import is_member_dir
 from backend.services.memories.index import build_all as build_memory_index
+from backend.services.memories.index import sync_writing as memory_index_sync_writing
 from backend.services.memories.member_profiles import refresh_member_profiles
 from backend.services.memories.notify_scheduler import request_card_check
 from backend.services.memories.subscriptions import archive_subscription_starts
@@ -430,6 +431,10 @@ class SyncService:
         pending_call: PendingCall | None = None
         call_dispatched = False
         call_abort_reason = "sync_failed"
+        # Marks the service dir as being written while this run is in flight,
+        # so Memories reads serve the stored index instead of rebuilding on
+        # every messages.json write (closed in the finally below).
+        index_writer = contextlib.ExitStack()
 
         try:
             # Load Configuration FIRST - needed for force_resync and all subsequent operations
@@ -445,6 +450,7 @@ class SyncService:
 
             self._resolve_service_paths(app_settings)
             assert self.metadata_file is not None  # set by _resolve_service_paths
+            index_writer.enter_context(memory_index_sync_writing(self.service_data_dir))
 
             # Handle Force Resync: reset only the per-member message cursor so every
             # member is re-fetched from scratch. Do NOT delete sync_metadata.json —
@@ -1413,6 +1419,7 @@ class SyncService:
             progress.error(str(e))
             return False
         finally:
+            index_writer.close()
             if pending_call is not None and not call_dispatched:
                 # Never awaits: abandon spawns its fallback toast as a background
                 # task. A failure is logged and must not skip the bookkeeping below.
@@ -1445,21 +1452,36 @@ class SyncService:
         except Exception as e:
             logger.warning("subscription_starts_failed", error_type=type(e).__name__)
 
+    async def _refresh_memories(self) -> None:
+        """Refresh member profiles, then rebuild the memory index.
+
+        Sequential on purpose: birthdays are part of each room's index hash,
+        so building the index while the profile refresh is still running made
+        every room rebuild a second time once the birthdays landed. A failed
+        profile refresh is logged and the index is still built.
+        """
+        try:
+            await refresh_member_profiles(self._service, self.service_data_dir)
+        except Exception as e:
+            logger.warning(
+                "memories_member_profiles_failed",
+                service=self._service,
+                error_type=type(e).__name__,
+            )
+        await build_memory_index(self.service_data_dir)
+
     def _schedule_memories_refresh(self) -> None:
         """Refresh member profiles and the memory index in the background.
 
-        Scheduled as tracked tasks so they never block or fail the sync; each
-        task logs its own failures (``background_task.failed``). Then asks the
+        Scheduled as one tracked task (profiles first, then the index; see
+        :meth:`_refresh_memories`) so it never blocks or fails the sync; it
+        logs its own failures (``background_task.failed``). Then asks the
         Memories notifier for a foil card check of this service
         (``request_card_check``, a no-op when no notifier runs).
         """
         try:
             track_background_task(
-                refresh_member_profiles(self._service, self.service_data_dir),
-                name="memories_member_profiles",
-            )
-            track_background_task(
-                build_memory_index(self.service_data_dir),
+                self._refresh_memories(),
                 name="memories_index",
             )
             # Foil card unlocks: checked once the index above has had time to build.

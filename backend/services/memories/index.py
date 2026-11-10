@@ -28,6 +28,7 @@ import sqlite3
 import time
 from bisect import bisect_left, bisect_right
 from collections import Counter
+from collections.abc import Iterator
 from dataclasses import dataclass, field, fields
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -658,7 +659,14 @@ def _build(
     return base, rows
 
 
-def _cache_get(service_dir: str, member_dir: str, data_hash: str) -> MemberIndex | None:
+def _cache_get(
+    service_dir: str, member_dir: str, data_hash: str | None
+) -> MemberIndex | None:
+    """The cached index when its hash equals ``data_hash``.
+
+    ``data_hash=None`` returns whatever row is stored (any hash): the stale
+    read used while a sync is writing the service (see :func:`sync_writing`).
+    """
     try:
         with contextlib.closing(_connect()) as c:
             row = c.execute(
@@ -666,11 +674,37 @@ def _cache_get(service_dir: str, member_dir: str, data_hash: str) -> MemberIndex
                 "WHERE service_dir=? AND member_dir=?",
                 (service_dir, member_dir),
             ).fetchone()
-        if row and row[0] == data_hash:
+        if row and (data_hash is None or row[0] == data_hash):
             return MemberIndex.from_json(row[1])
     except (sqlite3.Error, ValueError, KeyError, TypeError) as e:
         logger.warning("memory_index_cache_read_failed", error_type=type(e).__name__)
     return None
+
+
+# Service dirs a sync is writing right now (a count per dir, so overlapping
+# writers nest). A sync rewrites ``messages.json`` several times per room (new
+# messages, then the deferred-media finalize), and each write changes the
+# data hash. Rebuilding on every on-demand read in that window built the same
+# room up to 4 times a minute; instead reads serve the stored row and the
+# ``build_all`` scheduled after the sync rebuilds each changed room once.
+_sync_writers: Counter[str] = Counter()
+
+
+@contextlib.contextmanager
+def sync_writing(service_data_dir: Path) -> Iterator[None]:
+    """Mark ``service_data_dir`` as being written by a sync for the block."""
+    key = str(service_data_dir)
+    _sync_writers[key] += 1
+    try:
+        yield
+    finally:
+        _sync_writers[key] -= 1
+        if _sync_writers[key] <= 0:
+            del _sync_writers[key]
+
+
+def is_sync_writing(service_data_dir: Path) -> bool:
+    return _sync_writers.get(str(service_data_dir), 0) > 0
 
 
 _INSERT_FACTS = (
@@ -705,9 +739,18 @@ def _cache_put(service_dir: str, idx: MemberIndex, rows: list[tuple[Any, ...]]) 
 
 
 def _get_sync(
-    service_data_dir: Path, member_dir: Path, inputs: _Inputs
+    service_data_dir: Path,
+    member_dir: Path,
+    inputs: _Inputs,
+    *,
+    allow_stale: bool = False,
 ) -> tuple[MemberIndex, bool]:
-    """Return ``(index, built)``; never raises. Blocking: call via a thread."""
+    """Return ``(index, built)``; never raises. Blocking: call via a thread.
+
+    With ``allow_stale`` (on-demand reads) a stored row whose hash no longer
+    matches is still returned while a sync is writing the service
+    (``memory_index_stale_served``); a room with no row at all is built.
+    """
     base = MemberIndex()
     try:
         base = _identity(service_data_dir, member_dir, inputs)
@@ -718,6 +761,15 @@ def _get_sync(
         if cached is not None:
             logger.info("memory_index_hit", member_id=base.member_id)
             return cached, False
+        if allow_stale and is_sync_writing(service_data_dir):
+            stale = _cache_get(service_dir, base.member_dir, None)
+            if stale is not None:
+                logger.info(
+                    "memory_index_stale_served",
+                    member_id=base.member_id,
+                    reason="sync_writing",
+                )
+                return stale, False
         start = time.perf_counter()
         idx, rows = _build(messages_path, base)
         idx.cache_stale = not _cache_put(service_dir, idx, rows)
@@ -749,7 +801,9 @@ async def get_member_index(service_data_dir: Path, member_dir: Path) -> MemberIn
     """Cached index for one member; rebuilt off the event loop when stale.
 
     Single-flight per ``(service_dir, member_dir)``: concurrent callers wait
-    for one build and then read its cache row. On any failure an empty index
+    for one build and then read its cache row. While a sync is writing the
+    service, a stored (possibly stale) row is served instead of rebuilding
+    (see :func:`sync_writing`). On any failure an empty index
     (not cached) is returned and ``memory_index_failed`` is logged.
     """
     async with keyed_lock(("memory_index", str(service_data_dir), str(member_dir))):
@@ -759,6 +813,7 @@ async def get_member_index(service_data_dir: Path, member_dir: Path) -> MemberIn
                 service_data_dir,
                 member_dir,
                 _load_inputs(service_data_dir, fresh_scan=False),
+                allow_stale=True,
             )[0]
 
         return await asyncio.to_thread(run)

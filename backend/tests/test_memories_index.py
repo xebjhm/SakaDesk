@@ -564,3 +564,80 @@ async def test_failed_cache_write_marks_index_stale(tmp_path, monkeypatch):
     idx = await mi.get_member_index(tmp_path, d)
     assert idx.cache_stale is True and idx.data_hash
     assert "cache_stale" not in idx.to_json()
+
+
+def _rewrite(d, msgs):
+    (d / "messages.json").write_text(
+        json.dumps(
+            {"member": {"id": "58", "name": "金村 美玖"}, "messages": msgs},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+
+
+@pytest.mark.asyncio
+async def test_reads_serve_stored_row_while_sync_writes(tmp_path, monkeypatch):
+    """D18: each sync write changes the hash; reads in that window must not
+    rebuild the room every time. build_all after the sync rebuilds it once."""
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", content="a")])
+    first = await mi.get_member_index(tmp_path, d)
+    builds = 0
+    real = mi._build
+
+    def counting(*a, **kw):
+        nonlocal builds
+        builds += 1
+        return real(*a, **kw)
+
+    monkeypatch.setattr(mi, "_build", counting)
+    from structlog.testing import capture_logs
+
+    with mi.sync_writing(tmp_path), capture_logs() as logs:
+        for n in range(2, 5):  # three sync writes, a read after each
+            _rewrite(
+                d,
+                [msg(i, f"2026-09-{13 + i}T03:00:00Z", content="b") for i in range(n)],
+            )
+            served = await mi.get_member_index(tmp_path, d)
+            assert served.data_hash == first.data_hash
+        assert builds == 0
+        assert [
+            e["reason"] for e in logs if e["event"] == "memory_index_stale_served"
+        ] == ["sync_writing"] * 3
+        assert await mi.build_all(tmp_path) == 1  # build_all never serves stale
+    assert builds == 1 and not mi.is_sync_writing(tmp_path)
+    fresh = await mi.get_member_index(tmp_path, d)
+    assert fresh.data_hash != first.data_hash and builds == 1
+
+
+@pytest.mark.asyncio
+async def test_room_without_row_is_built_even_while_sync_writes(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", content="a")])
+    with mi.sync_writing(tmp_path):
+        idx = await mi.get_member_index(tmp_path, d)
+    assert sum(idx.hour_hist) == 1
+
+
+@pytest.mark.asyncio
+async def test_stale_rows_only_served_for_the_written_service(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", content="a")])
+    first = await mi.get_member_index(tmp_path, d)
+    _rewrite(d, [msg(1, "2026-09-14T03:00:00Z"), msg(2, "2026-09-15T03:00:00Z")])
+    with mi.sync_writing(tmp_path / "other"):
+        again = await mi.get_member_index(tmp_path, d)
+    assert again.data_hash != first.data_hash
+
+
+def test_sync_writing_nests():
+    from pathlib import Path
+
+    p = Path("svc")
+    with mi.sync_writing(p):
+        with mi.sync_writing(p):
+            pass
+        assert mi.is_sync_writing(p)
+    assert not mi.is_sync_writing(p)
