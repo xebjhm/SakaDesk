@@ -1,4 +1,4 @@
-"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board, the hub, the voice radio, the gacha, the calendar album, album cover overrides, capsule notes and the same-time line for the active service, the export handoff and the share GIF.
+"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board, the hub, the voice radio, the gacha, the calendar album, album cover overrides, capsule notes, the same-time line, her 24 hours and then-and-now pairs for the active service, the export handoff and the share GIF.
 
 A ``sqlite3.Error`` from the fan's own store (``app_state.db``) on a cover or
 capsule route is 503 ``store_unavailable`` (``memories.api.reject``,
@@ -29,6 +29,7 @@ from backend.services.memories import (
     calendar_album,
     capsule,
     covers,
+    day24,
     day_view,
     exports,
     favorites_board,
@@ -41,6 +42,7 @@ from backend.services.memories import (
     radio,
     same_time,
     share_gif,
+    then_now,
     timeline,
 )
 from backend.services.memories.index import MemberSummary
@@ -788,6 +790,71 @@ async def same_time_route(service: str) -> dict | None:
     now = datetime.now(timezone.utc)
     service_data_dir = _service_dir(service)
     return await same_time.same_time(service, service_data_dir, now=now)
+
+
+SEED_RE = re.compile(r"^\d{1,18}\Z")
+
+
+def _parse_seed(raw: str | None) -> int | None:
+    """The 🎲 seed: absent, or 1-18 ASCII digits; anything else is 400."""
+    if raw is None:
+        return None
+    if not SEED_RE.match(raw):
+        logger.warning("memories.api.reject", reason="bad_seed")
+        raise HTTPException(status_code=400, detail="Invalid seed")
+    return int(raw)
+
+
+@router.get("/{service}/memoir/day24")
+async def memoir_day24_route(
+    service: str, member: str = Query(...), seed: str | None = Query(None)
+) -> dict:
+    """彼女の24時間 of the person owning ``member`` (``day24.build_day24``).
+
+    ``seed`` (1-18 digits, else 400) rebuilds the day (🎲); without it the
+    JST date picks the day. ``{"slots": []}`` when her day is too thin.
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    parsed = _parse_seed(seed)
+    summary = await _person(service_data_dir, member, view="day24")
+    return await day24.build_day24(
+        service, service_data_dir, summary, seed=parsed, now=now
+    )
+
+
+@router.get("/{service}/then-now/day")
+async def then_now_day_route(
+    service: str,
+    day_q: str = Query(..., alias="date"),
+    member: str | None = Query(None),
+) -> dict | None:
+    """あの日と今日 for ``date`` (``YYYY-MM-DD``; ``then_now.then_now_day``).
+
+    ``member`` (chat path of any of her rooms) pins the person. ``null`` when
+    there is no later year to pair with (the toggle is hidden).
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    day = _parse_day(day_q)
+    summary = await _optional_person(service_data_dir, member, "then_now")
+    return await then_now.then_now_day(
+        service, service_data_dir, day, member=summary, now=now
+    )
+
+
+@router.get("/{service}/then-now/first-week")
+async def then_now_first_week_route(
+    service: str, member: str = Query(...)
+) -> dict | None:
+    """初見 vs 今 of the person owning ``member`` (``then_now.then_now_first_week``),
+    or ``null`` when the weeks overlap or no row has both sides."""
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    summary = await _person(service_data_dir, member, view="then_now")
+    return await then_now.then_now_first_week(
+        service, service_data_dir, summary, now=now
+    )
 
 
 @router.get("/{service}/hub")

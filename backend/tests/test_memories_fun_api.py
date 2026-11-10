@@ -631,3 +631,117 @@ def test_same_time_route_may_be_null(out):
     with time_machine.travel(later, tick=False):
         r = client.get(f"/api/memories/{SERVICE}/same-time")
     assert r.status_code == 200 and r.json() is None
+
+
+# --- her 24 hours and then-and-now (Task F6) ----------------------------------------------
+
+DAY24 = f"/api/memories/{SERVICE}/memoir/day24"
+THEN_NOW = f"/api/memories/{SERVICE}/then-now"
+
+
+def rewrite_room(out, msgs):
+    write_room(out / SVC_NAME, "34 金村 美玖", "58 金村 美玖", msgs)
+
+
+def test_day24_route_thin_day_is_empty(out):
+    r = get(DAY24, member=MEMBER)
+    assert r.status_code == 200 and r.json() == {"slots": []}
+
+
+def test_day24_route_with_seed(out):
+    hours = (8, 12, 15, 18, 22)  # JST
+    rewrite_room(
+        out,
+        [
+            msg(
+                10 + k,
+                f"2025-03-0{k + 1}T{(h - 9) % 24:02d}:10:00Z",
+                content=f"言葉{k}",
+            )
+            for k, h in enumerate(hours)
+        ],
+    )
+    r = get(DAY24, member=MEMBER, seed="42")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["seed"] == 42 and body["years"] == 1
+    assert [s["message"]["id"] for s in body["slots"]] == [10, 11, 12, 13, 14]
+    assert body["slots"][0]["message"]["text"] == "言葉0"
+    no_abs_paths(out, body)
+
+
+@pytest.mark.parametrize("seed", ["abc", "-1", "1.5", "", "1" * 19, "7\n"])
+def test_day24_bad_seed_is_400(out, seed):
+    assert get(DAY24, member=MEMBER, seed=seed).status_code == 400
+
+
+def test_day24_member_errors(out):
+    assert get(DAY24).status_code == 422  # required, like every member= route
+    gone = f"{SVC_NAME}/messages/99 誰/99 誰"
+    assert get(DAY24, member=gone).status_code == 404
+    assert get(DAY24, member="../../etc").status_code == 400
+    assert get("/api/memories/nope/memoir/day24", member=MEMBER).status_code == 400
+
+
+def test_then_now_day_route(out):
+    rewrite_room(
+        out,
+        [
+            msg(4, "2024-01-06T03:00:00Z", content="一年前の雪"),
+            msg(3, "2025-01-06T03:00:00Z", content="今年も雪"),
+        ],
+    )
+    r = get(f"{THEN_NOW}/day", date="2024-01-06")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] == "day" and body["shared_keyword"] == "雪"
+    assert body["then"]["date"] == "2024-01-06" and body["now"]["date"] == "2025-01-06"
+    assert body["then"]["member_path"] == MEMBER
+    no_abs_paths(out, body)
+    r = get(f"{THEN_NOW}/day", date="2024-01-06", member=MEMBER)
+    assert r.status_code == 200 and r.json() == body
+    r = get(f"{THEN_NOW}/day", date="2025-01-06")
+    assert r.status_code == 200 and r.json() is None
+
+
+@pytest.mark.parametrize("bad", ["2024-1-6", "2024-02-30", "20240106", "2024-01-06\n"])
+def test_then_now_day_bad_date_is_400(out, bad):
+    assert get(f"{THEN_NOW}/day", date=bad).status_code == 400
+
+
+def test_then_now_day_errors(out):
+    gone = f"{SVC_NAME}/messages/99 誰/99 誰"
+    assert get(f"{THEN_NOW}/day", date="2024-01-06", member=gone).status_code == 404
+    assert get("/api/memories/nope/then-now/day", date="2024-01-06").status_code == 400
+
+
+def test_then_now_first_week_route(out):
+    rewrite_room(
+        out,
+        [
+            voice(1, "2024-07-24T13:00:00Z", 12.5),
+            voice(5, "2026-11-08T13:00:00Z", 3.0),
+        ],
+    )
+    r = get(f"{THEN_NOW}/first-week", member=MEMBER)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] == "first_week"
+    assert body["then_range"] == ["2024-07-24", "2024-07-30"]
+    assert [(x["kind"], x["then"]["id"], x["now"]["id"]) for x in body["rows"]] == [
+        ("voice", 1, 5)
+    ]
+    no_abs_paths(out, body)
+
+
+def test_then_now_first_week_may_be_null(out):
+    r = get(f"{THEN_NOW}/first-week", member=MEMBER)
+    assert r.status_code == 200 and r.json() is None
+
+
+def test_then_now_first_week_errors(out):
+    gone = f"{SVC_NAME}/messages/99 誰/99 誰"
+    assert get(f"{THEN_NOW}/first-week", member=gone).status_code == 404
+    assert get(f"{THEN_NOW}/first-week").status_code == 422
+    url = "/api/memories/nope/then-now/first-week"
+    assert get(url, member=MEMBER).status_code == 400
