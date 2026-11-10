@@ -30,6 +30,8 @@ const PX_PER_MINUTE = 1.2;
 const CARD_HEIGHT = 64;
 const GAP = 4;
 const AVATAR_PX = 32;
+/** An expanded card's bubble draws its picture from the thumbnail route, lazily (the viewer keeps the full file). */
+const LANE_THUMB = 640;
 
 const msgKey = (m: DayMessage) => `${m.service}|${m.room}|${m.id}`;
 
@@ -89,6 +91,8 @@ const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, 
                             userNickname={nickname}
                             timeZone={JST_TIME_ZONE}
                             readOnly
+                            mediaLoading="lazy"
+                            mediaThumbWidth={LANE_THUMB}
                             runStart={false}
                         />
                     )}

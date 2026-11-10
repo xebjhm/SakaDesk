@@ -43,6 +43,8 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
     const [mode, setMode] = useState<DayMode>('merged');
     const [others, setOthers] = useState(false);
     const [filter, setFilter] = useState<string | null>(null);
+    // The body's scroller, which windows a long merged timeline (a state ref, so the list re-renders with it).
+    const [scroller, setScroller] = useState<HTMLDivElement | null>(null);
     const withOthers = memberPath === undefined && others;
 
     const query = useMemoriesQuery(
@@ -87,7 +89,7 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
     } else if (!messages.length) {
         body = <p className="p-6 text-center text-small text-secondary">{t('memories.onThisDay.empty')}</p>;
     } else if (mode === 'merged') {
-        body = <MergedTimeline messages={messages} people={peopleByKey} service={service} />;
+        body = <MergedTimeline messages={messages} people={peopleByKey} service={service} scrollParent={scroller} />;
     } else {
         body = <Swimlanes members={members} messages={messages} />;
     }
@@ -134,7 +136,7 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
                     </label>
                 </div>
             )}
-            <div className="min-h-0 flex-1 overflow-auto px-4 pb-4">{body}</div>
+            <div ref={setScroller} className="min-h-0 flex-1 overflow-auto px-4 pb-4">{body}</div>
         </section>
     );
 };

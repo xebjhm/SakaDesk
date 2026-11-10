@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { Virtuoso } from 'react-virtuoso';
 import { useTranslation } from '../../../i18n';
 import { MessageBubble } from '../../messages/components/MessageBubble';
 import { replaceNickname } from '../../messages/utils/nickname';
@@ -24,11 +25,24 @@ interface MergedTimelineProps {
     people: Map<string, DayPerson>;
     /** The active service: messages of any other one carry a group label. */
     service: string;
+    /**
+     * The element that scrolls the list (the day view's body). Given, a long day (more than
+     * `WINDOW_FROM` messages) is windowed with `react-virtuoso` inside it; without it every
+     * message is rendered (a modal's short single-member day).
+     */
+    scrollParent?: HTMLElement | null;
 }
 
 /** Same sender within this long continues a run (the chat's rule). */
 const RUN_GAP_MS = 5 * 60 * 1000;
 const AVATAR_PX = 40;
+/** Above this many messages the list is windowed (a cross-group concert day runs to hundreds). */
+export const WINDOW_FROM = 60;
+/**
+ * Read-only bubbles draw pictures from the thumbnail route at this width (a bubble is at most
+ * about 320 CSS px wide, so 640 covers 2x), lazily; the viewer keeps the full file.
+ */
+const BUBBLE_THUMB = 640;
 
 const msgKey = (m: DayMessage) => `${m.service}|${m.room}|${m.id}`;
 const isViewable = (m: DayMessage) => (m.type === 'picture' || m.type === 'video') && Boolean(m.media_url || m.media_file);
@@ -46,12 +60,12 @@ const Indented: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 /**
  * 那一天 A: every message of the day in time order as the chat's `MessageBubble` in `readOnly`
  * mode (no context menu, long-press or favourite actions; translate and the transcript work
- * through `memberPath`), times on the JST clock, her words through the nickname (or the mask), a
+ * through `memberPath`; pictures from 640-px thumbnails, loaded lazily), times on the JST clock, her words through the nickname (or the mask), a
  * picture's paired words under it with `MemoryText` (unless their own message is in the list, so
  * they show once). Pictures and videos open the media viewer
  * over the day's media, whose source link opens her chat at that message.
  */
-export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people, service }) => {
+export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people, service, scrollParent }) => {
     const { t } = useTranslation();
     const ownNickname = useNickname();
     const nickname = ownNickname ?? `『${t('memories.common.nicknameMasked')}』`;
@@ -61,6 +75,7 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
     const nameOf = (m: DayMessage) => people.get(m.person_key)?.name ?? '';
     const media = useMemo(() => messages.filter(isViewable), [messages]);
     const shown = useMemo(() => shownTexts(messages), [messages]);
+    const mediaIndexOf = useMemo(() => new Map(media.map((m, i) => [m, i])), [media]);
     const mediaItems: MediaViewerItem[] = media.map((m) => ({
         src: mediaSrc(m),
         type: m.type as 'picture' | 'video',
@@ -75,55 +90,69 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
         service: m.service,
     }));
 
+    const renderRow = (i: number, m: DayMessage) => {
+        const prev = messages[i - 1];
+        const runStart = !prev
+            || prev.person_key !== m.person_key
+            || Date.parse(m.ts) - Date.parse(prev.ts) > RUN_GAP_MS;
+        const person = people.get(m.person_key);
+        const chat = toChatMessage(m);
+        chat.content = m.text ? replaceNickname(m.text, nickname) : null;
+        const mediaIndex = mediaIndexOf.get(m) ?? -1;
+        const caption = contextCaption(m, shown);
+        return (
+            <div data-testid="day-merged-row">
+                <MessageBubble
+                    message={chat}
+                    member_name={person?.name ?? ''}
+                    member_avatar={resizedAvatarUrl(m.avatar_url ?? person?.avatarUrl, avatarWidth)}
+                    service={m.service}
+                    memberPath={m.member_path}
+                    userNickname={ownNickname}
+                    timeZone={JST_TIME_ZONE}
+                    readOnly
+                    mediaLoading="lazy"
+                    mediaThumbWidth={BUBBLE_THUMB}
+                    runStart={runStart}
+                    onMediaClick={mediaIndex >= 0 ? () => setViewerIndex(mediaIndex) : undefined}
+                />
+                {caption && (
+                    <Indented>
+                        <MemoryText text={caption} className="pt-1 text-body text-primary" />
+                    </Indented>
+                )}
+                {m.service !== service && (
+                    <Indented>
+                        <span
+                            data-testid="day-service-label"
+                            className="mt-1 inline-flex items-center gap-1 rounded-pill bg-sunken px-2 text-caption text-secondary"
+                        >
+                            <span
+                                aria-hidden="true"
+                                className="h-2 w-2 shrink-0 rounded-pill bg-group-marker"
+                                style={groupMarkerStyle(getServicePrimaryColor(m.service))}
+                            />
+                            <span lang="ja">{getServiceDisplayName(m.service)}</span>
+                        </span>
+                    </Indented>
+                )}
+            </div>
+        );
+    };
+    const windowed = Boolean(scrollParent) && messages.length > WINDOW_FROM;
+
     return (
         <div data-testid="day-merged" className="flex flex-col pb-4">
-            {messages.map((m, i) => {
-                const prev = messages[i - 1];
-                const runStart = !prev
-                    || prev.person_key !== m.person_key
-                    || Date.parse(m.ts) - Date.parse(prev.ts) > RUN_GAP_MS;
-                const person = people.get(m.person_key);
-                const chat = toChatMessage(m);
-                chat.content = m.text ? replaceNickname(m.text, nickname) : null;
-                const mediaIndex = media.indexOf(m);
-                const caption = contextCaption(m, shown);
-                return (
-                    <div key={msgKey(m)}>
-                        <MessageBubble
-                            message={chat}
-                            member_name={person?.name ?? ''}
-                            member_avatar={resizedAvatarUrl(m.avatar_url ?? person?.avatarUrl, avatarWidth)}
-                            service={m.service}
-                            memberPath={m.member_path}
-                            userNickname={ownNickname}
-                            timeZone={JST_TIME_ZONE}
-                            readOnly
-                            runStart={runStart}
-                            onMediaClick={mediaIndex >= 0 ? () => setViewerIndex(mediaIndex) : undefined}
-                        />
-                        {caption && (
-                            <Indented>
-                                <MemoryText text={caption} className="pt-1 text-body text-primary" />
-                            </Indented>
-                        )}
-                        {m.service !== service && (
-                            <Indented>
-                                <span
-                                    data-testid="day-service-label"
-                                    className="mt-1 inline-flex items-center gap-1 rounded-pill bg-sunken px-2 text-caption text-secondary"
-                                >
-                                    <span
-                                        aria-hidden="true"
-                                        className="h-2 w-2 shrink-0 rounded-pill bg-group-marker"
-                                        style={groupMarkerStyle(getServicePrimaryColor(m.service))}
-                                    />
-                                    <span lang="ja">{getServiceDisplayName(m.service)}</span>
-                                </span>
-                            </Indented>
-                        )}
-                    </div>
-                );
-            })}
+            {windowed && scrollParent ? (
+                <Virtuoso
+                    customScrollParent={scrollParent}
+                    data={messages}
+                    computeItemKey={(_i, m) => msgKey(m)}
+                    itemContent={renderRow}
+                />
+            ) : (
+                messages.map((m, i) => <React.Fragment key={msgKey(m)}>{renderRow(i, m)}</React.Fragment>)
+            )}
             {viewerIndex !== null && mediaItems[viewerIndex] && (
                 <MediaViewerModal
                     mediaItems={mediaItems}
