@@ -641,3 +641,33 @@ async def test_today_moment_has_no_week_fallback(svc):
         moment = await hub.today_moment(SERVICE, svc, summaries, set(), NOW.date())
     assert moment is None
     assert any(e.get("reason") == "no_today" for e in logs)
+
+
+# --- refreshing (D9: countdown missing on the first load) ------------------------------
+
+
+@pytest.mark.asyncio
+async def test_hub_reports_refreshing_while_the_post_sync_refresh_is_pending(today_svc):
+    """Birthdays land only when the post-sync refresh ends: the board says so,
+    so the client loads it again and the countdown appears on the same visit."""
+    assert (await build(today_svc))["refreshing"] is False
+    mi.begin_refresh(today_svc)
+    try:
+        with capture_logs() as logs:
+            first = await build(today_svc)
+    finally:
+        mi.end_refresh(today_svc)
+    assert first["refreshing"] is True
+    (ev,) = [e for e in logs if e["event"] == "memories_hub"]
+    assert ev["refreshing"] is True
+    with mi.sync_writing(today_svc):
+        assert (await build(today_svc))["refreshing"] is True
+    assert (await build(today_svc))["refreshing"] is False
+
+
+@pytest.mark.asyncio
+async def test_countdown_appears_once_birthdays_land(svc):
+    kane(svc, [msg(1, "2025-01-01T03:00:00Z", content="a")])
+    assert (await build(svc))["countdown"] is None
+    write_side_inputs(svc, birthdays={"金村美玖": "2000-11-20"})  # rooms untouched
+    assert (await build(svc))["countdown"]["kind"] == "birthday"

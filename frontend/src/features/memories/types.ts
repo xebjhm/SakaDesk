@@ -120,6 +120,11 @@ export interface HubPayload {
      * today's pulls are used: the card says 「また明日」, never the number.
      */
     gacha_left: number | null;
+    /**
+     * True while a sync writes the service or its post-sync Memories refresh (birthdays, index) is
+     * pending: the board may still gain its countdown, so the hub loads again quietly.
+     */
+    refreshing?: boolean;
 }
 
 // --- On This Day (on_this_day.on_this_day) ------------------------------------------------

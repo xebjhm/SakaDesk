@@ -43,6 +43,7 @@ from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
 from backend.services.chat_kind import is_member_dir
 from backend.services.memories.index import build_all as build_memory_index
+from backend.services.memories import index as memory_index
 from backend.services.memories.index import sync_writing as memory_index_sync_writing
 from backend.services.memories.member_profiles import refresh_member_profiles
 from backend.services.memories.notify_scheduler import request_card_check
@@ -1458,17 +1459,22 @@ class SyncService:
         Sequential on purpose: birthdays are part of each room's index hash,
         so building the index while the profile refresh is still running made
         every room rebuild a second time once the birthdays landed. A failed
-        profile refresh is logged and the index is still built.
+        profile refresh is logged and the index is still built. Ends the
+        pending mark set by :meth:`_schedule_memories_refresh`.
         """
+        sdir = self.service_data_dir
         try:
-            await refresh_member_profiles(self._service, self.service_data_dir)
-        except Exception as e:
-            logger.warning(
-                "memories_member_profiles_failed",
-                service=self._service,
-                error_type=type(e).__name__,
-            )
-        await build_memory_index(self.service_data_dir)
+            try:
+                await refresh_member_profiles(self._service, sdir)
+            except Exception as e:
+                logger.warning(
+                    "memories_member_profiles_failed",
+                    service=self._service,
+                    error_type=type(e).__name__,
+                )
+            await build_memory_index(sdir)
+        finally:
+            memory_index.end_refresh(sdir)
 
     def _schedule_memories_refresh(self) -> None:
         """Refresh member profiles and the memory index in the background.
@@ -1480,10 +1486,17 @@ class SyncService:
         (``request_card_check``, a no-op when no notifier runs).
         """
         try:
-            track_background_task(
-                self._refresh_memories(),
-                name="memories_index",
-            )
+            # Pending from now (not from when the task first runs), so the hub
+            # never sees a gap between the sync's end and the refresh.
+            memory_index.begin_refresh(self.service_data_dir)
+            try:
+                track_background_task(
+                    self._refresh_memories(),
+                    name="memories_index",
+                )
+            except BaseException:
+                memory_index.end_refresh(self.service_data_dir)
+                raise
             # Foil card unlocks: checked once the index above has had time to build.
             request_card_check(self._service)
             logger.info("memories_refresh_scheduled", service=self._service)

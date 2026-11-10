@@ -20,7 +20,19 @@ export interface MemoriesQueryOptions<T> {
      * reads `ready` with null data. Default true.
      */
     enabled?: boolean;
+    /**
+     * While this returns true for the loaded payload (e.g. the hub's `refreshing`), the view is
+     * loaded again after `REFRESH_WHILE_MS`, quietly: the current data stays on screen (no
+     * `loading`), a newer payload replaces it and a failed reload keeps it. At most
+     * `REFRESH_WHILE_MAX` reloads per key.
+     */
+    refreshWhile?: (data: T) => boolean;
 }
+
+/** Delay between quiet reloads of `refreshWhile`. */
+export const REFRESH_WHILE_MS = 5000;
+/** Cap on quiet reloads per key, so a stuck flag never polls forever. */
+export const REFRESH_WHILE_MAX = 24;
 
 /** The length of the payload's first top-level array (`members`, `items`, `months`, ...), if any. */
 function topLevelCount(data: unknown): number | undefined {
@@ -42,7 +54,8 @@ const sameKey = (a: readonly unknown[], b: readonly unknown[]) =>
  * deps' data. Every finished run logs `memories_load`: `outcome` `ok` with `count` (the
  * `count` option, else the first top-level list length), `timeout` (the API gave up, see
  * `MEMORIES_TIMEOUT_MS`) or `error` with `error_code` (the HTTP status of a rejected request).
- * `load` and `count` are read through refs: only `deps`, `retry` and `enabled` start a new run.
+ * `load`, `count` and `refreshWhile` are read through refs: only `deps`, `retry` and `enabled`
+ * start a new run. `refreshWhile` reloads the same key quietly (see the option).
  * A disabled query (`enabled: false`) never loads or logs and reads `ready` with null data.
  */
 export function useMemoriesQuery<T>(
@@ -55,6 +68,8 @@ export function useMemoriesQuery<T>(
     loadRef.current = load;
     const countRef = useRef(options.count);
     countRef.current = options.count;
+    const refreshRef = useRef(options.refreshWhile);
+    refreshRef.current = options.refreshWhile;
     const [attempt, setAttempt] = useState(0);
     const enabled = options.enabled ?? true;
     const key: unknown[] = [target, attempt, enabled, ...deps];
@@ -64,21 +79,34 @@ export function useMemoriesQuery<T>(
         if (!enabled) return undefined;
         const runKey = key;
         const controller = new AbortController();
-        loadRef.current(controller.signal).then(
-            (data) => {
-                if (controller.signal.aborted) return;
-                const count = countRef.current ? countRef.current(data) : topLevelCount(data);
-                logMemoriesLoad(target, 'ok', count === undefined ? {} : { count });
-                setState({ key: runKey, status: 'ready', data });
-            },
-            (err: unknown) => {
-                if (controller.signal.aborted) return;
-                if (err instanceof MemoriesTimeoutError) logMemoriesLoad(target, 'timeout');
-                else logMemoriesLoad(target, 'error', err instanceof MemoriesFetchError ? { error_code: err.httpStatus } : {});
-                setState({ key: runKey, status: 'error', data: null });
-            },
-        );
-        return () => controller.abort();
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        let reloads = 0;
+        const run = (quiet: boolean) => {
+            loadRef.current(controller.signal).then(
+                (data) => {
+                    if (controller.signal.aborted) return;
+                    const count = countRef.current ? countRef.current(data) : topLevelCount(data);
+                    logMemoriesLoad(target, 'ok', count === undefined ? {} : { count });
+                    setState({ key: runKey, status: 'ready', data });
+                    if (refreshRef.current?.(data) && reloads < REFRESH_WHILE_MAX) {
+                        reloads += 1;
+                        timer = setTimeout(() => run(true), REFRESH_WHILE_MS);
+                    }
+                },
+                (err: unknown) => {
+                    if (controller.signal.aborted) return;
+                    if (err instanceof MemoriesTimeoutError) logMemoriesLoad(target, 'timeout');
+                    else logMemoriesLoad(target, 'error', err instanceof MemoriesFetchError ? { error_code: err.httpStatus } : {});
+                    // A failed quiet reload keeps the payload on screen.
+                    if (!quiet) setState({ key: runKey, status: 'error', data: null });
+                },
+            );
+        };
+        run(false);
+        return () => {
+            controller.abort();
+            if (timer !== undefined) clearTimeout(timer);
+        };
         // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` is target + attempt + the caller's deps
     }, key);
 

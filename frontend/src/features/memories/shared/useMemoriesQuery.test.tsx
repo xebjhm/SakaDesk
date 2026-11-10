@@ -4,7 +4,7 @@ import { act, renderHook, waitFor } from '@testing-library/react';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
-import { useMemoriesQuery } from './useMemoriesQuery';
+import { REFRESH_WHILE_MAX, REFRESH_WHILE_MS, useMemoriesQuery } from './useMemoriesQuery';
 import { MEMORIES_TIMEOUT_MS, MemoriesFetchError, fetchHub } from '../api';
 
 beforeEach(() => { vi.mocked(clientLog).mockClear(); });
@@ -139,5 +139,51 @@ describe('useMemoriesQuery', () => {
         await waitFor(() => expect(result.current.status).toBe('ready'));
         expect(result.current.data).toEqual({ items: [1] });
         expect(clientLog).toHaveBeenCalledWith('memories_load', { target: 'then_now', outcome: 'ok', count: 1 });
+    });
+
+    describe('refreshWhile', () => {
+        it('reloads quietly while the flag holds, keeps data on a failed reload, and stops when final', async () => {
+            vi.useFakeTimers();
+            const load = vi.fn()
+                .mockResolvedValueOnce({ n: 1, refreshing: true })
+                .mockRejectedValueOnce(new MemoriesFetchError(500))
+                ;
+            const { result } = renderHook(() => useMemoriesQuery('hub', load, [], {
+                refreshWhile: (d: { refreshing: boolean }) => d.refreshing,
+            }));
+            await act(async () => { await Promise.resolve(); });
+            expect(result.current.data).toEqual({ n: 1, refreshing: true });
+            await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_WHILE_MS); });
+            // The failed quiet reload kept the payload and did not flip to error or loading.
+            expect(result.current.status).toBe('ready');
+            expect(result.current.data).toEqual({ n: 1, refreshing: true });
+            expect(load).toHaveBeenCalledTimes(2);
+            await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_WHILE_MS * 3); });
+            expect(load).toHaveBeenCalledTimes(2); // a failed reload ends the polling
+        });
+
+        it('replaces the data with the final payload and caps the reloads', async () => {
+            vi.useFakeTimers();
+            const load = vi.fn(async () => ({ refreshing: true }));
+            const { result, unmount } = renderHook(() => useMemoriesQuery('hub', load, [], {
+                refreshWhile: (d: { refreshing: boolean }) => d.refreshing,
+            }));
+            await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_WHILE_MS * (REFRESH_WHILE_MAX + 5)); });
+            expect(load).toHaveBeenCalledTimes(REFRESH_WHILE_MAX + 1);
+            expect(result.current.status).toBe('ready');
+            unmount();
+        });
+
+        it('clears the pending reload on unmount', async () => {
+            vi.useFakeTimers();
+            const load = vi.fn(async () => ({ refreshing: true }));
+            const { unmount } = renderHook(() => useMemoriesQuery('hub', load, [], {
+                refreshWhile: (d: { refreshing: boolean }) => d.refreshing,
+            }));
+            await act(async () => { await Promise.resolve(); });
+            unmount();
+            await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_WHILE_MS * 2); });
+            expect(load).toHaveBeenCalledTimes(1);
+        });
     });
 });

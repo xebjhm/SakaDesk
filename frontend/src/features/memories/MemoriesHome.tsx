@@ -34,6 +34,9 @@ export const MemoriesHome: React.FC<MemoriesHomeProps> = ({ service, recap, onOp
     const { t } = useTranslation();
     const hub = useMemoriesQuery('hub', (signal) => fetchHub(service, signal), [service], {
         count: (d) => (d.on_this_day ? 1 : 0),
+        // A sync or its post-sync refresh is still running (first run: no birthdays yet, so no
+        // countdown): ask again until the board is final.
+        refreshWhile: (d) => d.refreshing === true,
     });
     const data = hub.data;
     const counts = hubCardCounts(data);

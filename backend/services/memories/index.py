@@ -707,6 +707,33 @@ def is_sync_writing(service_data_dir: Path) -> bool:
     return _sync_writers.get(str(service_data_dir), 0) > 0
 
 
+# Service dirs whose post-sync Memories refresh (member profiles, then
+# ``build_all``) is scheduled or running. Birthdays and the rebuilt index land
+# only when it ends, so views built before then may lack them.
+_refreshers: Counter[str] = Counter()
+
+
+def begin_refresh(service_data_dir: Path) -> None:
+    """Mark the post-sync refresh of ``service_data_dir`` as pending."""
+    _refreshers[str(service_data_dir)] += 1
+
+
+def end_refresh(service_data_dir: Path) -> None:
+    """Undo one :func:`begin_refresh` (extra calls are ignored)."""
+    key = str(service_data_dir)
+    _refreshers[key] -= 1
+    if _refreshers[key] <= 0:
+        del _refreshers[key]
+
+
+def refresh_pending(service_data_dir: Path) -> bool:
+    """True while a sync writes the service or its Memories refresh is pending."""
+    return (
+        is_sync_writing(service_data_dir)
+        or _refreshers.get(str(service_data_dir), 0) > 0
+    )
+
+
 _INSERT_FACTS = (
     f"INSERT INTO message_facts(service_dir, member_dir, {', '.join(FACT_COLUMNS)}) "
     f"VALUES ({', '.join('?' * (len(FACT_COLUMNS) + 2))})"

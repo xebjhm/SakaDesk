@@ -6,7 +6,8 @@
      "counts": {"album", "members", "favorites", "voices", "days"},
      "countdown": {...} | None,
      "same_time": {...} | None, "capsule": {...} | None,
-     "gacha_left": int | None}
+     "gacha_left": int | None,
+     "refreshing": bool}
 
 ``on_this_day`` -- one moment of hers, chosen by the first rule that finds
 one. ``rule`` tells the frontend which copy is true, so a ``week`` or
@@ -95,7 +96,14 @@ kind, ``score`` = days left, ``person``) or ``memories_skip``
 unparsable birthday; ``reason=subscription_ended`` per dropped anniversary;
 ``reason=sync_metadata_unreadable``) when the numbers are built, and ``memories_hub``
 (``rule``, ``album``, ``members``, ``favorites``, ``voices``, ``days``,
-``countdown``, ``same_time`` / ``capsule`` (bools), ``gacha_left``) per call.
+``countdown``, ``same_time`` / ``capsule`` (bools), ``gacha_left``,
+``refreshing``) per call.
+
+``refreshing`` is True while a sync writes the service or its post-sync
+Memories refresh (member profiles, then the index) is pending
+(:func:`index.refresh_pending`). On a first run the birthdays land only then,
+so a board built earlier has no countdown; the client asks again until it
+reads False.
 """
 
 from __future__ import annotations
@@ -574,6 +582,9 @@ async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
     gacha_left = await _gacha_left(service, today)
     countdown = numbers["countdown"]
     counts = numbers["counts"]
+    # A sync or its post-sync refresh (birthdays, index) is still running: the
+    # board may lack dates that land when it ends, so the client asks again.
+    refreshing = mi.refresh_pending(sdir)
     logger.info(
         "memories_hub",
         rule=moment["rule"] if moment is not None else None,
@@ -586,6 +597,7 @@ async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
         same_time=line is not None,
         capsule=note is not None,
         gacha_left=gacha_left,
+        refreshing=refreshing,
     )
     return {
         "on_this_day": moment,
@@ -594,6 +606,7 @@ async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
         "same_time": line,
         "capsule": note,
         "gacha_left": gacha_left,
+        "refreshing": refreshing,
     }
 
 

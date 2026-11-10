@@ -19,6 +19,7 @@ import { MemoriesHome } from './MemoriesHome';
 import type { RecapCardState } from './home/RecapHubCard';
 import type { MemoriesRoute } from './MemoriesFeature';
 import { hubMoment, hubPayload } from './home/__fixtures__';
+import { REFRESH_WHILE_MS } from './shared/useMemoriesQuery';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
@@ -159,6 +160,26 @@ describe('MemoriesHome (hub board)', () => {
         renderHome();
         await screen.findByTestId('memories-hub-otd');
         expect(screen.queryByTestId('memories-hub-countdown')).toBeNull();
+    });
+
+    it('loads the board again while the backend is still refreshing, so a late countdown appears (D9)', async () => {
+        vi.useFakeTimers({ shouldAdvanceTime: true });
+        try {
+            vi.mocked(fetchHub)
+                .mockResolvedValueOnce(hubPayload({ countdown: null, refreshing: true }))
+                .mockResolvedValue(hubPayload({ refreshing: false }));
+            renderHome();
+            await screen.findByTestId('memories-hub-otd');
+            expect(screen.queryByTestId('memories-hub-countdown')).toBeNull();
+            await vi.advanceTimersByTimeAsync(REFRESH_WHILE_MS);
+            expect(await screen.findByTestId('memories-hub-countdown')).toBeInTheDocument();
+            // The moment stayed on screen during the quiet reload (no loading line).
+            expect(screen.getByTestId('memories-hub-otd')).toBeInTheDocument();
+            await vi.advanceTimersByTimeAsync(REFRESH_WHILE_MS * 2);
+            expect(fetchHub).toHaveBeenCalledTimes(2); // final board: no more reloads
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('keeps the entry cards usable while the hub loads', () => {
