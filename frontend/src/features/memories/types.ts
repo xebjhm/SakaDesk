@@ -101,13 +101,18 @@ export interface OnThisDayEmptyYear {
     has_messages: false;
 }
 
+/** An On This Day preview: the shared message object plus her display name (`MemberSummary.name`). */
+export interface OnThisDayPreview extends MemoryMessage {
+    name: string;
+}
+
 export interface OnThisDayYear {
     year: number;
     has_messages: true;
     message_count: number;
     member_count: number;
-    /** Up to three message objects, one per person, oshi first. */
-    preview: MemoryMessage[];
+    /** Up to three message objects, one per person, oshi first, each with her display name. */
+    preview: OnThisDayPreview[];
     /** `message_count - preview.length`, or null when that is 0. */
     more: number | null;
     /** Text-free best photo of that date-year, or null. */

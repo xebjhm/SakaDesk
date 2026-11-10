@@ -20,7 +20,8 @@
   - ``preview``: up to :data:`PREVIEW_CAP` message objects, one per person:
     her highest-importance non-promo words (ties: the earlier); the people
     are ordered oshi first, then by that importance (ties: the earlier
-    message). Each carries her avatar at its time;
+    message). Each carries her avatar at its time and ``name``, her display
+    name (``MemberSummary.name``, the folder name of her newest room);
   - ``more`` = ``message_count - len(preview)``, or ``None`` when that is 0
     (the payload never carries a renderable zero);
   - ``thumb``: the highest ``photo_score`` picture of that date-year (ties:
@@ -63,7 +64,7 @@ logger = structlog.get_logger(__name__)
 
 VIEW = "on_this_day"
 # Bump on any rule or payload change (the cache hash has it).
-VERSION = 2
+VERSION = 3
 PREVIEW_CAP = 3
 MONTH_DAY_RE = re.compile(r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
 
@@ -213,7 +214,7 @@ def _compose(
                 "has_messages": True,
                 "message_count": len(facts),
                 "member_count": len({people.person_key(t[0]) for t in facts}),
-                "preview": [ref(t) for t in preview],
+                "preview": [{**ref(t), "name": t[0].name} for t in preview],
                 "more": (len(facts) - len(preview)) or None,
                 "thumb": ref(thumb) if thumb is not None else None,
             }

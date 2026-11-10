@@ -4,7 +4,6 @@ import { cn } from '../../../utils/classnames';
 import { Card } from '../../../design/primitives';
 import { MemoryText } from '../shared/MemoryText';
 import { sepiaClass } from '../shared/sepia';
-import { roomName } from '../day/people';
 import { formatJstClock } from '../recap/availability';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import { useDragScroll } from './useDragScroll';
@@ -25,7 +24,7 @@ const prefersReducedMotion = () =>
 /**
  * On This Day B: one column per year with messages, oldest on the left, starting scrolled to
  * the newest. Each column shows the year (serif), that year's best photo aged by
- * `sepiaClass` (only the photo: the words stay at full contrast), up to three of her messages
+ * `sepiaClass` (only the photo: the words stay at full contrast), up to three messages (her display name from the payload, her time and words)
  * and 「ほか N 件」 when there are more. The strip scrolls sideways only: pointer drag, the
  * wheel, and ← / → one column to the next column edge (older / newer); a column click opens that year.
  */
@@ -85,7 +84,7 @@ export const YearStrip: React.FC<YearStripProps> = ({ years, resetKey, onOpen })
                             return (
                                 <div key={`${m.room}|${m.id}`} className="rounded-md bg-sunken px-3 py-2">
                                     <div className="flex items-baseline gap-2 text-caption text-muted">
-                                        <span lang="ja" className="min-w-0 truncate">{roomName(m.room)}</span>
+                                        <span lang="ja" className="min-w-0 truncate">{m.name}</span>
                                         <span className="tabular-nums">{formatJstClock(m.ts)}</span>
                                     </div>
                                     <MemoryText text={words} className="line-clamp-3 text-small text-primary" />

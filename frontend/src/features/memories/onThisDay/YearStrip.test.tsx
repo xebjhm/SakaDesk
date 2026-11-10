@@ -9,7 +9,7 @@ beforeAll(async () => { await i18n.changeLanguage('en'); });
 
 const years = (): OnThisDayYear[] => [2023, 2024].map((year) => ({
     year, has_messages: true, message_count: 1, member_count: 1, more: null, thumb: null,
-    preview: [memoryMessage({ id: year, text: `${year}の言葉` })],
+    preview: [{ ...memoryMessage({ id: year, text: `${year}の言葉` }), name: '金村 美玖' }],
 }));
 
 describe('YearStrip', () => {

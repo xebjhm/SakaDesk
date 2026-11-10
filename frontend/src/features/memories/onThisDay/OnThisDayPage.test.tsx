@@ -34,13 +34,13 @@ const PAYLOAD: OnThisDayPayload = {
         { year: 2021, has_messages: false },
         {
             year: 2022, has_messages: true, message_count: 7, member_count: 2,
-            preview: [memoryMessage({ id: 21, ts: '2022-09-14T12:00:00Z', text: '初めての握手会' })], more: 6,
+            preview: [{ ...memoryMessage({ id: 21, ts: '2022-09-14T12:00:00Z', text: '初めての握手会', room: 'messages/12 金村美玖（ひらがな）/3 金村美玖' }), name: '金村 美玖' }], more: 6,
             thumb: memoryMessage({ id: 22, type: 'video', text: null, media_url: '/api/content/media/hinatazaka46/v.mp4' }),
         },
         { year: 2023, has_messages: false },
         {
             year: 2024, has_messages: true, message_count: 1, member_count: 1,
-            preview: [memoryMessage({ id: 41, ts: '2024-09-14T03:41:00Z', text: 'お昼はラーメン🍜' })], more: null,
+            preview: [{ ...memoryMessage({ id: 41, ts: '2024-09-14T03:41:00Z', text: 'お昼はラーメン🍜' }), name: '金村 美玖' }], more: null,
             thumb: memoryMessage({ id: 42, type: 'picture', text: null, media_url: '/api/content/media/hinatazaka46/p.jpg' }),
         },
     ],
@@ -62,6 +62,9 @@ describe('OnThisDayPage overview', () => {
         expect(columns.map((c) => within(c).getByTestId('otd-year').textContent)).toEqual(['2022', '2024']);
         expect(within(columns[0]).getByText('初めての握手会')).toHaveAttribute('lang', 'ja');
         expect(within(columns[0]).getByText('+6 more')).toBeInTheDocument();
+        // Her display name from the payload, never the older room's suffixed folder name.
+        expect(within(columns[0]).getByText('金村 美玖')).toHaveAttribute('lang', 'ja');
+        expect(columns[0].textContent).not.toContain('ひらがな');
         expect(within(columns[1]).queryByText(/more/)).toBeNull();
         expect(vi.mocked(fetchOnThisDay)).toHaveBeenCalledWith('hinatazaka46', '09-14', expect.anything());
         expect(screen.getByTestId('memories-page-onThisDay')).toHaveAttribute('data-service', 'hinatazaka46');

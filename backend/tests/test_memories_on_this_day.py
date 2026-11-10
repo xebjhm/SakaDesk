@@ -157,6 +157,8 @@ async def test_preview_oshi_first_one_per_person_promo_excluded(svc):
     assert all(p["id"] != 5 or p["room"] != KANE for p in preview)  # no promo
     assert y25["more"] == 8 - 3
     assert preview[0]["member_path"] == f"{SVC_NAME}/{KANE}"
+    # her display name rides on each preview (the newest room's folder name)
+    assert [p["name"] for p in preview] == ["金村 美玖", "小坂 菜緒", "松田 好花"]
     assert preview[0]["avatar_url"].endswith("thumbnail/b.jpg")  # icon at its time
     assert preview[1]["avatar_url"] is None  # no archived icon
     thumb = y25["thumb"]
