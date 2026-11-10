@@ -30,13 +30,16 @@ removes the month's override and says whether one existed. Both log
 
 from __future__ import annotations
 
+import asyncio
 import sqlite3
+from collections.abc import Sequence
 from datetime import datetime
 from pathlib import Path
 
 import structlog
 
 from backend.services.memories import album, people, user_store
+from backend.services.memories.facts import Fact
 from backend.services.memories.index import MemberSummary, list_members
 from backend.services.memories.timeline import MONTH_RE, month_of
 
@@ -68,6 +71,19 @@ async def load_cover_overrides(sdir: Path, scope: str) -> dict[str, tuple[str, i
         return {}
 
 
+def _in_month(
+    tagged: Sequence[tuple[str, Fact]], room: str, message_id: int, month: str
+) -> bool:
+    """Whether ``(room, message_id)`` is a picture / video fact of JST ``month``."""
+    return any(
+        r == room
+        and f.id == message_id
+        and album.keep(f, "all")
+        and month_of(f.jst_date) == month
+        for r, f in tagged
+    )
+
+
 async def set_cover_override(
     service: str,
     sdir: Path,
@@ -88,13 +104,8 @@ async def set_cover_override(
     _check_month(month)
     persons = [member] if member is not None else await list_members(sdir)
     tagged = await people.scope_facts(sdir, persons)
-    found = any(
-        r == room
-        and f.id == message_id
-        and album.keep(f, "all")
-        and month_of(f.jst_date) == month
-        for r, f in tagged
-    )
+    # Up to ~50k facts for 全員: scan in a worker, off the event loop.
+    found = await asyncio.to_thread(_in_month, tagged, room, message_id, month)
     scoped = member is not None
     if not found:
         logger.info(

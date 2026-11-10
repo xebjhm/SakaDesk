@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
+import threading
 from datetime import datetime, timezone
 
 import pytest
@@ -115,6 +116,23 @@ async def test_set_override_for_everyone(svc):
     (ev,) = [e for e in logs if e["event"] == "memories_cover"]
     assert ev["scoped"] is False
     assert await sep_cover(svc) == (ROOM_B, 40, "override")
+
+
+@pytest.mark.asyncio
+async def test_set_override_scans_the_scope_off_the_event_loop(svc, monkeypatch):
+    loop_thread = threading.get_ident()
+    scan_threads: set[int] = set()
+    real_keep = album.keep
+
+    def spy(fact, kind):
+        scan_threads.add(threading.get_ident())
+        return real_keep(fact, kind)
+
+    monkeypatch.setattr(album, "keep", spy)
+    await covers.set_cover_override(
+        SERVICE, svc, member=None, month="2024-09", room=ROOM_B, message_id=40, now=NOW
+    )
+    assert scan_threads and loop_thread not in scan_threads
 
 
 @pytest.mark.asyncio
