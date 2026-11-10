@@ -17,7 +17,6 @@ import { S13Oyasumi } from './slides/S13Oyasumi';
 
 export interface SlideEntry {
     // Each entry renders its own slide key's data; the registry is keyed by slide key.
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     component: React.ComponentType<SlideProps<any>>;
     /** No auto-advance: the slide calls `onMediaEnd` when its playback ends (the voice slide). */
     waitsForMedia?: boolean;

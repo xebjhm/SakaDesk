@@ -19,7 +19,6 @@ import { S13Oyasumi } from './S13Oyasumi';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
 type AnySlide = React.ComponentType<SlideProps<any>>;
 
 const CASES: [string, AnySlide, unknown, string[]][] = [
