@@ -55,6 +55,9 @@ describe('PosterView', () => {
         expect(within(poster).getByTestId('poster-favorites')).toHaveTextContent('12');
         expect(within(poster).getByTestId('poster-letters')).toHaveTextContent('3');
         expect(within(poster).getAllByTestId('poster-smr')).toHaveLength(3);
+        // The prints come from 640-px thumbnails (a third of the 1080-px export).
+        expect(within(poster).getAllByTestId('poster-smr')[0].querySelector('img'))
+            .toHaveAttribute('src', '/api/content/thumb/s.jpg?w=640');
         expect(within(poster).getAllByTestId('poster-stub')).toHaveLength(1);
         expect(within(poster).getByTestId('poster-stub')).toHaveTextContent('0:00:07');
     });

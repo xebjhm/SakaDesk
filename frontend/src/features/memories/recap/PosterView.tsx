@@ -10,6 +10,7 @@ import { canvasToPng, renderToCanvas, SaveError, savePng } from './posterImage';
 import { ShareDialog } from './share/ShareDialog';
 import { StarDial } from './slides/StarDial';
 import { NARRATION_CLASS } from './slides/style';
+import { MemoryThumb } from '../shared/MemoryThumb';
 
 export interface PosterViewProps {
     recap: RecapPayload;
@@ -64,6 +65,11 @@ const PosterStub: React.FC<{ stub: RecapStub }> = ({ stub }) => {
 };
 
 const SMR_KEYS = ['recap.poster.start', 'recap.poster.mid', 'recap.poster.recent'] as const;
+/**
+ * A print's size in the 1080-px export (a third of it, `POSTER_EXPORT_WIDTH`): its picture comes
+ * from the thumbnail route at the width covering that (640), the full file on error.
+ */
+const SMR_TILE_PX = 360;
 
 /**
  * The private year poster (spec §9.4), shown after the last recap slide: the year, her name and
@@ -217,7 +223,12 @@ export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, surface
                             <div className="grid grid-cols-3 gap-2">
                                 {smr.map((m, i) => (
                                     <figure key={m.id} data-testid="poster-smr" className="flex flex-col gap-1">
-                                        <img src={m.media_url ?? undefined} alt="" className="aspect-square w-full rounded-xs object-cover shadow-card" />
+                                        <MemoryThumb
+                                            message={{ type: 'picture', media_url: m.media_url }}
+                                            px={SMR_TILE_PX}
+                                            loading="eager"
+                                            className="aspect-square w-full rounded-xs shadow-card"
+                                        />
                                         <figcaption className="text-center font-sans text-caption text-muted">{t(SMR_KEYS[i])}</figcaption>
                                     </figure>
                                 ))}

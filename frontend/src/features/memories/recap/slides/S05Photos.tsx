@@ -5,6 +5,7 @@ import type { RecapMessage, S05PhotosData } from '../api';
 import { s05Copy, withNickname } from '../recapCopy';
 import { Headline, Narration, Quote, type SlideProps } from './common';
 import { heldReveal, playState } from './style';
+import { MemoryThumb } from '../../shared/MemoryThumb';
 
 /** The burst fans out over this time; the real gaps between the photos are compressed into it. */
 export const FAN_MS = 2400;
@@ -14,6 +15,8 @@ const MIN_GAP_MS = 120;
 const FAN_MAX = 6;
 /** At most this many tiles in the background wall. */
 const WALL_MAX = 24;
+/** A wall tile's drawn size in CSS px (a quarter of the stage): its pictures come from the thumbnail route. */
+const WALL_TILE_PX = 160;
 /** Widest rotation and offset of the fan's outer photos. */
 const FAN_DEG = 14;
 const FAN_PX = 56;
@@ -50,7 +53,8 @@ const Media: React.FC<{ message: RecapMessage; className?: string }> = ({ messag
 };
 
 /**
- * Slide 5, 見せたかった景色: the year's photos as a soft wall, then her biggest
+ * Slide 5, 見せたかった景色: the year's photos as a soft wall (thumbnails, the full file on
+ * error), then her biggest
  * burst fanned out at compressed real timing with its caption. Without a burst:
  * one treasured photo. With reduced motion the burst is a still row.
  */
@@ -67,7 +71,14 @@ export const S05Photos: React.FC<SlideProps<S05PhotosData>> = ({ data, nickname,
         <div className="relative flex h-full flex-col items-center justify-center gap-6 overflow-hidden px-8 text-center">
             {wall.length > 0 && (
                 <div data-testid="s05-wall" aria-hidden="true" className="absolute inset-0 grid grid-cols-4 content-center gap-1 opacity-30 blur-sm">
-                    {wall.map((url, i) => <img key={`${url}:${i}`} src={url} alt="" className="aspect-square w-full rounded-xs object-cover" />)}
+                    {wall.map((url, i) => (
+                        <MemoryThumb
+                            key={`${url}:${i}`}
+                            message={{ type: 'picture', media_url: url }}
+                            px={WALL_TILE_PX}
+                            className="aspect-square w-full rounded-xs"
+                        />
+                    ))}
                 </div>
             )}
             <Headline className="relative">{t(copy.title.key, copy.title.params)}</Headline>

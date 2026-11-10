@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import i18n from '../../../../i18n';
 import { S05Photos, FAN_MS } from './S05Photos';
 import { message, payload, photosData } from '../__fixtures__/payload';
@@ -45,6 +45,15 @@ describe('S05Photos', () => {
         expect(srcs[0]).toBe('/api/media/w0.jpg');
         expect(srcs[srcs.length - 1]).toBe('/api/media/w115.jpg');
         expect(new Set(srcs).size).toBe(24);
+    });
+
+    it('draws the wall from thumbnails, the full file on error; the burst stays full size', () => {
+        renderS05(photosData({ wall: ['/api/content/media/hinatazaka46/w1.jpg'] }));
+        const tile = screen.getByTestId('s05-wall').querySelector('img')!;
+        expect(tile.getAttribute('src')).toMatch(/^\/api\/content\/thumb\/hinatazaka46\/w1\.jpg\?w=(160|320|640)$/);
+        fireEvent.error(tile);
+        expect(screen.getByTestId('s05-wall').querySelector('img')).toHaveAttribute('src', '/api/content/media/hinatazaka46/w1.jpg');
+        expect(screen.getAllByTestId('s05-burst-item')[0].querySelector('img')).toHaveAttribute('src', '/api/media/b10.jpg');
     });
 
     it('the mostly-bursts line', () => {

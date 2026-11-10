@@ -18,6 +18,8 @@ interface MemoryThumbProps {
     px?: number;
     /** Called when a picture cannot load at all (the full file failed too), so the caller can hide its frame. */
     onFail?: () => void;
+    /** A picture's loading hint (default `lazy`); the recap poster passes `eager` (it is exported as an image). */
+    loading?: 'lazy' | 'eager';
 }
 
 const FilmTile: React.FC<{ className?: string }> = ({ className }) => (
@@ -26,7 +28,9 @@ const FilmTile: React.FC<{ className?: string }> = ({ className }) => (
     </span>
 );
 
-const PictureThumb: React.FC<{ url: string; px?: number; className?: string; onFail?: () => void }> = ({ url, px, className, onFail }) => {
+const PictureThumb: React.FC<{ url: string; px?: number; className?: string; onFail?: () => void; loading?: 'lazy' | 'eager' }> = ({
+    url, px, className, onFail, loading = 'lazy',
+}) => {
     const dpr = useDevicePixelRatio();
     // The URL that failed: a thumbnail error switches this picture to its full file.
     const [failed, setFailed] = useState<string | null>(null);
@@ -37,7 +41,7 @@ const PictureThumb: React.FC<{ url: string; px?: number; className?: string; onF
             src={src}
             alt=""
             draggable={false}
-            loading="lazy"
+            loading={loading}
             decoding="async"
             onError={() => { if (src !== url) setFailed(src); else onFail?.(); }}
             className={cn('object-cover', className)}
@@ -76,9 +80,9 @@ const VideoThumb: React.FC<{ url: string; className?: string }> = ({ url, classN
  * without a URL is a neutral film tile; anything else renders nothing. Decorative: callers label
  * the surrounding control.
  */
-export const MemoryThumb: React.FC<MemoryThumbProps> = ({ message, className, px, onFail }) => {
+export const MemoryThumb: React.FC<MemoryThumbProps> = ({ message, className, px, onFail, loading }) => {
     if (message.type === 'picture' && message.media_url) {
-        return <PictureThumb url={message.media_url} px={px} className={className} onFail={onFail} />;
+        return <PictureThumb url={message.media_url} px={px} className={className} onFail={onFail} loading={loading} />;
     }
     if (message.type !== 'video') return null;
     if (!message.media_url) return <FilmTile className={className} />;
