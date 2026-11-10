@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { downloadMedia } from './download'
+import { downloadMedia, openDownloadUrl } from './download'
 
 describe('downloadMedia', () => {
     let appendChildSpy: ReturnType<typeof vi.spyOn>
@@ -125,5 +125,18 @@ describe('downloadMedia', () => {
             vi.advanceTimersByTime(60000)
             expect(removeSpy).toHaveBeenCalledOnce()
         })
+    })
+})
+
+describe('openDownloadUrl', () => {
+    it('opens the URL in a hidden iframe and removes it later', () => {
+        vi.useFakeTimers()
+        openDownloadUrl('/api/memories/export/tok?filename=a.png')
+        const iframe = document.body.querySelector('iframe') as HTMLIFrameElement
+        expect(iframe.style.display).toBe('none')
+        expect(iframe.src).toContain('/api/memories/export/tok?filename=a.png')
+        vi.advanceTimersByTime(60000)
+        expect(document.body.querySelector('iframe')).toBeNull()
+        vi.useRealTimers()
     })
 })

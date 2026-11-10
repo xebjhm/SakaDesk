@@ -902,7 +902,7 @@
       "dedicated": "送畀{{nickname}}",
       "since": "由{{date}}開始訂閱",
       "save": "儲存圖片",
-      "saved": "已經儲存。",
+      "handedOff": "開緊儲存對話框…",
       "saveFailed": "儲存唔到圖片。",
       "replay": "再睇一次",
       "open": "睇海報"

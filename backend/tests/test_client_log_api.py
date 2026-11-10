@@ -932,15 +932,24 @@ def test_recap_events_are_allowlisted():
 
 def test_recap_poster_events_are_allowlisted():
     for fields in (
-        {"phase": "open", "count": 3, "member_id": "58"},
+        {"phase": "open", "count": 3, "member_id": "58", "surface": "list"},
         {"phase": "skip", "reason": "no_poster", "member_id": "58"},
+        {"phase": "font_fallback", "fallback": "font_embed_timeout"},
         {
-            "phase": "save",
-            "outcome": "downloaded",
-            "fallback": "picker_securityerror",
+            "phase": "font_fallback",
+            "fallback": "font_truncated",
+            "count": 70,
+            "dropped": 6,
             "member_id": "58",
         },
+        {"phase": "save", "outcome": "handed_off", "member_id": "58"},
         {"phase": "save_failed", "reason": "render_failed", "member_id": "58"},
+        {
+            "phase": "save_failed",
+            "reason": "write_failed",
+            "error_code": "export_too_large",
+            "member_id": "58",
+        },
     ):
         r = client.post(
             "/api/client-log", json={"event": "recap_poster", "fields": fields}

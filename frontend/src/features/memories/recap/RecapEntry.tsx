@@ -5,7 +5,8 @@ import { Button, Card, EmptyState, IconButton } from '../../../design/primitives
 import { logRecapLoad, logRecapPoster, type RecapLoadOutcome } from '../memoriesLog';
 import type { PollResult } from '../../../utils/pollJson';
 import { fetchMemberRecap, fetchRecapMembers, type RecapOverview, type RecapOverviewMember, type RecapPayload } from './api';
-import { PosterView } from './PosterView';
+import { PosterView, type PosterSurface } from './PosterView';
+import { safeMemberId } from './posterCopy';
 import { RecapPlayer } from './RecapPlayer';
 import { SLIDE_REGISTRY } from './slideRegistry';
 
@@ -128,7 +129,8 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
     const [memberLoad, setMemberLoad] = useState<MemberLoad>({ path: null, load: { status: 'loading' } });
     const recap: Load<RecapPayload> = memberLoad.path === selected ? memberLoad.load : { status: 'loading' };
     // What the selected member shows: the story, or the poster after it (`run` remounts the player on replay).
-    const [view, setView] = useState<{ kind: 'player' | 'poster'; run: number }>({ kind: 'player', run: 0 });
+    // `surface` tells the poster's breadcrumb whether it opened after the story or from the list.
+    const [view, setView] = useState<{ kind: 'player' | 'poster'; run: number; surface: PosterSurface }>({ kind: 'player', run: 0, surface: 'end' });
     // `year:path` of each recap (with a poster) loaded in this visit, so the list can open its poster.
     const [withPoster, setWithPoster] = useState<ReadonlySet<string>>(() => new Set());
     const resolvedNickname = nickname?.trim() || t('recap.youFallback');
@@ -160,7 +162,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
             if (outcome === null) return;
             if (res.status === 'ok') {
                 const count = res.data.tier === 'none' ? 0 : playable(res.data);
-                const memberId = /^[a-z0-9_]{1,40}$/.test(res.data.member.id) ? res.data.member.id : undefined;
+                const memberId = safeMemberId(res.data.member.id);
                 logRecapLoad('member', count ? 'ok' : 'empty', {
                     count, member_id: memberId, ...(nickname?.trim() ? {} : { fallback: 'no_nickname' }),
                 });
@@ -182,7 +184,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
     // Closing drops the payload, so reopening (even the same member) loads and opens it afresh.
     const openMember = (path: string | null, kind: 'player' | 'poster' = 'player') => {
         setMemberLoad({ path: null, load: { status: 'loading' } });
-        setView((v) => ({ kind, run: v.run + 1 }));
+        setView((v) => ({ kind, run: v.run + 1, surface: kind === 'poster' ? 'list' : 'end' }));
         setSelected(path);
     };
     const backToList = () => openMember(null);
@@ -198,7 +200,8 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                 <PosterView
                     recap={data}
                     nickname={resolvedNickname}
-                    onReplay={() => setView((v) => ({ kind: 'player', run: v.run + 1 }))}
+                    surface={view.surface}
+                    onReplay={() => setView((v) => ({ kind: 'player', run: v.run + 1, surface: 'end' }))}
                     onClose={backToList}
                 />
             );
@@ -210,9 +213,9 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                 </div>
             );
         }
-        const memberId = /^[a-z0-9_]{1,40}$/.test(data.member.id) ? data.member.id : undefined;
+        const memberId = safeMemberId(data.member.id);
         const onEnd = () => {
-            if (data.poster) setView((v) => ({ kind: 'poster', run: v.run }));
+            if (data.poster) setView((v) => ({ kind: 'poster', run: v.run, surface: 'end' }));
             else logRecapPoster('skip', { reason: 'no_poster', member_id: memberId });
         };
         return (

@@ -40,7 +40,7 @@ const RECAP_KEYS: readonly string[] = [
     'recap.poster.label', 'recap.poster.with', 'recap.poster.numbers.nickname', 'recap.poster.numbers.oyasumi',
     'recap.poster.numbers.photos', 'recap.poster.numbers.voice', 'recap.poster.numbers.daisuki',
     'recap.poster.start', 'recap.poster.mid', 'recap.poster.recent', 'recap.poster.avatarChanged', 'recap.poster.years',
-    'recap.poster.dedicated', 'recap.poster.since', 'recap.poster.save', 'recap.poster.saved', 'recap.poster.saveFailed',
+    'recap.poster.dedicated', 'recap.poster.since', 'recap.poster.save', 'recap.poster.handedOff', 'recap.poster.saveFailed',
     'recap.poster.replay', 'recap.poster.open',
 ];
 
@@ -155,6 +155,16 @@ describe('recap strings', () => {
         for (const [code, data] of Object.entries(locales)) {
             for (const dotted of KEYS) expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(KNEW);
             expect(String(lookup(data, 'recap.poster.since')), code).toMatch(/購読|subscribed|訂閱|订阅/i);
+        }
+    });
+
+    it('the poster save copy only says the dialog is opening, never that the file was saved', () => {
+        const SAVED = /保存しました|saved|已儲存|已保存|已經儲存|儲存咗/i;
+        const DIALOG = /ダイアログ|dialog|對話框|对话框/i;
+        for (const [code, data] of Object.entries(locales)) {
+            const copy = String(lookup(data, 'recap.poster.handedOff'));
+            expect(copy, code).not.toMatch(SAVED);
+            expect(copy, code).toMatch(DIALOG);
         }
     });
 });

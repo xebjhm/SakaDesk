@@ -48,7 +48,13 @@ export function posterSince(subscriptionStart: string | null, lang: string): Cop
     return date ? { key: 'recap.poster.since', params: { date } } : null;
 }
 
+/** The member id when it is a safe log code (`[a-z0-9_]{1,40}`), else undefined. */
+export function safeMemberId(id: string): string | undefined {
+    return /^[a-z0-9_]{1,40}$/.test(id) ? id : undefined;
+}
+
 /** The saved file's name: the year and the member id only, never a name. */
 export function posterFilename(year: number, memberId: string): string {
-    return /^[a-z0-9_]{1,40}$/.test(memberId) ? `sakadesk-recap-${year}-${memberId}.png` : `sakadesk-recap-${year}.png`;
+    const id = safeMemberId(memberId);
+    return id ? `sakadesk-recap-${year}-${id}.png` : `sakadesk-recap-${year}.png`;
 }

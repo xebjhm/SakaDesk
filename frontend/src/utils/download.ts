@@ -41,11 +41,19 @@ export function downloadMedia(url: string, filename: string): void {
         downloadUrl = `${localUrl}${sep}download=${encodeURIComponent(filename)}`;
     }
 
-    // Hidden iframe triggers the webview's native download dialog
-    // without navigating away or opening the system browser.
+    openDownloadUrl(downloadUrl);
+}
+
+/**
+ * Open a local URL that answers with `Content-Disposition: attachment` in a
+ * hidden iframe. This triggers the webview's native download dialog without
+ * navigating away or opening the system browser (see {@link downloadMedia}).
+ * It only hands the URL over: whether the user saves the file is not observable.
+ */
+export function openDownloadUrl(url: string): void {
     const iframe = document.createElement('iframe');
     iframe.style.display = 'none';
-    iframe.src = downloadUrl;
+    iframe.src = url;
     document.body.appendChild(iframe);
     setTimeout(() => iframe.remove(), 60000);
 }

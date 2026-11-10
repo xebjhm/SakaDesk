@@ -165,6 +165,7 @@ describe('RecapEntry', () => {
         for (let i = 0; i < 4; i += 1) await userEvent.keyboard('{ArrowRight}');
         expect(await screen.findByTestId('recap-poster')).toBeInTheDocument();
         expect(screen.queryByTestId('recap-stage')).toBeNull();
+        expect(vi.mocked(clientLog).mock.calls).toContainEqual(['recap_poster', expect.objectContaining({ phase: 'open', surface: 'end' })]);
         await userEvent.click(screen.getByRole('button', { name: 'もう一度見る' }));
         expect(await screen.findByTestId('recap-stage')).toHaveAttribute('data-slide', 's01_first');
         expect(opens()).toHaveLength(2);
@@ -184,6 +185,7 @@ describe('RecapEntry', () => {
         await userEvent.click(await screen.findByRole('button', { name: 'ポスターを見る' }));
         expect(await screen.findByTestId('recap-poster')).toBeInTheDocument();
         expect(screen.queryByTestId('recap-stage')).toBeNull();
+        expect(vi.mocked(clientLog).mock.calls).toContainEqual(['recap_poster', expect.objectContaining({ phase: 'open', surface: 'list' })]);
     });
 
     it('stays on the last slide and logs a skip when the recap has no poster', async () => {

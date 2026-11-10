@@ -9,12 +9,16 @@ import type { RecapPayload, RecapPoster } from './api';
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
 
-vi.mock('./posterImage', () => ({
-    renderToCanvas: vi.fn(async () => ({ canvas: {}, fontFallback: null })),
-    canvasToPng: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
-    savePng: vi.fn(async () => ({ outcome: 'saved' })),
-}));
-import { canvasToPng, renderToCanvas, savePng } from './posterImage';
+vi.mock('./posterImage', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('./posterImage')>();
+    return {
+        SaveError: actual.SaveError,
+        renderToCanvas: vi.fn(async () => ({ canvas: {}, fontFallbacks: [], fontTruncation: null })),
+        canvasToPng: vi.fn(async () => new Blob(['png'], { type: 'image/png' })),
+        savePng: vi.fn(async () => ({ outcome: 'handed_off' })),
+    };
+});
+import { canvasToPng, renderToCanvas, SaveError, savePng } from './posterImage';
 
 const posterLogs = () => vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'recap_poster').map(([, f]) => f);
 
@@ -123,8 +127,45 @@ describe('PosterView', () => {
         expect(renderToCanvas).toHaveBeenCalledWith(screen.getByTestId('recap-poster'));
         expect(canvasToPng).toHaveBeenCalled();
         expect(vi.mocked(savePng).mock.calls[0][1]).toBe('sakadesk-recap-2026-58.png');
-        expect(await screen.findByRole('status')).toHaveTextContent('保存しました。');
-        expect(posterLogs()).toContainEqual(expect.objectContaining({ phase: 'save', outcome: 'saved', member_id: '58' }));
+        // The handoff only opens the save dialog; the copy never claims the file was saved.
+        expect(await screen.findByRole('status')).toHaveTextContent('保存ダイアログを開いています…');
+        expect(screen.getByRole('status')).not.toHaveTextContent('保存しました');
+        expect(posterLogs()).toContainEqual(expect.objectContaining({ phase: 'save', outcome: 'handed_off', member_id: '58' }));
+        expect(screen.getByRole('button', { name: '画像を保存' })).not.toBeDisabled();
+    });
+
+    it('shows the error state with a code when the handoff is refused, and leaves loading', async () => {
+        vi.mocked(savePng).mockRejectedValueOnce(new SaveError('export_too_large'));
+        renderPoster();
+        await userEvent.click(screen.getByRole('button', { name: '画像を保存' }));
+        expect(await screen.findByRole('status')).toHaveTextContent('保存できませんでした。');
+        expect(posterLogs()).toContainEqual(expect.objectContaining({
+            phase: 'save_failed', reason: 'write_failed', error_code: 'export_too_large', member_id: '58',
+        }));
+        expect(posterLogs().some((f) => (f as { phase: string }).phase === 'save')).toBe(false);
+        expect(screen.getByRole('button', { name: '画像を保存' })).not.toBeDisabled();
+    });
+
+    it('logs every font fallback separately, with counts for the budget cut', async () => {
+        vi.mocked(renderToCanvas).mockResolvedValueOnce({
+            canvas: {} as HTMLCanvasElement,
+            fontFallbacks: ['font_embed_timeout', 'font_partial', 'font_truncated'],
+            fontTruncation: { needed: 70, truncated: 6 },
+        });
+        renderPoster();
+        await userEvent.click(screen.getByRole('button', { name: '画像を保存' }));
+        await waitFor(() => expect(savePng).toHaveBeenCalledTimes(1));
+        const fonts = posterLogs().filter((f) => (f as { phase: string }).phase === 'font_fallback');
+        expect(fonts).toEqual([
+            { phase: 'font_fallback', fallback: 'font_embed_timeout', member_id: '58' },
+            { phase: 'font_fallback', fallback: 'font_partial', member_id: '58' },
+            { phase: 'font_fallback', fallback: 'font_truncated', member_id: '58', count: 70, dropped: 6 },
+        ]);
+    });
+
+    it('logs where the poster was opened from', () => {
+        renderPoster();
+        expect(posterLogs()).toContainEqual(expect.objectContaining({ phase: 'open', surface: 'end' }));
     });
 
     it('says when saving failed and logs a code', async () => {

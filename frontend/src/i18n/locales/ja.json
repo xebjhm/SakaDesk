@@ -902,7 +902,7 @@
       "dedicated": "Dedicated to {{nickname}}",
       "since": "{{date}}から購読",
       "save": "画像を保存",
-      "saved": "保存しました。",
+      "handedOff": "保存ダイアログを開いています…",
       "saveFailed": "保存できませんでした。",
       "replay": "もう一度見る",
       "open": "ポスターを見る"

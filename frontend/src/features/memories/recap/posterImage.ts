@@ -1,5 +1,5 @@
 /**
- * Canvas helpers of the year recap: render a DOM node to a canvas or PNG, and save a PNG locally.
+ * Canvas helpers of the year recap: render a DOM node to a canvas or PNG, and save an export locally.
  *
  * Rendering goes through `html-to-image` (DOM → SVG `foreignObject` → canvas). It clones the
  * node with its computed styles (so the design tokens resolve), inlines every `<img>` as a data
@@ -7,18 +7,32 @@
  * (`/api/content/media/...`, avatars from the profile-image routes), so the canvas is never
  * tainted. Web fonts are embedded by this module rather than by the library: the Noto families
  * come from Google Fonts in about a hundred `unicode-range` slices each, and only the slices
- * that cover the node's text are fetched (from the browser cache, as they are already drawn
- * on screen) and inlined. If that fails, the image is drawn with the system fallback fonts.
+ * that cover the node's text (at most {@link MAX_FONT_FACES}) are inlined. Embedding goes to
+ * the network: the Google stylesheet and each slice are fetched again, and the browser may or
+ * may not answer them from its HTTP cache. Each request has a {@link FONT_FETCH_TIMEOUT_MS}
+ * timeout and the whole embed a {@link FONT_BUDGET_MS} budget. When fonts cannot be embedded
+ * in time (offline, a stalled network), the image is drawn with the system fallback fonts and
+ * every fallback is reported as a log code.
  *
- * Nothing is uploaded: the PNG goes to a file the user picks (the File System Access save
- * picker) or, where there is no picker, a local blob download.
+ * Saving: the desktop webview ignores `<a download>` blob URLs, so {@link saveBlob} hands the
+ * bytes to the local server (`POST /api/memories/export`, held in memory only) and opens the
+ * returned URL in a hidden iframe ({@link openDownloadUrl}), which opens the webview's native
+ * save dialog. Nothing leaves the machine. Whether the user then saves the file is not
+ * observable, so the outcome is `handed_off`, never "saved".
  */
 import { toCanvas } from 'html-to-image';
+import { openDownloadUrl } from '../../../utils/download';
 
 /** Width in pixels of an exported poster (a 9:16 stage gives 1080 × 1920). */
 export const POSTER_EXPORT_WIDTH = 1080;
 /** Upper bound of embedded font slices (a poster's text needs far fewer). */
-const MAX_FONT_FACES = 64;
+export const MAX_FONT_FACES = 64;
+/** Timeout of one font request (stylesheet or slice). */
+export const FONT_FETCH_TIMEOUT_MS = 4000;
+/** Budget of the whole font embed; past it the image uses the system fonts. */
+export const FONT_BUDGET_MS = 8000;
+/** Timeout of the export handoff to the local server. */
+export const EXPORT_POST_TIMEOUT_MS = 30000;
 /** A transparent pixel drawn in place of an image that cannot be read. */
 const IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 /** Children marked with this attribute are left out of the image. */
@@ -77,6 +91,65 @@ export function pickFontFaces(cssText: string, families: Set<string>, codePoints
 
 const FONT_MIME: Record<string, string> = { woff2: 'font/woff2', woff: 'font/woff', ttf: 'font/ttf', otf: 'font/otf' };
 
+/** Thrown when a font request or the whole embed ran out of time. */
+export class FontTimeoutError extends Error {
+    constructor() {
+        super('font_timeout');
+        this.name = 'FontTimeoutError';
+    }
+}
+
+/** Why one font slice was dropped (a log code). */
+export type FaceDropReason = 'timeout' | 'status' | 'network';
+
+export interface FontFetchOptions {
+    fetchImpl?: typeof fetch;
+    /** Per-request timeout (default {@link FONT_FETCH_TIMEOUT_MS}). */
+    requestTimeoutMs?: number;
+    /** Aborts every pending request (the overall budget). */
+    signal?: AbortSignal;
+}
+
+/** Rejects with {@link FontTimeoutError} after `ms`; `onTimeout` runs first. */
+function raceTimeout<T>(work: Promise<T>, ms: number, onTimeout?: () => void): Promise<T> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+        timer = setTimeout(() => {
+            onTimeout?.();
+            reject(new FontTimeoutError());
+        }, ms);
+    });
+    return Promise.race([work, timeout]).finally(() => clearTimeout(timer));
+}
+
+/** A fetch that is aborted after the per-request timeout or when the outer signal aborts. */
+function fetchWithTimeout(url: string, opts: FontFetchOptions): Promise<Response> {
+    const fetchImpl = opts.fetchImpl ?? fetch;
+    const controller = new AbortController();
+    const outer = opts.signal;
+    if (outer?.aborted) return Promise.reject(new FontTimeoutError());
+    const onAbort = () => controller.abort();
+    outer?.addEventListener('abort', onAbort);
+    return raceTimeout(fetchImpl(url, { signal: controller.signal }), opts.requestTimeoutMs ?? FONT_FETCH_TIMEOUT_MS, onAbort)
+        .catch((e: unknown) => {
+            // An abort here is always one of our timeouts (per request or the overall budget).
+            if (isAbort(e)) throw new FontTimeoutError();
+            throw e;
+        })
+        .finally(() => outer?.removeEventListener('abort', onAbort));
+}
+
+/** Whether `e` is an abort (`DOMException` is not an `Error` in every runtime). */
+function isAbort(e: unknown): boolean {
+    return typeof e === 'object' && e !== null && (e as { name?: unknown }).name === 'AbortError';
+}
+
+function dropReason(e: unknown): FaceDropReason {
+    if (e instanceof FontTimeoutError) return 'timeout';
+    if (e instanceof Error && e.message === 'font_fetch_status') return 'status';
+    return 'network';
+}
+
 function toBase64(bytes: Uint8Array): string {
     let binary = '';
     const CHUNK = 0x8000;
@@ -84,8 +157,8 @@ function toBase64(bytes: Uint8Array): string {
     return btoa(binary);
 }
 
-async function fetchDataUrl(url: string, fetchImpl: typeof fetch): Promise<string> {
-    const res = await fetchImpl(url);
+async function fetchDataUrl(url: string, opts: FontFetchOptions): Promise<string> {
+    const res = await fetchWithTimeout(url, opts);
     if (!res.ok) throw new Error('font_fetch_status');
     const blob = await res.blob();
     const ext = /\.([a-z0-9]+)(?:[?#]|$)/i.exec(url)?.[1]?.toLowerCase() ?? '';
@@ -93,27 +166,30 @@ async function fetchDataUrl(url: string, fetchImpl: typeof fetch): Promise<strin
     return `data:${mime};base64,${toBase64(new Uint8Array(await blob.arrayBuffer()))}`;
 }
 
-/** Inlines every `url(...)` of the faces as a data URL; a face whose file cannot be read is dropped. */
+/**
+ * Inlines every `url(...)` of the faces as a data URL. A face whose file cannot be read is
+ * dropped, and its reason code is kept in `reasons` (one entry per dropped face).
+ */
 export async function embedFontFaces(
-    faces: string[], baseUrl: string, fetchImpl: typeof fetch = fetch,
-): Promise<{ css: string; dropped: number }> {
-    let dropped = 0;
+    faces: string[], baseUrl: string, opts: FontFetchOptions = {},
+): Promise<{ css: string; dropped: number; reasons: FaceDropReason[] }> {
+    const reasons: FaceDropReason[] = [];
     const embedded = await Promise.all(faces.map(async (face) => {
         try {
             const urls = Array.from(face.matchAll(/url\(\s*(['"]?)([^'")]+)\1\s*\)/g));
             let out = face;
             for (const m of urls) {
                 if (m[2].startsWith('data:')) continue;
-                const data = await fetchDataUrl(new URL(m[2], baseUrl).href, fetchImpl);
+                const data = await fetchDataUrl(new URL(m[2], baseUrl).href, opts);
                 out = out.replace(m[0], `url(${data})`);
             }
             return out;
-        } catch {
-            dropped += 1;
+        } catch (e) {
+            reasons.push(dropReason(e));
             return null;
         }
     }));
-    return { css: embedded.filter((f): f is string => f !== null).join('\n'), dropped };
+    return { css: embedded.filter((f): f is string => f !== null).join('\n'), dropped: reasons.length, reasons };
 }
 
 /** The font families and the code points the node's text uses. */
@@ -130,8 +206,23 @@ function usedText(node: HTMLElement): { families: Set<string>; codePoints: Set<n
     return { families, codePoints };
 }
 
-/** The `@font-face` CSS (fonts inlined) that the node's text needs. */
-export async function buildFontEmbedCSS(node: HTMLElement, fetchImpl: typeof fetch = fetch): Promise<{ css: string; dropped: number }> {
+export interface FontEmbedResult {
+    css: string;
+    /** Faces that could not be read. */
+    dropped: number;
+    /** One reason code per dropped face. */
+    reasons: FaceDropReason[];
+    /** Faces the text needs, before the {@link MAX_FONT_FACES} cut. */
+    needed: number;
+    /** Faces left out by the {@link MAX_FONT_FACES} cut. */
+    truncated: number;
+}
+
+/**
+ * The `@font-face` CSS (fonts inlined) that the node's text needs. Rejects with
+ * {@link FontTimeoutError} when a stylesheet request times out.
+ */
+export async function buildFontEmbedCSS(node: HTMLElement, opts: FontFetchOptions = {}): Promise<FontEmbedResult> {
     const { families, codePoints } = usedText(node);
     const sources: { css: string; base: string }[] = [];
     for (const sheet of Array.from(document.styleSheets)) {
@@ -142,44 +233,77 @@ export async function buildFontEmbedCSS(node: HTMLElement, fetchImpl: typeof fet
         } catch {
             // A cross-origin sheet (Google Fonts) hides its rules; read its text instead.
             if (!sheet.href) continue;
-            const res = await fetchImpl(sheet.href);
+            const res = await fetchWithTimeout(sheet.href, opts);
             if (res.ok) sources.push({ css: await res.text(), base });
         }
     }
+    const picked = sources.map((src) => ({ base: src.base, faces: pickFontFaces(src.css, families, codePoints) }));
+    const needed = picked.reduce((n, p) => n + p.faces.length, 0);
     const parts: string[] = [];
-    let dropped = 0;
+    const reasons: FaceDropReason[] = [];
     let budget = MAX_FONT_FACES;
-    for (const src of sources) {
-        const faces = pickFontFaces(src.css, families, codePoints).slice(0, Math.max(0, budget));
+    for (const src of picked) {
+        const faces = src.faces.slice(0, Math.max(0, budget));
         budget -= faces.length;
         if (!faces.length) continue;
-        const out = await embedFontFaces(faces, src.base, fetchImpl);
+        const out = await embedFontFaces(faces, src.base, opts);
         parts.push(out.css);
-        dropped += out.dropped;
+        reasons.push(...out.reasons);
     }
-    return { css: parts.join('\n'), dropped };
+    return {
+        css: parts.join('\n'),
+        dropped: reasons.length,
+        reasons,
+        needed,
+        truncated: Math.max(0, needed - MAX_FONT_FACES),
+    };
 }
 
-/** `null`, or why the image fell back to fewer or system fonts (a log code). */
-export type FontFallback = 'font_embed_failed' | 'font_partial' | null;
+/** Why the image fell back to fewer or system fonts (log codes; several can apply). */
+export type FontFallback = 'font_embed_failed' | 'font_embed_timeout' | 'font_partial' | 'font_truncated';
+
+export interface RenderOptions extends Omit<FontFetchOptions, 'signal'> {
+    width?: number;
+    /** Budget of the whole font embed (default {@link FONT_BUDGET_MS}). */
+    fontBudgetMs?: number;
+}
+
+export interface RenderResult {
+    canvas: HTMLCanvasElement;
+    /** Every font fallback that happened, in a stable order; empty when the fonts embedded fully. */
+    fontFallbacks: FontFallback[];
+    /** Face counts when the {@link MAX_FONT_FACES} cut applied, else `null`. */
+    fontTruncation: { needed: number; truncated: number } | null;
+}
 
 /**
  * Draws the node on a canvas `width` pixels wide (the height follows its aspect). Children
- * marked {@link EXCLUDE_ATTR} are left out. Rejects when the node cannot be drawn.
+ * marked {@link EXCLUDE_ATTR} are left out. Font embedding never blocks past its budget; it
+ * degrades to system fonts instead. Rejects when the node cannot be drawn.
  */
-export async function renderToCanvas(
-    node: HTMLElement, opts: { width?: number } = {},
-): Promise<{ canvas: HTMLCanvasElement; fontFallback: FontFallback }> {
+export async function renderToCanvas(node: HTMLElement, opts: RenderOptions = {}): Promise<RenderResult> {
     const width = opts.width ?? POSTER_EXPORT_WIDTH;
-    await document.fonts?.ready;
+    const budget = new AbortController();
+    const fallbacks = new Set<FontFallback>();
     let fontEmbedCSS = '';
-    let fontFallback: FontFallback = null;
+    let fontTruncation: RenderResult['fontTruncation'] = null;
     try {
-        const fonts = await buildFontEmbedCSS(node);
+        const work = (async () => {
+            await document.fonts?.ready;
+            return buildFontEmbedCSS(node, { ...opts, signal: budget.signal });
+        })();
+        const fonts = await raceTimeout(work, opts.fontBudgetMs ?? FONT_BUDGET_MS, () => budget.abort());
         fontEmbedCSS = fonts.css;
-        if (fonts.dropped > 0) fontFallback = 'font_partial';
-    } catch {
-        fontFallback = 'font_embed_failed';
+        if (fonts.reasons.includes('timeout')) fallbacks.add('font_embed_timeout');
+        if (fonts.dropped > 0) fallbacks.add('font_partial');
+        if (fonts.truncated > 0) {
+            fallbacks.add('font_truncated');
+            fontTruncation = { needed: fonts.needed, truncated: fonts.truncated };
+        }
+    } catch (e) {
+        fallbacks.add(e instanceof FontTimeoutError ? 'font_embed_timeout' : 'font_embed_failed');
+    } finally {
+        budget.abort();
     }
     const shown = node.getBoundingClientRect().width || node.offsetWidth;
     const canvas = await toCanvas(node, {
@@ -189,7 +313,8 @@ export async function renderToCanvas(
         imagePlaceholder: IMAGE_PLACEHOLDER,
         filter: (n) => !(n instanceof Element && n.hasAttribute(EXCLUDE_ATTR)),
     });
-    return { canvas, fontFallback };
+    const order: FontFallback[] = ['font_embed_failed', 'font_embed_timeout', 'font_partial', 'font_truncated'];
+    return { canvas, fontFallbacks: order.filter((c) => fallbacks.has(c)), fontTruncation };
 }
 
 /** The canvas as a PNG blob. */
@@ -199,46 +324,60 @@ export function canvasToPng(canvas: HTMLCanvasElement): Promise<Blob> {
     });
 }
 
-export type SaveOutcome = 'saved' | 'cancelled' | 'downloaded';
+/** The export kinds the local handoff accepts (`backend/services/memories/exports.py`). */
+export type ExportKind = 'png' | 'gif' | 'webm' | 'mp4';
 
-interface SaveFilePicker {
-    (opts: { suggestedName: string; types: { description: string; accept: Record<string, string[]> }[] }): Promise<{
-        createWritable: () => Promise<{ write: (data: Blob) => Promise<void> | void; close: () => Promise<void> | void }>;
-    }>;
+const EXPORT_MIME: Record<ExportKind, string> = { png: 'image/png', gif: 'image/gif', webm: 'video/webm', mp4: 'video/mp4' };
+
+/** Why a handoff failed (a log code). */
+export type SaveErrorCode = 'export_rejected' | 'export_too_large' | 'export_timeout' | 'export_network';
+
+export class SaveError extends Error {
+    constructor(readonly code: SaveErrorCode) {
+        super(code);
+        this.name = 'SaveError';
+    }
 }
 
-function downloadBlob(blob: Blob, filename: string): void {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    a.style.display = 'none';
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(url), 60000);
-}
+/** The only outcome: the bytes reached the local server and the save dialog URL was opened. */
+export type SaveOutcome = 'handed_off';
 
 /**
- * Saves a PNG locally: through the save picker (the user picks the folder) when the webview has
- * one, else as a blob download. `fallback` is a log code when the picker was there but refused.
+ * Saves an export: posts the bytes to the local in-memory handoff, then opens its download
+ * URL in a hidden iframe so the webview shows its native save dialog. The server sanitises
+ * `filename` and forces the extension to `kind`. Rejects with a {@link SaveError}.
  */
-export async function savePng(blob: Blob, filename: string): Promise<{ outcome: SaveOutcome; fallback?: string }> {
-    const picker = (window as unknown as { showSaveFilePicker?: SaveFilePicker }).showSaveFilePicker;
-    let fallback: string | undefined;
-    if (typeof picker === 'function') {
-        try {
-            const handle = await picker({ suggestedName: filename, types: [{ description: 'PNG', accept: { 'image/png': ['.png'] } }] });
-            const writable = await handle.createWritable();
-            await writable.write(blob);
-            await writable.close();
-            return { outcome: 'saved' };
-        } catch (e) {
-            const name = e instanceof Error || e instanceof DOMException ? e.name : 'unknown';
-            if (name === 'AbortError') return { outcome: 'cancelled' };
-            fallback = `picker_${name.toLowerCase().replace(/[^a-z0-9_]/g, '')}`.slice(0, 40);
-        }
+export async function saveBlob(
+    blob: Blob, kind: ExportKind, filename: string, fetchImpl: typeof fetch = fetch,
+): Promise<{ outcome: SaveOutcome }> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), EXPORT_POST_TIMEOUT_MS);
+    let res: Response;
+    try {
+        res = await fetchImpl(`/api/memories/export?kind=${kind}`, {
+            method: 'POST',
+            body: blob,
+            headers: { 'Content-Type': EXPORT_MIME[kind] },
+            signal: controller.signal,
+        });
+    } catch (e) {
+        throw new SaveError(isAbort(e) ? 'export_timeout' : 'export_network');
+    } finally {
+        clearTimeout(timer);
     }
-    downloadBlob(blob, filename);
-    return fallback ? { outcome: 'downloaded', fallback } : { outcome: 'downloaded' };
+    if (!res.ok) throw new SaveError(res.status === 413 ? 'export_too_large' : 'export_rejected');
+    let token: unknown;
+    try {
+        token = ((await res.json()) as { token?: unknown }).token;
+    } catch {
+        throw new SaveError('export_rejected');
+    }
+    if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(token)) throw new SaveError('export_rejected');
+    openDownloadUrl(`/api/memories/export/${token}?filename=${encodeURIComponent(filename)}`);
+    return { outcome: 'handed_off' };
+}
+
+/** {@link saveBlob} for a PNG. */
+export function savePng(blob: Blob, filename: string, fetchImpl?: typeof fetch): Promise<{ outcome: SaveOutcome }> {
+    return saveBlob(blob, 'png', filename, fetchImpl);
 }

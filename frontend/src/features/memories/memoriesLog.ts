@@ -48,18 +48,25 @@ export function logRecapPlay(
     clientLog('recap_play', { phase, ...extra });
 }
 
-export type RecapPosterPhase = 'open' | 'skip' | 'replay' | 'close' | 'save' | 'save_failed';
+export type RecapPosterPhase = 'open' | 'skip' | 'replay' | 'close' | 'font_fallback' | 'save' | 'save_failed';
 
 /**
- * `recap_poster`: a year-poster decision. `open` carries `count` (numbers shown);
- * `skip` a `reason` (`no_poster`: the recap ended without one); `save` an
- * `outcome` (`saved`, `downloaded`, `cancelled`) and, when the save picker was
- * refused or fonts fell back, `fallback`; `save_failed` a `reason`
- * (`render_failed`, `encode_failed`, `write_failed`). Ids and codes only.
+ * `recap_poster`: a year-poster decision. `open` carries `count` (numbers shown)
+ * and `surface` (`end`, `list`); `skip` a `reason` (`no_poster`: the recap ended
+ * without one); `font_fallback` one `fallback` code per event (`font_embed_failed`,
+ * `font_embed_timeout`, `font_partial`, `font_truncated`; the last also carries
+ * `count` faces needed and `dropped` faces cut); `save` an `outcome` (`handed_off`:
+ * the save dialog was asked to open); `save_failed` a `reason` (`render_failed`,
+ * `encode_failed`, `write_failed`) and, for a refused handoff, `error_code`
+ * (`export_rejected`, `export_too_large`, `export_timeout`, `export_network`).
+ * Ids, codes and counts only.
  */
 export function logRecapPoster(
     phase: RecapPosterPhase,
-    extra: { count?: number; reason?: string; outcome?: string; fallback?: string; member_id?: string } = {},
+    extra: {
+        count?: number; dropped?: number; reason?: string; outcome?: string; fallback?: string;
+        member_id?: string; surface?: string; error_code?: string;
+    } = {},
 ): void {
     clientLog('recap_poster', { phase, ...extra });
 }

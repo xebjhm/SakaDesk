@@ -5,8 +5,8 @@ import { Atmosphere, Button, IconButton } from '../../../design/primitives';
 import { logRecapPoster } from '../memoriesLog';
 import type { RecapMessage, RecapPayload, RecapStub, S03ClockData } from './api';
 import { formatCount, formatMessageDate, formatSecondsOfDay, s03Copy, s09StubCopy, withNickname } from './recapCopy';
-import { posterFilename, posterNumbers, posterSince, posterYears } from './posterCopy';
-import { canvasToPng, renderToCanvas, savePng } from './posterImage';
+import { posterFilename, posterNumbers, posterSince, posterYears, safeMemberId } from './posterCopy';
+import { canvasToPng, renderToCanvas, SaveError, savePng } from './posterImage';
 import { StarDial } from './slides/StarDial';
 import { NARRATION_CLASS } from './slides/style';
 
@@ -14,14 +14,18 @@ export interface PosterViewProps {
     recap: RecapPayload;
     /** The fan's nickname, already resolved (never empty). */
     nickname: string;
+    /** Where the poster was opened from (for the `open` breadcrumb); defaults to `end`. */
+    surface?: PosterSurface;
     /** Play the recap again from the first slide. */
     onReplay: () => void;
     onClose: () => void;
 }
 
-type SaveState = 'idle' | 'saving' | 'saved' | 'failed';
+/** `end`: shown after the last slide; `list`: opened from the recap list's poster button. */
+export type PosterSurface = 'end' | 'list';
 
-const safeId = (id: string) => (/^[a-z0-9_]{1,40}$/.test(id) ? id : undefined);
+/** `handed_off`: the save dialog was asked to open (whether the user saves is not observable). */
+type SaveState = 'idle' | 'saving' | 'handed_off' | 'failed';
 
 /** The polaroid: her best photo of the year and its caption (her words near it, else the day it came). */
 const Polaroid: React.FC<{ photo: RecapMessage; nickname: string }> = ({ photo, nickname }) => {
@@ -69,10 +73,10 @@ const SMR_KEYS = ['recap.poster.start', 'recap.poster.mid', 'recap.poster.recent
  * since …" (the fan's subscription, never something she knew). It can be saved as a PNG.
  * Renders nothing without a poster (tier none).
  */
-export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, onReplay, onClose }) => {
+export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, surface = 'end', onReplay, onClose }) => {
     const { t, i18n } = useTranslation();
     const poster = recap.poster;
-    const memberId = safeId(recap.member.id);
+    const memberId = safeMemberId(recap.member.id);
     const posterRef = useRef<HTMLDivElement>(null);
     const rootRef = useRef<HTMLDivElement>(null);
     const [save, setSave] = useState<SaveState>('idle');
@@ -81,7 +85,7 @@ export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, onRepla
     useEffect(() => {
         if (!poster) return;
         rootRef.current?.focus({ preventScroll: true });
-        logRecapPoster('open', { count: numbers.length, member_id: memberId });
+        logRecapPoster('open', { count: numbers.length, member_id: memberId, surface });
         // Once per shown poster.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [recap]);
@@ -101,18 +105,30 @@ export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, onRepla
         if (!node || save === 'saving') return;
         setSave('saving');
         let stage: 'render_failed' | 'encode_failed' | 'write_failed' = 'render_failed';
+        let next: SaveState = 'failed';
         try {
-            const { canvas, fontFallback } = await renderToCanvas(node);
+            const { canvas, fontFallbacks, fontTruncation } = await renderToCanvas(node);
+            // Every font fallback leaves its own breadcrumb, even when several happened.
+            for (const code of fontFallbacks) {
+                logRecapPoster('font_fallback', {
+                    fallback: code,
+                    member_id: memberId,
+                    ...(code === 'font_truncated' && fontTruncation ? { count: fontTruncation.needed, dropped: fontTruncation.truncated } : {}),
+                });
+            }
             stage = 'encode_failed';
             const blob = await canvasToPng(canvas);
             stage = 'write_failed';
             const result = await savePng(blob, posterFilename(recap.year, recap.member.id));
-            const fallback = result.fallback ?? fontFallback ?? undefined;
-            logRecapPoster('save', { outcome: result.outcome, member_id: memberId, ...(fallback ? { fallback } : {}) });
-            setSave(result.outcome === 'cancelled' ? 'idle' : 'saved');
-        } catch {
-            logRecapPoster('save_failed', { reason: stage, member_id: memberId });
-            setSave('failed');
+            logRecapPoster('save', { outcome: result.outcome, member_id: memberId });
+            next = 'handed_off';
+        } catch (e) {
+            logRecapPoster('save_failed', {
+                reason: stage, member_id: memberId, ...(e instanceof SaveError ? { error_code: e.code } : {}),
+            });
+        } finally {
+            // The button always leaves its loading state.
+            setSave(next);
         }
     };
 
@@ -253,7 +269,7 @@ export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, onRepla
                     <IconButton size="sm" aria-label={t('common.close')} icon={<X />} onClick={close} />
                 </div>
                 <p role="status" className={`min-h-5 text-secondary ${NARRATION_CLASS}`}>
-                    {save === 'saved' && t('recap.poster.saved')}
+                    {save === 'handed_off' && t('recap.poster.handedOff')}
                     {save === 'failed' && t('recap.poster.saveFailed')}
                 </p>
             </div>
