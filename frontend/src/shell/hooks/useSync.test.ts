@@ -661,10 +661,14 @@ describe('useSync', () => {
         })
 
         it('cancel ends the whole backend sequence and closes the dialog at once', async () => {
-            fakeBackend(['sakurazaka46', 'hinatazaka46'])
+            const backend = fakeBackend(['nogizaka46', 'sakurazaka46', 'hinatazaka46'])
             const { result } = renderHook(() => useSync(unconfigured))
             let pending: Promise<unknown> = Promise.resolve()
-            act(() => { pending = result.current.startSequentialSync(['sakurazaka46', 'hinatazaka46']) })
+            act(() => { pending = result.current.startSequentialSync(['sakurazaka46', 'hinatazaka46', 'nogizaka46']) })
+            // 乃木坂46 completes; the user cancels while 櫻坂46 syncs.
+            await waitFor(() => expect(result.current.sequentialSyncInfo?.currentService).toBe('nogizaka46'))
+            act(() => backend.advance('complete'))
+            await waitFor(() => expect(result.current.sequentialSyncInfo?.currentService).toBe('sakurazaka46'))
             await waitFor(() => expect(result.current.syncProgressByService['sakurazaka46']?.phase).toBe('syncing'))
 
             // The dialog's Cancel button calls cancelSync() with no service.
@@ -673,12 +677,13 @@ describe('useSync', () => {
                 await result.current.cancelSync()
                 outcome = await pending
             })
-            expect(outcome).toEqual({ completed: 0, failed: 0, cancelled: true })
+            // The counts come from the last queue read (the backend logs the same).
+            expect(outcome).toEqual({ completed: 1, failed: 2, cancelled: true })
             expect(urls().filter(u => u.includes('/api/sync/cancel'))).toEqual(['/api/sync/cancel?sequence=seq1'])
             expect(result.current.syncProgressByService['sakurazaka46']?.state).toBe('error')
             expect(result.current.sequentialSyncInfo).toBeNull()
             expect(result.current.showSyncModal).toBe(false)
-            expect(clientLog).toHaveBeenCalledWith('sync_sequence', { outcome: 'cancelled', count: 0 })
+            expect(clientLog).toHaveBeenCalledWith('sync_sequence', { outcome: 'cancelled', count: 1 })
         })
 
         it('a refused start-all settles as all failed', async () => {
