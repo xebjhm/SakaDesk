@@ -435,9 +435,16 @@ def test_hub_route(fav_out, no_oshi):
     otd = body["on_this_day"]
     assert otd["rule"] == "today" and otd["years_ago"] == 2  # today from the clock
     assert otd["message"]["text"] == "二年前の今日" and otd["member_path"] == MEMBER
-    assert body["counts"] == {"album": 0, "members": 1, "favorites": 1}
+    assert body["counts"] == {
+        "album": 0,
+        "members": 1,
+        "favorites": 1,
+        "voices": 0,
+        "days": 3,
+    }
     assert body["countdown"]["kind"] == "anniversary"
     assert body["countdown"]["date"] == "2027-07-24" and body["countdown"]["years"] == 3
-    assert body["same_time"] is None and body["capsule"] is None
+    assert body["capsule"] is None and body["gacha_left"] == 3
+    assert body["same_time"]["message"]["id"] in {1, 3}  # 12:00 JST, like now
     assert str(fav_out) not in r.text
     assert get("/api/memories/nope/hub").status_code == 400

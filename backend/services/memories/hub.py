@@ -3,9 +3,10 @@
 :func:`build_hub` returns::
 
     {"on_this_day": {...} | None,
-     "counts": {"album", "members", "favorites"},
+     "counts": {"album", "members", "favorites", "voices", "days"},
      "countdown": {...} | None,
-     "same_time": None, "capsule": None}
+     "same_time": {...} | None, "capsule": {...} | None,
+     "gacha_left": int | None}
 
 ``on_this_day`` -- one moment of hers, chosen by the first rule that finds
 one. ``rule`` tells the frontend which copy is true, so a ``week`` or
@@ -39,8 +40,10 @@ or ``None``. ``None`` only when the service has no non-promo message.
 
 ``counts`` -- ``album`` = pictures + videos (promo included, like the
 album), ``members`` = people with at least one fact, ``favorites`` = ★
-count (``facts.aggregate`` per person, merged in a worker). The frontend
-shows only the numbers it needs.
+count, ``voices`` = voice messages (promo included, like the album count),
+``days`` = JST dates with at least one message of anyone (``facts.aggregate``
+per person, merged in a worker). The frontend shows only the numbers it
+needs.
 
 ``countdown`` -- the soonest upcoming date (today counts, ``days_left: 0``;
 the frontend shows "today" copy, never "0") among non-graduated people's
@@ -61,8 +64,21 @@ graduation are in the room hashes). ``on_this_day`` is chosen and its text
 attached after the cache read (the On This Day facts it reads are cached
 by the memory index).
 
-Wave 4 fills ``same_time`` (同じ時刻, spec 14.3) and ``capsule``
-(時光膠囊, spec 14.4); this wave always returns ``None`` for both.
+``same_time`` -- 同じ時刻 (spec 14.3), ``same_time.same_time`` for now:
+her message at this JST time of day on an earlier date, or ``None``.
+
+``capsule`` -- 時光膠囊 (spec 14.4): the first of
+``capsule.resurfacing(month_day=today)`` (``capsule.HUB_LIMIT`` = 1), the
+fan's own note with her message of the anchor day, or ``None``.
+
+``gacha_left`` -- ``gacha.MAX_PULLS`` minus today's recorded pulls (JST day),
+never below 0. It may be 0: the frontend shows 「また明日」, never the number.
+
+``same_time``, ``capsule`` and ``gacha_left`` are read after the cache read
+and never cached (the note and the line carry text; the pulls change during
+the day). A ``sqlite3.Error`` from the fan's store makes ``capsule`` /
+``gacha_left`` ``None`` (``memories_skip``, ``view=hub``,
+``reason=store_unavailable``) instead of failing the board.
 
 Logs (ids, codes, counts and scores only): ``memories_select``
 (``view=hub_otd``, ``rule=today|week|first|photo``, ``score``,
@@ -73,22 +89,25 @@ kind, ``score`` = days left, ``person``) or ``memories_skip``
 (``view=hub_countdown``, ``reason=no_dates``; ``reason=bad_birthday`` per
 unparsable birthday; ``reason=subscription_ended`` per dropped anniversary;
 ``reason=sync_metadata_unreadable``) when the numbers are built, and ``memories_hub``
-(``rule``, ``album``, ``members``, ``favorites``, ``countdown``) per call.
+(``rule``, ``album``, ``members``, ``favorites``, ``voices``, ``days``,
+``countdown``, ``same_time`` / ``capsule`` (bools), ``gacha_left``) per call.
 """
 
 from __future__ import annotations
 
 import asyncio
 import json
+import sqlite3
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
 
 import structlog
 
-from backend.services.memories import binder, people
+from backend.services.memories import binder, capsule, people, same_time, user_store
 from backend.services.memories import index as mi
 from backend.services.memories.cards import anniversary_date, parse_birthday
+from backend.services.memories.gacha import MAX_PULLS
 from backend.services.memories.facts import (
     Fact,
     aggregate,
@@ -105,7 +124,7 @@ VIEW = "hub"
 VIEW_OTD = "hub_otd"
 VIEW_COUNTDOWN = "hub_countdown"
 # Bump on any rule or payload change of the cached part (the hash has it).
-VERSION = 2
+VERSION = 3
 SYNC_METADATA = "sync_metadata.json"
 WEEK_DAYS = 3
 # A leap and a non-leap reference year: the week's month-days of both.
@@ -125,14 +144,23 @@ def _on_year(year: int, month: int, day: int) -> date:
 
 
 def _counts(tagged: Sequence[Sequence[tuple[str, Fact]]]) -> dict:
-    """``{"album", "members", "favorites"}`` over every person. Pure; in a worker."""
-    album = members = favorites = 0
+    """``{"album", "members", "favorites", "voices", "days"}``. Pure; in a worker."""
+    album = members = favorites = voices = 0
+    days: set[date] = set()
     for person_facts in tagged:
         agg = aggregate(f for _, f in person_facts)
         album += agg.counts.get("picture", 0) + agg.counts.get("video", 0)
         members += agg.total > 0
         favorites += agg.favorites
-    return {"album": album, "members": members, "favorites": favorites}
+        voices += agg.voice_count
+        days.update(f.jst_date for _, f in person_facts)
+    return {
+        "album": album,
+        "members": members,
+        "favorites": favorites,
+        "voices": voices,
+        "days": len(days),
+    }
 
 
 def _next_birthday(raw: str | None, today: date) -> date | None:
@@ -423,12 +451,45 @@ async def _on_this_day(
 # --- hub --------------------------------------------------------------------------------
 
 
-async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
-    """The hub board for ``sdir``'s service; see the module docstring.
+async def _capsule_note(
+    service: str, sdir: Path, today: date, now: datetime
+) -> dict | None:
+    """The hub's resurfacing note, or ``None`` (none due, or the store failed)."""
+    try:
+        due = await capsule.resurfacing(
+            service, sdir, month_day=today.strftime("%m-%d"), now=now
+        )
+    except sqlite3.Error as e:
+        logger.warning(
+            "memories_skip",
+            view=VIEW,
+            reason="store_unavailable",
+            part="capsule",
+            error_type=type(e).__name__,
+        )
+        return None
+    notes = due["notes"][: capsule.HUB_LIMIT]
+    return notes[0] if notes else None
 
-    ``same_time`` and ``capsule`` are wave-4 hooks (spec 14.3 / 14.4), always
-    ``None`` here.
-    """
+
+async def _gacha_left(service: str, today: date) -> int | None:
+    """Pulls left today, or ``None`` when the store failed."""
+    try:
+        pulls = await user_store.agacha_pulls_on(service, today)
+    except sqlite3.Error as e:
+        logger.warning(
+            "memories_skip",
+            view=VIEW,
+            reason="store_unavailable",
+            part="gacha",
+            error_type=type(e).__name__,
+        )
+        return None
+    return max(0, MAX_PULLS - len(pulls))
+
+
+async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
+    """The hub board for ``sdir``'s service; see the module docstring."""
     today = now.astimezone(JST).date()
     summaries = await mi.list_members(sdir)
     oshi = await people.oshi_rooms(service, summaries)
@@ -448,22 +509,33 @@ async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
         return {"counts": counts, "countdown": countdown}
 
     numbers = await cached_view(sdir, VIEW, "all", data_hash, build)
+    # Everything below is read after the cache and never cached.
     moment = await _on_this_day(service, sdir, summaries, ordered, oshi, today)
+    line = await same_time.same_time(service, sdir, now=now)
+    note = await _capsule_note(service, sdir, today, now)
+    gacha_left = await _gacha_left(service, today)
     countdown = numbers["countdown"]
+    counts = numbers["counts"]
     logger.info(
         "memories_hub",
         rule=moment["rule"] if moment is not None else None,
-        album=numbers["counts"]["album"],
-        members=numbers["counts"]["members"],
-        favorites=numbers["counts"]["favorites"],
+        album=counts["album"],
+        members=counts["members"],
+        favorites=counts["favorites"],
+        voices=counts["voices"],
+        days=counts["days"],
         countdown=countdown["kind"] if countdown is not None else None,
+        same_time=line is not None,
+        capsule=note is not None,
+        gacha_left=gacha_left,
     )
     return {
         "on_this_day": moment,
-        "counts": numbers["counts"],
+        "counts": counts,
         "countdown": countdown,
-        "same_time": None,
-        "capsule": None,
+        "same_time": line,
+        "capsule": note,
+        "gacha_left": gacha_left,
     }
 
 

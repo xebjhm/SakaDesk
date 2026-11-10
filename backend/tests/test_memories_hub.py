@@ -10,7 +10,8 @@ import pytest
 import time_machine
 from structlog.testing import capture_logs
 
-from backend.services.memories import hub
+from backend.services import app_state
+from backend.services.memories import hub, user_store
 from backend.services.memories import index as mi
 from backend.services.memories import oshi as oshi_mod
 from backend.services.memories.view_cache import contains_text
@@ -27,6 +28,7 @@ MATSU_OTD = (
     "今日は本当に楽しかった、みんなに会えて嬉しい、ずっと応援してくれてありがとう！"
 )
 KANE_FIRST = "はじめまして、よろしくね"
+NOTE = "あの日のわたしのメモ"
 
 
 def pic(room, i, ts, fav=False):
@@ -49,6 +51,8 @@ def set_oshi(monkeypatch, names):
 @pytest.fixture
 def svc(tmp_path, monkeypatch):
     mi.set_db_path(tmp_path / "idx.db")
+    app_state.set_db_path(tmp_path / "app.db")
+    app_state.init_db()
     sdir = tmp_path / "out" / SVC_NAME
     set_oshi(monkeypatch, {"金村美玖"})
     return sdir
@@ -223,13 +227,105 @@ async def test_no_messages_gives_no_on_this_day(svc):
 async def test_counts(today_svc):
     counts = (await build(today_svc))["counts"]
     # pictures + videos (promo included); people with any fact; ★
-    assert counts == {"album": 4, "members": 2, "favorites": 3}
+    # voices (promo included); JST dates with any message, across people
+    assert counts == {
+        "album": 4,
+        "members": 2,
+        "favorites": 3,
+        "voices": 0,
+        "days": 5,
+    }
 
 
 @pytest.mark.asyncio
-async def test_wave4_hooks_are_present_and_null(today_svc):
-    payload = await build(today_svc)
+async def test_counts_voices_and_days(svc):
+    kane(
+        svc,
+        [
+            msg(1, "2024-01-01T03:00:00Z", "voice", media_duration=3.0),
+            msg(2, "2024-01-01T04:00:00Z", "voice", content=PROMO),
+            msg(3, "2024-01-01T15:30:00Z", content="00:30 JST, 01-02"),
+        ],
+    )
+    matsu(svc, [msg(1, "2024-01-01T05:00:00Z", "voice")])  # same JST date
+    counts = (await build(svc))["counts"]
+    assert counts["voices"] == 3 and counts["days"] == 2
+
+
+@pytest.mark.asyncio
+async def test_version_is_3():
+    assert hub.VERSION == 3
+
+
+@pytest.mark.asyncio
+async def test_same_time_and_capsule_are_null_when_absent(svc):
+    kane(svc, [msg(1, "2022-03-01T04:00:00Z", content=KANE_FIRST)])  # 13:00 JST
+    payload = await build(svc)
     assert payload["same_time"] is None and payload["capsule"] is None
+    assert payload["gacha_left"] == 3
+
+
+@pytest.mark.asyncio
+async def test_same_time_is_filled(today_svc):
+    line = (await build(today_svc))["same_time"]
+    # 2024-11-10 12:00 JST, the same clock as now (promo at 12:00 is skipped)
+    assert line["clock"] == "12:00" and line["date"] == "2024-11-10"
+    assert line["message"]["id"] == 3 and line["message"]["text"] == KANE_OTD
+
+
+@pytest.mark.asyncio
+async def test_capsule_is_the_first_resurfacing_note(today_svc):
+    written = datetime(2025, 11, 10, 3, 0, tzinfo=timezone.utc)
+    for body in (NOTE, "二つ目"):
+        user_store.add_note(
+            SERVICE,
+            anchor_kind="day",
+            anchor_date=datetime(2024, 11, 10).date(),
+            body=body,
+            now=written,
+        )
+    cap = (await build(today_svc))["capsule"]
+    assert cap["note"]["body"] == NOTE and cap["years_ago"] == 1
+    assert cap["message"]["text"] == KANE_OTD  # oshi first on that day
+
+
+@pytest.mark.asyncio
+async def test_gacha_left_after_a_recorded_pull(today_svc):
+    user_store.record_gacha_pull(
+        SERVICE,
+        datetime(2026, 11, 10).date(),
+        room=KANE,
+        message_id=3,
+        rarity="n",
+        reason="message",
+        now=NOW,
+        max_pulls=3,
+    )
+    assert (await build(today_svc))["gacha_left"] == 2
+    # another JST day starts full again
+    later = datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)  # 11-11 00:00 JST
+    assert (await build(today_svc, later))["gacha_left"] == 3
+
+
+@pytest.mark.asyncio
+async def test_store_failure_hides_capsule_and_gacha_left(today_svc, monkeypatch):
+    import sqlite3
+
+    def broken(*a, **k):
+        raise sqlite3.OperationalError("locked")
+
+    monkeypatch.setattr(user_store, "notes_created_on_month_day", broken)
+    monkeypatch.setattr(user_store, "gacha_pulls_on", broken)
+    with capture_logs() as logs:
+        payload = await build(today_svc)
+    assert payload["capsule"] is None and payload["gacha_left"] is None
+    assert payload["same_time"] is not None
+    reasons = [
+        e["reason"]
+        for e in logs
+        if e["event"] == "memories_skip" and e.get("view") == "hub"
+    ]
+    assert reasons == ["store_unavailable", "store_unavailable"]
 
 
 # --- countdown ------------------------------------------------------------------------
@@ -327,6 +423,13 @@ async def test_countdown_is_null_without_dates(svc):
 
 @pytest.mark.asyncio
 async def test_cache_holds_numbers_only_and_texts_come_back(today_svc):
+    user_store.add_note(
+        SERVICE,
+        anchor_kind="day",
+        anchor_date=datetime(2024, 11, 10).date(),
+        body=NOTE,
+        now=datetime(2025, 11, 10, 3, 0, tzinfo=timezone.utc),
+    )
     with capture_logs() as logs:
         first = await build(today_svc)
         second = await build(today_svc)
@@ -338,13 +441,15 @@ async def test_cache_holds_numbers_only_and_texts_come_back(today_svc):
     assert outcomes == ["miss", "hit"]
     assert first == second
     assert second["on_this_day"]["message"]["text"] == KANE_OTD
+    assert second["capsule"]["note"]["body"] == NOTE
+    assert second["same_time"]["message"]["text"] == KANE_OTD
     with contextlib.closing(mi._connect()) as c:
         (row,) = c.execute(
             "SELECT payload FROM memories_view_cache WHERE view='hub'"
         ).fetchall()
     stored = json.loads(row[0])
     assert set(stored) == {"counts", "countdown"} and not contains_text(stored)
-    assert KANE_OTD not in row[0]
+    assert KANE_OTD not in row[0] and NOTE not in row[0]
 
 
 @pytest.mark.asyncio
@@ -365,6 +470,8 @@ async def test_logs_carry_no_text_or_names(today_svc):
         assert secret not in flat
     (event,) = [e for e in logs if e["event"] == "memories_hub"]
     assert event["rule"] == "today" and event["album"] == 4
+    assert event["same_time"] is True and event["capsule"] is False
+    assert event["gacha_left"] == 3 and event["voices"] == 0 and event["days"] == 5
 
 
 # --- fix wave 1 -----------------------------------------------------------------------
@@ -472,3 +579,11 @@ async def test_countdown_unreadable_sync_metadata_drops_nothing(svc):
         countdown = (await build(svc))["countdown"]
     assert countdown["kind"] == "anniversary"
     assert any(e.get("reason") == "sync_metadata_unreadable" for e in logs)
+
+
+@pytest.mark.asyncio
+async def test_countdown_anniversary_already_passed_this_year(svc):
+    people_with(svc, sub_starts={"40": "2024-03-01"})
+    countdown = (await build(svc))["countdown"]
+    assert countdown["kind"] == "anniversary"
+    assert countdown["date"] == "2027-03-01" and countdown["years"] == 3
