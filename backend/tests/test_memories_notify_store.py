@@ -335,6 +335,7 @@ def test_resolve_notify_time_accepts_valid(value):
     ],
 )
 def test_resolve_notify_time_falls_back_with_breadcrumb(value):
+    settings_store.reset_notify_time_warnings_for_tests()
     with capture_logs() as logs:
         assert settings_store.resolve_memories_notify_time(value) == "12:00"
     ev = [e for e in logs if e["event"] == "memories_notify_time_invalid"]
@@ -437,3 +438,99 @@ def test_settings_changed_stub_logs_not_woken():
         notify_scheduler.memories_notify_settings_changed()
     ev = [e for e in logs if e["event"] == "memories_notify_wake_requested"]
     assert ev and ev[-1]["woken"] is False
+
+
+# ---------------------------------------------------------------------------
+# Task 1 review carry-overs (fixed in Task 5)
+
+
+def test_invalid_notify_time_warns_once_per_value():
+    settings_store.reset_notify_time_warnings_for_tests()
+    with capture_logs() as logs:
+        for _ in range(3):
+            settings_store.resolve_memories_notify_time("25:99")
+        settings_store.resolve_memories_notify_time([1])
+        settings_store.resolve_memories_notify_time([1])
+        settings_store.resolve_memories_notify_time("7:30")
+    ev = [e for e in logs if e["event"] == "memories_notify_time_invalid"]
+    assert [e["value_type"] for e in ev] == ["str", "list", "str"]
+
+
+def test_get_settings_invalid_time_warns_once(client, settings_env):
+    tmp_path, _ = settings_env
+    settings_store.reset_notify_time_warnings_for_tests()
+    (tmp_path / "settings.json").write_text(
+        json.dumps({"memories_notify_time": "99:99"}), encoding="utf-8"
+    )
+    with capture_logs() as logs:
+        client.get("/api/settings")
+        client.get("/api/settings")
+    assert len([e for e in logs if e["event"] == "memories_notify_time_invalid"]) == 1
+
+
+def test_enabling_cards_clears_baselines_before_saving(
+    client, settings_env, monkeypatch
+):
+    tmp_path, calls = settings_env
+    seen: list[object] = []
+    real = app_state.clear_card_baselines
+
+    def spy() -> int:
+        path = tmp_path / "settings.json"
+        saved = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+        seen.append(saved.get("memories_notify_cards", False))
+        return real()
+
+    monkeypatch.setattr(app_state, "clear_card_baselines", spy)
+    r = client.post("/api/settings", json={"memories_notify_cards": True})
+    assert r.status_code == 200
+    assert seen == [False]  # cleared while the stored toggle was still off
+    assert calls == [1]
+
+
+def test_cards_clear_failure_is_a_clean_error_and_saves_nothing(
+    client, settings_env, monkeypatch
+):
+    tmp_path, calls = settings_env
+
+    def boom() -> int:
+        raise sqlite3.OperationalError("locked")
+
+    monkeypatch.setattr(app_state, "clear_card_baselines", boom)
+    with capture_logs() as logs:
+        r = client.post(
+            "/api/settings",
+            json={"memories_notify_cards": True, "close_to_tray": False},
+        )
+    assert r.status_code == 503
+    assert r.json()["detail"] == "memories_cards_reset_failed"
+    path = tmp_path / "settings.json"
+    saved = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
+    assert not saved.get("memories_notify_cards", False)
+    assert saved.get("close_to_tray", True) is True
+    ev = [e for e in logs if e["event"] == "memories_notify_cards_enabled_failed"]
+    assert ev and ev[-1]["error_type"] == "OperationalError"
+    assert calls == []
+    assert client.get("/api/settings").json()["memories_notify_cards"] is False
+
+
+def test_concurrent_claims_of_one_occasion_yield_one_true(fresh):
+    from concurrent.futures import ThreadPoolExecutor
+
+    key = ("on_this_day", "*", "", "2026-11-10")
+    for attempt in range(5):
+        k = (*key[:3], f"{key[3]}#{attempt}")
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(
+                pool.map(lambda _: app_state.claim_memory_notification(*k), range(8))
+            )
+        assert results.count(True) == 1
+
+
+@pytest.mark.asyncio
+async def test_concurrent_async_claims_yield_one_true(fresh):
+    key = ("birthday", "hinatazaka46", "58", "2026-09-10")
+    results = await asyncio.gather(
+        *(app_state.aclaim_memory_notification(*key) for _ in range(6))
+    )
+    assert results.count(True) == 1

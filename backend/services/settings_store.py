@@ -67,21 +67,35 @@ MEMORIES_NOTIFY_TIME_DEFAULT = "12:00"
 MEMORIES_NOTIFY_TIME_RE = re.compile(r"\A([01][0-9]|2[0-3]):[0-5][0-9]\Z")
 
 
+# Invalid stored times already warned about (``repr``, kept in memory only and
+# never logged), so a hand-edited value warns once, not on every read.
+_warned_notify_times: set[str] = set()
+
+
 def resolve_memories_notify_time(value: Any) -> str:
     """The stored ``memories_notify_time`` if valid, else ``"12:00"``.
 
     settings.json can be hand-edited, so the read side validates too. An
     invalid value logs ``memories_notify_time_invalid`` with its type only
-    (never the value) and falls back to the default.
+    (never the value), once per distinct value per process, and falls back
+    to the default.
     """
     if isinstance(value, str) and MEMORIES_NOTIFY_TIME_RE.match(value):
         return value
-    logger.warning(
-        "memories_notify_time_invalid",
-        value_type=type(value).__name__,
-        fallback=MEMORIES_NOTIFY_TIME_DEFAULT,
-    )
+    seen = f"{type(value).__name__}:{value!r}"
+    if seen not in _warned_notify_times:
+        _warned_notify_times.add(seen)
+        logger.warning(
+            "memories_notify_time_invalid",
+            value_type=type(value).__name__,
+            fallback=MEMORIES_NOTIFY_TIME_DEFAULT,
+        )
     return MEMORIES_NOTIFY_TIME_DEFAULT
+
+
+def reset_notify_time_warnings_for_tests() -> None:
+    """Test-only: forget which invalid times were already warned about."""
+    _warned_notify_times.clear()
 
 
 def _read_file(path: Path) -> dict:
