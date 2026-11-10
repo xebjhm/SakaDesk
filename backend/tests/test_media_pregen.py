@@ -628,28 +628,53 @@ async def test_foreground_backoff_pauses_for_idle_after_s(h):
 
 
 @pytest.mark.asyncio
-async def test_budget_full_stops_adding_and_logs_once(h, monkeypatch):
-    h.phases[HINATA] = [Phase("messages", [_item(h.root, "a.jpg")])]
+async def test_budget_full_stops_adding_variants_but_keeps_working(h, monkeypatch):
+    """At the fill line the worker never pauses: it runs on with no new variants
+    (placeholders, posters and hints still get made) and logs the change once."""
+    h.phases[HINATA] = [
+        Phase("messages", [_item(h.root, "a.jpg"), _item(h.root, "b.mp4")])
+    ]
     photo_thumb.cache_state_add(photo_thumb.cache_dir(), 900, 10**12)
     monkeypatch.setattr(photo_thumb, "CACHE_CAP_BYTES", 1000)
-    polls: list[int] = []
-
-    def on_sleep(s):
-        if s == media_pregen.POLL_PAUSED_S:
-            polls.append(len(h.processed))
-            if len(polls) == 4:
-                monkeypatch.setattr(photo_thumb, "CACHE_CAP_BYTES", 10**12)
-
-    h.on_sleep = on_sleep
+    seen: list[tuple[str, tuple[int, ...]]] = []
+    h.on_process = lambda item: seen.append((item.path.name, item.widths))
     p = h.make(is_busy=None)
     with capture_logs() as logs:
         p.start()
         await _idle(p)
+        # an eviction (or a clear) brings the cache back under the line
+        monkeypatch.setattr(photo_thumb, "CACHE_CAP_BYTES", 10**12)
+        p.hint(HINATA, ["日向坂46/c.jpg"])
+        await asyncio.sleep(0)
+        await _idle(p)
         await p.stop()
-    assert polls == [0, 0, 0, 0]
-    paused = [e for e in _events(logs, "media_pregen_pause") if e["state"] == "paused"]
-    assert [e["reason"] for e in paused] == ["budget_full"]
-    assert h.processed == ["a.jpg"]
+    assert seen == [("a.jpg", ()), ("b.mp4", ()), ("c.jpg", photo_thumb.PREGEN_WIDTHS)]
+    assert _events(logs, "media_pregen_pause") == []
+    assert [e["state"] for e in _events(logs, "media_pregen_budget")] == ["full", "ok"]
+
+
+def test_widthless_items_make_only_the_placeholder(out):
+    """What a full-budget batch does to a picture: a placeholder, no variant."""
+    pic = _jpeg(_room(out) / "picture" / "1.jpg")
+    res = media_pregen.default_process(Item(out, pic, "picture", ()))
+    assert (res.outcome, res.bytes) == ("done", 0)
+    assert not photo_thumb.cache_dir().exists() or not list(
+        photo_thumb.cache_dir().glob("*.webp")
+    )
+    rel = _rel(out, pic)
+    assert media_meta.get_many([rel])[rel].status == "ready"
+    with patch.object(photo_thumb.Image, "open", side_effect=AssertionError):
+        assert media_pregen.default_process(Item(out, pic, "picture", ())).outcome == (
+            "skipped"
+        )
+
+
+def test_status_reports_a_full_thumbnail_cache(env, monkeypatch):
+    photo_thumb.cache_state_add(photo_thumb.cache_dir(), 900, 10**12)
+    monkeypatch.setattr(photo_thumb, "CACHE_CAP_BYTES", 1000)
+    assert media_pregen.status()["thumbs_full"] is True
+    monkeypatch.setattr(photo_thumb, "CACHE_CAP_BYTES", 10**12)
+    assert media_pregen.status()["thumbs_full"] is False
 
 
 # --- duty cycle -----------------------------------------------------------------------
@@ -971,19 +996,19 @@ def test_a_client_poster_completes_the_video(out):
     assert again.outcome == "skipped"
 
 
-def test_a_corrupt_poster_is_a_failed_video(out):
+def test_a_corrupt_poster_is_dropped_and_the_video_waits(out):
     v = _video(_room(out) / "video" / "1.mp4")
     rel = _rel(out, v)
     st = v.stat()
     posters = video_poster.poster_dir()
     posters.mkdir(parents=True)
-    (posters / video_poster.poster_name(rel, st.st_size, st.st_mtime_ns)).write_bytes(
-        b"not a webp"
-    )
+    bad = posters / video_poster.poster_name(rel, st.st_size, st.st_mtime_ns)
+    bad.write_bytes(b"not a webp")
     res = media_pregen.default_process(Item(out, v, "video", (160,)))
-    assert res.outcome == "failed"
+    assert (res.outcome, res.rel) == ("waiting", rel)
+    assert not bad.exists()  # a client capture or a Shell retry can replace it
     row = media_meta.get_many([rel])[rel]
-    assert row.status == "failed" and row.reason == "unreadable"
+    assert row.poster == "none" and row.reason == media_meta.NO_PLACEHOLDER
 
 
 def test_a_picture_is_skipped_with_no_decode_once_complete(out):
@@ -1112,15 +1137,16 @@ async def test_after_a_pass_the_route_is_a_cache_hit(out):
         await _idle(p)
         await p.stop()
     _no_paths(logs, out)
-    url = f"/api/content/thumb/{HINATA}/{ROOM}/picture/1.jpg?w=320"
-    with capture_logs() as logs:
-        r = await asyncio.to_thread(TestClient(app).get, url)
-    assert r.status_code == 200
-    assert {"event": "photo_thumb_cache", "outcome": "hit", "width": 320} in [
-        {k: e[k] for k in ("event", "outcome", "width") if k in e}
-        for e in logs
-        if e["event"] == "photo_thumb_cache"
-    ]
+    base = f"/api/content/thumb/{HINATA}/{ROOM}/picture/1.jpg?w="
+    outcomes = []
+    for width in (480, 320, 160):
+        with capture_logs() as logs:
+            r = await asyncio.to_thread(TestClient(app).get, f"{base}{width}")
+        assert r.status_code == 200
+        [cache] = [e for e in logs if e["event"] == "photo_thumb_cache"]
+        outcomes.append((cache["width"], cache["outcome"]))
+    # the pre-generated 480 is a hit; 320 / 160 derive from it (no source decode)
+    assert outcomes == [(480, "hit"), (320, "derived"), (160, "derived")]
 
 
 # --- clearing the caches --------------------------------------------------------------
@@ -1294,20 +1320,30 @@ async def test_shutdown_before_a_hint_batch_ends_the_task(h):
 
 
 @pytest.mark.asyncio
-async def test_an_unexpected_error_is_logged_and_the_task_ends(h):
-    async def boom(service, root):
-        raise RuntimeError("x")
+async def test_an_unexpected_error_is_logged_and_the_worker_carries_on(h):
+    calls: list[str] = []
 
-    p = h.make(enumerate_fn=boom)
+    async def flaky(service, root):
+        calls.append(service)
+        if len(calls) == 1:
+            raise RuntimeError("x")
+        return [Phase("messages", [_item(h.root, "a.jpg")])]
+
+    p = h.make(enumerate_fn=flaky)
     with capture_logs() as logs:
         p.start()
-        await asyncio.wait_for(p._task, 5)
+        await _idle(p)
+        assert p.status_snapshot()["state"] == "idle"
+        p.request(HINATA)
+        await asyncio.sleep(0)
+        await _idle(p)
+        await p.stop()
     assert {
         "event": "media_pregen_failed",
         "error_type": "RuntimeError",
         "log_level": "warning",
     } in logs
-    assert p.status_snapshot()["state"] == "stopped"
+    assert h.processed == ["a.jpg"]
 
 
 @pytest.mark.asyncio
@@ -1362,3 +1398,199 @@ def test_a_variant_evicted_at_once_counts_no_bytes(out, tmp_path):
     assert (res.outcome, res.bytes) == ("done", 0)
     row = media_meta.get_many([_rel(out, pic)])[_rel(out, pic)]
     assert (row.rgb, row.width, row.height) == (0x010203, 8, 6)
+
+
+# --- fix round 1 ----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_clearing_mid_pass_keeps_the_worker_alive_and_it_finishes(h, env):
+    """Critical 1: clear() during a pass dropped the progress entry -> KeyError."""
+    items = [_item(h.root, f"{i:02d}.jpg") for i in range(40)]
+    h.phases[HINATA] = [Phase("messages", items)]
+    cleared: list[int] = []
+
+    clearing: list[asyncio.Task] = []
+
+    def on_sleep(s):
+        # the first duty sleep (after batch 1): clear the caches mid-pass
+        if s == media_pregen.PREGEN_MIN_PAUSE_S and not cleared:
+            cleared.append(len(h.processed))
+            clearing.append(asyncio.get_running_loop().create_task(p.clear()))
+
+    h.on_sleep = on_sleep
+    p = h.make()
+    with capture_logs() as logs:
+        p.start()
+        while not clearing:
+            await asyncio.sleep(0)
+        await asyncio.wait_for(clearing[0], 5)
+        await _idle(p)
+        snapshot = p.status_snapshot()
+        await p.stop()
+    assert cleared == [8]
+    assert _events(logs, "media_pregen_failed") == []
+    assert _events(logs, "media_pregen_cache_cleared")
+    # the stale pass was dropped after its batch; the re-requested pass ran in full
+    assert h.processed[:8] == [f"{i:02d}.jpg" for i in range(8)]
+    assert h.processed[-40:] == [i.path.name for i in items]
+    assert snapshot["state"] == "idle"
+    assert snapshot["services"] == {HINATA: {"done": 40, "total": 40}}
+
+
+@pytest.mark.asyncio
+async def test_clearing_abandons_the_batch_in_flight(h, env):
+    h.phases[HINATA] = [
+        Phase("messages", [_item(h.root, f"{i}.jpg") for i in range(4)])
+    ]
+    gate = threading.Event()
+    entered = threading.Event()
+
+    def block_first(item):
+        if item.path.name == "0.jpg" and not entered.is_set():
+            entered.set()
+            gate.wait(5)
+
+    h.on_process = block_first
+    p = h.make()
+    p.start()
+    await asyncio.wait_for(asyncio.to_thread(entered.wait, 5), 6)
+    clearing = asyncio.ensure_future(p.clear())
+    await asyncio.wait_for(asyncio.shield(clearing), 2)  # never waits for the batch
+    gate.set()
+    await _idle(p)
+    await p.stop()
+    # the abandoned batch stopped after its current file; the new pass did all four
+    assert h.processed == ["0.jpg", "0.jpg", "1.jpg", "2.jpg", "3.jpg"]
+
+
+@pytest.mark.asyncio
+async def test_enumeration_never_runs_on_the_event_loop(out):
+    """Critical 2: building the phases (CPU-bound on a large service) runs in a thread."""
+    from backend.services.memories import album
+    from backend.services.memories import index as memory_index
+
+    loop_thread = threading.get_ident()
+    threads: dict[str, int] = {}
+    real_phases = media_pregen._phases
+    real_rows = memory_index.media_rows
+
+    def phases(*args):
+        threads["phases"] = threading.get_ident()
+        return real_phases(*args)
+
+    def rows(sdir):
+        threads["rows"] = threading.get_ident()
+        return [_media_row("a", "a/p/1.jpg", "picture", "2026-01-01T00:00:00+00:00")]
+
+    async def warm(service, s):
+        return None
+
+    async def months(*a, **kw):
+        return {
+            "months": [{"cover": {"media_file": f"a/p/c{i}.jpg"}} for i in range(200)]
+        }
+
+    with (
+        patch.object(media_pregen, "_phases", side_effect=phases),
+        patch.object(memory_index, "media_rows", side_effect=rows),
+        patch.object(album, "warm_album", side_effect=warm),
+        patch.object(album, "album_months", side_effect=months),
+    ):
+        result = await media_pregen.default_enumerate(HINATA, out)
+    assert real_rows is not None
+    assert threads["phases"] != loop_thread and threads["rows"] != loop_thread
+    assert len(result[0].items) == 201
+
+
+def test_covers_deduplicate_against_phase_1_in_linear_time(out):
+    """14k rows and 110 covers took ~2.8 s with the old any() scan."""
+    sdir = out / "日向坂46"
+    rows = [
+        _media_row(
+            f"r{i % 40}", f"r{i % 40}/p/{i}.jpg", "picture", "2026-09-01T00:00:00+00:00"
+        )
+        for i in range(14_000)
+    ]
+    covers = [f"r{i % 40}/p/{i}.jpg" for i in range(110)]
+    t0 = time.perf_counter()
+    phases = media_pregen._phases(out, sdir, rows, covers)
+    assert time.perf_counter() - t0 < 1.5
+    assert len(phases[0].items) == 14_000  # covers already in phase 1: no duplicates
+
+
+@pytest.mark.asyncio
+async def test_a_hinted_starred_item_keeps_its_640(h):
+    h.root.mkdir(parents=True)
+    star = Item(h.root, h.root / "日向坂46" / "s.jpg", "picture", (480, 640))
+    h.phases[HINATA] = [Phase("favorites", [star])]
+    seen: list[tuple[str, tuple[int, ...]]] = []
+    h.on_process = lambda item: seen.append((item.path.name, item.widths))
+    p = h.make()
+    p.start()
+    await _idle(p)
+    p.hint(HINATA, ["日向坂46/s.jpg", "日向坂46/plain.jpg"])
+    await asyncio.sleep(0)
+    await _idle(p)
+    await p.stop()
+    assert seen[1:] == [("s.jpg", (480, 640)), ("plain.jpg", (480,))]
+
+
+def test_large_rels_skip_items_outside_their_root(tmp_path):
+    inside = Item(tmp_path, tmp_path / "a" / "1.jpg", "picture", (480, 640))
+    outside = Item(tmp_path / "x", tmp_path / "b.jpg", "picture", (480, 640))
+    plain = Item(tmp_path, tmp_path / "c.jpg", "picture", (480,))
+    assert media_pregen._large_rels([Phase("p", [inside, outside, plain])]) == {
+        "a/1.jpg"
+    }
+
+
+@pytest.mark.asyncio
+async def test_a_hung_picture_batch_leaves_the_shell_on(h, monkeypatch):
+    monkeypatch.setattr(video_poster, "SHELL_TIMEOUT_S", 0.05)
+    monkeypatch.setattr(media_pregen, "WATCHDOG_GRACE_S", 0.0)
+    h.phases[HINATA] = [
+        Phase("messages", [_item(h.root, "a.jpg"), _item(h.root, "b.jpg")])
+    ]
+    hang = threading.Event()
+    h.on_process = lambda item: hang.wait(10) if item.path.name == "a.jpg" else None
+    p = h.make()
+    try:
+        with capture_logs() as logs:
+            p.start()
+            await _idle(p)
+            await p.stop()
+    finally:
+        hang.set()
+    assert video_poster.shell_state()["off"] is False
+    assert [e["reason"] for e in _events(logs, "media_pregen_pause")] == ["batch_hung"]
+
+
+@pytest.mark.asyncio
+async def test_the_caches_are_measured_after_the_startup_delay(h):
+    order: list[str] = []
+    h.on_sleep = lambda s: order.append(f"sleep:{s}")
+    real = photo_thumb.cache_total
+
+    def measured(root, *, measure=True):
+        if measure:
+            order.append("measure")
+        return real(root, measure=measure)
+
+    with patch.object(photo_thumb, "cache_total", side_effect=measured):
+        p = h.make()
+        p.start()
+        await _idle(p)
+        await p.stop()
+    assert order[:3] == [f"sleep:{media_pregen.STARTUP_DELAY_S}", "measure", "measure"]
+
+
+@pytest.mark.asyncio
+async def test_wait_idle_returns_when_the_task_ended_with_work_queued(h):
+    p = h.make()
+    h.busy = "shutdown"
+    p.start()
+    await asyncio.wait_for(p._task, 5)
+    p.hint(HINATA, ["日向坂46/a.jpg"])
+    assert p.pending_hints() == 1
+    await asyncio.wait_for(p.wait_idle(), 2)

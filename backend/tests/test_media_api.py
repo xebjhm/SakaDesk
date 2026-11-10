@@ -365,6 +365,7 @@ def test_status_shape(caches):
     assert r.status_code == 200
     body = r.json()
     assert body["state"] == "stopped" and body["paused_reason"] is None
+    assert body["thumbs_full"] is False
     assert body["services"] == {}
     assert body["posters"] == {
         "ready": 1,

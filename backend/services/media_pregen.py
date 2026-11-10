@@ -32,7 +32,10 @@ video posters with the Windows Shell (``video_poster.generate_shell``).
   thumbnail cache passed :data:`PREGEN_FILL_RATIO` of its cap, so on-demand
   misses and toasts keep headroom and the worker never evicts what it just
   made). It is checked before every batch; the batch in flight always
-  finishes. While paused the task polls every :data:`POLL_PAUSED_S`. Each
+  finishes. ``budget_full`` alone does **not** pause: batches then run
+  with no new variants, so hints, placeholders and Shell posters (their own
+  cache) still get made. An eviction trims to ``photo_thumb.CACHE_LOW_WATER``
+  (0.75), below the fill line, so the worker adds again afterwards. While paused the task polls every :data:`POLL_PAUSED_S`. Each
   pause and each resume logs ``media_pregen_pause`` once (``state``,
   ``reason``, ``paused_ms``), never every poll.
 - **Shutdown:** the thread checks ``shutdown_state.shutdown_event()`` before
@@ -46,12 +49,17 @@ video posters with the Windows Shell (``video_poster.generate_shell``).
   Shell off for the session (``video_poster.disable_shell``), abandons that
   thread and starts a fresh one. ``generate_shell``'s own hang guard trips
   first for a single Shell hang (the grace keeps the two apart); the
-  worker then logs ``shell_hung`` too, once.
+  worker then logs ``shell_hung`` too, once. A hung batch of pictures only
+  logs ``reason=batch_hung`` and leaves the Shell on.
+- **Clearing** (:func:`clear_caches`) is safe at any point: the pass in
+  flight is dropped, the batch in flight is abandoned after its current
+  file, and every service is passed over again.
 
 **What it makes, in order.** At startup it runs
 ``media_meta.recover_pending`` (a ``pending`` poster means the process died
 inside the Shell: that video becomes ``shell_crash_suspect`` and never goes
-to the Shell again), waits :data:`STARTUP_DELAY_S`, then makes one full pass
+to the Shell again), waits :data:`STARTUP_DELAY_S`, measures both caches,
+then makes one full pass
 over every service. Afterwards it runs only on :func:`request` (a finished
 sync's index build, a finished blog backup) or :func:`hint`. A pass takes
 the services in ``sync_coordinator.order_services`` order, the requested
@@ -61,7 +69,8 @@ ones first, and per service runs (:func:`default_enumerate`):
    ``album.album_months`` (a cache hit) for every month's cover, which joins
    phase 1 with the 640 px width.
 1. ``newest``: message media within :data:`NEWEST_DAYS` of the newest item
-   of its room, newest first, at ``photo_thumb.PREGEN_WIDTHS``.
+   of its room, newest first, at ``photo_thumb.PREGEN_WIDTHS`` (480 px; the
+   route derives 320 / 160 from it on demand).
 2. ``favorites``: the other ★ items, with ``photo_thumb.LARGE_WIDTH`` too.
 3. ``messages``: every other message media, newest first.
 4. ``blogs``: the cached blog images (Task M7; until then a logged no-op,
@@ -69,7 +78,7 @@ ones first, and per service runs (:func:`default_enumerate`):
 
 Hinted files (``media_meta`` hints missing and stale rows of a meta batch)
 jump the queue at every batch boundary, deduplicated and capped at
-:data:`HINTS_MAX`. A video that can only wait for a client capture is not
+:data:`HINTS_MAX`; a hinted ★ item or cover keeps its 640 width. A video that can only wait for a client capture is not
 re-queued from hints for :data:`HINT_COOLDOWN_S`.
 
 **Per file** (:func:`default_process`, on the thread): one stat; a file
@@ -79,7 +88,9 @@ width plus the placeholder). A video needs a poster first: an existing one,
 else the Shell (not for a Shell-failed or crash-suspect version; a ``none``
 row is retried), else the row is set to ``poster='none'`` and the video
 waits for a client capture. Its variants are rendered from the poster but
-keyed by the **video's** stat (``make_set(..., key_stat=)``). A failed row
+keyed by the **video's** stat (``make_set(..., key_stat=)``); a poster file
+that cannot be decoded is deleted and the poster set to ``none``.
+Enumeration (the media rows and the phase lists) runs in worker threads. A failed row
 always carries a ``reason``; a transient failure (``unavailable``) stores
 nothing, so a later pass retries it.
 
@@ -87,7 +98,8 @@ Nothing is ever written to the archive. Logs carry ids, codes and counts
 only, never a path, ``rel`` or name: ``media_pregen_state`` (``state``),
 ``media_pregen_pass`` (``service``, ``phase``, ``queued``, ``done``,
 ``skipped``, ``failed``, ``waiting``, ``bytes``, ``elapsed_ms``, ``reason``),
-``media_pregen_pause``, ``media_pregen_item_failed`` (debug: ``kind``,
+``media_pregen_pause``, ``media_pregen_budget`` (``state=full|ok``),
+``media_pregen_item_failed`` (debug: ``kind``,
 ``reason``, ``error_type``), ``media_pregen_warm_failed``,
 ``media_pregen_recovered`` (``count``), ``media_pregen_cache_cleared``
 (``freed_bytes``, ``count``), ``media_pregen_failed`` and
@@ -104,7 +116,7 @@ import threading
 import time
 from collections import Counter
 from collections.abc import Awaitable, Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -260,7 +272,11 @@ _OLDEST = datetime.min.replace(tzinfo=timezone.utc)
 def _phases(
     root: Path, sdir: Path, rows: Sequence[MediaRow], covers: Sequence[str]
 ) -> list[Phase]:
-    """Phases 1-4 from the media rows and the album covers. Pure (no IO)."""
+    """Phases 1-4 from the media rows and the album covers.
+
+    Pure (no IO) but CPU-bound on a large service (~14k rows): run it in a
+    worker thread, never on the event loop (:func:`default_enumerate`).
+    """
     base = photo_thumb.PREGEN_WIDTHS
     big = base + (photo_thumb.LARGE_WIDTH,)
     stamped = [(r, _parse_ts(r.ts_utc)) for r in rows]
@@ -292,11 +308,12 @@ def _phases(
             continue  # joins phase 1 below, with the covers
         else:
             rest.append((key, item))
+    in_newest = {i.path for _, i in newest}  # a set: O(1) per cover
     cover_items = [
         Item(root, sdir / c, kind, big)
         for c in dict.fromkeys(_norm(c) for c in covers)
         if (kind := media_meta.kind_of(sdir / c)) is not None
-        and not any(i.path == sdir / c for _, i in newest)
+        and sdir / c not in in_newest
     ]
 
     def ordered(pairs: list[tuple[datetime, Item]]) -> list[Item]:
@@ -340,8 +357,10 @@ async def _album_covers(service: str, sdir: Path) -> list[str]:
 async def default_enumerate(service: str, root: Path) -> list[Phase]:
     """The phases of one service's pass (see the module); ``[]`` with no media.
 
-    The media rows come from the memory index (``index.media_rows``, in a
-    worker thread); phase 0 runs only when the service has media.
+    The media rows come from the memory index (``index.media_rows``) and the
+    phases are built (:func:`_phases`), both in a worker thread: only phase 0
+    (cached album views, as the album API runs them) runs on the loop, and
+    only when the service has media.
     """
     from backend.services.memories import index as memory_index
     from backend.services.memories import people
@@ -354,7 +373,7 @@ async def default_enumerate(service: str, root: Path) -> list[Phase]:
     if not rows:
         return []
     covers = await _album_covers(service, sdir)
-    return _phases(root, sdir, rows, covers)
+    return await asyncio.to_thread(_phases, root, sdir, rows, covers)
 
 
 # --- processing one file (blocking, on the worker thread) --------------------------------
@@ -475,6 +494,14 @@ def _process(item: Item, rel: str, st: os.stat_result) -> ItemResult:
         need_placeholder=not fresh,
         key_stat=stat,  # keyed by the video, not the poster
     )
+    if res.reason in _TERMINAL_REASONS:
+        # A broken poster file (our own cache): drop it and mark the poster
+        # ``none``, so a Shell retry or a client capture can replace it. The
+        # video is not marked failed: the video itself was never decoded.
+        poster.unlink(missing_ok=True)
+        media_meta.set_poster(rel, key, "none", "shell")
+        _item_failed(item.kind, "bad_poster")
+        return ItemResult("waiting", rel=rel)
     return _record(item, rel, res)
 
 
@@ -577,6 +604,28 @@ class _Worker:
 # --- the scheduler -----------------------------------------------------------------------
 
 
+class _PassAborted(Exception):
+    """The caches were cleared while a pass ran: drop it (the passes are re-requested)."""
+
+
+def _large_rels(phases: Sequence[Phase]) -> set[str]:
+    """Rels (output-relative, POSIX) of the items that get the 640 width. Blocking-ish (CPU).
+
+    Lets a hinted ★ item or cover keep its 640 variant. Computed from the
+    unresolved paths, which equal the ``archive_rel`` keys unless a symlink
+    sits in between (then the hint just gets the default width).
+    """
+    out: set[str] = set()
+    for phase in phases:
+        for item in phase.items:
+            if photo_thumb.LARGE_WIDTH in item.widths:
+                try:
+                    out.add(item.path.relative_to(item.root).as_posix())
+                except ValueError:
+                    continue
+    return out
+
+
 def _log_pass(
     service: str,
     phase: str,
@@ -647,7 +696,6 @@ class MediaPregen:
         # bound to the loop on first use (Python 3.10+)
         self._wake = asyncio.Event()
         self._idle = asyncio.Event()
-        self._batch_lock = asyncio.Lock()
         self._task: asyncio.Task[None] | None = None
         self._worker: _Worker | None = None
         self._root: Path | None = None
@@ -657,6 +705,10 @@ class MediaPregen:
         self._paused_reason: str | None = None
         self._paused_at = 0.0
         self._shell_off_seen = False
+        self._thumbs_full = False
+        self._generation = 0  # bumped by clear(): the pass in flight is dropped
+        self._turn_generation = 0
+        self._large: dict[str, set[str]] = {}  # service -> rels of ★ / cover items
 
     # --- public ---------------------------------------------------------------------
 
@@ -751,22 +803,28 @@ class MediaPregen:
         }
 
     async def wait_idle(self) -> None:
-        """Return once the worker is idle with nothing queued (tests, diagnostics)."""
+        """Return once the worker is idle with nothing queued, or its task ended (tests)."""
         while True:
             await self._idle.wait()
-            if not self._has_work():
+            if not self._has_work() or self._task is None or self._task.done():
                 return
             await asyncio.sleep(0)
 
     async def clear(self) -> int:
-        """Pause between batches, delete both caches and the meta rows, then pass again.
+        """Delete both caches and the meta rows at any point, then pass over everything again.
 
-        Returns the bytes freed (see :func:`clear_caches`).
+        Safe mid-pass: the pass in flight is dropped (a generation counter),
+        and the batch in flight is abandoned, so it stops after its current
+        file instead of being waited for. The requested passes then start
+        from scratch. Returns the bytes freed (see :func:`clear_caches`).
         """
         if self._task is None:
             return await asyncio.to_thread(_clear_files)
-        async with self._batch_lock:
-            freed = await asyncio.to_thread(_clear_files)
+        self._generation += 1
+        worker, self._worker = self._worker, None
+        if worker is not None:
+            worker.abandon()
+        freed = await asyncio.to_thread(_clear_files)
         with self._lock:
             self._progress.clear()
             self._cooldown.clear()
@@ -806,28 +864,48 @@ class MediaPregen:
                     self._cooldown.pop(next(iter(self._cooldown)))
             self._cooldown[rel] = now
 
-    def _prepare(self) -> None:
-        """Startup, blocking: crash recovery, then measure both caches once."""
+    def _recover(self) -> None:
+        """Startup, blocking: Shell crash recovery (one UPDATE)."""
         recovered = media_meta.recover_pending()
         if recovered:
             logger.info("media_pregen_recovered", count=recovered)
+
+    def _measure(self) -> None:
+        """Measure both caches once (a directory scan), after the startup delay."""
         photo_thumb.cache_total(photo_thumb.cache_dir())
         photo_thumb.cache_total(video_poster.poster_dir())
 
+    async def _turn(self) -> bool | None:
+        """One unit of work: ``True`` again, ``False`` stop, ``None`` nothing to do.
+
+        A :meth:`clear` during the turn makes every later batch of it raise
+        :class:`_PassAborted` (``_turn_generation`` no longer matches).
+        """
+        self._turn_generation = self._generation
+        services = self._take_services()
+        if services:
+            return await self._run_pass(services)
+        if self._has_work():
+            return await self._step([])
+        return None
+
     async def _main(self) -> None:
         try:
-            await asyncio.to_thread(self._prepare)
+            await asyncio.to_thread(self._recover)
             await self._sleep(STARTUP_DELAY_S)
+            await asyncio.to_thread(self._measure)
             while not self._stopping and not shutdown_state.is_shutting_down():
                 self._wake.clear()
-                services = self._take_services()
-                if services:
-                    if not await self._run_pass(services):
-                        break
+                try:
+                    outcome = await self._turn()
+                except _PassAborted:  # the caches were cleared: start over
                     continue
-                if self._has_work():
-                    if not await self._step([]):
-                        break
+                except Exception as e:  # noqa: BLE001 - logged; the worker carries on
+                    logger.warning("media_pregen_failed", error_type=type(e).__name__)
+                    continue
+                if outcome is False:
+                    break
+                if outcome:
                     continue
                 self._set_state("idle")
                 self._idle.set()
@@ -835,8 +913,6 @@ class MediaPregen:
                 self._idle.clear()
                 self._root = None  # re-read the output dir after a quiet spell
                 self._set_state("running")
-        except Exception as e:  # noqa: BLE001 - logged; the app runs on without it
-            logger.warning("media_pregen_failed", error_type=type(e).__name__)
         finally:
             if not self._stopping:  # stop() logs its own (with ``abandoned``)
                 self._set_state("stopped")
@@ -853,14 +929,24 @@ class MediaPregen:
         return first
 
     async def _ready(self) -> bool:
-        """Wait while the pause predicate holds; ``False`` when the worker must stop."""
+        """Wait while the pause predicate holds; ``False`` when the worker must stop.
+
+        ``budget_full`` does not pause: the thumbnail cache is at its fill
+        line, so batches run without new variants (placeholders and Shell
+        posters only; :meth:`_run_batch`). It is logged once per change
+        (``media_pregen_budget state=full|ok``).
+        """
         while True:
             if self._stopping or shutdown_state.is_shutting_down():
                 return False
             reason = self._is_busy()
             if reason == "shutdown":
                 return False
-            if reason is None:
+            full = reason == "budget_full"
+            if full or reason is None:
+                if full != self._thumbs_full:
+                    self._thumbs_full = full
+                    logger.info("media_pregen_budget", state="full" if full else "ok")
                 if self._paused_reason is not None:
                     logger.info(
                         "media_pregen_pause",
@@ -893,7 +979,9 @@ class MediaPregen:
             self._root = None
             root = await self._root_dir()
             phases = await self._enumerate(service, root)
+            large = await asyncio.to_thread(_large_rels, phases)
             with self._lock:
+                self._large[service] = large
                 self._progress[service] = [0, sum(len(p.items) for p in phases)]
             for phase in phases:
                 if not await self._run_phase(service, phase):
@@ -914,15 +1002,17 @@ class MediaPregen:
         return True
 
     def _take_hints(self, root: Path) -> list[Item]:
+        big = photo_thumb.PREGEN_WIDTHS + (photo_thumb.LARGE_WIDTH,)
         with self._lock:
             rels = list(itertools.islice(self._hints, PREGEN_BATCH))
-            for rel in rels:
-                del self._hints[rel]
+            taken = [(rel, self._hints.pop(rel)) for rel in rels]
+            large = {r for r, svc in taken if r in self._large.get(svc, ())}
         items = []
-        for rel in rels:
+        for rel, _ in taken:
             kind = media_meta.kind_of(Path(PurePosixPath(rel).name))
             if kind is not None:  # checked in hint(); kept for the type
-                items.append(Item(root, root / rel, kind, photo_thumb.PREGEN_WIDTHS))
+                widths = big if rel in large else photo_thumb.PREGEN_WIDTHS
+                items.append(Item(root, root / rel, kind, widths))
         return items
 
     async def _step(
@@ -945,10 +1035,15 @@ class MediaPregen:
     ) -> bool:
         if not await self._ready():
             return False
-        async with self._batch_lock:
-            started = self._clock()
-            results = await self._execute(batch)
-            work = self._clock() - started
+        if self._turn_generation != self._generation:
+            raise _PassAborted  # cleared since this pass began: it is stale
+        if self._thumbs_full:  # at the fill line: placeholders and posters only
+            batch = [replace(i, widths=()) for i in batch]
+        started = self._clock()
+        results = await self._execute(batch)
+        work = self._clock() - started
+        if self._turn_generation != self._generation:
+            raise _PassAborted  # cleared during this batch
         if results is None:  # the watchdog fired; this batch is lost for the pass
             return True
         for res in results:
@@ -957,7 +1052,9 @@ class MediaPregen:
                 counts["bytes"] += res.bytes
             if service is not None:
                 with self._lock:
-                    self._progress[service][0] += 1
+                    entry = self._progress.get(service)
+                    if entry is not None:
+                        entry[0] += 1
             if res.outcome == "waiting" and res.rel is not None:
                 self._cool(res.rel)
         self._note_shell()
@@ -985,11 +1082,24 @@ class MediaPregen:
         try:
             return await asyncio.wait_for(fut, timeout)
         except asyncio.TimeoutError:
-            self._shell_off_seen = True
-            logger.warning(
-                "media_pregen_pause", state="paused", reason="shell_hung", paused_ms=0
-            )
-            video_poster.disable_shell("pregen_watchdog")
+            # Only a batch with a video can have hung in the Shell; a stall on
+            # pictures (a sleeping archive drive) leaves the Shell on.
+            if any(i.kind == "video" for i in batch):
+                self._shell_off_seen = True
+                logger.warning(
+                    "media_pregen_pause",
+                    state="paused",
+                    reason="shell_hung",
+                    paused_ms=0,
+                )
+                video_poster.disable_shell("pregen_watchdog")
+            else:
+                logger.warning(
+                    "media_pregen_pause",
+                    state="paused",
+                    reason="batch_hung",
+                    paused_ms=0,
+                )
             worker.abandon()
             self._worker = None
             return None
@@ -1088,7 +1198,9 @@ def status() -> dict[str, Any]:
 
     ``state`` is ``stopped`` when no worker runs. ``posters.pending_client``
     counts videos waiting for a client capture (``failed`` or ``none``);
-    ``posters.shell_off`` is the session Shell breaker.
+    ``posters.shell_off`` is the session Shell breaker; ``thumbs_full`` is
+    true while the thumbnail cache is at the fill line (the worker then makes
+    no new variants; Settings shows the cache as full instead of progress).
     """
     worker = _active
     snap = (
@@ -1097,8 +1209,10 @@ def status() -> dict[str, Any]:
         else {"state": "stopped", "paused_reason": None, "services": {}}
     )
     counts = media_meta.counts()
+    thumbs_bytes = photo_thumb.cache_total(photo_thumb.cache_dir()) or 0
     return {
         **snap,
+        "thumbs_full": thumbs_bytes >= PREGEN_FILL_RATIO * photo_thumb.CACHE_CAP_BYTES,
         "posters": {
             "ready": counts["poster_ready"],
             "failed": counts["poster_failed"],
@@ -1106,7 +1220,7 @@ def status() -> dict[str, Any]:
             "shell_off": bool(video_poster.shell_state()["off"]),
         },
         "cache": {
-            "thumbs_bytes": photo_thumb.cache_total(photo_thumb.cache_dir()) or 0,
+            "thumbs_bytes": thumbs_bytes,
             "posters_bytes": photo_thumb.cache_total(video_poster.poster_dir()) or 0,
             "thumbs_cap": photo_thumb.CACHE_CAP_BYTES,
             "posters_cap": video_poster.POSTER_CACHE_CAP_BYTES,
