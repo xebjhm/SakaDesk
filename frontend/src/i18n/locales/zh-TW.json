@@ -975,7 +975,7 @@
     },
     "timeline": {
       "count": "{{count}} 則",
-      "top": "最用心的一則",
+      "top": "這個月的一則",
       "late": "深夜的一則",
       "nickname": "叫了你名字的一則",
       "milestones": "這個月的事",
@@ -1192,7 +1192,7 @@
     "s05": {
       "title": "她想分享的風景。",
       "mostlyBursts": "她總是一口氣分享好多張。",
-      "bestPhoto": "今年珍藏的一張。",
+      "bestPhoto": "今年的這一張。",
       "burstLabel": "一起傳來的照片"
     },
     "s06": {

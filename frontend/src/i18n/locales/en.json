@@ -994,7 +994,7 @@
     "timeline": {
       "count": "{{count}} message",
       "count_other": "{{count}} messages",
-      "top": "The most heartfelt message",
+      "top": "This month's message",
       "late": "A late-night message",
       "nickname": "The message that called your name",
       "milestones": "This month",
@@ -1225,7 +1225,7 @@
     "s05": {
       "title": "The views she wanted to share.",
       "mostlyBursts": "She is someone who always shares a whole bunch at once.",
-      "bestPhoto": "A treasured picture of the year.",
+      "bestPhoto": "One picture from this year.",
       "burstLabel": "Photos sent together"
     },
     "s06": {

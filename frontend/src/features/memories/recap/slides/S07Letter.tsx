@@ -16,7 +16,7 @@ const RULED: React.CSSProperties = {
 };
 
 /**
- * Slide 7, いちばん長い手紙: her longest heartfelt message on ruled letter paper under a soft
+ * Slide 7, いちばん長い手紙: the longest of her highest-scored messages on ruled letter paper under a soft
  * spotlight. A letter taller than the paper (re-measured on resize) scrolls down once within the slide's time and holds
  * while the player is paused; with reduced motion it stays still and can be scrolled by hand.
  * Then "{n} 文字の想い", counted on the text as shown (after the nickname replacement).

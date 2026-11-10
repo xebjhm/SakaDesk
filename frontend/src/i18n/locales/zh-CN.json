@@ -975,7 +975,7 @@
     },
     "timeline": {
       "count": "{{count}} 条",
-      "top": "最用心的一条",
+      "top": "这个月的一条",
       "late": "深夜的一条",
       "nickname": "叫了你名字的一条",
       "milestones": "这个月的事",
@@ -1192,7 +1192,7 @@
     "s05": {
       "title": "她想分享的风景。",
       "mostlyBursts": "她总是一口气分享好多张。",
-      "bestPhoto": "今年珍藏的一张。",
+      "bestPhoto": "今年的这一张。",
       "burstLabel": "一起传来的照片"
     },
     "s06": {

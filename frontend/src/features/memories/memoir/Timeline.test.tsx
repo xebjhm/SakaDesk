@@ -84,7 +84,7 @@ describe('Timeline', () => {
     it('shows the labelled word slots and leaves out an empty one', async () => {
         renderTimeline();
         const top = await screen.findByTestId('timeline-slot-top');
-        expect(top).toHaveTextContent('いちばん想いのこもった一通');
+        expect(top).toHaveTextContent('この月の一通');
         expect(top).toHaveTextContent('ずっとみーぱんに伝えたかったこと');
         expect(screen.getByTestId('timeline-slot-late')).toHaveTextContent('夜ふけの一通');
         expect(screen.queryByTestId('timeline-slot-nickname')).not.toBeInTheDocument();

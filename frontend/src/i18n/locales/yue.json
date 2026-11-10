@@ -975,7 +975,7 @@
     },
     "timeline": {
       "count": "{{count}} 則",
-      "top": "最用心嗰一則",
+      "top": "呢個月嘅一則",
       "late": "夜深嗰一則",
       "nickname": "叫咗你個名嗰一則",
       "milestones": "呢個月發生嘅事",
@@ -1192,7 +1192,7 @@
     "s05": {
       "title": "佢想分享嘅風景。",
       "mostlyBursts": "佢成日一次過分享好多張。",
-      "bestPhoto": "今年珍藏嘅一張。",
+      "bestPhoto": "今年嘅呢一張。",
       "burstLabel": "一齊傳嚟嘅相"
     },
     "s06": {

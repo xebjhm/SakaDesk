@@ -269,7 +269,7 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.names.allYears')).toBe('すべて');
         expect(lookup(ja, 'memories.names.back')).toBe('生写真帳へ');
         expect(lookup(ja, 'memories.timeline.count')).toBe('{{count}} 件');
-        expect(lookup(ja, 'memories.timeline.top')).toBe('いちばん想いのこもった一通');
+        expect(lookup(ja, 'memories.timeline.top')).toBe('この月の一通');
         expect(lookup(ja, 'memories.timeline.late')).toBe('夜ふけの一通');
         expect(lookup(ja, 'memories.timeline.nickname')).toBe('名前を呼んでくれた一通');
         expect(lookup(ja, 'memories.timeline.milestones')).toBe('この月のできごと');
@@ -321,5 +321,24 @@ describe('Memories anniversary wording per locale', () => {
         for (const [key, value] of Object.entries(want)) {
             expect(at(locales[code as keyof typeof locales], key), `${code}.${key}`).toBe(value);
         }
+    });
+});
+
+describe('Memories score-picked slots make no claim about her feelings', () => {
+    // The timeline's `top` and the recap's best photo are the app's highest-scored picks.
+    const WANT: Record<keyof typeof locales, [string, string]> = {
+        ja: ['この月の一通', '今年の、この一枚。'],
+        en: ["This month's message", 'One picture from this year.'],
+        'zh-TW': ['這個月的一則', '今年的這一張。'],
+        'zh-CN': ['这个月的一条', '今年的这一张。'],
+        yue: ['呢個月嘅一則', '今年嘅呢一張。'],
+    };
+    const at = (data: unknown, key: string): unknown =>
+        key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], data);
+
+    it.each(Object.entries(WANT))('%s uses the neutral copy', (code, [top, photo]) => {
+        const data = locales[code as keyof typeof locales];
+        expect(at(data, 'memories.timeline.top')).toBe(top);
+        expect(at(data, 'recap.s05.bestPhoto')).toBe(photo);
     });
 });

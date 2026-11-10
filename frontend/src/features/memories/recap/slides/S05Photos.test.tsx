@@ -71,7 +71,7 @@ describe('S05Photos', () => {
         expect(screen.getByTestId('s05-best')).toBeInTheDocument();
         expect(screen.getByTestId('s05-best').querySelector('img')).toHaveAttribute('src', '/api/media/best.jpg');
         expect(screen.getByText('ゆき、きれいでしょ')).toBeInTheDocument();
-        expect(screen.getByText('今年の、とっておきの一枚。')).toBeInTheDocument();
+        expect(screen.getByText('今年の、この一枚。')).toBeInTheDocument();
     });
 
     it('reduced motion: a still row, no fanning and no animation', () => {
