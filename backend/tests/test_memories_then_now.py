@@ -267,6 +267,40 @@ async def test_day_common_person_oshi_first_then_importance(svc, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_day_prefers_an_earlier_year_with_the_same_person_over_a_split(svc):
+    # Kane posted on the day and the next year; only Matsu posted this year.
+    kane(
+        svc,
+        [
+            msg(1, at(2023, 6, 1), content="あの日"),
+            msg(2, at(2024, 6, 1), content="翌年"),
+        ],
+    )
+    matsu(svc, [msg(3, at(2026, 6, 1), content="今年")])
+    with capture_logs() as logs:
+        got = await day_pair(svc, date(2023, 6, 1))
+    assert got["then"]["name"] == got["now"]["name"] == "金村 美玖"
+    assert got["now"]["date"] == "2024-06-01" and ids(got["now"]) == [2]
+    ev = event(logs)
+    assert ev["person"] == "same" and ev["now_rule"] == "latest_year"
+
+
+@pytest.mark.asyncio
+async def test_day_same_person_uses_her_most_recent_year(svc):
+    kane(
+        svc,
+        [
+            msg(1, at(2022, 6, 1), content="あの日"),
+            msg(2, at(2023, 6, 1), content="一年後"),
+            msg(3, at(2025, 6, 1), content="三年後"),
+        ],
+    )
+    matsu(svc, [msg(4, at(2026, 6, 1), content="今年")])
+    got = await day_pair(svc, date(2022, 6, 1))
+    assert got["now"]["date"] == "2025-06-01" and got["now"]["name"] == "金村 美玖"
+
+
+@pytest.mark.asyncio
 async def test_day_split_people_each_carry_their_own_name(svc):
     kane(svc, [msg(1, at(2024, 6, 1), content="あの日")])
     matsu(svc, [msg(2, at(2025, 6, 1), content="今日")])

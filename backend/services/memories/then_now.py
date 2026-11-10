@@ -17,14 +17,16 @@ or ``None`` (the toggle is hidden).
 
 - ``then`` is the asked JST ``day``; ``None`` when nobody has an eligible
   message that day.
-- ``now`` is the same month-day this JST year when that date is not after
-  today and has messages, else the latest later year with messages on that
-  month-day; ``None`` without a later year.
-- Person: ``member`` when given. Otherwise the person with messages on both
-  dates (oshi first, then the higher importance sum over both dates, then
-  the ``index.list_members`` order); otherwise each side's own best person
+- ``now`` and the person: ``member`` when given (one person). Otherwise the
+  most recent later year (not after today) whose same month-day has messages
+  from someone who also posted on ``day``; among those people, oshi first,
+  then the higher importance sum over both dates, then the
+  ``index.list_members`` order. Only when no such year exists, ``now`` is the
+  latest later year with messages and each side gets its own best person
   (oshi first, then that date's importance sum), so each side carries its own
-  ``name`` and ``member_path`` and every label is literally true.
+  ``name`` and ``member_path`` and every label is literally true. ``None``
+  without a later year. ``now_rule`` is ``this_year`` when ``now`` is this
+  JST year's month-day, else ``latest_year``.
 - Items per side (at most 3, the person's eligible messages that date): the
   best photo / video (``photo_score``), the best words (``importance``), then
   her first voice. A message is never repeated: the photo's caption is not
@@ -179,14 +181,10 @@ def _plan_day(
             by_person.setdefault(people.person_key(person), []).append((room, f))
     if day not in by_date:
         return "none", None, "no_then", None
-    later = [d for d in by_date if d > day]
+    later = sorted((d for d in by_date if d > day), reverse=True)
     if not later:
         return "none", None, "no_later_year", None
-    # Every date here is <= today, so this year's date, when it has
-    # messages, is the latest later date.
-    now_day = max(later)
-    now_rule = "this_year" if now_day == _this_year(day, today) else "latest_year"
-    then_p, now_p = by_date[day], by_date[now_day]
+    then_p = by_date[day]
 
     def best(keys: Iterable[str], weight_of) -> str:
         return min(
@@ -194,15 +192,29 @@ def _plan_day(
             key=lambda k: (persons[k].name_norm not in oshi, -weight_of(k), rank[k]),
         )
 
-    common = [k for k in then_p if k in now_p]
-    if common:
+    # The most recent later date (all are <= today) on which someone from
+    # ``day`` posted again: the same person on both sides.
+    shared = next(
+        (
+            (d, [k for k in then_p if k in by_date[d]])
+            for d in later
+            if any(k in by_date[d] for k in then_p)
+        ),
+        None,
+    )
+    if shared is not None:
+        now_day, common = shared
+        now_p = by_date[now_day]
         key = best(common, lambda k: _importance(then_p[k]) + _importance(now_p[k]))
         then_key = now_key = key
         mode = "same"
     else:
+        now_day = later[0]
+        now_p = by_date[now_day]
         then_key = best(then_p, lambda k: _importance(then_p[k]))
         now_key = best(now_p, lambda k: _importance(now_p[k]))
         mode = "split"
+    now_rule = "this_year" if now_day == _this_year(day, today) else "latest_year"
     sides = (
         _Side(persons[then_key], day, _items(then_p[then_key])),
         _Side(persons[now_key], now_day, _items(now_p[now_key])),
