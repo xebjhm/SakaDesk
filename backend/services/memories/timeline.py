@@ -24,7 +24,10 @@
 
     ties go to the earlier message; an empty slot is ``None``;
   - ``milestones``: earned cards whose unlock ``date`` (or, for a yearly
-    stack, a ``CardYear.date``) falls in the month (:func:`milestones`).
+    stack, a year's ``date``) falls in the month (:func:`milestones`), read
+    from the cached binder payload (``binder.binder_payload`` with the same
+    ``binder_hash``), so a month miss evaluates no cards once the binder is
+    cached (the memoir list warms it).
 
   The text-free payload is cached (view ``timeline_month``, key
   ``person_key|month``, hash over :data:`TIMELINE_VERSION`,
@@ -53,7 +56,6 @@ from pathlib import Path
 import structlog
 
 from backend.services.memories import binder
-from backend.services.memories import cards as cards_mod
 from backend.services.memories import index as mi
 from backend.services.memories import people
 from backend.services.memories.facts import Fact, get_person_facts
@@ -66,7 +68,7 @@ VIEW = "timeline"
 VIEW_MONTHS = "timeline_months"
 VIEW_MONTH = "timeline_month"
 # Bump on any rule or payload change of the month view (its cache hash has it).
-TIMELINE_VERSION = 2
+TIMELINE_VERSION = 3
 # Bump on any rule or payload change of the rail (its cache hash has it).
 TIMELINE_MONTHS_VERSION = 1
 PHOTO_CAP = 12
@@ -143,26 +145,28 @@ def late_key(hour: int, minute: int, second: int) -> tuple[int, int, int]:
     return (hour + 24 if hour < 5 else hour, minute, second)
 
 
-def milestones(cards: Iterable[cards_mod.Card], month: str) -> list[dict]:
-    """Earned cards unlocked in ``month``, by date then key.
+def binder_cards(payload: dict) -> list[dict]:
+    """Every card of a ``binder.binder_payload``, shelf by shelf."""
+    return [card for shelf in payload["shelves"] for card in shelf["cards"]]
 
-    A yearly stack contributes each of its years whose date is in the month
-    (key = the card's key); other cards their own unlock ``date``.
+
+def milestones(cards: Iterable[dict], month: str) -> list[dict]:
+    """Earned binder-payload cards unlocked in ``month``, by date then key.
+
+    A yearly stack (non-empty ``years``) contributes each of its years whose
+    ``date`` is in the month (key = the card's key); other cards their own
+    unlock ``date``. Dates are ISO ``YYYY-MM-DD`` strings (or ``None``).
     """
-    out: set[tuple[date, str, bool]] = set()
+    out: set[tuple[str, str, bool]] = set()
     for card in cards:
-        if not card.earned:
+        if not card["earned"]:
             continue
-        dates: list[date | None] = (
-            [y.date for y in card.years] if card.years else [card.date]
-        )
+        years = card["years"]
+        dates = [y["date"] for y in years] if years else [card["date"]]
         for d in dates:
-            if d is not None and month_of(d) == month:
-                out.add((d, card.key, card.foil))
-    return [
-        {"key": key, "date": d.isoformat(), "foil": foil}
-        for d, key, foil in sorted(out)
-    ]
+            if d is not None and d[:7] == month:
+                out.add((d, card["key"], card["foil"]))
+    return [{"key": key, "date": d, "foil": foil} for d, key, foil in sorted(out)]
 
 
 def _order(t: _Tagged) -> tuple[datetime, int, str]:
@@ -230,7 +234,7 @@ def _compose(
     summary: mi.MemberSummary,
     month: str,
     month_facts: list[_Tagged],
-    cards: list[cards_mod.Card],
+    cards: list[dict],
     timeline: people.AvatarTimeline,
     now: datetime,
 ) -> dict:
@@ -303,9 +307,8 @@ async def timeline_month(
     """The selected month (see the module docstring); her words attached."""
     if not MONTH_RE.match(month):
         raise ValueError("month must be YYYY-MM")
-    data_hash = view_hash(
-        TIMELINE_VERSION, await binder.binder_hash(sdir, summary, now=now), month
-    )
+    b_hash = await binder.binder_hash(sdir, summary, now=now)
+    data_hash = view_hash(TIMELINE_VERSION, b_hash, month)
 
     async def build() -> dict:
         tagged = await get_person_facts(sdir, summary)
@@ -319,7 +322,12 @@ async def timeline_month(
                 month=month,
             )
             raise MonthOutOfRange(month)
-        cards = await binder.evaluate_person(service, sdir, summary, now=now)
+        # the cached binder (a hit once warmed): no card evaluation per month
+        cards = binder_cards(
+            await binder.binder_payload(
+                service, sdir, summary, now=now, data_hash=b_hash
+            )
+        )
         timeline = await people.avatar_timelines(sdir, summary)
         return await asyncio.to_thread(
             _compose, service, sdir, summary, month, month_facts, cards, timeline, now
@@ -337,6 +345,7 @@ __all__ = [
     "PHOTO_CAP",
     "is_late",
     "late_key",
+    "binder_cards",
     "milestones",
     "month_of",
     "timeline_month",

@@ -4,12 +4,12 @@ from __future__ import annotations
 
 import dataclasses
 import threading
-from datetime import date, datetime, timezone
+from datetime import datetime, timezone
 
 import pytest
 from structlog.testing import capture_logs
 
-from backend.services.memories import cards as c
+from backend.services.memories import binder
 from backend.services.memories import index as mi
 from backend.services.memories import timeline as tl
 from backend.services.memories import view_cache as vc
@@ -278,24 +278,30 @@ async def test_month_is_cached_text_free(svc, monkeypatch):
     assert outcomes == ["miss", "hit"]
 
 
+def _card(key, earned, date=None, foil=False, years=()):
+    """One card of a binder payload (only the fields milestones reads)."""
+    return {
+        "key": key,
+        "earned": earned,
+        "foil": foil,
+        "date": date,
+        "years": [{"year": int(y[:4]), "date": y, "face": None} for y in years],
+    }
+
+
 def test_milestones_from_card_dates_and_stacked_years():
-    d = date
     cards = [
-        c.Card("first.message", "first", True, date=d(2025, 3, 2)),
-        c.Card("numbers.messages.100", "numbers", True, foil=True, date=d(2025, 3, 30)),
-        c.Card("first.video", "first", False, date=d(2025, 3, 3)),  # unearned
-        c.Card("first.voice", "first", True, date=None),
-        c.Card("first.picture", "first", True, date=d(2025, 4, 1)),
-        c.Card(
+        _card("first.message", True, "2025-03-02"),
+        _card("numbers.messages.100", True, "2025-03-30", foil=True),
+        _card("first.video", False, "2025-03-03"),  # unearned
+        _card("first.voice", True, None),
+        _card("first.picture", True, "2025-04-01"),
+        _card(
             "special.birthday",
-            "special",
             True,
+            "2026-03-09",
             foil=True,
-            date=d(2026, 3, 9),
-            years=(
-                c.CardYear(2025, d(2025, 3, 9), c.MessageKey("r", 1)),
-                c.CardYear(2026, d(2026, 3, 9), c.MessageKey("r", 2)),
-            ),
+            years=("2025-03-09", "2026-03-09"),
         ),
     ]
     assert tl.milestones(cards, "2025-03") == [
@@ -377,3 +383,38 @@ def test_promo_media_and_words_are_left_out_of_photos_and_slots():
     assert [f.id for _, f in photos] == [3]
     top = slots["top"]
     assert top is not None and top[1].id == 4
+
+
+@pytest.mark.asyncio
+async def test_month_miss_reads_the_warmed_binder_and_evaluates_nothing(
+    svc, monkeypatch
+):
+    s = await kanemura(svc)
+    await binder.binder_payload(SERVICE, svc, s, now=NOW)  # e.g. the memoir list
+    calls = []
+    real = binder._evaluate
+
+    async def counting(*a, **kw):
+        calls.append(1)
+        return await real(*a, **kw)
+
+    monkeypatch.setattr(binder, "_evaluate", counting)
+    with capture_logs() as logs:
+        m = await tl.timeline_month(SERVICE, svc, s, "2025-01", now=NOW)
+    assert calls == []
+    assert not [e for e in logs if e["event"] == "memories_cards"]
+    outcomes = [
+        (e["view"], e["outcome"]) for e in logs if e["event"] == "memories_view_cache"
+    ]
+    assert outcomes == [("binder", "hit"), ("timeline_month", "miss")]
+    assert "first.message" in {x["key"] for x in m["milestones"]}
+
+
+def test_binder_cards_flattens_every_shelf():
+    payload = {
+        "shelves": [
+            {"key": "first", "cards": [_card("a", True)]},
+            {"key": "special", "cards": [_card("b", False), _card("c", True)]},
+        ]
+    }
+    assert [x["key"] for x in tl.binder_cards(payload)] == ["a", "b", "c"]
