@@ -8,8 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- **Look back on your year with each member.** The new Memories page has a
-  year recap: a short story of her messages, photos and voice from the year,
+- **Relive your archive with each member.** The new Memories page opens on a
+  board with a moment from this day in past years and leads to On This Day
+  with that whole day's messages, a photo album by month, your favorites on a
+  cork board, and a memoir for each member. A memoir collects cards for her
+  milestones, a month-by-month timeline and the times she called you by name.
+- **Look back on your year with each member.** Memories also has a year
+  recap: a short story of her messages, photos and voice from the year,
   a poster you can save, and a share image or video that blurs her photos.
   It opens on December 1 with the year so far, and past years stay on the
   shelf; with several members it starts with all of them together.
