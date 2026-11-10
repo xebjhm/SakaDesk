@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import threading
 from datetime import date, datetime, timezone
 
 import pytest
@@ -310,3 +311,37 @@ def test_late_key_counts_small_hours_after_midnight():
     assert tl.late_key(4, 59, 59) > tl.late_key(0, 0, 0) > tl.late_key(22, 0, 0)
     assert not tl.is_late(5) and not tl.is_late(21)
     assert tl.is_late(22) and tl.is_late(0) and tl.is_late(4)
+
+
+@pytest.mark.asyncio
+async def test_months_hash_carries_a_version(svc, monkeypatch):
+    s = await kanemura(svc)
+    with capture_logs() as logs:
+        await tl.timeline_months(SERVICE, svc, s)
+        monkeypatch.setattr(
+            tl, "TIMELINE_MONTHS_VERSION", tl.TIMELINE_MONTHS_VERSION + 1
+        )
+        await tl.timeline_months(SERVICE, svc, s)
+    outcomes = [
+        e["outcome"]
+        for e in logs
+        if e["event"] == "memories_view_cache" and e["view"] == "timeline_months"
+    ]
+    assert outcomes == ["miss", "miss"]  # a rule change is never served stale
+
+
+@pytest.mark.asyncio
+async def test_month_counting_runs_off_the_event_loop(svc, monkeypatch):
+    s = await kanemura(svc)
+    loop_thread = threading.get_ident()
+    threads: set[int] = set()
+    real = tl.month_of
+
+    def spy(day):
+        threads.add(threading.get_ident())
+        return real(day)
+
+    monkeypatch.setattr(tl, "month_of", spy)
+    months = (await tl.timeline_months(SERVICE, svc, s))["months"]
+    assert months[0] == {"month": "2025-01", "count": 1}
+    assert threads and loop_thread not in threads

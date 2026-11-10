@@ -3,8 +3,9 @@
 - :func:`timeline_months` -- the rail: one ``{"month", "count"}`` per JST month,
   continuous from her first month to her last. Months without messages are
   included with ``count: 0``; the rail draws them as empty bars and never
-  shows the number. Cached text-free (view ``timeline_months``, key
-  ``person_key``, hash ``people.room_hashes``).
+  shows the number. The month counting runs in a worker. Cached text-free
+  (view ``timeline_months``, key ``person_key``, hash over
+  :data:`TIMELINE_MONTHS_VERSION` and ``people.room_hashes``).
 - :func:`timeline_month` -- the selected month:
 
   - ``count``: the month's facts (promo included), the month's one number;
@@ -65,6 +66,8 @@ VIEW_MONTHS = "timeline_months"
 VIEW_MONTH = "timeline_month"
 # Bump on any rule or payload change of the month view (its cache hash has it).
 TIMELINE_VERSION = 1
+# Bump on any rule or payload change of the rail (its cache hash has it).
+TIMELINE_MONTHS_VERSION = 1
 PHOTO_CAP = 12
 MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])$")
 SLOTS = ("top", "nickname", "late")  # fill order
@@ -102,17 +105,24 @@ def _month_seq(first: str, last: str) -> list[str]:
     return out
 
 
+def _month_counts(tagged: Sequence[_Tagged]) -> list[dict]:
+    """``[{"month", "count"}, ...]``, continuous first..last. Pure."""
+    counts = Counter(month_of(f.jst_date) for _, f in tagged)
+    if not counts:
+        return []
+    seq = _month_seq(min(counts), max(counts))
+    return [{"month": m, "count": counts.get(m, 0)} for m in seq]
+
+
 async def timeline_months(service: str, sdir: Path, summary: mi.MemberSummary) -> dict:
     """The rail: ``{"months": [{"month", "count"}, ...]}``, oldest first, cached."""
-    data_hash = await people.room_hashes(sdir, summary)
+    data_hash = view_hash(
+        TIMELINE_MONTHS_VERSION, await people.room_hashes(sdir, summary)
+    )
 
     async def build() -> dict:
         tagged = await get_person_facts(sdir, summary)
-        counts = Counter(month_of(f.jst_date) for _, f in tagged)
-        if not counts:
-            return {"months": []}
-        seq = _month_seq(min(counts), max(counts))
-        return {"months": [{"month": m, "count": counts.get(m, 0)} for m in seq]}
+        return {"months": await asyncio.to_thread(_month_counts, tagged)}
 
     return await cached_view(
         sdir, VIEW_MONTHS, people.person_key(summary), data_hash, build
