@@ -18,6 +18,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a poster you can save, and a share image or video that blurs her photos.
   It opens on December 1 with the year so far, and past years stay on the
   shelf; with several members it starts with all of them together.
+- **Listen, draw and leave notes in Memories.** A late-night voice radio with
+  a sleep timer, a memory gacha with three draws a day, and a photo calendar
+  that opens any day. Set an old day beside this year, see her day pieced
+  together from different years, or pick a month's album cover; notes you
+  leave on a day or a card come back a year later and stay on this PC.
 - **Update from Settings.** Settings → Updates now has buttons to download
   the new version, follow its progress or cancel it, and install it, instead
   of only saying a new version is available. A version you skipped on the
