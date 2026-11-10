@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { Layers, MessageCircle } from 'lucide-react';
+import { Layers, MessageCircle, Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Button, Modal } from '../../../design/primitives';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
@@ -28,8 +28,9 @@ interface BurstStackProps {
 /**
  * A burst (spec 8): one stacked still with 「{{count}} 枚」. Clicking opens the sequence, a dialog
  * with the burst's frames in order and her words beside each (`caption`, else `text`), each with
- * a jump to her chat; a frame opens the media viewer over the burst. Opening and closing log
- * `memories_toggle` `album_burst`.
+ * a jump to her chat; a frame opens the media viewer over the burst. A ★ photo in the burst
+ * shows the yellow star on the stack and beside its frame. Opening and every close (including
+ * a jump) log `memories_toggle` `album_burst`.
  */
 export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, sepia }) => {
     const { t } = useTranslation();
@@ -40,7 +41,7 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
         () => albumViewerItems(items, {
             nameOf,
             sourceLabel: t('memories.common.jumpToChat'),
-            onBeforeJump: () => { setViewerIndex(null); setOpen(false); },
+            onBeforeJump: () => { setViewerIndex(null); setOpen(false); logMemoriesToggle('album_burst', false); },
         }),
         [items, nameOf, t],
     );
@@ -50,6 +51,7 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
         logMemoriesToggle('album_burst', next);
     };
     const first = items[0];
+    const hasStar = items.some((m) => m.favorited);
 
     return (
         <>
@@ -68,6 +70,9 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
                 <span className="relative block h-full w-full overflow-hidden rounded-sm bg-sunken">
                     {first && <MemoryThumb message={first} px={TILE_PX} className={cn('h-full w-full', sepia)} />}
                 </span>
+                {hasStar && (
+                    <Star data-testid="burst-star" aria-hidden="true" className="absolute right-2 top-2 h-4 w-4 fill-current text-semantic-star drop-shadow-sm" />
+                )}
                 <span className="absolute bottom-1 right-1 inline-flex items-center gap-1 rounded-pill bg-frost px-2 text-caption text-primary backdrop-blur-frost">
                     <Layers aria-hidden="true" className="h-3 w-3" />
                     {count}
@@ -89,9 +94,12 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
                                 >
                                     <MemoryThumb message={m} px={FRAME_PX} className={cn('aspect-square h-full w-full', sepia)} />
                                 </button>
+                                {m.favorited && (
+                                    <Star data-testid="burst-frame-star" aria-hidden="true" className="h-4 w-4 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
+                                )}
                                 <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
                                     {words && <MemoryText text={words} className="text-body text-primary" />}
-                                    <Button variant="ghost" size="sm" onClick={() => { setOpen(false); jumpToChat(m, nameOf(m), 'album'); }}>
+                                    <Button variant="ghost" size="sm" onClick={() => { toggle(false); jumpToChat(m, nameOf(m), 'album'); }}>
                                         <MessageCircle aria-hidden="true" className="h-4 w-4" />
                                         {t('memories.common.jumpToChat')}
                                     </Button>

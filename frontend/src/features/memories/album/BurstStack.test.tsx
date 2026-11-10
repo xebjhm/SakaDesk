@@ -58,5 +58,21 @@ describe('BurstStack', () => {
         const rows = within(await screen.findByRole('dialog')).getAllByTestId('burst-frame');
         await userEvent.click(within(rows[1]).getByRole('button', { name: 'View in chat' }));
         expect(vi.mocked(openChat)).toHaveBeenCalledWith(expect.objectContaining({ message_id: 4 }));
+        // the jump closes the sequence, and the close is logged like any other
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'album_burst', outcome: 'off' });
+    });
+
+    it('marks a favourite inside the burst with the yellow star', async () => {
+        render(
+            <NicknameProvider nickname="みーぱん">
+                <BurstStack items={[ITEMS[0], { ...ITEMS[1], favorited: true }, ITEMS[2]]} title="September 2024" nameOf={() => '金村 美玖'} sepia="" />
+            </NicknameProvider>,
+        );
+        const stack = screen.getByRole('button', { name: /3 photos/ });
+        expect(within(stack).getByTestId('burst-star')).toHaveClass('text-semantic-star');
+        await userEvent.click(stack);
+        const rows = within(await screen.findByRole('dialog')).getAllByTestId('burst-frame');
+        expect(within(rows[1]).getByTestId('burst-frame-star')).toHaveClass('text-semantic-star');
+        expect(within(rows[0]).queryByTestId('burst-frame-star')).toBeNull();
     });
 });
