@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildMonthGrid, dayTone, weekdayTone } from './monthGrid';
+import { buildMonthGrid, dayTone, pickerYearRange, weekdayTone } from './monthGrid';
 
 describe('buildMonthGrid', () => {
     it('always gives six weeks of cells starting on a Sunday', () => {
@@ -50,5 +50,17 @@ describe('dayTone', () => {
         expect(weekdayTone(0)).toBe('holiday');
         expect(weekdayTone(6)).toBe('saturday');
         expect([1, 2, 3, 4, 5].map(weekdayTone)).toEqual([null, null, null, null, null]);
+    });
+});
+
+describe('pickerYearRange', () => {
+    it('runs from the first dated year to this year', () => {
+        expect(pickerYearRange([2023, 2021], 2024, 2026)).toEqual([2021, 2022, 2023, 2024, 2025, 2026]);
+    });
+
+    it('offers the last ten years without dates, and always the year on screen', () => {
+        expect(pickerYearRange([], 2026, 2026)).toEqual([2017, 2018, 2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]);
+        expect(pickerYearRange([2024], 2019, 2026)).toEqual([2019, 2020, 2021, 2022, 2023, 2024, 2025, 2026]);
+        expect(pickerYearRange([2028], 2026, 2026)).toEqual([2026, 2027, 2028]);
     });
 });

@@ -25,6 +25,24 @@ export const DAY_TONE_CLASS: Record<DayTone, string> = {
 /** `calendar.months.*` keys, January first. */
 export const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
 
+/** `calendar.weekdays.*` keys, Sunday first. */
+export const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
+
+/** Years a year / month picker offers when there are no dated years: this year and the nine before it. */
+export const FALLBACK_PICKER_YEARS = 10;
+
+/**
+ * The years a year / month picker offers, oldest first: from the first dated year (or the last
+ * {@link FALLBACK_PICKER_YEARS} years without any) up to this year, always including the year on
+ * screen and every dated year.
+ */
+export function pickerYearRange(datedYears: Iterable<number>, shownYear: number, thisYear: number): number[] {
+    const dated = [...datedYears].filter(Number.isFinite);
+    const first = Math.min(dated.length ? Math.min(...dated) : thisYear - FALLBACK_PICKER_YEARS + 1, shownYear);
+    const last = Math.max(thisYear, shownYear, ...dated);
+    return Array.from({ length: last - first + 1 }, (_, i) => first + i);
+}
+
 /** `YYYY-MM` of a year and a 0-based month. */
 export const monthKey = (year: number, month0: number) => `${year}-${String(month0 + 1).padStart(2, '0')}`;
 
