@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from '../../utils/classnames';
 
 export interface PillProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
-    /** Selected tab/filter: the accent roles (spec section 8), or the oshi roles with tone="oshi". */
+    /** Selected tab/filter: the accent roles (spec section 8), the oshi roles with tone="oshi", or the neutral star state with tone="star". */
     selected?: boolean;
     /**
      * Selected colour roles. `oshi` is for the 推 (Favorite) filter, which never follows the group accent.
