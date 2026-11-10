@@ -432,6 +432,9 @@ export const useAppStore = create<AppState>()(
             setTranscriptionEnabled: (enabled) => set({ transcriptionEnabled: enabled }),
         }),
         {
+            // The backend reads this bundle at state.selectedServices
+            // (backend/services/memories/notify_scheduler.py); keep that path stable.
+            // Pinned by src/store/appStore.persistence.test.ts.
             name: 'sakadesk-app-state',
             version: 4,
             storage: createJSONStorage(() => backendStateStorage),
