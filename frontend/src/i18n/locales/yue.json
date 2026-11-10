@@ -756,7 +756,14 @@
       "birthdayIn": "距離{{name}}嘅生日，仲有 {{count, number}} 日",
       "birthdayToday": "今日係{{name}}嘅生日",
       "anniversaryIn": "距離同{{name}}嘅會員紀念日，仲有 {{count, number}} 日",
-      "anniversaryToday": "今日係會員第 {{years}} 年嘅紀念日"
+      "anniversaryToday": "今日係會員第 {{years}} 年嘅紀念日",
+      "radio": "語音電台",
+      "gacha": "回憶扭蛋",
+      "calendar": "月曆",
+      "countVoices": "{{count}} 段語音",
+      "countGacha": "今日仲有 {{count}} 次",
+      "countDays": "{{count}} 日",
+      "gachaTomorrow": "聽日見"
     },
     "common": {
       "back": "返回",
@@ -805,7 +812,8 @@
       "chipNames": "佢叫咗你 {{count, number}} 次",
       "chipVoice": "語音 {{h}} 個鐘 {{m}} 分",
       "chipVoiceMinutes": "語音 {{m}} 分",
-      "chipVoiceHours": "語音 {{h}} 個鐘"
+      "chipVoiceHours": "語音 {{h}} 個鐘",
+      "tabDay24": "佢嘅24小時"
     },
     "favorites": {
       "title": "收藏",

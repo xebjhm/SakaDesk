@@ -767,7 +767,16 @@
       "birthdayToday": "Today is {{name}}'s birthday",
       "anniversaryIn": "{{count, number}} day until your membership anniversary with {{name}}",
       "anniversaryIn_other": "{{count, number}} days until your membership anniversary with {{name}}",
-      "anniversaryToday": "Today is your {{years}}-year membership anniversary"
+      "anniversaryToday": "Today is your {{years}}-year membership anniversary",
+      "radio": "Voice radio",
+      "gacha": "Memory gacha",
+      "calendar": "Calendar",
+      "countVoices": "{{count}} voice",
+      "countVoices_other": "{{count}} voices",
+      "countGacha": "{{count}} left today",
+      "countDays": "{{count}} day",
+      "countDays_other": "{{count}} days",
+      "gachaTomorrow": "See you tomorrow"
     },
     "common": {
       "back": "Back",
@@ -820,7 +829,8 @@
       "chipNames_other": "Called your name {{count, number}} times",
       "chipVoice": "Voice {{h}} h {{m}} min",
       "chipVoiceMinutes": "Voice {{m}} min",
-      "chipVoiceHours": "Voice {{h}} h"
+      "chipVoiceHours": "Voice {{h}} h",
+      "tabDay24": "Her 24 hours"
     },
     "favorites": {
       "title": "Favorites",

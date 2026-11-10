@@ -145,6 +145,41 @@ describe('Memories feature', () => {
         });
     });
 
+    describe('fun-wave routes (placeholders until their tasks)', () => {
+        const FUN = [
+            { route: { page: 'radio' }, testId: 'memories-page-radio', title: 'Voice radio', code: 'radio' },
+            { route: { page: 'gacha' }, testId: 'memories-page-gacha', title: 'Memory gacha', code: 'gacha' },
+            { route: { page: 'calendar', month: '2024-09' }, testId: 'memories-page-calendar', title: 'Calendar', code: 'calendar' },
+            { route: { page: 'day', date: '2024-09-14' }, testId: 'memories-page-day', title: /2024/, code: 'day' },
+        ] as const;
+
+        it.each(FUN)('opens the $route.page placeholder, logs its snake_case code and returns home', async ({ route, testId, title, code }) => {
+            vi.mocked(clientLog).mockClear();
+            render(<MemoriesFeature service="hinatazaka46" initialRoute={route} />);
+            expect(screen.getByTestId(testId)).toHaveAttribute('data-service', 'hinatazaka46');
+            expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
+            expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_page', { target: code });
+            await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+            expect(screen.getByTestId('memories-home')).toBeInTheDocument();
+        });
+
+        it('a day opened from the calendar goes back to the calendar', async () => {
+            render(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'day', date: '2024-09-14', from: 'calendar' }} />);
+            await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+            expect(screen.getByTestId('memories-page-calendar')).toBeInTheDocument();
+        });
+
+        it('the memoir accepts the day24 tab and draws its placeholder', async () => {
+            server.use(http.get('/api/memories/:service/memoir', () => HttpResponse.json({
+                member_path: 'x', name: '金村 美玖', avatar_url: null, graduated: false,
+                chips: { subscription_days: null, nickname_count: null, voice_seconds: null },
+            })));
+            render(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'memoir', memberPath: 'x', tab: 'day24' }} />);
+            expect(await screen.findByTestId('memories-day24-placeholder')).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: 'Her 24 hours' })).toBeInTheDocument();
+        });
+    });
+
     describe('year-end unlocks (JST)', () => {
         it('before Dec 1 opens the newest past year on the shelf', async () => {
             at('2026-11-30T23:59:00');

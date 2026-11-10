@@ -756,7 +756,14 @@
       "birthdayIn": "{{name}}の誕生日まで、あと {{count, number}} 日",
       "birthdayToday": "今日は{{name}}の誕生日",
       "anniversaryIn": "{{name}}とのメンバーシップ記念日まで、あと {{count, number}} 日",
-      "anniversaryToday": "今日はメンバーシップ {{years}} 年目の記念日"
+      "anniversaryToday": "今日はメンバーシップ {{years}} 年目の記念日",
+      "radio": "ボイスラジオ",
+      "gacha": "思い出ガチャ",
+      "calendar": "カレンダー",
+      "countVoices": "{{count}} 件のボイス",
+      "countGacha": "今日はあと {{count}} 回",
+      "countDays": "{{count}} 日分",
+      "gachaTomorrow": "また明日"
     },
     "common": {
       "back": "戻る",
@@ -805,7 +812,8 @@
       "chipNames": "名前を呼んでくれた {{count, number}} 回",
       "chipVoice": "声 {{h}}時間{{m}}分",
       "chipVoiceMinutes": "声 {{m}}分",
-      "chipVoiceHours": "声 {{h}}時間"
+      "chipVoiceHours": "声 {{h}}時間",
+      "tabDay24": "彼女の24時間"
     },
     "favorites": {
       "title": "お気に入り",

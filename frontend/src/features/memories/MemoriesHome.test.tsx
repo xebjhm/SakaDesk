@@ -91,13 +91,47 @@ describe('MemoriesHome (hub board)', () => {
     });
 
     it('hides a zero count, never rendering "0"', async () => {
-        vi.mocked(fetchHub).mockResolvedValue(hubPayload({ counts: { album: 0, members: 2, favorites: 0 }, countdown: null }));
+        vi.mocked(fetchHub).mockResolvedValue(hubPayload({ counts: { album: 0, members: 2, favorites: 0, voices: 0, days: 0 }, countdown: null }));
         renderHome();
         await screen.findByText('2 members');
         const album = screen.getByRole('button', { name: /Album/ });
         expect(album.textContent).not.toMatch(/\d/);
         expect(screen.getByRole('button', { name: /Favorites/ }).textContent).not.toMatch(/\d/);
+        expect(screen.getByRole('button', { name: /Voice radio/ }).textContent).not.toMatch(/\d/);
+        expect(screen.getByRole('button', { name: /Calendar/ }).textContent).not.toMatch(/\d/);
         expect(screen.getByTestId('memories-home').textContent).not.toMatch(/\b0\b/);
+    });
+
+    it('shows the fun-wave cards with their counts and routes them', async () => {
+        vi.mocked(fetchHub).mockResolvedValue(hubPayload({ gacha_left: 2 }));
+        renderHome();
+        await screen.findByText('310 voices');
+        expect(screen.getByRole('button', { name: /Voice radio/ })).toHaveTextContent('310 voices');
+        expect(screen.getByRole('button', { name: /Memory gacha/ })).toHaveTextContent('2 left today');
+        expect(screen.getByRole('button', { name: /Calendar/ })).toHaveTextContent('845 days');
+        await userEvent.click(screen.getByRole('button', { name: /Voice radio/ }));
+        expect(go).toHaveBeenCalledWith({ page: 'radio' });
+        await userEvent.click(screen.getByRole('button', { name: /Memory gacha/ }));
+        expect(go).toHaveBeenCalledWith({ page: 'gacha' });
+        await userEvent.click(screen.getByRole('button', { name: /Calendar/ }));
+        expect(go).toHaveBeenCalledWith({ page: 'calendar' });
+    });
+
+    it('says "see you tomorrow" on the gacha card when today\'s pulls are used, never 0', async () => {
+        vi.mocked(fetchHub).mockResolvedValue(hubPayload({ gacha_left: 0 }));
+        renderHome();
+        const gacha = await screen.findByText('See you tomorrow');
+        expect(screen.getByRole('button', { name: /Memory gacha/ })).toContainElement(gacha);
+        expect(screen.getByRole('button', { name: /Memory gacha/ }).textContent).not.toMatch(/\d/);
+    });
+
+    it('shows the gacha card without a count when the store failed (null)', async () => {
+        vi.mocked(fetchHub).mockResolvedValue(hubPayload({ gacha_left: null }));
+        renderHome();
+        await screen.findByText('310 voices');
+        const gacha = screen.getByRole('button', { name: /Memory gacha/ });
+        expect(gacha.textContent).not.toMatch(/\d/);
+        expect(gacha).not.toHaveTextContent('See you tomorrow');
     });
 
     it('still opens the recap from its card', async () => {

@@ -9,16 +9,23 @@ import { AlbumPage } from './album/AlbumPage';
 import { FavoritesPage } from './favorites/FavoritesPage';
 import { MemoirPage } from './memoir/MemoirPage';
 import { NicknameProvider } from './shared/useNickname';
+import { FunPlaceholder } from './FunPlaceholder';
 
-/** Pages of the Memories router; wave 4 adds `{ page: 'day'; date: string }`. */
+/** Pages of the Memories router (the core pages, then the fun wave's). */
 export type MemoriesRoute =
     | { page: 'home' }
     | { page: 'recap'; year: number; memberPath?: string }
     /** `monthDay` is `MM-DD`; `year` set = the detail (A) of that year. */
     | { page: 'onThisDay'; monthDay?: string; year?: number }
     | { page: 'album'; memberPath?: string }
-    | { page: 'memoir'; memberPath?: string; tab?: 'binder' | 'timeline' | 'names' }
-    | { page: 'favorites'; memberPath?: string };
+    | { page: 'memoir'; memberPath?: string; tab?: 'binder' | 'timeline' | 'names' | 'day24' }
+    | { page: 'favorites'; memberPath?: string }
+    | { page: 'radio'; memberPath?: string }
+    | { page: 'gacha' }
+    /** `month` is `YYYY-MM` (JST). */
+    | { page: 'calendar'; month?: string; memberPath?: string }
+    /** `date` is `YYYY-MM-DD` (JST); `from: 'calendar'` makes back return to the calendar. */
+    | { page: 'day'; date: string; from?: 'calendar' };
 
 /** A core page's route (the four pages added by the core wave). */
 export type CoreRoute = Extract<MemoriesRoute, { page: 'onThisDay' | 'album' | 'memoir' | 'favorites' }>;
@@ -135,6 +142,8 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
         page = <AlbumPage service={service} route={route} go={go} />;
     } else if (route.page === 'favorites') {
         page = <FavoritesPage service={service} route={route} go={go} />;
+    } else if (route.page === 'radio' || route.page === 'gacha' || route.page === 'calendar' || route.page === 'day') {
+        page = <FunPlaceholder service={service} route={route} go={go} />;
     } else {
         page = <MemoirPage service={service} route={route} go={go} />;
     }

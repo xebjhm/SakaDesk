@@ -26,10 +26,11 @@ export function hubCountdown(over: Partial<HubCountdown> = {}): HubCountdown {
 export function hubPayload(over: Partial<HubPayload> = {}): HubPayload {
     return {
         on_this_day: hubMoment(),
-        counts: { album: 8412, members: 27, favorites: 96 },
+        counts: { album: 8412, members: 27, favorites: 96, voices: 310, days: 845 },
         countdown: hubCountdown(),
         same_time: null,
         capsule: null,
+        gacha_left: 3,
         ...over,
     };
 }

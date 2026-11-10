@@ -65,8 +65,8 @@ const BinderPane: React.FC<{ service: string; memberPath: string; name: string }
  * The member memoir (spec 5). Left: every person, oshi first (`MemberPane`), each with her binder
  * progress and, for a graduated member, a small memorial marker in neutral ink. Without a
  * `memberPath` the first person is shown. Right: her header (`MemoirHeader`) over the 生写真帳 /
- * タイムライン tabs (`route.tab`, default the binder): the `Binder`, or the `Timeline` with its
- * month rail. The names chip routes to the `names` tab (`NameMoments`, neither pill selected),
+ * タイムライン / 彼女の24時間 tabs (`route.tab`, default the binder): the `Binder`, the `Timeline` with
+ * its month rail, or her 24 hours (a placeholder until its task). The names chip routes to the `names` tab (`NameMoments`, neither pill selected),
  * whose back link returns to the binder. The binder and the names list scroll inside the pane;
  * the timeline keeps its rail fixed at the bottom and scrolls the month above it.
  */
@@ -116,6 +116,7 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
                 <div role="group" className="flex shrink-0 gap-2 px-4 pb-2">
                     <Pill selected={tab === 'binder'} onClick={() => pickTab('binder')}>{t('memories.memoir.tabBinder')}</Pill>
                     <Pill selected={tab === 'timeline'} onClick={() => pickTab('timeline')}>{t('memories.memoir.tabTimeline')}</Pill>
+                    <Pill selected={tab === 'day24'} onClick={() => pickTab('day24')}>{t('memories.memoir.tabDay24')}</Pill>
                 </div>
                 {tab === 'binder' && (
                     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
@@ -123,6 +124,8 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
                     </div>
                 )}
                 {tab === 'timeline' && <Timeline key={memberPath} service={service} memberPath={memberPath} name={name} />}
+                {/* 彼女の24時間: a placeholder until its task draws the day. */}
+                {tab === 'day24' && <div data-testid="memories-day24-placeholder" className="flex min-h-0 flex-1 flex-col" />}
                 {tab === 'names' && (
                     <NameMoments
                         key={memberPath}

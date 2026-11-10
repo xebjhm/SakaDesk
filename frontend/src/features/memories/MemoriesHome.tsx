@@ -5,7 +5,7 @@ import { fetchHub } from './api';
 import { CountdownCard } from './home/CountdownCard';
 import { HubEntryCard } from './home/HubEntryCard';
 import { HubSlots } from './home/HubSlots';
-import { HUB_CARDS, hubCardCount } from './home/hubCards';
+import { HUB_CARDS, hubCardCounts, hubCardLine } from './home/hubCards';
 import { OnThisDayCard } from './home/OnThisDayCard';
 import { RecapHubCard, type RecapCardState } from './home/RecapHubCard';
 import { LoadState } from './shared/LoadState';
@@ -26,7 +26,8 @@ interface MemoriesHomeProps {
  * inside the pane when it is short (the large On This Day card with the wave-4 slots around
  * it, then the grid of entry cards), so every card stays reachable at the smallest window. The entry cards are usable while `/hub` loads or after it fails
  * (they only lack their counts); the moment's place shows the loading line or the retry. A
- * zero count shows no number; a `null` moment or countdown leaves its card out. The recap
+ * zero count shows no number (the gacha card says 「また明日」 instead; a `null` `gacha_left`
+ * shows no line); a `null` moment or countdown leaves its card out. The recap
  * card keeps its own shelf states (`RecapHubCard`).
  */
 export const MemoriesHome: React.FC<MemoriesHomeProps> = ({ service, recap, onOpenRecap, onRetry, go }) => {
@@ -35,6 +36,7 @@ export const MemoriesHome: React.FC<MemoriesHomeProps> = ({ service, recap, onOp
         count: (d) => (d.on_this_day ? 1 : 0),
     });
     const data = hub.data;
+    const counts = hubCardCounts(data);
 
     let moment: React.ReactNode = null;
     if (hub.status !== 'ready') {
@@ -57,7 +59,7 @@ export const MemoriesHome: React.FC<MemoriesHomeProps> = ({ service, recap, onOp
                         card.action === 'recap' ? (
                             <RecapHubCard key={card.id} recap={recap} onOpenRecap={onOpenRecap} onRetry={onRetry} />
                         ) : (
-                            <HubEntryCard key={card.id} card={card} count={hubCardCount(card, data?.counts ?? null)} onOpen={() => go(card.route)} />
+                            <HubEntryCard key={card.id} card={card} line={hubCardLine(card, counts)} onOpen={() => go(card.route)} />
                         )
                     ))}
                     <CountdownCard countdown={data?.countdown ?? null} go={go} className="col-span-2" />

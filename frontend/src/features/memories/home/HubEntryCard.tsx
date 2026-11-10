@@ -2,7 +2,7 @@ import React from 'react';
 import type { LucideIcon } from 'lucide-react';
 import { Card } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
-import type { HubCardDef } from './hubCards';
+import type { HubCardDef, HubCardLine } from './hubCards';
 
 /** The clickable face of a hub card: neutral, the accent only as the hover glow and focus ring. */
 export const HUB_CARD_BUTTON =
@@ -31,15 +31,16 @@ export const HubCardFace: React.FC<HubCardFaceProps> = ({ icon: Icon, title, sub
 
 interface HubEntryCardProps {
     card: HubCardDef;
-    /** The number to show (already checked above zero), or null for none. */
-    count: number | null;
+    /** The line under the title (`hubCardLine`: a count above zero or a number-free zero line), or null for none. */
+    line: HubCardLine;
     onOpen: () => void;
 }
 
-/** One routed entry card of the hub (album, memoir, favorites; wave 4 adds more). */
-export const HubEntryCard: React.FC<HubEntryCardProps> = ({ card, count, onOpen }) => {
+/** One routed entry card of the hub (album, memoir, favorites, radio, gacha, calendar). */
+export const HubEntryCard: React.FC<HubEntryCardProps> = ({ card, line, onOpen }) => {
     const { t } = useTranslation();
-    const sub = count !== null && card.countKey ? t(card.countLabelKey, { count }) : null;
+    let sub: string | null = null;
+    if (line) sub = line.count === undefined ? t(line.key) : t(line.key, { count: line.count });
     return (
         <Card className="h-full p-0">
             <button type="button" data-testid={`memories-hub-card-${card.id}`} onClick={onOpen} className={HUB_CARD_BUTTON}>
