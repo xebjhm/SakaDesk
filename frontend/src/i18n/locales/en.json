@@ -934,7 +934,7 @@
       "title": "Moments she called your name",
       "allYears": "All",
       "back": "Back to the binder",
-      "empty": "Moments she calls your name will gather here"
+      "empty": "Moments she called your name are listed here"
     },
     "timeline": {
       "count": "{{count}} message",
@@ -946,7 +946,7 @@
       "rail": "Pick a month",
       "older": "Older month",
       "newer": "Newer month",
-      "empty": "Month by month, memories will gather here"
+      "empty": "Memories, month by month, are listed here"
     }
   },
   "recap": {

@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { ChevronLeft, Sparkles } from 'lucide-react';
-import { Virtuoso } from 'react-virtuoso';
+import { Virtuoso, type ContextProp, type ItemProps, type ListProps } from 'react-virtuoso';
 import { useTranslation } from '../../../i18n';
 import { Avatar, Button, EmptyState, Pill } from '../../../design/primitives';
 import { fetchNameMoments } from '../api';
@@ -33,6 +33,16 @@ const MomentRow = React.memo<{ moment: NameMoment; name: string; onOpen: (moment
     );
 });
 MomentRow.displayName = 'MomentRow';
+
+/** The windowed list keeps list semantics: a `list` of `listitem`s. */
+const MomentList = React.forwardRef<HTMLDivElement, ListProps & ContextProp<unknown>>(({ context: _context, ...rest }, ref) => (
+    <div {...rest} ref={ref} role="list" />
+));
+MomentList.displayName = 'MomentList';
+const MomentItem: React.FC<ItemProps<NameMoment> & ContextProp<unknown>> = ({ item: _item, context: _context, ...rest }) => (
+    <div {...rest} role="listitem" />
+);
+const LIST_COMPONENTS = { List: MomentList, Item: MomentItem };
 
 const momentKey = (i: number, moment: NameMoment) => `${moment.message.room}|${moment.message.id}|${i}`;
 
@@ -92,6 +102,7 @@ export const NameMoments: React.FC<NameMomentsProps> = ({ service, memberPath, n
                 className="min-h-0 flex-1"
                 data={query.data.items}
                 computeItemKey={momentKey}
+                components={LIST_COMPONENTS}
                 itemContent={(_i, moment) => <div className="px-2"><MomentRow moment={moment} name={name} onOpen={openMoment} /></div>}
             />
         );

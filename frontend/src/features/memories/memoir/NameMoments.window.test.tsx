@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
+import { VirtuosoMockContext } from 'react-virtuoso';
 import i18n from '../../../i18n';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
@@ -23,8 +24,17 @@ describe('NameMoments windowing', () => {
                 sentence: `%%%、${i}`,
             })),
         });
-        render(<NameMoments service="hinatazaka46" memberPath={MEMBER_PATH} name="金村 美玖" onBack={() => {}} />);
-        expect(await screen.findByTestId('name-moments-list')).toBeInTheDocument();
-        expect(screen.queryAllByTestId('name-moment').length).toBeLessThan(100);
+        // jsdom has no layout: give the real list a 600-px viewport of 60-px rows (about 10 visible).
+        render(
+            <VirtuosoMockContext.Provider value={{ viewportHeight: 600, itemHeight: 60 }}>
+                <NameMoments service="hinatazaka46" memberPath={MEMBER_PATH} name="金村 美玖" onBack={() => {}} />
+            </VirtuosoMockContext.Provider>,
+        );
+        const list = await screen.findByRole('list');
+        const rows = await within(list).findAllByTestId('name-moment');
+        expect(rows.length).toBeGreaterThan(0);
+        expect(rows.length).toBeLessThan(100);
+        expect(within(list).getAllByRole('listitem')).toHaveLength(rows.length);
+        expect(rows[0]).toHaveTextContent('、0');
     });
 });

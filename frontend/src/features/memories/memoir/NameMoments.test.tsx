@@ -1,10 +1,10 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { VirtuosoMockContext } from 'react-virtuoso';
 import i18n from '../../../i18n';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
-vi.mock('react-virtuoso', async () => (await import('../../../__tests__/virtuosoMock')).virtuosoMock);
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
@@ -44,9 +44,12 @@ beforeEach(() => {
 
 function renderNames(onBack = vi.fn()) {
     render(
-        <NicknameProvider nickname="みーぱん">
-            <NameMoments service="hinatazaka46" memberPath={MEMBER_PATH} name="金村 美玖" onBack={onBack} />
-        </NicknameProvider>,
+        // jsdom has no layout: the real list gets a viewport that fits every row.
+        <VirtuosoMockContext.Provider value={{ viewportHeight: 600, itemHeight: 60 }}>
+            <NicknameProvider nickname="みーぱん">
+                <NameMoments service="hinatazaka46" memberPath={MEMBER_PATH} name="金村 美玖" onBack={onBack} />
+            </NicknameProvider>
+        </VirtuosoMockContext.Provider>,
     );
     return { onBack };
 }
@@ -57,6 +60,7 @@ describe('NameMoments', () => {
         expect(screen.getByRole('heading', { name: '名前を呼ばれた瞬間' })).toBeInTheDocument();
         const rows = await screen.findAllByTestId('name-moment');
         expect(rows).toHaveLength(3);
+        expect(within(screen.getByRole('list')).getAllByRole('listitem')).toHaveLength(3);
         expect(rows[0]).toHaveTextContent('みーぱん、あけおめ！');
         expect(rows[2]).toHaveTextContent('みーぱん、おはよう🌸');
         const name = within(rows[2]).getByText('みーぱん');
@@ -108,7 +112,7 @@ describe('NameMoments', () => {
     it('shows a gentle empty state without moments', async () => {
         vi.mocked(fetchNameMoments).mockResolvedValue({ years: [], items: [] });
         renderNames();
-        expect(await screen.findByText('名前を呼んでくれた瞬間は、これから増えていきます')).toBeInTheDocument();
+        expect(await screen.findByText('ここには、名前を呼んでくれた瞬間が並びます')).toBeInTheDocument();
         expect(screen.queryByTestId('name-moment')).not.toBeInTheDocument();
         expect(screen.queryByRole('group')).not.toBeInTheDocument();
     });

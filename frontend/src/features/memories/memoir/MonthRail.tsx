@@ -121,8 +121,9 @@ export const MonthRail: React.FC<MonthRailProps> = ({ months, index, onSelect, l
 
     /**
      * TimelineRail's dwell: zoom after the pointer rests on a month, then follow it as it moves
-     * (`followTolerance` months off the centre). Never in the middle of a drag, never when the
-     * months are wide enough to pick.
+     * (`followTolerance` months off the centre). Neither zooms nor recentres in the middle of a
+     * drag (a recentre would shift the scrub under the pointer), never zooms when the months are
+     * wide enough to pick.
      */
     const dwell = (at: number) => {
         if (!isZoomed) {
@@ -140,7 +141,7 @@ export const MonthRail: React.FC<MonthRailProps> = ({ months, index, onSelect, l
                     setIsZoomed(true);
                 }, MONTH_ZOOM.dwellTime);
             }
-        } else if (zoomCenter !== null && Math.abs(at - zoomCenter) >= MONTH_ZOOM.followTolerance) {
+        } else if (!draggingRef.current && zoomCenter !== null && Math.abs(at - zoomCenter) >= MONTH_ZOOM.followTolerance) {
             setZoomCenter(at);
             setLensCenter(at);
         }

@@ -154,7 +154,7 @@ describe('Timeline', () => {
     it('shows a gentle empty state without months', async () => {
         vi.mocked(fetchTimelineMonths).mockResolvedValue({ months: [] });
         renderTimeline();
-        expect(await screen.findByText('月ごとの思い出は、これから積み重なっていきます')).toBeInTheDocument();
+        expect(await screen.findByText('ここには、月ごとの思い出が並びます')).toBeInTheDocument();
         expect(screen.queryByRole('slider')).not.toBeInTheDocument();
         expect(vi.mocked(fetchTimelineMonth)).not.toHaveBeenCalled();
     });

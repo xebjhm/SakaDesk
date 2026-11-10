@@ -240,8 +240,8 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.timeline.rail')).toBe('月をえらぶ');
         expect(lookup(ja, 'memories.timeline.older')).toBe('前の月');
         expect(lookup(ja, 'memories.timeline.newer')).toBe('次の月');
-        expect(lookup(ja, 'memories.names.empty')).toBe('名前を呼んでくれた瞬間は、これから増えていきます');
-        expect(lookup(ja, 'memories.timeline.empty')).toBe('月ごとの思い出は、これから積み重なっていきます');
+        expect(lookup(ja, 'memories.names.empty')).toBe('ここには、名前を呼んでくれた瞬間が並びます');
+        expect(lookup(ja, 'memories.timeline.empty')).toBe('ここには、月ごとの思い出が並びます');
         expect(lookup(zhTW, 'memories.onThisDay.title')).toBe('那年今日');
         expect(lookup(zhTW, 'memories.onThisDay.noMessages')).toBe('這天沒有訊息');
         expect(lookup(zhTW, 'memories.day.otherGroups')).toBe('包含其他團體');

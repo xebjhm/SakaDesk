@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { act, fireEvent, render, screen } from '@testing-library/react';
 import i18n from '../../../i18n';
 import type { TimelineMonthCount } from '../types';
+import { fisheyePosition } from '../../blogs/components/fisheye';
 import { MonthRail, RAIL_PADDING } from './MonthRail';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
@@ -193,7 +194,27 @@ describe('MonthRail', () => {
         const { rail, at, lens } = setupMany();
         fireEvent.pointerMove(rail, { clientX: at(30), pointerId: 1 });
         act(() => { vi.advanceTimersByTime(800); });
-        expect(lens.style.width).toMatch(/^calc\(/);
+        // the month rail's shape: ±6 months, 2.5×, at most a quarter of the rail per side
+        const shape = { magnifiedWindow: 6, magnification: 2.5, maxSpread: 0.25 };
+        const lo = fisheyePosition(24, 60, 30, shape);
+        const hi = fisheyePosition(36, 60, 30, shape);
+        expect(hi - lo).toBeCloseTo(0.5);
+        expect(lens.style.left).toBe(`calc(${RAIL_PADDING}px + ${lo} * (100% - ${2 * RAIL_PADDING}px))`);
+        expect(lens.style.width).toBe(`calc(${hi - lo} * (100% - ${2 * RAIL_PADDING}px))`);
+    });
+
+    it('keeps the zoom centre still in the middle of a drag', () => {
+        vi.useFakeTimers();
+        const { rail, at, lens, onSelect } = setupMany();
+        fireEvent.pointerMove(rail, { clientX: at(30), pointerId: 1 });
+        act(() => { vi.advanceTimersByTime(800); });
+        const before = lens.style.left;
+        fireEvent.pointerDown(rail, { button: 0, clientX: at(30), pointerId: 1 });
+        fireEvent.pointerMove(rail, { clientX: at(40), pointerId: 1 });
+        expect(lens.style.left).toBe(before);
+        // zoomed around 30: 10 px-months right of the centre is 4 months (2.5×)
+        expect(onSelect).toHaveBeenLastCalledWith(34);
+        fireEvent.pointerUp(rail, { pointerId: 1 });
     });
 
     it('forgets a wheel remainder after a pause or a turn', () => {
