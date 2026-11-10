@@ -397,6 +397,35 @@ async def test_full_member_partial(full):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize(
+    ("logged", "expected"),
+    [
+        (None, None),  # never logged: the message time is not the star time
+        ("not-a-time", None),  # unparseable log: still no star time
+        ("2026-06-01T20:00:00", None),  # naive: not a trustworthy instant
+        ("2026-06-03T10:30:00+09:00", "2026-06-03T01:30:00Z"),
+    ],
+)
+async def test_first_favorite_time_only_when_recorded(
+    full, monkeypatch, logged, expected
+):
+    def fake_favorited_at(service, ids):
+        return {19: logged} if logged is not None else {}
+
+    monkeypatch.setattr(app_state, "favorited_at", fake_favorited_at)
+    with capture_logs() as logs:
+        p = await build(full, "金村美玖", PARTIAL)
+    first = slides_of(p)["s10_you"]["data"]["first_favorite"]
+    assert first["id"] == 19
+    assert first["favorited_at"] == expected
+    unparsed = [e for e in logs if e.get("rule") == "fav_at_unparsed"]
+    if logged in ("not-a-time", "2026-06-01T20:00:00"):
+        assert [e["message_id"] for e in unparsed] == [19]
+    else:
+        assert unparsed == []
+
+
+@pytest.mark.asyncio
 async def test_messages_are_the_hero_of_one_slide_only(full):
     for when in (PARTIAL, FINAL):
         p = await build(full, "金村美玖", when)

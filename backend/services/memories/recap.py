@@ -999,19 +999,27 @@ def _s09_special(ctx: _Ctx) -> dict | None:
 def _s10_you(ctx: _Ctx) -> dict:
     slide = "s10_you"
     y_start = datetime(ctx.year, 1, 1, tzinfo=JST)
-    favs: list[tuple[datetime, Item, str | None]] = []
+    # (when, item, recorded): ``recorded`` is True only when a real favourite time
+    # was logged and parsed; otherwise ``when`` is the message time, a placement
+    # proxy that must never be presented as the moment the star was given.
+    favs: list[tuple[datetime, Item, bool]] = []
     for item in ctx.all_facts:
         if not item[1].favorited:
             continue
         logged = ctx.fav_at.get(item[1].id)
         when = item[1].ts
+        recorded = False
         if logged:
+            parsed: datetime | None = None
             with contextlib.suppress(ValueError):
                 parsed = datetime.fromisoformat(logged.replace("Z", "+00:00"))
-                if parsed.tzinfo is not None:
-                    when = parsed
+            if parsed is not None and parsed.tzinfo is not None:
+                when = parsed
+                recorded = True
+            else:
+                _log(slide, "fav_at_unparsed", message_id=item[1].id)
         if y_start <= when <= ctx.end:
-            favs.append((when, item, logged))
+            favs.append((when, item, recorded))
     favs.sort(key=lambda x: (x[0], x[1][1].id))
     letters = [
         {
@@ -1028,10 +1036,10 @@ def _s10_you(ctx: _Ctx) -> dict:
         return _slide(slide, {"invite": True}, "invite")
     first = None
     if favs:
-        when, item, logged = favs[0]
+        when, item, recorded = favs[0]
         first = ctx.message(item, text=False)
         if first is not None:
-            first["favorited_at"] = _iso(when) if logged else None
+            first["favorited_at"] = _iso(when) if recorded else None
     _log(
         slide,
         "favorites_letters",
