@@ -16,7 +16,7 @@ const CLIENT_LOG_TIMEOUT_MS = 4000;
 export type ClientLogEvent =
     | 'call_ring' | 'call_skip' | 'call_answer' | 'call_decline'
     | 'call_timeout' | 'call_end' | 'call_cancel' | 'call_error'
-    | 'notify_open_chat' | 'notify_open_login' | 'backend_sync_followed' | 'backend_sync_skipped'
+    | 'notify_open_chat' | 'notify_open_login' | 'notify_open_memories' | 'backend_sync_followed' | 'backend_sync_skipped'
     | 'call_popup_start' | 'call_popup_error'
     | 'call_popup_heard_applied' | 'call_popup_heard_ignored'
     | 'app_load_failed'

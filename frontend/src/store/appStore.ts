@@ -43,6 +43,7 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { DEFAULT_SERVICE_ORDER } from '../data/services';
 import { persisted } from '../core/persistence/persisted';
 import type { RecentPost } from '../types';
+import type { MemoriesRoute } from '../features/memories/MemoriesFeature';
 
 /** Available feature tabs within a service. */
 export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai' | 'memories';
@@ -161,6 +162,18 @@ interface AppState {
     /** Set the target message to scroll to. */
     setTargetMessageId: (id: number | null) => void;
 
+    // ─── Memories Deep Link ──────────────────────────────────────────────────
+
+    /**
+     * A Memories page to open (a notification click; non-persisted). `nonce` grows with every
+     * link, so a second click to the same page is still a new link. Consumed by MemoriesFeature.
+     */
+    memoriesDeepLink: { service: string; route: MemoriesRoute; nonce: number } | null;
+    /** Store a deep link, show the service's Memories feature and switch service when it differs. */
+    openMemoriesAt: (service: string, route: MemoriesRoute) => void;
+    /** Clear the deep link, only when it is still the one with this nonce. */
+    clearMemoriesDeepLink: (nonce: number) => void;
+
     // ─── Blog Search Navigation ──────────────────────────────────────────────
 
     /** Target blog to open from search results (non-persisted). */
@@ -228,6 +241,10 @@ const DEFAULT_FEATURE_ORDER: FeatureId[] = ['messages', 'blogs', 'news', 'fanclu
 // cache (App.tsx calls useAppStore.persist.rehydrate() after the cache loads;
 // set via onRehydrateStorage below). Until then, persist writes are suppressed.
 let hasHydratedFromBackend = false;
+
+// The last Memories deep-link nonce handed out; kept outside the store so a cleared link's
+// nonce is never reused (a stale clear can then never drop a newer link).
+let memoriesLinkNonce = 0;
 
 const backendStateStorage = {
     getItem: (name: string): string | null => persisted.getPref<string | null>(name, null),
@@ -359,6 +376,18 @@ export const useAppStore = create<AppState>()(
 
             targetMessageId: null,
             setTargetMessageId: (id) => set({ targetMessageId: id }),
+
+            memoriesDeepLink: null,
+            openMemoriesAt: (service, route) => {
+                memoriesLinkNonce += 1;
+                const nonce = memoriesLinkNonce;
+                set({ memoriesDeepLink: { service, route, nonce } });
+                get().setActiveFeature(service, 'memories');
+                if (get().activeService !== service) get().setActiveService(service);
+            },
+            clearMemoriesDeepLink: (nonce) => {
+                if (get().memoriesDeepLink?.nonce === nonce) set({ memoriesDeepLink: null });
+            },
 
             targetBlog: null,
             setTargetBlog: (target) => set({ targetBlog: target }),

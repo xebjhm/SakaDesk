@@ -13,6 +13,8 @@ import { RadioPage } from './radio/RadioPage';
 import { GachaPage } from './gacha/GachaPage';
 import { CalendarAlbumPage } from './calendar/CalendarAlbumPage';
 import { DayPage } from './calendar/DayPage';
+import { useAppStore } from '../../store/appStore';
+import { useMemoriesUiReporter } from './useMemoriesUiReporter';
 
 /** Pages of the Memories router (the core pages, then the fun wave's). */
 export type MemoriesRoute =
@@ -21,7 +23,8 @@ export type MemoriesRoute =
     /** `monthDay` is `MM-DD`; `year` set = the detail (A) of that year. */
     | { page: 'onThisDay'; monthDay?: string; year?: number }
     | { page: 'album'; memberPath?: string }
-    | { page: 'memoir'; memberPath?: string; tab?: 'binder' | 'timeline' | 'names' | 'day24' }
+    /** `cardKey` (binder tab, a notification deep link) opens that earned card's detail once. */
+    | { page: 'memoir'; memberPath?: string; tab?: 'binder' | 'timeline' | 'names' | 'day24'; cardKey?: string }
     | { page: 'favorites'; memberPath?: string }
     | { page: 'radio'; memberPath?: string }
     | { page: 'gacha' }
@@ -62,10 +65,21 @@ interface MemoriesFeatureProps {
     initialRoute?: MemoriesRoute;
 }
 
+/**
+ * The Memories router. A notification click stores a deep link in the app store
+ * (`memoriesDeepLink`); the router opens it when it is for this service (on mount, while already
+ * open on another page, or once a service switch reaches it), logs the page and clears the link.
+ */
 export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickname, initialRoute }) => {
+    useMemoriesUiReporter();
+    const deepLink = useAppStore((s) => s.memoriesDeepLink);
+    const clearMemoriesDeepLink = useAppStore((s) => s.clearMemoriesDeepLink);
     // The route is tagged with its service so a service change falls back to home
     // on the same render (no flash of the old service's page).
-    const [state, setState] = useState<{ service: string; route: MemoriesRoute }>(() => ({ service, route: initialRoute ?? HOME }));
+    const [state, setState] = useState<{ service: string; route: MemoriesRoute }>(() => ({
+        service,
+        route: deepLink?.service === service ? deepLink.route : initialRoute ?? HOME,
+    }));
     // Re-tag on a service change (React's set-state-during-render pattern), so switching back
     // to the earlier service does not restore its old page.
     if (state.service !== service) setState({ service, route: HOME });
@@ -76,6 +90,15 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
     useEffect(() => {
         if (initialPage.current && initialPage.current !== 'home') logMemoriesPage(initialPage.current);
     }, []);
+
+    // A notification deep link for this service: open its page, log it and consume it.
+    useEffect(() => {
+        if (!deepLink || deepLink.service !== service) return;
+        setState({ service, route: deepLink.route });
+        logMemoriesPage(deepLink.route.page);
+        clearMemoriesDeepLink(deepLink.nonce);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- a link is applied once per nonce (or service change)
+    }, [deepLink?.nonce, service]);
 
     const go = (next: MemoriesRoute) => {
         setState({ service, route: next });

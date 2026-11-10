@@ -38,6 +38,7 @@ ClientEvent = Literal[
     "app_load_failed",
     "notify_open_chat",
     "notify_open_login",
+    "notify_open_memories",
     "backend_sync_followed",
     "backend_sync_skipped",
     "design_tokens_applied",

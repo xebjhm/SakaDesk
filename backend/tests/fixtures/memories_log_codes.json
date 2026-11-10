@@ -148,7 +148,8 @@
     "pull_missing",
     "day24_thin",
     "note_empty",
-    "same_time_none"
+    "same_time_none",
+    "card_missing"
   ],
   "memories_radio.phase": [
     "play",
@@ -289,5 +290,15 @@
     "skip",
     "end",
     "close"
+  ],
+  "notify_open_memories.target": [
+    "on_this_day",
+    "memoir",
+    "recap"
+  ],
+  "notify_open_memories.reason": [
+    "malformed",
+    "unknown_service",
+    "onboarding"
   ]
 }

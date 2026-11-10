@@ -284,6 +284,22 @@ def test_notify_open_login_accepts_delivered():
     assert event["delivered"] is True
 
 
+def test_notify_open_memories_accepts_delivered_and_refusals():
+    for fields in (
+        {"service": "sakurazaka46", "delivered": True, "target": "on_this_day"},
+        {"delivered": False, "reason": "unknown_service"},
+        {"service": "sakurazaka46", "delivered": False, "reason": "onboarding"},
+    ):
+        with capture_logs() as logs:
+            res = client.post(
+                "/api/client-log",
+                json={"event": "notify_open_memories", "fields": fields},
+            )
+        assert res.status_code == 204, fields
+        (event,) = _client_events(logs)
+        assert event["delivered"] is fields["delivered"]
+
+
 @pytest.mark.parametrize(
     ("event", "fields", "level"),
     [

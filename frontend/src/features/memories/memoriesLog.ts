@@ -128,10 +128,13 @@ export function logMemoriesToggle(
  * out); `pull_missing` a gacha pull's message is no longer in the archive (a date-only card);
  * `day24_thin` her day is too thin (the thin-data card instead); `note_empty` an empty capsule note
  * was not saved; `same_time_none` nothing at this JST minute (the line is hidden).
+ * Notifications wave: `card_missing` a notification's card is not an earned card of her binder
+ * (the binder is shown without the card detail).
  */
 export const MEMORIES_SKIP_REASONS = [
     'focus_missing', 'empty_note', 'unknown_card',
     'transcript_missing', 'pull_missing', 'day24_thin', 'note_empty', 'same_time_none',
+    'card_missing',
 ] as const;
 export type MemoriesSkipReason = (typeof MEMORIES_SKIP_REASONS)[number];
 
@@ -143,6 +146,17 @@ export function logMemoriesSkip(
 ): void {
     clientLog('memories_skip', { target, reason, ...extra });
 }
+
+/** The pages a notification click can open (`notify_open_memories` `target`, as page codes). */
+export const NOTIFY_OPEN_MEMORIES_PAGES = ['onThisDay', 'memoir', 'recap'] as const satisfies readonly MemoriesPage[];
+export type NotifyOpenMemoriesPage = (typeof NOTIFY_OPEN_MEMORIES_PAGES)[number];
+/**
+ * Why a notification click did not open Memories (`notify_open_memories` `reason`): `malformed` the
+ * payload failed the route whitelist, `unknown_service` the service is not one the fan added,
+ * `onboarding` the setup wizard or login carousel is up.
+ */
+export const NOTIFY_OPEN_MEMORIES_REASONS = ['malformed', 'unknown_service', 'onboarding'] as const;
+export type NotifyOpenMemoriesReason = (typeof NOTIFY_OPEN_MEMORIES_REASONS)[number];
 
 export const MEMORIES_RADIO_PHASES = ['play', 'track', 'track_error', 'pause', 'resume', 'sleep_set', 'sleep_fade', 'end'] as const;
 export type MemoriesRadioPhase = (typeof MEMORIES_RADIO_PHASES)[number];

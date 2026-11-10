@@ -23,8 +23,9 @@ import { MEMBER_PATH, memoryMessage } from '../__fixtures__/memories';
 import { dayPayload } from '../day/__fixtures__';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import { NicknameProvider } from '../shared/useNickname';
+import { clientLog } from '../../../utils/clientLog';
 import { MemoirPage } from './MemoirPage';
-import { binderPayload, headerPayload, membersPayload, NAO_PATH } from './__fixtures__';
+import { binderPayload, card, face, headerPayload, membersPayload, NAO_PATH } from './__fixtures__';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 // MessageBubble asks for cached translations and transcripts of what it shows.
@@ -150,5 +151,56 @@ describe('MemoirPage', () => {
         expect(screen.getByRole('button', { name: '生写真帳' })).toHaveAttribute('aria-pressed', 'false');
         expect(screen.getByRole('button', { name: 'タイムライン' })).toHaveAttribute('aria-pressed', 'false');
         expect(vi.mocked(fetchMemoirCards)).not.toHaveBeenCalled();
+    });
+
+    describe('card focus (a notification deep link)', () => {
+        function withAnniversary() {
+            const payload = binderPayload();
+            payload.shelves.push({
+                key: 'anniversary',
+                cards: [card({ key: 'anniv.y1', date: '2025-07-24', face: face({ id: 50, text: '1年ありがとう' }) })],
+            });
+            return payload;
+        }
+
+        it('opens the routed card detail after the binder loads, once', async () => {
+            vi.mocked(clientLog).mockClear();
+            vi.mocked(fetchMemoirCards).mockResolvedValue(withAnniversary());
+            const { rerender } = renderPage({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder', cardKey: 'anniv.y1' });
+            const dialog = await screen.findByRole('dialog');
+            expect(dialog).toBeInTheDocument();
+            expect((await within(dialog).findAllByText(/1年ありがとう/)).length).toBeGreaterThan(0);
+            await userEvent.keyboard('{Escape}');
+            await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+            // the same route re-rendered never re-opens it
+            rerender({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder', cardKey: 'anniv.y1' });
+            await new Promise((r) => setTimeout(r, 20));
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(clientLog).not.toHaveBeenCalledWith('memories_skip', expect.anything());
+        });
+
+        it('logs card_missing for an unknown card and shows the binder', async () => {
+            vi.mocked(clientLog).mockClear();
+            renderPage({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder', cardKey: 'anniv.y9' });
+            expect(await screen.findAllByTestId('binder-shelf')).not.toHaveLength(0);
+            await waitFor(() => expect(clientLog).toHaveBeenCalledWith('memories_skip', { target: 'binder', reason: 'card_missing' }));
+            expect(screen.queryByRole('dialog')).toBeNull();
+            expect(vi.mocked(clientLog).mock.calls.filter((c) => c[0] === 'memories_skip')).toHaveLength(1);
+        });
+
+        it('treats an unearned card as missing', async () => {
+            vi.mocked(clientLog).mockClear();
+            renderPage({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder', cardKey: 'first.picture' });
+            await waitFor(() => expect(clientLog).toHaveBeenCalledWith('memories_skip', { target: 'binder', reason: 'card_missing' }));
+            expect(screen.queryByRole('dialog')).toBeNull();
+        });
+
+        it('a tab or member pick drops the card key', async () => {
+            const { go } = renderPage({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder', cardKey: 'anniv.y9' });
+            await userEvent.click(screen.getByRole('button', { name: 'タイムライン' }));
+            expect(go).toHaveBeenLastCalledWith({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'timeline' });
+            await userEvent.click(await screen.findByRole('button', { name: /小坂 菜緒/ }));
+            expect(go).toHaveBeenLastCalledWith({ page: 'memoir', memberPath: NAO_PATH });
+        });
     });
 });

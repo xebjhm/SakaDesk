@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Flower2 } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Pill } from '../../../design/primitives';
@@ -8,6 +8,7 @@ import { LoadState } from '../shared/LoadState';
 import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
+import { logMemoriesSkip } from '../memoriesLog';
 import type { BinderCard, MemoirMember } from '../types';
 import { Day24View } from '../day24/Day24View';
 import { Binder } from './Binder';
@@ -44,13 +45,32 @@ const Trailing: React.FC<{ member: MemoirMember }> = ({ member }) => {
     );
 };
 
-/** The binder of the selected person, with its card detail. */
-const BinderPane: React.FC<{ service: string; memberPath: string; name: string }> = ({ service, memberPath, name }) => {
+/**
+ * The binder of the selected person, with its card detail. `cardKey` (a notification deep link)
+ * opens that earned card's detail once the binder is loaded, once per person and card; a key that
+ * is not an earned card of hers logs `memories_skip` `card_missing` and shows the binder.
+ */
+const BinderPane: React.FC<{ service: string; memberPath: string; name: string; cardKey?: string }> = ({
+    service, memberPath, name, cardKey,
+}) => {
     const binder = useMemoriesQuery('binder', (signal) => fetchMemoirCards(service, memberPath, signal), [service, memberPath], {
         count: (d) => d.progress.earned,
     });
     const [open, setOpen] = useState<{ path: string; card: BinderCard } | null>(null);
     const card = open?.path === memberPath ? open.card : null;
+
+    const focused = useRef<string | null>(null);
+    const data = binder.status === 'ready' ? binder.data : null;
+    useEffect(() => {
+        if (!cardKey || !data) return;
+        const id = JSON.stringify([memberPath, cardKey]);
+        if (focused.current === id) return;
+        focused.current = id;
+        const hit = data.shelves.flatMap((s) => s.cards).find((c) => c.key === cardKey && c.date);
+        if (hit) setOpen({ path: memberPath, card: hit });
+        else logMemoriesSkip('binder', 'card_missing');
+    }, [data, memberPath, cardKey]);
+
     if (binder.status !== 'ready' || !binder.data) {
         return <LoadState status={binder.status === 'error' ? 'error' : 'loading'} onRetry={binder.retry} />;
     }
@@ -128,7 +148,7 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
                 </div>
                 {tab === 'binder' && (
                     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-                        <BinderPane service={service} memberPath={memberPath} name={name} />
+                        <BinderPane service={service} memberPath={memberPath} name={name} cardKey={route.cardKey} />
                     </div>
                 )}
                 {tab === 'timeline' && <Timeline key={memberPath} service={service} memberPath={memberPath} name={name} />}

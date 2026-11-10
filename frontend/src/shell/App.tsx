@@ -19,6 +19,7 @@ import type { SearchModalHandle } from '../features/search'
 import { persisted } from '../core/persistence/persisted'
 import { applyStartupLanguage } from './language'
 import { openChatFromToast } from './openChat'
+import { openMemoriesFromToast } from './openMemories'
 import { clientLog } from '../utils/clientLog'
 import { markVoiceHeard } from './markVoiceHeard'
 import { useOshiMirror } from './useOshiMirror'
@@ -295,6 +296,14 @@ function App() {
             return true;
         };
         return () => { delete window.__sakadeskOpenLogin; };
+    }, []);
+
+    // Desktop Memories toast click: open Memories at the toast's page. Refused during
+    // onboarding, like the login toast (the main view is hidden behind it).
+    useEffect(() => {
+        window.__sakadeskOpenMemories = (payload: unknown) =>
+            openMemoriesFromToast(payload, () => openLoginStateRef.current.onboarding);
+        return () => { delete window.__sakadeskOpenMemories; };
     }, []);
 
     // Desktop popup answered a voice: the main window (sole writer) marks it heard.

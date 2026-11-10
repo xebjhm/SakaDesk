@@ -12,6 +12,7 @@ import {
     MEMORIES_GACHA_PHASES, MEMORIES_GACHA_REFUSALS, MEMORIES_GACHA_OUTCOMES,
     MEMORIES_CAPSULE_PHASES, MEMORIES_CAPSULE_OUTCOMES, MEMORIES_CAPSULE_ERROR_CODES,
     logMemoriesRadio, logMemoriesGacha, logMemoriesCapsule,
+    NOTIFY_OPEN_MEMORIES_PAGES, NOTIFY_OPEN_MEMORIES_REASONS,
 } from './memoriesLog';
 import { ALBUM_KINDS, CAPSULE_ANCHOR_KINDS, GACHA_RARITIES, GACHA_REASONS, RADIO_PROGRAMS } from './types';
 
@@ -50,6 +51,8 @@ function emitted(): Record<string, string[]> {
         'recap_poster.phase': [...RECAP_POSTER_PHASES],
         'recap_share.phase': [...RECAP_SHARE_PHASES],
         'recap_opening.phase': [...RECAP_OPENING_PHASES],
+        'notify_open_memories.target': NOTIFY_OPEN_MEMORIES_PAGES.map((p) => MEMORIES_PAGE_CODES[p]),
+        'notify_open_memories.reason': [...NOTIFY_OPEN_MEMORIES_REASONS],
     };
 }
 
@@ -83,6 +86,9 @@ describe('memoriesLog codes', () => {
         expect(MEMORIES_TOGGLES).toEqual(expect.arrayContaining([
             'radio_program', 'cassette', 'sleep_timer', 'then_now', 'then_now_mode', 'calendar_member', 'album_cover',
         ]));
+        expect(NOTIFY_OPEN_MEMORIES_PAGES.map((p) => MEMORIES_PAGE_CODES[p])).toEqual(['on_this_day', 'memoir', 'recap']);
+        expect(NOTIFY_OPEN_MEMORIES_REASONS).toEqual(['malformed', 'unknown_service', 'onboarding']);
+        expect(MEMORIES_SKIP_REASONS).toContain('card_missing');
         expect(MEMORIES_SKIP_REASONS).toEqual(expect.arrayContaining([
             'transcript_missing', 'pull_missing', 'day24_thin', 'note_empty', 'same_time_none',
         ]));
