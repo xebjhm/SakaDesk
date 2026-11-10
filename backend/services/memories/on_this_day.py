@@ -103,10 +103,17 @@ def _words_key(t: _Tagged) -> tuple[int, datetime, int]:
     return (-(f.importance or 0), f.ts, f.id)
 
 
-def _pick_year(
+def pick_year(
     facts: Sequence[_Tagged], oshi: set[str]
 ) -> tuple[list[_Tagged], _Tagged | None]:
-    """``(preview picks in display order, thumb)`` of one date-year. Pure."""
+    """``(preview picks in display order, thumb)`` of one date-year. Pure.
+
+    Preview: one pick per person, her highest-importance non-promo words
+    (ties: the earlier), people ordered oshi first, then by that importance;
+    at most :data:`PREVIEW_CAP`. Thumb: the highest ``photo_score`` non-promo
+    picture (a video only without one; ties: the earlier), or ``None``. The
+    hub reuses it over any fact pool.
+    """
     best: dict[str, _Tagged] = {}
     for t in sorted(
         (t for t in facts if not t[2].is_promo and t[2].importance is not None),
@@ -175,7 +182,7 @@ def _compose(
             else:
                 years.append({"year": year, "has_messages": False})
             continue
-        preview, thumb = _pick_year(facts, oshi)
+        preview, thumb = pick_year(facts, oshi)
         for t in preview:
             logger.info(
                 "memories_select",
@@ -289,4 +296,5 @@ __all__ = [
     "month_day_of",
     "on_this_day",
     "parse_month_day",
+    "pick_year",
 ]

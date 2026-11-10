@@ -426,7 +426,8 @@ def _keyword_or_best(
     return (best, FALLBACK_BEST_OF_DAY) if best is not None else None
 
 
-def _parse_birthday(raw: str | None) -> tuple[int, int] | None:
+def parse_birthday(raw: str | None) -> tuple[int, int] | None:
+    """``(month, day)`` of an ``MM-DD`` / ``YYYY-MM-DD`` birthday, else ``None``."""
     m = _BIRTHDAY_RE.match(raw or "")
     if m is None:
         return None
@@ -475,7 +476,7 @@ def _special_cards(
     ]
     hidden = 0
 
-    bday = _parse_birthday(inp.birthday)
+    bday = parse_birthday(inp.birthday)
     if bday is None:
         hidden += 1
     else:
@@ -796,6 +797,7 @@ __all__ = [
     "earned_keys",
     "evaluate",
     "evaluate_counted",
+    "parse_birthday",
     "progress_summary",
     "subscription_day_date",
 ]
