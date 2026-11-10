@@ -1,9 +1,10 @@
-"""Memories API: year recaps and the member memoir (list, header, names, timeline, binder) for the active service, the export handoff and the share GIF."""
+"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day and the day view for the active service, the export handoff and the share GIF."""
 
 from __future__ import annotations
 
 import asyncio
-from datetime import datetime, timezone
+import re
+from datetime import date, datetime, timezone
 from pathlib import Path
 
 import structlog
@@ -14,9 +15,11 @@ from backend.api.content import get_output_dir
 from backend.services.archive_urls import ArchiveReadError
 from backend.services.memories import (
     binder,
+    day_view,
     exports,
     memoir,
     nickname_moments,
+    on_this_day,
     people,
     share_gif,
     timeline,
@@ -32,6 +35,7 @@ router = APIRouter(prefix="/api/memories", tags=["memories"])
 logger = structlog.get_logger(__name__)
 
 MIN_YEAR = 2020
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 def _service_dir(service: str) -> Path:
@@ -203,6 +207,68 @@ async def memoir_timeline_month(
     except timeline.MonthOutOfRange:
         logger.info("memories.api.month_not_found", month=month)
         raise HTTPException(status_code=404, detail="Month not found") from None
+
+
+@router.get("/{service}/on-this-day")
+async def on_this_day_route(
+    service: str, month_day_q: str | None = Query(None, alias="date")
+) -> dict:
+    """On This Day for ``date`` (``MM-DD``; default: today in JST).
+
+    A malformed or impossible ``date`` (e.g. ``02-30``) is 400.
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    month_day = (
+        month_day_q if month_day_q is not None else on_this_day.month_day_of(now)
+    )
+    try:
+        on_this_day.parse_month_day(month_day)
+    except ValueError:
+        logger.warning("memories.api.reject", reason="bad_date")
+        raise HTTPException(status_code=400, detail="Invalid date") from None
+    return await on_this_day.on_this_day(service, service_data_dir, month_day, now=now)
+
+
+def _parse_day(raw: str) -> date:
+    """A ``YYYY-MM-DD`` date; 400 for any other format or an impossible date."""
+    try:
+        if not DATE_RE.match(raw):
+            raise ValueError(raw)
+        return date.fromisoformat(raw)
+    except ValueError:
+        logger.warning("memories.api.reject", reason="bad_date")
+        raise HTTPException(status_code=400, detail="Invalid date") from None
+
+
+@router.get("/{service}/day")
+async def day_route(
+    service: str,
+    day_q: str = Query(..., alias="date"),
+    member: str | None = Query(None),
+    others: bool = Query(False),
+) -> dict:
+    """The 那一天 day view of ``date`` (``YYYY-MM-DD``), merged across people.
+
+    ``member`` (chat path of any of her rooms) limits it to one person and
+    disables ``others``; ``others`` adds the fan's other services.
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    day = _parse_day(day_q)
+    summary = (
+        await _person(service_data_dir, member, view="day")
+        if member is not None
+        else None
+    )
+    return await day_view.day_view(
+        service,
+        service_data_dir,
+        day,
+        member=summary,
+        include_other_services=others,
+        now=now,
+    )
 
 
 @router.post("/export")

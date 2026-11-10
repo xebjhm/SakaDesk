@@ -187,3 +187,88 @@ def test_memoir_member_routes_validate_member(out, route):
     assert get(url, member="櫻坂46/messages/1 x/2 x").status_code == 404
     assert get(f"/api/memories/nope/{route}", member=MEMBER).status_code == 400
     assert get(url).status_code == 422
+
+
+# --- On This Day and the day view (C4) ------------------------------------------------
+
+
+def test_on_this_day_happy_path(out, no_oshi):
+    r = get(f"/api/memories/{SERVICE}/on-this-day", date="12-24")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["month_day"] == "12-24"
+    years = {y["year"]: y for y in body["years"]}
+    assert list(years) == [2024, 2025]  # 2026-12-24 is still ahead
+    assert years[2024]["preview"][0]["text"] == WORDS
+    assert years[2025] == {"year": 2025, "has_messages": False}
+    assert str(out) not in r.text
+
+
+def test_on_this_day_defaults_to_today_in_jst(out, no_oshi):
+    r = get(f"/api/memories/{SERVICE}/on-this-day")
+    assert r.status_code == 200 and r.json()["month_day"] == "11-10"
+
+
+@pytest.mark.parametrize("bad", ["2024-12-24", "12/24", "1224", "13-01", "02-30", "x"])
+def test_on_this_day_bad_date_is_400(out, bad):
+    r = get(f"/api/memories/{SERVICE}/on-this-day", date=bad)
+    assert r.status_code == 400
+
+
+def test_on_this_day_unknown_service_is_400(out):
+    assert get("/api/memories/nope/on-this-day", date="12-24").status_code == 400
+
+
+def test_day_happy_path_and_member(out, no_oshi):
+    r = get(f"/api/memories/{SERVICE}/day", date="2024-12-24")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["date"] == "2024-12-24" and body["other_services"] == []
+    (m,) = body["messages"]
+    assert m["text"] == WORDS and m["member_path"] == MEMBER
+    assert body["members"][0]["member_path"] == MEMBER
+    r = get(f"/api/memories/{SERVICE}/day", date="2024-12-24", member=MEMBER)
+    assert r.status_code == 200 and len(r.json()["messages"]) == 1
+    assert str(out) not in r.text
+
+
+def test_day_others_flag_parsing(out, no_oshi):
+    write_room(
+        out / "櫻坂46",
+        "1 誰か",
+        "2 誰か",
+        [msg(1, "2024-12-24T01:00:00Z", content="櫻坂")],
+    )
+    url = f"/api/memories/{SERVICE}/day"
+    for on in ("1", "true"):
+        body = get(url, date="2024-12-24", others=on).json()
+        assert body["other_services"] == ["sakurazaka46"]
+        assert [m["service"] for m in body["messages"]] == [
+            "sakurazaka46",
+            SERVICE,
+        ]
+    for off in ("0", "false"):
+        assert get(url, date="2024-12-24", others=off).json()["other_services"] == []
+    assert get(url, date="2024-12-24").json()["other_services"] == []
+    assert get(url, date="2024-12-24", others="maybe").status_code == 422
+    # others is ignored for one member
+    body = get(url, date="2024-12-24", others=1, member=MEMBER).json()
+    assert body["other_services"] == []
+
+
+@pytest.mark.parametrize(
+    "bad", ["12-24", "2024-13-01", "2024-02-30", "2024/12/24", "20241224", "x"]
+)
+def test_day_bad_date_is_400(out, bad):
+    assert get(f"/api/memories/{SERVICE}/day", date=bad).status_code == 400
+
+
+def test_day_validates_member_and_service(out):
+    url = f"/api/memories/{SERVICE}/day"
+    assert get(url).status_code == 422
+    assert get(url, date="2024-12-24", member="../../etc/passwd").status_code == 400
+    assert get(url, date="2024-12-24", member=f"{SVC_NAME}/../../x").status_code == 400
+    (out / "櫻坂46" / "messages" / "1 x" / "2 x").mkdir(parents=True, exist_ok=True)
+    r = get(url, date="2024-12-24", member="櫻坂46/messages/1 x/2 x")
+    assert r.status_code == 404
+    assert get("/api/memories/nope/day", date="2024-12-24").status_code == 400
