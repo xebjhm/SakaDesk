@@ -489,12 +489,8 @@ class TranscriptionStorage:
                     data.get("transcriptions"), list
                 ):
                     return cast(dict, data)
-                logger.warning(
-                    "Malformed transcriptions.json, starting fresh",
-                    path=str(file_path),
-                )
+                # Spec 1.7: never log the path (it names the member's room).
+                logger.warning("transcriptions_unreadable", reason="malformed")
             except (json.JSONDecodeError, KeyError):
-                logger.warning(
-                    "Corrupt transcriptions.json, starting fresh", path=str(file_path)
-                )
+                logger.warning("transcriptions_unreadable", reason="corrupt")
         return {"version": 1, "transcriptions": []}
