@@ -29,9 +29,17 @@ describe('S13Oyasumi', () => {
         expect(screen.getByTestId('s13-light')).toBeInTheDocument();
     });
 
-    it('a past year\'s recap shows no narration line', () => {
+    it('the just-ended year\'s recap keeps the narration', () => {
         vi.useFakeTimers({ toFake: ['Date'] });
         vi.setSystemTime(new Date('2027-01-02T03:00:00Z'));
+        renderS13({ final: true, graduated: false }, null, 2026);
+        expect(screen.getByText('2026年、最後のおやすみ。')).toBeInTheDocument();
+        expect(screen.getByText('来年も、よろしくね。')).toBeInTheDocument();
+    });
+
+    it('an older recap shows no narration line', () => {
+        vi.useFakeTimers({ toFake: ['Date'] });
+        vi.setSystemTime(new Date('2028-01-02T03:00:00Z'));
         renderS13({ final: true, graduated: false }, null, 2026);
         expect(screen.getByText('2026年、最後のおやすみ。')).toBeInTheDocument();
         expect(screen.queryByText('来年も、よろしくね。')).toBeNull();
