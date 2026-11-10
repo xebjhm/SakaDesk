@@ -37,10 +37,12 @@ API:
   ``seconds`` descending. ``seconds`` / ``total_seconds`` are ``None`` when
   no voice has a known length. Cached (view ``radio_members``, key ``all``).
 - ``async radio_program(service, sdir, *, program, member, year, now)`` --
-  ``{"program", "programs", "years", "tracks": [{"message", "start", "end",
-  "has_transcript", "segments"}]}``. ``programs`` lists the programs with
-  tracks in this scope (in :data:`PROGRAMS` order); ``years`` the JST years
-  with voices. Regular tracks play ``0 .. duration_s`` (``end`` ``None`` when
+  ``{"program", "programs", "counts", "years", "tracks": [{"message",
+  "start", "end", "has_transcript", "segments"}]}``. ``programs`` lists the
+  programs with tracks in this scope (in :data:`PROGRAMS` order); ``counts``
+  maps each of them to its track count (``chrono``: the requested year, else
+  the scope's first year), so every program card can show its number from the
+  first load; ``years`` the JST years with voices. Regular tracks play ``0 .. duration_s`` (``end`` ``None`` when
   unknown) with ``segments`` ``None``; clip tracks carry the clip window and
   ``segments`` = the matching segment(s). ``year`` only applies to ``chrono``
   and is ignored (treated as ``None``) for every other program. The text-free
@@ -93,7 +95,7 @@ logger = structlog.get_logger(__name__)
 PROGRAMS = ("oyasumi", "ohayo", "otsukare", "chrono", "favorites", "oyasumi_clips")
 NIGHT_HOURS = {21, 22, 23, 0, 1, 2, 3, 4}
 MORNING_HOURS = range(5, 10)
-RADIO_VERSION = 1
+RADIO_VERSION = 2
 CLIP_PATTERN = GREETING_RES["oyasumi"]
 CLIP_PAD_S = 0.3
 BROADCAST_ROLLOVER_HOUR = 5
@@ -407,6 +409,7 @@ async def radio_program(
         return {
             "program": program,
             "programs": programs,
+            "counts": {p: len(buckets[p]) for p in programs},
             "years": years,
             "tracks": tracks,
         }

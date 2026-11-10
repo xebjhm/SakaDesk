@@ -164,6 +164,11 @@ async def test_band_programs_and_list(svc):
     # no transcripts: the clip program is absent; empty bands never listed
     assert body["programs"] == ["oyasumi", "ohayo", "otsukare", "chrono", "favorites"]
     assert body["years"] == [2023, 2024, 2025]
+    # every listed program's track count (chrono: the default year), in every payload
+    counts = {p: len((await program(svc, p))["tracks"]) for p in body["programs"]}
+    assert body["counts"] == counts
+    assert (await program(svc, "ohayo"))["counts"] == counts
+    assert list(body["counts"]) == body["programs"] and all(counts.values())
     assert sorted(ids(await program(svc, "ohayo"))) == [102, 202]
     assert ids(await program(svc, "otsukare")) == [103]
     t = (await program(svc, "otsukare"))["tracks"][0]
@@ -180,6 +185,7 @@ async def test_scoped_programs_omit_empty_ones(svc):
     assert ids(body) == [201]
     assert body["programs"] == ["oyasumi", "ohayo", "chrono"]  # no otsukare, no ★
     assert body["years"] == [2025]
+    assert body["counts"] == {"oyasumi": 1, "ohayo": 1, "chrono": 2}
 
 
 @pytest.mark.asyncio
@@ -289,6 +295,7 @@ async def test_clip_program_with_transcripts(svc):
     add_transcripts(svc)
     body = await program(svc, "oyasumi")
     assert body["programs"][-1] == "oyasumi_clips"
+    assert body["counts"]["oyasumi_clips"] == 1
     tracks = {t["message"]["id"]: t for t in body["tracks"]}
     assert tracks[101]["has_transcript"] is True
     assert tracks[104]["has_transcript"] is False  # no_speech
