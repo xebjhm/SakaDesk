@@ -1,22 +1,23 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
+vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+import { clientLog } from '../../../utils/clientLog';
+import { stopMemoriesVoices } from '../shared/voicePlayback';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 import { NicknameProvider } from '../shared/useNickname';
 import { CorkBoard } from './CorkBoard';
-import { BOARD_CHUNK, TILTS, tiltClass } from './board';
+import { BOARD_CHUNK, ESTIMATED_ITEM_PX, TILTS, tiltClass } from './board';
 import { favorite, NOTE, PRINT, VOICE } from './__fixtures__';
 import type { FavoriteItem } from '../types';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
-afterEach(() => { vi.unstubAllGlobals(); });
-
-const nameOf = () => '金村 美玖';
+afterEach(() => { vi.unstubAllGlobals(); act(() => stopMemoriesVoices()); vi.mocked(clientLog).mockClear(); });
 
 function renderBoard(items: FavoriteItem[] = [NOTE, PRINT, VOICE], onOpen = vi.fn()) {
     const utils = render(
         <NicknameProvider nickname="みーぱん">
-            <CorkBoard items={items} nameOf={nameOf} onOpen={onOpen} />
+            <CorkBoard items={items} onOpen={onOpen} />
         </NicknameProvider>,
     );
     return { ...utils, onOpen };
@@ -89,7 +90,7 @@ describe('CorkBoard', () => {
         expect(before).toContain('motion-reduce:rotate-0');
         rerender(
             <NicknameProvider nickname="みーぱん">
-                <CorkBoard items={[VOICE, PRINT]} nameOf={nameOf} onOpen={vi.fn()} />
+                <CorkBoard items={[VOICE, PRINT]} onOpen={vi.fn()} />
             </NicknameProvider>,
         );
         expect(screen.getByTestId('cork-item-12').className).toBe(before);
@@ -117,5 +118,35 @@ describe('CorkBoard', () => {
         fire(0, false);
         expect(screen.getAllByTestId(/^cork-item-/)).toHaveLength(BOARD_CHUNK);
         expect(screen.queryByTestId('cork-item-1000')).toBeNull();
+    });
+
+    it("names each item by the payload's name, not the room folder", () => {
+        renderBoard([favorite(31, { text: '新しい名前で', name: '金村 美玖（改名）' })]);
+        expect(within(screen.getByTestId('cork-item-31')).getByText('金村 美玖（改名）')).toBeInTheDocument();
+    });
+
+    it('plays one voice at a time across the board', async () => {
+        const other = favorite(14, { ...VOICE, id: 14, media_url: '/api/content/media/hinatazaka46/x/voice/14.m4a' });
+        renderBoard([VOICE, other]);
+        await userEvent.click(within(screen.getByTestId('cork-voice-13')).getByRole('button', { name: /Play/ }));
+        await userEvent.click(within(screen.getByTestId('cork-voice-14')).getByRole('button', { name: /Play/ }));
+        expect(screen.getByTestId('cork-voice-14').querySelector('audio')).not.toBeNull();
+        expect(screen.getByTestId('cork-voice-13').querySelector('audio')).toBeNull();
+    });
+
+    it('leaves a text favourite without text off the board, with a breadcrumb', () => {
+        renderBoard([NOTE, favorite(40, { text: null })]);
+        expect(screen.queryByTestId('cork-item-40')).toBeNull();
+        expect(screen.getByTestId('cork-item-11')).toBeInTheDocument();
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_skip', { target: 'favorites', reason: 'empty_note', count: 1 });
+    });
+
+    it('sizes an unmeasured placeholder from its item count', () => {
+        stubObserver();
+        const items = Array.from({ length: BOARD_CHUNK + 3 }, (_, i) => favorite(2000 + i, { text: `メッセージ${i}` }));
+        renderBoard(items);
+        const placeholder = screen.getByTestId('cork-chunk-placeholder').parentElement as HTMLElement;
+        // jsdom has no matchMedia: one column.
+        expect(placeholder.style.minHeight).toBe(`${3 * ESTIMATED_ITEM_PX}px`);
     });
 });

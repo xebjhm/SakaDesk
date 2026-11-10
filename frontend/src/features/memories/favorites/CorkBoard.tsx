@@ -1,14 +1,16 @@
 import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Mic, Play } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { cn, formatDuration } from '../../../utils/classnames';
-import { VoicePlayer } from '../../../core/media/VoicePlayer';
-import { buildMediaUrl } from '../../messages/mediaUrl';
+import { cn } from '../../../utils/classnames';
 import { JST_TIME_ZONE } from '../recap/availability';
+import { logMemoriesSkip } from '../memoriesLog';
+import { LazyVoice } from '../shared/LazyVoice';
+import { memoryMediaSrc } from '../shared/mediaSrc';
+import { messageName } from '../shared/nameFromRoom';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import type { FavoriteItem } from '../types';
-import { BOARD_CHUNK, LIVE_MARGIN, PRINT_PX, tiltClass } from './board';
+import { BOARD_CHUNK, ESTIMATED_ITEM_PX, LIVE_MARGIN, PRINT_PX, tiltClass } from './board';
 
 const itemKey = (m: FavoriteItem) => `${m.room}|${m.id}`;
 
@@ -30,12 +32,10 @@ const Meta: React.FC<{ name: string; date: string; className?: string }> = ({ na
     </span>
 );
 
-/** A voice card: a light play button until it is played; only then the real player (and its audio) mounts. */
+/** A voice card: her name, date and 「ボイス」 (opens the strip), then the lazy one-at-a-time player. */
 const VoiceCard: React.FC<ItemProps> = ({ item, name, date, onOpen }) => {
     const { t } = useTranslation();
-    const [playing, setPlaying] = useState(false);
-    const src = item.media_url ?? (item.media_file ? buildMediaUrl(item.service, item.media_file) : null);
-    const duration = item.duration_s ? formatDuration(item.duration_s) : null;
+    const src = memoryMediaSrc(item);
     return (
         <div data-testid={`cork-voice-${item.id}`} className={cn('rounded-md p-3', PAPER)}>
             <button
@@ -50,27 +50,7 @@ const VoiceCard: React.FC<ItemProps> = ({ item, name, date, onOpen }) => {
                     {t('memories.favorites.voice')}
                 </span>
             </button>
-            {src && (
-                <div className="mt-2">
-                    {playing ? (
-                        <VoicePlayer src={src} variant="compact" autoPlay messageTimestamp={item.ts} />
-                    ) : (
-                        <button
-                            type="button"
-                            aria-label={t('memories.favorites.play')}
-                            onClick={() => setPlaying(true)}
-                            className={cn(
-                                'flex w-full items-center gap-2 rounded-pill bg-sunken px-3 py-2 text-small text-primary',
-                                'transition-colors duration-fast ease-standard hover:bg-sheet motion-reduce:transition-none',
-                                FOCUS,
-                            )}
-                        >
-                            <Play aria-hidden="true" className="h-4 w-4 fill-current" />
-                            {duration && <span className="tabular-nums text-secondary">{duration}</span>}
-                        </button>
-                    )}
-                </div>
-            )}
+            {src && <LazyVoice playKey={`board|${itemKey(item)}`} src={src} durationS={item.duration_s} ts={item.ts} className="mt-2" />}
         </div>
     );
 };
@@ -171,64 +151,97 @@ function useChunkWindow(count: number, root: RefObject<HTMLElement>) {
     return { registerRef, isLive };
 }
 
+/** The board's column count at the current width (`md:columns-2 xl:columns-3`), tracked on resize. */
+function useBoardColumns(): number {
+    const read = () => {
+        if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') return 1;
+        if (window.matchMedia('(min-width: 1280px)').matches) return 3;
+        return window.matchMedia('(min-width: 768px)').matches ? 2 : 1;
+    };
+    const [cols, setCols] = useState(read);
+    useEffect(() => {
+        const onResize = () => setCols(read());
+        window.addEventListener('resize', onResize);
+        return () => window.removeEventListener('resize', onResize);
+    }, []);
+    return cols;
+}
+
 interface ChunkProps {
     index: number;
     items: FavoriteItem[];
     live: boolean;
-    nameOf: (m: FavoriteItem) => string;
+    cols: number;
     dateOf: (m: FavoriteItem) => string;
     onOpen: (item: FavoriteItem) => void;
     registerRef: (index: number, el: HTMLElement | null) => void;
 }
 
-/** A chunk of the board: its items while live, else a placeholder of its last measured height. */
-const Chunk: React.FC<ChunkProps> = ({ index, items, live, nameOf, dateOf, onOpen, registerRef }) => {
+/**
+ * A chunk of the board: its items while live, else a placeholder as tall as it last measured at
+ * this column count (an estimate from its item count before that, or after the columns change),
+ * so the scrollbar and the scroll position stay close to the real board.
+ */
+const Chunk: React.FC<ChunkProps> = ({ index, items, live, cols, dateOf, onOpen, registerRef }) => {
     const own = useRef<HTMLDivElement | null>(null);
-    const height = useRef<number | null>(null);
+    const measured = useRef<{ cols: number; height: number } | null>(null);
     const ref = useCallback((el: HTMLDivElement | null) => {
         own.current = el;
         registerRef(index, el);
     }, [registerRef, index]);
     useLayoutEffect(() => {
-        if (live && own.current) height.current = own.current.getBoundingClientRect().height;
+        if (live && own.current) measured.current = { cols, height: own.current.getBoundingClientRect().height };
     });
+    const known = measured.current?.cols === cols ? measured.current.height : 0;
+    const height = known || Math.ceil(items.length / cols) * ESTIMATED_ITEM_PX;
     return (
         <div
             ref={ref}
             data-chunk={index}
-            style={!live && height.current ? { minHeight: height.current } : undefined}
+            style={live ? undefined : { minHeight: height }}
             className="columns-1 gap-6 md:columns-2 xl:columns-3"
         >
             {live
-                ? items.map((m) => <BoardItem key={itemKey(m)} item={m} name={nameOf(m)} date={dateOf(m)} onOpen={onOpen} />)
-                : <div aria-hidden="true" data-testid="cork-chunk-placeholder" className="h-96" />}
+                ? items.map((m) => <BoardItem key={itemKey(m)} item={m} name={messageName(m)} date={dateOf(m)} onOpen={onOpen} />)
+                : <div aria-hidden="true" data-testid="cork-chunk-placeholder" />}
         </div>
     );
 };
 
 interface CorkBoardProps {
-    /** Newest first (the backend's order). */
+    /** Newest first (the backend's order); each item names her. */
     items: FavoriteItem[];
-    nameOf: (m: FavoriteItem) => string;
     onOpen: (item: FavoriteItem) => void;
 }
+
+/** A note needs her words: a text favourite without any is left off the board. */
+const pinnable = (m: FavoriteItem) => m.type !== 'text' || Boolean(m.text);
 
 /**
  * The favorites cork board (spec 10) on `bg-memories-cork`, scrolling inside the pane. Text
  * favourites are paper notes (her words through `MemoryText`, six lines), photos and videos are
  * pinned prints (a lazy thumbnail and her words as the caption), voices are mini player cards
- * whose player (and audio) mounts only on ▶. Every item names her and the JST date, is held by a
- * washi strip and leans by a tilt derived from its id (`tiltClass`; upright under reduced
- * motion). The board is windowed in chunks of {@link BOARD_CHUNK}: far chunks release their items.
+ * whose player (and audio) mounts only on ▶ (`LazyVoice`: one voice at a time). Every item names
+ * her (the payload's `name`) and the JST date, is held by a washi strip and leans by a tilt
+ * derived from its id (`tiltClass`; upright under reduced motion). The board is windowed in
+ * chunks of {@link BOARD_CHUNK}: far chunks release their items, and a voice playing in a chunk
+ * that is released stops. A text favourite without text is skipped (`memories_skip`
+ * `empty_note` with the count).
  */
-export const CorkBoard: React.FC<CorkBoardProps> = ({ items, nameOf, onOpen }) => {
+export const CorkBoard: React.FC<CorkBoardProps> = ({ items, onOpen }) => {
     const { i18n } = useTranslation();
     const scroller = useRef<HTMLDivElement>(null);
+    const cols = useBoardColumns();
+    const kept = useMemo(() => items.filter(pinnable), [items]);
+    const dropped = items.length - kept.length;
+    useEffect(() => {
+        if (dropped > 0) logMemoriesSkip('favorites', 'empty_note', { count: dropped });
+    }, [items, dropped]);
     const chunks = useMemo(() => {
         const out: FavoriteItem[][] = [];
-        for (let i = 0; i < items.length; i += BOARD_CHUNK) out.push(items.slice(i, i + BOARD_CHUNK));
+        for (let i = 0; i < kept.length; i += BOARD_CHUNK) out.push(kept.slice(i, i + BOARD_CHUNK));
         return out;
-    }, [items]);
+    }, [kept]);
     const win = useChunkWindow(chunks.length, scroller);
     const dateFormat = useMemo(
         () => new Intl.DateTimeFormat(i18n.language, { timeZone: JST_TIME_ZONE, year: 'numeric', month: 'short', day: 'numeric' }),
@@ -244,7 +257,7 @@ export const CorkBoard: React.FC<CorkBoardProps> = ({ items, nameOf, onOpen }) =
                     index={i}
                     items={chunk}
                     live={win.isLive(i)}
-                    nameOf={nameOf}
+                    cols={cols}
                     dateOf={dateOf}
                     onOpen={onOpen}
                     registerRef={win.registerRef}

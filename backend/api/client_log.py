@@ -90,6 +90,7 @@ ClientEvent = Literal[
     "memories_load",
     "memories_jump",
     "memories_toggle",
+    "memories_skip",
     "recap_load",
     "recap_play",
     "recap_poster",

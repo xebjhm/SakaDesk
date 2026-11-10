@@ -4,6 +4,8 @@
 export const BOARD_CHUNK = 40;
 /** A chunk stays mounted while it is within this of the board's viewport (two screens). */
 export const LIVE_MARGIN = '200% 0px';
+/** A board item's estimated height in CSS px (a placeholder's size before it is measured). */
+export const ESTIMATED_ITEM_PX = 260;
 /** A print's drawn longest side in CSS px (thumbnail width). */
 export const PRINT_PX = 240;
 

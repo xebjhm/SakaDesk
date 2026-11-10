@@ -56,6 +56,22 @@ export function logMemoriesToggle(target: MemoriesToggle, on: boolean, extra: { 
     clientLog('memories_toggle', { target, outcome: on ? 'on' : 'off', ...extra });
 }
 
+/**
+ * Why a Memories view skipped something or fell back (`memories_skip` `reason`):
+ * `focus_missing` the film strip's message is not in its day (the strip opens on the day's first
+ * message); `empty_note` a text favourite without text was left off the board.
+ */
+export type MemoriesSkipReason = 'focus_missing' | 'empty_note';
+
+/** `memories_skip`: a Memories view skipped an item or fell back. Ids, codes and counts only. */
+export function logMemoriesSkip(
+    target: MemoriesView,
+    reason: MemoriesSkipReason,
+    extra: { message_id?: number; count?: number } = {},
+): void {
+    clientLog('memories_skip', { target, reason, ...extra });
+}
+
 export type RecapLoadTarget = 'members' | 'member' | 'years';
 export type RecapLoadOutcome = 'ok' | 'empty' | 'timeout' | 'rejected' | 'failed' | 'skipped';
 

@@ -1,4 +1,4 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { EmptyState } from '../../../design/primitives';
@@ -8,10 +8,10 @@ import { logMemoriesToggle } from '../memoriesLog';
 import { formatJstDate } from '../recap/availability';
 import { LoadState } from '../shared/LoadState';
 import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
-import { nameFromRoom } from '../shared/nameFromRoom';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
-import type { FavoriteItem, FavoritesPayload, MemoriesCountedMember } from '../types';
+import { stopMemoriesVoices } from '../shared/voicePlayback';
+import type { FavoriteItem, FavoritesPayload } from '../types';
 import { CorkBoard } from './CorkBoard';
 import { FilmStrip } from './FilmStrip';
 
@@ -29,7 +29,8 @@ type ListPart = Pick<FavoritesPayload, 'total' | 'members'>;
  * person moves the route (`go`, logged `member_filter`), which refetches the board; the list
  * (always over everyone) stays from the last load meanwhile. Right: the cork board, or the
  * invitation copy when nothing is starred. Opening an item shows the film strip of her messages
- * that JST day around it (`memories_toggle` `film_strip` on / off).
+ * that JST day around it (`memories_toggle` `film_strip` on / off) and stops a playing board
+ * voice; leaving the page stops every voice (`stopMemoriesVoices`).
  */
 export const FavoritesPage: React.FC<FavoritesPageProps> = ({ service, route, go }) => {
     const { t } = useTranslation();
@@ -46,14 +47,8 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ service, route, go
     const list = lastList.current?.service === service ? lastList.current.list : null;
 
     const people = list?.members;
-    const byPath = useMemo(
-        () => new Map<string, MemoriesCountedMember>((people ?? []).map((m) => [m.member_path, m])),
-        [people],
-    );
-    const nameOf = useCallback(
-        (m: FavoriteItem) => byPath.get(m.member_path)?.name ?? nameFromRoom(m.room),
-        [byPath],
-    );
+    // Leaving the page silences any voice it started.
+    useEffect(() => () => stopMemoriesVoices(), []);
     const items: MemberPaneItem[] = useMemo(() => (people ?? []).map((m) => ({
         key: m.member_path, memberPath: m.member_path, name: m.name, avatarUrl: m.avatar_url, oshi: m.oshi, trailing: m.count,
     })), [people]);
@@ -65,6 +60,8 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ service, route, go
         go({ page: 'favorites', memberPath: key ?? undefined });
     };
     const openItem = useCallback((item: FavoriteItem) => {
+        // The strip is the fan's focus now: a board voice must not play on under it.
+        stopMemoriesVoices();
         setOpen(item);
         logMemoriesToggle('film_strip', true);
     }, []);
@@ -87,7 +84,7 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ service, route, go
             </div>
         );
     } else {
-        body = <CorkBoard key={member ?? ''} items={board.data.items} nameOf={nameOf} onOpen={openItem} />;
+        body = <CorkBoard key={member ?? ''} items={board.data.items} onOpen={openItem} />;
     }
 
     return (

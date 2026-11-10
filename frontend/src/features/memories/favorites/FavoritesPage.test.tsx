@@ -16,6 +16,7 @@ import type { MemoriesRoute } from '../MemoriesFeature';
 import { dayMessage, dayPayload, MIKU } from '../day/__fixtures__';
 import { FavoritesPage } from './FavoritesPage';
 import { favoritesPayload, MEMBER_PATH, NAO_PATH, NOTE } from './__fixtures__';
+import { useVoicePlayback } from '../shared/voicePlayback';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 beforeEach(() => {
@@ -96,5 +97,28 @@ describe('FavoritesPage', () => {
         renderPage();
         await userEvent.click(await screen.findByRole('button', { name: 'Try again' }));
         expect(await screen.findByTestId('cork-board')).toBeInTheDocument();
+    });
+
+    it('stops a playing board voice when the strip opens, and every voice on leaving', async () => {
+        const { unmount } = (() => {
+            const r = render(
+                <NicknameProvider nickname="みーぱん">
+                    <FavoritesPage service="hinatazaka46" route={{ page: 'favorites' }} go={vi.fn()} />
+                </NicknameProvider>,
+            );
+            return r;
+        })();
+        const voice = await screen.findByTestId('cork-voice-13');
+        await userEvent.click(within(voice).getByRole('button', { name: /Play/ }));
+        expect(voice.querySelector('audio')).not.toBeNull();
+        await userEvent.click(screen.getByTestId('cork-note-11'));
+        await screen.findByTestId('film-focus');
+        expect(screen.getByTestId('cork-voice-13').querySelector('audio')).toBeNull();
+
+        await userEvent.keyboard('{Escape}');
+        await userEvent.click(within(screen.getByTestId('cork-voice-13')).getByRole('button', { name: /Play/ }));
+        expect(useVoicePlayback.getState().playing).not.toBeNull();
+        unmount();
+        expect(useVoicePlayback.getState().playing).toBeNull();
     });
 });

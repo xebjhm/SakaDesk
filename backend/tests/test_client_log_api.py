@@ -917,6 +917,10 @@ def test_memories_core_events_are_allowlisted():
         ("memories_load", {"target": "hub", "outcome": "timeout"}),
         ("memories_jump", {"target": "favorites", "has_target": True}),
         ("memories_toggle", {"target": "other_services", "outcome": "on"}),
+        (
+            "memories_skip",
+            {"target": "film_strip", "reason": "focus_missing", "message_id": 123},
+        ),
     ):
         r = client.post("/api/client-log", json={"event": event, "fields": fields})
         assert r.status_code == 204
