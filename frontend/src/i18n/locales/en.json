@@ -746,6 +746,26 @@
     "home": {
       "recapCard": "Year recap",
       "opensOn": "Opens here on December 1."
+    },
+    "common": {
+      "back": "Back",
+      "retry": "Try again",
+      "loadError": "Couldn't load this.",
+      "jumpToChat": "View in chat",
+      "all": "Everyone",
+      "nicknameMasked": "＊＊＊"
+    },
+    "onThisDay": {
+      "title": "On this day, years ago"
+    },
+    "album": {
+      "title": "Album"
+    },
+    "memoir": {
+      "title": "Member memories"
+    },
+    "favorites": {
+      "title": "Favorites"
     }
   },
   "recap": {

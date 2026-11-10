@@ -742,6 +742,26 @@
     "home": {
       "recapCard": "年度回顧",
       "opensOn": "12月1日，這裡就會打開。"
+    },
+    "common": {
+      "back": "返回",
+      "retry": "再試一次",
+      "loadError": "無法載入",
+      "jumpToChat": "在聊天中查看",
+      "all": "全員",
+      "nicknameMasked": "＊＊＊"
+    },
+    "onThisDay": {
+      "title": "那年今日"
+    },
+    "album": {
+      "title": "相簿"
+    },
+    "memoir": {
+      "title": "成員回憶"
+    },
+    "favorites": {
+      "title": "我的最愛"
     }
   },
   "recap": {

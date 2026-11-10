@@ -780,6 +780,36 @@ D2b replacements were rejected. Its values live in `design/tokens/blogFeed.ts`.
   transitions run `duration-lens` (300 ms): track width, year markers and dot `ease-in-out`,
   the lens `ease-out`; none with reduced motion.
 
+### Memories keepsake surfaces
+
+The Memories screens (hub, memoir, On This Day, album, favorites) show the fan's keepsakes on
+neutral materials. Their values live in `design/tokens/memories.ts` and are written as
+`--ds-mem-*` variables; none of them follows the group accent.
+
+| Utility | Variable | Use |
+|---|---|---|
+| `bg-memories-paper` / `border-memories-paper` | `--ds-mem-paper` / `--ds-mem-paper-line` | Letter and polaroid white (a warm paper, never pure white) and its hairline. |
+| `bg-memories-cork` | `--ds-mem-cork` | The favourites cork board base. |
+| `bg-memories-washi` | `--ds-mem-washi` | Translucent washi tape pinning a polaroid. |
+| `bg-memories-foil` | `--ds-mem-foil` | The holographic sheen of a special card, built from the aurora stops (`aurora.stops`). |
+| `shadow-memories-polaroid` | `--ds-mem-shadow-polaroid` | A polaroid lying on a surface. |
+| `border-memories-silhouette` | `--ds-mem-silhouette` | The dashed outline of an unearned card (`border-dashed`), the neutral `border-strong` value. |
+| `sepia-memories-1/2/3` | `--ds-mem-sepia-1/2/3` | A photo aged by its year (see below). |
+
+- **Sepia by age.** `sepiaClass(year)` (`features/memories/shared/sepia.ts`) gives a keepsake
+  from this year no filter, last year `sepia-memories-1`, two years ago `sepia-memories-2` and
+  three or more years ago `sepia-memories-3`. Years are counted in JST. The year recap's
+  去年の、同じ日 slide (S08) uses the same rule for its older card (at least step 1). Apply it
+  to the photo or card, never to text you need to read at full contrast.
+- **Foil only for special cards.** `bg-memories-foil` marks a binder card the catalogue flags as
+  foil (`foil: true`) and nothing else: not hover states, not headings, not the hub.
+- **Paper, cork and tape are materials, not colours.** Use them for the surfaces they name; text
+  on them uses the ordinary text roles.
+- **Album colour ribbon (data-driven exception).** Like the member penlight colours, the
+  album's monthly ribbon colours are runtime data: the backend's `cover_color` and
+  `/album/colors` values (`#rrggbb` probed from her photos). They are applied through `style`
+  on the ribbon element, never written as literals in source, and no other element uses them.
+
 ### The group rail and the profile card
 
 The group rail's selected logo has a selection ring: a 2 px white gap plus a 2 px ring in the

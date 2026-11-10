@@ -20,8 +20,10 @@ import type { RecapPayload, RecapSlide, S02NameData, S03ClockData, S04GreetingsD
 import { posterYears } from '../posterCopy';
 import { formatMessageDate, formatSecondsOfDay, s04Copy, s09StubCopy, type CopyLine } from '../recapCopy';
 
-/** What stands in for the fan's nickname when the nickname toggle is off. */
-export const NICKNAME_MASK = '『＊＊＊』';
+import { NICKNAME_MASK } from '../../shared/nicknameMask';
+
+/** What stands in for the fan's nickname when the nickname toggle is off (shared with `MemoryText`). */
+export { NICKNAME_MASK };
 /** The export carries at most this many of her sentences (user decision, spec §9.5). */
 export const MAX_SENTENCES = 2;
 /** A candidate taken from a long letter keeps at most this many characters (its first sentence). */

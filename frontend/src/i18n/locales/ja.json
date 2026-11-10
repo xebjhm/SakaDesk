@@ -742,6 +742,26 @@
     "home": {
       "recapCard": "一年の振り返り",
       "opensOn": "12月1日に、ここが開きます。"
+    },
+    "common": {
+      "back": "戻る",
+      "retry": "もう一度",
+      "loadError": "読み込めませんでした",
+      "jumpToChat": "トークで見る",
+      "all": "全員",
+      "nicknameMasked": "＊＊＊"
+    },
+    "onThisDay": {
+      "title": "あの年の今日"
+    },
+    "album": {
+      "title": "アルバム"
+    },
+    "memoir": {
+      "title": "メンバーの思い出"
+    },
+    "favorites": {
+      "title": "お気に入り"
     }
   },
   "recap": {

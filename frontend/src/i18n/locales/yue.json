@@ -742,6 +742,26 @@
     "home": {
       "recapCard": "年度回顧",
       "opensOn": "12月1號，呢度就會打開。"
+    },
+    "common": {
+      "back": "返回",
+      "retry": "再試一次",
+      "loadError": "載入唔到",
+      "jumpToChat": "喺傾偈度睇",
+      "all": "全部成員",
+      "nicknameMasked": "＊＊＊"
+    },
+    "onThisDay": {
+      "title": "嗰年今日"
+    },
+    "album": {
+      "title": "相簿"
+    },
+    "memoir": {
+      "title": "成員回憶"
+    },
+    "favorites": {
+      "title": "收藏"
     }
   },
   "recap": {

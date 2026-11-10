@@ -4,11 +4,28 @@ import { RecapEntry } from './recap/RecapEntry';
 import { fetchRecapYears } from './recap/api';
 import { defaultRecapYear, offeredRecapYears, recapAvailability } from './recap/availability';
 import { logMemoriesOpen, logMemoriesPage, logRecapLoad } from './memoriesLog';
+import { PagePlaceholder } from './PagePlaceholder';
+import { NicknameProvider } from './shared/useNickname';
 
-/** Pages of the Memories router; later waves add more. */
+/** Pages of the Memories router; wave 4 adds `{ page: 'day'; date: string }`. */
 export type MemoriesRoute =
     | { page: 'home' }
-    | { page: 'recap'; year: number; memberPath?: string };
+    | { page: 'recap'; year: number; memberPath?: string }
+    /** `monthDay` is `MM-DD`; `year` set = the detail (A) of that year. */
+    | { page: 'onThisDay'; monthDay?: string; year?: number }
+    | { page: 'album'; memberPath?: string }
+    | { page: 'memoir'; memberPath?: string; tab?: 'binder' | 'timeline' | 'names' }
+    | { page: 'favorites'; memberPath?: string };
+
+/** A core page's route (the four pages added by the core wave). */
+export type CoreRoute = Extract<MemoriesRoute, { page: 'onThisDay' | 'album' | 'memoir' | 'favorites' }>;
+
+/** What every core page receives from the router. */
+export interface CorePageProps {
+    service: string;
+    route: CoreRoute;
+    go: (next: MemoriesRoute) => void;
+}
 
 const HOME: MemoriesRoute = { page: 'home' };
 
@@ -19,12 +36,14 @@ interface MemoriesFeatureProps {
     service: string;
     /** The fan's nickname for this service (`%%%` in her messages). */
     nickname?: string;
+    /** The page to open on first render (a deep link); a service change still returns home. */
+    initialRoute?: MemoriesRoute;
 }
 
-export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickname }) => {
+export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickname, initialRoute }) => {
     // The route is tagged with its service so a service change falls back to home
     // on the same render (no flash of the old service's page).
-    const [state, setState] = useState<{ service: string; route: MemoriesRoute }>({ service, route: HOME });
+    const [state, setState] = useState<{ service: string; route: MemoriesRoute }>(() => ({ service, route: initialRoute ?? HOME }));
     const route = state.service === service ? state.route : HOME;
 
     const go = (next: MemoriesRoute) => {
@@ -76,8 +95,9 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
     else if (openYear === null) card = { kind: 'closed' };
     else card = { kind: 'open', year: openYear, partial: avail.currentOpen && openYear === avail.year };
 
+    let page: React.ReactNode;
     if (route.page === 'recap') {
-        return (
+        page = (
             <RecapEntry
                 service={service}
                 year={route.year}
@@ -87,12 +107,16 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
                 onBack={() => go(HOME)}
             />
         );
+    } else if (route.page === 'home') {
+        page = (
+            <MemoriesHome
+                recap={card}
+                onOpenRecap={(year) => go({ page: 'recap', year })}
+                onRetry={() => setAttempt((n) => n + 1)}
+            />
+        );
+    } else {
+        page = <PagePlaceholder service={service} route={route} go={go} />;
     }
-    return (
-        <MemoriesHome
-            recap={card}
-            onOpenRecap={(year) => go({ page: 'recap', year })}
-            onRetry={() => setAttempt((n) => n + 1)}
-        />
-    );
+    return <NicknameProvider nickname={nickname}>{page}</NicknameProvider>;
 };

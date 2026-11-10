@@ -71,6 +71,35 @@ describe('Memories feature', () => {
         expect(screen.getByTestId('memories-home')).toBeInTheDocument();
     });
 
+    describe('core pages', () => {
+        const PAGES = [
+            { route: { page: 'onThisDay', monthDay: '09-14' }, testId: 'memories-page-onThisDay', title: 'On this day, years ago' },
+            { route: { page: 'album', memberPath: 'x' }, testId: 'memories-page-album', title: 'Album' },
+            { route: { page: 'memoir', tab: 'binder' }, testId: 'memories-page-memoir', title: 'Member memories' },
+            { route: { page: 'favorites' }, testId: 'memories-page-favorites', title: 'Favorites' },
+        ] as const;
+
+        it.each(PAGES)('opens the $route.page page with its header and returns home', async ({ route, testId, title }) => {
+            vi.mocked(clientLog).mockClear();
+            render(<MemoriesFeature service="hinatazaka46" initialRoute={route} />);
+            const page = screen.getByTestId(testId);
+            expect(page).toHaveAttribute('data-service', 'hinatazaka46');
+            expect(screen.getByRole('heading', { name: title })).toBeInTheDocument();
+            expect(screen.queryByTestId('memories-home')).toBeNull();
+            await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+            expect(screen.getByTestId('memories-home')).toBeInTheDocument();
+            expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_page', { target: 'home' });
+        });
+
+        it.each(PAGES)('resets the $route.page page to home when the service changes', ({ route, testId }) => {
+            const { rerender } = render(<MemoriesFeature service="hinatazaka46" initialRoute={route} />);
+            expect(screen.getByTestId(testId)).toBeInTheDocument();
+            rerender(<MemoriesFeature service="sakurazaka46" initialRoute={route} />);
+            expect(screen.getByTestId('memories-home')).toBeInTheDocument();
+            expect(screen.queryByTestId(testId)).toBeNull();
+        });
+    });
+
     describe('year-end unlocks (JST)', () => {
         it('before Dec 1 opens the newest past year on the shelf', async () => {
             at('2026-11-30T23:59:00');
