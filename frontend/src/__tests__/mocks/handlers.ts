@@ -218,8 +218,15 @@ export const handlers = [
 
   // Read-state search copy (fire-and-forget)
   http.put('/api/read-states', () => new HttpResponse(null, { status: 204 })),
+]
 
-  // Memories time capsule: the fan has no notes unless a test says otherwise (every day view reads them)
+/**
+ * Opt-in Memories time-capsule reads with no notes, for a test whose screen mounts a day view or
+ * On This Day but is not about notes: `server.use(...memoriesCapsuleEmpty)` in its `beforeEach`.
+ * Not in the default `handlers`, so a test that forgets to declare the capsule reads still fails
+ * on the unhandled request. Tests about notes mock `fetchCapsule` / `fetchCapsuleDue` instead.
+ */
+export const memoriesCapsuleEmpty = [
   http.get('/api/memories/:service/capsule', () => HttpResponse.json({ notes: [] })),
   http.get('/api/memories/:service/capsule/due', () => HttpResponse.json({ notes: [] })),
 ]

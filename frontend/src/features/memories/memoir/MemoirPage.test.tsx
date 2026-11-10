@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../../__tests__/mocks/server';
+import { memoriesCapsuleEmpty } from '../../../__tests__/mocks/handlers';
 import i18n from '../../../i18n';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
@@ -28,6 +29,8 @@ import { binderPayload, headerPayload, membersPayload, NAO_PATH } from './__fixt
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 // MessageBubble asks for cached translations and transcripts of what it shows.
 beforeEach(() => {
+    // An opened card reads the fan's capsule notes on it (none here).
+    server.use(...memoriesCapsuleEmpty);
     server.use(
         http.get('/api/app-state/translations', () => HttpResponse.json({})),
         http.patch('/api/app-state/translations', () => HttpResponse.json({})),

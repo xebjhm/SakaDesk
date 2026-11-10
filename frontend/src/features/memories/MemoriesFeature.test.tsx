@@ -3,6 +3,7 @@ import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../__tests__/mocks/server';
+import { memoriesCapsuleEmpty } from '../../__tests__/mocks/handlers';
 import i18n from '../../i18n';
 import { SERVICE_FEATURES, getAvailableFeatures } from '../../config/features';
 import { MemoriesFeature } from './MemoriesFeature';
@@ -23,6 +24,8 @@ let membersYears: number[] = [];
 beforeEach(() => {
     shelf = [2025];
     membersYears = [];
+    // Day views and On This Day read the fan's capsule notes (none here).
+    server.use(...memoriesCapsuleEmpty);
     server.use(
         http.get('/api/memories/:service/on-this-day', ({ request }) => (
             HttpResponse.json({ month_day: new URL(request.url).searchParams.get('date'), years: [] })
