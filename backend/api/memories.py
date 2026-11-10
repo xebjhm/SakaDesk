@@ -1,4 +1,4 @@
-"""Memories API: year-recap payloads for the active service."""
+"""Memories API: year-recap payloads for the active service, and the export handoff."""
 
 from __future__ import annotations
 
@@ -6,11 +6,12 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import structlog
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request
+from fastapi.responses import Response
 
 from backend.api.content import get_output_dir
 from backend.services.archive_urls import ArchiveReadError, resolve_within
-from backend.services.memories import index
+from backend.services.memories import exports, index
 from backend.services.memories.recap import (
     build_member_recap,
     build_members_overview,
@@ -74,3 +75,74 @@ async def recap_member(service: str, year: int, member: str = Query(...)) -> dic
         logger.info("memories.api.member_not_found", year=year)
         raise HTTPException(status_code=404, detail="Member not found")
     return await build_member_recap(service, service_data_dir, summary, year, now=now)
+
+
+@router.post("/export")
+async def export_store(
+    request: Request, kind: exports.ExportKind = Query(...)
+) -> dict[str, str]:
+    """Hold a rendered export (PNG, GIF, WebM, MP4) in memory for a download.
+
+    The body is the raw file. Its signature must match ``kind`` (else 400) and it
+    may be at most ``exports.MAX_BYTES`` (else 413). Returns ``{"token": ...}``
+    for ``GET /api/memories/export/{token}``. Nothing is written to disk.
+    """
+    declared = request.headers.get("content-length")
+    if declared and declared.isdigit() and int(declared) > exports.MAX_BYTES:
+        logger.warning("memories.export.reject", kind=kind, reason="too_large")
+        raise HTTPException(status_code=413, detail="Export too large")
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > exports.MAX_BYTES:
+            logger.warning("memories.export.reject", kind=kind, reason="too_large")
+            raise HTTPException(status_code=413, detail="Export too large")
+        chunks.append(chunk)
+    data = b"".join(chunks)
+    if not exports.magic_matches(kind, data):
+        logger.warning(
+            "memories.export.reject",
+            kind=kind,
+            size_kb=total // 1024,
+            reason="magic_mismatch",
+        )
+        raise HTTPException(status_code=400, detail="Content does not match kind")
+    token, evicted = exports.store.put(kind, data)
+    logger.info(
+        "memories.export.stored",
+        kind=kind,
+        size_kb=total // 1024,
+        evicted=evicted,
+        outcome="stored",
+    )
+    return {"token": token}
+
+
+@router.get("/export/{token}")
+async def export_fetch(token: str, filename: str | None = Query(None)) -> Response:
+    """Return a held export as an attachment (the webview opens its save dialog).
+
+    ``filename`` is sanitised and its extension forced to the export's kind.
+    Unknown or expired tokens are 404. The entry stays until its TTL, so a
+    repeated request from the webview still succeeds.
+    """
+    entry = exports.store.get(token)
+    if entry is None:
+        logger.info("memories.export.fetch", outcome="not_found")
+        raise HTTPException(status_code=404, detail="Export not found")
+    name = exports.sanitize_filename(filename, entry.kind)
+    logger.info(
+        "memories.export.fetch",
+        kind=entry.kind,
+        size_kb=len(entry.data) // 1024,
+        outcome="served",
+    )
+    return Response(
+        content=entry.data,
+        media_type=exports.MEDIA_TYPES[entry.kind],
+        headers={
+            "Content-Disposition": exports.content_disposition(name, entry.kind),
+            "X-Content-Type-Options": "nosniff",
+        },
+    )
