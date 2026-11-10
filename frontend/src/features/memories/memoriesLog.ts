@@ -38,9 +38,10 @@ export function logMemoriesJump(target: MemoriesView, hasTarget: boolean): void 
 /**
  * A Memories control, as logged in `memories_toggle` `target` (screen tasks add their codes):
  * `other_services` the day view's 「包含其他團體」 switch; `day_mode` the day view's merged / lanes
- * toggle (`on` = lanes B, `off` = merged A).
+ * toggle (`on` = lanes B, `off` = merged A); `member_filter` a day-view member chip (`on` = one
+ * person, `off` = everyone); `lane_card` a swimlane card (`on` = expanded, `off` = collapsed).
  */
-export type MemoriesToggle = 'other_services' | 'day_mode';
+export type MemoriesToggle = 'other_services' | 'day_mode' | 'member_filter' | 'lane_card';
 
 /** `memories_toggle`: a Memories control was switched. `target` is the control code. */
 export function logMemoriesToggle(target: MemoriesToggle, on: boolean): void {

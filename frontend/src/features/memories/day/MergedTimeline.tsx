@@ -11,13 +11,14 @@ import { MemoryText } from '../shared/MemoryText';
 import { useNickname } from '../shared/useNickname';
 import { toChatMessage } from '../shared/toMessage';
 import { jumpToChat } from '../shared/jumpToChat';
-import { messageKey, type DayPerson } from './people';
-import type { MemoryMessage } from '../types';
+import { JST_TIME_ZONE } from '../recap/availability';
+import type { DayPerson } from './people';
+import type { DayMessage } from '../types';
 
 interface MergedTimelineProps {
     /** The day's messages in time order (already filtered). */
-    messages: MemoryMessage[];
-    /** Everyone of the day, by key (`people.ts`). */
+    messages: DayMessage[];
+    /** Everyone of the day, by `person_key` (`people.ts`). */
     people: Map<string, DayPerson>;
     /** The active service: messages of any other one carry a group label. */
     service: string;
@@ -27,9 +28,9 @@ interface MergedTimelineProps {
 const RUN_GAP_MS = 5 * 60 * 1000;
 const AVATAR_PX = 40;
 
-const msgKey = (m: MemoryMessage) => `${m.service}|${m.room}|${m.id}`;
-const isViewable = (m: MemoryMessage) => (m.type === 'picture' || m.type === 'video') && Boolean(m.media_url || m.media_file);
-const mediaSrc = (m: MemoryMessage) => m.media_url ?? buildMediaUrl(m.service, m.media_file ?? '');
+const msgKey = (m: DayMessage) => `${m.service}|${m.room}|${m.id}`;
+const isViewable = (m: DayMessage) => (m.type === 'picture' || m.type === 'video') && Boolean(m.media_url || m.media_file);
+const mediaSrc = (m: DayMessage) => m.media_url ?? buildMediaUrl(m.service, m.media_file ?? '');
 
 /** Space for the bubble's avatar column, so lines under a bubble align with it. */
 const Indented: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -40,18 +41,20 @@ const Indented: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 );
 
 /**
- * 那一天 A: every message of the day in time order as the chat's read-only `MessageBubble`
- * (no favourite or long-press handlers), her words through the nickname (or the mask), a
+ * 那一天 A: every message of the day in time order as the chat's `MessageBubble` in `readOnly`
+ * mode (no context menu, long-press or favourite actions; translate and the transcript work
+ * through `memberPath`), times on the JST clock, her words through the nickname (or the mask), a
  * picture's paired words under it with `MemoryText`. Pictures and videos open the media viewer
  * over the day's media, whose source link opens her chat at that message.
  */
 export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people, service }) => {
     const { t } = useTranslation();
-    const nickname = useNickname() ?? `『${t('memories.common.nicknameMasked')}』`;
+    const ownNickname = useNickname();
+    const nickname = ownNickname ?? `『${t('memories.common.nicknameMasked')}』`;
     const avatarWidth = useAvatarWidth(AVATAR_PX);
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
-    const nameOf = (m: MemoryMessage) => people.get(messageKey(m))?.name ?? '';
+    const nameOf = (m: DayMessage) => people.get(m.person_key)?.name ?? '';
     const media = useMemo(() => messages.filter(isViewable), [messages]);
     const mediaItems: MediaViewerItem[] = media.map((m) => ({
         src: mediaSrc(m),
@@ -72,9 +75,9 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
             {messages.map((m, i) => {
                 const prev = messages[i - 1];
                 const runStart = !prev
-                    || messageKey(prev) !== messageKey(m)
+                    || prev.person_key !== m.person_key
                     || Date.parse(m.ts) - Date.parse(prev.ts) > RUN_GAP_MS;
-                const person = people.get(messageKey(m));
+                const person = people.get(m.person_key);
                 const chat = toChatMessage(m);
                 chat.content = m.text ? replaceNickname(m.text, nickname) : null;
                 const mediaIndex = media.indexOf(m);
@@ -85,6 +88,10 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
                             member_name={person?.name ?? ''}
                             member_avatar={resizedAvatarUrl(m.avatar_url ?? person?.avatarUrl, avatarWidth)}
                             service={m.service}
+                            memberPath={m.member_path}
+                            userNickname={ownNickname}
+                            timeZone={JST_TIME_ZONE}
+                            readOnly
                             runStart={runStart}
                             onMediaClick={mediaIndex >= 0 ? () => setViewerIndex(mediaIndex) : undefined}
                         />

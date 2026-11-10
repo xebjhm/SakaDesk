@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach, onTestFinished } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import i18n from '../../../i18n';
@@ -15,13 +15,19 @@ import { clientLog } from '../../../utils/clientLog';
 import { openChat } from '../../../shell/openChat';
 import { fetchDay } from '../api';
 import { DayView } from './DayView';
+import { useAppStore } from '../../../store/appStore';
 import { NicknameProvider } from '../shared/useNickname';
-import { dayPayload, MIKU } from './__fixtures__';
-import { memoryMessage } from '../__fixtures__/memories';
+import { dayMessage, dayPayload, HIKARU, MIKU, NAO } from './__fixtures__';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
-// MessageBubble asks for cached translations of what it shows.
-beforeEach(() => { server.use(http.get('/api/app-state/translations', () => HttpResponse.json({}))); });
+// MessageBubble asks for cached translations and transcripts of what it shows (and saves a translation).
+beforeEach(() => {
+    server.use(
+        http.get('/api/app-state/translations', () => HttpResponse.json({})),
+        http.patch('/api/app-state/translations', () => HttpResponse.json({})),
+        http.get('/api/transcription/:service/:id', () => new HttpResponse(null, { status: 404 })),
+    );
+});
 beforeEach(() => {
     vi.mocked(clientLog).mockClear();
     vi.mocked(openChat).mockClear();
@@ -29,13 +35,10 @@ beforeEach(() => {
     vi.mocked(fetchDay).mockImplementation(async (_service, query) => (
         query.others
             ? dayPayload({
-                members: [MIKU, { ...MIKU, member_path: '櫻坂46/messages/9 森田 ひかる/9 森田 ひかる', name: '森田 ひかる', service: 'sakurazaka46', oshi: false }],
+                members: [MIKU, NAO, HIKARU],
                 messages: [
                     ...dayPayload().messages,
-                    memoryMessage({
-                        id: 9, service: 'sakurazaka46', ts: '2024-09-14T13:00:00Z', text: 'おつかれさま',
-                        room: 'messages/9 森田 ひかる/9 森田 ひかる', member_path: '櫻坂46/messages/9 森田 ひかる/9 森田 ひかる',
-                    }),
+                    dayMessage(HIKARU, { id: 9, ts: '2024-09-14T13:00:00Z', text: 'おつかれさま' }),
                 ],
                 other_services: ['sakurazaka46'],
             })
@@ -76,6 +79,36 @@ describe('DayView', () => {
         expect(within(list).getAllByRole('img').length).toBeGreaterThan(0);
         await userEvent.click(screen.getByRole('button', { name: 'Everyone' }));
         expect(screen.getByTestId('day-merged').textContent).toContain('リハ終わり！');
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'member_filter', outcome: 'on' });
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'member_filter', outcome: 'off' });
+    });
+
+    it('shows bubble times on the JST clock and opens no favourite menu (read-only)', async () => {
+        const savedTz = process.env.TZ;
+        process.env.TZ = 'Asia/Taipei'; // a UTC+8 viewer
+        onTestFinished(() => { process.env.TZ = savedTz; });
+        renderDay();
+        const list = await screen.findByTestId('day-merged');
+        // 04:02Z is 13:02 JST, 12:52Z is 21:52 JST, whatever the machine zone.
+        expect(within(list).getByText('13:02')).toBeInTheDocument();
+        expect(within(list).getByText('21:52')).toBeInTheDocument();
+        fireEvent.contextMenu(within(list).getByText('リハ終わり！'));
+        expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('lets a bubble translate with the message path and service', async () => {
+        useAppStore.setState({ translationEnabled: true });
+        const translate = vi.fn((_body: unknown) => HttpResponse.json({ ok: true, translation: 'Rehearsal done!' }));
+        server.use(http.post('/api/translation/translate', async ({ request }) => translate(await request.json())));
+        try {
+            renderDay();
+            await screen.findByTestId('day-merged');
+            await userEvent.click(screen.getAllByRole('button', { name: i18n.t('translation.translate') })[0]);
+            await waitFor(() => expect(translate).toHaveBeenCalled());
+            expect(translate.mock.calls[0][0]).toMatchObject({ message_id: 1, service: 'hinatazaka46', member_path: MIKU.member_path });
+        } finally {
+            useAppStore.setState({ translationEnabled: false });
+        }
     });
 
     it('refetches with other groups when the switch is on, labels them and logs', async () => {
@@ -87,6 +120,9 @@ describe('DayView', () => {
         expect(await screen.findByTestId('day-service-label')).toHaveTextContent('櫻坂46');
         expect(screen.getByText('おつかれさま')).toBeInTheDocument();
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'other_services', outcome: 'on' });
+        // Only the other group's chip carries a group marker.
+        expect(screen.getAllByTestId('day-chip-group-marker')).toHaveLength(1);
+        expect(screen.getByRole('button', { name: /森田 ひかる/ })).toContainElement(screen.getByTestId('day-chip-group-marker'));
     });
 
     it('switches to member lanes and logs the mode', async () => {

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Button, EmptyState, IconButton } from '../../../design/primitives';
@@ -10,7 +10,7 @@ import { LoadState } from '../shared/LoadState';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { formatMonthDayLabel } from '../day/format';
 import { YearStrip } from './YearStrip';
-import { shiftMonthDay, todayMonthDay } from './monthDay';
+import { monthDayInThisYear, shiftMonthDay, todayMonthDay } from './monthDay';
 import { OnThisDayDetail } from './OnThisDayDetail';
 import type { OnThisDayYear } from '../types';
 
@@ -39,8 +39,10 @@ export const OnThisDayPage: React.FC<OnThisDayPageProps> = ({ service, route, go
     const query = useMemoriesQuery('on_this_day', (signal) => fetchOnThisDay(service, monthDay, signal), [service, monthDay], {
         count: (d) => d.years.filter((y) => y.has_messages).length,
     });
-    const years = query.data?.years ?? [];
-    const withMessages = years.filter((y): y is OnThisDayYear => y.has_messages);
+    const data = query.data;
+    const years = useMemo(() => data?.years ?? [], [data]);
+    // Stable across re-renders (the picker opening, a language change), so the strip keeps its scroll.
+    const withMessages = useMemo(() => years.filter((y): y is OnThisDayYear => y.has_messages), [years]);
     const dateLabel = formatMonthDayLabel(monthDay, i18n.language);
 
     const toDay = (next: string) => go({ page: 'onThisDay', monthDay: next });
@@ -103,7 +105,7 @@ export const OnThisDayPage: React.FC<OnThisDayPageProps> = ({ service, route, go
             </div>
         );
     } else {
-        body = <YearStrip years={withMessages} onOpen={toYear} />;
+        body = <YearStrip years={withMessages} resetKey={monthDay} onOpen={toYear} />;
     }
 
     return (
@@ -125,6 +127,7 @@ export const OnThisDayPage: React.FC<OnThisDayPageProps> = ({ service, route, go
                 title={t('memories.onThisDay.pickDate')}
                 dates={[]}
                 selectAnyDay
+                initialMonth={monthDayInThisYear(monthDay)}
                 onSelectDate={(d) => toDay(`${pad(d.getMonth() + 1)}-${pad(d.getDate())}`)}
             />
         </div>

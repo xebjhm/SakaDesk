@@ -1,5 +1,5 @@
 import { describe, it, expect, afterAll, afterEach, beforeAll, vi } from 'vitest';
-import { defaultRecapYear, jstNow, offeredRecapYears, recapAvailability } from './availability';
+import { defaultRecapYear, formatJstClock, jstNow, offeredRecapYears, recapAvailability } from './availability';
 
 // Run under a zone west of UTC so an implementation built on local getters (plus 9 h)
 // would fail here even when CI runs in UTC.
@@ -84,5 +84,15 @@ describe('recapAvailability', () => {
     it('drops years before the first year the API accepts', () => {
         const open = recapAvailability(jst('2026-12-05T12:00:00'));
         expect(offeredRecapYears(open, [2019, 2021])).toEqual([2021, 2026]);
+    });
+});
+
+describe('formatJstClock', () => {
+    it('shows the Tokyo wall clock whatever the machine zone (here Los Angeles)', () => {
+        expect(formatJstClock('2024-09-13T15:30:00Z')).toBe('00:30');
+        expect(formatJstClock(new Date('2024-09-14T12:52:00Z'))).toBe('21:52');
+    });
+    it('is empty for an invalid timestamp', () => {
+        expect(formatJstClock('nope')).toBe('');
     });
 });

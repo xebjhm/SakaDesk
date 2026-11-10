@@ -19,12 +19,3 @@ export function formatMonthDayLabel(monthDay: string, lang: string): string {
     if (!date) return monthDay;
     return new Intl.DateTimeFormat(lang, { month: 'long', day: 'numeric', timeZone: 'UTC' }).format(date);
 }
-
-/**
- * A message time as `HH:MM` on the local clock, the same clock as the chat's `MessageBubble`, so
- * the merged timeline and the lanes agree.
- */
-export function formatClock(ts: string): string {
-    const d = new Date(ts);
-    return `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`;
-}

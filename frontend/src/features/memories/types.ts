@@ -131,6 +131,13 @@ export interface DayMember {
     avatar_url: string | null;
     service: string;
     oshi: boolean;
+    /** The person across her rooms, unique across services (`day_view.day_person_key`); never log it. */
+    person_key: string;
+}
+
+/** A day-view message: the shared object plus its sender's {@link DayMember.person_key}. */
+export interface DayMessage extends MemoryMessage {
+    person_key: string;
 }
 
 export interface DayPayload {
@@ -138,7 +145,7 @@ export interface DayPayload {
     date: string;
     members: DayMember[];
     /** Sorted by time; promo included. */
-    messages: MemoryMessage[];
+    messages: DayMessage[];
     /** Other services that had messages that day (only with `others`). */
     other_services: string[];
 }

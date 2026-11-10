@@ -19,8 +19,14 @@ import { memoryMessage } from '../__fixtures__/memories';
 import { dayPayload } from '../day/__fixtures__';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
-// MessageBubble asks for cached translations of what it shows.
-beforeEach(() => { server.use(http.get('/api/app-state/translations', () => HttpResponse.json({}))); });
+// MessageBubble asks for cached translations and transcripts of what it shows (and saves a translation).
+beforeEach(() => {
+    server.use(
+        http.get('/api/app-state/translations', () => HttpResponse.json({})),
+        http.patch('/api/app-state/translations', () => HttpResponse.json({})),
+        http.get('/api/transcription/:service/:id', () => new HttpResponse(null, { status: 404 })),
+    );
+});
 
 const PAYLOAD: OnThisDayPayload = {
     month_day: '09-14',
@@ -28,7 +34,8 @@ const PAYLOAD: OnThisDayPayload = {
         { year: 2021, has_messages: false },
         {
             year: 2022, has_messages: true, message_count: 7, member_count: 2,
-            preview: [memoryMessage({ id: 21, ts: '2022-09-14T12:00:00Z', text: '初めての握手会' })], more: 6, thumb: null,
+            preview: [memoryMessage({ id: 21, ts: '2022-09-14T12:00:00Z', text: '初めての握手会' })], more: 6,
+            thumb: memoryMessage({ id: 22, type: 'video', text: null, media_url: '/api/content/media/hinatazaka46/v.mp4' }),
         },
         { year: 2023, has_messages: false },
         {
@@ -84,8 +91,8 @@ describe('OnThisDayPage overview', () => {
         const day = dialog.querySelector<HTMLButtonElement>('button[data-day="3"]:not([data-outside])')!;
         expect(day).not.toBeDisabled();
         await userEvent.click(day);
-        const month = String(new Date().getMonth() + 1).padStart(2, '0');
-        expect(go).toHaveBeenLastCalledWith({ page: 'onThisDay', monthDay: `${month}-03` });
+        // The picker opens on the viewed month (September).
+        expect(go).toHaveBeenLastCalledWith({ page: 'onThisDay', monthDay: '09-03' });
     });
 
     it('opens the detail of a year from its column', async () => {
@@ -105,7 +112,64 @@ describe('OnThisDayPage overview', () => {
     });
 });
 
+describe('OnThisDayPage overview, details', () => {
+    it('shows preview times on the JST clock', async () => {
+        renderPage({ page: 'onThisDay', monthDay: '09-14' });
+        const columns = await screen.findAllByTestId('otd-column');
+        expect(columns[0]).toHaveTextContent('21:00'); // 12:00Z
+        expect(columns[1]).toHaveTextContent('12:41'); // 03:41Z
+    });
+
+    it('never puts a video thumb into an image', async () => {
+        renderPage({ page: 'onThisDay', monthDay: '09-14' });
+        const columns = await screen.findAllByTestId('otd-column');
+        expect(columns[0].querySelector('img')).toBeNull();
+        expect(within(columns[0]).getByTestId('memory-thumb-video')).toHaveAttribute('src', '/api/content/media/hinatazaka46/v.mp4');
+        expect(columns[1].querySelector('img')).toHaveAttribute('src', '/api/content/media/hinatazaka46/p.jpg');
+    });
+
+    it('starts at the newest year and keeps the user’s scroll across re-renders', async () => {
+        const width = vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(900);
+        try {
+            const { rerender } = renderPage({ page: 'onThisDay', monthDay: '09-14' });
+            const strip = await screen.findByTestId('otd-strip');
+            expect(strip.scrollLeft).toBe(900);
+            strip.scrollLeft = 120;
+            // Opening and closing the picker re-renders the page.
+            await userEvent.click(screen.getByRole('button', { name: /Choose a date/ }));
+            await userEvent.keyboard('{Escape}');
+            rerender(<OnThisDayPage service="hinatazaka46" route={{ page: 'onThisDay', monthDay: '09-14' }} go={go} />);
+            expect(screen.getByTestId('otd-strip').scrollLeft).toBe(120);
+        } finally {
+            width.mockRestore();
+        }
+    });
+
+    it('opens the date picker on the month being viewed', async () => {
+        renderPage({ page: 'onThisDay', monthDay: '02-14' });
+        await screen.findAllByTestId('otd-column');
+        await userEvent.click(screen.getByRole('button', { name: /Choose a date/ }));
+        const dialog = await screen.findByRole('dialog');
+        expect(within(dialog).getByRole('button', { name: /February/ })).toBeInTheDocument();
+    });
+});
+
 describe('OnThisDayPage detail', () => {
+    it('puts focus on the selected year so ← / → work at once', async () => {
+        renderPage({ page: 'onThisDay', monthDay: '09-14', year: 2024 });
+        const rows = await screen.findAllByTestId('otd-year-row');
+        expect(document.activeElement).toBe(rows[0]);
+        await userEvent.keyboard('{ArrowLeft}');
+        expect(go).toHaveBeenLastCalledWith({ page: 'onThisDay', monthDay: '09-14', year: 2022 });
+    });
+
+    it('shows a video thumb in the year list as a video still', async () => {
+        renderPage({ page: 'onThisDay', monthDay: '09-14', year: 2024 });
+        const rows = await screen.findAllByTestId('otd-year-row');
+        expect(rows[2].querySelector('img')).toBeNull();
+        expect(within(rows[2]).getByTestId('memory-thumb-video')).toBeInTheDocument();
+    });
+
     it('lists the years, dims the empty ones and makes them unclickable', async () => {
         renderPage({ page: 'onThisDay', monthDay: '09-14', year: 2024 });
         const rows = await screen.findAllByTestId('otd-year-row');

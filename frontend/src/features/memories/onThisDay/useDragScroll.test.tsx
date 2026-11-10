@@ -40,6 +40,40 @@ describe('useDragScroll', () => {
         expect(onClick).toHaveBeenCalledTimes(1);
     });
 
+    it('treats a move of exactly 4 px as a click, 5 px as a drag', () => {
+        const onClick = vi.fn();
+        render(<Strip onClick={onClick} />);
+        const col = screen.getByRole('button');
+        fireEvent.pointerDown(col, { button: 0, clientX: 200, pointerId: 1 });
+        fireEvent.pointerMove(col, { clientX: 196, pointerId: 1 });
+        fireEvent.pointerUp(col, { clientX: 196, pointerId: 1 });
+        fireEvent.click(col);
+        expect(onClick).toHaveBeenCalledTimes(1);
+        fireEvent.pointerDown(col, { button: 0, clientX: 200, pointerId: 1 });
+        fireEvent.pointerMove(col, { clientX: 195, pointerId: 1 });
+        fireEvent.pointerUp(col, { clientX: 195, pointerId: 1 });
+        fireEvent.click(col);
+        expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('ignores a non-primary button', () => {
+        render(<Strip onClick={() => {}} />);
+        const strip = screen.getByTestId('strip');
+        strip.scrollLeft = 50;
+        const col = screen.getByRole('button');
+        fireEvent.pointerDown(col, { button: 2, clientX: 200, pointerId: 1 });
+        fireEvent.pointerMove(col, { clientX: 100, pointerId: 1 });
+        expect(strip.scrollLeft).toBe(50);
+    });
+
+    it('scales line-mode wheel deltas (Firefox) to pixels', () => {
+        render(<Strip onClick={() => {}} />);
+        const strip = screen.getByTestId('strip');
+        strip.scrollLeft = 0;
+        fireEvent.wheel(strip, { deltaY: 3, deltaMode: 1 });
+        expect(strip.scrollLeft).toBe(48);
+    });
+
     it('maps the vertical wheel to horizontal scroll', () => {
         render(<Strip onClick={() => {}} />);
         const strip = screen.getByTestId('strip');

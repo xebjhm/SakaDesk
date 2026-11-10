@@ -14,3 +14,9 @@ export function shiftMonthDay(monthDay: string, delta: number): string {
     const d = new Date(Date.UTC(2000, month - 1, day + delta));
     return `${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
+
+/** The local `Date` of `monthDay` in this JST year (where the date picker opens); 02-29 rolls to 03-01 in a common year. */
+export function monthDayInThisYear(monthDay: string, now: Date = new Date()): Date {
+    const [month, day] = monthDay.split('-').map(Number);
+    return new Date(jstNow(now).year, month - 1, day);
+}

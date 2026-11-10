@@ -14,6 +14,9 @@ export const RECAP_MIN_YEAR = 2020;
 /** Japan has no daylight saving time: JST is always UTC+9. */
 const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
+/** The IANA zone of every Memories clock (hand it to `MessageBubble`'s `timeZone`). */
+export const JST_TIME_ZONE = 'Asia/Tokyo';
+
 /** The month (1-12) the current year's recap opens. */
 const OPEN_MONTH = 12;
 
@@ -80,4 +83,15 @@ export function offeredRecapYears(avail: RecapAvailability, dataYears: readonly 
 export function defaultRecapYear(avail: RecapAvailability, offered: readonly number[]): number | null {
     if (offered.includes(avail.defaultYear)) return avail.defaultYear;
     return offered.length ? offered[offered.length - 1] : null;
+}
+
+/**
+ * A timestamp's Tokyo wall-clock time as `HH:MM` (leading zeros), whatever the machine's zone:
+ * Memories shows JST everywhere, like its JST dates. '' for an invalid timestamp.
+ */
+export function formatJstClock(ts: string | number | Date): string {
+    const d = ts instanceof Date ? ts : new Date(ts);
+    if (Number.isNaN(d.getTime())) return '';
+    const { hour, minute } = jstNow(d);
+    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
 }

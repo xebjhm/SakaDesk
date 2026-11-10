@@ -7,50 +7,35 @@ import { MessageBubble } from '../../messages/components/MessageBubble';
 import { resizedAvatarUrl } from '../../messages/mediaUrl';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
 import { MemoryText } from '../shared/MemoryText';
+import { MemoryThumb } from '../shared/MemoryThumb';
+import { useNickname } from '../shared/useNickname';
 import { toChatMessage } from '../shared/toMessage';
 import { jumpToChat } from '../shared/jumpToChat';
+import { logMemoriesToggle } from '../memoriesLog';
+import { JST_TIME_ZONE, formatJstClock } from '../recap/availability';
+import { hourLabel, rulerSpan } from './ruler';
 import { dayPeople, type DayPerson } from './people';
 import { laneLayout } from './laneLayout';
-import { formatClock } from './format';
-import type { DayMember, MemoryMessage } from '../types';
+import type { DayMember, DayMessage } from '../types';
 
 interface SwimlanesProps {
     members: DayMember[];
     /** The day's messages in time order (already filtered). */
-    messages: MemoryMessage[];
+    messages: DayMessage[];
 }
 
-const HOUR_MS = 60 * 60 * 1000;
 const PX_PER_MINUTE = 1.2;
 /** A collapsed card is `h-16` (64 px); keep these two in step. */
 const CARD_HEIGHT = 64;
 const GAP = 4;
 const AVATAR_PX = 32;
 
-const msgKey = (m: MemoryMessage) => `${m.service}|${m.room}|${m.id}`;
-
-/** The ruler's span: the floor of the first message's hour to the ceiling of the last one's (local clock). */
-function rulerSpan(messages: MemoryMessage[]): { start: number; hours: number[] } {
-    const times = messages.map((m) => Date.parse(m.ts)).filter((n) => !Number.isNaN(n));
-    if (!times.length) return { start: 0, hours: [] };
-    const first = new Date(Math.min(...times));
-    first.setMinutes(0, 0, 0);
-    const last = new Date(Math.max(...times));
-    if (last.getMinutes() || last.getSeconds() || last.getMilliseconds()) last.setHours(last.getHours() + 1);
-    last.setMinutes(0, 0, 0);
-    const start = first.getTime();
-    const end = Math.max(last.getTime(), start + HOUR_MS);
-    const hours: number[] = [];
-    for (let t = start; t <= end; t += HOUR_MS) hours.push(t);
-    return { start, hours };
-}
-
-const hourLabel = (t: number) => `${String(new Date(t).getHours()).padStart(2, '0')}:00`;
+const msgKey = (m: DayMessage) => `${m.service}|${m.room}|${m.id}`;
 
 const MEDIA_ICON = { picture: ImageIcon, video: Video, voice: Volume2 } as const;
 
 interface LaneCardProps {
-    message: MemoryMessage;
+    message: DayMessage;
     person: DayPerson;
     top: number;
     expanded: boolean;
@@ -59,8 +44,10 @@ interface LaneCardProps {
 
 const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, onToggle }) => {
     const { t } = useTranslation();
+    const nickname = useNickname();
     const words = m.text ?? m.caption;
     const Icon = m.type === 'text' ? null : MEDIA_ICON[m.type];
+    const hasThumb = (m.type === 'picture' || m.type === 'video') && Boolean(m.media_url);
     return (
         <Card
             data-testid="day-lane-card"
@@ -77,10 +64,10 @@ const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, 
                 onClick={onToggle}
                 className="flex w-full items-start gap-2 p-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
             >
-                <span className="shrink-0 text-caption tabular-nums text-muted">{formatClock(m.ts)}</span>
+                <span className="shrink-0 text-caption tabular-nums text-muted">{formatJstClock(m.ts)}</span>
                 {!expanded && (
-                    m.type === 'picture' && m.media_url ? (
-                        <img src={m.media_url} alt="" draggable={false} className="h-11 w-16 rounded-sm object-cover" />
+                    hasThumb ? (
+                        <MemoryThumb message={m} className="h-11 w-16 rounded-sm" />
                     ) : words ? (
                         <MemoryText as="span" text={words} className="line-clamp-2 min-w-0 text-small text-primary" />
                     ) : Icon ? (
@@ -91,7 +78,16 @@ const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, 
             {expanded && (
                 <div className="flex flex-col gap-2 px-2 pb-2">
                     {m.type !== 'text' && (
-                        <MessageBubble message={{ ...toChatMessage(m), content: null }} member_name={person.name} service={m.service} runStart={false} />
+                        <MessageBubble
+                            message={{ ...toChatMessage(m), content: null }}
+                            member_name={person.name}
+                            service={m.service}
+                            memberPath={m.member_path}
+                            userNickname={nickname}
+                            timeZone={JST_TIME_ZONE}
+                            readOnly
+                            runStart={false}
+                        />
                     )}
                     {words && <MemoryText text={words} className="text-small text-primary" />}
                     <Button variant="ghost" size="sm" className="self-start" onClick={() => jumpToChat(m, person.name, 'day')}>
@@ -104,17 +100,23 @@ const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, 
 };
 
 /**
- * 那一天 B: one column per person (avatar and name on top), time running down on an hour ruler
- * from the floor of the first message's hour to the ceiling of the last one's. Cards sit at
- * their time (`laneLayout` pushes overlapping ones down); a click expands one with her full
- * words and the jump to her chat. Columns keep a minimum width, so past five people the lanes
- * scroll sideways inside the pane.
+ * 那一天 B: one column per person (avatar and name on top), time running down on a JST hour
+ * ruler from the floor of the first message's hour to the ceiling of the last one's. Cards sit
+ * at their time (`laneLayout` pushes overlapping ones down); a click expands one with her full
+ * words, a read-only bubble for media and the jump to her chat (`memories_toggle` `lane_card`).
+ * Columns keep a minimum width, so past five people the lanes scroll sideways inside the pane.
  */
 export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
     const avatarWidth = useAvatarWidth(AVATAR_PX);
     const [expanded, setExpanded] = useState<string | null>(null);
     const people = useMemo(() => dayPeople(members, messages), [members, messages]);
     const { start, hours } = useMemo(() => rulerSpan(messages), [messages]);
+
+    const toggle = (key: string) => {
+        const next = expanded === key ? null : key;
+        setExpanded(next);
+        logMemoriesToggle('lane_card', next !== null);
+    };
 
     const lanes = people.map((person) => {
         const placed = laneLayout(
@@ -129,7 +131,7 @@ export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
 
     return (
         <div data-testid="day-lanes" className="flex min-w-0">
-            <div aria-hidden="true" className="sticky left-0 z-10 w-12 shrink-0 bg-sheet">
+            <div aria-hidden="true" className="sticky left-0 z-20 w-12 shrink-0 bg-sheet">
                 <div className="h-16" />
                 <div className="relative" style={{ height }}>
                     {hours.map((h) => (
@@ -139,14 +141,15 @@ export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
                             className="absolute right-2 -translate-y-1/2 text-caption tabular-nums text-muted"
                             style={{ top: ((h - start) / 60000) * PX_PER_MINUTE }}
                         >
-                            {hourLabel(h)}
+                            {hourLabel(h, start)}
                         </span>
                     ))}
                 </div>
             </div>
             {lanes.map(({ person, placed }) => (
                 <section key={person.key} data-testid="day-lane" className="min-w-40 flex-1 px-1">
-                    <header className="sticky top-0 z-10 flex h-16 flex-col items-center justify-center gap-1 bg-sheet">
+                    {/* Above an expanded card (z-10) while the lanes scroll under it. */}
+                    <header className="sticky top-0 z-20 flex h-16 flex-col items-center justify-center gap-1 bg-sheet">
                         <Avatar src={resizedAvatarUrl(person.avatarUrl, avatarWidth)} name={person.name} size="sm" decorative />
                         <span lang="ja" className="max-w-full truncate text-small font-semibold text-primary">{person.name}</span>
                     </header>
@@ -158,7 +161,7 @@ export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
                                 person={person}
                                 top={top}
                                 expanded={expanded === key}
-                                onToggle={() => setExpanded((cur) => (cur === key ? null : key))}
+                                onToggle={() => toggle(key)}
                             />
                         ))}
                     </div>

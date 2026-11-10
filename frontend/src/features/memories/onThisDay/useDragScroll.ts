@@ -2,6 +2,8 @@ import { useCallback, useMemo, useRef, type MouseEvent, type PointerEvent, type 
 
 /** A pointer that moved further than this is a drag, and the click it ends is swallowed. */
 export const DRAG_THRESHOLD_PX = 4;
+/** One wheel line (`deltaMode` 1) in pixels. */
+const WHEEL_LINE_PX = 16;
 
 /**
  * Horizontal drag-to-scroll for a strip: a primary-button pointer drag scrolls it (a click is
@@ -46,7 +48,9 @@ export function useDragScroll<T extends HTMLElement>() {
         onWheel: (e: WheelEvent<T>) => {
             const el = ref.current;
             if (!el || Math.abs(e.deltaY) <= Math.abs(e.deltaX)) return;
-            el.scrollLeft += e.deltaY;
+            // deltaMode: 0 pixels, 1 lines (Firefox), 2 pages.
+            const unit = e.deltaMode === 1 ? WHEEL_LINE_PX : e.deltaMode === 2 ? el.clientWidth : 1;
+            el.scrollLeft += e.deltaY * unit;
         },
     }), [end]);
 

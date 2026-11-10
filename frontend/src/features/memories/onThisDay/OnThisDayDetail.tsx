@@ -1,8 +1,9 @@
-import React from 'react';
+import React, { useEffect, useRef } from 'react';
 import { useTranslation } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
 import { DayView } from '../day/DayView';
 import { sepiaClass } from '../shared/sepia';
+import { MemoryThumb } from '../shared/MemoryThumb';
 import type { OnThisDayPayload } from '../types';
 
 interface OnThisDayDetailProps {
@@ -25,6 +26,13 @@ const ROW = 'flex w-full items-center gap-3 rounded-md px-3 py-2 text-left';
 export const OnThisDayDetail: React.FC<OnThisDayDetailProps> = ({ service, monthDay, year, years, onSelectYear }) => {
     const { t } = useTranslation();
     const newestFirst = [...years].reverse();
+    const selectedRef = useRef<HTMLButtonElement>(null);
+    // Entering from the strip unmounts the clicked column and drops focus to the body: put it on
+    // the selected year so ← / → work at once (unless focus is already somewhere on purpose).
+    useEffect(() => {
+        const active = document.activeElement;
+        if (!active || active === document.body) selectedRef.current?.focus({ preventScroll: true });
+    }, []);
     return (
         <div className="flex min-h-0 flex-1">
             <nav className="flex w-56 shrink-0 flex-col gap-1 overflow-y-auto p-2">
@@ -53,6 +61,7 @@ export const OnThisDayDetail: React.FC<OnThisDayDetailProps> = ({ service, month
                             type="button"
                             data-testid="otd-year-row"
                             data-year={y.year}
+                            ref={selected ? selectedRef : undefined}
                             aria-current={selected ? 'true' : undefined}
                             onClick={() => onSelectYear(y.year)}
                             className={cn(
@@ -63,12 +72,7 @@ export const OnThisDayDetail: React.FC<OnThisDayDetailProps> = ({ service, month
                             )}
                         >
                             {y.thumb?.media_url ? (
-                                <img
-                                    src={y.thumb.media_url}
-                                    alt=""
-                                    draggable={false}
-                                    className={cn('h-10 w-10 shrink-0 rounded-md object-cover', sepiaClass(y.year))}
-                                />
+                                <MemoryThumb message={y.thumb} className={cn('h-10 w-10 shrink-0 rounded-md', sepiaClass(y.year))} />
                             ) : (
                                 <span aria-hidden="true" className="h-10 w-10 shrink-0 rounded-md bg-sunken" />
                             )}

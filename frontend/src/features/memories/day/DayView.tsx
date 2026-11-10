@@ -3,6 +3,8 @@ import { Heart } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Avatar, Pill, Switch } from '../../../design/primitives';
 import { holidayName } from '../../../utils/jpHolidays';
+import { getServicePrimaryColor } from '../../../data/services';
+import { groupMarkerStyle } from '../../search/groupMarker';
 import { resizedAvatarUrl } from '../../messages/mediaUrl';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
 import { fetchDay } from '../api';
@@ -11,7 +13,7 @@ import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { LoadState } from '../shared/LoadState';
 import { MergedTimeline } from './MergedTimeline';
 import { Swimlanes } from './Swimlanes';
-import { dayPeople, memberKey, messageKey } from './people';
+import { dayPeople } from './people';
 import { formatDayHeading } from './format';
 
 interface DayViewProps {
@@ -30,7 +32,8 @@ const CHIP_AVATAR_PX = 20;
 /**
  * 那一天 (spec 7), shared by On This Day and the calendar: the date with its weekday, the
  * holiday name and one number (the messages shown), member chips, the 「包含其他團體」 switch
- * (refetches with `others`, logs `memories_toggle` `other_services`) and the A / B toggle
+ * (refetches with `others`, logs `memories_toggle` `other_services`; another group's chip carries
+ * its group marker; a chip pick logs `member_filter`) and the A / B toggle
  * (merged timeline / swimlanes, A by default, kept for as long as the view is mounted; logs
  * `memories_toggle` `day_mode`).
  */
@@ -54,11 +57,11 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
     // A chip of a person who is not in this payload (another date, the switch) reads as everyone.
     const active = filter !== null && peopleByKey.has(filter) ? filter : null;
     const messages = useMemo(
-        () => (data ? (active === null ? data.messages : data.messages.filter((m) => messageKey(m) === active)) : []),
+        () => (data ? (active === null ? data.messages : data.messages.filter((m) => m.person_key === active)) : []),
         [data, active],
     );
     const members = useMemo(
-        () => (data ? (active === null ? data.members : data.members.filter((m) => memberKey(m) === active)) : []),
+        () => (data ? (active === null ? data.members : data.members.filter((m) => m.person_key === active)) : []),
         [data, active],
     );
 
@@ -67,6 +70,11 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
         if (next === mode) return;
         setMode(next);
         logMemoriesToggle('day_mode', next === 'lanes');
+    };
+    const pickMember = (key: string | null) => {
+        if (key === active) return;
+        setFilter(key);
+        logMemoriesToggle('member_filter', key !== null);
     };
     const toggleOthers = (next: boolean) => {
         setOthers(next);
@@ -102,11 +110,19 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
                 <div className="flex flex-wrap items-center gap-2 px-4 py-2">
                     {people.length > 1 && (
                         <>
-                            <Pill selected={active === null} onClick={() => setFilter(null)}>{t('memories.common.all')}</Pill>
+                            <Pill selected={active === null} onClick={() => pickMember(null)}>{t('memories.common.all')}</Pill>
                             {people.map((p) => (
-                                <Pill key={p.key} selected={active === p.key} onClick={() => setFilter(p.key)}>
+                                <Pill key={p.key} selected={active === p.key} onClick={() => pickMember(p.key)}>
                                     <Avatar src={resizedAvatarUrl(p.avatarUrl, chipAvatar)} name={p.name} size="sm" className="h-5 w-5 text-caption" decorative />
                                     <span lang="ja">{p.name}</span>
+                                    {p.service !== service && (
+                                        <span
+                                            data-testid="day-chip-group-marker"
+                                            aria-hidden="true"
+                                            className="h-2 w-2 shrink-0 rounded-pill bg-group-marker"
+                                            style={groupMarkerStyle(getServicePrimaryColor(p.service))}
+                                        />
+                                    )}
                                     {p.oshi && <Heart aria-hidden="true" className="h-3 w-3 fill-semantic-oshi text-semantic-oshi-solid" />}
                                 </Pill>
                             ))}
