@@ -122,6 +122,9 @@ describe('RecapPlayer', () => {
     it('centres the stage in the pane (D2)', () => {
         render(<RecapPlayer recap={payload()} nickname="ゆき" onClose={() => {}} />);
         expect(screen.getByTestId('recap-root')).toHaveClass('w-full', 'flex-1', 'justify-center');
+        // D2 (round 2): the Atmosphere's own wrapper must fill the pane too, or the root
+        // centres within a 695 px sliver of a 2077 px pane.
+        expect(screen.getByTestId('recap-root').parentElement).toHaveClass('w-full', 'min-w-0');
     });
 
     it('stops on the last slide', () => {

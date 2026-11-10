@@ -33,7 +33,10 @@ export const Atmosphere: React.FC<AtmosphereProps> = ({ children, className, fad
             ) : (
                 orbs
             )}
-            <div className="relative h-full">{children}</div>
+            {/* `w-full min-w-0`: inside a flex-row Atmosphere (the recap, the poster) this
+                wrapper is a flex item that would otherwise shrink to its content, so a
+                centred child centred within that sliver instead of the pane (D2). */}
+            <div data-testid="atmosphere-content" className="relative h-full w-full min-w-0">{children}</div>
         </div>
     );
 };

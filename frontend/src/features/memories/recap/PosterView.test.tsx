@@ -38,6 +38,11 @@ const renderPoster = (poster: Partial<RecapPoster> = {}, over: Partial<RecapPayl
     );
 
 describe('PosterView', () => {
+    it('fills the pane so the poster centres in it, not in a content-wide sliver (D2)', () => {
+        renderPoster();
+        expect(screen.getByTestId('atmosphere-content')).toHaveClass('w-full', 'min-w-0');
+    });
+
     it('lays out the year, member, "with" line, polaroid, sentence and signature', () => {
         renderPoster();
         const poster = screen.getByTestId('recap-poster');

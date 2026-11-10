@@ -32,6 +32,12 @@ describe('brand-moment primitives', () => {
             expect(o.className.split(/\s+/).filter((c) => /^h-/.test(c))).toEqual([]);
         });
     });
+    it('Atmosphere content wrapper fills a flex-row Atmosphere so centred children centre in the pane', () => {
+        render(<Atmosphere className="flex"><p>content</p></Atmosphere>);
+        const wrapper = screen.getByTestId('atmosphere-content');
+        expect(wrapper).toHaveClass('w-full', 'min-w-0', 'h-full');
+        expect(wrapper.contains(screen.getByText('content'))).toBe(true);
+    });
     it('Atmosphere fade masks only the orb layer, never the children', () => {
         render(<Atmosphere fade><p>content</p></Atmosphere>);
         const layer = screen.getByTestId('atmosphere-fade');
