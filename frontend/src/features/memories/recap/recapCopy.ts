@@ -165,18 +165,6 @@ export function formatCount(n: number, lang: string): string {
     return new Intl.NumberFormat(lang).format(n);
 }
 
-/**
- * A UTC ISO timestamp as its JST calendar day ("8月21日", or "2026年8月21日" with the year), or
- * null. A message's date is metadata, not the slide's number.
- */
-export function formatMessageDate(ts: string, lang: string, withYear = false): string | null {
-    const date = new Date(ts);
-    if (Number.isNaN(date.getTime())) return null;
-    return new Intl.DateTimeFormat(lang, {
-        ...(withYear ? { year: 'numeric' } : {}), month: 'long', day: 'numeric', timeZone: RECAP_TIME_ZONE,
-    }).format(date);
-}
-
 /** The JST month and day of a UTC ISO timestamp ("07-30"), or null. */
 function jstMonthDay(ts: string): string | null {
     const date = new Date(ts);

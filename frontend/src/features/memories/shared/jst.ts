@@ -50,6 +50,18 @@ export function formatJstDate(ts: string | number | Date): string {
 }
 
 /**
+ * A UTC ISO timestamp as its JST calendar day ("8月21日", or "2026年8月21日" with the year), or
+ * null. A message's date is metadata, not a screen's number.
+ */
+export function formatMessageDate(ts: string, lang: string, withYear = false): string | null {
+    const date = new Date(ts);
+    if (Number.isNaN(date.getTime())) return null;
+    return new Intl.DateTimeFormat(lang, {
+        ...(withYear ? { year: 'numeric' } : {}), month: 'long', day: 'numeric', timeZone: JST_TIME_ZONE,
+    }).format(date);
+}
+
+/**
  * A localized JST date formatter (`year`, short `month`, `day`; with `time`, also `HH:MM`) for
  * labels such as a print's date. Build it once per language (`useMemo`).
  */

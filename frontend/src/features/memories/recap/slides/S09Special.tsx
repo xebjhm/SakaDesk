@@ -2,8 +2,10 @@ import React from 'react';
 import { useTranslation } from '../../../../i18n';
 import { cn } from '../../../../utils/classnames';
 import type { RecapStub, S09SpecialData } from '../api';
-import { formatMessageDate, formatSecondsOfDay, s09Copy, s09StubCopy, withNickname } from '../recapCopy';
-import { Headline, Narration, Quote, type SlideProps } from './common';
+import { formatMessageDate } from '../../shared/jst';
+import { formatSecondsOfDay, s09Copy, s09StubCopy, withNickname } from '../recapCopy';
+import { Headline, Quote, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
 import { heldReveal } from './style';
 
 interface StubProps {

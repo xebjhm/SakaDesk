@@ -3,8 +3,10 @@ import { Mail, Star } from 'lucide-react';
 import { useTranslation } from '../../../../i18n';
 import { cn } from '../../../../utils/classnames';
 import type { S10YouData } from '../api';
-import { formatMessageDate, formatMonthDay, s10Copy } from '../recapCopy';
-import { Headline, Narration, type SlideProps } from './common';
+import { formatMessageDate } from '../../shared/jst';
+import { formatMonthDay, s10Copy } from '../recapCopy';
+import { Headline, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
 import { heldReveal } from './style';
 
 /** At most this many bookmarks stand in the book, so it stays inside the 9:16 stage. */

@@ -3,7 +3,8 @@ import { useTranslation } from '../../../../i18n';
 import { cn } from '../../../../utils/classnames';
 import type { S03ClockData } from '../api';
 import { s03Copy } from '../recapCopy';
-import { Headline, MessageBody, Narration, type SlideProps } from './common';
+import { Headline, MessageBody, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
 import { heldReveal } from './style';
 import { STAR_FALL_MS, StarDial } from './StarDial';
 

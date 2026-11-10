@@ -3,7 +3,8 @@ import { useTranslation } from '../../../../i18n';
 import type { RecapMessage, S08EchoData } from '../api';
 import { s08Copy } from '../recapCopy';
 import { ThenNowPair, type ThenNowSideView } from '../../thenNow/ThenNowPair';
-import { Headline, Narration, type SlideProps } from './common';
+import { Headline, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
 import { heldReveal } from './style';
 
 /** A recap message as one pair side: its label (if any) over the message alone. */

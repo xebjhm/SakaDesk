@@ -2,9 +2,12 @@ import React, { useLayoutEffect, useRef, useState } from 'react';
 import { useTranslation } from '../../../../i18n';
 import { cn } from '../../../../utils/classnames';
 import type { S07LetterData } from '../api';
-import { formatMessageDate, s07Copy, withNickname } from '../recapCopy';
-import { Headline, Narration, type SlideProps } from './common';
-import { QUOTE_CLASS, heldReveal, playState } from './style';
+import { formatMessageDate } from '../../shared/jst';
+import { s07Copy, withNickname } from '../recapCopy';
+import { Headline, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
+import { QUOTE_CLASS } from '../../shared/typeRoles';
+import { heldReveal, playState } from './style';
 
 /** Ruled letter paper: a faint line under every text line (`leading-8`, 2rem), drawn with the border token. */
 const RULED: React.CSSProperties = {

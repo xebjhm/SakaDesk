@@ -4,7 +4,8 @@ import { Avatar } from '../../../../design/primitives';
 import { cn } from '../../../../utils/classnames';
 import type { S01FirstData } from '../api';
 import { formatClock, s01Copy } from '../recapCopy';
-import { Headline, MessageBody, Narration, type SlideProps } from './common';
+import { Headline, MessageBody, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
 import { heldReveal } from './style';
 
 /**

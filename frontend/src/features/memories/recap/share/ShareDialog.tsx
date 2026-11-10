@@ -7,7 +7,7 @@ import { logRecapShare } from '../../memoriesLog';
 import type { RecapPayload } from '../api';
 import { canvasToPng, SaveError } from '../posterImage';
 import { safeMemberId } from '../posterCopy';
-import { NARRATION_CLASS } from '../slides/style';
+import { NARRATION_CLASS } from '../../shared/typeRoles';
 import {
     buildShareModel, defaultShareOptions, displaySentence, MAX_SENTENCES, sentenceCandidates, yearsAvailable,
     type ShareOptions, type ShareStyle,

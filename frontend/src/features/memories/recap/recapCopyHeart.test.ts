@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import {
-    formatCount, formatMessageDate, formatSecondsOfDay, letterCharCount, s07Copy, s08Copy, s09Copy, s09StubCopy,
+    formatCount, formatSecondsOfDay, letterCharCount, s07Copy, s08Copy, s09Copy, s09StubCopy,
     s10Copy, s11Copy,
 } from './recapCopy';
+import { formatMessageDate } from '../shared/jst';
 import { daisukiData, echoData, LETTER_TEXT, letterData, message, stub, youData } from './__fixtures__/payload';
 
 const SUB_START = '2024-07-24';

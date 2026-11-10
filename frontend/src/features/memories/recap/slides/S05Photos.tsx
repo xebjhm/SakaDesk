@@ -3,7 +3,8 @@ import { useTranslation } from '../../../../i18n';
 import { cn } from '../../../../utils/classnames';
 import type { RecapMessage, S05PhotosData } from '../api';
 import { s05Copy, withNickname } from '../recapCopy';
-import { Headline, Narration, Quote, type SlideProps } from './common';
+import { Headline, Quote, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
 import { heldReveal, playState } from './style';
 import { MemoryThumb } from '../../shared/MemoryThumb';
 

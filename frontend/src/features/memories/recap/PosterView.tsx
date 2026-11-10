@@ -4,12 +4,13 @@ import { useTranslation } from '../../../i18n';
 import { Atmosphere, Button, IconButton } from '../../../design/primitives';
 import { logRecapPoster } from '../memoriesLog';
 import type { RecapMessage, RecapPayload, RecapStub, S03ClockData } from './api';
-import { formatCount, formatMessageDate, formatSecondsOfDay, s03Copy, s09StubCopy, withNickname } from './recapCopy';
+import { formatMessageDate } from '../shared/jst';
+import { NARRATION_CLASS } from '../shared/typeRoles';
+import { formatCount, formatSecondsOfDay, s03Copy, s09StubCopy, withNickname } from './recapCopy';
 import { posterFilename, posterNumbers, posterSince, posterYears, safeMemberId } from './posterCopy';
 import { canvasToPng, renderToCanvas, SaveError, savePng } from './posterImage';
 import { ShareDialog } from './share/ShareDialog';
 import { StarDial } from './slides/StarDial';
-import { NARRATION_CLASS } from './slides/style';
 import { MemoryThumb } from '../shared/MemoryThumb';
 
 export interface PosterViewProps {

@@ -8,7 +8,8 @@ import type { S06VoiceData } from '../api';
 import { s06Copy, withNickname } from '../recapCopy';
 import { ClipSequencer, createAudioElement, type SequencerClip } from '../../shared/clipSequencer';
 import { useVoicePlayback } from '../../shared/voicePlayback';
-import { Headline, Narration, Quote, type SlideProps } from './common';
+import { Headline, Quote, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
 import { heldReveal } from './style';
 
 const KEY = 's06_voice';

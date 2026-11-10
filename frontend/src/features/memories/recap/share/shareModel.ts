@@ -18,7 +18,8 @@
 import { replaceNickname } from '../../../messages/utils/nickname';
 import type { RecapPayload, RecapSlide, S02NameData, S03ClockData, S04GreetingsData, S07LetterData, S09SpecialData, S11DaisukiData, S12SentenceData } from '../api';
 import { posterYears } from '../posterCopy';
-import { formatMessageDate, formatSecondsOfDay, s04Copy, s09StubCopy, type CopyLine } from '../recapCopy';
+import { formatMessageDate } from '../../shared/jst';
+import { formatSecondsOfDay, s04Copy, s09StubCopy, type CopyLine } from '../recapCopy';
 
 import { NICKNAME_MASK } from '../../shared/nicknameMask';
 

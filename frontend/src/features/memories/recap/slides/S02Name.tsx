@@ -3,7 +3,8 @@ import { useTranslation } from '../../../../i18n';
 import { cn } from '../../../../utils/classnames';
 import type { S02NameData } from '../api';
 import { s02Copy, withNickname } from '../recapCopy';
-import { Headline, MessageBody, Narration, type SlideProps } from './common';
+import { Headline, MessageBody, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
 import { heldReveal } from './style';
 
 const LETTER_STAGGER_MS = 160;

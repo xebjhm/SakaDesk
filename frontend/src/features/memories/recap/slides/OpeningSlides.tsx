@@ -5,7 +5,8 @@ import { useTranslation } from '../../../../i18n';
 import { cn } from '../../../../utils/classnames';
 import type { RecapOverview } from '../api';
 import { STAR_LABEL_SHARE, STAR_SHARE, starGrid, starMembers, titledMembers } from '../openingMembers';
-import { Headline, Narration, type SlideProps } from './common';
+import { Headline, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
 import { heldReveal } from './style';
 
 /** Stagger between two stars or two title rows; capped so a long list still lands quickly. */

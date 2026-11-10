@@ -11,7 +11,8 @@ import React from 'react';
 import { cn } from '../../../../utils/classnames';
 import type { RecapMessage, RecapPayload } from '../api';
 import { withNickname } from '../recapCopy';
-import { NARRATION_CLASS, QUOTE_CLASS, TITLE_CLASS } from './style';
+import { QUOTE_CLASS } from '../../shared/typeRoles';
+import { TITLE_CLASS } from './style';
 
 export interface SlideProps<D> {
     data: D;
@@ -44,12 +45,6 @@ export const Quote: React.FC<TextProps> = ({ children, className, style }) => (
 /** A slide's title. `className` may override the colour (the dark s12 stage). */
 export const Headline: React.FC<TextProps> = ({ children, className, style }) => (
     <p data-voice="title" className={cn(TITLE_CLASS, 'text-primary', className)} style={style}>
-        {children}
-    </p>
-);
-
-export const Narration: React.FC<TextProps> = ({ children, className, style }) => (
-    <p data-voice="narration" className={cn(NARRATION_CLASS, 'text-secondary', className)} style={style}>
         {children}
     </p>
 );

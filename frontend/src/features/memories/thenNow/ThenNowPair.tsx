@@ -5,13 +5,12 @@ import { Avatar } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { buildMediaUrl, resizedAvatarUrl } from '../../messages/mediaUrl';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
-import { formatMessageDate } from '../recap/recapCopy';
-import { Narration } from '../recap/slides/common';
-import { QUOTE_CLASS } from '../recap/slides/style';
+import { formatMessageDate } from '../shared/jst';
 import { LazyVoice } from '../shared/LazyVoice';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import { sepiaClass } from '../shared/sepia';
+import { Narration, QUOTE_CLASS } from '../shared/typeRoles';
 import type { MemoryMessageType } from '../types';
 
 const AVATAR_PX = 32;

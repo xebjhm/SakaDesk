@@ -3,7 +3,8 @@ import { useTranslation } from '../../../../i18n';
 import { cn } from '../../../../utils/classnames';
 import type { RecapMessage, S04GreetingsData } from '../api';
 import { formatTimeOfDay, s04Copy, type CopyLine } from '../recapCopy';
-import { Headline, MessageBody, Narration, type SlideProps } from './common';
+import { Headline, MessageBody, type SlideProps } from './common';
+import { Narration } from '../../shared/typeRoles';
 import { heldReveal } from './style';
 
 interface CardProps {
