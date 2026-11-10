@@ -943,17 +943,9 @@ async def get_thumb(
     if w not in photo_thumb.ALLOWED_WIDTHS:
         logger.info("thumb_request_rejected", reason="width", width=w)
         raise HTTPException(status_code=400, detail="Unsupported width")
-    safe_path = _resolve_media_path(file_path)
-    output_dir = get_output_dir()
-    try:
-        is_file = archive_file_ok(output_dir, safe_path)
-    except ArchiveReadError:
-        logger.info("memories_skip", view="photo_thumb", reason="unreadable")
-        raise HTTPException(status_code=404, detail="File not found") from None
-    if not is_file:
-        logger.info("memories_skip", view="photo_thumb", reason="not_file")
-        raise HTTPException(status_code=404, detail="File not found")
-    rel = safe_path.relative_to(output_dir.resolve()).as_posix()
+    # The path checks stat the archive: off the event loop, on the thumbnail
+    # pool, so hundreds of tile requests never stall other requests.
+    safe_path, rel = await photo_thumb.run_io(_thumb_source, file_path)
     served = await photo_thumb.thumbnail(safe_path, rel, w)
     if served is None:
         raise HTTPException(status_code=404, detail="No thumbnail")
@@ -965,10 +957,28 @@ async def get_thumb(
     }
     if headers["ETag"] in _etags(if_none_match):
         return Response(status_code=304, headers=headers)
-    body = await asyncio.to_thread(photo_thumb.read_variant, served)
+    body = await photo_thumb.run_io(photo_thumb.read_variant, served)
     if body is None:
         raise HTTPException(status_code=404, detail="No thumbnail")
     return Response(content=body, media_type="image/webp", headers=headers)
+
+
+def _thumb_source(file_path: str) -> tuple[Path, str]:
+    """``(validated archive file, output-relative POSIX path)``. Blocking.
+
+    403 outside the output dir, 404 when it is not a regular archive file.
+    """
+    safe_path = _resolve_media_path(file_path)
+    output_dir = get_output_dir()
+    try:
+        is_file = archive_file_ok(output_dir, safe_path)
+    except ArchiveReadError:
+        logger.info("memories_skip", view="photo_thumb", reason="unreadable")
+        raise HTTPException(status_code=404, detail="File not found") from None
+    if not is_file:
+        logger.info("memories_skip", view="photo_thumb", reason="not_file")
+        raise HTTPException(status_code=404, detail="File not found")
+    return safe_path, safe_path.relative_to(output_dir.resolve()).as_posix()
 
 
 # =============================================================================

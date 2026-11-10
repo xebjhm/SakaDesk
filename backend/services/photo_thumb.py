@@ -41,9 +41,12 @@ serves a WebP no wider or taller than one of :data:`ALLOWED_WIDTHS` instead
   over :data:`TOAST_MAX_BYTES` (Windows refuses toast images over 3 MB) is
   refused like any other failure. A failure gives ``None``, never the
   original.
-- **Concurrency.** :func:`thumbnail` and :func:`toast_image` decode in ``asyncio.to_thread`` under a
+- **Concurrency.** :func:`thumbnail` and :func:`toast_image` run their blocking
+  work on a dedicated pool of :data:`IO_WORKERS` threads (:func:`run_io`), never
+  the default executor the Memories views share, and decode under a
   per-event-loop semaphore of :data:`DECODE_SLOTS`, so one album scroll cannot
-  occupy every worker thread. A cache hit never waits for a slot.
+  occupy every worker thread nor delay the month grids. A cache hit never waits
+  for a slot.
 
 Logs carry counts and codes only: ``photo_thumb_cache`` (``outcome=hit|miss``,
 ``width``), ``photo_thumb_evict`` (``count``, ``bytes``), ``photo_thumb_sweep``
@@ -54,14 +57,18 @@ for cache file errors.
 from __future__ import annotations
 
 import asyncio
+import functools
 import hashlib
 import os
 import tempfile
 import threading
 import time
 import weakref
+from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import TypeVar
 
 import structlog
 from PIL import Image, ImageOps
@@ -396,6 +403,37 @@ _slots: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] 
 )
 
 
+IO_WORKERS = DECODE_SLOTS + 2
+"""Threads of the thumbnail pool: the decode slots plus two for cache lookups and reads."""
+
+_T = TypeVar("_T")
+_io_pool: ThreadPoolExecutor | None = None
+_io_pool_lock = threading.Lock()
+
+
+def _io_executor() -> ThreadPoolExecutor:
+    global _io_pool
+    with _io_pool_lock:
+        if _io_pool is None:
+            _io_pool = ThreadPoolExecutor(
+                max_workers=IO_WORKERS, thread_name_prefix="photo_thumb"
+            )
+        return _io_pool
+
+
+async def run_io(fn: Callable[..., _T], *args: object) -> _T:
+    """Run blocking thumbnail work (path checks, cache lookups, decodes, reads)
+    on the thumbnail pool, never the default executor.
+
+    An album screen asks for hundreds of thumbnails at once. On the shared
+    default pool their lookups queued ahead of every ``asyncio.to_thread`` hop
+    of the Memories views (index checks, fact reads), so the month grids
+    waited behind the thumbnails; on their own small pool they cannot.
+    """
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(_io_executor(), functools.partial(fn, *args))
+
+
 def _decode_slots() -> asyncio.Semaphore:
     loop = asyncio.get_running_loop()
     sem = _slots.get(loop)
@@ -423,7 +461,7 @@ async def thumbnail(
         _skip("not_picture")
         return None
     root = cache_dir() if root is None else root
-    hit, target = await asyncio.to_thread(lookup, source, rel_path, width, root)
+    hit, target = await run_io(lookup, source, rel_path, width, root)
     if hit is not None:
         logger.debug("photo_thumb_cache", outcome="hit", width=width)
         return hit
@@ -431,7 +469,7 @@ async def thumbnail(
         return None
     logger.debug("photo_thumb_cache", outcome="miss", width=width)
     async with _decode_slots():
-        return await asyncio.to_thread(make, source, target, width, root, cap)
+        return await run_io(make, source, target, width, root, cap)
 
 
 async def toast_image(
@@ -449,9 +487,7 @@ async def toast_image(
         return None
     root = cache_dir() if root is None else root
     key = source.resolve().as_posix()
-    hit, target = await asyncio.to_thread(
-        lookup, source, key, TOAST_WIDTH, root, FORMAT_JPEG
-    )
+    hit, target = await run_io(lookup, source, key, TOAST_WIDTH, root, FORMAT_JPEG)
     if hit is not None:
         logger.debug("photo_thumb_cache", outcome="hit", width=TOAST_WIDTH)
     elif target is None:
@@ -459,12 +495,12 @@ async def toast_image(
     else:
         logger.debug("photo_thumb_cache", outcome="miss", width=TOAST_WIDTH)
         async with _decode_slots():
-            hit = await asyncio.to_thread(
+            hit = await run_io(
                 make, source, target, TOAST_WIDTH, root, cap, FORMAT_JPEG
             )
         if hit is None:
             return None
-    size = await asyncio.to_thread(_size_or_none, hit)
+    size = await run_io(_size_or_none, hit)
     if size is None or size > TOAST_MAX_BYTES:
         _skip("too_large" if size is not None else "vanished")
         return None

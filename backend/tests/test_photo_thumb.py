@@ -648,3 +648,43 @@ def test_toast_image_that_vanishes_before_the_size_check_is_refused(tmp_path):
     assert out is not None
     out.unlink()
     assert photo_thumb._size_or_none(out) is None
+
+
+# --- D4: the thumbnails never crowd the shared executor ------------------------------------
+
+
+class TestThumbPool:
+    def test_route_checks_and_cache_work_run_on_the_thumbnail_pool(
+        self, archive, monkeypatch
+    ):
+        import threading
+
+        from backend.api import content
+
+        seen: dict[str, str] = {}
+        real_ok = content.archive_file_ok
+        real_lookup = photo_thumb.lookup
+        real_read = photo_thumb.read_variant
+
+        def ok(*a):
+            seen["check"] = threading.current_thread().name
+            return real_ok(*a)
+
+        def lookup(*a, **kw):
+            seen["lookup"] = threading.current_thread().name
+            return real_lookup(*a, **kw)
+
+        def read(*a):
+            seen["read"] = threading.current_thread().name
+            return real_read(*a)
+
+        monkeypatch.setattr(content, "archive_file_ok", ok)
+        monkeypatch.setattr(photo_thumb, "lookup", lookup)
+        monkeypatch.setattr(photo_thumb, "read_variant", read)
+        _jpeg(archive / "picture" / "1.jpg", (600, 600))
+        assert client.get(f"{URL}/picture/1.jpg?w=320").status_code == 200
+        assert set(seen) == {"check", "lookup", "read"}
+        assert all(name.startswith("photo_thumb") for name in seen.values()), seen
+
+    def test_route_errors_still_answer_from_the_pool(self, archive):
+        assert client.get(f"{URL}/picture/none.jpg?w=320").status_code == 404
