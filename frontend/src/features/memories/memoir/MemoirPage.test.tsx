@@ -6,6 +6,7 @@ import { server } from '../../../__tests__/mocks/server';
 import i18n from '../../../i18n';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+vi.mock('react-virtuoso', async () => (await import('../../../__tests__/virtuosoMock')).virtuosoMock);
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
@@ -101,6 +102,9 @@ describe('MemoirPage', () => {
         renderPage({ page: 'memoir', memberPath: MEMBER_PATH });
         expect(screen.getByTestId('memoir-header-loading')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: '生写真帳' })).toBeInTheDocument();
+        // let the member list and the binder settle inside the test
+        expect(await screen.findByRole('button', { name: /小坂 菜緒/ })).toBeInTheDocument();
+        expect(await screen.findAllByTestId('binder-shelf')).not.toHaveLength(0);
     });
 
     it('opens the card detail on an earned card', async () => {

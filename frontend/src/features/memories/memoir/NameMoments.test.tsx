@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+vi.mock('react-virtuoso', async () => (await import('../../../__tests__/virtuosoMock')).virtuosoMock);
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
@@ -102,5 +103,13 @@ describe('NameMoments', () => {
         const { onBack } = renderNames();
         await userEvent.click(screen.getByRole('button', { name: '生写真帳へ' }));
         expect(onBack).toHaveBeenCalled();
+    });
+
+    it('shows a gentle empty state without moments', async () => {
+        vi.mocked(fetchNameMoments).mockResolvedValue({ years: [], items: [] });
+        renderNames();
+        expect(await screen.findByText('名前を呼んでくれた瞬間は、これから増えていきます')).toBeInTheDocument();
+        expect(screen.queryByTestId('name-moment')).not.toBeInTheDocument();
+        expect(screen.queryByRole('group')).not.toBeInTheDocument();
     });
 });

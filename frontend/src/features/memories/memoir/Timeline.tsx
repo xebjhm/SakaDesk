@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Play } from 'lucide-react';
+import { CalendarDays, Play } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { Avatar, Button, Card } from '../../../design/primitives';
+import { Avatar, Button, Card, EmptyState } from '../../../design/primitives';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { cn } from '../../../utils/classnames';
 import { fetchTimelineMonth, fetchTimelineMonths } from '../api';
@@ -104,7 +104,9 @@ interface MonthViewProps {
 /**
  * The selected month: her avatar then, the serif month label and the month's one number (never 0),
  * then up to twelve photos (the media viewer, jump logged as `timeline`), the labelled word slots
- * (empty ones left out) and the milestones. A month change aborts the fetch in flight.
+ * (empty ones left out) and the milestones. A month change aborts the fetch in flight; until the
+ * new month arrives the last loaded one stays, dimmed and `aria-busy` (its number is not shown
+ * under the new month's label).
  */
 const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month, fetchMonth }) => {
     const { t, i18n } = useTranslation();
@@ -115,25 +117,40 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
         { count: (d) => d.count },
     );
     const data = query.data?.month === month ? query.data : null;
+    // While a new month loads (a scrub, a wheel run) the last loaded month stays, dimmed.
+    const [shown, setShown] = useState<TimelineMonthPayload | null>(null);
+    useEffect(() => {
+        if (query.data) setShown(query.data);
+    }, [query.data]);
+    const failed = query.status === 'error' && fetchMonth === month;
+    const view = data ?? (failed ? null : shown);
+    const stale = view !== null && view !== data;
     const [viewer, setViewer] = useState<{ month: string; index: number } | null>(null);
-    const viewerItems = useMemo(() => albumViewerItems(data?.photos ?? [], {
+    const viewerItems = useMemo(() => albumViewerItems(view?.photos ?? [], {
         nameOf: () => name,
         sourceLabel: t('memories.common.jumpToChat'),
         onBeforeJump: () => setViewer(null),
         from: 'timeline',
-    }), [data, name, t]);
+    }), [view, name, t]);
     const viewerIndex = viewer?.month === month ? viewer.index : null;
 
     let body: React.ReactNode;
-    if (!data) {
-        body = <LoadState status={query.status === 'error' && fetchMonth === month ? 'error' : 'loading'} onRetry={query.retry} />;
+    if (!view) {
+        body = <LoadState status={failed ? 'error' : 'loading'} onRetry={query.retry} />;
     } else {
         const slots = SLOTS.flatMap(({ slot, label }) => {
-            const m = data.messages[slot];
+            const m = view.messages[slot];
             return m ? [{ slot, label, m }] : [];
         });
         body = (
-            <>
+            <div
+                data-testid="timeline-month-body"
+                aria-busy={stale ? 'true' : undefined}
+                className={cn(
+                    'flex flex-col gap-4 transition-opacity duration-fast motion-reduce:transition-none',
+                    stale ? 'pointer-events-none opacity-60' : 'opacity-100',
+                )}
+            >
                 {viewerItems.viewable.length > 0 && (
                     <ul data-testid="timeline-photos" className="flex gap-2 overflow-x-auto pb-1">
                         {viewerItems.viewable.map((p) => (
@@ -156,15 +173,16 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
                         {slots.map(({ slot, label, m }) => <SlotCard key={slot} slot={slot} label={label} message={m} name={name} />)}
                     </div>
                 )}
-                <Milestones milestones={data.milestones} month={month} />
-            </>
+                <Milestones milestones={view.milestones} month={view.month} />
+            </div>
         );
     }
 
     return (
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
+            {/* Wave 4 (spec 14.2) adds the あの日と今日 toggle to this header. */}
             <header className="flex items-center gap-3">
-                <Avatar src={data?.avatar_url ?? undefined} name={name} size="md" />
+                <Avatar src={view?.avatar_url ?? undefined} name={name} size="md" />
                 <h3 className="font-display text-heading text-primary">{formatMonth(t, 'memories.album.monthLabel', month, i18n.language)}</h3>
                 {data && data.count > 0 && (
                     <span className="text-small tabular-nums text-secondary">{t('memories.timeline.count', { count: data.count })}</span>
@@ -195,6 +213,7 @@ interface TimelineProps {
  * The 時光軸 tab (spec 5.4): the selected month above, the `MonthRail` at the bottom. It starts
  * at her newest month. The rail answers at once; the month is fetched once the selection holds
  * for {@link FETCH_DELAY_MS} (the first one at once), and a newer selection aborts the old fetch.
+ * Without any month a gentle `EmptyState` (no number) replaces the tab.
  */
 export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name }) => {
     const { t, i18n } = useTranslation();
@@ -226,7 +245,9 @@ export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name })
     if (months.status !== 'ready' || !list) {
         return <LoadState status={months.status === 'error' ? 'error' : 'loading'} onRetry={months.retry} />;
     }
-    if (!month) return null;
+    if (!month) {
+        return <EmptyState icon={<CalendarDays />} title={t('memories.timeline.empty')} />;
+    }
     return (
         <div className="flex min-h-0 flex-1 flex-col">
             {fetchMonth

@@ -126,6 +126,11 @@ describe('Timeline', () => {
         expect(await screen.findByRole('heading', { name: '2024年11月' })).toBeInTheDocument();
         await waitFor(() => expect(vi.mocked(fetchTimelineMonth).mock.lastCall?.[2]).toBe('2024-11'));
         const pending = vi.mocked(fetchTimelineMonth).mock.lastCall?.[3] as AbortSignal;
+        // while the new month loads, the previous one stays (dimmed), never a blank pane
+        expect(screen.getByTestId('timeline-slot-top')).toHaveTextContent('ずっとみーぱんに伝えたかったこと');
+        expect(screen.getByTestId('timeline-month-body')).toHaveAttribute('aria-busy', 'true');
+        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+        expect(screen.queryByText('37 件')).not.toBeInTheDocument();
         fireEvent.keyDown(rail, { key: 'ArrowLeft' });
         await waitFor(() => expect(vi.mocked(fetchTimelineMonth).mock.lastCall?.[2]).toBe('2024-10'));
         expect(pending.aborted).toBe(true);
@@ -144,5 +149,13 @@ describe('Timeline', () => {
         expect(screen.queryByText(/(?<!\d)0 件/)).not.toBeInTheDocument();
         expect(screen.queryByTestId('timeline-photos')).not.toBeInTheDocument();
         expect(screen.queryByRole('list', { name: 'この月のできごと' })).not.toBeInTheDocument();
+    });
+
+    it('shows a gentle empty state without months', async () => {
+        vi.mocked(fetchTimelineMonths).mockResolvedValue({ months: [] });
+        renderTimeline();
+        expect(await screen.findByText('月ごとの思い出は、これから積み重なっていきます')).toBeInTheDocument();
+        expect(screen.queryByRole('slider')).not.toBeInTheDocument();
+        expect(vi.mocked(fetchTimelineMonth)).not.toHaveBeenCalled();
     });
 });
