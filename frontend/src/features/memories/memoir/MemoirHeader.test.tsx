@@ -25,6 +25,12 @@ describe('MemoirHeader', () => {
         expect(onNames).toHaveBeenCalled();
     });
 
+    it('formats the numbers with the locale separators', () => {
+        render(<MemoirHeader header={headerPayload({ subscription_days: 1204, nickname_count: 1500 })} onNames={vi.fn()} />);
+        expect(screen.getAllByTestId('memoir-chip')[0]).toHaveTextContent('メンバーシップ 1,204 日');
+        expect(screen.getAllByTestId('memoir-chip')[1]).toHaveTextContent('名前を呼んでくれた 1,500 回');
+    });
+
     it('hides every chip whose value is null', () => {
         render(<MemoirHeader header={headerPayload({ subscription_days: null, nickname_count: null, voice_seconds: null })} onNames={vi.fn()} />);
         expect(screen.queryAllByTestId('memoir-chip')).toHaveLength(0);

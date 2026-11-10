@@ -18,11 +18,11 @@ function intTuple(name: string): number[] {
     return m[1].split(',').map((s) => s.trim()).filter(Boolean).map(Number);
 }
 
-/** The string values of a `for <name> in ("a", "b")` loop. */
+/** The string values of the one `for <name> in ("a", "b")` loop (two such loops fail: ambiguous). */
 function loopValues(name: string): string[] {
-    const m = new RegExp(`for ${name} in \\(([^)]*)\\)`).exec(SOURCE);
-    if (!m) throw new Error(`loop over ${name} not found in cards.py`);
-    return [...m[1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
+    const loops = [...SOURCE.matchAll(new RegExp(`for ${name} in \\(([^)]*)\\)`, 'g'))];
+    if (loops.length !== 1) throw new Error(`expected one loop over ${name} in cards.py, found ${loops.length}`);
+    return [...loops[0][1].matchAll(/"([^"]+)"/g)].map((x) => x[1]);
 }
 
 /**
@@ -44,8 +44,9 @@ const PLACEHOLDERS: Record<string, Record<string, string[]>> = {
 
 /** Every card key `cards.py` can emit: its literals and its f-string templates expanded. */
 function backendKeys(): string[] {
+    // double- or single-quoted literals and f-strings with a shelf prefix
     const templates = new Set(
-        [...SOURCE.matchAll(/f?"((?:first|anniv|count|special|record|moment|you|change|grad)\.[^"]*)"/g)].map((m) => m[1]),
+        [...SOURCE.matchAll(/f?(["'])((?:first|anniv|count|special|record|moment|you|change|grad)\.[^"']*)\1/g)].map((m) => m[2]),
     );
     const keys: string[] = [];
     for (const template of templates) {
@@ -83,9 +84,11 @@ describe('cardCopy', () => {
         expect(cardCopy('grad.last')?.title).toEqual({ key: 'memories.cards.lastMessage' });
     });
 
-    it('uses the written condition when there is one, else the title', () => {
+    it('gives every card its own condition, with the same number', () => {
         expect(cardCopy('first.picture')?.condition).toEqual({ key: 'memories.cards.firstPictureCondition' });
-        expect(cardCopy('count.messages.100')?.condition).toEqual({ key: 'memories.cards.countMessages', params: { count: 100 } });
+        expect(cardCopy('moment.synchro')?.condition).toEqual({ key: 'memories.cards.synchroCondition' });
+        expect(cardCopy('count.messages.100')?.condition).toEqual({ key: 'memories.cards.countMessagesCondition', params: { count: 100 } });
+        expect(cardCopy('change.avatar.2024-05-01.2')?.condition).toEqual({ key: 'memories.cards.avatarChangeCondition' });
     });
 
     it('returns null for a key it does not know', () => {
@@ -106,6 +109,7 @@ describe('cardCopy', () => {
             const copy = cardCopy(key);
             expect(copy, key).not.toBeNull();
             expect(typeof lookup(copy!.title.key), `${key} title`).toBe('string');
+            expect(copy!.condition.key, `${key} condition`).toBe(`${copy!.title.key}Condition`);
             expect(typeof lookup(copy!.condition.key), `${key} condition`).toBe('string');
         }
     });

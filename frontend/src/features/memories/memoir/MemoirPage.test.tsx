@@ -83,10 +83,18 @@ describe('MemoirPage', () => {
         expect(go).toHaveBeenCalledWith({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'names' });
     });
 
+    it('holds the header place while it loads', async () => {
+        vi.mocked(fetchMemoirHeader).mockReturnValue(new Promise(() => {}));
+        renderPage({ page: 'memoir', memberPath: MEMBER_PATH });
+        expect(screen.getByTestId('memoir-header-loading')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: '生写真帳' })).toBeInTheDocument();
+    });
+
     it('opens the card detail on an earned card', async () => {
         renderPage({ page: 'memoir', memberPath: MEMBER_PATH });
-        await userEvent.click(await screen.findByRole('button', { name: /最初のメッセージ/ }));
+        await userEvent.click(await screen.findByRole('button', { name: '最初のメッセージ' }));
         expect(await screen.findByRole('dialog')).toBeInTheDocument();
-        await waitFor(() => expect(vi.mocked(fetchDay).mock.calls[0]?.[1]).toEqual({ date: '2024-07-24', member: MEMBER_PATH }));
+        // the JST day of the card's message (12:52 UTC on 2024-09-14 is 21:52 JST that day)
+        await waitFor(() => expect(vi.mocked(fetchDay).mock.calls[0]?.[1]).toEqual({ date: '2024-09-14', member: MEMBER_PATH }));
     });
 });

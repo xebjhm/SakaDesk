@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useId, useState } from 'react';
 import { Mail, Mic, Play } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Avatar } from '../../../design/primitives';
@@ -83,15 +83,18 @@ interface CardTileProps {
  * - Unearned: a dashed `border-memories-silhouette` outline with the condition and, when the
  *   payload has `progress` (never at 0), a thin neutral bar without digits.
  * - Foil (earned only): a still `bg-memories-foil` sheen under the face and one
- *   `animate-shimmer` sweep over it, static under reduced motion; the graduation card's memorial
- *   foil never sweeps.
- * - A yearly stack (more than one year) shows 「×N」 and fans out into one tile per year.
+ *   `animate-shimmer` sweep over it, removed under reduced motion (only the still sheen stays);
+ *   the graduation card's memorial foil never sweeps.
+ * - A yearly stack (more than one year) shows 「×N」 and fans out into one tile per year; while
+ *   open, its top shows only the title and 「×N」, so the newest year is not drawn twice.
  * - The あなた shelf shows an envelope and the fan's date only: never her words, never a detail.
+ * - A card button is named by its title alone; the date and 「×N」 are its description.
  */
 export const CardTile: React.FC<CardTileProps> = ({ card, onOpen, large = false }) => {
     const { t, i18n } = useTranslation();
     const copyText = useCopy();
     const [open, setOpen] = useState(false);
+    const descId = useId();
     const copy = cardCopy(card.key);
     if (!copy) return null;
     const title = copyText(copy.title);
@@ -129,6 +132,10 @@ export const CardTile: React.FC<CardTileProps> = ({ card, onOpen, large = false 
     const you = isYouCard(card);
     const stacked = !large && onOpen !== undefined && card.years.length > 1;
     const sweep = card.foil && !isMemorial(card);
+    // an open stack's top is only its title and count: its years follow it
+    const folded = stacked && open;
+    const date = card.date && !folded ? formatCardDate(card.date, i18n.language) : null;
+    const stackLabel = stacked ? t('memories.cards.stack', { count: card.years.length }) : null;
     const body = (
         <>
             {card.foil && (
@@ -137,7 +144,7 @@ export const CardTile: React.FC<CardTileProps> = ({ card, onOpen, large = false 
             <span className="relative z-10 flex min-h-0 flex-1 flex-col gap-2 overflow-hidden">
                 {you ? (
                     <Mail data-testid="card-envelope" aria-hidden="true" className="mx-auto my-auto h-10 w-10 text-secondary" />
-                ) : (
+                ) : !folded && (
                     <>
                         {isChange(card) && <NewAvatar card={card} />}
                         {card.face && <Face face={card.face} large={large} />}
@@ -146,12 +153,12 @@ export const CardTile: React.FC<CardTileProps> = ({ card, onOpen, large = false 
             </span>
             <span className="relative z-10 mt-2 flex items-end justify-between gap-2">
                 <span className="min-w-0">
-                    {card.date && <span className="block text-caption tabular-nums text-muted">{formatCardDate(card.date, i18n.language)}</span>}
+                    {date && <span id={`${descId}-date`} className="block text-caption tabular-nums text-muted">{date}</span>}
                     <span className="block font-display text-small text-primary">{title}</span>
                 </span>
-                {stacked && (
-                    <span className="shrink-0 rounded-pill bg-sunken px-2 text-caption tabular-nums text-secondary">
-                        {t('memories.cards.stack', { count: card.years.length })}
+                {stackLabel && (
+                    <span id={`${descId}-stack`} className="shrink-0 rounded-pill bg-sunken px-2 text-caption tabular-nums text-secondary">
+                        {stackLabel}
                     </span>
                 )}
             </span>
@@ -159,7 +166,7 @@ export const CardTile: React.FC<CardTileProps> = ({ card, onOpen, large = false 
                 <span
                     data-testid="card-foil-shimmer"
                     aria-hidden="true"
-                    className="pointer-events-none absolute inset-0 z-20 bg-memories-foil opacity-30 animate-shimmer motion-reduce:animate-none"
+                    className="pointer-events-none absolute inset-0 z-20 bg-memories-foil opacity-30 animate-shimmer motion-reduce:hidden"
                 />
             )}
         </>
@@ -168,6 +175,7 @@ export const CardTile: React.FC<CardTileProps> = ({ card, onOpen, large = false 
         'relative flex h-full w-full flex-col overflow-hidden rounded-md border border-memories-paper bg-memories-paper p-3 text-left shadow-memories-polaroid',
     );
     const interactive = !you && !large && onOpen !== undefined;
+    const described = [date && `${descId}-date`, stackLabel && `${descId}-stack`].filter(Boolean).join(' ') || undefined;
 
     return (
         <>
@@ -177,6 +185,8 @@ export const CardTile: React.FC<CardTileProps> = ({ card, onOpen, large = false 
                         type="button"
                         onClick={() => (stacked ? setOpen((v) => !v) : onOpen(card))}
                         aria-expanded={stacked ? open : undefined}
+                        aria-label={title}
+                        aria-describedby={described}
                         className={cn(
                             face,
                             'transition-transform duration-fast ease-standard hover:-translate-y-0.5 motion-reduce:transition-none motion-reduce:hover:translate-y-0',

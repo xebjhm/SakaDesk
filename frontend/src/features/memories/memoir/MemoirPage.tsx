@@ -11,7 +11,7 @@ import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { BinderCard, MemoirMember } from '../types';
 import { Binder } from './Binder';
 import { CardDetail } from './CardDetail';
-import { MemoirHeader } from './MemoirHeader';
+import { MemoirHeader, MemoirHeaderPlaceholder } from './MemoirHeader';
 
 export type MemoirRoute = Extract<MemoriesRoute, { page: 'memoir' }>;
 type MemoirTab = NonNullable<MemoirRoute['tab']>;
@@ -106,7 +106,9 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
             <>
                 {header.status === 'ready' && header.data
                     ? <MemoirHeader header={header.data} onNames={() => go({ page: 'memoir', memberPath, tab: 'names' })} />
-                    : header.status === 'error' && <LoadState status="error" onRetry={header.retry} />}
+                    : header.status === 'error'
+                        ? <LoadState status="error" onRetry={header.retry} />
+                        : <MemoirHeaderPlaceholder />}
                 <div role="group" className="flex shrink-0 gap-2 px-4 pb-2">
                     <Pill selected={tab === 'binder'} onClick={() => pickTab('binder')}>{t('memories.memoir.tabBinder')}</Pill>
                     <Pill selected={tab === 'timeline'} onClick={() => pickTab('timeline')}>{t('memories.memoir.tabTimeline')}</Pill>

@@ -44,6 +44,18 @@ export const MEMORIES_CORE_KEYS: string[] = [
     'memories.cards.lastMessage', 'memories.cards.stack', 'memories.cards.notYet', 'memories.cardDetail.lastMessage',
     'memories.cardDetail.forever', 'memories.cardDetail.oldLast', 'memories.cardDetail.newFirst',
     'memories.cardDetail.oldAvatar', 'memories.cardDetail.newAvatar',
+    // C11 fix wave 1: a condition for every card, the detail's day label
+    'memories.cards.firstMessageCondition', 'memories.cards.firstVideoCondition', 'memories.cards.firstVoiceCondition',
+    'memories.cards.firstNicknameCondition', 'memories.cards.annivDaysCondition', 'memories.cards.annivYearsCondition',
+    'memories.cards.countMessagesCondition', 'memories.cards.countPicturesCondition', 'memories.cards.voiceHourCondition',
+    'memories.cards.nicknames100Condition', 'memories.cards.newyearCondition', 'memories.cards.valentineCondition',
+    'memories.cards.christmasCondition', 'memories.cards.birthdayCondition', 'memories.cards.subAnniversaryCondition',
+    'memories.cards.longestCondition', 'memories.cards.busiestDayCondition', 'memories.cards.nicknameDayCondition',
+    'memories.cards.longestVoiceCondition', 'memories.cards.greetingPairCondition', 'memories.cards.streakCondition',
+    'memories.cards.midnightCondition', 'memories.cards.synchroCondition', 'memories.cards.oyasumiFirstCondition',
+    'memories.cards.oyasumi100Condition', 'memories.cards.daisukiFirstCondition', 'memories.cards.daisuki100Condition',
+    'memories.cards.letterFirstCondition', 'memories.cards.lettersCondition', 'memories.cards.avatarChangeCondition',
+    'memories.cards.lastMessageCondition', 'memories.cardDetail.dayOf', 'memories.cardDetail.nearestDay',
 ];
 
 /** Core keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
@@ -113,9 +125,9 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.filmStrip.title')).toBe('この日のつづき');
         expect(lookup(ja, 'memories.memoir.tabBinder')).toBe('生写真帳');
         expect(lookup(ja, 'memories.memoir.tabTimeline')).toBe('タイムライン');
-        expect(lookup(ja, 'memories.memoir.progress')).toBe('{{earned}} / {{total}} 枚');
-        expect(lookup(ja, 'memories.memoir.chipDays')).toBe('メンバーシップ {{days}} 日');
-        expect(lookup(ja, 'memories.memoir.chipNames')).toBe('名前を呼んでくれた {{count}} 回');
+        expect(lookup(ja, 'memories.memoir.progress')).toBe('{{earned, number}} / {{total, number}} 枚');
+        expect(lookup(ja, 'memories.memoir.chipDays')).toBe('メンバーシップ {{days, number}} 日');
+        expect(lookup(ja, 'memories.memoir.chipNames')).toBe('名前を呼んでくれた {{count, number}} 回');
         expect(lookup(ja, 'memories.memoir.chipVoice')).toBe('声 {{h}}時間{{m}}分');
         expect(lookup(ja, 'memories.memoir.chipVoiceMinutes')).toBe('声 {{m}}分');
         expect(lookup(ja, 'memories.memoir.chipVoiceHours')).toBe('声 {{h}}時間');
@@ -134,10 +146,10 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.firstVideo')).toBe('最初の動画');
         expect(lookup(ja, 'memories.cards.firstVoice')).toBe('最初のボイス');
         expect(lookup(ja, 'memories.cards.firstNickname')).toBe('はじめて名前を呼んでくれた日');
-        expect(lookup(ja, 'memories.cards.annivDays')).toBe('{{days}}日目');
-        expect(lookup(ja, 'memories.cards.annivYears')).toBe('{{years}}年目の記念日');
-        expect(lookup(ja, 'memories.cards.countMessages')).toBe('{{count}}通目');
-        expect(lookup(ja, 'memories.cards.countPictures')).toBe('{{count}}枚目の写真');
+        expect(lookup(ja, 'memories.cards.annivDays')).toBe('{{days, number}}日目');
+        expect(lookup(ja, 'memories.cards.annivYears')).toBe('{{years, number}}年目の記念日');
+        expect(lookup(ja, 'memories.cards.countMessages')).toBe('{{count, number}}通目');
+        expect(lookup(ja, 'memories.cards.countPictures')).toBe('{{count, number}}枚目の写真');
         expect(lookup(ja, 'memories.cards.voiceHour')).toBe('声を、1時間');
         expect(lookup(ja, 'memories.cards.nicknames100')).toBe('100回目の名前');
         expect(lookup(ja, 'memories.cards.newyear')).toBe('元旦');
@@ -150,7 +162,7 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.nicknameDay')).toBe('いちばん名前を呼んでくれた日');
         expect(lookup(ja, 'memories.cards.longestVoice')).toBe('いちばん長いボイス');
         expect(lookup(ja, 'memories.cards.greetingPair')).toBe('いちばん早いおはようと、いちばん遅いおやすみ');
-        expect(lookup(ja, 'memories.cards.streak')).toBe('{{days}}日つづけて');
+        expect(lookup(ja, 'memories.cards.streak')).toBe('{{days, number}}日つづけて');
         expect(lookup(ja, 'memories.cards.midnight')).toBe('日付が変わった瞬間');
         expect(lookup(ja, 'memories.cards.synchro')).toBe('シンクロ');
         expect(lookup(ja, 'memories.cards.oyasumiFirst')).toBe('最初のおやすみ');
@@ -158,14 +170,47 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.daisukiFirst')).toBe('最初の大好き');
         expect(lookup(ja, 'memories.cards.daisuki100')).toBe('100回目の大好き');
         expect(lookup(ja, 'memories.cards.letterFirst')).toBe('はじめて送った手紙');
-        expect(lookup(ja, 'memories.cards.letters')).toBe('{{count}}通の手紙');
+        expect(lookup(ja, 'memories.cards.letters')).toBe('{{count, number}}通の手紙');
         expect(lookup(ja, 'memories.cards.avatarChange')).toBe('新しい写真');
-        expect(lookup(ja, 'memories.cards.avatarDays')).toBe('この写真と、{{days}} 日');
+        expect(lookup(ja, 'memories.cards.avatarDays')).toBe('この写真と、{{days, number}} 日');
         expect(lookup(ja, 'memories.cards.lastMessage')).toBe('最後の一通');
-        expect(lookup(ja, 'memories.cards.stack')).toBe('×{{count}}');
+        expect(lookup(ja, 'memories.cards.stack')).toBe('×{{count, number}}');
         expect(lookup(ja, 'memories.cards.notYet')).toBe('まだ');
         expect(lookup(ja, 'memories.cardDetail.lastMessage')).toBe('最後のメッセージ');
         expect(lookup(ja, 'memories.cardDetail.forever')).toBe('ずっと、ここに。');
+        expect(lookup(ja, 'memories.cards.firstMessageCondition')).toBe('最初のメッセージが届いたら');
+        expect(lookup(ja, 'memories.cards.firstVideoCondition')).toBe('最初の動画が届いたら');
+        expect(lookup(ja, 'memories.cards.firstVoiceCondition')).toBe('最初のボイスが届いたら');
+        expect(lookup(ja, 'memories.cards.firstNicknameCondition')).toBe('はじめて名前を呼んでくれたら');
+        expect(lookup(ja, 'memories.cards.annivDaysCondition')).toBe('メンバーシップ {{days, number}} 日目に');
+        expect(lookup(ja, 'memories.cards.annivYearsCondition')).toBe('メンバーシップ {{years, number}} 年目の記念日に');
+        expect(lookup(ja, 'memories.cards.countMessagesCondition')).toBe('{{count, number}}通目が届いたら');
+        expect(lookup(ja, 'memories.cards.countPicturesCondition')).toBe('{{count, number}}枚目の写真が届いたら');
+        expect(lookup(ja, 'memories.cards.voiceHourCondition')).toBe('ボイスがあわせて1時間になったら');
+        expect(lookup(ja, 'memories.cards.nicknames100Condition')).toBe('名前を呼んでくれたのが100回になったら');
+        expect(lookup(ja, 'memories.cards.newyearCondition')).toBe('新しい年の、最初の一通');
+        expect(lookup(ja, 'memories.cards.valentineCondition')).toBe('バレンタインに届いたメッセージ');
+        expect(lookup(ja, 'memories.cards.christmasCondition')).toBe('クリスマスに届いたメッセージ');
+        expect(lookup(ja, 'memories.cards.birthdayCondition')).toBe('彼女のお誕生日に届いたメッセージ');
+        expect(lookup(ja, 'memories.cards.subAnniversaryCondition')).toBe('あなたのメンバーシップ記念日に届いたメッセージ');
+        expect(lookup(ja, 'memories.cards.longestCondition')).toBe('いちばん長く綴られたメッセージ');
+        expect(lookup(ja, 'memories.cards.busiestDayCondition')).toBe('メッセージがいちばん多かった日');
+        expect(lookup(ja, 'memories.cards.nicknameDayCondition')).toBe('名前をいちばん多く呼んでくれた日');
+        expect(lookup(ja, 'memories.cards.longestVoiceCondition')).toBe('いちばん長かったボイス');
+        expect(lookup(ja, 'memories.cards.greetingPairCondition')).toBe('いちばん早い時刻のおはようと、いちばん遅い時刻のおやすみ');
+        expect(lookup(ja, 'memories.cards.streakCondition')).toBe('{{days, number}}日つづけてメッセージが届いたら');
+        expect(lookup(ja, 'memories.cards.midnightCondition')).toBe('0時から5分のあいだに届いたメッセージ');
+        expect(lookup(ja, 'memories.cards.synchroCondition')).toBe('別々の日に、同じ時刻のメッセージ');
+        expect(lookup(ja, 'memories.cards.oyasumiFirstCondition')).toBe('最初の「おやすみ」が届いたら');
+        expect(lookup(ja, 'memories.cards.oyasumi100Condition')).toBe('「おやすみ」が100回届いたら');
+        expect(lookup(ja, 'memories.cards.daisukiFirstCondition')).toBe('最初の「大好き」が届いたら');
+        expect(lookup(ja, 'memories.cards.daisuki100Condition')).toBe('「大好き」が100回届いたら');
+        expect(lookup(ja, 'memories.cards.letterFirstCondition')).toBe('はじめて手紙を送ったら');
+        expect(lookup(ja, 'memories.cards.lettersCondition')).toBe('手紙を{{count, number}}通送ったら');
+        expect(lookup(ja, 'memories.cards.avatarChangeCondition')).toBe('写真が変わった日');
+        expect(lookup(ja, 'memories.cards.lastMessageCondition')).toBe('卒業までの、最後の一通');
+        expect(lookup(ja, 'memories.cardDetail.dayOf')).toBe('{{date}} のメッセージ');
+        expect(lookup(ja, 'memories.cardDetail.nearestDay')).toBe('いちばん近い日のメッセージ（{{date}}）');
         expect(lookup(zhTW, 'memories.onThisDay.title')).toBe('那年今日');
         expect(lookup(zhTW, 'memories.onThisDay.noMessages')).toBe('這天沒有訊息');
         expect(lookup(zhTW, 'memories.day.otherGroups')).toBe('包含其他團體');

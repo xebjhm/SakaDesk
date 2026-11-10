@@ -96,23 +96,29 @@ export interface CardDetailProps {
 }
 
 /**
- * A binder card opened (spec 5.3), in a `Modal`: the large card, then her messages of that JST
- * day (`fetchDay` with `member`, drawn by the day view's `MergedTimeline`) and a jump to her chat
- * at the card's message (else the day's first; `memories_jump` from `binder`).
+ * A binder card opened (spec 5.3), in a `Modal`: the large card, then her messages of the JST day
+ * of the card's message (`fetchDay` with `member`, drawn by the day view's `MergedTimeline`) and a
+ * jump to her chat at that message (`memories_jump` from `binder`).
  *
+ * - The day is the message's own day, which differs from the unlock date on the fallback paths
+ *   (an anniversary's `nearest` message, a change's `first_after`): the column is labelled with
+ *   the real date, and an anniversary's other-day message as 「いちばん近い日のメッセージ」.
+ * - A card without a message has no day column and no jump.
  * - Pair cards show both messages.
  * - Avatar changes show the old and new icon, 「この写真と、N 日」 and the last message with the
- *   old icon and the first with the new (the message count is not shown: one number).
+ *   old icon and the first with the new, instead of the large card (the message count is not
+ *   shown: one number).
  * - Graduation shows 「最後のメッセージ」, her words and 「ずっと、ここに。」, without a shimmer.
  */
 export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, name, card, onClose }) => {
     const { t, i18n } = useTranslation();
     const copyText = useCopy();
-    const date = card.date;
+    const message = card.face;
+    const messageDay = message ? formatJstDate(message.ts) : null;
     const day = useMemoriesQuery(
         'day',
-        (signal) => (date ? fetchDay(service, { date, member: memberPath }, signal) : Promise.resolve(null)),
-        [service, memberPath, date],
+        (signal) => (messageDay ? fetchDay(service, { date: messageDay, member: memberPath }, signal) : Promise.resolve(null)),
+        [service, memberPath, messageDay],
         { count: (d) => d?.messages.length ?? 0 },
     );
     const data = day.data;
@@ -122,12 +128,20 @@ export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, nam
     );
     const copy = cardCopy(card.key);
     const title = copy ? copyText(copy.title) : '';
-    const target = card.face ?? data?.messages[0] ?? null;
+    const isChangeCard = card.key.startsWith('change.avatar.');
 
     let face: React.ReactNode;
     if (card.key === 'grad.last') face = <GraduationFace card={card} />;
     else if (card.refs.pair) face = <PairFace card={card} title={title} />;
+    else if (isChangeCard) face = <ChangeSection card={card} />;
     else face = <CardTile card={card} large />;
+
+    let dayLabel: string | null = null;
+    if (messageDay) {
+        const heading = formatDayHeading(messageDay, i18n.language);
+        const nearest = card.key.startsWith('anniv.') && card.date !== null && messageDay !== card.date;
+        dayLabel = nearest ? t('memories.cardDetail.nearestDay', { date: heading }) : t('memories.cardDetail.dayOf', { date: heading });
+    }
 
     return (
         <Modal
@@ -136,25 +150,27 @@ export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, nam
             title={title}
             header="plain"
             closeLabel={t('common.close')}
-            headerExtra={date ? <span className="text-small text-muted">{formatDayHeading(date, i18n.language)}</span> : undefined}
+            headerExtra={card.date ? <span className="text-small text-muted">{formatDayHeading(card.date, i18n.language)}</span> : undefined}
             className="max-w-4xl"
-            footer={target ? (
-                <Button variant="secondary" size="sm" onClick={() => { jumpToChat(target, name, 'binder'); onClose(); }}>
+            footer={message ? (
+                <Button variant="secondary" size="sm" onClick={() => { jumpToChat(message, name, 'binder'); onClose(); }}>
                     <MessageCircle aria-hidden="true" className="h-4 w-4" />
                     {t('memories.common.jumpToChat')}
                 </Button>
             ) : undefined}
         >
             <div className="flex min-h-0 flex-col gap-6 md:flex-row">
-                <div className="flex shrink-0 flex-col items-center gap-4">
-                    {face}
-                    {card.key.startsWith('change.avatar.') && <ChangeSection card={card} />}
-                </div>
-                <div className="min-w-0 flex-1">
-                    {day.status === 'ready' && data
-                        ? <MergedTimeline messages={data.messages} people={people} service={service} />
-                        : day.status !== 'ready' && <LoadState status={day.status === 'error' ? 'error' : 'loading'} onRetry={day.retry} />}
-                </div>
+                <div className="flex shrink-0 flex-col items-center gap-4">{face}</div>
+                {dayLabel && (
+                    <section data-testid="card-detail-day" aria-labelledby="card-detail-day-label" className="min-w-0 flex-1">
+                        <h3 id="card-detail-day-label" data-testid="card-detail-day-label" className="mb-2 text-small text-muted">
+                            {dayLabel}
+                        </h3>
+                        {day.status === 'ready' && data
+                            ? <MergedTimeline messages={data.messages} people={people} service={service} />
+                            : day.status !== 'ready' && <LoadState status={day.status === 'error' ? 'error' : 'loading'} onRetry={day.retry} />}
+                    </section>
+                )}
             </div>
         </Modal>
     );

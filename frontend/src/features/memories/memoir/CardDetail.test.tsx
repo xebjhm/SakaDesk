@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../../__tests__/mocks/server';
@@ -55,7 +55,9 @@ function renderDetail(c: BinderCard, onClose = vi.fn()) {
 
 describe('CardDetail', () => {
     it('loads the day of the card and jumps to her chat at the card message', async () => {
-        const onClose = renderDetail(card({ key: 'first.message', date: '2024-07-24', face: face({ id: 1, text: '%%%、はじめまして！' }) }));
+        const onClose = renderDetail(card({
+            key: 'first.message', date: '2024-07-24', face: face({ id: 1, ts: '2024-07-24T03:00:00Z', text: '%%%、はじめまして！' }),
+        }));
         const dialog = await screen.findByRole('dialog');
         expect(vi.mocked(fetchDay).mock.calls[0]?.[1]).toEqual({ date: '2024-07-24', member: MEMBER_PATH });
         expect(await within(dialog).findByTestId('day-merged')).toHaveTextContent('おやすみ');
@@ -78,11 +80,39 @@ describe('CardDetail', () => {
         expect(pair).toHaveTextContent('おやすみ、遅くなっちゃった');
     });
 
+    it('loads the day of an anniversary face from the nearest day and says so, with its real date', async () => {
+        renderDetail(card({ key: 'anniv.d100', date: '2024-10-31', face: face({ id: 7, ts: '2024-11-02T03:00:00Z', text: 'きょうも' }) }));
+        await waitFor(() => expect(vi.mocked(fetchDay).mock.calls[0]?.[1]).toEqual({ date: '2024-11-02', member: MEMBER_PATH }));
+        const label = await screen.findByTestId('card-detail-day-label');
+        expect(label).toHaveTextContent('いちばん近い日のメッセージ');
+        expect(label).toHaveTextContent('2024年11月2日');
+    });
+
+    it('labels a change face from a later day with that day', async () => {
+        renderDetail({ ...changeCard(), face: face({ id: 41, ts: '2025-03-03T03:00:00Z', text: 'あとの日' }) });
+        await waitFor(() => expect(vi.mocked(fetchDay).mock.calls[0]?.[1]).toEqual({ date: '2025-03-03', member: MEMBER_PATH }));
+        const label = await screen.findByTestId('card-detail-day-label');
+        expect(label).toHaveTextContent('2025年3月3日');
+        expect(label).not.toHaveTextContent('いちばん近い日');
+    });
+
+    it('hides the day column of a card without a message', async () => {
+        renderDetail(card({ key: 'anniv.y1', date: '2025-07-24', face: null }));
+        const dialog = await screen.findByRole('dialog');
+        expect(within(dialog).getByTestId('card-tile')).toBeInTheDocument();
+        expect(within(dialog).queryByTestId('card-detail-day')).toBeNull();
+        expect(within(dialog).queryByRole('status')).toBeNull();
+        expect(vi.mocked(fetchDay)).not.toHaveBeenCalled();
+    });
+
     it('shows the old and new avatar, the days with the new one and the last and first messages', async () => {
         renderDetail(changeCard());
         const change = await screen.findByTestId('card-detail-change');
-        expect(within(change).getByRole('img', { name: '前の写真' })).toBeInTheDocument();
-        expect(within(change).getByRole('img', { name: '新しい写真' })).toBeInTheDocument();
+        expect(within(change).getByRole('img', { name: '前の写真' })).toHaveAttribute('src', expect.stringContaining('old.jpg'));
+        expect(within(change).getByRole('img', { name: '新しい写真' })).toHaveAttribute('src', expect.stringContaining('new.jpg'));
+        // no second large card repeating the new avatar and the same message
+        expect(within(screen.getByRole('dialog')).queryByTestId('card-tile')).toBeNull();
+        expect(within(screen.getByRole('dialog')).getAllByText('新しいアイコン！')).toHaveLength(1);
         expect(change).toHaveTextContent('この写真と、120 日');
         expect(change).toHaveTextContent('前のアイコン最後');
         expect(change).toHaveTextContent('新しいアイコン！');

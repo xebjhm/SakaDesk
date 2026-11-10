@@ -59,3 +59,18 @@ export const MemoirHeader: React.FC<MemoirHeaderProps> = ({ header, onNames }) =
         </header>
     );
 };
+
+/** The header's place while it loads (same height), so the tabs and binder do not jump. */
+export const MemoirHeaderPlaceholder: React.FC = () => {
+    const { t } = useTranslation();
+    return (
+        <div data-testid="memoir-header-loading" role="status" aria-busy="true" className="flex shrink-0 items-center gap-4 px-4 py-3">
+            <span className="sr-only">{t('common.loading')}</span>
+            <span aria-hidden="true" className="h-14 w-14 shrink-0 rounded-pill bg-sunken" />
+            <span aria-hidden="true" className="flex min-w-0 flex-1 flex-col gap-2">
+                <span className="h-6 w-40 rounded-md bg-sunken" />
+                <span className="h-6 w-64 rounded-pill bg-sunken" />
+            </span>
+        </div>
+    );
+};

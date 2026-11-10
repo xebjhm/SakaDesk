@@ -844,13 +844,14 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   its neighbours of that day as dimmed frames, ‹ / › (and ← / →) for older / newer. Long boards
   mount only the chunks near the viewport.
 - **The memoir binder** (`features/memories/memoir/`): each shelf has a serif Japanese title
-  (`lang="ja"`, Japanese in every language) and a localised subtitle. An earned card is a
+  (`lang="ja"`, an `h3` under her name, Japanese in every language) and a localised subtitle.
+  Every card has a condition line for its silhouette. An earned card is a
   `bg-memories-paper` print with `shadow-memories-polaroid`: her photo or her words (four lines),
   the date and the serif title. An unearned card is a `border-2 border-dashed
   border-memories-silhouette` outline with the condition and, when there is progress, a thin
   `bg-sunken` bar filled with the neutral `bg-skeleton` (never danger, never a digit). A foil
   card (earned only) has a still `bg-memories-foil` sheen under its face and one `animate-shimmer`
-  sweep over it (`motion-reduce:animate-none`, so it stays still under reduced motion). The
+  sweep over it (`motion-reduce:hidden`: under reduced motion only the still sheen stays). The
   graduation card's memorial foil never sweeps. The あなた shelf shows an envelope and the fan's
   date, never her words, and does not open.
 

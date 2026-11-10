@@ -23,7 +23,8 @@ describe('Binder', () => {
         renderBinder();
         const shelves = screen.getAllByTestId('binder-shelf');
         expect(shelves.map((s) => s.getAttribute('data-shelf'))).toEqual(['first', 'numbers', 'special', 'you', 'change']);
-        const title = within(shelves[0]).getByRole('heading', { name: '初めて' });
+        // under her name (h2)
+        const title = within(shelves[0]).getByRole('heading', { name: '初めて', level: 3 });
         expect(title).toHaveClass('font-display');
         expect(title).toHaveAttribute('lang', 'ja');
         expect(within(shelves[0]).getByTestId('binder-shelf-subtitle')).toBeInTheDocument();

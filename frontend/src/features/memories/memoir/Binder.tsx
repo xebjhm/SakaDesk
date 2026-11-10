@@ -56,9 +56,9 @@ export const Binder: React.FC<BinderProps> = ({ binder, onOpen }) => {
             {shelves.map((shelf) => (
                 <section key={shelf.key} data-testid="binder-shelf" data-shelf={shelf.key} aria-labelledby={`binder-shelf-${shelf.key}`}>
                     <div className="mb-3 flex items-baseline gap-3">
-                        <h2 id={`binder-shelf-${shelf.key}`} lang="ja" className="font-display text-title text-primary">
+                        <h3 id={`binder-shelf-${shelf.key}`} lang="ja" className="font-display text-title text-primary">
                             {t(SHELF_COPY[shelf.key].title)}
-                        </h2>
+                        </h3>
                         <p data-testid="binder-shelf-subtitle" className="text-small text-muted">{t(SHELF_COPY[shelf.key].subtitle)}</p>
                     </div>
                     <div className="flex flex-wrap gap-4">

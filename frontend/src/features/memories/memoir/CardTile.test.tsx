@@ -33,7 +33,10 @@ describe('CardTile', () => {
         expect(within(tile).getByTestId('memory-text')).toHaveClass('line-clamp-4');
         expect(tile).toHaveTextContent('最初のメッセージ');
         expect(tile).toHaveTextContent('2024/7/24');
-        await userEvent.click(within(tile).getByRole('button'));
+        // a short name (the title); the date is the description, her words are not in the name
+        const button = within(tile).getByRole('button', { name: '最初のメッセージ' });
+        expect(button).toHaveAccessibleDescription('2024/7/24');
+        await userEvent.click(button);
         expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ key: 'first.message' }));
     });
 
@@ -42,7 +45,8 @@ describe('CardTile', () => {
             key: 'first.picture',
             face: face({ type: 'picture', text: null, media_url: '/api/content/media/hinatazaka46/p.jpg', media_file: 'messages/p.jpg' }),
         }));
-        expect(screen.getByTestId('card-tile').querySelector('img')).toHaveAttribute('src', expect.stringContaining('p.jpg'));
+        // the thumbnail route, not the full file
+        expect(screen.getByTestId('card-tile').querySelector('img')).toHaveAttribute('src', expect.stringContaining('/api/content/thumb/'));
         expect(screen.queryByTestId('memory-text')).toBeNull();
     });
 
@@ -51,7 +55,7 @@ describe('CardTile', () => {
         const tile = screen.getByTestId('card-tile');
         expect(tile).toHaveAttribute('data-earned', 'false');
         expect(tile).toHaveClass('border-dashed', 'border-memories-silhouette');
-        expect(tile).toHaveTextContent('1000通目');
+        expect(tile).toHaveTextContent('1,000通目が届いたら');
         const bar = within(tile).getByRole('progressbar');
         expect(bar).toHaveAttribute('aria-valuenow', '420');
         expect(bar).toHaveAttribute('aria-valuemax', '1000');
@@ -75,7 +79,8 @@ describe('CardTile', () => {
         renderTile(cardOf('first.nickname'));
         expect(screen.getByTestId('card-foil')).toHaveClass('bg-memories-foil');
         const shimmer = screen.getByTestId('card-foil-shimmer');
-        expect(shimmer).toHaveClass('bg-memories-foil', 'animate-shimmer', 'motion-reduce:animate-none');
+        // the sweep leaves the card under reduced motion: only the still sheen stays
+        expect(shimmer).toHaveClass('bg-memories-foil', 'animate-shimmer', 'motion-reduce:hidden');
     });
 
     it('keeps the foil off ordinary cards and silhouettes', () => {
@@ -86,7 +91,12 @@ describe('CardTile', () => {
     it('draws an unearned foil card as a plain silhouette', () => {
         renderTile(card({ key: 'moment.synchro', earned: false, foil: true, rare: true, date: null }));
         expect(screen.queryByTestId('card-foil')).toBeNull();
-        expect(screen.getByTestId('card-tile')).toHaveTextContent('シンクロ');
+        expect(screen.getByTestId('card-tile')).toHaveTextContent('別々の日に、同じ時刻のメッセージ');
+    });
+
+    it('formats large numbers with the locale separators', () => {
+        renderTile(card({ key: 'count.messages.10000', foil: true, face: face() }));
+        expect(screen.getByTestId('card-tile')).toHaveTextContent('10,000通目');
     });
 
     it('keeps the memorial foil of the graduation card still', () => {
@@ -97,13 +107,17 @@ describe('CardTile', () => {
 
     it('fans a yearly stack out into its year tiles', async () => {
         const onOpen = renderTile(cardOf('special.newyear'));
-        const stack = screen.getByRole('button', { name: /元旦/ });
+        const stack = screen.getByRole('button', { name: '元旦' });
         expect(stack).toHaveTextContent('×3');
+        expect(stack).toHaveAccessibleDescription(/×3/);
         expect(stack).toHaveAttribute('aria-expanded', 'false');
         await userEvent.click(stack);
         expect(stack).toHaveAttribute('aria-expanded', 'true');
         const years = screen.getAllByTestId('card-year');
         expect(years).toHaveLength(3);
+        // the open stack's top no longer repeats the newest year
+        expect(stack).not.toHaveTextContent('あけおめ！');
+        expect(screen.getAllByText('あけおめ！')).toHaveLength(1);
         expect(years[0]).toHaveTextContent('2024のあけおめ');
         expect(years[0]).toHaveTextContent('2024/1/1');
         await userEvent.click(within(years[1]).getByRole('button'));

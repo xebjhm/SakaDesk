@@ -10,8 +10,8 @@
  * - `you.letter.1` → `letterFirst`, `you.letter.N` → `letters` (`count`);
  * - `change.avatar.<date>` and a same-day `change.avatar.<date>.<n>` → `avatarChange`.
  *
- * `condition` is what an unearned silhouette shows: the written condition where there is one,
- * else the title (「1000通目」 already names what is missing).
+ * `condition` is what an unearned silhouette shows: the title's `…Condition` key with the same
+ * number (「1,000通目が届いたら」, 「別々の日に、同じ時刻のメッセージ」). Every card has one.
  */
 
 export interface CopyRef {
@@ -54,11 +54,6 @@ const FIXED: Record<string, string> = {
     'grad.last': 'lastMessage',
 };
 
-/** Written conditions (the others reuse their title). */
-const CONDITIONS: Record<string, string> = {
-    'first.picture': 'firstPictureCondition',
-};
-
 /** Numbered families: the key pattern, its copy and the param its number fills. */
 const PATTERNS: Array<{ re: RegExp; copy: string; param: string }> = [
     { re: /^anniv\.d(\d+)$/, copy: 'annivDays', param: 'days' },
@@ -86,6 +81,5 @@ function title(cardKey: string): CopyRef | null {
 export function cardCopy(cardKey: string): CardCopy | null {
     const t = title(cardKey);
     if (!t) return null;
-    const condition = CONDITIONS[cardKey];
-    return { title: t, condition: condition ? { key: P + condition } : t };
+    return { title: t, condition: { ...t, key: `${t.key}Condition` } };
 }
