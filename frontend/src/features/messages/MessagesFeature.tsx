@@ -96,6 +96,12 @@ export interface AppSettings {
     user_nicknames?: Record<string, string>;  // Per-service nicknames
     notifications_enabled?: boolean;
     notifications_hide_content?: boolean;  // toasts show a generic body instead of the message preview (default off)
+    memories_notify_on_this_day?: boolean;  // Memories: the daily On This Day toast (default on)
+    memories_notify_birthday?: boolean;  // Memories: birthdays plus the 7-day and 1-day reminders (default on)
+    memories_notify_anniversary?: boolean;  // Memories: membership anniversaries and milestones (default on)
+    memories_notify_recap?: boolean;  // Memories: recap open / Christmas / ready (default on)
+    memories_notify_cards?: boolean;  // Memories: foil card unlocks (default off)
+    memories_notify_time?: string;  // Memories: the JST daily time, `HH:MM` (default '12:00')
     blogs_full_backup?: boolean;  // Global blog full backup — applies to all services
     auto_download_updates?: boolean;
     sync_read_to_phone?: boolean;  // opt-in: opening a chat here clears its unread on the official app

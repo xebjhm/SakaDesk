@@ -74,3 +74,30 @@ export function jstDateFormat(language: string, { time = false }: { time?: boole
         ...(time ? { hour: '2-digit', minute: '2-digit' } : {}),
     });
 }
+
+/** A JST wall-clock slot `HH:MM` (24 h, ASCII digits only: full-width digits are refused). */
+const JST_SLOT_RE = /^([01][0-9]|2[0-3]):([0-5][0-9])$/;
+
+/**
+ * The local `HH:MM` (24 h) of today's JST slot `hhmm` in `timeZone` (default: the machine's
+ * resolved zone), for the Settings hint beside a JST time. Today is the JST calendar day at
+ * `now`; `Intl.DateTimeFormat` resolves the zone's offset on that instant, so DST follows the
+ * date. null when the zone is Asia/Tokyo (the hint would repeat the value) or `hhmm` is malformed.
+ */
+export function jstSlotToLocal(
+    hhmm: string,
+    { now = new Date(), timeZone }: { now?: Date; timeZone?: string } = {},
+): string | null {
+    const match = JST_SLOT_RE.exec(hhmm);
+    if (!match) return null;
+    const zone = timeZone ?? new Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (zone === JST_TIME_ZONE) return null;
+    const { year, month, day } = jstNow(now);
+    const instant = Date.UTC(year, month - 1, day, Number(match[1]), Number(match[2])) - JST_OFFSET_MS;
+    const parts = new Intl.DateTimeFormat('en-US', {
+        timeZone: zone, hour: '2-digit', minute: '2-digit', hourCycle: 'h23',
+    }).formatToParts(new Date(instant));
+    const hour = parts.find((p) => p.type === 'hour')?.value ?? '';
+    const minute = parts.find((p) => p.type === 'minute')?.value ?? '';
+    return `${hour}:${minute}`;
+}
