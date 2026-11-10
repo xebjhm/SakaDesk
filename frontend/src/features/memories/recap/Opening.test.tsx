@@ -192,6 +192,7 @@ describe('starGrid', () => {
 
 describe('opening star utilities (tailwind.config.js)', () => {
     it('size the grid, the star and the caption from the slide\'s container-unit variables', async () => {
+        // @ts-expect-error -- the Tailwind config is plain JS without type declarations
         const config = (await import('../../../../tailwind.config.js')).default as {
             plugins: ((api: { addUtilities: (u: Record<string, Record<string, string>>) => void }) => void)[];
         };

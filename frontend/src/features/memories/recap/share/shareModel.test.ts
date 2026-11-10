@@ -83,9 +83,10 @@ describe('one sentence per candidate (spec §9.5: at most two of her sentences)'
     it('takes the 大好き sentence in daisuki mode', () => {
         const recap = payload({
             slides: [{
-                ...s02,
-                data: { ...(s02.data as object), mode: 'daisuki', first: message(2, '今日はライブ。みんな大好きだよ！また来てね'), last: null, fragments: [] },
-            } as RecapSlide],
+                key: 's02_name',
+                fallback: 'daisuki',
+                data: { mode: 'daisuki', count: 1, first: message(2, '今日はライブ。みんな大好きだよ！また来てね'), last: null, fragments: [], single: true },
+            }],
         });
         expect(sentenceCandidates(recap).find((x) => x.source === 's02_first')?.raw).toBe('みんな大好きだよ！');
     });
