@@ -125,13 +125,17 @@ describe('countLoadingViolations', () => {
         ["<p className=\"text-muted\">{t('common.loading')}</p>", 1],
         ['<div role="status">\n    {t("common.loading")}\n</div>', 1],
         ["<span>{t( 'common.loading' )}</span>", 1],
+        ["<CardFace sub={t('common.loading')} />", 1],
+        ["{isClearing ? t('common.loading') : t('settings.cleanBlogCache')}", 1],
+        ["const label = t('common.loading');", 1],
     ])('counts %s as %i', (source, count) => {
         expect(countLoadingViolations(source)).toBe(count);
     });
 
     it.each([
         "<Spinner aria-label={t('common.loading')} />",
-        "const label = t('common.loading');",
+        "<Spinner label={t('common.loading')} />",
+        "<ProgressBar label={ t('common.loading') } />",
         'className="animate-spinner animate-pulse spin-animate-spin-x"',
         '// animate-spin\n/* {t(\'common.loading\')} */ const x = 1;',
         "{/* <Loader2 className=\"animate-spin\" /> */}",

@@ -10,6 +10,7 @@
   "core/modals/ReportIssueModal.tsx": 1,
   "features/blogs/components/BlogStatus.tsx": 1,
   "features/blogs/components/RecentPostsFeed.tsx": 1,
+  "features/memories/home/RecapHubCard.tsx": 1,
   "features/memories/memoir/MemoirHeader.tsx": 1,
   "features/memories/recap/RecapEntry.tsx": 2,
   "features/memories/shared/LoadState.tsx": 1,
@@ -20,5 +21,5 @@
   "features/search/SearchModal.tsx": 2,
   "shell/App.tsx": 1,
   "shell/components/LoginModal.tsx": 1,
-  "shell/components/SettingsModal.tsx": 6
+  "shell/components/SettingsModal.tsx": 7
 }

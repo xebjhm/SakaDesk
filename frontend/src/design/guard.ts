@@ -11,7 +11,7 @@
  *
  * A second ratchet (`countLoadingViolations`, `isLoadingScanned`) counts
  * hand-built loading indicators outside `design/primitives/`: raw
- * `animate-spin` and a bare `{t('common.loading')}` text child. It is compared
+ * `animate-spin` and `common.loading` used as text. It is compared
  * with loading-guard-baseline.json under the same rules.
  */
 import { readdirSync, readFileSync } from 'node:fs';
@@ -91,10 +91,14 @@ export function countViolations(source: string): number {
     return countPatterns(source, PATTERNS);
 }
 
-/** Hand-built loading indicators: a raw spin (any variant prefix counts once) and a bare loading text child. */
+/**
+ * Hand-built loading indicators: a raw spin (any variant prefix counts once) and any use of the
+ * `common.loading` text (a child, a prop such as `sub=`, a ternary, a variable), except as the
+ * accessible name of a primitive (`aria-label={t('common.loading')}`, `label={t('common.loading')}`).
+ */
 export const LOADING_PATTERNS: readonly RegExp[] = [
     /(?<![\w-])animate-spin(?![\w-])/g,
-    />\s*\{t\(\s*['"]common\.loading['"]\s*\)\}/g,
+    /(?<!(?:aria-label|label)=\{\s*)\bt\(\s*['"]common\.loading['"]\s*\)/g,
 ];
 
 export function countLoadingViolations(source: string): number {
