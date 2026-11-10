@@ -51,7 +51,7 @@ export const MemoriesHome: React.FC<MemoriesHomeProps> = ({ service, recap, onOp
             {/* The one scroll container: in a short pane the moment and every card scroll together. */}
             <div data-testid="memories-hub-board" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-1">
                 {/* The wave-4 slots are mounted with or without a moment (the capsule stands alone). */}
-                <HubSlots sameTime={data?.same_time ?? null} capsule={data?.capsule ?? null}>
+                <HubSlots service={service} go={go} sameTime={data?.same_time ?? null} capsule={data?.capsule ?? null}>
                     {moment && <div data-testid="memories-hub-moment" className="flex flex-col gap-3">{moment}</div>}
                 </HubSlots>
                 <div className="grid auto-rows-min grid-cols-2 gap-3 md:grid-cols-3">

@@ -1042,6 +1042,26 @@
       "pickMonth": "选择年月",
       "empty": "这个月还没有回忆。",
       "memberFilter": "按成员筛选"
+    },
+    "capsule": {
+      "add": "贴一张便条",
+      "edit": "重写便条",
+      "save": "收好",
+      "delete": "撕下",
+      "deleteConfirm": "要撕下这张便条吗？",
+      "cancel": "算了",
+      "placeholder": "这一天，用你自己的话写下。",
+      "written": "{{date}} 写的便条",
+      "yearsAgo": "{{count}} 年前的你写的便条",
+      "limit": "还可以写 {{count}} 字",
+      "full": "已经写满了",
+      "failed": "无法保存便条",
+      "local": "这张便条只会保存在这台电脑上"
+    },
+    "sameTime": {
+      "now": "现在 {{clock}}",
+      "pastYear": "{{year}} 年的这个时刻，{{name}}说",
+      "thisYear": "{{date}}的这个时刻，{{name}}说"
     }
   },
   "recap": {

@@ -4,7 +4,8 @@ import { useTranslation } from '../../../i18n';
 import { Button, EmptyState, IconButton } from '../../../design/primitives';
 import { CalendarModal } from '../../../core/modals/CalendarModal';
 import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
-import { fetchOnThisDay } from '../api';
+import { fetchCapsuleDue, fetchOnThisDay } from '../api';
+import { CapsuleResurface } from '../capsule/CapsuleResurface';
 import { PageHeader } from '../shared/PageHeader';
 import { isEditable } from '../shared/keys';
 import { LoadState } from '../shared/LoadState';
@@ -23,10 +24,23 @@ interface OnThisDayPageProps extends Omit<CorePageProps, 'route'> {
 
 const pad = (n: number) => String(n).padStart(2, '0');
 
+/** The fan's notes written on this month-day in earlier years (`fetchCapsuleDue`), above the year strip; nothing when none. */
+const CapsuleDue: React.FC<{ service: string; monthDay: string; go: OnThisDayPageProps['go'] }> = ({ service, monthDay, go }) => {
+    const due = useMemoriesQuery('capsule_due', (signal) => fetchCapsuleDue(service, monthDay, signal), [service, monthDay]);
+    const items = due.data?.notes ?? [];
+    if (!items.length) return null;
+    return (
+        <div data-testid="otd-capsule-due" className="flex max-h-72 shrink-0 flex-col gap-6 overflow-y-auto px-6 pb-4 pt-2">
+            {items.map((item) => <CapsuleResurface key={item.note.id} item={item} go={go} />)}
+        </div>
+    );
+};
+
 /**
  * あの年の今日 (spec 6). Without `route.year` it is the overview (B): ‹ › step the month-day,
  * the date button picks any date, and the year strip shows the years with messages (a column
- * opens that year). With `route.year` it is the detail (A): the year list and that year's
+ * opens that year), under the fan's 時光膠囊 notes resurfacing on that month-day (hidden when
+ * none). With `route.year` it is the detail (A): the year list and that year's
  * 那一天 view, ← / → (and ‹ ›) stepping between years with messages (older / newer). One
  * request per month-day serves both.
  */
@@ -118,6 +132,7 @@ export const OnThisDayPage: React.FC<OnThisDayPageProps> = ({ service, route, go
                 onBack={() => go(detail ? { page: 'onThisDay', monthDay } : { page: 'home' })}
                 right={right}
             />
+            {!detail && <CapsuleDue service={service} monthDay={monthDay} go={go} />}
             {body}
             <CalendarModal
                 isOpen={calendarOpen}

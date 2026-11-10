@@ -8,6 +8,7 @@ import { groupMarkerStyle } from '../../search/groupMarker';
 import { resizedAvatarUrl } from '../../messages/mediaUrl';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
 import { fetchDay } from '../api';
+import { CapsuleStrip } from '../capsule/CapsuleStrip';
 import { logMemoriesToggle } from '../memoriesLog';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { LoadState } from '../shared/LoadState';
@@ -35,7 +36,8 @@ const CHIP_AVATAR_PX = 20;
  * (refetches with `others`, logs `memories_toggle` `other_services`; another group's chip carries
  * its group marker; a chip pick logs `member_filter`) and the A / B toggle
  * (merged timeline / swimlanes, A by default, kept for as long as the view is mounted; logs
- * `memories_toggle` `day_mode`).
+ * `memories_toggle` `day_mode`). Under the header sits the day's 時光膠囊 strip (the fan's notes on
+ * that date), left out for one person (`memberPath`: the card and film strip contexts).
  */
 export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, headerSlot }) => {
     const { t, i18n } = useTranslation();
@@ -108,6 +110,11 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
                     <Pill selected={mode === 'lanes'} onClick={() => switchMode('lanes')}>{t('memories.day.modeLanes')}</Pill>
                 </div>
             </header>
+            {memberPath === undefined && (
+                <div className="px-4 pt-3">
+                    <CapsuleStrip service={service} anchor={{ kind: 'day', date }} />
+                </div>
+            )}
             {memberPath === undefined && (
                 <div className="flex flex-wrap items-center gap-2 px-4 py-2">
                     {people.length > 1 && (

@@ -9,11 +9,11 @@ vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
-    return { ...real, fetchDay: vi.fn() };
+    return { ...real, fetchDay: vi.fn(), fetchCapsule: vi.fn() };
 });
 import { clientLog } from '../../../utils/clientLog';
 import { openChat } from '../../../shell/openChat';
-import { fetchDay } from '../api';
+import { fetchCapsule, fetchDay } from '../api';
 import { DayView } from './DayView';
 import { useAppStore } from '../../../store/appStore';
 import { NicknameProvider } from '../shared/useNickname';
@@ -31,6 +31,7 @@ beforeEach(() => {
 beforeEach(() => {
     vi.mocked(clientLog).mockClear();
     vi.mocked(openChat).mockClear();
+    vi.mocked(fetchCapsule).mockReset().mockResolvedValue({ notes: [] });
     vi.mocked(fetchDay).mockReset();
     vi.mocked(fetchDay).mockImplementation(async (_service, query) => (
         query.others
@@ -164,5 +165,18 @@ describe('DayView', () => {
     it('renders the header slot', async () => {
         renderDay({ headerSlot: <span>slot</span> });
         expect(await screen.findByText('slot')).toBeInTheDocument();
+    });
+
+    it('holds the capsule strip of the day under the header', async () => {
+        renderDay();
+        expect(await screen.findByTestId('capsule-strip')).toBeInTheDocument();
+        expect(fetchCapsule).toHaveBeenCalledWith('hinatazaka46', { date: '2024-09-14' }, expect.any(AbortSignal));
+    });
+
+    it('has no capsule strip for one person (the card and film strip contexts)', async () => {
+        renderDay({ memberPath: '日向坂46/messages/34 金村 美玖/58 金村 美玖' });
+        await screen.findByTestId('day-merged');
+        expect(screen.queryByTestId('capsule-strip')).toBeNull();
+        expect(fetchCapsule).not.toHaveBeenCalled();
     });
 });

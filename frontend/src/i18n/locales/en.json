@@ -1065,6 +1065,28 @@
       "pickMonth": "Choose year and month",
       "empty": "No memories from this month yet.",
       "memberFilter": "Filter by member"
+    },
+    "capsule": {
+      "add": "Stick a note",
+      "edit": "Rewrite the note",
+      "save": "Keep it",
+      "delete": "Peel off",
+      "deleteConfirm": "Peel off this note?",
+      "cancel": "Never mind",
+      "placeholder": "This day, in your own words.",
+      "written": "A note written on {{date}}",
+      "yearsAgo": "A note you wrote {{count}} year ago",
+      "yearsAgo_other": "A note you wrote {{count}} years ago",
+      "limit": "{{count}} character left",
+      "limit_other": "{{count}} characters left",
+      "full": "That's as long as a note can be",
+      "failed": "Couldn't save the note",
+      "local": "This note is saved only on this computer"
+    },
+    "sameTime": {
+      "now": "Now {{clock}}",
+      "pastYear": "At this time in {{year}}, {{name}} wrote",
+      "thisYear": "At this time on {{date}}, {{name}} wrote"
     }
   },
   "recap": {

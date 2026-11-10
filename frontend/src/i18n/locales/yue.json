@@ -1042,6 +1042,26 @@
       "pickMonth": "揀年月",
       "empty": "呢個月仲未有回憶。",
       "memberFilter": "按成員篩選"
+    },
+    "capsule": {
+      "add": "貼一張便條",
+      "edit": "重寫便條",
+      "save": "收好",
+      "delete": "撕走",
+      "deleteConfirm": "要撕走呢張便條嗎？",
+      "cancel": "算啦",
+      "placeholder": "呢一日，用你自己嘅說話寫低。",
+      "written": "{{date}} 寫嘅便條",
+      "yearsAgo": "{{count}} 年前嘅你寫嘅便條",
+      "limit": "仲可以寫 {{count}} 個字",
+      "full": "已經寫滿喇",
+      "failed": "儲存唔到便條",
+      "local": "呢張便條只會儲存喺呢部電腦"
+    },
+    "sameTime": {
+      "now": "而家 {{clock}}",
+      "pastYear": "{{year}} 年嘅呢個時刻，{{name}}講",
+      "thisYear": "{{date}}嘅呢個時刻，{{name}}講"
     }
   },
   "recap": {

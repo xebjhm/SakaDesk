@@ -218,4 +218,8 @@ export const handlers = [
 
   // Read-state search copy (fire-and-forget)
   http.put('/api/read-states', () => new HttpResponse(null, { status: 204 })),
+
+  // Memories time capsule: the fan has no notes unless a test says otherwise (every day view reads them)
+  http.get('/api/memories/:service/capsule', () => HttpResponse.json({ notes: [] })),
+  http.get('/api/memories/:service/capsule/due', () => HttpResponse.json({ notes: [] })),
 ]

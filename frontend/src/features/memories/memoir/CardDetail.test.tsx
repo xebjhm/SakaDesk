@@ -9,11 +9,11 @@ vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
-    return { ...real, fetchDay: vi.fn() };
+    return { ...real, fetchDay: vi.fn(), fetchCapsule: vi.fn() };
 });
 import { clientLog } from '../../../utils/clientLog';
 import { openChat } from '../../../shell/openChat';
-import { fetchDay } from '../api';
+import { fetchCapsule, fetchDay } from '../api';
 import { MEMBER_PATH } from '../__fixtures__/memories';
 import { dayMessage, dayPayload, MIKU } from '../day/__fixtures__';
 import { NicknameProvider } from '../shared/useNickname';
@@ -33,6 +33,7 @@ beforeEach(() => {
 beforeEach(() => {
     vi.mocked(clientLog).mockClear();
     vi.mocked(openChat).mockClear();
+    vi.mocked(fetchCapsule).mockReset().mockResolvedValue({ notes: [] });
     vi.mocked(fetchDay).mockReset().mockResolvedValue(dayPayload({
         members: [MIKU],
         messages: [
@@ -126,5 +127,19 @@ describe('CardDetail', () => {
         expect(grad).toHaveTextContent('最後のメッセージ');
         expect(grad).toHaveTextContent('ずっと、ここに。');
         expect(screen.getByRole('dialog').querySelector('.animate-shimmer')).toBeNull();
+    });
+});
+
+describe('CardDetail capsule', () => {
+    it('holds a capsule strip anchored on the earned card', async () => {
+        renderDetail(card({ key: 'anniv.y1', date: '2024-09-14' }));
+        expect(await screen.findByTestId('capsule-strip')).toBeInTheDocument();
+        expect(fetchCapsule).toHaveBeenCalledWith('hinatazaka46', { member: MEMBER_PATH, card: 'anniv.y1' }, expect.any(AbortSignal));
+    });
+
+    it('has no capsule strip for an unearned card or one without a date', () => {
+        renderDetail(card({ key: 'anniv.y2', earned: false, date: null }));
+        expect(screen.queryByTestId('capsule-strip')).toBeNull();
+        expect(fetchCapsule).not.toHaveBeenCalled();
     });
 });

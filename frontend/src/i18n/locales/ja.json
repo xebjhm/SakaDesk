@@ -1042,6 +1042,26 @@
       "pickMonth": "年月をえらぶ",
       "empty": "この月の思い出は、まだありません。",
       "memberFilter": "メンバーでしぼる"
+    },
+    "capsule": {
+      "add": "メモを貼る",
+      "edit": "メモを書きなおす",
+      "save": "しまう",
+      "delete": "はがす",
+      "deleteConfirm": "このメモをはがしますか？",
+      "cancel": "やめる",
+      "placeholder": "この日のこと、あなたの言葉で。",
+      "written": "{{date}}に書いたメモ",
+      "yearsAgo": "{{count}}年前のあなたが書いたメモ",
+      "limit": "あと {{count}} 文字",
+      "full": "これ以上は書けません",
+      "failed": "メモを保存できませんでした",
+      "local": "このメモはこのパソコンにだけ保存されます"
+    },
+    "sameTime": {
+      "now": "いま {{clock}}",
+      "pastYear": "{{year}}年のこの時刻、{{name}}は",
+      "thisYear": "{{date}}のこの時刻、{{name}}は"
     }
   },
   "recap": {

@@ -9,9 +9,10 @@ vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
-    return { ...real, fetchOnThisDay: vi.fn(), fetchDay: vi.fn() };
+    return { ...real, fetchOnThisDay: vi.fn(), fetchDay: vi.fn(), fetchCapsule: vi.fn(), fetchCapsuleDue: vi.fn() };
 });
-import { fetchDay, fetchOnThisDay } from '../api';
+import { fetchCapsule, fetchCapsuleDue, fetchDay, fetchOnThisDay } from '../api';
+import { resurfaceItem } from '../capsule/__fixtures__';
 import { OnThisDayPage, type OnThisDayRoute } from './OnThisDayPage';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import type { OnThisDayPayload } from '../types';
@@ -51,6 +52,8 @@ beforeEach(() => {
     go = vi.fn<(next: MemoriesRoute) => void>();
     vi.mocked(fetchOnThisDay).mockReset().mockResolvedValue(PAYLOAD);
     vi.mocked(fetchDay).mockReset().mockResolvedValue(dayPayload());
+    vi.mocked(fetchCapsule).mockReset().mockResolvedValue({ notes: [] });
+    vi.mocked(fetchCapsuleDue).mockReset().mockResolvedValue({ notes: [] });
 });
 
 const renderPage = (route: OnThisDayRoute) => render(<OnThisDayPage service="hinatazaka46" route={route} go={go} />);
@@ -213,5 +216,29 @@ describe('OnThisDayPage detail', () => {
         await screen.findAllByTestId('otd-year-row');
         await userEvent.click(screen.getByRole('button', { name: 'Back' }));
         expect(go).toHaveBeenLastCalledWith({ page: 'onThisDay', monthDay: '09-14' });
+    });
+});
+
+describe('OnThisDayPage capsule', () => {
+    it('shows the notes resurfacing on this month-day above the year strip', async () => {
+        vi.mocked(fetchCapsuleDue).mockResolvedValue({ notes: [resurfaceItem({ years_ago: 2 })] });
+        renderPage({ page: 'onThisDay', monthDay: '09-14' });
+        const due = await screen.findByTestId('otd-capsule-due');
+        expect(within(due).getByText('A note you wrote 2 years ago')).toBeInTheDocument();
+        const strip = screen.getAllByTestId('otd-column')[0];
+        expect(due.compareDocumentPosition(strip) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+        expect(fetchCapsuleDue).toHaveBeenCalledWith('hinatazaka46', '09-14', expect.any(AbortSignal));
+    });
+
+    it('hides when no note is due', async () => {
+        renderPage({ page: 'onThisDay', monthDay: '09-14' });
+        await screen.findAllByTestId('otd-column');
+        expect(screen.queryByTestId('otd-capsule-due')).toBeNull();
+    });
+
+    it('does not ask for due notes in the detail', async () => {
+        renderPage({ page: 'onThisDay', monthDay: '09-14', year: 2024 });
+        await screen.findByTestId('day-view');
+        expect(fetchCapsuleDue).not.toHaveBeenCalled();
     });
 });

@@ -1042,6 +1042,26 @@
       "pickMonth": "選擇年月",
       "empty": "這個月還沒有回憶。",
       "memberFilter": "依成員篩選"
+    },
+    "capsule": {
+      "add": "貼一張便條",
+      "edit": "重寫便條",
+      "save": "收好",
+      "delete": "撕下",
+      "deleteConfirm": "要撕下這張便條嗎？",
+      "cancel": "算了",
+      "placeholder": "這一天，用你自己的話寫下。",
+      "written": "{{date}} 寫的便條",
+      "yearsAgo": "{{count}} 年前的你寫的便條",
+      "limit": "還可以寫 {{count}} 字",
+      "full": "已經寫滿了",
+      "failed": "無法儲存便條",
+      "local": "這張便條只會儲存在這台電腦上"
+    },
+    "sameTime": {
+      "now": "現在 {{clock}}",
+      "pastYear": "{{year}} 年的這個時刻，{{name}}說",
+      "thisYear": "{{date}}的這個時刻，{{name}}說"
     }
   },
   "recap": {

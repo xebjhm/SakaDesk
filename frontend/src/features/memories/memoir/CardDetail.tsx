@@ -5,6 +5,7 @@ import { Avatar, Button, Modal } from '../../../design/primitives';
 import { resizedAvatarUrl } from '../../messages/mediaUrl';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
 import { fetchDay } from '../api';
+import { CapsuleStrip } from '../capsule/CapsuleStrip';
 import { formatDayHeading } from '../day/format';
 import { MergedTimeline } from '../day/MergedTimeline';
 import { dayPeople, type DayPerson } from '../day/people';
@@ -112,6 +113,7 @@ export interface CardDetailProps {
  *   old icon and the first with the new, instead of the large card (the message count is not
  *   shown: one number).
  * - Graduation shows 「最後のメッセージ」, her words and 「ずっと、ここに。」, without a shimmer.
+ * - An earned card with a date carries the fan's 時光膠囊 notes on it (`CapsuleStrip`, card anchor).
  */
 export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, name, card, onClose }) => {
     const { t, i18n } = useTranslation();
@@ -163,7 +165,15 @@ export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, nam
             ) : undefined}
         >
             <div className="flex min-h-0 flex-col gap-6 md:flex-row">
-                <div className="flex shrink-0 flex-col items-center gap-4">{face}</div>
+                <div className="flex shrink-0 flex-col items-center gap-4">
+                    {face}
+                    {/* The fan's notes on this card (earned only: a silhouette has no date). */}
+                    {card.earned && card.date && (
+                        <div className="w-72">
+                            <CapsuleStrip service={service} anchor={{ kind: 'card', memberPath, cardKey: card.key, date: card.date }} />
+                        </div>
+                    )}
+                </div>
                 {dayLabel && (
                     <section data-testid="card-detail-day" aria-labelledby="card-detail-day-label" className="min-w-0 flex-1">
                         <h3 id="card-detail-day-label" data-testid="card-detail-day-label" className="mb-2 text-small text-muted">

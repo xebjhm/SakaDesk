@@ -38,6 +38,12 @@ export const MEMORIES_FUN_KEYS: string[] = [
     'memories.calendar.title', 'memories.calendar.all', 'memories.calendar.members', 'memories.calendar.prevMonth',
     'memories.calendar.nextMonth', 'memories.calendar.pickMonth', 'memories.calendar.empty', 'memories.calendar.memberFilter',
     'memories.album.setCover', 'memories.album.resetCover', 'memories.album.coverFailed',
+    // F12: the time capsule and the same-time line
+    'memories.capsule.add', 'memories.capsule.edit', 'memories.capsule.save', 'memories.capsule.delete',
+    'memories.capsule.deleteConfirm', 'memories.capsule.cancel', 'memories.capsule.placeholder', 'memories.capsule.written',
+    'memories.capsule.yearsAgo', 'memories.capsule.limit', 'memories.capsule.full', 'memories.capsule.failed',
+    'memories.capsule.local',
+    'memories.sameTime.now', 'memories.sameTime.pastYear', 'memories.sameTime.thisYear',
 ];
 
 /** Fun keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
@@ -49,6 +55,8 @@ export const MEMORIES_FUN_EN_PLURALS: string[] = [
     'memories.gacha.left',
     // F11
     'memories.calendar.members',
+    // F12
+    'memories.capsule.yearsAgo', 'memories.capsule.limit',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -75,6 +83,10 @@ describe('memories fun strings', () => {
     it.each(Object.entries(locales))('%s never prints a number in the gacha spent line', (_code, data) => {
         expect(String(lookup(data, 'memories.home.gachaTomorrow'))).not.toMatch(/\d|\{\{/);
         expect(String(lookup(data, 'memories.gacha.tomorrow'))).not.toMatch(/\d|\{\{/);
+    });
+
+    it.each(Object.entries(locales))('%s never prints a number when a capsule note is full', (_code, data) => {
+        expect(String(lookup(data, 'memories.capsule.full'))).not.toMatch(/\d|\{\{/);
     });
 
     it('uses the Japanese reference copy', () => {
@@ -151,6 +163,21 @@ describe('memories fun strings', () => {
             'memories.album.setCover': 'この月の表紙にする',
             'memories.album.resetCover': '表紙を自動にもどす',
             'memories.album.coverFailed': '表紙を変えられませんでした',
+            'memories.capsule.add': 'メモを貼る',
+            'memories.capsule.edit': 'メモを書きなおす',
+            'memories.capsule.save': 'しまう',
+            'memories.capsule.delete': 'はがす',
+            'memories.capsule.deleteConfirm': 'このメモをはがしますか？',
+            'memories.capsule.cancel': 'やめる',
+            'memories.capsule.placeholder': 'この日のこと、あなたの言葉で。',
+            'memories.capsule.written': '{{date}}に書いたメモ',
+            'memories.capsule.yearsAgo': '{{count}}年前のあなたが書いたメモ',
+            'memories.capsule.limit': 'あと {{count}} 文字',
+            'memories.capsule.failed': 'メモを保存できませんでした',
+            'memories.capsule.local': 'このメモはこのパソコンにだけ保存されます',
+            'memories.sameTime.now': 'いま {{clock}}',
+            'memories.sameTime.pastYear': '{{year}}年のこの時刻、{{name}}は',
+            'memories.sameTime.thisYear': '{{date}}のこの時刻、{{name}}は',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, key), key).toBe(text);
     });
