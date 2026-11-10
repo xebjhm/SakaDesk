@@ -69,7 +69,7 @@ def _fact_lookup(inputs: cards_mod.CardInputs) -> dict[cards_mod.MessageKey, Fac
     return {cards_mod.MessageKey(room, f.id): f for room, f in inputs.facts}
 
 
-def _subscription_start(summary: mi.MemberSummary) -> date | None:
+def subscription_start(summary: mi.MemberSummary) -> date | None:
     """The fan's start date; an unparsable one is logged and treated as absent."""
     start = _parse_day(summary.subscription_start)
     if start is None and summary.subscription_start:
@@ -259,7 +259,7 @@ async def _gather(
     inputs = cards_mod.CardInputs(
         facts=tagged,
         today=now.astimezone(JST).date(),
-        subscription_start=_subscription_start(summary),
+        subscription_start=subscription_start(summary),
         birthday=summary.birthday,
         graduated=summary.graduated,
         letters=letters,
@@ -430,13 +430,17 @@ def _message_refs(payload: dict) -> list[dict]:
     return out
 
 
-async def build_binder(
-    service: str, sdir: Path, summary: mi.MemberSummary, *, now: datetime
-) -> dict:
-    """The ``/memoir/cards`` payload: cached text-free, her words attached after."""
+async def binder_hash(sdir: Path, summary: mi.MemberSummary, *, now: datetime) -> str:
+    """Cache hash of everything :func:`evaluate_person` reads, as of ``now``.
+
+    :data:`cards.CARDS_VERSION`, the rooms' index hashes, the JST date, the
+    letters and profile-image index stats, the start date, birthday and
+    graduation. Views that embed card results (memoir list, timeline months)
+    reuse it.
+    """
     today = now.astimezone(JST).date()
     stats = await asyncio.to_thread(_side_stats, sdir, summary.member_dirs)
-    data_hash = view_hash(
+    return view_hash(
         cards_mod.CARDS_VERSION,
         await people.room_hashes(sdir, summary),
         today.isoformat(),
@@ -445,6 +449,13 @@ async def build_binder(
         summary.birthday,
         summary.graduated,
     )
+
+
+async def build_binder(
+    service: str, sdir: Path, summary: mi.MemberSummary, *, now: datetime
+) -> dict:
+    """The ``/memoir/cards`` payload: cached text-free, her words attached after."""
+    data_hash = await binder_hash(sdir, summary, now=now)
 
     async def build() -> dict:
         cards, inputs, timeline = await _evaluate(service, sdir, summary, now)
@@ -461,9 +472,11 @@ async def build_binder(
 __all__ = [
     "IconEntry",
     "avatar_changes",
+    "binder_hash",
     "build_binder",
     "evaluate_person",
     "keyword_hits",
     "icon_entries",
     "person_avatar_changes",
+    "subscription_start",
 ]

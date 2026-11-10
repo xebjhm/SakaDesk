@@ -276,6 +276,18 @@ def test_split_sentences():
     assert split_sentences("。。\n") == []
 
 
+def test_raw_sentences_keep_original_characters():
+    from backend.services.memories.selection import raw_sentences
+
+    # not NFKC: full-width ％ and ｶﾀｶﾅ stay as written; emoji kept
+    assert raw_sentences("％％％ｶﾞﾝﾊﾞ！ありがと💕。\n %%%またね?") == [
+        "％％％ｶﾞﾝﾊﾞ",
+        "ありがと💕",
+        "%%%またね",
+    ]
+    assert raw_sentences("！？\n") == []
+
+
 def test_repeated_counts_sentences_not_messages():
     from backend.services.memories.selection import (
         is_repeated,

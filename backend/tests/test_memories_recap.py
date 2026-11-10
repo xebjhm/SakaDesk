@@ -15,6 +15,7 @@ from backend.services import app_state
 from backend.services.memories import index as mi
 from backend.services.memories import oshi as oshi_mod
 from backend.services.memories import recap
+from backend.services.memories.selection import raw_sentences
 from backend.tests import memories_archive as arch
 
 JST = ZoneInfo("Asia/Tokyo")
@@ -1562,7 +1563,7 @@ async def test_s11_petals_are_spread_evenly_over_the_year(svc):
     # The first and the last of the year are kept; the rest are even picks.
     assert petals[0] == "大好き0号" and petals[-1] == "大好き19号"
     assert petals == sorted(petals, key=lambda t: int(t[3:-1]))
-    assert all(len(recap._sentences(x)) == 1 for x in petals)  # one sentence each
+    assert all(len(raw_sentences(x)) == 1 for x in petals)  # one sentence each
 
 
 @pytest.mark.asyncio
@@ -1574,7 +1575,7 @@ async def test_sentence_fields_are_one_sentence_each(full):
     one += [x["text"] for x in s["s11_daisuki"]["data"]["petals"]]
     assert len(one) > 3
     for text in one:
-        assert recap._sentences(text) == [text], text
+        assert raw_sentences(text) == [text], text
 
 
 # --- cross-layer contract (wave review can-wait 3) ---------------------------------

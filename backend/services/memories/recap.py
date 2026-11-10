@@ -80,7 +80,7 @@ from backend.services.memories import oshi as oshi_mod
 from backend.services.memories import people
 from backend.services.memories import selection as sel
 from backend.services.memories.facts import Fact
-from backend.services.memories.lexicon import CHRISTMAS_RE, RAW_SENTENCE_SPLIT_RE
+from backend.services.memories.lexicon import CHRISTMAS_RE
 from backend.services.memories.selection import JST
 
 logger = structlog.get_logger(__name__)
@@ -312,10 +312,6 @@ def _spread(seq: Sequence[Any], k: int) -> list[Any]:
     return [seq[round(i * (n - 1) / (k - 1))] for i in range(k)]
 
 
-def _sentences(text: str) -> list[str]:
-    return [s.strip() for s in RAW_SENTENCE_SPLIT_RE.split(text) if s.strip()]
-
-
 def _key(item: Item) -> Key:
     return item[0], item[1].id
 
@@ -502,7 +498,7 @@ def _fragments(ctx: _Ctx, items: Sequence[Item], pattern: re.Pattern[str]) -> li
     out: list[str] = []
     seen: set[str] = set()
     for i in items:
-        for s in _sentences(ctx.text(i)):
+        for s in sel.raw_sentences(ctx.text(i)):
             if pattern.search(s) and s not in seen:
                 seen.add(s)
                 out.append(s)
@@ -1104,7 +1100,7 @@ def _s11_daisuki(ctx: _Ctx) -> dict | None:
     petals: list[dict] = []
     seen: set[str] = set()
     for i in matched:
-        for s in _sentences(ctx.text(i)):
+        for s in sel.raw_sentences(ctx.text(i)):
             if any(p.search(s) for p in patterns) and s not in seen:
                 seen.add(s)
                 petals.append({"text": s, "date": i[1].jst_date.isoformat()})
@@ -1154,7 +1150,7 @@ def _s12_sentence(ctx: _Ctx) -> dict | None:
         )
         for item in ranked[:SENTENCE_SCAN]:
             best: tuple[int, int, str] | None = None
-            for s in _sentences(ctx.text(item)):
+            for s in sel.raw_sentences(ctx.text(item)):
                 if not SENTENCE_MIN <= len(s) <= SENTENCE_MAX:
                     continue
                 msg = sel.Msg(item[1].id, item[1].ts, "text", s, item[1].favorited)

@@ -19,6 +19,7 @@ from backend.services.memories.lexicon import (
     NICKNAME_TOKEN,
     PROMO_WORDS_RE,
     PURE_GREETING_RE,
+    RAW_SENTENCE_SPLIT_RE,
     SENTENCE_SPLIT_RE,
     TIME_RE,
     URL_RE,
@@ -102,6 +103,15 @@ def classes_from_mask(mask: int) -> frozenset[str]:
 def split_sentences(text: str) -> list[str]:
     """NFKC sentences split at 。！？ and newlines; stripped, empty ones dropped."""
     return [s.strip() for s in SENTENCE_SPLIT_RE.split(normalize(text)) if s.strip()]
+
+
+def raw_sentences(text: str) -> list[str]:
+    """Sentences of RAW text, as written, split at 。！？!? and newlines.
+
+    Not normalised (her words are shown as written); stripped, empty ones
+    dropped.
+    """
+    return [s.strip() for s in RAW_SENTENCE_SPLIT_RE.split(text) if s.strip()]
 
 
 REPEAT_MIN = 3
