@@ -1,6 +1,21 @@
 import { clientLog } from '../../utils/clientLog';
 
-export type MemoriesPage = 'home' | 'recap' | 'onThisDay' | 'album' | 'memoir' | 'favorites';
+/** The Memories router's pages (route names, camelCase). */
+export const MEMORIES_PAGES = ['home', 'recap', 'onThisDay', 'album', 'memoir', 'favorites'] as const;
+export type MemoriesPage = (typeof MEMORIES_PAGES)[number];
+
+/**
+ * The code each page logs in `memories_page` `target`. The backend accepts snake_case codes only
+ * (`^[a-z0-9_]{1,40}$`), so a camelCase route name must never be sent as is.
+ */
+export const MEMORIES_PAGE_CODES: Record<MemoriesPage, string> = {
+    home: 'home',
+    recap: 'recap',
+    onThisDay: 'on_this_day',
+    album: 'album',
+    memoir: 'memoir',
+    favorites: 'favorites',
+};
 
 /** `memories_open`: the Memories feature was shown. Pass only the service id. */
 export function logMemoriesOpen(service: string): void {
@@ -9,20 +24,21 @@ export function logMemoriesOpen(service: string): void {
 
 /** `memories_page`: the Memories router moved to a page. Never pass names, text or paths. */
 export function logMemoriesPage(page: MemoriesPage): void {
-    clientLog('memories_page', { target: page });
+    clientLog('memories_page', { target: MEMORIES_PAGE_CODES[page] });
 }
 
-/** A Memories core view, as logged in `target` (a code, never a name or path). */
-export type MemoriesView =
-    | 'hub' | 'on_this_day' | 'day' | 'album' | 'favorites' | 'memoir' | 'binder' | 'names' | 'timeline'
-    /** The album's member list, one month's grid and the colour ribbon (`album` is its months). */
-    | 'album_members' | 'album_month' | 'album_colors'
-    /** The film strip's day (favorites, names). */
-    | 'film_strip'
-    /** The memoir timeline's selected month (`timeline` is its month rail). */
-    | 'timeline_month'
-    /** The memoir's member list (`memoir` is the selected person's header). */
-    | 'memoir_members';
+/**
+ * A Memories core view, as logged in `target` (a code, never a name or path). `album_members`,
+ * `album_month` and `album_colors` are the album's member list, one month's grid and the colour
+ * ribbon (`album` is its months); `film_strip` the film strip's day (favorites, names);
+ * `timeline_month` the memoir timeline's selected month (`timeline` is its month rail);
+ * `memoir_members` the memoir's member list (`memoir` is the selected person's header).
+ */
+export const MEMORIES_VIEWS = [
+    'hub', 'on_this_day', 'day', 'album', 'favorites', 'memoir', 'binder', 'names', 'timeline',
+    'album_members', 'album_month', 'album_colors', 'film_strip', 'timeline_month', 'memoir_members',
+] as const;
+export type MemoriesView = (typeof MEMORIES_VIEWS)[number];
 
 /**
  * `memories_load`: a core view's request finished. `outcome` `ok` carries `count` (the view's
@@ -52,8 +68,10 @@ export function logMemoriesJump(target: MemoriesView, hasTarget: boolean): void 
  * carries the filter code); `album_burst` a burst's sequence (`on` = opened, `off` = closed); `film_strip` the film strip of a
  * favourite or a name moment (`on` = opened, `off` = closed).
  */
-export type MemoriesToggle =
-    | 'other_services' | 'day_mode' | 'member_filter' | 'lane_card' | 'album_filter' | 'album_burst' | 'film_strip';
+export const MEMORIES_TOGGLES = [
+    'other_services', 'day_mode', 'member_filter', 'lane_card', 'album_filter', 'album_burst', 'film_strip',
+] as const;
+export type MemoriesToggle = (typeof MEMORIES_TOGGLES)[number];
 
 /** `memories_toggle`: a Memories control was switched. `target` is the control code; `kind` a filter code. */
 export function logMemoriesToggle(target: MemoriesToggle, on: boolean, extra: { kind?: string } = {}): void {
@@ -66,7 +84,8 @@ export function logMemoriesToggle(target: MemoriesToggle, on: boolean, extra: { 
  * message); `empty_note` a text favourite without text was left off the board; `unknown_card` binder
  * cards whose key this build has no copy for were left off the binder (`count`).
  */
-export type MemoriesSkipReason = 'focus_missing' | 'empty_note' | 'unknown_card';
+export const MEMORIES_SKIP_REASONS = ['focus_missing', 'empty_note', 'unknown_card'] as const;
+export type MemoriesSkipReason = (typeof MEMORIES_SKIP_REASONS)[number];
 
 /** `memories_skip`: a Memories view skipped an item or fell back. Ids, codes and counts only. */
 export function logMemoriesSkip(
@@ -77,8 +96,10 @@ export function logMemoriesSkip(
     clientLog('memories_skip', { target, reason, ...extra });
 }
 
-export type RecapLoadTarget = 'members' | 'member' | 'years';
-export type RecapLoadOutcome = 'ok' | 'empty' | 'timeout' | 'rejected' | 'failed' | 'skipped';
+export const RECAP_LOAD_TARGETS = ['members', 'member', 'years'] as const;
+export type RecapLoadTarget = (typeof RECAP_LOAD_TARGETS)[number];
+export const RECAP_LOAD_OUTCOMES = ['ok', 'empty', 'timeout', 'rejected', 'failed', 'skipped'] as const;
+export type RecapLoadOutcome = (typeof RECAP_LOAD_OUTCOMES)[number];
 
 /**
  * `recap_load`: a recap request finished. `outcome` `skipped`: the poll was refused because the
@@ -95,9 +116,11 @@ export function logRecapLoad(
     clientLog('recap_load', { target, outcome, ...extra });
 }
 
-export type RecapPlayPhase =
-    | 'open' | 'step' | 'pause' | 'resume' | 'end' | 'close' | 'skip' | 'media_held'
-    | 'voice_start' | 'voice_clip' | 'voice_error' | 'voice_end';
+export const RECAP_PLAY_PHASES = [
+    'open', 'step', 'pause', 'resume', 'end', 'close', 'skip', 'media_held',
+    'voice_start', 'voice_clip', 'voice_error', 'voice_end',
+] as const;
+export type RecapPlayPhase = (typeof RECAP_PLAY_PHASES)[number];
 
 /**
  * `recap_play`: a player decision. `key` is a slide key, `index` its position,
@@ -115,7 +138,8 @@ export function logRecapPlay(
     clientLog('recap_play', { phase, ...extra });
 }
 
-export type RecapPosterPhase = 'open' | 'skip' | 'replay' | 'close' | 'font_fallback' | 'save' | 'save_failed';
+export const RECAP_POSTER_PHASES = ['open', 'skip', 'replay', 'close', 'font_fallback', 'save', 'save_failed'] as const;
+export type RecapPosterPhase = (typeof RECAP_POSTER_PHASES)[number];
 
 /**
  * `recap_poster`: a year-poster decision. `open` carries `count` (numbers shown)
@@ -138,9 +162,11 @@ export function logRecapPoster(
     clientLog('recap_poster', { phase, ...extra });
 }
 
-export type RecapSharePhase =
-    | 'open' | 'close' | 'option' | 'style' | 'sentence' | 'font_fallback' | 'photo_skip' | 'video_unsupported'
-    | 'share_blur_fallback' | 'export_start' | 'export' | 'export_failed';
+export const RECAP_SHARE_PHASES = [
+    'open', 'close', 'option', 'style', 'sentence', 'font_fallback', 'photo_skip', 'video_unsupported',
+    'share_blur_fallback', 'export_start', 'export', 'export_failed',
+] as const;
+export type RecapSharePhase = (typeof RECAP_SHARE_PHASES)[number];
 
 /**
  * `recap_share`: a share-export decision. `open` carries `count` (sentence candidates); `option`
@@ -167,7 +193,8 @@ export function logRecapShare(
     clientLog('recap_share', { phase, ...extra });
 }
 
-export type RecapOpeningPhase = 'show' | 'skip' | 'end' | 'close';
+export const RECAP_OPENING_PHASES = ['show', 'skip', 'end', 'close'] as const;
+export type RecapOpeningPhase = (typeof RECAP_OPENING_PHASES)[number];
 
 /**
  * `recap_opening`: the multi-member opening. `show` carries `count` (stars drawn); `skip` a

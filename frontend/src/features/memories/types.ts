@@ -175,7 +175,8 @@ export interface DayQuery {
 
 // --- album (album.py, album_colors.py) ----------------------------------------------------
 
-export type AlbumKind = 'all' | 'picture' | 'video' | 'favorite';
+export const ALBUM_KINDS = ['all', 'picture', 'video', 'favorite'] as const;
+export type AlbumKind = (typeof ALBUM_KINDS)[number];
 export type AlbumCoverRule = 'override' | 'favorite' | 'score' | 'burst' | 'first';
 
 export interface AlbumMembersPayload {

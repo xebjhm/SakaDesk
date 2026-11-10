@@ -1,0 +1,146 @@
+{
+  "memories_page.target": [
+    "home",
+    "recap",
+    "on_this_day",
+    "album",
+    "memoir",
+    "favorites"
+  ],
+  "memories_load.target": [
+    "hub",
+    "on_this_day",
+    "day",
+    "album",
+    "favorites",
+    "memoir",
+    "binder",
+    "names",
+    "timeline",
+    "album_members",
+    "album_month",
+    "album_colors",
+    "film_strip",
+    "timeline_month",
+    "memoir_members"
+  ],
+  "memories_load.outcome": [
+    "ok",
+    "error",
+    "timeout"
+  ],
+  "memories_jump.target": [
+    "hub",
+    "on_this_day",
+    "day",
+    "album",
+    "favorites",
+    "memoir",
+    "binder",
+    "names",
+    "timeline",
+    "album_members",
+    "album_month",
+    "album_colors",
+    "film_strip",
+    "timeline_month",
+    "memoir_members"
+  ],
+  "memories_toggle.target": [
+    "other_services",
+    "day_mode",
+    "member_filter",
+    "lane_card",
+    "album_filter",
+    "album_burst",
+    "film_strip"
+  ],
+  "memories_toggle.outcome": [
+    "on",
+    "off"
+  ],
+  "memories_toggle.kind": [
+    "all",
+    "picture",
+    "video",
+    "favorite"
+  ],
+  "memories_skip.target": [
+    "hub",
+    "on_this_day",
+    "day",
+    "album",
+    "favorites",
+    "memoir",
+    "binder",
+    "names",
+    "timeline",
+    "album_members",
+    "album_month",
+    "album_colors",
+    "film_strip",
+    "timeline_month",
+    "memoir_members"
+  ],
+  "memories_skip.reason": [
+    "focus_missing",
+    "empty_note",
+    "unknown_card"
+  ],
+  "recap_load.target": [
+    "members",
+    "member",
+    "years"
+  ],
+  "recap_load.outcome": [
+    "ok",
+    "empty",
+    "timeout",
+    "rejected",
+    "failed",
+    "skipped"
+  ],
+  "recap_play.phase": [
+    "open",
+    "step",
+    "pause",
+    "resume",
+    "end",
+    "close",
+    "skip",
+    "media_held",
+    "voice_start",
+    "voice_clip",
+    "voice_error",
+    "voice_end"
+  ],
+  "recap_poster.phase": [
+    "open",
+    "skip",
+    "replay",
+    "close",
+    "font_fallback",
+    "save",
+    "save_failed"
+  ],
+  "recap_share.phase": [
+    "open",
+    "close",
+    "option",
+    "style",
+    "sentence",
+    "font_fallback",
+    "photo_skip",
+    "video_unsupported",
+    "share_blur_fallback",
+    "export_start",
+    "export",
+    "export_failed"
+  ],
+  "recap_opening.phase": [
+    "show",
+    "skip",
+    "end",
+    "close"
+  ]
+}

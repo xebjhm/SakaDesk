@@ -1,5 +1,8 @@
 """Tests for POST /api/client-log (whitelisted UI breadcrumbs)."""
 
+import json
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from structlog.testing import capture_logs
@@ -1051,5 +1054,32 @@ def test_recap_share_rejects_free_text():
     r = client.post(
         "/api/client-log",
         json={"event": "recap_share", "fields": {"phase": "sentence", "key": "大好き"}},
+    )
+    assert r.status_code == 422
+
+
+def test_every_memories_code_the_frontend_emits_is_allowlisted():
+    """Post every page, view, toggle and phase code the Memories UI can send.
+
+    The fixture mirrors the TS constants in ``memoriesLog.ts`` (``memoriesLog.test.ts``
+    fails when they drift), so a camelCase code can never be dropped silently again.
+    """
+    fixture = Path(__file__).parent / "fixtures" / "memories_log_codes.json"
+    codes = json.loads(fixture.read_text(encoding="utf-8"))
+    assert codes
+    for key, values in codes.items():
+        event, field = key.split(".")
+        assert values, key
+        for value in values:
+            r = client.post(
+                "/api/client-log", json={"event": event, "fields": {field: value}}
+            )
+            assert r.status_code == 204, (key, value)
+
+
+def test_a_camel_case_page_code_is_rejected():
+    r = client.post(
+        "/api/client-log",
+        json={"event": "memories_page", "fields": {"target": "onThisDay"}},
     )
     assert r.status_code == 422
