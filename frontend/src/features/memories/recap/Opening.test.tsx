@@ -5,6 +5,7 @@ import { AUTO_ADVANCE_MS } from './RecapPlayer';
 import { Opening } from './Opening';
 import { OPENING_REGISTRY, openingPayload, openingSlides } from './openingSlides';
 import { overview } from './__fixtures__/payload';
+import { STAR_LABEL_SHARE, STAR_LINE_HEIGHT, STAR_SHARE, starGrid } from './openingMembers';
 import type { RecapOverview } from './api';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
@@ -70,6 +71,32 @@ describe('Opening', () => {
         // The first message of the year is a label on her star, not a rank.
         expect(stars[2]).toHaveTextContent('今年最初の一通');
         expect(openingLogs()).toContainEqual(['recap_opening', { phase: 'show', count: 4 }]);
+    });
+
+    it('fits every star of a 60-member roster on the stage, all the same size', () => {
+        const big = multi();
+        big.members = Array.from({ length: 60 }, (_, i) => ({
+            member_path: P(String(100 + i), String(200 + i), `メンバー${i}`), member_id: String(200 + i),
+            name: `とても長い名前のメンバー${i}`, tier: 'short' as const, oshi: i === 0, title_key: null,
+        }));
+        big.opening = { star_order: big.members.map((m) => m.member_id), first_message: null, oyasumi_total: null };
+        render(<Opening overview={big} onDone={() => {}} />);
+        const stars = screen.getAllByTestId('opening-star');
+        expect(stars).toHaveLength(60);
+        const grid = screen.getByRole('list', { name: '今年の星々' });
+        const cols = Number(grid.getAttribute('data-cols'));
+        const rows = Number(grid.getAttribute('data-rows'));
+        expect(cols * rows).toBeGreaterThanOrEqual(60);
+        // The grid is a size container split into cols x rows cells; the star is sized in
+        // container units from the row count, so every row fits the stage.
+        expect(grid.className).toContain('[container-type:size]');
+        expect(grid.className).toContain('[grid-template-rows:repeat(var(--star-rows),minmax(0,1fr))]');
+        expect(grid.style.getPropertyValue('--star-rows')).toBe(String(rows));
+        expect(grid.style.getPropertyValue('--star-size')).toContain(`${(STAR_SHARE * 100) / rows}cqh`);
+        for (const star of stars) {
+            expect(star.querySelector('svg')?.getAttribute('class')).toContain('h-[var(--star-size)]');
+        }
+        expect(new Set(stars.map((s) => s.querySelector('svg')?.getAttribute('class'))).size).toBe(1);
     });
 
     it('shows one role-title chip per titled member in star order, without ranks or numbers', () => {
@@ -140,5 +167,21 @@ describe('Opening', () => {
 
     it('registers exactly the two opening slides', () => {
         expect(Object.keys(OPENING_REGISTRY).sort()).toEqual(['o1_stars', 'o2_titles']);
+    });
+});
+
+describe('starGrid', () => {
+    it('always has a cell for every member and keeps three columns for small rosters', () => {
+        for (let n = 1; n <= 200; n += 1) {
+            const { cols, rows } = starGrid(n);
+            expect(cols * rows, String(n)).toBeGreaterThanOrEqual(n);
+            expect(cols * (rows - 1), String(n)).toBeLessThan(n); // no empty row
+        }
+        expect(starGrid(9)).toEqual({ cols: 3, rows: 3 });
+        expect(starGrid(60).rows).toBeLessThanOrEqual(10);
+    });
+
+    it('a star and its two caption lines fit inside one cell', () => {
+        expect(STAR_SHARE + 2 * STAR_LABEL_SHARE * STAR_LINE_HEIGHT).toBeLessThanOrEqual(1);
     });
 });
