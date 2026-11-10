@@ -519,6 +519,9 @@ class SyncService:
                     }
 
                 for g in groups:
+                    # S2: the discovering bar moves once per group handled
+                    # (closed, failed or read), so it reaches its total.
+                    progress.update(1)
                     # Skip closed groups — their timeline/members return 404
                     if g.get("state") == "closed":
                         continue
@@ -618,6 +621,9 @@ class SyncService:
                 # One-time room history scans re-read whole timelines; run them one
                 # at a time (paced, see below) to stay under the API rate limit.
                 scan_sem = asyncio.Semaphore(1)
+                # S2: while a room holds scan_sem, the detail line shows that
+                # room; member completions elsewhere only move the counter.
+                scan_holder: list[Optional[int]] = [None]
                 # pysaka 0.4.6: rooms whose history was never fully read are
                 # re-read once from the start (ignoring cursors) so authors
                 # missing from their member list and any gaps are archived.
@@ -762,6 +768,7 @@ class SyncService:
                                 group=g_name,
                                 group_id=gid,
                             )
+                            scan_holder[0] = gid
                             progress.set_detail_code("scanning_history")
                             progress.set_detail(g_name)
                             try:
@@ -779,6 +786,7 @@ class SyncService:
                                 )
                                 raise
                             finally:
+                                scan_holder[0] = None
                                 progress.set_detail_code(None)
                     else:
                         all_messages = await self.manager.client.get_messages(
@@ -954,9 +962,12 @@ class SyncService:
                                 error_type=type(e).__name__,
                             )
                         m_name = task["member"]["name"]
-                        progress.update(
-                            1, detail=f"{m_name} ({count:,})", detail_extra=""
-                        )
+                        if scan_holder[0] is None:
+                            progress.update(
+                                1, detail=f"{m_name} ({count:,})", detail_extra=""
+                            )
+                        else:
+                            progress.update(1)
                         group_results.append((task, count))
 
                     # The one-time scan counts as done only once every

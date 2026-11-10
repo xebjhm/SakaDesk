@@ -1037,8 +1037,11 @@ async def test_deferred_room_advances_member_progress(tmp_path):
         mock_manager=m,
         progress_mock=progress,
     )
-    # Room 44 (one API member) is deferred and counted as handled.
-    progress.update.assert_called_once_with(len(API_MEMBERS))
+    # Room 44 (one API member) is deferred and counted as handled. The first
+    # two updates are the discovering phase (one per group, S2).
+    calls = progress.update.call_args_list
+    assert calls[:2] == [((1,), {}), ((1,), {})]
+    assert calls[2:] == [((len(API_MEMBERS),), {})]
 
 
 async def test_unreadable_scan_flag_scans_room(tmp_path):
@@ -1074,3 +1077,76 @@ async def test_unreadable_scan_flag_scans_room(tmp_path):
     assert _synced_group_ids(m) == [43, 44]
     m.mark_history_scanned.assert_called_once_with(43)
     assert _events(logs, "sync_complete")
+
+
+# --- S2 (spec 2026-11-10): honest progress in phases 1 and 2 -----------------
+
+
+async def test_discovering_moves_once_per_group(tmp_path):
+    closed = {**GROUP, "id": 99, "name": "卒業", "state": "closed"}
+    m = _manager(scanned=True, extra=[])
+    m.client.get_groups = AsyncMock(return_value=[GROUP, closed])
+    progress = MagicMock()
+    await _run_start_sync(
+        SyncService(),
+        tmp_path,
+        groups=[GROUP, closed],
+        members=API_MEMBERS,
+        mock_manager=m,
+        progress_mock=progress,
+    )
+    names = [c[0] for c in progress.mock_calls]
+    start = names.index("start_phase", names.index("start_phase") + 1)  # discovering
+    end = names.index("start_phase", start + 1)  # syncing
+    discovering = progress.mock_calls[start + 1 : end]
+    assert [c for c in discovering if c[0] == "update"] == [
+        ("update", (1,), {}),
+        ("update", (1,), {}),
+    ]
+
+
+async def test_scan_room_owns_the_detail_line(tmp_path):
+    """While a room's history scan holds the slot, members finishing in other
+    rooms move the counter without overwriting the scanning room's detail."""
+    scan_room = {**GROUP, "id": 44, "name": "櫻坂46"}
+    m = _manager(scanned=True, extra=[])
+    m.history_scanned = MagicMock(side_effect=lambda gid: gid != 44)
+    m.client.get_groups = AsyncMock(return_value=[scan_room, GROUP])
+    other_room_done = asyncio.Event()
+
+    async def _fetch(session, gid, **kw):
+        if gid == 44:
+            await asyncio.wait_for(other_room_done.wait(), timeout=5)
+        return []
+
+    m.client.get_messages = AsyncMock(side_effect=_fetch)
+    base = m.sync_member.side_effect
+
+    async def _after_member(group_id):
+        # Let the room loop report progress, then release the scan.
+        await asyncio.sleep(0)
+        other_room_done.set()
+
+    async def _sync_member(s, g, member, q, **kw):
+        n = base(s, g, member, q, **kw)
+        if g["id"] == GROUP["id"]:
+            asyncio.get_running_loop().create_task(_after_member(g["id"]))
+        return n
+
+    m.sync_member = AsyncMock(side_effect=_sync_member)
+    progress = MagicMock()
+    await _run_start_sync(
+        SyncService(),
+        tmp_path,
+        groups=[scan_room, GROUP],
+        members=API_MEMBERS,
+        mock_manager=m,
+        progress_mock=progress,
+    )
+    updates = [c for c in progress.mock_calls if c[0] == "update"]
+    with_detail = [c for c in updates if c[2].get("detail")]
+    bare = [c for c in updates if not c[2]]
+    # 2 discovering moves + the incremental room's member during the scan.
+    assert len(bare) == 3
+    # After the scan released the slot, its own member set the detail.
+    assert len(with_detail) == 1
