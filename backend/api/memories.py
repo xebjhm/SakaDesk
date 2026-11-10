@@ -241,21 +241,43 @@ def _parse_day(raw: str) -> date:
         raise HTTPException(status_code=400, detail="Invalid date") from None
 
 
+_TRUE = frozenset({"1", "true", "yes", "on"})
+_FALSE = frozenset({"0", "false", "no", "off"})
+
+
+def _parse_flag(raw: str | None) -> bool:
+    """A boolean query flag (``1/true/yes/on``, ``0/false/no/off``; absent = off).
+
+    Any other value is 400, like every other validation error here.
+    """
+    if raw is None:
+        return False
+    value = raw.strip().lower()
+    if value in _TRUE:
+        return True
+    if value in _FALSE:
+        return False
+    logger.warning("memories.api.reject", reason="bad_flag")
+    raise HTTPException(status_code=400, detail="Invalid flag")
+
+
 @router.get("/{service}/day")
 async def day_route(
     service: str,
     day_q: str = Query(..., alias="date"),
     member: str | None = Query(None),
-    others: bool = Query(False),
+    others_q: str | None = Query(None, alias="others"),
 ) -> dict:
     """The 那一天 day view of ``date`` (``YYYY-MM-DD``), merged across people.
 
     ``member`` (chat path of any of her rooms) limits it to one person and
-    disables ``others``; ``others`` adds the fan's other services.
+    disables ``others``; ``others`` (``1/true/yes/on`` or ``0/false/no/off``,
+    anything else 400) adds the fan's other services.
     """
     now = datetime.now(timezone.utc)
     service_data_dir = _service_dir(service)
     day = _parse_day(day_q)
+    others = _parse_flag(others_q)
     summary = (
         await _person(service_data_dir, member, view="day")
         if member is not None

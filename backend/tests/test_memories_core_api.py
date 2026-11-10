@@ -250,7 +250,7 @@ def test_day_others_flag_parsing(out, no_oshi):
     for off in ("0", "false"):
         assert get(url, date="2024-12-24", others=off).json()["other_services"] == []
     assert get(url, date="2024-12-24").json()["other_services"] == []
-    assert get(url, date="2024-12-24", others="maybe").status_code == 422
+    assert get(url, date="2024-12-24", others="maybe").status_code == 400
     # others is ignored for one member
     body = get(url, date="2024-12-24", others=1, member=MEMBER).json()
     assert body["other_services"] == []
