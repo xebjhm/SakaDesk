@@ -926,7 +926,7 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
 - **The time capsule** (`features/memories/capsule/`): the fan's own notes are `bg-memories-note`
   sticky notes under a `bg-memories-washi` strip, leaning by the cork board's id tilt (static; flat
   under reduced motion), body in `text-primary` with the written date in `text-secondary`. The
-  body is the fan's words, so it never carries `lang="ja"`. A day view (not a one-person one) and
+  body is the fan's words, so it never carries `lang="ja"`. A day view (unless its host passes `showCapsule={false}`) and
   an earned binder card carry a strip of notes with a ghost 「メモを貼る」 button; the editor is a
   plain `Modal` whose textarea uses the field look, shows a remaining count only past 1800 of
   2000 characters (a line without a number at the limit) and asks before 「はがす」. A resurfaced

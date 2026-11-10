@@ -173,8 +173,14 @@ describe('DayView', () => {
         expect(fetchCapsule).toHaveBeenCalledWith('hinatazaka46', { date: '2024-09-14' }, expect.any(AbortSignal));
     });
 
-    it('has no capsule strip for one person (the card and film strip contexts)', async () => {
+    it('keeps the capsule strip on a one-person day (the calendar member filter)', async () => {
         renderDay({ memberPath: '日向坂46/messages/34 金村 美玖/58 金村 美玖' });
+        expect(await screen.findByTestId('capsule-strip')).toBeInTheDocument();
+        expect(fetchCapsule).toHaveBeenCalledWith('hinatazaka46', { date: '2024-09-14' }, expect.any(AbortSignal));
+    });
+
+    it('has no capsule strip when the host turns it off (the card and film strip contexts)', async () => {
+        renderDay({ showCapsule: false });
         await screen.findByTestId('day-merged');
         expect(screen.queryByTestId('capsule-strip')).toBeNull();
         expect(fetchCapsule).not.toHaveBeenCalled();

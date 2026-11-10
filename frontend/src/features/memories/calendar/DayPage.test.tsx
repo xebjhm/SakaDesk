@@ -6,14 +6,15 @@ import i18n from '../../../i18n';
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
-    return { ...real, fetchDay: vi.fn() };
+    return { ...real, fetchDay: vi.fn(), fetchCapsule: vi.fn() };
 });
-import { fetchDay } from '../api';
+import { fetchCapsule, fetchDay } from '../api';
 import { MEMBER_PATH } from '../__fixtures__/memories';
 import { DayPage } from './DayPage';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 beforeEach(() => {
+    vi.mocked(fetchCapsule).mockReset().mockResolvedValue({ notes: [] });
     vi.mocked(fetchDay).mockReset().mockResolvedValue({ date: '2024-09-14', members: [], messages: [] } as never);
 });
 
@@ -38,6 +39,12 @@ describe('DayPage', () => {
         expect(fetchDay).toHaveBeenCalledWith('hinatazaka46', expect.objectContaining({ date: '2024-09-14', member: MEMBER_PATH }), expect.any(AbortSignal));
         await userEvent.click(screen.getByRole('button', { name: 'Back' }));
         expect(go).toHaveBeenCalledWith({ page: 'calendar', month: '2024-09', memberPath: MEMBER_PATH });
+    });
+
+    it('keeps the day\'s capsule strip on a member-filtered day', async () => {
+        render(<DayPage service="hinatazaka46" route={{ page: 'day', date: '2024-09-14', from: 'calendar', memberPath: MEMBER_PATH }} go={vi.fn()} />);
+        expect(await screen.findByTestId('capsule-strip')).toBeInTheDocument();
+        expect(fetchCapsule).toHaveBeenCalledWith('hinatazaka46', { date: '2024-09-14' }, expect.any(AbortSignal));
     });
 
     it('back goes home when the day was not opened from the calendar', async () => {

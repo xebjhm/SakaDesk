@@ -25,6 +25,8 @@ interface DayViewProps {
     memberPath?: string;
     /** Header controls of the host (wave 4 puts the ⇆ あの日と今日 toggle here). */
     headerSlot?: React.ReactNode;
+    /** The day's 時光膠囊 strip under the header (default true); the film strip and card contexts pass false. */
+    showCapsule?: boolean;
 }
 
 type DayMode = 'merged' | 'lanes';
@@ -37,9 +39,9 @@ const CHIP_AVATAR_PX = 20;
  * its group marker; a chip pick logs `member_filter`) and the A / B toggle
  * (merged timeline / swimlanes, A by default, kept for as long as the view is mounted; logs
  * `memories_toggle` `day_mode`). Under the header sits the day's 時光膠囊 strip (the fan's notes on
- * that date), left out for one person (`memberPath`: the card and film strip contexts).
+ * that date, also on a one-person day), left out only when the host passes `showCapsule={false}`.
  */
-export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, headerSlot }) => {
+export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, headerSlot, showCapsule = true }) => {
     const { t, i18n } = useTranslation();
     const chipAvatar = useAvatarWidth(CHIP_AVATAR_PX);
     const [mode, setMode] = useState<DayMode>('merged');
@@ -110,7 +112,7 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
                     <Pill selected={mode === 'lanes'} onClick={() => switchMode('lanes')}>{t('memories.day.modeLanes')}</Pill>
                 </div>
             </header>
-            {memberPath === undefined && (
+            {showCapsule && (
                 <div className="px-4 pt-3">
                     <CapsuleStrip service={service} anchor={{ kind: 'day', date }} />
                 </div>
