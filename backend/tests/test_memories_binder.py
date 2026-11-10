@@ -606,3 +606,24 @@ def test_payload_logs_unresolvable_faces(tmp_path):
         "reason": "face_missing",
         "count": 1,
     }
+
+
+def test_avatar_digest_memo_is_used_under_its_lock(tmp_path, monkeypatch):
+    # icon_entries runs in worker threads: every memo access must hold the lock
+    class Guarded(type(binder._digest_cache)):
+        def get(self, key, default=None):
+            assert binder._digest_lock.locked()
+            return super().get(key, default)
+
+        def __setitem__(self, key, value):
+            assert binder._digest_lock.locked()
+            super().__setitem__(key, value)
+
+    monkeypatch.setattr(binder, "_digest_cache", Guarded())
+    thumbs = tmp_path / "r" / "profile_images" / "thumbnail"
+    thumbs.mkdir(parents=True)
+    (thumbs / "a.jpg").write_bytes(b"icon")
+    url = "/api/content/media/x/r/profile_images/thumbnail/a.jpg"
+    first = binder._avatar_digest(tmp_path, "r", url)
+    assert first is not None
+    assert binder._avatar_digest(tmp_path, "r", url) == first

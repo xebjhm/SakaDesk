@@ -20,9 +20,9 @@ Logs (ids, codes, counts and scores only; ``person`` = first member id):
 - ``memories_skip`` (``view=binder``, ``reason``): ``no_face`` (``rule``) for
   an earned card with nothing to show, ``avatar_same_image`` (``count``) for
   cross-room duplicate icon changes, ``avatar_hash_missing`` (``count``) for
-  icons whose file is missing or unreadable (they fall back to the URL /
-  one-minute rule), ``bad_subscription_start`` for an
-  unparsable start date, and ``face_missing`` (``count``) for message keys the
+  icons without a content hash -- a missing or unreadable file, or a foreign
+  (non-archive) URL (they fall back to the URL / one-minute rule),
+  ``bad_subscription_start`` for an unparsable start date, and ``face_missing`` (``count``) for message keys the
   payload could not resolve.
 """
 
@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import asyncio
 import hashlib
+import threading
 from collections import OrderedDict
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -100,6 +101,8 @@ _DIGEST_CACHE_MAX = 1024
 # (path, size, mtime_ns) -> sha256: a cache miss of the binder (any new
 # message) must not re-read and re-hash every archived icon.
 _digest_cache: OrderedDict[tuple[str, int, int], str] = OrderedDict()
+# icon_entries runs in worker threads, possibly several at once
+_digest_lock = threading.Lock()
 
 
 def _avatar_digest(sdir: Path, room: str, url: str) -> str | None:
@@ -117,17 +120,19 @@ def _avatar_digest(sdir: Path, room: str, url: str) -> str | None:
     try:
         st = path.stat()
         key = (str(path), st.st_size, st.st_mtime_ns)
-        hit = _digest_cache.get(key)
-        if hit is not None:
-            _digest_cache.move_to_end(key)
-            return hit
+        with _digest_lock:
+            hit = _digest_cache.get(key)
+            if hit is not None:
+                _digest_cache.move_to_end(key)
+                return hit
         data = path.read_bytes()
     except OSError:
         return None
     digest = hashlib.sha256(data).hexdigest()
-    _digest_cache[key] = digest
-    while len(_digest_cache) > _DIGEST_CACHE_MAX:
-        _digest_cache.popitem(last=False)
+    with _digest_lock:
+        _digest_cache[key] = digest
+        while len(_digest_cache) > _DIGEST_CACHE_MAX:
+            _digest_cache.popitem(last=False)
     return digest
 
 
