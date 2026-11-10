@@ -1,4 +1,4 @@
-"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board and the hub for the active service, the export handoff and the share GIF."""
+"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board, the hub and the voice radio for the active service, the export handoff and the share GIF."""
 
 from __future__ import annotations
 
@@ -25,6 +25,7 @@ from backend.services.memories import (
     nickname_moments,
     on_this_day,
     people,
+    radio,
     share_gif,
     timeline,
 )
@@ -376,6 +377,52 @@ async def favorites_route(service: str, member: str | None = Query(None)) -> dic
     return await favorites_board.favorites_board(
         service, service_data_dir, member=summary
     )
+
+
+RADIO_MIN_YEAR = 2000
+RADIO_MAX_YEAR = 2100
+
+
+@router.get("/{service}/radio/members")
+async def radio_members_route(service: str) -> dict:
+    """The radio's member list with voice counts and lengths (``radio``)."""
+    service_data_dir = _service_dir(service)
+    return await radio.radio_members(service, service_data_dir)
+
+
+@router.get("/{service}/radio/program")
+async def radio_program_route(
+    service: str,
+    program: str = Query(...),
+    member: str | None = Query(None),
+    year: int | None = Query(None),
+) -> dict:
+    """One radio program's tracks (``radio.radio_program``).
+
+    ``program`` is one of ``radio.PROGRAMS`` (400 otherwise); ``year`` picks
+    the chronological program's year and must be 2000-2100 (400 otherwise);
+    ``member`` (chat path of any of her rooms) limits it to one person.
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    if program not in radio.PROGRAMS:
+        logger.warning("memories.api.reject", reason="bad_program")
+        raise HTTPException(status_code=400, detail="Invalid program")
+    if year is not None and not RADIO_MIN_YEAR <= year <= RADIO_MAX_YEAR:
+        logger.warning("memories.api.reject", reason="year_range", year=year)
+        raise HTTPException(status_code=400, detail="Year out of range")
+    summary = await _optional_person(service_data_dir, member, "radio")
+    return await radio.radio_program(
+        service, service_data_dir, program=program, member=summary, year=year, now=now
+    )
+
+
+@router.get("/{service}/radio/cassettes")
+async def radio_cassettes_route(service: str, member: str | None = Query(None)) -> dict:
+    """One cassette per year with voices, oldest first (``radio.radio_cassettes``)."""
+    service_data_dir = _service_dir(service)
+    summary = await _optional_person(service_data_dir, member, "radio")
+    return await radio.radio_cassettes(service, service_data_dir, member=summary)
 
 
 @router.get("/{service}/hub")
