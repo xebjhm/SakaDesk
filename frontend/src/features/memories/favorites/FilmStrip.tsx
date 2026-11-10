@@ -89,7 +89,9 @@ interface StripProps {
 /**
  * The loaded strip around `index`, in a focusable container. After every focus change, if the
  * keyboard focus left the dialog (a clicked neighbour frame became the focus and was replaced) or
- * sits on a button the edge just disabled, it moves to the container, so ← / → keep working.
+ * sits on a button the edge just disabled, it moves to the container; after any other change in
+ * the strip (▶ swapped for the voice player), a focus dropped to <body> comes back to it too, so
+ * ← / → keep working.
  */
 const Strip: React.FC<StripProps> = ({ day, index, setIndex, from, onClose }) => {
     const { t } = useTranslation();
@@ -106,6 +108,20 @@ const Strip: React.FC<StripProps> = ({ day, index, setIndex, from, onClose }) =>
         const stranded = active instanceof HTMLButtonElement && active.disabled;
         if (lost || stranded) el.focus({ preventScroll: true });
     }, [index]);
+
+    // Any swap inside the strip (▶ replaced by the player, a frame remounting) can remove the
+    // focused element; browsers then drop focus to <body> without an event we could catch. After
+    // every change in the strip, a focus left on <body> (or nowhere) comes back to the container.
+    useEffect(() => {
+        const el = root.current;
+        if (!el || typeof MutationObserver === 'undefined') return undefined;
+        const observer = new MutationObserver(() => {
+            const active = document.activeElement;
+            if ((!active || active === document.body) && el.isConnected) el.focus({ preventScroll: true });
+        });
+        observer.observe(el, { childList: true, subtree: true });
+        return () => observer.disconnect();
+    }, []);
 
     if (!focus) return null;
     const nameOf = (m: DayMessage) => messageName(m, day.members.find((p) => p.person_key === m.person_key)?.name);

@@ -192,4 +192,24 @@ describe('FilmStrip', () => {
         rerender(1);
         expect(focused()).toHaveTextContent('メッセージ1');
     });
+
+    it('keeps the keys working after ▶ swaps the focused voice frame for the player', async () => {
+        vi.mocked(fetchDay).mockResolvedValue(dayPayload({
+            members: [MIKU],
+            messages: [
+                dayMessage(MIKU, { id: 1, ts: '2024-09-14T01:00:00Z', text: 'まえ' }),
+                dayMessage(MIKU, {
+                    id: 2, ts: '2024-09-14T02:00:00Z', type: 'voice', text: null, duration_s: 30,
+                    media_url: '/api/content/media/hinatazaka46/x/voice/2.m4a',
+                }),
+            ],
+        }));
+        renderStrip(2);
+        await screen.findByTestId('film-focus');
+        await userEvent.click(within(focused()).getByRole('button', { name: 'Play voice' }));
+        expect(focused().querySelector('audio')).not.toBeNull();
+        expect(inDialog()).toBe(true);
+        await userEvent.keyboard('{ArrowLeft}');
+        expect(focused()).toHaveTextContent('まえ');
+    });
 });
