@@ -114,18 +114,24 @@ describe('MonthRail', () => {
         expect(screen.getByText('2024')).toBeInTheDocument();
     });
 
-    it('zooms around the pointer after a dwell, which changes the mapping', () => {
-        vi.useFakeTimers();
-        // 60 months so the magnified window is narrower than the rail
-        const many = Array.from({ length: 60 }, (_, i) => ({ month: `20${20 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`, count: 1 + i }));
+    /** 60 months, 5 px apart (close enough to zoom). */
+    function setupMany(index = 59) {
+        const many = Array.from({ length: 60 }, (_, i) => ({
+            month: `20${20 + Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`, count: 1 + i,
+        }));
         const onSelect = vi.fn();
-        render(<MonthRail months={many} index={59} onSelect={onSelect} label={(m) => m} />);
+        render(<MonthRail months={many} index={index} onSelect={onSelect} label={(m) => m} />);
         const rail = screen.getByRole('slider');
-        const width = 2 * RAIL_PADDING + 59 * 10;
+        const width = 2 * RAIL_PADDING + 59 * 5;
         rail.getBoundingClientRect = () =>
             ({ top: 0, left: 0, right: width, bottom: 96, width, height: 96, x: 0, y: 0, toJSON: () => ({}) }) as DOMRect;
-        const at = (i: number) => RAIL_PADDING + i * 10;
-        const lens = screen.getByTestId('month-rail-lens');
+        const at = (i: number) => RAIL_PADDING + i * 5;
+        return { rail, onSelect, at, lens: screen.getByTestId('month-rail-lens') };
+    }
+
+    it('zooms around the pointer after a dwell, which changes the mapping', () => {
+        vi.useFakeTimers();
+        const { rail, onSelect, at, lens } = setupMany();
         expect(lens).toHaveClass('opacity-0');
         fireEvent.pointerMove(rail, { clientX: at(30), pointerId: 1 });
         act(() => { vi.advanceTimersByTime(800); });
@@ -136,5 +142,72 @@ describe('MonthRail', () => {
         fireEvent.pointerUp(rail, { pointerId: 1 });
         fireEvent.pointerLeave(rail, { pointerId: 1 });
         expect(lens).toHaveClass('opacity-0');
+    });
+
+    it('zooms gently: the magnified months take about half the rail, the rest stays readable', () => {
+        vi.useFakeTimers();
+        const { rail, at } = setupMany();
+        fireEvent.pointerMove(rail, { clientX: at(30), pointerId: 1 });
+        act(() => { vi.advanceTimersByTime(800); });
+        const lefts = screen.getAllByTestId('month-rail-bar').map((b) => b.style.left);
+        const pos = (css: string) => Number(/\+ ([\d.e-]+) \*/.exec(css)?.[1]);
+        const gaps = lefts.slice(1).map((l, i) => pos(l) - pos(lefts[i]));
+        // no folds, no gap wider than the magnified step, no month squeezed to nothing
+        for (const gap of gaps) {
+            expect(gap).toBeGreaterThan(0.005);
+            expect(gap).toBeLessThan(0.05);
+        }
+    });
+
+    it('follows the pointer while zoomed', () => {
+        vi.useFakeTimers();
+        const { rail, at, lens } = setupMany();
+        fireEvent.pointerMove(rail, { clientX: at(30), pointerId: 1 });
+        act(() => { vi.advanceTimersByTime(800); });
+        const before = lens.style.left;
+        fireEvent.pointerMove(rail, { clientX: at(40), pointerId: 1 });
+        expect(lens.style.left).not.toBe(before);
+        expect(lens).toHaveClass('opacity-100');
+    });
+
+    it('does not zoom when the months are far enough apart to pick', () => {
+        vi.useFakeTimers();
+        const { rail } = setup(); // 40 px per month
+        fireEvent.pointerMove(rail, { clientX: xOf(6), pointerId: 1 });
+        act(() => { vi.advanceTimersByTime(2000); });
+        expect(screen.getByTestId('month-rail-lens')).toHaveClass('opacity-0');
+    });
+
+    it('does not zoom in the middle of a drag', () => {
+        vi.useFakeTimers();
+        const { rail, at, lens } = setupMany();
+        fireEvent.pointerDown(rail, { button: 0, clientX: at(30), pointerId: 1 });
+        fireEvent.pointerMove(rail, { clientX: at(31), pointerId: 1 });
+        act(() => { vi.advanceTimersByTime(2000); });
+        expect(lens).toHaveClass('opacity-0');
+        fireEvent.pointerUp(rail, { pointerId: 1 });
+    });
+
+    it('sizes the lens to the magnified months', () => {
+        vi.useFakeTimers();
+        const { rail, at, lens } = setupMany();
+        fireEvent.pointerMove(rail, { clientX: at(30), pointerId: 1 });
+        act(() => { vi.advanceTimersByTime(800); });
+        expect(lens.style.width).toMatch(/^calc\(/);
+    });
+
+    it('forgets a wheel remainder after a pause or a turn', () => {
+        vi.useFakeTimers();
+        const { rail, onSelect } = setup(5);
+        fireEvent.wheel(rail, { deltaY: 30 });
+        fireEvent.wheel(rail, { deltaY: -30 }); // turned: starts again from -30
+        expect(onSelect).not.toHaveBeenCalled();
+        fireEvent.wheel(rail, { deltaY: -30 });
+        expect(onSelect).toHaveBeenLastCalledWith(4);
+        onSelect.mockClear();
+        fireEvent.wheel(rail, { deltaY: 30 });
+        act(() => { vi.advanceTimersByTime(300); });
+        fireEvent.wheel(rail, { deltaY: 30 }); // the earlier 30 is forgotten
+        expect(onSelect).not.toHaveBeenCalled();
     });
 });
