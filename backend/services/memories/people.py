@@ -337,6 +337,9 @@ def message_ref(
 async def attach_texts(sdir: Path, refs: list[dict]) -> None:
     """Fill ``text`` and ``caption`` of ``refs`` in place.
 
+    Every ref must belong to ``sdir``'s service: refs are grouped by room
+    only, and two services can share a relative room path, so a caller that
+    mixes services calls this once per service with its own ``sdir``.
     One ``load_texts`` per room (in a worker), for the refs' own ids and
     caption ids only. An empty text becomes ``None``. Refs whose id (or
     caption id) is not in ``messages.json`` keep ``None`` and are counted in
