@@ -34,6 +34,10 @@ export const MEMORIES_FUN_KEYS: string[] = [
     'memories.gacha.reason.lastMessage', 'memories.gacha.reason.nickname', 'memories.gacha.reason.favorite',
     'memories.gacha.reason.voice', 'memories.gacha.reason.message', 'memories.gacha.reason.photo',
     'memories.gacha.refreshFailed',
+    // F11: the calendar album and the album cover choice
+    'memories.calendar.title', 'memories.calendar.all', 'memories.calendar.members', 'memories.calendar.prevMonth',
+    'memories.calendar.nextMonth', 'memories.calendar.pickMonth', 'memories.calendar.empty', 'memories.calendar.memberFilter',
+    'memories.album.setCover', 'memories.album.resetCover', 'memories.album.coverFailed',
 ];
 
 /** Fun keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
@@ -43,6 +47,8 @@ export const MEMORIES_FUN_EN_PLURALS: string[] = [
     'memories.radio.trackCount', 'memories.radio.sleepMinutes',
     // F10
     'memories.gacha.left',
+    // F11
+    'memories.calendar.members',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -134,6 +140,16 @@ describe('memories fun strings', () => {
             'memories.gacha.reason.message': 'メッセージ',
             'memories.gacha.reason.photo': '写真',
             'memories.gacha.refreshFailed': 'ガチャの結果を確かめられませんでした',
+            'memories.calendar.title': 'カレンダー',
+            'memories.calendar.all': '全員',
+            'memories.calendar.members': '{{count}} 人のメンバー',
+            'memories.calendar.prevMonth': '前の月',
+            'memories.calendar.nextMonth': '次の月',
+            'memories.calendar.pickMonth': '年月をえらぶ',
+            'memories.calendar.empty': 'この月の思い出は、まだありません。',
+            'memories.album.setCover': 'この月の表紙にする',
+            'memories.album.resetCover': '表紙を自動にもどす',
+            'memories.album.coverFailed': '表紙を変えられませんでした',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, key), key).toBe(text);
     });

@@ -817,7 +817,10 @@
       "monthLabel": "{{monthName}} {{year}}",
       "ribbonLabel": "Go to {{monthName}} {{year}}",
       "ribbon": "Months by colour",
-      "empty": "There are no photos to lay out here yet."
+      "empty": "There are no photos to lay out here yet.",
+      "setCover": "Make this the month cover",
+      "resetCover": "Choose the cover automatically",
+      "coverFailed": "Couldn't change the cover"
     },
     "memoir": {
       "title": "Member memories",
@@ -1051,6 +1054,17 @@
         "photo": "Photo"
       },
       "refreshFailed": "Couldn't check the gacha result"
+    },
+    "calendar": {
+      "title": "Calendar",
+      "all": "Everyone",
+      "members": "{{count}} member",
+      "members_other": "{{count}} members",
+      "prevMonth": "Previous month",
+      "nextMonth": "Next month",
+      "pickMonth": "Choose year and month",
+      "empty": "No memories from this month yet.",
+      "memberFilter": "Filter by member"
     }
   },
   "recap": {

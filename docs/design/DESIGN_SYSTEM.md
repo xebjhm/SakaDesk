@@ -849,6 +849,19 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   one `tone="star"`. The ribbon on the right is a scrubber (click, drag, ↑ / ↓ / Home / End, one
   Tab stop) whose segments share its height; its jumps are instant (never an animated scroll
   through every band) and the tilt is static under reduced motion.
+  Cover choice: a picture / video tile's context menu (right-click, the context-menu key or
+  Shift+F10) is a point `Menu` with 「この月の表紙にする」; a cover the fan chose (rule `override`)
+  takes focus and its menu offers 「表紙を自動にもどす」. A failure shows the dark inline toast
+  (`bg-toast text-viewer`, `role="status"`) over the pane.
+- **The calendar album** (`features/memories/calendar/`): the date-search calendar's grid and
+  picker (`core/calendar/monthGrid.ts`, `MonthYearPicker`, shared with `CalendarModal`) filling
+  the pane: a weekday header in the calendar tones, then 6 × 7 `rounded-md` cells in `grid-rows-6`
+  (no page scroll at the smallest window). A day with messages is a `bg-card shadow-card` button
+  under its best photo (thumbnail route, lazy) with the date (calendar tone) and the holiday name
+  (`lang="ja"`, truncated) on `bg-frost` chips, and at most five `bg-card ring-strong` member dots;
+  the people count is never printed, only in the accessible name. Days without messages are inert
+  `bg-sunken` cells, neighbouring months' days are faded (`opacity-60`). ‹ / › step to the older /
+  newer month; the member filter is a `Select`.
 - **The favorites board** (`features/memories/favorites/`): a `bg-memories-cork` board scrolling
   inside the pane. Text favourites are `bg-memories-paper` notes (her words clamped to six
   lines), photos and videos are paper prints with her words as the caption, voices are paper

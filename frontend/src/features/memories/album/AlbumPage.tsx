@@ -1,16 +1,16 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ImageIcon, Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { EmptyState, Pill } from '../../../design/primitives';
 import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
-import { fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonths } from '../api';
+import { deleteAlbumCover, fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonths, putAlbumCover } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
 import { LoadState } from '../shared/LoadState';
 import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { messageName } from '../shared/nameFromRoom';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
-import type { AlbumKind, AlbumMonthSummary, MemoriesCountedMember, MemoryMessage } from '../types';
+import type { AlbumKind, AlbumMonthSummary, AlbumMonthsPayload, MemoriesCountedMember, MemoryMessage } from '../types';
 import { ColorRibbon, type RibbonMonth } from './ColorRibbon';
 import { MonthSection } from './MonthSection';
 import { useAlbumWindow } from './useAlbumWindow';
@@ -35,14 +35,19 @@ interface AlbumGridProps {
     months: AlbumMonthSummary[];
     colors: Record<string, string | null>;
     nameOf: (m: MemoryMessage) => string;
+    onSetCover: (month: string, item: MemoryMessage) => void;
+    onResetCover: (month: string) => void;
 }
+
+/** How long the cover-failure toast stays (ms). */
+const TOAST_MS = 4000;
 
 /**
  * The month bands in the pane's own scroll container, with the colour ribbon on the right edge.
  * Loading and windowing are `useAlbumWindow`'s: bands far from the viewport release their grids,
  * and a ribbon jump scrolls instantly and loads only where it lands.
  */
-const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, colors, nameOf }) => {
+const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, colors, nameOf, onSetCover, onResetCover }) => {
     const scroller = useRef<HTMLDivElement>(null);
     const monthKeys = useMemo(() => months.map((m) => m.month), [months]);
     const win = useAlbumWindow(monthKeys, scroller);
@@ -69,6 +74,8 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
                         registerRef={win.registerRef}
                         onLoaded={win.onLoaded}
                         onSettled={win.onSettled}
+                        onSetCover={onSetCover}
+                        onResetCover={onResetCover}
                     />
                 ))}
             </div>
@@ -84,18 +91,62 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
  * `memories_toggle` `album_filter`), the month bands newest first in the pane's own scroll
  * container (each grid loads lazily) and the colour ribbon. Picking a person moves the route
  * (`go`), which refetches the months and the ribbon.
+ * Cover choice (spec 8): a tile's context menu sets the month cover (`putAlbumCover`, for the
+ * person on screen or 全員), an override cover's menu clears it (`deleteAlbumCover`). Either
+ * way the months refetch (`coverVersion`; the bands stay on screen meanwhile), also after a
+ * failure, since a timed-out write may have landed: never retried. Success logs
+ * `memories_toggle` `album_cover` (`on` = set, `off` = cleared); a failure logs `off` and shows
+ * the inline toast.
  */
 export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     const { t } = useTranslation();
     const member = route.memberPath;
     const [kind, setKind] = useState<AlbumKind>('all');
+    const [coverVersion, setCoverVersion] = useState(0);
+    // The id of the latest cover failure (0 = none): the toast shows while it is set.
+    const [coverFailure, setCoverFailure] = useState(0);
+    const write = useRef<AbortController | null>(null);
+    useEffect(() => () => write.current?.abort(), []);
+    useEffect(() => {
+        if (!coverFailure) return undefined;
+        const timer = setTimeout(() => setCoverFailure(0), TOAST_MS);
+        return () => clearTimeout(timer);
+    }, [coverFailure]);
 
     const members = useMemoriesQuery('album_members', (signal) => fetchAlbumMembers(service, signal), [service], {
         count: (d) => d.members.length,
     });
-    const months = useMemoriesQuery('album', (signal) => fetchAlbumMonths(service, { member, kind }, signal), [service, member, kind], {
+    const months = useMemoriesQuery('album', (signal) => fetchAlbumMonths(service, { member, kind }, signal), [service, member, kind, coverVersion], {
         count: (d) => d.months.length,
     });
+    // The last months of this person and filter, kept while a cover change refetches them.
+    const monthsKey = `${member ?? ''}|${kind}`;
+    const [kept, setKept] = useState<{ key: string; data: AlbumMonthsPayload } | null>(null);
+    if (months.data && kept?.data !== months.data) setKept({ key: monthsKey, data: months.data });
+    const shownMonths = months.data ?? (months.status === 'loading' && kept?.key === monthsKey ? kept.data : null);
+
+    const changeCover = useCallback(async (on: boolean, run: (signal: AbortSignal) => Promise<void>) => {
+        write.current?.abort();
+        const controller = new AbortController();
+        write.current = controller;
+        try {
+            await run(controller.signal);
+            if (controller.signal.aborted) return;
+            logMemoriesToggle('album_cover', on);
+            setCoverFailure(0);
+        } catch {
+            if (controller.signal.aborted) return;
+            logMemoriesToggle('album_cover', false);
+            setCoverFailure((n) => n + 1);
+        }
+        setCoverVersion((n) => n + 1);
+    }, []);
+    const onSetCover = useCallback((month: string, item: MemoryMessage) => {
+        void changeCover(true, (signal) => putAlbumCover(service, { member: member ?? null, month, room: item.room, id: item.id }, signal));
+    }, [changeCover, service, member]);
+    const onResetCover = useCallback((month: string) => {
+        void changeCover(false, (signal) => deleteAlbumCover(service, { month, member }, signal));
+    }, [changeCover, service, member]);
     const colors = useMemoriesQuery('album_colors', (signal) => fetchAlbumColors(service, member, signal), [service, member], {
         count: (d) => Object.keys(d.colors).length,
     });
@@ -127,9 +178,9 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     };
 
     let body: React.ReactNode;
-    if (months.status !== 'ready' || !months.data) {
+    if (!shownMonths) {
         body = <LoadState status={months.status === 'error' ? 'error' : 'loading'} onRetry={months.retry} />;
-    } else if (!months.data.months.length) {
+    } else if (!shownMonths.months.length) {
         body = (
             <div className="flex flex-1 items-center justify-center">
                 <EmptyState icon={<ImageIcon />} title={t('memories.album.title')} description={t('memories.album.empty')} />
@@ -142,9 +193,11 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
                 service={service}
                 member={member}
                 kind={kind}
-                months={months.data.months}
+                months={shownMonths.months}
                 colors={colors.data?.colors ?? {}}
                 nameOf={nameOf}
+                onSetCover={onSetCover}
+                onResetCover={onResetCover}
             />
         );
     }
@@ -161,7 +214,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
                     allLabel={t('memories.common.all')}
                     allTrailing={total > 0 ? total : undefined}
                 />
-                <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+                <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                     <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2">
                         {FILTERS.map((f) => (
                             <Pill
@@ -178,6 +231,14 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
                         ))}
                     </div>
                     {body}
+                    {coverFailure > 0 && (
+                        <div
+                            role="status"
+                            className="absolute left-1/2 top-4 z-10 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer animate-reveal motion-reduce:animate-none"
+                        >
+                            {t('memories.album.coverFailed')}
+                        </div>
+                    )}
                 </div>
             </div>
         </div>

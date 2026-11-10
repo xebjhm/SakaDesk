@@ -801,7 +801,10 @@
       "monthLabel": "{{year}}年{{month}}月",
       "ribbonLabel": "去 {{year}}年{{month}}月",
       "ribbon": "每個月嘅顏色",
-      "empty": "呢度仲未有相可以排出嚟。"
+      "empty": "呢度仲未有相可以排出嚟。",
+      "setCover": "設做呢個月嘅封面",
+      "resetCover": "封面轉返自動",
+      "coverFailed": "換唔到封面"
     },
     "memoir": {
       "title": "成員回憶",
@@ -1029,6 +1032,16 @@
         "photo": "相片"
       },
       "refreshFailed": "確認唔到扭蛋結果"
+    },
+    "calendar": {
+      "title": "月曆",
+      "all": "全員",
+      "members": "{{count}} 位成員",
+      "prevMonth": "上個月",
+      "nextMonth": "下個月",
+      "pickMonth": "揀年月",
+      "empty": "呢個月仲未有回憶。",
+      "memberFilter": "按成員篩選"
     }
   },
   "recap": {

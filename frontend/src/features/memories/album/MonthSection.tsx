@@ -31,6 +31,10 @@ interface MonthSectionProps {
     onLoaded: (month: string, data: AlbumMonthPayload) => void;
     /** The month's request finished (ready or error). */
     onSettled: (month: string) => void;
+    /** 「この月の表紙にする」 on a picture / video tile of this month. */
+    onSetCover?: (month: string, item: MemoryMessage) => void;
+    /** 「表紙を自動にもどす」 on this month's cover (offered when its rule is `override`). */
+    onResetCover?: (month: string) => void;
 }
 
 /** The band tint from the cover photo (the data-driven exception, DESIGN_SYSTEM.md). */
@@ -60,9 +64,10 @@ interface MonthGridProps {
     nameOf: (m: MemoryMessage) => string;
     label: string;
     sepia: string;
+    onSetCover?: (item: MemoryMessage) => void;
 }
 
-const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia }) => {
+const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia, onSetCover }) => {
     const { t, i18n } = useTranslation();
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
     const entries = useMemo(() => gridEntries(data), [data]);
@@ -96,6 +101,7 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia 
                             pinned={pinFavorites && entry.item.favorited}
                             label={entry.item.caption ?? entry.item.text ?? dateLabel.format(new Date(entry.item.ts))}
                             onOpen={onOpen}
+                            onSetCover={onSetCover}
                         />
                     )))}
             </div>
@@ -118,10 +124,12 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia 
  * when the polaroid carries her words, else the polaroid's own caption (never shown twice).
  * The grid is fetched once `requested` and mounted only while `live`; a band that is not live
  * keeps its last measured height, so the scroll position holds while its grid is released.
+ * With `onSetCover` / `onResetCover` the tiles and the cover carry the cover-choice context menus
+ * (spec 8: a user override comes first).
  * Memoised: bands re-render only when their own props change.
  */
 export const MonthSection = React.memo<MonthSectionProps>(({
-    service, summary, member, kind, data, requested, live, nameOf, registerRef, onLoaded, onSettled,
+    service, summary, member, kind, data, requested, live, nameOf, registerRef, onLoaded, onSettled, onSetCover, onResetCover,
 }) => {
     const { t, i18n } = useTranslation();
     const month = summary.month;
@@ -132,6 +140,14 @@ export const MonthSection = React.memo<MonthSectionProps>(({
         own.current = el;
         registerRef(month, el);
     }, [registerRef, month]);
+    const setCover = useMemo(
+        () => (onSetCover ? (item: MemoryMessage) => onSetCover(month, item) : undefined),
+        [onSetCover, month],
+    );
+    const resetCover = useMemo(
+        () => (onResetCover && summary.cover_rule === 'override' ? () => onResetCover(month) : undefined),
+        [onResetCover, summary.cover_rule, month],
+    );
     const height = useRef<number | null>(null);
     const showGrid = live && data !== undefined;
     useLayoutEffect(() => {
@@ -144,7 +160,7 @@ export const MonthSection = React.memo<MonthSectionProps>(({
     if (!showGrid && height.current) style.minHeight = height.current;
 
     let body: React.ReactNode;
-    if (showGrid) body = <MonthGrid data={data} kind={kind} nameOf={nameOf} label={label} sepia={sepia} />;
+    if (showGrid) body = <MonthGrid data={data} kind={kind} nameOf={nameOf} label={label} sepia={sepia} onSetCover={setCover} />;
     else if (live && requested) {
         body = <MonthLoader service={service} month={month} member={member} kind={kind} onLoaded={onLoaded} onSettled={onSettled} />;
     } else body = <div aria-hidden="true" data-testid="album-month-placeholder" className="min-h-64 flex-1" />;
@@ -160,7 +176,7 @@ export const MonthSection = React.memo<MonthSectionProps>(({
         >
             {hasWords && <h2 className="mb-3 font-display text-title text-primary">{label}</h2>}
             <div className="flex items-start gap-4">
-                <PolaroidCover cover={summary.cover} label={label} sepia={sepia} />
+                <PolaroidCover cover={summary.cover} label={label} sepia={sepia} onResetCover={resetCover} />
                 {body}
             </div>
         </section>

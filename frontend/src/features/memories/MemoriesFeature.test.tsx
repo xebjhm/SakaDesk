@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../__tests__/mocks/server';
@@ -40,6 +40,13 @@ beforeEach(() => {
         http.get('/api/memories/:service/radio/program', () => HttpResponse.json({ program: 'oyasumi', programs: [], years: [], tracks: [] })),
         // The gacha page (F10) loads its state.
         http.get('/api/memories/:service/gacha', () => HttpResponse.json({ available: false, pulls_left: 3, max_pulls: 3, today: [], history: [] })),
+        // The calendar album (F11) loads its months, the month and the member filter; the day page its day.
+        http.get('/api/memories/:service/calendar/months', () => HttpResponse.json({ months: ['2024-09'] })),
+        http.get('/api/memories/:service/calendar/:month', ({ params }) => HttpResponse.json({
+            month: params.month,
+            days: [{ date: `${String(params.month)}-14`, members: 2, photo: null, photo_rule: null }],
+        })),
+        http.get('/api/memories/:service/day', () => HttpResponse.json({ date: '2024-09-14', members: [], messages: [] })),
         // The memoir page (C11) loads its member list.
         http.get('/api/memories/:service/memoir/members', () => HttpResponse.json({ members: [] })),
         http.get('/api/memories/:service/recap/years', () => (
@@ -158,14 +165,14 @@ describe('Memories feature', () => {
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_page', { target: 'radio' });
     });
 
-    describe('fun-wave routes (placeholders until their tasks)', () => {
+    describe('fun-wave routes', () => {
         const FUN = [
             { route: { page: 'calendar', month: '2024-09' }, testId: 'memories-page-calendar', title: 'Calendar', code: 'calendar' },
             // JST midnight on Jan 1: a title formatted in UTC would read "Dec 31, 2023".
             { route: { page: 'day', date: '2024-01-01' }, testId: 'memories-page-day', title: 'Jan 1, 2024', code: 'day' },
         ] as const;
 
-        it.each(FUN)('opens the $route.page placeholder, logs its snake_case code and returns home', async ({ route, testId, title, code }) => {
+        it.each(FUN)('opens the $route.page page, logs its snake_case code and returns home', async ({ route, testId, title, code }) => {
             vi.mocked(clientLog).mockClear();
             render(<MemoriesFeature service="hinatazaka46" initialRoute={route} />);
             expect(screen.getByTestId(testId)).toHaveAttribute('data-service', 'hinatazaka46');
@@ -187,6 +194,18 @@ describe('Memories feature', () => {
             render(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'day', date: '2024-09-14', from: 'calendar' }} />);
             await userEvent.click(screen.getByRole('button', { name: 'Back' }));
             expect(screen.getByTestId('memories-page-calendar')).toBeInTheDocument();
+            // ... on the month the day belongs to.
+            expect(await screen.findByRole('button', { name: /September 2024/ })).toBeInTheDocument();
+        });
+
+        it('a calendar day opens the day page and logs the day page code', async () => {
+            vi.mocked(clientLog).mockClear();
+            render(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'calendar', month: '2024-09' }} />);
+            const cell = await screen.findByTestId('calendar-cell-2024-09-14');
+            await userEvent.click(await within(cell).findByRole('button'));
+            expect(screen.getByTestId('memories-page-day')).toBeInTheDocument();
+            expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_page', { target: 'day' });
+            expect(screen.getByTestId('day-view')).toBeInTheDocument();
         });
 
         it('the memoir accepts the day24 tab and draws its placeholder', async () => {

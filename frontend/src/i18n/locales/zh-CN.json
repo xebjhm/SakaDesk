@@ -801,7 +801,10 @@
       "monthLabel": "{{year}}年{{month}}月",
       "ribbonLabel": "前往 {{year}}年{{month}}月",
       "ribbon": "每月的颜色",
-      "empty": "这里还没有可以排列的照片。"
+      "empty": "这里还没有可以排列的照片。",
+      "setCover": "设为这个月的封面",
+      "resetCover": "封面改回自动",
+      "coverFailed": "无法更换封面"
     },
     "memoir": {
       "title": "成员回忆",
@@ -1029,6 +1032,16 @@
         "photo": "照片"
       },
       "refreshFailed": "无法确认扭蛋结果"
+    },
+    "calendar": {
+      "title": "日历",
+      "all": "全员",
+      "members": "{{count}} 位成员",
+      "prevMonth": "上个月",
+      "nextMonth": "下个月",
+      "pickMonth": "选择年月",
+      "empty": "这个月还没有回忆。",
+      "memberFilter": "按成员筛选"
     }
   },
   "recap": {

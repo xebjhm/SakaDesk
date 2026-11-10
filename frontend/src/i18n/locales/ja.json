@@ -801,7 +801,10 @@
       "monthLabel": "{{year}}年{{month}}月",
       "ribbonLabel": "{{year}}年{{month}}月へ",
       "ribbon": "月の色",
-      "empty": "ここに並べる写真は、まだありません。"
+      "empty": "ここに並べる写真は、まだありません。",
+      "setCover": "この月の表紙にする",
+      "resetCover": "表紙を自動にもどす",
+      "coverFailed": "表紙を変えられませんでした"
     },
     "memoir": {
       "title": "メンバーの思い出",
@@ -1029,6 +1032,16 @@
         "photo": "写真"
       },
       "refreshFailed": "ガチャの結果を確かめられませんでした"
+    },
+    "calendar": {
+      "title": "カレンダー",
+      "all": "全員",
+      "members": "{{count}} 人のメンバー",
+      "prevMonth": "前の月",
+      "nextMonth": "次の月",
+      "pickMonth": "年月をえらぶ",
+      "empty": "この月の思い出は、まだありません。",
+      "memberFilter": "メンバーでしぼる"
     }
   },
   "recap": {

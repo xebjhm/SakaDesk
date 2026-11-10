@@ -15,11 +15,15 @@ vi.mock('../api', async (importOriginal) => {
         fetchAlbumMonths: vi.fn(),
         fetchAlbumMonth: vi.fn(),
         fetchAlbumColors: vi.fn(),
+        putAlbumCover: vi.fn(),
+        deleteAlbumCover: vi.fn(),
     };
 });
 import { clientLog } from '../../../utils/clientLog';
 import { openChat } from '../../../shell/openChat';
-import { fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonth, fetchAlbumMonths } from '../api';
+import {
+    deleteAlbumCover, fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonth, fetchAlbumMonths, MemoriesFetchError, MemoriesTimeoutError, putAlbumCover,
+} from '../api';
 import { NicknameProvider } from '../shared/useNickname';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import { AlbumPage } from './AlbumPage';
@@ -39,6 +43,8 @@ beforeEach(() => {
     vi.mocked(fetchAlbumMonths).mockReset().mockResolvedValue(monthsPayload());
     vi.mocked(fetchAlbumMonth).mockReset().mockImplementation(async (_s, month) => monthPayload(month));
     vi.mocked(fetchAlbumColors).mockReset().mockResolvedValue(colorsPayload());
+    vi.mocked(putAlbumCover).mockReset().mockResolvedValue(undefined);
+    vi.mocked(deleteAlbumCover).mockReset().mockResolvedValue(undefined);
 });
 afterEach(() => {
     vi.useRealTimers();
@@ -370,5 +376,82 @@ describe('AlbumPage', () => {
         expect(within(bare).getAllByText('October 2026')).toHaveLength(1);
         expect(within(bare).getByRole('heading', { name: 'October 2026' })).toBeInTheDocument();
         expect(within(section('2026-09')).getByRole('heading', { name: 'September 2026' })).toBeInTheDocument();
+    });
+});
+
+describe('AlbumPage cover choice', () => {
+    const tile = async (month: string, id: number) => within(await screen.findByTestId(`album-month-${month}`)).findByTestId(`album-tile-${id}`);
+
+    it('right-click on a photo offers 「この月の表紙にする」, sets the cover and refetches the months', async () => {
+        renderAlbum({ page: 'album', memberPath: NAO_PATH });
+        const target = await tile('2026-10', 1);
+        expect(fetchAlbumMonths).toHaveBeenCalledTimes(1);
+        fireEvent.contextMenu(target, { clientX: 40, clientY: 50 });
+        const menu = screen.getByRole('menu');
+        await userEvent.click(within(menu).getByRole('menuitem', { name: 'Make this the month cover' }));
+        expect(putAlbumCover).toHaveBeenCalledWith(
+            'hinatazaka46',
+            { member: NAO_PATH, month: '2026-10', room: 'messages/34 金村 美玖/58 金村 美玖', id: 1 },
+            expect.any(AbortSignal),
+        );
+        await waitFor(() => expect(fetchAlbumMonths).toHaveBeenCalledTimes(2));
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'album_cover', outcome: 'on' });
+        // The bands stay while the months refetch (no flash back to the loading line).
+        expect(screen.getByTestId('album-month-2026-10')).toBeInTheDocument();
+    });
+
+    it('sends a null member for the 全員 album', async () => {
+        renderAlbum();
+        fireEvent.contextMenu(await tile('2026-10', 2));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Make this the month cover' }));
+        expect(putAlbumCover).toHaveBeenCalledWith('hinatazaka46', expect.objectContaining({ member: null, id: 2 }), expect.any(AbortSignal));
+    });
+
+    it('opens the menu from the keyboard (Shift+F10 and the context-menu key)', async () => {
+        renderAlbum();
+        const target = await tile('2026-10', 1);
+        target.focus();
+        await userEvent.keyboard('{Shift>}{F10}{/Shift}');
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+        await userEvent.keyboard('{Escape}');
+        expect(screen.queryByRole('menu')).toBeNull();
+        target.focus();
+        fireEvent.keyDown(target, { key: 'ContextMenu' });
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+    });
+
+    it('offers 「表紙を自動にもどす」 on an override cover only, and clears it', async () => {
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([
+            monthSummary('2026-10', { cover_rule: 'override' }),
+            monthSummary('2022-05', { cover_color: null }),
+        ]));
+        renderAlbum();
+        const auto = within(await screen.findByTestId('album-month-2022-05')).getByTestId('album-polaroid');
+        fireEvent.contextMenu(auto);
+        expect(screen.queryByRole('menu')).toBeNull();
+
+        const chosen = within(screen.getByTestId('album-month-2026-10')).getByTestId('album-polaroid');
+        fireEvent.contextMenu(chosen);
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Choose the cover automatically' }));
+        expect(deleteAlbumCover).toHaveBeenCalledWith('hinatazaka46', { month: '2026-10', member: undefined }, expect.any(AbortSignal));
+        await waitFor(() => expect(fetchAlbumMonths).toHaveBeenCalledTimes(2));
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'album_cover', outcome: 'off' });
+    });
+
+    it.each([
+        ['a rejected write', () => new MemoriesFetchError(400, 'not_in_month')],
+        ['a timed-out write (which may have landed: refetch, never retry)', () => new MemoriesTimeoutError()],
+    ])('%s shows the inline toast, logs album_cover off and refetches', async (_name, error) => {
+        vi.mocked(putAlbumCover).mockRejectedValue(error());
+        renderAlbum();
+        fireEvent.contextMenu(await tile('2026-10', 1));
+        vi.mocked(clientLog).mockClear();
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Make this the month cover' }));
+        expect(await screen.findByText("Couldn't change the cover")).toHaveAttribute('role', 'status');
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'album_cover', outcome: 'off' });
+        expect(vi.mocked(clientLog)).not.toHaveBeenCalledWith('memories_toggle', { target: 'album_cover', outcome: 'on' });
+        await waitFor(() => expect(fetchAlbumMonths).toHaveBeenCalledTimes(2));
+        expect(putAlbumCover).toHaveBeenCalledTimes(1);
     });
 });
