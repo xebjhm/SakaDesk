@@ -906,6 +906,50 @@
       "saveFailed": "無法儲存圖片。",
       "replay": "再看一次",
       "open": "查看海報"
+    },
+    "share": {
+      "open": "匯出分享版",
+      "title": "匯出分享版",
+      "intro": "所有照片都會模糊後匯出。名字和頭像只有在你開啟時才會加入。",
+      "preview": "匯出預覽",
+      "styleLabel": "樣式",
+      "style": {
+        "collage": "毛玻璃拼貼",
+        "colour": "色彩紀錄"
+      },
+      "sentencesLabel": "她的話（最多兩句）",
+      "sentencesLimit": "最多選兩句，請先移除一句。",
+      "sentencesNone": "今年沒有可以匯出的話。",
+      "identityLabel": "你的資訊（只加入開啟的項目）",
+      "nickname": "加入暱稱",
+      "avatar": "加入自己的頭像",
+      "pickAvatar": "選擇圖片",
+      "changeAvatar": "更換圖片",
+      "avatarMissing": "請選擇作為頭像的圖片。",
+      "years": "加入「第{{count}}年」",
+      "footerToggle": "加入「SakaDesk」",
+      "exportGif": "GIF",
+      "exportVideo": "影片",
+      "exportPng": "圖片",
+      "progressFrames": "正在準備匯出…",
+      "progressAssemble": "正在組合 GIF…",
+      "progressRecord": "正在錄製影片…",
+      "progressLabel": "匯出進度",
+      "handedOff": "已開始匯出。",
+      "failed": "無法匯出。",
+      "tagline": "走在同一條坂道上的一年",
+      "clockLabel": "她的話語最多的時刻",
+      "clockHour": "{{hour}}點台",
+      "clockFlat": "早上、中午，還有夜晚。",
+      "photosLabel": "今年的風景",
+      "photosCount": "{{count}}張風景",
+      "greeting": {
+        "oyasumi": "晚安",
+        "arigato": "謝謝",
+        "otsukare": "辛苦了"
+      },
+      "stubsLabel": "特別的日子",
+      "footer": "SakaDesk"
     }
   }
 }

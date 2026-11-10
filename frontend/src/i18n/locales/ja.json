@@ -906,6 +906,50 @@
       "saveFailed": "保存できませんでした。",
       "replay": "もう一度見る",
       "open": "ポスターを見る"
+    },
+    "share": {
+      "open": "シェア用に書き出す",
+      "title": "シェア用に書き出す",
+      "intro": "写真はすべてぼかして書き出します。名前やアイコンは、オンにしたものだけが入ります。",
+      "preview": "書き出しのプレビュー",
+      "styleLabel": "スタイル",
+      "style": {
+        "collage": "すりガラスのコラージュ",
+        "colour": "色の記録"
+      },
+      "sentencesLabel": "彼女のことば（2つまで）",
+      "sentencesLimit": "2つまで選べます。外してから選んでください。",
+      "sentencesNone": "今年は、書き出せることばがありません。",
+      "identityLabel": "あなたの情報（オンにしたものだけ）",
+      "nickname": "ニックネームを入れる",
+      "avatar": "自分のアイコンを入れる",
+      "pickAvatar": "画像を選ぶ",
+      "changeAvatar": "画像を変える",
+      "avatarMissing": "アイコンにする画像を選んでください。",
+      "years": "「{{count}}年目」を入れる",
+      "footerToggle": "「SakaDesk」を入れる",
+      "exportGif": "GIF",
+      "exportVideo": "動画",
+      "exportPng": "画像",
+      "progressFrames": "書き出しの準備中…",
+      "progressAssemble": "GIFを組み立てています…",
+      "progressRecord": "動画を録画しています…",
+      "progressLabel": "書き出しの進み具合",
+      "handedOff": "書き出しを始めました。",
+      "failed": "書き出せませんでした。",
+      "tagline": "同じ坂道を歩いた一年",
+      "clockLabel": "彼女のことばが、いちばん多い時間",
+      "clockHour": "{{hour}}時台",
+      "clockFlat": "朝も、昼も、夜も。",
+      "photosLabel": "今年の景色",
+      "photosCount": "{{count}}枚の景色",
+      "greeting": {
+        "oyasumi": "おやすみ",
+        "arigato": "ありがとう",
+        "otsukare": "おつかれさま"
+      },
+      "stubsLabel": "特別な日",
+      "footer": "SakaDesk"
     }
   }
 }

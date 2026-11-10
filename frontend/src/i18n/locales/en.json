@@ -928,6 +928,51 @@
       "saveFailed": "Could not save the image.",
       "replay": "Watch again",
       "open": "View poster"
+    },
+    "share": {
+      "open": "Export for sharing",
+      "title": "Export for sharing",
+      "intro": "Every photo is blurred in the export. Names and icons are added only when you turn them on.",
+      "preview": "Export preview",
+      "styleLabel": "Style",
+      "style": {
+        "collage": "Frosted collage",
+        "colour": "Colour record"
+      },
+      "sentencesLabel": "Her words (up to two)",
+      "sentencesLimit": "You can pick two. Remove one first.",
+      "sentencesNone": "No words to export this year.",
+      "identityLabel": "About you (only what you turn on)",
+      "nickname": "Include your nickname",
+      "avatar": "Include your own icon",
+      "pickAvatar": "Choose an image",
+      "changeAvatar": "Change image",
+      "avatarMissing": "Choose an image for your icon.",
+      "years": "Include \"year {{count}}\"",
+      "footerToggle": "Include \"SakaDesk\"",
+      "exportGif": "GIF",
+      "exportVideo": "Video",
+      "exportPng": "Image",
+      "progressFrames": "Preparing the export…",
+      "progressAssemble": "Putting the GIF together…",
+      "progressRecord": "Recording the video…",
+      "progressLabel": "Export progress",
+      "handedOff": "The export has started.",
+      "failed": "Could not export.",
+      "tagline": "A year on the same slope",
+      "clockLabel": "The hour her words came most",
+      "clockHour": "around {{hour}}:00",
+      "clockFlat": "Morning, noon and night.",
+      "photosLabel": "This year's views",
+      "photosCount": "{{count}} view",
+      "photosCount_other": "{{count}} views",
+      "greeting": {
+        "oyasumi": "Oyasumi",
+        "arigato": "Arigato",
+        "otsukare": "Otsukare"
+      },
+      "stubsLabel": "Special days",
+      "footer": "SakaDesk"
     }
   }
 }

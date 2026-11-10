@@ -906,6 +906,50 @@
       "saveFailed": "儲存唔到圖片。",
       "replay": "再睇一次",
       "open": "睇海報"
+    },
+    "share": {
+      "open": "匯出分享版",
+      "title": "匯出分享版",
+      "intro": "所有相都會模糊咗先匯出。名同頭像只會喺你開咗先加入。",
+      "preview": "匯出預覽",
+      "styleLabel": "樣式",
+      "style": {
+        "collage": "磨砂玻璃拼貼",
+        "colour": "色彩紀錄"
+      },
+      "sentencesLabel": "佢嘅說話（最多兩句）",
+      "sentencesLimit": "最多揀兩句，請先移走一句。",
+      "sentencesNone": "今年冇可以匯出嘅說話。",
+      "identityLabel": "你嘅資料（只加入開咗嘅項目）",
+      "nickname": "加入暱稱",
+      "avatar": "加入自己嘅頭像",
+      "pickAvatar": "揀圖片",
+      "changeAvatar": "換圖片",
+      "avatarMissing": "請揀一張圖做頭像。",
+      "years": "加入「第{{count}}年」",
+      "footerToggle": "加入「SakaDesk」",
+      "exportGif": "GIF",
+      "exportVideo": "影片",
+      "exportPng": "圖片",
+      "progressFrames": "準備緊匯出…",
+      "progressAssemble": "砌緊 GIF…",
+      "progressRecord": "錄緊影片…",
+      "progressLabel": "匯出進度",
+      "handedOff": "已經開始匯出。",
+      "failed": "匯出唔到。",
+      "tagline": "行喺同一條坂道上嘅一年",
+      "clockLabel": "佢嘅說話最多嘅時間",
+      "clockHour": "{{hour}}點左右",
+      "clockFlat": "朝早、晏晝，同埋夜晚。",
+      "photosLabel": "今年嘅風景",
+      "photosCount": "{{count}}張風景",
+      "greeting": {
+        "oyasumi": "早唞",
+        "arigato": "多謝",
+        "otsukare": "辛苦晒"
+      },
+      "stubsLabel": "特別嘅日子",
+      "footer": "SakaDesk"
     }
   }
 }
