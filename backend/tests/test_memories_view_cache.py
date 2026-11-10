@@ -70,6 +70,8 @@ async def test_views_keys_and_services_are_separate(sdir):
         {"text": "彼女の言葉"},
         {"items": [{"caption": "見せたかった"}]},
         {"a": {"b": [{"sentence": "ありがとう"}]}},
+        {"tracks": [{"segments": [{"start": 0, "end": 1, "text": None}]}]},
+        {"notes": [{"note": "来年も"}]},
     ],
 )
 async def test_payload_with_text_is_not_stored(sdir, payload):
@@ -87,6 +89,10 @@ def test_contains_text():
     assert not vc.contains_text({"text": None, "caption": None, "sentence": None})
     assert not vc.contains_text([{"id": 1}, "text", {"title": "x"}])
     assert vc.contains_text([[{"text": ""}]])  # non-null counts
+    # transcript segments and capsule notes are text too (fun wave)
+    assert not vc.contains_text({"segments": None, "note": None})
+    assert vc.contains_text({"tracks": [{"segments": []}]})
+    assert vc.contains_text({"note": ""})
 
 
 @pytest.mark.asyncio

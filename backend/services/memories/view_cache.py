@@ -11,7 +11,8 @@ A row is a hit only when its ``data_hash`` equals the caller's. Payloads must
 not hold her words: views store message objects with ``text`` / ``caption``
 set to ``None`` and call ``people.attach_texts`` after the cache read. As a
 bug guard, :func:`cached_view` refuses to store a payload in which any dict has
-a non-null ``text``, ``caption`` or ``sentence`` (``outcome=uncacheable``).
+a non-null ``text``, ``caption``, ``sentence``, ``segments`` (transcript
+segments) or ``note`` (capsule note body) (``outcome=uncacheable``).
 
 Every read logs ``memories_view_cache`` with ``view`` and ``outcome``
 (``hit`` / ``miss`` / ``uncacheable`` / ``unserialisable``; the last one is a
@@ -42,7 +43,7 @@ _SCHEMA = (
     "key TEXT, data_hash TEXT, payload TEXT, "
     "PRIMARY KEY(service_dir, view, key)) WITHOUT ROWID"
 )
-_TEXT_KEYS = ("text", "caption", "sentence")
+_TEXT_KEYS = ("text", "caption", "sentence", "segments", "note")
 
 
 def view_hash(*parts: object) -> str:
