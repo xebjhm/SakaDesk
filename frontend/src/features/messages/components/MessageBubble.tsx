@@ -38,6 +38,17 @@ interface MessageBubbleProps {
     userNickname?: string;
     /** First message of a run (same sender, same day, ≤ 5 min apart): shows avatar, name and time. */
     runStart?: boolean;
+    /** IANA zone for the time label (Memories passes `Asia/Tokyo`); default: the machine's local clock. */
+    timeZone?: string;
+    /** A keepsake view (Memories): no context menu, long-press or favourite actions. Translate and transcript still work with `memberPath`. */
+    readOnly?: boolean;
+}
+
+/** `HH:MM` of `date` on the local clock, or in `timeZone` when given. */
+function clockLabel(date: Date, timeZone: string | undefined): string {
+    if (!timeZone) return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(date);
 }
 
 const SHELTER_ICONS = {
@@ -158,10 +169,11 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     memberPath,
     userNickname,
     runStart = true,
+    timeZone,
+    readOnly = false,
 }) => {
     const { t } = useTranslation();
-    const date = new Date(message.timestamp);
-    const time = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    const time = clockLabel(new Date(message.timestamp), timeZone);
     // Card radius; the first bubble of a run keeps a small top-left corner.
     const bubbleCorners = cn('rounded-card', runStart && 'rounded-tl-tail');
 
@@ -311,13 +323,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     return (
         <div
             className={cn('group/row relative flex gap-3', runStart ? 'pt-3' : 'pt-1')}
-            onContextMenu={handleContextMenu}
-            onTouchStart={handleTouchStartFavorite}
-            onTouchEnd={handleTouchEndFavorite}
-            onTouchCancel={handleTouchEndFavorite}
+            onContextMenu={readOnly ? undefined : handleContextMenu}
+            onTouchStart={readOnly ? undefined : handleTouchStartFavorite}
+            onTouchEnd={readOnly ? undefined : handleTouchEndFavorite}
+            onTouchCancel={readOnly ? undefined : handleTouchEndFavorite}
         >
             {/* Context Menu */}
-            {contextMenu && (
+            {contextMenu && !readOnly && (
                 <MessageContextMenu
                     x={contextMenu.x}
                     y={contextMenu.y}
