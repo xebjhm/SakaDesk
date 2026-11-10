@@ -15,7 +15,12 @@ from backend.services.memories import cards as c
 from backend.services.memories import index as mi
 from backend.services.memories import people
 from backend.services.memories import view_cache as vc
-from backend.tests.memories_archive import msg, write_room, write_side_inputs
+from backend.tests.memories_archive import (
+    msg,
+    write_avatars,
+    write_room,
+    write_side_inputs,
+)
 
 SERVICE = "hinatazaka46"
 SVC_NAME = "日向坂46"
@@ -180,6 +185,105 @@ def test_avatar_changes_skip_first_undated_and_repeats():
     )
     assert binder.avatar_changes(tl) == [c.AvatarChange(t2, "/u1", "/u2")]
     assert binder.avatar_changes(people.AvatarTimeline((), None)) == []
+
+
+def thumb(file, seen):
+    return {"kind": "thumbnail", "file": f"thumbnail/{file}", "first_seen": seen}
+
+
+def set_avatars(sdir, room, entries, contents):
+    """Write ``room``'s icon index, then give each file its own bytes."""
+    write_avatars(sdir / room, entries)
+    for name, data in contents.items():
+        (sdir / room / "profile_images" / "thumbnail" / name).write_bytes(data)
+
+
+def change_keys(payload):
+    return sorted(k for k in cards_of(payload) if k.startswith("change."))
+
+
+@pytest.mark.asyncio
+async def test_room_move_with_the_same_icon_is_not_a_change(svc):
+    # the new room's first archived icon is the old room's last icon
+    set_avatars(
+        svc,
+        OLD_ROOM,
+        [
+            thumb("o1.jpg", "2024-07-01T00:00:00Z"),
+            thumb("o2.jpg", "2025-03-01T03:00:00Z"),
+        ],
+        {"o1.jpg": b"icon-A", "o2.jpg": b"icon-S"},
+    )
+    set_avatars(
+        svc,
+        NEW_ROOM,
+        [thumb("n1.jpg", "2025-12-01T03:00:00Z")],
+        {"n1.jpg": b"icon-S"},
+    )
+    s = await matsuda(svc)
+    payload = await binder.build_binder(SERVICE, svc, s, now=NOW)
+    assert change_keys(payload) == ["change.avatar.2025-03-01"]
+    change = cards_of(payload)["change.avatar.2025-03-01"]
+    assert change["detail"]["old_url"].endswith("thumbnail/o1.jpg")
+    assert change["detail"]["new_url"].endswith("thumbnail/o2.jpg")
+
+
+@pytest.mark.asyncio
+async def test_two_rooms_sharing_one_change_give_one_card(svc):
+    # both rooms archive the same new icon on the same JST day, hours apart
+    set_avatars(
+        svc,
+        OLD_ROOM,
+        [
+            thumb("o1.jpg", "2024-07-01T00:00:00Z"),
+            thumb("o2.jpg", "2025-03-01T01:00:00Z"),
+        ],
+        {"o1.jpg": b"icon-A", "o2.jpg": b"icon-S"},
+    )
+    set_avatars(
+        svc,
+        NEW_ROOM,
+        [
+            thumb("n0.jpg", "2025-01-01T00:00:00Z"),
+            thumb("n2.jpg", "2025-03-01T05:00:00Z"),
+        ],
+        {"n0.jpg": b"icon-B", "n2.jpg": b"icon-S"},
+    )
+    s = await matsuda(svc)
+    with capture_logs() as logs:
+        payload = await binder.build_binder(SERVICE, svc, s, now=NOW)
+    assert change_keys(payload) == ["change.avatar.2025-03-01"]
+    skip = next(e for e in logs if e.get("reason") == "avatar_same_image")
+    assert skip["event"] == "memories_skip" and skip["count"] == 1
+    assert skip["person"] == "64"
+
+
+def room_change(room, when, digest, new="/n"):
+    return binder.RoomAvatarChange(room, c.AvatarChange(when, "/o", new), digest)
+
+
+def test_merge_avatar_changes_by_hash_then_by_minute():
+    t = datetime(2025, 3, 1, 1, 0, tzinfo=timezone.utc)
+    same_hash = [room_change("a", t, "h1"), room_change("b", t.replace(hour=5), "h1")]
+    assert binder.merge_avatar_changes(same_hash) == ([same_hash[0].change], 1)
+    other_hash = [room_change("a", t, "h1"), room_change("b", t, "h2")]
+    assert binder.merge_avatar_changes(other_hash)[1] == 0
+    # no hash: the same first-seen time within a minute is the same image
+    near = [room_change("a", t, None), room_change("b", t.replace(second=50), None)]
+    assert binder.merge_avatar_changes(near)[1] == 1
+    far = [room_change("a", t, None), room_change("b", t.replace(minute=2), "h1")]
+    assert binder.merge_avatar_changes(far)[1] == 0
+    # another JST day, or the same room: always kept
+    next_day = [room_change("a", t, "h1"), room_change("b", t.replace(day=2), "h1")]
+    assert binder.merge_avatar_changes(next_day)[1] == 0
+    same_room = [room_change("a", t, "h1"), room_change("a", t.replace(hour=5), "h1")]
+    assert binder.merge_avatar_changes(same_room)[1] == 0
+
+
+def test_avatar_digest_handles_foreign_and_missing_files(tmp_path):
+    assert binder._avatar_digest(tmp_path, "r", "https://cdn.example.jp/x.jpg") is None
+    url = "/api/content/media/x/r/profile_images/thumbnail/missing.jpg"
+    assert binder._avatar_digest(tmp_path, "r", url) is None
 
 
 @pytest.mark.asyncio
