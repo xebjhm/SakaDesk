@@ -44,6 +44,9 @@ person (sorted room folders) and year. ``data_hash`` folds every room's
 member-index ``data_hash``, the rooms' ``letters.json`` / ``transcriptions.json``
 stats, ``phase``, ``christmas_open`` and the JST date of ``now`` (a partial
 recap can change daily).
+
+:func:`recap_years` lists the years with a recap (some member's tier above
+``none``) for the shelf of yearbooks; it is not cached.
 """
 
 from __future__ import annotations
@@ -1706,6 +1709,41 @@ async def build_members_overview(
     }
 
 
+def _recap_years_of(
+    summary: mi.MemberSummary, tagged: list[Item], now: datetime
+) -> set[int]:
+    """JST years whose ``W(Y)`` holds enough of her non-promo messages for a recap."""
+    counts: dict[int, int] = {}
+    windows: dict[int, tuple[datetime, datetime]] = {}
+    for _, f in tagged:
+        if f.is_promo:
+            continue
+        y = f.jst_date.year
+        if y not in windows:
+            windows[y] = recap_window(y, now, summary.subscription_start)
+        start, end = windows[y]
+        if start <= f.ts <= end:
+            counts[y] = counts.get(y, 0) + 1
+    return {y for y, c in counts.items() if tier_for(c) != "none"}
+
+
+async def recap_years(service_data_dir: Path, *, now: datetime) -> list[int]:
+    """The shelf of yearbooks: JST years in which at least one member has a recap.
+
+    A year is listed when some member's tier for it is above ``none`` (the same
+    window and count as :func:`build_members_overview`). Ascending; the current
+    year is included once it qualifies (the frontend decides when it opens).
+    """
+    years: set[int] = set()
+    summaries = await mi.list_members(service_data_dir)
+    for s in summaries:
+        tagged = await mf.get_person_facts(service_data_dir, s)
+        years |= await asyncio.to_thread(_recap_years_of, s, tagged, now)
+    out = sorted(years)
+    logger.info("recap.years", members=len(summaries), count=len(out))
+    return out
+
+
 __all__ = [
     "SLIDE_KEYS",
     "assign_titles",
@@ -1713,5 +1751,6 @@ __all__ = [
     "build_members_overview",
     "phase_flags",
     "recap_window",
+    "recap_years",
     "tier_for",
 ]

@@ -16,6 +16,7 @@ from backend.services.memories import exports, index, share_gif
 from backend.services.memories.recap import (
     build_member_recap,
     build_members_overview,
+    recap_years,
 )
 from backend.services.service_utils import get_service_display_name, validate_service
 
@@ -54,6 +55,19 @@ def _room_rel(service_data_dir: Path, member: str) -> str:
         logger.warning("memories.api.reject", reason="other_service")
         raise HTTPException(status_code=404, detail="Member not found") from None
     return rel.as_posix()
+
+
+@router.get("/{service}/recap/years")
+async def recap_year_shelf(service: str) -> dict[str, list[int]]:
+    """Years with a recap for this service (the shelf of yearbooks), ascending.
+
+    Registered before ``/{service}/recap/{year}`` so ``years`` is not read as a year.
+    Years before ``MIN_YEAR`` are dropped (the recap API refuses them).
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    years = await recap_years(service_data_dir, now=now)
+    return {"years": [y for y in years if y >= MIN_YEAR]}
 
 
 @router.get("/{service}/recap/{year}/members")

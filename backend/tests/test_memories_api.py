@@ -120,3 +120,22 @@ def test_now_is_utc_aware(out):
         isinstance(seen["now"], datetime)
         and seen["now"].utcoffset().total_seconds() == 0
     )
+
+
+def test_recap_years(out):
+    r = get(f"/api/memories/{SERVICE}/recap/years")
+    assert r.status_code == 200
+    assert r.json() == {"years": [2026]}
+
+
+def test_recap_years_drops_years_before_min_year(out):
+    async def fake(d, *, now):
+        return [2019, 2024, 2026]
+
+    with patch("backend.api.memories.recap_years", fake):
+        r = get(f"/api/memories/{SERVICE}/recap/years")
+    assert r.json() == {"years": [2024, 2026]}
+
+
+def test_recap_years_unknown_service_is_400(out):
+    assert get("/api/memories/nope/recap/years").status_code == 400

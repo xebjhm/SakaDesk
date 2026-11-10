@@ -787,3 +787,50 @@ async def test_payload_is_cached_per_day(full):
     with capture_logs() as logs:
         await build(full, "金村美玖", datetime(2026, 12, 11, 12, 0, tzinfo=JST))
     assert any(e["event"] == "recap.cache" and e["outcome"] == "miss" for e in logs)
+
+
+# --- years shelf ------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_recap_years_lists_years_with_a_recap(full):
+    svc = full
+    # 12 messages in 2024 after her room's subscription start: a short-tier year.
+    write_room(
+        svc,
+        ("40 松田 好花", "64 松田 好花"),
+        [m(k, f"2024-02-{1 + k:02d} 20:00", content=f"話{k}") for k in range(1, 13)],
+    )
+    # 12 messages in 2023, all before the subscription start: outside W(2023).
+    write_room(
+        svc,
+        ("50 河田 陽菜", "70 河田 陽菜"),
+        [m(k, f"2023-03-{1 + k:02d} 20:00", content=f"話{k}") for k in range(1, 13)],
+    )
+    # 9 messages in 2022: below the short tier.
+    write_room(
+        svc,
+        ("60 佐々木 美玲", "80 佐々木 美玲"),
+        [m(k, f"2022-03-{1 + k:02d} 20:00", content=f"話{k}") for k in range(1, 10)],
+    )
+    write_subs(svc, {"34": "2024-07-24", "40": "2024-01-10", "50": "2024-03-01"})
+    with time_machine.travel(PARTIAL, tick=False), capture_logs() as logs:
+        years = await recap.recap_years(svc, now=datetime.now(timezone.utc))
+    # 2025 holds only two of 金村's messages (tier none); 2026 is full.
+    assert years == [2024, 2026]
+    crumb = next(e for e in logs if e["event"] == "recap.years")
+    assert crumb["count"] == 2
+
+
+@pytest.mark.asyncio
+async def test_recap_years_ignores_messages_after_now(full):
+    # On 2026-01-10 JST the 2026 window holds three messages: no 2026 recap yet.
+    with time_machine.travel(datetime(2026, 1, 10, 12, 0, tzinfo=JST), tick=False):
+        years = await recap.recap_years(full, now=datetime.now(timezone.utc))
+    assert years == []
+
+
+@pytest.mark.asyncio
+async def test_recap_years_empty_service(svc):
+    with time_machine.travel(PARTIAL, tick=False):
+        assert await recap.recap_years(svc, now=datetime.now(timezone.utc)) == []
