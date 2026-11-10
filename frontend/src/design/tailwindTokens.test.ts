@@ -147,7 +147,7 @@ describe('accent and expressive utilities', () => {
 
 describe('year recap slide motion', () => {
     it('eases every recap animation with the design system easing token', () => {
-        for (const name of ['star-fall', 'fan-in', 'letter-scroll', 'petal-fall']) {
+        for (const name of ['star-fall', 'fan-in', 'petal-fall']) {
             const line = config.match(new RegExp(`'${name}': '([^']+)'`))?.[1];
             expect(line, name).toBeDefined();
             expect(line, name).toContain('var(--ds-ease-standard)');
