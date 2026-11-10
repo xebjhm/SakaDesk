@@ -810,8 +810,8 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
 - **Sepia by age.** `sepiaClass(year)` (`features/memories/shared/sepia.ts`) gives a keepsake
   from this year no filter, last year `sepia-memories-1`, two years ago `sepia-memories-2` and
   three or more years ago `sepia-memories-3` (full sepia). Years are counted in JST. The year
-  recap's 去年の、同じ日 slide (S08) is not age-graded: its older card always uses
-  `sepia-memories-3`, the approved full-sepia look. Apply it to the photo or card, never to text
+  recap's 去年の、同じ日 slide (S08, drawn by `ThenNowPair variant="slide"`) is not age-graded:
+  its older card always uses `sepia-memories-3`, the approved full-sepia look. Apply it to the photo or card, never to text
   you need to read at full contrast. `sepiaClass` returns literal class names from a lookup, so
   Tailwind sees them; never build a `sepia-memories-${n}` name at runtime.
 - **Foil only for special cards.** `bg-memories-foil` marks a binder card the catalogue flags as
@@ -935,6 +935,22 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
 - **The same-time line** (`home/SameTimeLine.tsx`): a quiet one-line button above the hub's On
   This Day card, `text-small text-secondary` with the JST clock in `text-muted` and her words in
   `text-primary`, truncated to one line; `hover:bg-sunken`, no group colour beyond the focus ring.
+- **あの日と今日** (`features/memories/thenNow/`): `ThenNowPair` is shared by On This Day, the memoir
+  timeline and the recap's S08. In a pane the two sides are neutral `bg-card shadow-card` cards side
+  by side (stacked when narrow), each with her avatar at the time, the serif year (or the first-week
+  date range under a `text-caption` label) and her items; the older side wears `sepiaClass(year)`.
+  Between them sits the pair's one number, 「{{count}}年」 in `font-display text-muted` (never 0), or
+  an arrow for 初見と今. A side names its person (`lang="ja"`) only when the two sides are different
+  people. The shared keyword is underlined like the nickname (`underline decoration-accent`, through
+  `MemoryText`'s `highlight`); the slide variant keeps the recap's `<mark>`. The ⇆ toggle is a `Pill`
+  (pressed while the comparison shows) in the host's header; the mode pills are `Pill`s. No motion
+  of its own.
+- **彼女の24時間** (`features/memories/day24/`): the memoir's `day24` tab (reached from a header
+  chip, neither tab pill selected). A serif title with her name `lang="ja"`, a `text-secondary`
+  subtitle, and a narrow `bg-memories-sky` day line (morning at the top, night at the bottom, no
+  text on it) beside `bg-card shadow-card` slots: the JST time in serif `tabular-nums`, the year in
+  `text-caption text-muted` (both metadata) and her words, still or voice. 🎲 is a secondary
+  `IconButton`. A thin day is an `EmptyState` with no number. No animation.
 
 ### The group rail and the profile card
 
