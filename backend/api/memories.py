@@ -1,4 +1,4 @@
-"""Memories API: year recaps and the memoir binder for the active service, the export handoff and the share GIF."""
+"""Memories API: year recaps and the member memoir (list, header, names, timeline, binder) for the active service, the export handoff and the share GIF."""
 
 from __future__ import annotations
 
@@ -12,7 +12,15 @@ from fastapi.responses import Response
 
 from backend.api.content import get_output_dir
 from backend.services.archive_urls import ArchiveReadError
-from backend.services.memories import binder, exports, people, share_gif
+from backend.services.memories import (
+    binder,
+    exports,
+    memoir,
+    nickname_moments,
+    people,
+    share_gif,
+    timeline,
+)
 from backend.services.memories.index import MemberSummary
 from backend.services.memories.recap import (
     build_member_recap,
@@ -132,6 +140,66 @@ async def memoir_cards(service: str, member: str = Query(...)) -> dict:
     service_data_dir = _service_dir(service)
     summary = await _person(service_data_dir, member, view="binder")
     return await binder.build_binder(service, service_data_dir, summary, now=now)
+
+
+@router.get("/{service}/memoir/members")
+async def memoir_members(service: str) -> dict:
+    """The memoir's member list, oshi first, with binder progress (``memoir``)."""
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    return await memoir.list_memoir_members(service, service_data_dir, now=now)
+
+
+@router.get("/{service}/memoir")
+async def memoir_header(service: str, member: str = Query(...)) -> dict:
+    """The memoir header of the person owning ``member``: name, avatar, chips."""
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    summary = await _person(service_data_dir, member, view="memoir")
+    return await memoir.memoir_header(service, service_data_dir, summary, now=now)
+
+
+@router.get("/{service}/memoir/names")
+async def memoir_names(
+    service: str, member: str = Query(...), year: int | None = Query(None)
+) -> dict:
+    """Every sentence with the fan's nickname, newest first (``nickname_moments``).
+
+    ``year`` filters the items; ``years`` always lists every year with items.
+    """
+    service_data_dir = _service_dir(service)
+    summary = await _person(service_data_dir, member, view="names")
+    return await nickname_moments.nickname_moments(
+        service, service_data_dir, summary, year=year
+    )
+
+
+@router.get("/{service}/memoir/timeline")
+async def memoir_timeline(service: str, member: str = Query(...)) -> dict:
+    """The timeline rail: message counts per month, first to last month."""
+    service_data_dir = _service_dir(service)
+    summary = await _person(service_data_dir, member, view="timeline")
+    return await timeline.timeline_months(service, service_data_dir, summary)
+
+
+@router.get("/{service}/memoir/timeline/{month}")
+async def memoir_timeline_month(
+    service: str, month: str, member: str = Query(...)
+) -> dict:
+    """One timeline month. A malformed ``month`` is 400; one outside her range 404."""
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    if not timeline.MONTH_RE.match(month):
+        logger.warning("memories.api.reject", reason="bad_month")
+        raise HTTPException(status_code=400, detail="Invalid month")
+    summary = await _person(service_data_dir, member, view="timeline")
+    try:
+        return await timeline.timeline_month(
+            service, service_data_dir, summary, month, now=now
+        )
+    except timeline.MonthOutOfRange:
+        logger.info("memories.api.month_not_found", month=month)
+        raise HTTPException(status_code=404, detail="Month not found") from None
 
 
 @router.post("/export")
