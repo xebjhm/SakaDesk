@@ -90,6 +90,7 @@ ClientEvent = Literal[
     "recap_load",
     "recap_play",
     "recap_poster",
+    "recap_share",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -129,6 +130,8 @@ ALLOWED_FIELDS = frozenset(
         "caller",
         "written",
         "dropped",
+        "kind",
+        "style",
     }
 )
 WARNING_EVENTS = frozenset(

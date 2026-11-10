@@ -966,3 +966,36 @@ def test_recap_poster_rejects_file_names():
         },
     )
     assert r.status_code == 422
+
+
+def test_recap_share_events_are_allowlisted():
+    for fields in (
+        {"phase": "open", "member_id": "58", "count": 4},
+        {"phase": "close", "member_id": "58"},
+        {"phase": "option", "key": "nickname", "outcome": "on"},
+        {"phase": "style", "style": "colour"},
+        {"phase": "sentence", "outcome": "removed", "count": 1},
+        {"phase": "font_fallback", "fallback": "font_timeout"},
+        {"phase": "photo_skip", "reason": "load_failed", "count": 2},
+        {"phase": "video_unsupported", "reason": "no_media_recorder"},
+        {"phase": "export_start", "kind": "gif", "style": "collage", "count": 30},
+        {"phase": "export", "kind": "webm", "outcome": "handed_off"},
+        {
+            "phase": "export_failed",
+            "kind": "gif",
+            "reason": "assemble_failed",
+            "error_code": "too_many_frames",
+        },
+    ):
+        r = client.post(
+            "/api/client-log", json={"event": "recap_share", "fields": fields}
+        )
+        assert r.status_code == 204, fields
+
+
+def test_recap_share_rejects_free_text():
+    r = client.post(
+        "/api/client-log",
+        json={"event": "recap_share", "fields": {"phase": "sentence", "key": "大好き"}},
+    )
+    assert r.status_code == 422
