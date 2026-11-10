@@ -9,7 +9,8 @@
  *   line is drawn. The anniversary stub names the fan's subscription day, so it is dropped unless
  *   "N年目" is on.
  * - **Her words: at most two sentences**, prefilled from s12 and s02's latest nickname sentence,
- *   swappable from {@link sentenceCandidates}.
+ *   swappable from {@link sentenceCandidates}. Every candidate is exactly one sentence
+ *   ({@link splitSentences}), so two picks can never carry a third sentence.
  * - **Photos never appear raw.** The model holds no photo at all; `sharePhotos.ts` frosts them
  *   before the renderer sees them.
  * - **One number per scene.** Times and dates on the stubs are metadata.
@@ -17,13 +18,13 @@
 import { replaceNickname } from '../../../messages/utils/nickname';
 import type { RecapPayload, RecapSlide, S02NameData, S03ClockData, S04GreetingsData, S07LetterData, S09SpecialData, S11DaisukiData, S12SentenceData } from '../api';
 import { posterYears } from '../posterCopy';
-import { formatMessageDate, formatSecondsOfDay, s09StubCopy, type CopyLine } from '../recapCopy';
+import { formatMessageDate, formatSecondsOfDay, s04Copy, s09StubCopy, type CopyLine } from '../recapCopy';
 
 /** What stands in for the fan's nickname when the nickname toggle is off. */
 export const NICKNAME_MASK = '『＊＊＊』';
 /** The export carries at most this many of her sentences (user decision, spec §9.5). */
 export const MAX_SENTENCES = 2;
-/** A candidate taken from a long letter keeps at most this many characters (its first line). */
+/** A candidate taken from a long letter keeps at most this many characters (its first sentence). */
 export const LETTER_EXCERPT_CHARS = 60;
 
 export type ShareStyle = 'collage' | 'colour';
@@ -52,22 +53,49 @@ function slideData(recap: RecapPayload, key: RecapSlide['key']): unknown {
     return recap.slides.find((s) => s.key === key)?.data ?? null;
 }
 
-function firstLine(text: string): string {
-    const line = text.split(/\r?\n/).map((l) => l.trim()).find((l) => l.length > 0) ?? '';
-    const chars = Array.from(line);
-    return chars.length > LETTER_EXCERPT_CHARS ? `${chars.slice(0, LETTER_EXCERPT_CHARS).join('')}…` : line;
+/**
+ * One sentence: a run of text up to its end mark. Mirrors the backend's `_SENTENCE_RE`
+ * (`[。！？!?\n]+`, `backend/services/memories/recap.py`): the same boundaries, so a backend
+ * sentence (s12, the s02 fragments, the s11 petals) is one sentence here too. The end marks stay
+ * on the sentence for display; a newline is a boundary but is not kept.
+ */
+const SENTENCE = /[^。！？!?\n]+[。！？!?]*/g;
+
+/** Her text split into sentences (trimmed, empty ones dropped), with the backend's boundaries. */
+export function splitSentences(text: string): string[] {
+    return (text.match(SENTENCE) ?? []).map((s) => s.trim()).filter((s) => s.replace(/[。！？!?]/g, '').trim().length > 0);
+}
+
+/** The first sentence of `text` that matches `pattern`, else its first sentence (null when empty). */
+function sentenceOf(text: string | null | undefined, pattern?: RegExp): string | null {
+    const sentences = splitSentences(text ?? '');
+    return sentences.find((s) => pattern?.test(s)) ?? sentences[0] ?? null;
+}
+
+/** The sentence s02 is about: the one with the nickname (`%%%` / `％％％`), or 大好き in daisuki mode. */
+const S02_PATTERN: Record<S02NameData['mode'], RegExp> = {
+    nickname: /%%%|％％％/,
+    daisuki: /大好き|だいすき/,
+};
+
+function excerpt(sentence: string | null): string | null {
+    if (sentence === null) return null;
+    const chars = Array.from(sentence);
+    return chars.length > LETTER_EXCERPT_CHARS ? `${chars.slice(0, LETTER_EXCERPT_CHARS).join('')}…` : sentence;
 }
 
 /**
  * Her sentences the export may carry, in rule order: the one sentence (s12), the latest and the
- * first nickname sentence (s02), the s02 fragments, the 大好き / ありがとう petals (s11) and the
- * first line of her longest letter (s07). Duplicates (the same raw text) are kept once.
+ * first nickname sentence (s02: the sentence of the message that holds the nickname, or 大好き in
+ * daisuki mode), the s02 fragments, the 大好き / ありがとう petals (s11) and the first sentence of
+ * her longest letter (s07). Each candidate is one sentence; duplicates (the same text) are kept once.
  */
 export function sentenceCandidates(recap: RecapPayload): SentenceCandidate[] {
     const out: SentenceCandidate[] = [];
     const seen = new Set<string>();
     const add = (source: SentenceSource, raw: string | null | undefined, index = 0) => {
-        const text = raw?.trim();
+        // Already one sentence for every source; the split is the guarantee, not a reshaping.
+        const text = sentenceOf(raw);
         if (!text || seen.has(text)) return;
         seen.add(text);
         out.push({ id: `${source}:${index}`, source, raw: text });
@@ -75,13 +103,14 @@ export function sentenceCandidates(recap: RecapPayload): SentenceCandidate[] {
     const s12 = slideData(recap, 's12_sentence') as S12SentenceData | null;
     add('s12', s12?.sentence ?? recap.poster?.sentence?.sentence);
     const s02 = slideData(recap, 's02_name') as S02NameData | null;
-    add('s02_last', s02?.last?.text);
-    add('s02_first', s02?.first?.text);
+    const s02Pattern = s02 ? S02_PATTERN[s02.mode] : undefined;
+    add('s02_last', sentenceOf(s02?.last?.text, s02Pattern));
+    add('s02_first', sentenceOf(s02?.first?.text, s02Pattern));
     s02?.fragments.forEach((f, i) => add('s02_fragment', f, i));
     const s11 = slideData(recap, 's11_daisuki') as S11DaisukiData | null;
     s11?.petals.forEach((p, i) => add('s11_petal', p.text, i));
     const s07 = slideData(recap, 's07_letter') as S07LetterData | null;
-    if (s07?.message?.text) add('s07', firstLine(s07.message.text));
+    add('s07', excerpt(sentenceOf(s07?.message?.text)));
     return out;
 }
 
@@ -218,10 +247,6 @@ export function shareSeed(memberId: string, year: number): number {
     return h >>> 0;
 }
 
-const GREETING_COUNT_KEY: Record<S04GreetingsData['variant'], string> = {
-    oyasumi: 'recap.s04.countOyasumi', arigato: 'recap.s04.countArigato', otsukare: 'recap.s04.countOtsukare',
-};
-
 function tr(t: Translate, line: CopyLine): string {
     return t(line.key, line.params);
 }
@@ -260,9 +285,12 @@ export function buildShareModel(
         line: photoCount && photoCount > 0 ? t('recap.share.photosCount', { count: photoCount }) : null,
     };
 
-    const g = slideData(recap, 's04_greetings') as S04GreetingsData | null;
-    const greeting = g && g.oyasumi_count !== null && g.oyasumi_count > 0
-        ? { word: t(`recap.share.greeting.${g.variant}`), line: t(GREETING_COUNT_KEY[g.variant], { count: g.oyasumi_count }) }
+    // The greeting scene is its count, so it follows s04's count rule (shown from 2, never "1回").
+    const s04 = recap.slides.find((s) => s.key === 's04_greetings');
+    const g = (s04?.data ?? null) as S04GreetingsData | null;
+    const greetingCount = g ? s04Copy(g, s04?.fallback ?? null).count : null;
+    const greeting = g && greetingCount
+        ? { word: t(`recap.share.greeting.${g.variant}`), line: tr(t, greetingCount) }
         : null;
 
     const special = slideData(recap, 's09_special') as S09SpecialData | null;
