@@ -40,6 +40,11 @@ interface PhotoPlayerProps {
     className?: string;
     /** Called once when the image fails to load and the fallback is shown (breadcrumbs). */
     onError?: () => void;
+    /**
+     * Loaded instead when `src` fails (a thumbnail's full file). Only once `fallbackSrc` fails
+     * too is the broken-photo look shown and `onError` called.
+     */
+    fallbackSrc?: string;
 }
 
 /**
@@ -72,16 +77,24 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     anchorRef,
     className,
     onError,
+    fallbackSrc,
 }) => {
     const [hasError, setHasError] = useState(false);
+    // The `src` that failed while a `fallbackSrc` was given: the image then shows the fallback.
+    const [failedSrc, setFailedSrc] = useState<string | null>(null);
     // Fullscreen instances are reused across navigation (arrow keys change `src`
     // on the same component). Without this reset, one broken/missing photo latches
     // hasError=true and every later photo in the session renders as broken.
     useEffect(() => { setHasError(false); }, [src]);
     const effectiveLoading = loading ?? (variant === 'gallery-thumb' ? 'lazy' : 'eager');
+    const shownSrc = fallbackSrc && failedSrc === src ? fallbackSrc : src;
 
     const fallback = (extraClasses?: string) => <PhotoFallback className={extraClasses} />;
     const fail = () => {
+        if (fallbackSrc && shownSrc !== fallbackSrc) {
+            setFailedSrc(src);
+            return;
+        }
         setHasError(true);
         onError?.();
     };
@@ -98,7 +111,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
                     fallback('w-full h-full')
                 ) : (
                     <img
-                        src={src}
+                        src={shownSrc}
                         alt={alt}
                         loading={effectiveLoading}
                         className="w-full h-full object-cover"
@@ -113,7 +126,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
         if (hasError) return fallback('max-w-[90vw] max-h-[90vh] aspect-video');
         return (
             <img
-                src={src}
+                src={shownSrc}
                 alt={alt}
                 loading={effectiveLoading}
                 draggable={false}
@@ -128,7 +141,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     if (hasError) return fallback(cn('w-full h-full', className));
     return (
         <img
-            src={src}
+            src={shownSrc}
             alt={alt}
             loading={effectiveLoading}
             onClick={onClick}

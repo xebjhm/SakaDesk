@@ -139,6 +139,33 @@ describe('MessageBubble component', () => {
     expect(mediaImage).toBeInTheDocument()
   })
 
+  describe('opt-in media props (Memories read-only lists)', () => {
+    const picture = createMessage({ type: 'picture', media_file: 'messages/1/picture/2.jpg', width: 800, height: 600 })
+    const FULL = '/api/content/media/%E6%97%A5%E5%90%91%E5%9D%8246/messages/1/picture/2.jpg'
+    const THUMB = '/api/content/thumb/%E6%97%A5%E5%90%91%E5%9D%8246/messages/1/picture/2.jpg?w=640'
+
+    it('keeps the chat default: the full file, loaded eagerly', () => {
+      render(<MessageBubble {...defaultProps} message={picture} />)
+      const img = screen.getByAltText('Attachment')
+      expect(img).toHaveAttribute('src', FULL)
+      expect(img).toHaveAttribute('loading', 'eager')
+    })
+
+    it('draws a lazy thumbnail, falls back to the full file and hands the viewer the full file', () => {
+      const onMediaClick = vi.fn()
+      render(
+        <MessageBubble {...defaultProps} message={picture} mediaLoading="lazy" mediaThumbWidth={640} onMediaClick={onMediaClick} />,
+      )
+      const img = screen.getByAltText('Attachment')
+      expect(img).toHaveAttribute('src', THUMB)
+      expect(img).toHaveAttribute('loading', 'lazy')
+      fireEvent.click(img)
+      expect(onMediaClick).toHaveBeenCalledWith(FULL, 'picture', picture.timestamp)
+      fireEvent.error(img)
+      expect(screen.getByAltText('Attachment')).toHaveAttribute('src', FULL)
+    })
+  })
+
   it('should linkify URLs in text content', () => {
     const messageWithUrl = createMessage({
       content: 'Check out https://example.com for more info',

@@ -15,7 +15,7 @@ import { TranslateButton } from '../../../core/common/TranslateButton';
 import { InlineTranslation } from '../../../core/common/InlineTranslation';
 import { useAppStore } from '../../../store/appStore';
 import { useJustBecame } from '../../../hooks/useJustBecame';
-import { buildMediaUrl, MEDIA_API_BASE } from '../mediaUrl';
+import { buildMediaUrl, MEDIA_API_BASE, thumbnailUrl, type ThumbWidth } from '../mediaUrl';
 import { groupTokens } from '../../../design/tokens';
 import { serviceGroupId } from '../../../config/serviceGroup';
 import { Avatar } from '../../../design/primitives';
@@ -42,6 +42,17 @@ interface MessageBubbleProps {
     timeZone?: string;
     /** A keepsake view (Memories): no context menu, long-press or favourite actions. Translate and transcript still work with `memberPath`. */
     readOnly?: boolean;
+    /**
+     * Opt-in lazy loading for the picture (Memories' read-only day lists, which are not
+     * virtualised). Default: the photo's own default (`eager` for a bubble), as in the chat.
+     */
+    mediaLoading?: 'lazy' | 'eager';
+    /**
+     * Opt-in: draw the picture from the thumbnail route at this width (`thumbnailUrl`), falling
+     * back to the full file on error. The click still hands the full file to `onMediaClick`, so
+     * the viewer shows it. Default: the full file, as in the chat.
+     */
+    mediaThumbWidth?: ThumbWidth;
 }
 
 /** `HH:MM` of `date` on the local clock, or in `timeZone` when given. */
@@ -171,6 +182,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     runStart = true,
     timeZone,
     readOnly = false,
+    mediaLoading,
+    mediaThumbWidth,
 }) => {
     const { t } = useTranslation();
     const time = clockLabel(new Date(message.timestamp), timeZone);
@@ -216,6 +229,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const mediaUrl = message.media_file && service
         ? buildMediaUrl(service, message.media_file, api_base)
         : null;
+    const pictureThumb = mediaUrl && mediaThumbWidth !== undefined ? thumbnailUrl(mediaUrl, mediaThumbWidth) : undefined;
 
     // Transcription — only active for voice and non-muted video messages
     const isTranscribable = message.type === 'voice' || (message.type === 'video' && !message.is_muted);
@@ -393,7 +407,9 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             <MediaContainer message={message}>
                                 <PhotoPlayer
                                     variant="bubble"
-                                    src={mediaUrl}
+                                    src={pictureThumb ?? mediaUrl}
+                                    fallbackSrc={pictureThumb ? mediaUrl : undefined}
+                                    loading={mediaLoading}
                                     alt={t('messageList.attachment')}
                                     onClick={() => onMediaClick?.(mediaUrl, 'picture', message.timestamp)}
                                 />
