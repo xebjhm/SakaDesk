@@ -920,6 +920,21 @@
       "newAvatar": "新しい写真",
       "dayOf": "{{date}} のメッセージ",
       "nearestDay": "いちばん近い日のメッセージ（{{date}}）"
+    },
+    "names": {
+      "title": "名前を呼ばれた瞬間",
+      "allYears": "すべて",
+      "back": "生写真帳へ"
+    },
+    "timeline": {
+      "count": "{{count}} 件",
+      "top": "いちばん想いのこもった一通",
+      "late": "夜ふけの一通",
+      "nickname": "名前を呼んでくれた一通",
+      "milestones": "この月のできごと",
+      "rail": "月をえらぶ",
+      "older": "前の月",
+      "newer": "次の月"
     }
   },
   "recap": {

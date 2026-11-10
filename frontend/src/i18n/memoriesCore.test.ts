@@ -56,11 +56,16 @@ export const MEMORIES_CORE_KEYS: string[] = [
     'memories.cards.oyasumi100Condition', 'memories.cards.daisukiFirstCondition', 'memories.cards.daisuki100Condition',
     'memories.cards.letterFirstCondition', 'memories.cards.lettersCondition', 'memories.cards.avatarChangeCondition',
     'memories.cards.lastMessageCondition', 'memories.cardDetail.dayOf', 'memories.cardDetail.nearestDay',
+    // C12: name moments and the memoir timeline
+    'memories.names.title', 'memories.names.allYears', 'memories.names.back',
+    'memories.timeline.count', 'memories.timeline.top', 'memories.timeline.late', 'memories.timeline.nickname',
+    'memories.timeline.milestones', 'memories.timeline.rail', 'memories.timeline.older', 'memories.timeline.newer',
 ];
 
 /** Core keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
 export const MEMORIES_CORE_EN_PLURALS: string[] = [
     'memories.onThisDay.more', 'memories.day.count', 'memories.album.burst', 'memories.cards.letters', 'memories.memoir.chipNames',
+    'memories.timeline.count',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -223,6 +228,17 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.lastMessageCondition')).toBe('卒業までの、最後の一通');
         expect(lookup(ja, 'memories.cardDetail.dayOf')).toBe('{{date}} のメッセージ');
         expect(lookup(ja, 'memories.cardDetail.nearestDay')).toBe('いちばん近い日のメッセージ（{{date}}）');
+        expect(lookup(ja, 'memories.names.title')).toBe('名前を呼ばれた瞬間');
+        expect(lookup(ja, 'memories.names.allYears')).toBe('すべて');
+        expect(lookup(ja, 'memories.names.back')).toBe('生写真帳へ');
+        expect(lookup(ja, 'memories.timeline.count')).toBe('{{count}} 件');
+        expect(lookup(ja, 'memories.timeline.top')).toBe('いちばん想いのこもった一通');
+        expect(lookup(ja, 'memories.timeline.late')).toBe('夜ふけの一通');
+        expect(lookup(ja, 'memories.timeline.nickname')).toBe('名前を呼んでくれた一通');
+        expect(lookup(ja, 'memories.timeline.milestones')).toBe('この月のできごと');
+        expect(lookup(ja, 'memories.timeline.rail')).toBe('月をえらぶ');
+        expect(lookup(ja, 'memories.timeline.older')).toBe('前の月');
+        expect(lookup(ja, 'memories.timeline.newer')).toBe('次の月');
         expect(lookup(zhTW, 'memories.onThisDay.title')).toBe('那年今日');
         expect(lookup(zhTW, 'memories.onThisDay.noMessages')).toBe('這天沒有訊息');
         expect(lookup(zhTW, 'memories.day.otherGroups')).toBe('包含其他團體');

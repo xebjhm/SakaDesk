@@ -929,6 +929,22 @@
       "newAvatar": "New photo",
       "dayOf": "Messages of {{date}}",
       "nearestDay": "Messages from the nearest day ({{date}})"
+    },
+    "names": {
+      "title": "Moments she called your name",
+      "allYears": "All",
+      "back": "Back to the binder"
+    },
+    "timeline": {
+      "count": "{{count}} message",
+      "count_other": "{{count}} messages",
+      "top": "The most heartfelt message",
+      "late": "A late-night message",
+      "nickname": "The message that called your name",
+      "milestones": "This month",
+      "rail": "Pick a month",
+      "older": "Older month",
+      "newer": "Newer month"
     }
   },
   "recap": {

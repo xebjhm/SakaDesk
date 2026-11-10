@@ -920,6 +920,21 @@
       "newAvatar": "新的头像",
       "dayOf": "{{date}} 的消息",
       "nearestDay": "最接近那天的消息（{{date}}）"
+    },
+    "names": {
+      "title": "被叫名字的瞬间",
+      "allYears": "全部",
+      "back": "回到卡册"
+    },
+    "timeline": {
+      "count": "{{count}} 条",
+      "top": "最用心的一条",
+      "late": "深夜的一条",
+      "nickname": "叫了你名字的一条",
+      "milestones": "这个月的事",
+      "rail": "选择月份",
+      "older": "前一个月",
+      "newer": "下一个月"
     }
   },
   "recap": {

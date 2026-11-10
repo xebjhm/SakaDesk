@@ -920,6 +920,21 @@
       "newAvatar": "新嘅頭像",
       "dayOf": "{{date}} 嘅訊息",
       "nearestDay": "最近嗰日嘅訊息（{{date}}）"
+    },
+    "names": {
+      "title": "被叫名嘅瞬間",
+      "allYears": "全部",
+      "back": "返去卡冊"
+    },
+    "timeline": {
+      "count": "{{count}} 則",
+      "top": "最用心嗰一則",
+      "late": "夜深嗰一則",
+      "nickname": "叫咗你個名嗰一則",
+      "milestones": "呢個月發生嘅事",
+      "rail": "揀月份",
+      "older": "上個月",
+      "newer": "下個月"
     }
   },
   "recap": {

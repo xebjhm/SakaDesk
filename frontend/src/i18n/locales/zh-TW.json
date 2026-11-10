@@ -920,6 +920,21 @@
       "newAvatar": "新的頭像",
       "dayOf": "{{date}} 的訊息",
       "nearestDay": "最接近那天的訊息（{{date}}）"
+    },
+    "names": {
+      "title": "被叫名字的瞬間",
+      "allYears": "全部",
+      "back": "回到卡冊"
+    },
+    "timeline": {
+      "count": "{{count}} 則",
+      "top": "最用心的一則",
+      "late": "深夜的一則",
+      "nickname": "叫了你名字的一則",
+      "milestones": "這個月的事",
+      "rail": "選擇月份",
+      "older": "前一個月",
+      "newer": "下一個月"
     }
   },
   "recap": {
