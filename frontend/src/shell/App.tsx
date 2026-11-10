@@ -1,8 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
-import { AlertCircle, Loader2, X } from 'lucide-react'
-import { Button, IconButton } from '../design/primitives'
+import { AlertCircle, X } from 'lucide-react'
+import { Button, IconButton, Spinner } from '../design/primitives'
 import { useTranslation } from '../i18n'
 import { DiagnosticsModal, ReportIssueModal, AboutModal } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
@@ -322,8 +322,9 @@ function App() {
     if (!authCheckComplete || !prefsHydrated) {
         return (
             <BrandScope className="flex h-screen items-center justify-center bg-window">
-                <span data-testid="boot-screen" role="status" aria-label={t('common.loading')}>
-                    <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-accent motion-reduce:animate-none" />
+                {/* The Spinner is the status (named by its label, shown under reduced motion). */}
+                <span data-testid="boot-screen">
+                    <Spinner size="md" label={t('common.loading')} labelVisibility="auto" />
                 </span>
             </BrandScope>
         );

@@ -277,7 +277,9 @@
     "stepPending": "待處理",
     "phaseQueued": "等緊",
     "queuedDetail": "等緊其他同步完成（排第 {{position}} 位）",
-    "filesFailed": "· {{count}} 個失敗"
+    "filesFailed": "· {{count}} 個失敗",
+    "preparing": "準備緊同步…",
+    "preparingVerySlow": "檢查緊新訊息。訊息多會耐少少。"
   },
   "about": {
     "title": "關於",

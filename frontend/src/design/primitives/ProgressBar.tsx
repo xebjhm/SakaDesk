@@ -17,6 +17,8 @@ export interface ProgressBarProps {
     className?: string;
     /** Extra classes for the visible label (e.g. a token pill when the bar floats over content). */
     labelClassName?: string;
+    /** `data-testid` of the fill (a caller's existing test id, kept when it moves onto this primitive). */
+    fillTestId?: string;
 }
 
 const SIZE: Record<ProgressBarSize, string> = { thin: 'h-0.5', sm: 'h-2', md: 'h-4' };
@@ -27,7 +29,7 @@ const SIZE: Record<ProgressBarSize, string> = { thin: 'h-0.5', sm: 'h-2', md: 'h
  * and stands still under reduced motion, where the label becomes visible so the static segment is
  * never shown alone.
  */
-export const ProgressBar: React.FC<ProgressBarProps> = ({ value, label, valueText, size = 'sm', showLabel = false, className, labelClassName }) => {
+export const ProgressBar: React.FC<ProgressBarProps> = ({ value, label, valueText, size = 'sm', showLabel = false, className, labelClassName, fillTestId }) => {
     const determinate = typeof value === 'number' && Number.isFinite(value);
     const pct = determinate ? Math.round(Math.min(1, Math.max(0, value)) * 100) : 0;
     return (
@@ -49,11 +51,12 @@ export const ProgressBar: React.FC<ProgressBarProps> = ({ value, label, valueTex
                 {determinate ? (
                     <div
                         data-progress-fill
+                        data-testid={fillTestId}
                         className="h-full rounded-full bg-expressive-progress transition-all duration-base ease-standard motion-reduce:transition-none"
                         style={{ width: `${pct}%` }}
                     />
                 ) : (
-                    <div data-progress-fill className="h-full w-1/3 rounded-full bg-expressive-progress animate-progress-indeterminate motion-reduce:animate-none" />
+                    <div data-progress-fill data-testid={fillTestId} className="h-full w-1/3 rounded-full bg-expressive-progress animate-progress-indeterminate motion-reduce:animate-none" />
                 )}
             </div>
         </div>

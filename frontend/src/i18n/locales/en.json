@@ -277,7 +277,9 @@
     "stepPending": "Pending",
     "phaseQueued": "Waiting",
     "queuedDetail": "Waiting for another sync to finish (#{{position}} in line)",
-    "filesFailed": "· {{count}} failed"
+    "filesFailed": "· {{count}} failed",
+    "preparing": "Getting ready to sync…",
+    "preparingVerySlow": "Checking for new messages. A large archive takes a little longer."
   },
   "about": {
     "title": "About",

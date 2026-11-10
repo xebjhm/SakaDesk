@@ -13,8 +13,8 @@ export const LOADING_UX_KEYS: string[] = [
     'loading.label', 'loading.slow', 'loading.verySlow', 'loading.timeout', 'loading.timeoutHint',
     'loading.error', 'loading.retry', 'loading.cancel',
     'designPage.loading', 'designPage.playWait',
-    // L6: login stays cancellable while connecting
-    'login.waitingSlow', 'login.waitingVerySlow', 'login.finishing',
+    // L6: login stays cancellable while connecting; sync scanning state
+    'login.waitingSlow', 'login.waitingVerySlow', 'login.finishing', 'sync.preparing', 'sync.preparingVerySlow',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -54,6 +54,8 @@ describe('loading UX strings', () => {
             'login.waitingSlow': 'ログイン画面を開いています…',
             'login.waitingVerySlow': '開いたブラウザのウィンドウでログインを完了してください。いつでもキャンセルできます。',
             'login.finishing': 'まもなく完了します…',
+            'sync.preparing': '同期の準備中…',
+            'sync.preparingVerySlow': '新しいメッセージを確認しています。メッセージが多いと少し時間がかかります。',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, key), key).toBe(text);
     });

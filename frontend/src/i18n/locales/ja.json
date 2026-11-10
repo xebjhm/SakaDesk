@@ -277,7 +277,9 @@
     "stepPending": "未完了",
     "phaseQueued": "待機中",
     "queuedDetail": "ほかの同期の完了を待っています（{{position}}番目）",
-    "filesFailed": "· {{count}} 件失敗"
+    "filesFailed": "· {{count}} 件失敗",
+    "preparing": "同期の準備中…",
+    "preparingVerySlow": "新しいメッセージを確認しています。メッセージが多いと少し時間がかかります。"
   },
   "about": {
     "title": "アプリについて",

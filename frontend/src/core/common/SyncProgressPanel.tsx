@@ -1,8 +1,10 @@
 // frontend/src/core/common/SyncProgressPanel.tsx
 import React from 'react';
-import { Check, Loader2 } from 'lucide-react';
+import { Check } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../utils/classnames';
+import { ProgressBar, Spinner } from '../../design/primitives';
+import { useLoadingStages } from '../../design/loading';
 import { formatSyncEta, formatSyncTime, formatSyncSpeedParts, getSyncDetail } from '../../utils/syncFormatters';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
@@ -17,10 +19,16 @@ export interface SyncProgressPanelProps {
  * percent, the progress bar (`bg-expressive-progress`: aurora in brand, the title gradient in a
  * group, as `e4e4118`), three stat tiles, the detail row (accent) or the media warning (semantic
  * warning) while running, and the phase steps.
+ *
+ * Scanning (loading UX L6): while a running or queued sync has no total yet, the count row reads
+ * "getting ready" instead of "0 / 0 · 0 %" and the bar is indeterminate; after 10 s of scanning a
+ * line explains why (Cancel already sits in the dialog footer and the inline view).
  */
 export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }) => {
     const { t } = useTranslation();
     const total = progress.total ?? 0;
+    const scanning = (progress.state === 'running' || progress.state === 'queued') && total === 0;
+    const { stage: scanStage } = useLoadingStages(scanning, { surface: 'sync_scan' });
     const ratio = total > 0 ? (progress.completed || 0) / total : 0;
     const percent = Math.round(ratio * 100);
     const currentIndex = PHASE_ORDER.indexOf(progress.phase || '');
@@ -41,28 +49,27 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
     return (
         <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-2">
-                <div className="flex justify-between text-small font-semibold tabular-nums">
-                    <span className="text-secondary">
-                        {progress.completed?.toLocaleString() || 0} / {progress.total?.toLocaleString() || 0}
-                    </span>
-                    <span className="text-primary">{`${percent}%`}</span>
-                </div>
+                {scanning ? (
+                    <p className="text-small font-semibold text-secondary">{t('sync.preparing')}</p>
+                ) : (
+                    <div className="flex justify-between text-small font-semibold tabular-nums">
+                        <span className="text-secondary">
+                            {progress.completed?.toLocaleString() || 0} / {progress.total?.toLocaleString() || 0}
+                        </span>
+                        <span className="text-primary">{`${percent}%`}</span>
+                    </div>
+                )}
                 {/* e4e4118: a 16 px light-grey track; fill = the pastel (dialog) or the title gradient (inline). */}
-                <div
-                    role="progressbar"
-                    aria-label={t('sync.progress')}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={percent}
-                    aria-valuetext={`${progress.completed?.toLocaleString() || 0} / ${progress.total?.toLocaleString() || 0}`}
-                    className="h-4 overflow-hidden rounded-full bg-sunken"
-                >
-                    <div
-                        data-testid="sync-progress-fill"
-                        className="h-full rounded-full bg-expressive-progress transition-all duration-base ease-standard motion-reduce:transition-none"
-                        style={{ width: `${ratio * 100}%` }}
-                    />
-                </div>
+                <ProgressBar
+                    value={scanning ? null : ratio}
+                    size="md"
+                    label={t('sync.progress')}
+                    valueText={scanning ? undefined : `${progress.completed?.toLocaleString() || 0} / ${progress.total?.toLocaleString() || 0}`}
+                    fillTestId="sync-progress-fill"
+                />
+                {scanning && scanStage === 'verySlow' && (
+                    <p className="text-small text-secondary">{t('sync.preparingVerySlow')}</p>
+                )}
             </div>
 
             <div className="grid grid-cols-3 gap-4">
@@ -82,7 +89,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                     data-testid="sync-media-warning"
                     className="flex items-center justify-center gap-2 rounded-lg border border-semantic-warning bg-semantic-warning-subtle px-4 py-3 text-semantic-warning"
                 >
-                    <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" />
+                    <Spinner size="sm" tone="current" decorative className="shrink-0" />
                     <span className="text-small font-semibold">
                         {t('sync.downloadingMedia')}
                         {(progress.failed ?? 0) > 0 && ` ${t('sync.filesFailed', { count: progress.failed })}`}
@@ -90,7 +97,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                 </div>
             ) : (
                 <div data-testid="sync-detail" className="flex items-center gap-2 rounded-lg bg-accent-subtle px-4 py-3">
-                    <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin text-accent motion-reduce:animate-none" />
+                    <Spinner size="sm" tone="accent" decorative className="shrink-0" />
                     <span className="truncate text-small font-semibold text-primary">
                         {getSyncDetail(progress, t, t('sync.processing'))}
                         {progress.detail_extra && ` ${progress.detail_extra}`}
