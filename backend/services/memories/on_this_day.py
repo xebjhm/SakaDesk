@@ -7,8 +7,10 @@
   ``first_ts`` of every room's member index, as a JST date), so no empty year
   appears before the archive starts, to the latest year in which
   ``month_day`` is on or before today (JST). This year's date is listed only
-  when it has messages. ``02-29`` is compared as ``(2, 29)``: non-leap years
-  in the range are listed and simply empty. Without any message, or when
+  when it has messages. ``02-29`` is compared as ``(2, 29)``, and non-leap
+  years are left out entirely: that date did not exist in them, so listing
+  them as "no messages" would be false (one ``memories_skip``,
+  ``reason=not_leap_year``, ``count`` = the years left out). Without any message, or when
   the range is empty, ``years`` is ``[]`` (``memories_skip``,
   ``reason=no_messages|before_first_year``) and nothing is cached.
 - A year without messages on that date is ``{"year", "has_messages": False}``
@@ -38,7 +40,8 @@ preview ids only.
 Logs (ids, codes, counts and scores only): ``memories_select``
 (``view=on_this_day``, ``rule=preview|thumb``, ``score``, ``fallback=None``,
 ``message_id``, ``year``) and ``memories_skip`` (``reason=no_preview|no_thumb``,
-``year``) when the payload is built, the early-return skip above, and
+``year``; ``reason=not_leap_year``, ``count``) when the payload is built, the
+early-return skip above, and
 ``memories_on_this_day`` (``years``, ``with_messages``, ``count``) on every
 call.
 """
@@ -46,6 +49,7 @@ call.
 from __future__ import annotations
 
 import asyncio
+import calendar
 import re
 from collections.abc import Sequence
 from datetime import date, datetime
@@ -64,7 +68,7 @@ logger = structlog.get_logger(__name__)
 
 VIEW = "on_this_day"
 # Bump on any rule or payload change (the cache hash has it).
-VERSION = 3
+VERSION = 4
 PREVIEW_CAP = 3
 MONTH_DAY_RE = re.compile(r"^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$")
 
@@ -164,8 +168,12 @@ def _compose(
     first: int,
     last: int,
     last_is_current: bool,
+    leap_day: bool = False,
 ) -> list[dict]:
-    """The text-free ``years`` list. Blocking (runs in a worker)."""
+    """The text-free ``years`` list. Blocking (runs in a worker).
+
+    ``leap_day``: the date is ``02-29``, so non-leap years are left out.
+    """
     by_year = _group_years(tagged, first, last)
 
     def ref(t: _Tagged) -> dict:
@@ -173,7 +181,15 @@ def _compose(
         return people.message_ref(service, sdir, t[1], t[2], avatar=avatar)
 
     years: list[dict] = []
-    for year in range(first, last + 1):
+    span = list(range(first, last + 1))
+    if leap_day:
+        missing = [y for y in span if not calendar.isleap(y)]
+        if missing:
+            logger.info(
+                "memories_skip", view=VIEW, reason="not_leap_year", count=len(missing)
+            )
+        span = [y for y in span if calendar.isleap(y)]
+    for year in span:
         facts = by_year.get(year)
         if not facts:
             if year == last and last_is_current:
@@ -275,6 +291,7 @@ async def on_this_day(
             first,
             last,
             last_is_current,
+            (month, day) == (2, 29),
         )
         return {"month_day": month_day, "years": years}
 

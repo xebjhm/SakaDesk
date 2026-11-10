@@ -176,14 +176,18 @@ async def test_future_date_this_year_is_excluded(svc):
 
 
 @pytest.mark.asyncio
-async def test_leap_day_lists_every_year(svc):
-    payload = await otd.on_this_day(SERVICE, svc, "02-29", now=NOW)
+async def test_leap_day_lists_leap_years_only(svc):
+    with capture_logs() as logs:
+        payload = await otd.on_this_day(SERVICE, svc, "02-29", now=NOW)
     years = by_year(payload)
-    # non-leap years stay listed (empty); 2022 is before the archive's 03-01
-    # start and 2026 is this year without messages
-    assert list(years) == [2023, 2024, 2025]
-    assert [y for y, v in years.items() if v["has_messages"]] == [2024]
+    # 02-29 did not exist in 2023 and 2025, so they are left out rather than
+    # shown as "no messages"; 2022 is before the archive's 03-01 start and
+    # 2026 is this year without messages
+    assert list(years) == [2024]
     assert years[2024]["preview"][0]["text"] == LEAP
+    (skip,) = [e for e in logs if e.get("reason") == "not_leap_year"]
+    # 2023, 2025 and 2026
+    assert skip["event"] == "memories_skip" and skip["count"] == 3
 
 
 @pytest.mark.asyncio
