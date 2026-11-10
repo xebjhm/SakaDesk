@@ -25,10 +25,13 @@ API:
 - ``media_url_of(service, media_file)``, ``media_url_for(service, fact)``,
   ``media_file_for(fact)``.
 - :class:`AvatarTimeline`, ``avatar_timeline(sdir, room)``,
-  ``async avatar_timelines(sdir, summary)``, ``current_avatars(sdir, rooms)``.
+  ``async avatar_timelines(sdir, summary)``,
+  ``async avatar_timelines_for(sdir, persons)`` (several people, bounded
+  concurrency), ``current_avatars(sdir, rooms)``.
 - ``message_ref(service, sdir, room, fact, *, avatar=None)`` -- the shared
   message object, text-free; ``async attach_texts(sdir, refs)`` fills
-  ``text`` / ``caption`` with one ``load_texts`` per room.
+  ``text`` / ``caption`` with one ``load_texts`` per room, at most
+  :data:`IO_CONCURRENCY` rooms at once.
 - ``async service_facts_on(sdir, summaries, *, day=None, month_day=None)``.
 - ``async room_hashes(sdir, summary)``.
 - ``async letters_of(service, sdir, summary)`` -- ``(room, letter_id, JST
@@ -67,6 +70,8 @@ from backend.services.service_utils import get_service_display_name, validate_se
 logger = structlog.get_logger(__name__)
 
 MEDIA_TYPES = frozenset({"picture", "video"})
+# Rooms read at once by attach_texts / avatar_timelines_for (worker threads).
+IO_CONCURRENCY = 4
 
 
 class ForeignServiceError(ArchiveReadError):
@@ -277,6 +282,24 @@ async def avatar_timelines(sdir: Path, summary: mi.MemberSummary) -> AvatarTimel
     return timeline
 
 
+async def avatar_timelines_for(
+    sdir: Path, persons: dict[str, mi.MemberSummary]
+) -> dict[str, AvatarTimeline]:
+    """``key -> avatar_timelines(sdir, summary)`` for every entry of ``persons``.
+
+    At most :data:`IO_CONCURRENCY` people are loaded at once; the result keeps
+    the keys of ``persons``.
+    """
+    gate = asyncio.Semaphore(IO_CONCURRENCY)
+
+    async def one(summary: mi.MemberSummary) -> AvatarTimeline:
+        async with gate:
+            return await avatar_timelines(sdir, summary)
+
+    timelines = await asyncio.gather(*(one(s) for s in persons.values()))
+    return dict(zip(persons, timelines))
+
+
 def current_avatars(sdir: Path, rooms: Sequence[str]) -> dict[str, str | None]:
     """``room -> current archived thumbnail URL`` (or ``None``). Blocking."""
     root = sdir.parent
@@ -340,7 +363,8 @@ async def attach_texts(sdir: Path, refs: list[dict]) -> None:
     Every ref must belong to ``sdir``'s service: refs are grouped by room
     only, and two services can share a relative room path, so a caller that
     mixes services calls this once per service with its own ``sdir``.
-    One ``load_texts`` per room (in a worker), for the refs' own ids and
+    One ``load_texts`` per room (in a worker, at most
+    :data:`IO_CONCURRENCY` rooms at once), for the refs' own ids and
     caption ids only. An empty text becomes ``None``. Refs whose id (or
     caption id) is not in ``messages.json`` keep ``None`` and are counted in
     one ``memories_skip`` (``view=attach_texts``, ``reason=text_missing``).
@@ -348,11 +372,14 @@ async def attach_texts(sdir: Path, refs: list[dict]) -> None:
     by_room: dict[str, list[dict]] = {}
     for ref in refs:
         by_room.setdefault(ref["room"], []).append(ref)
-    missing = 0
-    for room, group in by_room.items():
+    gate = asyncio.Semaphore(IO_CONCURRENCY)
+
+    async def fill(room: str, group: list[dict]) -> int:
         ids = {r["id"] for r in group}
         ids |= {r["caption_id"] for r in group if r.get("caption_id") is not None}
-        texts = await asyncio.to_thread(load_texts, sdir, sdir / room, ids)
+        async with gate:
+            texts = await asyncio.to_thread(load_texts, sdir, sdir / room, ids)
+        missing = 0
         for r in group:
             own = texts.get(r["id"])
             cap_id = r.get("caption_id")
@@ -361,6 +388,10 @@ async def attach_texts(sdir: Path, refs: list[dict]) -> None:
                 missing += 1
             r["text"] = own or None
             r["caption"] = cap or None
+        return missing
+
+    counts = await asyncio.gather(*(fill(room, g) for room, g in by_room.items()))
+    missing = sum(counts)
     if missing:
         logger.info(
             "memories_skip", view="attach_texts", reason="text_missing", count=missing
@@ -457,6 +488,7 @@ __all__ = [
     "attach_texts",
     "avatar_timeline",
     "avatar_timelines",
+    "avatar_timelines_for",
     "chat_path",
     "current_avatars",
     "letters_of",

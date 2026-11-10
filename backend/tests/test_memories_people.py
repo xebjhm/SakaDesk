@@ -448,3 +448,76 @@ def test_current_avatars(svc):
     got = people.current_avatars(svc, [KANE_ROOM, OLD_ROOM])
     assert got[KANE_ROOM].endswith("/profile_images/thumbnail/b.jpg")
     assert got[OLD_ROOM] is None
+
+
+# --- bounded concurrency ----------------------------------------------------------------
+
+
+def _tracking(real, parties):
+    """Wrap a blocking reader: the first ``parties`` calls meet at a barrier.
+
+    Sequential calls never fill the barrier (``BrokenBarrierError`` after the
+    timeout); ``peak`` records the most calls in flight at once.
+    """
+    import threading
+
+    barrier = threading.Barrier(parties, timeout=5)
+    lock = threading.Lock()
+    state = {"n": 0, "inflight": 0, "peak": 0}
+
+    def wrapped(*args, **kwargs):
+        with lock:
+            index = state["n"]
+            state["n"] += 1
+            state["inflight"] += 1
+            state["peak"] = max(state["peak"], state["inflight"])
+        try:
+            if index < parties:
+                barrier.wait()
+            return real(*args, **kwargs)
+        finally:
+            with lock:
+                state["inflight"] -= 1
+
+    return wrapped, state
+
+
+@pytest.mark.asyncio
+async def test_attach_texts_reads_rooms_concurrently_at_most_four(
+    tmp_path, monkeypatch
+):
+    mi.set_db_path(tmp_path / "idx.db")
+    sdir = tmp_path / "out" / SVC_NAME
+    rooms = []
+    for k in range(6):
+        write_room(
+            sdir,
+            f"{10 + k} 人{k}",
+            f"{20 + k} 人{k}",
+            [msg(1, "2025-11-10T03:00:00Z", content=f"言葉{k}")],
+        )
+        rooms.append(f"messages/{10 + k} 人{k}/{20 + k} 人{k}")
+    refs = []
+    for room in rooms:
+        (fact,) = await mf.get_facts(sdir, sdir / room)
+        refs.append(people.message_ref(SERVICE, sdir, room, fact))
+    wrapped, state = _tracking(people.load_texts, people.IO_CONCURRENCY)
+    monkeypatch.setattr(people, "load_texts", wrapped)
+    await people.attach_texts(sdir, refs)
+    assert [r["text"] for r in refs] == [f"言葉{k}" for k in range(6)]
+    assert state["n"] == 6
+    assert state["peak"] == people.IO_CONCURRENCY == 4
+
+
+@pytest.mark.asyncio
+async def test_avatar_timelines_for_loads_people_concurrently(svc, monkeypatch):
+    summaries = await mi.list_members(svc)
+    persons = {people.person_key(s): s for s in summaries}
+    people._avatar_cache.clear()
+    # each person's rooms are read in one worker: two people meet at the barrier
+    wrapped, state = _tracking(people._merge_timelines, 2)
+    monkeypatch.setattr(people, "_merge_timelines", wrapped)
+    got = await people.avatar_timelines_for(svc, persons)
+    assert list(got) == list(persons)
+    assert all(isinstance(t, people.AvatarTimeline) for t in got.values())
+    assert state["peak"] == 2
