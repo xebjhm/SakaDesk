@@ -1697,7 +1697,8 @@ def _member_stats(
         "nickname": sum(1 for i in words if i[1].has_nickname),
         "longest": max((i[1].chars for i in words), default=0),
         "voice": sum(1 for i in nonpromo if i[1].type == "voice"),
-        "night": sum(1 for i in nonpromo if 21 <= i[1].hour <= 23),
+        # distinct nights (the title says "the most nights"), not messages
+        "night": len({i[1].jst_date for i in nonpromo if 21 <= i[1].hour <= 23}),
         "photos": sum(1 for i in nonpromo if i[1].type == "picture"),
         "steady": mf.longest_streak(i[1].jst_date for i in window),
         "first": -sub.toordinal() if sub else None,

@@ -1008,3 +1008,35 @@ async def test_recap_years_does_not_count_promo(svc):
     write_room(svc, KANEMURA, rows)
     with time_machine.travel(PARTIAL, tick=False):
         assert await recap.recap_years(svc, now=datetime.now(timezone.utc)) == []
+
+
+@pytest.mark.asyncio
+async def test_night_title_counts_nights_not_messages(svc, monkeypatch):
+    async def no_oshi(service):
+        return set()
+
+    monkeypatch.setattr(oshi_mod, "oshi_names", no_oshi)
+    # 金村: five late messages on ONE night, and the longest words.
+    write_room(
+        svc,
+        KANEMURA,
+        [m(k, f"2026-03-01 22:{k:02d}", content=f"夜{k}") for k in range(5)]
+        + [
+            m(10 + k, f"2026-04-{1 + 2 * k:02d} 12:00", content="とても長いお話" * 5)
+            for k in range(7)
+        ],
+    )
+    # 松田: one late message on each of three nights, short words.
+    write_room(
+        svc,
+        ("40 松田 好花", "64 松田 好花"),
+        [m(k, f"2026-05-{1 + 2 * k:02d} 22:00", content="夜") for k in range(3)]
+        + [m(10 + k, f"2026-06-{1 + 2 * k:02d} 12:00", content="昼") for k in range(9)],
+    )
+    with time_machine.travel(PARTIAL, tick=False):
+        o = await recap.build_members_overview(
+            SERVICE, svc, 2026, now=datetime.now(timezone.utc)
+        )
+    by_name = {x["name"]: x["title_key"] for x in o["members"]}
+    assert by_name["松田 好花"] == "recap.titles.night"
+    assert by_name["金村 美玖"] == "recap.titles.longest"

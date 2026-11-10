@@ -129,10 +129,11 @@ describe('recap strings', () => {
         }
     });
 
-    it('role titles and the opening never invent a meeting, a rank or a number', () => {
+    it('role titles and the opening never invent a meeting, a rank, a number or "every day"', () => {
         // `first` is the fan's subscription start: never "met". The opening shows no ranks or counts (spec §9.6).
         const MET = /出会|出逢|巡り会|めぐりあ|邂逅|\bmet\b|\bmeet|encounter|遇見|遇见|相遇|相識|相识|認識|认识|識咗|识咗|結識|结识/i;
         const RANK = /\d|第一名|冠軍|冠军|一位|ランキング|順位|rank|#|No\.|名次|排名/i;
+        const EVERY_DAY = /每天|每日|天天|日日|毎日(?!つづいた)|毎日そば|every ?day|each day|daily|all year|一年中|一整年|成年/i;
         const TITLE_KEYS = ['morning', 'nickname', 'longest', 'voice', 'night', 'photos', 'steady', 'first'].map((k) => `recap.titles.${k}`);
         const OPENING_KEYS = ['label', 'starsNarration', 'starsLabel', 'firstChip', 'titlesTitle', 'titlesNarration'].map((k) => `recap.opening.${k}`);
         for (const [code, data] of Object.entries(locales)) {
@@ -142,6 +143,10 @@ describe('recap strings', () => {
             }
             for (const dotted of [...TITLE_KEYS, ...OPENING_KEYS]) {
                 expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(RANK);
+                // `steady` is the longest run of consecutive days, never "every day" of the year;
+                // no other title or opening line knows that either. 毎日つづいた (the run went on
+                // day by day) is the one true use.
+                expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(EVERY_DAY);
             }
             // The stars slide's only parameter is the year it names.
             expect(String(lookup(data, 'recap.opening.starsTitle')).replace('{{year}}', ''), code).not.toMatch(/\d|\{\{/);
