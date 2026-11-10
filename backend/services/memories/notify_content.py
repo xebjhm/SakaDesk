@@ -25,13 +25,34 @@ Copy rules (spec 1, binding):
 Strings are the ``memories_notify`` backend section (``get_strings``), in the
 UI language (``resolve_ui_language``).
 
+Contract with the scheduler (M4 Task 5):
+
+- **Explicit skips.** :func:`birthday_plans`, :func:`anniversary_plans` and
+  :func:`recap_plan` return a :class:`Skipped` (occasion + reason code) for
+  every occasion they will never send: ``graduated``, ``subscription_ended``,
+  ``unavailable`` (her ``member_id`` is no longer listed) and ``no_recap``.
+  The scheduler records one ledger row per skipped occasion (outcome
+  ``skipped``), so the next tick neither rebuilds nor re-logs it.
+- **Christmas waits for the stub.** The 12/25 ``christmas`` occasion is
+  eligible only while :func:`christmas_ready` is true (some member's recap
+  shows her Christmas stub at check time). Before that :func:`recap_plan`
+  returns ``None`` and the scheduler writes **no** ledger row, so a stub that
+  appears in the evening still sends the toast later that JST day. After
+  the window closes the occasion is simply never produced again.
+- **On This Day.** ``None`` from :func:`on_this_day_plan` means no service
+  has a moment today: the scheduler records ``empty``.
+- **Images.** ``hero`` and ``avatar`` are absolute (``Path.resolve``) and
+  existed at build time (checked in a worker); the delivery layer may still
+  find them gone and must drop them then.
+
 Logs (ids, codes and counts only; never a name, a quote, a path or a raw card
 key): ``memories_notify_skip`` with ``kind``, ``service``, ``reason`` and
-``member_id`` where relevant. Reasons emitted here: ``unavailable`` (unknown
-service, or an occasion whose person is no longer listed), ``graduated``,
-``subscription_ended``, ``no_facts`` and ``seeded``. The scheduler logs the
-rest (``empty``, ``no_recap``, ...) and ``memories_card_check`` from the
-counts :func:`card_plans` returns.
+``member_id`` where relevant, once per build. Reasons emitted here:
+``unavailable`` (unknown service, or a person no longer listed),
+``graduated``, ``subscription_ended``, ``no_recap``, ``no_facts``,
+``seeded`` and, at debug level, ``christmas_pending``. The scheduler logs
+the rest (``empty``, ``already_done``, ...) and ``memories_card_check``
+from the counts :func:`card_plans` returns.
 """
 
 from __future__ import annotations
@@ -52,10 +73,15 @@ from backend.services.memories import index as mi
 from backend.services.memories.cards import earned_keys
 from backend.services.memories.notify_rules import (
     Occasion,
+    jst_today,
     new_foil_keys,
     notifiable_foil,
 )
-from backend.services.nickname import apply_nickname_or_mask, nickname_for
+from backend.services.nickname import (
+    PLACEHOLDER_RE,
+    apply_nickname_or_mask,
+    nickname_for,
+)
 from backend.services.notification_planner import (
     MemoryToastPlan,
     clip_text,
@@ -68,7 +94,14 @@ SECTION = "memories_notify"
 QUOTE_MAX_CHARS = 60
 NAMES_MAX_CHARS = 40
 PICTURE = "picture"
-_MEDIA = frozenset({"picture", "video"})
+
+
+@dataclass(frozen=True)
+class Skipped:
+    """An occasion that will never be sent, with its reason code (see above)."""
+
+    occasion: Occasion
+    reason: str
 
 
 @dataclass(frozen=True)
@@ -93,8 +126,12 @@ async def load_context(settings: Mapping[str, Any], now: datetime) -> Context:
 
 
 def quote(ctx: Context, text: str | None, service: str) -> str | None:
-    """Her words for a toast: nickname (or the mask) in, clipped; empty is ``None``."""
-    if not text:
+    """Her words for a toast: nickname (or the mask) in, clipped.
+
+    ``None`` when nothing but whitespace and placeholders is left: a bare mask
+    is not her words.
+    """
+    if not text or not PLACEHOLDER_RE.sub("", text).strip():
         return None
     masked = apply_nickname_or_mask(
         text, nickname_for(ctx.settings, service), ctx.strings["nickname_masked"]
@@ -118,13 +155,22 @@ def _skip(kind: str, service: str, reason: str, member_id: str | None = None) ->
     )
 
 
-def _existing(path: Path) -> Path | None:
-    """``path`` when it is a file, else ``None``. Blocking."""
-    return path if path.is_file() else None
+def _first_file(paths: Sequence[Path]) -> Path | None:
+    """The first of ``paths`` that is a file, absolute; else ``None``. Blocking."""
+    for path in paths:
+        resolved = path.resolve()
+        if resolved.is_file():
+            return resolved
+    return None
+
+
+def _find_avatar_abs(room_dir: Path) -> Path | None:
+    found = find_avatar(room_dir)
+    return found.resolve() if found is not None else None
 
 
 async def _avatar(sdir: Path, room: str) -> Path | None:
-    return await asyncio.to_thread(find_avatar, sdir / room)
+    return await asyncio.to_thread(_find_avatar_abs, sdir / room)
 
 
 def _memoir_route(sdir: Path, summary: mi.MemberSummary, **extra: str) -> dict:
@@ -166,12 +212,28 @@ async def _service_moment(
     return (sdir, summaries, moment) if moment is not None else None
 
 
-def _hero_candidate(sdir: Path, moment: dict) -> Path | None:
-    """Her photo of the day, else the message itself when it is a picture."""
-    for ref in (moment["photo"], moment["message"]):
-        if ref is not None and ref["type"] == PICTURE and ref["media_file"]:
-            return sdir / str(ref["media_file"])
-    return None
+def _hero_candidates(sdir: Path, moment: dict) -> list[Path]:
+    """Her photo of the day, then the message itself, when each is a picture."""
+    return [
+        sdir / str(ref["media_file"])
+        for ref in (moment["photo"], moment["message"])
+        if ref is not None and ref["type"] == PICTURE and ref["media_file"]
+    ]
+
+
+def _rank(moment: dict, order: int) -> tuple[bool, bool, bool, int, int]:
+    """Oshi first, words before photos, a score before none, higher score, order.
+
+    Importance and photo score are never compared: ``has_words`` splits them.
+    """
+    score = moment["score"]
+    return (
+        not moment["oshi"],
+        not moment["has_words"],
+        score is None,
+        -score if score is not None else 0,
+        order,
+    )
 
 
 async def on_this_day_plan(
@@ -179,17 +241,19 @@ async def on_this_day_plan(
 ) -> MemoryToastPlan | None:
     """One On This Day toast across ``services``, or ``None`` when none has a moment.
 
-    Each service proposes the hub's ``today`` moment; the oshi's wins, then
-    the higher score, then the earlier service in ``services``.
+    Each service proposes the hub's ``today`` moment; they are ranked by
+    :func:`_rank` (oshi, words before photos, score, then ``services`` order).
+    The body quotes her words; a picture without words gets the photo copy;
+    a video, voice or empty message gets the neutral copy (never a photo
+    claim). The hero is the first existing picture (her photo of the day,
+    then the message's own).
     """
-    found: list[tuple[tuple[bool, int, int], str, Path, Sequence, dict]] = []
-    for rank, service in enumerate(services):
+    found: list[tuple[tuple, str, Path, Sequence, dict]] = []
+    for order, service in enumerate(services):
         got = await _service_moment(service, occasion)
         if got is not None:
             sdir, summaries, moment = got
-            score = moment["score"] if moment["score"] is not None else -1
-            key = (not moment["oshi"], -score, rank)
-            found.append((key, service, sdir, summaries, moment))
+            found.append((_rank(moment, order), service, sdir, summaries, moment))
     if not found:
         return None
     _, service, sdir, summaries, moment = min(found, key=lambda f: f[0])
@@ -202,13 +266,11 @@ async def on_this_day_plan(
         words = quote(ctx, message["text"] or message["caption"], service)
         if words is not None:
             body = ctx.strings["otd_body"].format(name=name, quote=words)
-        elif message["type"] in _MEDIA:
+        elif message["type"] == PICTURE:
             body = ctx.strings["otd_body_photo"].format(name=name)
-        else:  # a voice or an empty message: no words to quote, no photo claim
+        else:  # a video, voice or empty message: no words, no photo claim
             body = ctx.strings["otd_body_hidden"].format(name=name)
-        candidate = _hero_candidate(sdir, moment)
-        if candidate is not None:
-            hero = await asyncio.to_thread(_existing, candidate)
+        hero = await asyncio.to_thread(_first_file, _hero_candidates(sdir, moment))
     person = next(s for s in summaries if message["room"] in s.member_dirs)
     return MemoryToastPlan(
         kind="on_this_day",
@@ -237,18 +299,18 @@ async def birthday_plans(
     sdir: Path,
     summaries: Sequence[mi.MemberSummary],
     occasions: Sequence[Occasion],
-) -> list[MemoryToastPlan]:
+) -> tuple[list[MemoryToastPlan], list[Skipped]]:
     """One toast per ``birthday`` / ``birthday_soon`` occasion of a listed,
-    non-graduated person (``reason=graduated`` / ``unavailable`` otherwise)."""
+    non-graduated person; every other occasion comes back as a
+    :class:`Skipped` (``graduated`` / ``unavailable``)."""
     people_by_id = _by_member_id(summaries)
     plans: list[MemoryToastPlan] = []
+    skipped: list[Skipped] = []
     for occ in occasions:
         person = people_by_id.get(occ.subject)
-        if person is None:
-            _skip(occ.kind, service, "unavailable", occ.subject)
-            continue
-        if person.graduated:
-            _skip(occ.kind, service, "graduated", occ.subject)
+        reason = _person_skip(person, None)
+        if person is None or reason is not None:
+            skipped.append(_skipped(service, occ, reason or "unavailable"))
             continue
         name = person.name
         if occ.kind == "birthday" or occ.number is None:
@@ -269,10 +331,32 @@ async def birthday_plans(
                 member_id=occ.subject,
             )
         )
-    return plans
+    return plans, skipped
 
 
 # --- subscription anniversaries ------------------------------------------------------
+
+
+def _person_skip(
+    person: mi.MemberSummary | None, lapsed: frozenset[str] | None
+) -> str | None:
+    """The skip reason of an occasion's person, or ``None`` when she is kept.
+
+    ``lapsed`` (anniversaries only) adds the subscription-ended check.
+    """
+    if person is None:
+        return "unavailable"
+    if person.graduated:
+        return "graduated"
+    if lapsed is not None and not hub.still_subscribed(person, lapsed):
+        return "subscription_ended"
+    return None
+
+
+def _skipped(service: str, occ: Occasion, reason: str) -> Skipped:
+    member_id = None if occ.kind == "recap" else occ.subject
+    _skip(occ.kind, service, reason, member_id)
+    return Skipped(occ, reason)
 
 
 def _milestone(occ: Occasion) -> str:
@@ -286,29 +370,26 @@ async def anniversary_plans(
     sdir: Path,
     ordered: Sequence[mi.MemberSummary],
     occasions: Sequence[Occasion],
-) -> list[tuple[MemoryToastPlan, list[Occasion]]]:
+) -> tuple[list[tuple[MemoryToastPlan, list[Occasion]]], list[Skipped]]:
     """One toast per milestone, naming every member who reaches it today.
 
     ``ordered`` is ``people.sort_people`` (oshi first); the names follow it.
-    Graduated members (``reason=graduated``) and members whose subscription
-    has ended in every group (``reason=subscription_ended``) are left out.
     Each tuple is the plan (``subject`` / ``occasion`` of its first member)
-    and the occasions it covers, one per named member.
+    and the occasions it covers, one per named member. Graduated members,
+    members whose subscription has ended in every group and members no
+    longer listed come back as :class:`Skipped` (``graduated`` /
+    ``subscription_ended`` / ``unavailable``).
     """
     rank = {people.member_id(s): i for i, s in enumerate(ordered)}
     people_by_id = _by_member_id(ordered)
     lapsed = await asyncio.to_thread(hub.lapsed_groups, sdir)
     groups: dict[str, list[tuple[mi.MemberSummary, Occasion]]] = {}
+    skipped: list[Skipped] = []
     for occ in occasions:
         person = people_by_id.get(occ.subject)
-        if person is None:
-            _skip(occ.kind, service, "unavailable", occ.subject)
-            continue
-        if person.graduated:
-            _skip(occ.kind, service, "graduated", occ.subject)
-            continue
-        if not hub.still_subscribed(person, lapsed):
-            _skip(occ.kind, service, "subscription_ended", occ.subject)
+        reason = _person_skip(person, lapsed)
+        if person is None or reason is not None:
+            skipped.append(_skipped(service, occ, reason or "unavailable"))
             continue
         groups.setdefault(_milestone(occ), []).append((person, occ))
     out: list[tuple[MemoryToastPlan, list[Occasion]]] = []
@@ -333,21 +414,49 @@ async def anniversary_plans(
             member_id=first_occ.subject,
         )
         out.append((plan, [occ for _, occ in members]))
-    return out
+    return out, skipped
 
 
 # --- recap ---------------------------------------------------------------------------
 
 
+async def christmas_ready(service: str, sdir: Path, *, now: datetime) -> bool:
+    """True when some member's recap of ``now``'s JST year shows her Christmas
+    stub as of ``now`` (``recap.has_christmas_stub`` over
+    ``recap.build_member_recap``, the recap's own s09 rule; cached by the
+    recap). Before 12/25 the stub is sealed, so this is false. The scheduler
+    may call it every tick of the 12/25 window."""
+    year = jst_today(now).year
+    for person in await mi.list_members(sdir):
+        payload = await recap.build_member_recap(service, sdir, person, year, now=now)
+        if recap.has_christmas_stub(payload):
+            return True
+    return False
+
+
 async def recap_plan(
     ctx: Context, service: str, sdir: Path, occasion: Occasion
-) -> MemoryToastPlan | None:
-    """The recap toast (``open`` / ``christmas`` / ``ready``), or ``None`` when that
-    year has no recap (the scheduler logs ``reason=no_recap``)."""
+) -> MemoryToastPlan | Skipped | None:
+    """The recap toast (``open`` / ``christmas`` / ``ready``).
+
+    :class:`Skipped` (``no_recap``) when that year has no recap
+    (``recap.recap_years``). ``None`` for ``christmas`` while
+    :func:`christmas_ready` is false: not yet, so the scheduler records
+    nothing and asks again next tick.
+    """
     year = occasion.number
     if year is None or year not in await recap.recap_years(sdir, now=ctx.now):
-        return None
+        return _skipped(service, occasion, "no_recap")
     which = occasion.subject
+    if which == "christmas" and not await christmas_ready(service, sdir, now=ctx.now):
+        logger.debug(
+            "memories_notify_skip",
+            kind="recap",
+            service=service,
+            reason="christmas_pending",
+            member_id=None,
+        )
+        return None
     return MemoryToastPlan(
         kind="recap",
         service=service,
@@ -381,7 +490,8 @@ async def card_plans(
     (``reason=no_facts``). The baseline becomes the union of the old and new
     keys, so it never shrinks. Each tuple is the plan (``occasion`` = the
     first new card's occasion key in shelf / catalogue order) and every new
-    occasion key it covers. The counts are ``persons``, ``evaluated``,
+    occasion key it covers. A graduated person's new cards update the
+    baseline without a toast (``reason=graduated``). The counts are ``persons``, ``evaluated``,
     ``seeded`` and ``new_foil`` (for ``memories_card_check``).
     """
     counts = {"persons": 0, "evaluated": 0, "seeded": 0, "new_foil": 0}
@@ -410,6 +520,11 @@ async def card_plans(
         await app_state.aput_card_baseline(
             service, mid, baseline[0] | current, data_hash
         )
+        if new and person.graduated:
+            # After graduation a "new" card is a data-recovery artifact, not an
+            # event: the baseline absorbs it silently.
+            _skip("card", service, "graduated", mid)
+            continue
         if not new:
             continue
         counts["new_foil"] += len(new)
@@ -435,9 +550,11 @@ __all__ = [
     "NAMES_MAX_CHARS",
     "QUOTE_MAX_CHARS",
     "Context",
+    "Skipped",
     "anniversary_plans",
     "birthday_plans",
     "card_plans",
+    "christmas_ready",
     "load_context",
     "on_this_day_plan",
     "plural",

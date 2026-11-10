@@ -327,6 +327,109 @@ async def test_otd_voice_moment_never_claims_a_photo(svc, monkeypatch):
     assert plan.body == "金村 美玖のメッセージを振り返る" and plan.hero is None
 
 
+# --- fix wave 1: on this day -----------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_otd_video_only_day_makes_no_photo_claim(svc):
+    room(
+        svc,
+        KANE,
+        [
+            msg(
+                1,
+                "2024-11-10T12:00:00Z",
+                "video",
+                media_file=f"{KANE}/video/1.mp4".replace("/", "\\"),
+            )
+        ],
+    )
+    plan = await nc.on_this_day_plan(ctx(), [HINATA], otd())
+    assert plan.body == "金村 美玖のメッセージを振り返る"
+    assert plan.hero is None
+
+
+@pytest.mark.asyncio
+async def test_otd_words_beat_a_higher_scored_photo_in_another_service(
+    out, monkeypatch
+):
+    set_oshi(monkeypatch, {})
+    room(out / HINATA_NAME, MATSU, [msg(1, "2024-11-10T03:00:00Z", content="またね")])
+    room(
+        out / SAKURA_NAME,
+        FUJI,
+        [pic(FUJI, 1, "2024-11-10T12:00:00Z", fav=True)],
+    )
+    sakura = await nc.on_this_day_plan(ctx(), [SAKURA], otd())
+    assert sakura.service == SAKURA  # the photo alone is a moment
+    plan = await nc.on_this_day_plan(ctx(), [SAKURA, HINATA], otd())
+    assert plan.service == HINATA and plan.body == "松田 好花「またね」"
+
+
+def test_rank_orders_oshi_words_score_then_service():
+    def m(oshi=False, words=True, score=None):
+        return {"oshi": oshi, "has_words": words, "score": score}
+
+    ranked = sorted(
+        [
+            (nc._rank(m(words=False, score=800), 0), "photo"),
+            (nc._rank(m(score=None), 1), "words_none"),
+            (nc._rank(m(score=-200), 2), "greeting"),
+            (nc._rank(m(score=50), 3), "words_50"),
+            (nc._rank(m(oshi=True, words=False, score=1), 4), "oshi_photo"),
+            (nc._rank(m(score=50), 5), "words_50_later"),
+        ]
+    )
+    assert [r[1] for r in ranked] == [
+        "oshi_photo",
+        "words_50",
+        "words_50_later",
+        "greeting",
+        "words_none",
+        "photo",
+    ]
+
+
+@pytest.mark.asyncio
+async def test_otd_hero_is_absolute_with_a_relative_output_dir(
+    svc, tmp_path, monkeypatch
+):
+    room(svc, KANE, [pic(KANE, 1, "2024-11-10T12:00:00Z")], avatars=AVATAR)
+    photo = svc / KANE / "picture" / "1.jpg"
+    photo.parent.mkdir(parents=True)
+    photo.write_bytes(b"\xff\xd8\xff")
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.setattr(people, "output_dir", lambda: Path("out"))
+    plan = await nc.on_this_day_plan(ctx(), [HINATA], otd())
+    assert plan.hero.is_absolute() and plan.hero == photo.resolve()
+    assert plan.avatar.is_absolute()
+
+
+@pytest.mark.asyncio
+async def test_otd_hero_falls_back_to_the_message_picture(svc):
+    room(
+        svc,
+        KANE,
+        [
+            pic(KANE, 1, "2024-11-10T03:00:00Z"),
+            pic(KANE, 2, "2024-11-10T12:00:00Z", fav=True),
+        ],
+    )
+    folder = svc / KANE / "picture"
+    folder.mkdir(parents=True)
+    for i in (1, 2):
+        (folder / f"{i}.jpg").write_bytes(b"\xff\xd8\xff")
+    first = (await nc.on_this_day_plan(ctx(), [HINATA], otd())).hero
+    first.unlink()  # her photo of the day is gone: the message's own picture
+    second = (await nc.on_this_day_plan(ctx(), [HINATA], otd())).hero
+    assert second is not None and second != first and second.is_file()
+
+
+def test_quote_of_only_placeholders_is_not_her_words():
+    assert nc.quote(ctx(), " %%% ％％％\n", HINATA) is None
+    assert nc.quote(ctx(nickname=NICKNAME), "%%%", HINATA) is None
+
+
 # --- birthdays -------------------------------------------------------------------------
 
 
@@ -356,7 +459,8 @@ async def test_birthday_day_of_and_reminders(birthday_svc):
         *birthday_occasions("58", "2002-09-10", date(2026, 9, 3)),
         *birthday_occasions("58", "2002-09-10", date(2026, 9, 9)),
     ]
-    plans = await nc.birthday_plans(ctx("en"), HINATA, svc, summaries, occs)
+    plans, skipped = await nc.birthday_plans(ctx("en"), HINATA, svc, summaries, occs)
+    assert skipped == []
     assert [one_number(p).title for p in plans] == [
         "Today is 金村 美玖's birthday",
         "7 days until 金村 美玖's birthday",
@@ -376,7 +480,7 @@ async def test_birthday_day_of_and_reminders(birthday_svc):
     }
     assert plans[0].avatar is not None and plans[0].hero is None
     assert plans[0].member_id == "58" and plans[0].subject == "58"
-    ja = await nc.birthday_plans(ctx(), HINATA, svc, summaries, occs[1:2])
+    ja, _ = await nc.birthday_plans(ctx(), HINATA, svc, summaries, occs[1:2])
     assert ja[0].title == "金村 美玖の誕生日まで、あと7日"
 
 
@@ -388,7 +492,7 @@ async def test_birthday_route_is_her_newest_room(svc):
     summaries = await summaries_of(svc)
     kane = by_name(summaries, "金村")
     occs = birthday_occasions(kane.member_ids[0], "09-10", date(2026, 9, 10))
-    (plan,) = await nc.birthday_plans(ctx(), HINATA, svc, summaries, occs)
+    (plan,), _ = await nc.birthday_plans(ctx(), HINATA, svc, summaries, occs)
     assert plan.route["memberPath"] == f"{HINATA_NAME}/{newer}"
 
 
@@ -400,8 +504,14 @@ async def test_birthday_skips_graduated_and_unknown(birthday_svc, no_text_in_log
         *birthday_occasions("64", "1999-04-27", date(2026, 4, 27)),
         *birthday_occasions("999", "1999-04-27", date(2026, 4, 27)),
     ]
-    plans = await nc.birthday_plans(ctx(), HINATA, svc, [*summaries, nameless], occs)
+    plans, skipped = await nc.birthday_plans(
+        ctx(), HINATA, svc, [*summaries, nameless], occs
+    )
     assert plans == []
+    assert [(k.occasion, k.reason) for k in skipped] == [
+        (occs[0], "graduated"),
+        (occs[1], "unavailable"),
+    ]
     skips = [e for e in no_text_in_logs if e["event"] == "memories_notify_skip"]
     assert {(e["reason"], e["member_id"]) for e in skips} == {
         ("graduated", "64"),
@@ -440,7 +550,10 @@ def anniv_occasions(ordered, today=TODAY):
 async def test_anniversary_same_start_coalesces_oshi_first(anniv_svc):
     svc, ordered = anniv_svc
     occs = anniv_occasions(ordered)
-    ((plan, covered),) = await nc.anniversary_plans(ctx(), HINATA, svc, ordered, occs)
+    ((plan, covered),), skipped = await nc.anniversary_plans(
+        ctx(), HINATA, svc, ordered, occs
+    )
+    assert skipped == []
     one_number(plan)
     assert plan.title == "今日はメンバーシップ1年目の記念日"
     assert plan.body.startswith("松田 好花・") and plan.body.endswith(
@@ -455,7 +568,7 @@ async def test_anniversary_same_start_coalesces_oshi_first(anniv_svc):
         "tab": "binder",
         "cardKey": "anniv.y1",
     }
-    en = (await nc.anniversary_plans(ctx("en"), HINATA, svc, ordered, occs))[0][0]
+    en = (await nc.anniversary_plans(ctx("en"), HINATA, svc, ordered, occs))[0][0][0]
     assert en.title == "Today is your 1-year membership anniversary"
     assert en.body.startswith("Your membership with 松田 好花, ")
 
@@ -465,7 +578,7 @@ async def test_anniversary_names_are_clipped(anniv_svc):
     svc, ordered = anniv_svc
     long = [dataclasses.replace(s, name=s.name * 6) for s in ordered]
     occs = anniv_occasions(ordered)
-    ((plan, _),) = await nc.anniversary_plans(ctx(), HINATA, svc, long, occs)
+    ((plan, _),), _ = await nc.anniversary_plans(ctx(), HINATA, svc, long, occs)
     names = plan.body.removesuffix("とのメンバーシップ")
     assert len(names) == nc.NAMES_MAX_CHARS + 1 and names.endswith("…")
 
@@ -494,8 +607,15 @@ async def test_anniversary_skips_lapsed_graduated_and_unknown(
     assert by_name(ordered, "佐々木").graduated
     occs = anniv_occasions(ordered)
     unknown = dataclasses.replace(occs[0], subject="999")
-    result = await nc.anniversary_plans(ctx(), HINATA, svc, ordered, [*occs, unknown])
+    result, skipped = await nc.anniversary_plans(
+        ctx(), HINATA, svc, ordered, [*occs, unknown]
+    )
     ((plan, covered),) = result
+    assert {(k.occasion.subject, k.reason) for k in skipped} == {
+        ("58", "subscription_ended"),
+        ("65", "graduated"),
+        ("999", "unavailable"),
+    }
     assert [o.subject for o in covered] == ["64"]
     assert plan.body == "松田 好花とのメンバーシップ"
     skips = {
@@ -520,7 +640,7 @@ async def test_anniversary_day_milestone_and_separate_milestones(anniv_svc):
     summaries = await summaries_of(svc)
     ordered = people.sort_people(summaries, await people.oshi_rooms(HINATA, summaries))
     occs = anniv_occasions(ordered)
-    plans = await nc.anniversary_plans(ctx("en"), HINATA, svc, ordered, occs)
+    plans, _ = await nc.anniversary_plans(ctx("en"), HINATA, svc, ordered, occs)
     titles = {one_number(p).title: (p, c) for p, c in plans}
     d100, covered = titles["Today is day 100 of your membership"]
     assert d100.route["cardKey"] == "anniv.d100"
@@ -544,7 +664,7 @@ def stub_recap_years(monkeypatch, years):
 async def test_recap_open_only_when_the_year_has_a_recap(svc, monkeypatch):
     (occ,) = nr.recap_occasions(HINATA, date(2026, 12, 1), SLOT)
     stub_recap_years(monkeypatch, [2025])
-    assert await nc.recap_plan(ctx(), HINATA, svc, occ) is None
+    assert await nc.recap_plan(ctx(), HINATA, svc, occ) == nc.Skipped(occ, "no_recap")
     stub_recap_years(monkeypatch, [2025, 2026])
     plan = one_number(await nc.recap_plan(ctx(), HINATA, svc, occ))
     assert plan.title == "2026年の、ここまで"
@@ -557,6 +677,11 @@ async def test_recap_open_only_when_the_year_has_a_recap(svc, monkeypatch):
 @pytest.mark.asyncio
 async def test_recap_christmas_and_ready(svc, monkeypatch):
     stub_recap_years(monkeypatch, [2026])
+
+    async def ready_stub(service, sdir, *, now):
+        return True
+
+    monkeypatch.setattr(nc, "christmas_ready", ready_stub)
     (xmas,) = nr.recap_occasions(HINATA, date(2026, 12, 25), SLOT)
     plan = one_number(await nc.recap_plan(ctx("en"), HINATA, svc, xmas))
     assert plan.title == "The Christmas page is open" and plan.subject == "christmas"
@@ -569,6 +694,82 @@ async def test_recap_christmas_and_ready(svc, monkeypatch):
     assert plan.title == "Your 2026 in Memories is complete"
     assert plan.body == "Every page is open now, to the last one"
     assert plan.occasion == "2026" and plan.route["year"] == 2026
+
+
+# --- fix wave 1: recap gates on real archives -------------------------------------------
+
+
+def year_of_messages(year, count=12):
+    return [
+        msg(
+            k,
+            f"{year}-{1 + k % 11:02d}-{1 + k:02d}T11:00:00Z",
+            content="今日もありがとう",
+        )
+        for k in range(1, count + 1)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_recap_open_gate_reads_the_real_recap_years(svc):
+    room(svc, KANE, year_of_messages(2026))
+    (occ,) = nr.recap_occasions(HINATA, date(2026, 12, 1), SLOT)
+    dec1 = datetime(2026, 12, 1, 3, 0, tzinfo=timezone.utc)
+    with time_machine.travel(dec1, tick=False):
+        plan = await nc.recap_plan(ctx(now=dec1), HINATA, svc, occ)
+    assert plan.title == "2026年の、ここまで"
+
+
+@pytest.mark.asyncio
+async def test_recap_open_gate_skips_a_thin_year(svc, no_text_in_logs):
+    room(svc, KANE, year_of_messages(2026, count=9))  # below the short tier
+    (occ,) = nr.recap_occasions(HINATA, date(2026, 12, 1), SLOT)
+    dec1 = datetime(2026, 12, 1, 3, 0, tzinfo=timezone.utc)
+    with time_machine.travel(dec1, tick=False):
+        result = await nc.recap_plan(ctx(now=dec1), HINATA, svc, occ)
+    assert result == nc.Skipped(occ, "no_recap")
+    (event,) = [e for e in no_text_in_logs if e.get("reason") == "no_recap"]
+    assert event["kind"] == "recap" and event["member_id"] is None
+
+
+@pytest.mark.asyncio
+async def test_christmas_waits_for_her_stub_within_the_day(svc):
+    # Noon: her Christmas message has not been synced yet.
+    room(svc, KANE, year_of_messages(2026))
+    (occ,) = nr.recap_occasions(HINATA, date(2026, 12, 25), SLOT)
+    noon = datetime(2026, 12, 25, 3, 0, tzinfo=timezone.utc)
+    with time_machine.travel(noon, tick=False):
+        assert await nc.christmas_ready(HINATA, svc, now=noon) is False
+        assert await nc.recap_plan(ctx(now=noon), HINATA, svc, occ) is None
+    # Evening: the sync brings her messages of the afternoon and night.
+    room(
+        svc,
+        KANE,
+        [
+            *year_of_messages(2026),
+            # two Christmas messages: the recap's one sentence (s12) may take one
+            msg(50, "2026-12-25T05:00:00Z", content="メリークリスマス！"),
+            msg(52, "2026-12-25T06:00:00Z", content="クリスマスケーキ食べたよ"),
+            msg(51, "2026-12-25T11:00:00Z", content="おやすみなさい"),
+        ],
+    )
+    night = datetime(2026, 12, 25, 12, 0, tzinfo=timezone.utc)  # 21:00 JST
+    with time_machine.travel(night, tick=False):
+        assert await nc.christmas_ready(HINATA, svc, now=night) is True
+        plan = one_number(await nc.recap_plan(ctx(now=night), HINATA, svc, occ))
+    assert plan.title == "クリスマスのページが開きました"
+
+
+@pytest.mark.asyncio
+async def test_christmas_ready_is_false_before_christmas(svc):
+    room(
+        svc,
+        KANE,
+        [*year_of_messages(2026), msg(50, "2026-12-24T10:00:00Z", content="メリクリ")],
+    )
+    eve = datetime(2026, 12, 24, 14, 0, tzinfo=timezone.utc)  # 23:00 JST, sealed
+    with time_machine.travel(eve, tick=False):
+        assert await nc.christmas_ready(HINATA, svc, now=eve) is False
 
 
 # --- cards -------------------------------------------------------------------------------
@@ -672,6 +873,37 @@ async def test_cards_skip_a_person_without_member_id(svc):
     nameless = dataclasses.replace((await summaries_of(svc))[0], member_ids=())
     plans, counts = await check_cards(svc, summaries=[nameless])
     assert plans == [] and counts["persons"] == 0
+
+
+@pytest.mark.asyncio
+async def test_cards_several_new_foil_cards_share_one_toast(svc):
+    write_side_inputs(svc, birthdays={"金村美玖": "2002-11-10"})
+    room(svc, KANE, KANE_DAYS)
+    await check_cards(svc)
+    # 00:03 JST on her birthday: the midnight card and this year's birthday
+    room(svc, KANE, [*KANE_DAYS, msg(3, "2026-11-09T15:03:00Z", content=KANE_WORDS)])
+    ((plan, keys),), counts = await check_cards(svc)
+    assert keys == ["special.birthday@2026", "moment.midnight"]
+    assert counts["new_foil"] == 2
+    assert plan.route["cardKey"] == "special.birthday"
+    assert plan.occasion == "special.birthday@2026"
+
+
+@pytest.mark.asyncio
+async def test_cards_of_a_graduated_member_update_the_baseline_silently(
+    svc, no_text_in_logs
+):
+    write_side_inputs(svc, closed_groups=["34"])
+    room(svc, KANE, KANE_DAYS)
+    await check_cards(svc)
+    room(svc, KANE, [*KANE_DAYS, msg(3, "2026-11-09T15:03:00Z", content=KANE_WORDS)])
+    plans, counts = await check_cards(svc)
+    assert plans == [] and counts["new_foil"] == 0
+    keys, _ = app_state.get_card_baseline(HINATA, "58")
+    assert "moment.midnight" in keys
+    assert ("graduated", "58") in {
+        (e.get("reason"), e.get("member_id")) for e in no_text_in_logs
+    }
 
 
 # --- strings ---------------------------------------------------------------------------

@@ -626,6 +626,7 @@ async def test_today_moment_is_the_today_rule_with_ranking_fields(today_svc):
         SERVICE, today_svc, summaries, {"金村美玖"}, NOW.date()
     )
     assert moment.pop("oshi") is True and moment.pop("score") is not None
+    assert moment.pop("has_words") is True
     assert moment == hub_otd
     moment = await hub.today_moment(SERVICE, today_svc, summaries, set(), NOW.date())
     assert moment["oshi"] is False and moment["message"]["text"] == MATSU_OTD

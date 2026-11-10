@@ -431,9 +431,11 @@ async def today_moment(
     """The ``today`` rule's moment only (no ``week`` / ``first`` fallback).
 
     The same object as the hub's ``on_this_day`` (``rule`` is always
-    ``today``), plus two ranking fields that the hub payload does not carry:
-    ``oshi`` (the moment is the oshi's) and ``score`` (the message's
-    importance, else its photo score, or ``None``). ``None`` when no past
+    ``today``), plus ranking fields that the hub payload does not carry:
+    ``oshi`` (the moment is the oshi's), ``has_words`` (the message is her
+    words, ``importance`` set; else it is a photo-only pick) and ``score``
+    (the importance for words, the photo score otherwise, or ``None``; the
+    two scales are only comparable within the same ``has_words``). ``None`` when no past
     year has a fact on today's month-day (``memories_skip``,
     ``reason=no_today``). Used by the On This Day notification.
     """
@@ -441,7 +443,12 @@ async def today_moment(
     if pick is None:
         return None
     moment = await _assemble(service, sdir, "today", pick, oshi, today)
-    return {**moment, "oshi": pick[0].name_norm in oshi, "score": _score(pick[2])}
+    return {
+        **moment,
+        "oshi": pick[0].name_norm in oshi,
+        "has_words": pick[2].importance is not None,
+        "score": _score(pick[2]),
+    }
 
 
 async def _assemble(

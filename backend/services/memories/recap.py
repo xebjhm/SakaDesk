@@ -63,7 +63,7 @@ import re
 import sqlite3
 import time
 from collections import OrderedDict
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -164,6 +164,25 @@ def phase_flags(year: int, now: datetime) -> tuple[str, bool]:
     final = now >= datetime(year + 1, 1, 1, tzinfo=JST)
     xmas = final or now >= datetime(year, *sel.RECAP_CHRISTMAS_MD, tzinfo=JST)
     return ("final" if final else "partial"), xmas
+
+
+def has_christmas_stub(payload: Mapping[str, Any]) -> bool:
+    """True when a :func:`build_member_recap` payload shows her Christmas stub.
+
+    That is the ``s09_special`` slide holding an unsealed ``christmas`` stub
+    with her message (the 12/24 18:00 - 12/25 23:59 JST rule, read as of the
+    payload's ``now``). The M4 Christmas notification reads it, so the toast
+    never claims a page the recap does not show.
+    """
+    for slide in payload.get("slides") or ():
+        if slide.get("key") == "s09_special":
+            return any(
+                stub.get("kind") == "christmas"
+                and not stub.get("sealed")
+                and stub.get("message") is not None
+                for stub in slide["data"]["stubs"]
+            )
+    return False
 
 
 def tier_for(nonpromo_count: int) -> str:
@@ -1808,6 +1827,7 @@ __all__ = [
     "assign_titles",
     "build_member_recap",
     "build_members_overview",
+    "has_christmas_stub",
     "phase_flags",
     "recap_window",
     "recap_years",
