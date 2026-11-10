@@ -221,4 +221,11 @@ describe('SyncModal', () => {
         // The terminal state offers Done instead.
         expect(screen.getByText('common.done')).toBeInTheDocument();
     });
+
+    it('offers Cancel while the sync waits in the backend queue (S1)', () => {
+        const onCancel = vi.fn();
+        render(<SyncModal syncProgress={{ state: 'queued', phase: 'queued', queue_position: 1 }} onCancel={onCancel} />);
+        fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
+        expect(onCancel).toHaveBeenCalledTimes(1);
+    });
 });

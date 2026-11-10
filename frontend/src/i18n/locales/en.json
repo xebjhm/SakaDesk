@@ -142,7 +142,8 @@
     "justNow": "just now",
     "minutesAgo": "{{count}}m ago",
     "hoursAgo": "{{count}}h ago",
-    "daysAgo": "{{count}}d ago"
+    "daysAgo": "{{count}}d ago",
+    "etaEstimating": "Estimating…"
   },
   "login": {
     "title": "Account Management",
@@ -235,7 +236,10 @@
     "progress": "Sync progress",
     "stepDone": "Done",
     "stepCurrent": "Current step",
-    "stepPending": "Pending"
+    "stepPending": "Pending",
+    "phaseQueued": "Waiting",
+    "queuedDetail": "Waiting for another sync to finish (#{{position}} in line)",
+    "filesFailed": "· {{count}} failed"
   },
   "about": {
     "title": "About",

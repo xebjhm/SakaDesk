@@ -65,7 +65,16 @@ export interface GroupMessagesResponse {
 export type { ReadState } from './readStateStore';
 
 export interface SyncProgress {
-    state: 'idle' | 'running' | 'complete' | 'error';
+    /** `queued`: waiting in the backend sync queue (one sync runs at a time). */
+    state: 'idle' | 'queued' | 'running' | 'complete' | 'error';
+    /** 1-based place in the backend sync queue while `queued`. */
+    queue_position?: number | null;
+    /** Seconds since the run's first phase (does not reset per phase). */
+    run_elapsed_seconds?: number;
+    /** Why `eta_seconds` is null while running: unknown cost per unit, or not enough evidence yet. */
+    eta_reason?: 'not_estimable' | 'warming_up' | null;
+    /** Items processed but failed in the current phase (media downloads). */
+    failed?: number;
     phase?: string;
     phase_name?: string;
     phase_number?: number;
