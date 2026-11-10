@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { prefersReducedMotion } from './radioAudio';
+import { prefersReducedMotion } from '../shared/useReducedMotion';
 
 interface WaveformProps {
     /** The radio graph's analyser, or null without Web Audio. */

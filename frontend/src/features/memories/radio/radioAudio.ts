@@ -17,9 +17,7 @@
  * element; the owner `close()`s the graph on unmount.
  */
 
-export function prefersReducedMotion(): boolean {
-    return typeof window !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false);
-}
+import { prefersReducedMotion } from '../shared/useReducedMotion';
 
 /** FFT size of the analyser: 32 frequency bins, one per waveform bar. */
 export const ANALYSER_FFT_SIZE = 64;

@@ -6,6 +6,7 @@ import { MemoryText } from '../shared/MemoryText';
 import { sepiaClass } from '../shared/sepia';
 import { formatJstClock } from '../shared/jst';
 import { MemoryThumb } from '../shared/MemoryThumb';
+import { prefersReducedMotion } from '../shared/useReducedMotion';
 import { useDragScroll } from './useDragScroll';
 import type { OnThisDayYear } from '../types';
 
@@ -16,10 +17,6 @@ interface YearStripProps {
     resetKey: string;
     onOpen: (year: number) => void;
 }
-
-const prefersReducedMotion = () =>
-    typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * On This Day B: one column per year with messages, oldest on the left, starting scrolled to
