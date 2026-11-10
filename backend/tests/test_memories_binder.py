@@ -93,6 +93,9 @@ def svc(tmp_path):
         [msg(1, "2024-05-01T03:00:00Z", content="金村です")],
         letters=[letter(i, f"2024-0{i}-01T00:00:00Z") for i in range(1, 6)],
     )
+    for name in ("a.jpg", "b.jpg"):  # distinct images: changes compare by hash
+        thumbs = sdir / NEW_ROOM / "profile_images" / "thumbnail"
+        (thumbs / name).write_bytes(f"icon-{name}".encode("utf-8"))
     write_side_inputs(sdir, sub_starts={"40": "2024-07-24"})
     return sdir
 
@@ -179,14 +182,23 @@ async def test_avatar_change_card(svc):
     assert change["face"]["avatar_url"].endswith("thumbnail/b.jpg")
 
 
+def icon(room, when, url, digest=None):
+    return binder.IconEntry(room, when, url, digest)
+
+
+T1 = datetime(2025, 1, 1, tzinfo=timezone.utc)
+T2 = datetime(2025, 6, 1, tzinfo=timezone.utc)
+
+
 def test_avatar_changes_skip_first_undated_and_repeats():
-    t1 = datetime(2025, 1, 1, tzinfo=timezone.utc)
-    t2 = datetime(2025, 6, 1, tzinfo=timezone.utc)
-    tl = people.AvatarTimeline(
-        entries=((None, "/u0"), (None, "/u1"), (t1, "/u1"), (t2, "/u2")), current="/u2"
-    )
-    assert binder.avatar_changes(tl) == [c.AvatarChange(t2, "/u1", "/u2")]
-    assert binder.avatar_changes(people.AvatarTimeline((), None)) == []
+    entries = [
+        icon("a", None, "/u0"),
+        icon("a", None, "/u1"),  # undated: a baseline, never a change
+        icon("a", T1, "/u1"),  # same image as before
+        icon("a", T2, "/u2"),
+    ]
+    assert binder.avatar_changes(entries) == ([c.AvatarChange(T2, "/u1", "/u2")], 0)
+    assert binder.avatar_changes([]) == ([], 0)
 
 
 def thumb(file, seen):
@@ -260,26 +272,80 @@ async def test_two_rooms_sharing_one_change_give_one_card(svc):
     assert skip["person"] == "64"
 
 
-def room_change(room, when, digest, new="/n"):
-    return binder.RoomAvatarChange(room, c.AvatarChange(when, "/o", new), digest)
+@pytest.mark.asyncio
+async def test_two_rooms_sharing_one_change_on_different_days_give_one_card(svc):
+    # the new room archives the same new icon four days after the old room
+    set_avatars(
+        svc,
+        OLD_ROOM,
+        [
+            thumb("o1.jpg", "2024-07-01T00:00:00Z"),
+            thumb("o2.jpg", "2025-03-01T01:00:00Z"),
+        ],
+        {"o1.jpg": b"icon-A", "o2.jpg": b"icon-S"},
+    )
+    set_avatars(
+        svc,
+        NEW_ROOM,
+        [
+            thumb("n0.jpg", "2025-01-01T00:00:00Z"),
+            thumb("n2.jpg", "2025-03-05T05:00:00Z"),
+        ],
+        {"n0.jpg": b"icon-B", "n2.jpg": b"icon-S"},
+    )
+    s = await matsuda(svc)
+    payload = await binder.build_binder(SERVICE, svc, s, now=NOW)
+    assert change_keys(payload) == ["change.avatar.2025-03-01"]
 
 
-def test_merge_avatar_changes_by_hash_then_by_minute():
-    t = datetime(2025, 3, 1, 1, 0, tzinfo=timezone.utc)
-    same_hash = [room_change("a", t, "h1"), room_change("b", t.replace(hour=5), "h1")]
-    assert binder.merge_avatar_changes(same_hash) == ([same_hash[0].change], 1)
-    other_hash = [room_change("a", t, "h1"), room_change("b", t, "h2")]
-    assert binder.merge_avatar_changes(other_hash)[1] == 0
-    # no hash: the same first-seen time within a minute is the same image
-    near = [room_change("a", t, None), room_change("b", t.replace(second=50), None)]
-    assert binder.merge_avatar_changes(near)[1] == 1
-    far = [room_change("a", t, None), room_change("b", t.replace(minute=2), "h1")]
-    assert binder.merge_avatar_changes(far)[1] == 0
-    # another JST day, or the same room: always kept
-    next_day = [room_change("a", t, "h1"), room_change("b", t.replace(day=2), "h1")]
-    assert binder.merge_avatar_changes(next_day)[1] == 0
-    same_room = [room_change("a", t, "h1"), room_change("a", t.replace(hour=5), "h1")]
-    assert binder.merge_avatar_changes(same_room)[1] == 0
+def d(day, hour=0, minute=0, second=0):
+    return datetime(2025, 3, day, hour, minute, second, tzinfo=timezone.utc)
+
+
+def test_avatar_changes_dedupe_by_hash_across_days():
+    # B archives A's change S late, after A already moved on to T
+    entries = [
+        icon("a", d(1), "/a/x", "X"),
+        icon("b", d(1, 1), "/b/x", "X"),
+        icon("a", d(2), "/a/s", "S"),
+        icon("a", d(3), "/a/t", "T"),
+        icon("b", d(9), "/b/s", "S"),
+    ]
+    changes, dropped = binder.avatar_changes(entries)
+    assert [ch.new_url for ch in changes] == ["/a/s", "/a/t"]
+    assert dropped == 1
+    assert changes[0].old_url == "/b/x"  # her icon just before, in any room
+
+
+def test_avatar_changes_room_returning_to_its_own_icon_is_a_change():
+    entries = [
+        icon("b", d(1), "/b/x", "X"),  # b's baseline shows X early
+        icon("a", d(2), "/a/x", "X"),
+        icon("a", d(3), "/a/y", "Y"),
+        icon("a", d(4), "/a/x2", "X"),  # back to X: b showed X before a's Y
+    ]
+    changes, dropped = binder.avatar_changes(entries)
+    assert [ch.new_url for ch in changes] == ["/a/y", "/a/x2"] and dropped == 0
+
+
+def test_avatar_changes_without_hashes_use_the_minute_window():
+    near = [
+        icon("a", d(1), "/a/x"),
+        icon("b", d(1, 0, 0, 5), "/b/x"),
+        icon("a", d(2), "/a/s"),
+        icon("b", d(2, 0, 0, 50), "/b/s"),  # within a minute of a's change
+    ]
+    changes, dropped = binder.avatar_changes(near)
+    assert [ch.new_url for ch in changes] == ["/a/s"] and dropped == 1
+    far = [*near[:3], icon("b", d(2, 0, 5), "/b/s")]
+    assert len(binder.avatar_changes(far)[0]) == 2
+    # an undated entry in another room never matches by time
+    undated = [
+        icon("a", None, "/a/x"),
+        icon("b", None, "/b/x"),
+        icon("a", d(2), "/a/s"),
+    ]
+    assert binder.avatar_changes(undated) == ([c.AvatarChange(d(2), "/b/x", "/a/s")], 0)
 
 
 def test_avatar_digest_handles_foreign_and_missing_files(tmp_path):

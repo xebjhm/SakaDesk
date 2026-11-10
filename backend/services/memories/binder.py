@@ -1,8 +1,8 @@
 """The 卡冊 photocard binder of one person (spec 5.3).
 
 - :func:`evaluate_person` gathers the inputs of :func:`cards.evaluate`
-  (``facts.get_person_facts``, the fan's letters, real avatar changes computed
-  room by room and merged without cross-room duplicates, the
+  (``facts.get_person_facts``, the fan's letters, real avatar changes from
+  one person-wide icon sequence deduplicated by content hash, the
   subscription start and her birthday), computes the Christmas / Valentine
   keyword hits with one ``load_texts`` per room (only for facts on 02-14 and
   12-24/25), and evaluates the cards.
@@ -30,7 +30,7 @@ import asyncio
 import hashlib
 from collections.abc import Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -79,34 +79,18 @@ def _subscription_start(summary: mi.MemberSummary) -> date | None:
     return start
 
 
-def avatar_changes(timeline: people.AvatarTimeline) -> list[cards_mod.AvatarChange]:
-    """Real icon changes of ONE room: consecutive entries, skipping the first.
-
-    The first entry marks when archiving began, not a change. An entry
-    without ``first_seen`` cannot be dated and is not a change; an entry with
-    the same URL as the one before is not a change either. Never call this on
-    a merged multi-room timeline: each room archives its own copy of an icon
-    under its own URL (see :func:`person_avatar_changes`).
-    """
-    out = []
-    entries = timeline.entries
-    for (_, old), (seen, new) in zip(entries, entries[1:]):
-        if seen is None or new == old:
-            continue
-        out.append(cards_mod.AvatarChange(changed_at=seen, old_url=old, new_url=new))
-    return out
-
-
 _SAME_IMAGE_WINDOW = timedelta(minutes=1)
+_NO_TIME = datetime.min.replace(tzinfo=timezone.utc)
 
 
 @dataclass(frozen=True)
-class RoomAvatarChange:
-    """An :class:`cards.AvatarChange` of one room and its new image's content hash."""
+class IconEntry:
+    """One archived icon of one room, with its file's content hash."""
 
     room: str
-    change: cards_mod.AvatarChange
-    digest: str | None  # sha256 of the new image file; None when unreadable
+    seen: datetime | None  # first_seen; None when unknown
+    url: str
+    digest: str | None  # sha256 of the image file; None when unreadable
 
 
 def _avatar_digest(sdir: Path, room: str, url: str) -> str | None:
@@ -122,55 +106,76 @@ def _avatar_digest(sdir: Path, room: str, url: str) -> str | None:
     return hashlib.sha256(data).hexdigest()
 
 
-def room_avatar_changes(sdir: Path, rooms: Sequence[str]) -> list[RoomAvatarChange]:
-    """Every room's real changes (:func:`avatar_changes`), by time. Blocking."""
-    out = [
-        RoomAvatarChange(room, ch, _avatar_digest(sdir, room, ch.new_url))
+def icon_entries(sdir: Path, rooms: Sequence[str]) -> list[IconEntry]:
+    """Every room's archived icons with content hashes. Blocking."""
+    return [
+        IconEntry(room, seen, url, _avatar_digest(sdir, room, url))
         for room in rooms
-        for ch in avatar_changes(people.avatar_timeline(sdir, room))
+        for seen, url in people.avatar_timeline(sdir, room).entries
     ]
-    out.sort(key=lambda rc: (rc.change.changed_at, rc.room))
-    return out
 
 
-def _same_image(a: RoomAvatarChange, b: RoomAvatarChange) -> bool:
-    """Same new image: by content hash when both have one, else first seen <= 1 min apart."""
+def _same_image(a: IconEntry, b: IconEntry) -> bool:
+    """Same image: by content hash when both have one; else the same URL in
+    one room, or first seen no more than a minute apart in two rooms."""
     if a.digest is not None and b.digest is not None:
         return a.digest == b.digest
-    return abs(a.change.changed_at - b.change.changed_at) <= _SAME_IMAGE_WINDOW
+    if a.room == b.room:
+        return a.url == b.url
+    if a.seen is None or b.seen is None:
+        return False
+    return abs(a.seen - b.seen) <= _SAME_IMAGE_WINDOW
 
 
-def merge_avatar_changes(
-    changes: Sequence[RoomAvatarChange],
+def avatar_changes(
+    entries: Sequence[IconEntry],
 ) -> tuple[list[cards_mod.AvatarChange], int]:
-    """Merge per-room changes into the person's changes; ``(kept, dropped)``.
+    """Her real icon changes across every room; ``(changes, cross-room duplicates)``.
 
-    A change is dropped when an earlier change from ANOTHER room on the same
-    JST day already showed the same new image (:func:`_same_image`): both
-    rooms archived one real change.
+    One person-wide sequence ordered by ``first_seen`` (undated entries first):
+
+    - each room's first entry, and any undated entry, is only a baseline;
+    - an entry is a change when its image differs from the person's icon just
+      before it (the previous entry in any room, :func:`_same_image`);
+    - an image another room already showed since this room's previous entry
+      is that room's change archived late, not a new one, whatever the day
+      (counted as a duplicate). A room returning to an image it showed
+      itself earlier is still a change.
     """
-    kept: list[cards_mod.AvatarChange] = []
+    ordered = sorted(entries, key=lambda e: (e.seen is not None, e.seen or _NO_TIME))
+    last_in_room: dict[str, IconEntry] = {}
+    history: list[IconEntry] = []
+    current: IconEntry | None = None
+    out: list[cards_mod.AvatarChange] = []
     dropped = 0
-    for i, rc in enumerate(changes):
-        day = rc.change.changed_at.astimezone(JST).date()
-        if any(
-            prev.room != rc.room
-            and prev.change.changed_at.astimezone(JST).date() == day
-            and _same_image(prev, rc)
-            for prev in changes[:i]
-        ):
-            dropped += 1
-            continue
-        kept.append(rc.change)
-    return kept, dropped
+    for e in ordered:
+        prev = last_in_room.get(e.room)
+        if prev is not None and e.seen is not None and current is not None:
+            since = prev.seen
+            if _same_image(e, current):
+                dropped += current.room != e.room
+            elif any(
+                h.room != e.room
+                and h.seen is not None
+                and (since is None or h.seen >= since)
+                and _same_image(h, e)
+                for h in history
+            ):
+                dropped += 1
+            else:
+                out.append(cards_mod.AvatarChange(e.seen, current.url, e.url))
+        history.append(e)
+        last_in_room[e.room] = e
+        current = e
+    return out, dropped
 
 
 async def person_avatar_changes(
     sdir: Path, summary: mi.MemberSummary
 ) -> list[cards_mod.AvatarChange]:
-    """Her real icon changes across rooms: per room, then merged (no duplicates)."""
-    per_room = await asyncio.to_thread(room_avatar_changes, sdir, summary.member_dirs)
-    kept, dropped = merge_avatar_changes(per_room)
+    """Her real icon changes across rooms (:func:`avatar_changes`), logged."""
+    entries = await asyncio.to_thread(icon_entries, sdir, summary.member_dirs)
+    kept, dropped = avatar_changes(entries)
     if dropped:
         logger.info(
             "memories_skip",
@@ -419,12 +424,11 @@ async def build_binder(
 
 
 __all__ = [
-    "RoomAvatarChange",
+    "IconEntry",
     "avatar_changes",
     "build_binder",
     "evaluate_person",
     "keyword_hits",
-    "merge_avatar_changes",
+    "icon_entries",
     "person_avatar_changes",
-    "room_avatar_changes",
 ]
