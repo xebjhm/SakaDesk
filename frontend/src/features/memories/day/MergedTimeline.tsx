@@ -29,7 +29,8 @@ interface MergedTimelineProps {
     /**
      * The element that scrolls the list (the day view's body). Given, a long day (more than
      * `WINDOW_FROM` messages) is windowed with `react-virtuoso` inside it; without it every
-     * message is rendered (a modal's short single-member day).
+     * message is rendered (card detail's single-member day: lazy thumbnails keep
+     * even a busy one cheap, at the cost of DOM only).
      */
     scrollParent?: HTMLElement | null;
 }

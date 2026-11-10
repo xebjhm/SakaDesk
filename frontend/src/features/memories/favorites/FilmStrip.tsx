@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, MessageCircle, Mic, Play, Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Button, IconButton, Modal } from '../../../design/primitives';
@@ -42,7 +42,7 @@ export interface FilmStripProps {
  * One frame's content, a compact film frame rather than a chat bubble: the JST time
  * (`formatJstClock`), then the still (`MemoryThumb`), the voice (the one-at-a-time `LazyVoice` on
  * the focused frame, a label with the duration on the others) and her words (`MemoryText`). A
- * paired caption whose own message is a frame of the same day (`shown`) is left to that frame.
+ * paired caption whose own message is one of the visible frames (`shown`) is left to that frame.
  */
 const FrameBody: React.FC<{ m: DayMessage; focused: boolean; shown: ReadonlySet<string> }> = ({ m, focused, shown }) => {
     const { t } = useTranslation();
@@ -101,7 +101,6 @@ const Strip: React.FC<StripProps> = ({ day, index, setIndex, from, onClose }) =>
     const messages = day.messages;
     const last = messages.length - 1;
     const focus = messages[index];
-    const shownWords = useMemo(() => shownTexts(messages), [messages]);
 
     useEffect(() => {
         const el = root.current;
@@ -130,6 +129,8 @@ const Strip: React.FC<StripProps> = ({ day, index, setIndex, from, onClose }) =>
     const nameOf = (m: DayMessage) => messageName(m, day.members.find((p) => p.person_key === m.person_key)?.name);
     const start = Math.max(0, index - SIDE);
     const shown = messages.slice(start, index + SIDE + 1);
+    // Only the visible frames count: a caption whose text is further away stays on its photo.
+    const shownWords = shownTexts(shown);
 
     return (
         <div ref={root} tabIndex={-1} data-testid="film-strip" className="flex flex-col gap-4 focus:outline-none">

@@ -74,6 +74,18 @@ describe('day-context captions', () => {
         expect(count()).toBe(1);
     });
 
+    it('the film strip keeps the focused photo\'s words when their text is beyond the visible frames', async () => {
+        const burst = [10, 20, 30, 40].map((n) => dayMessage(MIKU, {
+            id: n, ts: `2024-09-14T04:0${n / 10}:00Z`, type: 'picture', text: null,
+            media_url: `/api/content/media/hinatazaka46/p${n}.jpg`,
+            ...(n === 10 ? { caption: WORDS, caption_id: 11 } : {}),
+        }));
+        const far = dayMessage(MIKU, { id: 11, ts: '2024-09-14T04:09:00Z', text: WORDS });
+        vi.mocked(fetchDay).mockReset().mockResolvedValue(dayPayload({ members: [MIKU], messages: [...burst, far] }));
+        render(<FilmStrip service="hinatazaka46" memberPath={MEMBER_PATH} date="2024-09-14" focusId={10} onClose={vi.fn()} />);
+        expect(await screen.findByTestId('film-focus')).toHaveTextContent(WORDS);
+    });
+
     it('the film strip leaves the words to their own frame', async () => {
         vi.mocked(fetchDay).mockReset().mockResolvedValue(dayPayload({ members: [MIKU], messages: [PHOTO, TEXT] }));
         render(<FilmStrip service="hinatazaka46" memberPath={MEMBER_PATH} date="2024-09-14" focusId={10} onClose={vi.fn()} />);

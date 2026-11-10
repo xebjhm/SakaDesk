@@ -38,15 +38,63 @@ export function getLegacyCacheKey(type: 'message', contentId: string | number, t
     return `translation:${type}:${contentId}:${targetLanguage}`;
 }
 
-/**
- * Legacy keys already consulted this session (missed, or hit and re-saved under the new key):
- * never asked for again, so a remounting bubble costs one key, not two.
- */
-const consultedLegacy = new Set<string>();
+/** At most this many settled legacy keys are remembered (least recently settled dropped first). */
+export const SETTLED_LEGACY_MAX = 2000;
 
-/** Test-only: forget which legacy keys were consulted. */
+/**
+ * Legacy keys whose lookup has **settled** this session (a miss, or a hit re-saved under the new
+ * key): never asked for again, so a remounting bubble costs one key, not two. A key is marked
+ * only once its answer is in; until then every mount asks again, and `loadCachedTranslation`
+ * joins a lookup already queued or in flight, so a remount (StrictMode, a quick virtualised
+ * scroll) still costs one request. Bounded as an LRU of {@link SETTLED_LEGACY_MAX} keys.
+ */
+const settledLegacy = new Map<string, true>();
+
+function markLegacySettled(key: string): void {
+    settledLegacy.delete(key);
+    settledLegacy.set(key, true);
+    if (settledLegacy.size > SETTLED_LEGACY_MAX) {
+        const oldest = settledLegacy.keys().next().value;
+        if (oldest !== undefined) settledLegacy.delete(oldest);
+    }
+}
+
+/**
+ * The legacy key's cached value (shared with any lookup of it already in flight). A miss marks
+ * the key settled; a failed lookup leaves it unsettled (asked again later) and reads as a miss.
+ */
+async function lookupLegacy(legacyKey: string): Promise<string | undefined> {
+    try {
+        const value = await loadCachedTranslation(legacyKey);
+        if (!value) markLegacySettled(legacyKey);
+        return value;
+    } catch {
+        return undefined;
+    }
+}
+
+/**
+ * A legacy hit was shown: log `translation_legacy_reuse` and re-save it under the new key. The
+ * key is settled only once the re-save succeeded; a failure logs
+ * `translation_legacy_resave_failed` and leaves it to be read again.
+ */
+function adoptLegacy(cacheKey: string, legacyKey: string, value: string): void {
+    clientLog('translation_legacy_reuse', { count: 1 });
+    persisted.putTranslations({ [cacheKey]: value })
+        .then(() => markLegacySettled(legacyKey))
+        .catch((err: unknown) => {
+            clientLog('translation_legacy_resave_failed', { error_type: breadcrumbCode(err) });
+        });
+}
+
+/** Test-only: forget which legacy keys were settled. */
 export function __resetLegacyTranslationKeysForTests(): void {
-    consultedLegacy.clear();
+    settledLegacy.clear();
+}
+
+/** Test-only: whether a legacy key is remembered as settled. */
+export function __isLegacyKeySettledForTests(key: string): boolean {
+    return settledLegacy.has(key);
 }
 
 /**
@@ -96,14 +144,10 @@ export function useMessageTranslation(params: {
         setState('idle');
         setError(null);
         if (cacheKey) {
-            // The legacy key is consulted once per session, in the same batch as the new key (one
-            // request), and its answer is used only when the new key misses.
-            const askLegacy = Boolean(legacyKey) && !consultedLegacy.has(legacyKey);
-            if (askLegacy) consultedLegacy.add(legacyKey);
-            const legacyLookup = askLegacy ? loadCachedTranslation(legacyKey) : Promise.resolve(undefined);
-            // A failed or unused legacy lookup may be asked again by a later mount.
-            const releaseLegacy = () => { if (askLegacy) consultedLegacy.delete(legacyKey); };
-            legacyLookup.catch(releaseLegacy);
+            // The legacy key goes in the same batch as the new key (one request) until its lookup
+            // has settled, and its answer is used only when the new key misses.
+            const askLegacy = Boolean(legacyKey) && !settledLegacy.has(legacyKey);
+            const legacyLookup = askLegacy ? lookupLegacy(legacyKey) : Promise.resolve(undefined);
             // Batched with the lookups of every other bubble mounting now.
             loadCachedTranslation(cacheKey).then(async (cached) => {
                 let value = cached;
@@ -112,21 +156,12 @@ export function useMessageTranslation(params: {
                     value = await legacyLookup;
                     fromLegacy = Boolean(value);
                 }
-                // Checked before the re-save, so a stale legacy value never overwrites a fresh one.
-                if (cancelled || gen !== localGen.current) {
-                    if (fromLegacy) releaseLegacy();
-                    return;
-                }
-                if (!value) return;
+                // Checked before the re-save, so a stale legacy value never overwrites a fresh
+                // one; an unused legacy hit stays unsettled, so the next mount reads it again.
+                if (cancelled || gen !== localGen.current || !value) return;
                 setTranslation(value);
                 setState('done');
-                if (fromLegacy) {
-                    clientLog('translation_legacy_reuse', { count: 1 });
-                    persisted.putTranslations({ [cacheKey]: value }).catch((err: unknown) => {
-                        releaseLegacy();
-                        clientLog('translation_legacy_resave_failed', { error_type: breadcrumbCode(err) });
-                    });
-                }
+                if (fromLegacy) adoptLegacy(cacheKey, legacyKey, value);
             }).catch(() => {/* stay idle; trigger() will fall back to the API */});
         }
         return () => { cancelled = true; };
@@ -135,6 +170,8 @@ export function useMessageTranslation(params: {
     // Shared fetch+persist path for both trigger (cache-miss) and retrigger (forced).
     const doTranslate = useCallback(async () => {
         if (!service || !messageId || !memberPath) return;
+        // A cached lookup still pending from mount must not replace this fresh result.
+        localGen.current += 1;
 
         setState('loading');
         setError(null);
@@ -183,8 +220,19 @@ export function useMessageTranslation(params: {
             setState('done');
             return;
         }
+        // A translation cached under the legacy key is reused (joining a lookup still in flight)
+        // rather than paid for again.
+        if (legacyKey && !settledLegacy.has(legacyKey)) {
+            const legacy = await lookupLegacy(legacyKey);
+            if (legacy) {
+                setTranslation(legacy);
+                setState('done');
+                adoptLegacy(cacheKey, legacyKey, legacy);
+                return;
+            }
+        }
         await doTranslate();
-    }, [service, messageId, memberPath, cacheKey, doTranslate]);
+    }, [service, messageId, memberPath, cacheKey, legacyKey, doTranslate]);
 
     const retrigger = useCallback(async () => {
         // No single-key delete endpoint; doTranslate() below overwrites the

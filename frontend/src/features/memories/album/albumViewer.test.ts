@@ -4,7 +4,8 @@ vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
 import { openChat } from '../../../shell/openChat';
-import { albumItemKey, albumViewerItems, isViewable, viewerIndexOf } from './albumViewer';
+import { albumItemKey, albumViewerItems, viewerIndexOf } from './albumViewer';
+import { isViewableMedia } from '../shared/mediaSrc';
 import { photo } from './__fixtures__';
 
 beforeEach(() => {
@@ -29,7 +30,7 @@ describe('albumViewer', () => {
         // a video without a URL is built from its service-relative file
         expect(viewer[1].src).toBe('/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/picture/2.jpg');
         expect(viewer[0]).toMatchObject({ timestamp: '2024-09-01T00:00:00Z', sourceLabel: 'View in chat', messageId: 1, service: 'hinatazaka46' });
-        expect(isViewable(items[2])).toBe(false);
+        expect(isViewableMedia(items[2])).toBe(false);
     });
 
     it('finds a message by room and id', () => {

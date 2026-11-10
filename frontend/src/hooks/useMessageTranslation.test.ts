@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useMessageTranslation, clearTranslationCache, __resetLegacyTranslationKeysForTests } from './useMessageTranslation';
+import React, { StrictMode } from 'react';
+import {
+    useMessageTranslation, clearTranslationCache, __resetLegacyTranslationKeysForTests, __isLegacyKeySettledForTests,
+    SETTLED_LEGACY_MAX,
+} from './useMessageTranslation';
 import { persisted } from '../core/persistence/persisted';
 import * as appStateApi from '../core/persistence/appStateApi';
 import { __resetTranslationLoaderForTests } from '../core/persistence/translationLoader';
@@ -139,6 +143,68 @@ describe('useMessageTranslation', () => {
         await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
         expect(getSpy).toHaveBeenCalledTimes(2);
         expect(getSpy.mock.calls[1][0]).toEqual([KEY]);
+        useAppStore.setState({ activeService: null });
+    });
+
+    it('shows a legacy translation under StrictMode (mount, cleanup, mount) without calling the API', async () => {
+        useAppStore.setState({ activeService: 'hinatazaka46' });
+        store.set('translation:message:500:en', 'legacy-en');
+        const fetchMock = mockFetchOk('paid');
+        const getSpy = vi.mocked(persisted.getTranslations);
+        getSpy.mockClear();
+        const wrapper = ({ children }: { children: React.ReactNode }) => React.createElement(StrictMode, null, children);
+        const { result } = renderHook(() => useMessageTranslation(baseParams), { wrapper });
+        await waitFor(() => expect(result.current.translation).toBe('legacy-en'));
+        expect(getSpy).toHaveBeenCalledTimes(1);
+        await act(async () => { await result.current.trigger(); });
+        expect(fetchMock).not.toHaveBeenCalled();
+        useAppStore.setState({ activeService: null });
+    });
+
+    it('a remount before the batch answers still shows the legacy translation', async () => {
+        useAppStore.setState({ activeService: 'hinatazaka46' });
+        store.set('translation:message:500:en', 'legacy-en');
+        const fetchMock = mockFetchOk('paid');
+        let release!: () => void;
+        const gate = new Promise<void>((r) => { release = r; });
+        const real = vi.mocked(persisted.getTranslations).getMockImplementation()!;
+        vi.mocked(persisted.getTranslations).mockImplementationOnce(async (keys: string[]) => { const a = await real(keys); await gate; return a; });
+        const first = renderHook(() => useMessageTranslation(baseParams));
+        await act(async () => { await new Promise((r) => setTimeout(r, 80)); }); // lookup in flight
+        first.unmount();
+        const second = renderHook(() => useMessageTranslation(baseParams));
+        await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+        await act(async () => { release(); await new Promise((r) => setTimeout(r, 10)); });
+        await waitFor(() => expect(second.result.current.translation).toBe('legacy-en'));
+        await act(async () => { await second.result.current.trigger(); });
+        expect(fetchMock).not.toHaveBeenCalled();
+        useAppStore.setState({ activeService: null });
+    });
+
+    it('trigger() reuses the legacy translation before calling the API', async () => {
+        useAppStore.setState({ activeService: 'hinatazaka46' });
+        store.set('translation:message:500:en', 'legacy-en');
+        const fetchMock = mockFetchOk('paid');
+        // The mount lookup fails, so the bubble stays idle and the legacy key stays unsettled.
+        vi.mocked(persisted.getTranslations).mockRejectedValueOnce(new TypeError('offline'));
+        const { result } = renderHook(() => useMessageTranslation(baseParams));
+        await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+        expect(result.current.translation).toBeNull();
+        await act(async () => { await result.current.trigger(); });
+        expect(result.current.translation).toBe('legacy-en');
+        expect(fetchMock).not.toHaveBeenCalled();
+        await waitFor(() => expect(store.get(KEY)).toBe('legacy-en'));
+        useAppStore.setState({ activeService: null });
+    });
+
+    it('remembers at most SETTLED_LEGACY_MAX settled legacy keys', async () => {
+        useAppStore.setState({ activeService: 'hinatazaka46' });
+        const ids = Array.from({ length: SETTLED_LEGACY_MAX + 1 }, (_, i) => i + 1);
+        const hooks = ids.map((id) => renderHook(() => useMessageTranslation({ ...baseParams, messageId: id })));
+        await act(async () => { await new Promise((r) => setTimeout(r, 120)); });
+        expect(__isLegacyKeySettledForTests('translation:message:1:en')).toBe(false);
+        expect(__isLegacyKeySettledForTests(`translation:message:${ids.length}:en`)).toBe(true);
+        hooks.forEach((h) => h.unmount());
         useAppStore.setState({ activeService: null });
     });
 

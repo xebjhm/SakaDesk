@@ -8,8 +8,6 @@ import type { MemoryMessage } from '../types';
 /** Message ids repeat across rooms: an album item is keyed by room and id. */
 export const albumItemKey = (m: Pick<MemoryMessage, 'room' | 'id'>) => `${m.room}|${m.id}`;
 
-/** A picture or video the media viewer can show (`shared/mediaSrc`). */
-export const isViewable = isViewableMedia;
 
 interface AlbumViewerOptions {
     /** Her display name for the chat she is opened in. */
@@ -32,7 +30,7 @@ export function albumViewerItems(
     { nameOf, sourceLabel, onBeforeJump, from = 'album' }: AlbumViewerOptions,
 ): { viewable: MemoryMessage[]; items: MediaViewerItem[] } {
     const viewable = messages
-        .filter(isViewable)
+        .filter(isViewableMedia)
         .map((m, i) => ({ m, i, t: Date.parse(m.ts) }))
         .sort((a, b) => a.t - b.t || a.i - b.i)
         .map(({ m }) => m);
