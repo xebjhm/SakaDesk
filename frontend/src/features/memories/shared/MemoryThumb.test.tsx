@@ -31,9 +31,18 @@ describe('MemoryThumb', () => {
         const url = '/api/content/media/hinatazaka46/messages/r/picture/1.jpg';
         const { container } = render(<MemoryThumb message={{ type: 'picture', media_url: url }} px={120} />);
         const img = container.querySelector('img')!;
-        expect(img.getAttribute('src')).toMatch(/^\/api\/content\/thumb\/hinatazaka46\/messages\/r\/picture\/1\.jpg\?w=(160|320|640)$/);
+        expect(img.getAttribute('src')).toMatch(/^\/api\/content\/thumb\/hinatazaka46\/messages\/r\/picture\/1\.jpg\?w=(160|320|480|640)$/);
         fireEvent.error(img);
         expect(container.querySelector('img')).toHaveAttribute('src', url);
+    });
+
+    it('caps a big tile at the pre-generated 480 unless it is large (★ / cover / export)', () => {
+        const url = '/api/content/media/hinatazaka46/messages/r/picture/1.jpg';
+        const thumb = '/api/content/thumb/hinatazaka46/messages/r/picture/1.jpg';
+        const { container, rerender } = render(<MemoryThumb message={{ type: 'picture', media_url: url }} px={600} />);
+        expect(container.querySelector('img')).toHaveAttribute('src', `${thumb}?w=480`);
+        rerender(<MemoryThumb message={{ type: 'picture', media_url: url }} px={600} large />);
+        expect(container.querySelector('img')).toHaveAttribute('src', `${thumb}?w=640`);
     });
 
     it('never asks for a video thumbnail', () => {

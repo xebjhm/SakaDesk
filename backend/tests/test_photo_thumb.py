@@ -12,6 +12,7 @@ from unittest.mock import patch
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
+from structlog.testing import capture_logs
 
 from backend.main import app
 from backend.services import photo_thumb
@@ -217,7 +218,8 @@ class TestThumbnail:
                 "n.jpg",
                 160,
                 root,
-                cap=int(size * 2.5),
+                # 3 files > cap: one is evicted down to CACHE_LOW_WATER (0.75 x cap)
+                cap=int(size * 2.8),
             )
         )
         assert old.exists() and new.exists()
@@ -716,9 +718,11 @@ class TestConstants:
         assert photo_thumb.CACHE_CAP_BYTES == 1024**3
 
     def test_pregen_widths_are_allowed_and_large_is_640(self):
-        assert photo_thumb.PREGEN_WIDTHS == (160, 320)
+        assert photo_thumb.PREGEN_WIDTHS == (480,)
+        assert photo_thumb.ALLOWED_WIDTHS == frozenset({160, 320, 480, 640})
         assert photo_thumb.LARGE_WIDTH == 640
-        assert set(photo_thumb.PREGEN_WIDTHS) | {photo_thumb.LARGE_WIDTH} == set(
+        # every pre-generated width is one the route serves
+        assert {*photo_thumb.PREGEN_WIDTHS, photo_thumb.LARGE_WIDTH} <= set(
             photo_thumb.ALLOWED_WIDTHS
         )
 
@@ -853,7 +857,7 @@ class TestMakeSet:
             hit, _ = photo_thumb.lookup(src, rel, w, root)
             assert hit == path
         with patch.object(photo_thumb.Image, "open", side_effect=AssertionError):
-            assert _run(photo_thumb.thumbnail(src, rel, 160, root)) == res.written[160]
+            assert _run(photo_thumb.thumbnail(src, rel, 480, root)) == res.written[480]
 
     def test_everything_present_opens_nothing_unless_a_placeholder_is_needed(
         self, tmp_path
@@ -1321,3 +1325,47 @@ class TestCacheTotal:
         assert photo_thumb.cache_total(root) == 100
         photo_thumb.cache_state_add(root, 50, photo_thumb.CACHE_CAP_BYTES)
         assert photo_thumb.cache_total(root, measure=False) == 150
+
+
+class TestFixRound1Widths:
+    def test_low_water_sits_below_the_pregen_fill_line(self):
+        from backend.services import media_pregen
+
+        assert photo_thumb.CACHE_LOW_WATER == 0.75
+        assert photo_thumb.CACHE_LOW_WATER < media_pregen.PREGEN_FILL_RATIO
+
+    @pytest.mark.parametrize("width", [320, 160])
+    def test_a_smaller_width_derives_from_the_pregenerated_480(self, tmp_path, width):
+        """320 / 160 are rendered on demand from the cached 480: no source decode."""
+        src = _jpeg(tmp_path / "a.jpg", (1600, 1200))
+        root = tmp_path / "c"
+        res = photo_thumb.make_set(src, "a.jpg", photo_thumb.PREGEN_WIDTHS, root)
+        assert set(res.written) == {480}
+        real = Image.open
+        opened: list[object] = []
+
+        def guarded(fp, *a, **kw):
+            if Path(fp) == src:
+                raise AssertionError("the source must not be decoded")
+            opened.append(kw.get("formats"))
+            return real(fp, *a, **kw)
+
+        with (
+            patch.object(photo_thumb.Image, "open", guarded),
+            capture_logs() as logs,
+        ):
+            out = _run(photo_thumb.thumbnail(src, "a.jpg", width, root))
+        assert out is not None and out.name.endswith(f"-{width}.webp")
+        assert opened == [("WEBP",)]
+        with Image.open(out) as img:
+            assert max(img.size) == width
+        assert {"event": "photo_thumb_cache", "outcome": "derived", "width": width} in [
+            {k: e.get(k) for k in ("event", "outcome", "width")} for e in logs
+        ]
+
+    def test_the_route_accepts_480(self, archive):
+        _jpeg(archive / "picture" / "1.jpg", (1200, 900))
+        r = client.get(f"{URL}/picture/1.jpg?w=480")
+        assert r.status_code == 200
+        with Image.open(io.BytesIO(r.content)) as img:
+            assert img.size == (480, 360)

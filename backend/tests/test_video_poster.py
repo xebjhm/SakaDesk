@@ -495,7 +495,8 @@ def test_the_poster_cache_evicts_the_oldest(env):
     assert video_poster.ingest_client(src, rel, body, "image/jpeg")[0] == "ready"
     names = [video_poster.poster_name(r, *_stat(s)) for s, r in videos]
     one = (env / "posters" / names[0]).stat().st_size
-    with patch.object(video_poster, "POSTER_CACHE_CAP_BYTES", int(one * 2.5)):
+    # 3 posters > cap: one is evicted down to CACHE_LOW_WATER (0.75 x cap)
+    with patch.object(video_poster, "POSTER_CACHE_CAP_BYTES", int(one * 2.8)):
         for i, (src, rel) in enumerate(videos[1:], start=1):
             os.utime(env / "posters" / names[i - 1], ns=(i * 10**9, i * 10**9))
             assert (

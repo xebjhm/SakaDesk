@@ -60,9 +60,10 @@ describe('PosterView', () => {
         expect(within(poster).getByTestId('poster-favorites')).toHaveTextContent('12');
         expect(within(poster).getByTestId('poster-letters')).toHaveTextContent('3');
         expect(within(poster).getAllByTestId('poster-smr')).toHaveLength(3);
-        // The prints come from 640-px thumbnails (a third of the 1080-px export).
+        // The 360-px prints (a third of the 1080-px export) use the smallest width covering them:
+        // 480 at DPR 1 (the export may still use 640 at a higher DPR: `large`).
         expect(within(poster).getAllByTestId('poster-smr')[0].querySelector('img'))
-            .toHaveAttribute('src', '/api/content/thumb/s.jpg?w=640');
+            .toHaveAttribute('src', '/api/content/thumb/s.jpg?w=480');
         expect(within(poster).getAllByTestId('poster-stub')).toHaveLength(1);
         expect(within(poster).getByTestId('poster-stub')).toHaveTextContent('0:00:07');
     });

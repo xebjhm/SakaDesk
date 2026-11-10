@@ -96,29 +96,31 @@
 
 | Cache | Constant | Value | Holds |
 |---|---|---|---|
-| Thumbnails (`cache/photo_thumbs/`) | `photo_thumb.CACHE_CAP_BYTES` | **1 GiB** (was 300 MB) | WebP 160 / 320 / 640 variants and toast JPEGs |
-| Pre-generation fill line | `media_pregen.PREGEN_FILL_RATIO` | **0.85** of the thumbnail cap (870 MiB) | the worker stops adding once the cache passes it, so on-demand misses and toasts keep headroom and the worker never evicts what it just made |
+| Thumbnails (`cache/photo_thumbs/`) | `photo_thumb.CACHE_CAP_BYTES` | **1 GiB** (was 300 MB) | WebP 480 variants (pre-generated), 640 for ★ / covers, on-demand 320 / 160 derived from the 480, and toast JPEGs |
+| Pre-generation fill line | `media_pregen.PREGEN_FILL_RATIO` | **0.85** of the thumbnail cap (870 MiB) | the worker stops adding variants once the cache passes it (it still makes placeholders and Shell posters), so on-demand misses and toasts keep headroom and the worker never evicts what it just made |
+| Eviction low water | `photo_thumb.CACHE_LOW_WATER` | **0.75** of a cap | an eviction (above the cap) trims to here, below the fill line, so the worker can add again after an eviction (hysteresis) |
 | Video posters (`cache/video_posters/`) | `video_poster.POSTER_CACHE_CAP_BYTES` | **256 MiB** | one WebP of at most 640 px per video |
 | Placeholder / meta rows (`cache/media_meta.db`) | `media_meta.MAX_ROWS` | **300,000** rows | colour, a 16 px blur (`BLUR_MAX_BYTES = 600`), size and poster state |
 
 **Justification** (sizes are WebP q82 of phone photos):
-- **Per-size averages:** 160 px ≈ 6 KB, 320 px ≈ 19 KB, 640 px ≈ 55 KB. The default set (160 + 320) is about **25 KB per item**.
-- **One large service** (the acceptance run shows 13,518 album items for 日向坂46) at the default set: 14k × 25 KB ≈ **350 MB**.
+- **Revised ruling (M4 fix round 1):** one pre-generated size, `PREGEN_WIDTHS = (480,)`; 640 only for ★ and covers. Grid tiles ask for the smallest allowed width ≥ rendered width × DPR, capped at 480 for non-★ tiles (★ and covers may use 640). 320 and 160 requests are rendered on demand from the cached 480 (a derived miss: no source decode). The earlier (160, 320) set, then the (320, 480) proposal, are superseded: (320, 480) roughly doubled the per-item cost.
+- **Per-size averages:** 160 px ≈ 6 KB, 320 px ≈ 19 KB, 480 px ≈ **35 KB** (an estimate; M9 measures it), 640 px ≈ 55 KB. The default set (480) is about **35 KB per item**.
+- **One large service** (the acceptance run shows 13,518 album items for 日向坂46) at the default set: 14k × 35 KB ≈ **490 MB**.
 - **640 px for ★ and covers** (about 5%): 700 × 55 KB ≈ **40 MB**.
-- **That service's blog images:** assume 15k × 25 KB ≈ **375 MB**.
-- **Total:** about **765 MB**, under the 870 MiB fill line with room for the toast JPEGs.
-- **A second large service** does not fit completely. The worker covers the services in priority order (Task M4), and LRU eviction removes the least recently viewed variants. The ★ and newest-months phases come first, so what users open first stays cached.
+- **That service's blog images:** assume 15k × 35 KB ≈ **525 MB**.
+- **Total:** about **1.05 GB**, over the 870 MiB fill line. The messages of one large service and its ★ / covers (≈ 530 MB) fit; its blog images fit only partly. On-demand 320 / 160 derivatives of viewed tiles add a little and are evicted first when unused.
+- **A second large service** does not fit completely either. The worker covers the services in priority order (Task M4), and LRU eviction removes the least recently viewed variants. The ★ and newest-months phases come first, so what users open first stays cached.
 - **Posters:** at about 45 KB each, 256 MiB holds about 5,800 videos, which covers every service's videos with headroom. They get their own cap because a poster costs a Shell call or a client capture to recreate, so thumbnail churn must never evict them.
 - **Meta rows** are about 400 B each: 300k rows ≈ 120 MB at worst, about 26 MB for 65k real items.
 - **Worst-case total ≈ 1.4 GB**, about 2–5% of a typical archive. The Windows Explorer thumbnail cache is in the same range.
-- **M9 measures the real averages** (`media_pregen_pass bytes / done`). If the per-item average differs from 25 KB by more than 25%, update this table and the constants in the M9 fix-up.
+- **M9 measures the real averages** (`media_pregen_pass bytes / done`), in particular the 35 KB estimate for 480 px. If the per-item average differs from 35 KB by more than 25%, update this table and the constants in the M9 fix-up.
 
 ## Shared contracts (all tasks)
 
 **Content version `v`:** `photo_thumb.version_token(size, mtime_ns) -> str` = the first 12 hex chars of `sha256(f"{size}:{mtime_ns}")`. For a video, the version is the **video's** size and mtime; its poster is derived from that video.
 
 **Thumbnail route** (`GET /api/content/thumb/{file_path:path}?w=&v=`; existing, extended in M1 and M3):
-- `w` ∈ `ALLOWED_WIDTHS = {160, 320, 640}` (unchanged; `THUMB_WIDTHS` in the frontend mirrors it).
+- `w` ∈ `ALLOWED_WIDTHS = {160, 320, 480, 640}` (480 added in M4 fix round 1; `THUMB_WIDTHS` in the frontend mirrors it).
 - `v` is optional.
   - `v` matches the current file → `Cache-Control: private, max-age=31536000, immutable`.
   - `v` is stale → the current variant, sent with `Cache-Control: private, no-cache`.

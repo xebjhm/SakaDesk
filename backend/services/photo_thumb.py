@@ -56,8 +56,9 @@ serves a WebP no wider or taller than one of :data:`ALLOWED_WIDTHS` instead
   (:func:`placeholder_of`: mean colour and a 16 px WebP blur of at most
   :data:`BLUR_MAX_BYTES`) and its display size (the header size with EXIF
   orientation applied). The background pre-generation
-  worker (``media_pregen``) writes :data:`PREGEN_WIDTHS` (plus
-  :data:`LARGE_WIDTH` for starred items and covers) through it: the **same
+  worker (``media_pregen``) writes :data:`PREGEN_WIDTHS` (480 px; plus
+  :data:`LARGE_WIDTH` for starred items and covers; 320 / 160 px are derived
+  on demand from the 480) through it: the **same
   files under the same keys** the route serves, so a pre-generated variant is
   a route hit. The key's ``rel_path`` always comes from :func:`archive_rel`
   (the resolved, output-dir-relative POSIX path), for the route and the
@@ -114,7 +115,7 @@ from backend.services.platform import get_app_data_dir
 logger = structlog.get_logger(__name__)
 
 VIEW = "photo_thumb"
-ALLOWED_WIDTHS: frozenset[int] = frozenset({160, 320, 640})
+ALLOWED_WIDTHS: frozenset[int] = frozenset({160, 320, 480, 640})
 """Longest-side bounds the route accepts; mirrors ``THUMB_WIDTHS`` in the frontend."""
 
 PICTURE_SUFFIXES: frozenset[str] = frozenset(
@@ -132,20 +133,26 @@ MAX_SOURCE_PIXELS = 50_000_000
 
 CACHE_CAP_BYTES = 1 * 1024**3
 """1 GiB. Sized in the media pipeline plan's "Cache budget" table
-(``.superpowers/sdd/media-pipeline``): 160 + 320 px WebP is about 25 KB per
-item, so one large service (~14k pictures, ~350 MB) plus its starred 640 px
-variants (~40 MB) and its blog images (~375 MB) stays under the
-pre-generation fill line (0.85 of the cap), with headroom for on-demand
-misses and toast JPEGs."""
-PREGEN_WIDTHS: tuple[int, ...] = (160, 320)
-"""The default variant set pre-generated for every picture."""
+(``docs/superpowers/plans/2026-11-11-media-pipeline.md``): one 480 px WebP
+is about 35 KB per item (to be measured in M9), so one large service's
+messages (~14k pictures, ~490 MB) plus its starred / cover 640 px variants
+(~40 MB) fit under the pre-generation fill line (0.85 of the cap, 870 MiB);
+its blog images (~525 MB more) and a second large service do not fit
+completely, and LRU eviction keeps what was viewed last. 320 / 160 px
+requests are rendered on demand from the cached 480 (derived misses)."""
+PREGEN_WIDTHS: tuple[int, ...] = (480,)
+"""The variant pre-generated for every picture (smaller widths derive from it)."""
 LARGE_WIDTH = 640
 """The extra variant pre-generated for starred items and album covers."""
 BLUR_MAX_BYTES = 600
 """Largest placeholder blur kept; a bigger one (a very noisy picture) becomes ``None``."""
 BLUR_PX = 16
 _BLUR_QUALITY = 40
-CACHE_LOW_WATER = 0.9
+CACHE_LOW_WATER = 0.75
+"""An eviction trims the cache to this share of its cap. Below the
+pre-generation fill line (``media_pregen.PREGEN_FILL_RATIO`` = 0.85) on
+purpose: after an eviction the worker may add again (hysteresis), so a full
+cache never parks the worker for good."""
 DECODE_SLOTS = 2
 TMP_MAX_AGE_S = 3600
 WRITE_WARN_INTERVAL_S = 600

@@ -228,6 +228,7 @@ export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, surface
                                             message={{ type: 'picture', media_url: m.media_url }}
                                             px={SMR_TILE_PX}
                                             loading="eager"
+                                            large
                                             className="aspect-square w-full rounded-xs shadow-card"
                                         />
                                         <figcaption className="text-center font-sans text-caption text-muted">{t(SMR_KEYS[i])}</figcaption>

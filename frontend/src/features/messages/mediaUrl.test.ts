@@ -100,8 +100,20 @@ describe('thumbnailUrl / thumbWidthFor', () => {
         const { thumbWidthFor } = await import('./mediaUrl');
         expect(thumbWidthFor(96, 1)).toBe(160);
         expect(thumbWidthFor(160, 1.5)).toBe(320);
-        expect(thumbWidthFor(200, 2)).toBe(640);
-        expect(thumbWidthFor(900, 2)).toBe(640);
+        expect(thumbWidthFor(200, 2)).toBe(480);
         expect(thumbWidthFor(100, Number.NaN)).toBe(160);
+    });
+
+    it('caps grid tiles at the pre-generated 480; ★ items and covers may use 640', async () => {
+        const { thumbWidthFor, THUMB_WIDTHS, THUMB_PREGEN_WIDTH, THUMB_LARGE_WIDTH } = await import('./mediaUrl');
+        expect(THUMB_WIDTHS).toEqual([160, 320, 480, 640]);
+        expect([THUMB_PREGEN_WIDTH, THUMB_LARGE_WIDTH]).toEqual([480, 640]);
+        expect(thumbWidthFor(250, 1.75)).toBe(480); // ~440 px
+        expect(thumbWidthFor(250, 2)).toBe(480); // 500 px: capped, not 640
+        expect(thumbWidthFor(900, 2)).toBe(480);
+        expect(thumbWidthFor(250, 2, { large: true })).toBe(640);
+        expect(thumbWidthFor(200, 2, { large: true })).toBe(480);
+        expect(thumbWidthFor(900, 2, { large: true })).toBe(640);
+        expect(thumbWidthFor(150, 2, { large: false })).toBe(320);
     });
 });
