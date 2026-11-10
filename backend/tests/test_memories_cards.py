@@ -255,7 +255,19 @@ def test_anniversary_feb_29_start_and_before_start():
     k = by_key(c.evaluate(inputs([], subscription_start=date(2024, 2, 29))))
     assert k["anniv.y1"].date == date(2025, 2, 28)
     future = by_key(c.evaluate(inputs([], subscription_start=date(2027, 1, 1))))
-    assert future["anniv.d100"].progress == (0, 100)
+    assert future["anniv.d100"].progress is None  # never "0 / 100"
+
+
+def test_unearned_cards_never_carry_a_zero_progress():
+    # a voice of unknown length, no pictures: every count is still at 0
+    k = by_key(c.evaluate(inputs([fact(1, "2024-01-01 10:00", "voice")])))
+    assert k["count.voice_hour"].progress is None
+    assert k["count.pictures.100"].progress is None
+    assert k["moment.daisuki.100"].progress is None
+    assert k["count.messages.100"].progress == (1, 100)
+    empty = c.evaluate(inputs())
+    assert all(card.progress is None for card in empty)
+    assert all(card.progress is None or card.progress[0] > 0 for card in k.values())
 
 
 # --- numbers -----------------------------------------------------------------------------------

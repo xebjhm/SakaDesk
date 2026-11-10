@@ -16,7 +16,9 @@ Vocabulary used by the rules:
 
 A card whose condition is not met is either returned with ``earned=False``
 (a silhouette) or, for the cards the catalogue marks *hidden*, left out of the
-result and of :func:`progress_summary`. :func:`evaluate_counted` also returns
+result and of :func:`progress_summary`. An unearned card's ``progress`` is
+``None`` instead of a current value of 0, so the UI shows only the condition
+(spec 1.1: never render "0"). :func:`evaluate_counted` also returns
 how many cards were hidden, for the binder's breadcrumb.
 
 Cards carry message keys, dates and counts only, never text. The fan's
@@ -123,7 +125,7 @@ class Card:
     date: date | None = None  # unlock date (JST)
     message: MessageKey | None = None  # face / detail anchor
     refs: Mapping[str, MessageKey] = field(default_factory=dict)
-    progress: tuple[int, int] | None = None  # (current, target)
+    progress: tuple[int, int] | None = None  # (current, target); None at 0
     years: tuple[CardYear, ...] = ()  # yearly stacks, oldest first
     detail: Mapping[str, int | str] = field(default_factory=dict)
     letter: tuple[str, int] | None = None  # (room, letter_id)
@@ -175,6 +177,11 @@ def _safe_date(year: int, month: int, day: int) -> date:
         return date(year, month, day)
     except ValueError:  # Feb 29 in a non-leap year
         return date(year, month, 28)
+
+
+def _progress(current: int, target: int) -> tuple[int, int] | None:
+    """``(current, target)``, or ``None`` at 0: the UI never shows "0" (spec 1.1)."""
+    return (current, target) if current > 0 else None
 
 
 def _mk(t: _Tagged) -> MessageKey:
@@ -254,7 +261,7 @@ def _nth(
     """Earned on the ``n``-th item, else a silhouette with ``(count, n)``."""
     if len(items) >= n:
         return _earned_at(key, shelf, items[n - 1], foil=foil)
-    return Card(key, shelf, False, foil=foil, progress=(len(items), n))
+    return Card(key, shelf, False, foil=foil, progress=_progress(len(items), n))
 
 
 def _first(
@@ -306,7 +313,12 @@ def _anniversary_cards(
         if when > inp.today:
             target = (when - start).days + 1
             out.append(
-                Card(key, "anniversary", False, progress=(min(day_no, target), target))
+                Card(
+                    key,
+                    "anniversary",
+                    False,
+                    progress=_progress(min(day_no, target), target),
+                )
             )
             continue
         face = _best_of(days.get(when, []))
@@ -338,7 +350,7 @@ def _voice_hour_card(tagged: Sequence[_Tagged]) -> tuple[list[Card], int]:
         total += t[1].duration_s or 0.0
         if total >= _VOICE_HOUR_S:
             return [_earned_at("count.voice_hour", "numbers", t)], 0
-    progress = (int(total), _VOICE_HOUR_S)
+    progress = _progress(int(total), _VOICE_HOUR_S)
     return [Card("count.voice_hour", "numbers", False, progress=progress)], 0
 
 
@@ -512,7 +524,7 @@ def _streak_cards(days: Mapping[date, list[_Tagged]]) -> list[Card]:
             face = _best(days[day])
             out.append(Card(key, "records", True, date=day, message=_mk(face)))
         else:
-            out.append(Card(key, "records", False, progress=(longest, n)))
+            out.append(Card(key, "records", False, progress=_progress(longest, n)))
     return out
 
 
@@ -649,7 +661,7 @@ def _you_cards(letters: Sequence[tuple[str, int, date]]) -> tuple[list[Card], in
             room, lid, day = letters[n - 1]
             out.append(Card(key, "you", True, date=day, letter=(room, lid)))
         else:
-            out.append(Card(key, "you", False, progress=(len(letters), n)))
+            out.append(Card(key, "you", False, progress=_progress(len(letters), n)))
     return out, 0
 
 
