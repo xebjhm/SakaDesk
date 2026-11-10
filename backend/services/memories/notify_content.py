@@ -41,6 +41,10 @@ Contract with the scheduler (M4 Task 5):
   the window closes the occasion is simply never produced again.
 - **On This Day.** ``None`` from :func:`on_this_day_plan` means no service
   has a moment today: the scheduler records ``empty``.
+- **Card baselines advance after the claim.** :func:`card_plans` never
+  writes a baseline; it returns a :class:`CardCheck` whose advances the
+  scheduler applies (a toast's only after its keys are claimed), so a
+  failure before the claim never silently absorbs new cards.
 - **Images.** ``hero`` and ``avatar`` are absolute (``Path.resolve``) and
   existed at build time (checked in a worker); the delivery layer may still
   find them gone and must drop them then.
@@ -197,10 +201,10 @@ def _by_member_id(
 
 
 async def _service_moment(
-    service: str, today_occasion: Occasion
+    service: str, today_occasion: Occasion, base: Path | None
 ) -> tuple[Path, Sequence[mi.MemberSummary], dict] | None:
     try:
-        sdir = people.service_data_dir(service)
+        sdir = people.service_data_dir(service, base)
     except ValueError:
         _skip("on_this_day", service, "unavailable")
         return None
@@ -237,7 +241,11 @@ def _rank(moment: dict, order: int) -> tuple[bool, bool, bool, int, int]:
 
 
 async def on_this_day_plan(
-    ctx: Context, services: Sequence[str], occasion: Occasion
+    ctx: Context,
+    services: Sequence[str],
+    occasion: Occasion,
+    *,
+    base: Path | None = None,
 ) -> MemoryToastPlan | None:
     """One On This Day toast across ``services``, or ``None`` when none has a moment.
 
@@ -246,11 +254,12 @@ async def on_this_day_plan(
     The body quotes her words; a picture without words gets the photo copy;
     a video, voice or empty message gets the neutral copy (never a photo
     claim). The hero is the first existing picture (her photo of the day,
-    then the message's own).
+    then the message's own). ``base`` is the output dir when the caller
+    already resolved it (default: read from settings).
     """
     found: list[tuple[tuple, str, Path, Sequence, dict]] = []
     for order, service in enumerate(services):
-        got = await _service_moment(service, occasion)
+        got = await _service_moment(service, occasion, base)
         if got is not None:
             sdir, summaries, moment = got
             found.append((_rank(moment, order), service, sdir, summaries, moment))
@@ -474,28 +483,76 @@ async def recap_plan(
 # --- cards ---------------------------------------------------------------------------
 
 
+@dataclass(frozen=True)
+class BaselineAdvance:
+    """A person's new card baseline, written by :meth:`apply` (never by
+    :func:`card_plans` itself). ``keys`` is already the union of the old and
+    new keys, so applying it never shrinks the baseline."""
+
+    service: str
+    member_id: str
+    keys: frozenset[str]
+    data_hash: str
+
+    async def apply(self) -> None:
+        await app_state.aput_card_baseline(
+            self.service, self.member_id, self.keys, self.data_hash
+        )
+
+
+@dataclass(frozen=True)
+class CardToast:
+    """One person's card toast, the occasion keys it covers and the baseline
+    advance to apply once those keys are claimed in the ledger."""
+
+    plan: MemoryToastPlan
+    keys: list[str]
+    advance: BaselineAdvance
+
+
+@dataclass(frozen=True)
+class CardCheck:
+    """The result of :func:`card_plans`.
+
+    ``toasts`` carry their own advance (apply it only after the claim, so a
+    failure before the claim never absorbs the new cards); ``silent`` are
+    advances with no toast (first-check seeds, no new foil card, a graduated
+    person), safe to apply at once. ``counts`` feeds ``memories_card_check``.
+    """
+
+    toasts: list[CardToast]
+    silent: list[BaselineAdvance]
+    counts: dict[str, int]
+
+    def advances(self) -> list[BaselineAdvance]:
+        """Every advance (silent and toast ones), for a check without toasts."""
+        return [*self.silent, *(t.advance for t in self.toasts)]
+
+
 async def card_plans(
     ctx: Context,
     service: str,
     sdir: Path,
     summaries: Sequence[mi.MemberSummary],
     oshi: set[str],
-) -> tuple[list[tuple[MemoryToastPlan, list[str]]], dict[str, int]]:
+) -> CardCheck:
     """Toasts for newly earned notifiable foil cards, one per person.
 
-    A person is evaluated only when ``binder.binder_hash`` differs from the
-    stored baseline's. Her first check seeds the baseline silently
-    (``reason=seeded``); an evaluation without ``first.message`` (no facts
-    yet, or a transient empty index) leaves the baseline untouched
-    (``reason=no_facts``). The baseline becomes the union of the old and new
-    keys, so it never shrinks. Each tuple is the plan (``occasion`` = the
-    first new card's occasion key in shelf / catalogue order) and every new
-    occasion key it covers. A graduated person's new cards update the
-    baseline without a toast (``reason=graduated``). The counts are ``persons``, ``evaluated``,
-    ``seeded`` and ``new_foil`` (for ``memories_card_check``).
+    Reads baselines but never writes them: the caller applies each
+    :class:`BaselineAdvance` (see :class:`CardCheck`). A person is evaluated
+    only when ``binder.binder_hash`` differs from the stored baseline's. Her
+    first check seeds the baseline silently (``reason=seeded``); an
+    evaluation without ``first.message`` (no facts yet, or a transient empty
+    index) produces no advance (``reason=no_facts``). Every advance is the
+    union of the old and new keys, so the baseline never shrinks. A toast's
+    ``plan.occasion`` is the first new card's occasion key in shelf /
+    catalogue order and ``keys`` every new occasion key it covers. A
+    graduated person's new cards advance silently (``reason=graduated``).
+    The counts are ``persons``, ``evaluated``, ``seeded`` and ``new_foil``.
     """
     counts = {"persons": 0, "evaluated": 0, "seeded": 0, "new_foil": 0}
-    out: list[tuple[MemoryToastPlan, list[str]]] = []
+    toasts: list[CardToast] = []
+    silent: list[BaselineAdvance] = []
     for person in people.sort_people(summaries, oshi):
         mid = people.member_id(person)
         if mid is None:
@@ -514,18 +571,18 @@ async def card_plans(
         if baseline is None:
             counts["seeded"] += 1
             _skip("card", service, "seeded", mid)
-            await app_state.aput_card_baseline(service, mid, current, data_hash)
+            silent.append(BaselineAdvance(service, mid, current, data_hash))
             continue
         new = new_foil_keys(baseline[0], current, notifiable_foil(cards))
-        await app_state.aput_card_baseline(
-            service, mid, baseline[0] | current, data_hash
-        )
+        advance = BaselineAdvance(service, mid, baseline[0] | current, data_hash)
         if new and person.graduated:
             # After graduation a "new" card is a data-recovery artifact, not an
             # event: the baseline absorbs it silently.
             _skip("card", service, "graduated", mid)
+            silent.append(advance)
             continue
         if not new:
+            silent.append(advance)
             continue
         counts["new_foil"] += len(new)
         order = [c.key for c in cards if c.key in new]
@@ -542,13 +599,16 @@ async def card_plans(
             route=_memoir_route(sdir, person, cardKey=first),
             member_id=mid,
         )
-        out.append((plan, [new[k] for k in order]))
-    return out, counts
+        toasts.append(CardToast(plan, [new[k] for k in order], advance))
+    return CardCheck(toasts, silent, counts)
 
 
 __all__ = [
     "NAMES_MAX_CHARS",
     "QUOTE_MAX_CHARS",
+    "BaselineAdvance",
+    "CardCheck",
+    "CardToast",
     "Context",
     "Skipped",
     "anniversary_plans",

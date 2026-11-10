@@ -776,10 +776,30 @@ async def test_christmas_ready_is_false_before_christmas(svc):
 
 
 async def check_cards(svc, now=NOW, summaries=None):
+    """``card_plans`` plus applying every advance (as a claimed delivery would)."""
     summaries = summaries if summaries is not None else await summaries_of(svc)
     oshi = await people.oshi_rooms(HINATA, summaries)
     with time_machine.travel(now, tick=False):
-        return await nc.card_plans(ctx(now=now), HINATA, svc, summaries, oshi)
+        check = await nc.card_plans(ctx(now=now), HINATA, svc, summaries, oshi)
+    for advance in check.advances():
+        await advance.apply()
+    return [(t.plan, t.keys) for t in check.toasts], check.counts
+
+
+@pytest.mark.asyncio
+async def test_card_plans_never_write_a_baseline(svc):
+    room(svc, KANE, KANE_DAYS)
+    summaries = await summaries_of(svc)
+    check = await nc.card_plans(ctx(), HINATA, svc, summaries, set())
+    assert app_state.get_card_baseline(HINATA, "58") is None
+    (seed,) = check.silent
+    assert check.toasts == [] and seed.member_id == "58"
+    room(svc, KANE, [*KANE_DAYS, msg(3, "2026-11-09T15:03:00Z", content=KANE_WORDS)])
+    await seed.apply()
+    check = await nc.card_plans(ctx(), HINATA, svc, summaries, set())
+    (toast,) = check.toasts
+    assert app_state.get_card_baseline(HINATA, "58")[0] == seed.keys
+    assert "moment.midnight" in toast.advance.keys and seed.keys <= toast.advance.keys
 
 
 KANE_DAYS = [

@@ -507,20 +507,21 @@ async def test_kind_off_records_nothing_then_on_sends(h, safe_logs):
 
 
 @pytest.mark.asyncio
-async def test_cards_off_never_evaluates(h, monkeypatch):
-    calls = []
+async def test_off_and_kind_off_skips_are_debug(h, safe_logs):
+    h.settings["memories_notify_on_this_day"] = False
+    await h.make().tick()
+    h.settings["notifications_enabled"] = False
+    await h.make().tick()
+    quiet = skips(safe_logs, "kind_off") + skips(safe_logs, "notifications_off")
+    assert len(quiet) == 2 and {e["log_level"] for e in quiet} == {"debug"}
 
-    async def spy(*args, **kwargs):
-        calls.append(1)
-        return [], {}
 
-    monkeypatch.setattr(nc, "card_plans", spy)
-    s = h.make()
-    s.request_card_check(HINATA)
+@pytest.mark.asyncio
+async def test_due_counts_only_occasions_still_owed(h):
+    assert (await h.make().tick()).due == 1
     h.clock.move(jst(2026, 11, 10, 13))
-    await s.tick()
-    assert calls == []
-    assert s._card_pending == {}
+    r = await h.make().tick()
+    assert r.due == 0 and r.sent == 0
 
 
 # --- in Memories -----------------------------------------------------------------------------
@@ -917,17 +918,28 @@ def test_lifespan_starts_and_stops_the_scheduler(tmp_path, monkeypatch):
             started.append(self.services)
 
         async def stop(self):
-            stopped.append(1)
+            stopped.append("memories")
 
     class FakeAuto(Fake):
-        pass
+        async def stop(self):
+            stopped.append("auto_sync")
+
+    import backend.main as main_mod
+
+    real_quiesce = main_mod.quiesce_writers
+
+    async def quiesce():
+        stopped.append("quiesce_writers")
+        await real_quiesce()
 
     monkeypatch.setattr(auto_sync_scheduler, "scheduler_allowed_in_env", lambda: True)
     monkeypatch.setattr(auto_sync_scheduler, "AutoSyncScheduler", FakeAuto)
     monkeypatch.setattr(ns, "MemoriesNotifyScheduler", Fake)
+    monkeypatch.setattr(main_mod, "quiesce_writers", quiesce)
     with TestClient(app):
         pass
-    assert HINATA in started[-1] and len(stopped) == 2
+    assert HINATA in started[-1]
+    assert stopped == ["auto_sync", "memories", "quiesce_writers"]
 
 
 # --- edges -------------------------------------------------------------------------------------
@@ -962,3 +974,299 @@ async def test_loop_exits_when_shutdown_begins_during_a_tick(h):
     assert sleep.waits == [ns.STARTUP_DELAY_S]
     assert rows()[("on_this_day", "*", "", "2026-11-10")] == "sent"
     await s.stop()
+
+
+# --- fix wave 1: error isolation ---------------------------------------------------------------
+
+
+@pytest.fixture
+def busy(out, clock):
+    """11-10 at 12:00 JST: an On This Day moment and a 1-day birthday reminder."""
+    sdir = out / HINATA_NAME
+    room(sdir, KANE, [msg(1, "2023-11-10T03:00:00Z", content=WORDS)])
+    write_side_inputs(sdir, birthdays={"金村美玖": "2002-11-11"})
+    return Harness(clock)
+
+
+def failures(logs, stage):
+    return [
+        (e.get("kind"), e.get("service"))
+        for e in logs
+        if e["event"] == "memories_notify_failed" and e["stage"] == stage
+    ]
+
+
+async def _boom(*args, **kwargs):
+    raise RuntimeError("bad data")
+
+
+@pytest.mark.asyncio
+async def test_failing_birthday_builder_does_not_silence_on_this_day(
+    busy, monkeypatch, safe_logs
+):
+    monkeypatch.setattr(nc, "birthday_plans", _boom)
+    await busy.make().tick()
+    assert kinds(busy.sent) == ["on_this_day"]
+    assert failures(safe_logs, "build") == [("birthday", HINATA)]
+
+
+@pytest.mark.asyncio
+async def test_failing_on_this_day_builder_does_not_silence_birthdays(
+    busy, monkeypatch, safe_logs
+):
+    monkeypatch.setattr(nc, "on_this_day_plan", _boom)
+    await busy.make().tick()
+    assert kinds(busy.sent) == ["birthday_soon"]
+    assert failures(safe_logs, "build") == [("on_this_day", "*")]
+    assert ("on_this_day", "*", "", "2026-11-10") not in rows()
+
+
+@pytest.mark.asyncio
+async def test_failing_recap_builder_does_not_silence_on_this_day(
+    out, clock, monkeypatch, safe_logs
+):
+    sdir = out / HINATA_NAME
+    room(sdir, KANE, [msg(1, "2025-12-01T03:00:00Z", content=WORDS)])
+    monkeypatch.setattr(nc, "recap_plan", _boom)
+    hh = Harness(clock)
+    hh.clock.move(jst(2026, 12, 1, 12))
+    await hh.make().tick()
+    assert kinds(hh.sent) == ["on_this_day"]
+    assert failures(safe_logs, "build") == [("recap", HINATA)]
+
+
+@pytest.mark.asyncio
+async def test_failing_anniversary_builder_does_not_silence_on_this_day(
+    out, clock, monkeypatch, safe_logs
+):
+    sdir = out / HINATA_NAME
+    room(sdir, KANE, [msg(1, "2023-11-10T03:00:00Z", content=WORDS)])
+    write_side_inputs(sdir, sub_starts={"34": "2025-11-10"})
+    monkeypatch.setattr(nc, "anniversary_plans", _boom)
+    hh = Harness(clock)
+    await hh.make().tick()
+    assert kinds(hh.sent) == ["on_this_day"]
+    assert failures(safe_logs, "build") == [("anniversary", HINATA)]
+
+
+@pytest.mark.asyncio
+async def test_failing_claim_does_not_drop_later_units(busy, monkeypatch, safe_logs):
+    real = app_state.aclaim_memory_notification
+
+    async def claim(kind, *rest, **kw):
+        if kind == "birthday_soon":
+            raise RuntimeError("locked")
+        return await real(kind, *rest, **kw)
+
+    monkeypatch.setattr(app_state, "aclaim_memory_notification", claim)
+    await busy.make().tick()
+    assert kinds(busy.sent) == ["on_this_day"]
+    assert failures(safe_logs, "deliver") == [("birthday_soon", HINATA)]
+
+
+@pytest.mark.asyncio
+async def test_failing_card_check_does_not_silence_on_this_day(
+    busy, monkeypatch, safe_logs
+):
+    busy.settings["memories_notify_cards"] = True
+    monkeypatch.setattr(nc, "card_plans", _boom)
+    s = busy.make()
+    await s.tick()
+    assert kinds(busy.sent) == ["birthday_soon", "on_this_day"]
+    assert failures(safe_logs, "cards") == [("card", HINATA)]
+
+
+@pytest.mark.asyncio
+async def test_card_baseline_advances_only_after_the_claim(cards, monkeypatch):
+    hh, sdir = cards
+    s = hh.make()
+    await s.tick()  # seed
+    seeded, _ = app_state.get_card_baseline(HINATA, "58")
+    room(sdir, KANE, [*KANE_DAYS, msg(3, "2026-11-09T15:03:00Z", content=WORDS)])
+    real = app_state.aclaim_memory_notification
+
+    async def claim(kind, *rest, **kw):
+        if kind == "card":
+            raise RuntimeError("locked")
+        return await real(kind, *rest, **kw)
+
+    monkeypatch.setattr(app_state, "aclaim_memory_notification", claim)
+    s.request_card_check(HINATA)
+    hh.clock.move(NOON + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert hh.sent == []
+    assert app_state.get_card_baseline(HINATA, "58")[0] == seeded  # not absorbed
+    monkeypatch.setattr(app_state, "aclaim_memory_notification", real)
+    s.request_card_check(HINATA)
+    hh.clock.move(NOON + timedelta(seconds=2 * ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert kinds(hh.sent) == ["card"]
+    assert "moment.midnight" in app_state.get_card_baseline(HINATA, "58")[0]
+
+
+@pytest.mark.asyncio
+async def test_card_baseline_not_advanced_when_halted_before_delivery(
+    cards, monkeypatch
+):
+    hh, sdir = cards
+    s = hh.make()
+    await s.tick()  # seed
+    seeded, _ = app_state.get_card_baseline(HINATA, "58")
+    room(sdir, KANE, [*KANE_DAYS, msg(3, "2026-11-09T15:03:00Z", content=WORDS)])
+    real = nc.card_plans
+
+    async def plans_then_stop(*args):
+        got = await real(*args)
+        shutdown_state.begin_shutdown()
+        return got
+
+    monkeypatch.setattr(nc, "card_plans", plans_then_stop)
+    s.request_card_check(HINATA)
+    hh.clock.move(NOON + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert hh.sent == [] and rows() == {}
+    assert app_state.get_card_baseline(HINATA, "58")[0] == seeded
+
+
+# --- fix wave 1: silent baseline advance (ruling) ----------------------------------------------
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "off", [{"notifications_enabled": False}, {"memories_notify_cards": False}]
+)
+async def test_cards_advance_silently_while_off(cards, off):
+    hh, sdir = cards
+    hh.settings.update(off)
+    s = hh.make()
+    await s.tick()  # first tick seeds even while off
+    assert app_state.get_card_baseline(HINATA, "58") is not None
+    room(sdir, KANE, [*KANE_DAYS, msg(3, "2026-11-09T15:03:00Z", content=WORDS)])
+    s.request_card_check(HINATA)
+    hh.clock.move(NOON + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert hh.sent == [] and rows() == {}
+    assert "moment.midnight" in app_state.get_card_baseline(HINATA, "58")[0]
+    assert s._card_pending == {}
+    # turning it back on never floods the card earned while off
+    hh.settings.update(notifications_enabled=True, memories_notify_cards=True)
+    s.request_card_check(HINATA)
+    hh.clock.move(NOON + timedelta(seconds=2 * ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert hh.sent == []
+
+
+# --- fix wave 1: rate-limited bad start log (ruling) -------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bad_subscription_start_logged_once_per_member_per_day(
+    out, clock, safe_logs
+):
+    sdir = out / HINATA_NAME
+    room(sdir, KANE, [msg(1, "2023-11-10T03:00:00Z", content=WORDS)])
+    write_side_inputs(sdir, sub_starts={"34": "not-a-date"})
+    hh = Harness(clock, memories_notify_on_this_day=False)
+    s = hh.make()
+
+    def bad_starts():
+        return [
+            e
+            for e in safe_logs
+            if e["event"] == "memories_skip"
+            and e.get("reason") == "bad_subscription_start"
+        ]
+
+    await s.tick()  # also the silent first card seed (binder parses it too)
+    first = len(bad_starts())
+    assert first >= 1
+    hh.clock.move(jst(2026, 11, 10, 18))
+    await s.tick()
+    assert len(bad_starts()) == first  # same JST day: not repeated
+    hh.clock.move(jst(2026, 11, 11, 9))
+    await s.tick()
+    assert len(bad_starts()) == first + 1
+
+
+# --- fix wave 1: minors ------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_first_tick_keeps_an_undue_card_mark(cards, safe_logs):
+    hh, _ = cards
+    s = hh.make()
+    s.request_card_check(HINATA)  # a launch-time sync, not due for 120 s
+    await s.tick()  # first tick: checks every service ...
+    assert HINATA in s._card_pending  # ... but keeps the undue mark
+    hh.clock.move(NOON + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert s._card_pending == {}
+    checks = [e for e in safe_logs if e["event"] == "memories_card_check"]
+    assert len(checks) == 2
+
+
+@pytest.mark.asyncio
+async def test_unknown_service_card_request_is_ignored(h):
+    s = h.make()
+    s.request_card_check("not_a_service")
+    assert s._card_pending == {}
+    r = await s.tick()
+    assert r.next_in_s > 1
+
+
+@pytest.mark.asyncio
+async def test_finish_writes_only_the_keys_this_unit_claimed(out, clock, monkeypatch):
+    sdir = out / HINATA_NAME
+    room(sdir, KANE, [msg(1, "2024-01-05T03:00:00Z", content=WORDS)])
+    room(sdir, MATSU, [msg(1, "2024-01-05T03:00:00Z", content=WORDS)])
+    write_side_inputs(sdir, sub_starts={"34": "2025-11-10", "40": "2025-11-10"})
+    other = ("anniversary", HINATA, "64", "y1@2026-11-10")
+    app_state.claim_memory_notification(*other, "failed")  # another path's row
+
+    async def nothing_done(keys):
+        return set()  # as if the other path wrote after this tick's lookup
+
+    monkeypatch.setattr(app_state, "amemory_notifications_done", nothing_done)
+    hh = Harness(clock, memories_notify_on_this_day=False)
+    await hh.make().tick()
+    got = rows()
+    assert got[("anniversary", HINATA, "58", "y1@2026-11-10")] == "sent"
+    assert got[other] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_output_dir_is_resolved_once_per_tick_off_the_loop(h, monkeypatch):
+    import threading
+
+    root = people.output_dir()
+    calls = []
+
+    def output_dir():
+        calls.append(threading.current_thread() is threading.main_thread())
+        return root
+
+    monkeypatch.setattr(people, "output_dir", output_dir)
+    await h.make(services=(HINATA, "sakurazaka46")).tick()
+    assert kinds(h.sent) == ["on_this_day"]
+    assert calls == [False]
+
+
+@pytest.mark.asyncio
+async def test_card_already_claimed_elsewhere_still_advances(cards, monkeypatch):
+    hh, sdir = cards
+    s = hh.make()
+    await s.tick()  # seed
+    room(sdir, KANE, [*KANE_DAYS, msg(3, "2026-11-09T15:03:00Z", content=WORDS)])
+    real = app_state.aclaim_memory_notification
+
+    async def claim(kind, *rest, **kw):
+        if kind == "card":
+            return False  # a concurrent tick took it
+        return await real(kind, *rest, **kw)
+
+    monkeypatch.setattr(app_state, "aclaim_memory_notification", claim)
+    s.request_card_check(HINATA)
+    hh.clock.move(NOON + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert hh.sent == []
+    assert "moment.midnight" in app_state.get_card_baseline(HINATA, "58")[0]
