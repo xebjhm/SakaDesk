@@ -16,7 +16,7 @@ import { readShareFonts, readSharePalette, SHARE_HEIGHT, SHARE_WIDTH, ShareRende
 import { loadShareAssets, type ShareAssets } from './sharePhotos';
 import {
     ensureShareFonts, GIF_FPS, postShareGif, recordVideo, renderGifFrames, saveShareBlob, shareFilename, ShareSaveError,
-    videoSupport, type FontFallback,
+    throwIfCancelled, videoSupport, type FontFallback,
 } from './shareExport';
 
 export interface ShareDialogProps {
@@ -28,8 +28,13 @@ export interface ShareDialogProps {
 }
 
 type ExportChoice = 'gif' | 'video' | 'png';
-type Phase = 'idle' | 'frames' | 'assemble' | 'record' | 'handed_off' | 'failed';
-type FailReason = 'render_failed' | 'encode_failed' | 'record_failed' | 'write_failed';
+type Phase = 'idle' | 'frames' | 'assemble' | 'record' | 'handed_off' | 'failed' | 'cancelled';
+type FailReason = 'render_failed' | 'encode_failed' | 'record_failed' | 'write_failed' | 'cancelled';
+/** Why the fan's chosen avatar file was refused (a log code and a message key). */
+export type AvatarError = 'not_image' | 'too_large' | 'load_failed';
+
+/** Largest avatar file the dialog reads (it is decoded in full). */
+export const MAX_AVATAR_BYTES = 10 * 1024 * 1024;
 
 /** The PNG is drawn at 2× (1080 × 1920); the video at 1.5× (810 × 1440) to keep real-time recording smooth. */
 const PNG_SCALE = 2;
@@ -46,20 +51,36 @@ function makeCanvas(width: number, height: number): HTMLCanvasElement {
     return c;
 }
 
-/** Reads the fan's chosen image file (their own avatar). Rejects anything that is not an image. */
+class AvatarFileError extends Error {
+    constructor(readonly code: AvatarError) {
+        super(code);
+        this.name = 'AvatarFileError';
+    }
+}
+
+/**
+ * Reads the fan's chosen image file (their own avatar). Rejects a file whose MIME type is not an
+ * image (`not_image`) or that is over {@link MAX_AVATAR_BYTES} (`too_large`) before decoding it,
+ * and one that does not decode (`load_failed`).
+ */
 async function readImageFile(file: File): Promise<CanvasImageSource> {
-    if (!file.type.startsWith('image/')) throw new Error('not_image');
-    if (typeof createImageBitmap === 'function') return createImageBitmap(file);
-    const url = URL.createObjectURL(file);
+    if (!file.type.startsWith('image/')) throw new AvatarFileError('not_image');
+    if (file.size > MAX_AVATAR_BYTES) throw new AvatarFileError('too_large');
     try {
-        return await new Promise<HTMLImageElement>((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => resolve(img);
-            img.onerror = () => reject(new Error('image_load_failed'));
-            img.src = url;
-        });
-    } finally {
-        URL.revokeObjectURL(url);
+        if (typeof createImageBitmap === 'function') return await createImageBitmap(file);
+        const url = URL.createObjectURL(file);
+        try {
+            return await new Promise<HTMLImageElement>((resolve, reject) => {
+                const img = new Image();
+                img.onload = () => resolve(img);
+                img.onerror = () => reject(new Error('image_load_failed'));
+                img.src = url;
+            });
+        } finally {
+            URL.revokeObjectURL(url);
+        }
+    } catch {
+        throw new AvatarFileError('load_failed');
     }
 }
 
@@ -81,6 +102,10 @@ const ToggleRow: React.FC<{ label: string; checked: boolean; onChange: (next: bo
  * opt-in, off by default; the nickname is masked 『＊＊＊』 while off. The "SakaDesk" footer is on
  * by default. Files go through the local export handoff (the webview's save dialog); the copy
  * says the export started, never that it was saved. No voice and no music are exported.
+ *
+ * An export is cancellable: Cancel, closing the dialog (or the poster, which unmounts it) and
+ * reopening it abort the running export's `AbortController`. That stops drawing and recording,
+ * stops the stream tracks and aborts the upload; an aborted export never opens a download.
  */
 export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nickname, onClose }) => {
     const { t, i18n } = useTranslation();
@@ -92,6 +117,9 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
     const [busy, setBusy] = useState<ExportChoice | null>(null);
     const [phase, setPhase] = useState<Phase>('idle');
     const [progress, setProgress] = useState(0);
+    const [avatarError, setAvatarError] = useState<AvatarError | null>(null);
+    /** The running export's controller; null when none runs. */
+    const exportRef = useRef<AbortController | null>(null);
     const rootRef = useRef<HTMLDivElement>(null);
     const previewRef = useRef<HTMLCanvasElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
@@ -99,11 +127,23 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
     const support = useMemo(() => videoSupport(), []);
     const showYears = yearsAvailable(recap);
 
-    // Open: breadcrumbs, the frosted photos and the fonts (each once per opening).
+    /** Aborts the running export, if any (its own catch logs `export_failed` / `cancelled`). */
+    const abortExport = useCallback(() => {
+        const running = exportRef.current;
+        exportRef.current = null;
+        running?.abort();
+    }, []);
+
+    // Open: breadcrumbs, the frosted photos and the fonts (each once per opening). Closing or
+    // unmounting aborts a running export; opening starts from a clean, idle state.
     useEffect(() => {
         if (!isOpen) return;
+        abortExport();
         setOptions(defaultShareOptions(recap));
         setAvatar(null);
+        setAvatarError(null);
+        setBusy(null);
+        setProgress(0);
         setPhase('idle');
         fontLoggedRef.current = false;
         logRecapShare('open', { count: candidates.length, member_id: memberId });
@@ -112,13 +152,17 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         void loadShareAssets(recap).then((loaded) => {
             if (cancelled) return;
             if (loaded.skipped > 0) logRecapShare('photo_skip', { reason: 'load_failed', count: loaded.skipped, member_id: memberId });
+            if (loaded.blurFallback) logRecapShare('share_blur_fallback', { reason: 'filter_unsupported', count: loaded.photos.length, member_id: memberId });
             setAssets(loaded);
         }).catch(() => {
             if (cancelled) return;
             logRecapShare('photo_skip', { reason: 'load_failed', member_id: memberId });
             setAssets(NO_ASSETS);
         });
-        return () => { cancelled = true; };
+        return () => {
+            cancelled = true;
+            abortExport();
+        };
         // Once per opening of this recap.
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [isOpen, recap]);
@@ -183,14 +227,20 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         if (!file) return;
         try {
             setAvatar(await readImageFile(file));
+            setAvatarError(null);
             logRecapShare('option', { key: 'avatar', outcome: 'picked', member_id: memberId });
-        } catch {
-            logRecapShare('option', { key: 'avatar', outcome: 'rejected', member_id: memberId });
+        } catch (e) {
+            const code: AvatarError = e instanceof AvatarFileError ? e.code : 'load_failed';
+            setAvatarError(code);
+            logRecapShare('option', { key: 'avatar', outcome: 'rejected', reason: code, member_id: memberId });
         }
     };
 
     const runExport = async (choice: ExportChoice) => {
-        if (busy) return;
+        if (busy || exportRef.current) return;
+        const controller = new AbortController();
+        const { signal } = controller;
+        exportRef.current = controller;
         setBusy(choice);
         setProgress(0);
         let kind: 'gif' | 'webm' | 'mp4' | 'png' = choice === 'video' ? 'webm' : choice;
@@ -198,6 +248,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         logRecapShare('export_start', { kind, style: options.style, count: model.poster.sentences.length, member_id: memberId });
         try {
             await fontsReady();
+            throwIfCancelled(signal);
             const el = rootRef.current ?? undefined;
             const base = { palette: readSharePalette(el), fonts: readShareFonts(el) };
             const renderAssets = { ...(assets ?? NO_ASSETS), avatar: options.avatar ? avatar : null };
@@ -205,13 +256,14 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
                 setPhase('frames');
                 const renderer = new ShareRenderer(model, renderAssets, { ...base, format: 'gif', scale: 1 });
                 const { frames, durations } = await renderGifFrames(renderer, makeCanvas(SHARE_WIDTH, SHARE_HEIGHT), {
-                    onProgress: (p) => setProgress(Math.round(p * 80)),
+                    onProgress: (p) => setProgress(Math.round(p * 80)), signal,
                 });
+                throwIfCancelled(signal);
                 setPhase('assemble');
                 reason = 'write_failed';
                 await postShareGif(
                     { frames, durations_ms: durations, fps: GIF_FPS, width: SHARE_WIDTH, height: SHARE_HEIGHT },
-                    shareFilename(recap.year, recap.member.id, 'gif'),
+                    shareFilename(recap.year, recap.member.id, 'gif'), undefined, signal,
                 );
             } else if (choice === 'video') {
                 if (!support.supported) throw new Error('video_unsupported');
@@ -220,11 +272,12 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
                 const renderer = new ShareRenderer(model, renderAssets, { ...base, format: 'video', scale: VIDEO_SCALE });
                 const canvas = makeCanvas(SHARE_WIDTH * VIDEO_SCALE, SHARE_HEIGHT * VIDEO_SCALE);
                 const video = await recordVideo(renderer, canvas, {
-                    mimeType: support.mimeType, onProgress: (p) => setProgress(Math.round(p * 100)),
+                    mimeType: support.mimeType, onProgress: (p) => setProgress(Math.round(p * 100)), signal,
                 });
+                throwIfCancelled(signal);
                 kind = video.kind;
                 reason = 'write_failed';
-                await saveShareBlob(video.blob, video.kind, shareFilename(recap.year, recap.member.id, video.kind));
+                await saveShareBlob(video.blob, video.kind, shareFilename(recap.year, recap.member.id, video.kind), undefined, signal);
             } else {
                 setPhase('frames');
                 const renderer = new ShareRenderer(model, renderAssets, { ...base, format: 'video', scale: PNG_SCALE });
@@ -234,22 +287,42 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
                 renderer.drawPoster(ctx);
                 reason = 'encode_failed';
                 const blob = await canvasToPng(canvas);
+                throwIfCancelled(signal);
                 reason = 'write_failed';
-                await saveShareBlob(blob, 'png', shareFilename(recap.year, recap.member.id, 'png'));
+                await saveShareBlob(blob, 'png', shareFilename(recap.year, recap.member.id, 'png'), undefined, signal);
             }
+            throwIfCancelled(signal);
             setProgress(100);
             logRecapShare('export', { kind, outcome: 'handed_off', member_id: memberId });
             setPhase('handed_off');
         } catch (e) {
+            if (signal.aborted) {
+                // Whoever aborted (Cancel, close, reopen, unmount) already reset the dialog.
+                logRecapShare('export_failed', { kind, reason: 'cancelled', member_id: memberId });
+                return;
+            }
             const errorCode = e instanceof ShareSaveError ? e.detail ?? e.code : e instanceof SaveError ? e.code : undefined;
             logRecapShare('export_failed', { kind, reason, member_id: memberId, ...(errorCode ? { error_code: errorCode } : {}) });
             setPhase('failed');
         } finally {
-            setBusy(null);
+            if (exportRef.current === controller) {
+                exportRef.current = null;
+                setBusy(null);
+            }
         }
     };
 
+    /** The Cancel action: aborts the running export and says so. */
+    const cancelExport = () => {
+        if (!exportRef.current) return;
+        abortExport();
+        setBusy(null);
+        setProgress(0);
+        setPhase('cancelled');
+    };
+
     const close = () => {
+        abortExport();
         logRecapShare('close', { member_id: memberId });
         onClose();
     };
@@ -260,7 +333,10 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
     const statusText = {
         idle: '', frames: t('recap.share.progressFrames'), assemble: t('recap.share.progressAssemble'),
         record: t('recap.share.progressRecord'), handed_off: t('recap.share.handedOff'), failed: t('recap.share.failed'),
+        cancelled: t('recap.share.cancelled'),
     }[phase];
+    /** While one export runs, the other export buttons are visibly blocked (design-system disabled state). */
+    const blockedBy = (choice: ExportChoice) => (busy && busy !== choice ? t('recap.share.busy') : undefined);
 
     return (
         <Modal
@@ -291,18 +367,23 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
                     )}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <p role="status" className={`min-h-5 text-secondary ${NARRATION_CLASS}`}>{statusText}</p>
-                        <div className="flex items-center gap-2">
-                            <Button variant="secondary" size="sm" loading={busy === 'png'} onClick={() => void runExport('png')}>
+                        <div className="flex flex-wrap items-center gap-2">
+                            {busy && (
+                                <Button variant="ghost" size="sm" onClick={cancelExport}>
+                                    {t('recap.share.cancelExport')}
+                                </Button>
+                            )}
+                            <Button variant="secondary" size="sm" loading={busy === 'png'} disabledReason={blockedBy('png')} onClick={() => void runExport('png')}>
                                 <ImageIcon aria-hidden="true" className="h-4 w-4" />
                                 {t('recap.share.exportPng')}
                             </Button>
                             {support.supported && (
-                                <Button variant="secondary" size="sm" loading={busy === 'video'} onClick={() => void runExport('video')}>
+                                <Button variant="secondary" size="sm" loading={busy === 'video'} disabledReason={blockedBy('video')} onClick={() => void runExport('video')}>
                                     <Film aria-hidden="true" className="h-4 w-4" />
                                     {t('recap.share.exportVideo')}
                                 </Button>
                             )}
-                            <Button variant="primary" size="sm" loading={busy === 'gif'} onClick={() => void runExport('gif')}>
+                            <Button variant="primary" size="sm" loading={busy === 'gif'} disabledReason={blockedBy('gif')} onClick={() => void runExport('gif')}>
                                 <Sparkles aria-hidden="true" className="h-4 w-4" />
                                 {t('recap.share.exportGif')}
                             </Button>
@@ -378,7 +459,12 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
                                     <Button variant="secondary" size="sm" onClick={() => fileRef.current?.click()}>
                                         {avatar ? t('recap.share.changeAvatar') : t('recap.share.pickAvatar')}
                                     </Button>
-                                    {!avatar && <span className={`text-muted ${NARRATION_CLASS}`}>{t('recap.share.avatarMissing')}</span>}
+                                    {!avatar && !avatarError && <span className={`text-muted ${NARRATION_CLASS}`}>{t('recap.share.avatarMissing')}</span>}
+                                    {avatarError && (
+                                        <span role="alert" className={`text-status-danger ${NARRATION_CLASS}`}>
+                                            {t(`recap.share.avatarError.${avatarError}`)}
+                                        </span>
+                                    )}
                                     <input
                                         ref={fileRef}
                                         type="file"

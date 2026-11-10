@@ -948,6 +948,11 @@
       "pickAvatar": "Choose an image",
       "changeAvatar": "Change image",
       "avatarMissing": "Choose an image for your icon.",
+      "avatarError": {
+        "not_image": "That file is not an image. Choose an image file.",
+        "too_large": "That image is over 10 MB. Choose a smaller one.",
+        "load_failed": "That image could not be read. Choose another one."
+      },
       "years": "Include \"year {{count}}\"",
       "footerToggle": "Include \"SakaDesk\"",
       "exportGif": "GIF",
@@ -959,6 +964,9 @@
       "progressLabel": "Export progress",
       "handedOff": "The export has started.",
       "failed": "Could not export.",
+      "cancelled": "The export was cancelled.",
+      "cancelExport": "Cancel",
+      "busy": "Another export is running.",
       "tagline": "A year on the same slope",
       "clockLabel": "The hour her words came most",
       "clockHour": "around {{hour}}:00",

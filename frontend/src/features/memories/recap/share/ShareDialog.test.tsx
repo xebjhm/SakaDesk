@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeAll, beforeEach, afterEach, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../../i18n';
-import { ShareDialog } from './ShareDialog';
+import { MAX_AVATAR_BYTES, ShareDialog } from './ShareDialog';
 import { daisukiData, message, payload, s02, s12 } from '../__fixtures__/payload';
 import { recordingCanvas } from '../__fixtures__/recordingCanvas';
 import type { RecapPayload, RecapSlide } from '../api';
@@ -28,7 +28,8 @@ vi.mock('./shareExport', async (importOriginal) => {
     };
 });
 import { ensureShareFonts, postShareGif, recordVideo, renderGifFrames, saveShareBlob, videoSupport } from './shareExport';
-import { ShareSaveError } from './shareExport';
+import { ShareCancelledError, ShareSaveError } from './shareExport';
+import { loadShareAssets } from './sharePhotos';
 
 vi.mock('../posterImage', async (importOriginal) => {
     const actual = await importOriginal<typeof import('../posterImage')>();
@@ -55,6 +56,7 @@ beforeEach(() => {
     vi.mocked(postShareGif).mockClear();
     vi.mocked(saveShareBlob).mockClear();
     vi.mocked(recordVideo).mockClear();
+    vi.mocked(renderGifFrames).mockClear();
     vi.mocked(videoSupport).mockReturnValue({ supported: false, reason: 'no_media_recorder' });
     getContext = vi.spyOn(HTMLCanvasElement.prototype, 'getContext').mockImplementation(() => recordingCanvas().ctx as never);
 });
@@ -124,7 +126,7 @@ describe('ShareDialog export', () => {
         expect(renderGifFrames).toHaveBeenCalled();
         expect(postShareGif).toHaveBeenCalledWith(
             expect.objectContaining({ fps: 15, width: 540, height: 960, frames: ['AAAA'], durations_ms: [8000] }),
-            'sakadesk-recap-2026-58-share.gif',
+            'sakadesk-recap-2026-58-share.gif', undefined, expect.any(AbortSignal),
         );
         expect(shareLogs()).toContainEqual({ phase: 'export_start', kind: 'gif', style: 'collage', count: 2, member_id: '58' });
         expect(shareLogs()).toContainEqual({ phase: 'export', kind: 'gif', outcome: 'handed_off', member_id: '58' });
@@ -137,7 +139,7 @@ describe('ShareDialog export', () => {
         open();
         await userEvent.click(await screen.findByRole('button', { name: '画像' }));
         await screen.findByText('書き出しを始めました。');
-        expect(saveShareBlob).toHaveBeenCalledWith(expect.any(Blob), 'png', 'sakadesk-recap-2026-58-share.png');
+        expect(saveShareBlob).toHaveBeenCalledWith(expect.any(Blob), 'png', 'sakadesk-recap-2026-58-share.png', undefined, expect.any(AbortSignal));
     });
 
     it('records the video from the canvas only when supported (no voice, no music)', async () => {
@@ -148,7 +150,7 @@ describe('ShareDialog export', () => {
         await userEvent.click(await screen.findByRole('button', { name: '動画' }));
         await screen.findByText('書き出しを始めました。');
         expect(recordVideo).toHaveBeenCalledWith(expect.anything(), expect.anything(), expect.objectContaining({ mimeType: 'video/webm;codecs=vp9' }));
-        expect(saveShareBlob).toHaveBeenCalledWith(expect.any(Blob), 'webm', 'sakadesk-recap-2026-58-share.webm');
+        expect(saveShareBlob).toHaveBeenCalledWith(expect.any(Blob), 'webm', 'sakadesk-recap-2026-58-share.webm', undefined, expect.any(AbortSignal));
         expect(play).not.toHaveBeenCalled();
     });
 
@@ -173,5 +175,168 @@ describe('ShareDialog export', () => {
             { phase: 'font_fallback', fallback: 'font_timeout', member_id: '58' },
         ]);
         vi.mocked(ensureShareFonts).mockResolvedValue(null);
+    });
+});
+
+/** A promise that settles only when `signal` aborts (as the real export steps do). */
+function untilAborted<T>(signal: AbortSignal | undefined, error: Error): Promise<T> {
+    return new Promise<T>((_resolve, reject) => {
+        if (signal?.aborted) reject(error);
+        signal?.addEventListener('abort', () => reject(error));
+    });
+}
+
+const exportLogs = () => shareLogs().filter((f) => ['export', 'export_failed'].includes((f as { phase: string }).phase));
+
+describe('ShareDialog cancel', () => {
+    it('Cancel during recording aborts the recorder and never hands the video off', async () => {
+        vi.mocked(videoSupport).mockReturnValue({ supported: true, mimeType: 'video/webm;codecs=vp9' });
+        let signal: AbortSignal | undefined;
+        vi.mocked(recordVideo).mockImplementationOnce((_r, _c, opts) => {
+            signal = opts.signal;
+            return untilAborted(opts.signal, new ShareCancelledError());
+        });
+        open();
+        await userEvent.click(await screen.findByRole('button', { name: '動画' }));
+        await userEvent.click(await screen.findByRole('button', { name: 'やめる' }));
+        await screen.findByText('書き出しを取りやめました。');
+        expect(signal?.aborted).toBe(true);
+        expect(saveShareBlob).not.toHaveBeenCalled();
+        expect(screen.getByRole('button', { name: '動画' })).not.toHaveAttribute('aria-busy');
+        expect(screen.queryByRole('button', { name: 'やめる' })).toBeNull();
+        await waitFor(() => expect(exportLogs()).toEqual([{ phase: 'export_failed', kind: 'webm', reason: 'cancelled', member_id: '58' }]));
+    });
+
+    it('closing the dialog during the GIF upload aborts the fetch and logs the cancel', async () => {
+        let signal: AbortSignal | undefined;
+        vi.mocked(postShareGif).mockImplementationOnce((_b, _f, _fetch, s) => {
+            signal = s;
+            return untilAborted(s, new ShareSaveError('export_cancelled'));
+        });
+        const onClose = vi.fn();
+        open(recap(), onClose);
+        await userEvent.click(await screen.findByRole('button', { name: 'GIF' }));
+        await waitFor(() => expect(postShareGif).toHaveBeenCalled());
+        await userEvent.click(screen.getByRole('button', { name: i18n.t('common.close') }));
+        expect(onClose).toHaveBeenCalled();
+        expect(signal?.aborted).toBe(true);
+        await waitFor(() => expect(exportLogs()).toEqual([{ phase: 'export_failed', kind: 'gif', reason: 'cancelled', member_id: '58' }]));
+    });
+
+    it('a GIF answer that lands after Cancel is not reported as handed off', async () => {
+        let finish: (v: { outcome: 'handed_off' }) => void = () => {};
+        vi.mocked(postShareGif).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+        open();
+        await userEvent.click(await screen.findByRole('button', { name: 'GIF' }));
+        await waitFor(() => expect(postShareGif).toHaveBeenCalled());
+        await userEvent.click(screen.getByRole('button', { name: 'やめる' }));
+        await act(async () => { finish({ outcome: 'handed_off' }); });
+        expect(screen.queryByText('書き出しを始めました。')).toBeNull();
+        expect(exportLogs()).toEqual([{ phase: 'export_failed', kind: 'gif', reason: 'cancelled', member_id: '58' }]);
+    });
+
+    it('reopening resets busy and progress after an export was abandoned', async () => {
+        let signal: AbortSignal | undefined;
+        vi.mocked(postShareGif).mockImplementationOnce((_b, _f, _fetch, s) => {
+            signal = s;
+            return untilAborted(s, new ShareSaveError('export_cancelled'));
+        });
+        const r = recap();
+        const view = render(<ShareDialog isOpen recap={r} nickname="ゆき" onClose={vi.fn()} />);
+        await userEvent.click(await screen.findByRole('button', { name: 'GIF' }));
+        await waitFor(() => expect(postShareGif).toHaveBeenCalled());
+        expect(screen.getByRole('progressbar')).toBeInTheDocument();
+        view.rerender(<ShareDialog isOpen={false} recap={r} nickname="ゆき" onClose={vi.fn()} />);
+        expect(signal?.aborted).toBe(true);
+        view.rerender(<ShareDialog isOpen recap={r} nickname="ゆき" onClose={vi.fn()} />);
+        const gif = await screen.findByRole('button', { name: 'GIF' });
+        expect(gif).not.toHaveAttribute('aria-busy');
+        expect(gif).not.toHaveAttribute('aria-disabled');
+        expect(screen.queryByRole('progressbar')).toBeNull();
+        expect(screen.queryByRole('button', { name: 'やめる' })).toBeNull();
+        expect(screen.getByRole('status')).toHaveTextContent('');
+        // A fresh export can start right away.
+        await userEvent.click(gif);
+        await screen.findByText('書き出しを始めました。');
+    });
+
+    it('unmounting (the poster closed) aborts a running export', async () => {
+        let signal: AbortSignal | undefined;
+        vi.mocked(renderGifFrames).mockImplementationOnce((_r, _c, opts) => {
+            signal = opts?.signal;
+            return untilAborted(opts?.signal, new ShareCancelledError());
+        });
+        const view = open();
+        await userEvent.click(await screen.findByRole('button', { name: 'GIF' }));
+        await waitFor(() => expect(renderGifFrames).toHaveBeenCalled());
+        view.unmount();
+        expect(signal?.aborted).toBe(true);
+        await waitFor(() => expect(exportLogs()).toEqual([{ phase: 'export_failed', kind: 'gif', reason: 'cancelled', member_id: '58' }]));
+        expect(postShareGif).not.toHaveBeenCalled();
+    });
+});
+
+describe('ShareDialog busy state', () => {
+    it('visibly blocks the other export buttons while one runs', async () => {
+        vi.mocked(postShareGif).mockImplementationOnce((_b, _f, _fetch, s) => untilAborted(s, new ShareSaveError('export_cancelled')));
+        open();
+        await userEvent.click(await screen.findByRole('button', { name: 'GIF' }));
+        await waitFor(() => expect(postShareGif).toHaveBeenCalled());
+        const png = screen.getByRole('button', { name: '画像' });
+        expect(png).toHaveAttribute('aria-disabled', 'true');
+        expect(png).toHaveAccessibleDescription('ほかの書き出しを進めています。');
+        expect(screen.getByRole('button', { name: 'GIF' })).toHaveAttribute('aria-busy', 'true');
+        await userEvent.click(png);
+        expect(saveShareBlob).not.toHaveBeenCalled();
+        await userEvent.click(screen.getByRole('button', { name: 'やめる' }));
+        expect(screen.getByRole('button', { name: '画像' })).not.toHaveAttribute('aria-disabled');
+    });
+});
+
+describe('ShareDialog avatar file', () => {
+    async function pick(file: File) {
+        open();
+        await userEvent.click(await screen.findByRole('switch', { name: '自分のアイコンを入れる' }));
+        await userEvent.click(screen.getByRole('button', { name: '画像を選ぶ' }));
+        const input = document.querySelector('input[type="file"]') as HTMLInputElement;
+        fireEvent.change(input, { target: { files: [file] } });
+    }
+
+    it('refuses a file over 10 MB with a message', async () => {
+        const big = new File(['x'], 'big.png', { type: 'image/png' });
+        Object.defineProperty(big, 'size', { value: MAX_AVATAR_BYTES + 1 });
+        const bitmap = vi.fn(async () => ({}) as ImageBitmap);
+        vi.stubGlobal('createImageBitmap', bitmap);
+        await pick(big);
+        expect(await screen.findByRole('alert')).toHaveTextContent('10MBより大きい画像です。もっと小さい画像を選んでください。');
+        expect(bitmap).not.toHaveBeenCalled();
+        expect(shareLogs()).toContainEqual({ phase: 'option', key: 'avatar', outcome: 'rejected', reason: 'too_large', member_id: '58' });
+        vi.unstubAllGlobals();
+    });
+
+    it('refuses a file that is not an image with a message', async () => {
+        await pick(new File(['%PDF'], 'doc.pdf', { type: 'application/pdf' }));
+        expect(await screen.findByRole('alert')).toHaveTextContent('画像ではないファイルです。画像を選んでください。');
+        expect(shareLogs()).toContainEqual({ phase: 'option', key: 'avatar', outcome: 'rejected', reason: 'not_image', member_id: '58' });
+    });
+
+    it('accepts an image at the cap', async () => {
+        const ok = new File(['x'], 'me.png', { type: 'image/png' });
+        Object.defineProperty(ok, 'size', { value: MAX_AVATAR_BYTES });
+        vi.stubGlobal('createImageBitmap', vi.fn(async () => ({ width: 64, height: 64 }) as ImageBitmap));
+        await pick(ok);
+        await waitFor(() => expect(shareLogs()).toContainEqual({ phase: 'option', key: 'avatar', outcome: 'picked', member_id: '58' }));
+        expect(screen.queryByRole('alert')).toBeNull();
+        vi.unstubAllGlobals();
+    });
+});
+
+describe('ShareDialog blur fallback', () => {
+    it('leaves a share_blur_fallback breadcrumb when photos were box-blurred', async () => {
+        vi.mocked(loadShareAssets).mockResolvedValueOnce({ photos: [], months: [], skipped: 0, blurFallback: true });
+        open();
+        await waitFor(() => expect(shareLogs()).toContainEqual({
+            phase: 'share_blur_fallback', reason: 'filter_unsupported', count: 0, member_id: '58',
+        }));
     });
 });

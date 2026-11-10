@@ -926,6 +926,11 @@
       "pickAvatar": "選擇圖片",
       "changeAvatar": "更換圖片",
       "avatarMissing": "請選擇作為頭像的圖片。",
+      "avatarError": {
+        "not_image": "這個檔案不是圖片，請選擇圖片檔。",
+        "too_large": "這張圖片超過 10 MB，請選擇較小的圖片。",
+        "load_failed": "無法讀取這張圖片，請選擇另一張。"
+      },
       "years": "加入「第{{count}}年」",
       "footerToggle": "加入「SakaDesk」",
       "exportGif": "GIF",
@@ -937,6 +942,9 @@
       "progressLabel": "匯出進度",
       "handedOff": "已開始匯出。",
       "failed": "無法匯出。",
+      "cancelled": "已取消匯出。",
+      "cancelExport": "取消",
+      "busy": "另一個匯出正在進行。",
       "tagline": "走在同一條坂道上的一年",
       "clockLabel": "她的話語最多的時刻",
       "clockHour": "{{hour}}點台",
