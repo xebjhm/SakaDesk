@@ -77,6 +77,17 @@ class Notifier(Protocol):
 # ------------------------------------------------------------------- notifiers
 
 
+def memory_tag(plan: MemoryToastPlan) -> str:
+    """The Action Center tag of a Memories toast: ``mem-{kind}-{service}-{subject}``.
+
+    At most :data:`_TAG_MAX` characters. Only the subject is cut, never the
+    kind or the group, so two groups never share a tag (kinds and group ids
+    are short; a subject is ``""`` / a recap phase / a member id).
+    """
+    prefix = f"mem-{plan.kind}-{plan.service}-"
+    return (prefix + (plan.subject or "all"))[:_TAG_MAX]
+
+
 def _click_message_id(newest_id: str) -> tuple[int | None, str | None]:
     """The message a click jumps to: ``(id, None)`` or ``(None, reason)``.
 
@@ -210,14 +221,16 @@ class WindowsToastNotifier:
 
         The avatar is the AppLogo image and the hero (an On This Day photo)
         the Hero image; either failing is logged and never costs the toast.
-        One Action Center slot per kind and subject: a newer toast of the same
-        kind and subject replaces the older one. A click opens Memories at
-        ``plan.route`` through :func:`desktop_bridge.open_memories`.
+        One Action Center slot per kind, group and subject
+        (:func:`memory_tag`): a newer toast of the same kind, group and
+        subject replaces the older one, and two groups never replace each
+        other's. A click opens Memories at ``plan.route`` through
+        :func:`desktop_bridge.open_memories`.
         """
         wt = self._wt
         try:
             toast = wt.Toast(text_fields=[plan.title, plan.body])
-            toast.tag = f"mem-{plan.kind}-{plan.subject or 'all'}"[:_TAG_MAX]
+            toast.tag = memory_tag(plan)
             toast.group = _MEMORY_GROUP
             if plan.avatar is not None:
                 self._add_memory_image(toast, plan, plan.avatar, "avatar")

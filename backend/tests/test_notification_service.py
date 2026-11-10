@@ -1041,10 +1041,11 @@ def _memory_plan(
     subject: str = "",
     avatar: Path | None = None,
     hero: Path | None = None,
+    service: str = "hinatazaka46",
 ) -> MemoryToastPlan:
     return MemoryToastPlan(
         kind=kind,
-        service="hinatazaka46",
+        service=service,
         subject=subject,
         occasion="2026-11-10",
         title="3年前の今日 金村 美玖",
@@ -1130,7 +1131,7 @@ def test_windows_notifier_show_memory_builds_the_toast(fake_wt, tmp_path) -> Non
     (toast,) = fake_wt.shown
     assert toast.text_fields == [plan.title, plan.body]
     assert toast.launch_action_set == []
-    assert toast.tag == "mem-on_this_day-all"
+    assert toast.tag == "mem-on_this_day-hinatazaka46-all"
     assert toast.group == "memories"
     assert [(i.position, i.image.path) for i in toast.images] == [
         ("AppLogo", avatar),
@@ -1143,13 +1144,31 @@ def test_windows_notifier_show_memory_without_images(fake_wt) -> None:
     n.show_memory(_memory_plan(kind="birthday", subject="58"))
     (toast,) = fake_wt.shown
     assert toast.images == []
-    assert toast.tag == "mem-birthday-58"
+    assert toast.tag == "mem-birthday-hinatazaka46-58"
 
 
 def test_windows_notifier_show_memory_tag_is_at_most_64_chars(fake_wt) -> None:
     n = ns.WindowsToastNotifier()
     n.show_memory(_memory_plan(kind="anniversary", subject="9" * 100))
-    assert len(fake_wt.shown[0].tag) == 64
+    n.show_memory(
+        _memory_plan(kind="anniversary", subject="9" * 100, service="sakurazaka46")
+    )
+    first, second = (t.tag for t in fake_wt.shown)
+    assert len(first) == 64 and len(second) == 64
+    assert first.startswith("mem-anniversary-hinatazaka46-9")
+    assert second.startswith("mem-anniversary-sakurazaka46-9")
+
+
+def test_windows_notifier_memory_tags_differ_per_group(fake_wt) -> None:
+    # Dec 1 with two groups: both recap toasts must stay in the Action Center.
+    n = ns.WindowsToastNotifier()
+    for service in ("hinatazaka46", "sakurazaka46"):
+        n.show_memory(_memory_plan(kind="recap", subject="open", service=service))
+        n.show_memory(_memory_plan(kind="birthday", subject="58", service=service))
+    tags = [t.tag for t in fake_wt.shown]
+    assert len(set(tags)) == 4
+    assert tags[0] == "mem-recap-hinatazaka46-open"
+    assert tags[2] == "mem-recap-sakurazaka46-open"
 
 
 @pytest.mark.parametrize("stage", ["avatar", "hero"])
