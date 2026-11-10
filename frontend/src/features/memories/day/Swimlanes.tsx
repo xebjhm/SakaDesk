@@ -8,6 +8,7 @@ import { resizedAvatarUrl } from '../../messages/mediaUrl';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
+import { contextCaption, shownTexts } from '../shared/captions';
 import { useNickname } from '../shared/useNickname';
 import { toChatMessage } from '../shared/toMessage';
 import { jumpToChat } from '../shared/jumpToChat';
@@ -40,12 +41,14 @@ interface LaneCardProps {
     top: number;
     expanded: boolean;
     onToggle: () => void;
+    /** The day's text messages in view (`shownTexts`): a caption already shown as its own card is not repeated. */
+    shown: ReadonlySet<string>;
 }
 
-const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, onToggle }) => {
+const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, onToggle, shown }) => {
     const { t } = useTranslation();
     const nickname = useNickname();
-    const words = m.text ?? m.caption;
+    const words = m.text ?? contextCaption(m, shown);
     const Icon = m.type === 'text' ? null : MEDIA_ICON[m.type];
     const hasThumb = (m.type === 'picture' || m.type === 'video') && Boolean(m.media_url);
     return (
@@ -103,7 +106,7 @@ const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, 
  * 那一天 B: one column per person (avatar and name on top), time running down on a JST hour
  * ruler from the floor of the first message's hour to the ceiling of the last one's. Cards sit
  * at their time (`laneLayout` pushes overlapping ones down); a click expands one with her full
- * words, a read-only bubble for media and the jump to her chat (`memories_toggle` `lane_card`).
+ * words (a caption whose own message is a card of the day is not repeated), a read-only bubble for media and the jump to her chat (`memories_toggle` `lane_card`).
  * Columns keep a minimum width, so past five people the lanes scroll sideways inside the pane.
  */
 export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
@@ -111,6 +114,7 @@ export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
     const [expanded, setExpanded] = useState<string | null>(null);
     const people = useMemo(() => dayPeople(members, messages), [members, messages]);
     const { start, hours } = useMemo(() => rulerSpan(messages), [messages]);
+    const shown = useMemo(() => shownTexts(messages), [messages]);
 
     const toggle = (key: string) => {
         const next = expanded === key ? null : key;
@@ -162,6 +166,7 @@ export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
                                 top={top}
                                 expanded={expanded === key}
                                 onToggle={() => toggle(key)}
+                                shown={shown}
                             />
                         ))}
                     </div>

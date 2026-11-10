@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { ChevronLeft, ChevronRight, MessageCircle, Mic, Play, Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Button, IconButton, Modal } from '../../../design/primitives';
@@ -13,6 +13,7 @@ import { LoadState } from '../shared/LoadState';
 import { memoryMediaSrc } from '../shared/mediaSrc';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
+import { contextCaption, shownTexts } from '../shared/captions';
 import { jumpToChat } from '../shared/jumpToChat';
 import { messageName } from '../shared/nameFromRoom';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
@@ -40,11 +41,12 @@ export interface FilmStripProps {
 /**
  * One frame's content, a compact film frame rather than a chat bubble: the JST time
  * (`formatJstClock`), then the still (`MemoryThumb`), the voice (the one-at-a-time `LazyVoice` on
- * the focused frame, a label with the duration on the others) and her words (`MemoryText`).
+ * the focused frame, a label with the duration on the others) and her words (`MemoryText`). A
+ * paired caption whose own message is a frame of the same day (`shown`) is left to that frame.
  */
-const FrameBody: React.FC<{ m: DayMessage; focused: boolean }> = ({ m, focused }) => {
+const FrameBody: React.FC<{ m: DayMessage; focused: boolean; shown: ReadonlySet<string> }> = ({ m, focused, shown }) => {
     const { t } = useTranslation();
-    const words = m.type === 'text' ? m.text : (m.caption ?? m.text);
+    const words = m.type === 'text' ? m.text : (contextCaption(m, shown) ?? m.text);
     const src = memoryMediaSrc(m);
     return (
         <>
@@ -99,6 +101,7 @@ const Strip: React.FC<StripProps> = ({ day, index, setIndex, from, onClose }) =>
     const messages = day.messages;
     const last = messages.length - 1;
     const focus = messages[index];
+    const shownWords = useMemo(() => shownTexts(messages), [messages]);
 
     useEffect(() => {
         const el = root.current;
@@ -148,7 +151,7 @@ const Strip: React.FC<StripProps> = ({ day, index, setIndex, from, onClose }) =>
                                             className="absolute right-2 top-2 h-4 w-4 fill-current text-semantic-star drop-shadow-sm"
                                         />
                                     )}
-                                    <FrameBody m={m} focused />
+                                    <FrameBody m={m} focused shown={shownWords} />
                                 </div>
                             ) : (
                                 <button
@@ -160,7 +163,7 @@ const Strip: React.FC<StripProps> = ({ day, index, setIndex, from, onClose }) =>
                                         'focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
                                     )}
                                 >
-                                    <FrameBody m={m} focused={false} />
+                                    <FrameBody m={m} focused={false} shown={shownWords} />
                                 </button>
                             )}
                         </div>

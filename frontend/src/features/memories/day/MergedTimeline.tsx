@@ -12,6 +12,7 @@ import { useNickname } from '../shared/useNickname';
 import { toChatMessage } from '../shared/toMessage';
 import { jumpToChat } from '../shared/jumpToChat';
 import { memoryMediaSrc } from '../shared/mediaSrc';
+import { contextCaption, shownTexts } from '../shared/captions';
 import { JST_TIME_ZONE } from '../recap/availability';
 import type { DayPerson } from './people';
 import type { DayMessage, MemoryMessage } from '../types';
@@ -46,7 +47,8 @@ const Indented: React.FC<{ children: React.ReactNode }> = ({ children }) => (
  * 那一天 A: every message of the day in time order as the chat's `MessageBubble` in `readOnly`
  * mode (no context menu, long-press or favourite actions; translate and the transcript work
  * through `memberPath`), times on the JST clock, her words through the nickname (or the mask), a
- * picture's paired words under it with `MemoryText`. Pictures and videos open the media viewer
+ * picture's paired words under it with `MemoryText` (unless their own message is in the list, so
+ * they show once). Pictures and videos open the media viewer
  * over the day's media, whose source link opens her chat at that message.
  */
 export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people, service }) => {
@@ -58,6 +60,7 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
 
     const nameOf = (m: DayMessage) => people.get(m.person_key)?.name ?? '';
     const media = useMemo(() => messages.filter(isViewable), [messages]);
+    const shown = useMemo(() => shownTexts(messages), [messages]);
     const mediaItems: MediaViewerItem[] = media.map((m) => ({
         src: mediaSrc(m),
         type: m.type as 'picture' | 'video',
@@ -83,6 +86,7 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
                 const chat = toChatMessage(m);
                 chat.content = m.text ? replaceNickname(m.text, nickname) : null;
                 const mediaIndex = media.indexOf(m);
+                const caption = contextCaption(m, shown);
                 return (
                     <div key={msgKey(m)}>
                         <MessageBubble
@@ -97,9 +101,9 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
                             runStart={runStart}
                             onMediaClick={mediaIndex >= 0 ? () => setViewerIndex(mediaIndex) : undefined}
                         />
-                        {m.caption && (
+                        {caption && (
                             <Indented>
-                                <MemoryText text={m.caption} className="pt-1 text-body text-primary" />
+                                <MemoryText text={caption} className="pt-1 text-body text-primary" />
                             </Indented>
                         )}
                         {m.service !== service && (
