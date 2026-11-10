@@ -206,6 +206,8 @@ export const handlers = [
   http.post('/api/ui-state', () => {
     return new HttpResponse(null, { status: 204 })
   }),
+  // Memories-in-view reporting (fire-and-forget)
+  http.post('/api/ui-state/memories', () => new HttpResponse(null, { status: 204 })),
 
   // Backend app-state store (empty store, already migrated). Answered so the
   // startup conversation-cache load succeeds instead of retrying with backoff.
