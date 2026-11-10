@@ -110,7 +110,7 @@
       "onThisDay": "On This Day, daily",
       "onThisDayDesc": "Once a day, only when past years have messages on that date",
       "time": "Time",
-      "timeDesc": "The time for On This Day, birthday reminders, anniversaries and the recap (birthdays on the day arrive at midnight)",
+      "timeDesc": "The time for On This Day, birthday reminders, anniversaries and the December recap notices (birthdays on the day at midnight; the complete recap from midnight on Jan 1)",
       "timeHint": "Japan time ({{local}} where you are)",
       "birthday": "Birthdays",
       "birthdayDesc": "At midnight on the day, plus 7 days and 1 day before",
