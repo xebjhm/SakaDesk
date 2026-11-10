@@ -4,6 +4,7 @@ import ja from './locales/ja.json';
 import zhCN from './locales/zh-CN.json';
 import zhTW from './locales/zh-TW.json';
 import yue from './locales/yue.json';
+import { NICKNAME_MASK } from '../features/memories/shared/nicknameMask';
 
 const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
 
@@ -36,6 +37,10 @@ describe('memories core strings', () => {
 
     it('lists every key once', () => {
         expect(new Set(MEMORIES_CORE_KEYS).size).toBe(MEMORIES_CORE_KEYS.length);
+    });
+
+    it.each(Object.entries(locales))('%s masks the nickname exactly as the share export does', (_code, data) => {
+        expect(`『${String(lookup(data, 'memories.common.nicknameMasked'))}』`).toBe(NICKNAME_MASK);
     });
 
     it('uses the Japanese reference copy', () => {

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { MemoriesHome, type RecapCardState } from './MemoriesHome';
 import { RecapEntry } from './recap/RecapEntry';
 import { fetchRecapYears } from './recap/api';
@@ -44,7 +44,16 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
     // The route is tagged with its service so a service change falls back to home
     // on the same render (no flash of the old service's page).
     const [state, setState] = useState<{ service: string; route: MemoriesRoute }>(() => ({ service, route: initialRoute ?? HOME }));
+    // Re-tag on a service change (React's set-state-during-render pattern), so switching back
+    // to the earlier service does not restore its old page.
+    if (state.service !== service) setState({ service, route: HOME });
     const route = state.service === service ? state.route : HOME;
+
+    // A deep link opens on its page without a `go`: log it like one.
+    const initialPage = useRef(initialRoute?.page);
+    useEffect(() => {
+        if (initialPage.current && initialPage.current !== 'home') logMemoriesPage(initialPage.current);
+    }, []);
 
     const go = (next: MemoriesRoute) => {
         setState({ service, route: next });

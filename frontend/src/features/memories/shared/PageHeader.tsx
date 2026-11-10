@@ -6,7 +6,7 @@ import { useTranslation } from '../../../i18n';
 interface PageHeaderProps {
     title: React.ReactNode;
     onBack: () => void;
-    /** Right-hand controls (filters, date navigation). */
+    /** Right-hand controls (filters, date navigation). Never a bare count: counts go next to her words (spec 1.1). */
     right?: React.ReactNode;
 }
 

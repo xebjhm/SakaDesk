@@ -91,6 +91,20 @@ describe('Memories feature', () => {
             expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_page', { target: 'home' });
         });
 
+        it('logs the page it opens on from a deep link', () => {
+            vi.mocked(clientLog).mockClear();
+            render(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'album' }} />);
+            expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_page', { target: 'album' });
+        });
+
+        it('stays home after switching service and back', () => {
+            const { rerender } = render(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'favorites' }} />);
+            rerender(<MemoriesFeature service="sakurazaka46" initialRoute={{ page: 'favorites' }} />);
+            rerender(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'favorites' }} />);
+            expect(screen.getByTestId('memories-home')).toBeInTheDocument();
+            expect(screen.queryByTestId('memories-page-favorites')).toBeNull();
+        });
+
         it.each(PAGES)('resets the $route.page page to home when the service changes', ({ route, testId }) => {
             const { rerender } = render(<MemoriesFeature service="hinatazaka46" initialRoute={route} />);
             expect(screen.getByTestId(testId)).toBeInTheDocument();
