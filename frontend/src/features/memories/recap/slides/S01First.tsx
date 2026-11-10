@@ -5,20 +5,20 @@ import { cn } from '../../../../utils/classnames';
 import type { S01FirstData } from '../api';
 import { formatClock, s01Copy } from '../recapCopy';
 import { Headline, MessageBody, Narration, type SlideProps } from './common';
-import { reveal } from './style';
+import { heldReveal } from './style';
 
 /**
  * Slide 1, 今年最初の一通: a lock-screen notification (her name, the time to the
  * second) that opens into her first message of the year.
  */
-export const S01First: React.FC<SlideProps<S01FirstData>> = ({ data, recap, nickname, reducedMotion }) => {
+export const S01First: React.FC<SlideProps<S01FirstData>> = ({ data, recap, nickname, reducedMotion, paused }) => {
     const { t, i18n } = useTranslation();
     const copy = s01Copy(data, recap.member, recap.year, i18n.language);
     const message = data.message;
     const clock = message ? formatClock(message.ts, i18n.language) : null;
-    const card = reveal(reducedMotion);
-    const body = reveal(reducedMotion, 600);
-    const lines = reveal(reducedMotion, 1200);
+    const card = heldReveal(reducedMotion, paused);
+    const body = heldReveal(reducedMotion, paused, 600);
+    const lines = heldReveal(reducedMotion, paused, 1200);
     return (
         <div className="flex h-full flex-col items-center justify-center gap-8 px-8 text-center">
             {message && (

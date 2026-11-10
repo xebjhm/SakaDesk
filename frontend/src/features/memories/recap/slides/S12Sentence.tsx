@@ -4,13 +4,13 @@ import { cn } from '../../../../utils/classnames';
 import type { S12SentenceData } from '../api';
 import { s12Copy, withNickname } from '../recapCopy';
 import { Headline, type SlideProps } from './common';
-import { QUOTE_CLASS, reveal } from './style';
+import { QUOTE_CLASS, heldReveal } from './style';
 
 /** Slide 12, 今年の、ひとこと: the one sentence in vertical serif type on black, her photo of that day faintly behind. */
-export const S12Sentence: React.FC<SlideProps<S12SentenceData>> = ({ data, recap, nickname, reducedMotion }) => {
+export const S12Sentence: React.FC<SlideProps<S12SentenceData>> = ({ data, recap, nickname, reducedMotion, paused }) => {
     const { t } = useTranslation();
     const copy = s12Copy(recap.year);
-    const sentence = reveal(reducedMotion, 400);
+    const sentence = heldReveal(reducedMotion, paused, 400);
     return (
         <div className="relative flex h-full flex-col items-center justify-center gap-8 bg-viewer-stage px-8 py-16">
             {data.photo_url && (

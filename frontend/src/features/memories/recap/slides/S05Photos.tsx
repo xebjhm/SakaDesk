@@ -4,7 +4,7 @@ import { cn } from '../../../../utils/classnames';
 import type { RecapMessage, S05PhotosData } from '../api';
 import { s05Copy, withNickname } from '../recapCopy';
 import { Headline, Narration, Quote, type SlideProps } from './common';
-import { reveal } from './style';
+import { heldReveal, playState } from './style';
 
 /** The burst fans out over this time; the real gaps between the photos are compressed into it. */
 export const FAN_MS = 2400;
@@ -54,14 +54,14 @@ const Media: React.FC<{ message: RecapMessage; className?: string }> = ({ messag
  * burst fanned out at compressed real timing with its caption. Without a burst:
  * one treasured photo. With reduced motion the burst is a still row.
  */
-export const S05Photos: React.FC<SlideProps<S05PhotosData>> = ({ data, nickname, reducedMotion }) => {
+export const S05Photos: React.FC<SlideProps<S05PhotosData>> = ({ data, nickname, reducedMotion, paused }) => {
     const { t } = useTranslation();
     const copy = s05Copy(data);
     const wall = sampleEvenly((data.wall ?? []).filter((u): u is string => !!u), WALL_MAX);
     const burst = data.burst.filter((m) => m.media_url).slice(0, FAN_MAX);
     const best = burst.length === 0 && data.best_photo?.media_url ? data.best_photo : null;
     const delays = fanDelays(burst);
-    const after = reveal(reducedMotion, (delays[delays.length - 1] ?? 0) + 500);
+    const after = heldReveal(reducedMotion, paused, (delays[delays.length - 1] ?? 0) + 500);
     const bestWords = best ? (best.text ?? best.caption) : null;
     return (
         <div className="relative flex h-full flex-col items-center justify-center gap-6 overflow-hidden px-8 text-center">
@@ -85,6 +85,7 @@ export const S05Photos: React.FC<SlideProps<S05PhotosData>> = ({ data, nickname,
                                 transform: `translateX(-50%) translateX(${Math.round(k * 2 * FAN_PX)}px) rotate(${(k * 2 * FAN_DEG).toFixed(1)}deg)`,
                                 animationDelay: `${delays[i]}ms`,
                                 zIndex: i,
+                                ...playState(paused),
                             };
                         return (
                             <div

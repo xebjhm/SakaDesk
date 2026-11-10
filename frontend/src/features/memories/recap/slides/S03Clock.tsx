@@ -4,7 +4,7 @@ import { cn } from '../../../../utils/classnames';
 import type { RecapMessageType, S03ClockData } from '../api';
 import { s03Copy } from '../recapCopy';
 import { Headline, MessageBody, Narration, type SlideProps } from './common';
-import { reveal } from './style';
+import { heldReveal, playState } from './style';
 
 /** All stars have landed by this time (the last one starts falling before it). */
 export const STAR_FALL_MS = 2000;
@@ -50,14 +50,14 @@ function radiusOf(i: number): number {
  * peak hour glows above its representative message. A flat day (`band`) has no
  * peak to glow. With reduced motion the clock is drawn still.
  */
-export const S03Clock: React.FC<SlideProps<S03ClockData>> = ({ data, nickname, reducedMotion }) => {
+export const S03Clock: React.FC<SlideProps<S03ClockData>> = ({ data, nickname, reducedMotion, paused }) => {
     const { t } = useTranslation();
     const copy = s03Copy(data);
     const n = data.stars.length;
     const fallSpan = STAR_FALL_MS - STAR_DURATION_MS;
     const peakAngle = angleOf(data.peak_hour, 30);
-    const body = reveal(reducedMotion, STAR_FALL_MS - 400);
-    const lines = reveal(reducedMotion, STAR_FALL_MS);
+    const body = heldReveal(reducedMotion, paused, STAR_FALL_MS - 400);
+    const lines = heldReveal(reducedMotion, paused, STAR_FALL_MS);
     return (
         <div className="flex h-full flex-col items-center justify-center gap-5 px-8 text-center">
             <Headline>{t(copy.title.key, copy.title.params)}</Headline>
@@ -107,7 +107,10 @@ export const S03Clock: React.FC<SlideProps<S03ClockData>> = ({ data, nickname, r
                         transformBox: 'fill-box',
                         transformOrigin: 'center',
                     };
-                    if (!reducedMotion) style.animationDelay = `${Math.round(n > 1 ? (i / (n - 1)) * fallSpan : 0)}ms`;
+                    if (!reducedMotion) {
+                        style.animationDelay = `${Math.round(n > 1 ? (i / (n - 1)) * fallSpan : 0)}ms`;
+                        Object.assign(style, playState(paused));
+                    }
                     return (
                         <circle
                             key={i}

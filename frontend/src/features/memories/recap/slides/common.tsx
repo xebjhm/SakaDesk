@@ -20,7 +20,7 @@ export interface SlideProps<D> {
     /** The fan's nickname, already resolved (never empty). */
     nickname: string;
     reducedMotion: boolean;
-    /** The player is paused (Space or its pause button): media on the slide holds until it resumes. */
+    /** The player is paused (Space or its pause button): media and CSS animations on the slide hold until it resumes. */
     paused: boolean;
     /**
      * A slide that waits for media (the voice slide) calls this when playback ends. While the

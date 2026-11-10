@@ -8,7 +8,7 @@ import type { S06VoiceData } from '../api';
 import { s06Copy, withNickname } from '../recapCopy';
 import { ClipSequencer, createAudioElement, type SequencerClip } from '../voicePlayback';
 import { Headline, Narration, Quote, type SlideProps } from './common';
-import { reveal } from './style';
+import { heldReveal } from './style';
 
 const KEY = 's06_voice';
 
@@ -82,7 +82,7 @@ export const S06Voice: React.FC<SlideProps<S06VoiceData>> = ({ data, fallback, n
         s.start();
     }, [clips, fallback, paused]);
 
-    const lines = reveal(reducedMotion, 400);
+    const lines = heldReveal(reducedMotion, paused, 400);
     return (
         <div className="flex h-full flex-col items-center justify-center gap-6 px-8 text-center">
             <Headline>{t(copy.title.key, copy.title.params)}</Headline>
