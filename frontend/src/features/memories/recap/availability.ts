@@ -61,8 +61,9 @@ export function recapAvailability(now: Date = new Date()): RecapAvailability {
  * The years the entry offers, ascending. `dataYears` are the years with a recap
  * (the shelf); `null` when unknown (still loading or failed), which offers every
  * year from {@link RECAP_MIN_YEAR} up to the newest open one (a year without data
- * then shows the gentle empty state). The current year is offered from Dec 1 even
- * before it has data.
+ * then shows the gentle empty state). Only the recap page uses that fallback: the
+ * hub card waits for the shelf and offers a retry when it fails. The current year
+ * is offered from Dec 1 even before it has data.
  */
 export function offeredRecapYears(avail: RecapAvailability, dataYears: readonly number[] | null): number[] {
     if (dataYears === null) {

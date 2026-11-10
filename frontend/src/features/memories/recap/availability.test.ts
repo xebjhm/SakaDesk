@@ -1,5 +1,11 @@
-import { describe, it, expect, afterEach, vi } from 'vitest';
+import { describe, it, expect, afterAll, afterEach, beforeAll, vi } from 'vitest';
 import { defaultRecapYear, jstNow, offeredRecapYears, recapAvailability } from './availability';
+
+// Run under a zone west of UTC so an implementation built on local getters (plus 9 h)
+// would fail here even when CI runs in UTC.
+const savedTz = process.env.TZ;
+beforeAll(() => { process.env.TZ = 'America/Los_Angeles'; });
+afterAll(() => { process.env.TZ = savedTz; });
 
 /** A JST wall-clock instant as a `Date` (JST is UTC+9 all year). */
 const jst = (iso: string) => new Date(`${iso}+09:00`);
@@ -7,6 +13,15 @@ const jst = (iso: string) => new Date(`${iso}+09:00`);
 afterEach(() => { vi.useRealTimers(); });
 
 describe('jstNow', () => {
+    it('runs under a non-UTC local zone', () => {
+        // Nov 30 07:00 PST, which is already Dec 1 00:00 in Tokyo.
+        const instant = new Date('2026-11-30T15:00:00Z');
+        expect(instant.getDate()).toBe(30);
+        expect(instant.getHours()).toBe(7);
+        expect(jstNow(instant)).toMatchObject({ month: 12, day: 1, hour: 0 });
+        expect(recapAvailability(instant).currentOpen).toBe(true);
+    });
+
     it('reads the wall clock in Asia/Tokyo, not the local zone', () => {
         // 2026-11-30 15:00 UTC is already Dec 1 in Tokyo.
         expect(jstNow(new Date('2026-11-30T15:00:00Z'))).toEqual({ year: 2026, month: 12, day: 1, hour: 0, minute: 0 });
