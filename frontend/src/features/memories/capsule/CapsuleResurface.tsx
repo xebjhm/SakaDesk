@@ -24,7 +24,8 @@ const FOCUS = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:rin
  * 「{{count}}年前のあなたが書いたメモ」 (this JST year minus the year written, from the backend)
  * and her words (`MemoryText`, with a thumb when it is a photo) under her name and the message's
  * real JST date and time. Her message opens On This Day for the anchor date (that year's detail)
- * and logs `memories_capsule` `resurface_open`. Without words of hers that day the note stands alone.
+ * and logs `memories_capsule` `resurface_open`. Without words of hers that day the note stands
+ * alone, beside her name when the backend names the person (a card anchor).
  */
 export const CapsuleResurface: React.FC<CapsuleResurfaceProps> = ({ item, go, className }) => {
     const { t, i18n } = useTranslation();
@@ -47,6 +48,8 @@ export const CapsuleResurface: React.FC<CapsuleResurfaceProps> = ({ item, go, cl
             <p className="font-display text-title text-primary">{t('memories.capsule.yearsAgo', { count: item.years_ago })}</p>
             <div className="flex flex-wrap items-start gap-4">
                 <CapsuleNoteCard note={note} className="w-56 shrink-0" />
+                {/* Without a message, a card note still says whose card it was. */}
+                {!message && item.name && <span lang="ja" className="self-center text-small text-secondary">{item.name}</span>}
                 {message && (
                     <button
                         type="button"

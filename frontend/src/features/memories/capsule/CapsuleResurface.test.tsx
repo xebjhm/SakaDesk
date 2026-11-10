@@ -52,4 +52,12 @@ describe('CapsuleResurface', () => {
         expect(screen.getByText('1年前のあなたが書いたメモ')).toBeInTheDocument();
         expect(screen.queryByTestId('capsule-resurface-message')).toBeNull();
     });
+
+    it('names her on a card note that resurfaces without a message', () => {
+        renderItem(resurfaceItem({
+            message: null, name: '金村 美玖',
+            note: capsuleNote({ id: 10, anchor: { kind: 'card', date: '2024-09-14', card_key: 'anniv.y1' } }),
+        }));
+        expect(screen.getByText('金村 美玖')).toHaveAttribute('lang', 'ja');
+    });
 });

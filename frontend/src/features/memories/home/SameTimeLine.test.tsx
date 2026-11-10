@@ -124,6 +124,49 @@ describe('SameTimeLine', () => {
         expect(vi.getTimerCount()).toBe(0);
     });
 
+    it('tags her name as Japanese inside the label', () => {
+        renderLine();
+        const name = screen.getByText('金村 美玖');
+        expect(name).toHaveAttribute('lang', 'ja');
+        expect(name.parentElement).toHaveTextContent('2024年のこの時刻、金村 美玖は');
+    });
+
+    it('hides instead of keeping an older minute\'s moment under a newer clock when a refetch fails', async () => {
+        vi.mocked(fetchSameTime).mockRejectedValueOnce(new Error('down'));
+        const { container } = renderLine();
+        await act(async () => { vi.advanceTimersByTime(30_500); });
+        await flush();
+        expect(container).toBeEmptyDOMElement();
+    });
+
+    it('refetches on show when hiding aborted the minute\'s request, even within that minute', async () => {
+        let first = true;
+        vi.mocked(fetchSameTime).mockImplementation((_s, signal) => {
+            if (first) {
+                first = false;
+                return new Promise((_res, rej) => signal.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError'))));
+            }
+            return Promise.resolve(moment({ clock: '21:04', message: memoryMessage({ id: 6, text: 'つぎの言葉' }) }));
+        });
+        renderLine();
+        await act(async () => { vi.advanceTimersByTime(30_500); });
+        expect(fetchSameTime).toHaveBeenCalledTimes(1);
+        setVisibility('hidden');
+        setVisibility('visible');
+        expect(fetchSameTime).toHaveBeenCalledTimes(2);
+        await flush();
+        const line = screen.getByTestId('memories-same-time');
+        expect(line).toHaveTextContent('いま 21:04');
+        expect(line).toHaveTextContent('つぎの言葉');
+    });
+
+    it('keeps the clock with the moment it shows until the next one lands', async () => {
+        vi.mocked(fetchSameTime).mockImplementation(() => new Promise(() => {}));
+        renderLine();
+        await act(async () => { vi.advanceTimersByTime(30_500); });
+        expect(screen.getByTestId('memories-same-time')).toHaveTextContent('いま 21:03');
+    });
+
     it('opens that day on click', () => {
         const { go } = renderLine();
         fireEvent.click(screen.getByTestId('memories-same-time'));

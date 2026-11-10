@@ -23,6 +23,8 @@ const BOUNDARY_SLACK_MS = 250;
 /** JST minutes are UTC minutes (whole-hour offset): the minute index of an epoch time. */
 const minuteOf = (ms: number) => Math.floor(ms / MINUTE_MS);
 const msToNextMinute = (ms: number) => MINUTE_MS - (ms % MINUTE_MS) + BOUNDARY_SLACK_MS;
+/** Stands in for her name in the translated label (a private-use character no copy contains). */
+const NAME_MARK = '\uE000';
 const isAbort = (err: unknown) => err instanceof DOMException && err.name === 'AbortError';
 
 /**
@@ -33,8 +35,10 @@ const isAbort = (err: unknown) => err instanceof DOMException && err.name === 'A
  *
  * It starts from the hub's moment and refetches `fetchSameTime` at each minute boundary with one
  * `setTimeout` at a time, only while the window is visible: hidden, the timer is cleared and the
- * request aborted; shown again, it refetches at once when the minute has turned, then re-arms.
- * Unmount aborts and clears everything. It renders nothing while there is no moment.
+ * request aborted; shown again, it refetches at once when no answer has landed for this minute,
+ * then re-arms. The clock moves with each answer, so 「いま」 always belongs to the moment shown;
+ * a failed refetch hides the line. Unmount aborts and clears everything. It renders nothing while
+ * there is no moment. Her name inside the label is a `lang="ja"` span.
  * Logs `memories_load` `same_time` only for failures, and `memories_skip` `same_time_none` when
  * a shown moment goes away (never once a minute while nothing changes).
  */
@@ -64,17 +68,23 @@ export const SameTimeLine: React.FC<SameTimeLineProps> = ({ service, initial, go
             controller?.abort();
             const c = new AbortController();
             controller = c;
-            lastMinute = minuteOf(Date.now());
+            const asked = Date.now();
             fetchSameTime(service, c.signal).then(
                 (next) => {
                     if (c.signal.aborted) return;
                     if (next === null && shownRef.current) logMemoriesSkip('same_time', 'same_time_none');
+                    // The minute counts as read only once its answer lands (an aborted read is re-asked on show).
+                    lastMinute = minuteOf(asked);
                     shownRef.current = next !== null;
                     setMoment(next);
+                    setNow(asked);
                 },
                 (err: unknown) => {
                     if (c.signal.aborted || isAbort(err)) return;
-                    // The line keeps its last moment (still within minutes of now).
+                    // Hide rather than show an older minute's moment under a newer clock.
+                    lastMinute = minuteOf(asked);
+                    shownRef.current = false;
+                    setMoment(null);
                     if (err instanceof MemoriesTimeoutError) logMemoriesLoad('same_time', 'timeout');
                     else logMemoriesLoad('same_time', 'error', err instanceof MemoriesFetchError ? { error_code: err.httpStatus } : {});
                 },
@@ -85,7 +95,6 @@ export const SameTimeLine: React.FC<SameTimeLineProps> = ({ service, initial, go
             if (document.visibilityState === 'hidden') return;
             timer = setTimeout(() => {
                 timer = null;
-                setNow(Date.now());
                 refetch();
                 arm();
             }, msToNextMinute(Date.now()));
@@ -96,10 +105,7 @@ export const SameTimeLine: React.FC<SameTimeLineProps> = ({ service, initial, go
                 controller?.abort();
                 return;
             }
-            if (minuteOf(Date.now()) !== lastMinute) {
-                setNow(Date.now());
-                refetch();
-            }
+            if (minuteOf(Date.now()) !== lastMinute) refetch();
             arm();
         };
 
@@ -114,9 +120,14 @@ export const SameTimeLine: React.FC<SameTimeLineProps> = ({ service, initial, go
 
     if (!moment) return null;
     const thisYear = moment.year === jstNow(new Date(now)).year;
+    // Her name goes in as a marker, then becomes a `lang="ja"` span inside the translated label.
     const label = thisYear
-        ? t('memories.sameTime.thisYear', { date: formatMonthDayLabel(moment.date.slice(5), i18n.language), name: moment.name })
-        : t('memories.sameTime.pastYear', { year: moment.year, name: moment.name });
+        ? t('memories.sameTime.thisYear', { date: formatMonthDayLabel(moment.date.slice(5), i18n.language), name: NAME_MARK })
+        : t('memories.sameTime.pastYear', { year: moment.year, name: NAME_MARK });
+    const [before, ...rest] = label.split(NAME_MARK);
+    const labelNode = rest.length
+        ? <>{before}<span lang="ja">{moment.name}</span>{rest.join(moment.name)}</>
+        : label;
     const words = moment.message.text ?? moment.message.caption;
 
     return (
@@ -129,7 +140,7 @@ export const SameTimeLine: React.FC<SameTimeLineProps> = ({ service, initial, go
             <Clock aria-hidden="true" className="h-3.5 w-3.5 shrink-0 text-muted" />
             <span className="shrink-0 tabular-nums text-muted">{t('memories.sameTime.now', { clock: formatJstClock(now) })}</span>
             <span aria-hidden="true" className="shrink-0 text-muted">·</span>
-            <span className="shrink-0">{label}</span>
+            <span className="shrink-0">{labelNode}</span>
             {words && <MemoryText as="span" text={words} className="min-w-0 flex-1 truncate whitespace-nowrap text-primary" />}
         </button>
     );
