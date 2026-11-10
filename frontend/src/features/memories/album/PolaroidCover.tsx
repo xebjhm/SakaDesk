@@ -26,41 +26,60 @@ interface PolaroidCoverProps {
  * (aged with `sepia`) and one caption line with her nearby words (`caption`, else her own
  * `text`) in the display serif through `MemoryText`; without words, the month label as the
  * band's heading (`h2`; the band shows no heading of its own then).
- * With `onResetCover` the polaroid takes focus and its context menu (right-click, the
- * context-menu key or Shift+F10) offers 「表紙を自動にもどす」.
+ * With `onResetCover` the polaroid sits in a menu button (`role="button"`, `aria-haspopup="menu"`,
+ * named by the month): a click, Enter / Space, a right-click, the context-menu key or Shift+F10
+ * opens the menu with 「表紙を自動にもどす」. The `figure` itself never carries ARIA it cannot have.
  */
 export const PolaroidCover: React.FC<PolaroidCoverProps> = ({ cover, label, sepia, onResetCover }) => {
     const { t } = useTranslation();
-    const ref = useRef<HTMLElement>(null);
+    const ref = useRef<HTMLDivElement>(null);
     const resettable = onResetCover !== undefined;
     const menu = useContextMenu(resettable);
     const words = cover.caption ?? cover.text;
+    const figure = (
+        <figure
+            data-testid="album-polaroid"
+            className="w-40 shrink-0 -rotate-1 border border-memories-paper bg-memories-paper p-2 pb-3 shadow-memories-polaroid motion-reduce:rotate-0"
+        >
+            <div className="aspect-square w-full overflow-hidden bg-sunken">
+                <MemoryThumb message={cover} px={COVER_PX} className={cn('h-full w-full', sepia)} />
+            </div>
+            <figcaption className="mt-2 font-display text-small text-primary">
+                {words
+                    ? <MemoryText as="span" text={words} className="block truncate whitespace-nowrap" />
+                    : <h2 className="block truncate">{label}</h2>}
+            </figcaption>
+        </figure>
+    );
+    if (!resettable) return figure;
+
+    // A div, not a <button>: the polaroid can hold the band's h2, which a button may not contain.
+    const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            menu.openAt(e.currentTarget);
+            return;
+        }
+        menu.onKeyDown(e);
+    };
     return (
         <>
-            <figure
+            <div
                 ref={ref}
-                data-testid="album-polaroid"
-                tabIndex={resettable ? 0 : undefined}
-                aria-label={resettable ? label : undefined}
-                aria-haspopup={resettable ? 'menu' : undefined}
+                role="button"
+                tabIndex={0}
+                aria-label={label}
+                aria-haspopup="menu"
+                aria-expanded={menu.point !== null}
+                onClick={(e) => (menu.point ? menu.close() : menu.openAt(e.currentTarget))}
                 onContextMenu={menu.onContextMenu}
-                onKeyDown={menu.onKeyDown}
-                className={cn(
-                    'w-40 shrink-0 -rotate-1 border border-memories-paper bg-memories-paper p-2 pb-3 shadow-memories-polaroid motion-reduce:rotate-0',
-                    resettable && 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                )}
+                onKeyDown={onKeyDown}
+                className="shrink-0 cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-                <div className="aspect-square w-full overflow-hidden bg-sunken">
-                    <MemoryThumb message={cover} px={COVER_PX} className={cn('h-full w-full', sepia)} />
-                </div>
-                <figcaption className="mt-2 font-display text-small text-primary">
-                    {words
-                        ? <MemoryText as="span" text={words} className="block truncate whitespace-nowrap" />
-                        : <h2 className="block truncate">{label}</h2>}
-                </figcaption>
-            </figure>
+                {figure}
+            </div>
             {menu.point && onResetCover && (
-                <Menu aria-label={label} onClose={menu.close} point={menu.point} returnFocusRef={ref}>
+                <Menu aria-label={label} onClose={menu.close} point={menu.point} returnFocusRef={ref} ignoreRefs={[ref]}>
                     <MenuItem icon={<RotateCcw />} onClick={() => { menu.close(); onResetCover(); }}>
                         {t('memories.album.resetCover')}
                     </MenuItem>

@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
-import { Layers, MessageCircle, Star } from 'lucide-react';
+import React, { useMemo, useRef, useState } from 'react';
+import { ImageIcon, Layers, MessageCircle, Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { Button, Modal } from '../../../design/primitives';
+import { Button, Menu, MenuItem, Modal } from '../../../design/primitives';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { cn } from '../../../utils/classnames';
 import { logMemoriesToggle } from '../memoriesLog';
@@ -11,6 +11,7 @@ import { MemoryThumb } from '../shared/MemoryThumb';
 import type { MemoryMessage } from '../types';
 import { albumItemKey, albumViewerItems } from './albumViewer';
 import { TILE_PX } from './PhotoTile';
+import { useContextMenu } from './useContextMenu';
 
 /** A sequence frame's drawn size (`w-40`). */
 const FRAME_PX = 160;
@@ -23,16 +24,60 @@ interface BurstStackProps {
     nameOf: (m: MemoryMessage) => string;
     /** `sepiaClass` of the month's year, applied to the stills only. */
     sepia: string;
+    /** Offers 「この月の表紙にする」 in each sequence frame's context menu. */
+    onSetCover?: (item: MemoryMessage) => void;
 }
+
+interface FrameButtonProps {
+    item: MemoryMessage;
+    label: string;
+    sepia: string;
+    disabled: boolean;
+    onOpen: () => void;
+    onSetCover?: (item: MemoryMessage) => void;
+}
+
+/** One sequence frame: opens the viewer; its context menu can make it the month cover. */
+const FrameButton: React.FC<FrameButtonProps> = ({ item, label, sepia, disabled, onOpen, onSetCover }) => {
+    const { t } = useTranslation();
+    const ref = useRef<HTMLButtonElement>(null);
+    const coverable = onSetCover !== undefined && (item.type === 'picture' || item.type === 'video');
+    const menu = useContextMenu(coverable);
+    return (
+        <>
+            <button
+                ref={ref}
+                type="button"
+                disabled={disabled}
+                aria-label={label}
+                aria-haspopup={coverable ? 'menu' : undefined}
+                onClick={onOpen}
+                onContextMenu={menu.onContextMenu}
+                onKeyDown={menu.onKeyDown}
+                className="block w-40 shrink-0 overflow-hidden rounded-sm bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            >
+                <MemoryThumb message={item} px={FRAME_PX} className={cn('aspect-square h-full w-full', sepia)} />
+            </button>
+            {menu.point && onSetCover && (
+                <Menu aria-label={label} onClose={menu.close} point={menu.point} returnFocusRef={ref}>
+                    <MenuItem icon={<ImageIcon />} onClick={() => { menu.close(); onSetCover(item); }}>
+                        {t('memories.album.setCover')}
+                    </MenuItem>
+                </Menu>
+            )}
+        </>
+    );
+};
 
 /**
  * A burst (spec 8): one stacked still with 「{{count}} 枚」. Clicking opens the sequence, a dialog
  * with the burst's frames in order and her words beside each (`caption`, else `text`), each with
  * a jump to her chat; a frame opens the media viewer over the burst. A ★ photo in the burst
  * shows the yellow star on the stack and beside its frame. Opening and every close (including
- * a jump) log `memories_toggle` `album_burst`.
+ * a jump) log `memories_toggle` `album_burst`. With `onSetCover` each frame's context menu offers
+ * 「この月の表紙にする」 (a burst frame can be the cover too).
  */
-export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, sepia }) => {
+export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, sepia, onSetCover }) => {
     const { t } = useTranslation();
     const [open, setOpen] = useState(false);
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -85,15 +130,14 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
                         const index = viewer.viewable.indexOf(m);
                         return (
                             <li key={albumItemKey(m)} data-testid="burst-frame" className="flex items-start gap-4">
-                                <button
-                                    type="button"
+                                <FrameButton
+                                    item={m}
+                                    label={words ?? title}
+                                    sepia={sepia}
                                     disabled={index < 0}
-                                    aria-label={words ?? title}
-                                    onClick={() => setViewerIndex(index)}
-                                    className="block w-40 shrink-0 overflow-hidden rounded-sm bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                                >
-                                    <MemoryThumb message={m} px={FRAME_PX} className={cn('aspect-square h-full w-full', sepia)} />
-                                </button>
+                                    onOpen={() => setViewerIndex(index)}
+                                    onSetCover={onSetCover}
+                                />
                                 {m.favorited && (
                                     <Star data-testid="burst-frame-star" aria-hidden="true" className="h-4 w-4 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
                                 )}

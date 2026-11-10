@@ -92,7 +92,7 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
         <>
             <div data-testid="album-grid" className="grid min-w-0 flex-1 grid-flow-row-dense grid-cols-3 gap-2 md:grid-cols-4 xl:grid-cols-6">
                 {entries.map((entry) => (entry.kind === 'burst'
-                    ? <BurstStack key={entry.key} items={entry.items} title={label} nameOf={nameOf} sepia={sepia} />
+                    ? <BurstStack key={entry.key} items={entry.items} title={label} nameOf={nameOf} sepia={sepia} onSetCover={onSetCover} />
                     : (
                         <PhotoTile
                             key={albumItemKey(entry.item)}

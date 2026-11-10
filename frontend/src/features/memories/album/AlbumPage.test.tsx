@@ -421,6 +421,31 @@ describe('AlbumPage cover choice', () => {
         expect(screen.getByRole('menu')).toBeInTheDocument();
     });
 
+    it('makes an override cover a menu button (not an ARIA figure) that opens the reset menu on click', async () => {
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([monthSummary('2026-10', { cover_rule: 'override' })]));
+        renderAlbum();
+        const band = await screen.findByTestId('album-month-2026-10');
+        const figure = within(band).getByTestId('album-polaroid');
+        expect(figure).not.toHaveAttribute('aria-haspopup');
+        expect(figure).not.toHaveAttribute('tabindex');
+        const trigger = within(band).getByRole('button', { name: 'October 2026' });
+        expect(trigger).toHaveAttribute('aria-haspopup', 'menu');
+        expect(trigger).toContainElement(figure);
+        await userEvent.click(trigger);
+        expect(screen.getByRole('menuitem', { name: 'Choose the cover automatically' })).toBeInTheDocument();
+    });
+
+    it('lets a burst frame be chosen as the cover', async () => {
+        renderAlbum();
+        const grid = await within(await screen.findByTestId('album-month-2026-10')).findByTestId('album-grid');
+        await userEvent.click(within(grid).getByRole('button', { name: /3 photos/ }));
+        const dialog = await screen.findByRole('dialog');
+        const frames = within(dialog).getAllByTestId('burst-frame');
+        fireEvent.contextMenu(within(frames[1]).getAllByRole('button')[0]);
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Make this the month cover' }));
+        expect(putAlbumCover).toHaveBeenCalledWith('hinatazaka46', expect.objectContaining({ month: '2026-10', id: 4 }), expect.any(AbortSignal));
+    });
+
     it('offers 「表紙を自動にもどす」 on an override cover only, and clears it', async () => {
         vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([
             monthSummary('2026-10', { cover_rule: 'override' }),

@@ -25,6 +25,30 @@ describe('PhotoTile context menu', () => {
         expect(screen.queryByRole('menu')).toBeNull();
     });
 
+    it('claims the context-menu key and Shift+F10 (no native menu next to it)', () => {
+        renderTile({ onSetCover: vi.fn() });
+        const tile = screen.getByTestId('album-tile-1');
+        expect(fireEvent.keyDown(tile, { key: 'ContextMenu' })).toBe(false); // defaultPrevented
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+        fireEvent.keyDown(screen.getByRole('menu'), { key: 'Escape' });
+        expect(fireEvent.keyDown(tile, { key: 'F10', shiftKey: true })).toBe(false);
+        expect(fireEvent.contextMenu(tile)).toBe(false);
+        // F10 alone is not a menu key.
+        expect(fireEvent.keyDown(tile, { key: 'F10' })).toBe(true);
+    });
+
+    it('swallows the native contextmenu that follows a keyboard open, without moving the menu', () => {
+        renderTile({ onSetCover: vi.fn() });
+        const tile = screen.getByTestId('album-tile-1');
+        fireEvent.keyDown(tile, { key: 'ContextMenu' });
+        const menu = screen.getByRole('menu');
+        const at = menu.style.left;
+        // The browser follows the key with a contextmenu event, on the tile or on the now-focused menu.
+        expect(fireEvent.contextMenu(menu, { clientX: 0, clientY: 0 })).toBe(false);
+        expect(fireEvent.contextMenu(tile, { clientX: 0, clientY: 0 })).toBe(false);
+        expect(screen.getByRole('menu').style.left).toBe(at);
+    });
+
     it('offers it on a video tile too', () => {
         renderTile({ item: photo(6, '2026-10', { type: 'video' }), onSetCover: vi.fn() });
         fireEvent.contextMenu(screen.getByTestId('album-tile-6'));
