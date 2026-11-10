@@ -178,9 +178,13 @@ async def test_other_services_included_with_their_own_texts(out, monkeypatch):
     saku_member = next(m for m in payload["members"] if m["service"] == SAKU)
     assert saku_member["member_path"] == f"{SAKU_NAME}/{KANE}"
     assert payload["members"][0]["oshi"] is True  # oshi first across services
-    (skip,) = [e for e in logs if e["event"] == "memories_skip"]
-    assert skip["view"] == "day" and skip["reason"] == "other_service_failed"
+    skips = [e for e in logs if e["event"] == "memories_skip"]
+    (skip,) = [e for e in skips if e["reason"] == "other_service_failed"]
+    assert skip["view"] == "day"
     assert skip["error_type"] == "OSError" and skip["service"] == NOGI
+    # yodel has no data dir: skipped with its own breadcrumb
+    (missing,) = [e for e in skips if e["reason"] == "service_dir_missing"]
+    assert missing["view"] == "day" and missing["service"] == "yodel"
     (ev,) = [e for e in logs if e["event"] == "memories_day"]
     assert ev["others"] is True and ev["services"] == 2
     assert ev["count"] == 6 and ev["members"] == 3
@@ -219,7 +223,7 @@ async def test_failure_while_loading_other_texts_is_skipped(out, monkeypatch):
     assert payload["other_services"] == [NOGI]
     assert {m["service"] for m in payload["messages"]} == {SERVICE, NOGI}
     reasons = [e["reason"] for e in logs if e["event"] == "memories_skip"]
-    assert reasons == ["other_service_failed"]
+    assert sorted(reasons) == ["other_service_failed", "service_dir_missing"]
 
 
 @pytest.mark.asyncio
@@ -242,3 +246,54 @@ async def test_logs_carry_no_text_or_names(out):
         str(out),
     ):
         assert needle not in blob
+
+
+@pytest.mark.asyncio
+async def test_true_cross_service_tie_is_broken_by_service(out):
+    # same ts AND same id AND same relative room in two services
+    write_room(
+        out / SAKU_NAME,
+        "34 金村 美玖",
+        "58 金村 美玖",
+        [msg(1, "2024-09-13T23:00:00Z", content=SAKU_WORDS)],
+    )
+    hina = out / SVC_NAME
+    payload = await dv.day_view(
+        SERVICE, hina, DAY, member=None, include_other_services=True, now=NOW
+    )
+    first, second = payload["messages"][:2]
+    assert (first["ts"], first["id"], first["room"]) == (
+        second["ts"],
+        second["id"],
+        second["room"],
+    )
+    assert [first["service"], second["service"]] == [SERVICE, SAKU]
+    assert first["text"] == K_MORNING and second["text"] == SAKU_WORDS
+
+
+@pytest.mark.asyncio
+async def test_texts_load_once_per_service_and_room(out, monkeypatch):
+    calls = []
+    real = people.load_texts
+
+    def counting(sdir, mdir, ids=None):
+        calls.append((sdir.name, mdir.relative_to(sdir).as_posix(), frozenset(ids)))
+        return real(sdir, mdir, ids)
+
+    monkeypatch.setattr(people, "load_texts", counting)
+    hina = out / SVC_NAME
+    await dv.day_view(
+        SERVICE, hina, DAY, member=None, include_other_services=True, now=NOW
+    )
+    pairs = [(svc, room) for svc, room, _ in calls]
+    assert sorted(pairs) == sorted(
+        [
+            (SVC_NAME, KANE),
+            (SVC_NAME, MATSU),
+            (SAKU_NAME, KANE),
+            (NOGI_NAME, "messages/1 誰か/2 誰か"),
+        ]
+    )
+    by = {(svc, room): ids for svc, room, ids in calls}
+    assert by[(SVC_NAME, KANE)] == {1, 2, 3}  # the day's ids (+ caption) only
+    assert by[(SAKU_NAME, KANE)] == {1}

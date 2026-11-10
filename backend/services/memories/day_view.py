@@ -5,7 +5,8 @@
 - ``messages``: every fact of ``day`` of every person (or of ``member`` only)
   as shared message objects, sorted by ``(ts, id)`` (then service and room),
   promo included (it is the real chat). Each carries her avatar at its time;
-  ``text`` / ``caption`` come from one ``load_texts`` per room, called per
+  ``text`` / ``caption`` come from one ``load_texts`` per room (at most
+  ``people.IO_CONCURRENCY`` rooms at once, as are the avatars), called per
   service with that service's own data dir (two services can share the
   same relative room path).
 - ``members``: the people who posted that day, oshi first (stable: the
@@ -17,7 +18,9 @@
   service of :func:`service_utils.get_all_services` whose data dir exists
   (``<output dir>/<display name>``, the output dir being ``sdir.parent``,
   i.e. ``path_resolver.resolve_service_path``) adds its people the same
-  way, tagged with its own ``service``. ``other_services`` lists the ones
+  way, tagged with its own ``service``; a missing data dir logs
+  ``memories_skip`` (``view=day``, ``reason=service_dir_missing``,
+  ``service``). ``other_services`` lists the ones
   that had messages that day. Any failure in another service is logged as
   ``memories_skip`` (``view=day``, ``reason=other_service_failed``,
   ``service``, ``error_type``) and never fails the request.
@@ -90,7 +93,7 @@ async def _service_day(
     tagged = await people.service_facts_on(sdir, summaries, day=day)
     posted = {people.person_key(t[0]): t[0] for t in tagged}
     oshi = await people.oshi_rooms(service, posted.values())
-    avatars = {key: await people.avatar_timelines(sdir, s) for key, s in posted.items()}
+    avatars = await people.avatar_timelines_for(sdir, posted)
     members, refs = await asyncio.to_thread(
         _compose, service, sdir, tagged, oshi, avatars
     )
@@ -132,6 +135,12 @@ async def day_view(
             try:
                 other_dir = people.service_data_dir(other, sdir.parent)
                 if not await asyncio.to_thread(other_dir.is_dir):
+                    logger.info(
+                        "memories_skip",
+                        view=VIEW,
+                        reason="service_dir_missing",
+                        service=other,
+                    )
                     continue
                 part = await _service_day(other, other_dir, day, None)
             except Exception as e:  # another service never fails the request
