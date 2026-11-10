@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { CalendarHeart, ChevronRight } from 'lucide-react';
 import { Atmosphere } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
@@ -33,7 +33,7 @@ const isStill = (m: MemoryMessage) => (m.type === 'picture' || m.type === 'video
 /**
  * The hub's large On This Day card (spec 4): the rule's label, her name, her words (three
  * lines) and a photo of that day on paper, over the brand-moment orbs. A photo-only moment
- * shows the photo as its message. A `today` moment opens today's On This Day, a `week` moment
+ * shows the photo as its message; a photo that cannot load at all hides its frame. A `today` moment opens today's On This Day, a `week` moment
  * the day it belongs to (today's month-day would be empty), a `first` moment her memoir.
  */
 export const OnThisDayCard: React.FC<OnThisDayCardProps> = ({ moment, go }) => {
@@ -41,6 +41,9 @@ export const OnThisDayCard: React.FC<OnThisDayCardProps> = ({ moment, go }) => {
     const words = moment.message.text ?? moment.message.caption;
     const photo = moment.photo && isStill(moment.photo) ? moment.photo : isStill(moment.message) ? moment.message : null;
     const year = Number(moment.date.slice(0, 4));
+    // The still that could not load at all (keyed, so a new moment gets its own try).
+    const [failedId, setFailedId] = useState<number | null>(null);
+    const shownPhoto = photo && failedId !== photo.id ? photo : null;
     return (
         <Atmosphere fade className="rounded-xl p-2">
             <button
@@ -61,9 +64,9 @@ export const OnThisDayCard: React.FC<OnThisDayCardProps> = ({ moment, go }) => {
                         <ChevronRight aria-hidden="true" className="h-4 w-4" />
                     </span>
                 </span>
-                {photo && (
-                    <span className="shrink-0 rounded-sm bg-memories-paper p-2 shadow-memories-polaroid">
-                        <MemoryThumb message={photo} px={128} className={cn('block h-32 w-32 rounded-xs', sepiaClass(year))} />
+                {shownPhoto && (
+                    <span data-testid="memories-hub-otd-photo" className="shrink-0 rounded-sm bg-memories-paper p-2 shadow-memories-polaroid">
+                        <MemoryThumb message={shownPhoto} px={128} onFail={() => setFailedId(shownPhoto.id)} className={cn('block h-32 w-32 rounded-xs', sepiaClass(year))} />
                     </span>
                 )}
             </button>

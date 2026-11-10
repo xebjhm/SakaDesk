@@ -39,7 +39,7 @@ interface HubEntryCardProps {
 /** One routed entry card of the hub (album, memoir, favorites; wave 4 adds more). */
 export const HubEntryCard: React.FC<HubEntryCardProps> = ({ card, count, onOpen }) => {
     const { t } = useTranslation();
-    const sub = count !== null && card.countLabelKey ? t(card.countLabelKey, { count }) : null;
+    const sub = count !== null && card.countKey ? t(card.countLabelKey, { count }) : null;
     return (
         <Card className="h-full p-0">
             <button type="button" data-testid={`memories-hub-card-${card.id}`} onClick={onOpen} className={HUB_CARD_BUTTON}>

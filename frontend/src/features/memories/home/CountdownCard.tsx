@@ -6,6 +6,9 @@ import { useTranslation } from '../../../i18n';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import type { HubCountdown } from '../types';
 
+/** A placeholder no translation contains, swapped back for her name. */
+const NAME_MARK = '\u0000';
+
 interface CountdownCardProps {
     countdown: HubCountdown | null;
     go: (next: MemoriesRoute) => void;
@@ -24,12 +27,16 @@ export const CountdownCard: React.FC<CountdownCardProps> = ({ countdown, go, cla
     if (!countdown) return null;
     const { kind, name, days_left: daysLeft } = countdown;
     const today = daysLeft <= 0;
-    let line: string;
+    // Her name goes in as a marker, then back as a `lang="ja"` span inside the localised sentence.
+    let text: string;
     if (kind === 'birthday') {
-        line = today ? t('memories.home.birthdayToday', { name }) : t('memories.home.birthdayIn', { name, count: daysLeft });
+        text = today ? t('memories.home.birthdayToday', { name: NAME_MARK }) : t('memories.home.birthdayIn', { name: NAME_MARK, count: daysLeft });
     } else {
-        line = today ? t('memories.home.anniversaryToday', { years: countdown.years }) : t('memories.home.anniversaryIn', { name, count: daysLeft });
+        text = today ? t('memories.home.anniversaryToday', { years: countdown.years }) : t('memories.home.anniversaryIn', { name: NAME_MARK, count: daysLeft });
     }
+    const line = text.split(NAME_MARK).flatMap((part, i) => (
+        i === 0 ? [part] : [<span key={i} lang="ja">{name}</span>, part]
+    ));
     const Icon = kind === 'birthday' ? Cake : CalendarHeart;
     return (
         <Card className={cn('h-full p-0', className)}>

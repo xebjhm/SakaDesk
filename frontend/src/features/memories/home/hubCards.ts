@@ -11,16 +11,23 @@ interface HubCardBase {
     icon: LucideIcon;
     /** The card title (`memories.home.*`). */
     titleKey: string;
-    /** The hub count this card shows (`counts[countKey]`), when it has one. */
-    countKey?: keyof HubCounts;
-    /** The count's line, with `{{count}}` (plural-aware). Required with `countKey`. */
-    countLabelKey?: string;
 }
 
-/** One entry card of the hub: either a route or an action, never both. */
-export type HubCardDef =
-    | (HubCardBase & { route: MemoriesRoute; action?: never })
-    | (HubCardBase & { action: HubCardAction; route?: never });
+/** A card shows a count only with its line: both fields or neither. */
+type HubCardCount =
+    | {
+        /** The hub count this card shows (`counts[countKey]`). */
+        countKey: keyof HubCounts;
+        /** The count's line, with `{{count}}` (plural-aware). */
+        countLabelKey: string;
+    }
+    | { countKey?: never; countLabelKey?: never };
+
+/** One entry card of the hub: either a route or an action, never both; a count with its line, or none. */
+export type HubCardDef = HubCardBase & HubCardCount & (
+    | { route: MemoriesRoute; action?: never }
+    | { action: HubCardAction; route?: never }
+);
 
 /**
  * The hub's entry cards, in board order. Wave 4 appends voice radio, gacha and the calendar

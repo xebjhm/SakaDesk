@@ -52,4 +52,15 @@ describe('CountdownCard', () => {
         const { container } = render(<CountdownCard countdown={null} go={vi.fn()} />);
         expect(container).toBeEmptyDOMElement();
     });
+
+    it.each([
+        ['birthday', 12, null],
+        ['birthday', 0, null],
+        ['anniversary', 30, 3],
+    ] as const)('marks her name in the %s line (%s days) as Japanese', (kind, days, years) => {
+        render(<CountdownCard countdown={hubCountdown({ kind, days_left: days, years })} go={vi.fn()} />);
+        const names = screen.getAllByText('金村 美玖');
+        expect(names).toHaveLength(1);
+        expect(names[0]).toHaveAttribute('lang', 'ja');
+    });
 });

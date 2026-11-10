@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 import { OnThisDayCard } from './OnThisDayCard';
@@ -62,5 +62,17 @@ describe('OnThisDayCard', () => {
         render(<OnThisDayCard moment={hubMoment({ rule, date })} go={go} />);
         await userEvent.click(screen.getByTestId('memories-hub-otd'));
         expect(go).toHaveBeenCalledWith(route);
+    });
+
+    it('hides the photo frame when the photo cannot load at all', () => {
+        render(<OnThisDayCard moment={hubMoment()} go={vi.fn()} />);
+        expect(screen.getByTestId('memories-hub-otd-photo')).toBeInTheDocument();
+        const img = screen.getByTestId('memories-hub-otd').querySelector('img');
+        // The thumbnail fails (falls back to the full file), then the full file fails too.
+        fireEvent.error(img!);
+        expect(screen.getByTestId('memories-hub-otd-photo')).toBeInTheDocument();
+        fireEvent.error(screen.getByTestId('memories-hub-otd').querySelector('img')!);
+        expect(screen.queryByTestId('memories-hub-otd-photo')).toBeNull();
+        expect(screen.getByTestId('memory-text')).toBeInTheDocument();
     });
 });

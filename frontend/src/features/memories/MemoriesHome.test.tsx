@@ -4,12 +4,17 @@ import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+vi.mock('./home/HubSlots', async (importOriginal) => {
+    const real = await importOriginal<typeof import('./home/HubSlots')>();
+    return { ...real, HubSlots: vi.fn(real.HubSlots) };
+});
 vi.mock('./api', async (importOriginal) => {
     const real = await importOriginal<typeof import('./api')>();
     return { ...real, fetchHub: vi.fn() };
 });
 import { clientLog } from '../../utils/clientLog';
 import { fetchHub, MemoriesFetchError } from './api';
+import { HubSlots } from './home/HubSlots';
 import { MemoriesHome } from './MemoriesHome';
 import type { RecapCardState } from './home/RecapHubCard';
 import type { MemoriesRoute } from './MemoriesFeature';
@@ -132,5 +137,34 @@ describe('MemoriesHome (hub board)', () => {
         await userEvent.click(retry);
         expect(await screen.findByTestId('memories-hub-otd')).toBeInTheDocument();
         expect(vi.mocked(fetchHub)).toHaveBeenCalledTimes(2);
+    });
+
+    it('scrolls the whole board (moment and every card) inside the pane, so a short window reaches every card', async () => {
+        vi.mocked(fetchHub).mockResolvedValue(hubPayload());
+        renderHome();
+        await screen.findByTestId('memories-hub-otd');
+        const home = screen.getByTestId('memories-home');
+        expect(home).toHaveClass('overflow-hidden');
+        const board = screen.getByTestId('memories-hub-board');
+        // The one scroll container below the title: it may shrink to the pane and scrolls itself.
+        expect(board).toHaveClass('min-h-0', 'flex-1', 'overflow-y-auto');
+        expect(board.parentElement).toBe(home);
+        expect(within(board).getByTestId('memories-hub-otd')).toBeInTheDocument();
+        for (const name of [/Album/, /Member memories/, /Favorites/, /Year recap/]) {
+            expect(within(board).getByRole('button', { name })).toBeInTheDocument();
+        }
+        expect(within(board).getByTestId('memories-hub-countdown')).toBeInTheDocument();
+        // Nothing inside the board scrolls or clips on its own (one scroll, never a 0-height grid).
+        for (const el of board.querySelectorAll('*')) expect(el.className.toString()).not.toMatch(/overflow-y-auto/);
+        for (const el of board.children) expect(el.className.toString()).not.toMatch(/\bflex-1\b|min-h-0/);
+    });
+
+    it('mounts the wave-4 slots even without an On This Day moment', async () => {
+        vi.mocked(HubSlots).mockClear();
+        vi.mocked(fetchHub).mockResolvedValue(hubPayload({ on_this_day: null }));
+        renderHome();
+        await screen.findByTestId('memories-hub-countdown');
+        expect(vi.mocked(HubSlots)).toHaveBeenCalled();
+        expect(vi.mocked(HubSlots).mock.lastCall?.[0]).toMatchObject({ sameTime: null, capsule: null });
     });
 });

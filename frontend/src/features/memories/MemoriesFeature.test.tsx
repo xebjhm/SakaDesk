@@ -77,6 +77,23 @@ describe('Memories feature', () => {
         expect(screen.queryByTestId('memories-home')).toBeNull();
     });
 
+    it.each([
+        [/Album/, 'memories-page-album'],
+        [/Member memories/, 'memories-page-memoir'],
+        [/Favorites/, 'memories-page-favorites'],
+    ])('a hub card (%s) lands on its page', async (name, testId) => {
+        render(<MemoriesFeature service="hinatazaka46" />);
+        await userEvent.click(await screen.findByRole('button', { name }));
+        expect(screen.getByTestId(testId)).toBeInTheDocument();
+        expect(screen.queryByTestId('memories-home')).toBeNull();
+    });
+
+    it('the On This Day card lands on the On This Day page', async () => {
+        render(<MemoriesFeature service="hinatazaka46" />);
+        await userEvent.click(await screen.findByTestId('memories-hub-otd'));
+        expect(screen.getByTestId('memories-page-onThisDay')).toBeInTheDocument();
+    });
+
     it('resets to home when the service changes', async () => {
         const { rerender } = render(<MemoriesFeature service="hinatazaka46" />);
         await userEvent.click(await screen.findByRole('button', { name: /Year recap/ }));
