@@ -322,3 +322,23 @@ export function s13Copy(
         narration: null,
     };
 }
+
+/** The excerpt's length bound in characters: about what the ruled paper holds (8 lines). */
+export const LETTER_EXCERPT_CHARS = 120;
+const SENTENCE_END = /[。．.！!？?…\n]/;
+
+/**
+ * The opening of a long letter for the paper: it starts where the letter starts (a sentence
+ * boundary, never mid-sentence) and ends at the last sentence end within `max` characters (or at
+ * `max` when the first sentence is longer), with 「…」 when anything was left out.
+ */
+export function letterExcerpt(text: string, max = LETTER_EXCERPT_CHARS): string {
+    const chars = Array.from(text);
+    if (chars.length <= max) return text;
+    let cut = -1;
+    for (let i = max - 1; i >= Math.floor(max * 0.4); i -= 1) {
+        if (SENTENCE_END.test(chars[i])) { cut = i + 1; break; }
+    }
+    const head = chars.slice(0, cut > 0 ? cut : max).join('').trimEnd();
+    return head.endsWith('…') ? head : `${head}…`;
+}

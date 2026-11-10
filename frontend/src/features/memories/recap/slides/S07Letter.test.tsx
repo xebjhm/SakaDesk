@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { render, screen } from '@testing-library/react';
 import i18n from '../../../../i18n';
 import { S07Letter } from './S07Letter';
+import { LETTER_EXCERPT_CHARS, letterExcerpt } from '../recapCopy';
 import { LETTER_TEXT, letterData, message, payload } from '../__fixtures__/payload';
 import type { S07LetterData } from '../api';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.restoreAllMocks(); });
 
 const renderS07 = (data: S07LetterData, opts: { reducedMotion?: boolean; paused?: boolean } = {}) =>
     render(
@@ -15,12 +16,6 @@ const renderS07 = (data: S07LetterData, opts: { reducedMotion?: boolean; paused?
             reducedMotion={opts.reducedMotion ?? false} paused={opts.paused ?? false} onMediaEnd={() => {}}
         />,
     );
-
-/** jsdom has no layout: give the letter an overflow so the scroll is armed. */
-function fakeOverflow(scrollHeight: number, clientHeight: number) {
-    vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(scrollHeight);
-    vi.spyOn(HTMLElement.prototype, 'clientHeight', 'get').mockReturnValue(clientHeight);
-}
 
 describe('S07Letter', () => {
     it('her longest letter as a quote, with the nickname replaced, and the count of the replaced text', () => {
@@ -45,50 +40,30 @@ describe('S07Letter', () => {
         expect(screen.getByText('1,240 文字の想い')).toBeInTheDocument();
     });
 
-    it('scrolls a letter taller than its paper, and the scroll freezes while paused', () => {
-        fakeOverflow(900, 300);
-        const { rerender } = renderS07(letterData());
-        const scroller = screen.getByTestId('s07-scroll');
-        expect(scroller.className).toMatch(/\banimate-letter-scroll\b/);
-        expect(scroller.style.getPropertyValue('--letter-scroll')).toBe('-600px');
-        expect(scroller.style.animationPlayState).toBe('running');
-        rerender(
-            <S07Letter data={letterData()} fallback={null} recap={payload()} nickname="ゆき" reducedMotion={false} paused onMediaEnd={() => {}} />,
-        );
-        expect(screen.getByTestId('s07-scroll').style.animationPlayState).toBe('paused');
+    it('a long letter shows its opening up to a sentence end, with an ellipsis, never cut mid-line (D5)', () => {
+        const long = '%%%へ。今日はね、ライブのことを書くね。' + 'ずっと楽しみにしていたはず！'.repeat(20) + '最後まで読んでくれてありがとう。';
+        renderS07(letterData({ message: message(30, long) }));
+        const shown = screen.getByTestId('s07-text').textContent!;
+        expect(shown.startsWith('ゆきへ。今日はね')).toBe(true); // the letter's own start
+        expect(shown.endsWith('！…')).toBe(true); // a sentence end, then the ellipsis
+        expect(Array.from(shown).length).toBeLessThanOrEqual(LETTER_EXCERPT_CHARS + 1);
+        expect(screen.getByTestId('s07-text')).toHaveClass('line-clamp-[8]');
+        expect(screen.getByTestId('s07-paper').querySelector('[class*="animate-letter"]')).toBeNull();
+        // The count is of the whole letter.
+        expect(screen.getByText(`${Array.from(long).length - 1} 文字の想い`)).toBeInTheDocument();
     });
 
-    it('re-measures the scroll when the letter resizes (a late font swap), and stops observing on unmount', () => {
-        const observers: { cb: () => void; targets: Element[]; disconnect: ReturnType<typeof vi.fn> }[] = [];
-        vi.stubGlobal('ResizeObserver', class {
-            cb: () => void; targets: Element[] = []; disconnect = vi.fn();
-            constructor(cb: () => void) { this.cb = cb; observers.push(this); }
-            observe(el: Element) { this.targets.push(el); }
-            unobserve() {}
-        });
-        fakeOverflow(900, 300);
-        const { unmount } = renderS07(letterData());
-        const scroller = screen.getByTestId('s07-scroll');
-        expect(scroller.style.getPropertyValue('--letter-scroll')).toBe('-600px');
-        expect(observers).toHaveLength(1);
-        expect(observers[0].targets).toEqual([screen.getByTestId('s07-paper'), scroller]);
-        vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1100);
-        act(() => observers[0].cb());
-        expect(screen.getByTestId('s07-scroll').style.getPropertyValue('--letter-scroll')).toBe('-800px');
-        unmount();
-        expect(observers[0].disconnect).toHaveBeenCalled();
+    it('letterExcerpt keeps short letters whole and cuts a sentence-less run at the bound', () => {
+        expect(letterExcerpt('短い手紙。')).toBe('短い手紙。');
+        const run = 'あ'.repeat(200);
+        expect(letterExcerpt(run)).toBe(`${'あ'.repeat(LETTER_EXCERPT_CHARS)}…`);
+        expect(letterExcerpt('🌸'.repeat(130))).toBe(`${'🌸'.repeat(LETTER_EXCERPT_CHARS)}…`);
     });
 
-    it('a letter that fits does not scroll', () => {
-        fakeOverflow(200, 300);
-        renderS07(letterData());
-        expect(screen.getByTestId('s07-scroll').className).not.toMatch(/animate-letter-scroll/);
-    });
-
-    it('reduced motion: no scroll animation, the paper can be scrolled by hand', () => {
-        fakeOverflow(900, 300);
-        renderS07(letterData(), { reducedMotion: true });
-        expect(screen.getByTestId('s07-scroll').className).not.toMatch(/animate-/);
+    it('reduced motion: the whole letter, scrolled by hand', () => {
+        const long = 'あ。'.repeat(200);
+        renderS07(letterData({ message: message(30, long) }), { reducedMotion: true });
+        expect(screen.getByTestId('s07-text').textContent).toBe(long);
         const paper = screen.getByTestId('s07-paper');
         expect(paper.className).toMatch(/\boverflow-y-auto\b/);
         expect(paper.className).toMatch(/\bpointer-events-auto\b/);
