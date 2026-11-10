@@ -21,6 +21,11 @@ describe('parseMemoriesLink', () => {
     expect(parseMemoriesLink({ service: 'hinatazaka46', route })).toEqual({ service: 'hinatazaka46', route })
   })
 
+  it('accepts a memberPath of 512 and a service of 64 characters', () => {
+    const route = { page: 'memoir', memberPath: 'あ'.repeat(512), tab: 'binder' }
+    expect(parseMemoriesLink({ service: 'a'.repeat(64), route })).toEqual({ service: 'a'.repeat(64), route })
+  })
+
   it('keeps only whitelisted fields', () => {
     expect(parseMemoriesLink({
       service: 'hinatazaka46', route: { page: 'recap', year: 2026, memberPath: PATH, extra: 1 },
@@ -40,6 +45,7 @@ describe('parseMemoriesLink', () => {
     ['cardKey too long', { page: 'memoir', memberPath: PATH, tab: 'binder', cardKey: 'a'.repeat(81) }],
     ['empty cardKey', { page: 'memoir', memberPath: PATH, tab: 'binder', cardKey: '' }],
     ['missing memberPath', { page: 'memoir', tab: 'binder' }],
+    ['memberPath over 512', { page: 'memoir', memberPath: 'あ'.repeat(513), tab: 'binder' }],
     ['empty memberPath', { page: 'memoir', memberPath: '', tab: 'binder' }],
     ['timeline tab', { page: 'memoir', memberPath: PATH, tab: 'timeline' }],
     ['missing tab', { page: 'memoir', memberPath: PATH }],
@@ -62,6 +68,7 @@ describe('parseMemoriesLink', () => {
     ['a null route', { service: 'hinatazaka46', route: null }],
     ['no service', { route: { page: 'recap', year: 2026 } }],
     ['an empty service', { service: '', route: { page: 'recap', year: 2026 } }],
+    ['a service over 64', { service: 'a'.repeat(65), route: { page: 'recap', year: 2026 } }],
   ])('rejects %s', (_label, payload) => {
     expect(parseMemoriesLink(payload)).toBeNull()
   })
@@ -147,6 +154,24 @@ describe('appStore memories deep link', () => {
     useAppStore.getState().clearMemoriesDeepLink(nonce - 1)
     expect(useAppStore.getState().memoriesDeepLink).not.toBeNull()
     useAppStore.getState().clearMemoriesDeepLink(nonce)
+    expect(useAppStore.getState().memoriesDeepLink).toBeNull()
+  })
+
+  it('drops a lingering link when its service is removed', () => {
+    useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'] })
+    useAppStore.getState().openMemoriesAt('sakurazaka46', { page: 'recap', year: 2026 })
+    useAppStore.getState().removeSelectedService('hinatazaka46')
+    expect(useAppStore.getState().memoriesDeepLink).not.toBeNull()
+    useAppStore.getState().removeSelectedService('sakurazaka46')
+    expect(useAppStore.getState().memoriesDeepLink).toBeNull()
+  })
+
+  it('drops a lingering link when the service list no longer has its service', () => {
+    useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'] })
+    useAppStore.getState().openMemoriesAt('sakurazaka46', { page: 'recap', year: 2026 })
+    useAppStore.getState().setSelectedServices(['sakurazaka46'])
+    expect(useAppStore.getState().memoriesDeepLink).not.toBeNull()
+    useAppStore.getState().setSelectedServices(['hinatazaka46'])
     expect(useAppStore.getState().memoriesDeepLink).toBeNull()
   })
 

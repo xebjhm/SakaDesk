@@ -246,6 +246,11 @@ let hasHydratedFromBackend = false;
 // nonce is never reused (a stale clear can then never drop a newer link).
 let memoriesLinkNonce = 0;
 
+type MemoriesDeepLink = AppState['memoriesDeepLink'];
+/** The deep link, or null when its service is no longer selected (it could never be opened). */
+const linkStillSelected = (link: MemoriesDeepLink, services: string[]): MemoriesDeepLink =>
+    link && services.includes(link.service) ? link : null;
+
 const backendStateStorage = {
     getItem: (name: string): string | null => persisted.getPref<string | null>(name, null),
     setItem: (name: string, value: string): void => {
@@ -300,9 +305,14 @@ export const useAppStore = create<AppState>()(
                     return {
                         selectedServices: newSelected,
                         activeService: newActiveService,
+                        memoriesDeepLink: linkStillSelected(state.memoriesDeepLink, newSelected),
                     };
                 }),
-            setSelectedServices: (services) => set({ selectedServices: services }),
+            setSelectedServices: (services) =>
+                set((state) => ({
+                    selectedServices: services,
+                    memoriesDeepLink: linkStillSelected(state.memoriesDeepLink, services),
+                })),
 
             activeService: null,
             setActiveService: (service) => set({ activeService: service }),

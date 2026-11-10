@@ -22,6 +22,8 @@ export interface MemoriesLink {
 const MONTH_DAY = /^(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/
 /** The backend's card-key pattern (`capsule.CARD_KEY_RE`): base, per-year (`@2026`) and dated keys. */
 const CARD_KEY = /^[a-z0-9_.@-]{1,80}$/
+const MAX_SERVICE = 64
+const MAX_MEMBER_PATH = 512
 
 const isRecord = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v)
@@ -38,7 +40,8 @@ function parseRoute(raw: unknown): MemoriesRoute | null {
       return isYear(raw.year) ? { page: 'onThisDay', monthDay: raw.monthDay, year: raw.year } : null
     }
     case 'memoir': {
-      if (typeof raw.memberPath !== 'string' || raw.memberPath === '' || raw.tab !== 'binder') return null
+      if (typeof raw.memberPath !== 'string' || raw.memberPath === '' || raw.memberPath.length > MAX_MEMBER_PATH) return null
+      if (raw.tab !== 'binder') return null
       const base = { page: 'memoir', memberPath: raw.memberPath, tab: 'binder' } as const
       if (raw.cardKey === undefined) return base
       return typeof raw.cardKey === 'string' && CARD_KEY.test(raw.cardKey) ? { ...base, cardKey: raw.cardKey } : null
@@ -53,10 +56,12 @@ function parseRoute(raw: unknown): MemoriesRoute | null {
 /**
  * Strict whitelist of a notification's deep-link payload `{service, route}`: only the On This
  * Day detail, her binder (optionally at one card) and a year's recap, with only their known
- * fields copied. Anything else is `null`.
+ * fields copied. `service` is at most 64 characters and `memberPath` at most 512. Anything else
+ * is `null`.
  */
 export function parseMemoriesLink(payload: unknown): MemoriesLink | null {
-  if (!isRecord(payload) || typeof payload.service !== 'string' || payload.service === '') return null
+  if (!isRecord(payload) || typeof payload.service !== 'string') return null
+  if (payload.service === '' || payload.service.length > MAX_SERVICE) return null
   const route = parseRoute(payload.route)
   return route ? { service: payload.service, route } : null
 }
