@@ -67,7 +67,7 @@ const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, 
                 <span className="shrink-0 text-caption tabular-nums text-muted">{formatJstClock(m.ts)}</span>
                 {!expanded && (
                     hasThumb ? (
-                        <MemoryThumb message={m} className="h-11 w-16 rounded-sm" />
+                        <MemoryThumb message={m} px={64} className="h-11 w-16 rounded-sm" />
                     ) : words ? (
                         <MemoryText as="span" text={words} className="line-clamp-2 min-w-0 text-small text-primary" />
                     ) : Icon ? (

@@ -5,6 +5,9 @@ import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import type { MemoryMessage } from '../types';
 
+/** A tile's drawn size in CSS px (about a sixth of a wide pane); a ★ tile is twice that. */
+export const TILE_PX = 160;
+
 interface PhotoTileProps {
     item: MemoryMessage;
     /** `sepiaClass` of the month's year, applied to the still only. */
@@ -36,7 +39,7 @@ export const PhotoTile = React.memo<PhotoTileProps>(({ item, sepia, label, onOpe
             )}
         >
             <span className="block h-full w-full overflow-hidden rounded-sm">
-                <MemoryThumb message={item} className={cn('h-full w-full', sepia)} />
+                <MemoryThumb message={item} px={star ? TILE_PX * 2 : TILE_PX} className={cn('h-full w-full', sepia)} />
             </span>
             {item.type === 'video' && (
                 <Play aria-hidden="true" className="absolute left-2 top-2 h-4 w-4 fill-current text-inverse drop-shadow-sm" />

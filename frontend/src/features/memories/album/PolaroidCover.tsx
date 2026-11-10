@@ -4,6 +4,9 @@ import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import type { MemoryMessage } from '../types';
 
+/** The cover photo's drawn size (`w-40` minus the frame). */
+const COVER_PX = 144;
+
 interface PolaroidCoverProps {
     cover: MemoryMessage;
     /** The month label, shown when there are no words to caption the cover with. */
@@ -25,7 +28,7 @@ export const PolaroidCover: React.FC<PolaroidCoverProps> = ({ cover, label, sepi
             className="w-40 shrink-0 -rotate-1 border border-memories-paper bg-memories-paper p-2 pb-3 shadow-memories-polaroid motion-reduce:rotate-0"
         >
             <div className="aspect-square w-full overflow-hidden bg-sunken">
-                <MemoryThumb message={cover} className={cn('h-full w-full', sepia)} />
+                <MemoryThumb message={cover} px={COVER_PX} className={cn('h-full w-full', sepia)} />
             </div>
             <figcaption className="mt-2 font-display text-small text-primary">
                 {words

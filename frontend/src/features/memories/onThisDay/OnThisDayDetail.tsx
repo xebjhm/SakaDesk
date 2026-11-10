@@ -72,7 +72,7 @@ export const OnThisDayDetail: React.FC<OnThisDayDetailProps> = ({ service, month
                             )}
                         >
                             {y.thumb?.media_url ? (
-                                <MemoryThumb message={y.thumb} className={cn('h-10 w-10 shrink-0 rounded-md', sepiaClass(y.year))} />
+                                <MemoryThumb message={y.thumb} px={40} className={cn('h-10 w-10 shrink-0 rounded-md', sepiaClass(y.year))} />
                             ) : (
                                 <span aria-hidden="true" className="h-10 w-10 shrink-0 rounded-md bg-sunken" />
                             )}

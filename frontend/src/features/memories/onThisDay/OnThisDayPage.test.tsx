@@ -128,7 +128,8 @@ describe('OnThisDayPage overview, details', () => {
         const columns = await screen.findAllByTestId('otd-column');
         expect(columns[0].querySelector('img')).toBeNull();
         expect(within(columns[0]).getByTestId('memory-thumb-video')).toHaveAttribute('src', '/api/content/media/hinatazaka46/v.mp4');
-        expect(columns[1].querySelector('img')).toHaveAttribute('src', '/api/content/media/hinatazaka46/p.jpg');
+        // a picture column asks for a thumbnail (the media viewer keeps the full file)
+        expect(columns[1].querySelector('img')).toHaveAttribute('src', '/api/content/thumb/hinatazaka46/p.jpg?w=160');
     });
 
     it('starts at the newest year and keeps the user’s scroll across re-renders', async () => {

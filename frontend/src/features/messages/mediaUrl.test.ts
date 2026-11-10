@@ -73,3 +73,22 @@ describe('avatarWidthFor', () => {
         expect(avatarWidthFor(64, Number.NaN)).toBe(64);
     });
 });
+
+describe('thumbnailUrl / thumbWidthFor', () => {
+    it('points a local archived picture at the thumbnail route with the width', async () => {
+        const { thumbnailUrl } = await import('./mediaUrl');
+        expect(thumbnailUrl('/api/content/media/hinatazaka46/messages/a%20b/picture/1.jpg', 320))
+            .toBe('/api/content/thumb/hinatazaka46/messages/a%20b/picture/1.jpg?w=320');
+        expect(thumbnailUrl('https://cdn.example/x.jpg', 320)).toBe('https://cdn.example/x.jpg');
+        expect(thumbnailUrl(null, 320)).toBeUndefined();
+    });
+
+    it('picks the smallest allowed width covering the drawn size', async () => {
+        const { thumbWidthFor } = await import('./mediaUrl');
+        expect(thumbWidthFor(96, 1)).toBe(160);
+        expect(thumbWidthFor(160, 1.5)).toBe(320);
+        expect(thumbWidthFor(200, 2)).toBe(640);
+        expect(thumbWidthFor(900, 2)).toBe(640);
+        expect(thumbWidthFor(100, Number.NaN)).toBe(160);
+    });
+});

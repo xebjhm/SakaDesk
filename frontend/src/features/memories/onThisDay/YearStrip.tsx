@@ -75,7 +75,7 @@ export const YearStrip: React.FC<YearStripProps> = ({ years, resetKey, onOpen })
                 >
                     <span data-testid="otd-year" className="font-display text-heading text-primary">{y.year}</span>
                     {y.thumb && (
-                        <MemoryThumb message={y.thumb} className={cn('h-28 w-full shrink-0 rounded-md', sepiaClass(y.year))} />
+                        <MemoryThumb message={y.thumb} px={160} className={cn('h-28 w-full shrink-0 rounded-md', sepiaClass(y.year))} />
                     )}
                     <div className="flex min-h-0 flex-col gap-2 overflow-hidden">
                         {y.preview.map((m) => {
