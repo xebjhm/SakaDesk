@@ -298,18 +298,27 @@ class TestStore:
         media_meta.put(_row("d.mp4", kind="video", poster="failed"))
         media_meta.mark_poster_pending("e.mp4", "1:2")
         media_meta.set_poster("f.mp4", "1:2", "ready", "client")
+        media_meta.set_poster("g.mp4", "1:2", "none", "shell")
         assert media_meta.counts() == {
-            "rows": 6,
+            "rows": 7,
             "ready": 3,
             "failed": 1,
-            "placeholder_pending": 2,
+            "placeholder_pending": 3,
             "poster_ready": 2,
             "poster_failed": 1,
             "poster_pending": 1,
+            "poster_none": 1,
         }
         media_meta.clear()
         assert media_meta.counts()["rows"] == 0
         assert media_meta.get_many(["a.jpg"]) == {}
+
+    def test_a_failed_row_without_a_reason_counts_as_failed(self):
+        """M2/M3 carry-over: ``reason IN (...)`` is NULL for a NULL reason, so
+        ``NOT (...)`` dropped the row from every bucket."""
+        media_meta.put(_row("a.jpg", status="failed", reason=None))
+        counts = media_meta.counts()
+        assert (counts["failed"], counts["placeholder_pending"]) == (1, 0)
 
     def test_db_is_wal_with_the_schema_version(self):
         media_meta.put(_row("a.jpg"))
@@ -705,10 +714,29 @@ class TestMetaForUrls:
                 _url("v", "1.mp4")
             ]
         assert item["poster"] is False and item["color"] is None
-        assert hints == [("hinatazaka46", [rel])]
+        # No usable poster and the Shell is ruled out: the worker cannot make
+        # the placeholder until a client capture lands, so it is not re-hinted
+        # on every meta request (M2 review carry-over).
+        assert hints == []
         [event] = [e for e in logs if e["event"] == "media_meta"]
-        assert (event["stale"], event["hinted"], event["ready"]) == (0, 1, 0)
+        assert (event["stale"], event["hinted"], event["ready"]) == (0, 0, 0)
         assert media_meta.counts()["placeholder_pending"] == 1
+
+    @pytest.mark.parametrize("state", ["failed", "pending"])
+    def test_a_pending_video_waiting_for_a_poster_is_not_hinted(
+        self, out, hints, state
+    ):
+        src = _video(out / "日向坂46" / "v" / "1.mp4")
+        media_meta.set_poster(_rel(out, src), _stat_key(src), state, "shell")
+        _run(media_meta.meta_for_urls([_url("v", "1.mp4")]))
+        assert hints == []
+
+    def test_a_pending_video_with_poster_none_is_hinted_for_a_retry(self, out, hints):
+        src = _video(out / "日向坂46" / "v" / "1.mp4")
+        rel = _rel(out, src)
+        media_meta.set_poster(rel, _stat_key(src), "none", "shell")
+        _run(media_meta.meta_for_urls([_url("v", "1.mp4")]))
+        assert hints == [("hinatazaka46", [rel])]
 
     def test_traversal_attempts_log_one_summary(self, out, hints):
         urls = [PREFIX + f"../../x{i}.jpg" for i in range(30)] + [PREFIX + "%00.jpg"]
@@ -816,10 +844,16 @@ class TestMetaForUrls:
             for e in logs
         )
 
-    def test_the_default_hint_is_a_no_op(self, out):
-        _jpeg(out / "日向坂46" / "a.jpg")
-        assert media_meta._hint("hinatazaka46", ["日向坂46/a.jpg"]) is None
-        assert _run(media_meta.meta_for_urls([_url("a.jpg")]))[_url("a.jpg")]
+    def test_the_hint_goes_to_the_pregen_worker(self, out):
+        from backend.services import media_pregen
+
+        src = _jpeg(out / "日向坂46" / "a.jpg")
+        calls: list[tuple[str, list[str]]] = []
+        with patch.object(
+            media_pregen, "hint", lambda s, rels: calls.append((s, list(rels)))
+        ):
+            assert _run(media_meta.meta_for_urls([_url("a.jpg")]))[_url("a.jpg")]
+        assert calls == [("hinatazaka46", [_rel(out, src)])]
 
     def test_the_request_never_decodes(self, out, hints):
         _jpeg(out / "日向坂46" / "a.jpg")

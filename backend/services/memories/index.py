@@ -750,6 +750,54 @@ def refresh_pending(service_data_dir: Path) -> bool:
     )
 
 
+def any_refresh_pending() -> bool:
+    """True while a sync writes any service or any Memories refresh is pending.
+
+    Reads two in-memory counters only (no IO), so the thumbnail
+    pre-generation worker can poll it on the event loop.
+    """
+    return bool(_sync_writers) or bool(_refreshers)
+
+
+@dataclass(frozen=True)
+class MediaRow:
+    """One picture or video fact with a media file (for thumbnail pre-generation).
+
+    ``member_dir`` and ``media_file`` are as stored (service-relative;
+    ``media_file`` as written by pysaka, so it may use ``\\``); ``ts_utc``
+    is the UTC ISO time.
+    """
+
+    member_dir: str
+    media_file: str
+    type: str
+    ts_utc: str
+    favorited: bool
+
+
+def media_rows(service_data_dir: Path) -> list[MediaRow]:
+    """Every picture / video fact with a media file of the service, starred first, then newest.
+
+    Ordered ``favorited DESC, ts_utc DESC``. Blocking and read-only (call it
+    from a worker thread); takes the row-read lock (:func:`row_reads`). A
+    database error is logged (``memory_index_media_rows_failed``,
+    ``error_type``) and gives ``[]``.
+    """
+    try:
+        with row_reads(), contextlib.closing(_connect()) as c:
+            rows = c.execute(
+                "SELECT member_dir, media_file, type, ts_utc, favorited "
+                "FROM message_facts WHERE service_dir=? "
+                "AND type IN ('picture','video') AND media_file IS NOT NULL "
+                "ORDER BY favorited DESC, ts_utc DESC",
+                (str(service_data_dir),),
+            ).fetchall()
+    except sqlite3.Error as e:
+        logger.warning("memory_index_media_rows_failed", error_type=type(e).__name__)
+        return []
+    return [MediaRow(r[0], r[1], r[2], r[3], bool(r[4])) for r in rows]
+
+
 _INSERT_FACTS = (
     f"INSERT INTO message_facts(service_dir, member_dir, {', '.join(FACT_COLUMNS)}) "
     f"VALUES ({', '.join('?' * (len(FACT_COLUMNS) + 2))})"

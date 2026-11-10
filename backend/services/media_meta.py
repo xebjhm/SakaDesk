@@ -33,8 +33,9 @@ path from :func:`photo_thumb.archive_rel` (never logged).
 - **The batch read.** :func:`meta_for_urls` resolves media-route URLs
   (:func:`archive_urls.media_route_target`), stats each file, reads the rows
   and builds the response items, all in one worker thread; it never decodes
-  an image. Missing and stale rows are hinted to the worker (:func:`_hint`)
-  so it processes them first.
+  an image. Missing and stale rows are hinted to the worker
+  (``media_pregen.hint``, via :func:`_hint`) so it processes them first; a
+  video waiting for a client poster is not (:func:`waiting_for_poster`).
 
 Logs carry counts and codes only: ``media_meta`` (``requested``, ``ready``,
 ``stale``, ``missing``, ``invalid``, ``hinted``), ``path_traversal_blocked``
@@ -490,9 +491,11 @@ def clear() -> None:
 def counts() -> dict[str, int]:
     """Row totals for the status endpoint (all zero when the DB cannot be read).
 
-    ``failed`` counts terminal placeholder failures only; rows still waiting
-    for their placeholder (:data:`PLACEHOLDER_PENDING_REASONS`) are
-    ``placeholder_pending``.
+    ``failed`` counts terminal placeholder failures only (a ``failed`` row
+    with no ``reason`` counts here too); rows still waiting for their
+    placeholder (:data:`PLACEHOLDER_PENDING_REASONS`) are
+    ``placeholder_pending``. ``poster_none`` counts videos whose poster is
+    ``none`` (no Shell; waiting for a client capture or a retry).
     """
     empty = dict.fromkeys(
         (
@@ -503,10 +506,13 @@ def counts() -> dict[str, int]:
             "poster_ready",
             "poster_failed",
             "poster_pending",
+            "poster_none",
         ),
         0,
     )
-    pending = "status = 'failed' AND reason IN ({})".format(
+    # COALESCE: ``NULL IN (...)`` is NULL, and ``NOT (NULL)`` would drop a
+    # failed row without a reason from every bucket.
+    pending = "status = 'failed' AND COALESCE(reason, '') IN ({})".format(
         ",".join(f"'{r}'" for r in sorted(PLACEHOLDER_PENDING_REASONS))
     )
 
@@ -518,7 +524,8 @@ def counts() -> dict[str, int]:
             f"count(*) FILTER (WHERE {pending}), "
             "count(*) FILTER (WHERE poster = 'ready'), "
             "count(*) FILTER (WHERE poster = 'failed'), "
-            "count(*) FILTER (WHERE poster = 'pending') FROM media_meta"
+            "count(*) FILTER (WHERE poster = 'pending'), "
+            "count(*) FILTER (WHERE poster = 'none') FROM media_meta"
         ).fetchone()
         return dict(zip(empty, r))
 
@@ -548,11 +555,32 @@ def stat_key_of(st: os.stat_result) -> str:
     return f"{st.st_size}:{st.st_mtime_ns}"
 
 
+def waiting_for_poster(row: MetaRow) -> bool:
+    """A video the worker cannot finish until a client capture lands.
+
+    Its placeholder comes from its poster, and there is none: the Shell
+    failed, crashed or hung on it (``poster='failed'``), or a Shell attempt
+    is in flight (``pending``). Such a row is not hinted, or every meta
+    request would re-queue it. ``poster='none'`` (no Shell, or a failed
+    cache write) is still hinted: the worker retries it, rate-limited per
+    item (``media_pregen.HINT_COOLDOWN_S``).
+    """
+    return (
+        row.kind == "video"
+        and placeholder_pending(row)
+        and row.poster in ("failed", "pending")
+    )
+
+
 def _hint(service: str, rel_paths: list[str]) -> None:
     """Ask the pre-generation worker to process ``rel_paths`` first.
 
-    A no-op until Task M4 wires ``media_pregen.hint`` in.
+    ``media_pregen.hint`` (imported lazily: ``media_pregen`` imports this
+    module). Runs on the event loop; the hint is cheap and never blocks.
     """
+    from backend.services import media_pregen
+
+    media_pregen.hint(service, rel_paths)
 
 
 @dataclass(frozen=True)
@@ -650,7 +678,8 @@ async def meta_for_urls(urls: Sequence[str]) -> dict[str, dict[str, Any] | None]
     ``ready`` row; ``poster`` only for a video whose fresh row has a ready
     poster. Missing, stale and placeholder-pending rows
     (:func:`placeholder_pending`) are hinted to the worker, grouped per
-    service. URLs that resolve outside their service folder count as
+    service, except videos waiting for a client poster
+    (:func:`waiting_for_poster`). URLs that resolve outside their service folder count as
     ``invalid`` and add up to one ``path_traversal_blocked`` warning per
     request (``count``). The blocking part runs in one ``asyncio.to_thread`` hop.
     """
@@ -665,7 +694,7 @@ async def meta_for_urls(urls: Sequence[str]) -> dict[str, dict[str, Any] | None]
         if row is None or row.stat_key != t.stat_key:
             stale += row is not None
             hints.setdefault(t.service, []).append(t.rel)
-        elif placeholder_pending(row):
+        elif placeholder_pending(row) and not waiting_for_poster(row):
             hints.setdefault(t.service, []).append(t.rel)
         elif row.status == "ready":
             ready += 1

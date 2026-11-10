@@ -21,7 +21,7 @@ from pysaka import (
 )
 from pysaka.credentials import get_token_manager
 from backend.api.progress import progress_manager
-from backend.services import desktop_bridge, refresh_gate
+from backend.services import desktop_bridge, media_pregen, refresh_gate
 from backend.services.background_tasks import track_background_task
 from backend.services.call_popup import (
     PendingCall,
@@ -1457,6 +1457,10 @@ class SyncService:
     async def _refresh_memories(self) -> None:
         """Refresh member profiles, rebuild the memory index, then warm the album.
 
+        A built index also asks the thumbnail pre-generation worker for a
+        pass over this service (``media_pregen.request_safely``; never
+        raises, waits until this refresh ends).
+
         Sequential on purpose: birthdays are part of each room's index hash,
         so building the index while the profile refresh is still running made
         every room rebuild a second time once the birthdays landed. A failed
@@ -1474,6 +1478,8 @@ class SyncService:
                     error_type=type(e).__name__,
                 )
             await build_memory_index(sdir)
+            # Pre-generate this service's thumbnails once the worker is idle.
+            media_pregen.request_safely(self._service)
             # Fill the album caches now, so the first album open is warm.
             await warm_album(self._service, sdir)
         finally:

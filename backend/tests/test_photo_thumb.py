@@ -1281,3 +1281,43 @@ class TestVideoPosterThumbs:
         src = self._video(archive)
         self._larger(src, tmp_path, b"not a webp")
         assert client.get(f"{URL}/video/2.mp4?w=160").status_code == 404
+
+
+# --- M4: video-keyed variant sets and the cache total -----------------------------------
+
+
+class TestMakeSetKeyStat:
+    def test_variants_are_keyed_by_the_given_stat_not_the_source(self, tmp_path):
+        """A video's variants are rendered from its poster but keyed by the video."""
+        poster = tmp_path / "p.webp"
+        Image.new("RGB", (640, 360), (5, 5, 5)).save(poster, format="WEBP")
+        root = tmp_path / "c"
+        res = photo_thumb.make_set(
+            poster,
+            "s/v/1.mp4",
+            (160, 320),
+            root,
+            formats=("WEBP",),
+            need_placeholder=True,
+            key_stat=(1234, 5678),
+        )
+        assert res.reason is None and res.stat == (1234, 5678)
+        assert set(res.written) == {160, 320}
+        for w, path in res.written.items():
+            assert path.name == photo_thumb.variant_name("s/v/1.mp4", 1234, 5678, w)
+        assert res.size == (640, 360) and res.placeholder is not None
+        again = photo_thumb.make_set(
+            poster, "s/v/1.mp4", (160, 320), root, key_stat=(1234, 5678)
+        )
+        assert again.written == {} and set(again.present) == {160, 320}
+
+
+class TestCacheTotal:
+    def test_measures_once_and_reads_without_measuring(self, tmp_path):
+        root = tmp_path / "c"
+        root.mkdir()
+        (root / "a-160.webp").write_bytes(b"x" * 100)
+        assert photo_thumb.cache_total(root, measure=False) is None
+        assert photo_thumb.cache_total(root) == 100
+        photo_thumb.cache_state_add(root, 50, photo_thumb.CACHE_CAP_BYTES)
+        assert photo_thumb.cache_total(root, measure=False) == 150

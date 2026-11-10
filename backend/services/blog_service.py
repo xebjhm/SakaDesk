@@ -1598,11 +1598,19 @@ class BlogBackupManager:
         with a fresh event; this run must not clobber the newer run's
         registration.  Identity of the cancel-event is the per-run token: only
         deregister when the currently-registered event is still our own.
+        A deregistered run asks the thumbnail pre-generation worker for a
+        pass over the service (``media_pregen.request_safely``; thread-safe).
         """
         with self._lock:
-            if self._cancel_events.get(service) is cancel_event:
+            mine = self._cancel_events.get(service) is cancel_event
+            if mine:
                 self._cancel_events.pop(service, None)
                 self._running.discard(service)
+        if mine:
+            # Thumbnails for the blog images (and a pass once idle); never raises.
+            from backend.services import media_pregen
+
+            media_pregen.request_safely(service)
 
     async def _run_backup(self, service: str, cancel_event: threading.Event):
         """Run full backup for one service with cancellation support."""

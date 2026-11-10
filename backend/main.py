@@ -234,6 +234,11 @@ async def lifespan(app: FastAPI):
     _writer_stops.append(_stop_all_sync_services)
     _writer_stops.append(get_blog_backup_manager().stop_async)
     _writer_stops.append(stop_search_service)
+    # The thumbnail pre-generation worker: stopped (its thread abandoned after
+    # media_pregen.STOP_TIMEOUT_S) before tracked tasks drain.
+    from backend.services import media_pregen
+
+    _writer_stops.append(media_pregen.stop)
     _writer_stops.append(drain_background_tasks)
 
     background_task = asyncio.create_task(_deferred_blog_backup())
@@ -277,6 +282,12 @@ async def lifespan(app: FastAPI):
         memories_notifier.start()
     else:
         logger.info("memories_notify_skipped", reason="env")
+
+    # Thumbnail pre-generation (idle, throttled; stopped via _writer_stops above).
+    if scheduler_allowed_in_env():
+        media_pregen.start(get_all_services())
+    else:
+        logger.info("media_pregen_skipped", reason="env")
 
     yield
 

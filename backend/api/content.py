@@ -53,7 +53,12 @@ from backend.services.messages_cache import (
     get_messages_summary,
     stat_key,
 )
-from backend.services import avatar_resize, photo_thumb, profile_images_service
+from backend.services import (
+    avatar_resize,
+    media_pregen,
+    photo_thumb,
+    profile_images_service,
+)
 from backend.services.archive_urls import (
     ArchiveReadError,
     archive_file_ok,
@@ -881,8 +886,10 @@ async def get_media(file_path: str):
     disconnects, so paused or abandoned video/voice downloads never hold one
     of WebView2's six per-host connections. Requests without ``Range`` (e.g.
     ``<img>``) get the full file with ``200``. See ``backend.services.media_range``;
-    it also logs the ``media_request`` breadcrumb.
+    it also logs the ``media_request`` breadcrumb. Each request tells the
+    thumbnail pre-generation worker the UI is busy (``media_pregen.note_foreground``).
     """
+    media_pregen.note_foreground()
     safe_path = _resolve_media_path(file_path)
     return MediaFileResponse(safe_path)
 
@@ -949,8 +956,10 @@ async def get_thumb(
     answer carries a stable ``ETag`` (the variant's hash name; a matching
     ``If-None-Match`` gets 304) and ``X-Content-Type-Options: nosniff``. The
     body is read into memory first (thumbnails are small), so a variant
-    evicted meanwhile answers 404, never a 500.
+    evicted meanwhile answers 404, never a 500. Each request tells the
+    pre-generation worker a gallery is in use (``media_pregen.note_foreground``).
     """
+    media_pregen.note_foreground()
     if w not in photo_thumb.ALLOWED_WIDTHS:
         logger.info("thumb_request_rejected", reason="width", width=w)
         raise HTTPException(status_code=400, detail="Unsupported width")

@@ -77,8 +77,13 @@ def test_meta_mixed_batch(out: Path, tmp_path: Path):
     assert calls == [1]
 
 
-def test_meta_default_note_foreground_is_a_no_op():
-    assert media_api._note_foreground() is None
+def test_meta_note_foreground_tells_the_pregen_worker():
+    from backend.services import media_pregen
+
+    calls: list[int] = []
+    with patch.object(media_pregen, "note_foreground", lambda: calls.append(1)):
+        assert media_api._note_foreground() is None
+    assert calls == [1]
 
 
 @pytest.mark.parametrize("count", [0, 501])
@@ -327,3 +332,69 @@ def test_poster_archive_read_error_is_404(out: Path, posters: Path):
             headers={"Content-Type": "image/webp"},
         )
     assert r.status_code == 404
+
+
+# --- GET /api/media/status, DELETE /api/media/cache (M4) ----------------------------------
+
+
+@pytest.fixture
+def caches(tmp_path):
+    from backend.services import video_poster
+
+    photo_thumb.reset_cache_state()
+    media_meta.set_db_path(tmp_path / "cache" / media_meta.DB_NAME)
+    thumbs = tmp_path / "cache" / "photo_thumbs"
+    posters = tmp_path / "cache" / "video_posters"
+    with (
+        patch.object(photo_thumb, "cache_dir", return_value=thumbs),
+        patch.object(video_poster, "poster_dir", return_value=posters),
+    ):
+        yield thumbs, posters
+    media_meta.set_db_path(None)
+    photo_thumb.reset_cache_state()
+
+
+def test_status_shape(caches):
+    thumbs, posters = caches
+    thumbs.mkdir(parents=True)
+    (thumbs / "a-160.webp").write_bytes(b"x" * 300)
+    media_meta.set_poster("v/1.mp4", "1:2", "ready", "shell")
+    media_meta.set_poster("v/2.mp4", "1:2", "failed", "shell")
+    media_meta.set_poster("v/3.mp4", "1:2", "none", "shell")
+    r = client.get("/api/media/status")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["state"] == "stopped" and body["paused_reason"] is None
+    assert body["services"] == {}
+    assert body["posters"] == {
+        "ready": 1,
+        "failed": 1,
+        "pending_client": 2,
+        "shell_off": False,
+    }
+    assert body["cache"] == {
+        "thumbs_bytes": 300,
+        "posters_bytes": 0,
+        "thumbs_cap": photo_thumb.CACHE_CAP_BYTES,
+        "posters_cap": 256 * 1024**2,
+    }
+    assert r.headers["cache-control"] == "no-store"
+
+
+def test_delete_cache_frees_the_bytes(caches):
+    thumbs, posters = caches
+    thumbs.mkdir(parents=True)
+    posters.mkdir(parents=True)
+    (thumbs / "a-160.webp").write_bytes(b"x" * 300)
+    (thumbs / "b-320.webp").write_bytes(b"x" * 200)
+    (posters / "p.webp").write_bytes(b"y" * 50)
+    media_meta.put(
+        media_meta.MetaRow(
+            "a.jpg", "1:2", "picture", 1, 1, 0, None, "ready", None, None, None
+        )
+    )
+    r = client.delete("/api/media/cache")
+    assert r.status_code == 200 and r.json() == {"freed_bytes": 550}
+    assert media_meta.counts()["rows"] == 0
+    after = client.get("/api/media/status").json()
+    assert after["cache"]["thumbs_bytes"] == 0 and after["cache"]["posters_bytes"] == 0

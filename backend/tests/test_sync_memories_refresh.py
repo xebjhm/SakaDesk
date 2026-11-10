@@ -105,3 +105,62 @@ def test_failed_scheduling_clears_the_pending_mark(tmp_path, monkeypatch):
     svc.service_data_dir = tmp_path
     svc._schedule_memories_refresh()
     assert not mi.refresh_pending(tmp_path)
+
+
+@pytest.mark.asyncio
+async def test_a_built_index_requests_thumbnail_pregen(tmp_path, monkeypatch):
+    """M4: the worker is asked for a pass only after the index built."""
+    from backend.services import media_pregen
+
+    calls: list[str] = []
+
+    async def build(sdir):
+        calls.append("index")
+        return 0
+
+    monkeypatch.setattr(sync_service, "build_memory_index", build)
+    monkeypatch.setattr(media_pregen, "request", lambda s: calls.append(f"req:{s}"))
+    svc = SyncService("hinatazaka46")
+    svc.service_data_dir = tmp_path
+    await svc._refresh_memories()
+    assert calls == ["index", "req:hinatazaka46"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_index_build_requests_nothing(tmp_path, monkeypatch):
+    from backend.services import media_pregen
+
+    calls: list[str] = []
+
+    async def build(sdir):
+        raise RuntimeError("boom")
+
+    monkeypatch.setattr(sync_service, "build_memory_index", build)
+    monkeypatch.setattr(media_pregen, "request", lambda s: calls.append(s))
+    svc = SyncService("hinatazaka46")
+    svc.service_data_dir = tmp_path
+    with pytest.raises(RuntimeError):
+        await svc._refresh_memories()
+    assert calls == []
+
+
+@pytest.mark.asyncio
+async def test_a_failed_pregen_request_never_fails_the_refresh(tmp_path, monkeypatch):
+    from structlog.testing import capture_logs
+
+    from backend.services import media_pregen
+
+    def boom(service):
+        raise RuntimeError("x")
+
+    monkeypatch.setattr(media_pregen, "request", boom)
+    svc = SyncService("hinatazaka46")
+    svc.service_data_dir = tmp_path
+    with capture_logs() as logs:
+        await svc._refresh_memories()
+    assert {
+        "event": "media_pregen_request_failed",
+        "service": "hinatazaka46",
+        "error_type": "RuntimeError",
+        "log_level": "warning",
+    } in logs

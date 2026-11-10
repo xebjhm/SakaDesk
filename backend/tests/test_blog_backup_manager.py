@@ -302,3 +302,43 @@ class TestBlogBackupManagerThreading:
 
         manager.stop()
         manager.shutdown()
+
+
+class TestBlogBackupRequestsThumbnails:
+    """M4: a finished backup asks the thumbnail pre-generation worker for a pass."""
+
+    def test_finishing_a_run_requests_a_pregen_pass(self):
+        from backend.services import media_pregen
+
+        manager = BlogBackupManager()
+        event = threading.Event()
+        manager._cancel_events["hinatazaka46"] = event
+        manager._running.add("hinatazaka46")
+        calls: list[str] = []
+        with patch.object(media_pregen, "request", side_effect=calls.append):
+            manager._deregister_own("hinatazaka46", event)
+            # a superseded run does not deregister, and asks nothing
+            manager._deregister_own("hinatazaka46", threading.Event())
+        assert manager.running_services() == []
+        assert calls == ["hinatazaka46"]
+
+    def test_a_failed_request_is_logged_and_swallowed(self):
+        from structlog.testing import capture_logs
+
+        from backend.services import media_pregen
+
+        manager = BlogBackupManager()
+        event = threading.Event()
+        manager._cancel_events["hinatazaka46"] = event
+        manager._running.add("hinatazaka46")
+        with (
+            patch.object(media_pregen, "request", side_effect=RuntimeError("x")),
+            capture_logs() as logs,
+        ):
+            manager._deregister_own("hinatazaka46", event)
+        assert {
+            "event": "media_pregen_request_failed",
+            "service": "hinatazaka46",
+            "error_type": "RuntimeError",
+            "log_level": "warning",
+        } in logs

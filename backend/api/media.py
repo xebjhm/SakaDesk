@@ -7,6 +7,14 @@
 - ``PUT /api/media/poster/{file_path}``: a client-captured poster frame of
   an archive video (the fallback when the Windows Shell gave none; see
   ``backend.services.video_poster.ingest_client``).
+- ``GET /api/media/status``: the pre-generation worker's state, progress,
+  poster counts and cache sizes (``backend.services.media_pregen.status``,
+  run in a worker thread: it reads the meta DB and may measure the caches).
+- ``DELETE /api/media/cache``: empty the thumbnail and poster caches and the
+  meta rows (``media_pregen.clear_caches``); answers ``{"freed_bytes"}``.
+
+The meta and poster routes tell the worker a gallery is in use
+(``media_pregen.note_foreground``), so it yields.
 
 Logs carry counts and codes only (``media_meta_rejected``: ``reason``,
 ``count``; ``media_poster_rejected``: ``reason``).
@@ -25,7 +33,13 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
 
-from backend.services import archive_urls, media_meta, photo_thumb, video_poster
+from backend.services import (
+    archive_urls,
+    media_meta,
+    media_pregen,
+    photo_thumb,
+    video_poster,
+)
 
 router = APIRouter()
 logger = structlog.get_logger(__name__)
@@ -39,10 +53,28 @@ class MetaRequest(BaseModel):
 
 
 def _note_foreground() -> None:
-    """Tell the pre-generation worker a gallery is in use (it yields for a while).
+    """Tell the pre-generation worker a gallery is in use (it yields for a while)."""
+    media_pregen.note_foreground()
 
-    A no-op until Task M4 wires ``media_pregen.note_foreground`` in.
+
+@router.get("/status")
+async def get_status() -> dict[str, Any]:
+    """The pre-generation worker's status (see the plan's ``/api/media/status``).
+
+    ``{"state", "paused_reason", "services": {id: {"done", "total"}},
+    "posters": {"ready", "failed", "pending_client", "shell_off"},
+    "cache": {"thumbs_bytes", "posters_bytes", "thumbs_cap", "posters_cap"}}``.
+    Read in a worker thread (meta DB counts, cache sizes). Not a foreground
+    signal: the Settings dialog polls it.
     """
+    return await asyncio.to_thread(media_pregen.status)
+
+
+@router.delete("/cache")
+async def delete_cache() -> dict[str, int]:
+    """Empty the thumbnail and poster caches and the meta rows: ``{"freed_bytes": int}``."""
+    freed = await media_pregen.clear_caches()
+    return {"freed_bytes": freed}
 
 
 @router.post("/meta")

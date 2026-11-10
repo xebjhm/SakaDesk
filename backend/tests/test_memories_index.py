@@ -666,3 +666,66 @@ def test_fact_reads_take_the_process_wide_row_lock(tmp_path):
         assert not done.wait(0.2)  # blocked behind the held lock
     t.join(5)
     assert done.is_set()
+
+
+# --- M4: media rows for the thumbnail pre-generation worker ------------------------------
+
+
+def _media_msg(i, ts, type_, media_file, fav=False):
+    m = msg(i, ts, type_)
+    m["media_file"] = media_file
+    m["is_favorite"] = fav
+    return m
+
+
+@pytest.mark.asyncio
+async def test_media_rows_are_media_with_files_starred_then_newest(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(
+        tmp_path,
+        [
+            _media_msg(1, "2026-09-14T03:00:00Z", "picture", "a\\picture\\1.jpg"),
+            _media_msg(2, "2026-09-15T03:00:00Z", "video", "a/video/2.mp4"),
+            _media_msg(3, "2026-09-13T03:00:00Z", "picture", "a/picture/3.jpg", True),
+            msg(4, "2026-09-16T03:00:00Z", "picture"),  # no media file
+            _media_msg(5, "2026-09-17T03:00:00Z", "voice", "a/voice/5.m4a"),
+        ],
+    )
+    await mi.get_member_index(tmp_path, d)
+    rows = mi.media_rows(tmp_path)
+    assert [(r.media_file, r.type, r.favorited) for r in rows] == [
+        ("a/picture/3.jpg", "picture", True),
+        ("a/video/2.mp4", "video", False),
+        ("a\\picture\\1.jpg", "picture", False),
+    ]
+    assert rows[0].member_dir == "messages/34 金村 美玖/58 金村 美玖"
+    assert rows[1].ts_utc.startswith("2026-09-15")
+    assert mi.media_rows(tmp_path / "other") == []
+
+
+def test_media_rows_never_raise(tmp_path, monkeypatch):
+    import sqlite3
+
+    from structlog.testing import capture_logs
+
+    def boom():
+        raise sqlite3.OperationalError("locked")
+
+    monkeypatch.setattr(mi, "_connect", boom)
+    with capture_logs() as logs:
+        assert mi.media_rows(tmp_path) == []
+    assert logs[-1] == {
+        "event": "memory_index_media_rows_failed",
+        "error_type": "OperationalError",
+        "log_level": "warning",
+    }
+
+
+def test_any_refresh_pending(tmp_path):
+    assert mi.any_refresh_pending() is False
+    with mi.sync_writing(tmp_path):
+        assert mi.any_refresh_pending() is True
+    mi.begin_refresh(tmp_path)
+    assert mi.any_refresh_pending() is True
+    mi.end_refresh(tmp_path)
+    assert mi.any_refresh_pending() is False

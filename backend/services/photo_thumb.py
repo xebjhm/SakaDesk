@@ -62,7 +62,10 @@ serves a WebP no wider or taller than one of :data:`ALLOWED_WIDTHS` instead
   a route hit. The key's ``rel_path`` always comes from :func:`archive_rel`
   (the resolved, output-dir-relative POSIX path), for the route and the
   worker alike. ``formats=`` narrows the decoder allowlist (video posters
-  pass ``("WEBP",)``).
+  pass ``("WEBP",)``), and ``key_stat=`` keys a video's variants by the
+  video's stat while they are rendered from its poster.
+  :func:`cache_total` reads the accounted bytes (``measure=False`` never
+  scans, for the worker's fill-line check on the event loop).
 - **Derived misses.** On a miss, :func:`thumbnail` first looks for a cached
   **larger** variant of the same key (the smallest one above the request)
   and renders from it, opened with ``formats=("WEBP",)`` (our own file, but
@@ -360,6 +363,21 @@ def cache_state_add(root: Path, size: int, cap: int) -> None:
 _added = cache_state_add
 
 
+def cache_total(root: Path, *, measure: bool = True) -> int | None:
+    """The accounted bytes of the cache ``root``.
+
+    ``measure=True`` measures the directory on first use (blocking: a scan);
+    ``measure=False`` never touches the disk and gives ``None`` while ``root``
+    has not been measured yet, so the pre-generation worker can read it on
+    the event loop.
+    """
+    with _state_lock:
+        if not measure:
+            state = _states.get(root)
+            return None if state is None else state.total
+        return _state(root).total
+
+
 def reset_cache_state() -> None:
     """Forget the measured totals and the write-warning window (tests; a cache dir wiped from outside)."""
     global _last_write_warn, _write_suppressed
@@ -630,6 +648,7 @@ def make_set(
     *,
     formats: tuple[str, ...] | None = None,
     need_placeholder: bool = False,
+    key_stat: tuple[int, int] | None = None,
 ) -> SetResult:
     """Write every missing WebP variant of ``source`` in ``widths`` from **one** decode.
 
@@ -640,10 +659,18 @@ def make_set(
     allowed width when only the placeholder is needed), each smaller width is
     downsized from that image in memory, and the variants are written
     atomically and accounted toward ``cap``. ``formats=None`` means
-    :func:`picture_formats`. Blocking; never raises.
+    :func:`picture_formats`.
+
+    ``key_stat`` overrides the ``(size, mtime_ns)`` the variants are keyed by
+    (and :attr:`SetResult.stat`): a video's variants are rendered from its
+    poster but keyed by the **video's** stat, the key the route looks up.
+    The source is still stat-ed (a missing one is ``unavailable``).
+    Blocking; never raises.
     """
     try:
-        return _make_set(source, rel_path, widths, root, cap, formats, need_placeholder)
+        return _make_set(
+            source, rel_path, widths, root, cap, formats, need_placeholder, key_stat
+        )
     except Exception as e:  # noqa: BLE001 - never raises: an unexpected failure is a skip
         _skip("unreadable", e)
         return _failed_set("unreadable")
@@ -657,6 +684,7 @@ def _make_set(
     cap: int,
     formats: tuple[str, ...] | None,
     need_placeholder: bool,
+    key_stat: tuple[int, int] | None = None,
 ) -> SetResult:
     wanted = sorted(set(widths), reverse=True)
     if any(w not in ALLOWED_WIDTHS for w in wanted):
@@ -667,7 +695,7 @@ def _make_set(
     except OSError as e:
         _skip("unavailable", e)
         return _failed_set("unavailable")
-    stat = (st.st_size, st.st_mtime_ns)
+    stat = (st.st_size, st.st_mtime_ns) if key_stat is None else key_stat
     # Measure the cache before writing, so the first writes are not counted twice.
     _mark_used(root, None)
     targets = _variant_targets(rel_path, stat, wanted, root)
