@@ -14,6 +14,10 @@ Vocabulary used by the rules:
 - *nearest*: the non-promo fact closest in time to 12:00 JST of a date (ties:
   the earlier).
 
+Promo: every 瞬間 (``moment.*``) card and the greeting pair exclude promo;
+the count (数字) cards and the 初めて cards count every message. Every
+tie-break goes to the earlier fact or day. Filters use ``facts.select``.
+
 A card whose condition is not met is either returned with ``earned=False``
 (a silhouette) or, for the cards the catalogue marks *hidden*, left out of the
 result and of :func:`progress_summary`. An unearned card's ``progress`` is
@@ -37,8 +41,9 @@ from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
+from typing import Any
 
-from backend.services.memories.facts import Fact
+from backend.services.memories.facts import Fact, select
 from backend.services.memories.selection import JST
 
 SHELVES = (
@@ -224,6 +229,16 @@ def _nearest(tagged: Sequence[_Tagged], day: date) -> _Tagged | None:
     return best
 
 
+def _select(tagged: Sequence[_Tagged], **filters: Any) -> list[_Tagged]:
+    """:func:`facts.select` over tagged facts, keeping each fact's room.
+
+    Same filters and the same default: promo is excluded unless
+    ``include_promo=True``.
+    """
+    keep = {id(f) for f in select((t[1] for t in tagged), **filters)}
+    return [t for t in tagged if id(t[1]) in keep]
+
+
 def _by_day(tagged: Sequence[_Tagged]) -> dict[date, list[_Tagged]]:
     out: dict[date, list[_Tagged]] = {}
     for t in tagged:
@@ -279,10 +294,9 @@ def _first(
 def _first_cards(tagged: Sequence[_Tagged]) -> list[Card]:
     out = [_first("first.message", "first", tagged)]
     for kind in ("picture", "video", "voice"):
-        out.append(
-            _first(f"first.{kind}", "first", [t for t in tagged if t[1].type == kind])
-        )
-    nick = [t for t in tagged if t[1].has_nickname]
+        items = _select(tagged, types={kind}, include_promo=True)
+        out.append(_first(f"first.{kind}", "first", items))
+    nick = _select(tagged, nickname=True, include_promo=True)
     out.append(_first("first.nickname", "first", nick, foil=True))
     return out
 
@@ -342,7 +356,7 @@ def _anniversary_cards(
 
 
 def _voice_hour_card(tagged: Sequence[_Tagged]) -> tuple[list[Card], int]:
-    voices = [t for t in tagged if t[1].type == "voice"]
+    voices = _select(tagged, types={"voice"}, include_promo=True)
     if not voices:
         return [], 1
     total = 0.0
@@ -359,13 +373,13 @@ def _number_cards(tagged: Sequence[_Tagged]) -> tuple[list[Card], int]:
         _nth(f"count.messages.{n}", "numbers", tagged, n, foil=n == 10000)
         for n in _MESSAGE_COUNTS
     ]
-    pictures = [t for t in tagged if t[1].type == "picture"]
+    pictures = _select(tagged, types={"picture"}, include_promo=True)
     out += [
         _nth(f"count.pictures.{n}", "numbers", pictures, n) for n in _PICTURE_COUNTS
     ]
     voice, hidden = _voice_hour_card(tagged)
     out += voice
-    nick = [t for t in tagged if t[1].has_nickname]
+    nick = _select(tagged, nickname=True, include_promo=True)
     if nick:
         out.append(_nth("count.nicknames.100", "numbers", nick, _NICKNAME_COUNT))
     else:
@@ -558,12 +572,11 @@ def _record_cards(
     else:
         hidden += 1
 
-    nick_day = _max_day(_by_day([t for t in tagged if t[1].has_nickname]))
+    # the day counts every nickname fact (promo included); the face is the
+    # best of them, so non-promo words win over promo
+    nick_day = _max_day(_by_day(_select(tagged, nickname=True, include_promo=True)))
     if nick_day is not None:
-        face = max(
-            nick_day[1],
-            key=lambda t: t[1].importance if t[1].importance is not None else -1,
-        )
+        face = _best(nick_day[1])
         out.append(
             _earned_at(
                 "record.nickname_day",
@@ -575,7 +588,11 @@ def _record_cards(
     else:
         hidden += 1
 
-    voices = [t for t in tagged if t[1].type == "voice" and t[1].duration_s is not None]
+    voices = [
+        t
+        for t in _select(tagged, types={"voice"}, include_promo=True)
+        if t[1].duration_s is not None
+    ]
     if voices:
         face = max(voices, key=lambda t: t[1].duration_s or 0.0)
         seconds = round(face[1].duration_s or 0.0)
@@ -587,15 +604,12 @@ def _record_cards(
     else:
         hidden += 1
 
-    ohayo = [
-        t
-        for t in tagged
-        if not t[1].is_promo and t[1].has_greeting("ohayo") and 4 <= t[1].hour <= 11
-    ]
-    oyasumi = [t for t in tagged if not t[1].is_promo and t[1].has_greeting("oyasumi")]
+    ohayo = _select(tagged, greeting="ohayo", hours=range(4, 12))
+    oyasumi = _select(tagged, greeting="oyasumi")
     if ohayo and oyasumi:
-        early = min(ohayo, key=lambda t: _clock(t[1]))  # min keeps the first
-        late = max(reversed(oyasumi), key=lambda t: _late_clock(t[1]))
+        # ties: the earlier fact (min / max keep the first of equal keys)
+        early = min(ohayo, key=lambda t: _clock(t[1]))
+        late = max(oyasumi, key=lambda t: _late_clock(t[1]))
         out.append(
             _earned_at(
                 "record.greeting_pair", "records", early, refs={"pair": _mk(late)}
@@ -609,8 +623,9 @@ def _record_cards(
 
 
 def _synchro(tagged: Sequence[_Tagged]) -> Card:
+    """Earliest completed same-clock pair of non-promo facts on different dates."""
     seen: dict[tuple[int, int, int], _Tagged] = {}
-    for t in tagged:
+    for t in _select(tagged):
         clock = _clock(t[1])
         earlier = seen.get(clock)
         if earlier is None:
@@ -628,9 +643,8 @@ def _synchro(tagged: Sequence[_Tagged]) -> Card:
 
 
 def _moment_cards(tagged: Sequence[_Tagged]) -> list[Card]:
-    midnight = [
-        t for t in tagged if not t[1].is_promo and t[1].hour == 0 and t[1].minute <= 5
-    ]
+    # every 瞬間 card excludes promo (facts.select's default)
+    midnight = [t for t in _select(tagged, hours={0}) if t[1].minute <= 5]
     if midnight:
         out = [
             _earned_at(
@@ -645,7 +659,7 @@ def _moment_cards(tagged: Sequence[_Tagged]) -> list[Card]:
         out = [Card("moment.midnight", "moments", False, foil=True)]
     out.append(_synchro(tagged))
     for greeting in ("oyasumi", "daisuki"):
-        items = [t for t in tagged if not t[1].is_promo and t[1].has_greeting(greeting)]
+        items = _select(tagged, greeting=greeting)
         out.append(_first(f"moment.{greeting}.1", "moments", items))
         out.append(_nth(f"moment.{greeting}.100", "moments", items, 100))
     return out

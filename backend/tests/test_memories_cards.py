@@ -425,6 +425,17 @@ def test_longest_and_busiest_and_nickname_day():
     assert nick.message == key(6) and nick.detail == {"count": 2}
 
 
+def test_nickname_day_face_prefers_non_promo():
+    fs = [
+        fact(1, "2024-01-02 10:00", nick=True, promo=True, importance=None),
+        fact(2, "2024-01-02 11:00", "picture", nick=True),  # no words, not promo
+        fact(3, "2024-01-03 10:00", nick=True, promo=True, importance=None),
+    ]
+    nick = by_key(c.evaluate(inputs(fs)))["record.nickname_day"]
+    assert nick.message == key(2) and nick.detail == {"count": 2}
+    assert by_key(c.evaluate(inputs(fs[2:])))["record.nickname_day"].message == key(3)
+
+
 def test_longest_voice():
     fs = [
         fact(1, "2024-01-01 10:00", "voice", duration=12.4),
@@ -449,6 +460,17 @@ def test_greeting_pair_treats_one_am_as_later_than_eleven_pm():
     card = by_key(c.evaluate(inputs(fs)))["record.greeting_pair"]
     assert card.message == key(3) and card.refs == {"pair": key(5)}
     assert "record.greeting_pair" not in by_key(c.evaluate(inputs(fs[:3])))
+
+
+def test_greeting_pair_ties_go_to_the_earlier():
+    fs = [
+        fact(1, "2024-01-01 07:00", greet=("ohayo",)),
+        fact(2, "2024-01-02 07:00", greet=("ohayo",)),
+        fact(3, "2024-01-03 01:00", greet=("oyasumi",)),
+        fact(4, "2024-01-04 01:00", greet=("oyasumi",)),
+    ]
+    card = by_key(c.evaluate(inputs(fs)))["record.greeting_pair"]
+    assert card.message == key(1) and card.refs == {"pair": key(3)}
 
 
 def test_streak_threshold_date():
@@ -491,6 +513,29 @@ def test_synchro_picks_the_earliest_completed_pair():
     assert card.message == key(4) and card.refs == {"pair": key(3)}
     assert card.date == date(2024, 1, 9)
     assert not by_key(c.evaluate(inputs(fs[:3])))["moment.synchro"].earned
+
+
+def test_synchro_ignores_promo():
+    fs = [
+        fact(1, "2024-01-01 12:00:00", promo=True, importance=None),
+        fact(2, "2024-01-02 12:00:00", promo=True, importance=None),
+        fact(3, "2024-01-03 12:00:00"),
+    ]
+    card = by_key(c.evaluate(inputs(fs)))["moment.synchro"]
+    assert not card.earned  # a scheduled promo at the same second is no moment
+    fs.append(fact(4, "2024-01-04 12:00:00"))
+    card = by_key(c.evaluate(inputs(fs)))["moment.synchro"]
+    assert card.message == key(4) and card.refs == {"pair": key(3)}
+
+
+def test_counts_include_promo():
+    fs = [
+        fact(i, f"2024-01-01 10:{i:02d}", promo=True, importance=None)
+        for i in range(1, 3)
+    ]
+    k = by_key(c.evaluate(inputs(fs)))
+    assert k["count.messages.100"].progress == (2, 100)
+    assert k["first.message"].message == key(1)
 
 
 def test_oyasumi_and_daisuki_moments():
