@@ -40,11 +40,18 @@ Each :meth:`MemoriesNotifyScheduler.tick`:
     enabled and not yet in the ledger, plus card toasts; ``sent``,
     ``suppressed``, ``next_in_s``).
 
-Failures are isolated: each On This Day build, each per-service birthday /
-anniversary block, each recap occasion, each per-service card check and each
-delivery unit catches its own error (``memories_notify_failed`` with
-``stage`` = ``build`` / ``cards`` / ``deliver``, ``kind``, ``service``,
-``error_type``), so one bad builder or claim never silences the others.
+Failures are isolated: each service's listing, each On This Day build, each
+per-service birthday / anniversary block, each recap occasion, each
+per-service card check and each delivery unit catches its own error, so one
+bad file, builder or claim never silences the others. ``memories_notify_failed``
+carries ``stage`` (``list`` / ``build`` / ``cards`` / ``deliver`` / ``send``
+inside a tick; ``tick`` / ``prune`` for the loop; ``card_request`` for
+:func:`request_card_check`), ``kind``, ``service``, ``error_type`` and
+``where`` (the innermost frame as ``module:function:line``; code, never
+data). A repeat of the same (``stage``, ``kind``, ``error_type``) is logged
+at most once per :data:`FAILURE_LOG_INTERVAL`, with ``repeats`` = the
+failures suppressed since the last line. A failed card check keeps its
+pending mark, re-armed to retry :data:`CARD_CHECK_DELAY_S` later.
 
 The loop waits :data:`STARTUP_DELAY_S`, prunes ledger rows older than
 :data:`PRUNE_AFTER` once, then ticks and waits until the next slot / JST
@@ -56,16 +63,17 @@ Logs carry ids, codes and counts only: ``memories_notify_tick``,
 ``member_id``), ``memories_notify_failed`` (``stage``, ``error_type``, plus
 ``kind`` / ``service``), ``memories_card_check`` and
 ``memories_notify_wake_requested``. Never a title, body, name, route or path.
-A bad stored subscription start is parsed (and so logged by
-``binder.subscription_start``) at most once per member per JST day.
+(``binder.subscription_start`` itself logs a bad stored start at most once
+per person per JST day, on every path.)
 """
 
 from __future__ import annotations
 
 import asyncio
+import re
 from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, time, timedelta, timezone
+from datetime import datetime, time, timedelta, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -99,6 +107,7 @@ CARD_CHECK_DELAY_S = 120.0  # after a sync, let the memory index build first
 STOP_TIMEOUT_S = 5.0
 PRUNE_AFTER = timedelta(days=400)
 RETRY_AFTER_FAILURE_S = 60.0  # the wait after a tick that raised
+FAILURE_LOG_INTERVAL = timedelta(hours=1)  # one line per repeating failure
 
 DELIVERY_ORDER = (
     "recap",
@@ -179,14 +188,19 @@ def _quiet_skip(kind: str, service: str, reason: str, count: int) -> None:
     )
 
 
-def _failed(stage: str, kind: str, service: str, exc: BaseException) -> None:
-    logger.error(
-        "memories_notify_failed",
-        stage=stage,
-        kind=kind,
-        service=service,
-        error_type=type(exc).__name__,
-    )
+_NOT_CODE = re.compile(r"[^A-Za-z0-9_.:]")
+
+
+def _where(exc: BaseException) -> str:
+    """The innermost frame of ``exc`` as ``module:function:line`` (code only)."""
+    tb = exc.__traceback__
+    if tb is None:
+        return "unknown"
+    while tb.tb_next is not None:
+        tb = tb.tb_next
+    frame = tb.tb_frame
+    module = frame.f_globals.get("__name__", "unknown")
+    return _NOT_CODE.sub("_", f"{module}:{frame.f_code.co_name}:{tb.tb_lineno}")
 
 
 class MemoriesNotifyScheduler:
@@ -214,8 +228,8 @@ class MemoriesNotifyScheduler:
         self._first_card_check = True
         self._card_pending: dict[str, datetime] = {}
         self._bad_birthdays: set[tuple[str, str]] = set()
-        # (service, member_id) -> (JST day, raw start, parsed start)
-        self._starts: dict[tuple[str, str], tuple[date, str | None, date | None]] = {}
+        # (stage, kind, error_type) -> (last logged at, suppressed since)
+        self._failure_log: dict[tuple[str, str, str], tuple[datetime, int]] = {}
 
     # --- lifecycle --------------------------------------------------------------
 
@@ -261,6 +275,26 @@ class MemoriesNotifyScheduler:
         self._card_pending.setdefault(service, self._clock())
         self._wake.set()
 
+    def _failed(self, stage: str, kind: str, service: str, exc: BaseException) -> None:
+        """``memories_notify_failed``, once per (stage, kind, error_type) per
+        :data:`FAILURE_LOG_INTERVAL`; ``repeats`` counts the suppressed ones."""
+        key = (stage, kind, type(exc).__name__)
+        now = self._clock()
+        last = self._failure_log.get(key)
+        if last is not None and now - last[0] < FAILURE_LOG_INTERVAL:
+            self._failure_log[key] = (last[0], last[1] + 1)
+            return
+        self._failure_log[key] = (now, 0)
+        logger.error(
+            "memories_notify_failed",
+            stage=stage,
+            kind=kind,
+            service=service,
+            error_type=key[2],
+            where=_where(exc),
+            repeats=last[1] if last is not None else 0,
+        )
+
     def _halted(self) -> bool:
         return self._stopping or is_shutting_down()
 
@@ -296,20 +330,14 @@ class MemoriesNotifyScheduler:
             )
             logger.info("memories_notify_pruned", count=pruned)
         except Exception as exc:
-            logger.error(
-                "memories_notify_failed", stage="prune", error_type=type(exc).__name__
-            )
+            self._failed("prune", "*", "*", exc)
         while not self._halted():
             try:
                 delay = (await self.tick()).next_in_s
             except asyncio.CancelledError:
                 raise
             except Exception as exc:
-                logger.error(
-                    "memories_notify_failed",
-                    stage="tick",
-                    error_type=type(exc).__name__,
-                )
+                self._failed("tick", "*", "*", exc)
                 delay = RETRY_AFTER_FAILURE_S
             if self._halted():
                 return
@@ -375,25 +403,16 @@ class MemoriesNotifyScheduler:
             except ValueError:
                 _skip("*", service, "unavailable")
                 continue
-            if not await asyncio.to_thread(sdir.is_dir):
+            try:
+                if not await asyncio.to_thread(sdir.is_dir):
+                    continue
+                summaries = await mi.list_members(sdir)
+            except Exception as exc:
+                self._failed("list", "*", service, exc)
                 continue
-            summaries = await mi.list_members(sdir)
             out[service] = _ServiceData(sdir, summaries)
         self._check()
         return out
-
-    def _subscription_start(
-        self, service: str, mid: str, summary: mi.MemberSummary, today: date
-    ) -> date | None:
-        """``binder.subscription_start``, parsed once per member per JST day, so
-        its ``bad_subscription_start`` breadcrumb is not repeated every tick."""
-        cached = self._starts.get((service, mid))
-        raw = summary.subscription_start
-        if cached is not None and cached[0] == today and cached[1] == raw:
-            return cached[2]
-        start = binder.subscription_start(summary)
-        self._starts[(service, mid)] = (today, raw, start)
-        return start
 
     def _occasions(
         self, data: Mapping[str, _ServiceData], now: datetime, slot: time
@@ -410,7 +429,7 @@ class MemoriesNotifyScheduler:
                         self._bad_birthdays.add((service, mid))
                         _skip("birthday", service, "bad_birthday", member_id=mid)
                 out += birthday_occasions(service, mid, summary.birthday, today, slot)
-                start = self._subscription_start(service, mid, summary, today)
+                start = binder.subscription_start(summary)
                 out += anniversary_occasions(service, mid, start, today, slot)
             out += recap_occasions(service, today, slot)
         return out
@@ -477,7 +496,7 @@ class MemoriesNotifyScheduler:
                 else:
                     counts.units.append(_Unit(otd, [_key(occ)]))
             except Exception as exc:
-                _failed("build", "on_this_day", "*", exc)
+                self._failed("build", "on_this_day", "*", exc)
 
         for service, sd in data.items():
             births = by_kind.get(("birthday", service), []) + by_kind.get(
@@ -495,7 +514,7 @@ class MemoriesNotifyScheduler:
                         for p in plans
                     ]
                 except Exception as exc:
-                    _failed("build", "birthday", service, exc)
+                    self._failed("build", "birthday", service, exc)
             annivs = by_kind.get(("anniversary", service), [])
             if annivs:
                 self._check()
@@ -510,7 +529,7 @@ class MemoriesNotifyScheduler:
                         _Unit(p, [_key(o) for o in covered]) for p, covered in groups
                     ]
                 except Exception as exc:
-                    _failed("build", "anniversary", service, exc)
+                    self._failed("build", "anniversary", service, exc)
             for occ in by_kind.get(("recap", service), []):
                 self._check()
                 try:
@@ -520,7 +539,7 @@ class MemoriesNotifyScheduler:
                     elif got is not None:
                         counts.units.append(_Unit(got, [_key(occ)]))
                 except Exception as exc:
-                    _failed("build", "recap", service, exc)
+                    self._failed("build", "recap", service, exc)
 
     async def _check_cards(
         self,
@@ -547,7 +566,10 @@ class MemoriesNotifyScheduler:
                 if sd is not None:
                     await self._check_service_cards(ctx, service, sd, counts, live)
             except Exception as exc:
-                _failed("cards", "card", service, exc)
+                self._failed("cards", "card", service, exc)
+                # Keep the mark, re-armed: retry CARD_CHECK_DELAY_S from now.
+                self._card_pending[service] = now
+                continue
             # Only a due, unchanged mark is used up; a first-tick check keeps a
             # mark that is not due yet, so the delayed check still runs.
             if mark is not None and mark <= ready:
@@ -586,38 +608,42 @@ class MemoriesNotifyScheduler:
             try:
                 await self._deliver_one(unit, counts)
             except Exception as exc:
-                _failed("deliver", unit.plan.kind, unit.plan.service, exc)
+                self._failed("deliver", unit.plan.kind, unit.plan.service, exc)
 
     async def _deliver_one(self, unit: _Unit, counts: _Counts) -> None:
         plan = unit.plan
         first, *rest = unit.covered
         if not await app_state.aclaim_memory_notification(*first):
             _quiet_skip(plan.kind, plan.service, "already_done", 1)
-            if unit.advance is not None:
-                await unit.advance.apply()  # another path claimed these keys
+            await self._advance(unit)  # another path claimed these keys
             return
         claimed = [first]
         for key in rest:
             if await app_state.aclaim_memory_notification(*key):
                 claimed.append(key)
-        if unit.advance is not None:
-            # Claimed: the toast is at most once from here, so the baseline
-            # may absorb these cards now (never before the claim).
-            await unit.advance.apply()
         if self._in_memories():
             _skip(plan.kind, plan.service, "in_memories", member_id=plan.member_id)
             await self._finish(claimed, "suppressed")
             counts.suppressed += 1
+            await self._advance(unit)
             return
         try:
             ok = await self._send(plan)
         except asyncio.CancelledError:
             raise  # the claim stays pending: never resent
         except Exception as exc:
-            _failed("send", plan.kind, plan.service, exc)
+            self._failed("send", plan.kind, plan.service, exc)
             ok = False
         await self._finish(claimed, "sent" if ok else "failed")
         counts.sent += int(ok)
+        await self._advance(unit)
+
+    async def _advance(self, unit: _Unit) -> None:
+        """A card toast's baseline advance, after its outcome is written (a
+        failed write never costs the toast; a crash before it is recovered by
+        the next check, whose claim finds the row and only advances)."""
+        if unit.advance is not None:
+            await unit.advance.apply()
 
     async def _finish(self, keys: Sequence[NotifyKey], outcome: str) -> None:
         for key in keys:

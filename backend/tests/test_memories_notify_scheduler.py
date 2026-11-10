@@ -62,6 +62,9 @@ def safe_logs():
             if isinstance(value, (bool, int, float)):
                 continue
             assert isinstance(value, str), (name, key)
+            if key == "where":
+                assert re.fullmatch(r"[A-Za-z0-9_.:]{1,160}", value)
+                continue
             if key == "error_type":
                 assert re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]{0,63}", value)
                 continue
@@ -1270,3 +1273,191 @@ async def test_card_already_claimed_elsewhere_still_advances(cards, monkeypatch)
     await s.tick()
     assert hh.sent == []
     assert "moment.midnight" in app_state.get_card_baseline(HINATA, "58")[0]
+
+
+# --- fix wave 2 --------------------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_bad_start_not_relogged_when_her_data_changes_the_same_day(
+    cards, safe_logs
+):
+    hh, sdir = cards
+    write_side_inputs(sdir, sub_starts={"34": "not-a-date"})
+    s = hh.make()
+
+    def bad_starts():
+        return [
+            e
+            for e in safe_logs
+            if e["event"] == "memories_skip"
+            and e.get("reason") == "bad_subscription_start"
+        ]
+
+    await s.tick()  # occasions + the first card seed
+    assert len(bad_starts()) == 1
+    room(sdir, KANE, [*KANE_DAYS, msg(3, "2026-11-10T01:00:00Z", content=WORDS)])
+    s.request_card_check(HINATA)
+    hh.clock.move(NOON + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    await s.tick()  # re-evaluates her cards (hash changed)
+    assert len(bad_starts()) == 1
+
+
+@pytest.mark.asyncio
+async def test_one_service_listing_error_does_not_abort_the_tick(
+    out, svc, clock, monkeypatch, safe_logs
+):
+    (out / "櫻坂46").mkdir(parents=True)
+    real = mi.list_members
+
+    async def listing(sdir):
+        if sdir.name == "櫻坂46":
+            raise ValueError("bad group id")
+        return await real(sdir)
+
+    monkeypatch.setattr(mi, "list_members", listing)
+    hh = Harness(clock)
+    await hh.make(services=("sakurazaka46", HINATA)).tick()
+    assert kinds(hh.sent) == ["on_this_day"]
+    assert failures(safe_logs, "list") == [("*", "sakurazaka46")]
+
+
+@pytest.mark.asyncio
+async def test_failed_card_check_keeps_its_mark_and_retries_after_the_delay(
+    cards, monkeypatch
+):
+    hh, sdir = cards
+    s = hh.make()
+    await s.tick()  # seed
+    room(sdir, KANE, [*KANE_DAYS, msg(3, "2026-11-09T15:03:00Z", content=WORDS)])
+    real = nc.card_plans
+    fail = {"left": 1}
+
+    async def flaky(*args):
+        if fail["left"]:
+            fail["left"] -= 1
+            raise RuntimeError("locked")
+        return await real(*args)
+
+    monkeypatch.setattr(nc, "card_plans", flaky)
+    s.request_card_check(HINATA)
+    t1 = NOON + timedelta(seconds=ns.CARD_CHECK_DELAY_S)
+    hh.clock.move(t1)
+    await s.tick()
+    assert hh.sent == [] and s._card_pending == {HINATA: t1}  # re-armed
+    hh.clock.move(t1 + timedelta(seconds=ns.CARD_CHECK_DELAY_S - 1))
+    r = await s.tick()
+    assert hh.sent == [] and r.next_in_s == 1
+    hh.clock.move(t1 + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert kinds(hh.sent) == ["card"] and s._card_pending == {}
+
+
+async def _new_midnight_card(hh, sdir, s):
+    await s.tick()  # seed
+    seeded, _ = app_state.get_card_baseline(HINATA, "58")
+    room(sdir, KANE, [*KANE_DAYS, msg(3, "2026-11-09T15:03:00Z", content=WORDS)])
+    s.request_card_check(HINATA)
+    hh.clock.move(hh.clock.now() + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    return seeded
+
+
+CARD_KEY = ("card", HINATA, "58", "moment.midnight")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("how", ["false", "raise"])
+async def test_card_send_failure_ends_failed_and_advances(cards, how):
+    hh, sdir = cards
+
+    async def bad_send(plan):
+        hh.sent.append(plan)
+        if how == "raise":
+            raise RuntimeError("toast")
+        return False
+
+    s = hh.make(send=bad_send)
+    await _new_midnight_card(hh, sdir, s)
+    await s.tick()
+    assert rows()[CARD_KEY] == "failed"
+    assert "moment.midnight" in app_state.get_card_baseline(HINATA, "58")[0]
+    s.request_card_check(HINATA)
+    hh.clock.move(hh.clock.now() + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert len(hh.sent) == 1  # never retried
+
+
+@pytest.mark.asyncio
+async def test_card_crash_after_claim_recovers_without_a_duplicate(cards):
+    hh, sdir = cards
+
+    async def crash(plan):
+        raise asyncio.CancelledError  # the process dies mid-show
+
+    s = hh.make(send=crash)
+    seeded = await _new_midnight_card(hh, sdir, s)
+    with pytest.raises(asyncio.CancelledError):
+        await s.tick()
+    assert rows()[CARD_KEY] == "pending"  # a real pending row
+    assert app_state.get_card_baseline(HINATA, "58")[0] == seeded  # not advanced
+    # restart: a new instance; its first tick re-checks the card
+    s2 = hh.make()
+    hh.clock.move(hh.clock.now() + timedelta(minutes=5))
+    await s2.tick()
+    assert hh.sent == []  # the ledger blocks the duplicate
+    assert rows()[CARD_KEY] == "pending"
+    assert "moment.midnight" in app_state.get_card_baseline(HINATA, "58")[0]
+
+
+@pytest.mark.asyncio
+async def test_card_baseline_write_failure_never_costs_the_toast(
+    cards, monkeypatch, safe_logs
+):
+    hh, sdir = cards
+    s = hh.make()
+    await _new_midnight_card(hh, sdir, s)
+    real_apply = nc.BaselineAdvance.apply
+
+    async def broken(self):
+        raise RuntimeError("locked")
+
+    monkeypatch.setattr(nc.BaselineAdvance, "apply", broken)
+    await s.tick()
+    assert kinds(hh.sent) == ["card"] and rows()[CARD_KEY] == "sent"
+    assert failures(safe_logs, "deliver") == [("card", HINATA)]
+    monkeypatch.setattr(nc.BaselineAdvance, "apply", real_apply)
+    s.request_card_check(HINATA)
+    hh.clock.move(hh.clock.now() + timedelta(seconds=ns.CARD_CHECK_DELAY_S))
+    await s.tick()
+    assert len(hh.sent) == 1  # recovered by the ledger, no duplicate
+    assert "moment.midnight" in app_state.get_card_baseline(HINATA, "58")[0]
+
+
+@pytest.mark.asyncio
+async def test_repeated_failure_is_logged_once_per_hour(busy, monkeypatch, safe_logs):
+    monkeypatch.setattr(nc, "birthday_plans", _boom)
+    s = busy.make()
+
+    def logged():
+        return [
+            e
+            for e in safe_logs
+            if e["event"] == "memories_notify_failed" and e["stage"] == "build"
+        ]
+
+    await s.tick()
+    busy.clock.move(NOON + timedelta(minutes=15))
+    await s.tick()
+    busy.clock.move(NOON + timedelta(minutes=30))
+    await s.tick()
+    assert len(logged()) == 1
+    first = logged()[0]
+    assert first["kind"] == "birthday" and first["repeats"] == 0
+    assert re.search(r"test_memories_notify_scheduler:_boom:\d+$", first["where"])
+    busy.clock.move(NOON + timedelta(hours=1))
+    await s.tick()
+    assert [e["repeats"] for e in logged()] == [0, 2]
+
+
+def test_where_without_a_traceback_is_unknown():
+    assert ns._where(RuntimeError("x")) == "unknown"
