@@ -5,32 +5,18 @@ import pytest
 
 from backend.services.memories import facts as mf
 from backend.services.memories import index as mi
+from backend.tests.memories_archive import msg as m
+from backend.tests.memories_archive import write_room
 
 
 def _member(root, msgs, *, avatars=None):
-    d = root / "messages" / "34 金村 美玖" / "58 金村 美玖"
-    d.mkdir(parents=True)
-    (d / "messages.json").write_text(
-        json.dumps({"member": {}, "messages": msgs}, ensure_ascii=False),
-        encoding="utf-8",
-    )
+    d = write_room(root, "34 金村 美玖", "58 金村 美玖", msgs)
     if avatars is not None:
         (d / "profile_images").mkdir()
         (d / "profile_images" / "index.json").write_text(
             json.dumps(avatars), encoding="utf-8"
         )
     return d
-
-
-def m(i, ts, type_="text", content="", fav=False, **extra):
-    return {
-        "id": i,
-        "timestamp": ts,
-        "type": type_,
-        "content": content,
-        "is_favorite": fav,
-        **extra,
-    }
 
 
 ROWS = [
@@ -259,8 +245,6 @@ ON_THIS_DAY_ROWS = [
 
 @pytest.fixture
 def on_this_day(tmp_path):
-    from backend.tests.memories_archive import write_room
-
     mi.set_db_path(tmp_path / "idx.db")
     d = write_room(tmp_path, "34 金村 美玖", "58 金村 美玖", ON_THIS_DAY_ROWS)
     return tmp_path, d

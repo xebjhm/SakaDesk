@@ -15,6 +15,7 @@ from backend.services import app_state
 from backend.services.memories import index as mi
 from backend.services.memories import oshi as oshi_mod
 from backend.services.memories import recap
+from backend.tests import memories_archive as arch
 
 JST = ZoneInfo("Asia/Tokyo")
 SERVICE = "hinatazaka46"
@@ -35,14 +36,7 @@ def utc(jst: str) -> str:
 
 
 def m(i, jst, type_="text", content="", fav=False, **extra):
-    return {
-        "id": i,
-        "timestamp": utc(jst),
-        "type": type_,
-        "content": content,
-        "is_favorite": fav,
-        **extra,
-    }
+    return arch.msg(i, utc(jst), type_, content, fav, **extra)
 
 
 def pic(i, jst, room=KANEMURA, fav=False, ext="jpg", type_="picture"):
@@ -73,32 +67,15 @@ def filler(start_id, n, month=2, hour=12):
 
 
 def write_room(svc, room, msgs, letters=None):
-    d = svc / "messages" / room[0] / room[1]
-    d.mkdir(parents=True)
-    (d / "messages.json").write_text(
-        json.dumps({"member": {}, "messages": msgs}, ensure_ascii=False),
-        encoding="utf-8",
-    )
-    if letters is not None:
-        (d / "letters.json").write_text(
-            json.dumps({"letters": letters}, ensure_ascii=False), encoding="utf-8"
-        )
-    return d
+    return arch.write_room(svc, room[0], room[1], msgs, letters=letters)
 
 
 def write_subs(svc, starts):
-    (svc / "memories").mkdir(exist_ok=True)
-    (svc / "memories" / "subscriptions.json").write_text(
-        json.dumps({"groups": {g: {"earliest_start": s} for g, s in starts.items()}}),
-        encoding="utf-8",
-    )
+    arch.write_side_inputs(svc, sub_starts=starts)
 
 
 def write_closed(svc, gids):
-    (svc / "sync_metadata.json").write_text(
-        json.dumps({"server_groups": {g: {"state": "closed"} for g in gids}}),
-        encoding="utf-8",
-    )
+    arch.write_side_inputs(svc, closed_groups=list(gids))
 
 
 LONG = (
@@ -1063,14 +1040,7 @@ KANE_MEDIA = (
 
 
 def write_birthdays(svc, birthdays):
-    (svc / "memories").mkdir(exist_ok=True)
-    (svc / "memories" / "member_profiles.json").write_text(
-        json.dumps(
-            {"updated_at": "2026-11-01T00:00:00+00:00", "birthdays": birthdays},
-            ensure_ascii=False,
-        ),
-        encoding="utf-8",
-    )
+    arch.write_side_inputs(svc, birthdays=birthdays)
 
 
 def selects_of(logs):
