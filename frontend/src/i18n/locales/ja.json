@@ -760,9 +760,9 @@
       "radio": "ボイスラジオ",
       "gacha": "思い出ガチャ",
       "calendar": "カレンダー",
-      "countVoices": "{{count}} 件のボイス",
-      "countGacha": "今日はあと {{count}} 回",
-      "countDays": "{{count}} 日分",
+      "countVoices": "{{count, number}} 件のボイス",
+      "countGacha": "今日はあと {{count, number}} 回",
+      "countDays": "{{count, number}} 日分",
       "gachaTomorrow": "また明日"
     },
     "common": {

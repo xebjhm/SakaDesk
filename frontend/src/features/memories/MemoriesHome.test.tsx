@@ -117,6 +117,13 @@ describe('MemoriesHome (hub board)', () => {
         expect(go).toHaveBeenCalledWith({ page: 'calendar' });
     });
 
+    it('formats large fun-wave counts like the core counts (1,234)', async () => {
+        vi.mocked(fetchHub).mockResolvedValue(hubPayload({ counts: { album: 8412, members: 27, favorites: 96, voices: 1234, days: 2048 } }));
+        renderHome();
+        expect(await screen.findByText('1,234 voices')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: /Calendar/ })).toHaveTextContent('2,048 days');
+    });
+
     it('says "see you tomorrow" on the gacha card when today\'s pulls are used, never 0', async () => {
         vi.mocked(fetchHub).mockResolvedValue(hubPayload({ gacha_left: 0 }));
         renderHome();

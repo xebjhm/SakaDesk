@@ -760,9 +760,9 @@
       "radio": "语音电台",
       "gacha": "回忆扭蛋",
       "calendar": "日历",
-      "countVoices": "{{count}} 条语音",
-      "countGacha": "今天还有 {{count}} 次",
-      "countDays": "{{count}} 天",
+      "countVoices": "{{count, number}} 条语音",
+      "countGacha": "今天还有 {{count, number}} 次",
+      "countDays": "{{count, number}} 天",
       "gachaTomorrow": "明天见"
     },
     "common": {

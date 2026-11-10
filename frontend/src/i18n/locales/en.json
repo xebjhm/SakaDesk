@@ -771,11 +771,11 @@
       "radio": "Voice radio",
       "gacha": "Memory gacha",
       "calendar": "Calendar",
-      "countVoices": "{{count}} voice",
-      "countVoices_other": "{{count}} voices",
-      "countGacha": "{{count}} left today",
-      "countDays": "{{count}} day",
-      "countDays_other": "{{count}} days",
+      "countVoices": "{{count, number}} voice",
+      "countVoices_other": "{{count, number}} voices",
+      "countGacha": "{{count, number}} left today",
+      "countDays": "{{count, number}} day",
+      "countDays_other": "{{count, number}} days",
       "gachaTomorrow": "See you tomorrow"
     },
     "common": {

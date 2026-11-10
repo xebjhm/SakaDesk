@@ -1,8 +1,9 @@
 import { describe, it, expect } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { aurora, color, groupTokens, memories } from './tokens';
+import { aurora, brandInk, color, groupTokens, memories } from './tokens';
 import { staticTokenVars } from './cssVars';
+import { contrastRatio } from './contrast';
 
 // The Memories fun-wave surfaces (DESIGN_SYSTEM.md "Memories keepsake surfaces"): gacha rarity,
 // the radio night and its on-air lamp, the 24h sky and the capsule note. All semantic.
@@ -12,6 +13,19 @@ const rgb = (hex: string) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 
 /** Plain RGB distance: a value this far apart reads as a different colour, not a shade of it. */
 const distance = (a: string, b: string) => Math.hypot(...rgb(a).map((v, i) => v - rgb(b)[i]));
 const hexesOf = (value: unknown): string[] => (JSON.stringify(value).match(HEX) ?? []).map((h) => h.toLowerCase());
+/** The hue (0-360) of a hex colour. */
+const hue = (hex: string) => {
+    const [r, g, b] = rgb(hex).map((v) => v / 255);
+    const max = Math.max(r, g, b);
+    const d = max - Math.min(r, g, b);
+    if (d === 0) return 0;
+    const h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    return (h * 60 + 360) % 360;
+};
+const hueGap = (a: string, b: string) => { const d = Math.abs(hue(a) - hue(b)); return Math.min(d, 360 - d); };
+/** `color-mix(in srgb, a p%, b)` of two hex colours, as hex (the night gradient's last stop). */
+const mix = (a: string, p: number, b: string) => `#${rgb(a).map((v, i) => Math.round(v * p + rgb(b)[i] * (1 - p)).toString(16).padStart(2, '0')).join('')}`;
+const contrast = (a: string, b: string) => contrastRatio(a, b) ?? 0;
 
 /** The fun values with a colour of their own (`rarity.n` is the neutral `border-strong` on purpose). */
 const FUN_VALUES = [
@@ -24,10 +38,30 @@ describe('memories fun tokens', () => {
         expect(memories.rarity.n).toBe(color.border.strong);
     });
 
-    it('keeps the r rarity a rose apart from every oshi pink and from danger', () => {
+    it('keeps the r rarity clearly apart from every oshi pink and from danger', () => {
         const { oshi, danger } = color.semantic;
         for (const pink of [oshi.solid, oshi.text, oshi.border, oshi.subtle, danger.solid, danger.text]) {
-            expect(distance(memories.rarity.r, pink), pink).toBeGreaterThanOrEqual(45);
+            expect(distance(memories.rarity.r, pink), pink).toBeGreaterThanOrEqual(60);
+        }
+        // A different hue family from the magenta 推 pink, not a shade of it.
+        expect(hueGap(memories.rarity.r, oshi.solid)).toBeGreaterThanOrEqual(30);
+        expect(hueGap(memories.rarity.r, oshi.text)).toBeGreaterThanOrEqual(30);
+    });
+
+    it('keeps the ordinary dark text readable on the rarity fills, the note and the dawn sky', () => {
+        const dawn = hexesOf(memories.sky)[0];
+        for (const fill of [memories.rarity.n, memories.rarity.r, memories.note, dawn]) {
+            expect(contrast(color.text.primary, fill), fill).toBeGreaterThanOrEqual(4.5);
+        }
+    });
+
+    it('inks the whole radio night at 4.5:1 and lights the on-air lamp at 3:1 (non-text) on it', () => {
+        const [midnight] = hexesOf(memories.night);
+        const lavender = aurora.stops[1];
+        const stops = [midnight, brandInk[900], mix(lavender, 0.12, brandInk[900])];
+        for (const stop of stops) {
+            expect(contrast(memories.nightInk, stop), stop).toBeGreaterThanOrEqual(4.5);
+            expect(contrast(memories.onAir, stop), stop).toBeGreaterThanOrEqual(3);
         }
     });
 
@@ -100,11 +134,14 @@ describe('memories fun utilities (tailwind.config.js)', () => {
         ['backgroundImage', 'memories-night', '--ds-mem-night'],
         ['textColor', 'memories-night-ink', '--ds-mem-night-ink'],
         ['backgroundColor', 'memories-onair', '--ds-mem-onair'],
-        ['textColor', 'memories-onair', '--ds-mem-onair'],
         ['backgroundImage', 'memories-sky', '--ds-mem-sky'],
         ['backgroundColor', 'memories-note', '--ds-mem-note'],
     ])('%s has %s', (name, key, variable) => {
         expect(section(name)).toContain(`'${key}': 'var(${variable})'`);
+    });
+
+    it('offers the on-air lamp as a fill only, never as a text colour (it is under 4.5:1 for text)', () => {
+        expect(section('textColor')).not.toContain('memories-onair');
     });
 
     it('documents every fun utility as semantic in DESIGN_SYSTEM.md', () => {

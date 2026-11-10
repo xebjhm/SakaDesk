@@ -149,9 +149,8 @@ export default {
                 'memories-note': 'var(--ds-mem-note)',
             },
             textColor: {
-                // Memories fun wave (semantic): ink on the radio night, and the on-air lamp's glyph.
+                // Memories fun wave (semantic): ink on the radio night (the on-air lamp is non-text only).
                 'memories-night-ink': 'var(--ds-mem-night-ink)',
-                'memories-onair': 'var(--ds-mem-onair)',
                 accent: 'var(--ds-accent)',
                 'accent-strong': 'var(--ds-accent-strong)',
                 'accent-tonal': 'var(--ds-accent-tonal-text)',

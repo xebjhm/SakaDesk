@@ -800,10 +800,10 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
 | `border-memories-silhouette` | `--ds-mem-silhouette` | The dashed outline of an unearned card (`border-dashed`), the neutral `border-strong` value. |
 | `sepia-memories-1/2/3` | `--ds-mem-sepia-1/2/3` | A photo aged by its year (see below). |
 | `bg-memories-rarity-n` | `--ds-mem-rarity-n` | Gacha N rarity: the neutral `border-strong` value. |
-| `bg-memories-rarity-r` | `--ds-mem-rarity-r` | Gacha R rarity: a dusty rose, kept apart from the oshi pink. |
+| `bg-memories-rarity-r` | `--ds-mem-rarity-r` | Gacha R rarity: a warm rose gold, its hue well away from the magenta oshi pink. |
 | `bg-memories-rarity-sr` | `--ds-mem-rarity-sr` | Gacha SR rarity: the foil's gold, a gold sheen through the aurora peach stop (not the star yellow). |
 | `bg-memories-night` / `text-memories-night-ink` | `--ds-mem-night` / `--ds-mem-night-ink` | The voice radio's night surface (deep navy into the brand ink, lit by the aurora lavender) and the text on it (the aurora sky stop). |
-| `bg-memories-onair` / `text-memories-onair` | `--ds-mem-onair` | The radio's ON AIR lamp: a warm red-orange, apart from danger red. |
+| `bg-memories-onair` | `--ds-mem-onair` | The radio's ON AIR lamp: a warm red-orange, apart from danger red. Non-text only (a lamp dot on the night surface); there is no text utility. |
 | `bg-memories-sky` | `--ds-mem-sky` | 彼女の24時間's vertical sky: dawn, day, dusk, night. |
 | `bg-memories-note` | `--ds-mem-note` | A 時光膠囊 sticky note: a warm paper yellow, apart from the favourite star. |
 
@@ -821,6 +821,10 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   or danger red. Group colour stays for identity, the current state and one primary action. The
   on-air lamp is an indicator, not an error: never use it for failures (that is
   `semantic-danger`). Rarity colours mark a gacha card's tier only.
+- **Inks on the fun surfaces.** On `bg-memories-night` use `text-memories-night-ink` (at least
+  4.5:1 over the whole gradient). The on-air lamp is a non-text indicator (at least 3:1 on the
+  night). Rarity fills, `bg-memories-note` and the light top of `bg-memories-sky` take the
+  ordinary dark text roles (`text-primary`); the night end of the sky carries no text.
 - **Paper, cork and tape are materials, not colours.** Use them for the surfaces they name; text
   on them uses the ordinary text roles.
 - **Album colour ribbon and month tint (data-driven exception).** Like the member penlight

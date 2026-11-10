@@ -11,6 +11,10 @@
  * abort rejects with the fetch's `AbortError`. Logging is the caller's (`memories_load` in
  * `useMemoriesQuery`).
  *
+ * A write that timed out (or was aborted) may still have been committed by the server: callers
+ * refetch the state (`fetchGacha`, `fetchCapsule`) instead of retrying the write, which could add
+ * a second note or spend another pull.
+ *
  * These are plain fetches, not `pollJson`: `pollJson` skips or replaces requests per key, so
  * two loads of one endpoint would collide. The timeout is long because a cache miss can take a
  * while to build; it exists so a stalled backend never leaves an endless spinner.

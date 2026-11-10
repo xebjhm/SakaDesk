@@ -50,9 +50,9 @@ describe('memories fun strings', () => {
             'memories.home.radio': 'ボイスラジオ',
             'memories.home.gacha': '思い出ガチャ',
             'memories.home.calendar': 'カレンダー',
-            'memories.home.countVoices': '{{count}} 件のボイス',
-            'memories.home.countGacha': '今日はあと {{count}} 回',
-            'memories.home.countDays': '{{count}} 日分',
+            'memories.home.countVoices': '{{count, number}} 件のボイス',
+            'memories.home.countGacha': '今日はあと {{count, number}} 回',
+            'memories.home.countDays': '{{count, number}} 日分',
             'memories.home.gachaTomorrow': 'また明日',
             'memories.memoir.tabDay24': '彼女の24時間',
         };

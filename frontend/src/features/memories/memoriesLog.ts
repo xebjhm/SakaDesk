@@ -1,5 +1,5 @@
 import { clientLog } from '../../utils/clientLog';
-import type { CapsuleAnchorKind, GachaRarity, GachaReason, RadioProgram } from './types';
+import type { AlbumKind, CapsuleAnchorKind, GachaRarity, GachaReason, RadioProgram } from './types';
 
 /** The Memories router's pages (route names, camelCase). */
 export const MEMORIES_PAGES = [
@@ -93,11 +93,14 @@ export const MEMORIES_TOGGLES = [
 ] as const;
 export type MemoriesToggle = (typeof MEMORIES_TOGGLES)[number];
 
+/** `memories_toggle` `kind`: an album filter or a radio program (the fixture lists exactly these). */
+export type MemoriesToggleKind = AlbumKind | RadioProgram;
+
 /**
  * `memories_toggle`: a Memories control was switched. `target` is the control code; `kind` a filter
  * code (an album kind or a radio program).
  */
-export function logMemoriesToggle(target: MemoriesToggle, on: boolean, extra: { kind?: string } = {}): void {
+export function logMemoriesToggle(target: MemoriesToggle, on: boolean, extra: { kind?: MemoriesToggleKind } = {}): void {
     clientLog('memories_toggle', { target, outcome: on ? 'on' : 'off', ...extra });
 }
 

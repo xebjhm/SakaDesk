@@ -150,7 +150,8 @@ describe('Memories feature', () => {
             { route: { page: 'radio' }, testId: 'memories-page-radio', title: 'Voice radio', code: 'radio' },
             { route: { page: 'gacha' }, testId: 'memories-page-gacha', title: 'Memory gacha', code: 'gacha' },
             { route: { page: 'calendar', month: '2024-09' }, testId: 'memories-page-calendar', title: 'Calendar', code: 'calendar' },
-            { route: { page: 'day', date: '2024-09-14' }, testId: 'memories-page-day', title: /2024/, code: 'day' },
+            // JST midnight on Jan 1: a title formatted in UTC would read "Dec 31, 2023".
+            { route: { page: 'day', date: '2024-01-01' }, testId: 'memories-page-day', title: 'Jan 1, 2024', code: 'day' },
         ] as const;
 
         it.each(FUN)('opens the $route.page placeholder, logs its snake_case code and returns home', async ({ route, testId, title, code }) => {
@@ -161,6 +162,14 @@ describe('Memories feature', () => {
             expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_page', { target: code });
             await userEvent.click(screen.getByRole('button', { name: 'Back' }));
             expect(screen.getByTestId('memories-home')).toBeInTheDocument();
+        });
+
+        it.each(FUN)('resets the $route.page page to home when the service changes', ({ route, testId }) => {
+            const { rerender } = render(<MemoriesFeature service="hinatazaka46" initialRoute={route} />);
+            expect(screen.getByTestId(testId)).toBeInTheDocument();
+            rerender(<MemoriesFeature service="sakurazaka46" initialRoute={route} />);
+            expect(screen.getByTestId('memories-home')).toBeInTheDocument();
+            expect(screen.queryByTestId(testId)).toBeNull();
         });
 
         it('a day opened from the calendar goes back to the calendar', async () => {
