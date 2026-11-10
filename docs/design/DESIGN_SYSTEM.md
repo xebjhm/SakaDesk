@@ -854,6 +854,16 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   sweep over it (`motion-reduce:hidden`: under reduced motion only the still sheen stays). The
   graduation card's memorial foil never sweeps. The あなた shelf shows an envelope and the fan's
   date, never her words, and does not open.
+- **The hub board** (`features/memories/MemoriesHome.tsx`, `home/`): a fixed viewport with a
+  serif title, the large On This Day card and a grid of entry cards that scrolls inside itself
+  when the pane is short. The On This Day card is the hub's brand moment: an `Atmosphere`
+  (`fade`) behind a `bg-frost backdrop-blur-frost` card holding the rule's serif label (never
+  "today" for a nearby or first moment), her name, her words (three lines) and that day's photo
+  on `bg-memories-paper`, aged with `sepiaClass`. The entry cards (`hubCards.ts` registry, the
+  recap card included) share one neutral face: a `bg-expressive-soft` icon disc in `text-muted`,
+  a serif title and one count line, hidden when the count is zero. The 誕生日・記念日 card
+  carries one number per line (the days, or the anniversary year on the day itself). The
+  group colour appears only as the hover glow and focus ring.
 
 ### The group rail and the profile card
 

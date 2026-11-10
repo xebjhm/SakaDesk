@@ -6,6 +6,7 @@ import { server } from '../../__tests__/mocks/server';
 import i18n from '../../i18n';
 import { SERVICE_FEATURES, getAvailableFeatures } from '../../config/features';
 import { MemoriesFeature } from './MemoriesFeature';
+import { hubPayload } from './home/__fixtures__';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../utils/clientLog';
@@ -32,6 +33,8 @@ beforeEach(() => {
         http.get('/api/memories/:service/album/colors', () => HttpResponse.json({ colors: {} })),
         // The favorites page (C10) loads its board.
         http.get('/api/memories/:service/favorites', () => HttpResponse.json({ total: 0, members: [], items: [] })),
+        // The hub board (C13) loads its moment, counts and countdown.
+        http.get('/api/memories/:service/hub', () => HttpResponse.json(hubPayload())),
         // The memoir page (C11) loads its member list.
         http.get('/api/memories/:service/memoir/members', () => HttpResponse.json({ members: [] })),
         http.get('/api/memories/:service/recap/years', () => (
@@ -182,7 +185,8 @@ describe('Memories feature', () => {
             render(<MemoriesFeature service="hinatazaka46" />);
             const loading = screen.getByTestId('memories-recap-loading');
             expect(loading).toHaveTextContent('Loading');
-            expect(screen.queryByRole('button')).toBeNull();
+            // The recap card is not clickable (the hub's other cards are, C13).
+            expect(screen.queryByRole('button', { name: /Year recap/ })).toBeNull();
             expect(screen.getByTestId('memories-home').textContent).not.toMatch(/20\d\d/);
             release();
             // The shelf's newest year (not the default 2025) is what opens.

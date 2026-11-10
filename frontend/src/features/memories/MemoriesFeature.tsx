@@ -122,9 +122,11 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
     } else if (route.page === 'home') {
         page = (
             <MemoriesHome
+                service={service}
                 recap={card}
                 onOpenRecap={(year) => go({ page: 'recap', year })}
                 onRetry={() => setAttempt((n) => n + 1)}
+                go={go}
             />
         );
     } else if (route.page === 'onThisDay') {

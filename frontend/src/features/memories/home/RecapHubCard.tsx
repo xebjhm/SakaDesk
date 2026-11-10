@@ -2,6 +2,7 @@ import React from 'react';
 import { Sparkles } from 'lucide-react';
 import { Button, Card } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
+import { HUB_CARD_BUTTON, HUB_CARD_STILL, HubCardFace } from './HubEntryCard';
 
 /**
  * The recap card: the shelf is still loading (nothing clickable), failed (retry),
@@ -21,15 +22,7 @@ interface RecapHubCardProps {
 
 const CardFace: React.FC<{ sub: React.ReactNode }> = ({ sub }) => {
     const { t } = useTranslation();
-    return (
-        <>
-            <span aria-hidden="true" className="flex rounded-full bg-expressive-soft p-4 text-muted [&_svg]:h-8 [&_svg]:w-8">
-                <Sparkles />
-            </span>
-            <span className="font-display text-title">{t('memories.home.recapCard')}</span>
-            <span className="text-small text-secondary">{sub}</span>
-        </>
-    );
+    return <HubCardFace icon={Sparkles} title={t('memories.home.recapCard')} sub={sub} />;
 };
 
 /**
@@ -41,14 +34,14 @@ const CardFace: React.FC<{ sub: React.ReactNode }> = ({ sub }) => {
  */
 export const RecapHubCard: React.FC<RecapHubCardProps> = ({ recap, onOpenRecap, onRetry }) => {
     const { t } = useTranslation();
-    const quiet = 'flex min-w-48 flex-col items-center gap-3 px-8 py-6 text-primary';
+    const quiet = HUB_CARD_STILL;
     let body: React.ReactNode;
     if (recap.kind === 'open') {
         body = (
             <button
                 type="button"
                 onClick={() => onOpenRecap(recap.year)}
-                className="flex min-w-48 flex-col items-center gap-3 rounded-card px-8 py-6 text-primary transition-shadow hover:shadow-accent-glow-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                className={HUB_CARD_BUTTON}
             >
                 <CardFace sub={recap.partial ? t('recap.entry.partial', { year: recap.year }) : t('recap.entry.year', { year: recap.year })} />
             </button>
@@ -79,5 +72,5 @@ export const RecapHubCard: React.FC<RecapHubCardProps> = ({ recap, onOpenRecap, 
             </div>
         );
     }
-    return <Card className="p-0">{body}</Card>;
+    return <Card className="h-full p-0">{body}</Card>;
 };
