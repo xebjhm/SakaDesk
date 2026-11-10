@@ -6,9 +6,16 @@ hundreds of megabytes of bitmaps per screen, so ``GET /api/content/thumb``
 serves a WebP no wider or taller than one of :data:`ALLOWED_WIDTHS` instead
 (aspect kept, never upscaled, EXIF orientation applied).
 
-- **Pictures only.** A source whose suffix is not in :data:`PICTURE_SUFFIXES`
-  (a video, a voice note, anything unknown) gets ``None`` (the route answers
-  404 and the frontend falls back to the full media URL) without being opened.
+- **Pictures, and videos through their poster.** A source whose suffix is in
+  neither :data:`PICTURE_SUFFIXES` nor :data:`VIDEO_SUFFIXES` (a voice note,
+  anything unknown) gets ``None`` (the route answers 404 and the frontend
+  falls back to the full media URL) without being opened. A video's variant
+  is rendered from its cached poster frame (``video_poster.poster_path``,
+  opened with ``formats=("WEBP",)``) under the **video's** key
+  (``variant_name(rel, video size, video mtime_ns, w)``), and ``v`` is the
+  video's version. Without a poster a video gets ``None``: the request path
+  never calls the Windows Shell (posters are made by the background worker
+  or uploaded by the client, see ``backend.services.video_poster``).
 - **Untrusted input.** ``Image.open`` only tries the formats of
   :func:`picture_formats` (JPEG, MPO, PNG, WebP, GIF, plus HEIF / AVIF when a
   plugin provides them), so EPS and other exotic decoders are never reached
@@ -110,6 +117,10 @@ ALLOWED_WIDTHS: frozenset[int] = frozenset({160, 320, 640})
 PICTURE_SUFFIXES: frozenset[str] = frozenset(
     {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".avif"}
 )
+VIDEO_SUFFIXES: frozenset[str] = frozenset({".mp4", ".mov", ".m4v"})
+"""Videos whose thumbnail comes from a poster frame. Owned here (with
+:data:`PICTURE_SUFFIXES`) so ``media_meta`` and ``video_poster`` import both
+from one place without an import cycle."""
 BASE_FORMATS: tuple[str, ...] = ("JPEG", "MPO", "PNG", "WEBP", "GIF")
 OPTIONAL_FORMATS: tuple[str, ...] = ("HEIF", "AVIF")
 DRAFT_FORMATS = frozenset({"JPEG", "MPO"})
@@ -168,6 +179,10 @@ def cache_dir() -> Path:
 
 def is_picture(path: Path) -> bool:
     return path.suffix.lower() in PICTURE_SUFFIXES
+
+
+def is_video(path: Path) -> bool:
+    return path.suffix.lower() in VIDEO_SUFFIXES
 
 
 def _skip(reason: str, e: BaseException | None = None) -> None:
@@ -735,7 +750,8 @@ async def thumbnail_with_token(
     """
     if width not in ALLOWED_WIDTHS:
         raise ValueError(f"unsupported thumbnail width: {width}")
-    if not is_picture(source):
+    video = is_video(source)
+    if not video and not is_picture(source):
         _skip("not_picture")
         return None
     root = cache_dir() if root is None else root
@@ -747,6 +763,13 @@ async def thumbnail_with_token(
         logger.debug("photo_thumb_cache", outcome="hit", width=width)
         return ThumbResult(hit, token)
     larger = await run_io(_larger_variant, rel_path, stat, width, root)
+    formats: tuple[str, ...] | None = None
+    if video and larger is None:
+        poster = await run_io(_poster_of, rel_path, stat)
+        if poster is None:  # no poster yet: 404, the client falls back
+            _skip("no_poster")
+            return None
+        source, formats = poster, ("WEBP",)
     async with _decode_slots():
         if larger is not None:
             # Our own WebP, still opened under an allowlist and the pixel bound.
@@ -756,9 +779,24 @@ async def thumbnail_with_token(
             if made is not None:
                 logger.debug("photo_thumb_cache", outcome="derived", width=width)
                 return ThumbResult(made, token)
+        if video and formats is None:  # the larger variant vanished: use the poster
+            poster = await run_io(_poster_of, rel_path, stat)
+            if poster is None:
+                _skip("no_poster")
+                return None
+            source, formats = poster, ("WEBP",)
         logger.debug("photo_thumb_cache", outcome="miss", width=width)
-        made = await run_io(make, source, target, width, root, cap)
+        made = await run_io(
+            make, source, target, width, root, cap, FORMAT_WEBP, formats
+        )
     return None if made is None else ThumbResult(made, token)
+
+
+def _poster_of(rel_path: str, stat: tuple[int, int]) -> Path | None:
+    """The cached poster of a video version, if any. Blocking; never calls Shell."""
+    from backend.services import video_poster  # lazy: video_poster imports this module
+
+    return video_poster.poster_for_stat(rel_path, *stat)
 
 
 async def thumbnail(
@@ -772,8 +810,10 @@ async def thumbnail(
 
     ``rel_path`` is its output-dir-relative POSIX path (the cache key, from
     :func:`archive_rel`). A hit is served as is; a miss is rendered from a
-    cached larger variant when there is one, else from the source. ``None``
-    for a non-picture or any failure (see the module docstring). Raises
+    cached larger variant when there is one, else from the source (a video:
+    from its cached poster). ``None`` for a source that is neither a picture
+    nor a video, a video without a poster, or any failure (see the module
+    docstring). Raises
     ``ValueError`` for a width outside :data:`ALLOWED_WIDTHS`.
     """
     res = await thumbnail_with_token(source, rel_path, width, root, cap)

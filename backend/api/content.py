@@ -925,14 +925,17 @@ async def get_thumb(
     v: Optional[str] = Query(None, pattern="^[0-9a-f]{12}$"),
     if_none_match: Optional[str] = Header(default=None),
 ):
-    """Serve an archived picture downscaled to fit ``w`` px (WebP, aspect kept).
+    """Serve an archived picture (or a video's poster) downscaled to fit ``w`` px (WebP).
 
     ``file_path`` is the same as for ``/media/{file_path}`` and is validated
     the same way (403 outside the output dir), then must be a regular file
     inside it (``archive_file_ok``). ``w`` must be one of
-    ``photo_thumb.ALLOWED_WIDTHS`` (400 otherwise). A missing file, a
-    non-picture (video, voice, unknown) or a picture that cannot be decoded
-    safely answers 404, so the client falls back to the full media URL. The
+    ``photo_thumb.ALLOWED_WIDTHS`` (400 otherwise). A video is served from
+    its cached poster frame (``backend.services.video_poster``; ``v`` is the
+    video's version); this route never makes a poster. A missing file, a
+    video without a poster, any other non-picture (voice, unknown) or a
+    picture that cannot be decoded safely answers 404, so the client falls
+    back (the full media URL, or a client poster capture for a video). The
     variant is cached on disk under the ``photo_thumb.archive_rel`` key (see
     ``backend.services.photo_thumb``), the same files the pre-generation
     worker writes.

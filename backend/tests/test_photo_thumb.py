@@ -1152,3 +1152,132 @@ class TestThumbRouteVersion:
             r = client.get(f"{URL}/picture/1.jpg?w=160")
         assert r.status_code == 200
         assert r.headers["etag"] == f'"{res.written[160].stem}"'
+
+
+class TestVideoPosterThumbs:
+    """A video's thumbnail is rendered from its cached poster, never from Shell."""
+
+    @pytest.fixture
+    def posters(self, archive, tmp_path):
+        from backend.services import video_poster
+
+        with patch.object(
+            video_poster, "poster_dir", return_value=tmp_path / "posters"
+        ):
+            yield tmp_path / "posters"
+
+    def _video(self, archive) -> Path:
+        (archive / "video").mkdir(exist_ok=True)
+        src = archive / "video" / "2.mp4"
+        src.write_bytes(b"\x00\x00\x00\x18ftypmp42")
+        return src
+
+    def _poster(self, posters: Path, src: Path, tmp_path: Path) -> Path:
+        from backend.services import video_poster
+
+        rel = photo_thumb.archive_rel(tmp_path / "out", src)
+        st = src.stat()
+        posters.mkdir(parents=True, exist_ok=True)
+        out = posters / video_poster.poster_name(rel, st.st_size, st.st_mtime_ns)
+        Image.new("RGB", (640, 360), (20, 200, 40)).save(out, format="WEBP")
+        return out
+
+    def test_a_video_with_a_poster_gets_a_webp_from_it(
+        self, archive, posters, tmp_path
+    ):
+        from backend.services import win_shell_thumb
+
+        src = self._video(archive)
+        self._poster(posters, src, tmp_path)
+        with patch.object(
+            win_shell_thumb, "shell_thumbnail", side_effect=AssertionError("shell")
+        ):
+            r = client.get(f"{URL}/video/2.mp4?w=160")
+        assert r.status_code == 200
+        assert r.headers["content-type"] == "image/webp"
+        img = _open(r.content)
+        assert img.size == (160, 90)
+        assert img.convert("RGB").getpixel((80, 45))[1] > 150
+        rel = photo_thumb.archive_rel(tmp_path / "out", src)
+        st = src.stat()
+        name = photo_thumb.variant_name(rel, st.st_size, st.st_mtime_ns, 160)
+        assert (tmp_path / "cache" / name).is_file()  # keyed by the video's stat
+        assert r.headers["etag"] == f'"{Path(name).stem}"'
+
+    def test_the_video_v_is_the_videos_version(self, archive, posters, tmp_path):
+        src = self._video(archive)
+        self._poster(posters, src, tmp_path)
+        st = src.stat()
+        v = photo_thumb.version_token(st.st_size, st.st_mtime_ns)
+        r = client.get(f"{URL}/video/2.mp4?w=320&v={v}")
+        assert r.status_code == 200
+        assert r.headers["cache-control"] == "private, max-age=31536000, immutable"
+
+    def test_a_cached_video_variant_is_a_hit_without_the_poster(
+        self, archive, posters, tmp_path
+    ):
+        src = self._video(archive)
+        poster = self._poster(posters, src, tmp_path)
+        assert client.get(f"{URL}/video/2.mp4?w=320").status_code == 200
+        poster.unlink()
+        assert client.get(f"{URL}/video/2.mp4?w=320").status_code == 200
+        # a smaller width is derived from the cached larger variant
+        assert client.get(f"{URL}/video/2.mp4?w=160").status_code == 200
+
+    def test_a_video_without_a_poster_is_404_and_never_calls_shell(
+        self, archive, posters
+    ):
+        from backend.services import win_shell_thumb
+
+        self._video(archive)
+        with (
+            patch.object(
+                win_shell_thumb, "shell_thumbnail", side_effect=AssertionError("shell")
+            ),
+            patch.object(win_shell_thumb, "available", return_value=True),
+        ):
+            r = client.get(f"{URL}/video/2.mp4?w=160")
+        assert r.status_code == 404
+        assert r.json()["detail"] == "No thumbnail"
+
+    def test_a_poster_that_is_not_webp_is_refused(self, archive, posters, tmp_path):
+        src = self._video(archive)
+        poster = self._poster(posters, src, tmp_path)
+        Image.new("RGB", (64, 64)).save(poster, format="PNG")  # not our format
+        assert client.get(f"{URL}/video/2.mp4?w=160").status_code == 404
+
+    def test_an_unknown_suffix_is_still_not_a_picture(self, archive, posters):
+        (archive / "voice").mkdir()
+        (archive / "voice" / "3.m4a").write_bytes(b"\x00")
+        assert client.get(f"{URL}/voice/3.m4a?w=160").status_code == 404
+
+    def test_suffix_sets_live_in_photo_thumb(self):
+        from backend.services import media_meta
+
+        assert media_meta.VIDEO_SUFFIXES is photo_thumb.VIDEO_SUFFIXES
+        assert media_meta.PICTURE_SUFFIXES is photo_thumb.PICTURE_SUFFIXES
+        assert photo_thumb.VIDEO_SUFFIXES == frozenset({".mp4", ".mov", ".m4v"})
+        assert photo_thumb.is_video(Path("a/B.MP4"))
+
+    def _larger(self, src: Path, tmp_path: Path, data: bytes) -> None:
+        rel = photo_thumb.archive_rel(tmp_path / "out", src)
+        st = src.stat()
+        (tmp_path / "cache").mkdir(exist_ok=True)
+        name = photo_thumb.variant_name(rel, st.st_size, st.st_mtime_ns, 640)
+        (tmp_path / "cache" / name).write_bytes(data)
+
+    def test_an_unreadable_larger_variant_falls_back_to_the_poster(
+        self, archive, posters, tmp_path
+    ):
+        src = self._video(archive)
+        self._poster(posters, src, tmp_path)
+        self._larger(src, tmp_path, b"not a webp")
+        r = client.get(f"{URL}/video/2.mp4?w=160")
+        assert r.status_code == 200 and _open(r.content).size == (160, 90)
+
+    def test_an_unreadable_larger_variant_without_a_poster_is_404(
+        self, archive, posters, tmp_path
+    ):
+        src = self._video(archive)
+        self._larger(src, tmp_path, b"not a webp")
+        assert client.get(f"{URL}/video/2.mp4?w=160").status_code == 404

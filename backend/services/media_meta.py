@@ -70,7 +70,7 @@ PRUNE_SLACK = 0.9
 META_BATCH_MAX = 500
 """Most URLs one ``POST /api/media/meta`` may ask about (the client sends 200)."""
 PICTURE_SUFFIXES: frozenset[str] = photo_thumb.PICTURE_SUFFIXES
-VIDEO_SUFFIXES: frozenset[str] = frozenset({".mp4", ".mov", ".m4v"})
+VIDEO_SUFFIXES: frozenset[str] = photo_thumb.VIDEO_SUFFIXES
 
 BUSY_TIMEOUT_MS = 5000
 _IN_CHUNK = 500
