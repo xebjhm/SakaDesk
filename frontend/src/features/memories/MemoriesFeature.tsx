@@ -74,34 +74,44 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
     useMemoriesUiReporter();
     const deepLink = useAppStore((s) => s.memoriesDeepLink);
     const clearMemoriesDeepLink = useAppStore((s) => s.clearMemoriesDeepLink);
-    // The route is tagged with its service so a service change falls back to home
-    // on the same render (no flash of the old service's page).
-    const [state, setState] = useState<{ service: string; route: MemoriesRoute }>(() => ({
-        service,
-        route: deepLink?.service === service ? deepLink.route : initialRoute ?? HOME,
-    }));
-    // Re-tag on a service change (React's set-state-during-render pattern), so switching back
-    // to the earlier service does not restore its old page.
-    if (state.service !== service) setState({ service, route: HOME });
-    const route = state.service === service ? state.route : HOME;
+    // The route is tagged with its service so a service change falls back to home on the same
+    // render (no flash of the old service's page), and with the nonce of the deep link it came
+    // from (null for any other route).
+    const [state, setState] = useState<{ service: string; route: MemoriesRoute; linkNonce: number | null }>(() => (
+        deepLink?.service === service
+            ? { service, route: deepLink.route, linkNonce: deepLink.nonce }
+            : { service, route: initialRoute ?? HOME, linkNonce: null }
+    ));
+    // A deep link for this service not applied yet wins on this very render (React's
+    // set-state-during-render pattern), so neither the old page nor home is ever committed
+    // before the linked page. Otherwise re-tag on a service change, so switching back to the
+    // earlier service does not restore its old page.
+    const pending = deepLink && deepLink.service === service && deepLink.nonce !== state.linkNonce ? deepLink : null;
+    if (pending) setState({ service, route: pending.route, linkNonce: pending.nonce });
+    else if (state.service !== service) setState({ service, route: HOME, linkNonce: null });
+    const route = pending ? pending.route : state.service === service ? state.route : HOME;
 
-    // A deep link opens on its page without a `go`: log it like one.
-    const initialPage = useRef(initialRoute?.page);
+    // A route given on mount opens without a `go`: log it like one (once, also under StrictMode).
+    // A deep link present on mount is logged by the effect below instead.
+    const initialPage = useRef(deepLink?.service === service ? undefined : initialRoute?.page);
     useEffect(() => {
-        if (initialPage.current && initialPage.current !== 'home') logMemoriesPage(initialPage.current);
+        const page = initialPage.current;
+        initialPage.current = undefined;
+        if (page && page !== 'home') logMemoriesPage(page);
     }, []);
 
-    // A notification deep link for this service: open its page, log it and consume it.
+    // Log and consume the deep link once its page is committed. The store is read again so a
+    // StrictMode re-run (same closure, link already cleared) logs nothing.
     useEffect(() => {
         if (!deepLink || deepLink.service !== service) return;
-        setState({ service, route: deepLink.route });
+        if (useAppStore.getState().memoriesDeepLink?.nonce !== deepLink.nonce) return;
         logMemoriesPage(deepLink.route.page);
         clearMemoriesDeepLink(deepLink.nonce);
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- a link is applied once per nonce (or service change)
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- a link is consumed once per nonce (or service change)
     }, [deepLink?.nonce, service]);
 
     const go = (next: MemoriesRoute) => {
-        setState({ service, route: next });
+        setState((s) => ({ ...s, service, route: next }));
         logMemoriesPage(next.page);
     };
 
