@@ -79,8 +79,16 @@ from backend.services.memories import oshi as oshi_mod
 from backend.services.memories import people
 from backend.services.memories import selection as sel
 from backend.services.memories.facts import Fact
-from backend.services.memories.lexicon import CHRISTMAS_RE
+from backend.services.memories.lexicon import (
+    CHRISTMAS_RE,
+    ECHO_KEYWORD_SCORE,
+)
 from backend.services.memories.selection import JST
+from backend.services.memories.then_now import (
+    first_week_window,
+    keywords_in,
+    latest_week_window,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -135,7 +143,6 @@ SENTENCE_MIN, SENTENCE_MAX = 8, 60
 SENTENCE_SCAN = 200  # messages examined for the one sentence
 PHOTO_NEAR = timedelta(minutes=5)
 POSTER_NUMBER_MIN = 5  # a poster number below this is "sparse" and skipped
-ECHO_KEYWORD_SCORE = 4
 
 # Raw sentence boundaries (spec: 。！？ and newlines). Splitting the raw text
 # keeps her characters exactly; ``selection.split_sentences`` NFKC-normalises.
@@ -143,30 +150,6 @@ _DAISUKI_RE = re.compile(r"大好き|だいすき|愛してる|ありがとう|�
 _JOY_RE = re.compile(r"嬉しい|楽しい|幸せ|またね|これからもよろしく")
 _FINAL_WORD_RE = re.compile(r"大好き|ありがとう")
 _NICK_DAISUKI_RE = re.compile(r"大好き|だいすき")
-ECHO_KEYWORDS = (
-    "桜",
-    "お花見",
-    "花火",
-    "夏",
-    "浴衣",
-    "海",
-    "紅葉",
-    "雪",
-    "クリスマス",
-    "サンタ",
-    "誕生日",
-    "年末",
-    "大晦日",
-    "あけおめ",
-    "バレンタイン",
-    "チョコ",
-    "ライブ",
-    "ツアー",
-    "卒業",
-    "梅雨",
-    "お月見",
-    "ハロウィン",
-)
 
 Item = tuple[str, Fact]  # (member_dir, fact)
 Key = tuple[str, int]  # (member_dir, message id)
@@ -823,10 +806,6 @@ def _photo_linked(items: Iterable[Item]) -> set[Key]:
     return out
 
 
-def _keywords(text: str) -> list[str]:
-    return [k for k in ECHO_KEYWORDS if k in text]
-
-
 def _s08_echo(ctx: _Ctx) -> dict | None:
     slide = "s08_echo"
     then_pool = [i for i in ctx.earlier if not i[1].is_promo and i[1].chars > 0]
@@ -836,7 +815,7 @@ def _s08_echo(ctx: _Ctx) -> dict | None:
         by_kw: dict[str, list[tuple[Item, list[str]]]] = {}
         by_md: dict[tuple[int, int], list[tuple[Item, list[str]]]] = {}
         for t in then_pool:
-            kws = _keywords(ctx.text(t))
+            kws = keywords_in(ctx.text(t))
             entry = (t, kws)
             for k in kws:
                 by_kw.setdefault(k, []).append(entry)
@@ -846,7 +825,7 @@ def _s08_echo(ctx: _Ctx) -> dict | None:
         )
         for n in now_pool:
             nf = n[1]
-            n_kws = _keywords(ctx.text(n))
+            n_kws = keywords_in(ctx.text(n))
             cands: dict[Key, tuple[Item, list[str]]] = {}
             for k in n_kws:
                 for e in by_kw.get(k, []):
@@ -888,7 +867,7 @@ def _s08_echo(ctx: _Ctx) -> dict | None:
     # First week of the subscription vs the latest week.
     begin = ctx.sub_start or (ctx.all_facts[0][1].jst_date if ctx.all_facts else None)
     if begin is not None:
-        week_end = begin + timedelta(days=6)
+        _, week_end = first_week_window(begin)
         firsts = [
             i
             for i in ctx.all_facts
@@ -897,7 +876,7 @@ def _s08_echo(ctx: _Ctx) -> dict | None:
             and begin <= i[1].jst_date <= week_end
             and i[1].ts <= ctx.end
         ]
-        latest_from = (ctx.end - timedelta(days=6)).astimezone(JST).date()
+        latest_from, _ = latest_week_window(ctx.end.astimezone(JST).date())
         lasts = [i for i in ctx.words() if i[1].jst_date >= latest_from and ctx.free(i)]
         week_then = _first_free(ctx, firsts)
         week_now = lasts[-1] if lasts else None

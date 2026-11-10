@@ -72,3 +72,33 @@ RAW_SENTENCE_SPLIT_RE = re.compile(r"[。！？!?\n]+")
 # Seasonal words for the Christmas and Valentine's Day moments.
 CHRISTMAS_RE = re.compile(r"クリスマス|メリクリ|🎄")
 VALENTINE_RE = re.compile(r"バレンタイン|チョコ")
+
+# Seasonal / event words that pair a past message with a present one (the
+# recap's S08 echo and あの日と今日's ``shared_keyword``). Order matters: the
+# first shared entry wins.
+ECHO_KEYWORDS = (
+    "桜",
+    "お花見",
+    "花火",
+    "夏",
+    "浴衣",
+    "海",
+    "紅葉",
+    "雪",
+    "クリスマス",
+    "サンタ",
+    "誕生日",
+    "年末",
+    "大晦日",
+    "あけおめ",
+    "バレンタイン",
+    "チョコ",
+    "ライブ",
+    "ツアー",
+    "卒業",
+    "梅雨",
+    "お月見",
+    "ハロウィン",
+)
+# Minimum S08 echo score for a shared keyword to be named on the slide.
+ECHO_KEYWORD_SCORE = 4
