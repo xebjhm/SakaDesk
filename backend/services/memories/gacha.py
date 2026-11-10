@@ -98,7 +98,7 @@ HISTORY_LIMIT = 60
 RECENT_DAYS = 30
 MIN_POOL_AFTER_RECENT = 10
 # Tier odds, rolled in this order; the tiers' fallback order is sr -> r -> n.
-TIER_ODDS = (("sr", 0.03), ("r", 0.17), ("n", 0.80))
+TIER_ODDS = (("sr", 0.06), ("r", 0.24), ("n", 0.70))
 TIERS = tuple(t for t, _ in TIER_ODDS)
 MIDNIGHT_LAST_MINUTE = 5
 SCORE_PER_WEIGHT = 200

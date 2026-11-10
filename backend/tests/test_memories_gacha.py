@@ -186,8 +186,21 @@ def test_draw_tier_falls_down_when_empty():
     assert gacha.draw([cand(2, "n")], seed).rarity == "n"
 
 
+@pytest.mark.parametrize(
+    ("lo", "hi", "tier"),
+    [(0.0, 0.06, "sr"), (0.06, 0.30, "r"), (0.30, 1.0, "n")],
+)
+def test_draw_rolls_n70_r24_sr6(lo, hi, tier):
+    """A full pool returns the rolled tier: SR below 0.06, R to 0.30, N above."""
+    pool = [cand(1, "sr"), cand(2, "r"), cand(3, "n")]
+    near_lo = _seed_rolling(lambda x: lo <= x < lo + 0.01)
+    near_hi = _seed_rolling(lambda x: hi - 0.01 <= x < hi)
+    assert gacha.draw(pool, near_lo).rarity == tier
+    assert gacha.draw(pool, near_hi).rarity == tier
+
+
 def test_draw_tier_falls_up_when_lower_tiers_empty():
-    seed = _seed_rolling(lambda x: x >= 0.2)  # rolls N
+    seed = _seed_rolling(lambda x: x >= 0.3)  # rolls N
     assert gacha.draw([cand(1, "sr")], seed).rarity == "sr"
     assert gacha.draw([cand(1, "sr"), cand(2, "r")], seed).rarity == "r"
 
@@ -204,7 +217,7 @@ def test_draw_weighting_prefers_high_scores():
 
 
 def test_tier_odds_constants():
-    assert gacha.TIER_ODDS == (("sr", 0.03), ("r", 0.17), ("n", 0.80))
+    assert gacha.TIER_ODDS == (("sr", 0.06), ("r", 0.24), ("n", 0.70))
     assert (gacha.MAX_PULLS, gacha.HISTORY_LIMIT, gacha.RECENT_DAYS) == (3, 60, 30)
     assert gacha.MIN_POOL_AFTER_RECENT == 10
 
