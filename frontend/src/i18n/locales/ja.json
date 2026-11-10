@@ -782,7 +782,15 @@
       "empty": "ここに並べる写真は、まだありません。"
     },
     "memoir": {
-      "title": "メンバーの思い出"
+      "title": "メンバーの思い出",
+      "tabBinder": "生写真帳",
+      "tabTimeline": "タイムライン",
+      "progress": "{{earned}} / {{total}} 枚",
+      "chipDays": "メンバーシップ {{days}} 日",
+      "chipNames": "名前を呼んでくれた {{count}} 回",
+      "chipVoice": "声 {{h}}時間{{m}}分",
+      "chipVoiceMinutes": "声 {{m}}分",
+      "chipVoiceHours": "声 {{h}}時間"
     },
     "favorites": {
       "title": "お気に入り",
@@ -795,6 +803,90 @@
       "older": "前のメッセージ",
       "newer": "次のメッセージ",
       "title": "この日のつづき"
+    },
+    "shelves": {
+      "first": {
+        "title": "初めて",
+        "subtitle": "はじめて届いたもの"
+      },
+      "anniversary": {
+        "title": "記念日",
+        "subtitle": "メンバーシップの節目"
+      },
+      "numbers": {
+        "title": "数字",
+        "subtitle": "積み重ねてきた数"
+      },
+      "special": {
+        "title": "特別な日",
+        "subtitle": "毎年めぐってくる日"
+      },
+      "records": {
+        "title": "記録",
+        "subtitle": "いちばんの記録"
+      },
+      "moments": {
+        "title": "瞬間",
+        "subtitle": "ふとした瞬間"
+      },
+      "you": {
+        "title": "あなた",
+        "subtitle": "あなたが送ったもの"
+      },
+      "change": {
+        "title": "変化",
+        "subtitle": "アイコンが変わった日"
+      },
+      "graduation": {
+        "title": "卒業",
+        "subtitle": "卒業の日まで"
+      }
+    },
+    "cards": {
+      "firstMessage": "最初のメッセージ",
+      "firstPicture": "最初の写真",
+      "firstPictureCondition": "最初の写真が届いたら",
+      "firstVideo": "最初の動画",
+      "firstVoice": "最初のボイス",
+      "firstNickname": "はじめて名前を呼んでくれた日",
+      "annivDays": "{{days}}日目",
+      "annivYears": "{{years}}年目の記念日",
+      "countMessages": "{{count}}通目",
+      "countPictures": "{{count}}枚目の写真",
+      "voiceHour": "声を、1時間",
+      "nicknames100": "100回目の名前",
+      "newyear": "元旦",
+      "valentine": "バレンタイン",
+      "christmas": "クリスマス",
+      "birthday": "お誕生日",
+      "subAnniversary": "あなたの記念日",
+      "longest": "いちばん長いメッセージ",
+      "busiestDay": "いちばんにぎやかな日",
+      "nicknameDay": "いちばん名前を呼んでくれた日",
+      "longestVoice": "いちばん長いボイス",
+      "greetingPair": "いちばん早いおはようと、いちばん遅いおやすみ",
+      "streak": "{{days}}日つづけて",
+      "midnight": "日付が変わった瞬間",
+      "synchro": "シンクロ",
+      "oyasumiFirst": "最初のおやすみ",
+      "oyasumi100": "100回目のおやすみ",
+      "daisukiFirst": "最初の大好き",
+      "daisuki100": "100回目の大好き",
+      "letterFirst": "はじめて送った手紙",
+      "letters": "{{count}}通の手紙",
+      "avatarChange": "新しい写真",
+      "avatarDays": "この写真と、{{days}} 日",
+      "lastMessage": "最後の一通",
+      "stack": "×{{count}}",
+      "notYet": "まだ"
+    },
+    "cardDetail": {
+      "lastMessage": "最後のメッセージ",
+      "forever": "ずっと、ここに。",
+      "oldLast": "前の写真で、最後のメッセージ",
+      "newFirst": "新しい写真で、最初のメッセージ",
+      "oldAvatar": "前の写真",
+      "newAvatar": "新しい写真"
     }
   },
   "recap": {

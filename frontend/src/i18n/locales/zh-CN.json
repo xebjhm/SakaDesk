@@ -782,7 +782,15 @@
       "empty": "这里还没有可以排列的照片。"
     },
     "memoir": {
-      "title": "成员回忆"
+      "title": "成员回忆",
+      "tabBinder": "卡册",
+      "tabTimeline": "时光轴",
+      "progress": "{{earned}} / {{total}} 张",
+      "chipDays": "订阅 {{days}} 天",
+      "chipNames": "她叫了你 {{count}} 次",
+      "chipVoice": "语音 {{h}} 小时 {{m}} 分",
+      "chipVoiceMinutes": "语音 {{m}} 分",
+      "chipVoiceHours": "语音 {{h}} 小时"
     },
     "favorites": {
       "title": "收藏",
@@ -795,6 +803,90 @@
       "older": "上一条消息",
       "newer": "下一条消息",
       "title": "这一天的前前后后"
+    },
+    "shelves": {
+      "first": {
+        "title": "初めて",
+        "subtitle": "第一次收到的"
+      },
+      "anniversary": {
+        "title": "記念日",
+        "subtitle": "订阅的里程碑"
+      },
+      "numbers": {
+        "title": "数字",
+        "subtitle": "累积的数字"
+      },
+      "special": {
+        "title": "特別な日",
+        "subtitle": "每年都会来的日子"
+      },
+      "records": {
+        "title": "記録",
+        "subtitle": "最高纪录"
+      },
+      "moments": {
+        "title": "瞬間",
+        "subtitle": "不经意的瞬间"
+      },
+      "you": {
+        "title": "あなた",
+        "subtitle": "你寄出的信"
+      },
+      "change": {
+        "title": "変化",
+        "subtitle": "头像换新的日子"
+      },
+      "graduation": {
+        "title": "卒業",
+        "subtitle": "直到毕业那天"
+      }
+    },
+    "cards": {
+      "firstMessage": "第一条消息",
+      "firstPicture": "第一张照片",
+      "firstPictureCondition": "收到第一张照片时",
+      "firstVideo": "第一个视频",
+      "firstVoice": "第一条语音",
+      "firstNickname": "第一次叫你名字的那天",
+      "annivDays": "第 {{days}} 天",
+      "annivYears": "{{years}} 周年纪念日",
+      "countMessages": "第 {{count}} 条",
+      "countPictures": "第 {{count}} 张照片",
+      "voiceHour": "一小时的声音",
+      "nicknames100": "第 100 次的名字",
+      "newyear": "元旦",
+      "valentine": "情人节",
+      "christmas": "圣诞节",
+      "birthday": "生日",
+      "subAnniversary": "你的纪念日",
+      "longest": "最长的一条消息",
+      "busiestDay": "最热闹的一天",
+      "nicknameDay": "最常叫你名字的一天",
+      "longestVoice": "最长的语音",
+      "greetingPair": "最早的早安与最晚的晚安",
+      "streak": "连续 {{days}} 天",
+      "midnight": "日期变换的瞬间",
+      "synchro": "同步",
+      "oyasumiFirst": "第一次晚安",
+      "oyasumi100": "第 100 次晚安",
+      "daisukiFirst": "第一次说最喜欢",
+      "daisuki100": "第 100 次说最喜欢",
+      "letterFirst": "第一封寄出的信",
+      "letters": "{{count}} 封信",
+      "avatarChange": "新的照片",
+      "avatarDays": "和这张照片一起 {{days}} 天",
+      "lastMessage": "最后一条",
+      "stack": "×{{count}}",
+      "notYet": "还没"
+    },
+    "cardDetail": {
+      "lastMessage": "最后的消息",
+      "forever": "一直，都在这里。",
+      "oldLast": "旧照片的最后一条消息",
+      "newFirst": "新照片的第一条消息",
+      "oldAvatar": "之前的照片",
+      "newAvatar": "新的照片"
     }
   },
   "recap": {

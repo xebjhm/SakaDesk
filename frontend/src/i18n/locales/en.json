@@ -789,7 +789,16 @@
       "empty": "There are no photos to lay out here yet."
     },
     "memoir": {
-      "title": "Member memories"
+      "title": "Member memories",
+      "tabBinder": "Photocard binder",
+      "tabTimeline": "Timeline",
+      "progress": "{{earned}} / {{total}} cards",
+      "chipDays": "Day {{days}} of membership",
+      "chipNames": "Called your name {{count}} time",
+      "chipNames_other": "Called your name {{count}} times",
+      "chipVoice": "Voice {{h}} h {{m}} min",
+      "chipVoiceMinutes": "Voice {{m}} min",
+      "chipVoiceHours": "Voice {{h}} h"
     },
     "favorites": {
       "title": "Favorites",
@@ -802,6 +811,91 @@
       "older": "Previous message",
       "newer": "Next message",
       "title": "The rest of this day"
+    },
+    "shelves": {
+      "first": {
+        "title": "初めて",
+        "subtitle": "What arrived first"
+      },
+      "anniversary": {
+        "title": "記念日",
+        "subtitle": "Membership milestones"
+      },
+      "numbers": {
+        "title": "数字",
+        "subtitle": "Numbers that added up"
+      },
+      "special": {
+        "title": "特別な日",
+        "subtitle": "Days that come back every year"
+      },
+      "records": {
+        "title": "記録",
+        "subtitle": "Her records"
+      },
+      "moments": {
+        "title": "瞬間",
+        "subtitle": "Small moments"
+      },
+      "you": {
+        "title": "あなた",
+        "subtitle": "What you sent"
+      },
+      "change": {
+        "title": "変化",
+        "subtitle": "When her photo changed"
+      },
+      "graduation": {
+        "title": "卒業",
+        "subtitle": "Until graduation"
+      }
+    },
+    "cards": {
+      "firstMessage": "First message",
+      "firstPicture": "First photo",
+      "firstPictureCondition": "When her first photo arrives",
+      "firstVideo": "First video",
+      "firstVoice": "First voice message",
+      "firstNickname": "The first day she called your name",
+      "annivDays": "Day {{days}}",
+      "annivYears": "Anniversary, year {{years}}",
+      "countMessages": "Message no. {{count}}",
+      "countPictures": "Photo no. {{count}}",
+      "voiceHour": "An hour of her voice",
+      "nicknames100": "Your name, the 100th time",
+      "newyear": "New Year's Day",
+      "valentine": "Valentine's Day",
+      "christmas": "Christmas",
+      "birthday": "Her birthday",
+      "subAnniversary": "Your anniversary",
+      "longest": "Her longest message",
+      "busiestDay": "The liveliest day",
+      "nicknameDay": "The day she called your name most",
+      "longestVoice": "Her longest voice message",
+      "greetingPair": "The earliest good morning and the latest good night",
+      "streak": "{{days}} days in a row",
+      "midnight": "The moment the date changed",
+      "synchro": "Synchro",
+      "oyasumiFirst": "First good night",
+      "oyasumi100": "The 100th good night",
+      "daisukiFirst": "First daisuki",
+      "daisuki100": "The 100th daisuki",
+      "letterFirst": "The first letter you sent",
+      "letters": "{{count}} letter",
+      "letters_other": "{{count}} letters",
+      "avatarChange": "A new photo",
+      "avatarDays": "With this photo, {{days}} days",
+      "lastMessage": "Her last message",
+      "stack": "×{{count}}",
+      "notYet": "Not yet"
+    },
+    "cardDetail": {
+      "lastMessage": "Her last message",
+      "forever": "Always here.",
+      "oldLast": "Last message with the previous photo",
+      "newFirst": "First message with the new photo",
+      "oldAvatar": "Previous photo",
+      "newAvatar": "New photo"
     }
   },
   "recap": {

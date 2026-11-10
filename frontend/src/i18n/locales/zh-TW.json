@@ -782,7 +782,15 @@
       "empty": "這裡還沒有可以排列的照片。"
     },
     "memoir": {
-      "title": "成員回憶"
+      "title": "成員回憶",
+      "tabBinder": "卡冊",
+      "tabTimeline": "時光軸",
+      "progress": "{{earned}} / {{total}} 張",
+      "chipDays": "訂閱 {{days}} 天",
+      "chipNames": "她叫了你 {{count}} 次",
+      "chipVoice": "語音 {{h}} 小時 {{m}} 分",
+      "chipVoiceMinutes": "語音 {{m}} 分",
+      "chipVoiceHours": "語音 {{h}} 小時"
     },
     "favorites": {
       "title": "我的最愛",
@@ -795,6 +803,90 @@
       "older": "上一則訊息",
       "newer": "下一則訊息",
       "title": "這一天的前前後後"
+    },
+    "shelves": {
+      "first": {
+        "title": "初めて",
+        "subtitle": "第一次收到的"
+      },
+      "anniversary": {
+        "title": "記念日",
+        "subtitle": "訂閱的里程碑"
+      },
+      "numbers": {
+        "title": "数字",
+        "subtitle": "累積的數字"
+      },
+      "special": {
+        "title": "特別な日",
+        "subtitle": "每年都會來的日子"
+      },
+      "records": {
+        "title": "記録",
+        "subtitle": "最高紀錄"
+      },
+      "moments": {
+        "title": "瞬間",
+        "subtitle": "不經意的瞬間"
+      },
+      "you": {
+        "title": "あなた",
+        "subtitle": "你寄出的信"
+      },
+      "change": {
+        "title": "変化",
+        "subtitle": "頭像換新的日子"
+      },
+      "graduation": {
+        "title": "卒業",
+        "subtitle": "直到畢業那天"
+      }
+    },
+    "cards": {
+      "firstMessage": "第一則訊息",
+      "firstPicture": "第一張照片",
+      "firstPictureCondition": "收到第一張照片時",
+      "firstVideo": "第一支影片",
+      "firstVoice": "第一則語音",
+      "firstNickname": "第一次叫你名字的那天",
+      "annivDays": "第 {{days}} 天",
+      "annivYears": "{{years}} 週年紀念日",
+      "countMessages": "第 {{count}} 則",
+      "countPictures": "第 {{count}} 張照片",
+      "voiceHour": "一小時的聲音",
+      "nicknames100": "第 100 次的名字",
+      "newyear": "元旦",
+      "valentine": "情人節",
+      "christmas": "聖誕節",
+      "birthday": "生日",
+      "subAnniversary": "你的紀念日",
+      "longest": "最長的一則訊息",
+      "busiestDay": "最熱鬧的一天",
+      "nicknameDay": "最常叫你名字的一天",
+      "longestVoice": "最長的語音",
+      "greetingPair": "最早的早安與最晚的晚安",
+      "streak": "連續 {{days}} 天",
+      "midnight": "日期變換的瞬間",
+      "synchro": "同步",
+      "oyasumiFirst": "第一次晚安",
+      "oyasumi100": "第 100 次晚安",
+      "daisukiFirst": "第一次說最喜歡",
+      "daisuki100": "第 100 次說最喜歡",
+      "letterFirst": "第一封寄出的信",
+      "letters": "{{count}} 封信",
+      "avatarChange": "新的照片",
+      "avatarDays": "和這張照片一起 {{days}} 天",
+      "lastMessage": "最後一則",
+      "stack": "×{{count}}",
+      "notYet": "還沒"
+    },
+    "cardDetail": {
+      "lastMessage": "最後的訊息",
+      "forever": "一直，都在這裡。",
+      "oldLast": "舊照片的最後一則訊息",
+      "newFirst": "新照片的第一則訊息",
+      "oldAvatar": "之前的照片",
+      "newAvatar": "新的照片"
     }
   },
   "recap": {
