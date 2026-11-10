@@ -193,6 +193,10 @@ describe('recap strings', () => {
         }
     });
 
+    it('the Japanese hub card uses a Japanese term, not the Chinese 年度回顧', () => {
+        expect(lookup(ja, 'memories.home.recapCard')).toBe('一年の振り返り');
+    });
+
     it('the poster save copy says the save started, never that it finished or that a dialog shows', () => {
         const SAVED = /保存しました|saved|已儲存|已保存|已經儲存|儲存咗/i;
         const DIALOG = /ダイアログ|dialog|對話框|对话框/i;
