@@ -8,6 +8,7 @@
  * `band`. Every positional field may be `null`; renderers leave it out.
  */
 import { pollJson, type PollResult } from '../../../utils/pollJson';
+import type { TranscriptSegment } from '../types';
 
 /** A recap build reads every fact of the person on a cache miss; give it time. */
 export const RECAP_TIMEOUT_MS = 30000;
@@ -97,12 +98,8 @@ export interface S05PhotosData {
     best_photo?: RecapMessage | null;
 }
 
-/** A transcript segment; times are seconds into the media. */
-export interface RecapTranscriptSegment {
-    start: number;
-    end: number;
-    text: string;
-}
+/** A transcript segment; times are seconds into the media (the shared {@link TranscriptSegment}). */
+export type RecapTranscriptSegment = TranscriptSegment;
 
 /**
  * One voice (or video audio) opening (`_clip`): `start` / `end` are seconds into the media.

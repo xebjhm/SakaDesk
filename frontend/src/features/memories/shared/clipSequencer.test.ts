@@ -276,3 +276,239 @@ describe('ClipSequencer', () => {
         expect(ev.onClip).toHaveBeenCalledTimes(2);
     });
 });
+
+describe('ClipSequencer gap mode (crossfadeMs 0 + gapMs)', () => {
+    const gap = { crossfadeMs: 0, gapMs: 500 };
+
+    it('plays whole clips back to back with a silent gap and no overlap', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        new ClipSequencer(clips(2), ev, f.create, gap).start();
+        const [a, b] = f.made;
+        a.tick(5.8);
+        expect(b.playCalls).toBe(0);
+        a.tick(6);
+        expect(a.paused).toBe(true);
+        expect(b.playCalls).toBe(0);
+        vi.advanceTimersByTime(499);
+        expect(b.playCalls).toBe(0);
+        vi.advanceTimersByTime(1);
+        expect(a.paused).toBe(true);
+        expect(b.src).toBe('/api/media/v1.m4a');
+        expect(b.paused).toBe(false);
+        expect(b.volume).toBe(1);
+        expect(ev.onClip).toHaveBeenLastCalledWith(1);
+    });
+
+    it('a pause during the gap holds it, and resume gives it its length again', () => {
+        const f = fakeAudioFactory();
+        const seq = new ClipSequencer(clips(2), events(), f.create, gap);
+        seq.start();
+        const [a, b] = f.made;
+        a.fire('ended');
+        vi.advanceTimersByTime(300);
+        seq.pause();
+        vi.advanceTimersByTime(5000);
+        expect(b.playCalls).toBe(0);
+        seq.resume();
+        expect(a.paused).toBe(true);
+        vi.advanceTimersByTime(499);
+        expect(b.playCalls).toBe(0);
+        vi.advanceTimersByTime(1);
+        expect(b.paused).toBe(false);
+    });
+
+    it('ends once after the last clip', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        new ClipSequencer(clips(1), ev, f.create, gap).start();
+        f.made[0].fire('ended');
+        f.made[0].fire('ended');
+        vi.advanceTimersByTime(1000);
+        expect(ev.onEnd).toHaveBeenCalledTimes(1);
+        expect(f.made[0].paused).toBe(true);
+    });
+});
+
+describe('ClipSequencer skipTo / next / prev', () => {
+    it('skipTo jumps to a clip at full volume and silences the other element', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(3), ev, f.create);
+        seq.start();
+        const [a, b] = f.made;
+        a.tick(5.8);
+        seq.skipTo(2);
+        expect(ev.onClip).toHaveBeenLastCalledWith(2);
+        expect(a.src).toBe('/api/media/v2.m4a');
+        expect(a.volume).toBe(1);
+        expect(a.paused).toBe(false);
+        expect(b.paused).toBe(true);
+        vi.advanceTimersByTime(1000);
+        expect(a.volume).toBe(1);
+        expect(a.paused).toBe(false);
+    });
+
+    it('late events and a stale play() rejection from the skipped clip are ignored', async () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(3), ev, f.create);
+        const [a] = f.made;
+        let reject: (e: Error) => void = () => {};
+        a.play = function (this: typeof a) {
+            this.playCalls += 1;
+            return new Promise<void>((_, rj) => { reject = rj; });
+        };
+        seq.start();
+        seq.skipTo(1);
+        reject(new Error('AbortError'));
+        await flush();
+        a.fire('ended');
+        expect(ev.onClipError).not.toHaveBeenCalled();
+        expect(ev.onClip.mock.calls.map(([i]) => i)).toEqual([0, 1]);
+    });
+
+    it('skipTo ignores an index out of range', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(2), ev, f.create);
+        seq.start();
+        seq.skipTo(5);
+        seq.skipTo(-1);
+        expect(ev.onClip).toHaveBeenCalledTimes(1);
+    });
+
+    it('skipTo while paused waits for resume', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(3), ev, f.create);
+        seq.start();
+        seq.pause();
+        seq.skipTo(1);
+        const b = f.made[1];
+        expect(b.src).toBe('/api/media/v1.m4a');
+        expect(b.paused).toBe(true);
+        seq.resume();
+        expect(b.paused).toBe(false);
+        expect(f.made[0].paused).toBe(true);
+    });
+
+    it('next() moves on; next() on the last clip ends the sequence once', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(2), ev, f.create);
+        seq.start();
+        seq.next();
+        expect(ev.onClip).toHaveBeenLastCalledWith(1);
+        seq.next();
+        expect(ev.onEnd).toHaveBeenCalledTimes(1);
+        expect(f.made.every((el) => el.paused)).toBe(true);
+        seq.next();
+        f.made[1].fire('ended');
+        vi.advanceTimersByTime(1000);
+        expect(ev.onEnd).toHaveBeenCalledTimes(1);
+    });
+
+    it('prev() goes back early in a clip and restarts it more than 3 s in', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(3), ev, f.create);
+        seq.start();
+        seq.skipTo(1);
+        f.made[1].tick(1);
+        seq.prev();
+        expect(ev.onClip).toHaveBeenLastCalledWith(0);
+        seq.skipTo(1);
+        f.made[1].tick(4);
+        seq.prev();
+        expect(ev.onClip).toHaveBeenLastCalledWith(1);
+        expect(f.made[1].currentTime).toBe(0);
+        f.made[0].pause();
+        seq.skipTo(0);
+        seq.prev();
+        expect(ev.onClip).toHaveBeenLastCalledWith(0);
+        expect(f.made[0].paused).toBe(false);
+    });
+});
+
+describe('ClipSequencer fadeOut / progress / analyser', () => {
+    it('fadeOut ramps every sounding element to 0, then stops and resolves', async () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(3), ev, f.create);
+        seq.start();
+        const [a, b] = f.made;
+        a.tick(5.8);
+        vi.advanceTimersByTime(150);
+        const done = vi.fn();
+        void seq.fadeOut(1000).then(done);
+        vi.advanceTimersByTime(500);
+        expect(a.volume).toBeLessThan(0.5);
+        expect(b.volume).toBeGreaterThan(0);
+        expect(b.volume).toBeLessThan(0.5);
+        vi.advanceTimersByTime(500);
+        await flush();
+        expect(a.volume).toBe(0);
+        expect(b.volume).toBe(0);
+        expect(a.paused).toBe(true);
+        expect(b.paused).toBe(true);
+        expect(done).toHaveBeenCalledTimes(1);
+        b.tick(5.8);
+        vi.advanceTimersByTime(5000);
+        expect(ev.onEnd).not.toHaveBeenCalled();
+        expect(ev.onClip).toHaveBeenCalledTimes(2);
+    });
+
+    it('fadeOut does not start the next clip on a hand-over mid-fade', () => {
+        const f = fakeAudioFactory();
+        const ev = events();
+        const seq = new ClipSequencer(clips(2), ev, f.create);
+        seq.start();
+        void seq.fadeOut(1000);
+        f.made[0].fire('ended');
+        expect(ev.onClip).toHaveBeenCalledTimes(1);
+        expect(f.made[1].playCalls).toBe(0);
+    });
+
+    it('a stop() during fadeOut resolves it; fadeOut after stop resolves at once', async () => {
+        const f = fakeAudioFactory();
+        const seq = new ClipSequencer(clips(2), events(), f.create);
+        seq.start();
+        const done = vi.fn();
+        void seq.fadeOut(1000).then(done);
+        seq.stop();
+        await flush();
+        expect(done).toHaveBeenCalledTimes(1);
+        await expect(seq.fadeOut(1000)).resolves.toBeUndefined();
+    });
+
+    it('fadeOut while paused stops at once', async () => {
+        const f = fakeAudioFactory();
+        const seq = new ClipSequencer(clips(2), events(), f.create);
+        seq.start();
+        seq.pause();
+        await expect(seq.fadeOut(1000)).resolves.toBeUndefined();
+        seq.resume();
+        expect(f.made[0].paused).toBe(true);
+    });
+
+    it('reports progress as (index, currentTime)', () => {
+        const f = fakeAudioFactory();
+        const onProgress = vi.fn();
+        new ClipSequencer(clips(2), { ...events(), onProgress }, f.create).start();
+        f.made[0].tick(2);
+        expect(onProgress).toHaveBeenLastCalledWith(0, 2);
+    });
+
+    it('analyser() is the sounding element of the current clip', () => {
+        const f = fakeAudioFactory();
+        const seq = new ClipSequencer(clips(2), events(), f.create);
+        expect(seq.analyser()).toBeNull();
+        seq.start();
+        expect(seq.analyser()).toBe(f.made[0]);
+        seq.next();
+        expect(seq.analyser()).toBe(f.made[1]);
+        seq.stop();
+        expect(seq.analyser()).toBeNull();
+    });
+});

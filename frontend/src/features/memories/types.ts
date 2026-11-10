@@ -9,6 +9,13 @@
 
 export type MemoryMessageType = 'text' | 'picture' | 'video' | 'voice';
 
+/** One transcript segment of a voice or video; `start` / `end` are seconds into the media. */
+export interface TranscriptSegment {
+    start: number;
+    end: number;
+    text: string;
+}
+
 /**
  * The shared message object (`people.message_ref` + `people.attach_texts`). `text` is her raw
  * words with the `%%%` / `％％％` nickname placeholder kept; render it with `MemoryText`.
