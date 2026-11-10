@@ -2,6 +2,7 @@ import React from 'react';
 import { useTranslation } from '../../../i18n';
 import { maskedNickname } from './nicknameMask';
 import { cn } from '../../../utils/classnames';
+import { nfkcMatches } from './nfkcMatches';
 import { useNickname } from './useNickname';
 
 // ASCII %%% and fullwidth ％％％ (as `messages/utils/nickname.ts`); split keeps the matches.
@@ -21,8 +22,9 @@ interface MemoryTextProps {
     /** Underline each replaced nickname (the names view). */
     underlineNickname?: boolean;
     /**
-     * A word to mark wherever she wrote it (あの日と今日's shared keyword). Only her own words are
-     * searched: a match inside the replaced nickname is never marked. Blank marks nothing.
+     * A word to mark wherever she wrote it (あの日と今日's shared keyword), matched on the NFKC
+     * form ({@link nfkcMatches}) with her raw characters marked. Only her own words are searched:
+     * a match inside (or across) the replaced nickname is never marked. Blank marks nothing.
      */
     highlight?: string;
     /** How {@link highlight} is drawn: the nickname underline (default) or the recap's `<mark>`. */
@@ -43,7 +45,8 @@ function push(out: React.ReactNode[], node: React.ReactNode): void {
 /**
  * Her words as she wrote them: `lang="ja"`, line breaks kept (`whitespace-pre-wrap`), the
  * nickname placeholder replaced with the fan's nickname (`replaceNickname` semantics), each
- * replacement optionally underlined, and an optional keyword marked in her own words. Without a
+ * replacement optionally underlined, and an optional keyword (matched under NFKC) marked in her
+ * own words. Without a
  * nickname the placeholder shows 『＊＊＊』.
  */
 export const MemoryText: React.FC<MemoryTextProps> = ({
@@ -53,7 +56,7 @@ export const MemoryText: React.FC<MemoryTextProps> = ({
     const fromContext = useNickname();
     const own = nickname !== undefined ? (nickname.trim() ? nickname : undefined) : fromContext;
     const name = own ?? maskedNickname(t);
-    const keyword = highlight?.trim() ? highlight : undefined;
+    const keyword = highlight?.trim().normalize('NFKC') || undefined;
     const Tag = as;
     const body: React.ReactNode[] = [];
     let key = 0;
@@ -66,14 +69,16 @@ export const MemoryText: React.FC<MemoryTextProps> = ({
             push(body, part);
             continue;
         }
-        part.split(keyword).forEach((piece, i) => {
-            if (i > 0) {
-                push(body, highlightTone === 'mark'
-                    ? <mark key={key++} data-testid="memory-text-highlight" className={MARK}>{keyword}</mark>
-                    : <span key={key++} data-testid="memory-text-highlight" className={UNDERLINE}>{keyword}</span>);
-            }
-            push(body, piece);
-        });
+        let at = 0;
+        for (const [start, end] of nfkcMatches(part, keyword)) {
+            push(body, part.slice(at, start));
+            const words = part.slice(start, end);
+            push(body, highlightTone === 'mark'
+                ? <mark key={key++} data-testid="memory-text-highlight" className={MARK}>{words}</mark>
+                : <span key={key++} data-testid="memory-text-highlight" className={UNDERLINE}>{words}</span>);
+            at = end;
+        }
+        push(body, part.slice(at));
     }
     return (
         <Tag data-testid="memory-text" data-voice={voice} lang="ja" className={cn('whitespace-pre-wrap', className)}>

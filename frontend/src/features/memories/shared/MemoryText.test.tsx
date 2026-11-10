@@ -84,4 +84,44 @@ describe('MemoryText', () => {
         render(<MemoryText text="花火の夜" highlight="" />);
         expect(screen.queryByTestId('memory-text-highlight')).toBeNull();
     });
+
+    it('matches the keyword on the NFKC text and marks her raw half-width katakana', () => {
+        render(<MemoryText text={'ﾒﾘｰｸﾘｽﾏｽ🎄 ﾊﾞﾚﾝﾀｲﾝもね'} highlight="クリスマス" />);
+        const marks = screen.getAllByTestId('memory-text-highlight');
+        expect(marks).toHaveLength(1);
+        expect(marks[0].textContent).toBe('ｸﾘｽﾏｽ');
+        expect(screen.getByTestId('memory-text').textContent).toBe('ﾒﾘｰｸﾘｽﾏｽ🎄 ﾊﾞﾚﾝﾀｲﾝもね');
+    });
+
+    it('keeps a half-width voiced mark with its kana', () => {
+        render(<MemoryText text={'ﾊﾞﾚﾝﾀｲﾝ💝'} highlight="バレンタイン" />);
+        expect(screen.getByTestId('memory-text-highlight').textContent).toBe('ﾊﾞﾚﾝﾀｲﾝ');
+    });
+
+    it('matches full-width alphanumerics, whichever side is full width', () => {
+        const { unmount } = render(<MemoryText text={'ＨＡＰＰＹ　ＸＭＡＳ２０２５！'} highlight="XMAS" />);
+        expect(screen.getByTestId('memory-text-highlight').textContent).toBe('ＸＭＡＳ');
+        unmount();
+        render(<MemoryText text="Happy XMAS!" highlight="ＸＭＡＳ" />);
+        expect(screen.getByTestId('memory-text-highlight').textContent).toBe('XMAS');
+    });
+
+    it('trims a padded keyword before matching', () => {
+        render(<MemoryText text="花火の夜" highlight=" 花火 " />);
+        expect(screen.getByTestId('memory-text-highlight')).toHaveTextContent('花火');
+    });
+
+    it('a keyword right after the underlined nickname is its own mark, never merged with the name', () => {
+        render(<MemoryText text={'%%%花火'} nickname="ひな" underlineNickname highlight="花火" />);
+        const p = screen.getByTestId('memory-text');
+        const spans = Array.from(p.children);
+        expect(spans.map((el) => el.textContent)).toEqual(['ひな', '花火']);
+        expect(spans[0]).not.toHaveAttribute('data-testid');
+        expect(spans[1]).toHaveAttribute('data-testid', 'memory-text-highlight');
+    });
+
+    it('never marks a keyword that only forms across the nickname', () => {
+        render(<MemoryText text={'花%%%'} nickname="火ちゃん" highlight="花火" />);
+        expect(screen.queryByTestId('memory-text-highlight')).toBeNull();
+    });
 });
