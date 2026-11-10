@@ -23,6 +23,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   that opens any day. Set an old day beside this year, see her day pieced
   together from different years, or pick a month's album cover; notes you
   leave on a day or a card come back a year later and stay on this PC.
+- **Memories can now remind you.** SakaDesk can send a Windows notification
+  for On This Day, members' birthdays, your membership anniversaries and the
+  year recap, and, if you turn it on, when a foil card joins a binder.
+  Clicking one opens that page in Memories, and nothing is shown while you
+  are already in Memories. Each kind has its own switch in Settings, along
+  with the time of day they arrive (Japan time).
 - **Update from Settings.** Settings → Updates now has buttons to download
   the new version, follow its progress or cancel it, and install it, instead
   of only saying a new version is available. A version you skipped on the
