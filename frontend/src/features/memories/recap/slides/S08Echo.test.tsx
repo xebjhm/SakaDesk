@@ -14,18 +14,18 @@ describe('S08Echo', () => {
     it('last year on the same day: two cards, the older one sepia, dated in JST', () => {
         renderS08(echoData());
         expect(screen.getByText('去年の、同じ日。')).toHaveAttribute('data-voice', 'title');
-        const [then, now] = screen.getAllByTestId('s08-card');
+        const [then, now] = screen.getAllByTestId('then-now-side');
         // The approved look: the strongest keepsake sepia (full strength), whatever the year.
         expect(then.className.split(/\s+/)).toContain('sepia-memories-3');
         expect(now.className).not.toMatch(/\bsepia/);
-        expect(within(then).getByTestId('s08-date')).toHaveTextContent('2025年7月30日');
-        expect(within(now).getByTestId('s08-date')).toHaveTextContent('2026年7月30日');
+        expect(within(then).getByTestId('then-now-date')).toHaveTextContent('2025年7月30日');
+        expect(within(now).getByTestId('then-now-date')).toHaveTextContent('2026年7月30日');
         expect(within(now).getByText((_, el) => el?.getAttribute('data-voice') === 'quote' && el.textContent === 'ゆき、今年も花火！')).toBeInTheDocument();
     });
 
     it('the shared keyword lights up in both cards', () => {
         renderS08(echoData());
-        const marks = screen.getAllByTestId('s08-keyword');
+        const marks = screen.getAllByTestId('memory-text-highlight');
         expect(marks).toHaveLength(2);
         for (const m of marks) {
             expect(m.tagName).toBe('MARK');
@@ -36,13 +36,13 @@ describe('S08Echo', () => {
 
     it('no shared keyword: nothing is marked', () => {
         renderS08(echoData({ shared_keyword: null }));
-        expect(screen.queryByTestId('s08-keyword')).toBeNull();
+        expect(screen.queryByTestId('memory-text-highlight')).toBeNull();
     });
 
     it('a keyword that sits inside the nickname replacement is still found in the replaced text', () => {
         renderS08(echoData({ shared_keyword: '花火', now: message(41, '花火と%%%', { ts: '2026-07-30T12:30:00Z' }) }));
-        const now = screen.getAllByTestId('s08-card')[1];
-        expect(within(now).getByTestId('s08-keyword')).toHaveTextContent('花火');
+        const now = screen.getAllByTestId('then-now-side')[1];
+        expect(within(now).getByTestId('memory-text-highlight')).toHaveTextContent('花火');
         expect(now.textContent).toContain('花火とゆき');
     });
 
@@ -51,8 +51,8 @@ describe('S08Echo', () => {
             echoData({ shared_keyword: '花火', now: message(41, '%%%、花火きれい', { ts: '2026-07-30T12:30:00Z' }) }),
             null, false, payload(), '花火ちゃん',
         );
-        const now = screen.getAllByTestId('s08-card')[1];
-        expect(within(now).getAllByTestId('s08-keyword')).toHaveLength(1);
+        const now = screen.getAllByTestId('then-now-side')[1];
+        expect(within(now).getAllByTestId('memory-text-highlight')).toHaveLength(1);
         expect(now.textContent).toContain('花火ちゃん、花火きれい');
         // The nickname itself is plain text, the mark comes after it.
         const quote = within(now).getByText((_, el) => el?.getAttribute('data-voice') === 'quote');
@@ -74,7 +74,7 @@ describe('S08Echo', () => {
         expect(screen.getByText('はじめての一週間と、いま。')).toBeInTheDocument();
         expect(screen.getByText('はじめての週')).toBeInTheDocument();
         expect(screen.getByText('いま')).toBeInTheDocument();
-        expect(screen.getAllByTestId('s08-card')[0].className.split(/\s+/)).toContain('sepia-memories-3');
+        expect(screen.getAllByTestId('then-now-side')[0].className.split(/\s+/)).toContain('sepia-memories-3');
         expect(screen.queryByText(/年前|null|undefined/)).toBeNull();
     });
 
@@ -92,6 +92,6 @@ describe('S08Echo', () => {
 
     it('the reveal freezes while paused', () => {
         renderS08(echoData(), null, true);
-        for (const card of screen.getAllByTestId('s08-card')) expect(card.style.animationPlayState).toBe('paused');
+        for (const card of screen.getAllByTestId('then-now-side')) expect(card.style.animationPlayState).toBe('paused');
     });
 });
