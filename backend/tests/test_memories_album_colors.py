@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from pathlib import Path
 
 import pytest
@@ -113,17 +114,63 @@ def test_probe_bounds_non_jpeg_pixels(tmp_path, monkeypatch):
     assert skip["error_type"] == "DecompressionBombError"
 
 
-def test_probe_bomb_warning_is_an_error(tmp_path, monkeypatch):
-    path = png(tmp_path / "w.png", RED, (10, 10))
-
-    def warn(*a, **k):
-        raise Image.DecompressionBombWarning("too many pixels")
-
-    monkeypatch.setattr(ac.Image, "open", warn)
-    with capture_logs() as logs:
-        assert ac.probe_image(path) is None
+def test_probe_bomb_warning_band_is_an_error(tmp_path, monkeypatch):
+    # 120 000 px: over MAX_IMAGE_PIXELS but under twice it, where Pillow only
+    # warns; the probe turns that warning into a refusal
+    path = jpeg(tmp_path / "band.jpg", RED, size=(400, 300))
+    monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 100_000)
+    with warnings.catch_warnings(record=True) as seen:
+        warnings.simplefilter("always")
+        with capture_logs() as logs:
+            assert ac.probe_image(path) is None
     (skip,) = [e for e in logs if e["event"] == "memories_skip"]
     assert skip["error_type"] == "DecompressionBombWarning"
+    assert skip["reason"] == "unreadable"
+    assert not [w for w in seen if w.category is Image.DecompressionBombWarning]
+
+
+def test_probe_mpo_uses_draft(tmp_path, monkeypatch):
+    from PIL import JpegImagePlugin
+
+    path = tmp_path / "phone.jpg"
+    frame = Image.new("RGB", (400, 300), RED)
+    frame.save(path, "MPO", save_all=True, append_images=[frame])
+    drafts: list[str] = []
+    real = JpegImagePlugin.JpegImageFile.draft
+
+    def spy(self, mode, size):
+        drafts.append(self.format)
+        return real(self, mode, size)
+
+    monkeypatch.setattr(JpegImagePlugin.JpegImageFile, "draft", spy)
+    p = ac.probe_image(path)
+    assert p is not None and p.fmt == "MPO" and drafts == ["MPO"]
+    assert p.rgb is not None and is_reddish(ac.hex_of(p.rgb))
+    # MPO is bounded like JPEG (draft), not by the non-draft pixel bound
+    monkeypatch.setattr(ac, "PROBE_MAX_PIXELS", 10)
+    assert ac.probe_image(path) is not None
+
+
+def test_probe_open_failure_is_transient(tmp_path):
+    with capture_logs() as logs:
+        probe, cacheable = ac._probe_image(tmp_path / "gone.jpg")
+    assert probe is None and cacheable is False
+    (skip,) = [e for e in logs if e["event"] == "memories_skip"]
+    assert skip["reason"] == "unavailable"
+    assert skip["error_type"] == "FileNotFoundError"
+
+
+def test_probe_permission_error_while_reading_is_transient(tmp_path, monkeypatch):
+    path = jpeg(tmp_path / "locked.jpg", RED)
+
+    def locked(fh):
+        raise PermissionError("sharing violation")
+
+    monkeypatch.setattr(ac, "_decode", locked)
+    with capture_logs() as logs:
+        assert ac._probe_image(path) == (None, False)
+    (skip,) = [e for e in logs if e["event"] == "memories_skip"]
+    assert skip["reason"] == "unavailable"
 
 
 # --- month_color --------------------------------------------------------------------
@@ -162,13 +209,13 @@ def svc(tmp_path, monkeypatch):
 @pytest.fixture
 def counted(monkeypatch):
     calls: list[str] = []
-    real = ac.probe_image
+    real = ac._probe_image
 
     def spy(path):
         calls.append(path.name)
         return real(path)
 
-    monkeypatch.setattr(ac, "probe_image", spy)
+    monkeypatch.setattr(ac, "_probe_image", spy)
     return calls
 
 
@@ -386,11 +433,75 @@ async def test_probes_cache_round_trips_a_colourless_probe(svc, monkeypatch):
     jpeg(svc / ROOM / "picture" / "1.jpg", RED)
     rel = f"{ROOM}/picture/1.jpg"
     blank = ac.ImageProbe(width=10, height=20, fmt="GIF", rgb=None)
-    monkeypatch.setattr(ac, "probe_image", lambda path: blank)
+    monkeypatch.setattr(ac, "_probe_image", lambda path: (blank, True))
     assert await ac.probes(svc, [rel]) == {rel: blank}
 
     def fail(path):
         raise AssertionError("must come from the cache")
 
-    monkeypatch.setattr(ac, "probe_image", fail)
+    monkeypatch.setattr(ac, "_probe_image", fail)
     assert await ac.probes(svc, [rel]) == {rel: blank}
+
+
+@pytest.mark.asyncio
+async def test_probes_transient_failure_is_retried(svc, monkeypatch):
+    jpeg(svc / ROOM / "picture" / "1.jpg", RED)
+    rel = f"{ROOM}/picture/1.jpg"
+    real = ac._probe_image
+    monkeypatch.setattr(ac, "_probe_image", lambda path: (None, False))
+    with capture_logs() as logs:
+        assert await ac.probes(svc, [rel]) == {rel: None}
+    (log,) = [e for e in logs if e["event"] == "memories_album_probe"]
+    assert log["failed"] == 1
+    monkeypatch.setattr(ac, "_probe_image", real)
+    again = await ac.probes(svc, [rel])  # not cached: probed again, now fine
+    assert again[rel] is not None
+
+
+def _ribbon_room(svc, msgs):
+    write_room(svc, "34 金村 美玖", "58 金村 美玖", msgs)
+    return svc / ROOM
+
+
+@pytest.mark.asyncio
+async def test_ribbon_drops_screenshots(svc, monkeypatch):
+    from backend.services.memories import oshi as oshi_mod
+
+    async def no_oshi(service):
+        return set()
+
+    monkeypatch.setattr(oshi_mod, "oshi_names", no_oshi)
+    room = _ribbon_room(
+        svc,
+        [
+            # two tall blue PNG screenshots outnumber one red photo
+            pic(1, "2024-09-01T03:00:00Z", ext="png"),
+            pic(2, "2024-09-02T03:00:00Z", ext="png"),
+            pic(3, "2024-09-03T03:00:00Z"),
+        ],
+    )
+    png(room / "picture" / "1.png", BLUE, (100, 220))
+    png(room / "picture" / "2.png", BLUE, (100, 220))
+    jpeg(room / "picture" / "3.jpg", RED)
+    body = await ac.month_colors_for(SERVICE, svc, None)
+    assert is_reddish(body["colors"]["2024-09"])
+
+
+@pytest.mark.asyncio
+async def test_ribbon_recolours_after_media_repair(svc, monkeypatch):
+    from backend.services.memories import oshi as oshi_mod
+
+    async def no_oshi(service):
+        return set()
+
+    monkeypatch.setattr(oshi_mod, "oshi_names", no_oshi)
+    room = _ribbon_room(svc, [pic(1, "2024-09-01T03:00:00Z")])
+    (room / "picture").mkdir(parents=True, exist_ok=True)
+    first = await ac.month_colors_for(SERVICE, svc, None)
+    assert first == {"colors": {"2024-09": None}}  # the file is not there yet
+    # media repair adds the file; messages.json is not rewritten
+    jpeg(room / "picture" / "1.jpg", RED)
+    st = (room / "picture").stat()
+    os.utime(room / "picture", ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+    again = await ac.month_colors_for(SERVICE, svc, None)
+    assert is_reddish(again["colors"]["2024-09"])

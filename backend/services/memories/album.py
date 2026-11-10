@@ -16,15 +16,20 @@ everywhere (it is her real chat); they only lose the cover.
   ``favorite`` (★, oshi rooms first, then the highest ``photo_score``), then
   ``score`` (the highest ``photo_score``), then ``burst`` (the first item of
   the largest burst; bursts are keyed ``(room, burst_id)``), then ``first``
-  (time order). Within each rule's list, promo items move to the end, then
-  the top 3 are checked with ``screenshot_like`` and the screenshot-like ones
-  move to the very end. Ties go to the earlier item.
+  (time order). Ties go to the earlier item. A valid override always wins;
+  otherwise promo and screenshot-like items are a last resort across the
+  whole chain: the chain runs over the clean items first and over the
+  demoted ones only when no clean item exists. ``screenshot_like`` is asked
+  about the top 3 non-promo items of every rule list (deduplicated).
 - :func:`album_months` -- ``{"months": [{"month", "count", "cover",
-  "cover_rule", "has_favorites"}]}``, newest first. ``count`` is the month's
-  one number. Screenshot-likeness comes from ``album_colors.probes``
-  (pictures only). The text-free structure is cached (view ``album_months``,
-  key ``<scope>:<kind>``, hash over room hashes, oshi rooms and overrides);
-  the cover's text / caption is attached after the cache read.
+  "cover_rule", "cover_color", "has_favorites"}]}``, newest first.
+  ``count`` is the month's one number. Screenshot-likeness and
+  ``cover_color`` (the cover picture's probe colour, ``#rrggbb``; ``None``
+  for a video or an unreadable picture; it tints the month band) come from
+  ``album_colors.probes``, pictures only. The text-free structure is cached
+  (view ``album_months``, key ``<scope>:<kind>``, hash over room hashes,
+  media-dir mtimes, oshi rooms and overrides); the cover's text / caption is
+  attached after the cache read.
 - :func:`album_month` -- ``{"month", "items", "bursts"}``: the month's items
   in time order with their texts and ``bursts`` = ``[{"burst_id", "room",
   "ids"}]`` for bursts with >= 3 items in the filtered set. Cached text-free
@@ -34,9 +39,9 @@ everywhere (it is her real chat); they only lose the cover.
 
 Logs (ids, codes, counts and scores only): ``memories_select``
 (``view=album_cover``, ``rule``, ``score``, ``fallback``, ``message_id``,
-``month``) per month when the months are built, ``memories_skip``
-(``view=album_cover``, ``reason=no_cover``) for a month without a cover,
-and ``memories_album`` (``months``, ``count``, ``kind``) per request.
+``month``; ``fallback`` = a burst / first / promo / screenshot cover) per
+month when the months are built, and ``memories_album`` (``months``,
+``count``, ``kind``) and ``memories_album_month`` per request.
 """
 
 from __future__ import annotations
@@ -61,7 +66,7 @@ VIEW_MEMBERS = "album_members"
 VIEW_MONTHS = "album_months"
 VIEW_MONTH = "album_month"
 # Bump on any rule or payload change (the album cache hashes have it).
-ALBUM_VERSION = 1
+ALBUM_VERSION = 2
 KINDS = frozenset({"all", "picture", "video", "favorite"})
 SCREENSHOT_CHECKS = 3
 BURST_MIN = 3
@@ -91,19 +96,6 @@ def keep(f: Fact, kind: str) -> bool:
 # --- covers ---------------------------------------------------------------------------
 
 
-def _demote(items: list[_Tagged], screenshot_like: ScreenshotLike) -> list[_Tagged]:
-    """Promo to the end, then screenshot-like ones of the top 3 to the very end."""
-    ordered = [t for t in items if not t[1].is_promo]
-    ordered += [t for t in items if t[1].is_promo]
-    head = ordered[:SCREENSHOT_CHECKS]
-    shots = [screenshot_like(room, f) for room, f in head]
-    if not any(shots):
-        return ordered
-    kept = [t for t, shot in zip(head, shots) if not shot]
-    moved = [t for t, shot in zip(head, shots) if shot]
-    return kept + ordered[SCREENSHOT_CHECKS:] + moved
-
-
 def _burst_heads(cands: Sequence[_Tagged]) -> list[_Tagged]:
     """The first item of every burst, largest burst first (ties: the earlier)."""
     groups: dict[tuple[str, int], list[_Tagged]] = {}
@@ -115,6 +107,36 @@ def _burst_heads(cands: Sequence[_Tagged]) -> list[_Tagged]:
     return [head for _, head in heads]
 
 
+def _rule_lists(
+    cands: Sequence[_Tagged], oshi_rooms: set[str]
+) -> list[tuple[str, list[_Tagged]]]:
+    """``[(rule, ordered items)]`` for favorite, score, burst and first."""
+    favorites = sorted(
+        (t for t in cands if t[1].favorited),
+        key=lambda t: (t[0] not in oshi_rooms, -(t[1].photo_score or 0), *_order(t)),
+    )
+    scored = sorted(
+        (t for t in cands if t[1].photo_score is not None),
+        key=lambda t: (-(t[1].photo_score or 0), *_order(t)),
+    )
+    return [
+        ("favorite", favorites),
+        ("score", scored),
+        ("burst", _burst_heads(cands)),
+        ("first", sorted(cands, key=_order)),
+    ]
+
+
+def _chain(
+    cands: Sequence[_Tagged], oshi_rooms: set[str]
+) -> tuple[_Tagged, str] | None:
+    """The first item of the first non-empty rule list, or ``None``."""
+    for rule, items in _rule_lists(cands, oshi_rooms):
+        if items:
+            return items[0], rule
+    return None
+
+
 def choose_cover(
     cands: list[tuple[str, Fact]],
     *,
@@ -124,8 +146,13 @@ def choose_cover(
 ) -> tuple[tuple[str, Fact], str] | None:
     """The month's cover ``(room, fact)`` and its rule; ``None`` for no candidates.
 
-    See the module docstring for the rule order. ``override`` counts only
-    when that ``(room, id)`` is among ``cands``; ``oshi_rooms`` holds rooms.
+    A valid ``override`` (its ``(room, id)`` is among ``cands``) always wins,
+    promo or not. Otherwise the rule chain runs over the clean candidates
+    first; promo and screenshot-like items are a last resort, used only when
+    no clean candidate exists (the same chain then runs over them).
+    ``screenshot_like`` is asked once for each of the top 3 non-promo items of
+    every rule list (deduplicated); the asked set does not depend on the
+    answers. ``oshi_rooms`` holds rooms.
     """
     if not cands:
         return None
@@ -133,24 +160,16 @@ def choose_cover(
         hit = next((t for t in cands if (t[0], t[1].id) == override), None)
         if hit is not None:
             return hit, "override"
-    favorites = sorted(
-        (t for t in cands if t[1].favorited),
-        key=lambda t: (t[0] not in oshi_rooms, -(t[1].photo_score or 0), *_order(t)),
-    )
-    scored = sorted(
-        (t for t in cands if t[1].photo_score is not None),
-        key=lambda t: (-(t[1].photo_score or 0), *_order(t)),
-    )
-    rules: list[tuple[str, list[_Tagged]]] = [
-        ("favorite", favorites),
-        ("score", scored),
-        ("burst", _burst_heads(cands)),
-        ("first", sorted(cands, key=_order)),
-    ]
-    for rule, items in rules:
-        if items:
-            return _demote(items, screenshot_like)[0], rule
-    return None  # pragma: no cover - "first" always has the candidates
+    nonpromo = [t for t in cands if not t[1].is_promo]
+    asked: dict[tuple[str, int], bool] = {}
+    for _, items in _rule_lists(nonpromo, oshi_rooms):
+        for room, f in items[:SCREENSHOT_CHECKS]:
+            if (room, f.id) not in asked:
+                asked[(room, f.id)] = screenshot_like(room, f)
+    clean = [t for t in nonpromo if not asked.get((t[0], t[1].id), False)]
+    clean_keys = {(t[0], t[1].id) for t in clean}
+    demoted = [t for t in cands if (t[0], t[1].id) not in clean_keys]
+    return _chain(clean, oshi_rooms) or _chain(demoted, oshi_rooms)
 
 
 # --- members ----------------------------------------------------------------------------
@@ -158,14 +177,14 @@ def choose_cover(
 
 async def album_members(service: str, sdir: Path) -> dict:
     """Pictures + videos per person, oshi first, then by count (see the module docstring)."""
-    persons, _, hashes = await album_colors.scope_of(sdir, None)
+    persons, _, hashes = await people.album_scope(sdir, None)
     oshi = await people.oshi_rooms(service, persons)
     data_hash = view_hash(ALBUM_VERSION, hashes, sorted(oshi))
 
     async def build() -> dict:
         counted: list[tuple[mi.MemberSummary, int]] = []
         for s in persons:
-            tagged = await album_colors.scope_facts(sdir, [s])
+            tagged = await people.scope_facts(sdir, [s])
             n = sum(1 for _, f in tagged if keep(f, "all"))
             if n:
                 counted.append((s, n))
@@ -209,17 +228,19 @@ def _covers(
     overrides: dict[str, tuple[str, int]],
     oshi_rooms: set[str],
     screenshot_like: ScreenshotLike,
-) -> dict[str, tuple[_Tagged, str] | None]:
-    """``month -> choose_cover(...)``. Pure; runs in a worker."""
-    return {
-        month: choose_cover(
+) -> dict[str, tuple[_Tagged, str]]:
+    """``month -> choose_cover(...)`` (every listed month has items). Pure."""
+    out: dict[str, tuple[_Tagged, str]] = {}
+    for month, items in months.items():
+        pick = choose_cover(
             items,
             override=overrides.get(month),
             oshi_rooms=oshi_rooms,
             screenshot_like=screenshot_like,
         )
-        for month, items in months.items()
-    }
+        if pick is not None:
+            out[month] = pick
+    return out
 
 
 def _room_people(persons: Sequence[mi.MemberSummary]) -> dict[str, mi.MemberSummary]:
@@ -236,28 +257,42 @@ async def _avatars_by_room(
     return {r: timelines[people.person_key(owners[r])] for r in rooms}
 
 
-async def _screenshot_check(
+_Probes = dict[str, album_colors.ImageProbe | None]
+
+
+def _picture_file(f: Fact) -> str | None:
+    """The service-relative file of a picture (``None`` for a video or no file)."""
+    return people.media_file_for(f) if f.type == "picture" else None
+
+
+def _probe_of(found: _Probes, f: Fact) -> album_colors.ImageProbe | None:
+    mf = _picture_file(f)
+    return found.get(mf) if mf is not None else None
+
+
+async def _consulted_probes(
     sdir: Path,
     months: dict[str, list[_Tagged]],
     overrides: dict[str, tuple[str, int]],
     oshi_rooms: set[str],
-) -> ScreenshotLike:
-    """A ``screenshot_like`` backed by probes of the pictures the rules consult."""
+) -> _Probes:
+    """Probes of every picture ``choose_cover`` asks ``screenshot_like`` about."""
     asked: set[str] = set()
 
     def record(room: str, f: Fact) -> bool:
-        mf = people.media_file_for(f)
-        if f.type == "picture" and mf is not None:
+        mf = _picture_file(f)
+        if mf is not None:
             asked.add(mf)
         return False
 
-    # the consulted top 3 do not depend on the answers: one dry pass finds them
+    # the asked set does not depend on the answers: one dry pass finds it
     await asyncio.to_thread(_covers, months, overrides, oshi_rooms, record)
-    found = await album_colors.probes(sdir, sorted(asked))
+    return await album_colors.probes(sdir, sorted(asked))
 
+
+def _screenshot_fn(found: _Probes) -> ScreenshotLike:
     def screenshot_like(room: str, f: Fact) -> bool:
-        mf = people.media_file_for(f)
-        p = found.get(mf) if f.type == "picture" and mf is not None else None
+        p = _probe_of(found, f)
         return p is not None and album_colors.is_screenshot_like(p)
 
     return screenshot_like
@@ -267,37 +302,40 @@ def _months_payload(
     service: str,
     sdir: Path,
     months: dict[str, list[_Tagged]],
-    chosen: dict[str, tuple[_Tagged, str] | None],
+    chosen: dict[str, tuple[_Tagged, str]],
     avatars: dict[str, people.AvatarTimeline],
+    found: _Probes,
 ) -> dict:
     """The text-free months payload, newest first. Blocking (runs in a worker)."""
+    shot = _screenshot_fn(found)
     rows = []
     for month in sorted(months, reverse=True):
         items = months[month]
-        pick = chosen[month]
-        cover = None
-        rule = None
-        if pick is None:  # pragma: no cover - a listed month always has items
-            logger.info("memories_skip", view=VIEW_COVER, reason="no_cover")
-        else:
-            (room, f), rule = pick
-            cover = people.message_ref(service, sdir, room, f, avatar=avatars[room])
-            logger.info(
-                "memories_select",
-                view=VIEW_COVER,
-                rule=rule,
-                score=f.photo_score,
-                fallback=rule in ("burst", "first"),
-                message_id=f.id,
-                month=month,
-            )
+        (room, f), rule = chosen[month]
+        probe = _probe_of(found, f)
+        logger.info(
+            "memories_select",
+            view=VIEW_COVER,
+            rule=rule,
+            score=f.photo_score,
+            fallback=rule in ("burst", "first") or f.is_promo or shot(room, f),
+            message_id=f.id,
+            month=month,
+        )
         rows.append(
             {
                 "month": month,
                 "count": len(items),
-                "cover": cover,
+                "cover": people.message_ref(
+                    service, sdir, room, f, avatar=avatars[room]
+                ),
                 "cover_rule": rule,
-                "has_favorites": any(f.favorited for _, f in items),
+                "cover_color": (
+                    album_colors.hex_of(probe.rgb)
+                    if probe is not None and probe.rgb is not None
+                    else None
+                ),
+                "has_favorites": any(t[1].favorited for t in items),
             }
         )
     return {"months": rows}
@@ -308,30 +346,42 @@ async def album_months(
 ) -> dict:
     """The album's monthly sections, newest first (see the module docstring)."""
     _check_kind(kind)
-    persons, scope, hashes = await album_colors.scope_of(sdir, member)
+    persons, scope, hashes = await people.album_scope(sdir, member)
     oshi_names = await people.oshi_rooms(service, persons)
     oshi_rooms = {
         r for s in persons if s.name_norm in oshi_names for r in s.member_dirs
     }
     overrides = await covers.load_cover_overrides(sdir, scope)
     data_hash = view_hash(
-        ALBUM_VERSION, hashes, sorted(oshi_rooms), sorted(overrides.items())
+        ALBUM_VERSION,
+        hashes,
+        await people.media_dir_mtimes(sdir, persons),
+        sorted(oshi_rooms),
+        sorted(overrides.items()),
     )
 
     async def build() -> dict:
-        tagged = await album_colors.scope_facts(sdir, persons)
+        tagged = await people.scope_facts(sdir, persons)
         months = await asyncio.to_thread(_by_month, tagged, kind)
-        check = await _screenshot_check(sdir, months, overrides, oshi_rooms)
-        chosen = await asyncio.to_thread(_covers, months, overrides, oshi_rooms, check)
-        rooms = {pick[0][0] for pick in chosen.values() if pick is not None}
+        found = await _consulted_probes(sdir, months, overrides, oshi_rooms)
+        chosen = await asyncio.to_thread(
+            _covers, months, overrides, oshi_rooms, _screenshot_fn(found)
+        )
+        # the cover tint: probe covers the rules did not ask about (cached)
+        extra = [
+            mf
+            for (_, f), _ in chosen.values()
+            if (mf := _picture_file(f)) is not None and mf not in found
+        ]
+        found.update(await album_colors.probes(sdir, extra))
+        rooms = {room for (room, _), _ in chosen.values()}
         avatars = await _avatars_by_room(sdir, persons, rooms)
         return await asyncio.to_thread(
-            _months_payload, service, sdir, months, chosen, avatars
+            _months_payload, service, sdir, months, chosen, avatars, found
         )
 
     payload = await cached_view(sdir, VIEW_MONTHS, f"{scope}:{kind}", data_hash, build)
-    cover_refs = [m["cover"] for m in payload["months"] if m["cover"] is not None]
-    await people.attach_texts(sdir, cover_refs)
+    await people.attach_texts(sdir, [m["cover"] for m in payload["months"]])
     logger.info(
         "memories_album",
         months=len(payload["months"]),
@@ -383,11 +433,11 @@ async def album_month(
     if not MONTH_RE.match(month):
         raise ValueError("month must be YYYY-MM")
     _check_kind(kind)
-    persons, scope, hashes = await album_colors.scope_of(sdir, member)
+    persons, scope, hashes = await people.album_scope(sdir, member)
     data_hash = view_hash(ALBUM_VERSION, hashes, month)
 
     async def build() -> dict:
-        tagged = await album_colors.scope_facts(sdir, persons)
+        tagged = await people.scope_facts(sdir, persons)
         items = (await asyncio.to_thread(_by_month, tagged, kind)).get(month, [])
         avatars = await _avatars_by_room(sdir, persons, {room for room, _ in items})
         return await asyncio.to_thread(

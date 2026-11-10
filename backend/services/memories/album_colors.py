@@ -2,11 +2,15 @@
 
 - :func:`probe_image` (blocking) opens one picture with Pillow and returns an
   :class:`ImageProbe`: size, format and a representative colour. The picture
-  is untrusted input: decompression bombs (``DecompressionBombError`` and
-  ``DecompressionBombWarning``) and pictures over the pixel bound are refused,
-  JPEGs are decoded at draft size, and every failure gives ``None`` plus a
-  ``memories_skip`` breadcrumb (``view=album_color``, ``reason=unreadable``,
-  ``error_type``) that never carries the path.
+  is untrusted input: ``DecompressionBombError``, Pillow's
+  ``DecompressionBombWarning`` (turned into an error by a ``warnings`` filter
+  local to the decode) and pictures over the pixel bound
+  (:data:`PROBE_MAX_PIXELS` for formats without draft decoding) are refused;
+  JPEG / MPO pictures are decoded at draft size. Every failure gives ``None``
+  plus a ``memories_skip`` breadcrumb (``view=album_color``, ``error_type``)
+  that never carries the path: ``reason=unreadable`` for a decode failure,
+  ``reason=unavailable`` for a transient one (the file cannot be opened, or a
+  ``PermissionError``).
 - :func:`probes` validates each ``media_file`` against the output dir
   (``archive_urls.archive_file_ok``) and caches probes per photo in the
   memory-index DB, keyed by ``stat_key`` = ``f"{size}:{mtime_ns}"``::
@@ -15,16 +19,20 @@
                            fmt, rgb, PRIMARY KEY(service_dir, media_file))
                            WITHOUT ROWID
 
-  A failed probe is stored too (``width`` NULL), so a broken file is not
-  decoded again until it changes. Misses are probed in worker threads, at
+  A decode failure is stored too (``width`` NULL), so a broken file is not
+  decoded again until it changes; a transient failure is not stored and is
+  retried on the next request. Misses are probed in worker threads, at
   most :data:`PROBE_BATCH` files per thread.
 - :func:`month_color` buckets colours by 4-bit RGB and averages the most
   frequent bucket (ties: the bucket seen first, i.e. the higher-score photo).
 - :func:`month_colors_for` -- ``{"colors": {"YYYY-MM": "#rrggbb" | None}}``
   for every month with a picture or video, from up to
   :data:`MONTH_SAMPLE` non-promo pictures with the highest ``photo_score``
-  (ties: the earlier; videos are never sampled). Cached text-free (view
-  ``album_colors``, key = ``person_key`` or ``"all"``).
+  (ties: the earlier; videos are never sampled); screenshot-like ones among
+  them are dropped from the sample. Cached text-free (view
+  ``album_colors``, key = ``person_key`` or ``"all"``, hash over the room
+  hashes and ``people.media_dir_mtimes``, so media repair that adds files
+  without rewriting ``messages.json`` re-colours the ribbon).
 
 Logs carry counts and codes only: ``memories_album_probe`` (``hits``,
 ``probed``, ``failed``, ``missing``) and ``memories_album_probe_failed``
@@ -37,11 +45,12 @@ import asyncio
 import colorsys
 import contextlib
 import sqlite3
+import warnings
 from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import cast
+from typing import BinaryIO, cast
 
 import structlog
 from PIL import Image
@@ -49,7 +58,7 @@ from PIL import Image
 from backend.services.archive_urls import ArchiveReadError, archive_file_ok
 from backend.services.memories import index as mi
 from backend.services.memories import people
-from backend.services.memories.facts import Fact, get_person_facts
+from backend.services.memories.facts import Fact
 from backend.services.memories.view_cache import cached_view, view_hash
 
 logger = structlog.get_logger(__name__)
@@ -57,12 +66,13 @@ logger = structlog.get_logger(__name__)
 VIEW = "album_color"
 VIEW_COLORS = "album_colors"
 # Bump on any rule or payload change of the ribbon (its cache hash has it).
-COLORS_VERSION = 1
+COLORS_VERSION = 2
 MONTH_SAMPLE = 8
 PROBE_BATCH_DEFAULT = 64
 PROBE_BATCH = PROBE_BATCH_DEFAULT
-# Decoded-size bound for formats without draft decoding (JPEG uses draft).
-PROBE_MAX_PIXELS = 50_000_000
+# Decoded-size bound for formats without draft decoding (JPEG / MPO use draft).
+PROBE_MAX_PIXELS = 25_000_000
+DRAFT_FORMATS = frozenset({"JPEG", "MPO"})
 DRAFT_SIZE = (64, 64)
 THUMB_SIZE = (48, 48)
 PALETTE_COLORS = 8
@@ -120,35 +130,62 @@ def _dominant(img: Image.Image) -> RGB | None:
 
 
 def _pixel_limit(fmt: str) -> int | None:
-    if fmt == "JPEG":
+    if fmt in DRAFT_FORMATS:  # decoded at draft size: Pillow's own bound
         return Image.MAX_IMAGE_PIXELS
     limit = Image.MAX_IMAGE_PIXELS
     return PROBE_MAX_PIXELS if limit is None else min(limit, PROBE_MAX_PIXELS)
 
 
-def probe_image(path: Path) -> ImageProbe | None:
-    """Probe one picture (see the module docstring). Blocking; never raises."""
-    try:
-        with Image.open(path) as img:
+def _skip(reason: str, e: BaseException) -> None:
+    logger.info("memories_skip", view=VIEW, reason=reason, error_type=type(e).__name__)
+
+
+def _decode(fh: BinaryIO) -> ImageProbe:
+    """Decode an open picture; raises on any failure. Blocking."""
+    with warnings.catch_warnings():
+        # a picture in Pillow's warning band is refused like a bomb; the
+        # filter is local to this call (and the explicit bound below holds
+        # even if another thread resets the process-wide filters meanwhile)
+        warnings.simplefilter("error", Image.DecompressionBombWarning)
+        with Image.open(fh) as img:
             fmt = img.format or ""
             width, height = img.size
             limit = _pixel_limit(fmt)
             if limit is not None and width * height > limit:
                 raise Image.DecompressionBombError("pixel bound")
-            if fmt == "JPEG":
+            if fmt in DRAFT_FORMATS:
                 img.draft("RGB", DRAFT_SIZE)
             rgb_img = img.convert("RGB")
-        rgb_img.thumbnail(THUMB_SIZE)
-        rgb = _dominant(rgb_img)
+    rgb_img.thumbnail(THUMB_SIZE)
+    return ImageProbe(width=width, height=height, fmt=fmt, rgb=_dominant(rgb_img))
+
+
+def _probe_image(path: Path) -> tuple[ImageProbe | None, bool]:
+    """``(probe or None, cacheable)``. Blocking; never raises.
+
+    A failure to open the file, or a ``PermissionError`` while reading it, is
+    transient (another process may hold it): ``reason=unavailable``, not
+    cacheable. Any decode failure is ``reason=unreadable`` and cacheable.
+    """
+    try:
+        fh = open(path, "rb")  # noqa: SIM115 - closed by the with below
+    except OSError as e:
+        _skip("unavailable", e)
+        return None, False
+    try:
+        with fh:
+            return _decode(fh), True
+    except PermissionError as e:
+        _skip("unavailable", e)
+        return None, False
     except Exception as e:  # noqa: BLE001 - untrusted input: any failure is a skip
-        logger.info(
-            "memories_skip",
-            view=VIEW,
-            reason="unreadable",
-            error_type=type(e).__name__,
-        )
-        return None
-    return ImageProbe(width=width, height=height, fmt=fmt, rgb=rgb)
+        _skip("unreadable", e)
+        return None, True
+
+
+def probe_image(path: Path) -> ImageProbe | None:
+    """Probe one picture (see the module docstring). Blocking; never raises."""
+    return _probe_image(path)[0]
 
 
 # --- probe cache --------------------------------------------------------------------
@@ -244,9 +281,9 @@ def _row_probe(row: _Row) -> ImageProbe | None:
     return ImageProbe(width=width, height=height, fmt=fmt or "", rgb=_int_to_rgb(rgb))
 
 
-def _probe_batch(paths: Sequence[Path]) -> list[ImageProbe | None]:
-    """:func:`probe_image` of each path. Blocking (one worker thread per batch)."""
-    return [probe_image(p) for p in paths]
+def _probe_batch(paths: Sequence[Path]) -> list[tuple[ImageProbe | None, bool]]:
+    """``_probe_image`` of each path. Blocking (one worker thread per batch)."""
+    return [_probe_image(p) for p in paths]
 
 
 async def probes(sdir: Path, media_files: list[str]) -> dict[str, ImageProbe | None]:
@@ -267,19 +304,22 @@ async def probes(sdir: Path, media_files: list[str]) -> dict[str, ImageProbe | N
         else:
             misses.append(mf)
     fresh: list[tuple[str, str, ImageProbe | None]] = []
+    failed = 0
     for start in range(0, len(misses), PROBE_BATCH):
         chunk = misses[start : start + PROBE_BATCH]
         results = await asyncio.to_thread(_probe_batch, [sdir / mf for mf in chunk])
-        for mf, probe in zip(chunk, results):
+        for mf, (probe, cacheable) in zip(chunk, results):
             out[mf] = probe
-            fresh.append((mf, keys[mf] or "", probe))
+            failed += probe is None
+            if cacheable:  # a transient failure is retried next time
+                fresh.append((mf, keys[mf] or "", probe))
     if fresh:
         await asyncio.to_thread(_write_rows, service_dir, fresh)
     logger.info(
         "memories_album_probe",
         hits=len(present) - len(misses),
         probed=len(misses),
-        failed=sum(1 for _, _, p in fresh if p is None),
+        failed=failed,
         missing=len(files) - len(present),
     )
     return out
@@ -336,30 +376,6 @@ def _month(f: Fact) -> str:
     return f"{f.jst_date.year:04d}-{f.jst_date.month:02d}"
 
 
-async def scope_of(
-    sdir: Path, member: mi.MemberSummary | None
-) -> tuple[list[mi.MemberSummary], str, list[str]]:
-    """``(persons, scope, room hashes)`` of one person or of everyone (``"all"``)."""
-    persons = [member] if member is not None else await mi.list_members(sdir)
-    scope = people.person_key(member) if member is not None else "all"
-    hashes = [await people.room_hashes(sdir, s) for s in persons]
-    return persons, scope, hashes
-
-
-async def scope_facts(sdir: Path, persons: Sequence[mi.MemberSummary]) -> list[_Tagged]:
-    """``(room, fact)`` of every room of ``persons``, by ``(ts, id, room)``."""
-    tagged: list[_Tagged] = []
-    for s in persons:
-        tagged.extend(await get_person_facts(sdir, s))
-    if len(persons) > 1:
-        tagged = await asyncio.to_thread(sorted, tagged, key=_order)
-    return tagged
-
-
-def _order(t: _Tagged) -> tuple:
-    return t[1].ts, t[1].id, t[0]
-
-
 async def month_colors_for(
     service: str, sdir: Path, member: mi.MemberSummary | None
 ) -> dict:
@@ -368,16 +384,22 @@ async def month_colors_for(
     ``service`` is unused (the ribbon has no URLs); it keeps the signature
     uniform with the other album services.
     """
-    persons, scope, hashes = await scope_of(sdir, member)
-    data_hash = view_hash(COLORS_VERSION, hashes)
+    persons, scope, hashes = await people.album_scope(sdir, member)
+    data_hash = view_hash(
+        COLORS_VERSION, hashes, await people.media_dir_mtimes(sdir, persons)
+    )
 
     async def build() -> dict:
-        tagged = await scope_facts(sdir, persons)
+        tagged = await people.scope_facts(sdir, persons)
         samples = await asyncio.to_thread(_month_samples, tagged)
         found = await probes(sdir, [mf for files in samples.values() for mf in files])
         colors: dict[str, str | None] = {}
         for month, files in samples.items():
-            rgbs = [p.rgb for mf in files if (p := found.get(mf)) and p.rgb]
+            rgbs = [
+                p.rgb
+                for mf in files
+                if (p := found.get(mf)) and p.rgb and not is_screenshot_like(p)
+            ]
             colors[month] = month_color(rgbs)
         logger.info(
             "memories_album_colors",
@@ -397,6 +419,4 @@ __all__ = [
     "month_colors_for",
     "probe_image",
     "probes",
-    "scope_facts",
-    "scope_of",
 ]

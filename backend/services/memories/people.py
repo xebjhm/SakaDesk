@@ -34,6 +34,13 @@ API:
   :data:`IO_CONCURRENCY` rooms at once.
 - ``async service_facts_on(sdir, summaries, *, day=None, month_day=None)``.
 - ``async room_hashes(sdir, summary)``.
+- ``async album_scope(sdir, member)`` -- ``(persons, scope, room hashes)`` of
+  one person or, for ``None``, everyone (``scope`` = ``person_key`` or
+  ``"all"``); ``async scope_facts(sdir, persons)`` -- their ``(room, fact)``
+  by ``(ts, id, room)``; ``async media_dir_mtimes(sdir, persons)`` -- the
+  ``mtime_ns`` of every room's :data:`MEDIA_SUBDIRS` (``-1`` when absent),
+  which changes when media repair adds a file without touching
+  ``messages.json``.
 - ``async letters_of(service, sdir, summary)`` -- ``(room, letter_id, JST
   date)`` of the fan's own letters (never paired with her messages).
 
@@ -63,13 +70,21 @@ from backend.services.archive_urls import (
 from backend.services.letters_local import read_local_letters
 from backend.services.memories import index as mi
 from backend.services.memories import oshi as oshi_mod
-from backend.services.memories.facts import Fact, get_facts_on, load_texts
+from backend.services.memories.facts import (
+    Fact,
+    get_facts_on,
+    get_person_facts,
+    load_texts,
+)
 from backend.services.memories.selection import JST
 from backend.services.service_utils import get_service_display_name, validate_service
 
 logger = structlog.get_logger(__name__)
 
 MEDIA_TYPES = frozenset({"picture", "video"})
+# pysaka writes a room's media to ``<room>/<type>/<id>.<ext>`` (the folder a
+# ``media_file`` points into); these are the album's media folders.
+MEDIA_SUBDIRS = ("picture", "video")
 # Rooms read at once by attach_texts / avatar_timelines_for (worker threads).
 IO_CONCURRENCY = 4
 
@@ -439,6 +454,56 @@ async def room_hashes(sdir: Path, summary: mi.MemberSummary) -> str:
     return hashlib.sha256("|".join(hashes).encode("utf-8")).hexdigest()[:16]
 
 
+async def album_scope(
+    sdir: Path, member: mi.MemberSummary | None
+) -> tuple[list[mi.MemberSummary], str, list[str]]:
+    """``(persons, scope, room hashes)`` of one person or of everyone (``"all"``)."""
+    persons = [member] if member is not None else await mi.list_members(sdir)
+    scope = person_key(member) if member is not None else "all"
+    hashes = [await room_hashes(sdir, s) for s in persons]
+    return persons, scope, hashes
+
+
+def _by_ts_id_room(t: tuple[str, Fact]) -> tuple[datetime, int, str]:
+    return t[1].ts, t[1].id, t[0]
+
+
+def _sorted_scope(tagged: list[tuple[str, Fact]]) -> list[tuple[str, Fact]]:
+    tagged.sort(key=_by_ts_id_room)
+    return tagged
+
+
+async def scope_facts(
+    sdir: Path, persons: Sequence[mi.MemberSummary]
+) -> list[tuple[str, Fact]]:
+    """``(room, fact)`` of every room of ``persons``, by ``(ts, id, room)``."""
+    tagged: list[tuple[str, Fact]] = []
+    for s in persons:
+        tagged.extend(await get_person_facts(sdir, s))
+    if len(persons) > 1:
+        tagged = await asyncio.to_thread(_sorted_scope, tagged)
+    return tagged
+
+
+def _media_dir_mtimes(sdir: Path, rooms: Sequence[str]) -> tuple[int, ...]:
+    out = []
+    for room in rooms:
+        for sub in MEDIA_SUBDIRS:
+            try:
+                out.append((sdir / room / sub).stat().st_mtime_ns)
+            except OSError:
+                out.append(-1)
+    return tuple(out)
+
+
+async def media_dir_mtimes(
+    sdir: Path, persons: Sequence[mi.MemberSummary]
+) -> tuple[int, ...]:
+    """``mtime_ns`` of each room's media folders (``-1`` if absent), in a worker."""
+    rooms = [room for s in persons for room in s.member_dirs]
+    return await asyncio.to_thread(_media_dir_mtimes, sdir, rooms)
+
+
 # --- letters -------------------------------------------------------------------------
 
 
@@ -484,6 +549,10 @@ async def letters_of(
 
 __all__ = [
     "AvatarTimeline",
+    "MEDIA_SUBDIRS",
+    "album_scope",
+    "media_dir_mtimes",
+    "scope_facts",
     "ForeignServiceError",
     "attach_texts",
     "avatar_timeline",

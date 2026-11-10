@@ -111,14 +111,49 @@ def test_choose_cover_first_in_time_order():
     assert picked(choose(cands)) == ("a", 1, "first")
 
 
-def test_choose_cover_demotes_promo_within_a_rule():
+def test_choose_cover_promo_is_a_last_resort_across_rules():
     cands = [
-        ("a", media(1, "2024-09-01 12:00", score=900, fav=True, promo=True)),
-        ("a", media(2, "2024-09-02 12:00", score=10, fav=True)),
+        ("a", media(1, "2024-09-01 12:00", fav=True, promo=True)),
+        ("a", media(2, "2024-09-02 12:00", score=10)),
+        ("a", media(3, "2024-09-03 12:00", score=40)),
     ]
-    assert picked(choose(cands)) == ("a", 2, "favorite")
-    only_promo = [cands[0]]
-    assert picked(choose(only_promo)) == ("a", 1, "favorite")
+    # the promo-only star loses to the clean scored photos
+    assert picked(choose(cands)) == ("a", 3, "score")
+    clean_star = [*cands, ("a", media(4, "2024-09-04 12:00", score=5, fav=True))]
+    assert picked(choose(clean_star)) == ("a", 4, "favorite")
+    # nothing clean: the same chain runs over the demoted items
+    assert picked(choose(cands[:1])) == ("a", 1, "favorite")
+    # a deliberate override still wins, promo or not
+    assert picked(choose(cands, override=("a", 1))) == ("a", 1, "override")
+
+
+def test_choose_cover_screenshot_is_a_last_resort_across_rules():
+    cands = [
+        ("a", media(1, "2024-09-01 12:00", score=900, fav=True)),
+        ("a", media(2, "2024-09-02 12:00", score=10)),
+    ]
+
+    def shot(room, f):
+        return f.id == 1
+
+    assert picked(choose(cands, shot=shot)) == ("a", 2, "score")
+
+
+def test_choose_cover_asks_the_top_three_of_every_rule_once():
+    # favorite top 3: 7, 8, 9; score top 3: 1, 2, 3; first top 3: 1, 2, 3
+    cands = [("a", media(i, f"2024-09-0{i} 12:00", score=100 - i)) for i in range(1, 7)]
+    cands += [
+        ("a", media(i, f"2024-09-{i + 10} 12:00", score=1, fav=True))
+        for i in range(7, 11)
+    ]
+    asked: list[int] = []
+
+    def shot(room, f):
+        asked.append(f.id)
+        return False
+
+    assert picked(choose(cands, shot=shot)) == ("a", 7, "favorite")
+    assert sorted(asked) == [1, 2, 3, 7, 8, 9]
 
 
 def test_choose_cover_demotes_screenshots_in_the_top_three():
@@ -334,8 +369,9 @@ async def test_album_months_screenshot_demoted(svc, monkeypatch):
     sep = (await album.album_months(SERVICE, svc, member=a, kind="picture"))["months"][
         1
     ]
-    # the only favourite is a screenshot: it stays the favourite rule's pick
-    assert sep["cover"]["id"] == 2 and sep["cover_rule"] == "favorite"
+    # the only favourite is a screenshot: a clean scored photo wins instead
+    assert sep["cover"]["id"] == 12 and sep["cover_rule"] == "score"
+    assert sep["cover_color"] is None  # the fake probes carry no colour
     b = await person(svc, ROOM_B)
     sep_b = (await album.album_months(SERVICE, svc, member=b, kind="all"))["months"][1]
     # 12 (last of the burst) has the top score but is a screenshot: 10 wins
@@ -396,3 +432,81 @@ async def test_album_month_validates(svc):
         await album.album_month(SERVICE, svc, "2024-13", member=None, kind="all")
     with pytest.raises(ValueError):
         await album.album_month(SERVICE, svc, "2024-09", member=None, kind="x")
+
+
+@pytest.mark.asyncio
+async def test_album_months_promo_only_star_gets_a_clean_cover(tmp_path, oshi_names):
+    mi.set_db_path(tmp_path / "idx.db")
+    sdir = tmp_path / "out" / SVC_NAME
+    write_room(
+        sdir,
+        "34 金村 美玖",
+        "58 金村 美玖",
+        [
+            pic(1, "2024-09-01T03:00:00Z", fav=True, content="https://example.jp/shop"),
+            pic(2, "2024-09-05T12:00:00Z"),  # 21:00 JST: +80
+            pic(3, "2024-09-09T03:00:00Z"),
+        ],
+    )
+    a = await person(sdir, ROOM_A)
+    (sep,) = (await album.album_months(SERVICE, sdir, member=a, kind="all"))["months"]
+    assert sep["cover"]["id"] == 2 and sep["cover_rule"] == "score"
+    assert sep["has_favorites"] is True
+
+
+def _jpeg(path, color):
+    from PIL import Image
+
+    path.parent.mkdir(parents=True, exist_ok=True)
+    Image.new("RGB", (60, 40), color).save(path, "JPEG", quality=95)
+
+
+@pytest.mark.asyncio
+async def test_album_months_cover_color(svc):
+    a = await person(svc, ROOM_A)
+    _jpeg(svc / ROOM_A / "picture" / "2.jpg", (220, 30, 30))
+    months = (await album.album_months(SERVICE, svc, member=a, kind="all"))["months"]
+    hex_ = months[1]["cover_color"]  # 2024-09: cover is picture 2
+    r, g, b = (int(hex_[i : i + 2], 16) for i in (1, 3, 5))
+    assert r > 150 and g < 90 and b < 90
+    assert months[0]["cover_color"] is None  # 2024-10: the file is missing
+    vids = (await album.album_months(SERVICE, svc, member=a, kind="video"))["months"]
+    assert vids[0]["cover"]["type"] == "video" and vids[0]["cover_color"] is None
+
+
+@pytest.mark.asyncio
+async def test_album_months_cover_color_for_an_unasked_cover(
+    tmp_path, oshi_names, monkeypatch
+):
+    # an all-promo month: the cover comes from the demoted chain, which the
+    # screenshot check never asks about; it is probed for its tint afterwards
+    mi.set_db_path(tmp_path / "idx.db")
+    out = tmp_path / "out"
+    sdir = out / SVC_NAME
+    write_room(
+        sdir,
+        "34 金村 美玖",
+        "58 金村 美玖",
+        [pic(1, "2024-09-01T03:00:00Z", content="https://example.jp/shop")],
+    )
+    _jpeg(sdir / ROOM_A / "picture" / "1.jpg", (30, 60, 200))
+    monkeypatch.setattr(people, "output_dir", lambda: out)
+    a = await person(sdir, ROOM_A)
+    (sep,) = (await album.album_months(SERVICE, sdir, member=a, kind="all"))["months"]
+    assert sep["cover_rule"] == "first" and sep["cover_color"] is not None
+
+
+@pytest.mark.asyncio
+async def test_album_months_rebuilds_after_media_repair(svc):
+    import os
+
+    a = await person(svc, ROOM_A)
+    pics = svc / ROOM_A / "picture"
+    pics.mkdir(parents=True, exist_ok=True)
+    first = (await album.album_months(SERVICE, svc, member=a, kind="all"))["months"]
+    assert first[1]["cover_color"] is None  # no file yet
+    _jpeg(pics / "2.jpg", (220, 30, 30))  # messages.json is not rewritten
+    st = pics.stat()
+    os.utime(pics, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+    again = (await album.album_months(SERVICE, svc, member=a, kind="all"))["months"]
+    assert again[1]["cover_color"] is not None

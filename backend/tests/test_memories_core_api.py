@@ -329,3 +329,55 @@ def test_album_routes_validate_member(out, no_oshi, route):
     (out / "櫻坂46" / "messages" / "1 x" / "2 x").mkdir(parents=True, exist_ok=True)
     assert get(url, member="櫻坂46/messages/1 x/2 x").status_code == 404
     assert get(f"/api/memories/nope/{route}").status_code == 400
+
+
+@pytest.fixture
+def album_out(out, monkeypatch):
+    from PIL import Image
+
+    from backend.services.memories import people
+
+    svc = out / SVC_NAME
+    write_room(
+        svc,
+        "34 金村 美玖",
+        "58 金村 美玖",
+        [
+            msg(1, "2024-07-24T03:00:00Z", content="はじめまして"),
+            msg(2, "2024-12-24T11:00:00Z", content=WORDS),
+            msg(
+                3,
+                "2024-12-24T11:01:00Z",
+                "picture",
+                fav=True,
+                media_file=f"{ROOM}/picture/3.jpg".replace("/", "\\"),
+            ),
+        ],
+    )
+    (svc / ROOM / "picture").mkdir(exist_ok=True)
+    Image.new("RGB", (60, 40), (220, 30, 30)).save(svc / ROOM / "picture" / "3.jpg")
+    monkeypatch.setattr(people, "output_dir", lambda: out)
+    return out
+
+
+def test_album_routes_with_photos(album_out, no_oshi):
+    base = f"/api/memories/{SERVICE}/album"
+    r = get(f"{base}/members")
+    assert r.json()["total"] == 1 and r.json()["members"][0]["member_path"] == MEMBER
+    r = get(f"{base}/months", member=MEMBER)
+    (month,) = r.json()["months"]
+    assert month["month"] == "2024-12" and month["count"] == 1
+    assert month["cover"]["caption"] == WORDS and month["cover_rule"] == "favorite"
+    assert month["cover_color"].startswith("#")
+    texts = [r.text]
+    r = get(f"{base}/month/2024-12")
+    (item,) = r.json()["items"]
+    assert item["media_file"] == f"{ROOM}/picture/3.jpg"
+    assert item["media_url"].startswith("/api/content/media/")
+    texts.append(r.text)
+    r = get(f"{base}/colors", member=MEMBER)
+    assert r.json()["colors"]["2024-12"].startswith("#")
+    texts.append(r.text)
+    for text in texts:
+        assert str(album_out) not in text
+        assert str(album_out).replace("\\", "/") not in text
