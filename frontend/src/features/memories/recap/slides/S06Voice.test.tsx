@@ -15,6 +15,7 @@ vi.mock('../../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../../utils/clientLog';
 import { S06Voice } from './S06Voice';
 import { CROSSFADE_MS } from '../../shared/clipSequencer';
+import { stopMemoriesVoices, useVoicePlayback } from '../../shared/voicePlayback';
 
 let f: ReturnType<typeof fakeAudioFactory>;
 
@@ -174,5 +175,53 @@ describe('S06Voice', () => {
     it('never prints null, undefined or NaN', () => {
         renderS06(voiceData({ voice_count: null }));
         expect(document.body.textContent).not.toMatch(/null|undefined|NaN/);
+    });
+
+    describe('one voice coordinator', () => {
+        beforeEach(() => { stopMemoriesVoices(); });
+
+        it('▶ stops any other Memories voice and takes the recap key', () => {
+            const other = { stop: vi.fn(), fadeOut: vi.fn(() => Promise.resolve()) };
+            useVoicePlayback.getState().play('fav|r|1', other);
+            renderS06(voiceData());
+            press();
+            expect(other.stop).toHaveBeenCalledTimes(1);
+            expect(useVoicePlayback.getState().playing).toBe('recap|s06');
+        });
+
+        it('another voice starting stops the sequence, logs preempted and does not end the slide', () => {
+            const { onMediaEnd } = renderS06(voiceData());
+            press();
+            act(() => { f.made[0].tick(5.8); });
+            act(() => { useVoicePlayback.getState().play('fav|r|1'); });
+            expect(f.made.every((a) => a.paused)).toBe(true);
+            act(() => { vi.advanceTimersByTime(10_000); });
+            act(() => { f.made[1].tick(5.8); f.made[1].fire('ended'); });
+            act(() => { vi.advanceTimersByTime(10_000); });
+            expect(onMediaEnd).not.toHaveBeenCalled();
+            const ends = vi.mocked(clientLog).mock.calls.filter(([e, x]) => e === 'recap_play' && x?.phase === 'voice_end');
+            expect(ends).toEqual([['recap_play', expect.objectContaining({ key: 's06_voice', reason: 'preempted' })]]);
+            expect(screen.getByRole('button', { name: '声を聴く' })).toBeInTheDocument();
+        });
+
+        it('the natural end releases the key without logging preempted', () => {
+            renderS06(voiceData({ clips: [clip(40)], voice_count: 1 }), 'single');
+            press();
+            act(() => { f.made[0].fire('ended'); });
+            act(() => { vi.advanceTimersByTime(CROSSFADE_MS); });
+            expect(useVoicePlayback.getState().playing).toBeNull();
+            act(() => { useVoicePlayback.getState().play('fav|r|1'); });
+            const calls = vi.mocked(clientLog).mock.calls.filter(([e, x]) => e === 'recap_play' && x?.reason === 'preempted');
+            expect(calls).toHaveLength(0);
+        });
+
+        it('unmounting releases the key without logging preempted', () => {
+            const { unmount } = renderS06(voiceData());
+            press();
+            unmount();
+            expect(useVoicePlayback.getState().playing).toBeNull();
+            const calls = vi.mocked(clientLog).mock.calls.filter(([e, x]) => e === 'recap_play' && x?.reason === 'preempted');
+            expect(calls).toHaveLength(0);
+        });
     });
 });

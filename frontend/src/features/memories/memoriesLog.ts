@@ -235,9 +235,10 @@ export type RecapPlayPhase = (typeof RECAP_PLAY_PHASES)[number];
  * `recap_play`: a player decision. `key` is a slide key, `index` its position,
  * `reason` the trigger (`auto`, `key`, `click`, `media`) or why a slide was
  * skipped (`not_built`, `no_media`) or a voice clip failed (`media_error`,
- * `play_rejected`), `fallback` a fallback code. The `voice_*` phases trace the
- * voice slide: ▶ pressed (`count` clips), a clip started (`index`), a clip
- * failed, the sequence finished. `media_held`: a media slide's playback ended
+ * `play_rejected`) or a voice sequence was stopped by another Memories voice
+ * starting (`preempted`, on `voice_end`), `fallback` a fallback code. The
+ * `voice_*` phases trace the voice slide: ▶ pressed (`count` clips), a clip
+ * started (`index`), a clip failed, the sequence finished or was preempted. `media_held`: a media slide's playback ended
  * while the player was paused, so the step waits for resume. Ids and codes only.
  */
 export function logRecapPlay(

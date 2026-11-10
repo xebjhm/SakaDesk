@@ -7,10 +7,13 @@ import { logRecapPlay } from '../../memoriesLog';
 import type { S06VoiceData } from '../api';
 import { s06Copy, withNickname } from '../recapCopy';
 import { ClipSequencer, createAudioElement, type SequencerClip } from '../../shared/clipSequencer';
+import { useVoicePlayback } from '../../shared/voicePlayback';
 import { Headline, Narration, Quote, type SlideProps } from './common';
 import { heldReveal } from './style';
 
 const KEY = 's06_voice';
+/** The slide's key in the Memories voice coordinator. */
+const VOICE_KEY = 'recap|s06';
 
 type Phase = 'idle' | 'playing' | 'done';
 
@@ -22,6 +25,10 @@ type Phase = 'idle' | 'playing' | 'done';
  * when the last clip has faded out (`waitsForMedia`). The player's pause holds
  * the voices (a crossfade included) until it resumes; ▶ is disabled while the
  * player is paused, so nothing starts behind a paused story.
+ *
+ * The slide joins the Memories voice coordinator as `recap|s06`: ▶ stops any other Memories
+ * voice, and another voice starting stops the sequence. That external stop is not an end:
+ * `onMediaEnd` is not called, `voice_end` is logged with `reason=preempted`, and ▶ comes back.
  */
 export const S06Voice: React.FC<SlideProps<S06VoiceData>> = ({ data, fallback, nickname, reducedMotion, paused, onMediaEnd }) => {
     const { t } = useTranslation();
@@ -49,10 +56,16 @@ export const S06Voice: React.FC<SlideProps<S06VoiceData>> = ({ data, fallback, n
         endRef.current();
     }, [clips.length]);
 
+    const claimVoice = useVoicePlayback((st) => st.play);
+    const releaseVoice = useVoicePlayback((st) => st.stop);
+
+    // Leaving the slide: silence the sequence first so the coordinator's stop finds it gone
+    // (not a preemption), then release the key.
     useEffect(() => () => {
         seq.current?.stop();
         seq.current = null;
-    }, []);
+        releaseVoice(VOICE_KEY);
+    }, [releaseVoice]);
 
     // Follow the player's pause, mid-clip or mid-crossfade.
     useEffect(() => {
@@ -64,6 +77,8 @@ export const S06Voice: React.FC<SlideProps<S06VoiceData>> = ({ data, fallback, n
         if (seq.current || clips.length === 0 || paused) return;
         logRecapPlay('voice_start', { key: KEY, count: clips.length, fallback: fallback ?? undefined });
         setPhase('playing');
+        /** The sequence ended, or was preempted: later coordinator calls are no-ops. */
+        let done = false;
         const s = new ClipSequencer(clips, {
             onClip: (index) => {
                 setCurrent(index);
@@ -75,12 +90,35 @@ export const S06Voice: React.FC<SlideProps<S06VoiceData>> = ({ data, fallback, n
                 logRecapPlay('voice_end', { key: KEY, count: clips.length });
                 setPhase('done');
                 setSubtitle(null);
+                done = true;
+                releaseVoice(VOICE_KEY);
                 endRef.current();
             },
         }, createAudioElement);
+        // Another Memories voice took over: stop without ending the slide, and offer ▶ again.
+        const preempted = () => {
+            if (done || seq.current !== s) return false;
+            done = true;
+            seq.current = null;
+            logRecapPlay('voice_end', { key: KEY, count: clips.length, reason: 'preempted' });
+            setPhase('idle');
+            setCurrent(-1);
+            setSubtitle(null);
+            return true;
+        };
+        claimVoice(VOICE_KEY, {
+            stop: () => {
+                if (preempted()) s.stop();
+            },
+            fadeOut: async (ms) => {
+                if (done || seq.current !== s) return;
+                await s.fadeOut(ms);
+                preempted();
+            },
+        });
         seq.current = s;
         s.start();
-    }, [clips, fallback, paused]);
+    }, [clips, fallback, paused, claimVoice, releaseVoice]);
 
     const lines = heldReveal(reducedMotion, paused, 400);
     return (

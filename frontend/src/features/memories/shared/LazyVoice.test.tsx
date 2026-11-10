@@ -1,9 +1,9 @@
-import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 import { LazyVoice } from './LazyVoice';
-import { stopMemoriesVoices, useVoicePlayback } from './voicePlayback';
+import { fadeOutMemoriesVoices, stopMemoriesVoices, useVoicePlayback } from './voicePlayback';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 beforeEach(() => { stopMemoriesVoices(); });
@@ -44,6 +44,24 @@ describe('LazyVoice', () => {
         expect(document.querySelector('audio')).not.toBeNull();
         act(() => stopMemoriesVoices());
         expect(screen.getAllByRole('button', { name: 'Play voice' })).toHaveLength(2);
+        expect(document.querySelector('audio')).toBeNull();
+    });
+
+    it('stops when another Memories player (the radio) takes the voice', async () => {
+        render(<Two />);
+        await userEvent.click(within(screen.getByTestId('a')).getByRole('button', { name: 'Play voice' }));
+        expect(useVoicePlayback.getState().handle).not.toBeNull();
+        const radio = { stop: vi.fn(), fadeOut: vi.fn(() => Promise.resolve()) };
+        act(() => useVoicePlayback.getState().play('radio|program', radio));
+        expect(document.querySelector('audio')).toBeNull();
+        expect(useVoicePlayback.getState().playing).toBe('radio|program');
+    });
+
+    it('registers a handle whose fade is an immediate stop', async () => {
+        render(<Two />);
+        await userEvent.click(within(screen.getByTestId('a')).getByRole('button', { name: 'Play voice' }));
+        await act(() => fadeOutMemoriesVoices(3000));
+        expect(useVoicePlayback.getState().playing).toBeNull();
         expect(document.querySelector('audio')).toBeNull();
     });
 });

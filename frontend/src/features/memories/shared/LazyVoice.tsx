@@ -1,9 +1,9 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useMemo } from 'react';
 import { Play } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { cn, formatDuration } from '../../../utils/classnames';
 import { VoicePlayer } from '../../../core/media/VoicePlayer';
-import { useVoicePlayback } from './voicePlayback';
+import { useVoicePlayback, type PlayerHandle } from './voicePlayback';
 
 interface LazyVoiceProps {
     /** The voice's playback key (`<surface>|<room>|<id>`), unique among mounted voices. */
@@ -19,7 +19,8 @@ interface LazyVoiceProps {
 /**
  * A Memories voice: a light ▶ button (with the duration) until it is played; only then does the
  * compact `VoicePlayer` (and its audio) mount, autoplaying. One voice plays at a time
- * (`useVoicePlayback`): playing another unmounts this one, and so does unmounting this component
+ * (`useVoicePlayback`, which it joins with a handle): any other Memories voice starting (another
+ * `LazyVoice`, the recap, the radio) unmounts this one, and so does unmounting this component
  * while it plays (scrolled away, dialog closed).
  */
 export const LazyVoice: React.FC<LazyVoiceProps> = ({ playKey, src, durationS, ts, className }) => {
@@ -28,6 +29,15 @@ export const LazyVoice: React.FC<LazyVoiceProps> = ({ playKey, src, durationS, t
     const play = useVoicePlayback((s) => s.play);
     const stop = useVoicePlayback((s) => s.stop);
     useEffect(() => () => stop(playKey), [playKey, stop]);
+    // The coordinator's key change already unmounts the player, so `stop` has nothing left to
+    // do; the compact `VoicePlayer` has no volume ramp, so a fade is an immediate stop.
+    const handle = useMemo<PlayerHandle>(() => ({
+        stop: () => {},
+        fadeOut: () => {
+            stop(playKey);
+            return Promise.resolve();
+        },
+    }), [playKey, stop]);
     const duration = durationS ? formatDuration(durationS) : null;
     if (playing) {
         return (
@@ -40,7 +50,7 @@ export const LazyVoice: React.FC<LazyVoiceProps> = ({ playKey, src, durationS, t
         <button
             type="button"
             aria-label={t('memories.favorites.play')}
-            onClick={() => play(playKey)}
+            onClick={() => play(playKey, handle)}
             className={cn(
                 'flex w-full items-center gap-2 rounded-pill bg-sunken px-3 py-2 text-small text-primary',
                 'transition-colors duration-fast ease-standard hover:bg-sheet motion-reduce:transition-none',
