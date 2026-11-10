@@ -1,19 +1,21 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp } from 'lucide-react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../../../i18n';
-import { IconButton, Select } from '../../../design/primitives';
+import { Select } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
-import { buildMonthGrid, DAY_TONE_CLASS, MONTH_KEYS, weekdayTone } from '../../../core/calendar/monthGrid';
+import { buildMonthGrid, MONTH_KEYS, pickerYearRange } from '../../../core/calendar/monthGrid';
 import { MonthYearPicker } from '../../../core/calendar/MonthYearPicker';
-import { monthYearPickerLog } from '../../../core/calendar/pickerLog';
+import { MonthTitleButton, NewerMonthButton, OlderMonthButton, WeekdayHeader } from '../../../core/calendar/MonthNav';
+import { useMonthPickerView } from '../../../core/calendar/useMonthPickerView';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import { fetchCalendarMonth, fetchCalendarMonths, fetchMemoirMembers } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
 import { LoadState } from '../shared/LoadState';
 import { PageHeader } from '../shared/PageHeader';
 import { jstNow } from '../shared/jst';
+import { nameFromRoom } from '../shared/nameFromRoom';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
-import type { CalendarDay } from '../types';
+import type { CalendarDay, CalendarMonthPayload } from '../types';
+import { cellThumbPx, DEFAULT_CELL_PX } from './cellSize';
 import { DayCell } from './DayCell';
 
 export type CalendarRoute = Extract<MemoriesRoute, { page: 'calendar' }>;
@@ -24,10 +26,7 @@ interface CalendarAlbumPageProps {
     go: (next: MemoriesRoute) => void;
 }
 
-const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/;
-/** Years the picker offers when there are no months at all: this year and the nine before it. */
-const FALLBACK_PICKER_YEARS = 10;
 
 const pad = (n: number) => String(n).padStart(2, '0');
 const parseMonth = (ym: string | undefined) => {
@@ -45,6 +44,20 @@ function defaultMonth(months: string[], thisMonth: string): string {
     return months[months.length - 1];
 }
 
+/** The measured cell size of a 7 × 6 grid element (`DEFAULT_CELL_PX` where it cannot be measured). */
+function useCellPx(el: HTMLElement | null): number {
+    const [px, setPx] = useState(DEFAULT_CELL_PX);
+    useEffect(() => {
+        if (!el || typeof ResizeObserver === 'undefined') return undefined;
+        const measure = () => setPx(cellThumbPx(el.clientWidth, el.clientHeight));
+        measure();
+        const ro = new ResizeObserver(measure);
+        ro.observe(el);
+        return () => ro.disconnect();
+    }, [el]);
+    return px;
+}
+
 interface MonthGridProps {
     service: string;
     month: string;
@@ -53,46 +66,57 @@ interface MonthGridProps {
     onOpenDay: (date: string) => void;
 }
 
-/** The weekday header and the 6 × 7 day cells of one month, filling the pane (no page scroll). */
+/**
+ * The weekday header and the 6 × 7 day cells of one month, filling the pane (no page scroll).
+ * While the next month loads, the month already on screen stays (dimmed, `aria-busy`) instead
+ * of a loading line; the very first load and an error show the load state.
+ */
 const MonthGrid: React.FC<MonthGridProps> = ({ service, month, member, label, onOpenDay }) => {
     const { t } = useTranslation();
-    const { year, month0 } = parseMonth(month)!;
     const query = useMemoriesQuery(
         'calendar',
         (signal) => fetchCalendarMonth(service, month, member, signal),
         [service, month, member],
         { count: (d) => d.days.length },
     );
-    const cells = useMemo(() => buildMonthGrid(year, month0), [year, month0]);
+    // The last month drawn, kept on screen while another one loads.
+    const [kept, setKept] = useState<CalendarMonthPayload | null>(null);
+    if (query.data && kept !== query.data) setKept(query.data);
+    const shown = query.data ?? (query.status === 'loading' ? kept : null);
+    const busy = shown !== null && shown !== query.data;
+
+    const shownMonth = shown?.month;
+    const cells = useMemo(() => {
+        const parts = parseMonth(shownMonth);
+        return parts ? buildMonthGrid(parts.year, parts.month0) : [];
+    }, [shownMonth]);
     const byDate = useMemo(
-        () => new Map<string, CalendarDay>((query.data?.days ?? []).map((d) => [d.date, d])),
-        [query.data],
+        () => new Map<string, CalendarDay>((shown?.days ?? []).map((d) => [d.date, d])),
+        [shown],
     );
+    const [gridEl, setGridEl] = useState<HTMLDivElement | null>(null);
+    const cellPx = useCellPx(gridEl);
 
     return (
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
-            <div className="grid shrink-0 grid-cols-7 gap-1 pb-1">
-                {WEEKDAY_KEYS.map((key, i) => {
-                    const tone = weekdayTone(i);
-                    return (
-                        <div
-                            key={key}
-                            data-testid="calendar-weekday"
-                            className={cn('text-center text-caption font-semibold', tone ? DAY_TONE_CLASS[tone] : 'text-muted')}
-                        >
-                            {t(`calendar.weekdays.${key}`)}
-                        </div>
-                    );
-                })}
-            </div>
-            {query.status !== 'ready' || !query.data ? (
+            <WeekdayHeader className="shrink-0 gap-1 pb-1" cellClassName="" />
+            {!shown || cells.length === 0 ? (
                 <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />
             ) : (
-                <div role="group" aria-label={label} className="relative grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1">
+                <div
+                    ref={setGridEl}
+                    role="group"
+                    aria-label={label}
+                    aria-busy={busy || undefined}
+                    className={cn(
+                        'relative grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1 transition-opacity duration-fast ease-standard',
+                        busy && 'opacity-60',
+                    )}
+                >
                     {cells.map((cell) => (
-                        <DayCell key={cell.dateStr} cell={cell} data={byDate.get(cell.dateStr)} onOpen={onOpenDay} />
+                        <DayCell key={cell.dateStr} cell={cell} data={byDate.get(cell.dateStr)} px={cellPx} onOpen={onOpenDay} />
                     ))}
-                    {query.data.days.length === 0 && (
+                    {!busy && shown.days.length === 0 && (
                         <p className="pointer-events-none absolute inset-0 m-auto h-fit w-fit rounded-pill bg-frost px-4 py-2 text-small text-secondary backdrop-blur-frost">
                             {t('memories.calendar.empty')}
                         </p>
@@ -107,16 +131,17 @@ const MonthGrid: React.FC<MonthGridProps> = ({ service, month, member, label, on
  * The calendar album (spec 13): the existing Japanese calendar (Sunday first, Sunday / 祝日 red,
  * Saturday blue, holiday names) with each day's best photo and member dots (`DayCell`). The
  * toolbar steps months with ‹ (older) / › (newer), opens the shared year / month picker from the
- * month title (months without data dimmed) and filters by member (「全員」, then the memoir list,
- * oshi first; logs `memories_toggle` `calendar_member`). The route keeps the month and the member;
- * a day opens 那一天 (`{page: 'day', from: 'calendar'}`). Months are JST.
+ * month title (months without data dimmed; the host side is `useMonthPickerView`, shared with
+ * `CalendarModal`) and filters by member (「全員」, then the memoir list, oshi first; a route path
+ * of any of her rooms selects her row; logs `memories_toggle` `calendar_member`). The route keeps
+ * the month and the member; a day opens 那一天 with both (`{page: 'day', from: 'calendar'}`).
+ * Months are JST.
  */
 export const CalendarAlbumPage: React.FC<CalendarAlbumPageProps> = ({ service, route, go }) => {
     const { t } = useTranslation();
     const member = route.memberPath;
-    const [picking, setPicking] = useState(false);
-    const titleRef = useRef<HTMLButtonElement>(null);
-    const wasPicking = useRef(picking);
+    const pickerView = useMonthPickerView();
+    const { picking, titleRef } = pickerView;
 
     const months = useMemoriesQuery('calendar_months', (signal) => fetchCalendarMonths(service, member, signal), [service, member], {
         count: (d) => d.months.length,
@@ -133,43 +158,28 @@ export const CalendarAlbumPage: React.FC<CalendarAlbumPageProps> = ({ service, r
     const parsed = parseMonth(shown);
 
     const monthSet = useMemo(() => new Set(dataMonths ?? []), [dataMonths]);
-    const pickerYears = useMemo(() => {
-        const shownYear = parsed?.year ?? now.year;
-        const dated = [...monthSet].map((m) => Number(m.slice(0, 4)));
-        const first = Math.min(dated.length ? Math.min(...dated) : now.year - FALLBACK_PICKER_YEARS + 1, shownYear);
-        const last = Math.max(now.year, shownYear, ...dated);
-        return Array.from({ length: last - first + 1 }, (_, i) => first + i);
-    }, [monthSet, parsed?.year, now.year]);
+    const pickerYears = useMemo(
+        () => pickerYearRange([...monthSet].map((m) => Number(m.slice(0, 4))), parsed?.year ?? now.year, now.year),
+        [monthSet, parsed?.year, now.year],
+    );
 
-    // Focus returns to the month title when the picker closes.
-    useEffect(() => {
-        if (wasPicking.current && !picking) titleRef.current?.focus();
-        wasPicking.current = picking;
-    }, [picking]);
+    // The member filter's option: her row when the route path is any of her rooms, else an option
+    // named from the path's room (an unlisted person, or the list still loading), never 「全員」.
+    const people = members.data?.members ?? [];
+    const matched = member === undefined
+        ? undefined
+        : people.find((m) => m.member_path === member || (m.member_paths ?? []).includes(member));
+    const selectValue = member === undefined ? '' : matched?.member_path ?? member;
 
-    const goMonth = (month: string, memberPath = member) => go({ page: 'calendar', month, memberPath });
+    const goMonth = (month: string) => go({ page: 'calendar', month, memberPath: member });
     const step = (delta: number) => {
         if (parsed) goMonth(toMonth(parsed.year, parsed.month0 + delta));
     };
-    const openPicker = () => {
-        setPicking(true);
-        monthYearPickerLog.open(pickerYears.length);
-    };
-    const closePicker = (reason: 'escape' | 'button') => {
-        setPicking(false);
-        monthYearPickerLog.back(reason);
-    };
     const pickMember = (value: string) => {
         const next = value || undefined;
-        if (next === member) return;
+        if (next === selectValue || (next === undefined && member === undefined)) return;
         logMemoriesToggle('calendar_member', next !== undefined);
         go({ page: 'calendar', month: shown, memberPath: next });
-    };
-    // Escape anywhere in the picker view returns to the days (the picker claims it when focus is inside it).
-    const onKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-        if (!picking || e.key !== 'Escape' || e.defaultPrevented || e.nativeEvent.isComposing) return;
-        e.preventDefault();
-        closePicker('escape');
     };
 
     const monthTitle = parsed
@@ -189,8 +199,8 @@ export const CalendarAlbumPage: React.FC<CalendarAlbumPageProps> = ({ service, r
                     year={parsed.year}
                     month={parsed.month0}
                     hasData={(ym) => monthSet.has(ym)}
-                    onPick={(year, month0) => { setPicking(false); goMonth(toMonth(year, month0)); }}
-                    onBack={() => setPicking(false)}
+                    onPick={(year, month0) => { pickerView.dismiss(); goMonth(toMonth(year, month0)); }}
+                    onBack={pickerView.dismiss}
                     anchorRef={titleRef}
                 />
             </div>
@@ -211,49 +221,41 @@ export const CalendarAlbumPage: React.FC<CalendarAlbumPageProps> = ({ service, r
         <div
             data-testid="memories-page-calendar"
             data-service={service}
-            onKeyDown={onKeyDown}
+            onKeyDown={pickerView.onKeyDown}
             className="flex min-h-0 flex-1 flex-col overflow-hidden"
         >
             <PageHeader title={t('memories.calendar.title')} onBack={() => go({ page: 'home' })} />
             <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 pb-2">
-                {picking ? (
-                    <IconButton size="sm" aria-label={t('calendar.backToDays')} icon={<ArrowLeft />} onClick={() => closePicker('button')} />
-                ) : (
-                    <IconButton size="sm" aria-label={t('memories.calendar.prevMonth')} icon={<ChevronLeft />} disabled={!parsed} onClick={() => step(-1)} />
-                )}
-                <button
-                    ref={titleRef}
-                    type="button"
-                    aria-expanded={picking}
+                <OlderMonthButton
+                    picking={picking}
+                    label={t('memories.calendar.prevMonth')}
                     disabled={!parsed}
-                    onClick={() => (picking ? closePicker('button') : openPicker())}
-                    className={cn(
-                        'flex items-center gap-1 rounded-lg px-2 py-1 font-display text-title text-primary',
-                        'transition-colors duration-fast ease-standard hover:bg-sunken',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                    )}
-                >
-                    <span>{monthTitle}</span>
-                    <span className="sr-only">, {t('memories.calendar.pickMonth')}</span>
-                    <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center text-secondary">
-                        {picking ? <ChevronUp /> : <ChevronDown />}
-                    </span>
-                </button>
-                {picking ? (
-                    <span aria-hidden="true" className="h-8 w-8" />
-                ) : (
-                    <IconButton size="sm" aria-label={t('memories.calendar.nextMonth')} icon={<ChevronRight />} disabled={!parsed} onClick={() => step(1)} />
-                )}
+                    onClick={() => step(-1)}
+                    onBack={() => pickerView.closePicker('button')}
+                />
+                <MonthTitleButton
+                    ref={titleRef}
+                    title={monthTitle}
+                    pickLabel={t('memories.calendar.pickMonth')}
+                    expanded={picking}
+                    disabled={!parsed}
+                    onClick={() => (picking ? pickerView.closePicker('button') : pickerView.openPicker(pickerYears.length))}
+                    className="font-display"
+                />
+                <NewerMonthButton picking={picking} label={t('memories.calendar.nextMonth')} disabled={!parsed} onClick={() => step(1)} />
                 <Select
                     aria-label={t('memories.calendar.memberFilter')}
-                    value={member ?? ''}
+                    value={selectValue}
                     onChange={(e) => pickMember(e.target.value)}
                     className="ml-auto w-48"
                 >
                     <option value="">{t('memories.calendar.all')}</option>
-                    {(members.data?.members ?? []).map((m) => (
+                    {people.map((m) => (
                         <option key={m.member_path} value={m.member_path} lang="ja">{m.name}</option>
                     ))}
+                    {member !== undefined && !matched && (
+                        <option value={member} lang="ja">{nameFromRoom(member)}</option>
+                    )}
                 </Select>
             </div>
             {body}

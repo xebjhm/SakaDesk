@@ -108,6 +108,10 @@ async def test_members_default_order_and_fields(svc):
     assert [r["name"] for r in rows] == ["金村 美玖", "松田 好花"]
     matsuda = rows[1]
     assert matsuda["member_path"] == f"{SVC_NAME}/{NEW_ROOM}"  # newest room
+    assert matsuda["member_paths"] == [
+        f"{SVC_NAME}/{OLD_ROOM}",
+        f"{SVC_NAME}/{NEW_ROOM}",
+    ]
     assert matsuda["member_id"] == "64"
     assert matsuda["avatar_url"].endswith("/profile_images/thumbnail/b.jpg")
     assert matsuda["oshi"] is False and matsuda["graduated"] is False

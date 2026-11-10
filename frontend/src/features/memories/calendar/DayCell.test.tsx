@@ -12,11 +12,19 @@ const SEPT = buildMonthGrid(2024, 8);
 const cellOf = (dateStr: string) => SEPT.find((c) => c.dateStr === dateStr)!;
 
 describe('DayCell', () => {
-    it('draws the day photo through the thumbnail route, lazily', () => {
-        render(<DayCell cell={cellOf('2024-09-14')} data={calendarDay('2024-09-14', 2, cellPhoto(41, '2024-09-14'))} onOpen={vi.fn()} />);
+    it('draws the day photo through the thumbnail route at the drawn cell size', () => {
+        render(<DayCell cell={cellOf('2024-09-14')} data={calendarDay('2024-09-14', 2, cellPhoto(41, '2024-09-14'))} px={300} onOpen={vi.fn()} />);
         const img = screen.getByRole('button').querySelector('img')!;
-        expect(img.getAttribute('src')).toMatch(/^\/api\/content\/thumb\/hinatazaka46\/.+\/41\.jpg\?w=\d+$/);
-        expect(img).toHaveAttribute('loading', 'lazy');
+        expect(img.getAttribute('src')).toMatch(/^\/api\/content\/thumb\/hinatazaka46\/.+\/41\.jpg\?w=320$/);
+    });
+
+    it('draws a video-only day as a still with the video mark', () => {
+        const clip = cellPhoto(42, '2024-09-14', { type: 'video', media_url: '/api/content/media/hinatazaka46/messages/r/video/42.mp4' });
+        render(<DayCell cell={cellOf('2024-09-14')} data={calendarDay('2024-09-14', 1, clip)} onOpen={vi.fn()} />);
+        const still = screen.getByTestId('memory-thumb-video') as HTMLVideoElement;
+        expect(still).toHaveAttribute('preload', 'metadata');
+        expect(still.muted).toBe(true);
+        expect(screen.getByTestId('calendar-video-mark')).toBeInTheDocument();
     });
 
     it('caps the member dots at five and prints no digit but the date', () => {

@@ -3,7 +3,9 @@
 - :func:`list_memoir_members` -- the left list: every person of the service,
   oshi first (``people.sort_people``), each with her current avatar and her
   binder progress (the ``progress`` of ``binder.binder_payload``).
-  ``member_path`` is the chat path of her newest room. Progress is cached per
+  ``member_path`` is the chat path of her newest room and ``member_paths``
+  the chat paths of all her rooms, oldest first (so a page can match a
+  route path of any of her rooms to her row). Progress is cached per
   person by the binder view itself (key ``person_key``, hash
   ``binder.binder_hash``), so after a sync only the people whose hash changed
   are evaluated, at most :data:`EVAL_CONCURRENCY` at a time (one failing
@@ -52,7 +54,7 @@ logger = structlog.get_logger(__name__)
 VIEW_MEMBERS = "memoir_members"
 VIEW_HEADER = "memoir_header"
 # Bump on any rule or payload change of the list / the header chips.
-MEMBERS_VERSION = 1
+MEMBERS_VERSION = 2
 HEADER_VERSION = 1
 # Binder evaluations run at once on a members-list miss.
 EVAL_CONCURRENCY = 4
@@ -85,6 +87,7 @@ async def list_memoir_members(service: str, sdir: Path, *, now: datetime) -> dic
             timeline = await people.avatar_timelines(sdir, s)
         return {
             "member_path": people.chat_path(sdir, _newest_room(s)),
+            "member_paths": [people.chat_path(sdir, room) for room in s.member_dirs],
             "member_id": s.member_ids[-1] if s.member_ids else None,
             "name": s.name,
             "avatar_url": timeline.current,

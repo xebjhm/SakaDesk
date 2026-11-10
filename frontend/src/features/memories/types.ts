@@ -265,7 +265,10 @@ export interface BinderProgress {
 }
 
 export interface MemoirMember {
+    /** The chat path of her newest room. */
     member_path: string;
+    /** The chat paths of all her rooms, oldest first (match a route path of any of her rooms). */
+    member_paths: string[];
     member_id: string | null;
     name: string;
     avatar_url: string | null;

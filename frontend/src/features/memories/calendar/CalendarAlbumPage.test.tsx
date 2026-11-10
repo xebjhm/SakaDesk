@@ -16,7 +16,7 @@ vi.mock('../api', async (importOriginal) => {
 import { clientLog } from '../../../utils/clientLog';
 import { fetchCalendarMonth, fetchCalendarMonths, fetchMemoirMembers } from '../api';
 import type { MemoriesRoute } from '../MemoriesFeature';
-import { membersPayload, NAO_PATH } from '../memoir/__fixtures__';
+import { membersPayload, NAO_OLD_PATH, NAO_PATH } from '../memoir/__fixtures__';
 import { MEMBER_PATH } from '../__fixtures__/memories';
 import { CalendarAlbumPage } from './CalendarAlbumPage';
 import { monthPayload, monthsPayload } from './__fixtures__';
@@ -124,6 +124,40 @@ describe('CalendarAlbumPage', () => {
         rerender({ page: 'calendar', month: '2024-09', memberPath: NAO_PATH });
         await waitFor(() => expect(fetchCalendarMonth).toHaveBeenLastCalledWith('hinatazaka46', '2024-09', NAO_PATH, expect.any(AbortSignal)));
         expect(fetchCalendarMonths).toHaveBeenLastCalledWith('hinatazaka46', NAO_PATH, expect.any(AbortSignal));
+    });
+
+    it('shows the person when the route names another of her rooms', async () => {
+        renderPage({ page: 'calendar', month: '2024-09', memberPath: NAO_OLD_PATH });
+        const select = await screen.findByRole('combobox', { name: 'Filter by member' }) as HTMLSelectElement;
+        await waitFor(() => expect(select.value).toBe(NAO_PATH));
+        expect(select.selectedOptions[0].textContent).toBe('小坂 菜緒');
+        // The data keeps the route's own path.
+        expect(fetchCalendarMonth).toHaveBeenLastCalledWith('hinatazaka46', '2024-09', NAO_OLD_PATH, expect.any(AbortSignal));
+    });
+
+    it('names an unlisted person from her room rather than showing everyone', async () => {
+        const other = '日向坂46/messages/9 河田 陽菜/9 河田 陽菜';
+        renderPage({ page: 'calendar', month: '2024-09', memberPath: other });
+        const select = await screen.findByRole('combobox', { name: 'Filter by member' }) as HTMLSelectElement;
+        await waitFor(() => expect(within(select).getAllByRole('option')).toHaveLength(5));
+        expect(select.value).toBe(other);
+        expect(select.selectedOptions[0].textContent).toBe('河田 陽菜');
+    });
+
+    it('keeps the previous month on screen while the next one loads', async () => {
+        const { rerender } = renderPage();
+        await waitFor(() => expect(within(cell('2024-09-14')).getByRole('button')).toBeInTheDocument());
+        let finish: (v: ReturnType<typeof monthPayload>) => void = () => {};
+        vi.mocked(fetchCalendarMonth).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+        rerender({ page: 'calendar', month: '2024-08' });
+        await waitFor(() => expect(fetchCalendarMonth).toHaveBeenLastCalledWith('hinatazaka46', '2024-08', undefined, expect.any(AbortSignal)));
+        // No loading line in place of the grid: September stays, dimmed and busy.
+        expect(screen.queryByText('Loading...')).toBeNull();
+        expect(within(cell('2024-09-14')).getByRole('button')).toBeInTheDocument();
+        expect(screen.getByRole('group', { name: /September 2024|August 2024/ })).toHaveAttribute('aria-busy', 'true');
+        finish(monthPayload('2024-08'));
+        await waitFor(() => expect(within(cell('2024-08-14')).getByRole('button')).toBeInTheDocument());
+        expect(screen.getByRole('group', { name: 'August 2024' })).not.toHaveAttribute('aria-busy', 'true');
     });
 
     it('picking everyone again logs the filter off', async () => {

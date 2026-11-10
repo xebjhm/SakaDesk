@@ -147,6 +147,7 @@ describe('memories fun strings', () => {
             'memories.calendar.nextMonth': '次の月',
             'memories.calendar.pickMonth': '年月をえらぶ',
             'memories.calendar.empty': 'この月の思い出は、まだありません。',
+            'memories.calendar.memberFilter': 'メンバーでしぼる',
             'memories.album.setCover': 'この月の表紙にする',
             'memories.album.resetCover': '表紙を自動にもどす',
             'memories.album.coverFailed': '表紙を変えられませんでした',

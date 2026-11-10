@@ -5,20 +5,22 @@ import { MEMBER_PATH, memoryMessage } from '../__fixtures__/memories';
 
 export const NAO_PATH = '日向坂46/messages/1 小坂 菜緒/1 小坂 菜緒';
 export const GRAD_PATH = '日向坂46/messages/2 潮 紗理菜/2 潮 紗理菜';
+/** An older room of 小坂 菜緒 (same person, another chat). */
+export const NAO_OLD_PATH = '日向坂46/messages/0 小坂 菜緒/1 小坂 菜緒';
 
 export function membersPayload(): MemoirMembersPayload {
     return {
         members: [
             {
-                member_path: MEMBER_PATH, member_id: '58', name: '金村 美玖', avatar_url: null,
+                member_path: MEMBER_PATH, member_paths: [MEMBER_PATH], member_id: '58', name: '金村 美玖', avatar_url: null,
                 oshi: true, graduated: false, progress: { earned: 18, total: 30 },
             },
             {
-                member_path: NAO_PATH, member_id: '1', name: '小坂 菜緒', avatar_url: null,
+                member_path: NAO_PATH, member_paths: [NAO_OLD_PATH, NAO_PATH], member_id: '1', name: '小坂 菜緒', avatar_url: null,
                 oshi: false, graduated: false, progress: { earned: 0, total: 24 },
             },
             {
-                member_path: GRAD_PATH, member_id: '2', name: '潮 紗理菜', avatar_url: null,
+                member_path: GRAD_PATH, member_paths: [GRAD_PATH], member_id: '2', name: '潮 紗理菜', avatar_url: null,
                 oshi: false, graduated: true, progress: { earned: 9, total: 25 },
             },
         ],
