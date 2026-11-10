@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.4.2] - 2026-11-10
+
 ### Added
 - **Update from Settings.** Settings → Updates now has buttons to download
   the new version, follow its progress or cancel it, and install it, instead
@@ -660,7 +662,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Rate limiting on sensitive endpoints
 - Input validation and sanitization
 
-[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.4.1...HEAD
+[Unreleased]: https://github.com/xebjhm/SakaDesk/compare/v0.4.2...HEAD
+[0.4.2]: https://github.com/xebjhm/SakaDesk/compare/v0.4.1...v0.4.2
 [0.4.1]: https://github.com/xebjhm/SakaDesk/compare/v0.4.0...v0.4.1
 [0.4.0]: https://github.com/xebjhm/SakaDesk/compare/v0.3.4...v0.4.0
 [0.3.4]: https://github.com/xebjhm/SakaDesk/compare/v0.3.3...v0.3.4
