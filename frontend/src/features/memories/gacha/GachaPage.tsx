@@ -1,12 +1,12 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Gift } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { EmptyState } from '../../../design/primitives';
+import { Button, EmptyState } from '../../../design/primitives';
 import { setFavorite } from '../../../utils/favoriteApi';
 import type { MemoriesRoute } from '../MemoriesFeature';
-import { fetchGacha, postGachaPull } from '../api';
+import { fetchGacha, MemoriesFetchError, MemoriesTimeoutError, postGachaPull } from '../api';
 import { FilmStrip } from '../favorites/FilmStrip';
-import { logMemoriesGacha } from '../memoriesLog';
+import { logMemoriesGacha, logMemoriesLoad } from '../memoriesLog';
 import { formatJstDate } from '../shared/jst';
 import { LoadState } from '../shared/LoadState';
 import { PageHeader } from '../shared/PageHeader';
@@ -42,8 +42,10 @@ const messageKey = (p: GachaPull) => `${p.message.room}|${p.message.id}`;
  *   is safe too). A pull logs `pull` (its index) and `reveal` (rarity, reason, index, id), drops
  *   its capsule and opens its card. A 409 means today's pulls are used (also after a racing
  *   click): 「また明日」, logged `refused` `no_pulls_left`. An empty pool logs `empty_pool`. Any
- *   other failure (a timeout included) may still have been committed, so the state is refetched,
- *   never the write retried (`request_failed`).
+ *   other failure (a timeout included) may still have been committed, so the state is read again
+ *   in place, never the write retried (`request_failed`): the machine, card and history stay on
+ *   screen (the knob waits), and a re-read that fails shows an inline notice with a retry.
+ * - `open` is logged once per visit, never per re-read.
  * - **★:** optimistic through the chat's `setFavorite`, reverted when it was not saved (logged
  *   with `reason` `request_failed`); one request per message at a time. The page keeps the result,
  *   so reopening a card from the history shows it.
@@ -57,7 +59,10 @@ export const GachaPage: React.FC<GachaPageProps> = ({ service, go }) => {
     const state = useMemoriesQuery('gacha', (signal) => fetchGacha(service, signal), [service], {
         count: (d) => d.history.length,
     });
-    const data = state.data;
+    // A silent re-read (after a failed pull) replaces the loaded state without a loading screen.
+    const [refreshed, setRefreshed] = useState<{ from: GachaStatePayload; data: GachaStatePayload } | null>(null);
+    const data = state.data && refreshed?.from === state.data ? refreshed.data : state.data;
+    const [stale, setStale] = useState(false);
 
     const [session, setSession] = useState<Session | null>(null);
     const live = session && data && session.base === data ? session : null;
@@ -85,46 +90,41 @@ export const GachaPage: React.FC<GachaPageProps> = ({ service, go }) => {
         };
     }, []);
 
+    // One `open` per page visit (the first state that loads), never per re-read.
+    const opened = useRef(false);
     useEffect(() => {
-        if (!data) return;
+        if (!data || opened.current) return;
+        opened.current = true;
         logMemoriesGacha('open', { count: data.pulls_left });
         if (!data.available) logMemoriesGacha('refused', { reason: 'empty_pool' });
     }, [data]);
 
-    const todayNewest = fresh[0] ?? data?.today[data.today.length - 1] ?? null;
-    const openKey = selected ?? (todayNewest ? pullKey(todayNewest) : null);
-    const open = openKey ? history.find((p) => pullKey(p) === openKey) ?? null : null;
+    /** Read the state again in place (logged `memories_load` like the first read); a failure marks the view stale. */
+    const reread = async (signal: AbortSignal) => {
+        const from = state.data;
+        if (!from) return;
+        try {
+            const next = await fetchGacha(service, signal);
+            if (signal.aborted) return;
+            logMemoriesLoad('gacha', 'ok', { count: next.history.length });
+            setRefreshed({ from, data: next });
+            setStale(false);
+        } catch (err) {
+            if (signal.aborted) return;
+            if (err instanceof MemoriesTimeoutError) logMemoriesLoad('gacha', 'timeout');
+            else logMemoriesLoad('gacha', 'error', err instanceof MemoriesFetchError ? { error_code: err.httpStatus } : {});
+            setStale(true);
+        }
+    };
 
-    const pull = async () => {
-        if (inFlight.current || !data || left <= 0) return;
+    /** Run `work` as the page's one request in flight (the knob waits for it). */
+    const exclusive = async (work: (signal: AbortSignal) => Promise<void>) => {
         const signal = lifetime.current?.signal;
-        if (!signal || signal.aborted) return;
+        if (inFlight.current || !signal || signal.aborted) return;
         inFlight.current = true;
         setBusy(true);
-        const base = data;
-        const keep = (s: Session | null) => (s && s.base === base ? s.pulls : []);
-        logMemoriesGacha('pull', { index: base.max_pulls - left });
         try {
-            const res = await postGachaPull(service, signal);
-            if (signal.aborted) return;
-            if (res.status === 'no_pulls_left') {
-                logMemoriesGacha('refused', { reason: 'no_pulls_left' });
-                setSession((s) => ({ base, pulls: keep(s), left: 0 }));
-            } else if (!res.data.pull) {
-                logMemoriesGacha('refused', { reason: 'empty_pool' });
-                setSession((s) => ({ base, pulls: keep(s), left: res.data.pulls_left }));
-            } else {
-                const p = res.data.pull;
-                logMemoriesGacha('reveal', { kind: p.rarity, reason: p.reason, index: p.pull_index, message_id: p.message.id });
-                setSession((s) => ({ base, pulls: [p, ...keep(s)], left: res.data.pulls_left }));
-                setSelected(pullKey(p));
-                setDropped({ key: pullKey(p), rarity: p.rarity });
-            }
-        } catch {
-            if (signal.aborted) return;
-            // A timed-out write may already be committed: read the state again, never re-pull.
-            logMemoriesGacha('refused', { reason: 'request_failed' });
-            state.retry();
+            await work(signal);
         } finally {
             if (!signal.aborted) {
                 inFlight.current = false;
@@ -132,6 +132,39 @@ export const GachaPage: React.FC<GachaPageProps> = ({ service, go }) => {
             }
         }
     };
+
+    const todayNewest = fresh[0] ?? data?.today[data.today.length - 1] ?? null;
+    const openKey = selected ?? (todayNewest ? pullKey(todayNewest) : null);
+    const open = openKey ? history.find((p) => pullKey(p) === openKey) ?? null : null;
+
+    const pull = () => exclusive(async (signal) => {
+        if (!data || left <= 0) return;
+        const base = data;
+        const keep = (x: Session | null) => (x && x.base === base ? x.pulls : []);
+        logMemoriesGacha('pull', { index: base.max_pulls - left });
+        try {
+            const res = await postGachaPull(service, signal);
+            if (signal.aborted) return;
+            if (res.status === 'no_pulls_left') {
+                logMemoriesGacha('refused', { reason: 'no_pulls_left' });
+                setSession((x) => ({ base, pulls: keep(x), left: 0 }));
+            } else if (!res.data.pull) {
+                logMemoriesGacha('refused', { reason: 'empty_pool' });
+                setSession((x) => ({ base, pulls: keep(x), left: res.data.pulls_left }));
+            } else {
+                const p = res.data.pull;
+                logMemoriesGacha('reveal', { kind: p.rarity, reason: p.reason, index: p.pull_index, message_id: p.message.id });
+                setSession((x) => ({ base, pulls: [p, ...keep(x)], left: res.data.pulls_left }));
+                setSelected(pullKey(p));
+                setDropped({ key: pullKey(p), rarity: p.rarity });
+            }
+        } catch {
+            if (signal.aborted) return;
+            // A timed-out write may already be committed: read the state again in place, never re-pull.
+            logMemoriesGacha('refused', { reason: 'request_failed' });
+            await reread(signal);
+        }
+    });
 
     const isFavorite = (p: GachaPull) => favs[messageKey(p)] ?? p.message.favorited;
 
@@ -179,6 +212,14 @@ export const GachaPage: React.FC<GachaPageProps> = ({ service, go }) => {
     } else {
         body = (
             <>
+                {stale && (
+                    <div role="status" className="mx-4 mt-2 flex shrink-0 items-center gap-3 rounded-md bg-sunken px-3 py-2 text-small text-secondary">
+                        <span className="min-w-0 flex-1">{t('memories.gacha.refreshFailed')}</span>
+                        <Button variant="ghost" size="sm" disabled={busy} onClick={() => { void exclusive(reread); }}>
+                            {t('memories.common.retry')}
+                        </Button>
+                    </div>
+                )}
                 <div className="flex min-h-0 flex-1 flex-col items-center gap-8 overflow-y-auto p-6 md:flex-row md:justify-center md:gap-12">
                     <CapsuleMachine pullsLeft={left} busy={busy} onPull={() => { void pull(); }} dropped={dropped} reducedMotion={reducedMotion} />
                     <div className="flex w-full max-w-sm shrink-0 justify-center">

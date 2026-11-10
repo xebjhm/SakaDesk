@@ -1049,7 +1049,8 @@
         "voice": "Voice",
         "message": "Message",
         "photo": "Photo"
-      }
+      },
+      "refreshFailed": "Couldn't check the gacha result"
     }
   },
   "recap": {

@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
+import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest';
 import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
@@ -20,9 +20,12 @@ import { clientLog } from '../../../utils/clientLog';
 import { setFavorite } from '../../../utils/favoriteApi';
 import { fetchGacha, MemoriesTimeoutError, postGachaPull, type GachaPullResult } from '../api';
 import { GachaPage } from './GachaPage';
+import type { GachaStatePayload } from '../types';
 import { gachaPull, gachaState, MEMBER_PATH, pullPayload } from './__fixtures__';
 
+const realMatchMedia = window.matchMedia;
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
+afterEach(() => { window.matchMedia = realMatchMedia; });
 beforeEach(() => {
     vi.mocked(clientLog).mockClear();
     vi.mocked(setFavorite).mockReset().mockResolvedValue(true);
@@ -195,5 +198,70 @@ describe('GachaPage', () => {
         expect(gachaLogs()).toContainEqual({ phase: 'context', message_id: 321 });
         await userEvent.click(screen.getByRole('button', { name: 'close-strip' }));
         expect(screen.queryByTestId('film-strip-stub')).toBeNull();
+    });
+    it('refetches silently after a timeout: the machine, card and history stay on screen', async () => {
+        const first = gachaPull({ pull_index: 0 }, { id: 1, text: 'いちまいめ' });
+        const committed = gachaPull({ pull_index: 1, rarity: 'r', reason: 'voice' }, { id: 2, text: 'にまいめ' });
+        const refetch = deferred<GachaStatePayload>();
+        vi.mocked(fetchGacha)
+            .mockResolvedValueOnce(gachaState({ pulls_left: 2, today: [first], history: [first] }))
+            .mockReturnValueOnce(refetch.promise);
+        vi.mocked(postGachaPull).mockRejectedValue(new MemoriesTimeoutError());
+        renderPage();
+        const k = await knob();
+        await userEvent.click(k);
+        await waitFor(() => expect(fetchGacha).toHaveBeenCalledTimes(2));
+        // still the same view while the state is read again; the knob waits for it
+        expect(screen.getByRole('button', { name: 'ハンドルを回す' })).toBe(k);
+        expect(k).toHaveAttribute('aria-disabled', 'true');
+        expect(screen.getByText('いちまいめ')).toBeInTheDocument();
+        expect(screen.getByRole('list', { name: 'これまでに出た思い出' })).toBeInTheDocument();
+        await act(async () => {
+            refetch.resolve(gachaState({ pulls_left: 1, today: [first, committed], history: [committed, first] }));
+        });
+        expect(screen.getByText('今日はあと 1 回')).toBeInTheDocument();
+        expect(within(screen.getByRole('list', { name: 'これまでに出た思い出' })).getAllByRole('button')).toHaveLength(2);
+        expect(k).toHaveAttribute('aria-disabled', 'false');
+        // one visit, one open breadcrumb
+        expect(gachaLogs().filter((f) => (f as { phase: string }).phase === 'open')).toEqual([{ phase: 'open', count: 2 }]);
+    });
+
+    it('a refetch that fails leaves the view with an inline notice and a retry', async () => {
+        vi.mocked(fetchGacha)
+            .mockResolvedValueOnce(gachaState({ pulls_left: 2 }))
+            .mockRejectedValueOnce(new MemoriesTimeoutError())
+            .mockResolvedValueOnce(gachaState({ pulls_left: 1 }));
+        vi.mocked(postGachaPull).mockRejectedValue(new MemoriesTimeoutError());
+        renderPage();
+        await userEvent.click(await knob());
+        const notice = await screen.findByRole('status');
+        expect(notice).toHaveTextContent('ガチャの結果を確かめられませんでした');
+        expect(screen.getByRole('button', { name: 'ハンドルを回す' })).toBeInTheDocument();
+        expect(screen.queryByText('読み込めませんでした')).toBeNull();
+        await userEvent.click(within(notice).getByRole('button', { name: 'もう一度' }));
+        expect(await screen.findByText('今日はあと 1 回')).toBeInTheDocument();
+        expect(screen.queryByText('ガチャの結果を確かめられませんでした')).toBeNull();
+        expect(fetchGacha).toHaveBeenCalledTimes(3);
+    });
+
+    it('follows the reduced-motion setting: the capsule fades and the SR foil holds still', async () => {
+        window.matchMedia = vi.fn((q: string) => ({
+            matches: q.includes('prefers-reduced-motion'), addEventListener: vi.fn(), removeEventListener: vi.fn(),
+        })) as unknown as typeof window.matchMedia;
+        vi.mocked(postGachaPull).mockResolvedValue({ status: 'ok', data: pullPayload(gachaPull({ rarity: 'sr', reason: 'birthday' }), 2) });
+        renderPage();
+        await userEvent.click(await knob());
+        expect(await screen.findByTestId('gacha-capsule')).toHaveAttribute('data-motion', 'fade');
+        expect(screen.getByTestId('gacha-foil')).toBeInTheDocument();
+        expect(screen.queryByTestId('gacha-foil-sweep')).toBeNull();
+    });
+
+    it('animates the capsule and sweeps the SR foil without reduced motion', async () => {
+        window.matchMedia = vi.fn(() => ({ matches: false, addEventListener: vi.fn(), removeEventListener: vi.fn() })) as unknown as typeof window.matchMedia;
+        vi.mocked(postGachaPull).mockResolvedValue({ status: 'ok', data: pullPayload(gachaPull({ rarity: 'sr', reason: 'birthday' }), 2) });
+        renderPage();
+        await userEvent.click(await knob());
+        expect(await screen.findByTestId('gacha-capsule')).toHaveAttribute('data-motion', 'roll');
+        expect(screen.getByTestId('gacha-foil-sweep')).toBeInTheDocument();
     });
 });

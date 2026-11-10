@@ -1027,7 +1027,8 @@
         "voice": "声",
         "message": "メッセージ",
         "photo": "写真"
-      }
+      },
+      "refreshFailed": "ガチャの結果を確かめられませんでした"
     }
   },
   "recap": {

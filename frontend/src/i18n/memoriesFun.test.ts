@@ -33,6 +33,7 @@ export const MEMORIES_FUN_KEYS: string[] = [
     'memories.gacha.reason.midnight', 'memories.gacha.reason.birthday', 'memories.gacha.reason.subAnniversary',
     'memories.gacha.reason.lastMessage', 'memories.gacha.reason.nickname', 'memories.gacha.reason.favorite',
     'memories.gacha.reason.voice', 'memories.gacha.reason.message', 'memories.gacha.reason.photo',
+    'memories.gacha.refreshFailed',
 ];
 
 /** Fun keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
@@ -132,6 +133,7 @@ describe('memories fun strings', () => {
             'memories.gacha.reason.voice': '声',
             'memories.gacha.reason.message': 'メッセージ',
             'memories.gacha.reason.photo': '写真',
+            'memories.gacha.refreshFailed': 'ガチャの結果を確かめられませんでした',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, key), key).toBe(text);
     });

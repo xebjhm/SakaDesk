@@ -1027,7 +1027,8 @@
         "voice": "語音",
         "message": "訊息",
         "photo": "照片"
-      }
+      },
+      "refreshFailed": "無法確認扭蛋結果"
     }
   },
   "recap": {
