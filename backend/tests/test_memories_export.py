@@ -5,6 +5,8 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from urllib.parse import quote
 
+import asyncio
+
 import pytest
 import time_machine
 from fastapi.testclient import TestClient
@@ -157,3 +159,74 @@ def test_logs_carry_no_token_or_filename(caplog, capsys):
         assert token not in flat
         assert "金村" not in flat
         assert set(e) <= {"event", "log_level", "kind", "size_kb", "evicted", "outcome"}
+
+
+def test_total_byte_cap_evicts_the_oldest():
+    store = exports.ExportStore(max_total_bytes=250)
+    blob = PNG + b"\x00" * (100 - len(PNG))  # 100 bytes
+    first, _ = store.put("png", blob)
+    second, _ = store.put("png", blob)
+    third, evicted = store.put("png", blob)  # 300 > 250: drop the oldest
+    assert evicted == 1
+    assert store.get(first) is None
+    assert store.get(second) is not None and store.get(third) is not None
+    assert len(store) == 2
+
+
+def test_total_cap_default_is_150_mb():
+    assert exports.MAX_TOTAL_BYTES == 150 * 1024 * 1024
+
+
+def test_sweep_frees_expired_entries_without_a_request():
+    store = exports.ExportStore()
+    with time_machine.travel(T0, tick=False):
+        store.put("png", PNG)
+        assert store.purge() == 0
+    with time_machine.travel(T0 + timedelta(minutes=10), tick=False):
+        assert store.purge() == 1
+    assert len(store) == 0
+    assert store._total == 0
+
+
+@pytest.mark.asyncio
+async def test_sweep_loop_purges_and_stops_on_cancel(monkeypatch):
+    fresh = exports.ExportStore()
+    monkeypatch.setattr(exports, "store", fresh)
+    with time_machine.travel(
+        datetime.now(timezone.utc) - timedelta(minutes=11), tick=False
+    ):
+        fresh.put("png", PNG)
+    task = asyncio.create_task(exports.sweep_loop(interval=0.01))
+    for _ in range(100):
+        await asyncio.sleep(0.01)
+        if len(fresh) == 0:
+            break
+    assert len(fresh) == 0
+    task.cancel()
+    with pytest.raises(asyncio.CancelledError):
+        await task
+    assert task.cancelled()
+
+
+def test_lifespan_starts_and_cancels_the_sweep_task(monkeypatch):
+    from backend.services import shutdown_state
+
+    seen = {}
+    real = exports.sweep_loop
+
+    async def spy(*a, **k):
+        try:
+            await real(*a, **k)
+        except asyncio.CancelledError:
+            seen["cancelled"] = True
+            raise
+
+    async def started_probe():
+        seen["started"] = True
+        await spy()
+
+    monkeypatch.setattr(exports, "sweep_loop", started_probe)
+    with TestClient(app):
+        pass
+    shutdown_state.reset_for_tests()  # the lifespan flips the process-wide flag
+    assert seen == {"started": True, "cancelled": True}

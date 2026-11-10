@@ -7,8 +7,10 @@ URL in a hidden iframe; the ``Content-Disposition: attachment`` response trigger
 the webview's native save dialog.
 
 Entries live only in process memory: nothing is written to disk and nothing leaves
-the machine. Each entry expires ``TTL_SECONDS`` after it was stored, and at most
-``MAX_ENTRIES`` are kept (the oldest is evicted first).
+the machine. Each entry expires ``TTL_SECONDS`` after it was stored, at most ``MAX_ENTRIES``
+are kept and their total size is capped at ``MAX_TOTAL_BYTES`` (the oldest is
+evicted first). Expired entries are freed on every access and by ``sweep_loop``,
+a periodic task the app lifespan runs, so idle bytes do not outlive their TTL.
 
 An entry is **kept until its TTL** after a successful GET rather than deleted on
 first read. A webview may request the download URL more than once (a retried or
@@ -20,6 +22,7 @@ short-lived repeatable read is safe.
 
 from __future__ import annotations
 
+import asyncio
 import re
 import secrets
 import threading
@@ -29,6 +32,10 @@ from collections import OrderedDict
 from dataclasses import dataclass
 from typing import Literal
 from urllib.parse import quote
+
+import structlog
+
+logger = structlog.get_logger(__name__)
 
 ExportKind = Literal["png", "gif", "webm", "mp4"]
 
@@ -42,6 +49,8 @@ MEDIA_TYPES: dict[str, str] = {
 MAX_BYTES = 60 * 1024 * 1024
 TTL_SECONDS = 10 * 60
 MAX_ENTRIES = 8
+MAX_TOTAL_BYTES = 150 * 1024 * 1024
+SWEEP_INTERVAL_SECONDS = 60
 MAX_STEM_CHARS = 100
 DEFAULT_STEM = "sakadesk-memories"
 
@@ -75,10 +84,16 @@ class ExportStore:
     """A small TTL + size-capped map of token → export bytes (thread-safe)."""
 
     def __init__(
-        self, *, ttl_seconds: float = TTL_SECONDS, max_entries: int = MAX_ENTRIES
+        self,
+        *,
+        ttl_seconds: float = TTL_SECONDS,
+        max_entries: int = MAX_ENTRIES,
+        max_total_bytes: int = MAX_TOTAL_BYTES,
     ) -> None:
         self._ttl = ttl_seconds
         self._max = max_entries
+        self._max_total = max_total_bytes
+        self._total = 0
         self._entries: OrderedDict[str, ExportEntry] = OrderedDict()
         self._lock = threading.Lock()
 
@@ -87,8 +102,13 @@ class ExportStore:
             t for t, e in self._entries.items() if now - e.stored_at >= self._ttl
         ]
         for token in expired:
-            del self._entries[token]
+            self._total -= len(self._entries.pop(token).data)
         return len(expired)
+
+    def purge(self) -> int:
+        """Free every expired entry now; return how many were freed."""
+        with self._lock:
+            return self._purge_expired(time.time())
 
     def put(self, kind: ExportKind, data: bytes) -> tuple[str, int]:
         """Store the bytes; return the token and how many old entries were evicted."""
@@ -97,10 +117,15 @@ class ExportStore:
         with self._lock:
             self._purge_expired(now)
             evicted = 0
-            while len(self._entries) >= self._max:
-                self._entries.popitem(last=False)
+            while self._entries and (
+                len(self._entries) >= self._max
+                or self._total + len(data) > self._max_total
+            ):
+                _, old = self._entries.popitem(last=False)
+                self._total -= len(old.data)
                 evicted += 1
             self._entries[token] = ExportEntry(kind=kind, data=data, stored_at=now)
+            self._total += len(data)
         return token, evicted
 
     def get(self, token: str) -> ExportEntry | None:
@@ -117,9 +142,19 @@ class ExportStore:
     def clear(self) -> None:
         with self._lock:
             self._entries.clear()
+            self._total = 0
 
 
 store = ExportStore()
+
+
+async def sweep_loop(interval: float = SWEEP_INTERVAL_SECONDS) -> None:
+    """Free expired entries every ``interval`` seconds until cancelled."""
+    while True:
+        await asyncio.sleep(interval)
+        freed = store.purge()
+        if freed:
+            logger.info("memories.export.swept", count=freed)
 
 
 def sanitize_filename(raw: str | None, kind: ExportKind) -> str:

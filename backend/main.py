@@ -227,6 +227,10 @@ async def lifespan(app: FastAPI):
 
     background_task = asyncio.create_task(_deferred_blog_backup())
 
+    from backend.services.memories.exports import sweep_loop
+
+    export_sweep_task = asyncio.create_task(sweep_loop())
+
     # Warm the translation key-status cache in the background so the first
     # Settings -> AI open is instant instead of paying the OS keyring read then.
     from backend.api.translation import warm_key_status_cache
@@ -279,6 +283,12 @@ async def lifespan(app: FastAPI):
             await background_task
         except asyncio.CancelledError:
             pass
+
+    export_sweep_task.cancel()
+    try:
+        await export_sweep_task
+    except asyncio.CancelledError:
+        pass
 
     # Drop any popup call (no toast) before syncs and writers stop.
     from backend.services.call_popup import get_call_popup_controller
