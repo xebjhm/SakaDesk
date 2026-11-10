@@ -127,11 +127,12 @@ describe('recapCopy: the heart act (s07-s11)', () => {
         expect(copy.firstFavorite).toBe(false);
     });
 
-    it('s10: with no letters there is no letters label', () => {
-        const copy = s10(youData({ favorites_count: null, first_favorite: null }));
-        expect(copy.stat?.key).toBe('recap.s10.letters');
+    it('s10: favourites without letters: the favourites count, no letters label', () => {
         const favOnly = s10(youData({ letters_count: null, letters: [] }));
+        expect(favOnly.stat).toEqual({ key: 'recap.s10.favorites', params: { count: 12 } });
         expect(favOnly.lettersLabel).toBeNull();
+        // A letters count without letter entries is not enough for a label either.
+        expect(s10(youData({ letters_count: 3, letters: [] })).lettersLabel).toBeNull();
     });
 
     it('s10: an unlogged favourite time is never presented as the day it was starred', () => {

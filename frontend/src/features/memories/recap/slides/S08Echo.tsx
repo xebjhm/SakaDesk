@@ -6,10 +6,14 @@ import { formatMessageDate, s08Copy, withNickname, type CopyLine } from '../reca
 import { Headline, Narration, type SlideProps } from './common';
 import { QUOTE_CLASS, heldReveal } from './style';
 
-/** Her text split around every occurrence of the shared keyword, which is marked. */
-function highlight(text: string, keyword: string | null): React.ReactNode {
-    if (!keyword || !text.includes(keyword)) return text;
-    const parts = text.split(keyword);
+/**
+ * Her raw text split around every occurrence of the shared keyword, which is marked, with the
+ * nickname placeholder replaced in each piece. Splitting before the replacement means a keyword
+ * that only appears inside the fan's nickname is never marked as her word.
+ */
+function highlight(raw: string, keyword: string | null, nickname: string): React.ReactNode {
+    if (!keyword || !raw.includes(keyword)) return withNickname(raw, nickname);
+    const parts = raw.split(keyword).map((part) => withNickname(part, nickname));
     return parts.flatMap((part, i) => (i === 0 ? [part] : [
         <mark key={i} data-testid="s08-keyword" className="rounded-xs bg-mark-exact px-0.5 text-primary">{keyword}</mark>,
         part,
@@ -48,7 +52,7 @@ const EchoCard: React.FC<CardProps> = ({ message, label, older, keyword, nicknam
             {picture && <img src={message.media_url ?? undefined} alt="" className="mx-auto max-h-28 rounded-sm object-cover" />}
             {words && (
                 <p lang="ja" data-voice="quote" className={cn(QUOTE_CLASS, 'line-clamp-4 whitespace-pre-line text-title text-primary')}>
-                    {highlight(withNickname(words, nickname), keyword)}
+                    {highlight(words, keyword, nickname)}
                 </p>
             )}
         </div>

@@ -81,7 +81,8 @@ export const S10You: React.FC<SlideProps<S10YouData>> = ({ data, recap, reducedM
                             >
                                 <Mail aria-hidden="true" className="h-4 w-4 text-muted" />
                                 <span className="text-caption tabular-nums text-muted">{formatMonthDay(letter.date, i18n.language) ?? ''}</span>
-                                {letter.first_line && <span lang="ja" className="line-clamp-1 w-full text-caption text-secondary">{letter.first_line}</span>}
+                                {/* The fan's own words: their language is unknown, so no lang="ja" (that marks her words). */}
+                                {letter.first_line && <span data-testid="s10-letter-line" className="line-clamp-1 w-full text-caption text-secondary">{letter.first_line}</span>}
                             </li>
                         ))}
                     </ul>

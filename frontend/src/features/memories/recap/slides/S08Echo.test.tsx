@@ -7,8 +7,8 @@ import type { S08EchoData } from '../api';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 
-const renderS08 = (data: S08EchoData, fallback: string | null = null, paused = false, recap = payload()) =>
-    render(<S08Echo data={data} fallback={fallback} recap={recap} nickname="ゆき" reducedMotion={false} paused={paused} onMediaEnd={() => {}} />);
+const renderS08 = (data: S08EchoData, fallback: string | null = null, paused = false, recap = payload(), nickname = 'ゆき') =>
+    render(<S08Echo data={data} fallback={fallback} recap={recap} nickname={nickname} reducedMotion={false} paused={paused} onMediaEnd={() => {}} />);
 
 describe('S08Echo', () => {
     it('last year on the same day: two cards, the older one sepia, dated in JST', () => {
@@ -43,6 +43,19 @@ describe('S08Echo', () => {
         const now = screen.getAllByTestId('s08-card')[1];
         expect(within(now).getByTestId('s08-keyword')).toHaveTextContent('花火');
         expect(now.textContent).toContain('花火とゆき');
+    });
+
+    it('a keyword inside the fan\'s nickname is not marked as her word', () => {
+        renderS08(
+            echoData({ shared_keyword: '花火', now: message(41, '%%%、花火きれい', { ts: '2026-07-30T12:30:00Z' }) }),
+            null, false, payload(), '花火ちゃん',
+        );
+        const now = screen.getAllByTestId('s08-card')[1];
+        expect(within(now).getAllByTestId('s08-keyword')).toHaveLength(1);
+        expect(now.textContent).toContain('花火ちゃん、花火きれい');
+        // The nickname itself is plain text, the mark comes after it.
+        const quote = within(now).getByText((_, el) => el?.getAttribute('data-voice') === 'quote');
+        expect(quote.firstChild?.textContent).toBe('花火ちゃん、');
     });
 
     it('another day never claims "the same day"', () => {

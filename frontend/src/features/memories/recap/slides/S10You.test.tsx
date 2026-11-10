@@ -60,7 +60,7 @@ describe('S10You', () => {
 
     it('bookmarks are capped so the book stays inside the stage', () => {
         renderS10(youData({ favorites_count: 340 }));
-        expect(screen.getAllByTestId('s10-bookmark').length).toBeLessThanOrEqual(12);
+        expect(screen.getAllByTestId('s10-bookmark')).toHaveLength(12);
         expect(screen.getByText('今年、340回の★を残した。')).toBeInTheDocument();
     });
 
@@ -89,6 +89,13 @@ describe('S10You', () => {
         renderS10({ invite: true }, 'invite', false, 2026);
         expect(screen.getByText('これからは、あなたの足あとも。')).toHaveAttribute('data-voice', 'title');
         expect(screen.queryByText(/来年/)).toBeNull();
+    });
+
+    it('the fan\'s letter line is not marked as Japanese (it is the fan\'s own text)', () => {
+        renderS10(youData());
+        const lines = screen.getAllByTestId('s10-letter-line');
+        expect(lines.length).toBeGreaterThan(0);
+        for (const el of lines) expect(el.closest('[lang="ja"]')).toBeNull();
     });
 
     it('freezes while paused', () => {
