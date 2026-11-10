@@ -414,13 +414,6 @@ export interface RadioMembersPayload {
     members: RadioMember[];
 }
 
-/** One transcript segment (`transcripts.segments_for`): her words, seconds into the voice. */
-export interface TranscriptSegment {
-    start: number;
-    end: number;
-    text: string;
-}
-
 export interface RadioTrack {
     /** A voice message object (with her words attached). */
     message: MemoryMessage;
