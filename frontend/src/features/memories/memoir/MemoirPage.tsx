@@ -47,11 +47,13 @@ const Trailing: React.FC<{ member: MemoirMember }> = ({ member }) => {
 
 /**
  * The binder of the selected person, with its card detail. `cardKey` (a notification deep link)
- * opens that earned card's detail once the binder is loaded, once per person and card; a key that
- * is not an earned card of hers logs `memories_skip` `card_missing` and shows the binder.
+ * opens that earned card's detail once the binder is loaded, once per link: `link` is the route
+ * object the key came with, and every toast click makes a new one, so a repeat click opens the
+ * card again while a re-render does not. A key that is not an earned card of hers logs
+ * `memories_skip` `card_missing` (again on a repeat click) and shows the binder.
  */
-const BinderPane: React.FC<{ service: string; memberPath: string; name: string; cardKey?: string }> = ({
-    service, memberPath, name, cardKey,
+const BinderPane: React.FC<{ service: string; memberPath: string; name: string; cardKey?: string; link: object }> = ({
+    service, memberPath, name, cardKey, link,
 }) => {
     const binder = useMemoriesQuery('binder', (signal) => fetchMemoirCards(service, memberPath, signal), [service, memberPath], {
         count: (d) => d.progress.earned,
@@ -59,17 +61,16 @@ const BinderPane: React.FC<{ service: string; memberPath: string; name: string; 
     const [open, setOpen] = useState<{ path: string; card: BinderCard } | null>(null);
     const card = open?.path === memberPath ? open.card : null;
 
-    const focused = useRef<string | null>(null);
+    const focused = useRef<object | null>(null);
     const data = binder.status === 'ready' ? binder.data : null;
     useEffect(() => {
         if (!cardKey || !data) return;
-        const id = JSON.stringify([memberPath, cardKey]);
-        if (focused.current === id) return;
-        focused.current = id;
+        if (focused.current === link) return;
+        focused.current = link;
         const hit = data.shelves.flatMap((s) => s.cards).find((c) => c.key === cardKey && c.date);
         if (hit) setOpen({ path: memberPath, card: hit });
         else logMemoriesSkip('binder', 'card_missing');
-    }, [data, memberPath, cardKey]);
+    }, [data, memberPath, cardKey, link]);
 
     if (binder.status !== 'ready' || !binder.data) {
         return <LoadState status={binder.status === 'error' ? 'error' : 'loading'} onRetry={binder.retry} />;
@@ -148,7 +149,7 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
                 </div>
                 {tab === 'binder' && (
                     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
-                        <BinderPane service={service} memberPath={memberPath} name={name} cardKey={route.cardKey} />
+                        <BinderPane service={service} memberPath={memberPath} name={name} cardKey={route.cardKey} link={route} />
                     </div>
                 )}
                 {tab === 'timeline' && <Timeline key={memberPath} service={service} memberPath={memberPath} name={name} />}

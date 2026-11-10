@@ -163,20 +163,36 @@ describe('MemoirPage', () => {
             return payload;
         }
 
-        it('opens the routed card detail after the binder loads, once', async () => {
+        it('opens the routed card detail after the binder loads, once per link', async () => {
             vi.mocked(clientLog).mockClear();
             vi.mocked(fetchMemoirCards).mockResolvedValue(withAnniversary());
-            const { rerender } = renderPage({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder', cardKey: 'anniv.y1' });
+            const linked: MemoirRoute = { page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder', cardKey: 'anniv.y1' };
+            const { rerender } = renderPage(linked);
             const dialog = await screen.findByRole('dialog');
-            expect(dialog).toBeInTheDocument();
             expect((await within(dialog).findAllByText(/1年ありがとう/)).length).toBeGreaterThan(0);
             await userEvent.keyboard('{Escape}');
             await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
-            // the same route re-rendered never re-opens it
-            rerender({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder', cardKey: 'anniv.y1' });
+            // the same link re-rendered never re-opens it
+            rerender(linked);
             await new Promise((r) => setTimeout(r, 20));
             expect(screen.queryByRole('dialog')).toBeNull();
             expect(clientLog).not.toHaveBeenCalledWith('memories_skip', expect.anything());
+            // a repeat toast click is a new link (a new route) to the same card: it opens again
+            rerender({ ...linked });
+            expect(await screen.findByRole('dialog')).toBeInTheDocument();
+        });
+
+        it('logs card_missing again for a repeat link to an unknown card', async () => {
+            vi.mocked(clientLog).mockClear();
+            const linked: MemoirRoute = { page: 'memoir', memberPath: MEMBER_PATH, tab: 'binder', cardKey: 'anniv.y9' };
+            const { rerender } = renderPage(linked);
+            const missing = () => vi.mocked(clientLog).mock.calls.filter((c) => c[0] === 'memories_skip' && (c[1] as { reason?: string }).reason === 'card_missing');
+            await waitFor(() => expect(missing()).toHaveLength(1));
+            rerender(linked);
+            await new Promise((r) => setTimeout(r, 20));
+            expect(missing()).toHaveLength(1);
+            rerender({ ...linked });
+            await waitFor(() => expect(missing()).toHaveLength(2));
         });
 
         it('logs card_missing for an unknown card and shows the binder', async () => {
