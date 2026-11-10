@@ -235,6 +235,27 @@ async def test_member_evaluations_run_with_bounded_concurrency(
     assert peak == memoir.EVAL_CONCURRENCY == 4
 
 
+@pytest.mark.asyncio
+async def test_a_failing_row_cancels_the_other_rows(svc, monkeypatch):
+    cancelled = []
+
+    async def payload(service, sdir, summary, *, now, data_hash=None):
+        if summary.name_norm == "金村美玖":
+            raise RuntimeError("boom")
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            cancelled.append(summary.name_norm)
+            raise
+        return {}  # pragma: no cover - always cancelled
+
+    monkeypatch.setattr(binder, "binder_payload", payload)
+    with pytest.raises(RuntimeError, match="boom"):
+        await memoir.list_memoir_members(SERVICE, svc, now=NOW)
+    await asyncio.sleep(0)  # let the cancellation land
+    assert cancelled == ["松田好花"]
+
+
 # --- header -----------------------------------------------------------------------
 
 

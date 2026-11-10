@@ -6,7 +6,8 @@
   ``member_path`` is the chat path of her newest room. Progress is cached per
   person by the binder view itself (key ``person_key``, hash
   ``binder.binder_hash``), so after a sync only the people whose hash changed
-  are evaluated, at most :data:`EVAL_CONCURRENCY` at a time. The assembled
+  are evaluated, at most :data:`EVAL_CONCURRENCY` at a time (one failing
+  row cancels the others and its error propagates). The assembled
   list is one more text-free ``view_cache`` row (view ``memoir_members``, key
   ``all``) whose hash covers :data:`MEMBERS_VERSION`, every person's
   ``binder_hash`` (room hashes, the JST date, letters / icon stats, ...) and
@@ -93,7 +94,13 @@ async def list_memoir_members(service: str, sdir: Path, *, now: datetime) -> dic
         }
 
     async def build() -> dict:
-        rows = list(await asyncio.gather(*map(row, ordered, hashes)))
+        tasks = [asyncio.ensure_future(row(s, h)) for s, h in zip(ordered, hashes)]
+        try:
+            rows = list(await asyncio.gather(*tasks))
+        except BaseException:
+            for t in tasks:  # fail fast: stop the other rows, keep the error
+                t.cancel()
+            raise
         logger.info("memories_memoir_members", count=len(rows), oshi=len(oshi))
         return {"members": rows}
 
