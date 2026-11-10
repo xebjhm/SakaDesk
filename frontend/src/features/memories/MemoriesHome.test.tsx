@@ -51,7 +51,7 @@ describe('MemoriesHome (hub board)', () => {
 
     it.each([
         ['week', 'This week, 2 years ago'],
-        ['first', 'The first message'],
+        ['first', 'From the early days'],
     ] as const)('uses the %s copy', async (rule, copy) => {
         vi.mocked(fetchHub).mockResolvedValue(hubPayload({ on_this_day: hubMoment({ rule, years_ago: rule === 'first' ? 0 : 2 }) }));
         renderHome();

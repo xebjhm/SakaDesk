@@ -37,7 +37,7 @@ describe('OnThisDayCard', () => {
     it('gives a first moment its own copy and never "0 years"', () => {
         render(<OnThisDayCard moment={hubMoment({ rule: 'first', year: 2026, years_ago: 0, date: '2026-02-01' })} go={vi.fn()} />);
         const card = screen.getByTestId('memories-hub-otd');
-        expect(card).toHaveTextContent('The first message');
+        expect(card).toHaveTextContent('From the early days');
         expect(card).not.toHaveTextContent(/today|years? ago|\b0\b/i);
     });
 

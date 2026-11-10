@@ -22,7 +22,9 @@ one. ``rule`` tells the frontend which copy is true, so a ``week`` or
   year's month-day never counts, so the last days of December are not
   "near this date" on January 1.
 - ``first``: when the week has nothing either, the first non-promo message
-  of the first person in ``people.sort_people`` who has one.
+  of the first person in ``people.sort_people`` who has one. Because promo is
+  skipped it may not be her very first message, so the UI labels it "from the
+  early days" (「はじめのころの一通」), never "the first message".
 
 The object is ``{"rule", "year", "years_ago", "date", "member_path",
 "name", "message", "photo"}``: ``year`` is the past year whose month-day the

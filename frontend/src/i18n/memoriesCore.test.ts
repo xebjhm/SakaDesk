@@ -117,7 +117,7 @@ describe('memories core strings', () => {
 
     it('uses the hub reference copy (countdown lines carry one number each)', () => {
         const expected: Record<string, string> = {
-            title: '思い出', yearsAgo: '{{count}}年前の今日', thisWeek: '{{count}}年前の、この週', firstMessage: 'はじまりの一通',
+            title: '思い出', yearsAgo: '{{count}}年前の今日', thisWeek: '{{count}}年前の、この週', firstMessage: 'はじめのころの一通',
             open: 'ひらく', album: 'アルバム', memoir: 'メンバーの思い出', favorites: 'お気に入り',
             countAlbum: '{{count, number}} 枚', countMembers: '{{count, number}} 人', countFavorites: '{{count, number}} 件',
             birthdayIn: '{{name}}の誕生日まで、あと {{count, number}} 日', birthdayToday: '今日は{{name}}の誕生日',
@@ -125,6 +125,13 @@ describe('memories core strings', () => {
             anniversaryToday: '今日はメンバーシップ {{years}} 年目の記念日', recapCard: '一年の振り返り',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, `memories.home.${key}`), key).toBe(text);
+    });
+
+    it("never calls the hub's early-days moment the very first message (it skips promo)", () => {
+        expect(lookup(en, 'memories.home.firstMessage')).toBe('From the early days');
+        for (const [lang, data] of Object.entries(locales)) {
+            expect(lookup(data, 'memories.home.firstMessage'), lang).not.toBe(lookup(data, 'memories.cards.firstMessage'));
+        }
     });
 
     it('lists every key once', () => {
