@@ -27,8 +27,11 @@ export type MemoriesRoute =
     | { page: 'gacha' }
     /** `month` is `YYYY-MM` (JST). */
     | { page: 'calendar'; month?: string; memberPath?: string }
-    /** `date` is `YYYY-MM-DD` (JST); `from: 'calendar'` makes back return to the calendar. */
-    | { page: 'day'; date: string; from?: 'calendar' };
+    /**
+     * `date` is `YYYY-MM-DD` (JST); `from: 'calendar'` makes back return to the calendar;
+     * `memberPath` filters the day to one person (the calendar's member filter, kept on back).
+     */
+    | { page: 'day'; date: string; from?: 'calendar'; memberPath?: string };
 
 /** A core page's route (the four pages added by the core wave). */
 export type CoreRoute = Extract<MemoriesRoute, { page: 'onThisDay' | 'album' | 'memoir' | 'favorites' }>;

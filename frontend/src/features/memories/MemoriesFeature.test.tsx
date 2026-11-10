@@ -198,6 +198,31 @@ describe('Memories feature', () => {
             expect(await screen.findByRole('button', { name: /September 2024/ })).toBeInTheDocument();
         });
 
+        it('the calendar member filter survives a day round trip', async () => {
+            const asked: (string | null)[] = [];
+            server.use(
+                http.get('/api/memories/:service/calendar/:month', ({ params, request }) => {
+                    if (params.month === 'months') return HttpResponse.json({ months: ['2024-09'] });
+                    asked.push(new URL(request.url).searchParams.get('member'));
+                    return HttpResponse.json({
+                        month: params.month,
+                        days: [{ date: `${String(params.month)}-14`, members: 1, photo: null, photo_rule: null }],
+                    });
+                }),
+            );
+            const dayMembers: (string | null)[] = [];
+            server.use(http.get('/api/memories/:service/day', ({ request }) => {
+                dayMembers.push(new URL(request.url).searchParams.get('member'));
+                return HttpResponse.json({ date: '2024-09-14', members: [], messages: [] });
+            }));
+            render(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'calendar', month: '2024-09', memberPath: 'x/y' }} />);
+            await userEvent.click(await within(await screen.findByTestId('calendar-cell-2024-09-14')).findByRole('button'));
+            await waitFor(() => expect(dayMembers).toEqual(['x/y']));
+            await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+            await screen.findByTestId('calendar-cell-2024-09-14');
+            await waitFor(() => expect(asked).toEqual(['x/y', 'x/y']));
+        });
+
         it('a calendar day opens the day page and logs the day page code', async () => {
             vi.mocked(clientLog).mockClear();
             render(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'calendar', month: '2024-09' }} />);

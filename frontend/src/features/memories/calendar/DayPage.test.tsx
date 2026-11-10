@@ -9,6 +9,7 @@ vi.mock('../api', async (importOriginal) => {
     return { ...real, fetchDay: vi.fn() };
 });
 import { fetchDay } from '../api';
+import { MEMBER_PATH } from '../__fixtures__/memories';
 import { DayPage } from './DayPage';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
@@ -28,7 +29,15 @@ describe('DayPage', () => {
         const go = vi.fn();
         render(<DayPage service="hinatazaka46" route={{ page: 'day', date: '2024-09-14', from: 'calendar' }} go={go} />);
         await userEvent.click(screen.getByRole('button', { name: 'Back' }));
-        expect(go).toHaveBeenCalledWith({ page: 'calendar', month: '2024-09' });
+        expect(go).toHaveBeenCalledWith({ page: 'calendar', month: '2024-09', memberPath: undefined });
+    });
+
+    it('filters the day to the calendar member and keeps the filter on back', async () => {
+        const go = vi.fn();
+        render(<DayPage service="hinatazaka46" route={{ page: 'day', date: '2024-09-14', from: 'calendar', memberPath: MEMBER_PATH }} go={go} />);
+        expect(fetchDay).toHaveBeenCalledWith('hinatazaka46', expect.objectContaining({ date: '2024-09-14', member: MEMBER_PATH }), expect.any(AbortSignal));
+        await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+        expect(go).toHaveBeenCalledWith({ page: 'calendar', month: '2024-09', memberPath: MEMBER_PATH });
     });
 
     it('back goes home when the day was not opened from the calendar', async () => {

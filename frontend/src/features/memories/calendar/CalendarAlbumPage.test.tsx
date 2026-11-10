@@ -138,7 +138,13 @@ describe('CalendarAlbumPage', () => {
     it('a day click opens that day from the calendar', async () => {
         const { go } = renderPage();
         await userEvent.click(await within(await screen.findByTestId('calendar-cell-2024-09-14')).findByRole('button'));
-        expect(go).toHaveBeenCalledWith({ page: 'day', date: '2024-09-14', from: 'calendar' });
+        expect(go).toHaveBeenCalledWith({ page: 'day', date: '2024-09-14', from: 'calendar', memberPath: undefined });
+    });
+
+    it('a day opened under the member filter carries the member', async () => {
+        const { go } = renderPage({ page: 'calendar', month: '2024-09', memberPath: NAO_PATH });
+        await userEvent.click(await within(await screen.findByTestId('calendar-cell-2024-09-14')).findByRole('button'));
+        expect(go).toHaveBeenCalledWith({ page: 'day', date: '2024-09-14', from: 'calendar', memberPath: NAO_PATH });
     });
 
     it('says so when the month has no memories, and never prints 0', async () => {

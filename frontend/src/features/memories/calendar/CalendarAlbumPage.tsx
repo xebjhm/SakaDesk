@@ -202,7 +202,7 @@ export const CalendarAlbumPage: React.FC<CalendarAlbumPageProps> = ({ service, r
                 month={shown!}
                 member={member}
                 label={monthTitle}
-                onOpenDay={(date) => go({ page: 'day', date, from: 'calendar' })}
+                onOpenDay={(date) => go({ page: 'day', date, from: 'calendar', memberPath: member })}
             />
         );
     }
