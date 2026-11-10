@@ -118,9 +118,13 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
                 {hasStar && (
                     <Star data-testid="burst-star" aria-hidden="true" className="absolute right-2 top-2 h-4 w-4 fill-current text-semantic-star drop-shadow-sm" />
                 )}
-                <span className="absolute bottom-1 right-1 inline-flex items-center gap-1 rounded-pill bg-frost px-2 text-caption text-primary backdrop-blur-frost">
-                    <Layers aria-hidden="true" className="h-3 w-3" />
-                    {count}
+                {/* Contained in the tile: never wider than it, the label truncates first. */}
+                <span
+                    data-testid="burst-badge"
+                    className="absolute bottom-1 right-1 inline-flex max-w-[calc(100%-0.5rem)] items-center gap-1 overflow-hidden rounded-pill bg-frost px-2 text-caption text-primary backdrop-blur-frost"
+                >
+                    <Layers aria-hidden="true" className="h-3 w-3 shrink-0" />
+                    <span className="min-w-0 truncate">{count}</span>
                 </span>
             </button>
             <Modal isOpen={open} onClose={() => toggle(false)} title={title} header="plain" className="max-w-2xl">

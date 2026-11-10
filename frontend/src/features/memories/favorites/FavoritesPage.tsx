@@ -7,7 +7,8 @@ import { fetchFavorites } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
 import { formatJstDate } from '../shared/jst';
 import { LoadState } from '../shared/LoadState';
-import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
+import { cn } from '../../../utils/classnames';
+import { MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { stopMemoriesVoices } from '../shared/voicePlayback';
@@ -92,7 +93,7 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ service, route, go
             <PageHeader title={t('memories.favorites.title')} onBack={() => go({ page: 'home' })} />
             <div className="flex min-h-0 flex-1">
                 <MemberPane
-                    className="w-60 shrink-0 border-r border-subtle"
+                    className={cn(MEMBER_PANE_WIDTH, 'shrink-0 border-r border-subtle')}
                     items={items}
                     selectedKey={member ?? null}
                     onSelect={pickMember}

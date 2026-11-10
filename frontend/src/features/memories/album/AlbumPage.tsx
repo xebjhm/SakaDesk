@@ -8,7 +8,8 @@ import {
 } from '../api';
 import { logMemoriesToggle, type MemoriesToggleReason } from '../memoriesLog';
 import { LoadState } from '../shared/LoadState';
-import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
+import { MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from '../shared/MemberPane';
+import { cn } from '../../../utils/classnames';
 import { messageName } from '../shared/nameFromRoom';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
@@ -70,7 +71,7 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
 
     return (
         <div className="flex min-h-0 flex-1 gap-2 pb-2 pr-2">
-            <div ref={scroller} data-testid="album-scroller" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4">
+            <div ref={scroller} data-testid="album-scroller" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 pb-4">
                 {months.map((m, i) => (
                     <MonthSection
                         key={m.month}
@@ -217,9 +218,9 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     return (
         <div data-testid="memories-page-album" data-service={service} className="flex min-h-0 flex-1 flex-col overflow-hidden">
             <PageHeader title={t('memories.album.title')} onBack={() => go({ page: 'home' })} />
-            <div className="flex min-h-0 flex-1">
+            <div className="flex min-h-0 min-w-0 flex-1">
                 <MemberPane
-                    className="w-60 shrink-0 border-r border-subtle"
+                    className={cn(MEMBER_PANE_WIDTH, 'shrink-0 border-r border-subtle')}
                     items={items}
                     selectedKey={member ?? null}
                     onSelect={pickMember}

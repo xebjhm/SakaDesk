@@ -20,6 +20,26 @@ describe('MemberPane', () => {
         expect(screen.getAllByTestId('member-pane-oshi')).toHaveLength(1);
     });
 
+    it('gives the name the room first: a long trailing detail truncates before the name (D1)', () => {
+        render(
+            <MemberPane
+                items={[{ key: 'c', name: '高井 俐香', oshi: true, trailing: '1 hour 1 min' }]}
+                selectedKey={null}
+                onSelect={() => {}}
+            />,
+        );
+        const name = screen.getByTestId('member-pane-name');
+        const trailing = screen.getByTestId('member-pane-trailing');
+        // The name no longer grows into a fixed share and truncates only after the trailing.
+        expect(name).not.toHaveClass('flex-1');
+        expect(name).toHaveClass('min-w-0', 'shrink', 'truncate');
+        expect(name).toHaveAttribute('title', '高井 俐香');
+        // The trailing detail gives its width up first and truncates on its own.
+        expect(trailing).not.toHaveClass('shrink-0');
+        expect(trailing).toHaveClass('min-w-0', 'shrink-[1000]', 'truncate', 'ml-auto');
+        expect(trailing).toHaveAttribute('title', '1 hour 1 min');
+    });
+
     it('fires onSelect with the item and marks the selected row', async () => {
         const onSelect = vi.fn();
         render(<MemberPane items={items} selectedKey="a" onSelect={onSelect} />);

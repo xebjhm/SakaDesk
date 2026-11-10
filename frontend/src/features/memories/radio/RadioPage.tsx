@@ -6,7 +6,8 @@ import type { MemoriesRoute } from '../MemoriesFeature';
 import { fetchRadioMembers } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
 import { LoadState } from '../shared/LoadState';
-import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
+import { cn } from '../../../utils/classnames';
+import { MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { stopMemoriesVoices } from '../shared/voicePlayback';
@@ -77,7 +78,7 @@ export const RadioPage: React.FC<RadioPageProps> = ({ service, route, go }) => {
             <PageHeader title={t('memories.radio.title')} onBack={() => go({ page: 'home' })} />
             <div className="flex min-h-0 flex-1">
                 <MemberPane
-                    className="w-60 shrink-0 border-r border-subtle"
+                    className={cn(MEMBER_PANE_WIDTH, 'shrink-0 border-r border-subtle')}
                     items={items}
                     selectedKey={member ?? null}
                     onSelect={pickMember}
