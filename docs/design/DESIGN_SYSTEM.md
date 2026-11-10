@@ -923,6 +923,18 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   a serif title and one count line, hidden when the count is zero. The 誕生日・記念日 card
   carries one number per line (the days, or the anniversary year on the day itself). The
   group colour appears only as the hover glow and focus ring.
+- **The time capsule** (`features/memories/capsule/`): the fan's own notes are `bg-memories-note`
+  sticky notes under a `bg-memories-washi` strip, leaning by the cork board's id tilt (static; flat
+  under reduced motion), body in `text-primary` with the written date in `text-secondary`. The
+  body is the fan's words, so it never carries `lang="ja"`. A day view (not a one-person one) and
+  an earned binder card carry a strip of notes with a ghost 「メモを貼る」 button; the editor is a
+  plain `Modal` whose textarea uses the field look, shows a remaining count only past 1800 of
+  2000 characters (a line without a number at the limit) and asks before 「はがす」. A resurfaced
+  note sits beside her message of that day on `bg-memories-paper` (serif 「N年前のあなたが書いたメモ」
+  over both), below the hub's On This Day card and above On This Day's year strip.
+- **The same-time line** (`home/SameTimeLine.tsx`): a quiet one-line button above the hub's On
+  This Day card, `text-small text-secondary` with the JST clock in `text-muted` and her words in
+  `text-primary`, truncated to one line; `hover:bg-sunken`, no group colour beyond the focus ring.
 
 ### The group rail and the profile card
 
