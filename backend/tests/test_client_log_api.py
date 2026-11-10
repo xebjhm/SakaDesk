@@ -1178,3 +1178,59 @@ def test_the_capsule_event_rejects_a_body_field():
         json={"event": "memories_capsule", "fields": {"phase": "save", "body": "x"}},
     )
     assert r.status_code == 422
+
+
+@pytest.mark.parametrize("phase", ["slow", "very_slow", "timeout", "cancelled"])
+def test_ui_wait_breadcrumb_is_accepted(phase):
+    with capture_logs() as logs:
+        r = client.post(
+            "/api/client-log",
+            json={
+                "event": "ui_wait",
+                "fields": {"surface": "chat_room", "phase": phase, "wait_ms": 3000},
+            },
+        )
+    assert r.status_code == 204
+    event = _client_events(logs)[0]
+    assert event["event"] == "ui_wait"
+    assert event["log_level"] == "info"
+    assert event["surface"] == "chat_room"
+    assert event["phase"] == phase
+    assert event["wait_ms"] == 3000
+
+
+def test_ui_wait_accepts_zero_wait():
+    r = client.post(
+        "/api/client-log",
+        json={
+            "event": "ui_wait",
+            "fields": {"surface": "login", "phase": "cancelled", "wait_ms": 0},
+        },
+    )
+    assert r.status_code == 204
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"surface": "Chat Room", "phase": "slow", "wait_ms": 3000},
+        {"surface": "読み込み中🌸", "phase": "slow", "wait_ms": 3000},
+        {"surface": "chat_room", "phase": "stalled", "wait_ms": 3000},
+        {"surface": "chat_room", "phase": "slow", "wait_ms": -1},
+        {"surface": "chat_room", "phase": "slow", "wait_ms": True},
+        {"surface": "chat_room", "phase": "slow", "wait_ms": "3000"},
+    ],
+)
+def test_ui_wait_rejects_text_unknown_phases_and_bad_waits(fields):
+    with capture_logs() as logs:
+        r = client.post("/api/client-log", json={"event": "ui_wait", "fields": fields})
+    assert r.status_code == 422
+    assert _client_events(logs) == []
+
+
+def test_wait_ms_is_never_negative_on_any_event():
+    r = client.post(
+        "/api/client-log",
+        json={"event": "dialog_load", "fields": {"wait_ms": -5}},
+    )
+    assert r.status_code == 422

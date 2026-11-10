@@ -17,6 +17,7 @@ from pydantic import (
     StrictInt,
     StringConstraints,
     field_validator,
+    model_validator,
 )
 
 router = APIRouter(prefix="/api/client-log", tags=["client-log"])
@@ -105,6 +106,7 @@ ClientEvent = Literal[
     "recap_poster",
     "recap_share",
     "recap_opening",
+    "ui_wait",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -146,6 +148,7 @@ ALLOWED_FIELDS = frozenset(
         "dropped",
         "kind",
         "style",
+        "wait_ms",
     }
 )
 WARNING_EVENTS = frozenset(
@@ -165,6 +168,10 @@ WARNING_EVENTS = frozenset(
     }
 )
 
+# The loading-UX wait breadcrumb (frontend design/loading.ts `logWait`): a slow, very slow,
+# timed-out or cancelled wait, with its surface code and how long it had waited.
+UI_WAIT_PHASES = frozenset({"slow", "very_slow", "timeout", "cancelled"})
+
 CodeStr = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")]
 FieldValue = Union[StrictBool, StrictInt, CodeStr]
 
@@ -179,7 +186,24 @@ class ClientLogEntry(BaseModel):
         # Do not echo the offending keys back: they are client-supplied text.
         if not set(value) <= ALLOWED_FIELDS:
             raise ValueError("unknown field key")
+        wait_ms = value.get("wait_ms")
+        if wait_ms is not None and (
+            isinstance(wait_ms, bool) or not isinstance(wait_ms, int) or wait_ms < 0
+        ):
+            raise ValueError("wait_ms must be a non-negative integer")
         return value
+
+    @model_validator(mode="after")
+    def _ui_wait_phase_is_known(self) -> "ClientLogEntry":
+        # Do not echo the value back: it is client-supplied text.
+        phase = self.fields.get("phase")
+        if (
+            self.event == "ui_wait"
+            and phase is not None
+            and phase not in UI_WAIT_PHASES
+        ):
+            raise ValueError("unknown ui_wait phase")
+        return self
 
 
 @router.post("", status_code=204)
