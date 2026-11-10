@@ -2,7 +2,8 @@ import React, { useState, useEffect, useId } from 'react';
 import { Loader2, RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
-import { Modal, Button, Switch, Input, Select } from '../../design/primitives';
+import { Modal, Button, Switch, Input, Select, Spinner } from '../../design/primitives';
+import { useDelayedLoading } from '../../design/loading';
 import { logDialogLoad, type DialogLoadSurface, type DialogLoadReason } from '../../design/dialog/dialogLog';
 import { cn } from '../../utils/classnames';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -79,6 +80,38 @@ const FIELD_LABEL = 'text-small font-semibold text-secondary';
 /** Text-only danger action (Delete backup, Clear API key). */
 const DANGER_GHOST = 'text-status-danger hover:text-status-danger';
 
+/** `GET /api/media/status`, the parts the thumbnail cache row reads. */
+interface MediaCacheStatus {
+    state: 'idle' | 'running' | 'paused' | 'stopped';
+    services: Record<string, { done: number; total: number }>;
+    cache: { thumbs_bytes: number; posters_bytes: number };
+}
+
+/** Re-read the thumbnail worker's status this often while it prepares thumbnails. */
+const MEDIA_STATUS_POLL_MS = 5000;
+/** How long the "cache cleared" toast stays. */
+const MEDIA_TOAST_MS = 2000;
+
+/** A status body with the fields the row reads, else null (a refused or malformed answer). */
+function asMediaStatus(data: unknown): MediaCacheStatus | null {
+    const d = data as Partial<MediaCacheStatus> | null;
+    if (!d || typeof d.state !== 'string' || typeof d.cache?.thumbs_bytes !== 'number'
+        || typeof d.cache?.posters_bytes !== 'number') return null;
+    return { state: d.state, services: d.services ?? {}, cache: d.cache };
+}
+
+/** `{done, total}` over every service while the worker runs or pauses with work left, else null. */
+function mediaProgress(status: MediaCacheStatus | null): { done: number; total: number } | null {
+    if (!status || (status.state !== 'running' && status.state !== 'paused')) return null;
+    let done = 0;
+    let total = 0;
+    for (const s of Object.values(status.services)) {
+        done += s.done;
+        total += s.total;
+    }
+    return total > 0 && done < total ? { done, total } : null;
+}
+
 /** Outcome of a per-service batch: `ok`, `error` when every request failed, else `partial` with the failure count. */
 function batchOutcome(failed: number, total: number): ['ok'] | ['error'] | ['partial', number] {
     if (failed === 0) return ['ok'];
@@ -120,6 +153,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const [isClearing, setIsClearing] = useState(false);
     const [blogBackupRunning, setBlogBackupRunning] = useState(false);
     const [blogBackupStats, setBlogBackupStats] = useState<{cached: number, total: number} | null>(null);
+    const [mediaStatus, setMediaStatus] = useState<MediaCacheStatus | null>(null);
+    const [mediaLoading, setMediaLoading] = useState(false);
+    const [mediaClearing, setMediaClearing] = useState(false);
+    const [mediaReload, setMediaReload] = useState(0);
+    const [mediaToast, setMediaToast] = useState<string | null>(null);
+    const mediaToastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     // Optimistic toggle: local override while the API call is in flight
     const [blogTogglePending, setBlogTogglePending] = useState<boolean | null>(null);
     const blogBackupEnabled = blogTogglePending ?? appSettings.blogs_full_backup;
@@ -265,6 +304,76 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         // Stop the poll when the dialog closes: no status request after it is gone.
         return () => { cancelled = true; clearTimeout(pollTimer); statsAbort.abort(); };
     }, [appSettings.blogs_full_backup, selectedServices]);
+
+    // The thumbnail cache row (Sync tab): read the worker's status when the tab opens,
+    // and again every few seconds while it prepares thumbnails; stop when the tab or dialog closes.
+    const syncTabOpen = activeTab === 'sync';
+    useEffect(() => {
+        if (!syncTabOpen) return;
+        let cancelled = false;
+        let pollTimer: ReturnType<typeof setTimeout> | undefined;
+        // One `ok` breadcrumb per open, not one per poll.
+        let logged = false;
+        const load = () => {
+            fetch('/api/media/status')
+                .then(res => {
+                    if (!res.ok) throw new Error('media status refused');
+                    return res.json();
+                })
+                .then(body => {
+                    const data = asMediaStatus(body);
+                    if (!data) throw new Error('media status malformed');
+                    if (cancelled) return;
+                    if (!logged) {
+                        logged = true;
+                        logDialogLoad('settings_media_cache', 'ok');
+                    }
+                    setMediaStatus(data);
+                    if (data.state === 'running' || data.state === 'paused') {
+                        pollTimer = setTimeout(load, MEDIA_STATUS_POLL_MS);
+                    }
+                })
+                .catch(() => {
+                    if (cancelled) return;
+                    setMediaStatus(null);
+                    logDialogLoad('settings_media_cache', 'error');
+                })
+                .finally(() => {
+                    if (!cancelled) setMediaLoading(false);
+                });
+        };
+        setMediaLoading(true);
+        load();
+        return () => { cancelled = true; clearTimeout(pollTimer); };
+    }, [syncTabOpen, mediaReload]);
+
+    useEffect(() => () => {
+        if (mediaToastTimer.current) clearTimeout(mediaToastTimer.current);
+    }, []);
+
+    const showMediaToast = (message: string) => {
+        if (mediaToastTimer.current) clearTimeout(mediaToastTimer.current);
+        setMediaToast(message);
+        mediaToastTimer.current = setTimeout(() => setMediaToast(null), MEDIA_TOAST_MS);
+    };
+
+    // Thumbnails and posters are regenerated in the background, so no confirm is needed.
+    const handleClearMediaCache = async () => {
+        setMediaClearing(true);
+        try {
+            const res = await fetch('/api/media/cache', { method: 'DELETE' });
+            if (!res.ok) throw new Error('media cache clear refused');
+            logDialogLoad('settings_media_clean', 'ok');
+            showMediaToast(t('settings.mediaCacheCleared'));
+            setMediaReload(n => n + 1);
+        } catch {
+            logDialogLoad('settings_media_clean', 'error');
+        } finally {
+            setMediaClearing(false);
+        }
+    };
+    const mediaPreparing = mediaProgress(mediaStatus);
+    const mediaLoadingShown = useDelayedLoading(mediaLoading && !mediaStatus);
 
     // Runs after both in-app confirmations (see the ConfirmDialog below).
     const handleCleanBlogCache = async () => {
@@ -586,6 +695,42 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                 >
                                     {isClearing ? t('common.loading') : t('settings.cleanBlogCache')}
                                 </Button>
+                            </div>
+                        )}
+                    </SettingRow>
+
+                    <SettingRow
+                        label={<>
+                            {t('settings.mediaCache')}
+                            {mediaPreparing && (
+                                <span className="flex items-center gap-1 text-caption font-normal text-secondary">
+                                    <Spinner size="sm" tone="muted" decorative />
+                                    {t('settings.mediaCachePreparing', mediaPreparing)}
+                                </span>
+                            )}
+                        </>}
+                        description={mediaLoadingShown
+                            ? <span data-testid="media-cache-loading">
+                                <Spinner size="sm" tone="muted" label={t('common.loading')} labelVisibility="always" />
+                            </span>
+                            : mediaStatus
+                                ? t('settings.mediaCacheSize', { size: formatBytes(mediaStatus.cache.thumbs_bytes + mediaStatus.cache.posters_bytes) })
+                                : undefined}
+                        control={
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className={DANGER_GHOST}
+                                onClick={handleClearMediaCache}
+                                disabled={mediaClearing}
+                            >
+                                {t('settings.mediaCacheClear')}
+                            </Button>
+                        }
+                    >
+                        {mediaToast && (
+                            <div role="status" className="self-start rounded-pill bg-toast px-3 py-1 text-caption text-viewer animate-reveal motion-reduce:animate-none">
+                                {mediaToast}
                             </div>
                         )}
                     </SettingRow>

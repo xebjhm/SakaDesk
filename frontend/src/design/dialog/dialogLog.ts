@@ -13,6 +13,7 @@ export type DialogLoadSurface =
     | 'settings_blog_cache' | 'settings_blog_backup' | 'settings_update_check' | 'settings_blog_clean'
     | 'settings_blog_stats' | 'settings_ai_config' | 'settings_ai_models' | 'settings_ai_key_clear' | 'settings_ai_save'
     | 'settings_ai_cache_clear' | 'settings_ai_test' | 'settings_app_save'
+    | 'settings_media_cache' | 'settings_media_clean'
     | 'report_issue'
     | 'search_status' | 'search_backup_status' | 'search_more' | 'search_members'
     | 'background_upload'
