@@ -449,7 +449,8 @@ is `circle` for floating buttons (`overlay` and `accent` by default) and
 | hover | `hover:brightness-106` and `hover:-translate-y-px`; the glow grows (`shadow-accent-glow-hover`) |
 | pressed | `active:scale-97` and `active:brightness-94`; the glow shrinks |
 | focus-visible | 2 px `ring-accent` with a 2 px `ring-offset-surface` gap. **Exception, buttons on the expressive header** (the dialog close button, the chat header ⋯): no accent on the title layer, so `ring-expressive-header-focus` with `ring-offset-0`. That ring is the header text colour on a gradient header (the same colour as `ring-expressive-header`) and the group's strong title tone (step 700) on a light title header (Sakurazaka: `#a72f5d`, 6.5:1 on white, where the pale title text is only 2.4:1) |
-| loading | `loading` prop: a spinner is overlaid, the label stays so the width does not change, clicks are swallowed, `aria-busy` is set |
+| loading | `loading` prop: a decorative `Spinner` (`sm`, `tone="current"`) is overlaid in the centre, the label stays (at `opacity-0`) so the width does not change, clicks are swallowed, `aria-busy` is set |
+| loading, reduced motion | the glyph stops and moves to the leading edge (`motion-reduce:left-1 motion-reduce:right-auto`), the label stays readable at `motion-reduce:opacity-60` (nudged clear of the glyph with `motion-reduce:translate-x-2`, a transform, so the width is unchanged): never an icon alone |
 | selected | `bg-accent-subtle` background + `border-accent-border` + `text-accent-strong` text |
 | **disabled** | **keeps its colour** at 40 % opacity, no shadow, `cursor-not-allowed`, and **always shows a reason** |
 
@@ -531,6 +532,9 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   `duration-base`, `duration-glide`, `ease-standard`
   (`cubic-bezier(0.2, 0, 0, 1)`). framer-motion reads numbers:
   `transition={{ duration: motion.duration.base / 1000, ease: motion.easing.standard }}`.
+- `motion.loading` is wait timing, not an animation: `reveal` 200, `slow` 3000,
+  `verySlow` 10000, `minVisible` 400 ms (CSS `--ds-loading-reveal`, `--ds-loading-slow`,
+  `--ds-loading-very-slow`, `--ds-loading-min-visible`). See "Loading and waiting".
 - Every animation is 150-200 ms. The listed exceptions: `duration-glide`
   (scroll glides, and the blog feed caption card's hover nudge through
   `transition-caption`), `animate-landing` (1400 ms, the landed-row highlight),
@@ -538,7 +542,9 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   `animate-orb-breathe`), About's easter egg (`animate-heart-float` 800 ms,
   `animate-heartbeat` 1.2 s), and the celebrations: `animate-toast-in` 350 ms
   (the toast entrance), `animate-shimmer` 1.2 s, `animate-shimmer-sweep` 1.4 s (the looping
-  loading sweep on a Favourites video placeholder; hidden under reduced motion), `animate-pop` 500 ms,
+  loading sweep on a Favourites video placeholder; hidden under reduced motion),
+  `animate-progress-indeterminate` 1.4 s (the indeterminate `ProgressBar` segment; a static
+  segment under reduced motion), `animate-pop` 500 ms,
   `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, the year recap's slide motion
   (`animate-star-fall` 600 ms, `animate-fan-in` 500 ms, `animate-petal-fall` 1.6 s and the
   long letter's `animate-letter-scroll` 6 s, all on the `ease-standard` curve; the letter scroll
@@ -585,9 +591,13 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |
-| Loading, empty, error inside a dialog | `DialogStatus` |
+| Loading, empty, error or timeout of a pane, block or dialog | `StatusBlock` (see "Loading and waiting"). `DialogStatus`, `BlogStatus` and `LoadState` still exist until the loading-UX wave moves them onto it |
+| A layout-shaped placeholder while a first load runs | `Skeleton` inside a `StatusBlock` `skeleton` |
+| A small wait that does not gate content (a row, a play control) | `Spinner` after `useDelayedLoading` |
+| A long job, or a known total | `ProgressBar` (indeterminate until the total is known) |
+| A refresh or step inside a loaded view | `BusyContent` around the kept content (`useKeepPrevious`) |
 | Empty list or screen | `EmptyState` |
-| Image still loading | Neutral skeleton `bg-sunken animate-pulse motion-reduce:animate-none` (`SafeImage` `skeletonClassName`); keep the `<img>` laid out at `opacity-0`, never `hidden`, so `loading="lazy"` can fire |
+| Image still loading | `Skeleton` (`shape="tile"`, or `SafeImage` `skeletonClassName` with `SKELETON_PULSE` and `bg-sunken`); keep the `<img>` laid out at `opacity-0`, never `hidden`, so `loading="lazy"` can fire |
 | Video or voice buffering / failed | `useMediaPlayback` (`core/media/useMediaPlayback.ts`). Buffering (waiting for data while playing): a `Loader2` spinner with `animate-spin motion-reduce:animate-none`, centred over the video in `text-viewer` (`role="status"`, `common.loading`), or in place of the voice player's play icon (`aria-busy`). Failed: a neutral message (`videoPlayer.playbackError` / `voicePlayer.playbackError`, never danger red) with a Retry (`common.retry`) that reloads the element at the same position and plays: on the video a `bg-viewer-scrim` panel with an `overlay` Button, on the voice player a `text-secondary` caption with a `ghost` Button. Every `<video>` / `<audio>` element gets its source through `useMediaSource` (`core/media/mediaElement.ts`), which releases it (pause, drop `src`, `load()`) before the source changes and on unmount; viewers key the player by source. The one detached preload `Audio()` in `preloadAudio.ts` has no element to hook, so it is released manually |
 | Low-density screen background | `Atmosphere` |
 | One-time celebration | `CelebrationToast` / `MilestoneCard` |
@@ -646,6 +656,83 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
   `bg-semantic-danger-icon`, the empty tile `bg-expressive-soft`; `retryVariant` is
   `secondary` by default and `primary` for the gradient retry the blog dialogs use).
   `BlogStatus`'s retry is always `primary`.
+
+### Loading and waiting
+
+Every wait must look like loading: never a blank area, never a control that seems to ignore the
+click. The timing lives in `motion.loading` (`design/tokens/motion.ts`); the hooks in
+`design/loading.ts`; the primitives in `design/primitives/`.
+
+| Elapsed | What the user sees |
+|---|---|
+| 0–200 ms (`reveal`) | Nothing new; the previous content stays, so fast loads never flash. Only a button's pressed state and an optimistic change apply at once |
+| ≥ 200 ms | The indicator for this kind of wait (table below) |
+| ≥ 3 s (`slow`) | One line of specific "still working" copy, `text-small text-secondary` (default `loading.slow`) |
+| ≥ 10 s (`verySlow`) | Why it is slow (default `loading.verySlow`), plus Cancel when the job can be cancelled, or progress: a determinate `ProgressBar`, or an indeterminate one next to the explanation when there is neither (decision D-L1). The rest of the screen stays usable |
+| Timeout (per surface) | `StatusBlock kind="timeout"`: Retry, with copy that differs from a failure. Never an endless spinner |
+
+A shown indicator stays at least 400 ms (`minVisible`; `settleDelay(elapsed)` gives the hold).
+
+**Hooks** (`design/loading.ts`):
+
+| Hook | Use |
+|---|---|
+| `useLoadingStages(active, { surface?, startedAt? })` | `{ stage, waitMs }`: `hidden` → `shown` → `slow` → `verySlow`; resets when `active` turns off. With `surface` it logs `ui_wait` once for `slow` and once for `very_slow` |
+| `useDelayedLoading(active)` | true from `reveal` until `active` is off and the indicator has shown `minVisible`; for indicators that do not gate content |
+| `useKeepPrevious(data, { scope, loading })` | `{ shown, stale }`: while loading, the last ready payload of the same scope (`stale: true`); a new scope keeps nothing |
+| `settleDelay(elapsedMs)` | ms to hold a finished result so a shown indicator stays `minVisible` |
+| `logWait(surface, phase, waitMs)` | the `ui_wait` breadcrumb (`surface` a code `^[a-z0-9_]{1,40}$`, `phase` `slow` / `very_slow` / `timeout` / `cancelled`, `wait_ms`); never throws |
+
+**Primitives:**
+
+| Primitive | Props | Look |
+|---|---|---|
+| `Spinner` | `size` `sm` / `md` / `lg` (`h-4` / `h-6` / `h-8`), `tone` `accent` / `muted` / `current` / `viewer`, `label` (default `loading.label`), `labelVisibility` `auto` / `always` / `compact`, `decorative` | lucide `Loader2`, `animate-spin motion-reduce:animate-none`; `role="status"` named by its label. `decorative` (aria-hidden, no role, no label) only next to visible text that describes the wait |
+| `Skeleton` | `shape` `line` / `block` / `circle` / `tile`, `tone` `sunken` (default, `bg-sunken`) / `paper` (`bg-skeleton`) / `data` (no colour; the caller paints `style`), `className`, `style` | `SKELETON_PULSE` (`animate-pulse motion-reduce:animate-none`); always `aria-hidden`, the parent carries `role="status"` and a label |
+| `StatusBlock` | `kind` `loading` / `empty` / `error` / `timeout`, `surface` (a `ui_wait` code), `variant` `pane` / `dialog` (default) / `block` / `fill` / `inline`, `title`, `hint`, `icon`; loading: `label`, `skeleton`, `slowHint`, `verySlowHint`, `onCancel`, `cancelLabel`, `progress`, `stage` (previews only); empty: `action`; error and timeout: `onRetry` (required), `retryLabel`, `retryVariant` | loading: an empty `role="status"` box (same size) until `reveal`, then the skeleton or an accent spinner, then the hints, Cancel (ghost) and bar as in the timing table. error: `role="alert"`, danger icon tile, `loading.error`, Retry (`secondary`). timeout: `role="alert"`, neutral `Clock` tile (`bg-sunken text-muted`, never danger), `loading.timeout` + `loading.timeoutHint`, Retry. empty: `EmptyState` |
+| `ProgressBar` | `value` (0..1; null / undefined = indeterminate), `label` (required, the accessible name), `valueText`, `size` `thin` / `sm` / `md` (`h-0.5` / `h-2` / `h-4`), `showLabel` | `bg-sunken rounded-full` track, `bg-expressive-progress` fill (`transition-all duration-base`, none under reduced motion); indeterminate: a `w-1/3` segment on `animate-progress-indeterminate` |
+| `BusyContent` | `busy`, `label`, `children`, `className`, `contentClassName` | keeps the previous content, `aria-busy`; after `reveal` the content dims to `opacity-60` and a thin indeterminate `ProgressBar` sits on the top edge |
+
+Variants of `StatusBlock`: `pane` fills a flex pane (`flex-1 p-6`: Memories, chat), `dialog`
+sits in a dialog body (`px-6 py-12`), `block` is a fixed `h-72` block, `fill` fills the scroll
+area (`h-full min-h-96`, a `lg` spinner), `inline` is one row (`sm` spinner with its label
+visible, `text-small text-secondary`; error and timeout drop the icon tile and use a ghost Retry).
+
+Which primitive for which wait:
+
+| Kind of wait | Pattern |
+|---|---|
+| First load of a page or pane with a known layout (chat, sidebar, member pane, album month, binder, hub moment) | `StatusBlock` with a layout-shaped `Skeleton` |
+| First load with an unknown layout, or inside a dialog | `StatusBlock` with its spinner |
+| Refresh, filter or step inside a loaded view (month, year, member, sync refresh) | `BusyContent` (keep-previous: dimmed content plus a top `ProgressBar`) |
+| Image, video still or thumbnail | the media pipeline's `MediaTile` (below), or `SafeImage` with a `Skeleton` look until migrated |
+| Media playback (video, voice, radio) | `useMediaPlayback` buffering: a `Spinner` on the play control, never a lit "playing" state before sound |
+| Small write (favourite, setting, cover, capsule) | Optimistic UI plus a row `Spinner` after `useDelayedLoading`; revert plus a quiet error |
+| Button-triggered job under about 10 s (login, export PNG, pull) | `Button loading`, with Cancel kept enabled |
+| Long job (sync, export, upgrade, index build, transcription) | `ProgressBar` (indeterminate until a total is known), phase copy, Cancel |
+| Background work the user did not trigger (hub refresh, search index, blog backup) | `StatusBlock variant="inline"`, never blocking |
+
+**Reduced motion:** nothing spins, pulses, sweeps or fades. A spinner becomes a static glyph
+**with a visible label** (`labelVisibility="auto"` shows it through
+`motion-reduce:not-sr-only`), never an icon alone; an indeterminate `ProgressBar` shows its
+label the same way. The only exception is `labelVisibility="compact"`, for media tiles and
+bubbles under 160 px, where the label stays in the accessibility tree only.
+
+**Media hand-off** (the media pipeline's `MediaTile` and its grid build on these, with no
+shimmer or spinner of their own):
+
+- The placeholder layer is `<Skeleton shape="tile" tone="data" style={{ backgroundColor: meta?.color ?? undefined }} />`,
+  or `tone="sunken"` when there is no colour; it is static under reduced motion.
+- Under reduced motion a tile still waiting after `reveal` shows
+  `<Spinner size="sm" tone="muted" labelVisibility="compact" />` centred.
+- A failed tile uses the media plan's own retry state. Grid-level states (first page, more pages,
+  pre-generation running) use `StatusBlock` (`variant="dialog"`, surfaces `media_gallery` /
+  `blog_gallery` / `memories_album`), or a `ProgressBar` for the "Preparing thumbnails… done / total" row.
+- The fade-in stays `transition-opacity duration-base ease-standard motion-reduce:transition-none`.
+
+**Breadcrumb:** `ui_wait` (`surface`, `phase`, `wait_ms`) is allow-listed in
+`utils/clientLog.ts` and `backend/api/client_log.py` (a `ui_wait` phase must be one of the four
+codes; `wait_ms` is a non-negative integer on every event). Ids and codes only.
 
 ### Developer surfaces
 
@@ -1046,6 +1133,24 @@ Review the diff: numbers should only go down.
 The v2 foundation added the superseded group-role utilities to the ratchet, so
 the baseline lists the files that still use them; counts only go down from
 here.
+
+#### The loading ratchet
+
+The same test file runs a second ratchet over hand-built loading indicators
+(`countLoadingViolations`, `isLoadingScanned` in `design/guard.ts`): a raw
+`animate-spin` (with any variant prefix, counted once) and a bare
+`{t('common.loading')}` text child (`aria-label={t('common.loading')}` is not
+counted). It scans the same files as the style guard minus `design/primitives/`
+(the primitives own the animation) and compares them with
+`loading-guard-baseline.json` under the same rules: a new file must have 0,
+counts only go down, an improved count must be written back, and no `design/`
+file may be listed. Use `Spinner` / `StatusBlock` instead. To rewrite it, from
+`frontend/`:
+
+    UPDATE_LOADING_BASELINE=1 npx vitest run src/design/guard.test.ts
+
+The loading-UX wave starts it at the current hand-built spinners and ends it
+empty.
 
 #### The dialog style ratchet
 
