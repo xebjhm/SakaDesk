@@ -83,6 +83,19 @@ describe('thumbnailUrl / thumbWidthFor', () => {
         expect(thumbnailUrl(null, 320)).toBeUndefined();
     });
 
+    it('appends the content version v when given, and leaves the url unchanged without it', async () => {
+        const { thumbnailUrl } = await import('./mediaUrl');
+        const u = '/api/content/media/hinatazaka46/messages/a%20b/picture/1.jpg';
+        expect(thumbnailUrl(u, 320, 'a1b2c3d4e5f6'))
+            .toBe('/api/content/thumb/hinatazaka46/messages/a%20b/picture/1.jpg?w=320&v=a1b2c3d4e5f6');
+        expect(thumbnailUrl(u, 320)).toBe('/api/content/thumb/hinatazaka46/messages/a%20b/picture/1.jpg?w=320');
+        expect(thumbnailUrl(u, 320, undefined)).toBe(thumbnailUrl(u, 320));
+        expect(thumbnailUrl(u, 320, '')).toBe(thumbnailUrl(u, 320));
+        expect(thumbnailUrl(`${u}?x=1`, 160, 'a1b2c3d4e5f6'))
+            .toBe('/api/content/thumb/hinatazaka46/messages/a%20b/picture/1.jpg?x=1&w=160&v=a1b2c3d4e5f6');
+        expect(thumbnailUrl('https://cdn.example/x.jpg', 320, 'a1b2c3d4e5f6')).toBe('https://cdn.example/x.jpg');
+    });
+
     it('picks the smallest allowed width covering the drawn size', async () => {
         const { thumbWidthFor } = await import('./mediaUrl');
         expect(thumbWidthFor(96, 1)).toBe(160);

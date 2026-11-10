@@ -78,11 +78,17 @@ export function thumbWidthFor(cssPx: number, dpr: number): ThumbWidth {
  * small stills; the media viewer keeps the full file. Only media-route URLs are rewritten
  * (others are returned unchanged); empty input gives `undefined`. The route answers 404 for
  * anything it cannot thumbnail (videos included), so callers fall back to the full URL on error.
+ *
+ * `v` is the file's content version (12 hex chars, from `/api/media/meta`). When given it is
+ * appended as `&v=`, and a matching `v` makes the route answer `Cache-Control: immutable`
+ * (a stale one gets `no-cache` with the current variant); without it the URL is unchanged
+ * and the route keeps its one-day cache.
  */
-export function thumbnailUrl(url: string | null | undefined, width: ThumbWidth): string | undefined {
+export function thumbnailUrl(url: string | null | undefined, width: ThumbWidth, v?: string): string | undefined {
     if (!url) return undefined;
     const prefix = `${MEDIA_API_BASE}/`;
     if (!url.startsWith(prefix)) return url;
     const rest = url.slice(prefix.length);
-    return `${THUMB_API_BASE}/${rest}${rest.includes('?') ? '&' : '?'}w=${width}`;
+    const version = v ? `&v=${encodeURIComponent(v)}` : '';
+    return `${THUMB_API_BASE}/${rest}${rest.includes('?') ? '&' : '?'}w=${width}${version}`;
 }
