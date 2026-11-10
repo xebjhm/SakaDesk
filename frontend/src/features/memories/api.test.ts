@@ -36,6 +36,23 @@ describe('memories api', () => {
         ['fetchNameMoments (all years)', () => api.fetchNameMoments(S, MEMBER_PATH, undefined, signal()), '/memoir/names', { member: MEMBER_PATH }],
         ['fetchTimelineMonths', () => api.fetchTimelineMonths(S, MEMBER_PATH, signal()), '/memoir/timeline', { member: MEMBER_PATH }],
         ['fetchTimelineMonth', () => api.fetchTimelineMonth(S, MEMBER_PATH, '2024-09', signal()), '/memoir/timeline/2024-09', { member: MEMBER_PATH }],
+        // Fun wave (F7)
+        ['fetchRadioMembers', () => api.fetchRadioMembers(S, signal()), '/radio/members', {}],
+        ['fetchRadioProgram', () => api.fetchRadioProgram(S, { program: 'chrono', member: MEMBER_PATH, year: 2024 }, signal()), '/radio/program', { program: 'chrono', member: MEMBER_PATH, year: '2024' }],
+        ['fetchRadioProgram (all)', () => api.fetchRadioProgram(S, { program: 'oyasumi' }, signal()), '/radio/program', { program: 'oyasumi' }],
+        ['fetchRadioCassettes', () => api.fetchRadioCassettes(S, MEMBER_PATH, signal()), '/radio/cassettes', { member: MEMBER_PATH }],
+        ['fetchGacha', () => api.fetchGacha(S, signal()), '/gacha', {}],
+        ['fetchCalendarMonths', () => api.fetchCalendarMonths(S, undefined, signal()), '/calendar/months', {}],
+        ['fetchCalendarMonth', () => api.fetchCalendarMonth(S, '2024-09', MEMBER_PATH, signal()), '/calendar/2024-09', { member: MEMBER_PATH }],
+        ['fetchCapsule (day)', () => api.fetchCapsule(S, { date: '2024-09-14' }, signal()), '/capsule', { date: '2024-09-14' }],
+        ['fetchCapsule (card)', () => api.fetchCapsule(S, { member: MEMBER_PATH, card: 'anniv.y1' }, signal()), '/capsule', { member: MEMBER_PATH, card: 'anniv.y1' }],
+        ['fetchCapsuleDue', () => api.fetchCapsuleDue(S, '09-14', signal()), '/capsule/due', { month_day: '09-14' }],
+        ['fetchSameTime', () => api.fetchSameTime(S, signal()), '/same-time', {}],
+        ['fetchDay24', () => api.fetchDay24(S, MEMBER_PATH, undefined, signal()), '/memoir/day24', { member: MEMBER_PATH }],
+        ['fetchDay24 (seed)', () => api.fetchDay24(S, MEMBER_PATH, 42, signal()), '/memoir/day24', { member: MEMBER_PATH, seed: '42' }],
+        ['fetchThenNowDay', () => api.fetchThenNowDay(S, { date: '2024-09-14', member: MEMBER_PATH }, signal()), '/then-now/day', { date: '2024-09-14', member: MEMBER_PATH }],
+        ['fetchThenNowDay (all)', () => api.fetchThenNowDay(S, { date: '2024-09-14' }, signal()), '/then-now/day', { date: '2024-09-14' }],
+        ['fetchThenNowFirstWeek', () => api.fetchThenNowFirstWeek(S, MEMBER_PATH, signal()), '/then-now/first-week', { member: MEMBER_PATH }],
     ] as const)('%s calls its endpoint', async (_name, call, path, query) => {
         const rec = record();
         await expect(call()).resolves.toEqual({ ok: true });
@@ -121,6 +138,130 @@ describe('memories api timeout', () => {
             const err = await pending;
             expect(err).not.toBeInstanceOf(api.MemoriesTimeoutError);
             expect((err as Error).name).toBe('AbortError');
+        } finally {
+            fetchSpy.mockRestore();
+        }
+    });
+});
+
+/** Record every write under the service: method, path, query and JSON body. */
+function recordWrites(status = 200, reply: unknown = { ok: true }): { seen: Array<{ method: string; url: URL; body: unknown; type: string | null }> } {
+    const out = { seen: [] as Array<{ method: string; url: URL; body: unknown; type: string | null }> };
+    const handler = async ({ request }: { request: Request }) => {
+        const text = await request.text();
+        out.seen.push({
+            method: request.method, url: new URL(request.url), body: text ? JSON.parse(text) : undefined,
+            type: request.headers.get('content-type'),
+        });
+        return status === 204 ? new HttpResponse(null, { status }) : HttpResponse.json(reply as object, { status });
+    };
+    server.use(
+        http.post(`/api/memories/${S}/*`, handler),
+        http.put(`/api/memories/${S}/*`, handler),
+        http.delete(`/api/memories/${S}/*`, handler),
+    );
+    return out;
+}
+
+describe('memories api writes', () => {
+    it('postGachaPull posts and returns the pull', async () => {
+        const reply = { pull: null, pulls_left: 2 };
+        const rec = recordWrites(200, reply);
+        await expect(api.postGachaPull(S, signal())).resolves.toEqual({ status: 'ok', data: reply });
+        expect(rec.seen).toHaveLength(1);
+        expect(rec.seen[0]).toMatchObject({ method: 'POST', body: undefined });
+        expect(rec.seen[0].url.pathname).toBe(`/api/memories/${S}/gacha/pull`);
+    });
+
+    it('postGachaPull turns 409 into a typed no_pulls_left', async () => {
+        server.use(http.post(`/api/memories/${S}/gacha/pull`, () => HttpResponse.json({ detail: 'no_pulls_left' }, { status: 409 })));
+        await expect(api.postGachaPull(S, signal())).resolves.toEqual({ status: 'no_pulls_left' });
+    });
+
+    it('postGachaPull still throws on any other failure', async () => {
+        server.use(http.post(`/api/memories/${S}/gacha/pull`, () => HttpResponse.json({ detail: 'x' }, { status: 500 })));
+        const err = await api.postGachaPull(S, signal()).catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(api.MemoriesFetchError);
+        expect((err as api.MemoriesFetchError).httpStatus).toBe(500);
+    });
+
+    it('putAlbumCover sends the cover body as JSON and resolves on 204', async () => {
+        const rec = recordWrites(204);
+        const body = { member: null, month: '2024-09', room: 'messages/34 金村 美玖/58 金村 美玖', id: 7 };
+        await expect(api.putAlbumCover(S, body, signal())).resolves.toBeUndefined();
+        expect(rec.seen[0]).toMatchObject({ method: 'PUT', body, type: 'application/json' });
+        expect(rec.seen[0].url.pathname).toBe(`/api/memories/${S}/album/cover`);
+    });
+
+    it('deleteAlbumCover passes month and member as the query', async () => {
+        const rec = recordWrites(204);
+        await expect(api.deleteAlbumCover(S, { month: '2024-09', member: MEMBER_PATH }, signal())).resolves.toBeUndefined();
+        expect(rec.seen[0].method).toBe('DELETE');
+        expect(rec.seen[0].url.pathname).toBe(`/api/memories/${S}/album/cover`);
+        expect(Object.fromEntries(rec.seen[0].url.searchParams)).toEqual({ month: '2024-09', member: MEMBER_PATH });
+    });
+
+    it('postCapsule posts anchor + body and returns the note', async () => {
+        const note = { id: 3, anchor: { kind: 'day', date: '2024-09-14', card_key: null }, body: 'メモ🌸', created_at: 'x', updated_at: 'x' };
+        const rec = recordWrites(200, note);
+        const input = { anchor: { kind: 'day' as const, date: '2024-09-14' }, body: 'メモ🌸' };
+        await expect(api.postCapsule(S, input, signal())).resolves.toEqual(note);
+        expect(rec.seen[0]).toMatchObject({ method: 'POST', body: input, type: 'application/json' });
+        expect(rec.seen[0].url.pathname).toBe(`/api/memories/${S}/capsule`);
+    });
+
+    it('putCapsule puts the body under the note id and returns the note', async () => {
+        const rec = recordWrites(200, { id: 9 });
+        await expect(api.putCapsule(S, 9, '書き直し', signal())).resolves.toEqual({ id: 9 });
+        expect(rec.seen[0]).toMatchObject({ method: 'PUT', body: { body: '書き直し' } });
+        expect(rec.seen[0].url.pathname).toBe(`/api/memories/${S}/capsule/9`);
+    });
+
+    it('deleteCapsule resolves on 204', async () => {
+        const rec = recordWrites(204);
+        await expect(api.deleteCapsule(S, 9, signal())).resolves.toBeUndefined();
+        expect(rec.seen[0].method).toBe('DELETE');
+        expect(rec.seen[0].url.pathname).toBe(`/api/memories/${S}/capsule/9`);
+    });
+
+    it.each([
+        [503, 'store_unavailable'],
+        [404, null],
+        [400, 'bad_note'],
+    ] as const)('a write answered %i throws MemoriesFetchError with the reason code', async (status, code) => {
+        server.use(http.put(`/api/memories/${S}/capsule/9`, () => HttpResponse.json({ detail: code ?? 'Note not found' }, { status })));
+        const err = await api.putCapsule(S, 9, 'x', signal()).catch((e: unknown) => e);
+        expect(err).toBeInstanceOf(api.MemoriesFetchError);
+        expect((err as api.MemoriesFetchError).httpStatus).toBe(status);
+        // Only snake_case server codes are kept; free text ("Note not found") never is.
+        expect((err as api.MemoriesFetchError).code).toBe(code);
+    });
+
+    it('a write gives up after the timeout with a MemoriesTimeoutError', async () => {
+        vi.useFakeTimers();
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }));
+        try {
+            const pending = api.postCapsule(S, { anchor: { kind: 'day', date: '2024-09-14' }, body: 'x' }, new AbortController().signal).catch((e: unknown) => e);
+            await vi.advanceTimersByTimeAsync(api.MEMORIES_TIMEOUT_MS);
+            expect(await pending).toBeInstanceOf(api.MemoriesTimeoutError);
+        } finally {
+            fetchSpy.mockRestore();
+            vi.useRealTimers();
+        }
+    });
+
+    it('a write hands the caller signal to fetch', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_resolve, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }));
+        try {
+            const controller = new AbortController();
+            const pending = api.deleteCapsule(S, 1, controller.signal);
+            controller.abort();
+            await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+            expect(fetchSpy.mock.calls[0][1]?.signal?.aborted).toBe(true);
         } finally {
             fetchSpy.mockRestore();
         }
