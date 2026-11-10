@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useState } from 'react';
 import { useTranslation } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
 import { formatMonth } from './albumViewer';
@@ -19,8 +19,10 @@ interface ColorRibbonProps {
 
 /**
  * The album's monthly colour ribbon (spec 8), a scrubber on the right edge: one segment per month
- * in that month's dominant colour, newest at the top. A click, a drag along the ribbon or ↑ / ↓
- * on a focused segment selects a month (↑ newer, ↓ older; stops at the ends). The colours are
+ * in that month's dominant colour, newest at the top. Segments share the ribbon's height equally
+ * (however many months there are, none is clipped, and a drag maps 1:1 onto them). A click, a
+ * drag along the ribbon or ↑ / ↓ / Home / End on the focused segment selects a month (↑ newer,
+ * ↓ older; stops at the ends); the ribbon is one Tab stop (a roving `tabIndex`). The colours are
  * the data-driven exception (DESIGN_SYSTEM.md "Memories keepsake surfaces"): applied through
  * `style`; a month without one gets the neutral `bg-sunken`.
  */
@@ -29,6 +31,13 @@ export const ColorRibbon: React.FC<ColorRibbonProps> = ({ months, onSelect, clas
     const segments = useRef<(HTMLButtonElement | null)[]>([]);
     // The month a drag last selected, so moving within one segment selects it once.
     const dragged = useRef<string | null>(null);
+    // Roving tab stop: only the last selected segment (else the newest) is in the Tab order.
+    const [current, setCurrent] = useState(0);
+    const focusIndex = Math.min(current, Math.max(0, months.length - 1));
+    const select = (index: number) => {
+        setCurrent(index);
+        onSelect(months[index].month);
+    };
 
     const monthAt = (el: HTMLElement, clientY: number): string | null => {
         const rect = el.getBoundingClientRect();
@@ -39,6 +48,8 @@ export const ColorRibbon: React.FC<ColorRibbonProps> = ({ months, onSelect, clas
     const pick = (month: string | null) => {
         if (month === null || month === dragged.current) return;
         dragged.current = month;
+        const index = months.findIndex((m) => m.month === month);
+        if (index >= 0) setCurrent(index);
         onSelect(month);
     };
 
@@ -58,12 +69,13 @@ export const ColorRibbon: React.FC<ColorRibbonProps> = ({ months, onSelect, clas
     const endDrag = () => { dragged.current = null; };
 
     const onKeyDown = (e: React.KeyboardEvent<HTMLButtonElement>, index: number) => {
-        const next = e.key === 'ArrowUp' ? index - 1 : e.key === 'ArrowDown' ? index + 1 : null;
-        if (next === null) return;
+        const keys: Record<string, number> = { ArrowUp: index - 1, ArrowDown: index + 1, Home: 0, End: months.length - 1 };
+        if (!(e.key in keys)) return;
         e.preventDefault();
-        if (next < 0 || next >= months.length) return;
+        const next = keys[e.key];
+        if (next < 0 || next >= months.length || next === index) return;
         segments.current[next]?.focus();
-        onSelect(months[next].month);
+        select(next);
     };
 
     return (
@@ -85,11 +97,12 @@ export const ColorRibbon: React.FC<ColorRibbonProps> = ({ months, onSelect, clas
                     data-month={m.month}
                     aria-label={formatMonth(t, 'memories.album.ribbonLabel', m.month, i18n.language)}
                     // Pointer selection happens on the ribbon (drag-aware); keyboard Enter / Space still clicks.
-                    onClick={(e) => { if (e.detail === 0) onSelect(m.month); }}
+                    tabIndex={i === focusIndex ? 0 : -1}
+                    onClick={(e) => { if (e.detail === 0) select(i); }}
                     onKeyDown={(e) => onKeyDown(e, i)}
                     style={m.color ? { backgroundColor: m.color } : undefined}
                     className={cn(
-                        'min-h-1 w-full flex-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
+                        'min-h-0 w-full flex-1 basis-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
                         !m.color && 'bg-sunken',
                     )}
                 />

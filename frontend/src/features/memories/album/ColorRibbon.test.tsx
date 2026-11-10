@@ -57,4 +57,26 @@ describe('ColorRibbon', () => {
         fireEvent.pointerUp(ribbon, { clientY: 260, pointerId: 1 });
         expect(onSelect.mock.calls.map((c) => c[0])).toEqual(['2026-10', '2025-01']);
     });
+
+    it('is one Tab stop that follows the selection, with Home and End', () => {
+        const onSelect = vi.fn();
+        render(<ColorRibbon months={MONTHS} onSelect={onSelect} />);
+        const segments = screen.getAllByRole('button');
+        expect(segments.map((s) => s.tabIndex)).toEqual([0, -1, -1]);
+        segments[0].focus();
+        fireEvent.keyDown(segments[0], { key: 'End' });
+        expect(onSelect).toHaveBeenLastCalledWith('2025-01');
+        expect(segments[2]).toHaveFocus();
+        expect(segments.map((s) => s.tabIndex)).toEqual([-1, -1, 0]);
+        fireEvent.keyDown(segments[2], { key: 'Home' });
+        expect(onSelect).toHaveBeenLastCalledWith('2026-10');
+    });
+
+    it('shares the height so no month is clipped however many there are', () => {
+        render(<ColorRibbon months={MONTHS} onSelect={vi.fn()} />);
+        for (const s of screen.getAllByRole('button')) {
+            expect(s).toHaveClass('min-h-0', 'basis-0', 'flex-1');
+            expect(s).not.toHaveClass('min-h-1');
+        }
+    });
 });
