@@ -6,28 +6,47 @@ type MemoriesUiState = { open: boolean; focused: boolean };
 
 const isFocused = () => document.hasFocus() && document.visibilityState === 'visible';
 
-/** POST the state; never throws. `onFail` runs when the post failed or was rejected. */
-function postMemoriesState(body: MemoriesUiState, onFail: () => void): void {
+/** A post that has not answered by then is aborted, so it cannot hold the queue forever. */
+export const MEMORIES_UI_POST_TIMEOUT_MS = 4000;
+
+/** POST the state; never throws or rejects. `onFail` runs when the post failed or was rejected. */
+function postMemoriesState(body: MemoriesUiState, onFail: () => void): Promise<void> {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), MEMORIES_UI_POST_TIMEOUT_MS);
+    const fail = (why: string, detail: unknown) => {
+        console.debug(`[memoriesUiState] ${why}`, detail);
+        onFail();
+    };
     try {
-        fetch('/api/ui-state/memories', {
+        return fetch('/api/ui-state/memories', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify(body),
+            signal: controller.signal,
         })
-            .then((res) => {
-                if (!res.ok) {
-                    console.debug('[memoriesUiState] rejected', res.status);
-                    onFail();
-                }
-            })
-            .catch((err) => {
-                console.debug('[memoriesUiState] failed', err);
-                onFail();
-            });
+            .then(
+                (res) => { if (!res.ok) fail('rejected', res.status); },
+                (err) => fail('failed', err),
+            )
+            .finally(() => clearTimeout(timeout));
     } catch (err) {
-        console.debug('[memoriesUiState] failed', err);
-        onFail();
+        clearTimeout(timeout);
+        fail('failed', err);
+        return Promise.resolve();
     }
+}
+
+// Posts go out one at a time, across every mount of the hook, so an older state can never land
+// after a newer one (e.g. an unmount's `open: false` overtaking a remount's `open: true`).
+let queueTail: Promise<void> | null = null;
+
+function enqueuePost(body: MemoriesUiState, onFail: () => void): void {
+    const run = () => postMemoriesState(body, onFail);
+    const next = queueTail ? queueTail.then(run) : run();
+    queueTail = next;
+    void next.then(() => {
+        if (queueTail === next) queueTail = null;
+    });
 }
 
 /**
@@ -36,16 +55,20 @@ function postMemoriesState(body: MemoriesUiState, onFail: () => void): void {
  * `{open: true, focused}` (`focused` = the window has focus and the document is visible),
  * debounced 300 ms after mount and after every focus / blur / visibility change, and only when
  * the state differs from the last one sent; a failed post forgets that state so the next change
- * resends. On unmount it reports `{open: false, focused}` at once. Failures are swallowed.
+ * resends. On unmount it reports `{open: false, focused}` at once, unless it never reported
+ * anything. Posts are serialised (each waits for the previous answer, at most
+ * {@link MEMORIES_UI_POST_TIMEOUT_MS}), so they reach the backend in order. Failures are swallowed.
  */
 export function useMemoriesUiReporter(): void {
     useEffect(() => {
         let timer: ReturnType<typeof setTimeout> | undefined;
         let lastSent: MemoriesUiState | null = null;
+        let reported = false;
 
         const send = (body: MemoriesUiState) => {
             lastSent = body;
-            postMemoriesState(body, () => {
+            reported = true;
+            enqueuePost(body, () => {
                 if (lastSent === body) lastSent = null;
             });
         };
@@ -71,7 +94,7 @@ export function useMemoriesUiReporter(): void {
             window.removeEventListener('focus', schedule);
             window.removeEventListener('blur', schedule);
             document.removeEventListener('visibilitychange', schedule);
-            send({ open: false, focused: isFocused() });
+            if (reported) send({ open: false, focused: isFocused() });
         };
     }, []);
 }
