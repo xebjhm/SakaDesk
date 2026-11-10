@@ -240,6 +240,15 @@ def test_a_long_path_makes_no_call():
     assert wst.MAX_SHELL_PATH == 259
 
 
+def test_long_path_counts_utf16_units():
+    fake = FakeShell()
+    p = Path("C:/" + "a" * 250 + "😀😀.mp4")  # 259 code points, 261 UTF-16 units
+    assert len(str(p)) == 259
+    with capture_logs() as logs:
+        assert wst.shell_thumbnail(p, 640, fake.api()) is None
+    assert fake.calls == [] and logs[-1]["reason"] == "long_path"
+
+
 def test_a_path_of_exactly_the_limit_is_tried():
     fake = FakeShell()
     p = Path("C:/" + "a" * (259 - 7) + ".mp4")
@@ -310,16 +319,31 @@ def test_unavailable_on_linux_never_touches_windll():
 
 def test_available_on_windows_when_the_binding_loads_and_is_cached():
     fake = FakeShell()
+    ole = FakeOle32()
     with (
         patch.object(wst.sys, "platform", "win32"),
         patch.object(wst, "_load_api", return_value=fake.api()) as load,
-        patch.object(wst, "com_init") as com,
+        patch.object(wst, "_load_ole32", return_value=ole),
     ):
         assert wst.available() is True
         assert wst.available() is True
         assert wst.shell_thumbnail(PATH, 640) is not None
+        assert wst.shell_thumbnail(PATH, 640) is not None
     load.assert_called_once()
-    com.assert_called_once_with()
+    # an STA for each call only: never left initialised between jobs
+    assert ole.log == ["init", "uninit", "init", "uninit"]
+
+
+def test_the_real_path_uninitialises_even_when_the_call_fails():
+    fake = FakeShell(raise_in="get_dibits")
+    ole = FakeOle32()
+    with (
+        patch.object(wst.sys, "platform", "win32"),
+        patch.object(wst, "_load_api", return_value=fake.api()),
+        patch.object(wst, "_load_ole32", return_value=ole),
+    ):
+        assert wst.shell_thumbnail(PATH, 640) is None
+    assert ole.log == ["init", "uninit"]
 
 
 def test_unavailable_when_the_binding_fails_to_load():
@@ -341,46 +365,92 @@ def test_unavailable_when_the_binding_fails_to_load():
     ]
 
 
-# --- COM initialisation -------------------------------------------------------------------
+# --- COM apartment (per job) -------------------------------------------------------------
 
 
 class FakeOle32:
-    def __init__(self, hr: int = 0):
-        self.hr = hr
+    def __init__(self, hr: int = 0, uninit_exc: Exception | None = None):
+        self.hr, self.uninit_exc = hr, uninit_exc
         self.calls: list[tuple[object, int]] = []
+        self.log: list[str] = []
         self.lock = threading.Lock()
 
     def CoInitializeEx(self, reserved, flags):  # noqa: N802 (Win32 name)
         with self.lock:
             self.calls.append((reserved, flags))
+            self.log.append("init")
         return self.hr
 
+    def CoUninitialize(self):  # noqa: N802
+        with self.lock:
+            self.log.append("uninit")
+        if self.uninit_exc:
+            raise self.uninit_exc
 
-def test_com_init_runs_once_per_thread():
+
+def test_apartment_brackets_each_use():
     ole = FakeOle32()
-    wst.com_init(ole)
-    wst.com_init(ole)
+    with wst.com_apartment(ole) as ok:
+        assert ok is True
+        assert ole.log == ["init"]
+    assert ole.log == ["init", "uninit"]
     assert ole.calls == [(None, wst.COINIT_APARTMENTTHREADED)]
-    t = threading.Thread(target=lambda: (wst.com_init(ole), wst.com_init(ole)))
-    t.start()
-    t.join()
-    assert len(ole.calls) == 2
+    with wst.com_apartment(ole):
+        pass
+    assert ole.log == ["init", "uninit", "init", "uninit"]
 
 
-@pytest.mark.parametrize(
-    "hr", [1, -2147417850, 0x80010106]
-)  # S_FALSE, RPC_E_CHANGED_MODE
-def test_com_init_accepts_already_initialised(hr):
+def test_apartment_uninitialises_on_an_exception():
+    ole = FakeOle32()
+    with pytest.raises(RuntimeError), wst.com_apartment(ole):
+        raise RuntimeError
+    assert ole.log == ["init", "uninit"]
+
+
+def test_nested_apartments_call_com_once():
+    ole = FakeOle32()
+    with wst.com_apartment(ole) as outer:
+        with wst.com_apartment(ole) as inner:
+            assert outer is inner is True
+        assert ole.log == ["init"]
+    assert ole.log == ["init", "uninit"]
+
+
+def test_apartment_bookkeeping_is_per_thread():
+    ole = FakeOle32()
+    seen: list[bool] = []
+    with wst.com_apartment(ole):
+        t = threading.Thread(
+            target=lambda: seen.append(wst.com_apartment(ole).__enter__())
+        )
+        t.start()
+        t.join()
+    assert seen == [True]
+    assert ole.log.count("init") == 2  # the other thread entered its own apartment
+
+
+def test_s_false_is_balanced_by_uninitialise():
+    ole = FakeOle32(1)  # S_FALSE: already in an STA, still counted by COM
+    with wst.com_apartment(ole) as ok:
+        assert ok is True
+    assert ole.log == ["init", "uninit"]
+
+
+@pytest.mark.parametrize("hr", [-2147417850, 0x80010106])  # RPC_E_CHANGED_MODE
+def test_changed_mode_is_usable_and_not_uninitialised(hr):
     ole = FakeOle32(hr)
-    wst.com_init(ole)
-    wst.com_init(ole)
-    assert len(ole.calls) == 1
+    with wst.com_apartment(ole) as ok:
+        assert ok is True
+    assert ole.log == ["init"]
 
 
-def test_com_init_failure_is_logged_and_retried():
+def test_apartment_failure_is_logged_and_not_uninitialised():
     ole = FakeOle32(-2147024882)  # E_OUTOFMEMORY
-    with capture_logs() as logs:
-        wst.com_init(ole)
+    with capture_logs() as logs, wst.com_apartment(ole) as ok:
+        assert ok is False
+        with wst.com_apartment(ole) as inner:
+            assert inner is False
+    assert ole.log == ["init"]
     assert logs == [
         {
             "event": "win_shell_thumb_failed",
@@ -389,33 +459,51 @@ def test_com_init_failure_is_logged_and_retried():
             "log_level": "warning",
         }
     ]
-    wst.com_init(ole)
-    assert len(ole.calls) == 2
+    with wst.com_apartment(ole):  # retried next time
+        pass
+    assert ole.log == ["init", "init"]
 
 
-def test_com_init_exception_is_logged():
+def test_apartment_exception_is_logged():
     class Boom:
         def CoInitializeEx(self, reserved, flags):  # noqa: N802
             raise OSError("x")
 
+    with capture_logs() as logs, wst.com_apartment(Boom()) as ok:
+        assert ok is False
+    assert logs[0]["error_type"] == "OSError" and logs[0]["op"] == "com_init"
+
+
+def test_uninitialise_failure_is_logged():
+    ole = FakeOle32(uninit_exc=OSError("x"))
     with capture_logs() as logs:
-        wst.com_init(Boom())
-    assert logs[0]["error_type"] == "OSError"
+        with wst.com_apartment(ole):
+            pass
+    assert logs == [
+        {
+            "event": "win_shell_thumb_failed",
+            "op": "com_uninit",
+            "error_type": "OSError",
+            "log_level": "warning",
+        }
+    ]
 
 
-def test_com_init_is_a_no_op_off_windows():
+def test_apartment_is_a_no_op_off_windows():
     with (
         patch.object(wst.sys, "platform", "linux"),
         patch.object(wst, "_load_ole32", side_effect=AssertionError),
+        wst.com_apartment() as ok,
     ):
-        wst.com_init()
+        assert ok is False
 
 
-def test_com_init_loads_ole32_on_windows():
+def test_apartment_loads_ole32_on_windows():
     ole = FakeOle32()
     with (
         patch.object(wst.sys, "platform", "win32"),
         patch.object(wst, "_load_ole32", return_value=ole),
+        wst.com_apartment() as ok,
     ):
-        wst.com_init()
-    assert len(ole.calls) == 1
+        assert ok is True
+    assert ole.log == ["init", "uninit"]

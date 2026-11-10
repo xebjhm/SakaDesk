@@ -17,7 +17,7 @@ The ``HBITMAP`` is always freed (``DeleteObject``) and the factory always
 released, in ``finally``. :func:`shell_thumbnail` returns ``None`` (with a
 ``video_poster`` breadcrumb: ``source=shell``, ``outcome=failed``,
 ``reason``, ``error_type``) for an ``HRESULT`` failure (``no_frame``; the
-code as hex only), a path over :data:`MAX_SHELL_PATH` characters
+code as hex only), a path over :data:`MAX_SHELL_PATH` UTF-16 code units
 (``long_path``: the Shell parser does not take ``\\\\?\\`` paths), a bitmap
 over :data:`MAX_SIDE` px on a side (``too_large``), a bitmap it cannot read
 (``unreadable``), a near-black frame (mean luminance under
@@ -27,13 +27,27 @@ raises and never logs a path.
 
 **Windows only.** Nothing touches ``ctypes.WinDLL`` at import time.
 :func:`available` is ``False`` off Windows or when the binding fails to load
-(cached either way). The calling thread must initialise COM
-(:func:`com_init`, once per thread; :func:`shell_thumbnail` does it when it
-uses the real binding). Tests inject a fake :class:`ShellApi`; the real one
-is built by :func:`_load_api`, which only runs on Windows.
+(cached either way). Tests inject a fake :class:`ShellApi`; the real one is
+built by :func:`_load_api`, which only runs on Windows.
+
+**COM: one apartment per job, never an idle STA.** A thread in a
+single-threaded apartment must pump window messages; one that sits idle in
+an STA without pumping can stall cross-apartment calls and system-wide
+``SendMessage`` broadcasts aimed at the process. So the calling thread
+enters the STA only for the length of one Shell call
+(:func:`com_apartment`: ``CoInitializeEx(COINIT_APARTMENTTHREADED)``, the
+call, then ``CoUninitialize``), which :func:`shell_thumbnail` does itself
+when it uses the real binding. While idle (blocked on its job queue) the
+poster thread is in no apartment, and during the call COM's own modal loop
+pumps for outgoing calls to out-of-process providers. The cost is a COM
+init/uninit per video (provider DLLs may be unloaded and reloaded), which
+is small next to the frame decode and runs at background priority. The
+alternative (a permanent STA waiting in ``MsgWaitForMultipleObjects`` with
+a ``PeekMessage``/``DispatchMessage`` loop) needs more Win32 surface for no
+gain here.
 
 Logs carry codes only: ``video_poster`` (above) and ``win_shell_thumb_failed``
-(``op=load|com_init``, ``error_type``).
+(``op=load|com_init|com_uninit``, ``error_type``).
 """
 
 from __future__ import annotations
@@ -42,7 +56,8 @@ import ctypes
 import sys
 import threading
 import uuid
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -67,7 +82,7 @@ S_FALSE = 1
 RPC_E_CHANGED_MODE = 0x80010106
 
 MAX_SHELL_PATH = 259
-"""Longest path the Shell parser takes (MAX_PATH - 1; it refuses ``\\\\?\\`` paths)."""
+"""Longest path (UTF-16 code units) the Shell parser takes (MAX_PATH - 1; it refuses ``\\\\?\\`` paths)."""
 MAX_SIDE = 4096
 """Largest bitmap side accepted from a Shell provider."""
 BLACK_LUMA = 8
@@ -249,6 +264,8 @@ def _load_ole32():  # pragma: no cover - Windows binding, exercised on Windows (
     ole32 = ctypes.WinDLL("ole32")  # type: ignore[attr-defined,unused-ignore]
     ole32.CoInitializeEx.restype = ctypes.c_long
     ole32.CoInitializeEx.argtypes = [ctypes.c_void_p, ctypes.c_uint32]
+    ole32.CoUninitialize.restype = None
+    ole32.CoUninitialize.argtypes = []
     return ole32
 
 
@@ -259,7 +276,7 @@ _tls = threading.local()
 
 
 def reset_for_tests() -> None:
-    """Forget the cached binding and this thread's COM state (tests)."""
+    """Forget the cached binding and this thread's apartment bookkeeping (tests)."""
     global _api_loaded, _api_cache
     with _api_lock:
         _api_loaded, _api_cache = False, None
@@ -287,32 +304,63 @@ def available() -> bool:
     return _api() is not None
 
 
-def com_init(ole32: Any = None) -> None:
-    """Initialise COM (single-threaded apartment) once on the calling thread.
-
-    ``S_OK``, ``S_FALSE`` (already initialised) and ``RPC_E_CHANGED_MODE``
-    (initialised as multi-threaded by someone else; Shell still works) count
-    as initialised and are remembered per thread. A failure is logged and
-    retried on the next call. Off Windows (and no ``ole32`` given) it does
-    nothing. Never raises.
-    """
-    if getattr(_tls, "com", False):
-        return
+def _enter_sta(ole32: Any) -> tuple[Any, bool, bool]:
+    """``(ole32, initialised, must_uninitialise)`` after ``CoInitializeEx`` (STA)."""
     try:
         if ole32 is None:
             if not _on_windows():
-                return
+                return None, False, False
             ole32 = _load_ole32()
-        hr = int(ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED))
+        hr = int(ole32.CoInitializeEx(None, COINIT_APARTMENTTHREADED)) & 0xFFFFFFFF
     except Exception as e:  # noqa: BLE001 - logged; the Shell call then fails cleanly
         logger.warning(
             "win_shell_thumb_failed", op="com_init", error_type=type(e).__name__
         )
+        return None, False, False
+    if hr in (S_OK, S_FALSE):  # every successful call is balanced by CoUninitialize
+        return ole32, True, True
+    if hr == RPC_E_CHANGED_MODE:  # already multi-threaded (not ours): usable, no uninit
+        return ole32, True, False
+    logger.warning("win_shell_thumb_failed", op="com_init", error_type=_hex(hr))
+    return ole32, False, False
+
+
+@contextmanager
+def com_apartment(ole32: Any = None) -> Iterator[bool]:
+    """Be in a COM single-threaded apartment for the ``with`` body only; yields success.
+
+    ``CoInitializeEx(None, COINIT_APARTMENTTHREADED)`` on entry and, when it
+    returned ``S_OK`` or ``S_FALSE``, ``CoUninitialize`` on exit (also on an
+    exception), so an idle thread is never left in an STA that does not pump
+    messages (see the module docstring). ``RPC_E_CHANGED_MODE`` (the thread
+    is already multi-threaded) counts as usable and is not uninitialised; any
+    other result is logged and yields ``False``. Nesting on one thread is
+    tracked per thread (``threading.local``): only the outermost entry calls
+    COM, inner ones reuse its result. Off Windows with no ``ole32`` given it
+    does nothing and yields ``False``. Never raises from COM itself.
+    """
+    if getattr(_tls, "depth", 0):
+        _tls.depth += 1
+        try:
+            yield bool(_tls.ok)
+        finally:
+            _tls.depth -= 1
         return
-    if hr & 0xFFFFFFFF in (S_OK, S_FALSE, RPC_E_CHANGED_MODE):
-        _tls.com = True
-    else:
-        logger.warning("win_shell_thumb_failed", op="com_init", error_type=_hex(hr))
+    lib, ok, must_uninit = _enter_sta(ole32)
+    _tls.depth, _tls.ok = 1, ok
+    try:
+        yield ok
+    finally:
+        _tls.depth, _tls.ok = 0, False
+        if must_uninit:
+            try:
+                lib.CoUninitialize()
+            except Exception as e:  # noqa: BLE001 - logged; nothing else to undo
+                logger.warning(
+                    "win_shell_thumb_failed",
+                    op="com_uninit",
+                    error_type=type(e).__name__,
+                )
 
 
 # --- the thumbnail ----------------------------------------------------------------------
@@ -333,19 +381,25 @@ def shell_thumbnail(
 ) -> Image.Image | None:
     """An RGB frame of the video at ``path`` about ``size`` px (bigger allowed), or ``None``.
 
-    ``api=None`` uses the real binding (and initialises COM on this thread).
+    ``api=None`` uses the real binding inside :func:`com_apartment` (an STA
+    for this call only).
     Blocking; call it from a worker thread only. Never raises; see the
     module docstring for the refusal reasons.
     """
-    if len(str(path)) > MAX_SHELL_PATH:
+    if len(str(path).encode("utf-16-le")) // 2 > MAX_SHELL_PATH:
         _log_failed("long_path")
         return None
-    if api is None:
-        api = _api()
-        if api is None:
-            _log_failed("unavailable")
-            return None
-        com_init()
+    if api is not None:
+        return _guarded(api, path, size)
+    real = _api()
+    if real is None:
+        _log_failed("unavailable")
+        return None
+    with com_apartment():  # an STA for this call only
+        return _guarded(real, path, size)
+
+
+def _guarded(api: ShellApi, path: Path, size: int) -> Image.Image | None:
     try:
         return _thumbnail(api, path, size)
     except _Failed as f:

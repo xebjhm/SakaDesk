@@ -28,6 +28,8 @@ path from :func:`photo_thumb.archive_rel` (never logged).
   crash inside Shell leaves a ``pending`` row that :func:`recover_pending`
   (run at worker start) turns into ``failed`` with
   ``reason=shell_crash_suspect``: the worker never retries Shell on it.
+  :func:`mark_shell_suspect` leaves the same marker at once when a Shell
+  call hangs.
 - **The batch read.** :func:`meta_for_urls` resolves media-route URLs
   (:func:`archive_urls.media_route_target`), stats each file, reads the rows
   and builds the response items, all in one worker thread; it never decodes
@@ -424,6 +426,29 @@ def recover_pending() -> int:
         return cur.rowcount
 
     return _run("recover_pending", op, 0)
+
+
+def mark_shell_suspect(rel_path: str, stat_key: str) -> None:
+    """A Shell poster call **hung** on this video version: mark it like a crash.
+
+    The same marker :func:`recover_pending` leaves after a crash inside the
+    Shell (``poster='failed'``, ``poster_source='shell'``, ``reason`` becomes
+    ``shell_crash_suspect`` unless it holds a terminal placeholder code), so
+    the worker never gives this file to the Shell again; the client capture
+    covers it. Only a row of this ``stat_key`` is touched. Blocking; never
+    raises.
+    """
+
+    def op(conn: sqlite3.Connection) -> None:
+        conn.execute(
+            "UPDATE media_meta SET poster = 'failed', poster_source = 'shell', "
+            "updated_at = ?, "
+            "reason = CASE WHEN reason IS NULL OR reason = ? THEN ? ELSE reason END "
+            "WHERE rel_path = ? AND stat_key = ?",
+            (_now(), NO_PLACEHOLDER, SHELL_CRASH_SUSPECT, rel_path, stat_key),
+        )
+
+    _run("mark_shell_suspect", op, None)
 
 
 def prune() -> int:

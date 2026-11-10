@@ -445,8 +445,17 @@ def _flatten(img: Image.Image) -> Image.Image:
     return flat
 
 
-def _write(img: Image.Image, root: Path, target: Path, fmt: str = FORMAT_WEBP) -> int:
-    """Write ``img`` to ``target`` atomically; the bytes written. Blocking."""
+def _write(
+    img: Image.Image,
+    root: Path,
+    target: Path,
+    fmt: str = FORMAT_WEBP,
+    exif: bytes | None = None,
+) -> int:
+    """Write ``img`` to ``target`` atomically; the bytes written. Blocking.
+
+    ``exif`` (WebP only) embeds an EXIF block, e.g. a video poster's source tag.
+    """
     root.mkdir(parents=True, exist_ok=True)
     fd, tmp_name = tempfile.mkstemp(dir=root, suffix=".tmp")
     try:
@@ -454,7 +463,8 @@ def _write(img: Image.Image, root: Path, target: Path, fmt: str = FORMAT_WEBP) -
             if fmt == FORMAT_JPEG:
                 _flatten(img).save(out, format="JPEG", quality=_JPEG_QUALITY)
             else:
-                img.save(out, format="WEBP", quality=_WEBP_QUALITY, method=4)
+                extra = {} if exif is None else {"exif": exif}
+                img.save(out, format="WEBP", quality=_WEBP_QUALITY, method=4, **extra)
         size = Path(tmp_name).stat().st_size
         os.replace(tmp_name, target)
         return size
@@ -767,7 +777,7 @@ async def thumbnail_with_token(
     if video and larger is None:
         poster = await run_io(_poster_of, rel_path, stat)
         if poster is None:  # no poster yet: 404, the client falls back
-            _skip("no_poster")
+            _no_poster()
             return None
         source, formats = poster, ("WEBP",)
     async with _decode_slots():
@@ -782,7 +792,7 @@ async def thumbnail_with_token(
         if video and formats is None:  # the larger variant vanished: use the poster
             poster = await run_io(_poster_of, rel_path, stat)
             if poster is None:
-                _skip("no_poster")
+                _no_poster()
                 return None
             source, formats = poster, ("WEBP",)
         logger.debug("photo_thumb_cache", outcome="miss", width=width)
@@ -790,6 +800,11 @@ async def thumbnail_with_token(
             make, source, target, width, root, cap, FORMAT_WEBP, formats
         )
     return None if made is None else ThumbResult(made, token)
+
+
+def _no_poster() -> None:
+    # Debug, not info: before pre-generation finishes every video tile asks.
+    logger.debug("memories_skip", view=VIEW, reason="no_poster", error_type=None)
 
 
 def _poster_of(rel_path: str, stat: tuple[int, int]) -> Path | None:

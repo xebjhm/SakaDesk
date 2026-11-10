@@ -203,17 +203,27 @@ def test_generate_shell_refuses_a_non_video(env, shell):
     assert shell.order == []
 
 
-def test_generate_shell_times_out_on_a_hung_handler(env):
+def _shell_threads() -> list[threading.Thread]:
+    return [
+        t
+        for t in threading.enumerate()
+        if t.name == "video_poster_shell" and t.is_alive()
+    ]
+
+
+def test_a_hang_opens_the_breaker_and_bounds_threads(env):
+    """One hang: the video is a crash suspect, Shell is off, one blocked thread at most."""
+    video_poster.reset_for_tests()
+    for t in _shell_threads():  # earlier tests' runners have been told to stop
+        t.join(2)
     src, rel = _video(env)
     release = threading.Event()
-    calls: list[int] = []
+    calls: list[str] = []
 
     def hang(path, size):
-        calls.append(1)
-        if len(calls) == 1:
-            release.wait(10)
-            return Image.new("RGB", (64, 64), (100, 100, 100))
-        return Image.new("RGB", (64, 64), (120, 120, 120))
+        calls.append(path.name)
+        release.wait(10)
+        return Image.new("RGB", (64, 64), (100, 100, 100))
 
     with (
         patch.object(win_shell_thumb, "available", return_value=True),
@@ -223,13 +233,52 @@ def test_generate_shell_times_out_on_a_hung_handler(env):
     ):
         assert video_poster.generate_shell(src, rel) is None
         row = _row(rel)
-        assert (row.poster, row.poster_source) == ("failed", "shell")
+        assert (row.poster, row.poster_source, row.reason) == (
+            "failed",
+            "shell",
+            "shell_crash_suspect",
+        )
+        assert {
+            "event": "video_poster_shell_off",
+            "reason": "timeout",
+            "hung_threads": 1,
+            "log_level": "warning",
+        } in logs
         assert logs[-1]["reason"] == "timeout"
-        # the hung thread is abandoned: the next video gets a fresh runner
-        src2, rel2 = _video(env, "2.mp4")
-        assert video_poster.generate_shell(src2, rel2) is not None
+        # the breaker: later videos make no Shell call and leave their rows alone
+        others = [_video(env, f"{i}.mp4") for i in range(2, 6)]
+        for s2, r2 in others:
+            assert video_poster.generate_shell(s2, r2) is None
+        assert calls == ["1.mp4"]
+        assert media_meta.get_many([r for _, r in others]) == {}
+        assert len(_shell_threads()) == 1  # the bound: only the hung one
+        assert video_poster.shell_state() == {"off": True, "skipped": 4}
+        assert sum(e["event"] == "video_poster_shell_off" for e in logs) == 1
+        # the client capture still covers the hung video
+        assert video_poster.ingest_client(src, rel, _bytes("JPEG"), "image/jpeg")[
+            0
+        ] == ("ready")
+        assert (_row(rel).poster, _row(rel).poster_source) == ("ready", "client")
         release.set()
-    assert video_poster.poster_path(src, rel) is None  # the late frame is dropped
+    # the hung thread was told to stop: it exits once the call returns
+    for t in _shell_threads():
+        t.join(2)
+    assert _shell_threads() == []
+    client_poster = video_poster.poster_path(src, rel)
+    assert client_poster is not None and video_poster._source_of(client_poster) == (
+        "client"
+    )
+
+
+def test_an_existing_poster_still_repairs_with_the_breaker_open(env, shell):
+    src, rel = _video(env)
+    assert video_poster.ingest_client(src, rel, _bytes("JPEG"), "image/jpeg")[0] == (
+        "ready"
+    )
+    media_meta.clear()
+    with patch.object(video_poster, "_shell_off", True):
+        assert video_poster.generate_shell(src, rel) is not None
+    assert _row(rel).poster == "ready"
 
 
 def test_generate_shell_write_failure_leaves_it_retryable(env, shell):
@@ -454,3 +503,153 @@ def test_the_poster_cache_evicts_the_oldest(env):
             )
     alive = [(env / "posters" / n).exists() for n in names]
     assert alive == [False, False, True, True]
+
+
+# --- repairing the meta row from an existing poster (I-3) ---------------------------------
+
+
+def test_generate_shell_repairs_a_cleared_row(env, shell):
+    src, rel = _video(env)
+    assert video_poster.ingest_client(src, rel, _bytes("JPEG"), "image/jpeg")[0] == (
+        "ready"
+    )
+    media_meta.clear()  # e.g. a media_meta.db reset: the poster file survives
+    shell.order.clear()
+    with capture_logs() as logs:
+        out = video_poster.generate_shell(src, rel)
+    assert out == video_poster.poster_path(src, rel)
+    assert shell.order == []  # no Shell call
+    row = _row(rel)
+    assert (row.poster, row.poster_source, row.stat_key) == (
+        "ready",
+        "client",
+        _key(src),
+    )
+    assert logs[-1] == {
+        "event": "video_poster",
+        "source": "client",
+        "outcome": "repaired",
+        "reason": None,
+        "log_level": "info",
+    }
+    _no_path(logs)
+
+
+@pytest.mark.parametrize("state", ["none", "failed", "pending"])
+def test_generate_shell_repairs_a_disagreeing_row_with_the_files_source(
+    env, shell, state
+):
+    src, rel = _video(env)
+    assert video_poster.generate_shell(src, rel) is not None  # a Shell poster
+    media_meta.set_poster(rel, _key(src), state, "client")
+    shell.order.clear()
+    assert video_poster.generate_shell(src, rel) is not None
+    assert shell.order == []
+    assert (_row(rel).poster, _row(rel).poster_source) == ("ready", "shell")
+
+
+def test_a_ready_row_is_not_rewritten(env, shell):
+    src, rel = _video(env)
+    assert video_poster.generate_shell(src, rel) is not None
+    with (
+        patch.object(media_meta, "set_poster", side_effect=AssertionError),
+        capture_logs() as logs,
+    ):
+        assert video_poster.generate_shell(src, rel) is not None
+    assert not [e for e in logs if e.get("outcome") == "repaired"]
+
+
+def test_ingest_exists_repairs_the_row(env, shell):
+    src, rel = _video(env)
+    assert video_poster.generate_shell(src, rel) is not None
+    media_meta.set_poster(rel, _key(src), "failed", "shell")
+    outcome, _ = video_poster.ingest_client(src, rel, _bytes("WEBP"), "image/webp")
+    assert outcome == "exists"
+    assert (_row(rel).poster, _row(rel).poster_source) == ("ready", "shell")
+
+
+def test_ingest_exists_after_the_decode_repairs_the_row(env):
+    """A poster written between the pre-check and the write lock: exists, row repaired."""
+    src, rel = _video(env)
+    real_decode = video_poster._decode_upload
+
+    def decode_then_race(body):
+        img = real_decode(body)
+        with patch.object(media_meta, "set_poster"):  # the other writer's row is lost
+            video_poster._store(Image.new("RGB", (64, 64)), rel, _stat(src), "shell")
+        return img
+
+    with patch.object(video_poster, "_decode_upload", side_effect=decode_then_race):
+        outcome, _ = video_poster.ingest_client(src, rel, _bytes("JPEG"), "image/jpeg")
+    assert outcome == "exists"
+    assert (_row(rel).poster, _row(rel).poster_source) == ("ready", "shell")
+
+
+def test_a_client_poster_during_a_shell_failure_stays_ready(env, shell):
+    src, rel = _video(env)
+
+    def client_then_fail(path, size):
+        shell.order.append("shell")
+        assert video_poster.ingest_client(src, rel, _bytes("JPEG"), "image/jpeg")[
+            0
+        ] == ("ready")
+        return None  # the Shell then gives no frame
+
+    with patch.object(win_shell_thumb, "shell_thumbnail", side_effect=client_then_fail):
+        out = video_poster.generate_shell(src, rel)
+    assert out is not None and video_poster._source_of(out) == "client"
+    assert (_row(rel).poster, _row(rel).poster_source) == ("ready", "client")
+
+
+def test_a_client_poster_during_a_shell_success_wins(env, shell):
+    src, rel = _video(env)
+
+    def client_then_frame(path, size):
+        assert video_poster.ingest_client(src, rel, _bytes("JPEG"), "image/jpeg")[
+            0
+        ] == ("ready")
+        return Image.new("RGB", (640, 360), (1, 200, 3))
+
+    with patch.object(
+        win_shell_thumb, "shell_thumbnail", side_effect=client_then_frame
+    ):
+        out = video_poster.generate_shell(src, rel)
+    assert out is not None and video_poster._source_of(out) == "client"
+    assert (_row(rel).poster, _row(rel).poster_source) == ("ready", "client")
+
+
+def test_a_client_poster_during_a_hang_stays_ready(env):
+    video_poster.reset_for_tests()
+    src, rel = _video(env)
+    release = threading.Event()
+
+    def client_then_hang(path, size):
+        assert video_poster.ingest_client(src, rel, _bytes("JPEG"), "image/jpeg")[
+            0
+        ] == ("ready")
+        release.wait(10)
+        return None
+
+    with (
+        patch.object(win_shell_thumb, "available", return_value=True),
+        patch.object(win_shell_thumb, "shell_thumbnail", side_effect=client_then_hang),
+        patch.object(video_poster, "SHELL_TIMEOUT_S", 0.2),
+    ):
+        assert video_poster.generate_shell(src, rel) is not None
+        assert (_row(rel).poster, _row(rel).poster_source) == ("ready", "client")
+        assert video_poster.shell_state()["off"] is True
+        release.set()
+
+
+def test_source_tag(env, shell):
+    src, rel = _video(env)
+    out = video_poster.generate_shell(src, rel)
+    assert out is not None and video_poster._source_of(out) == "shell"
+    plain = env / "plain.webp"
+    Image.new("RGB", (8, 8)).save(plain, format="WEBP")
+    assert video_poster._source_of(plain) == "client"  # untagged: the default
+    exif = Image.Exif()
+    exif[video_poster.SOURCE_TAG] = "SakaDesk poster:other"
+    Image.new("RGB", (8, 8)).save(plain, format="WEBP", exif=exif.tobytes())
+    assert video_poster._source_of(plain) == "client"
+    assert video_poster._source_of(env / "gone.webp") == "client"

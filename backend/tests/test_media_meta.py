@@ -188,6 +188,26 @@ class TestStore:
         assert got["ok.mp4"].poster == "ready"
         assert media_meta.recover_pending() == 0
 
+    def test_mark_shell_suspect_marks_one_version_like_a_crash(self):
+        media_meta.mark_poster_pending("v.mp4", "1:2")
+        media_meta.mark_poster_pending("other.mp4", "1:2")
+        media_meta.put(
+            _row("t.mp4", kind="video", status="failed", reason="unreadable", rgb=None)
+        )
+        media_meta.mark_shell_suspect("v.mp4", "1:2")
+        media_meta.mark_shell_suspect("t.mp4", "1:2")
+        media_meta.mark_shell_suspect("other.mp4", "9:9")  # stale key: untouched
+        got = media_meta.get_many(["v.mp4", "t.mp4", "other.mp4"])
+        v = got["v.mp4"]
+        assert (v.poster, v.poster_source, v.reason) == (
+            "failed",
+            "shell",
+            "shell_crash_suspect",
+        )
+        assert media_meta.placeholder_pending(v)  # still hinted for its placeholder
+        assert (got["t.mp4"].poster, got["t.mp4"].reason) == ("failed", "unreadable")
+        assert got["other.mp4"].poster == "pending"
+
     def test_recover_keeps_a_placeholder_reason(self):
         # a terminal placeholder failure keeps its own code; only the poster fails
         media_meta.put(
