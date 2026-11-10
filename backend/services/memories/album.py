@@ -68,7 +68,7 @@ VIEW_MEMBERS = "album_members"
 VIEW_MONTHS = "album_months"
 VIEW_MONTH = "album_month"
 # Bump on any rule or payload change (the album cache hashes have it).
-ALBUM_VERSION = 4
+ALBUM_VERSION = 5
 KINDS = frozenset({"all", "picture", "video", "favorite"})
 SCREENSHOT_CHECKS = 3
 BURST_MIN = 3
@@ -273,13 +273,17 @@ def _probe_of(found: _Probes, f: Fact) -> album_colors.ImageProbe | None:
     return found.get(mf) if mf is not None else None
 
 
-async def _consulted_probes(
+async def consulted_probes(
     sdir: Path,
     months: dict[str, list[_Tagged]],
     overrides: dict[str, tuple[str, int]],
     oshi_rooms: set[str],
 ) -> _Probes:
-    """Probes of every picture ``choose_cover`` asks ``screenshot_like`` about."""
+    """Probes of every picture ``choose_cover`` asks ``screenshot_like`` about.
+
+    ``months`` maps any bucket key (a month here, a JST day in the calendar
+    album) to its candidates; ``overrides`` uses the same keys.
+    """
     asked: set[str] = set()
 
     def record(room: str, f: Fact) -> bool:
@@ -293,7 +297,9 @@ async def _consulted_probes(
     return await album_colors.probes(sdir, sorted(asked))
 
 
-def _screenshot_fn(found: _Probes) -> ScreenshotLike:
+def screenshot_fn(found: _Probes) -> ScreenshotLike:
+    """``screenshot_like`` over probes found by :func:`consulted_probes`."""
+
     def screenshot_like(room: str, f: Fact) -> bool:
         p = _probe_of(found, f)
         return p is not None and album_colors.is_screenshot_like(p)
@@ -310,7 +316,7 @@ def _months_payload(
     found: _Probes,
 ) -> dict:
     """The text-free months payload, newest first. Blocking (runs in a worker)."""
-    shot = _screenshot_fn(found)
+    shot = screenshot_fn(found)
     rows = []
     for month in sorted(months, reverse=True):
         items = months[month]
@@ -366,9 +372,9 @@ async def album_months(
     async def build() -> dict:
         tagged = await people.scope_facts(sdir, persons)
         months = await asyncio.to_thread(_by_month, tagged, kind)
-        found = await _consulted_probes(sdir, months, overrides, oshi_rooms)
+        found = await consulted_probes(sdir, months, overrides, oshi_rooms)
         chosen = await asyncio.to_thread(
-            _covers, months, overrides, oshi_rooms, _screenshot_fn(found)
+            _covers, months, overrides, oshi_rooms, screenshot_fn(found)
         )
         # the cover tint: probe covers the rules did not ask about (cached)
         extra = [
@@ -477,5 +483,7 @@ __all__ = [
     "album_month",
     "album_months",
     "choose_cover",
+    "consulted_probes",
     "keep",
+    "screenshot_fn",
 ]

@@ -9,6 +9,7 @@ import json
 import pytest
 from structlog.testing import capture_logs
 
+from backend.services import app_state
 from backend.services.memories import album
 from backend.services.memories import covers
 from backend.services.memories import index as mi
@@ -175,11 +176,13 @@ def test_choose_cover_demotes_screenshots_in_the_top_three():
     assert picked(choose(cands[:2], shot=all_shots)) == ("a", 1, "score")
 
 
-# --- covers hook -----------------------------------------------------------------------
+# --- covers hook (the store itself: test_memories_covers.py) ----------------------------
 
 
 @pytest.mark.asyncio
-async def test_cover_overrides_are_empty_this_wave(tmp_path):
+async def test_cover_overrides_empty_without_any(tmp_path, monkeypatch):
+    monkeypatch.setattr(app_state, "_db_path", tmp_path / "app.db")
+    app_state.init_db()
     assert await covers.load_cover_overrides(tmp_path, "all") == {}
 
 
@@ -211,6 +214,8 @@ def oshi_names(monkeypatch):
 @pytest.fixture
 def svc(tmp_path, oshi_names, monkeypatch):
     mi.set_db_path(tmp_path / "idx.db")
+    monkeypatch.setattr(app_state, "_db_path", tmp_path / "app.db")
+    app_state.init_db()
     out = tmp_path / "out"
     sdir = out / SVC_NAME
     monkeypatch.setattr(people, "output_dir", lambda: out)
