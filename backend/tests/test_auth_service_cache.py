@@ -55,7 +55,7 @@ def test_logout_invalidates_cached_session(auth_service):
                 assert status["authenticated"] is True
 
                 # Log out -> cache for hinatazaka46 must be invalidated.
-                auth_service.logout("hinatazaka46")
+                asyncio.run(auth_service.logout("hinatazaka46"))
                 load.return_value = None
 
                 status2 = asyncio.run(auth_service.get_status(service="hinatazaka46"))

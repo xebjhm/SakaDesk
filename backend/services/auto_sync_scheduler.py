@@ -6,13 +6,18 @@ reloads the settings and decides whether to start a sync. The scheduler lives in
 the backend so syncing continues while the window is hidden in the tray.
 
 Decision order for each tick (the first match is the logged ``reason``):
-``shutting_down`` -> ``disabled`` -> ``not_configured`` -> ``not_authenticated``
--> launch (``started`` / ``already_running`` / ``shutting_down`` from
-:func:`backend.services.sync_launcher.launch_sync`).
+``shutting_down`` -> ``disabled`` -> ``not_configured`` -> ``sequence_active``
+(a first-launch / start-all sequence is running in the sync coordinator) ->
+``session_expired`` (not authenticated and session_alert says a new login is
+needed) / ``not_authenticated`` -> launch (``started`` / ``queued`` / ``already_running`` /
+``already_queued`` / ``shutting_down`` from
+:func:`backend.services.sync_launcher.launch_sync`). When a sequence ends the
+coordinator wakes the scheduler, so the next wait starts from there.
 
 The wait between ticks is at least :data:`MIN_INTERVAL_MINUTES`, whatever the
 stored interval says. :meth:`AutoSyncScheduler.wake` (called when the auto-sync
-settings change) ends the current wait early: the settings are re-read and a
+settings change, and by the sync coordinator when a sequence ends) ends the
+current wait early: the settings are re-read and a
 full new wait starts, without a tick.
 
 Logging uses ids and codes only: ``auto_sync_tick`` (service, reason,
@@ -55,6 +60,8 @@ REASON_SHUTTING_DOWN = "shutting_down"
 REASON_DISABLED = "disabled"
 REASON_NOT_CONFIGURED = "not_configured"
 REASON_NOT_AUTHENTICATED = "not_authenticated"
+REASON_SESSION_EXPIRED = "session_expired"
+REASON_SEQUENCE_ACTIVE = "sequence_active"
 
 SleepFn = Callable[[float], Awaitable[Any]]
 LoadSettingsFn = Callable[[], Awaitable[Mapping[str, Any]]]
@@ -96,6 +103,15 @@ def _default_previous_error_code(service: str) -> Optional[str]:
     return str(status.get("error_code") or "unknown")
 
 
+SequenceActiveFn = Callable[[], bool]
+
+
+def _default_sequence_active() -> bool:
+    from backend.services.sync_coordinator import get_coordinator
+
+    return get_coordinator().sequence_active()
+
+
 def _interval_minutes(settings: Mapping[str, Any]) -> float:
     return max(next_interval_minutes(settings), MIN_INTERVAL_MINUTES)
 
@@ -112,6 +128,7 @@ class AutoSyncScheduler:
         is_authenticated: IsAuthenticatedFn = _default_is_authenticated,
         launch: LaunchFn = launch_sync,
         previous_error_code: PreviousErrorCodeFn = _default_previous_error_code,
+        sequence_active: SequenceActiveFn = _default_sequence_active,
     ) -> None:
         self._services = list(services)
         self._sleep = sleep
@@ -119,6 +136,7 @@ class AutoSyncScheduler:
         self._is_authenticated = is_authenticated
         self._launch = launch
         self._previous_error_code = previous_error_code
+        self._sequence_active = sequence_active
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._wake_events: dict[str, asyncio.Event] = {}
 
@@ -148,7 +166,8 @@ class AutoSyncScheduler:
             await asyncio.gather(*tasks, return_exceptions=True)
 
     def wake(self) -> None:
-        """End every service's current wait early so changed settings apply now.
+        """End every service's current wait early (changed settings, or the end of
+        a sync sequence) so a full new wait starts now.
 
         Safe to call from the event loop thread only. Each task re-reads the
         settings and starts a full new wait (no tick). A no-op while stopped.
@@ -184,8 +203,16 @@ class AutoSyncScheduler:
             return REASON_DISABLED
         if not settings["is_configured"]:
             return REASON_NOT_CONFIGURED
+        if self._sequence_active():
+            return REASON_SEQUENCE_ACTIVE
         if not await self._is_authenticated(service):
-            return REASON_NOT_AUTHENTICATED
+            from backend.services import session_alert
+
+            return (
+                REASON_SESSION_EXPIRED
+                if session_alert.needs_login(service)
+                else REASON_NOT_AUTHENTICATED
+            )
         return await self._launch(service, origin="scheduler")
 
     async def _run(self, service: str) -> None:
@@ -248,7 +275,8 @@ _active: Optional[AutoSyncScheduler] = None
 
 
 def wake_scheduler() -> bool:
-    """Wake the running scheduler after the auto-sync settings changed.
+    """Wake the running scheduler after the auto-sync settings changed or a sync
+    sequence ended (sync coordinator).
 
     Returns True when a scheduler was woken, False when none is running (tests,
     E2E mode, shutdown). Logs ``auto_sync_wake_requested`` (woken).

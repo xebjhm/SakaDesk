@@ -26,6 +26,7 @@ from backend.main import app  # noqa: E402
 from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
 from backend.services import window_geometry  # noqa: E402
 from backend.services import desktop_bridge  # noqa: E402
+from backend.services import session_alert  # noqa: E402
 from backend.services.app_identity import (  # noqa: E402
     ensure_start_menu_shortcut,
     set_process_aumid,
@@ -273,6 +274,42 @@ def make_open_chat_handler(window, focus_fn):
             logger.warning(
                 "notify_open_chat_failed",
                 service=getattr(target, "service", None),
+                error_type=type(e).__name__,
+            )
+
+    return handler
+
+
+def make_open_login_handler(window, focus_fn):
+    """Build the "log in again" toast-click handler: show ``window``, open the login.
+
+    Like :func:`make_open_chat_handler`: shows the window (never ``restore()``),
+    calls ``focus_fn(hwnd)``, then asks the frontend to open that service's
+    login dialog via ``window.__sakadeskOpenLogin(service)``, which returns
+    whether it did. Logs ``notify_open_login`` (``service``, ``delivered=True``)
+    or ``notify_open_login_failed`` with ``reason=not_ready`` (frontend not
+    mounted, or an unknown service) or ``error_type``. It never raises.
+    """
+
+    def handler(service: str) -> None:
+        try:
+            window.show()
+            focus_fn(_native_hwnd(window))
+            delivered = window.evaluate_js(
+                "window.__sakadeskOpenLogin ? window.__sakadeskOpenLogin("
+                + json.dumps(service)
+                + ") === true : false"
+            )
+            if delivered is True:
+                logger.info("notify_open_login", service=service, delivered=True)
+            else:
+                logger.warning(
+                    "notify_open_login_failed", service=service, reason="not_ready"
+                )
+        except Exception as e:
+            logger.warning(
+                "notify_open_login_failed",
+                service=service,
                 error_type=type(e).__name__,
             )
 
@@ -623,17 +660,21 @@ async def sync_all_authenticated(
 ) -> None:
     """Start a sync (origin ``tray``) for each authenticated service. Never raises.
 
-    Logs ``tray_sync_now`` (``services`` = how many were authenticated,
-    ``started`` = how many actually started; the rest were already running).
+    Services are enqueued in the fixed sync order (乃木坂46, 櫻坂46, 日向坂46,
+    Yodel) and run one at a time by the sync coordinator. Logs
+    ``tray_sync_now`` (``services`` = how many were authenticated, ``started``
+    = how many were started or queued; the rest were already running or
+    queued, refused for shutdown, or failed).
     A failing service is logged (``tray_sync_now_failed``, service and error
     type) and does not stop the others.
     """
-    from backend.services.sync_launcher import LAUNCH_STARTED, launch_sync
+    from backend.services.sync_coordinator import order_services
+    from backend.services.sync_launcher import LAUNCH_ACCEPTED, launch_sync
 
     launch_fn = launch if launch is not None else launch_sync
     authenticated = 0
     started = 0
-    for service in services:
+    for service in order_services(services):
         try:
             if not await is_authenticated(service):
                 continue
@@ -644,7 +685,7 @@ async def sync_all_authenticated(
                 force_resync=False,
                 origin="tray",
             )
-            if result == LAUNCH_STARTED:
+            if result in LAUNCH_ACCEPTED:
                 started += 1
         except Exception as e:
             logger.warning(
@@ -1081,6 +1122,10 @@ def main() -> None:
         desktop_bridge.set_open_chat_handler(
             make_open_chat_handler(window, _focus_window)
         )
+        # "Log in again" toast click -> show, focus and open that login dialog.
+        desktop_bridge.set_open_login_handler(
+            make_open_login_handler(window, _focus_window)
+        )
 
         show_window = make_open_window_handler(window, _focus_window)
 
@@ -1120,6 +1165,8 @@ def main() -> None:
         desktop_bridge.set_open_window_handler(show_window)
         if tray.available:
             desktop_bridge.set_tray_tooltip_handler(tray.set_tooltip)
+            desktop_bridge.set_tray_alert_handler(tray.set_alert)
+            tray.set_alert(bool(session_alert.needs_login_services()))
             request_initial_tooltip()
 
         # X hides to the tray (or quits: see make_closing_handler).

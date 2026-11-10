@@ -58,7 +58,14 @@ describe('cancelling the first-launch sync (R-d)', () => {
         pinPrefs(true);
         useAppStore.setState({ selectedServices: ['sakurazaka46', 'hinatazaka46'], activeService: 'sakurazaka46' });
         const starts: string[] = [];
+        const startAll: unknown[] = [];
+        const cancels: string[] = [];
         const saves: unknown[] = [];
+        // S1 (spec 2026-11-10): the backend runs the sequence; the app follows its queue.
+        const seq = {
+            id: 'seq1', services: ['sakurazaka46', 'hinatazaka46'], current_index: 0, blocking: true,
+            state: 'running', completed: [] as string[], failed: [] as string[],
+        };
         server.use(
             http.get('*/api/app-state/prefs', () => HttpResponse.json({})),
             http.patch('*/api/app-state/prefs', () => HttpResponse.json({ ok: true })),
@@ -82,12 +89,21 @@ describe('cancelling the first-launch sync (R-d)', () => {
                     adaptive_sync_enabled: false, blogs_full_backup: !!body.blogs_full_backup, is_configured: true,
                 });
             }),
+            http.post('*/api/sync/start-all', async ({ request }) => {
+                startAll.push(await request.json());
+                return HttpResponse.json({ sequence_id: seq.id, results: {} });
+            }),
             http.post('*/api/sync/start', ({ request }) => {
                 starts.push(new URL(request.url).searchParams.get('service') ?? '');
                 return HttpResponse.json({ status: 'started' });
             }),
+            http.get('*/api/sync/queue', () => HttpResponse.json({ running: null, queued: [], sequence: seq })),
             http.get('*/api/sync/progress', () => HttpResponse.json({ state: 'running', phase: 'messages', phase_name: 'Messages', completed: 5, total: 20 })),
-            http.post('*/api/sync/cancel', () => HttpResponse.json({ ok: true })),
+            http.post('*/api/sync/cancel', ({ request }) => {
+                cancels.push(new URL(request.url).search);
+                seq.state = 'cancelled';
+                return HttpResponse.json({ status: 'cancelled' });
+            }),
             http.post('*/api/blogs/backup/start', () => HttpResponse.json({ ok: true })),
         );
         const user = userEvent.setup();
@@ -102,7 +118,10 @@ describe('cancelling the first-launch sync (R-d)', () => {
         await waitFor(() => expect(saves).toContainEqual({ blogs_full_backup: true }));
         expect(screen.queryByRole('button', { name: 'Cancel' })).toBeNull();
         expect(screen.queryByText('Your archive is ready')).toBeNull();
-        expect(starts).toEqual(['sakurazaka46']);
+        // One sequence for both groups; Cancel ends it in the backend, so no later group starts.
+        expect(startAll).toEqual([{ services: ['sakurazaka46', 'hinatazaka46'], blocking: true }]);
+        expect(cancels).toEqual(['?sequence=seq1']);
+        expect(starts).toEqual([]);
         unmount();
     });
 });

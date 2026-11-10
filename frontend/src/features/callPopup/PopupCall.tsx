@@ -97,7 +97,7 @@ export const PopupCall: React.FC<PopupCallProps> = ({
     return (
         <>
             {liveRegion}
-            <div className="sd-call-popup" style={{ ...scope, '--sd-accent': ACCENT, '--sd-rad': '0px' } as React.CSSProperties}>
+            <div className="sd-call-popup" style={{ ...scope, '--sd-accent': ACCENT, '--sd-rad': '16px' } as React.CSSProperties}>
                 <CallScreen
                     phase={call.phase}
                     name={call.name}

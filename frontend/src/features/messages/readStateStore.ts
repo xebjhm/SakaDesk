@@ -60,26 +60,58 @@ export function loadReadState(path: string): ReadState {
     return parseReadState(persisted.getConv<{ value?: string }>(readStateKey(path), {}));
 }
 
+/** Newest deferred state per chat while the conversation cache is not ready. */
+const pendingReadStates = new Map<string, ReadState>();
+
+/**
+ * Merge two read states without ever moving backwards (spec B2 §3). Used to
+ * combine deferred saves and to compare them with the stored row on recovery.
+ * Unlike `mergeReadState` (which reconciles the open chat with a bridge write,
+ * returns `base` itself when nothing changed and counts each newly added reveal
+ * into `readCount`), this is symmetric: `readCount` is the plain max of both,
+ * `revealedIds` is the sorted union above the larger `lastReadId`, and it always
+ * returns a new object.
+ */
+export function mergeReadStates(stored: ReadState, pending: ReadState): ReadState {
+    const lastReadId = Math.max(stored.lastReadId, pending.lastReadId);
+    const revealed = new Set([...stored.revealedIds, ...pending.revealedIds].filter((id) => id > lastReadId));
+    return {
+        lastReadId,
+        readCount: Math.max(stored.readCount, pending.readCount),
+        revealedIds: [...revealed].sort((a, b) => a - b),
+    };
+}
+
+function sameReadState(a: ReadState, b: ReadState): boolean {
+    return a.lastReadId === b.lastReadId && a.readCount === b.readCount
+        && a.revealedIds.length === b.revealedIds.length
+        && a.revealedIds.every((id, i) => id === b.revealedIds[i]);
+}
+
+/** Chats whose deferred save was already logged (see saveReadState). */
+const skippedSaveLogged = new Set<string>();
+
 /**
  * Persist `state` as the chat's read row and PUT the search copy (fire-and-forget).
  *
- * Skipped while the conversation cache has not loaded (`conversationsReady()`
- * is false: still loading, or the startup load failed): until then `state` may
- * be derived from the empty fallback, and writing it would overwrite the
- * stored progress. Logs `read_state_save_skipped` (reason `not_ready`, ids
- * only) once per chat per session. A failed or refused search-copy PUT logs `read_state_sync_failed`.
+ * While the conversation cache has not loaded (`conversationsReady()` is false:
+ * still loading, or the startup load failed) `state` may be derived from the
+ * empty fallback, so nothing is written. The newest state per chat is kept in
+ * memory (merged monotonically) and `flushPendingReadStates` writes it once the
+ * cache is ready, only if it is ahead of the stored row. Logs
+ * `read_state_save_deferred` (reason `not_ready`, ids only) once per chat per
+ * session. A failed or refused search-copy PUT logs `read_state_sync_failed`.
  */
-/** Chats whose skipped save was already logged (see saveReadState). */
-const skippedSaveLogged = new Set<string>();
-
 export function saveReadState(path: string, state: ReadState): void {
     const parsed = parseReadStatePath(path);
     const ids = parsed ? { service: parsed.service, group_id: parsed.groupId, member_id: parsed.memberId } : {};
     if (!persisted.conversationsReady()) {
+        const prev = pendingReadStates.get(path);
+        pendingReadStates.set(path, prev ? mergeReadStates(prev, state) : state);
         // Once per chat per session: every reveal would otherwise log again.
         if (!skippedSaveLogged.has(path)) {
             skippedSaveLogged.add(path);
-            clientLog('read_state_save_skipped', { reason: 'not_ready', ...ids });
+            clientLog('read_state_save_deferred', { reason: 'not_ready', ...ids });
         }
         return;
     }
@@ -109,6 +141,32 @@ export function saveReadState(path: string, state: ReadState): void {
             .catch((err) => clientLog('read_state_sync_failed', { error_type: breadcrumbCode(err) }));
     }
 }
+
+/**
+ * Write deferred states that are ahead of the stored rows; drop the rest. Each
+ * written path is announced to the `subscribeReadState` listeners (after all
+ * writes), so an open chat merges the recovered row into its own state.
+ */
+export function flushPendingReadStates(): void {
+    if (pendingReadStates.size === 0) return;
+    let written = 0;
+    let dropped = 0;
+    const writtenPaths: string[] = [];
+    for (const [path, pending] of pendingReadStates) {
+        const stored = loadReadState(path);
+        const merged = mergeReadStates(stored, pending);
+        const storedSorted = { ...stored, revealedIds: [...stored.revealedIds].sort((a, b) => a - b) };
+        if (sameReadState(merged, storedSorted)) { dropped += 1; continue; }
+        saveReadState(path, merged);
+        written += 1;
+        writtenPaths.push(path);
+    }
+    pendingReadStates.clear();
+    clientLog('read_state_pending_flushed', { written, dropped });
+    writtenPaths.forEach(notifyReadState);
+}
+
+persisted.onConversationsReady(flushPendingReadStates);
 
 /**
  * Reveal one message. Pure: returns `prev` itself when the id is already
@@ -188,6 +246,13 @@ export function subscribeReadState(listener: ReadStateListener): () => void {
     return () => { listeners.delete(listener); };
 }
 
+/** Tell every subscriber that `path`'s stored row changed outside the open chat. */
+function notifyReadState(path: string): void {
+    for (const l of [...listeners]) {
+        try { l(path); } catch (err) { console.debug('[readStateStore] listener failed', err); }
+    }
+}
+
 /**
  * Mark one voice heard in the primary store (used by the main window when the
  * popup answered it). Consolidation happens the next time the chat is open.
@@ -196,8 +261,6 @@ export function revealInStore(path: string, msgId: number): boolean {
     const prev = loadReadState(path);
     if (!isUnreadIn(prev)(msgId)) return false;
     saveReadState(path, applyReveal(prev, msgId, []));
-    for (const l of [...listeners]) {
-        try { l(path); } catch (err) { console.debug('[readStateStore] listener failed', err); }
-    }
+    notifyReadState(path);
     return true;
 }

@@ -111,7 +111,6 @@
     "autoDownloadUpdates": "Auto-Download Updates",
     "autoDownloadUpdatesDesc": "Automatically download new versions in the background",
     "checkForUpdates": "Check Now",
-    "updateFound": "v{{version}} available!",
     "upToDate": "You're up to date",
     "updateCheckFailed": "Check failed",
     "transcriptionDevice": "Transcription",
@@ -143,7 +142,8 @@
     "justNow": "just now",
     "minutesAgo": "{{count}}m ago",
     "hoursAgo": "{{count}}h ago",
-    "daysAgo": "{{count}}d ago"
+    "daysAgo": "{{count}}d ago",
+    "etaEstimating": "Estimating…"
   },
   "login": {
     "title": "Account Management",
@@ -236,7 +236,10 @@
     "progress": "Sync progress",
     "stepDone": "Done",
     "stepCurrent": "Current step",
-    "stepPending": "Pending"
+    "stepPending": "Pending",
+    "phaseQueued": "Waiting",
+    "queuedDetail": "Waiting for another sync to finish (#{{position}} in line)",
+    "filesFailed": "· {{count}} failed"
   },
   "about": {
     "title": "About",
@@ -285,7 +288,11 @@
     "updateAvailable": "Update available!",
     "upgradeNow": "Update Now",
     "skipVersion": "Skip this version",
-    "cancelDownload": "Cancel download"
+    "cancelDownload": "Cancel download",
+    "download": "Download update",
+    "installHint": "SakaDesk closes and reopens when the install finishes.",
+    "retry": "Try again",
+    "openReleasePage": "Open download page"
   },
   "memberList": {
     "title": "Talk",

@@ -111,7 +111,6 @@
     "autoDownloadUpdates": "自動下載更新",
     "autoDownloadUpdatesDesc": "喺背景自動下載新版本",
     "checkForUpdates": "即刻檢查",
-    "updateFound": "v{{version}} 有得更新！",
     "upToDate": "已經係最新版本",
     "updateCheckFailed": "檢查失敗",
     "transcriptionDevice": "語音轉文字",
@@ -143,7 +142,8 @@
     "justNow": "啱啱",
     "minutesAgo": "{{count}}分鐘前",
     "hoursAgo": "{{count}}個鐘前",
-    "daysAgo": "{{count}}日前"
+    "daysAgo": "{{count}}日前",
+    "etaEstimating": "計緊…"
   },
   "login": {
     "title": "帳戶管理",
@@ -236,7 +236,10 @@
     "progress": "同步進度",
     "stepDone": "已完成",
     "stepCurrent": "目前步驟",
-    "stepPending": "待處理"
+    "stepPending": "待處理",
+    "phaseQueued": "等緊",
+    "queuedDetail": "等緊其他同步完成（排第 {{position}} 位）",
+    "filesFailed": "· {{count}} 個失敗"
   },
   "about": {
     "title": "關於",
@@ -285,7 +288,11 @@
     "updateAvailable": "有更新！",
     "upgradeNow": "即刻更新",
     "skipVersion": "跳過呢個版本",
-    "cancelDownload": "取消下載"
+    "cancelDownload": "取消下載",
+    "download": "下載更新",
+    "installHint": "SakaDesk 會關閉，裝完之後會自動再開返。",
+    "retry": "再試",
+    "openReleasePage": "打開下載頁面"
   },
   "memberList": {
     "title": "Talk",

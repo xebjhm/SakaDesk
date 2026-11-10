@@ -71,6 +71,16 @@ def _isolate_machine_state(tmp_path_factory: pytest.TempPathFactory):
         os.environ["SAKADESK_DATA_DIR"] = original_data_dir
 
 
+@pytest.fixture(autouse=True)
+def _reset_session_alert():
+    """session_alert keeps module-level state; never leak it between tests."""
+    from backend.services import session_alert
+
+    session_alert._reset_for_tests()
+    yield
+    session_alert._reset_for_tests()
+
+
 @pytest.fixture
 def client():
     """Sync TestClient for backend/tests API tests.

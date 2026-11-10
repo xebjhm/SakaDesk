@@ -3,7 +3,7 @@ import React from 'react';
 import { Check, Loader2 } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { cn } from '../../utils/classnames';
-import { formatSyncTime, formatSyncSpeedParts, getSyncDetail } from '../../utils/syncFormatters';
+import { formatSyncEta, formatSyncTime, formatSyncSpeedParts, getSyncDetail } from '../../utils/syncFormatters';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 const PHASE_ORDER = ['scanning', 'discovering', 'syncing', 'downloading', 'complete'];
@@ -27,8 +27,9 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
     const speed = formatSyncSpeedParts(progress.speed, progress.speed_unit || 'it');
     // Every tile is a number over a unit line (an empty unit keeps the height equal).
     const stats = [
-        { key: 'elapsed', label: t('time.elapsed'), value: formatSyncTime(progress.elapsed_seconds), unit: '' },
-        { key: 'eta', label: t('time.eta'), value: progress.eta_seconds ? formatSyncTime(progress.eta_seconds) : '--:--', unit: '' },
+        // Run elapsed (S2, spec 2026-11-10): it no longer resets at every phase.
+        { key: 'elapsed', label: t('time.elapsed'), value: formatSyncTime(progress.run_elapsed_seconds ?? progress.elapsed_seconds), unit: '' },
+        { key: 'eta', label: t('time.eta'), value: formatSyncEta(progress, t), unit: '' },
         { key: 'speed', label: t('time.speed'), value: speed.value, unit: speed.unit },
     ];
     const steps = [
@@ -76,13 +77,16 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
 
             {/* Only while running: on completion the backend leaves phase_number at 3, and the
                 "do not close" line (and the spinner) would make a finished sync look stuck. */}
-            {progress.state === 'running' && (progress.phase_number === 3 ? (
+            {(progress.state === 'running' || progress.state === 'queued') && (progress.state === 'running' && progress.phase_number === 3 ? (
                 <div
                     data-testid="sync-media-warning"
                     className="flex items-center justify-center gap-2 rounded-lg border border-semantic-warning bg-semantic-warning-subtle px-4 py-3 text-semantic-warning"
                 >
                     <Loader2 aria-hidden="true" className="h-4 w-4 shrink-0 animate-spin motion-reduce:animate-none" />
-                    <span className="text-small font-semibold">{t('sync.downloadingMedia')}</span>
+                    <span className="text-small font-semibold">
+                        {t('sync.downloadingMedia')}
+                        {(progress.failed ?? 0) > 0 && ` ${t('sync.filesFailed', { count: progress.failed })}`}
+                    </span>
                 </div>
             ) : (
                 <div data-testid="sync-detail" className="flex items-center gap-2 rounded-lg bg-accent-subtle px-4 py-3">

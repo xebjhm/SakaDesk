@@ -34,6 +34,7 @@ export function getSyncPhaseName(
     t: (key: string) => string,
 ): string {
     const phaseNameMap: Record<string, string> = {
+        queued: t('sync.phaseQueued'),
         scanning: t('sync.phaseScanning'),
         discovering: t('sync.phaseDiscovering'),
         syncing: t('sync.phaseSyncing'),
@@ -61,13 +62,37 @@ export function getSyncUnitLabel(
 /** Detail line for a sync progress state; prefixes known detail codes with their localized text. */
 export function getSyncDetail(
     syncProgress: SyncProgress,
-    t: (key: string) => string,
+    t: (key: string, options?: Record<string, unknown>) => string,
     fallback: string,
 ): string {
+    if (syncProgress.state === 'queued') {
+        return t('sync.queuedDetail', { position: syncProgress.queue_position ?? 1 });
+    }
     const detail = syncProgress.detail || '';
     if (syncProgress.detail_code === 'scanning_history') {
         const scanning = t('sync.scanningHistory');
         return detail ? `${scanning} · ${detail}` : scanning;
     }
     return detail || fallback;
+}
+
+/** A sync that is running or waiting in the backend queue (the UI shows its progress / Cancel). */
+export function isSyncActive(syncProgress: SyncProgress | undefined | null): syncProgress is SyncProgress {
+    return syncProgress?.state === 'running' || syncProgress?.state === 'queued';
+}
+
+/**
+ * The ETA tile's text: a time only when the backend could estimate one (0 included).
+ * `not_estimable` (work per unit unknown: scanning, collecting metadata) shows a dash,
+ * `warming_up` (media phase before enough evidence) shows "Estimating…", and no estimate
+ * without a reason (not running) shows `--:--`.
+ */
+export function formatSyncEta(
+    syncProgress: SyncProgress,
+    t: (key: string) => string,
+): string {
+    if (syncProgress.eta_seconds != null) return formatSyncTime(syncProgress.eta_seconds);
+    if (syncProgress.eta_reason === 'not_estimable') return '—';
+    if (syncProgress.eta_reason === 'warming_up') return t('time.etaEstimating');
+    return '--:--';
 }

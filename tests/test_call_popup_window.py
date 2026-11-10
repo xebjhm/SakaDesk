@@ -108,6 +108,7 @@ class FakeDwm:
 
 def make(windows, **kw):
     created, exits = [], []
+    kw.setdefault("apply_transparency", lambda window: None)
     it = iter(windows)
 
     def create_window(**kwargs):
@@ -172,6 +173,8 @@ def test_rect_width_height():
 def test_constants():
     assert cpw.TITLE == "SakaDesk Call"
     assert cpw.BACKGROUND_COLOR == "#0D0F14"
+    assert cpw.TRANSPARENCY_KEY == (3, 1, 2)
+    assert cpw.DWMWCP_DONOTROUND == 1
     assert (cpw.POPUP_WIDTH_DIP, cpw.POPUP_MARGIN_DIP) == (300, 12)
     assert cpw.POPUP_LOAD_TIMEOUT_S == 15.0
     assert cpw.DESTROY_TIMEOUT_S == 3.0
@@ -198,7 +201,8 @@ def test_ensure_creates_once_with_exact_arguments_then_reuses():
             focus=False,
             on_top=True,
             hidden=True,
-            shadow=True,
+            shadow=False,
+            transparent=True,
             background_color="#0D0F14",
         )
     ]
@@ -212,7 +216,7 @@ def test_ensure_applies_toolwindow_and_corner_styles():
     w, _, _ = make([FakeWindow()], user32=user32, dwm=dwm)
     assert w.ensure() is True
     assert ("SetWindowLongW", 0x1234, -20, 0x08000000 | 0x80) in user32.calls
-    assert dwm.calls == [(0x1234, 33, 2, 4)]
+    assert dwm.calls == [(0x1234, 33, 1, 4)]
 
 
 def test_ensure_ignores_a_failing_corner_preference():
@@ -244,7 +248,105 @@ def test_ensure_styles_through_before_show_when_no_hwnd_yet():
     win.native.Handle = 0x1234
     win.events.before_show.set()
     assert ("SetWindowLongW", 0x1234, -20, 0x80) in user32.calls
-    assert dwm.calls == [(0x1234, 33, 2, 4)]
+    assert dwm.calls == [(0x1234, 33, 1, 4)]
+
+
+def test_ensure_applies_the_transparency_key_before_show_when_hwnd_ready():
+    seen = []
+    win = FakeWindow()
+    w, _, _ = make([win], apply_transparency=seen.append)
+    assert w.ensure() is True
+    assert seen == [win]
+    assert win.shown == 0
+
+
+def test_ensure_applies_the_transparency_key_in_before_show_without_hwnd():
+    seen = []
+    win = FakeWindow(hwnd=None)
+    w, _, _ = make([win], apply_transparency=seen.append)
+    assert w.ensure() is True
+    assert seen == []
+    win.native.Handle = 0x1234
+    win.events.before_show.set()
+    assert seen == [win]
+
+
+class FakeForm:
+    def __init__(self, invoke_required):
+        self.InvokeRequired = invoke_required
+        self.BackColor = self.TransparencyKey = None
+        self.invoked = 0
+
+    def Invoke(self, action):
+        self.invoked += 1
+        action()
+
+
+def install_fake_dotnet(monkeypatch):
+    import sys
+    import types
+
+    system = types.ModuleType("System")
+    system.Action = lambda fn: fn
+    drawing = types.ModuleType("System.Drawing")
+
+    class Color:
+        @staticmethod
+        def FromArgb(a, r, g, b):
+            return (a, r, g, b)
+
+    drawing.Color = Color
+    system.Drawing = drawing
+    monkeypatch.setitem(sys.modules, "System", system)
+    monkeypatch.setitem(sys.modules, "System.Drawing", drawing)
+
+
+def test_apply_transparency_key_sets_both_colours_via_invoke(monkeypatch):
+    install_fake_dotnet(monkeypatch)
+    form = FakeForm(invoke_required=True)
+    win = FakeWindow()
+    win.native = form
+    with capture_logs() as logs:
+        cpw._apply_transparency_key(win)
+    assert form.invoked == 1
+    assert form.BackColor == form.TransparencyKey == (255, 3, 1, 2)
+    assert {
+        "event": "call_popup_transparency",
+        "applied": True,
+        "log_level": "info",
+    } in logs
+
+
+def test_apply_transparency_key_runs_directly_on_the_gui_thread(monkeypatch):
+    install_fake_dotnet(monkeypatch)
+    form = FakeForm(invoke_required=False)
+    win = FakeWindow()
+    win.native = form
+    cpw._apply_transparency_key(win)
+    assert form.invoked == 0
+    assert form.BackColor == form.TransparencyKey == (255, 3, 1, 2)
+
+
+def test_apply_transparency_key_logs_and_does_not_raise_on_error(monkeypatch):
+    install_fake_dotnet(monkeypatch)
+
+    class BrokenForm(FakeForm):
+        def Invoke(self, action):
+            raise RuntimeError("boom")
+
+    win = FakeWindow()
+    win.native = BrokenForm(invoke_required=True)
+    with capture_logs() as logs:
+        cpw._apply_transparency_key(win)
+    failed = [e for e in logs if e["event"] == "call_popup_transparency_failed"]
+    assert failed and failed[0]["error_type"] == "RuntimeError"
+    assert not any(e["event"] == "call_popup_transparency" for e in logs)
+
+
+def test_apply_transparency_key_without_dotnet_is_logged_not_raised():
+    with capture_logs() as logs:
+        cpw._apply_transparency_key(FakeWindow())
+    assert any(e["event"] == "call_popup_transparency_failed" for e in logs)
 
 
 def test_hwnd_of_reads_intptr_and_survives_errors():

@@ -30,6 +30,7 @@ class _Harness:
         self.sleeps: list[float] = []
         self.launches: list[tuple] = []
         self.done = asyncio.Event()
+        self.seq_active = False
 
     async def sleep(self, seconds):
         self.sleeps.append(seconds)
@@ -61,6 +62,7 @@ class _Harness:
             is_authenticated=self.is_authenticated,
             launch=self.launch,
             previous_error_code=lambda service: self.previous,
+            sequence_active=lambda: self.seq_active,
         )
 
     async def run(self, services=(SVC,)):
@@ -129,6 +131,36 @@ async def test_not_configured_does_not_launch():
         await h.run()
     assert h.launches == []
     assert _ticks(logs)[0]["reason"] == "not_configured"
+
+
+@pytest.mark.asyncio
+async def test_sequence_active_does_not_launch():
+    """S1 (spec 2026-11-10): while a first-launch / start-all sequence runs the
+    scheduler does not launch (the 2026-11-10 run started 3 services mid-sequence)."""
+    h = _Harness(_settings())
+    h.seq_active = True
+    with capture_logs() as logs:
+        await h.run()
+    assert h.launches == []
+    assert _ticks(logs)[0]["reason"] == "sequence_active"
+
+
+@pytest.mark.asyncio
+async def test_queued_launch_is_the_reason():
+    h = _Harness(_settings(), launch_result="queued")
+    with capture_logs() as logs:
+        await h.run()
+    assert _ticks(logs)[0]["reason"] == "queued"
+
+
+def test_default_sequence_active_reads_the_coordinator():
+    from backend.services.sync_coordinator import SyncSequence, get_coordinator
+
+    assert scheduler_module._default_sequence_active() is False
+    get_coordinator()._sequence = SyncSequence(
+        id="x", services=["yodel"], blocking=True, origin="api"
+    )
+    assert scheduler_module._default_sequence_active() is True
 
 
 @pytest.mark.asyncio

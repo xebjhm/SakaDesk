@@ -37,6 +37,7 @@ ClientEvent = Literal[
     "call_popup_heard_ignored",
     "app_load_failed",
     "notify_open_chat",
+    "notify_open_login",
     "backend_sync_followed",
     "backend_sync_skipped",
     "design_tokens_applied",
@@ -61,6 +62,9 @@ ClientEvent = Literal[
     "archive_stats_load",
     "celebration",
     "sync_sequence",
+    "sync_sequence_resumed",
+    "sync_start_all_failed",
+    "sync_cancel_failed",
     "letter_viewer",
     "letter_jump",
     "display_density_change",
@@ -77,8 +81,10 @@ ClientEvent = Literal[
     "translation_batch_failed",
     "conv_hydrate_retry",
     "conv_hydrate_failed",
+    "conv_hydrate_recovered",
     "conv_write_failed",
-    "read_state_save_skipped",
+    "read_state_save_deferred",
+    "read_state_pending_flushed",
     "read_state_sync_failed",
     "sidebar_load",
 ]
@@ -98,6 +104,7 @@ ALLOWED_FIELDS = frozenset(
         "call_id",
         "changed",
         "has_target",
+        "delivered",
         "theme",
         "size",
         "target",
@@ -117,6 +124,8 @@ ALLOWED_FIELDS = frozenset(
         "key",
         "timeout_ms",
         "caller",
+        "written",
+        "dropped",
     }
 )
 WARNING_EVENTS = frozenset(

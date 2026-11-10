@@ -194,17 +194,15 @@ class TestSyncProgressCalculations:
         # Just verify it doesn't crash
         assert isinstance(status["speed"], (int, float))
 
-    def test_eta_calculation(self):
-        """ETA should be remaining / speed when speed > 0."""
+    def test_eta_only_in_the_media_phase(self):
+        """S2 (spec 2026-11-10): phases whose work per unit is unknown report no
+        ETA, with eta_reason "not_estimable"."""
         p = SyncProgress()
         p.start_phase("test", "Test", 1, 100, "items")
-        time.sleep(0.2)
         p.update(50)
         status = p.get_status()
-        # eta_seconds is None when speed is 0, otherwise int
-        if status["speed"] > 0:
-            assert status["eta_seconds"] is not None
-            assert status["eta_seconds"] >= 0
+        assert status["eta_seconds"] is None
+        assert status["eta_reason"] == "not_estimable"
 
     def test_eta_none_when_speed_zero(self):
         """ETA should be None when speed is 0."""

@@ -6,6 +6,11 @@ declare global {
   interface Window {
     /** Installed by App; called by the desktop host when a toast is clicked. */
     __sakadeskOpenChat?: (target: OpenChatTarget) => void
+    /**
+     * Installed by App; called by the desktop host when a "log in again" toast is
+     * clicked. Returns whether the service's login dialog was opened.
+     */
+    __sakadeskOpenLogin?: (service: string) => boolean
   }
 }
 

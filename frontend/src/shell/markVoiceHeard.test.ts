@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 import { clientLog } from '../utils/clientLog';
-import { persisted } from '../core/persistence/persisted';
+import { persisted, CONV_HYDRATE_RETRY_DELAYS_MS } from '../core/persistence/persisted';
 import * as appStateApi from '../core/persistence/appStateApi';
 import { markVoiceHeard } from './markVoiceHeard';
 
@@ -88,7 +88,9 @@ describe('markVoiceHeard', () => {
         vi.useFakeTimers();
         const load = vi.spyOn(appStateApi, 'getAllConversations').mockRejectedValue(new Error('down'));
         const hydrating = persisted.hydrateConversations();
-        await vi.runAllTimersAsync(); // every retry fails too
+        // Every foreground retry fails too (the background loop then keeps retrying forever, so
+        // advance past the foreground backoff only rather than running all timers).
+        await vi.advanceTimersByTimeAsync(CONV_HYDRATE_RETRY_DELAYS_MS.reduce((a, b) => a + b, 0));
         await hydrating;
         vi.useRealTimers();
         const payload = { service: 'hinatazaka46', path: PATH, message_id: 10 };

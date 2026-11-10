@@ -201,3 +201,35 @@ async def test_cancel_pending_stops_a_waiting_debounce(tooltips, monkeypatch):
 
 def test_default_debounce_is_two_seconds():
     assert tray_tooltip.DEBOUNCE_SECONDS == 2.0
+
+
+@pytest.mark.asyncio
+async def test_refresh_puts_the_login_line_first_for_marked_services(
+    tooltips, monkeypatch
+):
+    from backend.services import session_alert
+
+    seen, _ = tooltips
+    monkeypatch.setattr(session_alert, "needs_login_services", lambda: ["sakurazaka46"])
+    with capture_logs() as logs:
+        await tray_tooltip.refresh_tray_tooltip()
+    assert seen == ["Login needed: 櫻坂46\nSakaDesk — 3 unread"]
+    (event,) = [e for e in logs if e["event"] == "tray_tooltip"]
+    assert event["login_needed"] == 1
+
+
+@pytest.mark.asyncio
+async def test_login_line_survives_the_tray_length_clamp(tooltips, monkeypatch):
+    from backend.services import session_alert
+    from tray import MAX_TOOLTIP_LENGTH
+
+    seen, _ = tooltips
+    monkeypatch.setattr(
+        session_alert,
+        "needs_login_services",
+        lambda: ["hinatazaka46", "nogizaka46", "sakurazaka46"],
+    )
+    monkeypatch.setattr(tray_tooltip, "tooltip_text", lambda unread, s: "未読 🌸" * 60)
+    await tray_tooltip.refresh_tray_tooltip()
+    clamped = seen[-1][:MAX_TOOLTIP_LENGTH]
+    assert clamped.startswith("Login needed: 日向坂46, 乃木坂46, 櫻坂46\n")

@@ -1,5 +1,5 @@
 // frontend/src/features/messages/MessagesFeature.tsx
-import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo, useLayoutEffect } from 'react';
 import { useMilestone } from './milestones';
 import { MilestoneFooter } from './components/MilestoneFooter';
 import type { Message, MemberInfo, BackgroundSettings } from '../../types';
@@ -23,6 +23,7 @@ import { FadeOnChange } from '../../core/layout/FadeOnChange';
 import { ChatHeaderPill } from './components/ChatHeaderPill';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
+import { persisted } from '../../core/persistence/persisted';
 import { loadReadState, saveReadState, applyReveal, mergeReadState, readStateEquals } from './readStateStore';
 import type { ReadState } from './readStateStore';
 import { useReadStateSubscription } from './hooks/useReadStateSubscription';
@@ -64,7 +65,16 @@ export interface GroupMessagesResponse {
 export type { ReadState } from './readStateStore';
 
 export interface SyncProgress {
-    state: 'idle' | 'running' | 'complete' | 'error';
+    /** `queued`: waiting in the backend sync queue (one sync runs at a time). */
+    state: 'idle' | 'queued' | 'running' | 'complete' | 'error';
+    /** 1-based place in the backend sync queue while `queued`. */
+    queue_position?: number | null;
+    /** Seconds since the run's first phase (does not reset per phase). */
+    run_elapsed_seconds?: number;
+    /** Why `eta_seconds` is null while running: unknown cost per unit, or not enough evidence yet. */
+    eta_reason?: 'not_estimable' | 'warming_up' | null;
+    /** Items processed but failed in the current phase (media downloads). */
+    failed?: number;
     phase?: string;
     phase_name?: string;
     phase_number?: number;
@@ -518,6 +528,22 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         });
     }, [selectedGroupDir, saveAndBump]);
     useReadStateSubscription(selectedGroupDir, mergeLoadedReadState, () => setReadStateVersion(v => v + 1));
+
+    // The conversation cache recovered after a failed startup load. A chat opened
+    // meanwhile holds a state derived from the empty fallback; merge the now-loaded
+    // row into it (monotonic, never backwards) so its next reveal cannot write the
+    // fallback-derived state over stored progress. Then re-read unread counts.
+    // Order matters: readStateStore (imported above) registered its flush listener at
+    // import time, before this effect subscribes, so deferred saves are written first.
+    const recoveryRef = useRef({ selectedGroupDir, mergeLoadedReadState });
+    useLayoutEffect(() => {
+        recoveryRef.current = { selectedGroupDir, mergeLoadedReadState };
+    });
+    useEffect(() => persisted.onConversationsReady(() => {
+        const cur = recoveryRef.current;
+        if (cur.selectedGroupDir) cur.mergeLoadedReadState(loadReadState(cur.selectedGroupDir));
+        setReadStateVersion((v) => v + 1);
+    }), []);
 
     const revealAllMessages = useCallback(() => {
         if (maxMessageId === 0) return;

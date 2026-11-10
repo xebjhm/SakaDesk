@@ -304,19 +304,19 @@ class TestCredentialStorage:
     def test_logout_calls_delete_session(self, auth_service):
         """logout delegates to TokenManager.delete_session with correct group value."""
         with patch("backend.services.auth_service.get_token_manager") as mock_tm:
-            auth_service.logout("sakurazaka46")
+            asyncio.run(auth_service.logout("sakurazaka46"))
             mock_tm.return_value.delete_session.assert_called_once_with("sakurazaka46")
 
     def test_logout_invalid_service_raises(self, auth_service):
         with pytest.raises(ValueError):
-            auth_service.logout("nonexistent_service")
+            asyncio.run(auth_service.logout("nonexistent_service"))
 
     def test_logout_swallows_tm_error(self, auth_service):
         """logout catches exceptions from TokenManager and does not propagate."""
         with patch("backend.services.auth_service.get_token_manager") as mock_tm:
             mock_tm.return_value.delete_session.side_effect = RuntimeError("fail")
             # Should not raise
-            auth_service.logout("hinatazaka46")
+            asyncio.run(auth_service.logout("hinatazaka46"))
 
     def test_get_config_returns_token_data(self, auth_service):
         """get_config should load from TokenManager and return the dict."""
