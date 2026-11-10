@@ -10,7 +10,7 @@
  * the backend answers 200 with `{success: false, error}` when the upstream official-API call
  * fails, e.g. an expired session; checking only `res.ok` would leave an optimistic star lit for a
  * favourite that was never saved). A 200 without a readable body counts as saved. Rejects only
- * with the fetch's `AbortError` when `signal` aborts.
+ * with an `AbortError` when `signal` aborts, also while the body is being read (never `true`).
  */
 export async function setFavorite(service: string, messageId: number, on: boolean, signal?: AbortSignal): Promise<boolean> {
     const url = `/api/favorites/${messageId}?service=${encodeURIComponent(service)}`;
@@ -22,6 +22,26 @@ export async function setFavorite(service: string, messageId: number, on: boolea
         return false;
     }
     if (!res.ok) return false;
-    const body = await res.json().catch(() => null) as { success?: boolean } | null;
+    const body = await readBody(res, signal);
     return !(body && body.success === false);
+}
+
+/** The JSON body, or null when unreadable; rejects with an `AbortError` once `signal` aborts. */
+function readBody(res: Response, signal?: AbortSignal): Promise<{ success?: boolean } | null> {
+    const read = res.json().catch(() => null) as Promise<{ success?: boolean } | null>;
+    if (!signal) return read;
+    return new Promise((resolve, reject) => {
+        const onAbort = () => reject(signal.reason ?? new DOMException('Aborted', 'AbortError'));
+        if (signal.aborted) {
+            onAbort();
+            return;
+        }
+        signal.addEventListener('abort', onAbort, { once: true });
+        void read.then((body) => {
+            signal.removeEventListener('abort', onAbort);
+            // An abort that broke the read surfaces here as an unreadable (null) body.
+            if (signal.aborted) onAbort();
+            else resolve(body);
+        });
+    });
 }

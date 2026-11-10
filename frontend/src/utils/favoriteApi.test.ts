@@ -41,6 +41,19 @@ describe('setFavorite', () => {
         await expect(setFavorite('hinatazaka46', 7, true)).resolves.toBe(false);
     });
 
+    it('rejects, never resolves true, when the caller aborts while the body is read', async () => {
+        const encoder = new TextEncoder();
+        const controller = new AbortController();
+        server.use(http.post('/api/favorites/:id', () => new HttpResponse(new ReadableStream({
+            start(c) {
+                // Half a body, then the caller leaves before the rest arrives.
+                c.enqueue(encoder.encode('{"success":'));
+                setTimeout(() => controller.abort(), 20);
+            },
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+        await expect(setFavorite('hinatazaka46', 7, true, controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
+    });
+
     it("rejects with the fetch's AbortError when the caller aborts", async () => {
         server.use(http.post('/api/favorites/:id', () => new Promise<Response>(() => {})));
         const controller = new AbortController();
