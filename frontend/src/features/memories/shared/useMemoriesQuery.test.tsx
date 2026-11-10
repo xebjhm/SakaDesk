@@ -1,12 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import React from 'react';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, renderHook, waitFor } from '@testing-library/react';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
 import { useMemoriesQuery } from './useMemoriesQuery';
-import { MemoriesFetchError } from '../api';
+import { MEMORIES_TIMEOUT_MS, MemoriesFetchError, fetchHub } from '../api';
 
 beforeEach(() => { vi.mocked(clientLog).mockClear(); });
+afterEach(() => { vi.useRealTimers(); vi.restoreAllMocks(); });
 
 describe('useMemoriesQuery', () => {
     it('loads, then logs ok with the top-level list length', async () => {
@@ -72,5 +74,55 @@ describe('useMemoriesQuery', () => {
         await act(async () => { resolvers[0]({ n: 1 }); resolvers[1]({ n: 2 }); });
         expect(result.current.data).toEqual({ n: 2 });
         expect(vi.mocked(clientLog).mock.calls).toHaveLength(1);
+    });
+
+    it('a request that never answers times out into error, logs timeout and can retry', async () => {
+        vi.useFakeTimers();
+        let answer = false;
+        vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((resolve, reject) => {
+            if (answer) { resolve(new Response(JSON.stringify({ months: [1, 2] }), { status: 200 })); return; }
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }));
+        const { result } = renderHook(() => useMemoriesQuery('hub', (signal) => fetchHub('hinatazaka46', signal), []));
+        expect(result.current.status).toBe('loading');
+        await act(async () => { await vi.advanceTimersByTimeAsync(MEMORIES_TIMEOUT_MS); });
+        expect(result.current.status).toBe('error');
+        expect(clientLog).toHaveBeenCalledWith('memories_load', { target: 'hub', outcome: 'timeout' });
+        answer = true;
+        await act(async () => { result.current.retry(); await vi.advanceTimersByTimeAsync(0); });
+        expect(result.current.status).toBe('ready');
+    });
+
+    it('counts with the caller selector when given', async () => {
+        const load = async () => ({ total: 9, members: [{}], items: [{}, {}, {}] });
+        const { result } = renderHook(() => useMemoriesQuery('favorites', load, [], { count: (d) => d.items.length }));
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        expect(clientLog).toHaveBeenCalledWith('memories_load', { target: 'favorites', outcome: 'ok', count: 3 });
+    });
+
+    it('never shows the data of the previous deps as ready after a change', async () => {
+        const seen: string[] = [];
+        const load = async (_signal: AbortSignal, n: number) => ({ n });
+        const { result, rerender } = renderHook(({ dep }) => {
+            const q = useMemoriesQuery('timeline', (signal) => load(signal, dep), [dep]);
+            seen.push(`${dep}:${q.status}:${q.data?.n ?? '-'}`);
+            return q;
+        }, { initialProps: { dep: 1 } });
+        await waitFor(() => expect(result.current.data).toEqual({ n: 1 }));
+        seen.length = 0;
+        rerender({ dep: 2 });
+        expect(seen[0]).toBe('2:loading:-');
+        await waitFor(() => expect(result.current.data).toEqual({ n: 2 }));
+        expect(seen.filter((s) => s.startsWith('2:ready:1'))).toEqual([]);
+    });
+
+    it('under StrictMode aborts the first mount and logs one load', async () => {
+        const signals: AbortSignal[] = [];
+        const load = async (signal: AbortSignal) => { signals.push(signal); return { items: [1] }; };
+        const { result } = renderHook(() => useMemoriesQuery('album', load, []), { wrapper: React.StrictMode });
+        await waitFor(() => expect(result.current.status).toBe('ready'));
+        expect(signals).toHaveLength(2);
+        expect(signals[0].aborted).toBe(true);
+        expect(vi.mocked(clientLog).mock.calls.filter((c) => c[0] === 'memories_load')).toHaveLength(1);
     });
 });

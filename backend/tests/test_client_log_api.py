@@ -914,6 +914,7 @@ def test_memories_core_events_are_allowlisted():
             "memories_load",
             {"target": "on_this_day", "outcome": "error", "error_code": 404},
         ),
+        ("memories_load", {"target": "hub", "outcome": "timeout"}),
         ("memories_jump", {"target": "favorites", "has_target": True}),
         ("memories_toggle", {"target": "other_services", "outcome": "on"}),
     ):

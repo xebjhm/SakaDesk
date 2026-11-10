@@ -1,15 +1,20 @@
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
-import { MemoriesFetchError } from '../api';
+import { MemoriesFetchError, MemoriesTimeoutError } from '../api';
 import { logMemoriesLoad, type MemoriesView } from '../memoriesLog';
 
 export type MemoriesQueryStatus = 'loading' | 'ready' | 'error';
 
 export interface MemoriesQuery<T> {
     status: MemoriesQueryStatus;
-    /** The last loaded payload; null while loading or after an error. */
+    /** The payload of the current deps; null while loading or after an error. */
     data: T | null;
-    /** Load again (after an error). */
+    /** Load again (after an error or a timeout). */
     retry: () => void;
+}
+
+export interface MemoriesQueryOptions<T> {
+    /** The number logged as `count` (the view's main list); default: the first top-level array. */
+    count?: (data: T) => number;
 }
 
 /** The length of the payload's first top-level array (`members`, `items`, `months`, ...), if any. */
@@ -21,50 +26,56 @@ function topLevelCount(data: unknown): number | undefined {
     return undefined;
 }
 
+const sameKey = (a: readonly unknown[], b: readonly unknown[]) =>
+    a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
+
 /**
  * Load one Memories view. `load` gets a fresh `AbortSignal` per run; a change of `deps`, a
  * `retry` or an unmount aborts the run in flight, and an aborted run never touches state or
- * logs. Every finished run logs `memories_load` (`target`, `outcome`, `count` = the top-level
- * list length when the payload has one, `error_code` = the HTTP status of a rejected request).
- * `load` is read through a ref: only `deps` and `retry` start a new run.
+ * logs. A result is kept with the key (`target`, attempt, `deps`) it was loaded for, so on
+ * the very render where the deps change the hook already reads `loading`, never the previous
+ * deps' data. Every finished run logs `memories_load`: `outcome` `ok` with `count` (the
+ * `count` option, else the first top-level list length), `timeout` (the API gave up, see
+ * `MEMORIES_TIMEOUT_MS`) or `error` with `error_code` (the HTTP status of a rejected request).
+ * `load` and `count` are read through refs: only `deps` and `retry` start a new run.
  */
 export function useMemoriesQuery<T>(
     target: MemoriesView,
     load: (signal: AbortSignal) => Promise<T>,
     deps: DependencyList,
+    options: MemoriesQueryOptions<T> = {},
 ): MemoriesQuery<T> {
     const loadRef = useRef(load);
     loadRef.current = load;
+    const countRef = useRef(options.count);
+    countRef.current = options.count;
     const [attempt, setAttempt] = useState(0);
-    // Results are tagged with their run, so a newer run reads as loading until it finishes.
-    const [state, setState] = useState<{ run: number; status: MemoriesQueryStatus; data: T | null }>({
-        run: -1, status: 'loading', data: null,
-    });
-    const runRef = useRef(0);
-    const [run, setRun] = useState(0);
+    const key: unknown[] = [target, attempt, ...deps];
+    const [state, setState] = useState<{ key: unknown[]; status: MemoriesQueryStatus; data: T | null } | null>(null);
 
     useEffect(() => {
-        const id = ++runRef.current;
-        setRun(id);
+        const runKey = key;
         const controller = new AbortController();
         loadRef.current(controller.signal).then(
             (data) => {
                 if (controller.signal.aborted) return;
-                const count = topLevelCount(data);
+                const count = countRef.current ? countRef.current(data) : topLevelCount(data);
                 logMemoriesLoad(target, 'ok', count === undefined ? {} : { count });
-                setState({ run: id, status: 'ready', data });
+                setState({ key: runKey, status: 'ready', data });
             },
             (err: unknown) => {
                 if (controller.signal.aborted) return;
-                logMemoriesLoad(target, 'error', err instanceof MemoriesFetchError ? { error_code: err.httpStatus } : {});
-                setState({ run: id, status: 'error', data: null });
+                if (err instanceof MemoriesTimeoutError) logMemoriesLoad(target, 'timeout');
+                else logMemoriesLoad(target, 'error', err instanceof MemoriesFetchError ? { error_code: err.httpStatus } : {});
+                setState({ key: runKey, status: 'error', data: null });
             },
         );
         return () => controller.abort();
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- the caller's deps decide when to reload
-    }, [target, attempt, ...deps]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` is target + attempt + the caller's deps
+    }, key);
 
     const retry = useCallback(() => setAttempt((n) => n + 1), []);
-    const current = state.run === run && state.run === runRef.current;
-    return current ? { status: state.status, data: state.data, retry } : { status: 'loading', data: null, retry };
+    return state && sameKey(state.key, key)
+        ? { status: state.status, data: state.data, retry }
+        : { status: 'loading', data: null, retry };
 }

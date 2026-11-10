@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../__tests__/mocks/server';
 import * as api from './api';
@@ -71,5 +71,40 @@ describe('memories api', () => {
         const pending = api.fetchHub(S, controller.signal);
         controller.abort();
         await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+    });
+});
+
+describe('memories api timeout', () => {
+    it(`gives up after ${api.MEMORIES_TIMEOUT_MS} ms with a MemoriesTimeoutError`, async () => {
+        vi.useFakeTimers();
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }));
+        try {
+            const pending = api.fetchHub(S, new AbortController().signal).catch((e: unknown) => e);
+            await vi.advanceTimersByTimeAsync(api.MEMORIES_TIMEOUT_MS - 1);
+            expect(fetchSpy.mock.calls[0][1]?.signal?.aborted).toBe(false);
+            await vi.advanceTimersByTimeAsync(1);
+            expect(await pending).toBeInstanceOf(api.MemoriesTimeoutError);
+        } finally {
+            fetchSpy.mockRestore();
+            vi.useRealTimers();
+        }
+    });
+
+    it('a caller abort is an AbortError, not a timeout', async () => {
+        const fetchSpy = vi.spyOn(globalThis, 'fetch').mockImplementation((_input, init) => new Promise((_, reject) => {
+            init?.signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }));
+        try {
+            const controller = new AbortController();
+            const pending = api.fetchHub(S, controller.signal).catch((e: unknown) => e);
+            controller.abort();
+            const err = await pending;
+            expect(err).not.toBeInstanceOf(api.MemoriesTimeoutError);
+            expect((err as Error).name).toBe('AbortError');
+        } finally {
+            fetchSpy.mockRestore();
+        }
     });
 });

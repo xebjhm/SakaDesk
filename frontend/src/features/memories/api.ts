@@ -3,11 +3,14 @@
  *
  * One fetcher per endpoint. Each takes the caller's `AbortSignal` (`useMemoriesQuery` aborts
  * on change and unmount), percent-encodes every query value and resolves the parsed payload.
- * A non-2xx answer throws {@link MemoriesFetchError}; an abort rejects with the fetch's
- * `AbortError`. Logging is the caller's (`memories_load` in `useMemoriesQuery`).
+ * A non-2xx answer throws {@link MemoriesFetchError}; a request still unanswered after
+ * {@link MEMORIES_TIMEOUT_MS} is aborted and throws {@link MemoriesTimeoutError}; a caller
+ * abort rejects with the fetch's `AbortError`. Logging is the caller's (`memories_load` in
+ * `useMemoriesQuery`).
  *
- * These are plain fetches, not `pollJson`: they are one-off loads, and a cache miss can take
- * a while to build, so they have no poll timeout and no skip-while-pending key.
+ * These are plain fetches, not `pollJson`: `pollJson` skips or replaces requests per key, so
+ * two loads of one endpoint would collide. The timeout is long because a cache miss can take a
+ * while to build; it exists so a stalled backend never leaves an endless spinner.
  */
 import type {
     AlbumColorsPayload, AlbumMembersPayload, AlbumMonthPayload, AlbumMonthsPayload, AlbumQuery,
@@ -26,6 +29,17 @@ export class MemoriesFetchError extends Error {
     }
 }
 
+/** A Memories request gives up after this long (a cold-cache build stays well under it). */
+export const MEMORIES_TIMEOUT_MS = 20000;
+
+/** A Memories request that got no answer within {@link MEMORIES_TIMEOUT_MS}. */
+export class MemoriesTimeoutError extends Error {
+    constructor() {
+        super('memories request timed out');
+        this.name = 'MemoriesTimeoutError';
+    }
+}
+
 type Query = Record<string, string | number | boolean | undefined>;
 
 function url(service: string, path: string, query: Query = {}): string {
@@ -36,10 +50,28 @@ function url(service: string, path: string, query: Query = {}): string {
     return params.length ? `${base}?${params.join('&')}` : base;
 }
 
+/**
+ * GET `href` as JSON under the caller's signal and the timeout. The two are linked by hand
+ * (not `AbortSignal.any`, which older webviews lack): either aborts one inner controller.
+ */
 async function getJson<T>(href: string, signal: AbortSignal): Promise<T> {
-    const res = await fetch(href, { cache: 'no-store', signal });
-    if (!res.ok) throw new MemoriesFetchError(res.status);
-    return (await res.json()) as T;
+    const inner = new AbortController();
+    let timedOut = false;
+    const timer = setTimeout(() => { timedOut = true; inner.abort(); }, MEMORIES_TIMEOUT_MS);
+    const onAbort = () => inner.abort();
+    if (signal.aborted) inner.abort();
+    else signal.addEventListener('abort', onAbort, { once: true });
+    try {
+        const res = await fetch(href, { cache: 'no-store', signal: inner.signal });
+        if (!res.ok) throw new MemoriesFetchError(res.status);
+        return (await res.json()) as T;
+    } catch (err) {
+        if (timedOut && !signal.aborted) throw new MemoriesTimeoutError();
+        throw err;
+    } finally {
+        clearTimeout(timer);
+        signal.removeEventListener('abort', onAbort);
+    }
 }
 
 /** A path segment (`YYYY-MM`), encoded like a query value. */
