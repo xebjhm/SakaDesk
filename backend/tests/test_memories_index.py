@@ -641,3 +641,28 @@ def test_sync_writing_nests():
             pass
         assert mi.is_sync_writing(p)
     assert not mi.is_sync_writing(p)
+
+
+def test_fact_reads_take_the_process_wide_row_lock(tmp_path):
+    """D4: concurrent row reads in worker threads hit CPython's GIL convoy
+    (sqlite3 drops the GIL per row); they must run one at a time."""
+    import asyncio
+    import threading
+
+    from backend.services.memories import facts as mf
+
+    mi.set_db_path(tmp_path / "idx.db")
+    d = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", content="a")])
+    asyncio.run(mi.get_member_index(tmp_path, d))
+    done = threading.Event()
+
+    def read():
+        mf.facts_in_range(tmp_path, d)
+        done.set()
+
+    with mi.row_reads():
+        t = threading.Thread(target=read)
+        t.start()
+        assert not done.wait(0.2)  # blocked behind the held lock
+    t.join(5)
+    assert done.is_set()

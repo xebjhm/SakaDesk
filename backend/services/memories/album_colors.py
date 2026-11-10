@@ -234,7 +234,8 @@ def _read_rows(service_dir: str, media_files: Iterable[str]) -> dict[str, _Row]:
     """``media_file -> (stat_key, width, height, fmt, rgb)``. Blocking; ``{}`` on error."""
     files = list(media_files)
     try:
-        with contextlib.closing(mi._connect()) as c:
+        # One query per file: many row steps, so it takes the row-read lock.
+        with mi.row_reads(), contextlib.closing(mi._connect()) as c:
             c.execute(_SCHEMA)
             out: dict[str, _Row] = {}
             for mf in files:
@@ -398,7 +399,7 @@ async def month_colors_for(
     )
 
     async def build() -> dict:
-        tagged = await people.scope_facts(sdir, persons)
+        tagged = await people.scope_facts(sdir, persons, types=people.MEDIA_TYPES)
         samples = await asyncio.to_thread(_month_samples, tagged)
         found = await probes(sdir, [mf for files in samples.values() for mf in files])
         colors: dict[str, str | None] = {}

@@ -40,7 +40,9 @@ media_file      TEXT       as written by pysaka (relative, may use ``\\``)
 duration_s      REAL       ``media_duration`` (voice / video), else NULL
 ==============  =========  ====================================================
 
-API (dates are JST calendar dates, inclusive; results sorted by ``(ts, id)``):
+API (dates are JST calendar dates, inclusive; results sorted by ``(ts, id)``).
+Every bulk row read holds ``index.row_reads()`` (one at a time, process-wide;
+see ``index._ROW_READS``):
 
 - ``async get_facts(service_data_dir, member_dir, start=None, end=None, *,
   types=None, include_promo=True, until=None) -> list[Fact]`` -- makes sure the
@@ -76,8 +78,8 @@ API (dates are JST calendar dates, inclusive; results sorted by ``(ts, id)``):
   / favourited / hours / date range filters), ``on_date``, ``first_last``,
   ``by_year``, ``aggregate`` -> :class:`Aggregate`, ``year_aggregates``,
   ``bursts``, ``voice_durations``.
-- ``get_person_facts(sdir, summary) -> [(member_dir, Fact)]`` -- the facts of
-  all of a person's 1:1 rooms (``MemberSummary.member_dirs``) merged and
+- ``get_person_facts(sdir, summary, start=None, end=None, *, types=None) ->
+  [(member_dir, Fact)]`` -- the facts of all of a person's 1:1 rooms (``MemberSummary.member_dirs``) merged and
   sorted by ``(ts, id)``; each fact is tagged with its room's ``member_dir``
   (relative POSIX string) so ``load_texts`` can be called per room.
 - ``load_texts(sdir, mdir, ids=None) -> {id: text}`` -- one read of
@@ -222,7 +224,7 @@ def facts_in_range(
         where.append("ts_utc<=?")
         args.append(mi._utc_iso(until))
     sql = f"{_SELECT} WHERE {' AND '.join(where)} ORDER BY ts_utc, id"
-    with contextlib.closing(mi._connect()) as c:
+    with mi.row_reads(), contextlib.closing(mi._connect()) as c:
         rows = c.execute(sql, args).fetchall()
     return [_row_to_fact(r) for r in rows]
 
@@ -241,7 +243,7 @@ def facts_on_month_day(
         "ORDER BY ts_utc, id"
     )
     args = (str(service_data_dir), mi._rel(service_data_dir, member_dir), month_day)
-    with contextlib.closing(mi._connect()) as c:
+    with mi.row_reads(), contextlib.closing(mi._connect()) as c:
         rows = c.execute(sql, args).fetchall()
     return [_row_to_fact(r) for r in rows]
 
@@ -307,7 +309,7 @@ def facts_at_clock(
     midnight. Sorted by ``(ts, id)``. ``ValueError`` for an out-of-range minute.
     """
     ranges = _clock_ranges(start_minute, end_minute)
-    with contextlib.closing(mi._connect()) as c:
+    with mi.row_reads(), contextlib.closing(mi._connect()) as c:
         return _clock_facts(c, service_data_dir, member_dir, ranges)
 
 
@@ -319,7 +321,7 @@ def facts_at_clock_rooms(
 ) -> dict[Path, list[Fact]]:
     """:func:`facts_at_clock` for several rooms over one connection. Blocking."""
     ranges = _clock_ranges(start_minute, end_minute)
-    with contextlib.closing(mi._connect()) as c:
+    with mi.row_reads(), contextlib.closing(mi._connect()) as c:
         return {d: _clock_facts(c, service_data_dir, d, ranges) for d in member_dirs}
 
 
@@ -496,7 +498,12 @@ async def get_rooms_facts_at_clock(
 
 
 async def get_person_facts(
-    service_data_dir: Path, summary: mi.MemberSummary
+    service_data_dir: Path,
+    summary: mi.MemberSummary,
+    start: date | None = None,
+    end: date | None = None,
+    *,
+    types: Iterable[str] | None = None,
 ) -> list[tuple[str, Fact]]:
     """Facts of every 1:1 room of one person, ``(member_dir, fact)``, by ``(ts, id)``.
 
@@ -507,11 +514,15 @@ async def get_person_facts(
     message by id alone (pysaka ``/messages/{id}/favorite``) and the chat's
     favourite toggle sends only ``(service, id)``, so a per-service lookup
     by id (e.g. ``app_state.favorited_at``) is valid.
-    The rows are read and sorted off the event loop.
+    The rows are read and sorted off the event loop. ``start`` / ``end`` /
+    ``types`` narrow the query as in :func:`get_facts` (a view that needs one
+    month or only media reads only those rows).
     """
     tagged: list[tuple[str, Fact]] = []
     for rel in summary.member_dirs:
-        facts = await get_facts(service_data_dir, service_data_dir / rel)
+        facts = await get_facts(
+            service_data_dir, service_data_dir / rel, start, end, types=types
+        )
         tagged.extend((rel, f) for f in facts)
     return await asyncio.to_thread(_sorted_tagged, tagged)
 

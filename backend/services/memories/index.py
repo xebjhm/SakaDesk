@@ -25,6 +25,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 import time
 from bisect import bisect_left, bisect_right
 from collections import Counter
@@ -138,6 +139,21 @@ CREATE INDEX IF NOT EXISTS message_facts_by_clock
 # needs no INDEX_VERSION bump: SQLite fills it from the existing rows once.
 # The older date / type indexes only cost space; older DBs still have them.
 _DROPPED_INDEXES = ("message_facts_by_date", "message_facts_by_type")
+
+
+# One bulk row read of this DB at a time, process-wide. CPython's sqlite3
+# releases the GIL around every row step, so N worker threads reading rows at
+# once hand the GIL back and forth on each row and wait out the switch
+# interval every time (the "convoy" effect): six concurrent reads of ~3000
+# rows took ~25 s instead of ~0.2 s. Serialised, each read keeps the GIL hot.
+_ROW_READS = threading.Lock()
+
+
+@contextlib.contextmanager
+def row_reads() -> Iterator[None]:
+    """Hold the process-wide row-read lock (see ``_ROW_READS``). Blocking."""
+    with _ROW_READS:
+        yield
 
 
 def _connect() -> sqlite3.Connection:
