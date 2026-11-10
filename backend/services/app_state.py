@@ -1,11 +1,33 @@
 # backend/services/app_state.py
 """Port-independent app state (SQLite, WAL). Source of truth for state the
-frontend used to keep in origin-scoped localStorage."""
+frontend used to keep in origin-scoped localStorage, and for the fan's own
+Memories state (capsule notes, cover overrides, gacha pulls). None of it ever
+goes into the archive.
+
+Schema versions (``PRAGMA user_version``):
+
+======= =================================================================
+Version Change
+======= =================================================================
+0       Base tables created by ``init_db``: ``prefs``,
+        ``conversation_state``, ``translation_cache``, ``favorite_log``.
+1       Memories user state: ``memories_capsule_notes`` (+ two indexes),
+        ``memories_cover_overrides``, ``memories_gacha_pulls``.
+======= =================================================================
+
+Rule: **append a step, never edit one.** A new schema change is a new
+function appended to ``_MIGRATIONS`` (``SCHEMA_VERSION`` follows its length)
+and its tables added to ``_REQUIRED_TABLES``. Every step must be idempotent
+(``CREATE ... IF NOT EXISTS``) so a half-applied or hand-damaged DB heals;
+steps run inside one ``BEGIN IMMEDIATE`` transaction and must use
+``Connection.execute`` (``executescript`` would commit mid-migration).
+"""
 
 from __future__ import annotations
 
 import asyncio
 import json
+from collections.abc import Callable
 from contextlib import closing
 import sqlite3
 import time
@@ -13,7 +35,11 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
+import structlog
+
 from backend.services.platform import get_app_data_dir
+
+logger = structlog.get_logger(__name__)
 
 _db_path: Optional[Path] = None
 _MAX_TRANSLATIONS = 50000
@@ -28,8 +54,8 @@ def _path() -> Path:
     return _db_path or (get_app_data_dir() / "app_state.db")
 
 
-def _connect() -> sqlite3.Connection:
-    """New connection. Callers use ``with closing(_connect()) as c, c:`` --
+def connect() -> sqlite3.Connection:
+    """New connection. Callers use ``with closing(connect()) as c, c:`` --
     the inner ``with`` commits (or rolls back) and ``closing`` releases the
     handle, which sqlite3's own context manager does not."""
     conn = sqlite3.connect(_path())
@@ -38,8 +64,147 @@ def _connect() -> sqlite3.Connection:
     return conn
 
 
+# Kept for existing callers; new code uses :func:`connect`.
+_connect = connect
+
+
+def _step1_memories_user_state(c: sqlite3.Connection) -> None:
+    """Version 1: Memories capsule notes, cover overrides and gacha pulls."""
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS memories_capsule_notes (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          service TEXT NOT NULL,
+          anchor_kind TEXT NOT NULL CHECK (anchor_kind IN ('day','card')),
+          anchor_date TEXT NOT NULL,
+          member_path TEXT,
+          card_key TEXT,
+          body TEXT NOT NULL,
+          created_at TEXT NOT NULL,
+          updated_at TEXT NOT NULL
+        )
+        """
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS memories_capsule_by_anchor "
+        "ON memories_capsule_notes(service, anchor_date)"
+    )
+    c.execute(
+        "CREATE INDEX IF NOT EXISTS memories_capsule_by_created "
+        "ON memories_capsule_notes(service, created_at)"
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS memories_cover_overrides (
+          service_dir TEXT NOT NULL, scope TEXT NOT NULL, month TEXT NOT NULL,
+          room TEXT NOT NULL, message_id INTEGER NOT NULL, set_at TEXT NOT NULL,
+          PRIMARY KEY (service_dir, scope, month)
+        ) WITHOUT ROWID
+        """
+    )
+    c.execute(
+        """
+        CREATE TABLE IF NOT EXISTS memories_gacha_pulls (
+          service TEXT NOT NULL, jst_date TEXT NOT NULL, pull_index INTEGER NOT NULL,
+          room TEXT NOT NULL, message_id INTEGER NOT NULL,
+          rarity TEXT NOT NULL CHECK (rarity IN ('n','r','sr')), reason TEXT NOT NULL,
+          pulled_at TEXT NOT NULL,
+          PRIMARY KEY (service, jst_date, pull_index)
+        ) WITHOUT ROWID
+        """
+    )
+
+
+# Append-only: step N (1-based) brings the DB from version N-1 to N.
+_MIGRATIONS: tuple[Callable[[sqlite3.Connection], None], ...] = (
+    _step1_memories_user_state,
+)
+SCHEMA_VERSION = len(_MIGRATIONS)
+# Objects the migration steps create; a missing one at the current version
+# (hand-damaged DB) re-runs the idempotent steps.
+_REQUIRED_TABLES: frozenset[str] = frozenset(
+    {
+        "memories_capsule_notes",
+        "memories_cover_overrides",
+        "memories_gacha_pulls",
+    }
+)
+
+
+def _migrate(c: sqlite3.Connection) -> None:
+    """Run pending steps in one ``BEGIN IMMEDIATE`` transaction.
+
+    - ``user_version > SCHEMA_VERSION`` (a newer app wrote this DB): touch
+      nothing, never lower the version.
+    - ``user_version == SCHEMA_VERSION``: re-run all steps only when a
+      required table is missing (they are idempotent).
+    - otherwise run steps ``user_version+1 .. SCHEMA_VERSION`` and set
+      ``user_version``. Any ``sqlite3.Error`` rolls everything back and is
+      re-raised.
+    """
+    c.execute("BEGIN IMMEDIATE")
+    step = 0
+    try:
+        current = int(c.execute("PRAGMA user_version").fetchone()[0])
+        if current > SCHEMA_VERSION:
+            c.rollback()
+            logger.warning(
+                "app_state_migrate",
+                outcome="newer_schema",
+                from_version=current,
+                to_version=SCHEMA_VERSION,
+            )
+            return
+        start = current
+        missing = 0
+        if current == SCHEMA_VERSION:
+            present = {
+                r[0]
+                for r in c.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                ).fetchall()
+            }
+            missing = len(_REQUIRED_TABLES - present)
+            if not missing:
+                c.rollback()
+                logger.debug(
+                    "app_state_migrate", outcome="current", from_version=current
+                )
+                return
+            start = 0
+        for step in range(start + 1, SCHEMA_VERSION + 1):
+            _MIGRATIONS[step - 1](c)
+        c.execute(f"PRAGMA user_version = {int(SCHEMA_VERSION)}")
+        c.commit()
+    except sqlite3.Error as exc:
+        c.rollback()
+        logger.error(
+            "app_state_migrate",
+            outcome="error",
+            step=step,
+            error_type=type(exc).__name__,
+        )
+        raise
+    if missing:
+        logger.warning(
+            "app_state_migrate",
+            outcome="healed",
+            from_version=current,
+            missing=missing,
+        )
+    else:
+        logger.info(
+            "app_state_migrate",
+            outcome="migrated",
+            from_version=current,
+            to_version=SCHEMA_VERSION,
+            steps=SCHEMA_VERSION - current,
+        )
+
+
 def init_db() -> None:
-    with closing(_connect()) as c, c:
+    """Create the version-0 tables, then apply pending migrations."""
+    with closing(connect()) as c, c:
         c.executescript(
             """
             CREATE TABLE IF NOT EXISTS prefs (key TEXT PRIMARY KEY, value TEXT);
@@ -53,6 +218,7 @@ def init_db() -> None:
             );
             """
         )
+        _migrate(c)
 
 
 def record_favorite(
