@@ -1,47 +1,24 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
-import { Button, EmptyState } from '../../design/primitives';
-import { cn } from '../../utils/classnames';
+import { StatusBlock } from '../../design/primitives';
 
 export interface DialogStatusProps {
-    kind: 'loading' | 'empty' | 'error';
+    kind: 'loading' | 'empty';
     title?: string;        // translated
     hint?: string;         // translated
     icon?: React.ReactNode;
-    onRetry?: () => void;
-    retryLabel?: string;   // translated
-    retryVariant?: 'secondary' | 'primary'; // default secondary
     className?: string;
 }
 
 /**
- * Loading, empty and error states inside a dialog (one component for every dialog's states).
- * Empty is the brand-moment pattern (`EmptyState`, spec §9): soft circle, muted line icon,
- * serif title, the hint as its one sentence, the retry as its one action.
+ * @deprecated Use `StatusBlock` (`design/primitives`) directly; removed in L7 once the two
+ * gallery modals (`MediaGalleryModal`, `BlogPhotoGalleryModal`) are rebuilt on it.
+ *
+ * Thin adapter: `loading` shows `title` as the wait's label (after the reveal delay), `empty` is the
+ * `EmptyState` brand moment. The error kind is gone; callers use `StatusBlock kind="error"`.
  */
-export const DialogStatus: React.FC<DialogStatusProps> = ({ kind, title, hint, icon, onRetry, retryLabel, retryVariant = 'secondary', className }) => {
-    const retry = onRetry && retryLabel ? <Button variant={retryVariant} size="sm" onClick={onRetry}>{retryLabel}</Button> : undefined;
-    if (kind === 'empty') {
-        return (
-            <div role="status" className={cn('flex flex-col items-center justify-center', className)}>
-                <EmptyState icon={icon} title={title ?? ''} description={hint} action={retry} />
-            </div>
-        );
-    }
-    return (
-        <div
-            role={kind === 'error' ? 'alert' : 'status'}
-            className={cn('flex flex-col items-center justify-center gap-3 px-6 py-12 text-center', className)}
-        >
-            {kind === 'loading' && <Loader2 aria-hidden="true" className="h-8 w-8 animate-spin text-accent motion-reduce:animate-none" />}
-            {kind === 'error' && icon && (
-                <span aria-hidden="true" className="flex rounded-card bg-semantic-danger-icon p-4 text-semantic-danger [&_svg]:h-8 [&_svg]:w-8">
-                    {icon}
-                </span>
-            )}
-            {title && <p className={cn('text-body', kind === 'error' ? 'text-status-danger' : 'text-secondary')}>{title}</p>}
-            {hint && <p className="text-small text-muted">{hint}</p>}
-            {retry}
-        </div>
+export const DialogStatus: React.FC<DialogStatusProps> = ({ kind, title, hint, icon, className }) =>
+    kind === 'empty' ? (
+        <StatusBlock kind="empty" variant="dialog" surface="dialog" title={title ?? ''} hint={hint} icon={icon} className={className} />
+    ) : (
+        <StatusBlock kind="loading" variant="dialog" surface="dialog" label={title} className={className} />
     );
-};

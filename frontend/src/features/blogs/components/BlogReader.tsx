@@ -11,13 +11,12 @@ import { getServiceBlogBaseUrl } from '../../../data/services';
 import { useBlogTranslationVisibility, useInlineBlogTranslations } from '../hooks';
 import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
-import { BlogStatus } from './BlogStatus';
 import { BLOG_PROSE } from './blogProse';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { useAppStore } from '../../../store/appStore';
 import { TranslateButton } from '../../../core/common/TranslateButton';
-import { IconButton } from '../../../design/primitives';
+import { IconButton, StatusBlock } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
 import { aiErrorKey } from '../../../i18n/aiError';
 import { persisted } from '../../../core/persistence/persisted';
@@ -356,11 +355,14 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                 {/* Post column: scrolls; older/newer float over its bottom */}
                 <div className="relative min-w-0 flex-1">
                     <div className="h-full overflow-y-auto">
-                        {loading && <BlogStatus kind="loading" title={t('blogs.loadingPost')} />}
+                        {loading && <StatusBlock kind="loading" variant="block" surface="blog_reader" label={t('blogs.loadingPost')} />}
 
                         {error && !loading && (
-                            <BlogStatus
+                            <StatusBlock
                                 kind="error"
+                                variant="block"
+                                surface="blog_reader"
+                                retryVariant="primary"
                                 icon={<AlertCircle className="h-8 w-8" />}
                                 title={t('blogs.postLoadFailed')}
                                 onRetry={onRetry}

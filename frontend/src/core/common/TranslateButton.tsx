@@ -1,5 +1,6 @@
 import React from 'react';
-import { Loader2, Languages, Globe, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
+import { Languages, Globe, ChevronDown, ChevronRight, AlertCircle } from 'lucide-react';
+import { Spinner } from '../../design/primitives';
 import { useTranslation } from '../../i18n';
 
 interface TranslateButtonProps {
@@ -106,7 +107,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
                     }`}
                 >
                     {isLoading
-                        ? <Loader2 className="h-4 w-4 animate-spin" />
+                        ? <Spinner size="sm" tone="current" label={label} labelVisibility="compact" />
                         : isError
                             ? <AlertCircle className="h-4 w-4" />
                             : <Languages className="h-4 w-4" />
@@ -136,7 +137,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
                 }}
             >
                 {isLoading
-                    ? <Loader2 className="w-3 h-3 animate-spin" />
+                    ? <Spinner size="sm" tone="current" decorative />
                     : <Globe className="w-3 h-3" />
                 }
                 <span>{label}</span>

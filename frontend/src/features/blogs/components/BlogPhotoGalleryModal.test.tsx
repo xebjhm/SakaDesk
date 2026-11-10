@@ -25,7 +25,8 @@ describe('BlogPhotoGalleryModal', () => {
     it('hides the photo count while loading, then shows it', async () => {
         render(<BlogPhotoGalleryModal isOpen onClose={vi.fn()} blogs={[BLOG]} serviceId="hinatazaka46" backupEnabled onJumpToBlog={vi.fn()} />);
         const dialog = screen.getByRole('dialog', { name: i18n.t('blogGallery.title') });
-        expect(dialog).toHaveTextContent(i18n.t('blogGallery.loading'));
+        // The loading label shows after StatusBlock's 200 ms reveal.
+        await waitFor(() => expect(dialog).toHaveTextContent(i18n.t('blogGallery.loading')));
         expect(screen.queryByText(i18n.t('blogGallery.count', { count: 0 }))).toBeNull();
         release();
         await waitFor(() => expect(screen.getByText(i18n.t('blogGallery.count', { count: 2 }))).toBeInTheDocument());

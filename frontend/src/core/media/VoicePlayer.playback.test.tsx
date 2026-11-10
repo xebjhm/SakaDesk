@@ -34,7 +34,7 @@ describe.each(['compact', 'premium'] as const)('VoicePlayer playback state (%s)'
         const { container } = render(<VoicePlayer src="/api/media/voice.m4a" variant={variant} />);
         const el = audio(container);
         act(() => { el.dispatchEvent(new Event('waiting')); });
-        const spinner = screen.getByTestId('voice-buffering');
+        const spinner = screen.getByTestId('voice-buffering').querySelector('svg')!;
         expect(spinner).toHaveClass('animate-spin', 'motion-reduce:animate-none');
         expect(spinner.closest('button')).toHaveAttribute('aria-busy', 'true');
         expect(clientLog).toHaveBeenCalledWith('media_playback', expect.objectContaining({ phase: 'waiting', surface: 'voice' }));

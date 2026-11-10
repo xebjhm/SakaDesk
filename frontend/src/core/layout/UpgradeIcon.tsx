@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
-import { Download, ArrowUpCircle, Loader2, X, AlertCircle } from 'lucide-react';
+import { Download, ArrowUpCircle, X, AlertCircle } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
+import { Spinner } from '../../design/primitives';
 import { useUpgradeStore, upgradeStage, openReleasePage } from '../upgrade/upgradeStore';
 
 // SVG progress ring constants (hoisted to avoid recomputation on every render)
@@ -143,7 +144,7 @@ export function UpgradeIcon() {
                 {stage === 'error' ? (
                     <AlertCircle className="h-5 w-5" />
                 ) : stage === 'launching' ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Spinner size="md" tone="current" label={t('update.installing')} labelVisibility="compact" />
                 ) : stage === 'ready' ? (
                     <ArrowUpCircle className="h-5 w-5" />
                 ) : (

@@ -7,9 +7,8 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { Search, Loader2, Database } from 'lucide-react';
-import { Button, Modal } from '../../design/primitives';
-import { DialogStatus } from '../../core/common/DialogStatus';
+import { Search, Database } from 'lucide-react';
+import { Button, Modal, Spinner, StatusBlock } from '../../design/primitives';
 import { logDialogLoad } from '../../design/dialog/dialogLog';
 import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
@@ -422,7 +421,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
 
       {blogBackupEnabled && blogSyncInProgress && (
         <p role="status" className="flex items-center gap-2 bg-sunken px-4 py-2 text-caption text-secondary">
-          <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+          <Spinner size="sm" tone="muted" decorative />
           {t('search.blogBackupInProgress')}
         </p>
       )}
@@ -452,10 +451,10 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
             {t('search.buildingHint')}
           </p>
         )}
-        {isLoading && results.length === 0 && <DialogStatus kind="loading" className="py-8" />}
-        {error && <DialogStatus kind="error" title={t('search.searchFailed')} className="py-8" />}
+        {isLoading && results.length === 0 && <StatusBlock kind="loading" surface="dialog_search" className="py-8" />}
+        {error && <StatusBlock kind="error" surface="dialog_search" title={t('search.searchFailed')} onRetry={() => setSearchGeneration((g) => g + 1)} className="py-8" />}
         {!isLoading && !error && !isIndexBuilding && query.trim() && results.length === 0 && (
-          <DialogStatus kind="empty" icon={<Search />} title={t('search.noResults')} hint={t('search.noResultsHint')} className="py-8" />
+          <StatusBlock kind="empty" surface="dialog_search" icon={<Search />} title={t('search.noResults')} hint={t('search.noResultsHint')} className="py-8" />
         )}
         {results.length > 0 && (
           <SearchResultList
@@ -468,8 +467,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
           />
         )}
         {hasMore && results.length > 0 && (
-          <Button variant="ghost" size="sm" className="mx-auto my-1" onClick={handleLoadMore} disabled={isLoadingMore}>
-            {isLoadingMore && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />}
+          <Button variant="ghost" size="sm" className="mx-auto my-1" onClick={handleLoadMore} loading={isLoadingMore}>
             {t('search.loadMore')}
           </Button>
         )}

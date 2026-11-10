@@ -7,8 +7,7 @@ import { getMemberThumbnailUrl } from '../api';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
 import { useAppStore } from '../../../store/appStore';
 import { useTranslation } from '../../../i18n';
-import { Modal } from '../../../design/primitives';
-import { DialogStatus } from '../../../core/common/DialogStatus';
+import { Modal, StatusBlock } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { clientLog } from '../../../utils/clientLog';
 import { isMascot, MASCOT_THUMBNAIL_URL } from '../mascot';
@@ -226,12 +225,12 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
             className="max-h-[85vh] w-auto max-w-full"
         >
             <div className="mx-auto max-w-full" style={{ width: modalWidth - 48 }}>
-            {loading && <DialogStatus kind="loading" title={t('blogs.loadingMembers')} />}
+            {loading && <StatusBlock kind="loading" surface="blog_members" label={t('blogs.loadingMembers')} />}
             {error && !loading && (
-                <DialogStatus kind="error" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} retryVariant="primary" />
+                <StatusBlock kind="error" surface="blog_members" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} retryVariant="primary" />
             )}
             {!loading && !error && filteredMembers.length === 0 && (
-                <DialogStatus kind="empty" icon={<Users />} title={t('blogs.noMembersFound')} />
+                <StatusBlock kind="empty" surface="blog_members" icon={<Users />} title={t('blogs.noMembersFound')} />
             )}
             {!loading && !error && filteredMembers.length > 0 && (
                 <div className="flex flex-col gap-6">

@@ -4,11 +4,10 @@ import { useAuth } from '../../shell/hooks/useAuth';
 import { getServiceById, sortByServiceOrder } from '../../data/services';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
-import { Modal, Button, Card, Pill } from '../../design/primitives';
+import { Modal, Button, Card, Pill, Spinner, StatusBlock } from '../../design/primitives';
 import { logDialogLoad } from '../../design/dialog/dialogLog';
 import { cn, formatDateTime } from '../../utils/classnames';
 import { toValidDate } from '../../utils/dateFormatters';
-import { DialogStatus } from '../common/DialogStatus';
 import { clientLog } from '../../utils/clientLog';
 
 /** How often the panel polls `/api/diagnostics/disk-usage` while it is `pending`. */
@@ -313,7 +312,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
             footer={
                 <>
                     <Button variant="ghost" className="mr-auto" onClick={() => fetchDiagnostics(true)}>
-                        <RefreshCw className={cn('h-4 w-4', loading && 'animate-spin motion-reduce:animate-none')} />
+                        {loading ? <Spinner size="sm" tone="current" decorative /> : <RefreshCw className="h-4 w-4" />}
                         Refresh
                     </Button>
                     <Button
@@ -328,9 +327,9 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                 </>
             }
         >
-                    {loading && <DialogStatus kind="loading" />}
+                    {loading && <StatusBlock kind="loading" surface="dialog_diagnostics" />}
 
-                    {error && <DialogStatus kind="error" title={error} />}
+                    {error && <StatusBlock kind="error" surface="dialog_diagnostics" title={error} onRetry={() => fetchDiagnostics()} />}
 
                     {data && !loading && (
                         <>
@@ -472,7 +471,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                     <div className="flex flex-col gap-1 text-small">
                                         {data.disk_usage.state === 'pending' && !diskPollFailed ? (
                                             <div role="status" data-testid="disk-usage-pending" className="flex items-center gap-2 text-muted">
-                                                <RefreshCw className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+                                                <Spinner size="sm" tone="current" decorative />
                                                 {t('diagnostics.diskUsageCalculating')}
                                             </div>
                                         ) : data.disk_usage.state !== 'ready' || diskPollFailed ? (

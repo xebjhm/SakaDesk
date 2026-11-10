@@ -94,9 +94,9 @@ describe('BlogReader', () => {
         expect(p.onRetry).toHaveBeenCalledTimes(1);
     });
 
-    it('announces loading', () => {
+    it('announces loading', async () => {
         render(<BlogReader {...props({ content: null, loading: true })} />);
-        expect(screen.getByRole('status')).toHaveTextContent('Loading post...');
+        expect(await screen.findByRole('status', { name: 'Loading post...' })).toHaveTextContent('Loading post...');
     });
 
     it('paints the member penlight wash from member data through CSS variables', () => {

@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useId } from 'react';
 import { Calendar as CalendarIcon } from 'lucide-react';
 import { cn } from '../../utils/classnames';
-import { Button, Modal } from '../../design/primitives';
-import { DialogStatus } from '../common/DialogStatus';
+import { Button, Modal, StatusBlock } from '../../design/primitives';
 import { logDialogLoad } from '../../design/dialog/dialogLog';
 import type { BaseModalProps } from '../../types/modal';
 import type { Message } from '../../types';
@@ -295,9 +294,9 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
             </div>
 
             {loading ? (
-                <DialogStatus kind="loading" />
+                <StatusBlock kind="loading" surface="dialog_calendar" />
             ) : loadFailed ? (
-                <DialogStatus kind="error" title={t('calendar.loadFailed')} onRetry={fetchDates} retryLabel={t('common.retry')} />
+                <StatusBlock kind="error" surface="dialog_calendar" title={t('calendar.loadFailed')} onRetry={fetchDates} retryLabel={t('common.retry')} />
             ) : picking ? (
                 <MonthYearPicker
                     years={pickerYears}

@@ -1,17 +1,30 @@
-import { describe, it, expect, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
-import userEvent from '@testing-library/user-event';
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
 import { Star } from 'lucide-react';
 import { DialogStatus } from './DialogStatus';
 
-describe('DialogStatus', () => {
-    it('loading is a status with a spinner', () => {
-        render(<DialogStatus kind="loading" title="読み込み中…" />);
+describe('DialogStatus (deprecated adapter over StatusBlock)', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('loading renders through StatusBlock: nothing at 199 ms, the titled spinner at 200 ms', () => {
+        vi.useFakeTimers();
+        const { container } = render(<DialogStatus kind="loading" title="読み込み中…" />);
+        act(() => { vi.advanceTimersByTime(199); });
+        expect(container.querySelector('svg.animate-spin')).toBeNull();
+        act(() => { vi.advanceTimersByTime(1); });
         expect(screen.getByRole('status')).toHaveTextContent('読み込み中…');
-        expect(screen.getByRole('status').querySelector('svg.animate-spin')).not.toBeNull();
+        expect(container.querySelector('svg.animate-spin')).toHaveClass('motion-reduce:animate-none', 'text-accent');
     });
 
-    it('empty shows the icon tile, title and hint', () => {
+    it('loading with no title uses the default label and ignores the icon', () => {
+        vi.useFakeTimers();
+        render(<DialogStatus kind="loading" icon={<Star />} />);
+        act(() => { vi.advanceTimersByTime(200); });
+        expect(screen.getByRole('status')).toHaveTextContent('Loading');
+        expect(document.querySelector('svg.lucide-star')).toBeNull();
+    });
+
+    it('empty shows the icon tile, title and hint, with no alert or button', () => {
         render(<DialogStatus kind="empty" icon={<Star />} title="お気に入りなし" hint="長押しで追加 ⭐" />);
         expect(screen.getByRole('status')).toHaveTextContent('長押しで追加 ⭐');
         expect(screen.getByRole('status').querySelector('svg.lucide-star')).not.toBeNull();
@@ -19,34 +32,7 @@ describe('DialogStatus', () => {
         expect(screen.queryByRole('button')).toBeNull();
     });
 
-    it('shows no retry button without a retry label, and no icon while loading', () => {
-        render(<DialogStatus kind="error" title="e" onRetry={vi.fn()} />);
-        expect(screen.queryByRole('button')).toBeNull();
-        render(<DialogStatus kind="loading" icon={<Star />} />);
-        expect(document.querySelector('svg.lucide-star')).toBeNull();
-    });
-
-    it('error is an alert in the danger colour with a retry', async () => {
-        const onRetry = vi.fn();
-        render(<DialogStatus kind="error" title="失敗しました" onRetry={onRetry} retryLabel="再試行" />);
-        expect(screen.getByRole('alert')).toBeInTheDocument();
-        expect(screen.getByText('失敗しました')).toHaveClass('text-status-danger');
-        await userEvent.click(screen.getByRole('button', { name: '再試行' }));
-        expect(onRetry).toHaveBeenCalled();
-    });
-
-    it('tints the spinner and tiles, and the retry is secondary unless retryVariant is primary', () => {
-        const { container, rerender } = render(<DialogStatus kind="loading" />);
-        expect(container.querySelector('.animate-spin')).toHaveClass('text-accent');
-        rerender(<DialogStatus kind="error" icon={<Star />} onRetry={vi.fn()} retryLabel="Retry" />);
-        expect(container.querySelector('span[aria-hidden]')).toHaveClass('bg-semantic-danger-icon', 'text-semantic-danger');
-        expect(screen.getByRole('button', { name: 'Retry' })).not.toHaveClass('bg-accent-gradient');
-        rerender(<DialogStatus kind="empty" icon={<Star />} onRetry={vi.fn()} retryLabel="Retry" retryVariant="primary" />);
-        expect(screen.getByTestId('empty-state-circle')).toHaveClass('bg-expressive-soft', 'text-muted');
-        expect(screen.getByRole('button', { name: 'Retry' })).toHaveClass('bg-accent-gradient');
-    });
-
-    it('draws an empty dialog as the brand-moment pattern: soft circle, serif title, hint (R-d)', () => {
+    it('draws an empty dialog as the brand-moment pattern and keeps className', () => {
         render(<DialogStatus kind="empty" icon={<Star />} title="お気に入りなし" hint="長押しで追加 ⭐" className="py-8" />);
         const status = screen.getByRole('status');
         expect(status).toHaveClass('py-8');

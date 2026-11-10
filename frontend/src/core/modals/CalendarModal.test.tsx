@@ -194,9 +194,8 @@ describe('CalendarModal component', () => {
         />
       )
 
-      // Loading indicator should be visible
-      const loadingElement = document.querySelector('.animate-spin')
-      expect(loadingElement).toBeInTheDocument()
+      // The indicator is delayed by the 200 ms reveal (no flash on fast loads).
+      await waitFor(() => expect(document.querySelector('.animate-spin')).toBeInTheDocument())
     })
 
     it('should show error state on API failure', async () => {

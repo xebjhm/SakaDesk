@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Button, Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
-import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw, Loader2 } from 'lucide-react';
+import { Button, Spinner, Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
+import { Volume2, VolumeX, Play, Pause, MoreVertical, Download, RotateCcw, RotateCw } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
@@ -613,7 +613,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                             aria-busy={isBuffering || undefined}
                         >
                             {isBuffering ? (
-                                <Loader2 aria-hidden="true" data-testid="voice-buffering" className="w-6 h-6 text-inverse animate-spin motion-reduce:animate-none" />
+                                <span data-testid="voice-buffering" className="flex"><Spinner size="md" tone="current" className="text-inverse" labelVisibility="compact" /></span>
                             ) : isPlaying ? (
                                 <Pause className="w-6 h-6 text-inverse fill-current" />
                             ) : (
@@ -794,7 +794,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     aria-busy={isBuffering || undefined}
                 >
                     {isBuffering ? (
-                        <Loader2 aria-hidden="true" data-testid="voice-buffering" className="w-5 h-5 text-inverse animate-spin motion-reduce:animate-none" />
+                        <span data-testid="voice-buffering" className="flex"><Spinner size="sm" tone="current" className="text-inverse" labelVisibility="compact" /></span>
                     ) : isPlaying ? (
                         <Pause className="w-5 h-5 text-inverse fill-current" />
                     ) : (
