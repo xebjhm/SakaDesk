@@ -208,41 +208,71 @@ def recap_window(
     return start, end
 
 
+def _qualifies(title: str, value: float | None) -> bool:
+    if value is None:
+        return False
+    if title == "steady":
+        return value >= STREAK_MIN
+    return title == "first" or value > 0
+
+
 def assign_titles(
     metrics: dict[str, dict[str, float | None]], order: Sequence[str]
 ) -> dict[str, str | None]:
-    """Greedy distinct role titles.
+    """Distinct role titles that are literally true superlatives.
 
-    ``metrics[member][title]`` is higher-is-better; ``None`` or ``<= 0`` (for
-    counts) means the member has nothing for that title. Each round assigns
-    the (member, title) pair where the member ranks best among the members
-    still unassigned; ties go to :data:`TITLE_ORDER`, then ``order``. Members
-    left without a qualifying title get ``None``.
+    ``metrics[member][title]`` is higher-is-better. A value qualifies when it
+    is not ``None`` and, for counts, above 0; ``steady`` (the longest run of
+    consecutive days) qualifies from :data:`STREAK_MIN` days, the threshold s03
+    shows a streak at. A member *leads* a title when their qualifying value is
+    the top value among all members in ``metrics`` (ties all lead).
+
+    Only leaders can hold a title; each member holds at most one title and each
+    title goes to at most one member. Among those pairs the assignment titles
+    as many members as possible (a maximum bipartite matching). Ties are broken
+    deterministically: members earlier in ``order`` (star order) are titled
+    first, and each member tries titles in :data:`TITLE_ORDER`. So the leader
+    of a title either holds it or holds another title they truly lead, unless
+    a tied co-leader holds it. Members who lead nothing (or whose titles all
+    went to tied co-leaders) get ``None``. Logs ``recap.titles`` with counts.
     """
-    rank_of = {k: i for i, k in enumerate(order)}
     out: dict[str, str | None] = {k: None for k in order}
     members = [k for k in order if k in metrics]
-    titles = list(TITLE_ORDER)
-    while members and titles:
-        best: tuple[tuple[int, int, int], str, str] | None = None
-        for t in titles:
-            vals: list[tuple[str, float]] = []
-            for k in members:
-                v = metrics[k].get(t)
-                if v is None or (t != "first" and v <= 0):
-                    continue
-                vals.append((k, v))
-            for k, v in vals:
-                rank = 1 + sum(1 for _, w in vals if w > v)
-                cand = (rank, TITLE_ORDER.index(t), rank_of[k])
-                if best is None or cand < best[0]:
-                    best = (cand, k, t)
-        if best is None:
-            break
-        _, k, t = best
+    leads: dict[str, list[str]] = {k: [] for k in members}
+    for t in TITLE_ORDER:
+        vals = {
+            k: v
+            for k in members
+            if _qualifies(t, v := metrics[k].get(t)) and v is not None
+        }
+        if not vals:
+            continue
+        top = max(vals.values())
+        for k in members:
+            if vals.get(k) == top:
+                leads[k].append(t)
+    holder: dict[str, str] = {}  # title -> member
+
+    def augment(k: str, seen: set[str]) -> bool:
+        for t in leads[k]:
+            if t in seen:
+                continue
+            seen.add(t)
+            if t not in holder or augment(holder[t], seen):
+                holder[t] = k
+                return True
+        return False
+
+    for k in members:
+        augment(k, set())
+    for t, k in holder.items():
         out[k] = t
-        members.remove(k)
-        titles.remove(t)
+    logger.info(
+        "recap.titles",
+        members=len(members),
+        leaders=sum(1 for k in members if leads[k]),
+        titled=len(holder),
+    )
     return out
 
 
@@ -1655,8 +1685,6 @@ async def build_members_overview(
     order = [s.member_ids[0] for s, _ in stats]
     eligible = {s.member_ids[0]: st.metrics for s, st in stats if st.tier != "none"}
     titles = assign_titles(eligible, [k for k in order if k in eligible])
-    for k, t in titles.items():
-        logger.info("recap.title", member_id=k, title=t)
     members = [
         {
             "member_path": _display_path(service_data_dir, s.member_dirs[0]),

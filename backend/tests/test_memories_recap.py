@@ -261,43 +261,122 @@ def test_phase_flags(when, phase, xmas):
         assert recap.phase_flags(2026, datetime.now(timezone.utc)) == (phase, xmas)
 
 
-def test_titles_are_distinct_and_never_for_zero():
-    metrics = {
-        "a": {
-            "morning": 9,
-            "nickname": 9,
-            "longest": 900,
-            "voice": 0,
-            "night": 5,
-            "photos": 3,
-            "steady": 4,
-            "first": -100,
-        },
-        "b": {
-            "morning": 8,
-            "nickname": 1,
-            "longest": 100,
-            "voice": 0,
-            "night": 9,
-            "photos": 9,
-            "steady": 9,
-            "first": None,
-        },
-        "c": {
-            "morning": 0,
-            "nickname": 0,
-            "longest": 50,
-            "voice": 0,
-            "night": 0,
-            "photos": 0,
-            "steady": 1,
-            "first": None,
-        },
+def _metrics(**vals):
+    base = dict.fromkeys(recap.TITLE_ORDER, 0)
+    base["first"] = None
+    base.update(vals)
+    return base
+
+
+def _leaders(metrics, title):
+    vals = {
+        k: v[title]
+        for k, v in metrics.items()
+        if v[title] is not None
+        and (v[title] >= recap.STREAK_MIN if title == "steady" else True)
+        and (title == "first" or v[title] > 0)
     }
-    titles = recap.assign_titles(metrics, ["a", "b", "c"])
-    assigned = [t for t in titles.values() if t]
-    assert len(assigned) == len(set(assigned)) == 3
-    assert "voice" not in assigned  # nobody sent a voice
+    top = max(vals.values(), default=None)
+    return {k for k, v in vals.items() if v == top}
+
+
+def _max_matching(metrics):
+    """Brute force: the most members that can each hold a distinct led title."""
+    import itertools
+
+    members = list(metrics)
+    best = 0
+    for r in range(len(members), 0, -1):
+        for group in itertools.combinations(members, r):
+            for perm in itertools.permutations(recap.TITLE_ORDER, r):
+                if all(k in _leaders(metrics, t) for k, t in zip(group, perm)):
+                    return r
+    return best
+
+
+def _check_titles(metrics, order):
+    titles = recap.assign_titles(metrics, order)
+    assigned = {k: t for k, t in titles.items() if t}
+    # each title at most once, each member at most one title
+    assert len(set(assigned.values())) == len(assigned)
+    # only true leaders (ties count) hold a title
+    for k, t in assigned.items():
+        assert k in _leaders(metrics, t), (k, t)
+    # the leader of a title holds it or another title they lead, unless a
+    # tied co-leader holds it
+    for t in recap.TITLE_ORDER:
+        leaders = _leaders(metrics, t)
+        if leaders and t not in assigned.values():
+            assert leaders <= set(assigned), t
+    # as many members as possible are titled
+    assert len(assigned) == _max_matching(metrics)
+    # deterministic, whatever the dict order
+    shuffled = dict(reversed(list(metrics.items())))
+    assert recap.assign_titles(shuffled, order) == titles
+    return titles
+
+
+def test_titles_go_only_to_the_true_leader():
+    # a leads morning and nickname; b is only second in nickname. The old
+    # greedy gave b "called your name most" although a did more often.
+    metrics = {
+        "a": _metrics(morning=9, nickname=9),
+        "b": _metrics(nickname=8),
+    }
+    titles = _check_titles(metrics, ["a", "b"])
+    assert titles == {"a": "morning", "b": None}
+
+
+def test_titles_maximise_titled_members_by_star_order():
+    # a leads morning and night; b leads only morning (tie). Both get one.
+    metrics = {
+        "a": _metrics(morning=5, night=3),
+        "b": _metrics(morning=5),
+    }
+    assert _check_titles(metrics, ["a", "b"]) == {"a": "night", "b": "morning"}
+    # c and d tie on the only title: star order decides.
+    metrics = {"c": _metrics(voice=2), "d": _metrics(voice=2)}
+    assert _check_titles(metrics, ["d", "c"]) == {"d": "voice", "c": None}
+    assert _check_titles(metrics, ["c", "d"]) == {"c": "voice", "d": None}
+
+
+def test_titles_never_for_zero_or_a_short_streak():
+    metrics = {
+        "a": _metrics(steady=6, longest=10),
+        "b": _metrics(steady=3, voice=0),
+    }
+    titles = _check_titles(metrics, ["a", "b"])
+    assert titles == {"a": "longest", "b": None}
+    metrics = {"a": _metrics(steady=7), "b": _metrics(steady=6)}
+    assert _check_titles(metrics, ["a", "b"]) == {"a": "steady", "b": None}
+
+
+def test_titles_log_counts_only():
+    metrics = {"a": _metrics(morning=1), "b": _metrics()}
+    with capture_logs() as logs:
+        recap.assign_titles(metrics, ["a", "b"])
+    crumb = next(e for e in logs if e["event"] == "recap.titles")
+    assert {k: crumb[k] for k in ("members", "leaders", "titled")} == {
+        "members": 2,
+        "leaders": 1,
+        "titled": 1,
+    }
+    assert set(crumb) <= {"event", "log_level", "members", "leaders", "titled"}
+
+
+def test_titles_properties_on_random_rosters():
+    import random
+
+    rng = random.Random(20261110)
+    for _ in range(300):
+        n = rng.randint(1, 5)
+        metrics = {}
+        for i in range(n):
+            vals = {t: rng.choice([0, 0, 1, 2, 3]) for t in recap.TITLE_ORDER}
+            vals["steady"] = rng.choice([0, 3, 7, 8])
+            vals["first"] = rng.choice([None, -3, -2])
+            metrics[f"m{i}"] = vals
+        _check_titles(metrics, list(metrics))
 
 
 # --- the full member, partial phase --------------------------------------------
@@ -832,5 +911,18 @@ async def test_recap_years_ignores_messages_after_now(full):
 
 @pytest.mark.asyncio
 async def test_recap_years_empty_service(svc):
+    with time_machine.travel(PARTIAL, tick=False):
+        assert await recap.recap_years(svc, now=datetime.now(timezone.utc)) == []
+
+
+@pytest.mark.asyncio
+async def test_recap_years_does_not_count_promo(svc):
+    # 9 real messages plus 5 promo ones in 2024: below the short tier.
+    rows = [m(k, f"2024-03-{1 + k:02d} 20:00", content=f"話{k}") for k in range(9)]
+    rows += [
+        m(50 + k, f"2024-04-{1 + k:02d} 20:00", content="詳細はコチラ https://x.jp")
+        for k in range(5)
+    ]
+    write_room(svc, KANEMURA, rows)
     with time_machine.travel(PARTIAL, tick=False):
         assert await recap.recap_years(svc, now=datetime.now(timezone.utc)) == []
