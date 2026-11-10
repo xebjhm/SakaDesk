@@ -4,6 +4,7 @@ import { useTranslation } from '../../../i18n';
 import { Atmosphere, IconButton } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { logRecapPlay } from '../memoriesLog';
+import { useReducedMotion } from '../shared/useReducedMotion';
 import type { RecapPayload } from './api';
 import { SLIDE_REGISTRY, type PlayerSlide, type SlideRegistry } from './slideRegistry';
 
@@ -11,22 +12,6 @@ import { SLIDE_REGISTRY, type PlayerSlide, type SlideRegistry } from './slideReg
 export const AUTO_ADVANCE_MS = 7000;
 
 type StepReason = 'auto' | 'key' | 'click' | 'media';
-
-function prefersReducedMotion(): boolean {
-    return typeof window !== 'undefined' && (window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches ?? false);
-}
-
-function useReducedMotion(): boolean {
-    const [reduced, setReduced] = useState(prefersReducedMotion);
-    useEffect(() => {
-        const mq = window.matchMedia?.('(prefers-reduced-motion: reduce)');
-        if (!mq?.addEventListener) return;
-        const onChange = () => setReduced(mq.matches);
-        mq.addEventListener('change', onChange);
-        return () => mq.removeEventListener('change', onChange);
-    }, []);
-    return reduced;
-}
 
 /**
  * Keys belong to the player only when nothing else wants them: the key is aimed at the page body
