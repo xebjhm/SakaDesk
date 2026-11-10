@@ -299,9 +299,11 @@ export function s12Copy(year: number): { title: CopyLine } {
 /**
  * s13. Graduated in the year: her last message ("最後のメッセージ"). The
  * `last_text` fallback (no おやすみ at all) never calls the message an おやすみ.
+ * The 「来年も、よろしくね。」 narration plays only while `year` is not earlier than the current
+ * JST year; a past year's recap shows no narration line.
  */
 export function s13Copy(
-    data: S13OyasumiData, fallback: string | null, year: number,
+    data: S13OyasumiData, fallback: string | null, year: number, now: Date = new Date(),
 ): { title: CopyLine; note: CopyLine | null; narration: CopyLine | null } {
     if (data.graduated) {
         return { title: { key: 'recap.s13.graduatedTitle' }, note: null, narration: { key: 'recap.s13.graduatedLine' } };
@@ -311,7 +313,7 @@ export function s13Copy(
         return {
             title: { key: lastText ? 'recap.s13.lastTextTitle' : 'recap.s13.title', params: { year } },
             note: null,
-            narration: { key: 'recap.s13.narration' },
+            narration: year < currentJstYear(now) ? null : { key: 'recap.s13.narration' },
         };
     }
     return {

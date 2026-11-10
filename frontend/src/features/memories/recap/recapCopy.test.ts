@@ -56,7 +56,7 @@ describe('recapCopy', () => {
 
     it('s13: final, partial and graduated copy', () => {
         const d = (final: boolean, graduated: boolean): S13OyasumiData => ({ message: null, final, graduated });
-        expect(s13Copy(d(true, false), null, 2026)).toEqual({
+        expect(s13Copy(d(true, false), null, 2026, new Date('2026-12-31T14:59:00Z'))).toEqual({
             title: { key: 'recap.s13.title', params: { year: 2026 } }, note: null, narration: { key: 'recap.s13.narration' },
         });
         expect(s13Copy(d(false, false), null, 2026)).toEqual({
@@ -65,6 +65,16 @@ describe('recapCopy', () => {
         expect(s13Copy(d(false, true), null, 2026)).toEqual({
             title: { key: 'recap.s13.graduatedTitle' }, note: null, narration: { key: 'recap.s13.graduatedLine' },
         });
+    });
+
+    it('s13: a past year\'s recap has no 来年も narration', () => {
+        const d: S13OyasumiData = { message: null, final: true, graduated: false };
+        // 2027-01-01 00:00 JST: the 2026 recap is a past year's.
+        expect(s13Copy(d, null, 2026, new Date('2026-12-31T15:00:00Z')).narration).toBeNull();
+        expect(s13Copy(d, 'last_text', 2025, new Date('2026-06-01T00:00:00Z')).narration).toBeNull();
+        // Graduated keeps her own closing line.
+        expect(s13Copy({ ...d, graduated: true }, null, 2025, new Date('2026-06-01T00:00:00Z')).narration)
+            .toEqual({ key: 'recap.s13.graduatedLine' });
     });
 
     it('s13: the last-text fallback never calls it an oyasumi', () => {
