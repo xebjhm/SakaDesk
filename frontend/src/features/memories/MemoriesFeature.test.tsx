@@ -35,6 +35,9 @@ beforeEach(() => {
         http.get('/api/memories/:service/favorites', () => HttpResponse.json({ total: 0, members: [], items: [] })),
         // The hub board (C13) loads its moment, counts and countdown.
         http.get('/api/memories/:service/hub', () => HttpResponse.json(hubPayload())),
+        // The radio page (F9) loads its member list and the first program.
+        http.get('/api/memories/:service/radio/members', () => HttpResponse.json({ total_seconds: null, members: [] })),
+        http.get('/api/memories/:service/radio/program', () => HttpResponse.json({ program: 'oyasumi', programs: [], years: [], tracks: [] })),
         // The memoir page (C11) loads its member list.
         http.get('/api/memories/:service/memoir/members', () => HttpResponse.json({ members: [] })),
         http.get('/api/memories/:service/recap/years', () => (
@@ -108,6 +111,7 @@ describe('Memories feature', () => {
             { route: { page: 'album', memberPath: 'x' }, testId: 'memories-page-album', title: 'Album' },
             { route: { page: 'memoir', tab: 'binder' }, testId: 'memories-page-memoir', title: 'Member memories' },
             { route: { page: 'favorites' }, testId: 'memories-page-favorites', title: 'Favorites' },
+            { route: { page: 'radio' }, testId: 'memories-page-radio', title: 'Voice radio' },
         ] as const;
 
         it.each(PAGES)('opens the $route.page page with its header and returns home', async ({ route, testId, title }) => {
@@ -145,9 +149,14 @@ describe('Memories feature', () => {
         });
     });
 
+    it('a deep link to the radio logs its snake_case page code', () => {
+        vi.mocked(clientLog).mockClear();
+        render(<MemoriesFeature service="hinatazaka46" initialRoute={{ page: 'radio' }} />);
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_page', { target: 'radio' });
+    });
+
     describe('fun-wave routes (placeholders until their tasks)', () => {
         const FUN = [
-            { route: { page: 'radio' }, testId: 'memories-page-radio', title: 'Voice radio', code: 'radio' },
             { route: { page: 'gacha' }, testId: 'memories-page-gacha', title: 'Memory gacha', code: 'gacha' },
             { route: { page: 'calendar', month: '2024-09' }, testId: 'memories-page-calendar', title: 'Calendar', code: 'calendar' },
             // JST midnight on Jan 1: a title formatted in UTC would read "Dec 31, 2023".

@@ -859,6 +859,18 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   focused message larger on paper with the yellow `text-semantic-star` when it is a favourite,
   its neighbours of that day as dimmed frames, ‹ / › (and ← / →) for older / newer. Long boards
   mount only the chunks near the viewport.
+- **The voice radio** (`features/memories/radio/`): the station is a `bg-memories-night`
+  surface in `text-memories-night-ink` at any hour (the station's brand moment, not a clock).
+  The ON AIR lamp is a `bg-memories-onair` dot lit only while sound plays (off: a dimmed
+  `bg-current` dot) beside the serif station title. Program cards, the now-playing card and the
+  prev / next controls sit on the translucent `bg-viewer-control` (the dark-viewer control
+  surface); the picked card wears the accent ring (current state) and ▶ / ❚❚ is the one
+  `accent` button. Each card shows at most one number (its track count, once loaded). The
+  waveform's bars are `bg-current`, so they take the night ink; they are a still row under
+  reduced motion or without Web Audio. Lyrics dim the lines around the current one
+  (`opacity-60`) and scroll inside their own box. The cassette tapes take the year's probe colour
+  through `style` (the album ribbon's data-driven exception; a `null` year is the neutral
+  `bg-sunken` tape) under a `bg-memories-paper` label. The sleep timer is a `Pill` with a `Menu`.
 - **The memoir binder** (`features/memories/memoir/`): each shelf has a serif Japanese title
   (`lang="ja"`, an `h3` under her name, Japanese in every language) and a localised subtitle.
   Every card has a condition line for its silhouette. An earned card is a

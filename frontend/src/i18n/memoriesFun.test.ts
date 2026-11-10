@@ -13,11 +13,26 @@ export const MEMORIES_FUN_KEYS: string[] = [
     'memories.home.radio', 'memories.home.gacha', 'memories.home.calendar',
     'memories.home.countVoices', 'memories.home.countGacha', 'memories.home.countDays', 'memories.home.gachaTomorrow',
     'memories.memoir.tabDay24',
+    // F9: the voice radio
+    'memories.radio.title', 'memories.radio.all', 'memories.radio.station', 'memories.radio.stationAll',
+    'memories.radio.onAir', 'memories.radio.offAir', 'memories.radio.programsLabel',
+    'memories.radio.programs.oyasumi', 'memories.radio.programs.oyasumiSub',
+    'memories.radio.programs.ohayo', 'memories.radio.programs.ohayoSub',
+    'memories.radio.programs.otsukare', 'memories.radio.programs.otsukareSub',
+    'memories.radio.programs.chrono', 'memories.radio.programs.chronoSub',
+    'memories.radio.programs.favorites', 'memories.radio.programs.favoritesSub',
+    'memories.radio.programs.oyasumiClips', 'memories.radio.programs.oyasumiClipsSub',
+    'memories.radio.trackCount', 'memories.radio.play', 'memories.radio.pause', 'memories.radio.next', 'memories.radio.prev',
+    'memories.radio.sleep', 'memories.radio.sleepOff', 'memories.radio.sleepMinutes', 'memories.radio.sleepLeft',
+    'memories.radio.cassette', 'memories.radio.cassetteLength', 'memories.radio.cassettes', 'memories.radio.empty',
+    'memories.radio.lengthHours', 'memories.radio.lengthHoursOnly', 'memories.radio.lengthMinutes', 'memories.radio.lengthUnder',
 ];
 
 /** Fun keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
 export const MEMORIES_FUN_EN_PLURALS: string[] = [
     'memories.home.countVoices', 'memories.home.countDays',
+    // F9
+    'memories.radio.trackCount', 'memories.radio.sleepMinutes',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -55,6 +70,36 @@ describe('memories fun strings', () => {
             'memories.home.countDays': '{{count, number}} 日分',
             'memories.home.gachaTomorrow': 'また明日',
             'memories.memoir.tabDay24': '彼女の24時間',
+            'memories.radio.title': 'ボイスラジオ',
+            'memories.radio.all': '全員',
+            'memories.radio.station': '{{name}}の深夜放送局',
+            'memories.radio.stationAll': '深夜放送局',
+            'memories.radio.onAir': 'ON AIR',
+            'memories.radio.offAir': 'OFF AIR',
+            'memories.radio.programs.oyasumi': 'おやすみ放送',
+            'memories.radio.programs.oyasumiSub': '夜9時から明け方までの声',
+            'memories.radio.programs.ohayo': 'おはよう放送',
+            'memories.radio.programs.ohayoSub': '朝5時から10時までの声',
+            'memories.radio.programs.otsukare': 'おつかれチャージ',
+            'memories.radio.programs.otsukareSub': '昼から夜までの声',
+            'memories.radio.programs.chrono': 'あの頃から順番に',
+            'memories.radio.programs.chronoSub': '選んだ年を、はじめから',
+            'memories.radio.programs.favorites': '★ お気に入りの声',
+            'memories.radio.programs.favoritesSub': '★をつけたボイス',
+            'memories.radio.programs.oyasumiClips': '精選・おやすみだけ',
+            'memories.radio.programs.oyasumiClipsSub': '“おやすみ”のところだけ',
+            'memories.radio.trackCount': '{{count, number}} 件',
+            'memories.radio.play': '再生',
+            'memories.radio.pause': '一時停止',
+            'memories.radio.next': '次の声',
+            'memories.radio.prev': '前の声',
+            'memories.radio.sleep': 'おやすみタイマー',
+            'memories.radio.sleepOff': 'タイマーなし',
+            'memories.radio.sleepMinutes': '{{count}} 分後に止める',
+            'memories.radio.sleepLeft': 'あと {{count}} 分',
+            'memories.radio.cassette': '{{year}}年のテープ',
+            'memories.radio.cassetteLength': '{{length}}',
+            'memories.radio.empty': 'ここで流せる声は、まだありません。',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, key), key).toBe(text);
     });

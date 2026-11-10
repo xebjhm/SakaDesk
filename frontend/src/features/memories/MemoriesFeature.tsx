@@ -10,6 +10,7 @@ import { FavoritesPage } from './favorites/FavoritesPage';
 import { MemoirPage } from './memoir/MemoirPage';
 import { NicknameProvider } from './shared/useNickname';
 import { FunPlaceholder } from './FunPlaceholder';
+import { RadioPage } from './radio/RadioPage';
 
 /** Pages of the Memories router (the core pages, then the fun wave's). */
 export type MemoriesRoute =
@@ -142,7 +143,9 @@ export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickn
         page = <AlbumPage service={service} route={route} go={go} />;
     } else if (route.page === 'favorites') {
         page = <FavoritesPage service={service} route={route} go={go} />;
-    } else if (route.page === 'radio' || route.page === 'gacha' || route.page === 'calendar' || route.page === 'day') {
+    } else if (route.page === 'radio') {
+        page = <RadioPage service={service} route={route} go={go} />;
+    } else if (route.page === 'gacha' || route.page === 'calendar' || route.page === 'day') {
         page = <FunPlaceholder service={service} route={route} go={go} />;
     } else {
         page = <MemoirPage service={service} route={route} go={go} />;
