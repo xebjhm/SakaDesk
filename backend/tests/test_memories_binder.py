@@ -5,6 +5,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import json
+import threading
 from datetime import date, datetime, timezone
 
 import pytest
@@ -344,6 +345,34 @@ async def test_cache_refreshes_on_a_new_day_and_new_letters(svc, monkeypatch):
     payload = await binder.build_binder(SERVICE, svc, s, now=NOW.replace(day=11))
     assert len(calls) == 3
     assert cards_of(payload)["you.letter.10"]["progress"]["current"] == 3
+
+
+@pytest.mark.asyncio
+async def test_cache_refreshes_when_the_rules_version_changes(svc, monkeypatch):
+    s = await matsuda(svc)
+    await binder.build_binder(SERVICE, svc, s, now=NOW)
+    monkeypatch.setattr(c, "CARDS_VERSION", c.CARDS_VERSION + 1)
+    with capture_logs() as logs:
+        await binder.build_binder(SERVICE, svc, s, now=NOW)
+    assert [e["outcome"] for e in logs if e["event"] == "memories_view_cache"] == [
+        "miss"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_payload_is_built_off_the_event_loop(svc, monkeypatch):
+    s = await matsuda(svc)
+    loop_thread = threading.get_ident()
+    threads = []
+    real = binder._payload
+
+    def spy(*args):
+        threads.append(threading.get_ident())
+        return real(*args)
+
+    monkeypatch.setattr(binder, "_payload", spy)
+    await binder.build_binder(SERVICE, svc, s, now=NOW)
+    assert threads and threads[0] != loop_thread
 
 
 @pytest.mark.asyncio

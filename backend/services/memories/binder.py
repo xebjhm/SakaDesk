@@ -7,8 +7,9 @@
   keyword hits with one ``load_texts`` per room (only for facts on 02-14 and
   12-24/25), and evaluates the cards.
 - :func:`build_binder` renders the cards as the ``/memoir/cards`` payload. The
-  text-free payload is cached (``view_cache``, view ``binder``) and her words
-  are attached after the cache read with ``people.attach_texts``.
+  text-free payload is built in a worker thread and cached (``view_cache``,
+  view ``binder``; the hash includes :data:`cards.CARDS_VERSION`), and her
+  words are attached after the cache read with ``people.attach_texts``.
 
 Logs (ids, codes, counts and scores only; ``person`` = first member id):
 
@@ -396,6 +397,7 @@ async def build_binder(
     today = now.astimezone(JST).date()
     stats = await asyncio.to_thread(_side_stats, sdir, summary.member_dirs)
     data_hash = view_hash(
+        cards_mod.CARDS_VERSION,
         await people.room_hashes(sdir, summary),
         today.isoformat(),
         stats,
@@ -406,7 +408,8 @@ async def build_binder(
 
     async def build() -> dict:
         cards, inputs, timeline = await _evaluate(service, sdir, summary, now)
-        return _payload(service, sdir, cards, inputs, timeline)
+        # one message object per face over every fact: keep it off the loop
+        return await asyncio.to_thread(_payload, service, sdir, cards, inputs, timeline)
 
     payload = await cached_view(
         sdir, VIEW, people.person_key(summary), data_hash, build

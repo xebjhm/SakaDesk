@@ -59,6 +59,10 @@ SHELVES = (
     "graduation",
 )
 
+# Bump on any rule or payload change: the binder's cache hash includes it, so
+# a shipped rule change never keeps serving binders built by the old rules.
+CARDS_VERSION = 2
+
 FALLBACK_NEAREST = "nearest"
 FALLBACK_FIRST_AFTER = "first_after"
 FALLBACK_BEST_OF_DAY = "best_of_day"
@@ -781,6 +785,7 @@ def evaluate(inputs: CardInputs) -> list[Card]:
 
 
 __all__ = [
+    "CARDS_VERSION",
     "SHELVES",
     "AvatarChange",
     "Card",
