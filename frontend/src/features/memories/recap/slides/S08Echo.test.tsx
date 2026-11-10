@@ -15,8 +15,9 @@ describe('S08Echo', () => {
         renderS08(echoData());
         expect(screen.getByText('去年の、同じ日。')).toHaveAttribute('data-voice', 'title');
         const [then, now] = screen.getAllByTestId('s08-card');
-        expect(then.className).toMatch(/\bsepia\b/);
-        expect(now.className).not.toMatch(/\bsepia\b/);
+        // The approved look: the strongest keepsake sepia (full strength), whatever the year.
+        expect(then.className.split(/\s+/)).toContain('sepia-memories-3');
+        expect(now.className).not.toMatch(/\bsepia/);
         expect(within(then).getByTestId('s08-date')).toHaveTextContent('2025年7月30日');
         expect(within(now).getByTestId('s08-date')).toHaveTextContent('2026年7月30日');
         expect(within(now).getByText((_, el) => el?.getAttribute('data-voice') === 'quote' && el.textContent === 'ゆき、今年も花火！')).toBeInTheDocument();
@@ -73,7 +74,7 @@ describe('S08Echo', () => {
         expect(screen.getByText('はじめての一週間と、いま。')).toBeInTheDocument();
         expect(screen.getByText('はじめての週')).toBeInTheDocument();
         expect(screen.getByText('いま')).toBeInTheDocument();
-        expect(screen.getAllByTestId('s08-card')[0].className).toMatch(/\bsepia\b/);
+        expect(screen.getAllByTestId('s08-card')[0].className.split(/\s+/)).toContain('sepia-memories-3');
         expect(screen.queryByText(/年前|null|undefined/)).toBeNull();
     });
 

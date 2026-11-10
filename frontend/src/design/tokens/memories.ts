@@ -11,9 +11,10 @@ const [sky, lavender, pink, peach] = aurora.stops;
 export const memories = {
     /**
      * `filter: sepia(n)` strengths by age (`shared/sepia.ts`): 1 = last year, 2 = two years ago,
-     * 3 = three or more. This year stays in colour.
+     * 3 = three or more. This year stays in colour. Step 3 is full sepia: it is also the recap
+     * S08 older card's approved look (formerly Tailwind's plain `sepia`).
      */
-    sepia: { 1: '0.25', 2: '0.45', 3: '0.65' },
+    sepia: { 1: '0.35', 2: '0.65', 3: '1' },
     /** Letter and polaroid white: a warm paper, never pure white, and its hairline edge. */
     paper: '#fffdf8',
     paperLine: 'rgba(120, 96, 64, 0.14)',

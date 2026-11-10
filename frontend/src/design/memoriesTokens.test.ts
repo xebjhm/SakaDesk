@@ -13,6 +13,10 @@ describe('memories keepsake tokens', () => {
         expect(steps[1]).toBeLessThan(steps[2]);
     });
 
+    it('makes the strongest step full sepia (the recap S08 older card)', () => {
+        expect(memories.sepia[3]).toBe('1');
+    });
+
     it('builds the foil from the aurora stops', () => {
         for (const stop of aurora.stops) expect(memories.foil).toContain(stop);
         expect(memories.foil.startsWith('linear-gradient(')).toBe(true);

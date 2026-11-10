@@ -5,7 +5,6 @@ import type { RecapMessage, S08EchoData } from '../api';
 import { formatMessageDate, s08Copy, withNickname, type CopyLine } from '../recapCopy';
 import { Headline, Narration, type SlideProps } from './common';
 import { QUOTE_CLASS, heldReveal } from './style';
-import { jstYearOf, sepiaClass } from '../../shared/sepia';
 
 /**
  * Her raw text split around every occurrence of the shared keyword, which is marked, with the
@@ -40,9 +39,9 @@ const EchoCard: React.FC<CardProps> = ({ message, label, older, keyword, nicknam
             data-testid="s08-card"
             className={cn(
                 'flex w-full flex-col gap-2 rounded-md bg-card px-4 py-3 shadow-card',
-                // The older card is an old photograph: the Memories sepia-by-age step (at least step 1,
-                // even within this year) and a slight fade, no colour literal.
-                older && cn('opacity-90', sepiaClass(jstYearOf(message.ts)) || 'sepia-memories-1'),
+                // The older card is an old photograph: full sepia (the strongest keepsake step, the
+                // approved look whatever the year) and a slight fade, no colour literal.
+                older && 'opacity-90 sepia-memories-3',
                 reveal.className,
             )}
             style={reveal.style}

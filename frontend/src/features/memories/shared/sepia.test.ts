@@ -1,4 +1,6 @@
 import { describe, it, expect } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { sepiaClass } from './sepia';
 
 // JST wall clock: 2026-01-01 00:30 JST is still 2025-12-31 in UTC.
@@ -21,5 +23,12 @@ describe('sepiaClass', () => {
     it('counts years in JST, not local or UTC time', () => {
         expect(sepiaClass(2026, NEW_YEAR_JST)).toBe('');
         expect(sepiaClass(2025, NEW_YEAR_JST)).toBe('sepia-memories-1');
+    });
+});
+
+describe('sepia classes are literal (Tailwind must see them in source)', () => {
+    it('sepia.ts spells out every class it can return', () => {
+        const src = readFileSync(resolve(__dirname, 'sepia.ts'), 'utf-8');
+        for (const cls of ['sepia-memories-1', 'sepia-memories-2', 'sepia-memories-3']) expect(src).toContain(`'${cls}'`);
     });
 });

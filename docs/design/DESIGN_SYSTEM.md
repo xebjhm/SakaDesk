@@ -798,9 +798,11 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
 
 - **Sepia by age.** `sepiaClass(year)` (`features/memories/shared/sepia.ts`) gives a keepsake
   from this year no filter, last year `sepia-memories-1`, two years ago `sepia-memories-2` and
-  three or more years ago `sepia-memories-3`. Years are counted in JST. The year recap's
-  去年の、同じ日 slide (S08) uses the same rule for its older card (at least step 1). Apply it
-  to the photo or card, never to text you need to read at full contrast.
+  three or more years ago `sepia-memories-3` (full sepia). Years are counted in JST. The year
+  recap's 去年の、同じ日 slide (S08) is not age-graded: its older card always uses
+  `sepia-memories-3`, the approved full-sepia look. Apply it to the photo or card, never to text
+  you need to read at full contrast. `sepiaClass` returns literal class names from a lookup, so
+  Tailwind sees them; never build a `sepia-memories-${n}` name at runtime.
 - **Foil only for special cards.** `bg-memories-foil` marks a binder card the catalogue flags as
   foil (`foil: true`) and nothing else: not hover states, not headings, not the hub.
 - **Paper, cork and tape are materials, not colours.** Use them for the surfaces they name; text
