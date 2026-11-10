@@ -267,6 +267,7 @@ async def update_settings(update: SettingsUpdate):
         before = tuple(config.get(key) for key in _SCHEDULE_KEYS)
         notify_before = tuple(config.get(key) for key in _MEMORIES_NOTIFY_KEYS)
         cards_before = bool(config.get("memories_notify_cards", False))
+        notifications_before = config.get("notifications_enabled")
         if update.memories_notify_cards and not cards_before:
             # Re-seed silently: history earned while the toggle was off never
             # floods in. Cleared BEFORE the new toggle is written (this runs
@@ -317,9 +318,11 @@ async def update_settings(update: SettingsUpdate):
             if value is not None:
                 config[key] = value
         schedule_changed = before != tuple(config.get(key) for key in _SCHEDULE_KEYS)
+        # The global switch gates every Memories toast too: wake on its change,
+        # so turning it on delivers a still-open occasion now, not ≤15 min later.
         memories_notify_changed = notify_before != tuple(
             config.get(key) for key in _MEMORIES_NOTIFY_KEYS
-        )
+        ) or notifications_before != config.get("notifications_enabled")
 
     try:
         config = await _store_update(_apply)

@@ -534,3 +534,13 @@ async def test_concurrent_async_claims_yield_one_true(fresh):
         *(app_state.aclaim_memory_notification(*key) for _ in range(6))
     )
     assert results.count(True) == 1
+
+
+def test_global_notifications_switch_wakes_the_memories_scheduler(client, settings_env):
+    _, calls = settings_env
+    client.post("/api/settings", json={"notifications_enabled": False})
+    assert calls == [1]
+    client.post("/api/settings", json={"notifications_enabled": False})
+    assert calls == [1]  # unchanged: no wake
+    client.post("/api/settings", json={"notifications_enabled": True})
+    assert calls == [1, 1]
