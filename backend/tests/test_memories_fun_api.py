@@ -379,3 +379,249 @@ def test_album_cover_member_errors(album_out):
 def test_delete_album_cover_bad_month_is_400(album_out, bad):
     r = delete(f"/api/memories/{SERVICE}/album/cover", month=bad)
     assert r.status_code == 400
+
+
+# --- review minors (F4): store errors and trailing newlines -------------------------------
+
+
+def _broken_store(monkeypatch, *names):
+    import sqlite3
+
+    from backend.services.memories import user_store
+
+    def broken(*a, **k):
+        raise sqlite3.OperationalError("locked")
+
+    for name in names:
+        monkeypatch.setattr(user_store, name, broken)
+
+
+def test_album_cover_store_error_is_503(album_out, monkeypatch):
+    from structlog.testing import capture_logs
+
+    _broken_store(monkeypatch, "set_cover_override", "clear_cover_override")
+    body = {"member": MEMBER, "month": "2024-09", "room": ROOM, "id": 10}
+    with capture_logs() as logs:
+        r = put(f"/api/memories/{SERVICE}/album/cover", body)
+        assert r.status_code == 503 and r.json() == {"detail": "store_unavailable"}
+        r = delete(f"/api/memories/{SERVICE}/album/cover", month="2024-09")
+        assert r.status_code == 503 and r.json() == {"detail": "store_unavailable"}
+    rejects = [e for e in logs if e["event"] == "memories.api.reject"]
+    assert [e["reason"] for e in rejects] == ["store_unavailable"] * 2
+    assert {e["op"] for e in rejects} == {"cover_set", "cover_clear"}
+
+
+def test_trailing_newline_in_month_or_date_is_400(album_out):
+    body = {"member": MEMBER, "month": "2024-09\n", "room": ROOM, "id": 10}
+    assert put(f"/api/memories/{SERVICE}/album/cover", body).status_code == 400
+    r = delete(f"/api/memories/{SERVICE}/album/cover", month="2024-09\n")
+    assert r.status_code == 400
+    assert get(f"/api/memories/{SERVICE}/calendar/2024-09%0A").status_code == 400
+    assert get(f"/api/memories/{SERVICE}/album/month/2024-09%0A").status_code == 400
+    r = get(f"/api/memories/{SERVICE}/memoir/timeline/2024-09%0A", member=MEMBER)
+    assert r.status_code == 400
+    assert get(f"/api/memories/{SERVICE}/day", date="2024-09-14\n").status_code == 400
+    assert (
+        get(f"/api/memories/{SERVICE}/on-this-day", date="09-14\n").status_code == 400
+    )
+
+
+# --- capsule and same-time (Task F5) ---------------------------------------------------------
+
+CAPSULE = f"/api/memories/{SERVICE}/capsule"
+NOTE = "わたしのメモ 🎂"
+
+
+def post_json(url, body):
+    with time_machine.travel(NOW, tick=False):
+        return client.post(url, json=body)
+
+
+def day_note(date="2025-01-06", body=NOTE):
+    return {"anchor": {"kind": "day", "date": date}, "body": body}
+
+
+def card_note(member=MEMBER, key="moment.midnight"):
+    return {
+        "anchor": {
+            "kind": "card",
+            "member": member,
+            "card_key": key,
+            "date": "2025-01-06",
+        },
+        "body": NOTE,
+    }
+
+
+def test_capsule_crud(out):
+    r = post_json(CAPSULE, day_note())
+    assert r.status_code == 200
+    note = r.json()
+    assert note["body"] == NOTE and note["anchor"]["kind"] == "day"
+    r = get(CAPSULE, date="2025-01-06")
+    assert r.status_code == 200 and r.json() == {"notes": [note]}
+    r = put(f"{CAPSULE}/{note['id']}", {"body": "書き直し"})
+    assert r.status_code == 200 and r.json()["body"] == "書き直し"
+    r = delete(f"{CAPSULE}/{note['id']}")
+    assert r.status_code == 204
+    assert delete(f"{CAPSULE}/{note['id']}").status_code == 404
+    assert get(CAPSULE, date="2025-01-06").json() == {"notes": []}
+
+
+def test_capsule_card_route(out):
+    r = post_json(CAPSULE, card_note())
+    assert r.status_code == 200
+    note = r.json()
+    r = get(CAPSULE, member=MEMBER, card="moment.midnight")
+    assert r.json() == {"notes": [note]}
+    no_abs_paths(out, r.json())
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        None,
+        [],
+        "x",
+        {"anchor": {"kind": "day", "date": "2025-01-06"}},
+        {"body": NOTE},
+        {**day_note(), "x": 1},
+        day_note(date="2025-02-30"),
+        day_note(date="2025-01-06\n"),
+        {"anchor": {"kind": "week", "date": "2025-01-06"}, "body": NOTE},
+        card_note(key="Bad Key"),
+    ],
+)
+def test_capsule_bad_body_is_400(out, body):
+    r = post_json(CAPSULE, body)
+    assert r.status_code == 400 and r.json()["detail"] == "bad_body"
+
+
+@pytest.mark.parametrize("text", ["", "   ", "あ" * 2001, 5])
+def test_capsule_bad_note_is_400(out, text):
+    r = post_json(CAPSULE, day_note(body=text))
+    assert r.status_code == 400 and r.json()["detail"] == "bad_note"
+    note = post_json(CAPSULE, day_note()).json()
+    r = put(f"{CAPSULE}/{note['id']}", {"body": text})
+    assert r.status_code == 400 and r.json()["detail"] == "bad_note"
+
+
+def test_capsule_body_errors(out):
+    with time_machine.travel(NOW, tick=False):
+        r = client.post(CAPSULE, content=b"{not json")
+        assert r.status_code == 400 and r.json()["detail"] == "bad_body"
+        r = client.post(CAPSULE, content=b'{"body": "' + b"a" * 70000 + b'"}')
+        assert r.status_code == 400 and r.json()["detail"] == "bad_note"
+        r = client.put(f"{CAPSULE}/1", content=b"[]")
+        assert r.status_code == 400 and r.json()["detail"] == "bad_body"
+        r = client.put(f"{CAPSULE}/1", content=b'{"body": "x", "y": 1}')
+        assert r.status_code == 400
+        r = client.put(f"{CAPSULE}/1", content=b'{"body": "' + b"a" * 70000 + b'"}')
+        assert r.status_code == 400 and r.json()["detail"] == "bad_note"
+
+
+def test_capsule_member_errors(out):
+    r = post_json(CAPSULE, card_note(member="../../etc/passwd"))
+    assert r.status_code == 400
+    (out / SVC_NAME / "messages" / "99 x" / "98 x").mkdir(parents=True)
+    r = post_json(CAPSULE, card_note(member=f"{SVC_NAME}/messages/99 x/98 x"))
+    assert r.status_code == 404
+    (out / "櫻坂46" / "messages" / "1 x" / "2 x").mkdir(parents=True)
+    r = post_json(CAPSULE, card_note(member="櫻坂46/messages/1 x/2 x"))
+    assert r.status_code == 404
+    r = get(CAPSULE, member="../../etc/passwd", card="moment.midnight")
+    assert r.status_code == 400
+    r = get(CAPSULE, member=f"{SVC_NAME}/messages/99 x/98 x", card="moment.midnight")
+    assert r.status_code == 404
+
+
+@pytest.mark.parametrize(
+    "params",
+    [
+        {},
+        {"date": "2025-1-6"},
+        {"date": "2025-01-06\n"},
+        {"date": "2025-01-06", "member": MEMBER},
+        {"date": "2025-01-06", "card": "moment.midnight"},
+        {"member": MEMBER},
+        {"card": "moment.midnight"},
+        {"member": MEMBER, "card": "Bad Key"},
+        {"member": MEMBER, "card": "ok\n"},
+    ],
+)
+def test_capsule_list_validation(out, params):
+    assert get(CAPSULE, **params).status_code == 400
+
+
+def test_capsule_note_of_another_service_is_404(out):
+    note = post_json(CAPSULE, day_note()).json()
+    other = "/api/memories/sakurazaka46/capsule"
+    (out / "櫻坂46").mkdir()
+    assert put(f"{other}/{note['id']}", {"body": "x"}).status_code == 404
+    assert delete(f"{other}/{note['id']}").status_code == 404
+    assert put(f"{CAPSULE}/999", {"body": "x"}).status_code == 404
+
+
+def test_capsule_unknown_service_is_400(out):
+    url = "/api/memories/nope/capsule"
+    assert get(url, date="2025-01-06").status_code == 400
+    assert post_json(url, day_note()).status_code == 400
+    assert put(f"{url}/1", {"body": "x"}).status_code == 400
+    assert delete(f"{url}/1").status_code == 400
+    assert get(f"{url}/due", month_day="11-10").status_code == 400
+    assert get("/api/memories/nope/same-time").status_code == 400
+
+
+def test_capsule_due_route(out):
+    written = datetime(2025, 11, 10, 3, 0, tzinfo=timezone.utc)
+    with time_machine.travel(written, tick=False):
+        note = client.post(CAPSULE, json=day_note()).json()
+    r = get(f"{CAPSULE}/due", month_day="11-10")
+    assert r.status_code == 200
+    (item,) = r.json()["notes"]
+    assert item["note"]["id"] == note["id"] and item["years_ago"] == 1
+    assert item["message"]["text"] == "おはよう"  # her words of 2025-01-06
+    no_abs_paths(out, r.json())
+    assert get(f"{CAPSULE}/due", month_day="11-11").json() == {"notes": []}
+
+
+@pytest.mark.parametrize("bad", [None, "1110", "02-30", "13-01", "11-10\n"])
+def test_capsule_due_validation(out, bad):
+    params = {} if bad is None else {"month_day": bad}
+    assert get(f"{CAPSULE}/due", **params).status_code == 400
+
+
+def test_capsule_store_error_is_503(out, monkeypatch):
+    _broken_store(
+        monkeypatch,
+        "add_note",
+        "update_note",
+        "delete_note",
+        "notes_on_date",
+        "notes_created_on_month_day",
+    )
+    for r in (
+        post_json(CAPSULE, day_note()),
+        put(f"{CAPSULE}/1", {"body": "x"}),
+        delete(f"{CAPSULE}/1"),
+        get(CAPSULE, date="2025-01-06"),
+        get(f"{CAPSULE}/due", month_day="11-10"),
+    ):
+        assert r.status_code == 503 and r.json() == {"detail": "store_unavailable"}
+
+
+def test_same_time_route(out):
+    # NOW = 12:00 JST; her 2025-01-06 12:00 JST words
+    r = get(f"/api/memories/{SERVICE}/same-time")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["clock"] == "12:00" and body["message"]["id"] == 3
+    assert body["message"]["text"] == "おはよう" and body["member_path"] == MEMBER
+    no_abs_paths(out, body)
+
+
+def test_same_time_route_may_be_null(out):
+    later = datetime(2026, 11, 10, 5, 0, tzinfo=timezone.utc)  # 14:00 JST
+    with time_machine.travel(later, tick=False):
+        r = client.get(f"/api/memories/{SERVICE}/same-time")
+    assert r.status_code == 200 and r.json() is None

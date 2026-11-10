@@ -1,10 +1,18 @@
-"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board, the hub, the voice radio, the gacha, the calendar album and album cover overrides for the active service, the export handoff and the share GIF."""
+"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board, the hub, the voice radio, the gacha, the calendar album, album cover overrides, capsule notes and the same-time line for the active service, the export handoff and the share GIF.
+
+A ``sqlite3.Error`` from the fan's own store (``app_state.db``) on a cover or
+capsule route is 503 ``store_unavailable`` (``memories.api.reject``,
+``reason=store_unavailable``, ``op``), never a bare 500.
+"""
 
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import json
 import re
+import sqlite3
+from collections.abc import Iterator
 from datetime import date, datetime, timezone
 from pathlib import Path, PurePosixPath
 
@@ -19,6 +27,7 @@ from backend.services.memories import (
     album_colors,
     binder,
     calendar_album,
+    capsule,
     covers,
     day_view,
     exports,
@@ -30,6 +39,7 @@ from backend.services.memories import (
     on_this_day,
     people,
     radio,
+    same_time,
     share_gif,
     timeline,
 )
@@ -44,7 +54,7 @@ router = APIRouter(prefix="/api/memories", tags=["memories"])
 logger = structlog.get_logger(__name__)
 
 MIN_YEAR = 2020
-DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}\Z")
 
 
 def _service_dir(service: str) -> Path:
@@ -83,6 +93,21 @@ async def _person(
         logger.info("memories.api.member_not_found", **log_fields)
         raise HTTPException(status_code=404, detail="Member not found")
     return summary
+
+
+@contextlib.contextmanager
+def _store_guard(op: str) -> Iterator[None]:
+    """Map a ``sqlite3.Error`` of the fan's store to 503 ``store_unavailable``."""
+    try:
+        yield
+    except sqlite3.Error as e:
+        logger.warning(
+            "memories.api.reject",
+            reason="store_unavailable",
+            op=op,
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(status_code=503, detail="store_unavailable") from None
 
 
 def _join_body(chunks: list[bytes]) -> bytes:
@@ -549,15 +574,16 @@ async def album_cover_set_route(service: str, request: Request) -> Response:
     member, month, room, mid = _parse_cover_body(_join_body(chunks))
     summary = await _optional_person(service_data_dir, member, "album_cover")
     try:
-        await covers.set_cover_override(
-            service,
-            service_data_dir,
-            member=summary,
-            month=month,
-            room=room,
-            message_id=mid,
-            now=now,
-        )
+        with _store_guard("cover_set"):
+            await covers.set_cover_override(
+                service,
+                service_data_dir,
+                member=summary,
+                month=month,
+                room=room,
+                message_id=mid,
+                now=now,
+            )
     except ValueError:
         logger.info("memories.api.reject", reason="not_in_month")
         raise HTTPException(status_code=400, detail="not_in_month") from None
@@ -572,10 +598,181 @@ async def album_cover_clear_route(
     service_data_dir = _service_dir(service)
     _check_month(month)
     summary = await _optional_person(service_data_dir, member, "album_cover")
-    await covers.clear_cover_override(
-        service, service_data_dir, member=summary, month=month
-    )
+    with _store_guard("cover_clear"):
+        await covers.clear_cover_override(
+            service, service_data_dir, member=summary, month=month
+        )
     return Response(status_code=204)
+
+
+CAPSULE_BODY_MAX = 64 * 1024
+_CAPSULE_CREATE_KEYS = frozenset({"anchor", "body"})
+_CAPSULE_UPDATE_KEYS = frozenset({"body"})
+
+
+def _bad_note() -> HTTPException:
+    logger.warning("memories.api.reject", reason="bad_note")
+    return HTTPException(status_code=400, detail="bad_note")
+
+
+async def _capsule_body(request: Request, keys: frozenset[str]) -> dict:
+    """The JSON object body of a capsule write with exactly ``keys``; 400 otherwise.
+
+    A body over :data:`CAPSULE_BODY_MAX` bytes is ``bad_note`` (it cannot hold
+    a note of at most ``capsule.MAX_CHARS`` characters); anything that is not
+    such an object is ``bad_body``.
+    """
+    chunks = await _read_capped(request, CAPSULE_BODY_MAX)
+    if chunks is None:
+        raise _bad_note()
+    try:
+        body = json.loads(_join_body(chunks).decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise _bad_body() from None
+    if not isinstance(body, dict) or set(body) != keys:
+        raise _bad_body()
+    return body
+
+
+def _capsule_reject(e: capsule.CapsuleError) -> HTTPException:
+    if e.code == "bad_note":
+        return _bad_note()
+    if e.code == "unknown_member":
+        logger.info("memories.api.member_not_found", view="capsule")
+        return HTTPException(status_code=404, detail="Member not found")
+    return _bad_body()
+
+
+def _note_not_found(note_id: int) -> HTTPException:
+    logger.info("memories.api.note_not_found", note_id=note_id)
+    return HTTPException(status_code=404, detail="Note not found")
+
+
+@router.get("/{service}/capsule")
+async def capsule_list_route(
+    service: str,
+    day_q: str | None = Query(None, alias="date"),
+    member: str | None = Query(None),
+    card: str | None = Query(None),
+) -> dict:
+    """The fan's notes on one anchor (``capsule.notes_for_anchor``).
+
+    Either ``date`` (``YYYY-MM-DD``, the day notes) or ``member`` (chat path
+    of any of her rooms) + ``card`` (a card key) -- anything else is 400.
+    """
+    service_data_dir = _service_dir(service)
+    if (day_q is None) == (member is None and card is None):
+        logger.warning("memories.api.reject", reason="bad_anchor")
+        raise HTTPException(status_code=400, detail="Invalid anchor")
+    if day_q is not None:
+        with _store_guard("capsule_list"):
+            return await capsule.notes_for_anchor(
+                service,
+                service_data_dir,
+                day=_parse_day(day_q),
+                member=None,
+                card_key=None,
+            )
+    if member is None or card is None or not capsule.valid_card_key(card):
+        logger.warning("memories.api.reject", reason="bad_anchor")
+        raise HTTPException(status_code=400, detail="Invalid anchor")
+    summary = await _person(service_data_dir, member, view="capsule")
+    with _store_guard("capsule_list"):
+        return await capsule.notes_for_anchor(
+            service, service_data_dir, day=None, member=summary, card_key=card
+        )
+
+
+@router.get("/{service}/capsule/due")
+async def capsule_due_route(service: str, month_day: str | None = Query(None)) -> dict:
+    """The notes resurfacing on ``month_day`` (``MM-DD``) this JST year.
+
+    ``capsule.resurfacing``: each with ``years_ago`` and her message of the
+    anchor day. A malformed or impossible ``month_day`` is 400.
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    try:
+        if month_day is None:  # required; 400 like every other bad date
+            raise ValueError("missing")
+        on_this_day.parse_month_day(month_day)
+    except ValueError:
+        logger.warning("memories.api.reject", reason="bad_date")
+        raise HTTPException(status_code=400, detail="Invalid date") from None
+    with _store_guard("capsule_due"):
+        return await capsule.resurfacing(
+            service, service_data_dir, month_day=month_day, now=now
+        )
+
+
+@router.post("/{service}/capsule")
+async def capsule_create_route(service: str, request: Request) -> dict:
+    """Write a capsule note (``capsule.create_note``); returns the note.
+
+    Body ``{"anchor": {"kind": "day", "date"} | {"kind": "card", "member",
+    "card_key", "date"}, "body": str}``. A malformed body or anchor is 400
+    ``bad_body``; an empty or over-long note 400 ``bad_note``; a card
+    ``member`` no person owns (or another service's) 404, one escaping the
+    output dir 400.
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    body = await _capsule_body(request, _CAPSULE_CREATE_KEYS)
+    try:
+        with _store_guard("capsule_create"):
+            return await capsule.create_note(
+                service,
+                service_data_dir,
+                anchor=body["anchor"],
+                body=body["body"],
+                now=now,
+            )
+    except capsule.CapsuleError as e:
+        raise _capsule_reject(e) from None
+    except people.ForeignServiceError:
+        logger.warning("memories.api.reject", reason="other_service")
+        raise HTTPException(status_code=404, detail="Member not found") from None
+    except ArchiveReadError:
+        logger.warning("memories.api.reject", reason="outside_output_dir")
+        raise HTTPException(status_code=400, detail="Invalid member path") from None
+
+
+@router.put("/{service}/capsule/{note_id}")
+async def capsule_update_route(service: str, note_id: int, request: Request) -> dict:
+    """Replace a note's body (``{"body": str}``); 404 for an unknown note or
+    another service's, 400 ``bad_note`` / ``bad_body`` for a bad body."""
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    body = await _capsule_body(request, _CAPSULE_UPDATE_KEYS)
+    try:
+        with _store_guard("capsule_update"):
+            note = await capsule.update_note(
+                service, service_data_dir, note_id=note_id, body=body["body"], now=now
+            )
+    except capsule.CapsuleError as e:
+        raise _capsule_reject(e) from None
+    if note is None:
+        raise _note_not_found(note_id)
+    return note
+
+
+@router.delete("/{service}/capsule/{note_id}", status_code=204)
+async def capsule_delete_route(service: str, note_id: int) -> Response:
+    """Delete a note; 404 for an unknown note or another service's."""
+    service_data_dir = _service_dir(service)
+    with _store_guard("capsule_delete"):
+        found = await capsule.delete_note(service, service_data_dir, note_id=note_id)
+    if not found:
+        raise _note_not_found(note_id)
+    return Response(status_code=204)
+
+
+@router.get("/{service}/same-time")
+async def same_time_route(service: str) -> dict | None:
+    """同じ時刻 for the current JST minute (``same_time.same_time``), or ``null``."""
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    return await same_time.same_time(service, service_data_dir, now=now)
 
 
 @router.get("/{service}/hub")
