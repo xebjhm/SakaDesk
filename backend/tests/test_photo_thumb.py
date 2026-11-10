@@ -638,3 +638,13 @@ def test_toast_jpegs_count_toward_the_cache_cap(tmp_path):
     photo_thumb.reset_cache_state()
     with photo_thumb._state_lock:
         assert photo_thumb._state(root).total == out.stat().st_size
+
+
+def test_toast_image_that_vanishes_before_the_size_check_is_refused(tmp_path):
+    src = _jpeg(tmp_path / "a" / "p.jpg", (64, 64))
+    with patch.object(photo_thumb, "_size_or_none", lambda _p: None):
+        assert _run(photo_thumb.toast_image(src, tmp_path / "cache")) is None
+    out = _run(photo_thumb.toast_image(src, tmp_path / "cache"))
+    assert out is not None
+    out.unlink()
+    assert photo_thumb._size_or_none(out) is None

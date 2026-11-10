@@ -1630,3 +1630,16 @@ async def test_no_christmas_stub_is_cached_for_ten_minutes(h, monkeypatch):
     await s.tick()
     assert len(calls) == 2
     assert [(p.subject, p.occasion) for p in h.sent] == [("christmas", "2026")]
+
+
+@pytest.mark.asyncio
+async def test_prefs_read_error_falls_back(out, monkeypatch, safe_logs):
+    def broken():
+        raise OSError("locked")
+
+    monkeypatch.setattr(app_state, "get_prefs", broken)
+    assert await ns.read_selected_services() is None
+    (fallback,) = [
+        e for e in safe_logs if e["event"] == "memories_notify_selected_fallback"
+    ]
+    assert fallback["reason"] == "unreadable"
