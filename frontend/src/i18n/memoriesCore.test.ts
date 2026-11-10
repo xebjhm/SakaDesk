@@ -285,3 +285,41 @@ describe('memories core strings', () => {
         expect(lookup(zhTW, 'memories.day.modeLanes')).toBe('泳道');
     });
 });
+
+describe('Memories anniversary wording per locale', () => {
+    const WANT: Record<keyof typeof locales, Record<string, string>> = {
+        ja: {
+            'memories.home.anniversaryToday': '今日はメンバーシップ {{years}} 年目の記念日',
+            'memories.cards.annivYears': '{{years, number}}年目の記念日',
+            'memories.cards.annivYearsCondition': 'メンバーシップ {{years, number}} 年目の記念日に',
+        },
+        en: {
+            'memories.home.anniversaryToday': 'Today is your {{years}}-year membership anniversary',
+            'memories.cards.annivYears': '{{years, number}}-year anniversary',
+            'memories.cards.annivYearsCondition': 'On your {{years, number}}-year membership anniversary',
+        },
+        'zh-TW': {
+            'memories.home.anniversaryToday': '今天是會員 {{years}} 週年紀念日',
+            'memories.cards.annivYears': '{{years, number}} 週年紀念日',
+            'memories.cards.annivYearsCondition': '訂閱 {{years, number}} 週年',
+        },
+        'zh-CN': {
+            'memories.home.anniversaryToday': '今天是会员 {{years}} 周年纪念日',
+            'memories.cards.annivYears': '{{years, number}} 周年纪念日',
+            'memories.cards.annivYearsCondition': '订阅 {{years, number}} 周年',
+        },
+        yue: {
+            'memories.home.anniversaryToday': '今日係會員 {{years}} 週年紀念日',
+            'memories.cards.annivYears': '{{years, number}} 週年紀念日',
+            'memories.cards.annivYearsCondition': '訂閱 {{years, number}} 週年',
+        },
+    };
+    const at = (data: unknown, key: string): unknown =>
+        key.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], data);
+
+    it.each(Object.entries(WANT))('%s: N年目 / N 週年 / N 周年 / N-year anniversary', (code, want) => {
+        for (const [key, value] of Object.entries(want)) {
+            expect(at(locales[code as keyof typeof locales], key), `${code}.${key}`).toBe(value);
+        }
+    });
+});

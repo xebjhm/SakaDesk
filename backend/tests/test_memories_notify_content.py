@@ -654,6 +654,18 @@ async def test_anniversary_same_start_coalesces_oshi_first(anniv_svc):
     en = (await nc.anniversary_plans(ctx("en"), HINATA, svc, ordered, occs))[0][0][0]
     assert en.title == "Today is your 1-year membership anniversary"
     assert en.body.startswith("Your membership with 松田 好花, ")
+    # Per-locale anniversary wording: ja N年目, zh N 週年 / N 周年, en N-year.
+    titles = {
+        lang: (await nc.anniversary_plans(ctx(lang), HINATA, svc, ordered, occs))[0][0][
+            0
+        ].title
+        for lang in ("zh-TW", "zh-CN", "yue")
+    }
+    assert titles == {
+        "zh-TW": "今天是會員 1 週年紀念日",
+        "zh-CN": "今天是会员 1 周年纪念日",
+        "yue": "今日係會員 1 週年紀念日",
+    }
 
 
 @pytest.mark.asyncio
