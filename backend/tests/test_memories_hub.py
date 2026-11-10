@@ -365,3 +365,110 @@ async def test_logs_carry_no_text_or_names(today_svc):
         assert secret not in flat
     (event,) = [e for e in logs if e["event"] == "memories_hub"]
     assert event["rule"] == "today" and event["album"] == 4
+
+
+# --- fix wave 1 -----------------------------------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_photo_only_day_prefers_the_oshis_photo(svc):
+    kane(svc, [pic(KANE, 1, "2024-11-10T03:00:00Z")])  # low score
+    matsu(svc, [pic(MATSU, 1, "2025-11-10T12:00:00Z", fav=True)])  # ★ + evening
+    otd = (await build(svc))["on_this_day"]
+    assert otd["rule"] == "today" and otd["member_path"] == f"{SVC_NAME}/{KANE}"
+
+
+@pytest.mark.asyncio
+async def test_week_prefers_the_oshi(svc):
+    kane(
+        svc,
+        [
+            msg(1, "2022-06-01T04:00:00Z", content=KANE_FIRST),
+            msg(2, "2025-11-12T03:00:00Z", content="短い"),
+        ],
+    )
+    matsu(svc, [msg(1, "2025-11-11T03:00:00Z", content=MATSU_OTD)])
+    otd = (await build(svc))["on_this_day"]
+    assert otd["rule"] == "week" and otd["member_path"] == f"{SVC_NAME}/{KANE}"
+    assert otd["date"] == "2025-11-12"
+
+
+@pytest.mark.asyncio
+async def test_week_on_dec_31_reaches_into_january(svc):
+    kane(
+        svc,
+        [
+            msg(1, "2022-06-01T04:00:00Z", content=KANE_FIRST),
+            msg(2, "2025-01-02T03:00:00Z", content="新年の言葉"),
+            msg(3, "2025-12-29T03:00:00Z", content=MATSU_OTD),  # this week: never
+        ],
+    )
+    now = datetime(2025, 12, 31, 3, 0, tzinfo=timezone.utc)
+    otd = (await build(svc, now))["on_this_day"]
+    # 2025-01-02 is two days after 2024-12-31: last year's window
+    assert otd["rule"] == "week" and otd["message"]["id"] == 2
+    assert otd["year"] == 2024 and otd["years_ago"] == 1 and otd["date"] == "2025-01-02"
+
+
+@pytest.mark.asyncio
+async def test_countdown_month_day_only_birthday(svc):
+    people_with(svc, birthdays={"金村美玖": "11-15"})
+    countdown = (await build(svc))["countdown"]
+    assert countdown["kind"] == "birthday" and countdown["date"] == "2026-11-15"
+
+
+@pytest.mark.asyncio
+async def test_countdown_feb_29_birthday_in_a_non_leap_year(svc):
+    people_with(svc, birthdays={"金村美玖": "2004-02-29"})
+    now = datetime(2027, 2, 20, 3, 0, tzinfo=timezone.utc)
+    countdown = (await build(svc, now))["countdown"]
+    assert countdown["date"] == "2027-02-28" and countdown["days_left"] == 8
+
+
+@pytest.mark.asyncio
+async def test_countdown_tie_without_oshi_prefers_the_birthday(svc, monkeypatch):
+    set_oshi(monkeypatch, set())
+    # 金村 sorts first, but the birthday wins the same-day tie
+    people_with(
+        svc, birthdays={"松田好花": "1999-11-12"}, sub_starts={"34": "2023-11-12"}
+    )
+    countdown = (await build(svc))["countdown"]
+    assert countdown["kind"] == "birthday" and countdown["name"] == "松田 好花"
+
+
+def write_server_groups(svc, groups):
+    (svc / "sync_metadata.json").write_text(
+        json.dumps({"server_groups": groups}), encoding="utf-8"
+    )
+
+
+@pytest.mark.asyncio
+async def test_countdown_drops_the_anniversary_of_an_ended_subscription(svc):
+    people_with(
+        svc, birthdays={"松田好花": "1999-11-20"}, sub_starts={"40": "2023-11-12"}
+    )
+    write_server_groups(
+        svc,
+        {
+            "34": {"state": "open", "is_active": True},
+            "40": {"state": "open", "is_active": False},
+        },
+    )
+    with capture_logs() as logs:
+        countdown = (await build(svc))["countdown"]
+    # the 11-12 anniversary is gone; her birthday stays
+    assert countdown["kind"] == "birthday" and countdown["date"] == "2026-11-20"
+    assert any(e.get("reason") == "subscription_ended" for e in logs)
+    write_server_groups(svc, {"40": {"state": "open", "is_active": True}})
+    countdown = (await build(svc))["countdown"]  # resubscribed: a cache miss
+    assert countdown["kind"] == "anniversary" and countdown["date"] == "2026-11-12"
+
+
+@pytest.mark.asyncio
+async def test_countdown_unreadable_sync_metadata_drops_nothing(svc):
+    people_with(svc, sub_starts={"40": "2023-11-12"})
+    (svc / "sync_metadata.json").write_text("{not json", encoding="utf-8")
+    with capture_logs() as logs:
+        countdown = (await build(svc))["countdown"]
+    assert countdown["kind"] == "anniversary"
+    assert any(e.get("reason") == "sync_metadata_unreadable" for e in logs)

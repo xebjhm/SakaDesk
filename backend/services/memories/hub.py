@@ -15,7 +15,7 @@ one. ``rule`` tells the frontend which copy is true, so a ``week`` or
   Pool = every fact on that month-day before this year; the pick is
   ``on_this_day.pick_year`` over the pool: oshi first, then the highest
   importance (ties: the earlier); a day with only photos shows its best
-  photo as the message.
+  photo as the message (the oshi's photos first).
 - ``week``: when today has nothing, the facts within
   :data:`WEEK_DAYS` days of this month-day in a past year (Feb 29 is
   Feb 28 in a non-leap year), same pick. A date within the window of this
@@ -44,7 +44,9 @@ shows only the numbers it needs.
 the frontend shows "today" copy, never "0") among non-graduated people's
 birthdays (``kind=birthday``, ``years=None``) and the fan's next
 subscription anniversary with her (``kind=anniversary``, ``years`` = k >= 1,
-``cards.anniversary_date``). The anniversary is the fan's own date: the
+``cards.anniversary_date``), left out when her subscription has ended
+(``sync_metadata.json`` ``server_groups`` reports ``is_active: false`` for
+all her open groups; see ``_lapsed_groups``). The anniversary is the fan's own date: the
 payload says nothing about her knowing it. Ties go to the oshi, then the
 birthday, then the ``sort_people`` order. ``None`` when no listed person
 has a birthday or a start date. ``{"kind", "member_path", "name", "date",
@@ -52,7 +54,7 @@ has a birthday or a start date. ``{"kind", "member_path", "name", "date",
 
 The numeric part (``counts``, ``countdown``) is cached text-free (view
 ``hub``, key ``all``, hash over :data:`VERSION`, every person's room
-hashes, today's JST date and the oshi set; birthdays, start dates and
+hashes, today's JST date, the oshi set and the lapsed groups; birthdays, start dates and
 graduation are in the room hashes). ``on_this_day`` is chosen and its text
 attached after the cache read (the On This Day facts it reads are cached
 by the memory index).
@@ -67,13 +69,15 @@ Logs (ids, codes, counts and scores only): ``memories_select``
 no_photo``), ``memories_select`` (``view=hub_countdown``, ``rule`` = the
 kind, ``score`` = days left, ``person``) or ``memories_skip``
 (``view=hub_countdown``, ``reason=no_dates``; ``reason=bad_birthday`` per
-unparsable birthday) when the numbers are built, and ``memories_hub``
+unparsable birthday; ``reason=subscription_ended`` per dropped anniversary;
+``reason=sync_metadata_unreadable``) when the numbers are built, and ``memories_hub``
 (``rule``, ``album``, ``members``, ``favorites``, ``countdown``) per call.
 """
 
 from __future__ import annotations
 
 import asyncio
+import json
 from collections.abc import Sequence
 from datetime import date, datetime, timedelta
 from pathlib import Path
@@ -99,7 +103,8 @@ VIEW = "hub"
 VIEW_OTD = "hub_otd"
 VIEW_COUNTDOWN = "hub_countdown"
 # Bump on any rule or payload change of the cached part (the hash has it).
-VERSION = 1
+VERSION = 2
+SYNC_METADATA = "sync_metadata.json"
 WEEK_DAYS = 3
 # A leap and a non-leap reference year: the week's month-days of both.
 _REF_YEARS = (2023, 2024)
@@ -107,10 +112,6 @@ _REF_YEARS = (2023, 2024)
 _Tagged = tuple[mi.MemberSummary, str, Fact]
 # (person, room, fact, the past year whose month-day it belongs to)
 _Pick = tuple[mi.MemberSummary, str, Fact, int]
-
-
-def _member_id(summary: mi.MemberSummary) -> str | None:
-    return summary.member_ids[0] if summary.member_ids else None
 
 
 def _on_year(year: int, month: int, day: int) -> date:
@@ -149,10 +150,54 @@ def _next_anniversary(start: date | None, today: date) -> tuple[date, int] | Non
     return anniversary_date(start, k), k
 
 
+def _lapsed_groups(sdir: Path) -> frozenset[str]:
+    """Open groups whose subscription the server reports as no longer active. Blocking.
+
+    ``sync_metadata.json`` ``server_groups[gid].is_active`` is written by every
+    sync from the group's subscription state (``active`` / ``cancelled`` =
+    still readable); the chat uses the same flag to mark rooms the fan can no
+    longer read. A group without an entry counts as active, like the chat. A
+    missing file gives nothing; an unreadable one is logged and gives nothing.
+    """
+    try:
+        meta = json.loads((sdir / SYNC_METADATA).read_text(encoding="utf-8"))
+        groups = meta.get("server_groups") or {}
+        return frozenset(
+            str(gid)
+            for gid, entry in groups.items()
+            if isinstance(entry, dict)
+            and entry.get("state") != "closed"
+            and entry.get("is_active") is False
+        )
+    except FileNotFoundError:
+        return frozenset()
+    except (OSError, ValueError, AttributeError, TypeError) as e:
+        logger.warning(
+            "memories_skip",
+            view=VIEW_COUNTDOWN,
+            reason="sync_metadata_unreadable",
+            error_type=type(e).__name__,
+        )
+        return frozenset()
+
+
+def _subscribed(summary: mi.MemberSummary, lapsed: frozenset[str]) -> bool:
+    """False when every one of her rooms' groups has a lapsed subscription."""
+    return not summary.group_ids or any(g not in lapsed for g in summary.group_ids)
+
+
 def _countdown(
-    sdir: Path, ordered: Sequence[mi.MemberSummary], oshi: set[str], today: date
+    sdir: Path,
+    ordered: Sequence[mi.MemberSummary],
+    oshi: set[str],
+    today: date,
+    lapsed: frozenset[str],
 ) -> dict | None:
-    """The soonest birthday / anniversary of a non-graduated person, or ``None``."""
+    """The soonest birthday / anniversary of a non-graduated person, or ``None``.
+
+    The anniversary is left out for a person whose subscription has ended
+    (``lapsed`` covers all her groups); her birthday stays.
+    """
     events: list[tuple[tuple[int, bool, int, int], dict, mi.MemberSummary]] = []
     for rank, s in enumerate(ordered):
         if s.graduated:
@@ -166,10 +211,17 @@ def _countdown(
                 "memories_skip",
                 view=VIEW_COUNTDOWN,
                 reason="bad_birthday",
-                person=_member_id(s),
+                person=people.member_id(s),
             )
         anniversary = _next_anniversary(binder.subscription_start(s), today)
-        if anniversary is not None:
+        if anniversary is not None and not _subscribed(s, lapsed):
+            logger.info(
+                "memories_skip",
+                view=VIEW_COUNTDOWN,
+                reason="subscription_ended",
+                person=people.member_id(s),
+            )
+        elif anniversary is not None:
             found.append((1, "anniversary", *anniversary))
         for kind_rank, kind, day, years in found:
             left = (day - today).days
@@ -194,7 +246,7 @@ def _countdown(
         score=row["days_left"],
         fallback=None,
         message_id=None,
-        person=_member_id(s),
+        person=people.member_id(s),
     )
     return row
 
@@ -203,9 +255,12 @@ def _countdown(
 
 
 def _best(pool: Sequence[_Tagged], oshi: set[str]) -> _Tagged | None:
-    """Her best words of the pool (oshi first), else its best photo. Pure."""
+    """Her best words of the pool (oshi first), else its best photo (oshi first). Pure."""
     preview, thumb = pick_year(pool, oshi)
-    return preview[0] if preview else thumb
+    if preview:
+        return preview[0]
+    _, oshi_thumb = pick_year([t for t in pool if t[0].name_norm in oshi], oshi)
+    return oshi_thumb or thumb
 
 
 def _score(fact: Fact) -> int | None:
@@ -377,12 +432,17 @@ async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
     oshi = await people.oshi_rooms(service, summaries)
     ordered = people.sort_people(summaries, oshi)
     hashes = [await people.room_hashes(sdir, s) for s in summaries]
-    data_hash = view_hash(VERSION, hashes, today.isoformat(), sorted(oshi))
+    lapsed = await asyncio.to_thread(_lapsed_groups, sdir)
+    data_hash = view_hash(
+        VERSION, hashes, today.isoformat(), sorted(oshi), sorted(lapsed)
+    )
 
     async def build() -> dict:
         tagged = [await get_person_facts(sdir, s) for s in summaries]
         counts = await asyncio.to_thread(_counts, tagged)
-        countdown = await asyncio.to_thread(_countdown, sdir, ordered, oshi, today)
+        countdown = await asyncio.to_thread(
+            _countdown, sdir, ordered, oshi, today, lapsed
+        )
         return {"counts": counts, "countdown": countdown}
 
     numbers = await cached_view(sdir, VIEW, "all", data_hash, build)

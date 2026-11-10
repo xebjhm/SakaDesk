@@ -18,7 +18,8 @@ Vocabulary:
 API:
 
 - ``output_dir()``, ``service_data_dir(service, base=None)``,
-  ``person_key(summary)``, ``chat_path(sdir, room)``.
+  ``person_key(summary)``, ``chat_path(sdir, room)``, ``member_id(summary)``
+  (the id logs use for a person).
 - ``async resolve_person(sdir, member_path)`` -- the person owning the room
   at ``member_path`` (a chat path of any of her rooms), or ``None``.
 - ``async oshi_rooms(service, summaries)``, ``sort_people(summaries, oshi)``.
@@ -121,7 +122,8 @@ def chat_path(sdir: Path, room: str) -> str:
     return f"{sdir.name}/{room}"
 
 
-def _member_id(summary: mi.MemberSummary) -> str | None:
+def member_id(summary: mi.MemberSummary) -> str | None:
+    """Her first room's member id: the log identifier of a person (or ``None``)."""
     return summary.member_ids[0] if summary.member_ids else None
 
 
@@ -146,7 +148,7 @@ async def resolve_person(sdir: Path, member_path: str) -> mi.MemberSummary | Non
         "memories_person_resolved",
         found=found is not None,
         rooms=len(found.member_dirs) if found else 0,
-        member_id=_member_id(found) if found else None,
+        member_id=member_id(found) if found else None,
     )
     return found
 
@@ -291,7 +293,7 @@ async def avatar_timelines(sdir: Path, summary: mi.MemberSummary) -> AvatarTimel
         _avatar_cache.popitem(last=False)
     logger.debug(
         "memories_avatars",
-        member_id=_member_id(summary),
+        member_id=member_id(summary),
         count=len(timeline.entries),
     )
     return timeline
@@ -528,7 +530,7 @@ def _letters_sync(
             view="letters",
             reason="invalid",
             count=invalid,
-            member_id=_member_id(summary),
+            member_id=member_id(summary),
         )
     out.sort()
     return out
@@ -564,6 +566,7 @@ __all__ = [
     "media_file_for",
     "media_url_for",
     "media_url_of",
+    "member_id",
     "message_ref",
     "oshi_rooms",
     "output_dir",
