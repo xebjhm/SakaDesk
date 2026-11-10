@@ -11,14 +11,14 @@ from fastapi import APIRouter, HTTPException, Query, Request
 from fastapi.responses import Response
 
 from backend.api.content import get_output_dir
-from backend.services.archive_urls import ArchiveReadError, resolve_within
-from backend.services.memories import exports, index, share_gif
+from backend.services.archive_urls import ArchiveReadError
+from backend.services.memories import exports, people, share_gif
+from backend.services.memories.index import MemberSummary
 from backend.services.memories.recap import (
     build_member_recap,
     build_members_overview,
     recap_years,
 )
-from backend.services.service_utils import get_service_display_name, validate_service
 
 router = APIRouter(prefix="/api/memories", tags=["memories"])
 logger = structlog.get_logger(__name__)
@@ -27,13 +27,12 @@ MIN_YEAR = 2020
 
 
 def _service_dir(service: str) -> Path:
+    """The service's data dir (``people.service_data_dir``); 400 for an unknown service."""
     try:
-        validate_service(service)
-        name = get_service_display_name(service)
+        return people.service_data_dir(service, get_output_dir())
     except ValueError:
         logger.warning("memories.api.reject", reason="unknown_service")
         raise HTTPException(status_code=400, detail="Unknown service") from None
-    return get_output_dir() / name
 
 
 def _check_year(year: int, now: datetime) -> None:
@@ -42,19 +41,27 @@ def _check_year(year: int, now: datetime) -> None:
         raise HTTPException(status_code=400, detail="Year out of range")
 
 
-def _room_rel(service_data_dir: Path, member: str) -> str:
-    """Room path relative to the service dir for a chat-style ``member`` path."""
-    output_dir = service_data_dir.parent
+async def _person(
+    service_data_dir: Path, member: str, **log_fields: object
+) -> MemberSummary:
+    """The person owning the room at the chat-style ``member`` path.
+
+    A path that escapes the output dir is 400; a path in another service or a
+    room no person owns is 404 (``people.resolve_person``). ``log_fields``
+    (ids and codes only, e.g. ``year``) are added to the not-found breadcrumb.
+    """
     try:
-        resolved = resolve_within(output_dir, output_dir / member)
-        rel = resolved.relative_to(service_data_dir.resolve())
+        summary = await people.resolve_person(service_data_dir, member)
+    except people.ForeignServiceError:
+        logger.warning("memories.api.reject", reason="other_service")
+        raise HTTPException(status_code=404, detail="Member not found") from None
     except ArchiveReadError:
         logger.warning("memories.api.reject", reason="outside_output_dir")
         raise HTTPException(status_code=400, detail="Invalid member path") from None
-    except ValueError:
-        logger.warning("memories.api.reject", reason="other_service")
-        raise HTTPException(status_code=404, detail="Member not found") from None
-    return rel.as_posix()
+    if summary is None:
+        logger.info("memories.api.member_not_found", **log_fields)
+        raise HTTPException(status_code=404, detail="Member not found")
+    return summary
 
 
 def _join_body(chunks: list[bytes]) -> bytes:
@@ -109,12 +116,7 @@ async def recap_member(service: str, year: int, member: str = Query(...)) -> dic
     now = datetime.now(timezone.utc)
     service_data_dir = _service_dir(service)
     _check_year(year, now)
-    rel = _room_rel(service_data_dir, member)
-    summaries = await index.list_members(service_data_dir)
-    summary = next((s for s in summaries if rel in s.member_dirs), None)
-    if summary is None:
-        logger.info("memories.api.member_not_found", year=year)
-        raise HTTPException(status_code=404, detail="Member not found")
+    summary = await _person(service_data_dir, member, year=year)
     return await build_member_recap(service, service_data_dir, summary, year, now=now)
 
 

@@ -71,13 +71,16 @@ from typing import Any
 
 import structlog
 
-from backend.services import app_state, profile_images_service
+from backend.services import app_state
 from backend.services.archive_urls import media_url
 from backend.services.memories import facts as mf
 from backend.services.memories import index as mi
+from backend.services.letters_local import read_local_letters
 from backend.services.memories import oshi as oshi_mod
+from backend.services.memories import people
 from backend.services.memories import selection as sel
 from backend.services.memories.facts import Fact
+from backend.services.memories.lexicon import CHRISTMAS_RE, RAW_SENTENCE_SPLIT_RE
 from backend.services.memories.selection import JST
 
 logger = structlog.get_logger(__name__)
@@ -138,11 +141,9 @@ ECHO_KEYWORD_SCORE = 4
 
 # Raw sentence boundaries (spec: 。！？ and newlines). Splitting the raw text
 # keeps her characters exactly; ``selection.split_sentences`` NFKC-normalises.
-_SENTENCE_RE = re.compile(r"[。！？!?\n]+")
 _DAISUKI_RE = re.compile(r"大好き|だいすき|愛してる|ありがとう|感謝")
 _JOY_RE = re.compile(r"嬉しい|楽しい|幸せ|またね|これからもよろしく")
 _FINAL_WORD_RE = re.compile(r"大好き|ありがとう")
-_XMAS_RE = re.compile(r"クリスマス|メリクリ|🎄")
 _NICK_DAISUKI_RE = re.compile(r"大好き|だいすき")
 ECHO_KEYWORDS = (
     "桜",
@@ -312,18 +313,11 @@ def _spread(seq: Sequence[Any], k: int) -> list[Any]:
 
 
 def _sentences(text: str) -> list[str]:
-    return [s.strip() for s in _SENTENCE_RE.split(text) if s.strip()]
+    return [s.strip() for s in RAW_SENTENCE_SPLIT_RE.split(text) if s.strip()]
 
 
 def _key(item: Item) -> Key:
     return item[0], item[1].id
-
-
-def _media_url(service: str, media_file: str | None) -> str | None:
-    if not media_file:
-        return None
-    parts = [p for p in media_file.replace("\\", "/").split("/") if p]
-    return media_url(service, parts) if parts else None
 
 
 # --- context --------------------------------------------------------------------
@@ -407,7 +401,9 @@ class _Ctx:
             "ts": _iso(f.ts),
             "type": f.type,
             "text": own or None,
-            "media_url": _media_url(self.service, f.media_file) if text else None,
+            "media_url": people.media_url_of(self.service, f.media_file)
+            if text
+            else None,
             "caption": caption,
             "avatar_url": self.avatars.get(rel) if text else None,
             "member_path": self.paths.get(rel),
@@ -436,7 +432,7 @@ class _Ctx:
             if not pics:
                 return None
             best = min(pics, key=lambda p: abs(p[1].ts - f.ts))
-        return _media_url(self.service, best[1].media_file)
+        return people.media_url_of(self.service, best[1].media_file)
 
 
 def _slide(key: str, data: dict, fallback: str | None = None) -> dict:
@@ -677,7 +673,7 @@ def _s05_photos(ctx: _Ctx) -> dict | None:
     data: dict[str, Any] = {"burst": [], "burst_caption": None}
     if len(pictures) >= 5:
         data["wall"] = [
-            _media_url(ctx.service, i[1].media_file)
+            people.media_url_of(ctx.service, i[1].media_file)
             for i in _spread(pictures, MAX_WALL)
         ]
     groups: dict[tuple[str, int], list[Item]] = {}
@@ -988,7 +984,7 @@ def _s09_special(ctx: _Ctx) -> dict | None:
         lo = datetime(ctx.year, 12, 24, 18, tzinfo=JST)
         hi = datetime(ctx.year, 12, 25, 23, 59, 59, tzinfo=JST)
         eve = [i for i in ctx.nonpromo() if lo <= i[1].ts <= hi and ctx.free(i)]
-        keyed = [i for i in eve if _XMAS_RE.search(ctx.text(i))]
+        keyed = [i for i in eve if CHRISTMAS_RE.search(ctx.text(i))]
         pool = keyed or eve
         pick = pool[0] if pool else None
         if pick is not None:
@@ -1369,18 +1365,12 @@ def _compose(ctx: _Ctx, tier: str) -> dict:
     return {**base, "slides": slides, "poster": poster}
 
 
-def _display_path(service_data_dir: Path, rel: str) -> str:
-    return f"{service_data_dir.name}/{rel}"
-
-
 def _read_letters(
     service: str,
     service_data_dir: Path,
     rels: Sequence[str],
     member_ids: Sequence[str] = (),
 ) -> list[tuple[datetime, str]]:
-    from backend.api.chat_features import read_local_letters
-
     out: list[tuple[datetime, str]] = []
     output_dir = service_data_dir.parent
     for n, rel in enumerate(rels):
@@ -1398,16 +1388,6 @@ def _read_letters(
                 room_index=n,
             )
     return out
-
-
-def _avatars(service_data_dir: Path, rels: Sequence[str]) -> dict[str, str | None]:
-    output_dir = service_data_dir.parent
-    return {
-        rel: profile_images_service.local_urls(
-            output_dir, service_data_dir / rel, _display_path(service_data_dir, rel)
-        ).get("thumbnail_local")
-        for rel in rels
-    }
 
 
 def _fav_times(service: str, ids: list[int]) -> dict[int, str]:
@@ -1433,10 +1413,6 @@ _CACHE_SCHEMA = (
     "year INTEGER, data_hash TEXT, payload TEXT, "
     "PRIMARY KEY(service, person_key, year))"
 )
-
-
-def _person_key(summary: mi.MemberSummary) -> str:
-    return "|".join(sorted(summary.member_dirs))
 
 
 def _stat(path: Path) -> str:
@@ -1522,7 +1498,7 @@ async def _scan_key(
     parts = [RECAP_VERSION, kind, str(service_data_dir)]
     parts.append(now.astimezone(JST).date().isoformat())
     parts += [str(x) for x in extra]
-    for s in sorted(summaries, key=_person_key):
+    for s in sorted(summaries, key=people.person_key):
         parts.append(repr(s))
         for rel, idx in (await _room_indexes(service_data_dir, s)).items():
             if not idx.data_hash:
@@ -1586,8 +1562,8 @@ def _build_sync(
         earlier=tuple(earlier),
         all_facts=tuple(upto),
         texts=_Texts(service_data_dir, wanted),
-        paths={rel: _display_path(service_data_dir, rel) for rel in rels},
-        avatars=_avatars(service_data_dir, rels),
+        paths={rel: people.chat_path(service_data_dir, rel) for rel in rels},
+        avatars=people.current_avatars(service_data_dir, rels),
         rooms=rooms,
         fav_at=_fav_times(service, fav_ids) if tier != "none" else {},
         letters=tuple(
@@ -1642,7 +1618,7 @@ async def build_member_recap(
     rooms = await _room_indexes(service_data_dir, summary)
     phase, xmas = phase_flags(year, now)
     cacheable = all(idx.data_hash for idx in rooms.values())
-    person = _person_key(summary)
+    person = people.person_key(summary)
     data_hash = ""
     if cacheable:
         data_hash = await asyncio.to_thread(
@@ -1773,7 +1749,7 @@ def _overview_sync(
     titles = assign_titles(eligible, [k for k in star_order if k in eligible])
     members = [
         {
-            "member_path": _display_path(service_data_dir, s.member_dirs[0]),
+            "member_path": people.chat_path(service_data_dir, s.member_dirs[0]),
             "member_id": s.member_ids[0],
             "name": s.name,
             "tier": st.tier,
