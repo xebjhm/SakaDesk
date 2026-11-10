@@ -337,7 +337,10 @@ def make_open_memories_handler(window, focus_fn):
     member path can never break out of the script. Logs
     ``notify_open_memories`` (``service``, ``target`` = page code,
     ``delivered=True``) or ``notify_open_memories_failed`` with
-    ``reason=not_ready`` or ``error_type``. Never logs the route; never raises.
+    ``reason=refused`` (the frontend answered false: a malformed link, an
+    unknown group or onboarding; its own breadcrumb has the exact code),
+    ``reason=not_ready`` (the bridge is not mounted yet) or ``error_type``.
+    Never logs the route; never raises.
     """
 
     def handler(service: str, route: dict) -> None:
@@ -354,7 +357,7 @@ def make_open_memories_handler(window, focus_fn):
             delivered = window.evaluate_js(
                 "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
                 + payload
-                + ") === true : false"
+                + ") === true : null"
             )
             if delivered is True:
                 logger.info(
@@ -368,7 +371,7 @@ def make_open_memories_handler(window, focus_fn):
                     "notify_open_memories_failed",
                     service=service,
                     target=target,
-                    reason="not_ready",
+                    reason="refused" if delivered is False else "not_ready",
                 )
         except Exception as e:
             logger.warning(

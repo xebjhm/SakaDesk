@@ -385,7 +385,7 @@ OTD_ROUTE = {"page": "onThisDay", "monthDay": "11-10", "year": 2023}
 OTD_SCRIPT = (
     "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
     '{"service": "hinatazaka46", "route": {"page": "onThisDay", '
-    '"monthDay": "11-10", "year": 2023}}) === true : false'
+    '"monthDay": "11-10", "year": 2023}}) === true : null'
 )
 
 
@@ -423,7 +423,7 @@ def test_memories_handler_escapes_a_hostile_member_path():
         )
     script = window.calls[1][1][0]
     prefix = "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
-    suffix = ") === true : false"
+    suffix = ") === true : null"
     assert script.startswith(prefix) and script.endswith(suffix)
     payload = json.loads(script[len(prefix) : -len(suffix)])
     assert payload == {"service": "hinatazaka46", "route": route}
@@ -435,7 +435,7 @@ def test_memories_handler_escapes_a_hostile_member_path():
 
 def test_memories_handler_logs_not_ready_and_an_unknown_page():
     handler = desktop.make_open_memories_handler(
-        _FakeWindow(js_result=False), lambda _h: None
+        _FakeWindow(js_result=None), lambda _h: None
     )
     with capture_logs() as logs:
         handler("sakurazaka46", {"page": "secret 金村", "year": 2025})
@@ -445,6 +445,19 @@ def test_memories_handler_logs_not_ready_and_an_unknown_page():
         ("notify_open_memories_failed", "recap", "not_ready"),
     ]
     assert "金村" not in repr(logs) and "2025" not in repr(logs)
+
+
+def test_memories_handler_logs_a_frontend_refusal_as_refused():
+    # The bridge is mounted but answered false (malformed, unknown group,
+    # onboarding): that is a refusal, not "not ready".
+    handler = desktop.make_open_memories_handler(
+        _FakeWindow(js_result=False), lambda _h: None
+    )
+    with capture_logs() as logs:
+        handler("sakurazaka46", OTD_ROUTE)
+    assert [(e["event"], e["target"], e["reason"]) for e in _mem(logs)] == [
+        ("notify_open_memories_failed", "on_this_day", "refused"),
+    ]
 
 
 def test_memories_handler_never_raises_and_logs_only_the_error_type():
@@ -478,4 +491,4 @@ def test_memories_handler_tolerates_a_non_dict_route():
         )("sakurazaka46", None)  # type: ignore[arg-type]
     (failed,) = _mem(logs)
     assert failed["target"] == "unknown"
-    assert failed["reason"] == "not_ready"
+    assert failed["reason"] == "refused"
