@@ -1,4 +1,4 @@
-"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view and the album for the active service, the export handoff and the share GIF."""
+"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board and the hub for the active service, the export handoff and the share GIF."""
 
 from __future__ import annotations
 
@@ -19,6 +19,8 @@ from backend.services.memories import (
     binder,
     day_view,
     exports,
+    favorites_board,
+    hub,
     memoir,
     nickname_moments,
     on_this_day,
@@ -360,6 +362,28 @@ async def album_colors_route(service: str, member: str | None = Query(None)) -> 
     service_data_dir = _service_dir(service)
     summary = await _optional_person(service_data_dir, member, "album")
     return await album_colors.month_colors_for(service, service_data_dir, summary)
+
+
+@router.get("/{service}/favorites")
+async def favorites_route(service: str, member: str | None = Query(None)) -> dict:
+    """The favorites cork board (``favorites_board.favorites_board``).
+
+    ``member`` (chat path of any of her rooms) limits the items to one
+    person; the member list always covers everyone.
+    """
+    service_data_dir = _service_dir(service)
+    summary = await _optional_person(service_data_dir, member, "favorites")
+    return await favorites_board.favorites_board(
+        service, service_data_dir, member=summary
+    )
+
+
+@router.get("/{service}/hub")
+async def hub_route(service: str) -> dict:
+    """The Memories hub board (``hub.build_hub``): moment, counts, countdown."""
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    return await hub.build_hub(service, service_data_dir, now=now)
 
 
 @router.post("/export")

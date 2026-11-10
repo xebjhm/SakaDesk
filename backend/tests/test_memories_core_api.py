@@ -381,3 +381,63 @@ def test_album_routes_with_photos(album_out, no_oshi):
     for text in texts:
         assert str(album_out) not in text
         assert str(album_out).replace("\\", "/") not in text
+
+
+# --- favorites board and hub (C6) --------------------------------------------------
+
+
+@pytest.fixture
+def fav_out(out):
+    svc = out / SVC_NAME
+    write_room(
+        svc,
+        "34 金村 美玖",
+        "58 金村 美玖",
+        [
+            msg(1, "2024-07-24T03:00:00Z", content="はじめまして"),
+            msg(2, "2024-12-24T11:00:00Z", content=WORDS, fav=True),
+            msg(3, "2024-11-10T03:00:00Z", content="二年前の今日"),
+        ],
+    )
+    app_state.record_favorite(
+        SERVICE, 2, True, at=datetime(2026, 1, 1, tzinfo=timezone.utc)
+    )
+    return out
+
+
+def test_favorites_route(fav_out, no_oshi):
+    url = f"/api/memories/{SERVICE}/favorites"
+    r = get(url)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["total"] == 1 and body["members"][0]["member_path"] == MEMBER
+    (item,) = body["items"]
+    assert item["text"] == WORDS and item["favorited_at"].startswith("2026-01-01")
+    assert get(url, member=MEMBER).json()["items"][0]["id"] == 2
+    assert str(fav_out) not in r.text
+
+
+def test_favorites_route_validates_member(fav_out, no_oshi):
+    url = f"/api/memories/{SERVICE}/favorites"
+    assert get(url, member="../../etc/passwd").status_code == 400
+    assert get(url, member=f"{SVC_NAME}/../../x").status_code == 400
+    (fav_out / SVC_NAME / "messages" / "99 x" / "98 x").mkdir(parents=True)
+    assert get(url, member=f"{SVC_NAME}/messages/99 x/98 x").status_code == 404
+    (fav_out / "櫻坂46" / "messages" / "1 x" / "2 x").mkdir(parents=True)
+    assert get(url, member="櫻坂46/messages/1 x/2 x").status_code == 404
+    assert get("/api/memories/nope/favorites").status_code == 400
+
+
+def test_hub_route(fav_out, no_oshi):
+    r = get(f"/api/memories/{SERVICE}/hub")
+    assert r.status_code == 200
+    body = r.json()
+    otd = body["on_this_day"]
+    assert otd["rule"] == "today" and otd["years_ago"] == 2  # today from the clock
+    assert otd["message"]["text"] == "二年前の今日" and otd["member_path"] == MEMBER
+    assert body["counts"] == {"album": 0, "members": 1, "favorites": 1}
+    assert body["countdown"]["kind"] == "anniversary"
+    assert body["countdown"]["date"] == "2027-07-24" and body["countdown"]["years"] == 3
+    assert body["same_time"] is None and body["capsule"] is None
+    assert str(fav_out) not in r.text
+    assert get("/api/memories/nope/hub").status_code == 400
