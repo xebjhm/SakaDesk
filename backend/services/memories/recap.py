@@ -162,7 +162,7 @@ Key = tuple[str, int]  # (member_dir, message id)
 def phase_flags(year: int, now: datetime) -> tuple[str, bool]:
     """``(phase, christmas_open)`` of the ``year`` recap at ``now`` (aware)."""
     final = now >= datetime(year + 1, 1, 1, tzinfo=JST)
-    xmas = final or now >= datetime(year, 12, 25, tzinfo=JST)
+    xmas = final or now >= datetime(year, *sel.RECAP_CHRISTMAS_MD, tzinfo=JST)
     return ("final" if final else "partial"), xmas
 
 

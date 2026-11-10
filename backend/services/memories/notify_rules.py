@@ -18,8 +18,9 @@ Windows (half-open, aware UTC):
   so the first launch after Jan 1 sends it.
 
 Date maths is reused, never re-implemented: birthdays go through
-``cards.parse_birthday`` and ``cards.anniversary_date`` (Feb 29 becomes Feb 28
-in a non-leap year, the hub's ``_on_year`` rule); anniversaries and day
+``cards.parse_birthday`` and ``cards.on_year`` (Feb 29 becomes Feb 28 in a
+non-leap year, the same rule as the hub countdown); the recap days are
+``selection.RECAP_OPEN_MD`` / ``RECAP_CHRISTMAS_MD``; anniversaries and day
 milestones use ``cards.anniversary_date`` / ``cards.subscription_day_date``,
 so they match the binder and the hub countdown. Card unlocks diff
 ``cards.earned_keys`` keys (``key@year`` per stacked year), never dates.
@@ -35,10 +36,16 @@ from datetime import date, datetime, time, timedelta, timezone
 from backend.services.memories.cards import (
     Card,
     anniversary_date,
+    on_year,
     parse_birthday,
     subscription_day_date,
 )
-from backend.services.memories.selection import JST, jst
+from backend.services.memories.selection import (
+    JST,
+    RECAP_CHRISTMAS_MD,
+    RECAP_OPEN_MD,
+    jst,
+)
 
 KINDS = ("on_this_day", "birthday", "birthday_soon", "anniversary", "recap", "card")
 SETTING_FOR_KIND: Mapping[str, str] = {
@@ -58,10 +65,6 @@ RECAP_READY_LAST = (
 )  # Jan 31 is the last day of the "first launch after 1/1" window
 FOIL_NOTIFY_EXCLUDED = frozenset({"grad.last"})
 
-# Recap year-end unlock days (spec 9.3), the same dates as ``recap.phase_flags``
-# (Christmas) and the frontend's ``recap/availability`` (Dec 1 open).
-_RECAP_OPEN = (12, 1)
-_RECAP_CHRISTMAS = (12, 25)
 _MIDNIGHT = time(0, 0)
 _SLOT_RE = re.compile(r"([01][0-9]|2[0-3]):([0-5][0-9])", re.ASCII)
 
@@ -137,9 +140,7 @@ def birthday_date(raw: str | None, year: int) -> date | None:
     """Her birthday in ``year`` (``MM-DD`` / ``YYYY-MM-DD``); Feb 29 is Feb 28
     in a non-leap year. ``None`` when ``raw`` is not a valid birthday."""
     md = parse_birthday(raw)
-    if md is None:
-        return None
-    return anniversary_date(date(2000, *md), year - 2000)
+    return on_year(md, year) if md is not None else None
 
 
 def birthday_occasions(
@@ -218,8 +219,8 @@ def recap_occasions(service: str, today: date, slot: time) -> list[Occasion]:
     """Dec 1: ``open`` (this year); Dec 25: ``christmas`` (this year); Jan 1-31:
     ``ready`` (last year, window Jan 1 00:00 to Feb 1 00:00 JST)."""
     md = (today.month, today.day)
-    if md in (_RECAP_OPEN, _RECAP_CHRISTMAS):
-        subject = "open" if md == _RECAP_OPEN else "christmas"
+    if md in (RECAP_OPEN_MD, RECAP_CHRISTMAS_MD):
+        subject = "open" if md == RECAP_OPEN_MD else "christmas"
         return [
             Occasion(
                 "recap",

@@ -51,7 +51,7 @@ birthdays (``kind=birthday``, ``years=None``) and the fan's next
 subscription anniversary with her (``kind=anniversary``, ``years`` = k >= 1,
 ``cards.anniversary_date``), left out when her subscription has ended
 (``sync_metadata.json`` ``server_groups`` reports ``is_active: false`` for
-all her open groups; see ``_lapsed_groups``). The anniversary is the fan's own date: the
+all her open groups; see ``lapsed_groups``). The anniversary is the fan's own date: the
 payload says nothing about her knowing it. Ties go to the oshi, then the
 birthday, then the ``sort_people`` order. ``None`` when no listed person
 has a birthday or a start date. ``{"kind", "member_path", "name", "date",
@@ -106,7 +106,7 @@ import structlog
 
 from backend.services.memories import binder, capsule, people, same_time, user_store
 from backend.services.memories import index as mi
-from backend.services.memories.cards import anniversary_date, parse_birthday
+from backend.services.memories.cards import anniversary_date, on_year, parse_birthday
 from backend.services.memories.gacha import MAX_PULLS
 from backend.services.memories.facts import (
     Fact,
@@ -133,11 +133,6 @@ _REF_YEARS = (2023, 2024)
 _Tagged = tuple[mi.MemberSummary, str, Fact]
 # (person, room, fact, the past year whose month-day it belongs to)
 _Pick = tuple[mi.MemberSummary, str, Fact, int]
-
-
-def _on_year(year: int, month: int, day: int) -> date:
-    """``month``-``day`` in ``year``; Feb 29 is Feb 28 in a non-leap year."""
-    return anniversary_date(date(2000, month, day), year - 2000)
 
 
 # --- numbers -------------------------------------------------------------------------
@@ -167,8 +162,8 @@ def _next_birthday(raw: str | None, today: date) -> date | None:
     md = parse_birthday(raw)
     if md is None:
         return None
-    day = _on_year(today.year, *md)
-    return day if day >= today else _on_year(today.year + 1, *md)
+    day = on_year(md, today.year)
+    return day if day >= today else on_year(md, today.year + 1)
 
 
 def _next_anniversary(start: date | None, today: date) -> tuple[date, int] | None:
@@ -180,7 +175,7 @@ def _next_anniversary(start: date | None, today: date) -> tuple[date, int] | Non
     return anniversary_date(start, k), k
 
 
-def _lapsed_groups(sdir: Path) -> frozenset[str]:
+def lapsed_groups(sdir: Path) -> frozenset[str]:
     """Open groups whose subscription the server reports as no longer active. Blocking.
 
     ``sync_metadata.json`` ``server_groups[gid].is_active`` is written by every
@@ -211,7 +206,7 @@ def _lapsed_groups(sdir: Path) -> frozenset[str]:
         return frozenset()
 
 
-def _subscribed(summary: mi.MemberSummary, lapsed: frozenset[str]) -> bool:
+def still_subscribed(summary: mi.MemberSummary, lapsed: frozenset[str]) -> bool:
     """False when every one of her rooms' groups has a lapsed subscription."""
     return not summary.group_ids or any(g not in lapsed for g in summary.group_ids)
 
@@ -244,7 +239,7 @@ def _countdown(
                 person=people.member_id(s),
             )
         anniversary = _next_anniversary(binder.subscription_start(s), today)
-        if anniversary is not None and not _subscribed(s, lapsed):
+        if anniversary is not None and not still_subscribed(s, lapsed):
             logger.info(
                 "memories_skip",
                 view=VIEW_COUNTDOWN,
@@ -308,7 +303,7 @@ def _week_month_days(today: date) -> list[str]:
     own = today.strftime("%m-%d")
     out: set[str] = set()
     for ref in _REF_YEARS:
-        centre = _on_year(ref, today.month, today.day)
+        centre = on_year(today, ref)
         for k in range(-WEEK_DAYS, WEEK_DAYS + 1):
             out.add((centre + timedelta(days=k)).strftime("%m-%d"))
     out.discard(own)
@@ -318,7 +313,7 @@ def _week_month_days(today: date) -> list[str]:
 def _week_year(fact: Fact, today: date) -> int | None:
     """The past year whose month-day window holds ``fact``, or ``None``."""
     for year in (fact.jst_date.year - 1, fact.jst_date.year, fact.jst_date.year + 1):
-        centre = _on_year(year, today.month, today.day)
+        centre = on_year(today, year)
         if year < today.year and abs((fact.jst_date - centre).days) <= WEEK_DAYS:
             return year
     return None
@@ -499,7 +494,7 @@ async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
     oshi = await people.oshi_rooms(service, summaries)
     ordered = people.sort_people(summaries, oshi)
     hashes = [await people.room_hashes(sdir, s) for s in summaries]
-    lapsed = await asyncio.to_thread(_lapsed_groups, sdir)
+    lapsed = await asyncio.to_thread(lapsed_groups, sdir)
     data_hash = view_hash(
         VERSION, hashes, today.isoformat(), sorted(oshi), sorted(lapsed)
     )
@@ -543,4 +538,4 @@ async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
     }
 
 
-__all__ = ["VERSION", "WEEK_DAYS", "build_hub"]
+__all__ = ["VERSION", "WEEK_DAYS", "build_hub", "lapsed_groups", "still_subscribed"]

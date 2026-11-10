@@ -109,6 +109,14 @@ def test_anniversary_date_and_feb_29():
     assert c.anniversary_date(date(2024, 2, 29), 4) == date(2028, 2, 29)
 
 
+def test_on_year_takes_a_month_day_or_a_date_and_maps_feb_29():
+    assert c.on_year((7, 24), 2026) == date(2026, 7, 24)
+    assert c.on_year(date(2001, 11, 10), 2026) == date(2026, 11, 10)
+    assert c.on_year((2, 29), 2027) == date(2027, 2, 28)
+    assert c.on_year((2, 29), 2028) == date(2028, 2, 29)
+    assert c.on_year(date(2024, 2, 29), 2026) == date(2026, 2, 28)
+
+
 # --- shelf order / summary ----------------------------------------------------------------
 
 

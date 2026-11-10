@@ -32,6 +32,12 @@ BURST_GAP = timedelta(minutes=10)
 BURST_MIN = 3
 CAPTION_WINDOW = timedelta(minutes=3)
 MEDIA_TYPES = frozenset({"picture", "video"})
+# Year recap unlock month-days (spec 9.3), JST: the current year's recap opens
+# on Dec 1 and its Christmas stub on Dec 25. ``recap.phase_flags`` and
+# ``notify_rules.recap_occasions`` read these; the frontend's
+# ``recap/availability`` mirrors them.
+RECAP_OPEN_MD = (12, 1)
+RECAP_CHRISTMAS_MD = (12, 25)
 
 
 @dataclass(frozen=True)

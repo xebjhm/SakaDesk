@@ -156,6 +156,14 @@ def anniversary_date(start: date, years: int) -> date:
     return _safe_date(start.year + years, start.month, start.day)
 
 
+def on_year(month_day: tuple[int, int] | date, year: int) -> date:
+    """The ``(month, day)`` (or a date's month-day) in ``year``; Feb 29 is Feb 28
+    in a non-leap year. The one rule for a birthday or a month-day in a year."""
+    if isinstance(month_day, date):
+        month_day = (month_day.month, month_day.day)
+    return _safe_date(year, *month_day)
+
+
 def earned_keys(cards: Iterable[Card]) -> frozenset[str]:
     """Keys of the earned cards plus one ``<key>@<year>`` per stacked year.
 
@@ -797,6 +805,7 @@ __all__ = [
     "earned_keys",
     "evaluate",
     "evaluate_counted",
+    "on_year",
     "parse_birthday",
     "progress_summary",
     "subscription_day_date",
