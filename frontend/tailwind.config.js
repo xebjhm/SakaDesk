@@ -325,6 +325,8 @@ export default {
                 },
                 shimmer: { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(100%)' } },
                 'shimmer-sweep': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(200%)' } },
+                // Indeterminate ProgressBar: a 1/3-wide segment sweeps across the track (design/primitives/ProgressBar.tsx).
+                'progress-indeterminate': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(300%)' } },
                 pop: { '0%': { opacity: '0', transform: 'scale(0.9)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
                 burst: {
                     '0%': { opacity: '1', transform: 'translate(0, 0) rotate(0deg)' },
@@ -363,6 +365,7 @@ export default {
                 'petal-fall': 'petal-fall 1600ms var(--ds-ease-standard) both',
                 shimmer: 'shimmer 1.2s 300ms var(--ds-ease-standard) both',
                 'shimmer-sweep': 'shimmer-sweep 1.4s var(--ds-ease-standard) infinite',
+                'progress-indeterminate': 'progress-indeterminate 1.4s var(--ds-ease-standard) infinite',
                 pop: 'pop 500ms cubic-bezier(0.2, 1.4, 0.4, 1) both',
                 confetti: 'burst 1.2s cubic-bezier(0.2, 0.7, 0.3, 1) both',
                 sparkle: 'sparkle-burst 900ms 350ms cubic-bezier(0.2, 0.7, 0.3, 1) both',

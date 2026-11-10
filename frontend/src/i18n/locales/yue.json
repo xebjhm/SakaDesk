@@ -48,6 +48,16 @@
     "zoomFit": "符合畫面",
     "debug": "除錯"
   },
+  "loading": {
+    "label": "載入緊…",
+    "slow": "仲載入緊…",
+    "verySlow": "今次比平時耐啲，請再等陣。",
+    "timeout": "等得太耐喇",
+    "timeoutHint": "背景可能仲處理緊，等陣再試多次啦。",
+    "error": "載入唔到",
+    "retry": "再試多次",
+    "cancel": "取消"
+  },
   "settings": {
     "title": "設定",
     "tabGeneral": "一般",
@@ -730,7 +740,9 @@
     "sampleToastBody": "已儲存 12,846 則訊息",
     "sampleMilestone": "訂閱咗幾多日",
     "sampleDisabledReason": "請先揀團體",
-    "displaySample": "留住每一則訊息"
+    "displaySample": "留住每一則訊息",
+    "loading": "載入狀態",
+    "playWait": "模擬等候"
   },
   "letters": {
     "openImage": "打開信",

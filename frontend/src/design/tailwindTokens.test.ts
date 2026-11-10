@@ -155,3 +155,10 @@ describe('year recap slide motion', () => {
         }
     });
 });
+
+describe('indeterminate progress motion', () => {
+    it('sweeps a 1/3 segment across the track in 1.4 s on the standard easing', () => {
+        expect(config).toContain("'progress-indeterminate': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(300%)' } }");
+        expect(config).toContain("'progress-indeterminate': 'progress-indeterminate 1.4s var(--ds-ease-standard) infinite'");
+    });
+});

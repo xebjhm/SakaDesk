@@ -48,6 +48,16 @@
     "zoomFit": "适应屏幕",
     "debug": "调试"
   },
+  "loading": {
+    "label": "加载中…",
+    "slow": "仍在加载…",
+    "verySlow": "这次比平时久一些，请再稍候。",
+    "timeout": "等待时间太久了",
+    "timeoutHint": "后台可能仍在处理，请稍候再试一次。",
+    "error": "无法加载",
+    "retry": "再试一次",
+    "cancel": "取消"
+  },
   "settings": {
     "title": "设置",
     "tabGeneral": "常规",
@@ -730,7 +740,9 @@
     "sampleToastBody": "已保存 12,846 条消息",
     "sampleMilestone": "订阅以来的天数",
     "sampleDisabledReason": "请先选择团体",
-    "displaySample": "留住每一条消息"
+    "displaySample": "留住每一条消息",
+    "loading": "加载状态",
+    "playWait": "模拟等待"
   },
   "letters": {
     "openImage": "打开信件",

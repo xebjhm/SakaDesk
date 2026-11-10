@@ -48,6 +48,16 @@
     "zoomFit": "画面に合わせる",
     "debug": "デバッグ"
   },
+  "loading": {
+    "label": "読み込み中…",
+    "slow": "まだ読み込んでいます…",
+    "verySlow": "いつもより時間がかかっています。もう少しお待ちください。",
+    "timeout": "時間がかかりすぎています",
+    "timeoutHint": "処理はまだ続いているかもしれません。少し待ってからもう一度お試しください。",
+    "error": "読み込めませんでした",
+    "retry": "もう一度",
+    "cancel": "キャンセル"
+  },
   "settings": {
     "title": "設定",
     "tabGeneral": "一般",
@@ -730,7 +740,9 @@
     "sampleToastBody": "12,846 件のメッセージを保存しました",
     "sampleMilestone": "購読開始からの日数",
     "sampleDisabledReason": "先にグループを選んでください",
-    "displaySample": "すべてのメッセージを残す"
+    "displaySample": "すべてのメッセージを残す",
+    "loading": "読み込み表示",
+    "playWait": "待ち時間を再生"
   },
   "letters": {
     "openImage": "レターを開く",

@@ -1,0 +1,180 @@
+import React, { useId, useRef } from 'react';
+import { AlertCircle, Clock, Inbox, Loader2 } from 'lucide-react';
+import { useTranslation } from '../../i18n';
+import { cn } from '../../utils/classnames';
+import { logWait, useLoadingStages, type LoadingStage } from '../loading';
+import { Button } from './Button';
+import { EmptyState } from './EmptyState';
+import { ProgressBar } from './ProgressBar';
+import { SPIN } from './Spinner';
+import { SPINNER_LABEL_VISIBILITY, SPINNER_SIZE } from './spinnerClasses';
+
+export type StatusBlockVariant = 'pane' | 'dialog' | 'block' | 'fill' | 'inline';
+
+type Common = {
+    /** `ui_wait` surface code, `^[a-z0-9_]{1,40}$`. */
+    surface: string;
+    /**
+     * pane: fills a flex pane (Memories, chat); dialog (default): inside a dialog body;
+     * block: a fixed `h-72` block; fill: the whole scroll area (`h-full min-h-96`);
+     * inline: one row (a small spinner plus `text-small text-secondary`), for band and hub lines.
+     */
+    variant?: StatusBlockVariant;
+    /** Translated. */
+    title?: string;
+    /** Translated. */
+    hint?: string;
+    icon?: React.ReactNode;
+    className?: string;
+};
+
+export type StatusBlockLoadingProps = {
+    kind: 'loading';
+    /** Translated name of the wait; defaults to `loading.label`. */
+    label?: string;
+    /** A layout-shaped `Skeleton` group drawn instead of the spinner. */
+    skeleton?: React.ReactNode;
+    /** Translated; default `loading.slow`. Shown from `slow`. */
+    slowHint?: string;
+    /** Translated; default `loading.verySlow`. Replaces the slow hint from `verySlow`. */
+    verySlowHint?: string;
+    /** Shown as a ghost Cancel button from `verySlow`. */
+    onCancel?: () => void;
+    /** Translated; default `loading.cancel`. */
+    cancelLabel?: string;
+    /** Shown from `verySlow`: 0..1 determinate bar, null = indeterminate bar. */
+    progress?: number | null;
+    /** Fixed stage, for previews and tests only (no clock, no breadcrumb). */
+    stage?: LoadingStage;
+};
+
+export type StatusBlockEmptyProps = { kind: 'empty'; action?: React.ReactNode };
+
+export type StatusBlockProblemProps = {
+    kind: 'error' | 'timeout';
+    onRetry: () => void;
+    /** Translated; default `loading.retry`. */
+    retryLabel?: string;
+    retryVariant?: 'secondary' | 'primary';
+};
+
+export type StatusBlockProps =
+    | (Common & StatusBlockLoadingProps)
+    | (Common & StatusBlockEmptyProps)
+    | (Common & StatusBlockProblemProps);
+
+const CENTRED = 'flex flex-col items-center justify-center text-center';
+const VARIANT: Record<StatusBlockVariant, string> = {
+    pane: cn(CENTRED, 'flex-1 gap-3 p-6'),
+    dialog: cn(CENTRED, 'gap-3 px-6 py-12'),
+    block: cn(CENTRED, 'h-72 gap-4 px-6'),
+    fill: cn(CENTRED, 'h-full min-h-96 gap-4 px-6'),
+    inline: 'flex min-h-5 flex-row flex-wrap items-center gap-2 text-small text-secondary',
+};
+
+const glyphSize = (variant: StatusBlockVariant) => (variant === 'fill' ? 'lg' : variant === 'inline' ? 'sm' : 'md');
+
+const LoadingBlock: React.FC<Common & StatusBlockLoadingProps> = ({
+    surface, variant = 'dialog', label, skeleton, slowHint, verySlowHint, onCancel, cancelLabel, progress, stage: fixedStage, className,
+}) => {
+    const { t } = useTranslation();
+    const labelId = useId();
+    const mountedAt = useRef(Date.now());
+    const clock = useLoadingStages(fixedStage === undefined, { surface });
+    const stage = fixedStage ?? clock.stage;
+    const name = label ?? t('loading.label');
+    const size = glyphSize(variant);
+    const inline = variant === 'inline';
+
+    if (stage === 'hidden') {
+        // Same box as the shown state (a spacer the size of the glyph), so the layout never jumps.
+        return (
+            <div role="status" aria-busy="true" data-stage="hidden" className={cn(VARIANT[variant], className)}>
+                {!skeleton && <span aria-hidden="true" className={cn('block', SPINNER_SIZE[size])} />}
+            </div>
+        );
+    }
+
+    const cancel = () => {
+        logWait(surface, 'cancelled', Date.now() - mountedAt.current);
+        onCancel?.();
+    };
+    const verySlowNow = stage === 'verySlow';
+    const hint = verySlowNow ? (verySlowHint ?? t('loading.verySlow')) : stage === 'slow' ? (slowHint ?? t('loading.slow')) : null;
+
+    return (
+        <div role="status" aria-busy="true" aria-labelledby={labelId} data-stage={stage} className={cn(VARIANT[variant], className)}>
+            {skeleton ?? <Loader2 aria-hidden="true" data-spinner className={cn(SPINNER_SIZE[size], inline ? 'text-muted' : 'text-accent', SPIN)} />}
+            <span
+                id={labelId}
+                className={cn(
+                    'text-small text-secondary',
+                    skeleton ? 'sr-only' : SPINNER_LABEL_VISIBILITY[inline ? 'always' : 'auto'],
+                )}
+            >
+                {name}
+            </span>
+            {hint && <p className="text-small text-secondary">{hint}</p>}
+            {verySlowNow && progress !== undefined && (
+                <ProgressBar value={progress} label={name} className={inline ? 'w-24' : 'w-48'} />
+            )}
+            {verySlowNow && progress === undefined && !onCancel && (
+                <ProgressBar label={name} className={inline ? 'w-24' : 'w-48'} />
+            )}
+            {verySlowNow && onCancel && (
+                <Button variant="ghost" size="sm" onClick={cancel}>{cancelLabel ?? t('loading.cancel')}</Button>
+            )}
+        </div>
+    );
+};
+
+const ProblemBlock: React.FC<Common & StatusBlockProblemProps> = ({
+    kind, variant = 'dialog', title, hint, icon, onRetry, retryLabel, retryVariant = 'secondary', className,
+}) => {
+    const { t } = useTranslation();
+    const timeout = kind === 'timeout';
+    const inline = variant === 'inline';
+    const heading = title ?? t(timeout ? 'loading.timeout' : 'loading.error');
+    const sentence = hint ?? (timeout ? t('loading.timeoutHint') : undefined);
+    return (
+        <div role="alert" data-kind={kind} className={cn(VARIANT[variant], className)}>
+            {!inline && (
+                <span
+                    aria-hidden="true"
+                    className={cn(
+                        'flex rounded-card p-4 [&_svg]:h-8 [&_svg]:w-8',
+                        timeout ? 'bg-sunken text-muted' : 'bg-semantic-danger-icon text-semantic-danger',
+                    )}
+                >
+                    {icon ?? (timeout ? <Clock /> : <AlertCircle />)}
+                </span>
+            )}
+            <p className={cn(inline ? 'text-small' : 'text-body', timeout ? (inline ? 'text-secondary' : 'text-primary') : 'text-status-danger')}>{heading}</p>
+            {sentence && <p className="text-small text-muted">{sentence}</p>}
+            <Button variant={inline ? 'ghost' : retryVariant} size="sm" onClick={onRetry}>{retryLabel ?? t('loading.retry')}</Button>
+        </div>
+    );
+};
+
+/**
+ * The one loading / empty / error / timeout state (replaces `LoadState`, `DialogStatus`,
+ * `BlogStatus` and the recap `Status`).
+ *
+ * - loading: an empty `role="status"` box until `reveal`, then the `skeleton` or a spinner with its
+ *   label; the slow hint from `slow`; from `verySlow` the very-slow hint plus Cancel (`onCancel`)
+ *   or a `ProgressBar` (`progress`), and an indeterminate bar when neither is given. Logs `ui_wait`
+ *   (`slow`, `very_slow` once per mount, `cancelled` on Cancel).
+ * - error: `role="alert"`, danger icon tile, `loading.error` title, Retry.
+ * - timeout: `role="alert"`, neutral `Clock` tile, `loading.timeout` + `loading.timeoutHint`, Retry.
+ * - empty: `EmptyState` (title, hint as its sentence, `action`).
+ */
+export const StatusBlock: React.FC<StatusBlockProps> = (props) => {
+    if (props.kind === 'loading') return <LoadingBlock {...props} />;
+    if (props.kind !== 'empty') return <ProblemBlock {...props} />;
+    const { variant = 'dialog', title, hint, icon, action, className } = props;
+    return (
+        <div role="status" className={cn(variant === 'inline' ? VARIANT.inline : VARIANT[variant], className)}>
+            <EmptyState icon={icon ?? <Inbox />} title={title ?? ''} description={hint} action={action} />
+        </div>
+    );
+};

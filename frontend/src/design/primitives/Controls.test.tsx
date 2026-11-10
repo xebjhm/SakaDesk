@@ -169,7 +169,8 @@ describe('Button v2', () => {
         const b = screen.getByRole('button', { name: 'Save' });
         expect(b.className).toContain('relative');
         expect(b).toHaveAttribute('data-loading', 'true');
-        const spinner = b.querySelector('[data-spinner]')?.className ?? '';
+        // The spinner is an <svg> (lucide Loader2): read the class attribute, not SVGAnimatedString.
+        const spinner = b.querySelector('[data-spinner]')?.getAttribute('class') ?? '';
         expect(spinner).toContain('absolute');
         expect(spinner).toContain('inset-0');
         expect(spinner).toContain('m-auto');

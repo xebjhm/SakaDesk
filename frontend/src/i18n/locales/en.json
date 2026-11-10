@@ -48,6 +48,16 @@
     "zoomFit": "Fit to screen",
     "debug": "Debug"
   },
+  "loading": {
+    "label": "Loading…",
+    "slow": "Still loading…",
+    "verySlow": "This is taking longer than usual. Thanks for waiting.",
+    "timeout": "This is taking too long",
+    "timeoutHint": "It may still be working in the background. Wait a moment, then try again.",
+    "error": "Couldn't load this",
+    "retry": "Try again",
+    "cancel": "Cancel"
+  },
   "settings": {
     "title": "Settings",
     "tabGeneral": "General",
@@ -732,7 +742,9 @@
     "sampleToastBody": "12,846 messages saved",
     "sampleMilestone": "days since you subscribed",
     "sampleDisabledReason": "Choose a group first",
-    "displaySample": "Keep every message"
+    "displaySample": "Keep every message",
+    "loading": "Loading states",
+    "playWait": "Play a wait"
   },
   "letters": {
     "openImage": "Open letter",
