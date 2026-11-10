@@ -130,7 +130,7 @@ describe('SettingsModal Memories notifications', () => {
         const follows = (a: Element, b: Element) => Boolean(a.compareDocumentPosition(b) & Node.DOCUMENT_POSITION_FOLLOWING);
         expect(follows(heading, timeSelect())).toBe(true);
         expect(follows(timeSelect(), firstSwitch)).toBe(true);
-        expect(screen.getByText(/^The time for On This Day, birthday reminders, anniversaries and the recap/)).toBeInTheDocument();
+        expect(screen.getByText(/^The time for On This Day, birthday reminders, anniversaries and the December recap notices/)).toBeInTheDocument();
     });
 
     it('does not offer a malformed saved time and shows the default', () => {
