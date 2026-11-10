@@ -145,3 +145,60 @@ def test_radio_unknown_member_is_404(out):
         member="櫻坂46/messages/1 x/2 x",
     )
     assert r.status_code == 404
+
+
+# --- gacha (Task F3) ------------------------------------------------------------------
+
+
+def post(url, now=NOW):
+    with time_machine.travel(now, tick=False):
+        return client.post(url)
+
+
+def test_gacha_state_shape(out):
+    r = get(f"/api/memories/{SERVICE}/gacha")
+    assert r.status_code == 200
+    body = r.json()
+    assert body == {
+        "available": True,
+        "pulls_left": 3,
+        "max_pulls": 3,
+        "today": [],
+        "history": [],
+    }
+
+
+def test_gacha_pull_three_then_409(out):
+    lefts = []
+    for _ in range(3):
+        r = post(f"/api/memories/{SERVICE}/gacha/pull")
+        assert r.status_code == 200
+        body = r.json()
+        lefts.append(body["pulls_left"])
+        assert body["pull"]["message"]["member_path"] == MEMBER
+        no_abs_paths(out, body)
+    assert lefts == [2, 1, 0]
+    r = post(f"/api/memories/{SERVICE}/gacha/pull")
+    assert r.status_code == 409
+    assert r.json()["detail"] == "no_pulls_left"
+    state = get(f"/api/memories/{SERVICE}/gacha").json()
+    assert state["pulls_left"] == 0 and len(state["today"]) == 3
+    salt = app_state.get_prefs().get("memories_gacha_salt")
+    assert salt and salt not in json.dumps(state)
+    no_abs_paths(out, state)
+
+
+def test_gacha_resets_at_jst_midnight(out):
+    late = datetime(2026, 11, 10, 14, 59, 59, tzinfo=timezone.utc)  # JST 23:59:59
+    for _ in range(3):
+        assert post(f"/api/memories/{SERVICE}/gacha/pull", now=late).status_code == 200
+    assert post(f"/api/memories/{SERVICE}/gacha/pull", now=late).status_code == 409
+    midnight = datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc)  # JST 11-11 00:00
+    with time_machine.travel(midnight, tick=False):
+        assert client.get(f"/api/memories/{SERVICE}/gacha").json()["pulls_left"] == 3
+    assert post(f"/api/memories/{SERVICE}/gacha/pull", now=midnight).status_code == 200
+
+
+def test_gacha_unknown_service_is_400(out):
+    assert get("/api/memories/nope/gacha").status_code == 400
+    assert post("/api/memories/nope/gacha/pull").status_code == 400

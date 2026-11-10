@@ -1,4 +1,4 @@
-"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board, the hub and the voice radio for the active service, the export handoff and the share GIF."""
+"""Memories API: year recaps, the member memoir (list, header, names, timeline, binder), On This Day, the day view, the album, the favorites board, the hub, the voice radio and the gacha for the active service, the export handoff and the share GIF."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from backend.services.memories import (
     day_view,
     exports,
     favorites_board,
+    gacha,
     hub,
     memoir,
     nickname_moments,
@@ -423,6 +424,30 @@ async def radio_cassettes_route(service: str, member: str | None = Query(None)) 
     service_data_dir = _service_dir(service)
     summary = await _optional_person(service_data_dir, member, "radio")
     return await radio.radio_cassettes(service, service_data_dir, member=summary)
+
+
+@router.get("/{service}/gacha")
+async def gacha_state_route(service: str) -> dict:
+    """Today's gacha pulls, the pulls left and the history (``gacha.gacha_state``)."""
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    return await gacha.gacha_state(service, service_data_dir, now=now)
+
+
+@router.post("/{service}/gacha/pull")
+async def gacha_pull_route(service: str) -> dict:
+    """Draw the next gacha pull of the JST day (``gacha.pull``).
+
+    409 ``no_pulls_left`` once the day's pulls are used (also when a racing
+    click took the last one).
+    """
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    body = await gacha.pull(service, service_data_dir, now=now)
+    if body is None:
+        logger.info("memories.api.reject", reason="no_pulls_left")
+        raise HTTPException(status_code=409, detail="no_pulls_left")
+    return body
 
 
 @router.get("/{service}/hub")
