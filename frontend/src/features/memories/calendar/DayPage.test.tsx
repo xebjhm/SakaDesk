@@ -47,6 +47,14 @@ describe('DayPage', () => {
         expect(fetchCapsule).toHaveBeenCalledWith('hinatazaka46', { date: '2024-09-14' }, expect.any(AbortSignal));
     });
 
+    it('back returns to her memoir 24h tab when opened from a 24h slot', async () => {
+        const go = vi.fn();
+        const from = { page: 'memoir', memberPath: MEMBER_PATH, tab: 'day24' } as const;
+        render(<DayPage service="hinatazaka46" route={{ page: 'day', date: '2024-09-14', from }} go={go} />);
+        await userEvent.click(screen.getByRole('button', { name: 'Back' }));
+        expect(go).toHaveBeenCalledWith({ page: 'memoir', memberPath: MEMBER_PATH, tab: 'day24' });
+    });
+
     it('back goes home when the day was not opened from the calendar', async () => {
         const go = vi.fn();
         render(<DayPage service="hinatazaka46" route={{ page: 'day', date: '2024-09-14' }} go={go} />);

@@ -84,12 +84,12 @@ describe('Day24View', () => {
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_skip', { target: 'day24', reason: 'day24_thin' });
     });
 
-    it('a slot opens that JST day', async () => {
+    it('a slot opens that JST day, with back leading to her 24h tab', async () => {
         renderView();
         const slots = await screen.findAllByTestId('day24-slot');
         await userEvent.click(within(slots[0]).getByRole('button'));
         // 22:30Z on 2022-05-01 is 07:30 JST on 2022-05-02.
-        expect(go).toHaveBeenCalledWith({ page: 'day', date: '2022-05-02' });
+        expect(go).toHaveBeenCalledWith({ page: 'day', date: '2022-05-02', from: { page: 'memoir', memberPath: MEMBER_PATH, tab: 'day24' } });
     });
 
     it('🎲 keeps the view and the focus while the next day loads', async () => {

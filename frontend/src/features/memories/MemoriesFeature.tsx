@@ -28,10 +28,16 @@ export type MemoriesRoute =
     /** `month` is `YYYY-MM` (JST). */
     | { page: 'calendar'; month?: string; memberPath?: string }
     /**
-     * `date` is `YYYY-MM-DD` (JST); `from: 'calendar'` makes back return to the calendar;
+     * `date` is `YYYY-MM-DD` (JST); `from` is where back returns (`DayOrigin`, home when unset);
      * `memberPath` filters the day to one person (the calendar's member filter, kept on back).
      */
-    | { page: 'day'; date: string; from?: 'calendar'; memberPath?: string };
+    | { page: 'day'; date: string; from?: DayOrigin; memberPath?: string };
+
+/**
+ * Where a day page was opened from: `'calendar'` (back returns to the day's month with the same
+ * member filter) or her memoir 24h tab (back returns to that tab).
+ */
+export type DayOrigin = 'calendar' | { page: 'memoir'; memberPath: string; tab: 'day24' };
 
 /** A core page's route (the four pages added by the core wave). */
 export type CoreRoute = Extract<MemoriesRoute, { page: 'onThisDay' | 'album' | 'memoir' | 'favorites' }>;
