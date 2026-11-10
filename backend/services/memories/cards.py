@@ -31,7 +31,8 @@ with her messages; subscription dates are the fan's own dates.
 
 ``Card.fallback`` names the fallback used for the face (``nearest``,
 ``first_after`` or ``best_of_day``), or ``None`` when the preferred rule
-found it; the binder logs it.
+found it; ``CardYear.fallback`` does the same for each year of a stack (the
+card's own is the newest year's). The binder logs both.
 """
 
 from __future__ import annotations
@@ -118,6 +119,7 @@ class CardYear:
     year: int
     date: date
     message: MessageKey
+    fallback: str | None = None  # this year's face fallback, like Card.fallback
 
 
 @dataclass(frozen=True)
@@ -396,7 +398,7 @@ def _yearly(
     """A yearly stack from ``(year, face, fallback)``, oldest first."""
     if not years:
         return Card(key, "special", False, foil=foil)
-    stack = tuple(CardYear(y, t[1].jst_date, _mk(t)) for y, t, _ in years)
+    stack = tuple(CardYear(y, t[1].jst_date, _mk(t), fb) for y, t, fb in years)
     _, newest, fallback = years[-1]
     return Card(
         key,

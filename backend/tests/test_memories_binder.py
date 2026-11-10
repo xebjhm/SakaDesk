@@ -5,7 +5,7 @@ from __future__ import annotations
 import contextlib
 import dataclasses
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import pytest
 from structlog.testing import capture_logs
@@ -15,6 +15,7 @@ from backend.services.memories import cards as c
 from backend.services.memories import index as mi
 from backend.services.memories import people
 from backend.services.memories import view_cache as vc
+from backend.tests.test_memories_cards import fact, inputs
 from backend.tests.memories_archive import (
     msg,
     write_avatars,
@@ -360,7 +361,9 @@ async def test_evaluate_person_logs_counts_and_fallbacks_without_text(svc):
     ] == "best_of_day"
     anniv = next(e for e in selects if e["rule"] == "anniv.d100")
     assert anniv["fallback"] == "nearest" and anniv["view"] == "binder"
+    assert isinstance(anniv["score"], int)  # the nearest face's importance
     assert all(isinstance(e["message_id"], int) for e in selects)
+    assert all("score" in e and e["person"] == "64" for e in selects)
     blob = repr(logs)
     for word in (XMAS, LONG, FIRST, "手紙", OLD_ROOM, *NAMES):
         assert word not in blob
@@ -395,6 +398,54 @@ async def test_graduated_person_with_birthday(svc):
 @pytest.mark.asyncio
 async def test_unparsable_subscription_start_hides_the_anniversary_shelf(svc):
     s = dataclasses.replace(await matsuda(svc), subscription_start="not-a-date")
-    cards = await binder.evaluate_person(SERVICE, svc, s, now=NOW)
+    with capture_logs() as logs:
+        cards = await binder.evaluate_person(SERVICE, svc, s, now=NOW)
+    skip = next(e for e in logs if e["event"] == "memories_skip")
+    assert skip["reason"] == "bad_subscription_start" and skip["person"] == "64"
     assert not [card for card in cards if card.shelf == "anniversary"]
     assert "special.sub_anniversary" not in c.earned_keys(cards)
+
+
+def test_log_covers_older_year_fallbacks_and_faceless_cards():
+    s = mi.MemberSummary("x", "x", (OLD_ROOM,), ("64",), ("40",), None, None, False)
+    inp = inputs(
+        [fact(1, "2024-05-01 10:00"), fact(2, "2025-05-01 00:05")], birthday="05-01"
+    )
+    cards = c.evaluate(inp)
+    with capture_logs() as logs:
+        binder._log(s, cards, 0, inp)
+    year = next(e for e in logs if e.get("year") == 2024)
+    assert year["event"] == "memories_select" and year["rule"] == "special.birthday"
+    assert year["fallback"] == "best_of_day" and year["message_id"] == 1
+    assert year["score"] == 10
+    # an earned anniversary with no non-promo fact at all has no face
+    inp = inputs([], subscription_start=date(2024, 1, 1))
+    with capture_logs() as logs:
+        binder._log(s, c.evaluate(inp), 0, inp)
+    skips = {e["rule"] for e in logs if e["event"] == "memories_skip"}
+    assert {"anniv.d100", "anniv.y1"} <= skips
+    assert all(e["reason"] == "no_face" for e in logs if e["event"] == "memories_skip")
+
+
+def test_score_prefers_importance_then_photo_score():
+    assert binder._score(None) is None
+    pic = dataclasses.replace(fact(1, "2024-01-01 10:00", "picture"), photo_score=7)
+    assert binder._score(pic) == 7
+    assert binder._score(fact(2, "2024-01-01 10:00", importance=3)) == 3
+
+
+def test_payload_logs_unresolvable_faces(tmp_path):
+    card = c.Card("first.message", "first", True, message=c.MessageKey("r", 99))
+    with capture_logs() as logs:
+        payload = binder._payload(
+            SERVICE, tmp_path, [card], inputs(), people.AvatarTimeline((), None)
+        )
+    assert payload["shelves"][0]["cards"][0]["face"] is None
+    skip = next(e for e in logs if e["event"] == "memories_skip")
+    assert skip == {
+        "event": "memories_skip",
+        "log_level": "info",
+        "view": "binder",
+        "reason": "face_missing",
+        "count": 1,
+    }

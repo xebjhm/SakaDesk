@@ -10,10 +10,17 @@
   text-free payload is cached (``view_cache``, view ``binder``) and her words
   are attached after the cache read with ``people.attach_texts``.
 
-Logs (ids, codes and counts only): one ``memories_cards`` per evaluation
-(``person`` = first member id, ``earned``, ``total``, ``hidden``) and one
-``memories_select`` (``view=binder``, ``rule`` = card key, ``fallback``,
-``message_id``) per card whose face came from a fallback.
+Logs (ids, codes, counts and scores only; ``person`` = first member id):
+
+- one ``memories_cards`` per evaluation (``earned``, ``total``, ``hidden``);
+- one ``memories_select`` (``view=binder``, ``rule`` = card key, ``score`` =
+  the face's importance or photo score, ``fallback``, ``message_id``, plus
+  ``year`` for an older year of a stack) per face that came from a fallback;
+- ``memories_skip`` (``view=binder``, ``reason``): ``no_face`` (``rule``) for
+  an earned card with nothing to show, ``avatar_same_image`` (``count``) for
+  cross-room duplicate icon changes, ``bad_subscription_start`` for an
+  unparsable start date, and ``face_missing`` (``count``) for message keys the
+  payload could not resolve.
 """
 
 from __future__ import annotations
@@ -52,6 +59,23 @@ def _parse_day(raw: str | None) -> date | None:
 
 def _member_id(summary: mi.MemberSummary) -> str | None:
     return summary.member_ids[0] if summary.member_ids else None
+
+
+def _fact_lookup(inputs: cards_mod.CardInputs) -> dict[cards_mod.MessageKey, Fact]:
+    return {cards_mod.MessageKey(room, f.id): f for room, f in inputs.facts}
+
+
+def _subscription_start(summary: mi.MemberSummary) -> date | None:
+    """The fan's start date; an unparsable one is logged and treated as absent."""
+    start = _parse_day(summary.subscription_start)
+    if start is None and summary.subscription_start:
+        logger.info(
+            "memories_skip",
+            view=VIEW,
+            person=_member_id(summary),
+            reason="bad_subscription_start",
+        )
+    return start
 
 
 def avatar_changes(timeline: people.AvatarTimeline) -> list[cards_mod.AvatarChange]:
@@ -194,7 +218,7 @@ async def _gather(
     inputs = cards_mod.CardInputs(
         facts=tagged,
         today=now.astimezone(JST).date(),
-        subscription_start=_parse_day(summary.subscription_start),
+        subscription_start=_subscription_start(summary),
         birthday=summary.birthday,
         graduated=summary.graduated,
         letters=letters,
@@ -204,20 +228,55 @@ async def _gather(
     return inputs, timeline
 
 
-def _log(summary: mi.MemberSummary, cards: list[cards_mod.Card], hidden: int) -> None:
-    earned, total = cards_mod.progress_summary(cards)
+def _score(fact: Fact | None) -> int | None:
+    """The face's selection score: importance, else photo score."""
+    if fact is None:
+        return None
+    return fact.importance if fact.importance is not None else fact.photo_score
+
+
+def _log(
+    summary: mi.MemberSummary,
+    cards: list[cards_mod.Card],
+    hidden: int,
+    inputs: cards_mod.CardInputs,
+) -> None:
+    """Breadcrumbs: every fallback, every faceless earned card, then the totals."""
+    person = _member_id(summary)
+    lookup = _fact_lookup(inputs)
+
+    def select(
+        rule: str, fallback: str, key: cards_mod.MessageKey | None, **kw: object
+    ) -> None:
+        logger.info(
+            "memories_select",
+            view=VIEW,
+            person=person,
+            rule=rule,
+            score=_score(lookup.get(key) if key is not None else None),
+            fallback=fallback,
+            message_id=key.id if key is not None else None,
+            **kw,
+        )
+
     for card in cards:
         if card.fallback is not None:
+            select(card.key, card.fallback, card.message)
+        for y in card.years[:-1]:  # the newest year is the card's own fallback
+            if y.fallback is not None:
+                select(card.key, y.fallback, y.message, year=y.year)
+        if card.earned and card.message is None and card.letter is None:
             logger.info(
-                "memories_select",
+                "memories_skip",
                 view=VIEW,
+                person=person,
                 rule=card.key,
-                fallback=card.fallback,
-                message_id=card.message.id if card.message else None,
+                reason="no_face",
             )
+    earned, total = cards_mod.progress_summary(cards)
     logger.info(
         "memories_cards",
-        person=_member_id(summary),
+        person=person,
         earned=earned,
         total=total,
         hidden=hidden,
@@ -229,7 +288,7 @@ async def _evaluate(
 ) -> tuple[list[cards_mod.Card], cards_mod.CardInputs, people.AvatarTimeline]:
     inputs, timeline = await _gather(service, sdir, summary, now)
     cards, hidden = await asyncio.to_thread(cards_mod.evaluate_counted, inputs)
-    _log(summary, cards, hidden)
+    _log(summary, cards, hidden, inputs)
     return cards, inputs, timeline
 
 
@@ -252,11 +311,17 @@ def _payload(
     timeline: people.AvatarTimeline,
 ) -> dict:
     """The text-free binder payload (message objects with ``text=None``)."""
-    lookup = {cards_mod.MessageKey(room, f.id): f for room, f in inputs.facts}
+    lookup = _fact_lookup(inputs)
+
+    missing = 0
 
     def face(k: cards_mod.MessageKey | None) -> dict | None:
-        fact = lookup.get(k) if k is not None else None
-        if k is None or fact is None:
+        nonlocal missing
+        if k is None:
+            return None
+        fact = lookup.get(k)
+        if fact is None:
+            missing += 1
             return None
         return people.message_ref(service, sdir, k.room, fact, avatar=timeline)
 
@@ -293,6 +358,8 @@ def _payload(
         shelf_cards = [card_json(card) for card in cards if card.shelf == shelf]
         if shelf_cards:
             shelves.append({"key": shelf, "cards": shelf_cards})
+    if missing:
+        logger.info("memories_skip", view=VIEW, reason="face_missing", count=missing)
     return {"progress": {"earned": earned, "total": total}, "shelves": shelves}
 
 
