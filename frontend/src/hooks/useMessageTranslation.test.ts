@@ -5,10 +5,11 @@ import { persisted } from '../core/persistence/persisted';
 import * as appStateApi from '../core/persistence/appStateApi';
 import { __resetTranslationLoaderForTests } from '../core/persistence/translationLoader';
 import { clientLog } from '../utils/clientLog';
+import { useAppStore } from '../store/appStore';
 
 vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
-const KEY = 'translation:message:500:en';
+const KEY = 'translation:message:hinatazaka46:500:en';
 const baseParams = {
     service: 'hinatazaka46',
     messageId: 500,
@@ -87,7 +88,7 @@ describe('useMessageTranslation', () => {
     });
 
     it('re-syncs from the new key when the target language changes', async () => {
-        store.set('translation:message:500:ja', 'こんにちは-ja');
+        store.set('translation:message:hinatazaka46:500:ja', 'こんにちは-ja');
         mockFetchOk('unused');
 
         const { result, rerender } = renderHook(
@@ -99,6 +100,26 @@ describe('useMessageTranslation', () => {
         rerender({ ...baseParams, targetLanguage: 'ja' });
         await waitFor(() => expect(result.current.translation).toBe('こんにちは-ja'));
         expect(result.current.state).toBe('done');
+    });
+
+    it('keys the cache by service: another group\'s message with the same id never reads it', async () => {
+        useAppStore.setState({ activeService: 'hinatazaka46' });
+        store.set(KEY, 'hinata-en');
+        store.set('translation:message:500:en', 'legacy-hinata-en');
+        const { result } = renderHook(() => useMessageTranslation({ ...baseParams, service: 'sakurazaka46' }));
+        await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+        expect(result.current.translation).toBeNull();
+        expect(result.current.state).toBe('idle');
+        useAppStore.setState({ activeService: null });
+    });
+
+    it('reuses a pre-service cached translation for the active group and re-saves it under the new key', async () => {
+        useAppStore.setState({ activeService: 'hinatazaka46' });
+        store.set('translation:message:500:en', 'legacy-en');
+        const { result } = renderHook(() => useMessageTranslation(baseParams));
+        await waitFor(() => expect(result.current.translation).toBe('legacy-en'));
+        await waitFor(() => expect(store.get(KEY)).toBe('legacy-en'));
+        useAppStore.setState({ activeService: null });
     });
 
     it('clearTranslationCache calls the backend clear-translations endpoint', async () => {
@@ -163,7 +184,7 @@ describe('useMessageTranslation batching', () => {
         await act(async () => { await new Promise((r) => setTimeout(r, 80)); }); // en lookup now in flight
         rerender({ lang: 'ja' });
         await waitFor(() => expect(result.current.translation).toBe('fresh-ja'));
-        await act(async () => { release({ 'translation:message:21:en': 'stale-en' }); });
+        await act(async () => { release({ 'translation:message:hinatazaka46:21:en': 'stale-en' }); });
         expect(result.current.translation).toBe('fresh-ja');
     });
 
@@ -173,7 +194,7 @@ describe('useMessageTranslation batching', () => {
         const { result } = renderHook(() => useMessageTranslation({ ...baseParams, messageId: 31 }));
         await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
         act(() => result.current.clear());
-        await act(async () => { release({ 'translation:message:31:en': 'late' }); });
+        await act(async () => { release({ 'translation:message:hinatazaka46:31:en': 'late' }); });
         expect(result.current.translation).toBeNull();
         expect(result.current.state).toBe('idle');
     });
@@ -187,7 +208,7 @@ describe('useMessageTranslation batching', () => {
         await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
         await act(async () => { await result.current.retrigger(); });
         expect(result.current.translation).toBe('fresh');
-        await act(async () => { release({ 'translation:message:41:en': 'stale-cached' }); });
+        await act(async () => { release({ 'translation:message:hinatazaka46:41:en': 'stale-cached' }); });
         expect(result.current.translation).toBe('fresh');
     });
 });

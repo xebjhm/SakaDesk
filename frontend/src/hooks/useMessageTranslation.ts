@@ -4,6 +4,7 @@ import { aiErrorKey } from '../i18n/aiError';
 import { persisted } from '../core/persistence/persisted';
 import * as api from '../core/persistence/appStateApi';
 import { loadCachedTranslation, readCachedTranslation } from '../core/persistence/translationLoader';
+import { useAppStore } from '../store/appStore';
 
 type TranslationState = 'idle' | 'loading' | 'done' | 'error';
 
@@ -17,12 +18,21 @@ interface UseMessageTranslationReturn {
     clear: () => void;
 }
 
-// backend app-state cache key format: translation:{type}:{id}:{lang}
-function getCacheKey(
+/**
+ * Backend app-state cache key: `translation:{type}:{service}:{id}:{lang}`. Message ids are unique
+ * per service only, so the service is part of the key (Memories mixes groups in one list).
+ */
+export function getCacheKey(
     type: 'message',
+    service: string,
     contentId: string | number,
     targetLanguage: string,
 ): string {
+    return `translation:${type}:${service}:${contentId}:${targetLanguage}`;
+}
+
+/** The key used before the service was added (`translation:{type}:{id}:{lang}`), read as a fallback only. */
+export function getLegacyCacheKey(type: 'message', contentId: string | number, targetLanguage: string): string {
     return `translation:${type}:${contentId}:${targetLanguage}`;
 }
 
@@ -41,8 +51,15 @@ export function useMessageTranslation(params: {
     const { service, messageId, memberPath, targetLanguage, contextMessageIds, userNickname } = params;
     const { t } = useTranslation();
 
-    const cacheKey = messageId
-        ? getCacheKey('message', messageId, targetLanguage)
+    const cacheKey = messageId && service
+        ? getCacheKey('message', service, messageId, targetLanguage)
+        : '';
+    // Translations cached before the key carried the service were made in the chat of the group
+    // on screen, so only a message of the active group may reuse one (it is then re-saved under
+    // the new key); another group's message with the same id never does.
+    const activeService = useAppStore((s) => s.activeService);
+    const legacyKey = messageId && service && service === activeService
+        ? getLegacyCacheKey('message', messageId, targetLanguage)
         : '';
 
     // The backend cache read is async, so we can't populate these synchronously
@@ -66,15 +83,20 @@ export function useMessageTranslation(params: {
         setError(null);
         if (cacheKey) {
             // Batched with the lookups of every other bubble mounting now.
-            loadCachedTranslation(cacheKey).then((cached) => {
-                if (!cancelled && gen === localGen.current && cached) {
-                    setTranslation(cached);
+            loadCachedTranslation(cacheKey).then(async (cached) => {
+                let value = cached;
+                if (!value && legacyKey) {
+                    value = await loadCachedTranslation(legacyKey);
+                    if (value) persisted.putTranslations({ [cacheKey]: value }).catch(() => {});
+                }
+                if (!cancelled && gen === localGen.current && value) {
+                    setTranslation(value);
                     setState('done');
                 }
             }).catch(() => {/* stay idle; trigger() will fall back to the API */});
         }
         return () => { cancelled = true; };
-    }, [cacheKey]);
+    }, [cacheKey, legacyKey]);
 
     // Shared fetch+persist path for both trigger (cache-miss) and retrigger (forced).
     const doTranslate = useCallback(async () => {
@@ -164,7 +186,7 @@ export async function translateBatch(params: {
     const results: Record<string, string> = {};
 
     const keysById = new Map<number, string>(
-        messageIds.map((id) => [id, getCacheKey('message', id, targetLanguage)])
+        messageIds.map((id) => [id, getCacheKey('message', service, id, targetLanguage)])
     );
     const cachedMap = await persisted.getTranslations(Array.from(keysById.values()));
 
@@ -201,7 +223,7 @@ export async function translateBatch(params: {
         const newItems: Record<string, string> = {};
         for (const [id, text] of Object.entries(data.translations)) {
             results[id] = text as string;
-            const key = getCacheKey('message', id, targetLanguage);
+            const key = getCacheKey('message', service, id, targetLanguage);
             newItems[key] = text as string;
         }
         persisted.putTranslations(newItems).catch(() => {});
