@@ -4,7 +4,7 @@
  */
 import {
     color, groupRoles, groupTokens, radius, shadow, typeScale, fontFamily, motion, easingCss,
-    ambientLayout, memberWash, aurora, groupAccent, blogFeed, type AccentRoles, type GroupId,
+    ambientLayout, memberWash, aurora, groupAccent, blogFeed, memories, type AccentRoles, type GroupId,
 } from './tokens';
 
 /** camelCase token name → kebab-case CSS variable segment (controlHover → control-hover). */
@@ -60,6 +60,15 @@ export function staticTokenVars(): Record<string, string> {
     vars['--ds-ease-spring'] = easingCss(blogFeed.motion.spring);
     // Timeline rail lens centre: set per element by TimelineRail while zoomed.
     vars['--ds-rail-lens-y'] = blogFeed.railLensY;
+    // Memories keepsake surfaces (tokens/memories.ts).
+    for (const [step, strength] of Object.entries(memories.sepia)) vars[`--ds-mem-sepia-${step}`] = strength;
+    vars['--ds-mem-paper'] = memories.paper;
+    vars['--ds-mem-paper-line'] = memories.paperLine;
+    vars['--ds-mem-cork'] = memories.cork;
+    vars['--ds-mem-washi'] = memories.washi;
+    vars['--ds-mem-foil'] = memories.foil;
+    vars['--ds-mem-shadow-polaroid'] = memories.shadow.polaroid;
+    vars['--ds-mem-silhouette'] = memories.silhouette;
     return vars;
 }
 

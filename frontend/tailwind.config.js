@@ -56,6 +56,9 @@ export default {
                 'tile-vignette': 'linear-gradient(to top, var(--ds-blog-vignette) 0%, transparent 20%)',
                 // Timeline rail lens (e4e4118 "light through a lens"): a strong-colour glow at 8 % ("15" hex
                 // alpha) centred on the zoom; TimelineRail sets --ds-rail-lens-y.
+                // Memories keepsake surfaces (tokens/memories.ts): the cork board and the special-card foil.
+                'memories-cork': 'var(--ds-mem-cork)',
+                'memories-foil': 'var(--ds-mem-foil)',
                 'accent-lens': 'radial-gradient(ellipse 100% 30% at 50% var(--ds-rail-lens-y), color-mix(in srgb, var(--ds-accent-strong) 8%, transparent) 0%, transparent 70%)',
                 // Theme-aware gradients
                 'theme-gradient': 'linear-gradient(to right, var(--color-gradient-from), var(--color-gradient-to))',
@@ -132,6 +135,9 @@ export default {
                 'tile-glass': 'var(--ds-blog-glass)',
                 // The feed's All / Favorite segmented control track (e4e4118 black at 5 %).
                 'segment-track': 'var(--ds-blog-segment-track)',
+                // Memories keepsake surfaces: letter / polaroid paper and translucent washi tape.
+                'memories-paper': 'var(--ds-mem-paper)',
+                'memories-washi': 'var(--ds-mem-washi)',
             },
             textColor: {
                 accent: 'var(--ds-accent)',
@@ -188,6 +194,9 @@ export default {
                 'group-subtle': 'var(--ds-group-subtle-border)',
                 surface: 'var(--ds-surface-sheet)',
                 'tile-glass': 'var(--ds-blog-glass-border)',
+                // Memories: the paper's hairline and an unearned card's dashed silhouette.
+                'memories-paper': 'var(--ds-mem-paper-line)',
+                'memories-silhouette': 'var(--ds-mem-silhouette)',
                 'group-shelter-picture': 'var(--ds-group-shelter-picture)',
                 'group-shelter-video': 'var(--ds-group-shelter-video)',
                 'group-shelter-voice': 'var(--ds-group-shelter-voice)',
@@ -250,6 +259,8 @@ export default {
                 caption: 'var(--ds-blog-shadow-caption)',
                 'caption-hover': 'var(--ds-shadow-accent-caption)',
                 segment: 'var(--ds-blog-shadow-segment)',
+                // Memories: a polaroid lying on a surface.
+                'memories-polaroid': 'var(--ds-mem-shadow-polaroid)',
             },
             fontSize: {
                 caption: ['var(--ds-font-caption-size)', { lineHeight: 'var(--ds-font-caption-leading)' }],
@@ -353,6 +364,12 @@ export default {
             },
             scale: {
                 97: '0.97',
+            },
+            // Memories: a photo aged by its year (shared/sepia.ts): 1 = last year, 2, 3 = three or more.
+            sepia: {
+                'memories-1': 'var(--ds-mem-sepia-1)',
+                'memories-2': 'var(--ds-mem-sepia-2)',
+                'memories-3': 'var(--ds-mem-sepia-3)',
             },
             transitionDuration: {
                 fast: 'var(--ds-duration-fast)',
