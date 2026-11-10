@@ -1,12 +1,12 @@
 import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import i18n from '../../../../i18n';
 import { S07Letter } from './S07Letter';
 import { LETTER_TEXT, letterData, message, payload } from '../__fixtures__/payload';
 import type { S07LetterData } from '../api';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 const renderS07 = (data: S07LetterData, opts: { reducedMotion?: boolean; paused?: boolean } = {}) =>
     render(
@@ -56,6 +56,27 @@ describe('S07Letter', () => {
             <S07Letter data={letterData()} fallback={null} recap={payload()} nickname="ゆき" reducedMotion={false} paused onMediaEnd={() => {}} />,
         );
         expect(screen.getByTestId('s07-scroll').style.animationPlayState).toBe('paused');
+    });
+
+    it('re-measures the scroll when the letter resizes (a late font swap), and stops observing on unmount', () => {
+        const observers: { cb: () => void; targets: Element[]; disconnect: ReturnType<typeof vi.fn> }[] = [];
+        vi.stubGlobal('ResizeObserver', class {
+            cb: () => void; targets: Element[] = []; disconnect = vi.fn();
+            constructor(cb: () => void) { this.cb = cb; observers.push(this); }
+            observe(el: Element) { this.targets.push(el); }
+            unobserve() {}
+        });
+        fakeOverflow(900, 300);
+        const { unmount } = renderS07(letterData());
+        const scroller = screen.getByTestId('s07-scroll');
+        expect(scroller.style.getPropertyValue('--letter-scroll')).toBe('-600px');
+        expect(observers).toHaveLength(1);
+        expect(observers[0].targets).toEqual([screen.getByTestId('s07-paper'), scroller]);
+        vi.spyOn(HTMLElement.prototype, 'scrollHeight', 'get').mockReturnValue(1100);
+        act(() => observers[0].cb());
+        expect(screen.getByTestId('s07-scroll').style.getPropertyValue('--letter-scroll')).toBe('-800px');
+        unmount();
+        expect(observers[0].disconnect).toHaveBeenCalled();
     });
 
     it('a letter that fits does not scroll', () => {

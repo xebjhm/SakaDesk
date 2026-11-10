@@ -14,7 +14,7 @@ const RULED: React.CSSProperties = {
 
 /**
  * Slide 7, いちばん長い手紙: her longest heartfelt message on ruled letter paper under a soft
- * spotlight. A letter taller than the paper scrolls down once within the slide's time and holds
+ * spotlight. A letter taller than the paper (re-measured on resize) scrolls down once within the slide's time and holds
  * while the player is paused; with reduced motion it stays still and can be scrolled by hand.
  * Then "{n} 文字の想い", counted on the text as shown (after the nickname replacement).
  */
@@ -26,11 +26,19 @@ export const S07Letter: React.FC<SlideProps<S07LetterData>> = ({ data, nickname,
     const paperRef = useRef<HTMLDivElement>(null);
     const scrollRef = useRef<HTMLDivElement>(null);
     const [overflow, setOverflow] = useState(0);
+    // Measured on layout and again whenever the paper or the letter resizes (a late web-font swap
+    // changes the letter's height), so the scroll always ends at the letter's last line.
     useLayoutEffect(() => {
         const paper = paperRef.current;
         const inner = scrollRef.current;
         if (!paper || !inner) return;
-        setOverflow(Math.max(0, inner.scrollHeight - paper.clientHeight));
+        const measure = () => setOverflow(Math.max(0, inner.scrollHeight - paper.clientHeight));
+        measure();
+        if (typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(measure);
+        observer.observe(paper);
+        observer.observe(inner);
+        return () => observer.disconnect();
     }, [text]);
     const scrolls = !reducedMotion && overflow > 0;
     const paperIn = heldReveal(reducedMotion, paused, 300);
