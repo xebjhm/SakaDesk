@@ -6,6 +6,7 @@ import { CalendarModal } from '../../../core/modals/CalendarModal';
 import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
 import { fetchOnThisDay } from '../api';
 import { PageHeader } from '../shared/PageHeader';
+import { isEditable } from '../shared/keys';
 import { LoadState } from '../shared/LoadState';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { formatMonthDayLabel } from '../day/format';
@@ -21,9 +22,6 @@ interface OnThisDayPageProps extends Omit<CorePageProps, 'route'> {
 }
 
 const pad = (n: number) => String(n).padStart(2, '0');
-
-const isEditable = (el: EventTarget | null) =>
-    el instanceof HTMLElement && (el.isContentEditable || ['INPUT', 'TEXTAREA', 'SELECT'].includes(el.tagName));
 
 /**
  * あの年の今日 (spec 6). Without `route.year` it is the overview (B): ‹ › step the month-day,

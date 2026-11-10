@@ -1,7 +1,7 @@
 import type { TFunction } from 'i18next';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
-import { buildMediaUrl } from '../../messages/mediaUrl';
 import { jumpToChat } from '../shared/jumpToChat';
+import { memoryMediaSrc } from '../shared/mediaSrc';
 import type { MemoryMessage } from '../types';
 
 /** Message ids repeat across rooms: an album item is keyed by room and id. */
@@ -11,7 +11,8 @@ export const albumItemKey = (m: Pick<MemoryMessage, 'room' | 'id'>) => `${m.room
 export const isViewable = (m: MemoryMessage) =>
     (m.type === 'picture' || m.type === 'video') && Boolean(m.media_url || m.media_file);
 
-const mediaSrc = (m: MemoryMessage) => m.media_url ?? buildMediaUrl(m.service, m.media_file ?? '');
+/** Only called for viewable items, which have a URL or a file. */
+const mediaSrc = (m: MemoryMessage) => memoryMediaSrc(m) ?? '';
 
 interface AlbumViewerOptions {
     /** Her display name for the chat she is opened in. */

@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import { useTranslation } from '../../../i18n';
 import { MessageBubble } from '../../messages/components/MessageBubble';
 import { replaceNickname } from '../../messages/utils/nickname';
-import { buildMediaUrl, resizedAvatarUrl } from '../../messages/mediaUrl';
+import { resizedAvatarUrl } from '../../messages/mediaUrl';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
 import { MediaViewerModal, type MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { getServiceDisplayName, getServicePrimaryColor } from '../../../data/services';
@@ -11,9 +11,10 @@ import { MemoryText } from '../shared/MemoryText';
 import { useNickname } from '../shared/useNickname';
 import { toChatMessage } from '../shared/toMessage';
 import { jumpToChat } from '../shared/jumpToChat';
+import { memoryMediaSrc } from '../shared/mediaSrc';
 import { JST_TIME_ZONE } from '../recap/availability';
 import type { DayPerson } from './people';
-import type { DayMessage } from '../types';
+import type { DayMessage, MemoryMessage } from '../types';
 
 interface MergedTimelineProps {
     /** The day's messages in time order (already filtered). */
@@ -30,7 +31,8 @@ const AVATAR_PX = 40;
 
 const msgKey = (m: DayMessage) => `${m.service}|${m.room}|${m.id}`;
 const isViewable = (m: DayMessage) => (m.type === 'picture' || m.type === 'video') && Boolean(m.media_url || m.media_file);
-const mediaSrc = (m: DayMessage) => m.media_url ?? buildMediaUrl(m.service, m.media_file ?? '');
+/** Only called for viewable items, which have a URL or a file. */
+const mediaSrc = (m: MemoryMessage) => memoryMediaSrc(m) ?? '';
 
 /** Space for the bubble's avatar column, so lines under a bubble align with it. */
 const Indented: React.FC<{ children: React.ReactNode }> = ({ children }) => (
