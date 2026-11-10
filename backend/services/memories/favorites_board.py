@@ -103,7 +103,12 @@ def _ordered(items: list[dict]) -> list[dict]:
 
 
 def _fav_times(service: str, ids: list[int]) -> dict[int, str]:
-    """``app_state.favorited_at``; ``{}`` (logged) when the log is unreadable."""
+    """``app_state.favorited_at``; ``{}`` (logged) when the log is unreadable.
+
+    Keyed by id alone, which is safe: message ids are unique per service (the
+    official API stars ``/messages/{id}/favorite`` with no room, and the log is
+    keyed ``(service, message_id)``), so ids never collide across rooms.
+    """
     try:
         return app_state.favorited_at(service, ids)
     except sqlite3.Error as e:

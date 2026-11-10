@@ -312,7 +312,11 @@ async def get_person_facts(
 
     ``member_dir`` is the relative POSIX string from ``summary.member_dirs``;
     resolve it with ``service_data_dir / member_dir`` for :func:`load_texts`.
-    Message ids are per room, so the key of a fact is ``(member_dir, id)``.
+    The memory index is per room, so the key of a fact is ``(member_dir, id)``.
+    The ids themselves are unique per service: the official API addresses a
+    message by id alone (pysaka ``/messages/{id}/favorite``) and the chat's
+    favourite toggle sends only ``(service, id)``, so a per-service lookup
+    by id (e.g. ``app_state.favorited_at``) is valid.
     The rows are read and sorted off the event loop.
     """
     tagged: list[tuple[str, Fact]] = []
