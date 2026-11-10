@@ -524,6 +524,8 @@ def test_avatar_change_cards():
     fs = [
         fact(1, "2024-04-30 20:00"),
         fact(2, "2024-05-01 11:00", importance=50),  # same day, before the change
+        fact(5, "2024-05-01 13:00", promo=True, importance=None),  # promo: not a face
+        fact(6, "2024-05-01 15:00", importance=1),  # first words after the change
         fact(3, "2024-05-03 10:00"),
         fact(4, "2024-05-12 10:00"),
     ]
@@ -536,11 +538,12 @@ def test_avatar_change_cards():
     assert (
         a.key == "change.avatar.2024-05-01" and a.earned and a.date == date(2024, 5, 1)
     )
-    assert a.message == key(2) and a.fallback is None
-    assert a.refs == {"old_last": key(2), "new_first": key(3)}
+    # the face is her message after the change (new icon), never the old icon's
+    assert a.message == key(6) and a.fallback is None
+    assert a.refs == {"old_last": key(2), "new_first": key(5)}
     assert a.detail == {
         "days": 10,
-        "messages": 1,
+        "messages": 3,
         "old_url": "/a/old.jpg",
         "new_url": "/a/new.jpg",
     }
@@ -570,6 +573,13 @@ def test_avatar_change_same_day_keys_stay_unique_and_no_facts():
     ]
     assert cards[0].message is None and cards[0].refs == {}
     assert cards[0].detail["days"] == 1
+    promo_only = [fact(1, "2024-05-02 10:00", promo=True, importance=None)]
+    cards = [
+        card
+        for card in c.evaluate(inputs(promo_only, avatar_changes=changes))
+        if card.shelf == "change"
+    ]
+    assert cards[1].message == key(1) and cards[1].fallback == "first_after"
 
 
 # --- graduation --------------------------------------------------------------------------------

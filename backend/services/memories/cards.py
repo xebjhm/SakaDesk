@@ -642,9 +642,25 @@ def _you_cards(letters: Sequence[tuple[str, int, date]]) -> tuple[list[Card], in
     return out, 0
 
 
-def _change_cards(
-    tagged: Sequence[_Tagged], days: Mapping[date, list[_Tagged]], inp: CardInputs
-) -> list[Card]:
+def _change_face(
+    after: Sequence[_Tagged], day: date
+) -> tuple[_Tagged | None, str | None]:
+    """Face of a change card (spec 5.3: the new avatar + her message that day).
+
+    ``after`` = the facts at or after the change. The first non-promo fact on
+    the change's JST day; else the first non-promo fact after it, else the
+    first fact after it (``first_after``); else ``None``.
+    """
+    same_day = next(
+        (t for t in after if t[1].jst_date == day and not t[1].is_promo), None
+    )
+    if same_day is not None:
+        return same_day, None
+    later = next((t for t in after if not t[1].is_promo), after[0] if after else None)
+    return later, (FALLBACK_FIRST_AFTER if later is not None else None)
+
+
+def _change_cards(tagged: Sequence[_Tagged], inp: CardInputs) -> list[Card]:
     changes = sorted(inp.avatar_changes, key=lambda ch: ch.changed_at)
     out = []
     used: Counter[str] = Counter()
@@ -654,10 +670,7 @@ def _change_cards(
         before = [t for t in tagged if t[1].ts < ch.changed_at]
         after = [t for t in tagged if t[1].ts >= ch.changed_at]
         run = [t for t in after if nxt is None or t[1].ts < nxt.changed_at]
-        face = _best_of(days.get(day, []))
-        fallback = None
-        if face is None and after:
-            face, fallback = after[0], FALLBACK_FIRST_AFTER
+        face, fallback = _change_face(after, day)
         refs = {}
         if before:
             refs["old_last"] = _mk(before[-1])
@@ -716,7 +729,7 @@ def evaluate_counted(inputs: CardInputs) -> tuple[list[Card], int]:
         *records,
         *_moment_cards(tagged),
         *you,
-        *_change_cards(tagged, days, inputs),
+        *_change_cards(tagged, inputs),
         *grad,
     ]
     hidden = h_anniv + h_numbers + h_special + h_records + h_you + h_grad
