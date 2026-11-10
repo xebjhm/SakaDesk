@@ -53,8 +53,8 @@ function angleAround(el: HTMLElement, e: React.PointerEvent): number {
  * The capsule machine (spec 12): a glass dome of capsules over the base with the knob and the
  * slot, all CSS shapes from tokens. The knob (`role="button"`) pulls on a click, Enter or Space,
  * or a pointer drag that turns it past {@link PULL_DEGREES} (either way; the angle is unwrapped
- * across the ±180° seam); a shorter drag springs back without pulling, and the click that ends
- * any drag is not a pull. It does nothing while `busy` or with no pulls left (`aria-disabled`).
+ * across the ±180° seam) and then rests on the next whole turn that way; a shorter drag springs
+ * back without pulling, and the click that ends any drag is not a pull. It does nothing while `busy` or with no pulls left (`aria-disabled`).
  * Under the knob: 「今日はあと {{count}} 回」, or 「また明日」 at 0. The capsule that rolled out
  * drops from the slot in its rarity colour; under reduced motion it fades in.
  */
@@ -96,6 +96,12 @@ export const CapsuleMachine: React.FC<CapsuleMachineProps> = ({ pullsLeft, busy,
         }
     };
     const endDrag = () => {
+        const d = drag.current;
+        // A drag that pulled rests on the next whole turn in its direction (never spinning back).
+        if (d?.pulled) {
+            const turns = Math.ceil(Math.abs(d.total) / 360);
+            setRest((a) => a + Math.sign(d.total) * turns * 360);
+        }
         drag.current = null;
         setTurn(null);
     };

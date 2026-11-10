@@ -54,6 +54,24 @@ describe('CapsuleMachine', () => {
         expect(onPull).toHaveBeenCalledTimes(1);
     });
 
+    it('after a drag pull the knob rests on the next whole turn forward, never spinning back', () => {
+        renderMachine();
+        drag(knob(), [0, 60, 120, 180, 240, 300, 330]);
+        expect(knob().style.transform).toBe('rotate(360deg)');
+    });
+
+    it('a counter-clockwise drag pull rests a whole turn the other way', () => {
+        renderMachine();
+        drag(knob(), [0, -60, -120, -180, -240, -300]);
+        expect(knob().style.transform).toBe('rotate(-360deg)');
+    });
+
+    it('a short drag springs back to where it started', () => {
+        renderMachine();
+        drag(knob(), [0, 60, 120]);
+        expect(knob().style.transform).toBe('rotate(0deg)');
+    });
+
     it('counts a drag across the ±180° seam as continuous rotation', () => {
         const { onPull } = renderMachine();
         // atan2 jumps from +180 to -180 here; unwrapped it is 90 → 380.
