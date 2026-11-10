@@ -2,11 +2,14 @@
 
 - :func:`probe_image` (blocking) opens one picture with Pillow and returns an
   :class:`ImageProbe`: size, format and a representative colour. The picture
-  is untrusted input: ``DecompressionBombError`` and pictures whose header
-  size is over the pixel bound are refused before any decode. The bound is
-  Pillow's ``MAX_IMAGE_PIXELS`` for draft formats, so its warning band is
-  refused too, and :data:`PROBE_MAX_PIXELS` caps the formats without draft
-  decoding. No ``warnings`` filter is touched (process-wide state);
+  is untrusted input: it is opened only as one of
+  ``photo_thumb.picture_formats()`` (no EPS or other exotic decoder is ever
+  reached), and ``DecompressionBombError`` and pictures whose header size is
+  over the pixel bound are refused before any decode. The bound is Pillow's
+  ``MAX_IMAGE_PIXELS`` for draft formats: a picture in Pillow's warning band
+  still makes ``Image.open`` emit its ``DecompressionBombWarning`` but is
+  refused and never decoded. :data:`PROBE_MAX_PIXELS` caps the formats without
+  draft decoding. No ``warnings`` filter is touched (process-wide state);
   JPEG / MPO pictures are decoded at draft size. Every failure gives ``None``
   plus a ``memories_skip`` breadcrumb (``view=album_color``, ``error_type``)
   that never carries the path: ``reason=unreadable`` for a decode failure,
@@ -56,6 +59,7 @@ import structlog
 from PIL import Image
 
 from backend.services.archive_urls import ArchiveReadError, archive_file_ok
+from backend.services.photo_thumb import picture_formats
 from backend.services.memories import index as mi
 from backend.services.memories import people
 from backend.services.memories.facts import Fact
@@ -146,10 +150,12 @@ def _decode(fh: BinaryIO) -> ImageProbe:
     The size bound is checked from the header before any pixel is decoded.
     It equals Pillow's ``MAX_IMAGE_PIXELS`` for draft formats (lower for the
     rest), so a picture in Pillow's warning band is refused here as a
-    ``DecompressionBombError``. No ``warnings`` filter is installed: filters
-    are process-wide and not thread-safe in a worker.
+    ``DecompressionBombError`` (``Image.open`` has already emitted Pillow's
+    warning for it, but nothing is decoded). Only the formats of
+    ``photo_thumb.picture_formats()`` are tried. No ``warnings`` filter is
+    installed: filters are process-wide and not thread-safe in a worker.
     """
-    with Image.open(fh) as img:
+    with Image.open(fh, formats=picture_formats()) as img:
         fmt = img.format or ""
         width, height = img.size
         limit = _pixel_limit(fmt)

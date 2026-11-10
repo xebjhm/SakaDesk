@@ -909,8 +909,22 @@ async def get_avatar(file_path: str, w: int = Query(...)):
     return FileResponse(served, media_type="image/webp")
 
 
+_THUMB_CACHE_CONTROL = "private, max-age=86400"
+
+
+def _etags(if_none_match: Optional[str]) -> set[str]:
+    """The entity tags of an ``If-None-Match`` header (weak prefixes dropped)."""
+    if not if_none_match:
+        return set()
+    return {t.strip().removeprefix("W/") for t in if_none_match.split(",")}
+
+
 @router.get("/thumb/{file_path:path}")
-async def get_thumb(file_path: str, w: int = Query(...)):
+async def get_thumb(
+    file_path: str,
+    w: int = Query(...),
+    if_none_match: Optional[str] = Header(default=None),
+):
     """Serve an archived picture downscaled to fit ``w`` px (WebP, aspect kept).
 
     ``file_path`` is the same as for ``/media/{file_path}`` and is validated
@@ -919,7 +933,12 @@ async def get_thumb(file_path: str, w: int = Query(...)):
     ``photo_thumb.ALLOWED_WIDTHS`` (400 otherwise). A missing file, a
     non-picture (video, voice, unknown) or a picture that cannot be decoded
     safely answers 404, so the client falls back to the full media URL. The
-    variant is cached on disk (see ``backend.services.photo_thumb``).
+    variant is cached on disk (see ``backend.services.photo_thumb``). The
+    answer carries a stable ``ETag`` (the variant's hash name; a matching
+    ``If-None-Match`` gets 304), ``Cache-Control: private, max-age=86400``
+    and ``X-Content-Type-Options: nosniff``. The body is read into memory
+    first (thumbnails are small), so a variant evicted meanwhile answers
+    404, never a 500.
     """
     if w not in photo_thumb.ALLOWED_WIDTHS:
         logger.info("thumb_request_rejected", reason="width", width=w)
@@ -927,15 +946,29 @@ async def get_thumb(file_path: str, w: int = Query(...)):
     safe_path = _resolve_media_path(file_path)
     output_dir = get_output_dir()
     try:
-        if not archive_file_ok(output_dir, safe_path):
-            raise HTTPException(status_code=404, detail="File not found")
+        is_file = archive_file_ok(output_dir, safe_path)
     except ArchiveReadError:
+        logger.info("memories_skip", view="photo_thumb", reason="unreadable")
         raise HTTPException(status_code=404, detail="File not found") from None
+    if not is_file:
+        logger.info("memories_skip", view="photo_thumb", reason="not_file")
+        raise HTTPException(status_code=404, detail="File not found")
     rel = safe_path.relative_to(output_dir.resolve()).as_posix()
     served = await photo_thumb.thumbnail(safe_path, rel, w)
     if served is None:
         raise HTTPException(status_code=404, detail="No thumbnail")
-    return FileResponse(served, media_type="image/webp")
+    # The variant's name is a hash of (path, size, mtime, width): a stable ETag.
+    headers = {
+        "ETag": f'"{served.stem}"',
+        "Cache-Control": _THUMB_CACHE_CONTROL,
+        "X-Content-Type-Options": "nosniff",
+    }
+    if headers["ETag"] in _etags(if_none_match):
+        return Response(status_code=304, headers=headers)
+    body = await asyncio.to_thread(photo_thumb.read_variant, served)
+    if body is None:
+        raise HTTPException(status_code=404, detail="No thumbnail")
+    return Response(content=body, media_type="image/webp", headers=headers)
 
 
 # =============================================================================

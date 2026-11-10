@@ -96,6 +96,22 @@ def test_probe_corrupt_file_is_none_and_logs_without_path(tmp_path):
     assert "broken" not in text and "秘密" not in text and str(tmp_path) not in text
 
 
+def test_probe_never_reaches_an_exotic_decoder(tmp_path, monkeypatch):
+    from PIL import EpsImagePlugin
+
+    calls: list[int] = []
+    monkeypatch.setattr(
+        EpsImagePlugin.EpsImageFile, "_open", lambda self: calls.append(1)
+    )
+    path = tmp_path / "trap.jpg"
+    path.write_bytes(b"%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\n")
+    with capture_logs() as logs:
+        assert ac.probe_image(path) is None
+    assert calls == []  # only the picture formats are tried
+    assert logs[-1]["reason"] == "unreadable"
+    assert logs[-1]["error_type"] == "UnidentifiedImageError"
+
+
 def test_probe_decompression_bomb_is_none(tmp_path, monkeypatch):
     path = jpeg(tmp_path / "big.jpg", RED, size=(400, 300))
     monkeypatch.setattr(Image, "MAX_IMAGE_PIXELS", 1000)

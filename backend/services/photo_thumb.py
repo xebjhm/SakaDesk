@@ -9,27 +9,39 @@ serves a WebP no wider or taller than one of :data:`ALLOWED_WIDTHS` instead
 - **Pictures only.** A source whose suffix is not in :data:`PICTURE_SUFFIXES`
   (a video, a voice note, anything unknown) gets ``None`` (the route answers
   404 and the frontend falls back to the full media URL) without being opened.
-- **Untrusted input.** The pixel bound :data:`MAX_SOURCE_PIXELS` is checked
-  from the header size before any pixel is decoded, and is never above
-  Pillow's own ``MAX_IMAGE_PIXELS``, so Pillow's warning band is refused too.
-  No ``warnings`` filter is touched (process-wide, not thread-safe). JPEG / MPO
-  are decoded at draft scale. Every failure (bomb, decode error, unreadable
-  file) gives ``None`` plus a ``memories_skip`` breadcrumb (``view=photo_thumb``,
+- **Untrusted input.** ``Image.open`` only tries the formats of
+  :func:`picture_formats` (JPEG, MPO, PNG, WebP, GIF, plus HEIF / AVIF when a
+  plugin provides them), so EPS and other exotic decoders are never reached
+  whatever the file holds. The pixel bound :data:`MAX_SOURCE_PIXELS` is checked
+  from the header size before any pixel is decoded and is never above Pillow's
+  own ``MAX_IMAGE_PIXELS``: a source in Pillow's warning band still makes
+  ``Image.open`` emit its ``DecompressionBombWarning`` (Pillow checks the
+  header size itself), but it is refused and never decoded. No ``warnings``
+  filter is touched (process-wide, not thread-safe). JPEG / MPO are decoded at
+  draft scale. Every failure (bomb, decode error, unreadable file) gives
+  ``None`` plus a ``memories_skip`` breadcrumb (``view=photo_thumb``,
   ``reason``, ``error_type``) that never carries the path.
 - **Cache.** Variants live under ``<app data dir>/cache/photo_thumbs/`` (a
   sibling of the avatar cache), named by a hash of (service-relative path,
   size, ``mtime_ns``, width), so a re-archived file gets a new key. Writes are
-  atomic (temp file + ``os.replace``). A hit refreshes the file's mtime, and
-  when the total size passes :data:`CACHE_CAP_BYTES` the oldest variants are
-  deleted until it is under :data:`CACHE_LOW_WATER` of the cap. The running
-  total is measured once per cache dir, then kept in memory.
+  atomic (temp file + ``os.replace``). A variant file is never touched after it
+  is written, so its ETag stays stable; hits are remembered in memory instead,
+  and when the total size passes :data:`CACHE_CAP_BYTES` the least recently
+  used variants (last hit, else creation time) are deleted until it is under
+  :data:`CACHE_LOW_WATER` of the cap. The running total is measured once per
+  cache dir, then kept in memory; that first pass also deletes temp files older
+  than :data:`TMP_MAX_AGE_S` (left by a crash mid-write). A full disk logs one
+  warning per :data:`WRITE_WARN_INTERVAL_S` (with the number suppressed), not
+  one per tile. :func:`read_variant` reads a variant for the response, so an
+  eviction between the lookup and the send gives a 404, never a 500.
 - **Concurrency.** :func:`thumbnail` decodes in ``asyncio.to_thread`` under a
   per-event-loop semaphore of :data:`DECODE_SLOTS`, so one album scroll cannot
   occupy every worker thread. A cache hit never waits for a slot.
 
 Logs carry counts and codes only: ``photo_thumb_cache`` (``outcome=hit|miss``,
-``width``), ``photo_thumb_evict`` (``count``, ``bytes``) and
-``photo_thumb_failed`` (``op``, ``error_type``) for cache file errors.
+``width``), ``photo_thumb_evict`` (``count``, ``bytes``), ``photo_thumb_sweep``
+(``count``) and ``photo_thumb_failed`` (``op``, ``error_type``, ``suppressed``)
+for cache file errors.
 """
 
 from __future__ import annotations
@@ -39,8 +51,9 @@ import hashlib
 import os
 import tempfile
 import threading
+import time
 import weakref
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 import structlog
@@ -55,8 +68,10 @@ ALLOWED_WIDTHS: frozenset[int] = frozenset({160, 320, 640})
 """Longest-side bounds the route accepts; mirrors ``THUMB_WIDTHS`` in the frontend."""
 
 PICTURE_SUFFIXES: frozenset[str] = frozenset(
-    {".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp"}
+    {".jpg", ".jpeg", ".png", ".webp", ".gif", ".heic", ".heif", ".avif"}
 )
+BASE_FORMATS: tuple[str, ...] = ("JPEG", "MPO", "PNG", "WEBP", "GIF")
+OPTIONAL_FORMATS: tuple[str, ...] = ("HEIF", "AVIF")
 DRAFT_FORMATS = frozenset({"JPEG", "MPO"})
 MAX_SOURCE_PIXELS = 50_000_000
 """Header-size bound (capped by Pillow's ``MAX_IMAGE_PIXELS``); larger sources are refused."""
@@ -64,7 +79,21 @@ MAX_SOURCE_PIXELS = 50_000_000
 CACHE_CAP_BYTES = 300 * 1024 * 1024
 CACHE_LOW_WATER = 0.9
 DECODE_SLOTS = 2
+TMP_MAX_AGE_S = 3600
+WRITE_WARN_INTERVAL_S = 600
 _WEBP_QUALITY = 82
+
+
+def picture_formats() -> tuple[str, ...]:
+    """The Pillow formats a picture may be opened as (``Image.open(..., formats=)``).
+
+    The registered ones among :data:`BASE_FORMATS` (Pillow opens MPO files
+    through its JPEG plugin, so MPO need not be registered itself) and
+    :data:`OPTIONAL_FORMATS` (only when their plugin is installed). Shared
+    with ``memories.album_colors``.
+    """
+    Image.init()
+    return tuple(f for f in BASE_FORMATS + OPTIONAL_FORMATS if f in Image.OPEN)
 
 
 def cache_dir() -> Path:
@@ -102,6 +131,8 @@ def variant_name(rel_path: str, size: int, mtime_ns: int, width: int) -> str:
 @dataclass
 class _CacheState:
     total: int
+    # variant name -> time.time_ns() of its last hit (the files stay untouched)
+    used: dict[str, int] = field(default_factory=dict)
 
 
 _states: dict[Path, _CacheState] = {}
@@ -116,10 +147,31 @@ def _variants(root: Path) -> list[os.DirEntry[str]]:
         return []
 
 
+def _sweep_tmp(root: Path) -> None:
+    """Delete temp files older than :data:`TMP_MAX_AGE_S` (a crash mid-write). Blocking."""
+    cutoff = time.time() - TMP_MAX_AGE_S
+    count = 0
+    try:
+        with os.scandir(root) as it:
+            stale = [e for e in it if e.name.endswith(".tmp")]
+    except FileNotFoundError:
+        return
+    for e in stale:
+        try:
+            if e.stat().st_mtime < cutoff:
+                os.unlink(e.path)
+                count += 1
+        except OSError:
+            continue
+    if count:
+        logger.info("photo_thumb_sweep", count=count)
+
+
 def _state(root: Path) -> _CacheState:
     """The running total of ``root`` (measured on first use). Call under the lock."""
     state = _states.get(root)
     if state is None:
+        _sweep_tmp(root)
         total = 0
         for e in _variants(root):
             try:
@@ -138,7 +190,8 @@ def _evict(root: Path, state: _CacheState, cap: int) -> None:
             st = e.stat()
         except OSError:
             continue
-        entries.append((st.st_mtime_ns, st.st_size, Path(e.path)))
+        used = max(st.st_mtime_ns, state.used.get(e.name, 0))
+        entries.append((used, st.st_size, Path(e.path)))
     entries.sort(key=lambda t: (t[0], t[2].name))
     state.total = sum(size for _, size, _ in entries)
     target = int(cap * CACHE_LOW_WATER)
@@ -153,6 +206,7 @@ def _evict(root: Path, state: _CacheState, cap: int) -> None:
         except OSError as e:  # Windows: a reader holds it open; try the next one
             logger.debug("photo_thumb_failed", op="evict", error_type=type(e).__name__)
             continue
+        state.used.pop(path.name, None)
         state.total -= size
         count += 1
         freed += size
@@ -168,9 +222,38 @@ def _added(root: Path, size: int, cap: int) -> None:
 
 
 def reset_cache_state() -> None:
-    """Forget the measured totals (tests; a cache dir wiped from outside)."""
+    """Forget the measured totals and the write-warning window (tests; a cache dir wiped from outside)."""
+    global _last_write_warn, _write_suppressed
     with _state_lock:
         _states.clear()
+        _last_write_warn = None
+        _write_suppressed = 0
+
+
+_last_write_warn: float | None = None
+_write_suppressed = 0
+
+
+def _write_failed(e: BaseException) -> None:
+    """Warn about a failed cache write at most once per :data:`WRITE_WARN_INTERVAL_S`."""
+    global _last_write_warn, _write_suppressed
+    with _state_lock:
+        now = time.monotonic()
+        if (
+            _last_write_warn is not None
+            and now - _last_write_warn < WRITE_WARN_INTERVAL_S
+        ):
+            _write_suppressed += 1
+            logger.debug("photo_thumb_failed", op="write", error_type=type(e).__name__)
+            return
+        suppressed, _write_suppressed = _write_suppressed, 0
+        _last_write_warn = now
+    logger.warning(
+        "photo_thumb_failed",
+        op="write",
+        error_type=type(e).__name__,
+        suppressed=suppressed,
+    )
 
 
 # --- decode --------------------------------------------------------------------------
@@ -178,7 +261,7 @@ def reset_cache_state() -> None:
 
 def _render(source: Path, width: int) -> Image.Image:
     """Decode and downscale ``source``; raises on any failure. Blocking."""
-    with Image.open(source) as opened:
+    with Image.open(source, formats=picture_formats()) as opened:
         w, h = opened.size
         if w * h > _pixel_limit():
             raise Image.DecompressionBombError("pixel bound")
@@ -209,9 +292,11 @@ def _write(img: Image.Image, root: Path, target: Path) -> int:
 def lookup(
     source: Path, rel_path: str, width: int, root: Path
 ) -> tuple[Path | None, Path | None]:
-    """``(hit, target)``: the cached variant if present (its mtime refreshed), and where it belongs.
+    """``(hit, target)``: the cached variant if present, and where it belongs.
 
-    ``target`` is ``None`` when ``source`` cannot be stat-ed. Blocking.
+    A hit is remembered in memory for the eviction order; the file itself is
+    not touched (its ETag stays stable). ``target`` is ``None`` when ``source``
+    cannot be stat-ed. Blocking.
     """
     try:
         st = source.stat()
@@ -219,13 +304,21 @@ def lookup(
         _skip("unavailable", e)
         return None, None
     target = root / variant_name(rel_path, st.st_size, st.st_mtime_ns, width)
+    hit = target.is_file()
+    with _state_lock:
+        state = _state(root)
+        if hit:
+            state.used[target.name] = time.time_ns()
+    return (target if hit else None), target
+
+
+def read_variant(path: Path) -> bytes | None:
+    """A variant's bytes for the response; ``None`` (with a breadcrumb) if it vanished. Blocking."""
     try:
-        os.utime(target)
-    except FileNotFoundError:
-        return None, target
-    except OSError as e:  # still servable; only the LRU order is stale
-        logger.debug("photo_thumb_failed", op="touch", error_type=type(e).__name__)
-    return target, target
+        return path.read_bytes()
+    except OSError as e:  # evicted (or held) between the lookup and the send
+        _skip("vanished", e)
+        return None
 
 
 def make(
@@ -249,10 +342,10 @@ def make(
         # Windows: another request is reading the same variant; same key, same content.
         if target.exists():
             return target
-        logger.warning("photo_thumb_failed", op="write", error_type=type(e).__name__)
+        _write_failed(e)
         return None
     except OSError as e:
-        logger.warning("photo_thumb_failed", op="write", error_type=type(e).__name__)
+        _write_failed(e)
         return None
     _added(root, size, cap)
     return target
