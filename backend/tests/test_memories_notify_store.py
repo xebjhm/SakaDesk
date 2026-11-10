@@ -409,15 +409,14 @@ def test_unchanged_notify_value_does_not_wake(client, settings_env):
     assert calls == []
 
 
-def test_enabling_cards_clears_baselines(client, settings_env):
+def test_enabling_cards_keeps_baselines_and_wakes(client, settings_env):
+    """The scheduler advances baselines silently while cards are off, so
+    turning cards on needs no re-seed: baselines are left as they are."""
     _, calls = settings_env
     app_state.put_card_baseline("hinatazaka46", "58", ["a"], "h")
-    with capture_logs() as logs:
-        r = client.post("/api/settings", json={"memories_notify_cards": True})
-    assert r.json()["memories_notify_cards"] is True
-    assert app_state.get_card_baseline("hinatazaka46", "58") is None
-    ev = [e for e in logs if e["event"] == "memories_notify_cards_enabled"]
-    assert ev and ev[-1]["cleared"] == 1
+    r = client.post("/api/settings", json={"memories_notify_cards": True})
+    assert r.status_code == 200 and r.json()["memories_notify_cards"] is True
+    assert app_state.get_card_baseline("hinatazaka46", "58") == (frozenset({"a"}), "h")
     assert calls == [1]
 
 
@@ -466,52 +465,6 @@ def test_get_settings_invalid_time_warns_once(client, settings_env):
         client.get("/api/settings")
         client.get("/api/settings")
     assert len([e for e in logs if e["event"] == "memories_notify_time_invalid"]) == 1
-
-
-def test_enabling_cards_clears_baselines_before_saving(
-    client, settings_env, monkeypatch
-):
-    tmp_path, calls = settings_env
-    seen: list[object] = []
-    real = app_state.clear_card_baselines
-
-    def spy() -> int:
-        path = tmp_path / "settings.json"
-        saved = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-        seen.append(saved.get("memories_notify_cards", False))
-        return real()
-
-    monkeypatch.setattr(app_state, "clear_card_baselines", spy)
-    r = client.post("/api/settings", json={"memories_notify_cards": True})
-    assert r.status_code == 200
-    assert seen == [False]  # cleared while the stored toggle was still off
-    assert calls == [1]
-
-
-def test_cards_clear_failure_is_a_clean_error_and_saves_nothing(
-    client, settings_env, monkeypatch
-):
-    tmp_path, calls = settings_env
-
-    def boom() -> int:
-        raise sqlite3.OperationalError("locked")
-
-    monkeypatch.setattr(app_state, "clear_card_baselines", boom)
-    with capture_logs() as logs:
-        r = client.post(
-            "/api/settings",
-            json={"memories_notify_cards": True, "close_to_tray": False},
-        )
-    assert r.status_code == 503
-    assert r.json()["detail"] == "memories_cards_reset_failed"
-    path = tmp_path / "settings.json"
-    saved = json.loads(path.read_text(encoding="utf-8")) if path.exists() else {}
-    assert not saved.get("memories_notify_cards", False)
-    assert saved.get("close_to_tray", True) is True
-    ev = [e for e in logs if e["event"] == "memories_notify_cards_enabled_failed"]
-    assert ev and ev[-1]["error_type"] == "OperationalError"
-    assert calls == []
-    assert client.get("/api/settings").json()["memories_notify_cards"] is False
 
 
 def test_concurrent_claims_of_one_occasion_yield_one_true(fresh):

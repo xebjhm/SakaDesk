@@ -6,7 +6,6 @@ Uses platform-appropriate paths for Windows deployment.
 
 import asyncio
 import json
-import sqlite3
 import sys
 import structlog
 from pathlib import Path
@@ -21,7 +20,7 @@ from backend.services.platform import (
 from backend.services.service_utils import (
     validate_service,
 )
-from backend.services import app_state, autostart, desktop_bridge
+from backend.services import autostart, desktop_bridge
 from backend.services.memories import notify_scheduler
 from backend.services.auto_sync_scheduler import wake_scheduler
 from backend.services.call_popup import get_call_popup_controller
@@ -249,10 +248,6 @@ async def get_settings():
     return _settings_response(config)
 
 
-class _CardsResetFailed(Exception):
-    """Clearing the card baselines failed; the settings update is abandoned."""
-
-
 @router.post("", response_model=SettingsResponse)
 async def update_settings(update: SettingsUpdate):
     """Update settings."""
@@ -266,19 +261,7 @@ async def update_settings(update: SettingsUpdate):
         nonlocal memories_notify_changed
         before = tuple(config.get(key) for key in _SCHEDULE_KEYS)
         notify_before = tuple(config.get(key) for key in _MEMORIES_NOTIFY_KEYS)
-        cards_before = bool(config.get("memories_notify_cards", False))
         notifications_before = config.get("notifications_enabled")
-        if update.memories_notify_cards and not cards_before:
-            # Re-seed silently: history earned while the toggle was off never
-            # floods in. Cleared BEFORE the new toggle is written (this runs
-            # inside the settings write, on its executor thread), so no
-            # scheduler tick can ever see cards on with a stale baseline. A
-            # failure aborts the whole update: nothing is saved.
-            try:
-                cleared_baselines = app_state.clear_card_baselines()
-            except sqlite3.Error as exc:
-                raise _CardsResetFailed(type(exc).__name__) from exc
-            logger.info("memories_notify_cards_enabled", cleared=cleared_baselines)
         if update.output_dir is not None:
             config["output_dir"] = update.output_dir
             config["is_configured"] = True
@@ -324,11 +307,7 @@ async def update_settings(update: SettingsUpdate):
             config.get(key) for key in _MEMORIES_NOTIFY_KEYS
         ) or notifications_before != config.get("notifications_enabled")
 
-    try:
-        config = await _store_update(_apply)
-    except _CardsResetFailed as exc:
-        logger.error("memories_notify_cards_enabled_failed", error_type=str(exc))
-        raise HTTPException(status_code=503, detail="memories_cards_reset_failed")
+    config = await _store_update(_apply)
 
     if schedule_changed:
         # The scheduler would otherwise only notice after its current wait.
