@@ -5,10 +5,23 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from fastapi.testclient import TestClient
 
+from backend.api.progress import ProgressManager
 from backend.api.sync import get_sync_service, _sync_services
 from backend.main import app
+from backend.services.sync_coordinator import EnqueueResult, SyncCoordinator
 
 client = TestClient(app)
+
+
+@pytest.fixture
+def fake_coordinator():
+    """A mocked coordinator behind the API and the launcher."""
+    fake = MagicMock()
+    with (
+        patch("backend.api.sync.get_coordinator", return_value=fake),
+        patch("backend.services.sync_launcher.get_coordinator", return_value=fake),
+    ):
+        yield fake
 
 
 @pytest.fixture(autouse=True)
@@ -35,29 +48,26 @@ class TestStartSync:
         assert response.status_code == 400
         assert "Invalid service" in response.json()["detail"]
 
-    def test_start_sync_success(self):
-        """Starting sync for a valid, non-running service should return 200."""
-        with patch("backend.api.sync.get_sync_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.running = False
-            mock_get.return_value = mock_svc
-
-            with patch("backend.services.sync_launcher.asyncio.create_task"):
-                response = client.post("/api/sync/start?service=hinatazaka46")
+    @pytest.mark.parametrize(
+        "result,position",
+        [("started", None), ("queued", 2), ("already_queued", 1)],
+    )
+    def test_start_sync_enqueues(self, fake_coordinator, result, position):
+        """A started or queued sync answers 200 with its status and position."""
+        fake_coordinator.enqueue.return_value = EnqueueResult(result, position)
+        response = client.post("/api/sync/start?service=hinatazaka46")
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "started"
-        assert data["service"] == "hinatazaka46"
+        assert response.json() == {
+            "status": result,
+            "service": "hinatazaka46",
+            "position": position,
+        }
 
-    def test_start_sync_already_running_returns_400(self):
-        """Starting sync when already running should 400."""
-        with patch("backend.api.sync.get_sync_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.running = True
-            mock_get.return_value = mock_svc
-
-            response = client.post("/api/sync/start?service=hinatazaka46")
+    def test_start_sync_already_running_returns_400(self, fake_coordinator):
+        """A running sync answers 400 "already running" (the frontend attaches)."""
+        fake_coordinator.enqueue.return_value = EnqueueResult("already_running")
+        response = client.post("/api/sync/start?service=hinatazaka46")
 
         assert response.status_code == 400
         assert "already running" in response.json()["detail"]
@@ -65,73 +75,116 @@ class TestStartSync:
     def test_start_sync_rejects_during_shutdown(self):
         """C1c: refuse to spawn a new sync writer once shutdown has begun --
         otherwise it would still be running (and writing) after
-        data_lock.release()."""
+        data_lock.release(). The real coordinator refuses."""
         from backend.services import shutdown_state
 
         shutdown_state.begin_shutdown()
         try:
-            with patch("backend.api.sync.get_sync_service") as mock_get:
-                mock_svc = MagicMock()
-                mock_svc.running = False
-                mock_get.return_value = mock_svc
-
-                with patch(
-                    "backend.services.sync_launcher.asyncio.create_task"
-                ) as mock_create_task:
-                    response = client.post("/api/sync/start?service=hinatazaka46")
-
+            with patch("backend.api.sync.run_sync_task") as mock_run:
+                response = client.post("/api/sync/start?service=hinatazaka46")
             assert response.status_code == 503
-            mock_create_task.assert_not_called()
+            mock_run.assert_not_called()
         finally:
             shutdown_state.reset_for_tests()
 
-    def test_start_sync_with_include_inactive(self):
-        """include_inactive flag should be accepted."""
-        with patch("backend.api.sync.get_sync_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.running = False
-            mock_get.return_value = mock_svc
+    def test_start_sync_passes_flags(self, fake_coordinator):
+        fake_coordinator.enqueue.return_value = EnqueueResult("started")
+        client.post(
+            "/api/sync/start?service=hinatazaka46&force_resync=true&include_inactive=false"
+        )
 
-            with patch("backend.services.sync_launcher.asyncio.create_task"):
-                response = client.post(
-                    "/api/sync/start?service=hinatazaka46&include_inactive=true"
-                )
+        fake_coordinator.enqueue.assert_called_once_with(
+            "hinatazaka46", include_inactive=False, force_resync=True, origin="api"
+        )
 
-        assert response.status_code == 200
-
-    def test_start_sync_includes_inactive_by_default(self):
+    def test_start_sync_includes_inactive_by_default(self, fake_coordinator):
         """The frontend never sends include_inactive, so the endpoint default must
         fetch lapsed subscriptions too. With a False default, a member whose
         subscription expired was dropped from the groups response, her server_groups
         entry was never refreshed, and she stayed "online" forever (0.3.2 regression).
         """
-        with patch("backend.api.sync.get_sync_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.running = False
-            mock_get.return_value = mock_svc
+        fake_coordinator.enqueue.return_value = EnqueueResult("started")
+        client.post("/api/sync/start?service=hinatazaka46")
 
-            with (
-                patch("backend.api.sync.run_sync_task") as mock_run,
-                patch("backend.services.sync_launcher.asyncio.create_task"),
-            ):
-                response = client.post("/api/sync/start?service=hinatazaka46")
+        assert fake_coordinator.enqueue.call_args.kwargs["include_inactive"] is True
 
-        assert response.status_code == 200
-        mock_run.assert_called_once_with("hinatazaka46", True, False)
 
-    def test_start_sync_with_force_resync(self):
-        """force_resync flag should be accepted."""
-        with patch("backend.api.sync.get_sync_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.running = False
-            mock_get.return_value = mock_svc
+# ---------------------------------------------------------------------------
+# POST /api/sync/start-all, GET /api/sync/queue
+# ---------------------------------------------------------------------------
 
-            with patch("backend.services.sync_launcher.asyncio.create_task"):
-                response = client.post(
-                    "/api/sync/start?service=hinatazaka46&force_resync=true"
-                )
+
+class TestStartAllAndQueue:
+    def test_start_all_starts_a_sequence(self, fake_coordinator):
+        fake_coordinator.start_sequence.return_value = {
+            "sequence_id": "abc",
+            "results": {"yodel": "started"},
+        }
+        response = client.post(
+            "/api/sync/start-all", json={"services": ["yodel"], "blocking": True}
+        )
 
         assert response.status_code == 200
+        assert response.json()["sequence_id"] == "abc"
+        fake_coordinator.start_sequence.assert_called_once_with(
+            ["yodel"], blocking=True, origin="api"
+        )
+
+    def test_start_all_rejects_bad_input(self, fake_coordinator):
+        assert (
+            client.post("/api/sync/start-all", json={"services": []}).status_code == 400
+        )
+        bad = client.post("/api/sync/start-all", json={"services": ["yodel", "nope"]})
+        assert bad.status_code == 400 and "Invalid service" in bad.json()["detail"]
+        fake_coordinator.start_sequence.assert_not_called()
+
+    def test_start_all_rejects_during_shutdown(self, fake_coordinator):
+        from backend.services import shutdown_state
+
+        shutdown_state.begin_shutdown()
+        try:
+            response = client.post("/api/sync/start-all", json={"services": ["yodel"]})
+            assert response.status_code == 503
+        finally:
+            shutdown_state.reset_for_tests()
+
+    def test_start_all_runs_in_fixed_order(self):
+        """Through the real coordinator: 乃木坂46, 日向坂46, Yodel whatever the
+        request order (user decision, 2026-11-10)."""
+        coordinator = SyncCoordinator(
+            run_job=AsyncMock(),
+            register_task=lambda job, task: None,
+            progress=ProgressManager(),
+            on_sequence_end=lambda seq: None,
+        )
+        with patch("backend.api.sync.get_coordinator", return_value=coordinator):
+            response = client.post(
+                "/api/sync/start-all",
+                json={
+                    "services": ["yodel", "hinatazaka46", "nogizaka46"],
+                    "blocking": True,
+                },
+            )
+            queue = client.get("/api/sync/queue").json()
+
+        assert list(response.json()["results"]) == [
+            "nogizaka46",
+            "hinatazaka46",
+            "yodel",
+        ]
+        assert queue["sequence"]["services"] == ["nogizaka46", "hinatazaka46", "yodel"]
+
+    def test_queue_returns_snapshot(self, fake_coordinator):
+        fake_coordinator.snapshot.return_value = {
+            "running": None,
+            "queued": [],
+            "sequence": None,
+        }
+        assert client.get("/api/sync/queue").json() == {
+            "running": None,
+            "queued": [],
+            "sequence": None,
+        }
 
 
 # ---------------------------------------------------------------------------
@@ -200,7 +253,7 @@ class TestGetProgress:
 
 
 class TestCancelSync:
-    def test_missing_service_returns_422(self):
+    def test_missing_target_returns_422(self):
         response = client.post("/api/sync/cancel")
         assert response.status_code == 422
 
@@ -208,37 +261,34 @@ class TestCancelSync:
         response = client.post("/api/sync/cancel?service=fake")
         assert response.status_code == 400
 
-    def test_cancel_not_running_returns_not_running(self):
-        """Cancelling when nothing is running (no flag, no task) returns not_running."""
-        with patch("backend.api.sync.get_sync_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.running = False
-            mock_svc._task = None  # no live task to cancel (SVC-C1)
-            mock_get.return_value = mock_svc
-
-            response = client.post("/api/sync/cancel?service=hinatazaka46")
+    def test_cancel_not_running_returns_not_running(self, fake_coordinator):
+        fake_coordinator.cancel_service = AsyncMock(return_value="not_running")
+        response = client.post("/api/sync/cancel?service=hinatazaka46")
 
         assert response.status_code == 200
         assert response.json()["status"] == "not_running"
 
-    def test_cancel_running_sync(self):
-        """Cancelling a running sync should invoke the real async cancel() and
-        return cancelled. cancel() (not the endpoint) is responsible for the
-        real task.cancel() + awaiting the unwind (SVC-C1)."""
-        with patch("backend.api.sync.get_sync_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.running = True
-            mock_svc.cancel = AsyncMock(return_value=True)
-            mock_get.return_value = mock_svc
+    def test_cancel_running_sync(self, fake_coordinator):
+        """The coordinator cancels the job (real task.cancel() + awaited unwind,
+        SVC-C1) and the endpoint resets the service's progress."""
+        from backend.api.progress import progress_manager
 
-            response = client.post("/api/sync/cancel?service=hinatazaka46")
+        fake_coordinator.cancel_service = AsyncMock(return_value="cancelled")
+        progress_manager.get("hinatazaka46").start_phase(
+            "syncing", "x", 2, 5, "members"
+        )
+        response = client.post("/api/sync/cancel?service=hinatazaka46")
 
-        assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "cancelled"
-        assert data["service"] == "hinatazaka46"
-        # The endpoint delegates to the service's real cancel() coroutine.
-        mock_svc.cancel.assert_awaited_once()
+        assert response.json() == {"status": "cancelled", "service": "hinatazaka46"}
+        fake_coordinator.cancel_service.assert_awaited_once_with("hinatazaka46")
+        assert progress_manager.get("hinatazaka46").get_status()["state"] == "idle"
+
+    def test_cancel_sequence(self, fake_coordinator):
+        fake_coordinator.cancel_sequence = AsyncMock(return_value="cancelled")
+        response = client.post("/api/sync/cancel?sequence=abc")
+
+        assert response.json() == {"status": "cancelled", "sequence": "abc"}
+        fake_coordinator.cancel_sequence.assert_awaited_once_with("abc")
 
 
 # ---------------------------------------------------------------------------
@@ -471,55 +521,25 @@ class TestRunSyncTask:
 
 
 class TestVerifyMedia:
-    def test_verify_endpoint_starts(self):
-        """Starting verify for a valid, non-running service should return 200."""
-        with patch("backend.api.sync.get_sync_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.running = False
-            mock_get.return_value = mock_svc
-
-            # /verify routes through track_background_task (C1b), not a bare
-            # asyncio.create_task -- patch that call site instead so it
-            # doesn't schedule a real task against the mocked service.
-            with patch("backend.api.sync.track_background_task") as mock_track:
-                response = client.post("/api/sync/verify?service=hinatazaka46")
+    def test_verify_endpoint_enqueues_a_verify_job(self, fake_coordinator):
+        fake_coordinator.enqueue.return_value = EnqueueResult("queued", 1)
+        response = client.post("/api/sync/verify?service=hinatazaka46")
 
         assert response.status_code == 200
-        data = response.json()
-        assert data["status"] == "started"
-        assert data["service"] == "hinatazaka46"
-        mock_track.assert_called_once()
-        args, kwargs = mock_track.call_args
-        assert kwargs.get("name") == "verify_media"
-        # The real run_verify_task(...) coroutine was constructed and handed
-        # to the (mocked) track_background_task but never awaited here --
-        # close it explicitly so Python doesn't warn about a dangling
-        # coroutine that was never scheduled.
-        args[0].close()
+        assert response.json() == {
+            "status": "queued",
+            "service": "hinatazaka46",
+            "position": 1,
+        }
+        fake_coordinator.enqueue.assert_called_once_with(
+            "hinatazaka46", kind="verify", origin="api"
+        )
 
-    def test_verify_registers_task_on_service(self):
-        """SD-BE-SVC-02: /verify must register the returned task on the service
-        (sync_service._task) so a subsequent /cancel can reach and cancel the
-        running verify -- otherwise cancel() takes its "no task" branch, force-
-        clears running, and a second writer (sync) can start concurrently."""
-        with patch("backend.api.sync.get_sync_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.running = False
-            mock_get.return_value = mock_svc
-
-            sentinel_task = MagicMock()
-            with patch(
-                "backend.api.sync.track_background_task", return_value=sentinel_task
-            ) as mock_track:
-                response = client.post("/api/sync/verify?service=hinatazaka46")
-                args, kwargs = mock_track.call_args
-                # Close the un-awaited coroutine handed to the mocked tracker.
-                args[0].close()
-
-        assert response.status_code == 200
-        # The task the tracker returned was registered on the service so
-        # /cancel -> cancel() -> task.cancel() can target the verify run.
-        assert mock_svc._task is sentinel_task
+    def test_verify_already_running_returns_400(self, fake_coordinator):
+        fake_coordinator.enqueue.return_value = EnqueueResult("already_running")
+        response = client.post("/api/sync/verify?service=hinatazaka46")
+        assert response.status_code == 400
+        assert "already running" in response.json()["detail"]
 
     def test_verify_endpoint_rejects_bad_service(self):
         """Verify endpoint should reject invalid services."""
@@ -534,27 +554,19 @@ class TestVerifyMedia:
 
         shutdown_state.begin_shutdown()
         try:
-            with patch("backend.api.sync.get_sync_service") as mock_get:
-                mock_svc = MagicMock()
-                mock_svc.running = False
-                mock_get.return_value = mock_svc
-
-                with patch("backend.api.sync.track_background_task") as mock_track:
-                    response = client.post("/api/sync/verify?service=hinatazaka46")
-
+            with patch("backend.api.sync.run_verify_task") as mock_run:
+                response = client.post("/api/sync/verify?service=hinatazaka46")
             assert response.status_code == 503
-            mock_track.assert_not_called()
+            mock_run.assert_not_called()
         finally:
             shutdown_state.reset_for_tests()
 
     @pytest.mark.asyncio
-    async def test_verify_task_is_drained_by_drain_background_tasks(self):
-        """C1b end-to-end: verify_media must be routed through
-        track_background_task (not a bare create_task) so that
-        drain_background_tasks() -- the barrier's C1a hook -- can actually
-        reach and stop it. This drives the real endpoint handler and the
-        real drain function together, only mocking the sync service's
-        verify_and_fix_media so the test doesn't touch real files/network."""
+    async def test_verify_task_is_registered_and_drained(self):
+        """C1b / SD-BE-SVC-02 end-to-end: the verify job runs as a tracked task
+        registered on the SyncService (so /cancel reaches it), and
+        drain_background_tasks() -- the barrier's C1a hook -- stops it. Drives
+        the real endpoint handler, a real coordinator and the real drain."""
         import asyncio
 
         from backend.services import background_tasks as bt
@@ -572,20 +584,25 @@ class TestVerifyMedia:
                 cancelled = True
                 raise
 
-        with patch("backend.api.sync.get_sync_service") as mock_get:
-            mock_svc = MagicMock()
-            mock_svc.running = False
-            mock_svc.verify_and_fix_media = fake_verify_and_fix_media
-            mock_get.return_value = mock_svc
-
-            with patch("backend.api.sync.progress_manager") as mock_pm:
-                mock_pm.get.return_value = MagicMock()
-                await verify_media(service="hinatazaka46")
-
+        coordinator = SyncCoordinator(
+            progress=ProgressManager(), on_sequence_end=lambda seq: None
+        )
+        mock_svc = MagicMock()
+        mock_svc.running = False
+        mock_svc.verify_and_fix_media = fake_verify_and_fix_media
+        with (
+            patch("backend.api.sync.get_sync_service", return_value=mock_svc),
+            patch("backend.api.sync.get_coordinator", return_value=coordinator),
+            patch("backend.api.sync.progress_manager") as mock_pm,
+        ):
+            mock_pm.get.return_value = MagicMock()
+            await verify_media(service="hinatazaka46")
             await started.wait()
             assert len(bt._background_tasks) == 1
+            assert mock_svc._task in bt._background_tasks
 
             await bt.drain_background_tasks()
+            await coordinator.wait_idle()
 
         assert cancelled is True
         assert bt._background_tasks == set()

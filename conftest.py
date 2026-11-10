@@ -44,3 +44,18 @@ def _isolate_diagnostics_disk_usage(monkeypatch):
     )
     yield tracker
     tracker.wait_idle(5)
+
+
+@pytest.fixture(autouse=True)
+def _isolate_sync_coordinator():
+    """A fresh app-wide sync coordinator per test (spec 2026-11-10 S1).
+
+    Its queue and running slot are process state: a test that patches the job
+    runner away would otherwise leave a reserved slot that makes every later
+    launch answer ``already_running``. Imported lazily (see above).
+    """
+    from backend.services import sync_coordinator
+
+    sync_coordinator._coordinator = None
+    yield
+    sync_coordinator._coordinator = None
