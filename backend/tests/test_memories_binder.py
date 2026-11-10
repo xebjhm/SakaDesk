@@ -553,6 +553,35 @@ async def test_graduated_person_with_birthday(svc):
 
 
 @pytest.mark.asyncio
+async def test_bad_subscription_start_logs_once_per_person_per_jst_day(svc):
+    import time_machine
+
+    matsu = dataclasses.replace(await matsuda(svc), subscription_start="not-a-date")
+    other = dataclasses.replace(matsu, member_dirs=("messages/x/1 other",))
+
+    def bad(logs):
+        return [e for e in logs if e.get("reason") == "bad_subscription_start"]
+
+    # 2026-11-10 23:59 JST, then 2026-11-11 00:00 JST
+    late = datetime(2026, 11, 10, 14, 59, tzinfo=timezone.utc)
+    with capture_logs() as logs, time_machine.travel(late, tick=False) as t:
+        binder.subscription_start(matsu)
+        binder.subscription_start(matsu)
+        # her data changes the same day: the card evaluation does not re-log
+        await binder.evaluate_person(SERVICE, svc, matsu, now=NOW)
+        assert len(bad(logs)) == 1
+        binder.subscription_start(other)  # another person logs her own
+        assert len(bad(logs)) == 2
+        t.move_to(datetime(2026, 11, 10, 15, 0, tzinfo=timezone.utc))
+        binder.subscription_start(matsu)  # a new JST day
+        assert len(bad(logs)) == 3
+    assert (
+        binder.subscription_start(dataclasses.replace(matsu, subscription_start=None))
+        is None
+    )
+
+
+@pytest.mark.asyncio
 async def test_unparsable_subscription_start_hides_the_anniversary_shelf(svc):
     s = dataclasses.replace(await matsuda(svc), subscription_start="not-a-date")
     with capture_logs() as logs:

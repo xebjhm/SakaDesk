@@ -94,6 +94,16 @@ def _no_memories_refresh(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _reset_binder_bad_start_log():
+    """binder logs a bad subscription start once per person per JST day;
+    never let one test's log hide another's."""
+    from backend.services.memories import binder
+
+    binder.reset_bad_start_log_for_tests()
+    yield
+
+
+@pytest.fixture(autouse=True)
 def _reset_session_alert():
     """session_alert keeps module-level state; never leak it between tests."""
     from backend.services import session_alert

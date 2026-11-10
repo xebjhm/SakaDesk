@@ -73,16 +73,52 @@ def _fact_lookup(inputs: cards_mod.CardInputs) -> dict[cards_mod.MessageKey, Fac
     return {cards_mod.MessageKey(room, f.id): f for room, f in inputs.facts}
 
 
+# People whose bad start was already logged today (``people.person_key``), and
+# that JST day. Cleared when the JST day changes, so it never grows past one
+# day's people. Callers run on the loop and in workers: guarded by a lock.
+_bad_start_lock = threading.Lock()
+_bad_start_day: date | None = None
+_bad_start_logged: set[str] = set()
+
+
+def _first_bad_start_today(summary: mi.MemberSummary) -> bool:
+    """True the first time today (JST) this person's bad start is seen."""
+    global _bad_start_day
+    today = datetime.now(JST).date()
+    key = people.person_key(summary)
+    with _bad_start_lock:
+        if _bad_start_day != today:
+            _bad_start_day = today
+            _bad_start_logged.clear()
+        if key in _bad_start_logged:
+            return False
+        _bad_start_logged.add(key)
+        return True
+
+
+def reset_bad_start_log_for_tests() -> None:
+    """Test-only: forget which bad starts were already logged today."""
+    global _bad_start_day
+    with _bad_start_lock:
+        _bad_start_day = None
+        _bad_start_logged.clear()
+
+
 def subscription_start(summary: mi.MemberSummary) -> date | None:
-    """The fan's start date; an unparsable one is logged and treated as absent."""
+    """The fan's start date; an unparsable one is treated as absent.
+
+    The ``bad_subscription_start`` breadcrumb is logged at most once per
+    person per JST day, whichever view, card check or notification asks.
+    """
     start = _parse_day(summary.subscription_start)
     if start is None and summary.subscription_start:
-        logger.info(
-            "memories_skip",
-            view=VIEW,
-            person=_member_id(summary),
-            reason="bad_subscription_start",
-        )
+        if _first_bad_start_today(summary):
+            logger.info(
+                "memories_skip",
+                view=VIEW,
+                person=_member_id(summary),
+                reason="bad_subscription_start",
+            )
     return start
 
 
