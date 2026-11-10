@@ -117,6 +117,12 @@ def person_key(summary: mi.MemberSummary) -> str:
     return "|".join(sorted(summary.member_dirs))
 
 
+def service_person_key(service: str, summary: mi.MemberSummary) -> str:
+    """A person's key in payloads: :func:`person_key` prefixed with the service,
+    so it is unique across services. Never logged."""
+    return f"{service}|{person_key(summary)}"
+
+
 def chat_path(sdir: Path, room: str) -> str:
     """The chat's path of a room: ``<service display name>/<room>``."""
     return f"{sdir.name}/{room}"

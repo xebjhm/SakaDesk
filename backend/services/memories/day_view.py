@@ -57,7 +57,7 @@ _Tagged = tuple[mi.MemberSummary, str, Fact]
 
 def day_person_key(service: str, summary: mi.MemberSummary) -> str:
     """A person's key in the day payload: unique across services. Never logged."""
-    return f"{service}|{people.person_key(summary)}"
+    return people.service_person_key(service, summary)
 
 
 def _compose(

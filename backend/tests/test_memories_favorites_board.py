@@ -180,6 +180,15 @@ async def test_items_are_full_message_objects_with_texts(svc):
 
 
 @pytest.mark.asyncio
+async def test_items_name_her_and_key_the_person(svc):
+    items = {i["id"]: i for i in (await board(svc))["items"]}
+    assert items[1]["name"] == "金村 美玖"
+    assert items[1]["person_key"] == f"{SERVICE}|{KANE}"
+    assert items[11]["name"] == "松田 好花"
+    assert items[11]["person_key"] == f"{SERVICE}|{MATSU}"
+
+
+@pytest.mark.asyncio
 async def test_members_by_count_without_oshi_and_never_zero(svc):
     members = (await board(svc))["members"]
     assert [(m["member_path"], m["count"]) for m in members] == [

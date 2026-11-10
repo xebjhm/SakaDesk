@@ -32,7 +32,8 @@ everywhere (it is her real chat); they only lose the cover.
   media-dir mtimes, oshi rooms and overrides); the cover's text / caption is
   attached after the cache read.
 - :func:`album_month` -- ``{"month", "items", "bursts"}``: the month's items
-  in time order with their texts and ``bursts`` = ``[{"burst_id", "room",
+  in time order with their texts, her display ``name`` and ``person_key``
+  (``people.service_person_key``: unique across services, never logged), and ``bursts`` = ``[{"burst_id", "room",
   "ids"}]`` for bursts with >= 3 items in the filtered set. Cached text-free
   (view ``album_month``, key ``<scope>:<kind>:<month>``).
 
@@ -67,7 +68,7 @@ VIEW_MEMBERS = "album_members"
 VIEW_MONTHS = "album_months"
 VIEW_MONTH = "album_month"
 # Bump on any rule or payload change (the album cache hashes have it).
-ALBUM_VERSION = 3
+ALBUM_VERSION = 4
 KINDS = frozenset({"all", "picture", "video", "favorite"})
 SCREENSHOT_CHECKS = 3
 BURST_MIN = 3
@@ -402,6 +403,7 @@ def _month_payload(
     month: str,
     items: list[_Tagged],
     avatars: dict[str, people.AvatarTimeline],
+    owners: dict[str, mi.MemberSummary],
 ) -> dict:
     """The text-free month payload. Blocking (runs in a worker)."""
     groups: dict[tuple[str, int], list[_Tagged]] = {}
@@ -416,7 +418,11 @@ def _month_payload(
     return {
         "month": month,
         "items": [
-            people.message_ref(service, sdir, room, f, avatar=avatars[room])
+            {
+                **people.message_ref(service, sdir, room, f, avatar=avatars[room]),
+                "name": owners[room].name,
+                "person_key": people.service_person_key(service, owners[room]),
+            }
             for room, f in items
         ],
         "bursts": bursts,
@@ -443,7 +449,13 @@ async def album_month(
         items = (await asyncio.to_thread(_by_month, tagged, kind)).get(month, [])
         avatars = await _avatars_by_room(sdir, persons, {room for room, _ in items})
         return await asyncio.to_thread(
-            _month_payload, service, sdir, month, items, avatars
+            _month_payload,
+            service,
+            sdir,
+            month,
+            items,
+            avatars,
+            _room_people(persons),
         )
 
     key = f"{scope}:{kind}:{month}"

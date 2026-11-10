@@ -1,24 +1,28 @@
 import { memoryMessage, MEMBER_PATH } from '../__fixtures__/memories';
 import type {
-    AlbumColorsPayload, AlbumMembersPayload, AlbumMonthPayload, AlbumMonthSummary, AlbumMonthsPayload, MemoryMessage,
+    AlbumColorsPayload, AlbumMembersPayload, AlbumMonthPayload, AlbumMonthSummary, AlbumMonthsPayload, NamedMemoryMessage,
 } from '../types';
 
 export { MEMBER_PATH };
 export const NAO_PATH = '日向坂46/messages/12 小坂 菜緒/40 小坂 菜緒';
 const ROOM = 'messages/34 金村 美玖/58 金村 美玖';
 
-/** A picture of hers in `month` (`YYYY-MM`), id-keyed. */
-export function photo(id: number, month: string, over: Partial<MemoryMessage> = {}): MemoryMessage {
-    return memoryMessage({
-        id,
-        room: ROOM,
-        ts: `${month}-14T03:${String(id % 60).padStart(2, '0')}:00Z`,
-        type: 'picture',
-        text: null,
-        media_url: `/api/content/media/hinatazaka46/${ROOM}/picture/${id}.jpg`,
-        media_file: `${ROOM}/picture/${id}.jpg`,
+/** A picture of hers in `month` (`YYYY-MM`), id-keyed, naming her as the month payload does. */
+export function photo(id: number, month: string, over: Partial<NamedMemoryMessage> = {}): NamedMemoryMessage {
+    return {
+        name: '金村 美玖',
+        person_key: `hinatazaka46|${ROOM}`,
+        ...memoryMessage({
+            id,
+            room: ROOM,
+            ts: `${month}-14T03:${String(id % 60).padStart(2, '0')}:00Z`,
+            type: 'picture',
+            text: null,
+            media_url: `/api/content/media/hinatazaka46/${ROOM}/picture/${id}.jpg`,
+            media_file: `${ROOM}/picture/${id}.jpg`,
+        }),
         ...over,
-    });
+    };
 }
 
 export function membersPayload(over: Partial<AlbumMembersPayload> = {}): AlbumMembersPayload {

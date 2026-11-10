@@ -7,7 +7,7 @@ import { fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonths } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
 import { LoadState } from '../shared/LoadState';
 import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
-import { nameFromRoom } from '../shared/nameFromRoom';
+import { messageName } from '../shared/nameFromRoom';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { AlbumKind, AlbumMonthSummary, MemoriesCountedMember, MemoryMessage } from '../types';
@@ -107,7 +107,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     );
     const selectedName = member !== undefined ? byPath.get(member)?.name : undefined;
     const nameOf = useCallback(
-        (m: MemoryMessage) => byPath.get(m.member_path)?.name ?? selectedName ?? nameFromRoom(m.room),
+        (m: MemoryMessage) => messageName(m, byPath.get(m.member_path)?.name ?? selectedName),
         [byPath, selectedName],
     );
     const items: MemberPaneItem[] = useMemo(() => (people ?? []).map((m) => ({

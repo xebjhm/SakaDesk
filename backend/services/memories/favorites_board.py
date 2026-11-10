@@ -5,7 +5,9 @@
 - ``items`` -- every favourited fact (promo included: it is her real chat)
   of ``member`` or, with ``member=None``, of everyone, as shared message
   objects (``people.message_ref`` with her avatar at that time, ``text`` /
-  ``caption`` from one ``load_texts`` per room) plus ``favorited_at``: the
+  ``caption`` from one ``load_texts`` per room), her display ``name`` and
+  ``person_key`` (``people.service_person_key``: unique across services, never
+  logged), plus ``favorited_at``: the
   UTC ISO time the fan starred it in this app (``app_state.favorited_at``,
   read in a worker; message ids are per service so the lookup is valid), or
   ``None`` when unknown. A star set in the official phone app (or before the
@@ -54,7 +56,7 @@ logger = structlog.get_logger(__name__)
 
 VIEW = "favorites"
 # Bump on any rule or payload change of the cached part (the hash has it).
-VERSION = 1
+VERSION = 2
 _NO_TIME = datetime.min.replace(tzinfo=timezone.utc)
 
 _Starred = tuple[mi.MemberSummary, str, Fact]
@@ -135,9 +137,13 @@ async def _board(service: str, sdir: Path) -> dict:
             sdir, {people.person_key(s): s for s, _ in rows}
         )
         items = [
-            people.message_ref(
-                service, sdir, room, f, avatar=avatars[people.person_key(s)]
-            )
+            {
+                **people.message_ref(
+                    service, sdir, room, f, avatar=avatars[people.person_key(s)]
+                ),
+                "name": s.name,
+                "person_key": people.service_person_key(service, s),
+            }
             for s, room, f in starred
         ]
         members = [

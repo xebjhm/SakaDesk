@@ -37,6 +37,15 @@ export interface MemoryMessage {
     avatar_url: string | null;
 }
 
+/**
+ * A message object that also names its sender (album month items, favorites): her display
+ * `name` and `person_key` (`people.service_person_key`, unique across services; never log it).
+ */
+export interface NamedMemoryMessage extends MemoryMessage {
+    name: string;
+    person_key: string;
+}
+
 /** A left-list person row shared by the album and the favorites board. */
 export interface MemoriesCountedMember {
     member_path: string;
@@ -199,8 +208,8 @@ export interface AlbumBurst {
 
 export interface AlbumMonthPayload {
     month: string;
-    /** Time order. */
-    items: MemoryMessage[];
+    /** Time order, each naming her. */
+    items: NamedMemoryMessage[];
     /** Bursts with at least three items in the filtered set. */
     bursts: AlbumBurst[];
 }
@@ -217,7 +226,7 @@ export interface AlbumColorsPayload {
 
 // --- favorites (favorites_board.favorites_board) ------------------------------------------
 
-export interface FavoriteItem extends MemoryMessage {
+export interface FavoriteItem extends NamedMemoryMessage {
     /** When the fan starred it in this app (UTC ISO), or null when unknown. */
     favorited_at: string | null;
 }

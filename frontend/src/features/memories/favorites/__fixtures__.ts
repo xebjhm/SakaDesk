@@ -1,13 +1,19 @@
 import { MEMBER_PATH, memoryMessage } from '../__fixtures__/memories';
-import type { FavoriteItem, FavoritesPayload, MemoryMessage } from '../types';
+import type { FavoriteItem, FavoritesPayload } from '../types';
 
 export { MEMBER_PATH };
 export const NAO_PATH = '日向坂46/messages/12 小坂 菜緒/40 小坂 菜緒';
 const ROOM = 'messages/34 金村 美玖/58 金村 美玖';
 
 /** One of her ★ messages (favourited, star time unknown; overrides win). */
-export function favorite(id: number, over: Partial<MemoryMessage & { favorited_at: string | null }> = {}): FavoriteItem {
-    return { ...memoryMessage({ id, favorited: true }), favorited_at: null, ...over };
+export function favorite(id: number, over: Partial<FavoriteItem> = {}): FavoriteItem {
+    return {
+        ...memoryMessage({ id, favorited: true }),
+        name: '金村 美玖',
+        person_key: `hinatazaka46|${ROOM}`,
+        favorited_at: null,
+        ...over,
+    };
 }
 
 export const NOTE = favorite(11, { text: 'ライブありがとう！%%%の声、ちゃんと届いてたよ🌸', ts: '2024-09-14T12:52:00Z' });

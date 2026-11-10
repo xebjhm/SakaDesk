@@ -410,6 +410,11 @@ async def test_album_month_items_and_bursts(svc):
         (ROOM_A, 13),
     ]
     assert items[0]["caption"] == CAPTION
+    # Every item names her and keys the person (unique across services).
+    assert items[0]["name"] == "金村 美玖"
+    assert items[0]["person_key"] == f"{SERVICE}|{ROOM_A}"
+    assert items[4]["name"] == "小坂 菜緒"
+    assert items[4]["person_key"] == f"{SERVICE}|{ROOM_B}"
     assert body["bursts"] == [
         {"burst_id": 10, "room": ROOM_A, "ids": [10, 11, 12]},
         {"burst_id": 10, "room": ROOM_B, "ids": [10, 11, 12]},
