@@ -68,8 +68,8 @@ describe('NameMoments', () => {
         expect(name).toHaveClass('underline');
         expect(within(rows[2]).getByTestId('memory-text')).toHaveAttribute('lang', 'ja');
         // her avatar at the time
-        expect(within(rows[0]).getByRole('img')).toHaveAttribute('src', '/api/content/media/a2.jpg');
-        expect(within(rows[2]).getByRole('img')).toHaveAttribute('src', '/api/content/media/a1.jpg');
+        expect(within(rows[0]).getByRole('img')).toHaveAttribute('src', '/api/content/avatar/a2.jpg?w=64');
+        expect(within(rows[2]).getByRole('img')).toHaveAttribute('src', '/api/content/avatar/a1.jpg?w=64');
         expect(vi.mocked(fetchNameMoments).mock.calls[0]?.slice(0, 3)).toEqual(['hinatazaka46', MEMBER_PATH, undefined]);
     });
 

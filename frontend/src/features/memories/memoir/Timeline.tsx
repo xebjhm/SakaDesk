@@ -19,6 +19,11 @@ import type { MemoryMessage, TimelineMilestone, TimelineMonthPayload } from '../
 import { formatCardDate, useCopy } from './binderModel';
 import { cardCopy } from './cardCopy';
 import { MonthRail } from './MonthRail';
+import { resizedAvatarUrl } from '../../messages/mediaUrl';
+import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
+
+/** The header avatar is `md` (40 CSS px): it is loaded resized for that size. */
+const HEADER_AVATAR_PX = 40;
 
 /** A month held this long on the rail is fetched; quicker steps (a drag, a wheel run) are not. */
 const FETCH_DELAY_MS = 150;
@@ -110,6 +115,7 @@ interface MonthViewProps {
  */
 const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month, fetchMonth }) => {
     const { t, i18n } = useTranslation();
+    const headerAvatar = useAvatarWidth(HEADER_AVATAR_PX);
     const query = useMemoriesQuery(
         'timeline_month',
         (signal) => fetchTimelineMonth(service, memberPath, fetchMonth, signal),
@@ -182,7 +188,7 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
             {/* Wave 4 (spec 14.2) adds the あの日と今日 toggle to this header. */}
             <header className="flex items-center gap-3">
-                <Avatar src={view?.avatar_url ?? undefined} name={name} size="md" />
+                <Avatar src={resizedAvatarUrl(view?.avatar_url, headerAvatar)} name={name} size="md" />
                 <h3 className="font-display text-heading text-primary">{formatMonth(t, 'memories.album.monthLabel', month, i18n.language)}</h3>
                 {data && data.count > 0 && (
                     <span className="text-small tabular-nums text-secondary">{t('memories.timeline.count', { count: data.count })}</span>

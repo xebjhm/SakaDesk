@@ -74,7 +74,7 @@ describe('Timeline', () => {
         const heading = await screen.findByRole('heading', { name: '2024年12月' });
         expect(heading).toHaveClass('font-display');
         expect(await screen.findByText('37 件')).toBeInTheDocument();
-        expect(screen.getByRole('img', { name: '金村 美玖' })).toHaveAttribute('src', '/api/content/media/avatar-dec.jpg');
+        expect(screen.getByRole('img', { name: '金村 美玖' })).toHaveAttribute('src', '/api/content/avatar/avatar-dec.jpg?w=64');
         expect(screen.getByRole('slider')).toHaveAttribute('aria-valuetext', '2024年12月');
     });
 

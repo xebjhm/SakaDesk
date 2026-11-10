@@ -12,10 +12,16 @@ import { MemoryText } from '../shared/MemoryText';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { NameMoment } from '../types';
 import { formatCardDate } from './binderModel';
+import { resizedAvatarUrl } from '../../messages/mediaUrl';
+import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
+
+/** A row's avatar is `sm` (32 CSS px): it is loaded resized for that size. */
+const ROW_AVATAR_PX = 32;
 
 /** One moment row, memoised: opening or closing the film strip re-renders no row. */
 const MomentRow = React.memo<{ moment: NameMoment; name: string; onOpen: (moment: NameMoment) => void }>(({ moment, name, onOpen }) => {
     const { i18n } = useTranslation();
+    const avatarWidth = useAvatarWidth(ROW_AVATAR_PX);
     const m = moment.message;
     return (
         <button
@@ -24,7 +30,7 @@ const MomentRow = React.memo<{ moment: NameMoment; name: string; onOpen: (moment
             onClick={() => onOpen(moment)}
             className="flex w-full items-start gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-hover focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent motion-reduce:transition-none"
         >
-            <Avatar src={m.avatar_url ?? undefined} name={name} size="sm" className="shrink-0" />
+            <Avatar src={resizedAvatarUrl(m.avatar_url, avatarWidth)} name={name} size="sm" className="shrink-0" />
             <span className="flex min-w-0 flex-col gap-0.5">
                 <span className="text-caption tabular-nums text-muted">{formatCardDate(formatJstDate(m.ts), i18n.language)}</span>
                 <MemoryText as="span" text={moment.sentence} underlineNickname className="text-body text-primary" />
