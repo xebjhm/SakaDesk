@@ -910,6 +910,8 @@ async def get_avatar(file_path: str, w: int = Query(...)):
 
 
 _THUMB_CACHE_CONTROL = "private, max-age=86400"
+_THUMB_CACHE_IMMUTABLE = "private, max-age=31536000, immutable"
+_THUMB_CACHE_STALE = "private, no-cache"
 
 
 def _etags(if_none_match: Optional[str]) -> set[str]:
@@ -923,6 +925,7 @@ def _etags(if_none_match: Optional[str]) -> set[str]:
 async def get_thumb(
     file_path: str,
     w: int = Query(...),
+    v: Optional[str] = Query(None, pattern="^[0-9a-f]{12}$"),
     if_none_match: Optional[str] = Header(default=None),
 ):
     """Serve an archived picture downscaled to fit ``w`` px (WebP, aspect kept).
@@ -933,12 +936,20 @@ async def get_thumb(
     ``photo_thumb.ALLOWED_WIDTHS`` (400 otherwise). A missing file, a
     non-picture (video, voice, unknown) or a picture that cannot be decoded
     safely answers 404, so the client falls back to the full media URL. The
-    variant is cached on disk (see ``backend.services.photo_thumb``). The
+    variant is cached on disk under the ``photo_thumb.archive_rel`` key (see
+    ``backend.services.photo_thumb``), the same files the pre-generation
+    worker writes.
+
+    ``v`` is the optional content version (``photo_thumb.version_token`` of
+    the source's size and mtime; 12 lowercase hex chars, 422 otherwise). It
+    sets ``Cache-Control``: a ``v`` matching the current file gets
+    ``private, max-age=31536000, immutable`` (the URL names this content for
+    good); a stale ``v`` still gets the current variant, with
+    ``private, no-cache``; no ``v`` gets ``private, max-age=86400``. Every
     answer carries a stable ``ETag`` (the variant's hash name; a matching
-    ``If-None-Match`` gets 304), ``Cache-Control: private, max-age=86400``
-    and ``X-Content-Type-Options: nosniff``. The body is read into memory
-    first (thumbnails are small), so a variant evicted meanwhile answers
-    404, never a 500.
+    ``If-None-Match`` gets 304) and ``X-Content-Type-Options: nosniff``. The
+    body is read into memory first (thumbnails are small), so a variant
+    evicted meanwhile answers 404, never a 500.
     """
     if w not in photo_thumb.ALLOWED_WIDTHS:
         logger.info("thumb_request_rejected", reason="width", width=w)
@@ -946,13 +957,20 @@ async def get_thumb(
     # The path checks stat the archive: off the event loop, on the thumbnail
     # pool, so hundreds of tile requests never stall other requests.
     safe_path, rel = await photo_thumb.run_io(_thumb_source, file_path)
-    served = await photo_thumb.thumbnail(safe_path, rel, w)
-    if served is None:
+    result = await photo_thumb.thumbnail_with_token(safe_path, rel, w)
+    if result is None:
         raise HTTPException(status_code=404, detail="No thumbnail")
+    served = result.path
+    if v is None:
+        cache_control = _THUMB_CACHE_CONTROL
+    elif v == result.token:
+        cache_control = _THUMB_CACHE_IMMUTABLE
+    else:
+        cache_control = _THUMB_CACHE_STALE
     # The variant's name is a hash of (path, size, mtime, width): a stable ETag.
     headers = {
         "ETag": f'"{served.stem}"',
-        "Cache-Control": _THUMB_CACHE_CONTROL,
+        "Cache-Control": cache_control,
         "X-Content-Type-Options": "nosniff",
     }
     if headers["ETag"] in _etags(if_none_match):
@@ -964,7 +982,7 @@ async def get_thumb(
 
 
 def _thumb_source(file_path: str) -> tuple[Path, str]:
-    """``(validated archive file, output-relative POSIX path)``. Blocking.
+    """``(validated archive file, its cache key from photo_thumb.archive_rel)``. Blocking.
 
     403 outside the output dir, 404 when it is not a regular archive file.
     """
@@ -978,7 +996,7 @@ def _thumb_source(file_path: str) -> tuple[Path, str]:
     if not is_file:
         logger.info("memories_skip", view="photo_thumb", reason="not_file")
         raise HTTPException(status_code=404, detail="File not found")
-    return safe_path, safe_path.relative_to(output_dir.resolve()).as_posix()
+    return safe_path, photo_thumb.archive_rel(output_dir, safe_path)
 
 
 # =============================================================================

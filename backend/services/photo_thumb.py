@@ -41,6 +41,30 @@ serves a WebP no wider or taller than one of :data:`ALLOWED_WIDTHS` instead
   over :data:`TOAST_MAX_BYTES` (Windows refuses toast images over 3 MB) is
   refused like any other failure. A failure gives ``None``, never the
   original.
+- **One decode for every size.** :func:`make_set` stats a source once, skips
+  it when every requested variant is already cached (unless
+  ``need_placeholder=True``), otherwise decodes it **once** (draft scale for
+  JPEG / MPO) at the largest missing width and downsizes that image in memory
+  for each smaller width; it also returns the source's :class:`Placeholder`
+  (:func:`placeholder_of`: mean colour and a 16 px WebP blur of at most
+  :data:`BLUR_MAX_BYTES`) and its header size. The background pre-generation
+  worker (``media_pregen``) writes :data:`PREGEN_WIDTHS` (plus
+  :data:`LARGE_WIDTH` for starred items and covers) through it: the **same
+  files under the same keys** the route serves, so a pre-generated variant is
+  a route hit. The key's ``rel_path`` always comes from :func:`archive_rel`
+  (the resolved, output-dir-relative POSIX path), for the route and the
+  worker alike. ``formats=`` narrows the decoder allowlist (video posters
+  pass ``("WEBP",)``).
+- **Derived misses.** On a miss, :func:`thumbnail` first looks for a cached
+  **larger** variant of the same key (the smallest one above the request)
+  and renders from it, opened with ``formats=("WEBP",)`` (our own file, but
+  the allowlist and the pixel bound still apply), logging
+  ``photo_thumb_cache outcome=derived``. Only when there is none, or it
+  cannot be read, is the source decoded (``outcome=miss``).
+- **Content version.** :func:`version_token` is the first 12 hex chars of
+  ``sha256("size:mtime_ns")`` of the source. :func:`thumbnail_with_token`
+  returns it with the variant (from the stat the lookup already does), so
+  the route can mark a URL whose ``v`` matches as immutable.
 - **Concurrency.** :func:`thumbnail` and :func:`toast_image` run their blocking
   work on a dedicated pool of :data:`IO_WORKERS` threads (:func:`run_io`), never
   the default executor the Memories views share, and decode under a
@@ -48,8 +72,8 @@ serves a WebP no wider or taller than one of :data:`ALLOWED_WIDTHS` instead
   occupy every worker thread nor delay the month grids. A cache hit never waits
   for a slot.
 
-Logs carry counts and codes only: ``photo_thumb_cache`` (``outcome=hit|miss``,
-``width``), ``photo_thumb_evict`` (``count``, ``bytes``), ``photo_thumb_sweep``
+Logs carry counts and codes only: ``photo_thumb_cache``
+(``outcome=hit|miss|derived``, ``width``), ``photo_thumb_evict`` (``count``, ``bytes``), ``photo_thumb_sweep``
 (``count``) and ``photo_thumb_failed`` (``op``, ``error_type``, ``suppressed``)
 for cache file errors.
 """
@@ -59,6 +83,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import hashlib
+import io
 import os
 import tempfile
 import threading
@@ -71,7 +96,7 @@ from pathlib import Path
 from typing import TypeVar
 
 import structlog
-from PIL import Image, ImageOps
+from PIL import Image, ImageOps, ImageStat
 
 from backend.services.platform import get_app_data_dir
 
@@ -90,7 +115,21 @@ DRAFT_FORMATS = frozenset({"JPEG", "MPO"})
 MAX_SOURCE_PIXELS = 50_000_000
 """Header-size bound (capped by Pillow's ``MAX_IMAGE_PIXELS``); larger sources are refused."""
 
-CACHE_CAP_BYTES = 300 * 1024 * 1024
+CACHE_CAP_BYTES = 1 * 1024**3
+"""1 GiB. Sized in the media pipeline plan's "Cache budget" table
+(``.superpowers/sdd/media-pipeline``): 160 + 320 px WebP is about 25 KB per
+item, so one large service (~14k pictures, ~350 MB) plus its starred 640 px
+variants (~40 MB) and its blog images (~375 MB) stays under the
+pre-generation fill line (0.85 of the cap), with headroom for on-demand
+misses and toast JPEGs."""
+PREGEN_WIDTHS: tuple[int, ...] = (160, 320)
+"""The default variant set pre-generated for every picture."""
+LARGE_WIDTH = 640
+"""The extra variant pre-generated for starred items and album covers."""
+BLUR_MAX_BYTES = 600
+"""Largest placeholder blur kept; a bigger one (a very noisy picture) becomes ``None``."""
+BLUR_PX = 16
+_BLUR_QUALITY = 40
 CACHE_LOW_WATER = 0.9
 DECODE_SLOTS = 2
 TMP_MAX_AGE_S = 3600
@@ -152,6 +191,49 @@ def variant_name(
     if fmt != FORMAT_WEBP:  # WebP names predate the format field: keep them
         key += f"|{fmt}"
     return f"{hashlib.sha256(key.encode()).hexdigest()}-{width}{_SUFFIX[fmt]}"
+
+
+def version_token(size: int, mtime_ns: int) -> str:
+    """The content version ``v`` of a source: 12 hex chars of ``sha256("size:mtime_ns")``."""
+    return hashlib.sha256(f"{size}:{mtime_ns}".encode()).hexdigest()[:12]
+
+
+def archive_rel(output_dir: Path, path: Path) -> str:
+    """The cache key path: ``path`` resolved, relative to the resolved ``output_dir``, POSIX.
+
+    Symlinks and ``..`` are resolved the way the media route resolves them,
+    so the route and the pre-generation worker compute the same key for one
+    file. Raises ``ValueError`` when ``path`` is outside ``output_dir``.
+    Blocking (it resolves).
+    """
+    return path.resolve().relative_to(output_dir.resolve()).as_posix()
+
+
+RGB = tuple[int, int, int]
+
+
+@dataclass(frozen=True)
+class Placeholder:
+    """What a tile paints before its thumbnail: the mean colour and a tiny WebP blur."""
+
+    rgb: RGB
+    blur: bytes | None
+
+
+def placeholder_of(img: Image.Image) -> Placeholder:
+    """The mean colour of ``img`` and a :data:`BLUR_PX` px WebP of it (``quality=40``).
+
+    A blur over :data:`BLUR_MAX_BYTES` is dropped (``None``). ``img`` is not
+    modified. Pure and blocking.
+    """
+    rgb_img = img.convert("RGB")  # always a copy
+    mean = ImageStat.Stat(rgb_img).mean
+    r, g, b = (max(0, min(255, round(c))) for c in mean[:3])
+    rgb_img.thumbnail((BLUR_PX, BLUR_PX), Image.Resampling.LANCZOS)
+    buf = io.BytesIO()
+    rgb_img.save(buf, format="WEBP", quality=_BLUR_QUALITY)
+    data = buf.getvalue()
+    return Placeholder((r, g, b), data if len(data) <= BLUR_MAX_BYTES else None)
 
 
 # --- the size-capped cache ---------------------------------------------------------
@@ -242,12 +324,20 @@ def _evict(root: Path, state: _CacheState, cap: int) -> None:
     logger.info("photo_thumb_evict", count=count, bytes=freed)
 
 
-def _added(root: Path, size: int, cap: int) -> None:
+def cache_state_add(root: Path, size: int, cap: int) -> None:
+    """Account ``size`` new bytes in the cache ``root``; evict down when over ``cap``. Blocking.
+
+    Public so other bounded caches (video posters) reuse the accounting with
+    their own root and cap.
+    """
     with _state_lock:
         state = _state(root)
         state.total += size
         if state.total > cap:
             _evict(root, state, cap)
+
+
+_added = cache_state_add
 
 
 def reset_cache_state() -> None:
@@ -288,12 +378,26 @@ def _write_failed(e: BaseException) -> None:
 # --- decode --------------------------------------------------------------------------
 
 
-def _render(source: Path, width: int) -> Image.Image:
-    """Decode and downscale ``source``; raises on any failure. Blocking."""
-    with Image.open(source, formats=picture_formats()) as opened:
+_EXIF_ORIENTATION = 0x0112
+_SWAPPED_ORIENTATIONS = frozenset({5, 6, 7, 8})
+
+
+def _decode(
+    source: Path, width: int, formats: tuple[str, ...] | None = None
+) -> tuple[Image.Image, tuple[int, int]]:
+    """``(image downscaled to fit width, source size as displayed)``; raises on any failure.
+
+    ``formats`` is the decoder allowlist (default :func:`picture_formats`).
+    The pixel bound is checked from the header before any pixel is decoded.
+    The returned size is the header size with EXIF orientation applied.
+    Blocking.
+    """
+    allowed = picture_formats() if formats is None else formats
+    with Image.open(source, formats=allowed) as opened:
         w, h = opened.size
         if w * h > _pixel_limit():
             raise Image.DecompressionBombError("pixel bound")
+        swapped = opened.getexif().get(_EXIF_ORIENTATION) in _SWAPPED_ORIENTATIONS
         if opened.format in DRAFT_FORMATS:
             # libjpeg decodes at 1/2, 1/4 or 1/8 scale while keeping >= 2x the target.
             opened.draft("RGB", (2 * width, 2 * width))
@@ -301,7 +405,14 @@ def _render(source: Path, width: int) -> Image.Image:
         has_alpha = img.mode in ("RGBA", "LA", "PA") or "transparency" in img.info
         img = img.convert("RGBA" if has_alpha else "RGB")
     img.thumbnail((width, width), Image.Resampling.LANCZOS)
-    return img
+    return img, ((h, w) if swapped else (w, h))
+
+
+def _render(
+    source: Path, width: int, formats: tuple[str, ...] | None = None
+) -> Image.Image:
+    """Decode and downscale ``source``; raises on any failure. Blocking."""
+    return _decode(source, width, formats)[0]
 
 
 def _flatten(img: Image.Image) -> Image.Image:
@@ -331,6 +442,33 @@ def _write(img: Image.Image, root: Path, target: Path, fmt: str = FORMAT_WEBP) -
         Path(tmp_name).unlink(missing_ok=True)
 
 
+def _mark_used(root: Path, name: str | None) -> None:
+    """Remember a hit for the eviction order (and measure ``root`` on first use)."""
+    with _state_lock:
+        state = _state(root)
+        if name is not None:
+            state.used[name] = time.time_ns()
+
+
+def probe(
+    source: Path, rel_path: str, width: int, root: Path, fmt: str = FORMAT_WEBP
+) -> tuple[Path | None, Path | None, tuple[int, int] | None]:
+    """``(hit, target, (size, mtime_ns))``: :func:`lookup` plus the source stat it took.
+
+    All three are ``None`` when ``source`` cannot be stat-ed. Blocking.
+    """
+    try:
+        st = source.stat()
+    except OSError as e:
+        _skip("unavailable", e)
+        return None, None, None
+    stat = (st.st_size, st.st_mtime_ns)
+    target = root / variant_name(rel_path, *stat, width, fmt)
+    hit = target.is_file()
+    _mark_used(root, target.name if hit else None)
+    return (target if hit else None), target, stat
+
+
 def lookup(
     source: Path, rel_path: str, width: int, root: Path, fmt: str = FORMAT_WEBP
 ) -> tuple[Path | None, Path | None]:
@@ -340,18 +478,22 @@ def lookup(
     not touched (its ETag stays stable). ``target`` is ``None`` when ``source``
     cannot be stat-ed. Blocking.
     """
-    try:
-        st = source.stat()
-    except OSError as e:
-        _skip("unavailable", e)
-        return None, None
-    target = root / variant_name(rel_path, st.st_size, st.st_mtime_ns, width, fmt)
-    hit = target.is_file()
-    with _state_lock:
-        state = _state(root)
-        if hit:
-            state.used[target.name] = time.time_ns()
-    return (target if hit else None), target
+    hit, target, _ = probe(source, rel_path, width, root, fmt)
+    return hit, target
+
+
+def _larger_variant(
+    rel_path: str, stat: tuple[int, int], width: int, root: Path
+) -> Path | None:
+    """The smallest cached WebP variant of the key wider than ``width``, if any. Blocking."""
+    for w in sorted(ALLOWED_WIDTHS):
+        if w <= width:
+            continue
+        candidate = root / variant_name(rel_path, *stat, w)
+        if candidate.is_file():
+            _mark_used(root, candidate.name)
+            return candidate
+    return None
 
 
 def read_variant(path: Path) -> bytes | None:
@@ -363,6 +505,37 @@ def read_variant(path: Path) -> bytes | None:
         return None
 
 
+def _decode_failure(e: BaseException) -> str:
+    """The skip reason of a decode failure (logged as a breadcrumb)."""
+    if isinstance(e, Image.DecompressionBombError):
+        reason = "too_large"
+    elif isinstance(e, PermissionError):
+        reason = "unavailable"
+    else:
+        reason = "unreadable"
+    _skip(reason, e)
+    return reason
+
+
+def _store(
+    img: Image.Image, root: Path, target: Path, cap: int, fmt: str = FORMAT_WEBP
+) -> tuple[Path | None, bool]:
+    """Write and account one variant: ``(path or None, written by us)``. Blocking."""
+    try:
+        size = _write(img, root, target, fmt)
+    except PermissionError as e:
+        # Windows: another request is reading the same variant; same key, same content.
+        if target.exists():
+            return target, False
+        _write_failed(e)
+        return None, False
+    except OSError as e:
+        _write_failed(e)
+        return None, False
+    _added(root, size, cap)
+    return target, True
+
+
 def make(
     source: Path,
     target: Path,
@@ -370,32 +543,125 @@ def make(
     root: Path,
     cap: int = CACHE_CAP_BYTES,
     fmt: str = FORMAT_WEBP,
+    formats: tuple[str, ...] | None = None,
 ) -> Path | None:
-    """Render ``source`` into ``target``; ``None`` on any failure. Blocking; never raises."""
+    """Render ``source`` into ``target``; ``None`` on any failure. Blocking; never raises.
+
+    ``formats`` narrows the decoder allowlist (default :func:`picture_formats`).
+    """
     try:
-        img = _render(source, width)
-    except Image.DecompressionBombError as e:
-        _skip("too_large", e)
-        return None
-    except PermissionError as e:
-        _skip("unavailable", e)
-        return None
+        img = _render(source, width, formats)
     except Exception as e:  # noqa: BLE001 - untrusted input: any failure is a skip
-        _skip("unreadable", e)
+        _decode_failure(e)
         return None
+    return _store(img, root, target, cap, fmt)[0]
+
+
+@dataclass(frozen=True)
+class SetResult:
+    """The outcome of :func:`make_set`.
+
+    ``stat`` is the source ``(size, mtime_ns)`` (``None`` when it cannot be
+    stat-ed); ``written`` the variants this call wrote and ``present`` those
+    already cached (width -> path); ``placeholder`` and ``size`` (the source
+    size as displayed) are set only when the source was decoded; ``reason``
+    is a skip code (``unsupported|unavailable|too_large|unreadable``) or
+    ``None``. A failed write is neither written nor present.
+    """
+
+    stat: tuple[int, int] | None
+    written: dict[int, Path]
+    present: dict[int, Path]
+    placeholder: Placeholder | None
+    size: tuple[int, int] | None
+    reason: str | None
+
+
+def _failed_set(
+    reason: str,
+    stat: tuple[int, int] | None = None,
+    present: dict[int, Path] | None = None,
+) -> SetResult:
+    return SetResult(stat, {}, present or {}, None, None, reason)
+
+
+def _variant_targets(
+    rel_path: str, stat: tuple[int, int], widths: list[int], root: Path
+) -> dict[int, Path]:
+    return {w: root / variant_name(rel_path, *stat, w) for w in widths}
+
+
+def make_set(
+    source: Path,
+    rel_path: str,
+    widths: tuple[int, ...] | list[int],
+    root: Path,
+    cap: int = CACHE_CAP_BYTES,
+    *,
+    formats: tuple[str, ...] | None = None,
+    need_placeholder: bool = False,
+) -> SetResult:
+    """Write every missing WebP variant of ``source`` in ``widths`` from **one** decode.
+
+    ``rel_path`` is the cache key (:func:`archive_rel`). The source is stat-ed
+    once; when every variant is already cached nothing is opened, unless
+    ``need_placeholder`` asks for the :class:`Placeholder` anyway. Otherwise
+    the source is decoded once at the largest missing width (the smallest
+    allowed width when only the placeholder is needed), each smaller width is
+    downsized from that image in memory, and the variants are written
+    atomically and accounted toward ``cap``. ``formats=None`` means
+    :func:`picture_formats`. Blocking; never raises.
+    """
     try:
-        size = _write(img, root, target, fmt)
-    except PermissionError as e:
-        # Windows: another request is reading the same variant; same key, same content.
-        if target.exists():
-            return target
-        _write_failed(e)
-        return None
+        return _make_set(source, rel_path, widths, root, cap, formats, need_placeholder)
+    except Exception as e:  # noqa: BLE001 - never raises: an unexpected failure is a skip
+        _skip("unreadable", e)
+        return _failed_set("unreadable")
+
+
+def _make_set(
+    source: Path,
+    rel_path: str,
+    widths: tuple[int, ...] | list[int],
+    root: Path,
+    cap: int,
+    formats: tuple[str, ...] | None,
+    need_placeholder: bool,
+) -> SetResult:
+    wanted = sorted(set(widths), reverse=True)
+    if any(w not in ALLOWED_WIDTHS for w in wanted):
+        _skip("unsupported")
+        return _failed_set("unsupported")
+    try:
+        st = source.stat()
     except OSError as e:
-        _write_failed(e)
-        return None
-    _added(root, size, cap)
-    return target
+        _skip("unavailable", e)
+        return _failed_set("unavailable")
+    stat = (st.st_size, st.st_mtime_ns)
+    # Measure the cache before writing, so the first writes are not counted twice.
+    _mark_used(root, None)
+    targets = _variant_targets(rel_path, stat, wanted, root)
+    present = {w: p for w, p in targets.items() if p.is_file()}
+    missing = [w for w in wanted if w not in present]
+    if not missing and not need_placeholder:
+        return SetResult(stat, {}, present, None, None, None)
+    try:
+        img, size = _decode(
+            source, missing[0] if missing else min(ALLOWED_WIDTHS), formats
+        )
+    except Exception as e:  # noqa: BLE001 - untrusted input: any failure is a skip
+        return _failed_set(_decode_failure(e), stat, present)
+    placeholder = placeholder_of(img)
+    written: dict[int, Path] = {}
+    for w in missing:
+        variant = img
+        if max(img.size) > w:
+            variant = img.copy()
+            variant.thumbnail((w, w), Image.Resampling.LANCZOS)
+        path, fresh = _store(variant, root, targets[w], cap)
+        if path is not None:
+            (written if fresh else present)[w] = path
+    return SetResult(stat, written, present, placeholder, size, None)
 
 
 _slots: weakref.WeakKeyDictionary[asyncio.AbstractEventLoop, asyncio.Semaphore] = (
@@ -442,6 +708,54 @@ def _decode_slots() -> asyncio.Semaphore:
     return sem
 
 
+@dataclass(frozen=True)
+class ThumbResult:
+    """A served variant and the current content version (:func:`version_token`) of its source."""
+
+    path: Path
+    token: str
+
+
+async def thumbnail_with_token(
+    source: Path,
+    rel_path: str,
+    width: int,
+    root: Path | None = None,
+    cap: int = CACHE_CAP_BYTES,
+) -> ThumbResult | None:
+    """:func:`thumbnail` plus the source's current :func:`version_token`.
+
+    The token comes from the stat the cache lookup already takes (no second
+    stat). ``None`` exactly when :func:`thumbnail` gives ``None``.
+    """
+    if width not in ALLOWED_WIDTHS:
+        raise ValueError(f"unsupported thumbnail width: {width}")
+    if not is_picture(source):
+        _skip("not_picture")
+        return None
+    root = cache_dir() if root is None else root
+    hit, target, stat = await run_io(probe, source, rel_path, width, root)
+    if target is None or stat is None:
+        return None
+    token = version_token(*stat)
+    if hit is not None:
+        logger.debug("photo_thumb_cache", outcome="hit", width=width)
+        return ThumbResult(hit, token)
+    larger = await run_io(_larger_variant, rel_path, stat, width, root)
+    async with _decode_slots():
+        if larger is not None:
+            # Our own WebP, still opened under an allowlist and the pixel bound.
+            made = await run_io(
+                make, larger, target, width, root, cap, FORMAT_WEBP, ("WEBP",)
+            )
+            if made is not None:
+                logger.debug("photo_thumb_cache", outcome="derived", width=width)
+                return ThumbResult(made, token)
+        logger.debug("photo_thumb_cache", outcome="miss", width=width)
+        made = await run_io(make, source, target, width, root, cap)
+    return None if made is None else ThumbResult(made, token)
+
+
 async def thumbnail(
     source: Path,
     rel_path: str,
@@ -451,25 +765,14 @@ async def thumbnail(
 ) -> Path | None:
     """The WebP thumbnail of ``source`` (a validated archive file) at ``width``, or ``None``.
 
-    ``rel_path`` is its output-dir-relative POSIX path (the cache key). ``None``
+    ``rel_path`` is its output-dir-relative POSIX path (the cache key, from
+    :func:`archive_rel`). A hit is served as is; a miss is rendered from a
+    cached larger variant when there is one, else from the source. ``None``
     for a non-picture or any failure (see the module docstring). Raises
     ``ValueError`` for a width outside :data:`ALLOWED_WIDTHS`.
     """
-    if width not in ALLOWED_WIDTHS:
-        raise ValueError(f"unsupported thumbnail width: {width}")
-    if not is_picture(source):
-        _skip("not_picture")
-        return None
-    root = cache_dir() if root is None else root
-    hit, target = await run_io(lookup, source, rel_path, width, root)
-    if hit is not None:
-        logger.debug("photo_thumb_cache", outcome="hit", width=width)
-        return hit
-    if target is None:
-        return None
-    logger.debug("photo_thumb_cache", outcome="miss", width=width)
-    async with _decode_slots():
-        return await run_io(make, source, target, width, root, cap)
+    res = await thumbnail_with_token(source, rel_path, width, root, cap)
+    return None if res is None else res.path
 
 
 async def toast_image(

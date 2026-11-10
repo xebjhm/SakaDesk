@@ -663,7 +663,7 @@ class TestThumbPool:
 
         seen: dict[str, str] = {}
         real_ok = content.archive_file_ok
-        real_lookup = photo_thumb.lookup
+        real_lookup = photo_thumb.probe
         real_read = photo_thumb.read_variant
 
         def ok(*a):
@@ -679,7 +679,7 @@ class TestThumbPool:
             return real_read(*a)
 
         monkeypatch.setattr(content, "archive_file_ok", ok)
-        monkeypatch.setattr(photo_thumb, "lookup", lookup)
+        monkeypatch.setattr(photo_thumb, "probe", lookup)
         monkeypatch.setattr(photo_thumb, "read_variant", read)
         _jpeg(archive / "picture" / "1.jpg", (600, 600))
         assert client.get(f"{URL}/picture/1.jpg?w=320").status_code == 200
@@ -688,3 +688,450 @@ class TestThumbPool:
 
     def test_route_errors_still_answer_from_the_pool(self, archive):
         assert client.get(f"{URL}/picture/none.jpg?w=320").status_code == 404
+
+
+# --- M1: one decode for every size, derived misses, content-addressed URLs ---------------
+
+
+def _counting_open():
+    """Patch ``Image.open`` with a wrapper that counts calls (and still opens)."""
+    real = Image.open
+    calls: list[object] = []
+
+    def opener(fp, *args, **kwargs):
+        calls.append(fp)
+        return real(fp, *args, **kwargs)
+
+    return patch.object(photo_thumb.Image, "open", opener), calls
+
+
+def _no_paths(logs, *paths: Path) -> None:
+    text = repr(logs)
+    for p in paths:
+        assert str(p) not in text and p.name not in text, text
+
+
+class TestConstants:
+    def test_cache_cap_is_one_gib(self):
+        assert photo_thumb.CACHE_CAP_BYTES == 1024**3
+
+    def test_pregen_widths_are_allowed_and_large_is_640(self):
+        assert photo_thumb.PREGEN_WIDTHS == (160, 320)
+        assert photo_thumb.LARGE_WIDTH == 640
+        assert set(photo_thumb.PREGEN_WIDTHS) | {photo_thumb.LARGE_WIDTH} == set(
+            photo_thumb.ALLOWED_WIDTHS
+        )
+
+    def test_public_cache_helpers_keep_their_private_aliases(self):
+        assert photo_thumb.cache_state_add is photo_thumb._added
+        assert callable(photo_thumb.lookup) and callable(photo_thumb.read_variant)
+
+
+class TestVersionToken:
+    def test_is_stable_and_follows_size_and_mtime(self):
+        tok = photo_thumb.version_token(10, 5)
+        assert tok == photo_thumb.version_token(10, 5)
+        assert len(tok) == 12 and all(c in "0123456789abcdef" for c in tok)
+        assert tok != photo_thumb.version_token(11, 5)
+        assert tok != photo_thumb.version_token(10, 6)
+
+    def test_is_the_sha256_prefix_of_size_and_mtime(self):
+        import hashlib
+
+        assert (
+            photo_thumb.version_token(1234, 5678)
+            == hashlib.sha256(b"1234:5678").hexdigest()[:12]
+        )
+
+
+class TestArchiveRel:
+    def test_is_the_resolved_posix_path_under_the_resolved_output(self, tmp_path):
+        out = tmp_path / "out"
+        f = _jpeg(out / "日向坂46" / "messages" / "a b" / "1.jpg", (10, 10))
+        rel = photo_thumb.archive_rel(
+            out, out / "日向坂46" / "messages" / ".." / "messages" / "a b" / "1.jpg"
+        )
+        assert rel == "日向坂46/messages/a b/1.jpg"
+        assert photo_thumb.archive_rel(out, f) == rel
+
+    def test_resolves_symlinks_like_the_route(self, tmp_path):
+        real_out = tmp_path / "real"
+        f = _jpeg(real_out / "s" / "1.jpg", (10, 10))
+        link_out = tmp_path / "link"
+        try:
+            link_out.symlink_to(real_out, target_is_directory=True)
+        except OSError:
+            pytest.skip("symlinks unavailable")
+        assert photo_thumb.archive_rel(link_out, link_out / "s" / "1.jpg") == "s/1.jpg"
+        assert photo_thumb.archive_rel(real_out, f) == "s/1.jpg"
+
+    def test_a_path_outside_raises(self, tmp_path):
+        with pytest.raises(ValueError):
+            photo_thumb.archive_rel(tmp_path / "out", tmp_path / "elsewhere.jpg")
+
+
+class TestPlaceholder:
+    def test_mean_colour_of_a_two_colour_image(self):
+        img = Image.new("RGB", (100, 100), (200, 0, 0))
+        img.paste((0, 0, 200), (50, 0, 100, 100))
+        ph = photo_thumb.placeholder_of(img)
+        assert all(abs(a - b) <= 2 for a, b in zip(ph.rgb, (100, 0, 100)))
+        assert ph.blur is not None and len(ph.blur) <= photo_thumb.BLUR_MAX_BYTES
+        blur = _open(ph.blur)
+        assert blur.format == "WEBP" and max(blur.size) <= 16
+        assert img.size == (100, 100)  # the input is left untouched
+
+    def test_alpha_images_are_measured_as_rgb(self):
+        ph = photo_thumb.placeholder_of(Image.new("RGBA", (20, 20), (10, 20, 30, 0)))
+        assert ph.rgb == (10, 20, 30)
+
+    def test_an_oversized_blur_is_dropped(self):
+        noisy = Image.effect_noise((64, 64), 120).convert("RGB")
+        with patch.object(photo_thumb, "BLUR_MAX_BYTES", 10):
+            ph = photo_thumb.placeholder_of(noisy)
+        assert ph.blur is None and len(ph.rgb) == 3
+
+    def test_is_frozen(self):
+        ph = photo_thumb.placeholder_of(Image.new("RGB", (4, 4)))
+        with pytest.raises(Exception):
+            ph.rgb = (1, 2, 3)  # type: ignore[misc]
+
+
+class TestMakeSet:
+    def test_writes_every_width_from_one_open(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (1200, 1600))
+        root = tmp_path / "c"
+        patcher, calls = _counting_open()
+        with patcher:
+            res = photo_thumb.make_set(src, "a.jpg", (160, 320), root)
+        assert len(calls) == 1
+        assert res.reason is None
+        assert set(res.written) == {160, 320} and res.present == {}
+        st = src.stat()
+        assert res.stat == (st.st_size, st.st_mtime_ns)
+        assert res.size == (1200, 1600)
+        assert res.placeholder is not None
+        with Image.open(res.written[160]) as img:
+            assert img.format == "WEBP" and img.size == (120, 160)
+        with Image.open(res.written[320]) as img:
+            assert img.size == (240, 320)
+        assert not list(root.glob("*.tmp"))
+        # every write is accounted toward the cap
+        with photo_thumb._state_lock:
+            assert photo_thumb._state(root).total == sum(
+                p.stat().st_size for p in res.written.values()
+            )
+
+    def test_names_match_the_route_lookup(self, tmp_path):
+        out = tmp_path / "out"
+        src = _jpeg(out / "s" / "1.jpg", (800, 600))
+        rel = photo_thumb.archive_rel(out, src)
+        root = tmp_path / "c"
+        res = photo_thumb.make_set(src, rel, photo_thumb.PREGEN_WIDTHS, root)
+        st = src.stat()
+        for w, path in res.written.items():
+            assert path.name == photo_thumb.variant_name(
+                rel, st.st_size, st.st_mtime_ns, w
+            )
+            hit, _ = photo_thumb.lookup(src, rel, w, root)
+            assert hit == path
+        with patch.object(photo_thumb.Image, "open", side_effect=AssertionError):
+            assert _run(photo_thumb.thumbnail(src, rel, 160, root)) == res.written[160]
+
+    def test_everything_present_opens_nothing_unless_a_placeholder_is_needed(
+        self, tmp_path
+    ):
+        src = _jpeg(tmp_path / "a.jpg", (900, 900))
+        root = tmp_path / "c"
+        first = photo_thumb.make_set(src, "a.jpg", (160, 320), root)
+        patcher, calls = _counting_open()
+        with patcher:
+            again = photo_thumb.make_set(src, "a.jpg", (160, 320), root)
+        assert calls == []
+        assert again.written == {} and again.present == first.written
+        assert again.placeholder is None and again.size is None
+        assert again.reason is None and again.stat == first.stat
+        patcher, calls = _counting_open()
+        with patcher:
+            ph = photo_thumb.make_set(
+                src, "a.jpg", (160, 320), root, need_placeholder=True
+            )
+        assert len(calls) == 1
+        assert ph.written == {} and ph.present == first.written
+        assert ph.placeholder is not None and ph.size == (900, 900)
+
+    def test_only_missing_widths_are_written(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (900, 900))
+        root = tmp_path / "c"
+        small = photo_thumb.make_set(src, "a.jpg", (160,), root)
+        res = photo_thumb.make_set(src, "a.jpg", (320, 160, 640), root)
+        assert res.present == small.written
+        assert set(res.written) == {320, 640}
+
+    def test_size_follows_exif_orientation(self, tmp_path):
+        src = _jpeg(tmp_path / "r.jpg", (800, 400), exif_orientation=6)
+        res = photo_thumb.make_set(src, "r.jpg", (160, 320), tmp_path / "c")
+        assert res.size == (400, 800)
+        with Image.open(res.written[320]) as img:
+            assert img.size == (160, 320)
+
+    def test_rejects_an_unsupported_width(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (100, 100))
+        res = photo_thumb.make_set(src, "a.jpg", (300,), tmp_path / "c")
+        assert res.reason == "unsupported" and res.written == {}
+
+    def test_missing_source_is_unavailable(self, tmp_path):
+        res = photo_thumb.make_set(
+            tmp_path / "gone.jpg", "gone.jpg", (160,), tmp_path / "c"
+        )
+        assert res.stat is None and res.reason == "unavailable" and res.written == {}
+
+    @pytest.mark.parametrize("case", ["bomb", "eps", "truncated", "permission"])
+    def test_untrusted_failures_give_a_reason_no_file_and_no_path(self, tmp_path, case):
+        from structlog.testing import capture_logs
+
+        root = tmp_path / "c"
+        name = "秘密 picture.jpg"
+        if case == "bomb":
+            src = _png(tmp_path / name, (200, 200))
+        elif case == "eps":
+            src = tmp_path / name
+            src.write_bytes(b"%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 10 10\n")
+        elif case == "truncated":
+            full = io.BytesIO()
+            Image.effect_noise((64, 64), 120).convert("RGB").save(full, format="JPEG")
+            src = tmp_path / name
+            src.write_bytes(full.getvalue()[: len(full.getvalue()) // 2])
+        else:
+            src = _jpeg(tmp_path / name, (100, 100))
+        expected = {
+            "bomb": "too_large",
+            "eps": "unreadable",
+            "truncated": "unreadable",
+            "permission": "unavailable",
+        }[case]
+        bound = 100 * 100 if case == "bomb" else photo_thumb.MAX_SOURCE_PIXELS
+        with (
+            patch.object(photo_thumb, "MAX_SOURCE_PIXELS", bound),
+            patch.object(
+                photo_thumb.Image,
+                "open",
+                side_effect=PermissionError(str(src)),
+            )
+            if case == "permission"
+            else patch.object(photo_thumb, "VIEW", photo_thumb.VIEW),
+            capture_logs() as logs,
+        ):
+            res = photo_thumb.make_set(src, name, (160, 320), root)
+        assert res.reason == expected
+        assert res.written == {} and res.placeholder is None
+        assert not root.exists() or not [p for p in root.iterdir()]
+        assert any(e.get("reason") == expected for e in logs)
+        _no_paths(logs, src, tmp_path)
+
+    def test_never_raises(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (100, 100))
+        with (
+            patch.object(
+                photo_thumb, "_variant_targets", side_effect=RuntimeError("x")
+            ),
+            patch("backend.services.photo_thumb.logger") as log,
+        ):
+            res = photo_thumb.make_set(src, "a.jpg", (160,), tmp_path / "c")
+        assert res.reason == "unreadable" and res.written == {}
+        log.info.assert_called_with(
+            "memories_skip",
+            view="photo_thumb",
+            reason="unreadable",
+            error_type="RuntimeError",
+        )
+
+    def test_a_write_failure_skips_that_width(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (900, 900))
+        with patch.object(photo_thumb, "_write", side_effect=OSError("disk full")):
+            res = photo_thumb.make_set(src, "a.jpg", (160, 320), tmp_path / "c")
+        assert res.written == {} and res.present == {} and res.reason is None
+        assert res.placeholder is not None and res.size == (900, 900)
+
+    def test_a_replace_race_counts_the_variant_as_present(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (400, 400))
+        root = tmp_path / "c"
+        root.mkdir()
+        st = src.stat()
+        target = root / photo_thumb.variant_name(
+            "a.jpg", st.st_size, st.st_mtime_ns, 160
+        )
+        real_is_file = Path.is_file
+        seen = {"n": 0}
+
+        def is_file(self):
+            # the first probe sees no variant; another writer lands it meanwhile
+            if self == target and seen["n"] == 0:
+                seen["n"] += 1
+                return False
+            return real_is_file(self)
+
+        target.write_bytes(b"other writer")
+        with (
+            patch.object(Path, "is_file", is_file),
+            patch(
+                "backend.services.photo_thumb.os.replace", side_effect=PermissionError()
+            ),
+        ):
+            res = photo_thumb.make_set(src, "a.jpg", (160,), root)
+        assert res.written == {} and res.present == {160: target}
+        with patch(
+            "backend.services.photo_thumb.os.replace", side_effect=PermissionError()
+        ):
+            target.unlink()
+            res = photo_thumb.make_set(src, "a.jpg", (160,), root)
+        assert res.written == {} and res.present == {}
+
+    def test_poster_formats_restrict_the_decoder(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (400, 400))
+        res = photo_thumb.make_set(
+            src, "a.jpg", (160,), tmp_path / "c", formats=("WEBP",)
+        )
+        assert res.reason == "unreadable" and res.written == {}
+        webp = tmp_path / "p.webp"
+        Image.new("RGB", (400, 200), (5, 6, 7)).save(webp, format="WEBP")
+        ok = photo_thumb.make_set(
+            webp, "p.webp", (160,), tmp_path / "c", formats=("WEBP",)
+        )
+        assert set(ok.written) == {160} and ok.size == (400, 200)
+
+
+class TestDerivedMiss:
+    def test_a_smaller_width_is_rendered_from_a_cached_larger_variant(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (1200, 900))
+        root = tmp_path / "c"
+        big = _run(photo_thumb.thumbnail(src, "a.jpg", 320, root))
+        assert big is not None
+        real = Image.open
+        opened: list[object] = []
+
+        def guard(fp, *args, **kwargs):
+            if Path(fp) == src:
+                raise AssertionError("the source was decoded")
+            opened.append((Path(fp), kwargs.get("formats")))
+            return real(fp, *args, **kwargs)
+
+        with (
+            patch.object(photo_thumb.Image, "open", guard),
+            patch("backend.services.photo_thumb.logger") as log,
+        ):
+            out = _run(photo_thumb.thumbnail(src, "a.jpg", 160, root))
+        assert out is not None
+        st = src.stat()
+        assert out.name == photo_thumb.variant_name(
+            "a.jpg", st.st_size, st.st_mtime_ns, 160
+        )
+        with Image.open(out) as img:
+            assert img.format == "WEBP" and img.size == (160, 120)
+        assert opened == [(big, ("WEBP",))]
+        log.debug.assert_any_call("photo_thumb_cache", outcome="derived", width=160)
+
+    def test_prefers_the_smallest_larger_variant(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (1600, 1200))
+        root = tmp_path / "c"
+        res = photo_thumb.make_set(src, "a.jpg", (320, 640), root)
+        patcher, calls = _counting_open()
+        with patcher:
+            _run(photo_thumb.thumbnail(src, "a.jpg", 160, root))
+        assert [Path(c) for c in calls] == [res.written[320]]
+
+    def test_without_a_larger_variant_the_source_is_decoded(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (1200, 900))
+        root = tmp_path / "c"
+        _run(photo_thumb.thumbnail(src, "a.jpg", 160, root))  # smaller only
+        with patch("backend.services.photo_thumb.logger") as log:
+            out = _run(photo_thumb.thumbnail(src, "a.jpg", 320, root))
+        assert out is not None
+        log.debug.assert_any_call("photo_thumb_cache", outcome="miss", width=320)
+
+    def test_a_broken_larger_variant_falls_back_to_the_source(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (1200, 900))
+        root = tmp_path / "c"
+        big = _run(photo_thumb.thumbnail(src, "a.jpg", 320, root))
+        big.write_bytes(b"corrupt")
+        out = _run(photo_thumb.thumbnail(src, "a.jpg", 160, root))
+        assert out is not None
+        with Image.open(out) as img:
+            assert img.size == (160, 120)
+
+
+class TestThumbnailWithToken:
+    def test_gives_the_path_and_the_current_token(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (400, 400))
+        st = src.stat()
+        res = _run(photo_thumb.thumbnail_with_token(src, "a.jpg", 160, tmp_path / "c"))
+        assert res is not None
+        assert res.token == photo_thumb.version_token(st.st_size, st.st_mtime_ns)
+        assert res.path == _run(
+            photo_thumb.thumbnail(src, "a.jpg", 160, tmp_path / "c")
+        )
+
+    def test_none_for_a_failure(self, tmp_path):
+        bad = tmp_path / "b.jpg"
+        bad.write_bytes(b"garbage")
+        assert (
+            _run(photo_thumb.thumbnail_with_token(bad, "b.jpg", 160, tmp_path / "c"))
+            is None
+        )
+
+
+class TestThumbRouteVersion:
+    def _token(self, path: Path) -> str:
+        st = path.stat()
+        return photo_thumb.version_token(st.st_size, st.st_mtime_ns)
+
+    def test_a_matching_v_is_immutable(self, archive):
+        src = _jpeg(archive / "picture" / "1.jpg", (900, 900))
+        r = client.get(f"{URL}/picture/1.jpg?w=160&v={self._token(src)}")
+        assert r.status_code == 200
+        cc = r.headers["cache-control"]
+        assert cc == "private, max-age=31536000, immutable"
+        assert r.headers["x-content-type-options"] == "nosniff"
+        assert r.headers["etag"]
+
+    def test_a_stale_v_gets_the_current_body_without_caching(self, archive):
+        _jpeg(archive / "picture" / "1.jpg", (900, 900))
+        plain = client.get(f"{URL}/picture/1.jpg?w=160")
+        r = client.get(f"{URL}/picture/1.jpg?w=160&v=000000000000")
+        assert r.status_code == 200
+        assert r.headers["cache-control"] == "private, no-cache"
+        assert r.content == plain.content
+        assert r.headers["etag"] == plain.headers["etag"]
+
+    def test_no_v_keeps_one_day(self, archive):
+        _jpeg(archive / "picture" / "1.jpg", (900, 900))
+        r = client.get(f"{URL}/picture/1.jpg?w=160")
+        assert r.headers["cache-control"] == "private, max-age=86400"
+
+    @pytest.mark.parametrize(
+        "bad", ["ABCDEF123456", "abc", "a1b2c3d4e5f6a", "zzzzzzzzzzzz"]
+    )
+    def test_a_malformed_v_is_422(self, archive, bad):
+        _jpeg(archive / "picture" / "1.jpg", (900, 900))
+        assert client.get(f"{URL}/picture/1.jpg?w=160&v={bad}").status_code == 422
+
+    def test_a_matching_etag_is_still_304_with_v(self, archive):
+        src = _jpeg(archive / "picture" / "1.jpg", (900, 900))
+        v = self._token(src)
+        first = client.get(f"{URL}/picture/1.jpg?w=160&v={v}")
+        r = client.get(
+            f"{URL}/picture/1.jpg?w=160&v={v}",
+            headers={"If-None-Match": first.headers["etag"]},
+        )
+        assert r.status_code == 304 and r.content == b""
+        assert r.headers["cache-control"] == "private, max-age=31536000, immutable"
+
+    def test_the_route_keys_on_archive_rel(self, archive, tmp_path):
+        src = _jpeg(archive / "picture" / "1.jpg", (900, 900))
+        out = tmp_path / "out"
+        rel = photo_thumb.archive_rel(out, src)
+        res = photo_thumb.make_set(src, rel, (160,), tmp_path / "cache")
+        with patch.object(photo_thumb.Image, "open", side_effect=AssertionError):
+            r = client.get(f"{URL}/picture/1.jpg?w=160")
+        assert r.status_code == 200
+        assert r.headers["etag"] == f'"{res.written[160].stem}"'
