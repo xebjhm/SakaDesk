@@ -3,15 +3,23 @@ Sync API endpoints using thread-safe SyncProgress tracker.
 Supports per-service progress tracking for multi-service sync.
 """
 
+from typing import Optional
+
 import structlog
 from fastapi import APIRouter, HTTPException, Query
+from pydantic import BaseModel
 from pysaka import RefreshFailedError, SessionExpiredError
 from backend.services import session_alert
 from backend.services.sync_service import SyncService
 from backend.services.service_utils import validate_service
-from backend.services.background_tasks import track_background_task
 from backend.services.shutdown_state import is_shutting_down
-from backend.services.sync_launcher import launch_sync
+from backend.services.sync_coordinator import (
+    KIND_VERIFY,
+    RESULT_ALREADY_RUNNING,
+    RESULT_SHUTTING_DOWN,
+    get_coordinator,
+)
+from backend.services.sync_launcher import launch
 from backend.services.tray_tooltip import schedule_refresh
 from backend.api.progress import progress_manager
 
@@ -87,6 +95,16 @@ async def run_verify_task(service: str):
         progress.error(str(e))
 
 
+def _enqueue_response(service: str, result, running_detail: str) -> dict:
+    """Map a coordinator result onto the HTTP answer of /start and /verify."""
+    if result.result == RESULT_SHUTTING_DOWN:
+        raise HTTPException(status_code=503, detail="Application is shutting down")
+    if result.result == RESULT_ALREADY_RUNNING:
+        # 400 + "already running": the frontend attaches its poller to the run.
+        raise HTTPException(status_code=400, detail=running_detail)
+    return {"status": result.result, "service": service, "position": result.position}
+
+
 @router.post("/start")
 async def start_sync(
     service: str = Query(..., description="Service to sync"),
@@ -95,62 +113,67 @@ async def start_sync(
     include_inactive: bool = True,
     force_resync: bool = False,
 ):
+    """Enqueue a sync (spec 2026-11-10 S1): ``status`` is ``started``, ``queued``
+    (with ``position``) or ``already_queued``; a running one answers 400."""
     try:
         validate_service(service)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    result = await launch_sync(
+    result = launch(
         service,
         include_inactive=include_inactive,
         force_resync=force_resync,
         origin="api",
     )
-    if result == "shutting_down":
-        raise HTTPException(status_code=503, detail="Application is shutting down")
-    if result == "already_running":
-        raise HTTPException(
-            status_code=400, detail=f"Sync already running for {service}"
-        )
-
-    return {"status": "started", "service": service}
+    return _enqueue_response(service, result, f"Sync already running for {service}")
 
 
 @router.post("/verify")
 async def verify_media(service: str = Query(..., description="Service to verify")):
+    """Enqueue Verify & Fix. It waits behind a running sync (user decision,
+    2026-11-10) instead of being refused."""
     try:
         validate_service(service)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    # C1c: see start_sync -- refuse to spawn a new verify writer once
-    # shutdown has begun.
+    # C1c: the coordinator refuses new writers once shutdown has begun. The job
+    # runs as a tracked task (C1b) registered on the SyncService, so /cancel and
+    # the shutdown barrier reach it (SD-BE-SVC-02).
+    result = get_coordinator().enqueue(service, kind=KIND_VERIFY, origin="api")
+    return _enqueue_response(
+        service, result, f"Sync/verify already running for {service}"
+    )
+
+
+class StartAllRequest(BaseModel):
+    services: list[str]
+    blocking: bool = False
+
+
+@router.post("/start-all")
+async def start_all(body: StartAllRequest):
+    """Enqueue several services as one sequence, in the fixed service order
+    (乃木坂46, 櫻坂46, 日向坂46, Yodel). Returns ``{sequence_id, results}``."""
+    if not body.services:
+        raise HTTPException(status_code=400, detail="No services given")
+    for service in body.services:
+        try:
+            validate_service(service)
+        except ValueError:
+            raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
     if is_shutting_down():
         raise HTTPException(status_code=503, detail="Application is shutting down")
+    return get_coordinator().start_sequence(
+        body.services, blocking=body.blocking, origin="api"
+    )
 
-    sync_service = get_sync_service(service)
-    if sync_service.running:
-        raise HTTPException(
-            status_code=400, detail=f"Sync/verify already running for {service}"
-        )
 
-    progress = progress_manager.get(service)
-    progress.reset()
-    progress.start_phase("starting", "Starting", 0, 0, "")
-    progress.set_detail("Scanning for missing media...")
-
-    # C1b: route through track_background_task (not a bare create_task) so
-    # drain_background_tasks() -- and thus the shutdown write barrier --
-    # covers this writer.
-    # SD-BE-SVC-02: register the tracked task on the service so /cancel can
-    # target the running verify with a real task.cancel() (verify now claims
-    # the same _task/_generation ownership as start_sync). Assigning here also
-    # closes the schedule-delay gap so a cancel arriving before the coroutine
-    # first runs still finds the task. This serializes verify against a
-    # subsequent start_sync -- exactly one writer per member dir at a time.
-    task = track_background_task(run_verify_task(service), name="verify_media")
-    sync_service._task = task
-    return {"status": "started", "service": service}
+@router.get("/queue")
+async def get_queue():
+    """The sync queue: ``running``, ``queued`` and the current/last ``sequence``."""
+    return get_coordinator().snapshot()
 
 
 @router.get("/progress")
@@ -172,28 +195,33 @@ async def get_progress(
 
 @router.post("/cancel")
 async def cancel_sync(
-    service: str = Query(..., description="Service to cancel sync for"),
+    service: Optional[str] = Query(None, description="Service to cancel"),
+    sequence: Optional[str] = Query(None, description="Sequence id to cancel"),
 ):
-    """Cancel a running sync by cancelling its background task and awaiting unwind.
+    """Cancel a service's job (running or queued) or a whole sequence.
 
-    This performs a real ``task.cancel()`` and waits for the task to finish
-    writing/closing files before returning (SVC-C1), so a subsequent ``/start``
-    cannot launch a second concurrent sync over the same output directory.
+    A running job gets a real ``task.cancel()`` and is awaited until it stops
+    writing (SVC-C1), so a later ``/start`` cannot overlap it. ``sequence``
+    drops that sequence's queued jobs and cancels its running one; jobs of other
+    origins stay queued.
     """
+    coordinator = get_coordinator()
+    if sequence is not None:
+        outcome = await coordinator.cancel_sequence(sequence)
+        logger.warning("sync_cancel_requested", target="sequence", outcome=outcome)
+        return {"status": outcome, "sequence": sequence}
+    if service is None:
+        raise HTTPException(status_code=422, detail="service or sequence is required")
     try:
         validate_service(service)
     except ValueError:
         raise HTTPException(status_code=400, detail=f"Invalid service: {service}")
 
-    sync_service = get_sync_service(service)
-    if not sync_service.running and sync_service._task is None:
+    outcome = await coordinator.cancel_service(service)
+    if outcome == "not_running":
         return {"status": "not_running", "service": service}
-
-    # Real cancel + await unwind so the task stops writing before we return.
-    await sync_service.cancel()
     progress_manager.get(service).reset()
-    logger.warning(f"Sync cancelled for {service} by user request")
-
+    logger.warning("sync_cancel_requested", target="service", service=service)
     return {"status": "cancelled", "service": service}
 
 

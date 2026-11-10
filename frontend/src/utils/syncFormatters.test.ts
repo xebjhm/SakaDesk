@@ -7,6 +7,8 @@ import {
     getSyncPhaseName,
     getSyncUnitLabel,
     getSyncDetail,
+    isSyncActive,
+    formatSyncEta,
 } from './syncFormatters'
 
 const mockT = (key: string): string => key
@@ -155,5 +157,27 @@ describe('formatSyncSpeedParts', () => {
 
     it('is empty for no speed', () => {
         expect(formatSyncSpeedParts(0, 'files')).toEqual({ value: '', unit: '' })
+    })
+})
+
+// S1/S2 (spec 2026-11-10)
+describe('queue and ETA helpers', () => {
+    it('a queued sync counts as active, a finished one does not', () => {
+        expect(isSyncActive({ state: 'queued' })).toBe(true)
+        expect(isSyncActive({ state: 'running' })).toBe(true)
+        expect(isSyncActive({ state: 'complete' })).toBe(false)
+        expect(isSyncActive(undefined)).toBe(false)
+    })
+    it('names the queued phase and its place in line', () => {
+        const t = (k: string, o?: Record<string, unknown>) => (o ? `${k}:${o.position}` : k)
+        expect(getSyncPhaseName({ state: 'queued', phase: 'queued' }, t)).toBe('sync.phaseQueued')
+        expect(getSyncDetail({ state: 'queued', queue_position: 3 }, t, 'F')).toBe('sync.queuedDetail:3')
+        expect(getSyncDetail({ state: 'queued' }, t, 'F')).toBe('sync.queuedDetail:1')
+    })
+    it('formats the ETA by its reason', () => {
+        expect(formatSyncEta({ state: 'running', eta_seconds: 90 }, mockT)).toBe('01:30')
+        expect(formatSyncEta({ state: 'running', eta_seconds: null, eta_reason: 'not_estimable' }, mockT)).toBe('—')
+        expect(formatSyncEta({ state: 'running', eta_seconds: null, eta_reason: 'warming_up' }, mockT)).toBe('time.etaEstimating')
+        expect(formatSyncEta({ state: 'running' }, mockT)).toBe('--:--')
     })
 })

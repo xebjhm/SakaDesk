@@ -142,7 +142,8 @@
     "justNow": "剛剛",
     "minutesAgo": "{{count}}分鐘前",
     "hoursAgo": "{{count}}小時前",
-    "daysAgo": "{{count}}天前"
+    "daysAgo": "{{count}}天前",
+    "etaEstimating": "計算中…"
   },
   "login": {
     "title": "帳戶管理",
@@ -235,7 +236,10 @@
     "progress": "同步進度",
     "stepDone": "已完成",
     "stepCurrent": "目前步驟",
-    "stepPending": "待處理"
+    "stepPending": "待處理",
+    "phaseQueued": "等待中",
+    "queuedDetail": "等待其他同步完成（排第 {{position}} 位）",
+    "filesFailed": "· {{count}} 個失敗"
   },
   "about": {
     "title": "關於",

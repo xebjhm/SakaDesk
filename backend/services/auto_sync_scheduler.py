@@ -6,9 +6,12 @@ reloads the settings and decides whether to start a sync. The scheduler lives in
 the backend so syncing continues while the window is hidden in the tray.
 
 Decision order for each tick (the first match is the logged ``reason``):
-``shutting_down`` -> ``disabled`` -> ``not_configured`` -> ``not_authenticated``
--> launch (``started`` / ``already_running`` / ``shutting_down`` from
-:func:`backend.services.sync_launcher.launch_sync`).
+``shutting_down`` -> ``disabled`` -> ``not_configured`` -> ``sequence_active``
+(a first-launch / start-all sequence is running in the sync coordinator) ->
+``not_authenticated`` -> launch (``started`` / ``queued`` / ``already_running`` /
+``already_queued`` / ``shutting_down`` from
+:func:`backend.services.sync_launcher.launch_sync`). When a sequence ends the
+coordinator wakes the scheduler, so the next wait starts from there.
 
 The wait between ticks is at least :data:`MIN_INTERVAL_MINUTES`, whatever the
 stored interval says. :meth:`AutoSyncScheduler.wake` (called when the auto-sync
@@ -56,6 +59,7 @@ REASON_DISABLED = "disabled"
 REASON_NOT_CONFIGURED = "not_configured"
 REASON_NOT_AUTHENTICATED = "not_authenticated"
 REASON_SESSION_EXPIRED = "session_expired"
+REASON_SEQUENCE_ACTIVE = "sequence_active"
 
 SleepFn = Callable[[float], Awaitable[Any]]
 LoadSettingsFn = Callable[[], Awaitable[Mapping[str, Any]]]
@@ -97,6 +101,15 @@ def _default_previous_error_code(service: str) -> Optional[str]:
     return str(status.get("error_code") or "unknown")
 
 
+SequenceActiveFn = Callable[[], bool]
+
+
+def _default_sequence_active() -> bool:
+    from backend.services.sync_coordinator import get_coordinator
+
+    return get_coordinator().sequence_active()
+
+
 def _interval_minutes(settings: Mapping[str, Any]) -> float:
     return max(next_interval_minutes(settings), MIN_INTERVAL_MINUTES)
 
@@ -113,6 +126,7 @@ class AutoSyncScheduler:
         is_authenticated: IsAuthenticatedFn = _default_is_authenticated,
         launch: LaunchFn = launch_sync,
         previous_error_code: PreviousErrorCodeFn = _default_previous_error_code,
+        sequence_active: SequenceActiveFn = _default_sequence_active,
     ) -> None:
         self._services = list(services)
         self._sleep = sleep
@@ -120,6 +134,7 @@ class AutoSyncScheduler:
         self._is_authenticated = is_authenticated
         self._launch = launch
         self._previous_error_code = previous_error_code
+        self._sequence_active = sequence_active
         self._tasks: dict[str, asyncio.Task[None]] = {}
         self._wake_events: dict[str, asyncio.Event] = {}
 
@@ -185,6 +200,8 @@ class AutoSyncScheduler:
             return REASON_DISABLED
         if not settings["is_configured"]:
             return REASON_NOT_CONFIGURED
+        if self._sequence_active():
+            return REASON_SEQUENCE_ACTIVE
         if not await self._is_authenticated(service):
             from backend.services import session_alert
 

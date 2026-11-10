@@ -62,6 +62,8 @@ ClientEvent = Literal[
     "archive_stats_load",
     "celebration",
     "sync_sequence",
+    "sync_sequence_resumed",
+    "sync_start_all_failed",
     "letter_viewer",
     "letter_jump",
     "display_density_change",
