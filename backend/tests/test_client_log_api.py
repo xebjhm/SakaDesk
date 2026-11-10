@@ -1083,3 +1083,15 @@ def test_a_camel_case_page_code_is_rejected():
         json={"event": "memories_page", "fields": {"target": "onThisDay"}},
     )
     assert r.status_code == 422
+
+
+def test_translation_legacy_events_are_allowlisted():
+    for event, fields in (
+        ("translation_legacy_reuse", {"count": 1}),
+        ("translation_legacy_resave_failed", {"error_type": "typeerror"}),
+    ):
+        with capture_logs() as logs:
+            r = client.post("/api/client-log", json={"event": event, "fields": fields})
+        assert r.status_code == 204
+        level = "warning" if event.endswith("_failed") else "info"
+        assert logs[-1]["log_level"] == level

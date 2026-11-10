@@ -30,6 +30,8 @@ export type ClientLogEvent =
     | 'poll_timeout' | 'poll_skipped' | 'poll_failed'
     | 'poll_retry' | 'poll_gave_up'
     | 'translation_batch_failed'
+    | 'translation_legacy_reuse'
+    | 'translation_legacy_resave_failed'
     | 'conv_hydrate_retry' | 'conv_hydrate_failed' | 'conv_hydrate_recovered' | 'conv_write_failed'
     | 'read_state_save_deferred' | 'read_state_pending_flushed' | 'read_state_sync_failed'
     | 'sidebar_load' | 'oshi_mirror_failed'

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import { renderHook, act, waitFor } from '@testing-library/react';
-import { useMessageTranslation, clearTranslationCache } from './useMessageTranslation';
+import { useMessageTranslation, clearTranslationCache, __resetLegacyTranslationKeysForTests } from './useMessageTranslation';
 import { persisted } from '../core/persistence/persisted';
 import * as appStateApi from '../core/persistence/appStateApi';
 import { __resetTranslationLoaderForTests } from '../core/persistence/translationLoader';
@@ -34,6 +34,8 @@ const store = new Map<string, string>();
 describe('useMessageTranslation', () => {
     beforeEach(() => {
         __resetTranslationLoaderForTests();
+        __resetLegacyTranslationKeysForTests();
+        vi.mocked(clientLog).mockClear();
         store.clear();
         vi.spyOn(persisted, 'getTranslations').mockImplementation(async (keys: string[]) => {
             const out: Record<string, string> = {};
@@ -119,6 +121,54 @@ describe('useMessageTranslation', () => {
         const { result } = renderHook(() => useMessageTranslation(baseParams));
         await waitFor(() => expect(result.current.translation).toBe('legacy-en'));
         await waitFor(() => expect(store.get(KEY)).toBe('legacy-en'));
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('translation_legacy_reuse', { count: 1 });
+        useAppStore.setState({ activeService: null });
+    });
+
+    it('asks for the new and the legacy key in one request, and the legacy key only once', async () => {
+        useAppStore.setState({ activeService: 'hinatazaka46' });
+        const getSpy = vi.mocked(persisted.getTranslations);
+        getSpy.mockClear();
+        const first = renderHook(() => useMessageTranslation(baseParams));
+        await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+        expect(getSpy).toHaveBeenCalledTimes(1);
+        expect([...getSpy.mock.calls[0][0]].sort()).toEqual(['translation:message:500:en', KEY].sort());
+        first.unmount();
+        // A remount (a list scrolled back) asks for the new key alone.
+        renderHook(() => useMessageTranslation(baseParams));
+        await act(async () => { await new Promise((r) => setTimeout(r, 80)); });
+        expect(getSpy).toHaveBeenCalledTimes(2);
+        expect(getSpy.mock.calls[1][0]).toEqual([KEY]);
+        useAppStore.setState({ activeService: null });
+    });
+
+    it('logs a failed legacy re-save', async () => {
+        useAppStore.setState({ activeService: 'hinatazaka46' });
+        store.set('translation:message:500:en', 'legacy-en');
+        vi.mocked(persisted.putTranslations).mockRejectedValueOnce(new TypeError('offline'));
+        const { result } = renderHook(() => useMessageTranslation(baseParams));
+        await waitFor(() => expect(result.current.translation).toBe('legacy-en'));
+        await waitFor(() => expect(vi.mocked(clientLog)).toHaveBeenCalledWith(
+            'translation_legacy_resave_failed', { error_type: 'typeerror' },
+        ));
+        useAppStore.setState({ activeService: null });
+    });
+
+    it('never re-saves a legacy value once retrigger() has saved a fresh one', async () => {
+        useAppStore.setState({ activeService: 'hinatazaka46' });
+        store.set('translation:message:500:en', 'legacy-en');
+        let release!: () => void;
+        const gate = new Promise<void>((r) => { release = r; });
+        const real = vi.mocked(persisted.getTranslations).getMockImplementation()!;
+        vi.mocked(persisted.getTranslations).mockImplementationOnce(async (keys: string[]) => { const answer = await real(keys); await gate; return answer; });
+        mockFetchOk('fresh');
+        const { result } = renderHook(() => useMessageTranslation(baseParams));
+        await act(async () => { await new Promise((r) => setTimeout(r, 80)); }); // lookup in flight
+        await act(async () => { await result.current.retrigger(); });
+        expect(store.get(KEY)).toBe('fresh');
+        await act(async () => { release(); await new Promise((r) => setTimeout(r, 10)); });
+        expect(store.get(KEY)).toBe('fresh');
+        expect(result.current.translation).toBe('fresh');
         useAppStore.setState({ activeService: null });
     });
 

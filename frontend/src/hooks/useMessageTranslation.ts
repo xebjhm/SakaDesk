@@ -5,6 +5,8 @@ import { persisted } from '../core/persistence/persisted';
 import * as api from '../core/persistence/appStateApi';
 import { loadCachedTranslation, readCachedTranslation } from '../core/persistence/translationLoader';
 import { useAppStore } from '../store/appStore';
+import { clientLog } from '../utils/clientLog';
+import { breadcrumbCode } from '../utils/breadcrumbCode';
 
 type TranslationState = 'idle' | 'loading' | 'done' | 'error';
 
@@ -37,6 +39,17 @@ export function getLegacyCacheKey(type: 'message', contentId: string | number, t
 }
 
 /**
+ * Legacy keys already consulted this session (missed, or hit and re-saved under the new key):
+ * never asked for again, so a remounting bubble costs one key, not two.
+ */
+const consultedLegacy = new Set<string>();
+
+/** Test-only: forget which legacy keys were consulted. */
+export function __resetLegacyTranslationKeysForTests(): void {
+    consultedLegacy.clear();
+}
+
+/**
  * Hook for translating a single message.
  * Manages the backend translation cache (app-state `translation_cache`) and API calls.
  */
@@ -56,7 +69,8 @@ export function useMessageTranslation(params: {
         : '';
     // Translations cached before the key carried the service were made in the chat of the group
     // on screen, so only a message of the active group may reuse one (it is then re-saved under
-    // the new key); another group's message with the same id never does.
+    // the new key, logged `translation_legacy_reuse`; a failed re-save logs
+    // `translation_legacy_resave_failed`); another group's message with the same id never does.
     const activeService = useAppStore((s) => s.activeService);
     const legacyKey = messageId && service && service === activeService
         ? getLegacyCacheKey('message', messageId, targetLanguage)
@@ -82,16 +96,36 @@ export function useMessageTranslation(params: {
         setState('idle');
         setError(null);
         if (cacheKey) {
+            // The legacy key is consulted once per session, in the same batch as the new key (one
+            // request), and its answer is used only when the new key misses.
+            const askLegacy = Boolean(legacyKey) && !consultedLegacy.has(legacyKey);
+            if (askLegacy) consultedLegacy.add(legacyKey);
+            const legacyLookup = askLegacy ? loadCachedTranslation(legacyKey) : Promise.resolve(undefined);
+            // A failed or unused legacy lookup may be asked again by a later mount.
+            const releaseLegacy = () => { if (askLegacy) consultedLegacy.delete(legacyKey); };
+            legacyLookup.catch(releaseLegacy);
             // Batched with the lookups of every other bubble mounting now.
             loadCachedTranslation(cacheKey).then(async (cached) => {
                 let value = cached;
-                if (!value && legacyKey) {
-                    value = await loadCachedTranslation(legacyKey);
-                    if (value) persisted.putTranslations({ [cacheKey]: value }).catch(() => {});
+                let fromLegacy = false;
+                if (!value && askLegacy) {
+                    value = await legacyLookup;
+                    fromLegacy = Boolean(value);
                 }
-                if (!cancelled && gen === localGen.current && value) {
-                    setTranslation(value);
-                    setState('done');
+                // Checked before the re-save, so a stale legacy value never overwrites a fresh one.
+                if (cancelled || gen !== localGen.current) {
+                    if (fromLegacy) releaseLegacy();
+                    return;
+                }
+                if (!value) return;
+                setTranslation(value);
+                setState('done');
+                if (fromLegacy) {
+                    clientLog('translation_legacy_reuse', { count: 1 });
+                    persisted.putTranslations({ [cacheKey]: value }).catch((err: unknown) => {
+                        releaseLegacy();
+                        clientLog('translation_legacy_resave_failed', { error_type: breadcrumbCode(err) });
+                    });
                 }
             }).catch(() => {/* stay idle; trigger() will fall back to the API */});
         }
