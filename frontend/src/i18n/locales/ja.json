@@ -756,7 +756,7 @@
       "birthdayIn": "{{name}}の誕生日まで、あと {{count, number}} 日",
       "birthdayToday": "今日は{{name}}の誕生日",
       "anniversaryIn": "{{name}}とのメンバーシップ記念日まで、あと {{count, number}} 日",
-      "anniversaryToday": "今日は {{years}} 年目の記念日"
+      "anniversaryToday": "今日はメンバーシップ {{years}} 年目の記念日"
     },
     "common": {
       "back": "戻る",

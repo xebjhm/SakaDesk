@@ -122,7 +122,7 @@ describe('memories core strings', () => {
             countAlbum: '{{count, number}} 枚', countMembers: '{{count, number}} 人', countFavorites: '{{count, number}} 件',
             birthdayIn: '{{name}}の誕生日まで、あと {{count, number}} 日', birthdayToday: '今日は{{name}}の誕生日',
             anniversaryIn: '{{name}}とのメンバーシップ記念日まで、あと {{count, number}} 日',
-            anniversaryToday: '今日は {{years}} 年目の記念日', recapCard: '一年の振り返り',
+            anniversaryToday: '今日はメンバーシップ {{years}} 年目の記念日', recapCard: '一年の振り返り',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, `memories.home.${key}`), key).toBe(text);
     });

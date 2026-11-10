@@ -756,7 +756,7 @@
       "birthdayIn": "距离{{name}}的生日，还有 {{count, number}} 天",
       "birthdayToday": "今天是{{name}}的生日",
       "anniversaryIn": "距离和{{name}}的会员纪念日，还有 {{count, number}} 天",
-      "anniversaryToday": "今天是第 {{years}} 年的纪念日"
+      "anniversaryToday": "今天是会员第 {{years}} 年的纪念日"
     },
     "common": {
       "back": "返回",
