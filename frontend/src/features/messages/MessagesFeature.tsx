@@ -49,6 +49,7 @@ import { useRoomExtras } from './hooks/useRoomExtras';
 import { useLetterBreadcrumbs } from './hooks/useLetterBreadcrumbs';
 import { LetterRow } from './components/LetterRow';
 import { letterAvatars, type Letter } from './letters';
+import { setFavorite } from '../../utils/favoriteApi';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -703,29 +704,16 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             m.id === messageId ? { ...m, is_favorite: !currentState } : m
         ));
 
-        try {
-            const method = currentState ? 'DELETE' : 'POST';
-            const url = `/api/favorites/${messageId}?service=${encodeURIComponent(activeService)}`;
-            const res = await fetch(url, { method });
-            // SD-CONTRACT-01: the backend returns HTTP 200 with a
-            // {success: false, error} body when the upstream official-API call
-            // fails (expired session, 5xx). Checking only res.ok would leave the
-            // optimistic star lit for a favorite that was never saved (it then
-            // silently vanishes on the next reload/sync). Parse the body and
-            // treat success === false as a failure too.
-            if (!res.ok) {
-                throw new Error(`Failed to update favorite (HTTP ${res.status})`);
-            }
-            const body = await res.json().catch(() => null) as { success?: boolean; error?: string } | null;
-            if (body && body.success === false) {
-                throw new Error(body.error || 'Server reported favorite update failed');
-            }
-        } catch (err) {
+        // setFavorite resolves false on an HTTP error, a network failure or a
+        // 200 with {success: false} (SD-CONTRACT-01), so a favourite that was
+        // never saved never keeps its optimistic star.
+        const saved = await setFavorite(activeService, messageId, !currentState);
+        if (!saved) {
             // Revert on failure
             setMessages(msgs => msgs.map(m =>
                 m.id === messageId ? { ...m, is_favorite: currentState } : m
             ));
-            console.error('Failed to toggle favorite:', err);
+            console.error('Failed to toggle favorite');
         }
     }, [activeService]);
 
