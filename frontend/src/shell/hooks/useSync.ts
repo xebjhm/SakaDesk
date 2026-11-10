@@ -710,13 +710,18 @@ export function useSync({
     const watchSequence = useCallback((sequenceId: string): Promise<SequentialSyncOutcome> => {
         return new Promise((resolve) => {
             let failures = 0;
+            // Last queue read: a cancel ends the watch at once and reports its
+            // counts (every service not completed yet counts as failed, as the
+            // backend logs it).
+            let last: { completed: number; total: number } = { completed: 0, total: 0 };
+            const cancelledOutcome = (): SequentialSyncOutcome => ({
+                completed: last.completed,
+                failed: last.total - last.completed,
+                cancelled: true,
+            });
             const tick = async () => {
-                if (sequenceIdRef.current !== sequenceId) {
-                    resolve({ completed: 0, failed: 0, cancelled: true });
-                    return;
-                }
-                if (sequenceCancelledRef.current) {
-                    resolve({ completed: 0, failed: 0, cancelled: true });
+                if (sequenceIdRef.current !== sequenceId || sequenceCancelledRef.current) {
+                    resolve(cancelledOutcome());
                     return;
                 }
                 const result = await pollJson<SyncQueueSnapshot>(
@@ -735,11 +740,17 @@ export function useSync({
                 }
                 failures = 0;
                 const seq = result.data.sequence;
+                if (sequenceCancelledRef.current) {
+                    // Cancelled while this read was in flight.
+                    resolve(cancelledOutcome());
+                    return;
+                }
                 if (!seq || seq.id !== sequenceId) {
                     // Replaced by a newer sequence (or the backend restarted): stop following.
                     resolve({ completed: 0, failed: 0, cancelled: false });
                     return;
                 }
+                last = { completed: seq.completed.length, total: seq.services.length };
                 const current = seq.services[seq.current_index] ?? seq.services[seq.services.length - 1];
                 if (current && current !== sequentialSyncServiceRef.current) {
                     sequentialSyncServiceRef.current = current;
