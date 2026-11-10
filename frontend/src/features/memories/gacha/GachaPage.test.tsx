@@ -55,7 +55,9 @@ describe('GachaPage', () => {
         expect(screen.getByRole('heading', { name: '思い出ガチャ' })).toBeInTheDocument();
         await knob();
         expect(screen.getByText('今日はあと 3 回')).toBeInTheDocument();
-        expect(gachaLogs()).toContainEqual({ phase: 'open', count: 3 });
+        // The `open` breadcrumb is logged from a passive effect that runs after the commit the
+        // knob appears in; findBy can resolve first under load, so wait for the log itself.
+        await waitFor(() => expect(gachaLogs()).toContainEqual({ phase: 'open', count: 3 }));
         await userEvent.click(screen.getByRole('button', { name: '戻る' }));
         expect(go).toHaveBeenCalledWith({ page: 'home' });
     });
@@ -70,8 +72,8 @@ describe('GachaPage', () => {
         expect(postGachaPull).toHaveBeenCalledTimes(1);
         expect(await screen.findByTestId('gacha-card')).toHaveAttribute('data-rarity', 'sr');
         expect(screen.getByText('今日はあと 2 回')).toBeInTheDocument();
-        expect(gachaLogs()).toContainEqual({ phase: 'pull', index: 0 });
-        expect(gachaLogs()).toContainEqual({ phase: 'reveal', kind: 'sr', reason: 'midnight', index: 0, message_id: 55 });
+        await waitFor(() => expect(gachaLogs()).toContainEqual({ phase: 'pull', index: 0 }));
+        await waitFor(() => expect(gachaLogs()).toContainEqual({ phase: 'reveal', kind: 'sr', reason: 'midnight', index: 0, message_id: 55 }));
         // the new pull joins the history strip
         expect(within(screen.getByRole('list', { name: 'これまでに出た思い出' })).getAllByRole('button')).toHaveLength(1);
     });
@@ -105,7 +107,7 @@ describe('GachaPage', () => {
         await userEvent.click(k);
         expect(await screen.findByText('また明日')).toBeInTheDocument();
         expect(k).toHaveAttribute('aria-disabled', 'true');
-        expect(gachaLogs()).toContainEqual({ phase: 'refused', reason: 'no_pulls_left' });
+        await waitFor(() => expect(gachaLogs()).toContainEqual({ phase: 'refused', reason: 'no_pulls_left' }));
     });
 
     it('an empty pool logs refused empty_pool and keeps the count', async () => {
@@ -123,7 +125,7 @@ describe('GachaPage', () => {
         await userEvent.click(await knob());
         await waitFor(() => expect(fetchGacha).toHaveBeenCalledTimes(2));
         expect(postGachaPull).toHaveBeenCalledTimes(1);
-        expect(gachaLogs()).toContainEqual({ phase: 'refused', reason: 'request_failed' });
+        await waitFor(() => expect(gachaLogs()).toContainEqual({ phase: 'refused', reason: 'request_failed' }));
     });
 
     it('with no pulls left the knob is disabled and no 0 is shown', async () => {
@@ -167,7 +169,7 @@ describe('GachaPage', () => {
         expect(screen.getByRole('button', { name: '★をはずす' })).toHaveAttribute('aria-pressed', 'true');
         await act(async () => { pending.resolve(false); });
         expect(screen.getByRole('button', { name: '★をつける' })).toHaveAttribute('aria-pressed', 'false');
-        expect(gachaLogs()).toContainEqual({ phase: 'favorite', outcome: 'on', reason: 'request_failed', message_id: 123 });
+        await waitFor(() => expect(gachaLogs()).toContainEqual({ phase: 'favorite', outcome: 'on', reason: 'request_failed', message_id: 123 }));
     });
 
     it('★ that saves stays lit across reopening the card and logs the outcome', async () => {
