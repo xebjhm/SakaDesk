@@ -1089,7 +1089,7 @@
       "thisYear": "At this time on {{date}}, {{name}} wrote"
     },
     "thenNow": {
-      "toggle": "Set beside this year",
+      "toggle": "Set beside another year",
       "back": "Back to the usual view",
       "modeDay": "That day and today",
       "modeFirstWeek": "First week and now",

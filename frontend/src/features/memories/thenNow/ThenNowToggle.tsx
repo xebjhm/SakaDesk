@@ -14,7 +14,7 @@ interface ThenNowToggleProps {
 
 /**
  * The ⇆ あの日と今日 toggle a host puts in its header (On This Day's day view, the memoir
- * timeline's month): 「⇆ 今年とならべる」, and 「もとの表示へ」 while the comparison is shown. A
+ * timeline's month): 「⇆ ほかの年とならべる」, and 「もとの表示へ」 while the comparison is shown. A
  * `Pill` whose pressed state is the current state. Logs `memories_toggle` `then_now`.
  */
 export const ThenNowToggle: React.FC<ThenNowToggleProps> = ({ on, onChange, available }) => {

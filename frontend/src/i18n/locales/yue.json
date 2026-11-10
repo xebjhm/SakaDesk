@@ -1064,7 +1064,7 @@
       "thisYear": "{{date}}嘅呢個時刻，{{name}}講"
     },
     "thenNow": {
-      "toggle": "同今年並排",
+      "toggle": "同其他年份並排",
       "back": "返去原本嘅畫面",
       "modeDay": "嗰一日同今日",
       "modeFirstWeek": "初見同而家",

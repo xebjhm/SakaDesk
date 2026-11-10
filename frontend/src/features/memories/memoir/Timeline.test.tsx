@@ -173,7 +173,7 @@ describe('Timeline あの日と今日', () => {
         renderTimeline();
         const header = (await screen.findByRole('heading', { name: '2024年12月' })).closest('header') as HTMLElement;
         await screen.findByText('37 件');
-        await userEvent.click(within(header).getByRole('button', { name: '今年とならべる' }));
+        await userEvent.click(within(header).getByRole('button', { name: 'ほかの年とならべる' }));
         expect(await screen.findAllByTestId('then-now-side')).toHaveLength(2);
         expect(screen.queryByTestId('timeline-month-body')).toBeNull();
         // the top message's JST date (16:00Z on 12-08 is 01:00 JST on 12-09)
@@ -191,7 +191,7 @@ describe('Timeline あの日と今日', () => {
         }));
         renderTimeline();
         await screen.findByText('37 件');
-        await userEvent.click(screen.getByRole('button', { name: '今年とならべる' }));
+        await userEvent.click(screen.getByRole('button', { name: 'ほかの年とならべる' }));
         await screen.findAllByTestId('then-now-side');
         expect(vi.mocked(fetchThenNowDay).mock.calls[0]?.[1]).toEqual({ date: '2024-12-01', member: MEMBER_PATH });
     });
@@ -201,9 +201,24 @@ describe('Timeline あの日と今日', () => {
         vi.setSystemTime(new Date('2024-12-20T03:00:00Z'));
         renderTimeline();
         await screen.findByText('37 件');
-        await userEvent.click(screen.getByRole('button', { name: '今年とならべる' }));
+        await userEvent.click(screen.getByRole('button', { name: 'ほかの年とならべる' }));
         expect(await screen.findByRole('button', { name: '初見と今' })).toHaveAttribute('aria-pressed', 'true');
         expect(screen.queryByRole('button', { name: 'あの日と今日' })).toBeNull();
         expect(vi.mocked(fetchThenNowDay)).not.toHaveBeenCalled();
+    });
+
+    it('coming back to the month the comparison was opened on starts untoggled', async () => {
+        renderTimeline();
+        await screen.findByText('37 件');
+        await userEvent.click(screen.getByRole('button', { name: 'ほかの年とならべる' }));
+        await screen.findAllByTestId('then-now-side');
+        const rail = screen.getByRole('slider');
+        fireEvent.keyDown(rail, { key: 'ArrowLeft' });
+        expect(await screen.findByRole('heading', { name: '2024年11月' })).toBeInTheDocument();
+        fireEvent.keyDown(rail, { key: 'ArrowRight' });
+        expect(await screen.findByRole('heading', { name: '2024年12月' })).toBeInTheDocument();
+        expect(await screen.findByTestId('timeline-month-body')).toBeInTheDocument();
+        expect(screen.queryByTestId('then-now-panel')).toBeNull();
+        expect(screen.getByRole('button', { name: 'ほかの年とならべる' })).toHaveAttribute('aria-pressed', 'false');
     });
 });

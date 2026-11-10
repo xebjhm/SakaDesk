@@ -1064,7 +1064,7 @@
       "thisYear": "{{date}}のこの時刻、{{name}}は"
     },
     "thenNow": {
-      "toggle": "今年とならべる",
+      "toggle": "ほかの年とならべる",
       "back": "もとの表示へ",
       "modeDay": "あの日と今日",
       "modeFirstWeek": "初見と今",

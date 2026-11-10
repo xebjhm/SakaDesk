@@ -1064,7 +1064,7 @@
       "thisYear": "{{date}}的這個時刻，{{name}}說"
     },
     "thenNow": {
-      "toggle": "和今年並排",
+      "toggle": "和其他年份並排",
       "back": "回到原本的畫面",
       "modeDay": "那一天與今天",
       "modeFirstWeek": "初見與現在",

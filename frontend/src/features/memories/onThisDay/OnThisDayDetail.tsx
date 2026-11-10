@@ -32,13 +32,16 @@ const ROW = 'flex w-full items-center gap-3 rounded-md px-3 py-2 text-left';
 export const OnThisDayDetail: React.FC<OnThisDayDetailProps> = ({ service, monthDay, year, years, onSelectYear }) => {
     const { t } = useTranslation();
     const newestFirst = [...years].reverse();
-    // The year the comparison was opened on: another year reads as off (the toggle resets).
-    const [thenNowYear, setThenNowYear] = useState<number | null>(null);
-    const thenNow = thenNowYear === year;
+    // Any change of year resets the comparison (adjusted during render, so the new year never
+    // flashes the panel); coming back to a year starts untoggled too.
+    const [thenNow, setThenNow] = useState(false);
+    const [shownYear, setShownYear] = useState(year);
+    if (shownYear !== year) {
+        setShownYear(year);
+        setThenNow(false);
+    }
     const comparable = years.some((y) => y.has_messages && y.year > year);
-    const toggle = (
-        <ThenNowToggle on={thenNow} available={comparable} onChange={(on) => setThenNowYear(on ? year : null)} />
-    );
+    const toggle = <ThenNowToggle on={thenNow} available={comparable} onChange={setThenNow} />;
     const selectedRef = useRef<HTMLButtonElement>(null);
     // Entering from the strip unmounts the clicked column and drops focus to the body: put it on
     // the selected year so ← / → work at once (unless focus is already somewhere on purpose).

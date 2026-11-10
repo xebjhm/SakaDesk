@@ -47,7 +47,7 @@ function renderDetail(years: OnThisDayPayload['years'], selected: number) {
     return { onSelectYear, rerender: (y: number) => utils.rerender(ui(y)) };
 }
 
-const TOGGLE = '今年とならべる';
+const TOGGLE = 'ほかの年とならべる';
 
 describe('OnThisDayDetail あの日と今日', () => {
     it('offers the ⇆ toggle in the day header when another year with messages exists', async () => {
@@ -82,5 +82,23 @@ describe('OnThisDayDetail あの日と今日', () => {
         rerender(2021);
         expect(await screen.findByTestId('day-view')).toBeInTheDocument();
         await waitFor(() => expect(vi.mocked(fetchDay).mock.lastCall?.[1]).toEqual(expect.objectContaining({ date: '2021-09-14' })));
+    });
+
+    it('coming back to the year the comparison was opened on starts untoggled', async () => {
+        const { rerender } = renderDetail([year(2021, true), ...TWO_YEARS], 2022);
+        await userEvent.click(await screen.findByRole('button', { name: TOGGLE }));
+        await screen.findAllByTestId('then-now-side');
+        rerender(2021);
+        await screen.findByTestId('day-view');
+        rerender(2022);
+        expect(await screen.findByTestId('day-view')).toBeInTheDocument();
+        expect(screen.queryByTestId('then-now-panel')).toBeNull();
+        expect(screen.getByRole('button', { name: TOGGLE })).toHaveAttribute('aria-pressed', 'false');
+    });
+
+    it('has no toggle on the newest year even with several years of messages', async () => {
+        renderDetail(TWO_YEARS, 2024);
+        expect(await screen.findByTestId('day-view')).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: TOGGLE })).toBeNull();
     });
 });

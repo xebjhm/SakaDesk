@@ -111,7 +111,7 @@ describe('memories fun strings', () => {
             'memories.home.countGacha': '今日はあと {{count, number}} 回',
             'memories.home.countDays': '{{count, number}} 日分',
             'memories.home.gachaTomorrow': 'また明日',
-            'memories.thenNow.toggle': '今年とならべる',
+            'memories.thenNow.toggle': 'ほかの年とならべる',
             'memories.thenNow.back': 'もとの表示へ',
             'memories.thenNow.modeDay': 'あの日と今日',
             'memories.thenNow.modeFirstWeek': '初見と今',

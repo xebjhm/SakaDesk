@@ -262,8 +262,14 @@ export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name })
     const month = list && index >= 0 ? list[index].month : undefined;
 
     const [fetchMonth, setFetchMonth] = useState<string | undefined>(undefined);
-    // The month the comparison was opened on: another month reads as off.
-    const [thenNowMonth, setThenNowMonth] = useState<string | null>(null);
+    // Any change of month resets the comparison (adjusted during render); coming back to a month
+    // starts untoggled too.
+    const [thenNow, setThenNow] = useState(false);
+    const [shownMonth, setShownMonth] = useState(month);
+    if (shownMonth !== month) {
+        setShownMonth(month);
+        setThenNow(false);
+    }
     useEffect(() => {
         if (month === fetchMonth) return undefined;
         if (month === undefined || fetchMonth === undefined) {
@@ -295,14 +301,8 @@ export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name })
                         name={name}
                         month={month}
                         fetchMonth={fetchMonth}
-                        thenNow={thenNowMonth === month}
-                        headerSlot={(
-                            <ThenNowToggle
-                                on={thenNowMonth === month}
-                                available
-                                onChange={(on) => setThenNowMonth(on ? month : null)}
-                            />
-                        )}
+                        thenNow={thenNow}
+                        headerSlot={<ThenNowToggle on={thenNow} available onChange={setThenNow} />}
                     />
                 )
                 : <LoadState status="loading" onRetry={months.retry} />}
