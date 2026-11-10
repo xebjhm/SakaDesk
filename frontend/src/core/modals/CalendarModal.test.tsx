@@ -500,4 +500,22 @@ describe('CalendarModal component', () => {
       expect(dayButtons().filter(b => !(b as HTMLButtonElement).disabled).map(b => b.getAttribute('data-day'))).toEqual(['15', '20'])
     })
   })
+
+  describe('Any-day dates mode', () => {
+    it('lets every day be picked without showing a count', async () => {
+      const onSelectDate = vi.fn()
+      render(<CalendarModal isOpen onClose={vi.fn()} dates={[]} selectAnyDay onSelectDate={onSelectDate} />)
+      const day = document.querySelector<HTMLButtonElement>('button[data-day="3"]:not([data-outside])')!
+      expect(day).not.toBeDisabled()
+      expect(day).not.toHaveAttribute('aria-describedby')
+      await userEvent.click(day)
+      const picked = onSelectDate.mock.calls[0][0] as Date
+      expect([picked.getFullYear(), picked.getMonth(), picked.getDate()]).toEqual([YEAR, 5, 3])
+    })
+
+    it('keeps days without dates disabled by default', () => {
+      render(<CalendarModal isOpen onClose={vi.fn()} dates={[]} onSelectDate={vi.fn()} />)
+      expect(document.querySelector('button[data-day="3"]:not([data-outside])')).toBeDisabled()
+    })
+  })
 })

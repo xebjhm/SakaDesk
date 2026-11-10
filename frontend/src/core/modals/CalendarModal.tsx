@@ -32,6 +32,7 @@ export interface DateCount {
  * 1. API mode: Pass `conversationPath` to fetch dates from the server
  * 2. Messages mode: Pass `messages` array to compute dates locally (for media gallery)
  * 3. Dates mode: Pass `dates` array of pre-computed DateCount objects (for blog photo gallery)
+ *    With `selectAnyDay`, every day is selectable (a free date picker, e.g. On This Day)
  *
  * The onSelectDate callback receives either:
  * - A date string "YYYY-MM-DD" (API mode)
@@ -63,6 +64,8 @@ interface CalendarModalPropsDates extends CalendarModalPropsBase {
     dates: DateCount[];
     /** Callback when a date is selected (receives Date object) */
     onSelectDate: (date: Date) => void;
+    /** Every day is selectable, not only the dated ones (a free date picker); counts still come from `dates`. */
+    selectAnyDay?: boolean;
     conversationPath?: never;
     messages?: never;
 }
@@ -128,6 +131,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     const conversationPath = !isMessagesMode && !isDatesMode ? (props as CalendarModalPropsAPI).conversationPath : undefined;
     const messages = isMessagesMode ? (props as CalendarModalPropsMessages).messages : undefined;
     const directDates = isDatesMode ? (props as CalendarModalPropsDates).dates : undefined;
+    const anyDay = isDatesMode && (props as CalendarModalPropsDates).selectAnyDay === true;
 
     // Compute dates from messages (Messages mode)
     const messageDates = useMemo(() => {
@@ -333,7 +337,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface';
 
     const handleDateClick = (dateStr: string, date: Date) => {
-        if (datesWithMessages.has(dateStr)) {
+        if (anyDay || datesWithMessages.has(dateStr)) {
             if (isMessagesMode || isDatesMode) {
                 (props as CalendarModalPropsMessages | CalendarModalPropsDates).onSelectDate(date);
             } else {
@@ -472,13 +476,14 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                     <div className="grid grid-cols-7 gap-1">
                         {calendarDays.map(({ date, isCurrentMonth, dateStr }, index) => {
                             const hasMessages = datesWithMessages.has(dateStr);
+                            const selectable = anyDay || hasMessages;
                             const today = isToday(dateStr);
                             // Out-of-month days stay uniformly muted: text-muted at 80 % is 3.3:1 on white.
                             const holiday = isCurrentMonth ? holidayName(dateStr) : null;
                             const countText = hasMessages ? t('calendar.itemCount', { count: getMessageCount(dateStr) }) : null;
                             const tone = !isCurrentMonth
                                 ? 'text-muted opacity-80'
-                                : weekendTone(date.getDay(), holiday !== null) ?? (hasMessages ? 'text-primary' : 'text-muted');
+                                : weekendTone(date.getDay(), holiday !== null) ?? (selectable ? 'text-primary' : 'text-muted');
                             const tooltipId = `${tooltipIdBase}-day-${index}`;
                             return (
                                 <button
@@ -487,13 +492,13 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                     data-day={date.getDate()}
                                     data-outside={isCurrentMonth ? undefined : ''}
                                     onClick={() => handleDateClick(dateStr, date)}
-                                    disabled={!hasMessages}
+                                    disabled={!selectable}
                                     aria-describedby={countText ? `${tooltipId}-count` : undefined}
                                     className={cn(
                                         'group/day relative flex aspect-square flex-col items-center justify-center rounded-pill text-small',
                                         'transition-colors duration-fast ease-standard',
                                         focusRing,
-                                        hasMessages && 'cursor-pointer hover:bg-accent-subtle',
+                                        selectable && 'cursor-pointer hover:bg-accent-subtle',
                                         tone,
                                         today ? 'font-semibold border-2 border-accent' : 'border-2 border-transparent',
                                     )}

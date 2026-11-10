@@ -686,6 +686,8 @@ pre-D2 panel's values; use them for developer tooling only.
   while the dates are still loading, focus stays on the title and moves into the picker once it
   renders (unless the user has moved focus elsewhere). `calendar_picker` breadcrumbs: `phase` `open` (`count` years),
   `select` (`has_target`: the month has dates) and `back` (`reason` `escape` / `button`).
+- **Free date picker:** in Dates mode, `selectAnyDay` makes every day selectable and
+  `text-primary` (On This Day's 日付をえらぶ picks any month-day); dated days keep their count.
 
 ### Menus
 
