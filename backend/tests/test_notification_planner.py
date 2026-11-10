@@ -697,3 +697,30 @@ def test_nickname_for_reads_per_service_setting() -> None:
     assert nickname_for({"user_nicknames": None}, "hinatazaka46") is None
     # A nickname containing regex replacement syntax is inserted literally.
     assert apply_nickname("%%%", r"\1\g<0>") == r"\1\g<0>"
+
+
+# ── Memories M4: shared clip + masked nickname ───────────────────────
+
+
+def test_clip_text_collapses_whitespace_then_cuts() -> None:
+    from backend.services.notification_planner import PREVIEW_MAX_CHARS, clip_text
+
+    assert clip_text("a  b\nc", 3) == "a b…"
+    assert clip_text("  a \t b  ", 3) == "a b"
+    assert clip_text("") == ""
+    assert clip_text("あ" * PREVIEW_MAX_CHARS) == "あ" * PREVIEW_MAX_CHARS
+    assert clip_text("あ" * 81) == "あ" * PREVIEW_MAX_CHARS + "…"
+    assert clip_text("🌸" * 61, 60) == "🌸" * 60 + "…"
+
+
+def test_apply_nickname_or_mask() -> None:
+    from backend.services.nickname import apply_nickname_or_mask
+
+    mask = "『＊＊＊』"
+    assert apply_nickname_or_mask("%%%、ありがとう", "みく推し", mask) == (
+        "みく推し、ありがとう"
+    )
+    assert apply_nickname_or_mask("％％％と%%%", None, mask) == f"{mask}と{mask}"
+    assert apply_nickname_or_mask("%%%", "", mask) == mask
+    assert apply_nickname_or_mask("", "ひな", mask) == ""
+    assert apply_nickname_or_mask("%%%", r"\1\g<0>", mask) == r"\1\g<0>"
