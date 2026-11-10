@@ -261,9 +261,11 @@ async def test_album_members_counts_and_order(svc, oshi_names):
     ]  # the text-only member is omitted (never a 0)
     assert rows[0]["member_id"] == "58" and rows[0]["name"]
     assert "avatar_url" in rows[0]
+    assert [r["oshi"] for r in rows] == [False, False]
     oshi_names.add((await person(svc, ROOM_B)).name_norm)
     rows = (await album.album_members(SERVICE, svc))["members"]
     assert rows[0]["member_path"] == f"{SVC_NAME}/{ROOM_B}"  # oshi first
+    assert [r["oshi"] for r in rows] == [True, False]  # the list shows her heart
 
 
 @pytest.mark.asyncio

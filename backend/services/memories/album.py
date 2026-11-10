@@ -7,8 +7,9 @@ for every person of the service (全員). ``kind`` filters the album's items:
 everywhere (it is her real chat); they only lose the cover.
 
 - :func:`album_members` -- ``{"total", "members": [{"member_path",
-  "member_id", "name", "avatar_url", "count"}]}``: pictures + videos per
-  person (promo included), oshi first, then by count descending. People with
+  "member_id", "name", "avatar_url", "count", "oshi"}]}``: pictures + videos
+  per person (promo included), oshi first (``oshi`` marks them), then by count
+  descending. People with
   none are omitted, so a "0" is never shown. ``total`` is the 全員 count.
   Cached text-free (view ``album_members``, key ``all``).
 - :func:`choose_cover` (pure) -- the month's cover and its rule, in the spec
@@ -66,7 +67,7 @@ VIEW_MEMBERS = "album_members"
 VIEW_MONTHS = "album_months"
 VIEW_MONTH = "album_month"
 # Bump on any rule or payload change (the album cache hashes have it).
-ALBUM_VERSION = 2
+ALBUM_VERSION = 3
 KINDS = frozenset({"all", "picture", "video", "favorite"})
 SCREENSHOT_CHECKS = 3
 BURST_MIN = 3
@@ -199,6 +200,7 @@ async def album_members(service: str, sdir: Path) -> dict:
                 "name": s.name,
                 "avatar_url": avatars[people.person_key(s)].current,
                 "count": n,
+                "oshi": s.name_norm in oshi,
             }
             for s, n in counted
         ]
