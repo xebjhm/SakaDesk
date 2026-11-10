@@ -386,5 +386,23 @@ export default {
                 },
             });
         },
+        // The recap opening's star grid (recap/slides/OpeningSlides.tsx, docs/design/DESIGN_SYSTEM.md):
+        // a size container of --star-cols x --star-rows equal cells (capped at 5.5rem a row), whose star
+        // and caption sizes (--star-size, --star-label) are container units set by the slide, so every
+        // member fits the stage at any roster size.
+        ({ addUtilities }) => {
+            addUtilities({
+                '.recap-star-grid': {
+                    containerType: 'size',
+                    gridTemplateColumns: 'repeat(var(--star-cols), minmax(0, 1fr))',
+                    gridTemplateRows: 'repeat(var(--star-rows), minmax(0, 1fr))',
+                    maxHeight: 'calc(var(--star-rows) * 5.5rem)',
+                },
+                '.recap-star-size': { width: 'var(--star-size)', height: 'var(--star-size)' },
+                '.recap-star-label': { fontSize: 'var(--star-label)', lineHeight: '1.2' },
+                // An inline icon one text-height tall (follows the surrounding font size).
+                '.size-em': { width: '1em', height: '1em' },
+            });
+        },
     ],
 }

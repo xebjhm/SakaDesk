@@ -89,12 +89,16 @@ describe('Opening', () => {
         expect(cols * rows).toBeGreaterThanOrEqual(60);
         // The grid is a size container split into cols x rows cells; the star is sized in
         // container units from the row count, so every row fits the stage.
-        expect(grid.className).toContain('[container-type:size]');
-        expect(grid.className).toContain('[grid-template-rows:repeat(var(--star-rows),minmax(0,1fr))]');
+        // (`recap-star-grid` / `recap-star-size` are design-system utilities in tailwind.config.js.)
+        expect(grid).toHaveClass('recap-star-grid');
         expect(grid.style.getPropertyValue('--star-rows')).toBe(String(rows));
         expect(grid.style.getPropertyValue('--star-size')).toContain(`${(STAR_SHARE * 100) / rows}cqh`);
         for (const star of stars) {
-            expect(star.querySelector('svg')?.getAttribute('class')).toContain('h-[var(--star-size)]');
+            expect(star.querySelector('svg')).toHaveClass('recap-star-size');
+        }
+        // No arbitrary Tailwind values on the opening (DESIGN_SYSTEM.md): every class is a named utility.
+        for (const el of [grid, ...Array.from(grid.querySelectorAll('*'))]) {
+            expect(el.getAttribute('class') ?? '', el.tagName).not.toContain('[');
         }
         expect(new Set(stars.map((s) => s.querySelector('svg')?.getAttribute('class'))).size).toBe(1);
     });
@@ -183,5 +187,24 @@ describe('starGrid', () => {
 
     it('a star and its two caption lines fit inside one cell', () => {
         expect(STAR_SHARE + 2 * STAR_LABEL_SHARE * STAR_LINE_HEIGHT).toBeLessThanOrEqual(1);
+    });
+});
+
+describe('opening star utilities (tailwind.config.js)', () => {
+    it('size the grid, the star and the caption from the slide\'s container-unit variables', async () => {
+        const config = (await import('../../../../tailwind.config.js')).default as {
+            plugins: ((api: { addUtilities: (u: Record<string, Record<string, string>>) => void }) => void)[];
+        };
+        const utilities: Record<string, Record<string, string>> = {};
+        for (const plugin of config.plugins) plugin({ addUtilities: (u) => Object.assign(utilities, u) });
+        expect(utilities['.recap-star-grid']).toEqual({
+            containerType: 'size',
+            gridTemplateColumns: 'repeat(var(--star-cols), minmax(0, 1fr))',
+            gridTemplateRows: 'repeat(var(--star-rows), minmax(0, 1fr))',
+            maxHeight: 'calc(var(--star-rows) * 5.5rem)',
+        });
+        expect(utilities['.recap-star-size']).toEqual({ width: 'var(--star-size)', height: 'var(--star-size)' });
+        expect(utilities['.recap-star-label']).toEqual({ fontSize: 'var(--star-label)', lineHeight: String(STAR_LINE_HEIGHT) });
+        expect(utilities['.size-em']).toEqual({ width: '1em', height: '1em' });
     });
 });

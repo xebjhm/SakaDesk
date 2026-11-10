@@ -34,13 +34,9 @@ export const OpeningStars: React.FC<SlideProps<RecapOverview>> = ({ data, recap,
                 data-cols={cols}
                 data-rows={rows}
                 style={gridVars}
-                className={cn(
-                    // Takes the free height (capped so a few stars stay compact); size containment
-                    // means the content never stretches it past the stage.
-                    'grid min-h-0 w-full flex-1 gap-x-2 [container-type:size] max-h-[calc(var(--star-rows)*5.5rem)]',
-                    '[grid-template-columns:repeat(var(--star-cols),minmax(0,1fr))]',
-                    '[grid-template-rows:repeat(var(--star-rows),minmax(0,1fr))]',
-                )}
+                // Takes the free height (`recap-star-grid` caps it so a few stars stay compact); size
+                // containment means the content never stretches it past the stage.
+                className="recap-star-grid grid min-h-0 w-full flex-1 gap-x-2"
             >
                 {stars.map((m, i) => {
                     const r = heldReveal(reducedMotion, paused, Math.min(i, STAGGER_CAP) * STAGGER_MS);
@@ -53,15 +49,15 @@ export const OpeningStars: React.FC<SlideProps<RecapOverview>> = ({ data, recap,
                             style={r.style}
                         >
                             {/* Equal size for everyone: a star never grows with message volume. */}
-                            <Sparkle aria-hidden="true" className="h-[var(--star-size)] w-[var(--star-size)] shrink-0 fill-current text-primary" />
-                            <span className="flex max-w-full items-center gap-1 [font-size:var(--star-label)] [line-height:1.2]">
+                            <Sparkle aria-hidden="true" className="recap-star-size shrink-0 fill-current text-primary" />
+                            <span className="recap-star-label flex max-w-full items-center gap-1">
                                 <span lang="ja" className="truncate text-secondary">{m.name}</span>
                                 {m.oshi && (
-                                    <Heart role="img" aria-label={t('recap.entry.oshi')} className="h-[1em] w-[1em] shrink-0 fill-semantic-oshi text-semantic-oshi-solid" />
+                                    <Heart role="img" aria-label={t('recap.entry.oshi')} className="size-em shrink-0 fill-semantic-oshi text-semantic-oshi-solid" />
                                 )}
                             </span>
                             {firstId === m.member_id && (
-                                <span className="max-w-full truncate text-muted [font-size:var(--star-label)] [line-height:1.2]">{t('recap.opening.firstChip')}</span>
+                                <span className="recap-star-label max-w-full truncate text-muted">{t('recap.opening.firstChip')}</span>
                             )}
                         </li>
                     );
