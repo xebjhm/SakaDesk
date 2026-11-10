@@ -37,6 +37,9 @@
 
 ## Global Constraints
 
+- **User decisions (2026-11-11):** cache budget ~1.4 GB total as planned (thumbs 1 GiB + posters 256 MiB) is approved. Album keeps its own layout, tiles shared (D-1). On-demand fallback stays (D-3).
+- **Loading feedback is mandatory (user, 2026-11-11):** a tile waiting for its image must clearly look *loading*, never blank or frozen: the dominant-colour/blur placeholder carries a subtle shimmer/pulse (design-system motion token; static under `prefers-reduced-motion`, where a small spinner or progress indicator is used instead), and it fades into the image on load. A tile that failed shows a quiet retry state, never an empty box. Grid-level loading (first page, more pages, background pre-generation in progress) shows a visible indicator too. Every gallery task (P5–P8) must test the loading, loaded and failed states.
+
 - **Prerequisites:**
   - `feat/memories` at or after `cc4c65ee`.
   - Another agent is fixing D4 (album first open). Before Task M1, read `.superpowers/sdd/acceptance-fix-report.md` (D4 and D18 sections) and the commits it names. Build on those changes and never revert them.
