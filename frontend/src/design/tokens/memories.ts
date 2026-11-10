@@ -1,12 +1,19 @@
 /**
  * The Memories keepsake surfaces (DESIGN_SYSTEM.md "Memories keepsake surfaces"): the paper,
- * cork, tape and foil a fan's keepsakes sit on, and the sepia that ages a photo by its year.
- * Neutral materials only; nothing here follows the group accent.
+ * cork, tape and foil a fan's keepsakes sit on, and the sepia that ages a photo by its year;
+ * and the fun wave's semantic surfaces (gacha rarity, the radio night and its on-air lamp, the
+ * 24h sky, the capsule note). Nothing here follows the group accent, and none of it reuses the
+ * oshi pink, the favourite star yellow or danger red.
  */
-import { aurora } from './brand';
+import { aurora, brandInk } from './brand';
 import { color } from './color';
 
 const [sky, lavender, pink, peach] = aurora.stops;
+
+/** The SR gold: a warm antique gold, well apart from the favourite star's yellow-400. */
+const GOLD = '#d4a24c';
+/** The radio's deepest night (top of the night gradient). */
+const MIDNIGHT = '#141b33';
 
 export const memories = {
     /**
@@ -30,4 +37,23 @@ export const memories = {
     },
     /** The dashed outline of an unearned card (a silhouette): the neutral `border-strong`. */
     silhouette: color.border.strong,
+    /**
+     * Gacha rarity (spec 12): `n` the neutral `border-strong`, `r` a dusty rose apart from the oshi
+     * pink, `sr` the foil's gold (a gold sheen through the aurora peach stop).
+     */
+    rarity: {
+        n: color.border.strong,
+        r: '#cc8a8f',
+        sr: `linear-gradient(135deg, ${GOLD} 0%, ${peach} 50%, ${GOLD} 100%)`,
+    },
+    /** The radio's night surface (spec 11): deep navy down into the brand ink, lit by the aurora lavender. */
+    night: `linear-gradient(180deg, ${MIDNIGHT} 0%, ${brandInk[900]} 65%, color-mix(in srgb, ${lavender} 22%, ${brandInk[900]}) 100%)`,
+    /** Text on the night surface: the aurora sky stop. */
+    nightInk: sky,
+    /** The ON AIR lamp: a warm red-orange indicator, not an error (apart from danger red). */
+    onAir: '#e8573a',
+    /** 彼女の24時間's sky, top to bottom: dawn (peach), day (sky), dusk, night. */
+    sky: `linear-gradient(180deg, ${peach} 0%, ${sky} 35%, #f2b98f 70%, ${brandInk[800]} 100%)`,
+    /** A capsule sticky note: a warm paper yellow, apart from the favourite star and the letter paper. */
+    note: '#fbefc4',
 } as const;

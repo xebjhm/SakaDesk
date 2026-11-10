@@ -59,6 +59,10 @@ export default {
                 // Memories keepsake surfaces (tokens/memories.ts): the cork board and the special-card foil.
                 'memories-cork': 'var(--ds-mem-cork)',
                 'memories-foil': 'var(--ds-mem-foil)',
+                // Memories fun wave (semantic): the SR rarity sheen, the radio night and the 24h sky.
+                'memories-rarity-sr': 'var(--ds-mem-rarity-sr)',
+                'memories-night': 'var(--ds-mem-night)',
+                'memories-sky': 'var(--ds-mem-sky)',
                 'accent-lens': 'radial-gradient(ellipse 100% 30% at 50% var(--ds-rail-lens-y), color-mix(in srgb, var(--ds-accent-strong) 8%, transparent) 0%, transparent 70%)',
                 // Theme-aware gradients
                 'theme-gradient': 'linear-gradient(to right, var(--color-gradient-from), var(--color-gradient-to))',
@@ -138,8 +142,16 @@ export default {
                 // Memories keepsake surfaces: letter / polaroid paper and translucent washi tape.
                 'memories-paper': 'var(--ds-mem-paper)',
                 'memories-washi': 'var(--ds-mem-washi)',
+                // Memories fun wave (semantic): N / R rarity, the on-air lamp and the capsule note.
+                'memories-rarity-n': 'var(--ds-mem-rarity-n)',
+                'memories-rarity-r': 'var(--ds-mem-rarity-r)',
+                'memories-onair': 'var(--ds-mem-onair)',
+                'memories-note': 'var(--ds-mem-note)',
             },
             textColor: {
+                // Memories fun wave (semantic): ink on the radio night, and the on-air lamp's glyph.
+                'memories-night-ink': 'var(--ds-mem-night-ink)',
+                'memories-onair': 'var(--ds-mem-onair)',
                 accent: 'var(--ds-accent)',
                 'accent-strong': 'var(--ds-accent-strong)',
                 'accent-tonal': 'var(--ds-accent-tonal-text)',

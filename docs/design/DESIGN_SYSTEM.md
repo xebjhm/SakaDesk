@@ -799,6 +799,13 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
 | `shadow-memories-polaroid` | `--ds-mem-shadow-polaroid` | A polaroid lying on a surface. |
 | `border-memories-silhouette` | `--ds-mem-silhouette` | The dashed outline of an unearned card (`border-dashed`), the neutral `border-strong` value. |
 | `sepia-memories-1/2/3` | `--ds-mem-sepia-1/2/3` | A photo aged by its year (see below). |
+| `bg-memories-rarity-n` | `--ds-mem-rarity-n` | Gacha N rarity: the neutral `border-strong` value. |
+| `bg-memories-rarity-r` | `--ds-mem-rarity-r` | Gacha R rarity: a dusty rose, kept apart from the oshi pink. |
+| `bg-memories-rarity-sr` | `--ds-mem-rarity-sr` | Gacha SR rarity: the foil's gold, a gold sheen through the aurora peach stop (not the star yellow). |
+| `bg-memories-night` / `text-memories-night-ink` | `--ds-mem-night` / `--ds-mem-night-ink` | The voice radio's night surface (deep navy into the brand ink, lit by the aurora lavender) and the text on it (the aurora sky stop). |
+| `bg-memories-onair` / `text-memories-onair` | `--ds-mem-onair` | The radio's ON AIR lamp: a warm red-orange, apart from danger red. |
+| `bg-memories-sky` | `--ds-mem-sky` | 彼女の24時間's vertical sky: dawn, day, dusk, night. |
+| `bg-memories-note` | `--ds-mem-note` | A 時光膠囊 sticky note: a warm paper yellow, apart from the favourite star. |
 
 - **Sepia by age.** `sepiaClass(year)` (`features/memories/shared/sepia.ts`) gives a keepsake
   from this year no filter, last year `sepia-memories-1`, two years ago `sepia-memories-2` and
@@ -809,6 +816,11 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   Tailwind sees them; never build a `sepia-memories-${n}` name at runtime.
 - **Foil only for special cards.** `bg-memories-foil` marks a binder card the catalogue flags as
   foil (`foil: true`) and nothing else: not hover states, not headings, not the hub.
+- **The fun-wave surfaces are semantic.** Rarity, night, on-air, sky and note have fixed meanings
+  and never follow the group accent; none of them reuses the oshi pink, the favourite star yellow
+  or danger red. Group colour stays for identity, the current state and one primary action. The
+  on-air lamp is an indicator, not an error: never use it for failures (that is
+  `semantic-danger`). Rarity colours mark a gacha card's tier only.
 - **Paper, cork and tape are materials, not colours.** Use them for the surfaces they name; text
   on them uses the ordinary text roles.
 - **Album colour ribbon and month tint (data-driven exception).** Like the member penlight

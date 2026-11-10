@@ -69,6 +69,13 @@ export function staticTokenVars(): Record<string, string> {
     vars['--ds-mem-foil'] = memories.foil;
     vars['--ds-mem-shadow-polaroid'] = memories.shadow.polaroid;
     vars['--ds-mem-silhouette'] = memories.silhouette;
+    // Memories fun-wave semantic surfaces (tokens/memories.ts).
+    for (const [tier, value] of Object.entries(memories.rarity)) vars[`--ds-mem-rarity-${tier}`] = value;
+    vars['--ds-mem-night'] = memories.night;
+    vars['--ds-mem-night-ink'] = memories.nightInk;
+    vars['--ds-mem-onair'] = memories.onAir;
+    vars['--ds-mem-sky'] = memories.sky;
+    vars['--ds-mem-note'] = memories.note;
     return vars;
 }
 
