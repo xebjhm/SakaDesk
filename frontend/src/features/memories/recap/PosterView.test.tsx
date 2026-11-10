@@ -127,8 +127,8 @@ describe('PosterView', () => {
         expect(renderToCanvas).toHaveBeenCalledWith(screen.getByTestId('recap-poster'));
         expect(canvasToPng).toHaveBeenCalled();
         expect(vi.mocked(savePng).mock.calls[0][1]).toBe('sakadesk-recap-2026-58.png');
-        // The handoff only opens the save dialog; the copy never claims the file was saved.
-        expect(await screen.findByRole('status')).toHaveTextContent('保存ダイアログを開いています…');
+        // The handoff only starts the save; the copy never claims the file was saved.
+        expect(await screen.findByRole('status')).toHaveTextContent('画像の保存を始めました。');
         expect(screen.getByRole('status')).not.toHaveTextContent('保存しました');
         expect(posterLogs()).toContainEqual(expect.objectContaining({ phase: 'save', outcome: 'handed_off', member_id: '58' }));
         expect(screen.getByRole('button', { name: '画像を保存' })).not.toBeDisabled();

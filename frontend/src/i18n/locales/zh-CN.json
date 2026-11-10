@@ -902,7 +902,7 @@
       "dedicated": "献给{{nickname}}",
       "since": "自{{date}}开始订阅",
       "save": "保存图片",
-      "handedOff": "正在打开保存对话框…",
+      "handedOff": "已开始保存图片。",
       "saveFailed": "无法保存图片。",
       "replay": "再看一次",
       "open": "查看海报"

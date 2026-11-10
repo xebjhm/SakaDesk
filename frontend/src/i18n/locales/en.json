@@ -924,7 +924,7 @@
       "dedicated": "Dedicated to {{nickname}}",
       "since": "Subscribed since {{date}}",
       "save": "Save image",
-      "handedOff": "Opening the save dialog…",
+      "handedOff": "Image save started.",
       "saveFailed": "Could not save the image.",
       "replay": "Watch again",
       "open": "View poster"

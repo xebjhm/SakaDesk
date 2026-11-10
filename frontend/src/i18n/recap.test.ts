@@ -158,13 +158,13 @@ describe('recap strings', () => {
         }
     });
 
-    it('the poster save copy only says the dialog is opening, never that the file was saved', () => {
+    it('the poster save copy says the save started, never that it finished or that a dialog shows', () => {
         const SAVED = /保存しました|saved|已儲存|已保存|已經儲存|儲存咗/i;
         const DIALOG = /ダイアログ|dialog|對話框|对话框/i;
         for (const [code, data] of Object.entries(locales)) {
             const copy = String(lookup(data, 'recap.poster.handedOff'));
             expect(copy, code).not.toMatch(SAVED);
-            expect(copy, code).toMatch(DIALOG);
+            expect(copy, code).not.toMatch(DIALOG);
         }
     });
 });
