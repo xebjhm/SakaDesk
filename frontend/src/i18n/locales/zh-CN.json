@@ -924,7 +924,8 @@
     "names": {
       "title": "被叫名字的瞬间",
       "allYears": "全部",
-      "back": "回到卡册"
+      "back": "回到卡册",
+      "empty": "被叫名字的瞬间，会在这里慢慢积累"
     },
     "timeline": {
       "count": "{{count}} 条",
@@ -934,7 +935,8 @@
       "milestones": "这个月的事",
       "rail": "选择月份",
       "older": "前一个月",
-      "newer": "下一个月"
+      "newer": "下一个月",
+      "empty": "每个月的回忆，会在这里慢慢积累"
     }
   },
   "recap": {

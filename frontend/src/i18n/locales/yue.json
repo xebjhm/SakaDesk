@@ -924,7 +924,8 @@
     "names": {
       "title": "被叫名嘅瞬間",
       "allYears": "全部",
-      "back": "返去卡冊"
+      "back": "返去卡冊",
+      "empty": "被叫名嘅瞬間，會喺度慢慢儲起"
     },
     "timeline": {
       "count": "{{count}} 則",
@@ -934,7 +935,8 @@
       "milestones": "呢個月發生嘅事",
       "rail": "揀月份",
       "older": "上個月",
-      "newer": "下個月"
+      "newer": "下個月",
+      "empty": "每個月嘅回憶，會喺度慢慢儲起"
     }
   },
   "recap": {
