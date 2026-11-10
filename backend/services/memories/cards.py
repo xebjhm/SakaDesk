@@ -3,7 +3,8 @@
 :func:`evaluate` turns one person's facts (``facts.get_person_facts``) and a
 few side inputs into the binder's cards, in :data:`SHELVES` order and then
 catalogue order. The binder service (``binder.py``) renders them; the M4
-notifications wave diffs :func:`earned_keys` between two evaluations.
+notifications wave diffs :func:`earned_keys` between two evaluations
+(card keys plus ``<key>@<year>`` for every year of a yearly stack).
 
 Vocabulary used by the rules:
 
@@ -143,8 +144,18 @@ def anniversary_date(start: date, years: int) -> date:
 
 
 def earned_keys(cards: Iterable[Card]) -> frozenset[str]:
-    """Keys of the earned cards (M4: newly earned = now - previous)."""
-    return frozenset(card.key for card in cards if card.earned)
+    """Keys of the earned cards plus one ``<key>@<year>`` per stacked year.
+
+    M4: newly earned = now - previous. A yearly stack (``special.*``) is
+    earned once, so its card key alone cannot show a newly gained year; the
+    per-year keys can, e.g. ``special.birthday`` and ``special.birthday@2026``.
+    """
+    out: set[str] = set()
+    for card in cards:
+        if card.earned:
+            out.add(card.key)
+            out.update(f"{card.key}@{y.year}" for y in card.years)
+    return frozenset(out)
 
 
 def progress_summary(cards: Iterable[Card]) -> tuple[int, int]:

@@ -151,8 +151,20 @@ def test_progress_summary_excludes_hidden_and_earned_keys_diff():
     added = c.earned_keys(cards_after) - c.earned_keys(cards_before)
     assert added == {"count.messages.1000"}
     earned, total = c.progress_summary(cards_after)
-    assert earned == len(c.earned_keys(cards_after))
+    assert earned == len({k.split("@")[0] for k in c.earned_keys(cards_after)})
     assert total == len(cards_after)
+
+
+def test_earned_keys_emit_one_key_per_stacked_year():
+    before = [fact(1, "2025-05-01 10:00")]
+    after = before + [fact(2, "2026-05-01 10:01")]
+    k_before = c.earned_keys(c.evaluate(inputs(before, birthday="05-01")))
+    k_after = c.earned_keys(c.evaluate(inputs(after, birthday="05-01")))
+    assert {"special.birthday", "special.birthday@2025"} <= k_before
+    assert k_after - k_before == {
+        "special.birthday@2026",
+        "special.newyear@2026",
+    }
 
 
 # --- first ----------------------------------------------------------------------------------
