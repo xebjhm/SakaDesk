@@ -14,8 +14,11 @@ import { groupTokenVars } from './cssVars';
 import { contrastRatio } from './contrast';
 import { GROUP_IDS, SCALE_STEPS, brandInk, color, groupRoles, groupTokens, radius, shadow, typeScale, type GroupId, type RadiusStep, type ShadowStep, type TypeStep } from './tokens';
 import {
-    Atmosphere, Avatar, Badge, Button, Canvas, Card, CelebrationToast, EmptyState, MilestoneCard, DatePill, IconButton, Input, Menu, MenuItem, MenuSeparator, Modal, Pill, RailItem, Select, Sheet, Switch,
+    Atmosphere, Avatar, Badge, BusyContent, Button, Canvas, Card, CelebrationToast, EmptyState, MilestoneCard, DatePill, IconButton, Input, Menu, MenuItem, MenuSeparator, Modal, Pill,
+    ProgressBar, RailItem, Select, Sheet, Skeleton, Spinner, StatusBlock, Switch,
 } from './primitives';
+import { useLoadingStages } from './loading';
+import { motion } from './tokens/motion';
 
 // Full class names so Tailwind's scanner generates them.
 const RADIUS_CLASS: Record<RadiusStep, string> = {
@@ -70,6 +73,87 @@ const Swatch: React.FC<{ name: string; value: string }> = ({ name, value }) => {
                 </span>
             </div>
         </Card>
+    );
+};
+
+/** How long the "Play a wait" demo runs: past `verySlow`, so every stage shows. */
+const LIVE_WAIT_MS = motion.loading.verySlow + 2000;
+
+/** The loading primitives (docs/design/DESIGN_SYSTEM.md, "Loading and waiting"), plus a live 0 → 12 s wait. */
+const LoadingSection: React.FC = () => {
+    const { t } = useTranslation();
+    const [playing, setPlaying] = useState(false);
+    const [busy, setBusy] = useState(false);
+    const live = useLoadingStages(playing);
+    useEffect(() => {
+        if (!playing) return undefined;
+        const timer = setTimeout(() => setPlaying(false), LIVE_WAIT_MS);
+        return () => clearTimeout(timer);
+    }, [playing]);
+    const label = (text: string) => <span className="text-caption text-muted">{text}</span>;
+    return (
+        <Section title={t('designPage.loading')}>
+            <div className="flex flex-wrap items-center gap-6">
+                {(['sm', 'md', 'lg'] as const).map((size) => <Spinner key={size} size={size} />)}
+                <Spinner tone="muted" />
+                <span className="text-accent"><Spinner tone="current" /></span>
+                <Spinner labelVisibility="always" />
+            </div>
+            <div className="flex flex-wrap items-end gap-4">
+                <div className="flex w-40 flex-col gap-2">{label('line')}<Skeleton shape="line" className="w-full" /></div>
+                <div className="flex w-40 flex-col gap-2">{label('block')}<Skeleton shape="block" className="h-16 w-full" /></div>
+                <div className="flex flex-col gap-2">{label('circle')}<Skeleton shape="circle" className="w-12" /></div>
+                <div className="flex flex-col gap-2">{label('tile')}<Skeleton shape="tile" className="w-16" /></div>
+                <div className="flex flex-col gap-2 bg-memories-paper p-2 rounded-sm">{label('paper')}<Skeleton shape="tile" tone="paper" className="w-16" /></div>
+            </div>
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
+                {(['shown', 'slow', 'verySlow'] as const).map((stage) => (
+                    <Card key={stage} className="flex flex-col">
+                        <div className="px-3 pt-3">{label(`loading · ${stage}`)}</div>
+                        <StatusBlock
+                            kind="loading"
+                            surface="design_preview"
+                            stage={stage}
+                            onCancel={stage === 'verySlow' ? () => {} : undefined}
+                        />
+                    </Card>
+                ))}
+                <Card className="flex flex-col">
+                    <div className="px-3 pt-3">{label('empty')}</div>
+                    <StatusBlock kind="empty" surface="design_preview" icon={<Search />} title={t('designPage.sample')} />
+                </Card>
+                <Card className="flex flex-col">
+                    <div className="px-3 pt-3">{label('error')}</div>
+                    <StatusBlock kind="error" surface="design_preview" icon={<X />} onRetry={() => {}} />
+                </Card>
+                <Card className="flex flex-col">
+                    <div className="px-3 pt-3">{label('timeout')}</div>
+                    <StatusBlock kind="timeout" surface="design_preview" onRetry={() => {}} />
+                </Card>
+            </div>
+            <div className="flex max-w-md flex-col gap-3">
+                <ProgressBar value={0.4} label={t('loading.label')} valueText="40%" showLabel />
+                <ProgressBar label={t('loading.label')} />
+            </div>
+            <div className="flex flex-wrap items-start gap-4">
+                <Button size="sm" onClick={() => setBusy((b) => !b)}>{t('designPage.animate')}</Button>
+                <BusyContent busy={busy} className="w-64">
+                    <Card className="flex flex-col gap-1 p-4">
+                        <span className="text-body font-semibold text-primary">{t('designPage.sample')}</span>
+                        <span className="text-small text-secondary">{t('designPage.sample')}</span>
+                    </Card>
+                </BusyContent>
+            </div>
+            <div className="flex flex-wrap items-start gap-4">
+                <Button size="sm" onClick={() => setPlaying(true)} loading={playing}>{t('designPage.playWait')}</Button>
+                {playing && (
+                    <Card data-testid="live-wait" data-stage={live.stage} className="flex w-80 flex-col">
+                        <div className="px-3 pt-3">{label(live.stage)}</div>
+                        <StatusBlock kind="loading" surface="design_preview" stage={live.stage} />
+                    </Card>
+                )}
+            </div>
+        </Section>
     );
 };
 
@@ -300,6 +384,8 @@ export const DesignPage: React.FC = () => {
                         ))}
                     </div>
                 </Section>
+
+                <LoadingSection />
 
                 <Section title={t('designPage.landing')}>
                     <div className="flex items-center gap-4">

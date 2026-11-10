@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 
 vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
@@ -19,7 +19,7 @@ describe('DesignPage', () => {
     it('renders every section', () => {
         render(<DesignPage />);
         expect(screen.getByTestId('design-page')).toBeInTheDocument();
-        for (const name of ['Design system', 'Colors', 'Radius', 'Shadow', 'Type', 'Motion', 'Primitives', 'Rules']) {
+        for (const name of ['Design system', 'Colors', 'Radius', 'Shadow', 'Type', 'Motion', 'Loading states', 'Primitives', 'Rules']) {
             expect(screen.getByRole('heading', { name })).toBeInTheDocument();
         }
     });
@@ -143,5 +143,37 @@ describe('DesignPage v2', () => {
         expect(screen.getAllByRole('button', { name: /^primary$/ }).length).toBeGreaterThan(0);
         expect(screen.getAllByRole('button', { name: /^tonal$/ }).length).toBeGreaterThan(0);
         expect(screen.getByRole('button', { name: /disabled/ })).toHaveAccessibleDescription('Choose a group first');
+    });
+});
+
+describe('DesignPage loading states', () => {
+    afterEach(() => vi.useRealTimers());
+
+    it('previews every StatusBlock kind and the progress bars', () => {
+        render(<DesignPage />);
+        const section = screen.getByRole('heading', { name: 'Loading states' }).closest('section') as HTMLElement;
+        expect(section).toHaveTextContent('Still loading…');
+        expect(section).toHaveTextContent('This is taking longer than usual. Thanks for waiting.');
+        expect(section).toHaveTextContent("Couldn't load this");
+        expect(section).toHaveTextContent('This is taking too long');
+        expect(section.querySelector('[role="progressbar"][aria-valuenow="40"]')).not.toBeNull();
+    });
+
+    it('plays a live wait through every stage', () => {
+        vi.useFakeTimers();
+        render(<DesignPage />);
+        const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+        fireEvent.click(screen.getByRole('button', { name: 'Play a wait' }));
+        const stage = () => screen.getByTestId('live-wait').getAttribute('data-stage');
+        advance(199);
+        expect(stage()).toBe('hidden');
+        advance(1);
+        expect(stage()).toBe('shown');
+        advance(2800);
+        expect(stage()).toBe('slow');
+        advance(7000);
+        expect(stage()).toBe('verySlow');
+        advance(2000);
+        expect(screen.queryByTestId('live-wait')).not.toBeInTheDocument();
     });
 });
