@@ -907,6 +907,31 @@ def test_memories_events_are_allowlisted():
         assert r.status_code == 204
 
 
+def test_memories_core_events_are_allowlisted():
+    for event, fields in (
+        ("memories_load", {"target": "album", "outcome": "ok", "count": 12}),
+        (
+            "memories_load",
+            {"target": "on_this_day", "outcome": "error", "error_code": 404},
+        ),
+        ("memories_jump", {"target": "favorites", "has_target": True}),
+        ("memories_toggle", {"target": "other_services", "outcome": "on"}),
+    ):
+        r = client.post("/api/client-log", json={"event": event, "fields": fields})
+        assert r.status_code == 204
+
+
+def test_memories_jump_rejects_a_member_path():
+    r = client.post(
+        "/api/client-log",
+        json={
+            "event": "memories_jump",
+            "fields": {"target": "日向坂46/messages/34 金村 美玖", "has_target": True},
+        },
+    )
+    assert r.status_code == 422
+
+
 def test_recap_events_are_allowlisted():
     for event, fields in (
         (

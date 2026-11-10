@@ -1,6 +1,6 @@
 import { clientLog } from '../../utils/clientLog';
 
-export type MemoriesPage = 'home' | 'recap';
+export type MemoriesPage = 'home' | 'recap' | 'onThisDay' | 'album' | 'memoir' | 'favorites';
 
 /** `memories_open`: the Memories feature was shown. Pass only the service id. */
 export function logMemoriesOpen(service: string): void {
@@ -10,6 +10,33 @@ export function logMemoriesOpen(service: string): void {
 /** `memories_page`: the Memories router moved to a page. Never pass names, text or paths. */
 export function logMemoriesPage(page: MemoriesPage): void {
     clientLog('memories_page', { target: page });
+}
+
+/** A Memories core view, as logged in `target` (a code, never a name or path). */
+export type MemoriesView =
+    | 'hub' | 'on_this_day' | 'day' | 'album' | 'favorites' | 'memoir' | 'binder' | 'names' | 'timeline';
+
+/**
+ * `memories_load`: a core view's request finished. `outcome` `ok` carries `count` (the payload's
+ * top-level list length, when it has one); `error` carries `error_code` (the HTTP status) when the
+ * backend answered. An aborted request (change or unmount) logs nothing.
+ */
+export function logMemoriesLoad(
+    target: MemoriesView,
+    outcome: 'ok' | 'error',
+    extra: { count?: number; error_code?: number } = {},
+): void {
+    clientLog('memories_load', { target, outcome, ...extra });
+}
+
+/** `memories_jump`: a Memories view opened her chat. `target` is the source view; `has_target` a message id was passed. */
+export function logMemoriesJump(target: MemoriesView, hasTarget: boolean): void {
+    clientLog('memories_jump', { target, has_target: hasTarget });
+}
+
+/** `memories_toggle`: a Memories control was switched. `target` is the control code (e.g. `other_services`). */
+export function logMemoriesToggle(target: string, on: boolean): void {
+    clientLog('memories_toggle', { target, outcome: on ? 'on' : 'off' });
 }
 
 export type RecapLoadTarget = 'members' | 'member' | 'years';
