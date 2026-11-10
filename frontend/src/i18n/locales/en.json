@@ -776,7 +776,17 @@
       "expand": "Open"
     },
     "album": {
-      "title": "Album"
+      "title": "Album",
+      "filterAll": "All",
+      "filterPhotos": "Photos",
+      "filterVideos": "Videos",
+      "filterFavorites": "Favorites",
+      "burst": "{{count}} photo",
+      "burst_other": "{{count}} photos",
+      "monthLabel": "{{monthName}} {{year}}",
+      "ribbonLabel": "Go to {{monthName}} {{year}}",
+      "ribbon": "Months by colour",
+      "empty": "There are no photos to lay out here yet."
     },
     "memoir": {
       "title": "Member memories"

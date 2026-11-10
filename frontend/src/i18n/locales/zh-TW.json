@@ -770,7 +770,16 @@
       "expand": "展開"
     },
     "album": {
-      "title": "相簿"
+      "title": "相簿",
+      "filterAll": "全部",
+      "filterPhotos": "照片",
+      "filterVideos": "影片",
+      "filterFavorites": "收藏",
+      "burst": "{{count}} 張",
+      "monthLabel": "{{year}}年{{month}}月",
+      "ribbonLabel": "前往 {{year}}年{{month}}月",
+      "ribbon": "每月的顏色",
+      "empty": "這裡還沒有可以排列的照片。"
     },
     "memoir": {
       "title": "成員回憶"

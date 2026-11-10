@@ -17,10 +17,13 @@ export const MEMORIES_CORE_KEYS: string[] = [
     'memories.onThisDay.more', 'memories.onThisDay.noMessages', 'memories.onThisDay.empty', 'memories.onThisDay.pickDate',
     'memories.onThisDay.prevDay', 'memories.onThisDay.nextDay', 'memories.onThisDay.olderYear', 'memories.onThisDay.newerYear',
     'memories.day.count', 'memories.day.otherGroups', 'memories.day.modeMerged', 'memories.day.modeLanes', 'memories.day.expand',
+    // C9: the album
+    'memories.album.filterAll', 'memories.album.filterPhotos', 'memories.album.filterVideos', 'memories.album.filterFavorites',
+    'memories.album.burst', 'memories.album.monthLabel', 'memories.album.ribbonLabel', 'memories.album.ribbon', 'memories.album.empty',
 ];
 
 /** Core keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
-export const MEMORIES_CORE_EN_PLURALS: string[] = ['memories.onThisDay.more', 'memories.day.count'];
+export const MEMORIES_CORE_EN_PLURALS: string[] = ['memories.onThisDay.more', 'memories.day.count', 'memories.album.burst'];
 
 /** Recursive dotted lookup (any depth). */
 const lookup = (data: unknown, dotted: string): unknown =>
@@ -66,6 +69,15 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.day.modeMerged')).toBe('時系列');
         expect(lookup(ja, 'memories.day.modeLanes')).toBe('メンバー別');
         expect(lookup(ja, 'memories.day.expand')).toBe('ひらく');
+        expect(lookup(ja, 'memories.album.title')).toBe('アルバム');
+        expect(lookup(ja, 'memories.album.filterAll')).toBe('すべて');
+        expect(lookup(ja, 'memories.album.filterPhotos')).toBe('写真');
+        expect(lookup(ja, 'memories.album.filterVideos')).toBe('動画');
+        expect(lookup(ja, 'memories.album.filterFavorites')).toBe('お気に入り');
+        expect(lookup(ja, 'memories.album.burst')).toBe('{{count}} 枚');
+        expect(lookup(ja, 'memories.album.monthLabel')).toBe('{{year}}年{{month}}月');
+        expect(lookup(ja, 'memories.album.ribbonLabel')).toBe('{{year}}年{{month}}月へ');
+        expect(lookup(ja, 'memories.album.empty')).toBe('ここに並べる写真は、まだありません。');
         expect(lookup(zhTW, 'memories.onThisDay.title')).toBe('那年今日');
         expect(lookup(zhTW, 'memories.onThisDay.noMessages')).toBe('這天沒有訊息');
         expect(lookup(zhTW, 'memories.day.otherGroups')).toBe('包含其他團體');

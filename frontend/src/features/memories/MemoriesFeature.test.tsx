@@ -26,6 +26,10 @@ beforeEach(() => {
         http.get('/api/memories/:service/on-this-day', ({ request }) => (
             HttpResponse.json({ month_day: new URL(request.url).searchParams.get('date'), years: [] })
         )),
+        // The album page (C9) loads its list, months and ribbon.
+        http.get('/api/memories/:service/album/members', () => HttpResponse.json({ total: 0, members: [] })),
+        http.get('/api/memories/:service/album/months', () => HttpResponse.json({ months: [] })),
+        http.get('/api/memories/:service/album/colors', () => HttpResponse.json({ colors: {} })),
         http.get('/api/memories/:service/recap/years', () => (
             shelf ? HttpResponse.json({ years: shelf }) : HttpResponse.json({ detail: 'x' }, { status: 500 })
         )),

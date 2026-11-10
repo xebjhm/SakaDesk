@@ -770,7 +770,16 @@
       "expand": "展开"
     },
     "album": {
-      "title": "相册"
+      "title": "相册",
+      "filterAll": "全部",
+      "filterPhotos": "照片",
+      "filterVideos": "视频",
+      "filterFavorites": "收藏",
+      "burst": "{{count}} 张",
+      "monthLabel": "{{year}}年{{month}}月",
+      "ribbonLabel": "前往 {{year}}年{{month}}月",
+      "ribbon": "每月的颜色",
+      "empty": "这里还没有可以排列的照片。"
     },
     "memoir": {
       "title": "成员回忆"

@@ -811,10 +811,22 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   foil (`foil: true`) and nothing else: not hover states, not headings, not the hub.
 - **Paper, cork and tape are materials, not colours.** Use them for the surfaces they name; text
   on them uses the ordinary text roles.
-- **Album colour ribbon (data-driven exception).** Like the member penlight colours, the
-  album's monthly ribbon colours are runtime data: the backend's `cover_color` and
-  `/album/colors` values (`#rrggbb` probed from her photos). They are applied through `style`
-  on the ribbon element, never written as literals in source, and no other element uses them.
+- **Album colour ribbon and month tint (data-driven exception).** Like the member penlight
+  colours, the album's monthly colours are runtime data (`#rrggbb` probed from her photos),
+  applied through `style`, never written as literals in source, and used by exactly two
+  elements: the colour ribbon's segments take the `/album/colors` values as their background,
+  and each month band (`album/MonthSection.tsx`) is tinted from its own `cover_color` as
+  `color-mix(in srgb, <colour> 18%, transparent)` (spec 8: the band tint comes from the cover
+  photo). A `null` colour falls back to the neutral `bg-sunken` (band and segment alike).
+- **The album** (`features/memories/album/`): month bands each hold a polaroid cover
+  (`bg-memories-paper`, `shadow-memories-polaroid`, her nearby words in `font-display
+  text-small` on one line, else the month label) and a square grid; photos are aged with
+  `sepiaClass` by year. A ★ photo spans 2×2 and wears a `bg-memories-washi` strip and the
+  yellow `text-semantic-star`; a burst of three or more is one stacked still with 「{{count}} 枚」
+  that opens the sequence (`Modal`) with each caption beside its frame. A tile's hover / focus
+  caption is a frosted card (`bg-frost backdrop-blur-frost`). The filters are `Pill`s, the ★
+  one `tone="star"`. The ribbon on the right is a scrubber (click, drag, ↑ / ↓); the jump
+  scroll is instant under reduced motion and the tilt is static.
 
 ### The group rail and the profile card
 

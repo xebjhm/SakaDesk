@@ -770,7 +770,16 @@
       "expand": "展開"
     },
     "album": {
-      "title": "相簿"
+      "title": "相簿",
+      "filterAll": "全部",
+      "filterPhotos": "相",
+      "filterVideos": "片",
+      "filterFavorites": "收藏",
+      "burst": "{{count}} 張",
+      "monthLabel": "{{year}}年{{month}}月",
+      "ribbonLabel": "去 {{year}}年{{month}}月",
+      "ribbon": "每個月嘅顏色",
+      "empty": "呢度仲未有相可以排出嚟。"
     },
     "memoir": {
       "title": "成員回憶"

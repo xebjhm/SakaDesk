@@ -770,7 +770,16 @@
       "expand": "ひらく"
     },
     "album": {
-      "title": "アルバム"
+      "title": "アルバム",
+      "filterAll": "すべて",
+      "filterPhotos": "写真",
+      "filterVideos": "動画",
+      "filterFavorites": "お気に入り",
+      "burst": "{{count}} 枚",
+      "monthLabel": "{{year}}年{{month}}月",
+      "ribbonLabel": "{{year}}年{{month}}月へ",
+      "ribbon": "月の色",
+      "empty": "ここに並べる写真は、まだありません。"
     },
     "memoir": {
       "title": "メンバーの思い出"
