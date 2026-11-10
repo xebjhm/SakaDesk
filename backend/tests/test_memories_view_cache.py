@@ -120,3 +120,18 @@ def test_view_hash():
     h = vc.view_hash("a", 1, None)
     assert len(h) == 16 and h == vc.view_hash("a", 1, None)
     assert h != vc.view_hash("a", 2, None)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "payload",
+    [{"when": object()}, {"n": float("nan"), "bad": {1, 2}}],
+)
+async def test_unserialisable_payload_is_returned_uncached(sdir, payload):
+    build, calls = builder(payload)
+    with capture_logs() as logs:
+        assert await vc.cached_view(sdir, "binder", "k", "h", build) is payload
+        assert await vc.cached_view(sdir, "binder", "k", "h", build) is payload
+    assert len(calls) == 2  # nothing was stored
+    assert outcomes(logs) == ["unserialisable", "unserialisable"]
+    assert not [e for e in logs if e["event"] == "memories_view_cache_failed"]

@@ -14,7 +14,8 @@ bug guard, :func:`cached_view` refuses to store a payload in which any dict has
 a non-null ``text``, ``caption`` or ``sentence`` (``outcome=uncacheable``).
 
 Every read logs ``memories_view_cache`` with ``view`` and ``outcome``
-(``hit`` / ``miss`` / ``uncacheable``). The key is never logged: it may be
+(``hit`` / ``miss`` / ``uncacheable`` / ``unserialisable``; the last one is a
+payload that is not strict JSON, returned uncached instead of failing). The key is never logged: it may be
 derived from room folders. SQLite errors are logged
 (``memories_view_cache_failed``, ``op=read|write``) and never raise.
 """
@@ -87,23 +88,20 @@ def _read(service_dir: str, view: str, key: str, data_hash: str) -> dict | None:
     return payload if isinstance(payload, dict) else None
 
 
-def _write(
-    service_dir: str, view: str, key: str, data_hash: str, payload: dict
-) -> None:
-    """Store ``payload``. Blocking; errors are logged, never raised."""
+def _dumps(payload: dict) -> str:
+    """Strict JSON of ``payload``: ``TypeError`` / ``ValueError`` when it cannot be stored."""
+    return json.dumps(payload, ensure_ascii=False, allow_nan=False)
+
+
+def _write(service_dir: str, view: str, key: str, data_hash: str, blob: str) -> None:
+    """Store the serialised payload ``blob``. Blocking; errors are logged, never raised."""
     try:
         with contextlib.closing(mi._connect()) as c, c:
             c.execute(_SCHEMA)
             c.execute(
                 "INSERT OR REPLACE INTO memories_view_cache"
                 "(service_dir, view, key, data_hash, payload) VALUES (?,?,?,?,?)",
-                (
-                    service_dir,
-                    view,
-                    key,
-                    data_hash,
-                    json.dumps(payload, ensure_ascii=False),
-                ),
+                (service_dir, view, key, data_hash, blob),
             )
     except sqlite3.Error as e:
         logger.warning(
@@ -124,7 +122,9 @@ async def cached_view(
     """The payload of ``view`` / ``key`` for ``sdir``: cached, or built and stored.
 
     On a miss ``build()`` is awaited; its payload is stored unless it contains
-    text (see the module docstring). The DB is read and written in a worker.
+    text (see the module docstring) or cannot be serialised as strict JSON
+    (``outcome=unserialisable``; the built payload is still returned). The DB
+    is read and written in a worker.
     """
     service_dir = str(sdir)
     hit = await asyncio.to_thread(_read, service_dir, view, key, data_hash)
@@ -135,8 +135,18 @@ async def cached_view(
     if contains_text(payload):
         logger.warning("memories_view_cache", view=view, outcome="uncacheable")
         return payload
+    try:
+        blob = await asyncio.to_thread(_dumps, payload)
+    except (TypeError, ValueError) as e:
+        logger.warning(
+            "memories_view_cache",
+            view=view,
+            outcome="unserialisable",
+            error_type=type(e).__name__,
+        )
+        return payload
     logger.info("memories_view_cache", view=view, outcome="miss")
-    await asyncio.to_thread(_write, service_dir, view, key, data_hash, payload)
+    await asyncio.to_thread(_write, service_dir, view, key, data_hash, blob)
     return payload
 
 
