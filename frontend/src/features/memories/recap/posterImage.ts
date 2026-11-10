@@ -330,7 +330,7 @@ export type ExportKind = 'png' | 'gif' | 'webm' | 'mp4';
 const EXPORT_MIME: Record<ExportKind, string> = { png: 'image/png', gif: 'image/gif', webm: 'video/webm', mp4: 'video/mp4' };
 
 /** Why a handoff failed (a log code). */
-export type SaveErrorCode = 'export_rejected' | 'export_too_large' | 'export_timeout' | 'export_network';
+export type SaveErrorCode = 'export_rejected' | 'export_too_large' | 'export_timeout' | 'export_network' | 'export_cancelled';
 
 export class SaveError extends Error {
     constructor(readonly code: SaveErrorCode) {
@@ -345,13 +345,17 @@ export type SaveOutcome = 'handed_off';
 /**
  * Saves an export: posts the bytes to the local in-memory handoff, then opens its download
  * URL in a hidden iframe so the webview shows its native save dialog. The server sanitises
- * `filename` and forces the extension to `kind`. Rejects with a {@link SaveError}.
+ * `filename` and forces the extension to `kind`. Rejects with a {@link SaveError}. Aborting
+ * `signal` aborts the upload and rejects with `export_cancelled`; no download is opened then.
  */
 export async function saveBlob(
-    blob: Blob, kind: ExportKind, filename: string, fetchImpl: typeof fetch = fetch,
+    blob: Blob, kind: ExportKind, filename: string, fetchImpl: typeof fetch = fetch, signal?: AbortSignal,
 ): Promise<{ outcome: SaveOutcome }> {
+    if (signal?.aborted) throw new SaveError('export_cancelled');
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), EXPORT_POST_TIMEOUT_MS);
+    const onAbort = () => controller.abort();
+    signal?.addEventListener('abort', onAbort);
     let res: Response;
     try {
         res = await fetchImpl(`/api/memories/export?kind=${kind}`, {
@@ -361,9 +365,11 @@ export async function saveBlob(
             signal: controller.signal,
         });
     } catch (e) {
+        if (signal?.aborted) throw new SaveError('export_cancelled');
         throw new SaveError(isAbort(e) ? 'export_timeout' : 'export_network');
     } finally {
         clearTimeout(timer);
+        signal?.removeEventListener('abort', onAbort);
     }
     if (!res.ok) throw new SaveError(res.status === 413 ? 'export_too_large' : 'export_rejected');
     let token: unknown;
@@ -373,6 +379,7 @@ export async function saveBlob(
         throw new SaveError('export_rejected');
     }
     if (typeof token !== 'string' || !/^[A-Za-z0-9_-]{16,128}$/.test(token)) throw new SaveError('export_rejected');
+    if (signal?.aborted) throw new SaveError('export_cancelled');
     openDownloadUrl(`/api/memories/export/${token}?filename=${encodeURIComponent(filename)}`);
     return { outcome: 'handed_off' };
 }
