@@ -139,6 +139,8 @@ def test_memoir_names_happy_path_and_year(out):
     assert r.status_code == 200
     r = get(f"/api/memories/{SERVICE}/memoir/names", member=MEMBER, year="x")
     assert r.status_code == 422
+    r = get(f"/api/memories/{SERVICE}/memoir/names", member=MEMBER, year=2019)
+    assert r.status_code == 400  # outside the recap range, like the recap routes
 
 
 def test_memoir_timeline_happy_path(out):

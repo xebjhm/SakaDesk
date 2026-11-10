@@ -166,7 +166,10 @@ async def memoir_names(
     """Every sentence with the fan's nickname, newest first (``nickname_moments``).
 
     ``year`` filters the items; ``years`` always lists every year with items.
+    A ``year`` outside the recap range is 400, like the recap routes.
     """
+    if year is not None:
+        _check_year(year, datetime.now(timezone.utc))
     service_data_dir = _service_dir(service)
     summary = await _person(service_data_dir, member, view="names")
     return await nickname_moments.nickname_moments(
