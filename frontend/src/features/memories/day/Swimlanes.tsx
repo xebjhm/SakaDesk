@@ -17,7 +17,7 @@ import { logMemoriesToggle } from '../memoriesLog';
 import { JST_TIME_ZONE, formatJstClock } from '../shared/jst';
 import { hourLabel, rulerSpan } from './ruler';
 import { dayPeople, type DayPerson } from './people';
-import { laneLayout } from './laneLayout';
+import { hourBands } from './laneLayout';
 import type { DayMember, DayMessage } from '../types';
 
 interface SwimlanesProps {
@@ -26,7 +26,8 @@ interface SwimlanesProps {
     messages: DayMessage[];
 }
 
-const PX_PER_MINUTE = 1.2;
+/** A quiet hour's height (1.2 px a minute); a busy hour grows to hold its cards (`hourBands`). */
+const PX_PER_HOUR = 72;
 /** A collapsed card is `h-16` (64 px); keep these two in step. */
 const CARD_HEIGHT = 64;
 const GAP = 4;
@@ -110,7 +111,8 @@ const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, 
 /**
  * 那一天 B: one column per person (avatar and name on top), time running down on a JST hour
  * ruler from the floor of the first message's hour to the ceiling of the last one's. Cards sit
- * at their time (`laneLayout` pushes overlapping ones down); a click expands one with her full
+ * at their time inside their own hour: a busy hour grows on the ruler to hold its cards
+ * (`hourBands`), so a stacked card never drifts down past the next hour line; a click expands one with her full
  * words (a caption whose own message is a card of the day is not repeated), a read-only bubble for media and the jump to her chat (`memories_toggle` `lane_card`).
  * Columns keep a minimum width, so past five people the lanes scroll sideways inside the pane.
  * Bubble voices join the Memories voice coordinator (`useBubbleVoices`), so only one voice plays.
@@ -130,14 +132,12 @@ export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
         logMemoriesToggle('lane_card', next !== null);
     };
 
-    const lanes = people.map((person) => {
-        const placed = laneLayout(
-            person.messages.map((m) => ({ key: msgKey(m), minutes: (Date.parse(m.ts) - start) / 60000 })),
-            { pxPerMinute: PX_PER_MINUTE, cardHeight: CARD_HEIGHT, gap: GAP },
-        );
-        return { person, placed };
-    });
-    const rulerHeight = hours.length ? ((hours[hours.length - 1] - start) / 60000) * PX_PER_MINUTE : 0;
+    const layout = useMemo(() => hourBands(
+        people.map((person) => person.messages.map((m) => ({ key: msgKey(m), ts: Date.parse(m.ts) }))),
+        { start, hourCount: hours.length - 1, pxPerHour: PX_PER_HOUR, cardHeight: CARD_HEIGHT, gap: GAP },
+    ), [people, start, hours.length]);
+    const lanes = people.map((person, i) => ({ person, placed: layout.lanes[i] }));
+    const rulerHeight = layout.edges[layout.edges.length - 1];
     const lastBottom = Math.max(0, ...lanes.flatMap(({ placed }) => placed.map((p) => p.top + CARD_HEIGHT)));
     const height = Math.max(rulerHeight, lastBottom) + CARD_HEIGHT;
 
@@ -146,12 +146,12 @@ export const Swimlanes: React.FC<SwimlanesProps> = ({ members, messages }) => {
             <div aria-hidden="true" className="sticky left-0 z-20 w-12 shrink-0 bg-sheet">
                 <div className="h-16" />
                 <div className="relative" style={{ height }}>
-                    {hours.map((h) => (
+                    {hours.map((h, i) => (
                         <span
                             key={h}
                             data-testid="day-ruler-hour"
                             className="absolute right-2 -translate-y-1/2 text-caption tabular-nums text-muted"
-                            style={{ top: ((h - start) / 60000) * PX_PER_MINUTE }}
+                            style={{ top: layout.edges[Math.min(i, layout.edges.length - 1)] }}
                         >
                             {hourLabel(h, start)}
                         </span>
