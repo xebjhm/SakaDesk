@@ -107,7 +107,7 @@ export const TranslateButton: React.FC<TranslateButtonProps> = ({
                     }`}
                 >
                     {isLoading
-                        ? <Spinner size="sm" tone="current" label={label} labelVisibility="compact" />
+                        ? <Spinner size="sm" tone="current" decorative />
                         : isError
                             ? <AlertCircle className="h-4 w-4" />
                             : <Languages className="h-4 w-4" />

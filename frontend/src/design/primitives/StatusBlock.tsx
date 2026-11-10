@@ -7,7 +7,7 @@ import { Button } from './Button';
 import { EmptyState } from './EmptyState';
 import { ProgressBar } from './ProgressBar';
 import { SPIN } from './Spinner';
-import { SPINNER_LABEL_VISIBILITY, SPINNER_SIZE } from './spinnerClasses';
+import { SPINNER_LABEL_VISIBILITY, SPINNER_SIZE, type SpinnerLabelVisibility } from './spinnerClasses';
 
 export type StatusBlockVariant = 'pane' | 'dialog' | 'block' | 'fill' | 'inline';
 
@@ -32,6 +32,11 @@ export type StatusBlockLoadingProps = {
     kind: 'loading';
     /** Translated name of the wait; defaults to `loading.label`. */
     label?: string;
+    /**
+     * auto (default): the label is screen-reader only and shows under reduced motion; always: the label is
+     * visible beside the glyph (use it when the label is a real title such as "Loading posts…").
+     */
+    labelVisibility?: SpinnerLabelVisibility;
     /** A layout-shaped `Skeleton` group drawn instead of the spinner. */
     skeleton?: React.ReactNode;
     /** Translated; default `loading.slow`. Shown from `slow`. */
@@ -76,7 +81,7 @@ const VARIANT: Record<StatusBlockVariant, string> = {
 const glyphSize = (variant: StatusBlockVariant) => (variant === 'fill' ? 'lg' : variant === 'inline' ? 'sm' : 'md');
 
 const LoadingBlock: React.FC<Common & StatusBlockLoadingProps> = ({
-    surface, variant = 'dialog', label, skeleton, slowHint, verySlowHint, onCancel, cancelLabel, progress, stage: fixedStage, className,
+    surface, variant = 'dialog', label, labelVisibility, skeleton, slowHint, verySlowHint, onCancel, cancelLabel, progress, stage: fixedStage, className,
 }) => {
     const { t } = useTranslation();
     const labelId = useId();
@@ -112,7 +117,7 @@ const LoadingBlock: React.FC<Common & StatusBlockLoadingProps> = ({
                 id={labelId}
                 className={cn(
                     'text-small text-secondary',
-                    skeleton ? 'sr-only' : SPINNER_LABEL_VISIBILITY[inline ? 'always' : 'auto'],
+                    skeleton ? 'sr-only' : SPINNER_LABEL_VISIBILITY[labelVisibility ?? (inline ? 'always' : 'auto')],
                 )}
             >
                 {name}
@@ -162,7 +167,7 @@ const ProblemBlock: React.FC<Common & StatusBlockProblemProps> = ({
 
 /**
  * The one loading / empty / error / timeout state (replaces `LoadState`, `DialogStatus`,
- * `BlogStatus` and the recap `Status`).
+ * the blog status block and the recap `Status`).
  *
  * - loading: an empty `role="status"` box (`aria-busy`) until `reveal`, then the `skeleton` or a spinner with its
  *   label; the slow hint from `slow`; from `verySlow` the very-slow hint plus Cancel (`onCancel`)

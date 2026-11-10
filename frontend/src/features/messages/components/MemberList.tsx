@@ -402,7 +402,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             <div className="relative flex items-center justify-center px-4 py-3">
                 <h1 className="text-title font-semibold text-primary">{t('memberList.title')}</h1>
                 <div className="absolute right-4 flex items-center gap-2">
-                    {isSyncing && <Spinner size="sm" tone="accent" label={t('sync.syncing')} labelVisibility="compact" />}
+                    {isSyncing && <Spinner size="sm" tone="accent" decorative />}
                 </div>
             </div>
 

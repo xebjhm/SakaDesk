@@ -137,7 +137,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
             </header>
 
             <div ref={scrollerRef} data-testid="feed-scroller" className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-                {loading && <StatusBlock kind="loading" variant="block" surface="blog_feed" label={t('blogs.loadingPosts')} />}
+                {loading && <StatusBlock kind="loading" variant="block" surface="blog_feed" label={t('blogs.loadingPosts')} labelVisibility="always" />}
 
                 {error && !loading && (
                     <StatusBlock
@@ -179,7 +179,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
 
                 {/* First sync: no posts yet and the background sync is running */}
                 {!loading && !error && posts.length === 0 && syncing && (
-                    <StatusBlock kind="loading" variant="fill" surface="blog_feed" label={t('blogs.syncingBlogs')} slowHint={t('blogs.firstSyncHint')} />
+                    <StatusBlock kind="loading" variant="fill" surface="blog_feed" label={t('blogs.syncingBlogs')} labelVisibility="always" slowHint={t('blogs.firstSyncHint')} verySlowHint={t('blogs.firstSyncHint')} />
                 )}
 
                 {!loading && !error && posts.length === 0 && !syncing && (

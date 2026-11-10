@@ -144,7 +144,7 @@ export function UpgradeIcon() {
                 {stage === 'error' ? (
                     <AlertCircle className="h-5 w-5" />
                 ) : stage === 'launching' ? (
-                    <Spinner size="md" tone="current" label={t('update.installing')} labelVisibility="compact" />
+                    <Spinner size="sm" tone="current" decorative />
                 ) : stage === 'ready' ? (
                     <ArrowUpCircle className="h-5 w-5" />
                 ) : (

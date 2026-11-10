@@ -227,12 +227,14 @@ describe('spinners on the Spinner primitive', () => {
         expect(container).toHaveTextContent(i18n.t('transcription.transcribing'));
     });
 
-    it('translate: both layouts use Spinner (the icon-only one keeps a screen-reader label)', () => {
+    it('translate: both layouts use a decorative Spinner (the button keeps its own accessible name)', () => {
         const { container, rerender } = render(<TranslateButton state="loading" onClick={vi.fn()} />);
         expect(container.querySelector('svg.animate-spin')).toHaveClass('motion-reduce:animate-none');
         rerender(<TranslateButton state="loading" onClick={vi.fn()} iconOnly />);
         expect(container.querySelector('svg.animate-spin')).toHaveClass('motion-reduce:animate-none');
-        expect(container.querySelector('[role="status"]')).not.toBeNull();
+        expect(container.querySelector('svg.animate-spin')).toHaveAttribute('aria-hidden', 'true');
+        expect(container.querySelector('[role="status"]')).toBeNull();
+        expect(screen.getByRole('button')).toHaveAttribute('aria-label');
     });
 });
 
@@ -246,5 +248,48 @@ describe('UpdateActions progress', () => {
         const bar = screen.getByRole('progressbar');
         expect(bar).toHaveAttribute('aria-valuenow', '42');
         expect(bar).toHaveAttribute('aria-label', expect.stringContaining('9.9.9'));
+    });
+});
+
+describe('visible loading titles (the label is not sr-only outside reduced motion)', () => {
+    const visible = (text: string) => {
+        const el = screen.getAllByText(text)[0]!;
+        expect(el.className).not.toContain('sr-only');
+    };
+
+    it('blog and dialog loading blocks show their title text', () => {
+        const { unmount } = render(<MemberSelectModal {...selectProps({ loading: true })} />);
+        advance(200);
+        visible(i18n.t('blogs.loadingMembers'));
+        unmount();
+        const t2 = render(<MemberTimelineModal {...timelineProps({ loading: true })} />);
+        advance(200);
+        visible(i18n.t('blogs.loadingTimeline'));
+        t2.unmount();
+        const t3 = render(<RecentPostsFeed {...feedProps({ loading: true })} />);
+        advance(200);
+        visible(i18n.t('blogs.loadingPosts'));
+        t3.unmount();
+        render(<BlogReader {...readerProps({ loading: true })} />);
+        advance(200);
+        visible(i18n.t('blogs.loadingPost'));
+    });
+
+    it('first sync shows its title, then the hint under it, and keeps the hint at 10 s', () => {
+        render(<RecentPostsFeed {...feedProps({ syncing: true })} />);
+        advance(200);
+        visible(i18n.t('blogs.syncingBlogs'));
+        advance(2800);
+        expect(screen.getByText(i18n.t('blogs.firstSyncHint'))).toBeInTheDocument();
+        advance(7000);
+        expect(screen.getByText(i18n.t('blogs.firstSyncHint'))).toBeInTheDocument();
+        visible(i18n.t('blogs.syncingBlogs'));
+    });
+
+    it('the DialogStatus adapter shows a given title visibly', async () => {
+        const { DialogStatus } = await import('../core/common/DialogStatus');
+        render(<DialogStatus kind="loading" title="読み込み中… 🌸" />);
+        advance(200);
+        visible('読み込み中… 🌸');
     });
 });

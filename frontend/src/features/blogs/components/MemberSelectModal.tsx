@@ -225,7 +225,7 @@ export const MemberSelectModal: React.FC<MemberSelectModalProps> = ({
             className="max-h-[85vh] w-auto max-w-full"
         >
             <div className="mx-auto max-w-full" style={{ width: modalWidth - 48 }}>
-            {loading && <StatusBlock kind="loading" surface="blog_members" label={t('blogs.loadingMembers')} />}
+            {loading && <StatusBlock kind="loading" surface="blog_members" label={t('blogs.loadingMembers')} labelVisibility="always" />}
             {error && !loading && (
                 <StatusBlock kind="error" surface="blog_members" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} retryVariant="primary" />
             )}

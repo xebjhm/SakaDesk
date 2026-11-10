@@ -452,6 +452,7 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
           </p>
         )}
         {isLoading && results.length === 0 && <StatusBlock kind="loading" surface="dialog_search" className="py-8" />}
+        {/* Retry bumps searchGeneration, which also feeds the filter bar's refetchKey (a harmless extra refetch). */}
         {error && <StatusBlock kind="error" surface="dialog_search" title={t('search.searchFailed')} onRetry={() => setSearchGeneration((g) => g + 1)} className="py-8" />}
         {!isLoading && !error && !isIndexBuilding && query.trim() && results.length === 0 && (
           <StatusBlock kind="empty" surface="dialog_search" icon={<Search />} title={t('search.noResults')} hint={t('search.noResultsHint')} className="py-8" />

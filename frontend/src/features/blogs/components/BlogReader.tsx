@@ -355,7 +355,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                 {/* Post column: scrolls; older/newer float over its bottom */}
                 <div className="relative min-w-0 flex-1">
                     <div className="h-full overflow-y-auto">
-                        {loading && <StatusBlock kind="loading" variant="block" surface="blog_reader" label={t('blogs.loadingPost')} />}
+                        {loading && <StatusBlock kind="loading" variant="block" surface="blog_reader" label={t('blogs.loadingPost')} labelVisibility="always" />}
 
                         {error && !loading && (
                             <StatusBlock

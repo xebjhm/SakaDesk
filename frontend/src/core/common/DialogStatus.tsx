@@ -20,5 +20,5 @@ export const DialogStatus: React.FC<DialogStatusProps> = ({ kind, title, hint, i
     kind === 'empty' ? (
         <StatusBlock kind="empty" variant="dialog" surface="dialog" title={title ?? ''} hint={hint} icon={icon} className={className} />
     ) : (
-        <StatusBlock kind="loading" variant="dialog" surface="dialog" label={title} className={className} />
+        <StatusBlock kind="loading" variant="dialog" surface="dialog" label={title} labelVisibility={title ? 'always' : 'auto'} className={className} />
     );

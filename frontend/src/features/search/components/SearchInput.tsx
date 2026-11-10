@@ -69,7 +69,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
         />
       )}
       {isLoading ? (
-        <Spinner size="sm" tone="muted" className="shrink-0" labelVisibility="compact" />
+        <Spinner size="sm" tone="muted" decorative className="shrink-0" />
       ) : value ? (
         <IconButton size="sm" aria-label={t('common.close')} icon={<X className="h-4 w-4" />} onClick={() => onChange('')} />
       ) : (

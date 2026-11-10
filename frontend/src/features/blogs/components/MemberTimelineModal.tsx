@@ -109,7 +109,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                 </>
             }
         >
-            {loading && <StatusBlock kind="loading" surface="blog_timeline" label={t('blogs.loadingTimeline')} />}
+            {loading && <StatusBlock kind="loading" surface="blog_timeline" label={t('blogs.loadingTimeline')} labelVisibility="always" />}
             {error && !loading && <StatusBlock kind="error" surface="blog_timeline" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} retryVariant="primary" />}
             {!loading && !error && monthGroups.length > 0 && (
                 <div className="flex flex-col gap-3">
