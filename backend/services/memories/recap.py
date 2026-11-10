@@ -46,18 +46,23 @@ stats, ``phase``, ``christmas_open`` and the JST date of ``now`` (a partial
 recap can change daily).
 
 :func:`recap_years` lists the years with a recap (some member's tier above
-``none``) for the shelf of yearbooks; it is not cached.
+``none``) for the shelf of yearbooks. It and :func:`build_members_overview`
+scan every member, so their results are cached in process, keyed by every
+room's member-index ``data_hash``, the people (rooms, subscription start), the
+JST date of ``now`` and, for the overview, the year and the oshi names.
 """
 
 from __future__ import annotations
 
 import asyncio
 import contextlib
+import copy
 import hashlib
 import json
 import re
 import sqlite3
 import time
+from collections import OrderedDict
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
 from datetime import date, datetime, timedelta, timezone
@@ -1502,6 +1507,48 @@ def _cache_put(
         logger.warning("recap.cache_write_failed", error_type=type(e).__name__)
 
 
+# Service-wide scans (the years shelf, the members overview) are cached in
+# process, keyed by every room's member-index ``data_hash`` plus the JST date.
+_SCAN_CACHE_MAX = 16
+_scan_cache: OrderedDict[str, Any] = OrderedDict()
+
+
+async def _scan_key(
+    kind: str,
+    service_data_dir: Path,
+    summaries: Sequence[mi.MemberSummary],
+    now: datetime,
+    *extra: object,
+) -> str | None:
+    """Cache key of a service-wide scan, or ``None`` when a room has no index."""
+    parts = [RECAP_VERSION, kind, str(service_data_dir)]
+    parts.append(now.astimezone(JST).date().isoformat())
+    parts += [str(x) for x in extra]
+    for s in sorted(summaries, key=_person_key):
+        parts.append(repr(s))
+        for rel, idx in (await _room_indexes(service_data_dir, s)).items():
+            if not idx.data_hash:
+                return None
+            parts += [rel, idx.data_hash]
+    return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
+
+
+def _scan_get(key: str | None) -> Any:
+    if key is None or key not in _scan_cache:
+        return None
+    _scan_cache.move_to_end(key)
+    return _scan_cache[key]
+
+
+def _scan_put(key: str | None, value: Any) -> None:
+    if key is None:
+        return
+    _scan_cache[key] = value
+    _scan_cache.move_to_end(key)
+    while len(_scan_cache) > _SCAN_CACHE_MAX:
+        _scan_cache.popitem(last=False)
+
+
 # --- public API -----------------------------------------------------------------
 
 
@@ -1670,21 +1717,61 @@ async def build_members_overview(
     """The multi-member opening payload: tiers, oshi, distinct role titles.
 
     Lists every person with at least one non-promo message in their ``W(Y)``.
-    Titles go only to members with a recap (tier above ``none``); only title
-    keys are returned, never ranks or values.
+    Titles go only to members with a recap (tier above ``none``) who truly
+    lead the title (:func:`assign_titles`, tie-break by star order); only title
+    keys are returned, never ranks or values. Cached in process (see the module
+    docstring).
     """
     phase, xmas = phase_flags(year, now)
     summaries = await mi.list_members(service_data_dir)
     oshi = await oshi_mod.oshi_names(service)
+    key = await _scan_key(
+        "overview", service_data_dir, summaries, now, year, sorted(oshi)
+    )
+    hit = _scan_get(key)
+    if hit is not None:
+        logger.info("recap.overview_cache", outcome="hit", year=year)
+        return copy.deepcopy(hit)
+    logger.info(
+        "recap.overview_cache",
+        outcome="miss" if key else "uncacheable",
+        year=year,
+    )
     stats: list[tuple[mi.MemberSummary, _MemberStats]] = []
     for s in summaries:
         tagged = await mf.get_person_facts(service_data_dir, s)
         st = await asyncio.to_thread(_member_stats, s, tagged, year, now)
         if st.first is not None:
             stats.append((s, st))
-    order = [s.member_ids[0] for s, _ in stats]
+    out = await asyncio.to_thread(
+        _overview_sync, service, service_data_dir, year, phase, xmas, oshi, stats
+    )
+    _scan_put(key, copy.deepcopy(out))
+    return out
+
+
+def _overview_sync(
+    service: str,
+    service_data_dir: Path,
+    year: int,
+    phase: str,
+    xmas: bool,
+    oshi: set[str],
+    stats: list[tuple[mi.MemberSummary, _MemberStats]],
+) -> dict:
+    # oshi -> the fan's ★ count -> subscription age; never message volume.
+    star = sorted(
+        enumerate(stats),
+        key=lambda e: (
+            e[1][0].name_norm not in oshi,
+            -e[1][1].favorites,
+            _parse_day(e[1][0].subscription_start) or date.max,
+            e[0],
+        ),
+    )
+    star_order = [e[1][0].member_ids[0] for e in star]
     eligible = {s.member_ids[0]: st.metrics for s, st in stats if st.tier != "none"}
-    titles = assign_titles(eligible, [k for k in order if k in eligible])
+    titles = assign_titles(eligible, [k for k in star_order if k in eligible])
     members = [
         {
             "member_path": _display_path(service_data_dir, s.member_dirs[0]),
@@ -1698,16 +1785,6 @@ async def build_members_overview(
         }
         for s, st in stats
     ]
-    # oshi -> the fan's ★ count -> subscription age; never message volume.
-    star = sorted(
-        enumerate(stats),
-        key=lambda e: (
-            e[1][0].name_norm not in oshi,
-            -e[1][1].favorites,
-            _parse_day(e[1][0].subscription_start) or date.max,
-            e[0],
-        ),
-    )
     firsts = [(st.first, s) for s, st in stats if st.first is not None]
     first = min(firsts, key=lambda x: (x[0][1].ts, x[0][1].id)) if firsts else None
     oyasumi_total = sum(st.oyasumi for _, st in stats)
@@ -1725,7 +1802,7 @@ async def build_members_overview(
         "christmas_open": xmas,
         "members": members,
         "opening": {
-            "star_order": [e[1][0].member_ids[0] for e in star],
+            "star_order": star_order,
             "first_message": {
                 "member_id": first[1].member_ids[0],
                 "ts": _iso(first[0][1].ts),
@@ -1762,13 +1839,26 @@ async def recap_years(service_data_dir: Path, *, now: datetime) -> list[int]:
     window and count as :func:`build_members_overview`). Ascending; the current
     year is included once it qualifies (the frontend decides when it opens).
     """
-    years: set[int] = set()
     summaries = await mi.list_members(service_data_dir)
+    key = await _scan_key("years", service_data_dir, summaries, now)
+    hit = _scan_get(key)
+    if hit is not None:
+        logger.info(
+            "recap.years", outcome="hit", members=len(summaries), count=len(hit)
+        )
+        return list(hit)
+    years: set[int] = set()
     for s in summaries:
         tagged = await mf.get_person_facts(service_data_dir, s)
         years |= await asyncio.to_thread(_recap_years_of, s, tagged, now)
     out = sorted(years)
-    logger.info("recap.years", members=len(summaries), count=len(out))
+    _scan_put(key, tuple(out))
+    logger.info(
+        "recap.years",
+        outcome="miss" if key else "uncacheable",
+        members=len(summaries),
+        count=len(out),
+    )
     return out
 
 

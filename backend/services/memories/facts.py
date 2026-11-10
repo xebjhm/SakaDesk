@@ -251,11 +251,17 @@ async def get_person_facts(
     ``member_dir`` is the relative POSIX string from ``summary.member_dirs``;
     resolve it with ``service_data_dir / member_dir`` for :func:`load_texts`.
     Message ids are per room, so the key of a fact is ``(member_dir, id)``.
+    The rows are read and sorted off the event loop.
     """
     tagged: list[tuple[str, Fact]] = []
     for rel in summary.member_dirs:
         facts = await get_facts(service_data_dir, service_data_dir / rel)
         tagged.extend((rel, f) for f in facts)
+    return await asyncio.to_thread(_sorted_tagged, tagged)
+
+
+def _sorted_tagged(tagged: list[tuple[str, Fact]]) -> list[tuple[str, Fact]]:
+    """Sort by ``(ts, id, member_dir)``. Blocking; run in a worker thread."""
     tagged.sort(key=lambda t: (t[1].ts, t[1].id, t[0]))
     return tagged
 

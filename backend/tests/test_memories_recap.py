@@ -915,6 +915,88 @@ async def test_recap_years_empty_service(svc):
         assert await recap.recap_years(svc, now=datetime.now(timezone.utc)) == []
 
 
+def _count_fact_reads(monkeypatch):
+    from backend.services.memories import facts as mf
+
+    reads = {"n": 0}
+    real = mf.get_person_facts
+
+    async def counting(service_data_dir, summary):
+        reads["n"] += 1
+        return await real(service_data_dir, summary)
+
+    monkeypatch.setattr(mf, "get_person_facts", counting)
+    return reads
+
+
+@pytest.mark.asyncio
+async def test_recap_years_is_cached_until_the_data_or_day_changes(full, monkeypatch):
+    reads = _count_fact_reads(monkeypatch)
+    with time_machine.travel(PARTIAL, tick=False):
+        first = await recap.recap_years(full, now=datetime.now(timezone.utc))
+        n = reads["n"]
+        assert n > 0
+        with capture_logs() as logs:
+            again = await recap.recap_years(full, now=datetime.now(timezone.utc))
+        assert again == first and reads["n"] == n  # no facts re-read
+        assert any(e.get("outcome") == "hit" for e in logs)
+        # a new room changes the member-index data hashes: rescanned
+        write_room(
+            full,
+            ("40 松田 好花", "64 松田 好花"),
+            [
+                m(k, f"2026-02-{1 + k:02d} 20:00", content=f"話{k}")
+                for k in range(1, 13)
+            ],
+        )
+        await recap.recap_years(full, now=datetime.now(timezone.utc))
+        assert reads["n"] > n
+    n = reads["n"]
+    # the next JST day is a new key (a partial year grows daily)
+    with time_machine.travel(datetime(2026, 12, 11, 12, 0, tzinfo=JST), tick=False):
+        await recap.recap_years(full, now=datetime.now(timezone.utc))
+    assert reads["n"] > n
+
+
+@pytest.mark.asyncio
+async def test_members_overview_is_cached(full, monkeypatch):
+    async def no_oshi(service):
+        return set()
+
+    monkeypatch.setattr(oshi_mod, "oshi_names", no_oshi)
+    reads = _count_fact_reads(monkeypatch)
+    with time_machine.travel(PARTIAL, tick=False):
+        now = datetime.now(timezone.utc)
+        first = await recap.build_members_overview(SERVICE, full, 2026, now=now)
+        n = reads["n"]
+        first["members"].clear()  # callers may mutate their copy
+        again = await recap.build_members_overview(SERVICE, full, 2026, now=now)
+        assert reads["n"] == n
+        assert again["members"]
+        await recap.build_members_overview(SERVICE, full, 2025, now=now)
+        assert reads["n"] > n  # another year is another key
+
+
+@pytest.mark.asyncio
+async def test_person_facts_sort_runs_off_the_event_loop(full, monkeypatch):
+    import threading
+
+    from backend.services.memories import facts as mf
+
+    threads = []
+    real = mf._sorted_tagged
+
+    def spy(tagged):
+        threads.append(threading.current_thread() is threading.main_thread())
+        return real(tagged)
+
+    monkeypatch.setattr(mf, "_sorted_tagged", spy)
+    summary = await summary_of(full, "金村美玖")
+    tagged = await mf.get_person_facts(full, summary)
+    assert threads == [False]
+    assert tagged == sorted(tagged, key=lambda t: (t[1].ts, t[1].id, t[0]))
+
+
 @pytest.mark.asyncio
 async def test_recap_years_does_not_count_promo(svc):
     # 9 real messages plus 5 promo ones in 2024: below the short tier.
