@@ -57,6 +57,32 @@ def _room_rel(service_data_dir: Path, member: str) -> str:
     return rel.as_posix()
 
 
+def _join_body(chunks: list[bytes]) -> bytes:
+    """One upload body from its streamed chunks (up to tens of MB; run in a worker)."""
+    return b"".join(chunks)
+
+
+async def _read_capped(request: Request, cap: int) -> list[bytes] | None:
+    """The streamed body's chunks, or ``None`` once it grows past ``cap`` bytes.
+
+    The chunks are not joined here: joining tens of MB would block the event
+    loop, so callers join them in a worker thread (:func:`_join_body`).
+    """
+    chunks: list[bytes] = []
+    total = 0
+    async for chunk in request.stream():
+        total += len(chunk)
+        if total > cap:
+            return None
+        chunks.append(chunk)
+    return chunks
+
+
+def _assemble_share_gif(chunks: list[bytes]) -> tuple[bytes, int]:
+    """Blocking: join the body and assemble the GIF (runs in a worker thread)."""
+    return share_gif.assemble_gif(_join_body(chunks))
+
+
 @router.get("/{service}/recap/years")
 async def recap_year_shelf(service: str) -> dict[str, list[int]]:
     """Years with a recap for this service (the shelf of yearbooks), ascending.
@@ -106,15 +132,12 @@ async def export_store(
     if declared and declared.isdigit() and int(declared) > exports.MAX_BYTES:
         logger.warning("memories.export.reject", kind=kind, reason="too_large")
         raise HTTPException(status_code=413, detail="Export too large")
-    chunks: list[bytes] = []
-    total = 0
-    async for chunk in request.stream():
-        total += len(chunk)
-        if total > exports.MAX_BYTES:
-            logger.warning("memories.export.reject", kind=kind, reason="too_large")
-            raise HTTPException(status_code=413, detail="Export too large")
-        chunks.append(chunk)
-    data = b"".join(chunks)
+    chunks = await _read_capped(request, exports.MAX_BYTES)
+    if chunks is None:
+        logger.warning("memories.export.reject", kind=kind, reason="too_large")
+        raise HTTPException(status_code=413, detail="Export too large")
+    data = await asyncio.to_thread(_join_body, chunks)
+    total = len(data)
     if not exports.magic_matches(kind, data):
         logger.warning(
             "memories.export.reject",
@@ -150,16 +173,12 @@ async def share_gif_store(request: Request) -> dict[str, str]:
     if declared and declared.isdigit() and int(declared) > share_gif.MAX_BODY_BYTES:
         logger.warning("memories.share.reject", reason="too_large")
         raise HTTPException(status_code=413, detail="too_large")
-    chunks: list[bytes] = []
-    total = 0
-    async for chunk in request.stream():
-        total += len(chunk)
-        if total > share_gif.MAX_BODY_BYTES:
-            logger.warning("memories.share.reject", reason="too_large")
-            raise HTTPException(status_code=413, detail="too_large")
-        chunks.append(chunk)
+    chunks = await _read_capped(request, share_gif.MAX_BODY_BYTES)
+    if chunks is None:
+        logger.warning("memories.share.reject", reason="too_large")
+        raise HTTPException(status_code=413, detail="too_large")
     try:
-        data, frames = await asyncio.to_thread(share_gif.assemble_gif, b"".join(chunks))
+        data, frames = await asyncio.to_thread(_assemble_share_gif, chunks)
     except share_gif.ShareGifError as e:
         logger.warning("memories.share.reject", reason=e.code)
         raise HTTPException(status_code=e.status, detail=e.code) from None
