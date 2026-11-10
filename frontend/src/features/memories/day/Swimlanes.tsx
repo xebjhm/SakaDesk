@@ -13,7 +13,7 @@ import { useNickname } from '../shared/useNickname';
 import { toChatMessage } from '../shared/toMessage';
 import { jumpToChat } from '../shared/jumpToChat';
 import { logMemoriesToggle } from '../memoriesLog';
-import { JST_TIME_ZONE, formatJstClock } from '../recap/availability';
+import { JST_TIME_ZONE, formatJstClock } from '../shared/jst';
 import { hourLabel, rulerSpan } from './ruler';
 import { dayPeople, type DayPerson } from './people';
 import { laneLayout } from './laneLayout';

@@ -6,7 +6,7 @@ import { Avatar, Button, EmptyState, Pill } from '../../../design/primitives';
 import { fetchNameMoments } from '../api';
 import { FilmStrip } from '../favorites/FilmStrip';
 import { logMemoriesToggle } from '../memoriesLog';
-import { formatJstDate } from '../recap/availability';
+import { formatJstDate } from '../shared/jst';
 import { LoadState } from '../shared/LoadState';
 import { MemoryText } from '../shared/MemoryText';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';

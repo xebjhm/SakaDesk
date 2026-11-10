@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../../../i18n';
+import { maskedNickname } from './nicknameMask';
 import { cn } from '../../../utils/classnames';
 import { replaceNickname } from '../../messages/utils/nickname';
 import { useNickname } from './useNickname';
@@ -28,7 +29,7 @@ export const MemoryText: React.FC<MemoryTextProps> = ({ text, nickname, underlin
     const { t } = useTranslation();
     const fromContext = useNickname();
     const own = nickname !== undefined ? (nickname.trim() ? nickname : undefined) : fromContext;
-    const name = own ?? `『${t('memories.common.nicknameMasked')}』`;
+    const name = own ?? maskedNickname(t);
     const Tag = as;
     let body: React.ReactNode;
     if (!underlineNickname) {

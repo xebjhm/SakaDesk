@@ -1,4 +1,4 @@
-import { jstNow } from '../recap/availability';
+import { jstNow } from '../shared/jst';
 import type { DayMessage } from '../types';
 
 const HOUR_MS = 60 * 60 * 1000;

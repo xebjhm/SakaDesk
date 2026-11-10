@@ -4,7 +4,7 @@ import { cn } from '../../../utils/classnames';
 import { Card } from '../../../design/primitives';
 import { MemoryText } from '../shared/MemoryText';
 import { sepiaClass } from '../shared/sepia';
-import { formatJstClock } from '../recap/availability';
+import { formatJstClock } from '../shared/jst';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import { useDragScroll } from './useDragScroll';
 import type { OnThisDayYear } from '../types';

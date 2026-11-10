@@ -1,4 +1,4 @@
-import { jstNow } from '../recap/availability';
+import { jstNow } from '../shared/jst';
 
 const pad = (n: number) => String(n).padStart(2, '0');
 

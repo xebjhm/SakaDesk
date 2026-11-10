@@ -8,38 +8,16 @@
  *   years with data (`GET /api/memories/{service}/recap/years`).
  */
 
+import { jstNow } from '../shared/jst';
+
+// The JST helpers live in `shared/jst.ts`; re-exported for the recap's existing imports.
+export { JST_TIME_ZONE, formatJstClock, formatJstDate, jstNow, type JstParts } from '../shared/jst';
+
 /** The first year the recap API accepts (`MIN_YEAR` in `backend/api/memories.py`). */
 export const RECAP_MIN_YEAR = 2020;
 
-/** Japan has no daylight saving time: JST is always UTC+9. */
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-/** The IANA zone of every Memories clock (hand it to `MessageBubble`'s `timeZone`). */
-export const JST_TIME_ZONE = 'Asia/Tokyo';
-
 /** The month (1-12) the current year's recap opens. */
 const OPEN_MONTH = 12;
-
-export interface JstParts {
-    year: number;
-    /** 1-12. */
-    month: number;
-    day: number;
-    hour: number;
-    minute: number;
-}
-
-/** The wall clock in Asia/Tokyo at `now` (defaults to the current time). */
-export function jstNow(now: Date = new Date()): JstParts {
-    const t = new Date(now.getTime() + JST_OFFSET_MS);
-    return {
-        year: t.getUTCFullYear(),
-        month: t.getUTCMonth() + 1,
-        day: t.getUTCDate(),
-        hour: t.getUTCHours(),
-        minute: t.getUTCMinutes(),
-    };
-}
 
 export interface RecapAvailability {
     /** The current JST year. */
@@ -83,23 +61,4 @@ export function offeredRecapYears(avail: RecapAvailability, dataYears: readonly 
 export function defaultRecapYear(avail: RecapAvailability, offered: readonly number[]): number | null {
     if (offered.includes(avail.defaultYear)) return avail.defaultYear;
     return offered.length ? offered[offered.length - 1] : null;
-}
-
-/**
- * A timestamp's Tokyo wall-clock time as `HH:MM` (leading zeros), whatever the machine's zone:
- * Memories shows JST everywhere, like its JST dates. '' for an invalid timestamp.
- */
-export function formatJstClock(ts: string | number | Date): string {
-    const d = ts instanceof Date ? ts : new Date(ts);
-    if (Number.isNaN(d.getTime())) return '';
-    const { hour, minute } = jstNow(d);
-    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-}
-
-/** A timestamp's Tokyo calendar date as `YYYY-MM-DD` (the day view's date), or '' when invalid. */
-export function formatJstDate(ts: string | number | Date): string {
-    const d = ts instanceof Date ? ts : new Date(ts);
-    if (Number.isNaN(d.getTime())) return '';
-    const { year, month, day } = jstNow(d);
-    return `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }

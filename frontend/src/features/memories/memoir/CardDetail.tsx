@@ -8,7 +8,7 @@ import { fetchDay } from '../api';
 import { formatDayHeading } from '../day/format';
 import { MergedTimeline } from '../day/MergedTimeline';
 import { dayPeople, type DayPerson } from '../day/people';
-import { formatJstClock, formatJstDate } from '../recap/availability';
+import { formatJstClock, formatJstDate } from '../shared/jst';
 import { jumpToChat } from '../shared/jumpToChat';
 import { LoadState } from '../shared/LoadState';
 import { MemoryText } from '../shared/MemoryText';

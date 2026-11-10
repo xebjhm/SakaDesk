@@ -5,7 +5,7 @@ import { Button, IconButton, Modal } from '../../../design/primitives';
 import { cn, formatDuration } from '../../../utils/classnames';
 import { fetchDay } from '../api';
 import { logMemoriesSkip, type MemoriesView } from '../memoriesLog';
-import { formatJstClock } from '../recap/availability';
+import { formatJstClock } from '../shared/jst';
 import { formatDayHeading } from '../day/format';
 import { isEditable } from '../shared/keys';
 import { LazyVoice } from '../shared/LazyVoice';

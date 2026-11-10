@@ -1,4 +1,4 @@
-import { jstNow } from '../recap/availability';
+import { jstNow } from './jst';
 
 // Literal class names, so Tailwind's scanner sees every one of them.
 const SEPIA_STEPS = { 1: 'sepia-memories-1', 2: 'sepia-memories-2', 3: 'sepia-memories-3' } as const;

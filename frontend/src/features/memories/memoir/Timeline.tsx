@@ -7,7 +7,7 @@ import { cn } from '../../../utils/classnames';
 import { fetchTimelineMonth, fetchTimelineMonths } from '../api';
 import { albumViewerItems, formatMonth, viewerIndexOf } from '../album/albumViewer';
 import { logMemoriesSkip } from '../memoriesLog';
-import { formatJstDate } from '../recap/availability';
+import { formatJstDate } from '../shared/jst';
 import { jumpToChat } from '../shared/jumpToChat';
 import { LazyVoice } from '../shared/LazyVoice';
 import { LoadState } from '../shared/LoadState';

@@ -5,7 +5,7 @@ import { EmptyState } from '../../../design/primitives';
 import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
 import { fetchFavorites } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
-import { formatJstDate } from '../recap/availability';
+import { formatJstDate } from '../shared/jst';
 import { LoadState } from '../shared/LoadState';
 import { MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { PageHeader } from '../shared/PageHeader';

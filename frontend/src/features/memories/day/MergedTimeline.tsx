@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import { useTranslation } from '../../../i18n';
+import { maskedNickname } from '../shared/nicknameMask';
 import { MessageBubble } from '../../messages/components/MessageBubble';
 import { replaceNickname } from '../../messages/utils/nickname';
 import { resizedAvatarUrl } from '../../messages/mediaUrl';
@@ -12,11 +13,11 @@ import { MemoryText } from '../shared/MemoryText';
 import { useNickname } from '../shared/useNickname';
 import { toChatMessage } from '../shared/toMessage';
 import { jumpToChat } from '../shared/jumpToChat';
-import { memoryMediaSrc } from '../shared/mediaSrc';
+import { isViewableMedia, viewerSrc } from '../shared/mediaSrc';
 import { contextCaption, shownTexts } from '../shared/captions';
-import { JST_TIME_ZONE } from '../recap/availability';
+import { JST_TIME_ZONE } from '../shared/jst';
 import type { DayPerson } from './people';
-import type { DayMessage, MemoryMessage } from '../types';
+import type { DayMessage } from '../types';
 
 interface MergedTimelineProps {
     /** The day's messages in time order (already filtered). */
@@ -45,9 +46,6 @@ export const WINDOW_FROM = 60;
 const BUBBLE_THUMB = 640;
 
 const msgKey = (m: DayMessage) => `${m.service}|${m.room}|${m.id}`;
-const isViewable = (m: DayMessage) => (m.type === 'picture' || m.type === 'video') && Boolean(m.media_url || m.media_file);
-/** Only called for viewable items, which have a URL or a file. */
-const mediaSrc = (m: MemoryMessage) => memoryMediaSrc(m) ?? '';
 
 /** Space for the bubble's avatar column, so lines under a bubble align with it. */
 const Indented: React.FC<{ children: React.ReactNode }> = ({ children }) => (
@@ -68,16 +66,16 @@ const Indented: React.FC<{ children: React.ReactNode }> = ({ children }) => (
 export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people, service, scrollParent }) => {
     const { t } = useTranslation();
     const ownNickname = useNickname();
-    const nickname = ownNickname ?? `『${t('memories.common.nicknameMasked')}』`;
+    const nickname = ownNickname ?? maskedNickname(t);
     const avatarWidth = useAvatarWidth(AVATAR_PX);
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
 
     const nameOf = (m: DayMessage) => people.get(m.person_key)?.name ?? '';
-    const media = useMemo(() => messages.filter(isViewable), [messages]);
+    const media = useMemo(() => messages.filter(isViewableMedia), [messages]);
     const shown = useMemo(() => shownTexts(messages), [messages]);
     const mediaIndexOf = useMemo(() => new Map(media.map((m, i) => [m, i])), [media]);
     const mediaItems: MediaViewerItem[] = media.map((m) => ({
-        src: mediaSrc(m),
+        src: viewerSrc(m),
         type: m.type as 'picture' | 'video',
         timestamp: m.ts,
         memberName: nameOf(m),

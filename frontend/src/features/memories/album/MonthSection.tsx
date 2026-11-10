@@ -6,7 +6,7 @@ import { fetchAlbumMonth } from '../api';
 import { LoadState } from '../shared/LoadState';
 import { sepiaClass } from '../shared/sepia';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
-import { JST_TIME_ZONE } from '../recap/availability';
+import { jstDateFormat } from '../shared/jst';
 import type { AlbumKind, AlbumMonthPayload, AlbumMonthSummary, MemoryMessage } from '../types';
 import { BurstStack } from './BurstStack';
 import { PhotoTile } from './PhotoTile';
@@ -79,9 +79,7 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia 
         const index = viewerIndexOf(viewable, item);
         if (index >= 0) setViewerIndex(index);
     }, [viewable]);
-    const dateLabel = useMemo(() => new Intl.DateTimeFormat(i18n.language, {
-        timeZone: JST_TIME_ZONE, year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit',
-    }), [i18n.language]);
+    const dateLabel = useMemo(() => jstDateFormat(i18n.language, { time: true }), [i18n.language]);
     // Under the ★ filter every photo is a favourite: pinning them all larger would mean nothing.
     const pinFavorites = kind !== 'favorite';
 

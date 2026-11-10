@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { Mic, Play } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
-import { JST_TIME_ZONE } from '../recap/availability';
+import { jstDateFormat } from '../shared/jst';
 import { logMemoriesSkip } from '../memoriesLog';
 import { LazyVoice } from '../shared/LazyVoice';
 import { memoryMediaSrc } from '../shared/mediaSrc';
@@ -243,10 +243,7 @@ export const CorkBoard: React.FC<CorkBoardProps> = ({ items, onOpen }) => {
         return out;
     }, [kept]);
     const win = useChunkWindow(chunks.length, scroller);
-    const dateFormat = useMemo(
-        () => new Intl.DateTimeFormat(i18n.language, { timeZone: JST_TIME_ZONE, year: 'numeric', month: 'short', day: 'numeric' }),
-        [i18n.language],
-    );
+    const dateFormat = useMemo(() => jstDateFormat(i18n.language), [i18n.language]);
     const dateOf = useCallback((m: FavoriteItem) => dateFormat.format(new Date(m.ts)), [dateFormat]);
 
     return (
