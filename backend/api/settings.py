@@ -152,9 +152,10 @@ class SettingsUpdate(BaseModel):
     memories_notify_anniversary: Optional[bool] = None
     memories_notify_recap: Optional[bool] = None
     memories_notify_cards: Optional[bool] = None
-    # JST "HH:MM", 00:00-23:59; anything else is a 422.
+    # JST "HH:MM", 00:00-23:59 in ASCII digits ([0-9], not the Unicode \d);
+    # anything else is a 422.
     memories_notify_time: Optional[str] = Field(
-        default=None, pattern=r"^([01]\d|2[0-3]):[0-5]\d$"
+        default=None, pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$"
     )
 
 

@@ -319,7 +319,20 @@ def test_resolve_notify_time_accepts_valid(value):
 
 
 @pytest.mark.parametrize(
-    "value", ["24:00", "7:30", "12:00:00", "12:60", "12:00\n", "", None, 1200]
+    "value",
+    [
+        "24:00",
+        "7:30",
+        "12:00:00",
+        "12:60",
+        "12:00\n",
+        "",
+        None,
+        1200,
+        "１２:００",
+        "1٢:00",
+        "1２:3０",
+    ],
 )
 def test_resolve_notify_time_falls_back_with_breadcrumb(value):
     with capture_logs() as logs:
@@ -378,7 +391,9 @@ def test_post_all_toggles_round_trip(client, settings_env):
         assert body[key] is value
 
 
-@pytest.mark.parametrize("value", ["24:00", "7:30", "12:00:00", "12:00\n"])
+@pytest.mark.parametrize(
+    "value", ["24:00", "7:30", "12:00:00", "12:00\n", "１２:００", "0٧:30", "1２:3０"]
+)
 def test_post_bad_notify_time_is_422(client, settings_env, value):
     _, calls = settings_env
     r = client.post("/api/settings", json={"memories_notify_time": value})

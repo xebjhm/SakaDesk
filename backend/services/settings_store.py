@@ -62,8 +62,9 @@ _SETTINGS_DEFAULTS: dict[str, Any] = {
 
 
 MEMORIES_NOTIFY_TIME_DEFAULT = "12:00"
-# Strict JST "HH:MM", 00:00-23:59. ``\Z`` (not ``$``) so a trailing newline fails.
-MEMORIES_NOTIFY_TIME_RE = re.compile(r"\A([01]\d|2[0-3]):[0-5]\d\Z")
+# Strict JST "HH:MM", 00:00-23:59. ``\Z`` (not ``$``) so a trailing newline fails;
+# ``[0-9]`` (not ``\d``) so full-width or other Unicode digits fail too.
+MEMORIES_NOTIFY_TIME_RE = re.compile(r"\A([01][0-9]|2[0-3]):[0-5][0-9]\Z")
 
 
 def resolve_memories_notify_time(value: Any) -> str:
