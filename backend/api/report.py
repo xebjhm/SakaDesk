@@ -354,21 +354,22 @@ def _get_sync_state() -> dict:
     return {"last_sync": None, "last_error": None}
 
 
-def _get_nicknames() -> list[str]:
-    """Every cached user nickname to redact, longest first.
+def _get_nicknames() -> Optional[list[str]]:
+    """Every cached user nickname to redact, longest first; ``None`` if unknown.
 
     ``api/profile.py`` caches one nickname per service under
     ``user_nicknames`` (a dict); an older build stored a single
     ``user_nickname`` string. Both are collected; empty and non-string values
     are skipped. Read with ``settings_store.read_settings_file`` (locked,
-    retried, last good value on a transient failure).
+    retried, last good value on a transient failure). ``None`` means the
+    settings could not be read and no last good value exists: the callers
+    then fail closed (:func:`_withhold_free_text`), never send unredacted logs.
     """
     try:
         data = read_settings_file(get_settings_path())
     except Exception as e:
-        # Not silent: without the nicknames their redaction is skipped.
         logger.warning("report_nickname_read_failed", error_type=type(e).__name__)
-        return []
+        return None
     if not isinstance(data, dict):
         return []
     found: list[Any] = []
@@ -379,6 +380,24 @@ def _get_nicknames() -> list[str]:
     names = _nickname_list(found)
     logger.debug("report_nicknames", count=len(names))
     return names
+
+
+WITHHELD_LOGS = {"errors": [], "recent": [], "withheld": "nicknames_unavailable"}
+
+
+def _withhold_free_text(diagnostics: dict) -> None:
+    """Fail closed when the nicknames are unknown: drop the logs and free text.
+
+    Log lines and the error message are where a nickname would appear; with
+    no nickname list they cannot be redacted, so they are not sent at all.
+    """
+    diagnostics["logs"] = dict(WITHHELD_LOGS)
+    context = diagnostics.get("context")
+    if isinstance(context, dict):
+        for key in ("error_message", "current_screen"):
+            if key in context:
+                context[key] = None
+    logger.warning("report_logs_withheld", reason="nicknames_unavailable")
 
 
 def _build_github_url(
@@ -482,11 +501,14 @@ async def generate_report(
     # Smart logs
     log_path = get_logs_dir() / "debug.log"
     output_dir = _get_output_dir()
-    diagnostics["logs"] = _get_smart_logs(log_path, username, nickname, output_dir)
+    if nickname is None:  # settings unreadable: fail closed
+        _withhold_free_text(diagnostics)
+    else:
+        diagnostics["logs"] = _get_smart_logs(log_path, username, nickname, output_dir)
 
     # Scrub the WHOLE payload (not just logs) before it becomes a public issue URL
     # body and a clipboard copy — member_path, sync errors, custom data paths.
-    diagnostics = _redact_diagnostics(diagnostics, username, nickname, output_dir)
+    diagnostics = _redact_diagnostics(diagnostics, username, nickname or [], output_dir)
 
     # Build GitHub URL from the already-redacted diagnostics
     github_url = _build_github_url(
@@ -517,9 +539,12 @@ async def get_diagnostics_only():
 
     log_path = get_logs_dir() / "debug.log"
     output_dir = _get_output_dir()
-    diagnostics["logs"] = _get_smart_logs(log_path, username, nickname, output_dir)
+    if nickname is None:  # settings unreadable: fail closed
+        _withhold_free_text(diagnostics)
+    else:
+        diagnostics["logs"] = _get_smart_logs(log_path, username, nickname, output_dir)
 
     # Scrub the whole payload — the diagnostics modal renders/copies these values.
-    diagnostics = _redact_diagnostics(diagnostics, username, nickname, output_dir)
+    diagnostics = _redact_diagnostics(diagnostics, username, nickname or [], output_dir)
 
     return diagnostics

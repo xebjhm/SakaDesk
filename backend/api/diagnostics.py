@@ -599,7 +599,9 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
     debug_tail: list[str] = []
     try:
         log_dir = get_logs_dir()
-        if log_dir.exists():
+        if nickname is None:  # settings unreadable: fail closed, send no log lines
+            logger.warning("diagnostics_logs_withheld", reason="nicknames_unavailable")
+        elif log_dir.exists():
             # Recent logs from debug.log (last 50 lines)
             debug_log = log_dir / "debug.log"
             if debug_log.exists():

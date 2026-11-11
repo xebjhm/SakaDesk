@@ -210,7 +210,7 @@ def test_report_settings_reads_keep_the_last_good_value(tmp_path, monkeypatch):
         assert report._get_output_dir() == str(tmp_path)
         settings_store._last_good_files.clear()
         with capture_logs() as logs:
-            assert report._get_nicknames() == []
+            assert report._get_nicknames() is None  # unknown: callers fail closed
         assert [e for e in logs if e["event"] == "report_nickname_read_failed"]
     settings_store._last_good_files.clear()
 
@@ -422,3 +422,40 @@ def test_report_endpoints_redact_overlaps_in_body_clipboard_and_diagnostics(
     ):
         assert _overlap_leaks(blob) == []
     settings_store._last_good_files.clear()
+
+
+# --- M2(c): nicknames unreadable -> logs and free text withheld (fail closed) ----------
+
+
+def test_reports_withhold_logs_when_the_nicknames_cannot_be_read(tmp_path, monkeypatch):
+    from unittest.mock import patch
+    from urllib.parse import unquote
+
+    from fastapi.testclient import TestClient
+
+    from backend.api import diagnostics, report
+    from backend.main import app
+
+    (tmp_path / "debug.log").write_text("[error] ひなたの🌻 failed\n", encoding="utf-8")
+    monkeypatch.setattr(report, "get_logs_dir", lambda: tmp_path)
+    monkeypatch.setattr(diagnostics, "get_logs_dir", lambda: tmp_path)
+    with (
+        patch.object(report, "_get_nicknames", return_value=None),
+        patch.object(diagnostics, "_get_nicknames", return_value=None),
+    ):
+        client = TestClient(app)
+        body = client.post(
+            "/api/report",
+            json={"category": "other", "error_message": "ひなたの🌻 broke it"},
+        ).json()
+        preview = client.get("/api/report/diagnostics").json()
+        diag = client.get("/api/diagnostics").json()
+    assert body["diagnostics"]["logs"] == {
+        "errors": [],
+        "recent": [],
+        "withheld": "nicknames_unavailable",
+    }
+    assert body["diagnostics"]["context"]["error_message"] is None
+    assert "🌻" not in unquote(body["github_url"])
+    assert preview["logs"]["withheld"] == "nicknames_unavailable"
+    assert diag["logs"]["recent"] == [] and diag["logs"]["errors"] == []
