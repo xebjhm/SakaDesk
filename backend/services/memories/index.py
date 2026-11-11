@@ -29,7 +29,7 @@ import threading
 import time
 from bisect import bisect_left, bisect_right
 from collections import Counter
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, fields
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -908,6 +908,73 @@ async def get_member_index(service_data_dir: Path, member_dir: Path) -> MemberIn
             )[0]
 
         return await asyncio.to_thread(run)
+
+
+def _fresh_hashes_sync(
+    service_data_dir: Path, member_dirs: Sequence[Path]
+) -> list[str | None]:
+    """Per room, its ``data_hash`` when the stored row is current, else ``None``. Blocking.
+
+    One side-input load, one stat per room (the same :func:`_data_hash` as
+    :func:`_get_sync`) and one ``SELECT`` of the stored hashes; no index
+    payload is read or parsed. A room whose stored hash differs (new data, or
+    never built) or whose ``messages.json`` cannot be stat'ed gives ``None``.
+    A database error logs ``memory_index_hashes_failed`` and gives ``None``
+    for every room (the caller then falls back to :func:`get_member_index`).
+    """
+    if not member_dirs:
+        return []
+    service_dir = str(service_data_dir)
+    try:
+        with contextlib.closing(_connect()) as c:
+            stored: dict[str, str] = dict(
+                c.execute(
+                    "SELECT member_dir, data_hash FROM member_index "
+                    "WHERE service_dir=?",
+                    (service_dir,),
+                ).fetchall()
+            )
+    except sqlite3.Error as e:
+        logger.warning("memory_index_hashes_failed", error_type=type(e).__name__)
+        return [None] * len(member_dirs)
+    inputs = _load_inputs(service_data_dir, fresh_scan=False)
+    out: list[str | None] = []
+    for d in member_dirs:
+        base = _identity(service_data_dir, d, inputs)
+        try:
+            current = _data_hash(d / "messages.json", base)
+        except OSError:
+            out.append(None)
+            continue
+        out.append(current if stored.get(base.member_dir) == current else None)
+    return out
+
+
+async def data_hashes(service_data_dir: Path, member_dirs: Sequence[Path]) -> list[str]:
+    """The ``data_hash`` of each room, as ``get_member_index(...).data_hash`` gives it.
+
+    The cheap freshness check for view-cache keys (D-M3): one worker hop
+    checks every room at once (:func:`_fresh_hashes_sync`). Only the rooms
+    that are not current go through :func:`get_member_index`, which builds
+    them (new data after a sync) or serves the stored row while a sync is
+    writing, exactly as before. Logs one ``memory_index_hashes`` (``rooms``,
+    ``fresh``, ``fallback``) instead of a ``memory_index_hit`` per room.
+    """
+    fresh = await asyncio.to_thread(_fresh_hashes_sync, service_data_dir, member_dirs)
+    out: list[str] = []
+    fallback = 0
+    for d, current in zip(member_dirs, fresh):
+        if current is None:
+            fallback += 1
+            current = (await get_member_index(service_data_dir, d)).data_hash
+        out.append(current)
+    logger.info(
+        "memory_index_hashes",
+        rooms=len(out),
+        fresh=len(out) - fallback,
+        fallback=fallback,
+    )
+    return out
 
 
 @dataclass(frozen=True)

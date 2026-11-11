@@ -729,3 +729,107 @@ def test_any_refresh_pending(tmp_path):
     assert mi.any_refresh_pending() is True
     mi.end_refresh(tmp_path)
     assert mi.any_refresh_pending() is False
+
+
+# --- data_hashes: one cheap freshness check per request (D-M3) ------------------------
+
+
+def _second_room(root, msgs):
+    d = root / "messages" / "35 小坂 菜緒" / "60 小坂 菜緒"
+    d.mkdir(parents=True)
+    (d / "messages.json").write_text(
+        json.dumps({"member": {}, "messages": msgs}, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    return d
+
+
+@pytest.mark.asyncio
+async def test_data_hashes_equal_the_member_index_hashes_with_one_check(
+    tmp_path, monkeypatch
+):
+    from structlog.testing import capture_logs
+
+    mi.set_db_path(tmp_path / "idx.db")
+    a = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", "picture")])
+    b = _second_room(tmp_path, [msg(2, "2026-09-15T03:00:00Z", "picture")])
+    await mi.build_all(tmp_path)
+    expected = [
+        (await mi.get_member_index(tmp_path, a)).data_hash,
+        (await mi.get_member_index(tmp_path, b)).data_hash,
+    ]
+    payload_reads: list[int] = []
+    real = mi._cache_get
+
+    def counting(*args, **kwargs):
+        payload_reads.append(1)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(mi, "_cache_get", counting)
+    with capture_logs() as logs:
+        got = await mi.data_hashes(tmp_path, [a, b])
+    assert got == expected
+    assert payload_reads == []  # a warm hit reads no index payload
+    assert [e for e in logs if e["event"] == "memory_index_hit"] == []
+    (summary,) = [e for e in logs if e["event"] == "memory_index_hashes"]
+    assert (summary["rooms"], summary["fresh"], summary["fallback"]) == (2, 2, 0)
+
+
+@pytest.mark.asyncio
+async def test_data_hashes_see_new_data_and_build_unbuilt_rooms(tmp_path):
+    from structlog.testing import capture_logs
+
+    mi.set_db_path(tmp_path / "idx.db")
+    a = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", "picture")])
+    (first,) = await mi.data_hashes(tmp_path, [a])  # never built: built now
+    assert first == (await mi.get_member_index(tmp_path, a)).data_hash
+    path = a / "messages.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["messages"].append(msg(2, "2026-09-16T03:00:00Z", "picture"))
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    with capture_logs() as logs:
+        (second,) = await mi.data_hashes(tmp_path, [a])  # a sync wrote it
+    assert second != first
+    assert second == (await mi.get_member_index(tmp_path, a)).data_hash
+    assert 2 in facts_of(tmp_path, a)  # rebuilt: the new photo is indexed
+    (summary,) = [e for e in logs if e["event"] == "memory_index_hashes"]
+    assert (summary["fresh"], summary["fallback"]) == (0, 1)
+
+
+@pytest.mark.asyncio
+async def test_data_hashes_serve_the_stored_row_while_a_sync_writes(tmp_path):
+    mi.set_db_path(tmp_path / "idx.db")
+    a = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", "picture")])
+    (stored,) = await mi.data_hashes(tmp_path, [a])
+    path = a / "messages.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    data["messages"].append(msg(2, "2026-09-16T03:00:00Z", "picture"))
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    with mi.sync_writing(tmp_path):
+        assert await mi.data_hashes(tmp_path, [a]) == [stored]  # as get_member_index
+    assert await mi.data_hashes(tmp_path, [a]) != [stored]
+
+
+@pytest.mark.asyncio
+async def test_data_hashes_fall_back_per_room_on_errors(tmp_path, monkeypatch):
+    from structlog.testing import capture_logs
+
+    mi.set_db_path(tmp_path / "idx.db")
+    a = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", "picture")])
+    gone = tmp_path / "messages" / "36 文字" / "61 文字"  # no messages.json
+    await mi.build_all(tmp_path)
+    expected = (await mi.get_member_index(tmp_path, a)).data_hash
+    assert await mi.data_hashes(tmp_path, []) == []
+
+    def broken():
+        raise mi.sqlite3.OperationalError("locked")
+
+    monkeypatch.setattr(mi, "_connect", broken)
+    with capture_logs() as logs:
+        fresh = mi._fresh_hashes_sync(tmp_path, [a, gone])
+    assert fresh == [None, None]
+    (failed,) = [e for e in logs if e["event"] == "memory_index_hashes_failed"]
+    assert failed["error_type"] == "OperationalError"
+    monkeypatch.undo()
+    mi.set_db_path(tmp_path / "idx.db")
+    assert mi._fresh_hashes_sync(tmp_path, [a, gone]) == [expected, None]

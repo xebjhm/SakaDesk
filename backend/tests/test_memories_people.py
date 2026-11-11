@@ -355,6 +355,25 @@ async def test_room_hashes_change_with_the_data(svc):
     assert await people.room_hashes(svc, s) != h1
 
 
+@pytest.mark.asyncio
+async def test_person_hashes_match_room_hashes_with_one_check(svc, monkeypatch):
+    summaries = await mi.list_members(svc)
+    expected = [await people.room_hashes(svc, s) for s in summaries]
+    calls: list[int] = []
+    real = mi.data_hashes
+
+    async def counting(sdir, dirs):
+        calls.append(len(dirs))
+        return await real(sdir, dirs)
+
+    monkeypatch.setattr(mi, "data_hashes", counting)
+    assert await people.person_hashes(svc, summaries) == expected
+    persons, scope, hashes = await people.album_scope(svc, None)
+    assert scope == "all" and hashes == expected
+    rooms = sum(len(s.member_dirs) for s in summaries)
+    assert calls == [rooms, rooms]  # one check per call, not one per room
+
+
 LETTERS = [
     {"id": 5, "text": "ありがとう", "created_at": "2026-01-01T15:30:00Z"},  # 01-02 JST
     {"id": 4, "text": "はじめまして", "created_at": "2025-03-01T00:00:00Z"},

@@ -34,7 +34,8 @@ API:
   ``text`` / ``caption`` with one ``load_texts`` per room, at most
   :data:`IO_CONCURRENCY` rooms at once.
 - ``async service_facts_on(sdir, summaries, *, day=None, month_day=None)``.
-- ``async room_hashes(sdir, summary)``.
+- ``async room_hashes(sdir, summary)``, ``async person_hashes(sdir, persons)``
+  (the same per person, one freshness check for all their rooms).
 - ``async album_scope(sdir, member)`` -- ``(persons, scope, room hashes)`` of
   one person or, for ``None``, everyone (``scope`` = ``person_key`` or
   ``"all"``); ``async scope_facts(sdir, persons)`` -- their ``(room, fact)``
@@ -476,13 +477,27 @@ async def service_facts_on(
     return await asyncio.to_thread(_sorted_room_facts, tagged)
 
 
+def _combine(hashes: Sequence[str]) -> str:
+    return hashlib.sha256("|".join(hashes).encode("utf-8")).hexdigest()[:16]
+
+
 async def room_hashes(sdir: Path, summary: mi.MemberSummary) -> str:
     """Short hash over every room's member-index ``data_hash`` (16 hex chars)."""
-    hashes = [
-        (await mi.get_member_index(sdir, sdir / room)).data_hash
-        for room in summary.member_dirs
-    ]
-    return hashlib.sha256("|".join(hashes).encode("utf-8")).hexdigest()[:16]
+    return (await person_hashes(sdir, [summary]))[0]
+
+
+async def person_hashes(sdir: Path, persons: Sequence[mi.MemberSummary]) -> list[str]:
+    """:func:`room_hashes` of each person, with one freshness check for all rooms.
+
+    ``index.data_hashes`` checks every room in one worker hop; only rooms
+    with new data (or none built) go through ``get_member_index``.
+    """
+    flat = iter(
+        await mi.data_hashes(
+            sdir, [sdir / room for s in persons for room in s.member_dirs]
+        )
+    )
+    return [_combine([next(flat) for _ in s.member_dirs]) for s in persons]
 
 
 async def album_scope(
@@ -491,8 +506,7 @@ async def album_scope(
     """``(persons, scope, room hashes)`` of one person or of everyone (``"all"``)."""
     persons = [member] if member is not None else await mi.list_members(sdir)
     scope = person_key(member) if member is not None else "all"
-    hashes = [await room_hashes(sdir, s) for s in persons]
-    return persons, scope, hashes
+    return persons, scope, await person_hashes(sdir, persons)
 
 
 def _by_ts_id_room(t: tuple[str, Fact]) -> tuple[datetime, int, str]:
@@ -611,6 +625,7 @@ __all__ = [
     "output_dir",
     "person_key",
     "resolve_person",
+    "person_hashes",
     "room_hashes",
     "service_data_dir",
     "service_facts_on",

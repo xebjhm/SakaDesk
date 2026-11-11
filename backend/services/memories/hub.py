@@ -560,7 +560,7 @@ async def build_hub(service: str, sdir: Path, *, now: datetime) -> dict:
     summaries = await mi.list_members(sdir)
     oshi = await people.oshi_rooms(service, summaries)
     ordered = people.sort_people(summaries, oshi)
-    hashes = [await people.room_hashes(sdir, s) for s in summaries]
+    hashes = await people.person_hashes(sdir, summaries)
     lapsed = await asyncio.to_thread(lapsed_groups, sdir)
     data_hash = view_hash(
         VERSION, hashes, today.isoformat(), sorted(oshi), sorted(lapsed)
