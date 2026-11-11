@@ -107,13 +107,16 @@ in-session ``gallery_version`` is not stored: it restarts at every launch.
 Instead the stored rows are removed whenever that version would move:
 
 - every blog write (``blog_service.invalidate_gallery``) calls
-  :func:`forget_blog_signatures`, which deletes them (once per save, off
-  the event loop);
+  :func:`forget_blog_signatures` for its service, which deletes that
+  service's row only (once per save, off the event loop; a write of unknown
+  service deletes every row), so one new blog in one group never makes the
+  other groups list again (N3);
 - a signature is saved only when no blog was written since its listing,
   and deleted again if one was written (or the caches were cleared) while
   it was being saved;
-- the signatures loaded at start are trusted only while ``gallery_version``
-  has not moved since (a blog written this session lists again);
+- a service's signature loaded at start is trusted only while its
+  ``gallery_version`` has not moved since (a blog of that service written
+  this session lists it again);
 - :func:`clear_caches` and a ``media_meta`` schema reset empty the table.
 
 Logged as ``media_pregen_blog_sig`` (``state=loaded|saved|skipped|forgotten``,
@@ -182,7 +185,7 @@ from backend.services import (
     win_shell_thumb,
 )
 from backend.services.memories.index import MediaRow
-from backend.services.service_utils import get_service_display_name
+from backend.services.service_utils import get_all_services, get_service_display_name
 
 logger = structlog.get_logger(__name__)
 
@@ -830,7 +833,8 @@ class MediaPregen:
         # service -> the persisted form loaded at start (trusted while the
         # gallery version has not moved since; see the module)
         self._loaded_sig: dict[str, tuple[str, int, int]] = {}
-        self._start_version = 0
+        # Each service's gallery version when the worker started (D-M4, N3).
+        self._start_versions: dict[str, int] = {}
 
     # --- public ---------------------------------------------------------------------
 
@@ -841,7 +845,9 @@ class MediaPregen:
         self._loop = asyncio.get_running_loop()
         from backend.services import blog_service
 
-        self._start_version = blog_service.gallery_version()
+        self._start_versions = {
+            s: blog_service.gallery_version(s) for s in get_all_services()
+        }
         self._shell_off_seen = bool(video_poster.shell_state()["off"])
         self._set_state("running")
         self._task = self._loop.create_task(self._main(), name="media_pregen")
@@ -1177,18 +1183,20 @@ class MediaPregen:
         """Persist a completed blog phase's signature (see the module); never raises."""
         from backend.services import blog_service as bs
 
-        if bs.gallery_version() != signature[3]:
+        if bs.gallery_version(service) != signature[3]:
             logger.info("media_pregen_blog_sig", state="skipped", reason="blog_written")
             return
         await asyncio.to_thread(
             media_meta.kv_set, BLOG_SIG_PREFIX + service, _sig_value(signature)
         )
-        _note_persisted()
+        _note_persisted(service)
         if (
-            bs.gallery_version() != signature[3]
+            bs.gallery_version(service) != signature[3]
             or self._turn_generation != self._generation
         ):  # a blog write or a clear raced the save: it must not outlive them
-            await asyncio.to_thread(media_meta.kv_delete_prefix, BLOG_SIG_PREFIX)
+            await asyncio.to_thread(
+                media_meta.kv_delete_prefix, BLOG_SIG_PREFIX + service
+            )
             logger.info("media_pregen_blog_sig", state="skipped", reason="raced")
             return
         logger.info("media_pregen_blog_sig", state="saved", count=1)
@@ -1199,9 +1207,9 @@ class MediaPregen:
             return True
         from backend.services import blog_service as bs
 
-        return bs.gallery_version() == self._start_version and self._loaded_sig.get(
+        return bs.gallery_version(service) == self._start_versions.get(
             service
-        ) == _sig_form(signature)
+        ) and self._loaded_sig.get(service) == _sig_form(signature)
 
     async def _call(self, fn: Callable[[], Any]) -> Any:
         """Run one short blocking step on the worker thread (background priority).
@@ -1252,7 +1260,7 @@ class MediaPregen:
             if not await self._ready():
                 return None
             root = await self._root_dir()
-            version = bs.gallery_version()
+            version = bs.gallery_version(service)
             index = await self._call(partial(bs.gallery_index, service, None, root))
             if index is None:
                 return Phase(PHASE_BLOGS, [], reason="no_index"), None
@@ -1432,35 +1440,42 @@ def _load_blog_sigs() -> tuple[dict[str, tuple[str, int, int]], int]:
     return out, bad
 
 
-_persisted_maybe = True
-"""False once :func:`forget_blog_signatures` deleted them and none was saved since."""
+_forgotten: set[str] = set()
+"""Services whose persisted row :func:`forget_blog_signatures` deleted, none saved since."""
 
 
-def _note_persisted() -> None:
-    global _persisted_maybe
-    _persisted_maybe = True
+def _note_persisted(service: str) -> None:
+    _forgotten.discard(service)
 
 
-def forget_blog_signatures() -> None:
-    """A blog was written: delete the persisted blog signatures (``blog_service.invalidate_gallery``).
+def forget_blog_signatures(service: str | None = None) -> None:
+    """A blog of ``service`` was written: delete its persisted blog signature.
 
-    Cheap and never raises. The delete runs once per saved signature: on the
-    default executor when called on the event loop, inline otherwise (the
-    caller is then already off the loop). Logs ``media_pregen_blog_sig
-    state=forgotten``.
+    Called by ``blog_service.invalidate_gallery``. Only that service's row
+    goes (N3: the other services' listings are unchanged); ``None`` (a write
+    of unknown service) deletes every row. Cheap and never raises. A
+    service's delete runs once per saved signature: on the default executor
+    when called on the event loop, inline otherwise (the caller is then
+    already off the loop). Logs ``media_pregen_blog_sig state=forgotten``
+    with ``scope=service|all`` (never the service name).
     """
-    global _persisted_maybe
-    if not _persisted_maybe:
-        return
-    _persisted_maybe = False
-    logger.info("media_pregen_blog_sig", state="forgotten")
+    if service is not None:
+        if service in _forgotten:
+            return
+        _forgotten.add(service)
+    key = BLOG_SIG_PREFIX if service is None else BLOG_SIG_PREFIX + service
+    logger.info(
+        "media_pregen_blog_sig",
+        state="forgotten",
+        scope="all" if service is None else "service",
+    )
     try:
         loop = asyncio.get_running_loop()
     except RuntimeError:  # not on the loop: already off it, delete inline
-        media_meta.kv_delete_prefix(BLOG_SIG_PREFIX)
+        media_meta.kv_delete_prefix(key)
         return
     try:
-        loop.run_in_executor(None, media_meta.kv_delete_prefix, BLOG_SIG_PREFIX)
+        loop.run_in_executor(None, media_meta.kv_delete_prefix, key)
     except RuntimeError as e:  # the executor shut down (app exit): delete inline
         logger.info(
             "media_pregen_blog_sig",
@@ -1468,7 +1483,7 @@ def forget_blog_signatures() -> None:
             reason="inline",
             error_type=type(e).__name__,
         )
-        media_meta.kv_delete_prefix(BLOG_SIG_PREFIX)
+        media_meta.kv_delete_prefix(key)
 
 
 # --- clearing ------------------------------------------------------------------------------
@@ -1607,10 +1622,10 @@ async def clear_caches() -> int:
 
 
 def _reset_for_tests() -> None:
-    global _active, _last_foreground, _persisted_maybe
+    global _active, _last_foreground
     _active = None
     _last_foreground = None
-    _persisted_maybe = True
+    _forgotten.clear()
 
 
 __all__ = [

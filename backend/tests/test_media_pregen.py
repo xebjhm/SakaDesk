@@ -741,12 +741,35 @@ async def test_a_blog_write_forgets_the_persisted_signatures(h):
 def test_forget_deletes_once_per_save(monkeypatch):
     calls: list[str] = []
     monkeypatch.setattr(media_meta, "kv_delete_prefix", calls.append)
-    media_pregen.forget_blog_signatures()
-    media_pregen.forget_blog_signatures()  # nothing saved since: no DB call
-    assert calls == [media_pregen.BLOG_SIG_PREFIX]
-    media_pregen._note_persisted()
-    media_pregen.forget_blog_signatures()
+    media_pregen.forget_blog_signatures(HINATA)
+    media_pregen.forget_blog_signatures(HINATA)  # nothing saved since: no DB call
+    assert calls == [media_pregen.BLOG_SIG_PREFIX + HINATA]
+    media_pregen._note_persisted(HINATA)
+    media_pregen.forget_blog_signatures(HINATA)
     assert len(calls) == 2
+    media_pregen.forget_blog_signatures(NOGI)  # another service: its own row
+    assert calls[-1] == media_pregen.BLOG_SIG_PREFIX + NOGI
+    media_pregen.forget_blog_signatures()  # unknown service: every row, always
+    media_pregen.forget_blog_signatures()
+    assert calls[-2:] == [media_pregen.BLOG_SIG_PREFIX] * 2
+
+
+def test_a_blog_write_forgets_only_its_own_service():
+    """N3: one new blog in one group never makes every group re-walk its blogs."""
+    from backend.services import blog_service as bs
+
+    for service in (HINATA, NOGI, SAKURA):
+        media_meta.kv_set(media_pregen.BLOG_SIG_PREFIX + service, "[]")
+        media_pregen._note_persisted(service)
+    with capture_logs() as logs:
+        bs.invalidate_gallery(NOGI)  # off the loop: inline delete
+    assert set(_persisted()) == {
+        media_pregen.BLOG_SIG_PREFIX + HINATA,
+        media_pregen.BLOG_SIG_PREFIX + SAKURA,
+    }
+    (ev,) = _events(logs, "media_pregen_blog_sig")
+    assert (ev["state"], ev["scope"]) == ("forgotten", "service")
+    assert NOGI not in repr(ev)  # codes only: the service is not logged
 
 
 @pytest.mark.asyncio
@@ -766,6 +789,30 @@ async def test_forget_deletes_inline_when_the_executor_is_gone(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_a_blog_in_another_service_keeps_the_skip_across_a_restart(h):
+    """N3: a write in another group neither deletes nor distrusts this row."""
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    await _one_pass(h)
+    await asyncio.to_thread(bs.invalidate_gallery, NOGI)  # before the restart
+    assert set(_persisted()) == {media_pregen.BLOG_SIG_PREFIX + HINATA}
+    h.busy = "sync"
+    p = h.make()
+    p.start()
+    for _ in range(50):
+        await asyncio.sleep(0)
+    with patch.object(media_pregen, "forget_blog_signatures", lambda *a: None):
+        bs.invalidate_gallery(NOGI)  # and after the start
+    h.busy = None
+    with capture_logs() as logs:
+        await _idle(p)
+        await p.stop()
+    assert _blog_reasons(logs) == ["unchanged"]
+
+
+@pytest.mark.asyncio
 async def test_a_blog_written_after_start_distrusts_the_loaded_signatures(h):
     """Even when the delete lost a race, a version bump since start lists again."""
     from backend.services import blog_service as bs
@@ -778,7 +825,7 @@ async def test_a_blog_written_after_start_distrusts_the_loaded_signatures(h):
     p.start()
     for _ in range(50):
         await asyncio.sleep(0)
-    with patch.object(media_pregen, "forget_blog_signatures", lambda: None):
+    with patch.object(media_pregen, "forget_blog_signatures", lambda *a: None):
         bs.invalidate_gallery()
     assert _persisted()  # the delete "lost": the row is still there
     h.busy = None
@@ -796,7 +843,7 @@ async def test_a_blog_written_during_the_walk_is_not_persisted(h):
     _blog_only(h)
 
     def on_process(item: Item) -> None:
-        with patch.object(media_pregen, "forget_blog_signatures", lambda: None):
+        with patch.object(media_pregen, "forget_blog_signatures", lambda *a: None):
             bs.invalidate_gallery()
 
     h.on_process = on_process
@@ -816,7 +863,7 @@ async def test_a_blog_written_while_saving_removes_the_saved_row(h, monkeypatch)
 
     def racing(key, value):
         real(key, value)
-        with patch.object(media_pregen, "forget_blog_signatures", lambda: None):
+        with patch.object(media_pregen, "forget_blog_signatures", lambda *a: None):
             bs.invalidate_gallery()
 
     monkeypatch.setattr(media_meta, "kv_set", racing)

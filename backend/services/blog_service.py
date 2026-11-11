@@ -184,6 +184,9 @@ class BlogDownloadItem:
     published_at: str
     url: str
     cache_path: Path
+    # The service the blog belongs to: its write bumps only that service's
+    # gallery version (``None``: unknown, every service's).
+    service: Optional[str] = None
 
 
 def _build_blog_content(
@@ -775,6 +778,7 @@ class BlogService:
                         published_at=blog["published_at"],
                         url=blog["url"],
                         cache_path=cache_path,
+                        service=service,
                     )
                 )
 
@@ -991,8 +995,8 @@ class BlogService:
         )
         # Every blog write ends here (backup, on-demand fetch): the photo
         # gallery listings are stale even if the index is never saved after it
-        # (a cancelled backup run).
-        invalidate_gallery()
+        # (a cancelled backup run). Only this blog's service is stale (N3).
+        invalidate_gallery(item.service)
 
     async def _download_images(
         self,
@@ -1283,6 +1287,7 @@ class BlogService:
             published_at=blog_meta["published_at"],
             url=blog_meta["url"],
             cache_path=cache_path,
+            service=service,
         )
 
         connector = aiohttp.TCPConnector(limit=6)
@@ -1685,7 +1690,9 @@ class _MemoEntry:
 # (service, member_id) -> the last listing of that member
 _gallery_memo: "OrderedDict[tuple[str, str], _MemoEntry]" = OrderedDict()
 _gallery_memo_lock = threading.Lock()
-_gallery_version = 0
+# Bumped for every service by a write of unknown service; per service otherwise.
+_gallery_version_all = 0
+_gallery_versions: dict[str, int] = {}
 
 
 def reset_gallery_memo_for_tests() -> None:
@@ -1693,28 +1700,38 @@ def reset_gallery_memo_for_tests() -> None:
         _gallery_memo.clear()
 
 
-def invalidate_gallery() -> None:
-    """A blog's files changed (``blog.json`` or its images were written): every listing is stale.
+def invalidate_gallery(service: Optional[str] = None) -> None:
+    """A blog's files changed (``blog.json`` or its images were written): its listings are stale.
 
-    A cheap version bump that is part of every gallery signature, so neither
-    the memo nor the worker's "unchanged" skip relies on the index being saved.
-    It also drops the worker's persisted blog signatures
-    (``media_pregen.forget_blog_signatures``).
+    A cheap bump of ``service``'s gallery version (every service's when it is
+    ``None``), which is part of every gallery signature, so neither the memo
+    nor the worker's "unchanged" skip relies on the index being saved. Other
+    services' listings stay valid (N3). It also drops the worker's persisted
+    blog signature of the service (``media_pregen.forget_blog_signatures``).
     """
-    global _gallery_version
+    global _gallery_version_all
     with _gallery_memo_lock:
-        _gallery_version += 1
-    # The pre-generation worker's persisted "unchanged" signatures are stale
-    # too (they outlive this in-memory version). Cheap; never raises.
+        if service is None:
+            _gallery_version_all += 1
+        else:
+            _gallery_versions[service] = _gallery_versions.get(service, 0) + 1
+    # The pre-generation worker's persisted "unchanged" signature is stale
+    # too (it outlives this in-memory version). Cheap; never raises.
     from backend.services import media_pregen
 
-    media_pregen.forget_blog_signatures()
+    media_pregen.forget_blog_signatures(service)
 
 
-def gallery_version() -> int:
-    """The current gallery version (bumped by :func:`invalidate_gallery`)."""
+def gallery_version(service: Optional[str] = None) -> int:
+    """``service``'s gallery version, bumped by :func:`invalidate_gallery`.
+
+    It only grows. ``None`` gives the sum over every service, which moves on
+    any write.
+    """
     with _gallery_memo_lock:
-        return _gallery_version
+        if service is None:
+            return _gallery_version_all + sum(_gallery_versions.values())
+        return _gallery_version_all + _gallery_versions.get(service, 0)
 
 
 def _read_gallery_index(path: Path) -> Any:
@@ -1961,9 +1978,8 @@ def _gallery_scan(
     reads, unless the member's signature (:func:`gallery_signature`) matches
     the memo. Only member listings are memoised.
     """
-    version = (
-        gallery_version()
-    )  # before any read: a write meanwhile makes the next call miss
+    # before any read: a write meanwhile makes the next call miss
+    version = gallery_version(service)
     index = gallery_index(service, member_id)
     if index is None:
         return [], {"blogs": 0, "images": 0, "skipped": 0, "memo": "none"}

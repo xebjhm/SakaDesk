@@ -681,6 +681,90 @@ def test_gallery_version_bump_invalidates_the_memo(gallery_archive):
         assert len(reads) == 4  # a blog was written: read again
 
 
+def test_a_blog_write_in_another_service_keeps_this_listing(gallery_archive):
+    """N3: the version is per service; a write elsewhere never re-lists this one."""
+    from backend.services import blog_service as bs
+
+    real = bs._read_blog_json
+    reads = []
+    with patch.object(
+        bs, "_read_blog_json", side_effect=lambda p: reads.append(p) or real(p)
+    ):
+        _gallery()
+        before = bs.gallery_version("hinatazaka46")
+        bs.invalidate_gallery("nogizaka46")
+        assert bs.gallery_version("hinatazaka46") == before
+        _gallery()
+        assert len(reads) == 2  # still a memo hit
+        bs.invalidate_gallery("hinatazaka46")
+        _gallery()
+        assert len(reads) == 4
+        bs.invalidate_gallery()  # unknown service: every listing is stale
+        _gallery()
+        assert len(reads) == 6
+
+
+def test_a_blog_write_bumps_only_its_service(tmp_path):
+    from types import SimpleNamespace
+
+    from backend.services import blog_service as bs
+
+    class Scraper:
+        async def get_blog_detail(self, blog_id, member_id=None):
+            return SimpleNamespace(images=[], content="<p>x</p>")
+
+    item = bs.BlogDownloadItem(
+        "b1",
+        "58",
+        MEMBER,
+        TITLE_NEW,
+        "2026-02-05T10:00:00+09:00",
+        "u",
+        tmp_path / "b",
+        service="hinatazaka46",
+    )
+    hinata, nogi = bs.gallery_version("hinatazaka46"), bs.gallery_version("nogizaka46")
+    forgotten = []
+    with patch(
+        "backend.services.media_pregen.forget_blog_signatures", forgotten.append
+    ):
+        asyncio.run(
+            BlogService()._download_single_blog(
+                None, Scraper(), item, download_images=False
+            )
+        )
+    assert bs.gallery_version("hinatazaka46") == hinata + 1
+    assert bs.gallery_version("nogizaka46") == nogi
+    assert forgotten == ["hinatazaka46"]
+
+
+def test_the_download_queue_and_on_demand_items_carry_their_service(tmp_path):
+    from backend.services import blog_service as bs
+
+    svc = BlogService()
+    with patch.object(svc, "get_blogs_base_path", return_value=tmp_path):
+        queue = svc.build_download_queue(
+            "hinatazaka46",
+            {
+                "members": {
+                    "58": {
+                        "name": MEMBER,
+                        "blogs": [
+                            {
+                                "id": "b1",
+                                "title": TITLE_NEW,
+                                "published_at": "2026-02-05T10:00:00+09:00",
+                                "url": "u",
+                            }
+                        ],
+                    }
+                }
+            },
+        )
+    assert [i.service for i in queue] == ["hinatazaka46"]
+    assert bs.BlogDownloadItem("b", "m", "n", "t", "p", "u", tmp_path).service is None
+
+
 def test_every_blog_write_bumps_the_gallery_version(tmp_path):
     """Backup and on-demand fetch both end in _download_single_blog (no index save needed)."""
     from types import SimpleNamespace
