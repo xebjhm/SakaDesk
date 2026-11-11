@@ -733,6 +733,19 @@ shimmer or spinner of their own):
   `blog_gallery` / `memories_album`), or a `ProgressBar` for the "Preparing thumbnails… done / total" row.
 - The fade-in stays `transition-opacity duration-base ease-standard motion-reduce:transition-none`.
 
+**Media tile** (`core/media/grid/MediaTile`, built in M5): the photo's mean colour is runtime
+data, so it is applied through `style` on the placeholder `Skeleton` (`tone="data"`), the
+documented data-driven exception like the album band tint; never as a class or a literal. The
+colour sits on the pulsing layer, not on the tile box, so the pulse stays visible. When the meta
+store has a 16 px preview, an `aria-hidden` `<img>` with `blur-placeholder scale-110 object-cover`
+(the `blur-placeholder` token, 12 px) pulses on top of it. The thumbnail mounts at `opacity-0` and
+fades to `opacity-100` with `duration-base ease-standard`; with `motion-reduce` there is no fade
+and no pulse, and the compact spinner above stands in. A failed picture shows a quiet
+`bg-sunken text-muted` state (an image-off glyph and `loading.error`; a ghost Retry only where the
+tile is not already inside a button, and it retries by itself when scrolled back into view),
+never an empty box. A video without a poster is the `Film` tile (`bg-sunken text-muted`); a grid
+never mounts a `<video>`.
+
 **Breadcrumb:** `ui_wait` (`surface`, `phase`, `wait_ms`) is allow-listed in
 `utils/clientLog.ts` and `backend/api/client_log.py` (a `ui_wait` phase must be one of the four
 codes; `wait_ms` is a non-negative integer on every event). Ids and codes only.

@@ -197,6 +197,15 @@ export const handlers = [
   http.delete('/api/media/cache', () => {
     return HttpResponse.json({ freed_bytes: 0 })
   }),
+  // Tile placeholders and client posters (media pipeline, M5): no placeholder yet, poster stored
+  http.post('/api/media/meta', async ({ request }) => {
+    const body = (await request.json()) as { urls?: string[] }
+    const items = Object.fromEntries((body.urls ?? []).map((url) => [url, null]))
+    return HttpResponse.json({ items })
+  }),
+  http.put('/api/media/poster/*', () => {
+    return HttpResponse.json({ v: '000000000000' }, { status: 201 })
+  }),
 
   // Search status
   http.get('/api/search/status', () => {

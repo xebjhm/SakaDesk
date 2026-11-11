@@ -107,6 +107,8 @@ ClientEvent = Literal[
     "recap_share",
     "recap_opening",
     "ui_wait",
+    "media_grid",
+    "media_poster",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -149,6 +151,9 @@ ALLOWED_FIELDS = frozenset(
         "kind",
         "style",
         "wait_ms",
+        "grid",
+        "first_tile_ms",
+        "visible",
     }
 )
 WARNING_EVENTS = frozenset(
@@ -173,6 +178,11 @@ WARNING_EVENTS = frozenset(
 UI_WAIT_PHASES = frozenset({"slow", "very_slow", "timeout", "cancelled"})
 UI_WAIT_FIELDS = frozenset({"surface", "phase", "wait_ms"})
 
+# Measured numbers: a non-negative integer on every event, never a code string such as "180".
+# ``wait_ms`` is the loading-UX wait; ``first_tile_ms`` and ``visible`` are the media grid's
+# first-paint breadcrumb (``media_grid``, media pipeline 0.5.0).
+NON_NEGATIVE_INT_FIELDS = frozenset({"wait_ms", "first_tile_ms", "visible"})
+
 CodeStr = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")]
 FieldValue = Union[StrictBool, StrictInt, CodeStr]
 
@@ -187,11 +197,10 @@ class ClientLogEntry(BaseModel):
         # Do not echo the offending keys back: they are client-supplied text.
         if not set(value) <= ALLOWED_FIELDS:
             raise ValueError("unknown field key")
-        wait_ms = value.get("wait_ms")
-        if wait_ms is not None and (
-            isinstance(wait_ms, bool) or not isinstance(wait_ms, int) or wait_ms < 0
-        ):
-            raise ValueError("wait_ms must be a non-negative integer")
+        for key in NON_NEGATIVE_INT_FIELDS & set(value):
+            number = value[key]
+            if isinstance(number, bool) or not isinstance(number, int) or number < 0:
+                raise ValueError(f"{key} must be a non-negative integer")
         return value
 
     @model_validator(mode="after")

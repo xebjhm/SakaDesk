@@ -1242,3 +1242,69 @@ def test_ui_wait_requires_surface_phase_and_wait(missing):
     del fields[missing]
     r = client.post("/api/client-log", json={"event": "ui_wait", "fields": fields})
     assert r.status_code == 422
+
+
+# --- media pipeline (0.5.0, Task M5): the shared grid and the client poster capture ---
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"grid": "messages", "first_tile_ms": 180, "visible": 12, "count": 340},
+        {"grid": "blogs", "first_tile_ms": 0, "visible": 0, "count": 0},
+        {"grid": "album", "first_tile_ms": 95, "visible": 18, "count": 13518},
+        {"reason": "meta_failed", "count": 200},
+    ],
+)
+def test_media_grid_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        r = client.post(
+            "/api/client-log", json={"event": "media_grid", "fields": fields}
+        )
+    assert r.status_code == 204
+    event = _client_events(logs)[0]
+    assert event["event"] == "media_grid"
+    assert event["log_level"] == "info"
+    for key, value in fields.items():
+        assert event[key] == value
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"outcome": "captured"},
+        {"outcome": "failed", "reason": "timeout"},
+        {"outcome": "failed", "reason": "decode"},
+        {"outcome": "failed", "reason": "upload"},
+        {"outcome": "skipped", "reason": "limit"},
+    ],
+)
+def test_media_poster_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        r = client.post(
+            "/api/client-log", json={"event": "media_poster", "fields": fields}
+        )
+    assert r.status_code == 204
+    assert _client_events(logs)[0]["event"] == "media_poster"
+
+
+@pytest.mark.parametrize(
+    ("event", "fields"),
+    [
+        ("media_grid", {"grid": "Messages Gallery"}),
+        ("media_grid", {"grid": "画像🌸"}),
+        ("media_grid", {"grid": "messages", "url": "x"}),
+        ("media_grid", {"grid": "/api/content/media/hinatazaka46/a.jpg"}),
+        ("media_grid", {"first_tile_ms": "180"}),
+        ("media_grid", {"visible": 1.5}),
+        ("media_grid", {"first_tile_ms": -1}),
+        ("media_grid", {"visible": True}),
+        ("media_poster", {"outcome": "failed", "reason": "Network error"}),
+        ("media_poster", {"outcome": "failed", "path": "hinatazaka46/messages/a.mp4"}),
+    ],
+)
+def test_media_breadcrumbs_reject_text_and_unknown_keys(event, fields):
+    with capture_logs() as logs:
+        r = client.post("/api/client-log", json={"event": event, "fields": fields})
+    assert r.status_code == 422
+    assert _client_events(logs) == []

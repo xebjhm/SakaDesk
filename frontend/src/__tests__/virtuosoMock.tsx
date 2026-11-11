@@ -2,12 +2,21 @@ import React from 'react';
 import type { ListRange } from 'react-virtuoso';
 
 /** What the chat tests read back from the last rendered list. */
-export const virtuosoCapture: { rangeChanged?: (range: ListRange) => void } = {};
+export const virtuosoCapture: {
+    rangeChanged?: (range: ListRange) => void;
+    /** Every `scrollToIndex` location passed to the last lists' refs, in order. */
+    scrollToIndex: unknown[];
+} = { scrollToIndex: [] };
 
 /** Clear the capture; call in `beforeEach` so a test never sees a previous test's list. */
 export function resetVirtuosoCapture(): void {
     virtuosoCapture.rangeChanged = undefined;
+    virtuosoCapture.scrollToIndex = [];
 }
+
+const captureScrollToIndex = (location: unknown): void => {
+    virtuosoCapture.scrollToIndex.push(location);
+};
 
 interface FlatProps {
     data: unknown[];
@@ -26,7 +35,7 @@ interface GroupedProps {
 /**
  * jsdom has no layout, so the real list renders no rows. These stand-ins (`Virtuoso`, and
  * `GroupedVirtuoso`, which renders each group header before its rows) render every row,
- * render `components.Footer` after the rows, capture `rangeChanged` and expose stub `scrollToIndex` / `scrollTo` / `scrollBy` on their ref.
+ * render `components.Footer` after the rows, capture `rangeChanged` and `scrollToIndex` locations, and expose stub `scrollTo` / `scrollBy` on their ref.
  *
  * It does NOT simulate `followOutput`, `initialTopMostItemIndex`, `scrollerRef` or row heights
  * (so no virtualisation, measurement or scroll position). Those are locked by the e2e specs
@@ -38,7 +47,7 @@ interface GroupedProps {
 const Virtuoso = React.forwardRef<unknown, FlatProps>(({ data, itemContent, rangeChanged }, ref) => {
     virtuosoCapture.rangeChanged = rangeChanged;
     React.useImperativeHandle(ref, () => ({
-        scrollToIndex: () => {},
+        scrollToIndex: captureScrollToIndex,
         scrollTo: () => {},
         scrollBy: () => {},
     }));
@@ -49,7 +58,7 @@ Virtuoso.displayName = 'VirtuosoMock';
 const GroupedVirtuoso = React.forwardRef<unknown, GroupedProps>(({ groupCounts, groupContent, itemContent, components, rangeChanged }, ref) => {
     virtuosoCapture.rangeChanged = rangeChanged;
     React.useImperativeHandle(ref, () => ({
-        scrollToIndex: () => {},
+        scrollToIndex: captureScrollToIndex,
         scrollTo: () => {},
         scrollBy: () => {},
     }));

@@ -40,7 +40,8 @@ export type ClientLogEvent =
     | 'memories_radio' | 'memories_gacha' | 'memories_capsule'
     | 'recap_load' | 'recap_play'
     | 'recap_poster' | 'recap_share' | 'recap_opening'
-    | 'ui_wait';
+    | 'ui_wait'
+    | 'media_grid' | 'media_poster';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
@@ -49,7 +50,8 @@ export type ClientLogFieldKey =
     | 'theme' | 'size'
     | 'target' | 'index' | 'corrections' | 'outcome' | 'jump_ms' | 'path' | 'count' | 'history' | 'fallback' | 'dppx_pct'
     | 'ready_state' | 'network_state' | 'error_code' | 'aborted' | 'key' | 'timeout_ms' | 'caller' | 'written' | 'dropped'
-    | 'kind' | 'style' | 'wait_ms';
+    | 'kind' | 'style' | 'wait_ms'
+    | 'grid' | 'first_tile_ms' | 'visible';
 
 export type ClientLogFields = Partial<Record<ClientLogFieldKey, number | boolean | string>>;
 
