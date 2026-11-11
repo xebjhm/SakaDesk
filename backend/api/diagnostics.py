@@ -590,7 +590,7 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
     nickname = _get_nicknames()  # every service's nickname, longest first
 
     def _scrub(line: str) -> str:
-        return scrub_log_line(line.strip(), username, nickname)
+        return scrub_log_line(line.strip(), username, nickname, output_dir)
 
     logs_summary = LogsSummary(recent=[], errors=[], warnings=[])
     # SD-BE-API-01: tail-read the logs instead of slurping the whole (possibly

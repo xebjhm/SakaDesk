@@ -319,3 +319,106 @@ def test_report_endpoint_redacts_both_services_and_the_legacy_key(
     for blob in (repr(body), repr(diag)):
         assert "ひなた" not in blob and "さくら推し" not in blob and "🌻" not in blob
     assert "[REDACTED]" in repr(body["diagnostics"]["logs"])
+
+
+# --- I1: overlapping username / nickname / output dir (redaction order) ----------------
+
+OVERLAP_DIR = "D:\\Data\\hina\\Saka"
+
+
+def _overlap_leaks(blob: str) -> list[str]:
+    """Fragments that must never survive: the username, the custom dir, any part."""
+    return [
+        bad
+        for bad in ("hina", "Users\\[REDACTED]a", "[REDACTED]a", "D:\\Data", "D:/Data")
+        if bad in blob
+    ]
+
+
+def test_overlapping_username_nickname_and_output_dir_never_leak():
+    from backend.api import report
+
+    line = (
+        "open C:\\Users\\hina\\AppData\\x.log; save D:\\Data\\hina\\Saka\\x.json; "
+        "D:/Data/hina/Saka/y.json; hi hin"
+    )
+    out = report.scrub_log_line(line, "hina", ["hin"], OVERLAP_DIR)
+    assert _overlap_leaks(out) == []
+    assert "[REDACTED_DIR]\\x.json" in out and "[REDACTED_DIR]/y.json" in out
+    assert "/[REDACTED]\\AppData" in out and out.endswith("hi [REDACTED]")
+    nick_over_dir = report.scrub_log_line(
+        "save D:\\Data\\hina\\Saka\\x.json", "someone", ["hina"], OVERLAP_DIR
+    )
+    assert nick_over_dir == "save [REDACTED_DIR]\\x.json"
+    payload = {"logs": {"recent": [line]}, "context": {"error_message": line}}
+    out = report._redact_diagnostics(payload, "hina", ["hin"], OVERLAP_DIR)
+    assert _overlap_leaks(repr(out).replace("\\\\", "\\")) == []
+
+
+def test_output_dir_under_the_user_profile_is_redacted_whole():
+    from backend.api import report
+
+    out = report.scrub_log_line(
+        "C:\\Users\\hina\\Saka\\x.json and C:\\Users\\hina\\y",
+        "hina",
+        [],
+        "C:\\Users\\hina\\Saka",
+    )
+    assert out == "[REDACTED_DIR]\\x.json and /[REDACTED]\\y"
+
+
+def test_report_endpoints_redact_overlaps_in_body_clipboard_and_diagnostics(
+    tmp_path, monkeypatch
+):
+    """The issue body (github_url), the clipboard text (the returned diagnostics)
+    and the diagnostics preview never carry the username, a part of it, or the
+    custom data dir."""
+    import json
+    from unittest.mock import patch
+    from urllib.parse import unquote
+
+    from fastapi.testclient import TestClient
+
+    from backend.api import diagnostics, report
+    from backend.main import app
+    from backend.services import settings_store
+
+    settings_store._last_good_files.clear()
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps(
+            {"user_nicknames": {"hinatazaka46": "hin"}, "output_dir": OVERLAP_DIR},
+            ensure_ascii=False,
+        ),
+        encoding="utf-8",
+    )
+    line = "[error] C:\\Users\\hina\\AppData\\x.log D:\\Data\\hina\\Saka\\x.json hin\n"
+    (tmp_path / "debug.log").write_text(line, encoding="utf-8")
+    (tmp_path / "error.log").write_text(line, encoding="utf-8")
+    monkeypatch.setattr(report, "get_logs_dir", lambda: tmp_path)
+    monkeypatch.setattr(report, "_get_username", lambda: "hina")
+    monkeypatch.setattr(diagnostics, "_get_username", lambda: "hina")
+    monkeypatch.setattr(diagnostics, "get_logs_dir", lambda: tmp_path)
+    with (
+        patch("backend.api.report.get_settings_path", return_value=path),
+        patch("backend.api.diagnostics.get_settings_path", return_value=path),
+    ):
+        client = TestClient(app)
+        body = client.post(
+            "/api/report",
+            json={"category": "other", "error_message": line.strip()},
+        ).json()
+        preview = client.get("/api/report/diagnostics").json()
+        diag = client.get("/api/diagnostics").json()
+    issue_body = unquote(body["github_url"])
+    clipboard = json.dumps(body["diagnostics"], ensure_ascii=False).replace(
+        "\\\\", "\\"
+    )
+    for blob in (
+        issue_body,
+        clipboard,
+        json.dumps(preview, ensure_ascii=False).replace("\\\\", "\\"),
+        json.dumps(diag["logs"], ensure_ascii=False).replace("\\\\", "\\"),
+    ):
+        assert _overlap_leaks(blob) == []
+    settings_store._last_good_files.clear()

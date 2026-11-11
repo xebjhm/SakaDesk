@@ -133,12 +133,24 @@ def _scrub_secrets(text: str) -> str:
     return result
 
 
-def scrub_log_line(line: str, username: str, nickname: Nicknames) -> str:
-    """Full redaction for a single emitted log line: path + nickname + secrets.
+def scrub_log_line(
+    line: str, username: str, nickname: Nicknames, output_dir: Optional[str] = None
+) -> str:
+    """Full redaction for a single emitted log line, in a fixed order.
 
-    Shared by the report and diagnostics endpoints (SEC-5).
+    1. the custom output dir (``[REDACTED_DIR]``), 2. the username in user
+    profile paths (``/[REDACTED]``), 3. the nicknames, 4. secrets. Paths come
+    first: a nickname that overlaps the username or a folder of the output dir
+    (``hin`` / ``hina``) must not rewrite part of the path before the path
+    patterns see it, which left ``C:\\Users\\[REDACTED]a`` or the whole
+    custom dir behind. The output dir goes before the username, so a data dir
+    under the user profile is replaced whole. Shared by the report and
+    diagnostics endpoints (SEC-5).
     """
-    return _scrub_secrets(_redact_path(_redact_nickname(line, nickname), username))
+    text = _redact_output_dir(line, output_dir)
+    text = _redact_path(text, username)
+    text = _redact_nickname(text, nickname)
+    return _scrub_secrets(text)
 
 
 def _redact_output_dir(text: str, output_dir: Optional[str]) -> str:
@@ -149,18 +161,14 @@ def _redact_output_dir(text: str, output_dir: Optional[str]) -> str:
     """
     if not output_dir:
         return text
-    result = text
     variants = {
         output_dir,
         output_dir.replace("\\", "/"),
         output_dir.replace("/", "\\"),
     }
-    for variant in variants:
-        if variant:
-            result = re.sub(
-                re.escape(variant), "[REDACTED_DIR]", result, flags=re.IGNORECASE
-            )
-    return result
+    names = sorted((v for v in variants if v), key=lambda v: (-len(v), v))
+    pattern = "|".join(re.escape(v) for v in names)
+    return re.sub(pattern, "[REDACTED_DIR]", text, flags=re.IGNORECASE)
 
 
 def _redact_member_path(value: str) -> str:
@@ -199,7 +207,7 @@ def _redact_diagnostics(
     if isinstance(obj, list):
         return [_redact_diagnostics(v, username, nickname, output_dir) for v in obj]
     if isinstance(obj, str):
-        return _redact_output_dir(scrub_log_line(obj, username, nickname), output_dir)
+        return scrub_log_line(obj, username, nickname, output_dir)
     return obj
 
 
@@ -218,7 +226,12 @@ def _get_output_dir() -> Optional[str]:
     return None
 
 
-def _get_smart_logs(log_path: Path, username: str, nickname: Nicknames) -> dict:
+def _get_smart_logs(
+    log_path: Path,
+    username: str,
+    nickname: Nicknames,
+    output_dir: Optional[str] = None,
+) -> dict:
     """
     Smart log filtering:
     1. Errors/warnings from dedicated error.log (or fall back to debug.log)
@@ -237,7 +250,7 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Nicknames) -> dict:
             all_lines = f.readlines()
 
         for line in all_lines[-30:]:
-            recent.append(scrub_log_line(line.strip(), username, nickname))
+            recent.append(scrub_log_line(line.strip(), username, nickname, output_dir))
 
         # Errors/warnings: prefer error.log (pre-filtered, smaller)
         error_log = log_path.parent / "error.log"
@@ -254,7 +267,9 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Nicknames) -> dict:
 
         for line in error_lines:
             if _is_error_or_warning(line):
-                errors.append(scrub_log_line(line.strip(), username, nickname))
+                errors.append(
+                    scrub_log_line(line.strip(), username, nickname, output_dir)
+                )
 
         # Deduplicate (errors that appear in recent don't need to be in both)
         recent_set = set(recent)
@@ -466,13 +481,12 @@ async def generate_report(
 
     # Smart logs
     log_path = get_logs_dir() / "debug.log"
-    diagnostics["logs"] = _get_smart_logs(log_path, username, nickname)
+    output_dir = _get_output_dir()
+    diagnostics["logs"] = _get_smart_logs(log_path, username, nickname, output_dir)
 
     # Scrub the WHOLE payload (not just logs) before it becomes a public issue URL
     # body and a clipboard copy — member_path, sync errors, custom data paths.
-    diagnostics = _redact_diagnostics(
-        diagnostics, username, nickname, _get_output_dir()
-    )
+    diagnostics = _redact_diagnostics(diagnostics, username, nickname, output_dir)
 
     # Build GitHub URL from the already-redacted diagnostics
     github_url = _build_github_url(
@@ -502,11 +516,10 @@ async def get_diagnostics_only():
     }
 
     log_path = get_logs_dir() / "debug.log"
-    diagnostics["logs"] = _get_smart_logs(log_path, username, nickname)
+    output_dir = _get_output_dir()
+    diagnostics["logs"] = _get_smart_logs(log_path, username, nickname, output_dir)
 
     # Scrub the whole payload — the diagnostics modal renders/copies these values.
-    diagnostics = _redact_diagnostics(
-        diagnostics, username, nickname, _get_output_dir()
-    )
+    diagnostics = _redact_diagnostics(diagnostics, username, nickname, output_dir)
 
     return diagnostics
