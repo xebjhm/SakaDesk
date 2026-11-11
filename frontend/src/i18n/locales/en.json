@@ -365,6 +365,12 @@
     "welcomeTitle": "Welcome to SakaDesk",
     "welcomeSubtitle": "Select a conversation from the sidebar to start.",
     "loadingMessages": "Loading messages...",
+    "loadingSlow": "Still loading messages…",
+    "loadingVerySlow": "Chats with many messages take a little longer to open.",
+    "loadFailed": "Couldn't load the messages",
+    "loadFailedHint": "Your saved messages are safe. Try again.",
+    "loadTimeout": "Loading the messages is taking too long",
+    "loadTimeoutHint": "The app may still be busy. Wait a moment, then try again.",
     "selectConversation": "Select a Conversation",
     "groupChat": "Group Chat",
     "unread": "{{count}} unread",
@@ -528,7 +534,8 @@
       "openPhoto": "Open photo from {{date}}",
       "openVideo": "Open video from {{date}}",
       "retryPhoto": "Retry loading photo from {{date}}"
-    }
+    },
+    "photoLoading": "Loading photo…"
   },
   "sentLetters": {
     "title": "Sent Letters",

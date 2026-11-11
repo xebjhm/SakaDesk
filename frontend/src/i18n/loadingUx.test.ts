@@ -16,6 +16,9 @@ export const LOADING_UX_KEYS: string[] = [
     // L6: login stays cancellable while connecting; sync scanning state
     'login.waitingSlow', 'login.waitingVerySlow', 'login.finishing', 'sync.preparing', 'sync.preparingVerySlow',
     'login.cancelling',
+    // L5: the chat timeline while a room loads, and bubble photos
+    'messageList.loadingSlow', 'messageList.loadingVerySlow', 'messageList.loadFailed', 'messageList.loadFailedHint',
+    'messageList.loadTimeout', 'messageList.loadTimeoutHint', 'media.photoLoading',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -38,6 +41,8 @@ describe('loading UX strings', () => {
     it.each(Object.entries(locales))('%s keeps timeout copy apart from error copy', (_code, data) => {
         expect(lookup(data, 'loading.timeout')).not.toBe(lookup(data, 'loading.error'));
         expect(lookup(data, 'loading.verySlow')).not.toBe(lookup(data, 'loading.slow'));
+        expect(lookup(data, 'messageList.loadTimeout')).not.toBe(lookup(data, 'messageList.loadFailed'));
+        expect(lookup(data, 'messageList.loadTimeoutHint')).not.toBe(lookup(data, 'messageList.loadFailedHint'));
     });
 
     it('uses the Japanese reference copy', () => {
@@ -58,6 +63,13 @@ describe('loading UX strings', () => {
             'login.cancelling': 'キャンセルしています…',
             'sync.preparing': '同期の準備中…',
             'sync.preparingVerySlow': '新しいメッセージを確認しています。メッセージが多いと少し時間がかかります。',
+            'messageList.loadingSlow': 'まだメッセージを読み込んでいます…',
+            'messageList.loadingVerySlow': 'メッセージの多いトークは、開くまで少し時間がかかります。',
+            'messageList.loadFailed': 'メッセージを読み込めませんでした',
+            'messageList.loadFailedHint': '保存したデータはそのままです。もう一度お試しください。',
+            'messageList.loadTimeout': '読み込みに時間がかかりすぎています',
+            'messageList.loadTimeoutHint': 'アプリがまだ処理中かもしれません。少し待ってからもう一度お試しください。',
+            'media.photoLoading': '写真を読み込み中…',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, key), key).toBe(text);
     });

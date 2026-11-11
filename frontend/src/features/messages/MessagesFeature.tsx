@@ -7,7 +7,7 @@ import { MemberList } from './components/MemberList';
 import { MessageList } from './components/MessageList';
 import { ConversationMenu } from './components/ConversationMenu';
 import { MemberProfilePopup } from './components/MemberProfilePopup';
-import { Menu, MessageCircle, Loader2, ChevronUp, ChevronDown } from 'lucide-react';
+import { Menu, MessageCircle, ChevronUp, ChevronDown, CloudOff } from 'lucide-react';
 import type { GroupedVirtuosoHandle } from 'react-virtuoso';
 import { CalendarModal } from '../../core/modals/CalendarModal';
 import { useAppStore } from '../../store/appStore';
@@ -16,7 +16,8 @@ import { cn } from '../../utils/classnames';
 import { ContentSheet } from '../../core/layout/ContentSheet';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useTranslation, Trans } from '../../i18n';
-import { Avatar, EmptyState, IconButton } from '../../design/primitives';
+import { Avatar, EmptyState, IconButton, Spinner, StatusBlock } from '../../design/primitives';
+import { logWait, settleDelay } from '../../design/loading';
 import { groupTokens } from '../../design/tokens';
 import { serviceGroupId } from '../../config/serviceGroup';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
@@ -50,6 +51,8 @@ import { useLetterBreadcrumbs } from './hooks/useLetterBreadcrumbs';
 import { LetterRow } from './components/LetterRow';
 import { letterAvatars, type Letter } from './letters';
 import { setFavorite } from '../../utils/favoriteApi';
+import { ChatSkeleton } from './components/ChatSkeleton';
+import { CHAT_LOAD_TIMEOUT_MS, deriveChatLoad, type ChatLoadFailure } from './chatLoadState';
 
 // Types specific to messages feature
 // member_id / member_name now live on Message; kept as an alias for call sites.
@@ -162,11 +165,16 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const [isGroupChat, setIsGroupChat] = useState(false);
     const [messages, setMessages] = useState<GroupMessage[]>([]);
     const [membersMap, setMembersMap] = useState<Record<string, MemberInfo>>({});
-    const [loading, setLoading] = useState(false);
-    const [error, setError] = useState<string | null>(null);
+    // The last load failure and the room it belongs to (another room's failure never shows).
+    const [loadFailure, setLoadFailure] = useState<{ dir: string; kind: ChatLoadFailure } | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
-    const messagesPathRef = useRef<string | null>(null); // Track which chat messages belong to
     const [messagesForDir, setMessagesForDir] = useState<string | null>(null); // Which dir current messages belong to (state, for render gating)
+    // Mirror of messagesForDir for fetchMessages: is the room already on screen when its fetch starts?
+    const shownDirRef = useRef<string | null>(null);
+    const showDir = useCallback((dir: string | null) => {
+        shownDirRef.current = dir;
+        setMessagesForDir(dir);
+    }, []);
 
     // In-memory message cache: revisited chats render instantly from cache while a background refresh runs.
     // LRU eviction keeps at most MAX_CACHED_CHATS entries to bound memory (~300KB × N).
@@ -175,6 +183,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Monotonic fetch counter: each fetchMessages call increments this. When the response
     // arrives, it checks if it's still the latest — stale responses are discarded silently.
     const fetchIdRef = useRef(0);
+    // The running fetch's controller: aborted when a newer fetch supersedes it, on its deadline and on unmount.
+    const fetchAbortRef = useRef<AbortController | null>(null);
+    useEffect(() => () => {
+        fetchIdRef.current += 1; // the aborted fetch is stale: no failure state, no log
+        fetchAbortRef.current?.abort();
+    }, []);
 
     const setCacheEntry = useCallback((key: string, entry: MessageCacheEntry) => {
         const cache = messagesCacheRef.current;
@@ -241,7 +255,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         if (conversationNavCounter > 0 && activeService) {
             const saved = getSelectedConversation(activeService);
             if (saved) {
-                console.debug('[MessagesFeature] nav from search (same-service)', { service: activeService, path: saved.path, isGroupChat: saved.isGroupChat });
+                console.debug('[MessagesFeature] nav from search (same-service)', { service: activeService, isGroupChat: saved.isGroupChat });
                 setSelectedGroupDir(saved.path);
                 setSelectedName(saved.name);
                 setIsGroupChat(saved.isGroupChat);
@@ -272,15 +286,15 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         // Clear current state
         setMessages([]);
         setMembersMap({});
-        setError(null);
+        setLoadFailure(null);
         setMessagesService(null);
-        setMessagesForDir(null);
+        showDir(null);
 
         // Restore previous selection for the new service (if any)
         if (activeService) {
             const savedConversation = getSelectedConversation(activeService);
             if (savedConversation) {
-                console.debug('[MessagesFeature] service switch → restoring', { service: activeService, path: savedConversation.path, isGroupChat: savedConversation.isGroupChat });
+                console.debug('[MessagesFeature] service switch → restoring', { service: activeService, isGroupChat: savedConversation.isGroupChat });
                 setSelectedGroupDir(savedConversation.path);
                 setSelectedName(savedConversation.name);
                 setIsGroupChat(savedConversation.isGroupChat);
@@ -298,7 +312,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
         // Update ref for next switch
         previousServiceRef.current = activeService;
-    }, [activeService, getSelectedConversation, setSelectedConversation]);
+    }, [activeService, getSelectedConversation, setSelectedConversation, showDir]);
     // Note: selectedGroupDir, selectedName, isGroupChat intentionally excluded to avoid infinite loops
 
     // Refresh messages when sync completes
@@ -314,13 +328,33 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, [syncVersion]);
 
     // === FETCH MESSAGES (Load All) ===
+    // limit=0 loads the whole room in one request. One AbortController per fetch: a newer fetch
+    // aborts it (its result would be discarded anyway), and so does CHAT_LOAD_TIMEOUT_MS, which ends
+    // in the timeout state with Retry instead of an endless skeleton. While the room is not on
+    // screen yet (the skeleton may show), the result is held through `settleDelay`, so a shown
+    // skeleton stays at least minVisible.
     const fetchMessages = async (path: string, groupChat: boolean, lastReadId: number = 0) => {
         const thisId = ++fetchIdRef.current;
-        setLoading(true);
-        setError(null);
+        fetchAbortRef.current?.abort();
+        const controller = new AbortController();
+        fetchAbortRef.current = controller;
+        const startedAt = Date.now();
+        const holdForSkeleton = shownDirRef.current !== path;
+        let timedOut = false;
+        const deadline = setTimeout(() => {
+            timedOut = true;
+            controller.abort();
+        }, CHAT_LOAD_TIMEOUT_MS);
+        const isCurrent = () => thisId === fetchIdRef.current;
+        /** Wait out the skeleton's min-visible time; false when a newer fetch took over meanwhile. */
+        const settle = async () => {
+            const hold = holdForSkeleton ? settleDelay(Date.now() - startedAt) : 0;
+            if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));
+            return isCurrent();
+        };
+        setLoadFailure(null);
+        let httpStatus: number | undefined;
         try {
-            let data;
-            // limit=0 means load all messages
             const params = new URLSearchParams({
                 limit: '0',
                 last_read_id: String(lastReadId),
@@ -329,66 +363,58 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             if (activeService) {
                 params.set('service', activeService);
             }
-
+            const url = groupChat
+                ? `/api/content/group_messages/${encodeURIComponent(path)}?${params}`
+                : `/api/content/messages_by_path?path=${encodeURIComponent(path)}&${params}`;
+            const res = await fetch(url, { signal: controller.signal });
+            if (!isCurrent()) return; // stale — a newer fetch superseded this one
+            if (!res.ok) {
+                httpStatus = res.status;
+                throw new Error('room list request failed');
+            }
+            let entry: MessageCacheEntry;
             if (groupChat) {
-                const res = await fetch(`/api/content/group_messages/${encodeURIComponent(path)}?${params}`);
-                if (thisId !== fetchIdRef.current) return; // stale — a newer fetch superseded this one
-                if (!res.ok) {
-                    const text = await res.text();
-                    try {
-                        const errJson = JSON.parse(text);
-                        throw new Error(errJson.detail || "Failed to load");
-                    } catch {
-                        throw new Error(`Failed to load messages. Server returned ${res.status}`);
-                    }
-                }
-                data = await res.json() as GroupMessagesResponse;
-                if (thisId !== fetchIdRef.current) return; // stale
+                const data = await res.json() as GroupMessagesResponse;
                 const map: Record<string, MemberInfo> = {};
                 for (const m of data.members) map[m.id] = m;
-                const msgs = data.messages || [];
-                setMembersMap(map);
-                setMessages(msgs);
-                setTotalMessages(data.total_messages || 0);
-                setMaxMessageId(data.max_message_id || 0);
-                setMessagesService(activeService);
-                setMessagesForDir(path);
-                messagesPathRef.current = path;
-                setCacheEntry(path, { messages: msgs, membersMap: map, totalMessages: data.total_messages || 0, maxMessageId: data.max_message_id || 0, service: activeService! });
-                setFreshFetch(prev => ({ seq: (prev?.seq ?? 0) + 1, dir: path }));
+                entry = { messages: data.messages || [], membersMap: map, totalMessages: data.total_messages || 0, maxMessageId: data.max_message_id || 0, service: activeService! };
             } else {
-                const res = await fetch(`/api/content/messages_by_path?path=${encodeURIComponent(path)}&${params}`);
-                if (thisId !== fetchIdRef.current) return; // stale
-                if (!res.ok) throw new Error("Failed to load");
-                data = await res.json();
-                if (thisId !== fetchIdRef.current) return; // stale
+                const data = await res.json();
                 const memberInfo = data.member as MemberInfo;
-                const mMap = memberInfo ? { [memberInfo.id]: memberInfo } : {};
-                setMembersMap(mMap);
-                const msgs = data.messages || [];
-                setMessages(msgs);
-                setTotalMessages(data.total_count || 0);
-                setMaxMessageId(data.max_message_id || 0);
-                setMessagesService(activeService);
-                setMessagesForDir(path);
-                messagesPathRef.current = path;
-                setCacheEntry(path, { messages: msgs, membersMap: mMap, totalMessages: data.total_count || 0, maxMessageId: data.max_message_id || 0, service: activeService! });
-                setFreshFetch(prev => ({ seq: (prev?.seq ?? 0) + 1, dir: path }));
+                entry = {
+                    messages: data.messages || [],
+                    membersMap: memberInfo ? { [memberInfo.id]: memberInfo } : {},
+                    totalMessages: data.total_count || 0,
+                    maxMessageId: data.max_message_id || 0,
+                    service: activeService!,
+                };
             }
-        } catch (err: unknown) {
-            if (thisId !== fetchIdRef.current) return; // stale
-            const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-            console.error('[MessagesFeature] fetchMessages failed', { path, groupChat, activeService, error: errorMessage });
-            setError(errorMessage);
+            if (!(await settle())) return; // stale
+            setMembersMap(entry.membersMap);
+            setMessages(entry.messages);
+            setTotalMessages(entry.totalMessages);
+            setMaxMessageId(entry.maxMessageId);
+            setMessagesService(activeService);
+            showDir(path);
+            setCacheEntry(path, entry);
+            setFreshFetch(prev => ({ seq: (prev?.seq ?? 0) + 1, dir: path }));
+        } catch {
+            if (!isCurrent()) return; // superseded (and aborted): never a failure
+            const kind: ChatLoadFailure = timedOut ? 'timeout' : 'error';
+            if (timedOut) logWait('chat_room', 'timeout', Date.now() - startedAt);
+            // Codes only: never the path or the error text (the user sees translated copy).
+            if (import.meta.env.DEV) console.warn('[MessagesFeature] fetchMessages failed', { groupChat, httpStatus, kind });
+            if (!(await settle())) return;
+            setLoadFailure({ dir: path, kind });
             setMessages([]);
-            setMessagesForDir(null);
+            showDir(null);
             setMembersMap({});
         } finally {
-            setLoading(false);
+            clearTimeout(deadline);
         }
     };
 
-    // The media gallery's Retry after a failed room load.
+    // Retry after a failed room load (the timeline's failure state and the media gallery).
     const retryMessages = () => {
         if (selectedGroupDir) fetchMessages(selectedGroupDir, isGroupChat, readState.lastReadId);
     };
@@ -401,7 +427,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             setReadState(storedReadState);
 
             // Use cached messages for instant render; fetchMessages refreshes in the background.
-            // Without cache, the messagesForDir guard causes a brief blank while fetching.
+            // Without cache, the messagesForDir guard hides the previous room and the chat
+            // skeleton (StatusBlock) covers the wait: the timeline is never blank.
             const cached = messagesCacheRef.current.get(selectedGroupDir);
             if (cached) {
                 setMessages(cached.messages);
@@ -409,13 +436,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 setTotalMessages(cached.totalMessages);
                 setMaxMessageId(cached.maxMessageId);
                 setMessagesService(cached.service);
-                setMessagesForDir(selectedGroupDir);
+                showDir(selectedGroupDir);
             }
 
             fetchMessages(selectedGroupDir, isGroupChat, storedReadState.lastReadId);
             setIsSidebarOpen(false);
         }
-    }, [selectedGroupDir, isGroupChat]);
+    }, [selectedGroupDir, isGroupChat, showDir]);
 
     // Opt-in "sync read to phone": opening a room clears its unread on the official
     // mobile app, mirroring tapping into the room there. Gated on the setting here so
@@ -466,6 +493,14 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // local day) is shared by the header and the profile popup.
     const roomExtras = useRoomExtras(activeService, selectedGroupDir, isGroupChat, syncVersion);
     const { streak, retryStreak } = roomExtras;
+    // The one loading derivation: the timeline (skeleton, failure) and the gallery's list state.
+    const chatLoad = deriveChatLoad({
+        selectedGroupDir,
+        messagesForDir,
+        messageCount: messages.length,
+        lettersReady: roomExtras.lettersReady,
+        failure: loadFailure && loadFailure.dir === selectedGroupDir ? loadFailure.kind : null,
+    });
     // Milestone cards (spec §9, decision D10): member chats only; counts only once loaded for this room.
     const milestone = useMilestone({
         roomKey: selectedGroupDir && messagesService && !isGroupChat ? `${messagesService}|${selectedGroupDir}` : null,
@@ -801,7 +836,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     )}
                     {syncProgress.state === 'running' && (
                         <ChatHeaderPill light={isLightHeader} tone="status">
-                            <Loader2 className="h-3 w-3 animate-spin" />
+                            <Spinner size="sm" tone="current" decorative />
                             <span>{getSyncDetail(syncProgress, t, t('sync.syncing'))}</span>
                         </ChatHeaderPill>
                     )}
@@ -810,7 +845,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             conversationPath={selectedGroupDir}
                             isGroupChat={isGroupChat}
                             messages={displayMessages}
-                            messagesStatus={error ? 'error' : loading && messagesForDir !== selectedGroupDir ? 'loading' : 'ready'}
+                            messagesStatus={chatLoad.listStatus}
                             onRetryMessages={retryMessages}
                             memberName={selectedName || ''}
                             memberAvatar={headerAvatar}
@@ -831,6 +866,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 {/* Virtualized Timeline */}
                 <div
                     ref={timelineRef}
+                    data-testid="chat-timeline"
                     className="flex-1 overflow-hidden relative isolate"
                     tabIndex={0}
                     onKeyDown={handleKeyDown}
@@ -857,13 +893,43 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         </div>
                     )}
 
-                    {loading && messages.length === 0 && (
-                        <div className="p-10 text-center text-secondary">{t('messageList.loadingMessages')}</div>
+                    {chatLoad.chatWaiting && (
+                        // Keyed by room: a new room starts its own wait (reveal, slow, very slow).
+                        <div key={selectedGroupDir} className="absolute inset-0 flex flex-col">
+                            <StatusBlock
+                                kind="loading"
+                                variant="pane"
+                                surface="chat_room"
+                                className="items-stretch justify-start px-0 pt-0"
+                                skeleton={<ChatSkeleton />}
+                                label={t('messageList.loadingMessages')}
+                                slowHint={t('messageList.loadingSlow')}
+                                verySlowHint={t('messageList.loadingVerySlow')}
+                            />
+                        </div>
                     )}
-                    {error && (
-                        <div className="p-10 text-center text-status-danger">
-                            <p className="font-semibold">{t('common.error')}</p>
-                            <p>{error}</p>
+                    {chatLoad.failure && (
+                        <div className="absolute inset-0 flex flex-col">
+                            {chatLoad.failure === 'timeout' ? (
+                                <StatusBlock
+                                    kind="timeout"
+                                    variant="pane"
+                                    surface="chat_room"
+                                    title={t('messageList.loadTimeout')}
+                                    hint={t('messageList.loadTimeoutHint')}
+                                    onRetry={retryMessages}
+                                />
+                            ) : (
+                                <StatusBlock
+                                    kind="error"
+                                    variant="pane"
+                                    surface="chat_room"
+                                    icon={<CloudOff />}
+                                    title={t('messageList.loadFailed')}
+                                    hint={t('messageList.loadFailedHint')}
+                                    onRetry={retryMessages}
+                                />
+                            )}
                         </div>
                     )}
 

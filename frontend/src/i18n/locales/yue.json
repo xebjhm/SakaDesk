@@ -365,6 +365,12 @@
     "welcomeTitle": "歡迎使用 SakaDesk",
     "welcomeSubtitle": "喺側邊揀個對話開始啦。",
     "loadingMessages": "載入緊訊息...",
+    "loadingSlow": "仲載入緊訊息…",
+    "loadingVerySlow": "訊息多嘅聊天室要耐少少先開到。",
+    "loadFailed": "載入唔到訊息",
+    "loadFailedHint": "儲咗嘅資料仲喺度，再試多次啦。",
+    "loadTimeout": "載入訊息用咗太耐",
+    "loadTimeoutHint": "個 app 可能仲處理緊，等陣再試啦。",
     "selectConversation": "揀個對話",
     "groupChat": "Group Chat",
     "unread": "{{count}} 個未讀",
@@ -526,7 +532,8 @@
       "openPhoto": "打開 {{date}} 嘅相",
       "openVideo": "打開 {{date}} 嘅片",
       "retryPhoto": "重新載入 {{date}} 嘅相"
-    }
+    },
+    "photoLoading": "載入緊相…"
   },
   "sentLetters": {
     "title": "寄咗嘅信",

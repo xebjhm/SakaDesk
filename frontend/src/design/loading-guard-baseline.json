@@ -3,6 +3,5 @@
   "features/memories/memoir/MemoirHeader.tsx": 1,
   "features/memories/recap/RecapEntry.tsx": 2,
   "features/memories/shared/LoadState.tsx": 1,
-  "features/messages/MessagesFeature.tsx": 1,
   "shell/components/SettingsModal.tsx": 7
 }

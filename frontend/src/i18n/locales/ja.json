@@ -365,6 +365,12 @@
     "welcomeTitle": "SakaDeskへようこそ",
     "welcomeSubtitle": "サイドバーからトークを選択して開始してください。",
     "loadingMessages": "メッセージを読み込み中...",
+    "loadingSlow": "まだメッセージを読み込んでいます…",
+    "loadingVerySlow": "メッセージの多いトークは、開くまで少し時間がかかります。",
+    "loadFailed": "メッセージを読み込めませんでした",
+    "loadFailedHint": "保存したデータはそのままです。もう一度お試しください。",
+    "loadTimeout": "読み込みに時間がかかりすぎています",
+    "loadTimeoutHint": "アプリがまだ処理中かもしれません。少し待ってからもう一度お試しください。",
     "selectConversation": "トークを選択してください",
     "groupChat": "グループチャット",
     "unread": "未読 {{count}}件",
@@ -526,7 +532,8 @@
       "openPhoto": "{{date}} の写真を開く",
       "openVideo": "{{date}} の動画を開く",
       "retryPhoto": "{{date}} の写真を再読み込み"
-    }
+    },
+    "photoLoading": "写真を読み込み中…"
   },
   "sentLetters": {
     "title": "送信したレター",
