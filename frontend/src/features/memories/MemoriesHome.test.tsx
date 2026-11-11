@@ -1,7 +1,9 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
+import { http, HttpResponse } from 'msw';
 import i18n from '../../i18n';
+import { server } from '../../__tests__/mocks/server';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('./home/HubSlots', async (importOriginal) => {
@@ -232,7 +234,11 @@ describe('MemoriesHome (hub board)', () => {
 });
 
 describe('MemoriesHome loading (L4)', () => {
-    beforeEach(() => { vi.useFakeTimers(); });
+    beforeEach(() => {
+        vi.useFakeTimers();
+        // The same-time line (HubSlots) asks once the moment shows; nothing to say here.
+        server.use(http.get('/api/memories/:service/same-time', () => new HttpResponse(null, { status: 404 })));
+    });
     afterEach(async () => {
         vi.useRealTimers();
         await i18n.changeLanguage('en');
@@ -246,10 +252,18 @@ describe('MemoriesHome loading (L4)', () => {
     it('first load: nothing at 199 ms, the card skeleton at 200, slow copy at 3 s, the first-run explanation and a bar at 10 s', () => {
         vi.mocked(fetchHub).mockReturnValue(new Promise(() => {}));
         renderHome();
+        // The moment's place is reserved from mount, so the entry cards never move at the reveal.
+        expect(moment()).toHaveClass('min-h-48');
+        fireEventClick(screen.getByRole('button', { name: /Album/ }));
+        expect(go).toHaveBeenLastCalledWith({ page: 'album' });
         advance(199);
         expect(within(moment()).queryByTestId('memories-hub-moment-skeleton')).toBeNull();
         advance(1);
         expect(within(moment()).getByTestId('memories-hub-moment-skeleton')).toBeInTheDocument();
+        expect(moment()).toHaveClass('min-h-48');
+        go.mockClear();
+        fireEventClick(screen.getByRole('button', { name: /Favorites/ }));
+        expect(go).toHaveBeenLastCalledWith({ page: 'favorites' });
         advance(2799);
         expect(screen.queryByText('Preparing your memories…')).toBeNull();
         advance(1);
@@ -281,19 +295,24 @@ describe('MemoriesHome loading (L4)', () => {
 
     it('a refreshing board shows the gathering line at once (role status), and the next final poll removes it', async () => {
         await i18n.changeLanguage('ja');
+        let answer: (payload: ReturnType<typeof hubPayload>) => void = () => {};
         vi.mocked(fetchHub)
-            .mockResolvedValueOnce(hubPayload({ refreshing: true }))
+            .mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }))
             .mockResolvedValue(hubPayload({ refreshing: false }));
         renderHome();
-        await advanceAsync(0);
+        // The polite region is mounted, empty, before its text arrives (so the line is announced).
         const line = screen.getByTestId('memories-hub-gathering');
+        expect(line).toHaveAttribute('role', 'status');
+        expect(line).toBeEmptyDOMElement();
+        await act(async () => { answer(hubPayload({ refreshing: true })); });
+        expect(screen.getByTestId('memories-hub-gathering')).toBe(line);
         expect(within(line).getByRole('status')).toHaveAttribute('data-stage', 'shown');
         expect(line).toHaveTextContent('思い出を集めています… 新しいカードが順に表示されます。');
         // Directly under the title, above the board; the board stays on screen.
         expect(screen.getByRole('heading', { level: 1 }).nextElementSibling).toBe(line);
         expect(screen.getByTestId('memories-hub-otd')).toBeInTheDocument();
         await advanceAsync(REFRESH_WHILE_MS);
-        expect(screen.queryByTestId('memories-hub-gathering')).toBeNull();
+        expect(line).toBeEmptyDOMElement();
         expect(waitLogs()).toEqual([]);
     });
 
@@ -301,10 +320,10 @@ describe('MemoriesHome loading (L4)', () => {
         vi.mocked(fetchHub).mockResolvedValue(hubPayload({ refreshing: true }));
         renderHome();
         await advanceAsync(0);
-        expect(screen.getByTestId('memories-hub-gathering')).toBeInTheDocument();
+        expect(screen.getByTestId('memories-hub-gathering')).not.toBeEmptyDOMElement();
         for (let i = 0; i < REFRESH_WHILE_MAX; i += 1) await advanceAsync(REFRESH_WHILE_MS);
         expect(fetchHub).toHaveBeenCalledTimes(REFRESH_WHILE_MAX + 1);
-        expect(screen.queryByTestId('memories-hub-gathering')).toBeNull();
+        expect(screen.getByTestId('memories-hub-gathering')).toBeEmptyDOMElement();
         await advanceAsync(REFRESH_WHILE_MS * 2);
         const logs = waitLogs();
         expect(logs).toEqual([{ surface: 'memories_hub', phase: 'timeout', wait_ms: REFRESH_WHILE_MS * REFRESH_WHILE_MAX }]);
@@ -317,7 +336,22 @@ describe('MemoriesHome loading (L4)', () => {
         renderHome();
         await advanceAsync(0);
         expect(screen.getByTestId('memories-hub-otd')).toBeInTheDocument();
-        expect(screen.queryByTestId('memories-hub-gathering')).toBeNull();
+        expect(screen.getByTestId('memories-hub-gathering')).toBeEmptyDOMElement();
+        expect(moment()).not.toHaveClass('min-h-48');
+    });
+
+    it('a failed quiet reload drops the line without a timeout breadcrumb (its error is logged)', async () => {
+        vi.mocked(fetchHub)
+            .mockResolvedValueOnce(hubPayload({ refreshing: true }))
+            .mockRejectedValue(new MemoriesFetchError(500));
+        renderHome();
+        await advanceAsync(0);
+        expect(screen.getByTestId('memories-hub-gathering')).not.toBeEmptyDOMElement();
+        await advanceAsync(REFRESH_WHILE_MS);
+        expect(screen.getByTestId('memories-hub-gathering')).toBeEmptyDOMElement();
+        expect(waitLogs()).toEqual([]);
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_load', { target: 'hub', outcome: 'error', error_code: 500 });
+        expect(screen.getByTestId('memories-hub-otd')).toBeInTheDocument();
     });
 });
 

@@ -20,6 +20,11 @@ export interface MemoriesQuery<T> {
     stale: boolean;
     /** True while a quiet `refreshWhile` reload is scheduled or in flight (the cap not yet reached). */
     polling: boolean;
+    /**
+     * True when the polling ended at the cap: `refreshWhile` still held for the last payload but
+     * `REFRESH_WHILE_MAX` reloads were used (never after a failed quiet reload, which ends it too).
+     */
+    pollCapped: boolean;
     /** Load again (after an error or a timeout). */
     retry: () => void;
 }
@@ -85,6 +90,7 @@ interface QueryState<T> {
     data: T | null;
     failure: MemoriesQueryFailure | null;
     polling: boolean;
+    pollCapped: boolean;
 }
 
 /**
@@ -103,7 +109,7 @@ interface QueryState<T> {
  * `settle: false` queries commit at once. `load`, `count`, `refreshWhile`, `settle` and the
  * `keepPrevious` scope are read through refs (`isEmpty` at render): only `deps`, `retry` and
  * `enabled` start a new run. `refreshWhile` reloads the same key quietly (see the option);
- * `polling` is true while such a reload is scheduled or in flight.
+ * `polling` is true while such a reload is scheduled or in flight; `pollCapped` says it ended at the cap.
  * A disabled query (`enabled: false`) never loads or logs and reads `ready` with null data.
  */
 export function useMemoriesQuery<T>(
@@ -151,10 +157,11 @@ export function useMemoriesQuery<T>(
                     if (controller.signal.aborted) return;
                     const count = countRef.current ? countRef.current(data) : topLevelCount(data);
                     logMemoriesLoad(target, 'ok', count === undefined ? {} : { count });
-                    const again = Boolean(refreshRef.current?.(data)) && reloads < REFRESH_WHILE_MAX;
+                    const pending = Boolean(refreshRef.current?.(data));
+                    const again = pending && reloads < REFRESH_WHILE_MAX;
                     commit(() => {
                         lastReady.current = { scope: runScope, data };
-                        setState({ key: runKey, status: 'ready', data, failure: null, polling: again });
+                        setState({ key: runKey, status: 'ready', data, failure: null, polling: again, pollCapped: pending && !again });
                         if (again) {
                             reloads += 1;
                             timer = setTimeout(() => run(true), REFRESH_WHILE_MS);
@@ -174,7 +181,7 @@ export function useMemoriesQuery<T>(
                     commit(() => {
                         // Its Retry must not resurface an older payload under this selection.
                         lastReady.current = null;
-                        setState({ key: runKey, status: 'error', data: null, failure: timedOut ? 'timeout' : 'error', polling: false });
+                        setState({ key: runKey, status: 'error', data: null, failure: timedOut ? 'timeout' : 'error', polling: false, pollCapped: false });
                     });
                 },
             );
@@ -189,11 +196,11 @@ export function useMemoriesQuery<T>(
     }, key);
 
     const retry = useCallback(() => setAttempt((n) => n + 1), []);
-    if (!enabled) return { status: 'ready', data: null, failure: null, stale: false, polling: false, retry };
+    if (!enabled) return { status: 'ready', data: null, failure: null, stale: false, polling: false, pollCapped: false, retry };
     if (state && sameKey(state.key, key)) {
-        return { status: state.status, data: state.data, failure: state.failure, stale: false, polling: state.polling, retry };
+        return { status: state.status, data: state.data, failure: state.failure, stale: false, polling: state.polling, pollCapped: state.pollCapped, retry };
     }
     const last = lastReady.current;
     const kept = keep && last && sameScope(last.scope, keep.scope) && !keep.isEmpty?.(last.data) ? last.data : null;
-    return { status: 'loading', data: kept, failure: null, stale: kept !== null, polling: false, retry };
+    return { status: 'loading', data: kept, failure: null, stale: kept !== null, polling: false, pollCapped: false, retry };
 }

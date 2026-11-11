@@ -1,5 +1,6 @@
 import React from 'react';
 import { Skeleton } from '../../design/primitives';
+import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
 import type { MemoriesRoute } from './MemoriesFeature';
 import { fetchHub } from './api';
@@ -27,11 +28,12 @@ interface MemoriesHomeProps {
  * The Memories hub board (spec 4), a fixed viewport: the title, then one board that scrolls
  * inside the pane when it is short (the large On This Day card with the wave-4 slots around
  * it, then the grid of entry cards), so every card stays reachable at the smallest window. The entry cards are usable while `/hub` loads or after it fails
- * (they only lack their counts); the moment's place shows the staged Memories load state (`MemoriesStatus`: a skeleton shaped
- * like the On This Day card from the reveal delay, the Memories slow line at 3 s, then the first-run
+ * (they only lack their counts); the moment's place shows the staged Memories load state (`MemoriesStatus`: its place reserved
+ * from mount, a skeleton shaped like the On This Day card from the reveal delay, the Memories slow line at 3 s, then the first-run
  * explanation `memories.home.firstVerySlow` with an indeterminate bar at 10 s, no Cancel since the
  * cards stay usable), or its error / timeout with Retry. While the board on screen is `refreshing`
- * and still re-polled, one "still gathering" line sits under the title (`HubGatheringLine`). A
+ * and still re-polled, one "still gathering" line sits under the title (`HubGatheringLine`, its
+ * empty status region always mounted). A
  * zero count shows no number (the gacha card says 「また明日」 instead; a `null` `gacha_left`
  * shows no line); a `null` moment or countdown leaves its card out. The recap
  * card keeps its own shelf states (`RecapHubCard`).
@@ -57,7 +59,7 @@ export const MemoriesHome: React.FC<MemoriesHomeProps> = ({ service, recap, onOp
                 view="hub"
                 skeleton={(
                     <div data-testid="memories-hub-moment-skeleton" className="w-full">
-                        <Skeleton shape="block" className="h-48 w-full" />
+                        <Skeleton shape="block" className="h-36 w-full" />
                     </div>
                 )}
                 slowHint={t('memories.common.slow')}
@@ -71,12 +73,19 @@ export const MemoriesHome: React.FC<MemoriesHomeProps> = ({ service, recap, onOp
     return (
         <div data-testid="memories-home" data-service={service} className="flex min-h-0 flex-1 flex-col gap-4 overflow-hidden px-6 pb-6 pt-4">
             <h1 className="shrink-0 font-display text-heading text-primary">{t('memories.home.title')}</h1>
-            <HubGatheringLine key={service} refreshing={hub.status === 'ready' && data?.refreshing === true} polling={hub.polling} />
+            <HubGatheringLine key={service} refreshing={hub.status === 'ready' && data?.refreshing === true} polling={hub.polling} capped={hub.pollCapped} />
             {/* The one scroll container: in a short pane the moment and every card scroll together. */}
             <div data-testid="memories-hub-board" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-1">
                 {/* The wave-4 slots are mounted with or without a moment (the capsule stands alone). */}
                 <HubSlots service={service} go={go} sameTime={data?.same_time ?? null} capsule={data?.capsule ?? null}>
-                    {moment && <div data-testid="memories-hub-moment" className="flex flex-col gap-3">{moment}</div>}
+                    {/* While loading, the moment's place is reserved from mount (`min-h-48`: the
+                        pane's padding plus the `h-36` skeleton, about the On This Day card), so the
+                        entry cards never move at the reveal. */}
+                    {moment && (
+                        <div data-testid="memories-hub-moment" className={cn('flex flex-col gap-3', hub.status === 'loading' && 'min-h-48')}>
+                            {moment}
+                        </div>
+                    )}
                 </HubSlots>
                 <div className="grid auto-rows-min grid-cols-2 gap-3 md:grid-cols-3">
                     {HUB_CARDS.map((card) => (

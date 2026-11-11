@@ -3,7 +3,8 @@ import { useTranslation } from '../../../i18n';
 import { useDelayedLoading } from '../../../design/loading';
 import { Skeleton, SPINNER_LABEL_VISIBILITY, type SkeletonTone } from '../../../design/primitives';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
-import { MEDIA_GRID_COLS, MEDIA_GRID_GAP, MEDIA_GRID_MIN } from '../../../core/media/tileGrid';
+import { MEDIA_GRID_COLS, MEDIA_GRID_GAP, MEDIA_GRID_GAP_REM, MEDIA_GRID_MIN } from '../../../core/media/tileGrid';
+import { rootRemPx } from '../../../core/media/grid/useGridColumns';
 import { MediaGridContext, primeMediaMeta, useGridColumns } from '../../../core/media/grid';
 import { cn } from '../../../utils/classnames';
 import { fetchAlbumMonth } from '../api';
@@ -12,6 +13,7 @@ import { sepiaClass } from '../shared/sepia';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { jstDateFormat } from '../shared/jst';
 import type { AlbumKind, AlbumMonthPayload, AlbumMonthSummary, MemoryMessage } from '../types';
+import { BAND_SKELETON_MAX, bandSkeletonHeight, bandSkeletonRows } from './bandSkeleton';
 import type { BandWaits } from './bandWaits';
 import { BurstStack } from './BurstStack';
 import { PhotoTile } from './PhotoTile';
@@ -52,38 +54,69 @@ interface MonthSectionProps {
 const tintOf = (color: string | null): string | undefined =>
     color ? `color-mix(in srgb, ${color} 18%, transparent)` : undefined;
 
-/** Most skeleton tiles a band draws while its grid loads (`min(count, BAND_SKELETON_MAX)`). */
-const BAND_SKELETON_MAX = 12;
-
 /** The month grid's box, shared by `MonthGrid` and its skeleton: the same columns and tile edge. */
 const ALBUM_GRID = cn('grid w-full min-w-0 grid-flow-row-dense', MEDIA_GRID_GAP, MEDIA_GRID_COLS);
 
+interface BandSkeletonProps {
+    count: number;
+    /** The month has a favourite and the filter pins favourites (one 2 × 2 tile is reserved). */
+    pinsLikely: boolean;
+    revealed: boolean;
+    tone: SkeletonTone;
+}
+
 /**
- * The band's tile skeleton while its grid loads (F28): `min(count, BAND_SKELETON_MAX)` square
- * tiles in the very grid box of `MonthGrid` (`ALBUM_GRID`, the `tileGrid.ts` density that
- * `useGridColumns` measures), so the band keeps roughly its final height. Until `revealed` the box
- * is the same grid of empty, invisible cells (the height is reserved; nothing flashes). A
- * `role="status"` named `loading.label`; the label is screen-reader only and shows under reduced
- * motion, where the tiles stop pulsing.
+ * The band's tile skeleton while its grid loads (F28), in the very grid box of `MonthGrid`
+ * (`ALBUM_GRID`). The box is measured with `useGridColumns` (the `tileGrid.ts` columns and tile
+ * edge) and its `minHeight` reserves `bandSkeletonRows` rows: one cell per item, plus one pinned ★
+ * when likely (`bandSkeleton.ts` lists what stays unknown until the grid lands: bursts and
+ * favourites beyond the first). At most `BAND_SKELETON_MAX` tiles pulse; the rest of the reserved
+ * height stays empty. Until `revealed` the same box holds empty, invisible cells (nothing flashes,
+ * the height is the same). A `role="status"` named `loading.label`: the label is screen-reader
+ * only, and under reduced motion (the tiles stand still) it shows as a small pill over the top-left
+ * tile, so it never changes the band's height.
  */
-const BandSkeleton: React.FC<{ count: number; revealed: boolean; tone: SkeletonTone }> = ({ count, revealed, tone }) => {
+const BandSkeleton: React.FC<BandSkeletonProps> = ({ count, pinsLikely, revealed, tone }) => {
     const { t } = useTranslation();
     const labelId = useId();
+    const gridRef = useRef<HTMLDivElement>(null);
+    const { cols, width } = useGridColumns(gridRef);
+    const rows = bandSkeletonRows(count, cols, pinsLikely);
+    const minHeight = bandSkeletonHeight(rows, cols, width, MEDIA_GRID_GAP_REM * rootRemPx());
     const tiles = Math.max(1, Math.min(count, BAND_SKELETON_MAX));
     return (
         <div
             role="status"
             data-testid="album-band-skeleton"
+            data-rows={rows}
             aria-busy={revealed ? undefined : true}
             aria-labelledby={revealed ? labelId : undefined}
-            className="flex w-full min-w-0 flex-col gap-2"
+            className="relative w-full min-w-0"
         >
-            <div data-band-grid aria-hidden="true" className={cn(ALBUM_GRID, !revealed && 'invisible')}>
+            <div
+                ref={gridRef}
+                data-band-grid
+                aria-hidden="true"
+                className={cn(ALBUM_GRID, !revealed && 'invisible')}
+                style={minHeight > 0 ? { minHeight } : undefined}
+            >
                 {Array.from({ length: tiles }, (_, i) => (revealed
                     ? <Skeleton key={i} shape="tile" tone={tone} className="w-full" />
                     : <span key={i} className="block aspect-square w-full" />))}
             </div>
-            {revealed && <span id={labelId} className={cn('text-small text-secondary', SPINNER_LABEL_VISIBILITY.auto)}>{t('loading.label')}</span>}
+            {revealed && (
+                <span
+                    id={labelId}
+                    // `motion-reduce:absolute` comes after `not-sr-only` in Tailwind's order, so the pill floats.
+                    className={cn(
+                        'left-2 top-2 rounded-pill bg-sheet px-2 text-small text-secondary shadow-pill',
+                        SPINNER_LABEL_VISIBILITY.auto,
+                        'motion-reduce:absolute',
+                    )}
+                >
+                    {t('loading.label')}
+                </span>
+            )}
         </div>
     );
 };
@@ -265,12 +298,13 @@ export const MonthSection = React.memo<MonthSectionProps>(({
     else if (live) {
         body = (
             <>
-                {/* Stays mounted through the skeleton's hold (ready, so it never refetches). */}
-                {requested && (
+                {/* Only until the answer lands: a band that leaves and re-enters view during the
+                    skeleton's hold never refetches a cached month outside the fetch-slot cap. */}
+                {requested && data === undefined && (
                     <MonthLoader service={service} month={month} member={member} kind={kind} onLoaded={loaded} onSettled={onSettled} onFailed={setFailed} />
                 )}
                 {/* On the neutral sunken band the tiles take the paper skeleton tone, so they show. */}
-                {!failed && <BandSkeleton count={summary.count} revealed={held} tone={tint ? 'sunken' : 'paper'} />}
+                {!failed && <BandSkeleton count={summary.count} pinsLikely={summary.has_favorites && kind !== 'favorite'} revealed={held} tone={tint ? 'sunken' : 'paper'} />}
             </>
         );
     } else body = <div aria-hidden="true" data-testid="album-month-placeholder" className="min-h-64 flex-1" />;

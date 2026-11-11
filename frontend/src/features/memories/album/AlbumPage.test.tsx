@@ -639,6 +639,76 @@ describe('AlbumPage loading (L4)', () => {
         expect(within(section('2026-10')).getByTestId('album-band-row').firstElementChild).not.toBe(box.parentElement);
     });
 
+    it('reserves the final rows at the measured tile size: a 40-item month at 6 columns keeps 7 rows, 12 tiles pulse', async () => {
+        // 6 x 144 px tiles + 5 x 8 px gaps: the 6-column cap of tileGrid.ts.
+        vi.stubGlobal('ResizeObserver', undefined);
+        const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(904);
+        try {
+            vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([
+                monthSummary('2026-10', { count: 40 }),
+                monthSummary('2022-05', { count: 40, has_favorites: true, cover_color: null }),
+            ]));
+            vi.mocked(fetchAlbumMonth).mockImplementation(pending);
+            renderAlbum();
+            await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+            const box = within(section('2026-10')).getByTestId('album-band-skeleton');
+            const grid = box.querySelector<HTMLElement>('[data-band-grid]')!;
+            // Reserved from mount (before the reveal), so the reveal and the grid never move the band.
+            expect(box).toHaveAttribute('data-rows', '7');
+            expect(grid.style.minHeight).toBe(`${7 * 144 + 6 * 8}px`);
+            // A month with a favourite reserves its pinned 2 x 2 tile too (43 cells: 8 rows).
+            expect(within(section('2022-05')).getByTestId('album-band-skeleton')).toHaveAttribute('data-rows', '8');
+            await act(async () => { await vi.advanceTimersByTimeAsync(200); });
+            expect(skeletonTiles('2026-10')).toHaveLength(12);
+            expect(grid.style.minHeight).toBe(`${7 * 144 + 6 * 8}px`);
+        } finally {
+            width.mockRestore();
+        }
+    });
+
+    it('a band that leaves and re-enters view during its hold never refetches its month', async () => {
+        const fire = stubObserver();
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([monthSummary('2026-10')]));
+        vi.mocked(fetchAlbumMonth).mockImplementation((_s, month) => new Promise((resolve) => {
+            setTimeout(() => resolve(monthPayload(month)), 250);
+        }));
+        renderAlbum();
+        await advance(10);
+        fire('2026-10');
+        await advance(300);
+        // Arrived (~260 ms) and held.
+        expect(skeletonTiles('2026-10').length).toBeGreaterThan(0);
+        fire.leave('2026-10');
+        await advance(20);
+        fire('2026-10');
+        await advance(700);
+        expect(fetchAlbumMonth).toHaveBeenCalledTimes(1);
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+    });
+
+    it('unmounting the album during a band hold leaves no timer or update behind', async () => {
+        const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
+        try {
+            const fire = stubObserver();
+            vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([monthSummary('2026-10')]));
+            vi.mocked(fetchAlbumMonth).mockImplementation((_s, month) => new Promise((resolve) => {
+                setTimeout(() => resolve(monthPayload(month)), 250);
+            }));
+            const { unmount } = render(
+                <NicknameProvider nickname="みーぱん"><AlbumPage service="hinatazaka46" route={{ page: 'album' }} go={vi.fn()} /></NicknameProvider>,
+            );
+            await advance(10);
+            fire('2026-10');
+            await advance(300);
+            expect(skeletonTiles('2026-10').length).toBeGreaterThan(0);
+            unmount();
+            await act(async () => { await vi.advanceTimersByTimeAsync(2000); });
+            expect(errors).not.toHaveBeenCalled();
+        } finally {
+            errors.mockRestore();
+        }
+    });
+
     it('renders a band error and a band timeout inside the band with Retry; loaded renders the grid', async () => {
         vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([monthSummary('2026-10'), monthSummary('2022-05', { cover_color: null })]));
         // 2026-10 fails, then times out, then loads; the other band always loads.
@@ -724,6 +794,25 @@ describe('AlbumPage loading (L4)', () => {
         expect(within(section('2026-05')).getByTestId('album-grid')).toBeInTheDocument();
         const target = seen.filter((s) => s.month === '2026-05');
         expect(target).toEqual([{ month: '2026-05', grid: false }, { month: '2026-05', grid: true }]);
+    });
+
+    it('a long stream of fast bands handing over never reads as a slow wait (the clock follows the oldest waiting band)', async () => {
+        const fire = stubObserver();
+        const months = Array.from({ length: 30 }, (_, i) => `20${String(24 - Math.floor(i / 12)).padStart(2, '0')}-${String(12 - (i % 12)).padStart(2, '0')}`);
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload(months.map((m) => monthSummary(m))));
+        vi.mocked(fetchAlbumMonth).mockImplementation((_s, month) => new Promise((resolve) => {
+            setTimeout(() => resolve(monthPayload(month)), 300);
+        }));
+        renderAlbum();
+        await advance(10);
+        for (const m of months) fire(m);
+        // 15 back-to-back pairs at ~300 ms each: about 4.5 s of continuous loading.
+        await advance(4000);
+        expect(vi.mocked(fetchAlbumMonth).mock.calls.length).toBeGreaterThan(20);
+        expect(screen.getByTestId('album-wait-line')).toBeEmptyDOMElement();
+        await advance(1500);
+        expect(fetchAlbumMonth).toHaveBeenCalledTimes(30);
+        expect(waitLogs()).toEqual([]);
     });
 
     it('one page-level wait line: slow copy at 3 s, the explanation and a thin bar at 10 s, gone when the last band settles', async () => {

@@ -13,7 +13,7 @@ beforeEach(() => { vi.mocked(clientLog).mockClear(); });
 afterEach(() => { vi.useRealTimers(); });
 
 const query = (over: Partial<MemoriesQuery<unknown>> = {}): MemoriesQuery<unknown> => ({
-    status: 'loading', data: null, failure: null, stale: false, polling: false, retry: vi.fn(), ...over,
+    status: 'loading', data: null, failure: null, stale: false, polling: false, pollCapped: false, retry: vi.fn(), ...over,
 });
 
 const uiWait = () => vi.mocked(clientLog).mock.calls.filter((c) => c[0] === 'ui_wait');

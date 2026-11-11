@@ -79,8 +79,8 @@ function failureOf(err: unknown): { reason: MemoriesToggleReason; error_code?: n
  * The month bands in the pane's own scroll container, with the colour ribbon on the right edge.
  * Loading and windowing are `useAlbumWindow`'s: bands far from the viewport release their grids,
  * and a ribbon jump scrolls instantly and loads only where it lands. `frozen` (kept months of the
- * previous person or filter) stops every band's fetch; loaded grids stay. Above the bands, one
- * page-level wait line (`AlbumWaitLine`) follows the bands still waiting for their grids.
+ * previous person or filter) stops every band's fetch; loaded grids stay. Over the top of the
+ * bands, one page-level wait line (`AlbumWaitLine`) follows the bands still waiting for their grids.
  */
 const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, colors, nameOf, onSetCover, onResetCover, onScroller, frozen = false }) => {
     const scroller = useRef<HTMLDivElement | null>(null);
@@ -99,7 +99,7 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
     );
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col">
+        <div className="relative flex min-h-0 flex-1 flex-col">
             <AlbumWaitLine waits={waits} />
             <div className="flex min-h-0 flex-1 gap-2 pb-2 pr-2">
                 <div ref={setScroller} data-testid="album-scroller" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 pb-4">

@@ -50,7 +50,10 @@ export type StatusBlockLoadingProps = {
     cancelLabel?: string;
     /** Shown from `verySlow`: 0..1 determinate bar, null = indeterminate bar. */
     progress?: number | null;
-    /** Fixed stage, for previews and tests only (no clock, no breadcrumb). */
+    /**
+     * Fixed stage (no clock, no breadcrumb): previews, tests, or a line whose content is already on
+     * screen (e.g. the hub's "still gathering" line, `shown` at once).
+     */
     stage?: LoadingStage;
 };
 

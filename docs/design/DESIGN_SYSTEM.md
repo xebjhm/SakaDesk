@@ -712,19 +712,26 @@ empty payload is never kept (the next selection shows the loading state, never "
 and a failed load forgets the kept payload, so its Retry shows the loading state too.
 `MemberPane` takes `status` / `onRetry`: six `Skeleton` rows after `reveal`, or an inline error /
 timeout line with Retry below the 「全員」 row.
-The hub's first load draws a `Skeleton block` shaped like the On This Day card, the Memories slow
-line at 3 s and `memories.home.firstVerySlow` with an indeterminate bar at 10 s (no Cancel: the
-entry cards stay usable). While the board on screen is `refreshing` and still re-polled, one inline
-`StatusBlock` (`memories_hub`, stage `shown` at once) says it is still gathering under the title;
-when the polling stops with the board still refreshing, the line drops quietly and logs `ui_wait`
-`timeout` once.
-An album band without its grid draws `min(count, 12)` `Skeleton tile`s in the very grid box of the
-real grid (same columns and tile edge), from `reveal`, with an empty box of that size before it; a
+The hub's first load reserves the moment's place from mount (`min-h-48`), draws a `Skeleton block`
+shaped like the On This Day card from `reveal`, the Memories slow line at 3 s and
+`memories.home.firstVerySlow` with an indeterminate bar at 10 s (no Cancel: the entry cards stay
+usable and never move at the reveal). Under the title an empty `role="status"` region is always
+mounted; while the board on screen is `refreshing` and still re-polled it holds one inline
+`StatusBlock` (`memories_hub`, stage `shown` at once) saying it is still gathering. When the polling
+ends at its cap (`pollCapped`) the line drops quietly and logs `ui_wait` `timeout` once.
+An album band without its grid shows its skeleton in the very grid box of the real grid, measured
+with `useGridColumns`: its `minHeight` reserves `ceil(cells / cols)` rows at the measured tile edge
+(one cell per item, plus one pinned ★ when the month has a favourite and the filter pins them), and
+at most 12 `Skeleton tile`s pulse. Bursts and further favourites are unknown until the grid lands,
+so a month with them can still change height then. Before `reveal` the box is the same size, empty;
+under reduced motion the label floats as a pill over the tiles, so it never changes the height. A
 shown band skeleton stays `minVisible` for display only (the answer reaches the album's cache on
-arrival, which frees the D4 fetch slot; the band settles, and a ribbon jump re-aligns, after the real
-grid commits). Band errors and timeouts are inline with Retry. Slow copy is not repeated per band:
-one page-level wait line above the bands (`memories_album_month`) shows `memories.album.waitSlow`
-at 3 s and `memories.album.waitVerySlow` with a thin indeterminate bar at 10 s.
+arrival, which frees the D4 fetch slot, and the loader unmounts, so a band that leaves and returns
+never refetches; the band settles, and a ribbon jump re-aligns, after the real grid commits). Band
+errors and timeouts are inline with Retry. Slow copy is not repeated per band: one page-level wait
+line floats as a pill over the top of the bands (`memories_album_month`; its clock starts at the
+oldest band still waiting), with `memories.album.waitSlow` at 3 s and
+`memories.album.waitVerySlow` plus a thin indeterminate bar at 10 s.
 
 Which primitive for which wait:
 

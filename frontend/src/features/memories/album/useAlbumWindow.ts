@@ -35,8 +35,12 @@ export interface AlbumWindow {
     isLive: (month: string) => boolean;
     /** Month payloads fetched so far: a band that comes back remounts from here, without a refetch. */
     cache: ReadonlyMap<string, AlbumMonthPayload>;
+    /** The month's answer landed: it joins `cache`, which also frees its fetch slot. */
     onLoaded: (month: string, data: AlbumMonthPayload) => void;
-    /** The month's request finished (ready or error). */
+    /**
+     * The month's band settled: its error is on screen, or its grid has committed (after the band
+     * skeleton's display hold). Marks it settled and re-aligns a pending jump target.
+     */
     onSettled: (month: string) => void;
     /** Scroll instantly to a month (ribbon click, key or drag); loading waits for the scroll to settle. */
     jump: (month: string) => void;
@@ -52,7 +56,8 @@ export interface AlbumWindow {
  * - a {@link AlbumWindow.jump} scrolls instantly and suspends requests until no scroll event has
  *   come for {@link SETTLE_MS}; then only the bands near the viewport at that moment are
  *   requested, so a scrub across the whole ribbon fetches only where it ends. Until those bands
- *   settle, the target is re-aligned after each load (their heights change).
+ *   settle, the target is re-aligned after each band settles (its grid committed, so the heights
+ *   are final); a band that unmounts stops being waited for.
  *
  * - at most {@link MAX_IN_FLIGHT} grids are fetched at once, in the order they were asked for;
  *   the newest month (the top band) is asked for on mount, so the first grid comes first.
@@ -154,6 +159,10 @@ export function useAlbumWindow(months: string[], root: RefObject<HTMLElement>): 
             observers.current.forEach((o) => o.observe(el));
         } else {
             elements.current.delete(month);
+            // A band that is gone never settles: stop waiting for it, so a finished jump never
+            // keeps pulling the view back to its target.
+            const p = pending.current;
+            if (p && p.waiting.delete(month) && !p.waiting.size && !suspended.current) pending.current = null;
         }
     }, []);
 

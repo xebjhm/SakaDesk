@@ -423,6 +423,7 @@ describe('useMemoriesQuery', () => {
             await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_WHILE_MS); });
             expect(result.current.data).toEqual({ refreshing: false });
             expect(result.current.polling).toBe(false);
+            expect(result.current.pollCapped).toBe(false);
         });
 
         it('turns false after REFRESH_WHILE_MAX reloads even while the flag holds', async () => {
@@ -436,6 +437,7 @@ describe('useMemoriesQuery', () => {
             await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_WHILE_MS * 3); });
             expect(load).toHaveBeenCalledTimes(REFRESH_WHILE_MAX + 1);
             expect(result.current.polling).toBe(false);
+            expect(result.current.pollCapped).toBe(true);
         });
 
         it('turns false when a quiet reload fails', async () => {
@@ -448,8 +450,10 @@ describe('useMemoriesQuery', () => {
             }));
             await act(async () => { await Promise.resolve(); });
             expect(result.current.polling).toBe(true);
+            expect(result.current.pollCapped).toBe(false);
             await act(async () => { await vi.advanceTimersByTimeAsync(REFRESH_WHILE_MS); });
-            expect(result.current).toMatchObject({ status: 'ready', polling: false });
+            // Ended by the failure, not the cap.
+            expect(result.current).toMatchObject({ status: 'ready', polling: false, pollCapped: false });
         });
 
         it('is false for a query without refreshWhile', async () => {
