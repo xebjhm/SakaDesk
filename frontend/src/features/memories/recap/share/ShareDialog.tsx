@@ -426,12 +426,18 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
      */
     /** An export button's click: nothing until the photos settle (the button is blocked meanwhile). */
     const exportOn = (choice: ExportChoice) => (assets ? () => void runExport(choice, assets) : undefined);
-    /** The photos wait, staged: 「写真を準備中…」 from the reveal, still working from 3 s, why from 10 s (the 15 s timeout ends it). */
-    const { stage: photosStage } = useLoadingStages(isOpen && assets === null, { surface: 'recap_share' });
-    const photosWaitText = photosStage === 'hidden'
+    /**
+     * The photos wait, staged: 「写真を準備中…」 from the reveal, still working from 3 s, why from
+     * 10 s (the 15 s timeout ends it). `useDelayedLoading` shows the line and, once revealed, holds
+     * it `minVisible` after the photos settle (never a 10 ms flash); the stages give its copy.
+     */
+    const photosWaiting = isOpen && assets === null;
+    const photosLine = useDelayedLoading(photosWaiting);
+    const { stage: photosStage } = useLoadingStages(photosWaiting, { surface: 'recap_share' });
+    const photosWaitText = !photosLine
         ? null
-        : photosStage === 'shown' ? t('recap.share.preparingPhotos')
-            : photosStage === 'slow' ? t('loading.slow') : t('loading.verySlow');
+        : photosStage === 'slow' ? t('loading.slow')
+            : photosStage === 'verySlow' ? t('loading.verySlow') : t('recap.share.preparingPhotos');
     const blockedBy = (choice: ExportChoice) => {
         if (busy && busy !== choice) return t('recap.share.busy');
         return assets === null ? t('recap.share.preparingPhotos') : undefined;

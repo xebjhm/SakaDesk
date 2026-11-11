@@ -389,6 +389,23 @@ describe('ShareDialog preview loading and the photo gate (L7)', () => {
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('ui_wait', { surface: 'recap_share', phase: 'slow', wait_ms: 3_000 });
     });
 
+    it('keeps a revealed 「写真を準備中…」 line its 400 ms minimum when the photos settle at 210 ms (m5)', async () => {
+        vi.useFakeTimers();
+        const photos = deferred<Assets>();
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => photos.promise);
+        open();
+        const line = () => screen.queryByTestId('share-photos-waiting');
+        act(() => { vi.advanceTimersByTime(210); });
+        expect(line()).toHaveTextContent(PREPARING);
+        await act(async () => { photos.resolve({ photos: [], months: [], skipped: 0 }); });
+        expect(line()).toHaveTextContent(PREPARING);
+        act(() => { vi.advanceTimersByTime(389); }); // 599: still inside reveal + minVisible
+        expect(line()).toHaveTextContent(PREPARING);
+        act(() => { vi.advanceTimersByTime(1); }); // 600
+        expect(line()).toBeNull();
+        expect(screen.getByRole('button', { name: 'GIF' })).not.toHaveAttribute('aria-disabled');
+    });
+
     it('drops the waiting line once the photos arrive', async () => {
         const photos = deferred<Assets>();
         vi.mocked(loadShareAssets).mockImplementationOnce(() => photos.promise);
