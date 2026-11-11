@@ -1068,8 +1068,10 @@ def _load_window_geometry() -> dict:
     data = None
     if settings_path.exists():
         try:
-            settings = json.loads(settings_path.read_text(encoding="utf-8"))
-            data = settings.get("window")
+            # Locked, retried and last-good (settings_store.read_settings_file):
+            # never a half-swapped file on Windows.
+            settings = settings_store.read_settings_file(settings_path)
+            data = settings.get("window") if isinstance(settings, dict) else None
         except Exception:
             logger.warning("Failed to read window geometry from settings.json")
 

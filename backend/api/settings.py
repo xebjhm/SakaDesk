@@ -30,6 +30,7 @@ from backend.services.settings_store import (
     resolve_memories_notify_time,
     load_config as _store_load,
     update_config as _store_update,
+    _write_file_locked,
 )
 
 logger = structlog.get_logger(__name__)
@@ -75,9 +76,9 @@ def load_config() -> dict[str, Any]:
 
 def save_config(config: dict):
     """Save configuration to file (sync, for tests only)."""
-    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
+    # Atomic (tmp file + os.replace) under the cross-thread lock, like every
+    # other settings writer: a reader never sees a half-written file.
+    _write_file_locked(SETTINGS_FILE, config)
     logger.debug(
         "Settings saved",
         settings_file=str(SETTINGS_FILE),

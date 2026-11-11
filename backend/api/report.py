@@ -18,6 +18,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.services.platform import get_logs_dir, get_settings_path
+from backend.services.settings_store import read_settings_file
 from pysaka.credentials import get_token_manager
 from pysaka import Group, get_jwt_remaining_seconds
 
@@ -186,10 +187,9 @@ def _redact_diagnostics(
 def _get_output_dir() -> Optional[str]:
     """Read the configured sync output dir (for redaction of custom data paths)."""
     try:
-        settings_path = get_settings_path()
-        if settings_path.exists():
-            with open(settings_path, "r", encoding="utf-8") as f:
-                return cast(Optional[str], json.load(f).get("output_dir"))
+        data = read_settings_file(get_settings_path())
+        if isinstance(data, dict):
+            return cast(Optional[str], data.get("output_dir"))
     except Exception as e:
         # Do NOT fail silently: if the output dir can't be read, custom-data-dir
         # redaction is skipped and a path outside C:\Users could reach the public
@@ -285,41 +285,36 @@ def _get_token_expiry() -> dict:
 def _get_sync_state() -> dict:
     """Get current sync state from per-service metadata files."""
     try:
-        settings_path = get_settings_path()
-        if settings_path.exists():
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
-                output_dir = settings.get("output_dir")
-                if output_dir:
-                    # Check per-service metadata files
-                    latest_sync = None
-                    last_error = None
-                    output_path = Path(output_dir)
+        settings = read_settings_file(get_settings_path())
+        if isinstance(settings, dict):
+            output_dir = settings.get("output_dir")
+            if output_dir:
+                # Check per-service metadata files
+                latest_sync = None
+                last_error = None
+                output_path = Path(output_dir)
 
-                    for service_dir in output_path.iterdir():
-                        if not service_dir.is_dir():
-                            continue
-                        metadata_path = service_dir / "sync_metadata.json"
-                        if metadata_path.exists():
-                            try:
-                                with open(metadata_path, "r", encoding="utf-8") as mf:
-                                    metadata = json.load(mf)
-                                    utc_sync = metadata.get("last_sync")
-                                    if utc_sync:
-                                        if (
-                                            latest_sync is None
-                                            or utc_sync > latest_sync
-                                        ):
-                                            latest_sync = utc_sync
-                                    if metadata.get("last_error"):
-                                        last_error = metadata.get("last_error")
-                            except Exception:
-                                pass
+                for service_dir in output_path.iterdir():
+                    if not service_dir.is_dir():
+                        continue
+                    metadata_path = service_dir / "sync_metadata.json"
+                    if metadata_path.exists():
+                        try:
+                            with open(metadata_path, "r", encoding="utf-8") as mf:
+                                metadata = json.load(mf)
+                                utc_sync = metadata.get("last_sync")
+                                if utc_sync:
+                                    if latest_sync is None or utc_sync > latest_sync:
+                                        latest_sync = utc_sync
+                                if metadata.get("last_error"):
+                                    last_error = metadata.get("last_error")
+                        except Exception:
+                            pass
 
-                    return {
-                        "last_sync": latest_sync,
-                        "last_error": last_error,
-                    }
+                return {
+                    "last_sync": latest_sync,
+                    "last_error": last_error,
+                }
     except Exception:
         pass
     return {"last_sync": None, "last_error": None}
@@ -328,12 +323,12 @@ def _get_sync_state() -> dict:
 def _get_nickname() -> Optional[str]:
     """Get cached user nickname for redaction."""
     try:
-        settings_path = get_settings_path()
-        if settings_path.exists():
-            with open(settings_path, "r", encoding="utf-8") as f:
-                return cast(Optional[str], json.load(f).get("user_nickname"))
-    except Exception:
-        pass
+        data = read_settings_file(get_settings_path())
+        if isinstance(data, dict):
+            return cast(Optional[str], data.get("user_nickname"))
+    except Exception as e:
+        # Not silent: without the nickname its redaction is skipped.
+        logger.warning("report_nickname_read_failed", error_type=type(e).__name__)
     return None
 
 

@@ -14,6 +14,7 @@ from pathlib import Path
 
 import structlog
 from backend.services.platform import get_app_data_dir, get_settings_path, get_logs_dir
+from backend.services.settings_store import read_settings_file
 from pysaka.credentials import get_token_manager
 from pysaka import Group, get_jwt_remaining_seconds
 
@@ -429,9 +430,9 @@ def _normalise_output_dir(value: object) -> Optional[str]:
 def _configured_output_dir() -> Optional[str]:
     """The configured output folder from settings, or None (blocking read)."""
     try:
-        if get_settings_path().exists():
-            with open(get_settings_path(), "r", encoding="utf-8") as f:
-                return _normalise_output_dir(json.load(f).get("output_dir"))
+        data = read_settings_file(get_settings_path())
+        if isinstance(data, dict):
+            return _normalise_output_dir(data.get("output_dir"))
     except Exception as e:
         logger.warning("diagnostics_settings_read_failed", error_type=type(e).__name__)
     return None
@@ -480,17 +481,16 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
     config_state = {}
     output_dir: Optional[str] = None
     try:
-        if get_settings_path().exists():
-            with open(get_settings_path(), "r", encoding="utf-8") as f:
-                data = json.load(f)
-                config_state["is_configured"] = data.get("is_configured", False)
-                config_state["output_dir_configured"] = "output_dir" in data
-                config_state["auto_sync"] = data.get("auto_sync_enabled", True)
-                config_state["sync_interval"] = data.get("sync_interval_minutes", 1)
-                config_state["adaptive_sync"] = data.get("adaptive_sync_enabled", True)
-                config_state["notifications"] = data.get("notifications_enabled", True)
-                config_state["blogs_full_backup"] = data.get("blogs_full_backup", False)
-                output_dir = _normalise_output_dir(data.get("output_dir"))
+        data = read_settings_file(get_settings_path())
+        if data is not None:
+            config_state["is_configured"] = data.get("is_configured", False)
+            config_state["output_dir_configured"] = "output_dir" in data
+            config_state["auto_sync"] = data.get("auto_sync_enabled", True)
+            config_state["sync_interval"] = data.get("sync_interval_minutes", 1)
+            config_state["adaptive_sync"] = data.get("adaptive_sync_enabled", True)
+            config_state["notifications"] = data.get("notifications_enabled", True)
+            config_state["blogs_full_backup"] = data.get("blogs_full_backup", False)
+            output_dir = _normalise_output_dir(data.get("output_dir"))
         else:
             # No settings file yet — show all defaults
             config_state["is_configured"] = False

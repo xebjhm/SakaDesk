@@ -98,11 +98,91 @@ def reset_notify_time_warnings_for_tests() -> None:
     _warned_notify_times.clear()
 
 
+_READ_RETRIES = 3
+
+# path -> the JSON last read from it by :func:`read_settings_file` (a copy is
+# served when a later read fails; see there).
+_last_good_files: dict[str, Any] = {}
+
+
+def _open_json(path: Path) -> Any:
+    with open(path, "r", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _on_event_loop() -> bool:
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return False
+    return True
+
+
+def _load_json(path: Path) -> Any:
+    """Parse ``path``, retrying a ``PermissionError`` on Windows. Blocking; raises.
+
+    On Windows a reader can hit a sharing violation while ``os.replace``
+    swaps the file in (another process, or antivirus / the indexer holding
+    it). In-process writers are excluded by ``_file_lock``; this retry covers
+    the rest, like :func:`_replace_with_retry` does for writes. It never
+    sleeps on the event loop thread (one attempt there) or off Windows.
+    """
+    for attempt in range(_READ_RETRIES):
+        try:
+            return _open_json(path)
+        except PermissionError:
+            if (
+                attempt == _READ_RETRIES - 1
+                or sys.platform != "win32"
+                or _on_event_loop()
+            ):
+                raise
+            time.sleep(0.05 * (attempt + 1))
+    raise AssertionError("unreachable")  # pragma: no cover
+
+
 def _read_file(path: Path) -> dict:
     if path.exists():
-        with open(path, "r", encoding="utf-8") as f:
-            return {**_SETTINGS_DEFAULTS, **json.load(f)}
+        return {**_SETTINGS_DEFAULTS, **_load_json(path)}
     return dict(_SETTINGS_DEFAULTS)
+
+
+def _read_file_locked(path: Path) -> dict:
+    with _file_lock:
+        return _read_file(path)
+
+
+def read_settings_file(path: Path) -> Any:
+    """The raw parsed JSON of the settings file at ``path`` (``None`` when absent).
+
+    For readers outside this module (bug report, diagnostics, window
+    geometry). Takes ``_file_lock`` and retries a held file
+    (:func:`_load_json`). If the read still fails, it returns a copy of the
+    last value read from ``path`` instead of failing or silently using
+    defaults, and logs ``settings_read_failed`` (``error_type``,
+    ``fallback=last_good``). With no last value it logs ``fallback=none``
+    and raises; the caller decides. Blocking.
+    """
+    import copy
+
+    key = str(path)
+    try:
+        with _file_lock:
+            if not path.exists():
+                return None
+            data = _load_json(path)
+    except (OSError, ValueError) as e:
+        last = _last_good_files.get(key)
+        logger.warning(
+            "settings_read_failed",
+            error_type=type(e).__name__,
+            fallback="last_good" if last is not None else "none",
+        )
+        if last is None:
+            raise
+        return copy.deepcopy(last)
+    _last_good_files[key] = copy.deepcopy(data)
+    return data
 
 
 def _replace_with_retry(src: str, dst: Path, retries: int = 3) -> None:
@@ -141,7 +221,9 @@ async def load_config() -> dict[str, Any]:
     """Load settings.json under async lock."""
     async with _lock:
         loop = asyncio.get_running_loop()
-        return await loop.run_in_executor(None, _read_file, get_settings_path())
+        # Under ``_file_lock`` too: a thread writer (GUI, executor) swaps the
+        # file in with os.replace, and on Windows a read mid-swap fails.
+        return await loop.run_in_executor(None, _read_file_locked, get_settings_path())
 
 
 def _write_file_locked(path: Path, data: dict) -> None:
@@ -201,7 +283,7 @@ def update_raw_sync(path: Path, updates: dict[str, Any]) -> bool:
         raw: dict = {}
         if path.exists():
             try:
-                loaded = json.loads(path.read_text(encoding="utf-8"))
+                loaded = _load_json(path)
             except Exception as e:
                 logger.warning(
                     "settings_raw_update_skipped",

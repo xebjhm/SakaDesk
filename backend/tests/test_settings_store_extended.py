@@ -415,3 +415,139 @@ class TestUpdateRawSync:
             e["event"] == "settings_raw_update_skipped" and e["reason"] == "not_object"
             for e in logs
         )
+
+
+# ── the Windows file-replace race (fix wave B follow-up) ──────────────
+
+
+class TestReplaceRace:
+    """Reading settings.json while ``os.replace`` swaps it can fail on Windows."""
+
+    @pytest.fixture(autouse=True)
+    def _clean(self):
+        settings_store_mod._last_good_files.clear()
+        yield
+        settings_store_mod._last_good_files.clear()
+
+    def test_a_held_file_is_retried_on_windows(self, tmp_path, monkeypatch):
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"output_dir": "x"}), encoding="utf-8")
+        real = settings_store_mod._open_json
+        calls = []
+
+        def flaky(p):
+            calls.append(1)
+            if len(calls) < 3:
+                raise PermissionError(13, "denied")
+            return real(p)
+
+        monkeypatch.setattr(settings_store_mod, "_open_json", flaky)
+        monkeypatch.setattr(settings_store_mod.sys, "platform", "win32")
+        monkeypatch.setattr(settings_store_mod.time, "sleep", lambda s: None)
+        assert _read_file(path)["output_dir"] == "x"
+        assert len(calls) == 3
+
+    def test_retries_give_up_and_raise(self, tmp_path, monkeypatch):
+        path = tmp_path / "settings.json"
+        path.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            settings_store_mod,
+            "_open_json",
+            lambda p: (_ for _ in ()).throw(PermissionError(13, "denied")),
+        )
+        monkeypatch.setattr(settings_store_mod.sys, "platform", "win32")
+        monkeypatch.setattr(settings_store_mod.time, "sleep", lambda s: None)
+        with pytest.raises(PermissionError):
+            _read_file(path)
+
+    def test_never_sleeps_on_the_event_loop_or_off_windows(self, tmp_path, monkeypatch):
+        path = tmp_path / "settings.json"
+        path.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(
+            settings_store_mod,
+            "_open_json",
+            lambda p: (_ for _ in ()).throw(PermissionError(13, "denied")),
+        )
+        slept = []
+        monkeypatch.setattr(settings_store_mod.time, "sleep", slept.append)
+        with pytest.raises(PermissionError):  # linux: no retry
+            _read_file(path)
+        monkeypatch.setattr(settings_store_mod.sys, "platform", "win32")
+
+        async def on_loop():
+            with pytest.raises(PermissionError):
+                _read_file(path)
+
+        asyncio.run(on_loop())
+        assert slept == []
+
+    @pytest.mark.asyncio
+    async def test_load_config_reads_under_the_cross_thread_lock(
+        self, tmp_path, monkeypatch
+    ):
+        """In-process writers hold ``_file_lock`` across os.replace: a reader
+        that takes it too can never open the file mid-swap."""
+        path = tmp_path / "settings.json"
+        path.write_text("{}", encoding="utf-8")
+        monkeypatch.setattr(settings_store_mod, "get_settings_path", lambda: path)
+        held = []
+        real = settings_store_mod._read_file
+
+        def spy(p):
+            held.append(settings_store_mod._file_lock.locked())
+            return real(p)
+
+        monkeypatch.setattr(settings_store_mod, "_read_file", spy)
+        await load_config()
+        assert held == [True]
+
+    def test_read_settings_file_keeps_the_last_good_value(self, tmp_path, monkeypatch):
+        from structlog.testing import capture_logs
+
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"user_nickname": "🌸"}), encoding="utf-8")
+        assert settings_store_mod.read_settings_file(path) == {"user_nickname": "🌸"}
+        monkeypatch.setattr(
+            settings_store_mod,
+            "_open_json",
+            lambda p: (_ for _ in ()).throw(PermissionError(13, "denied")),
+        )
+        with capture_logs() as logs:
+            got = settings_store_mod.read_settings_file(path)
+        assert got == {"user_nickname": "🌸"}
+        got["user_nickname"] = "changed"  # a copy: the memo is not mutated
+        assert settings_store_mod.read_settings_file(path) == {"user_nickname": "🌸"}
+        (event,) = [e for e in logs if e["event"] == "settings_read_failed"]
+        assert (event["error_type"], event["fallback"]) == (
+            "PermissionError",
+            "last_good",
+        )
+        assert "🌸" not in repr(logs) and str(path) not in repr(logs)
+
+    def test_read_settings_file_without_a_last_good_value_raises(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        path = tmp_path / "settings.json"
+        assert settings_store_mod.read_settings_file(path) is None  # no file
+        path.write_text("NOT_JSON", encoding="utf-8")
+        with capture_logs() as logs, pytest.raises(ValueError):
+            settings_store_mod.read_settings_file(path)
+        assert logs[-1]["fallback"] == "none"
+
+    def test_update_raw_sync_retries_a_held_file(self, tmp_path, monkeypatch):
+        path = tmp_path / "settings.json"
+        path.write_text(json.dumps({"a": 1}), encoding="utf-8")
+        real = settings_store_mod._open_json
+        calls = []
+
+        def flaky(p):
+            calls.append(1)
+            if len(calls) == 1:
+                raise PermissionError(13, "denied")
+            return real(p)
+
+        monkeypatch.setattr(settings_store_mod, "_open_json", flaky)
+        monkeypatch.setattr(settings_store_mod.sys, "platform", "win32")
+        monkeypatch.setattr(settings_store_mod.time, "sleep", lambda s: None)
+        assert settings_store_mod.update_raw_sync(path, {"b": 2}) is True
+        assert json.loads(path.read_text(encoding="utf-8")) == {"a": 1, "b": 2}

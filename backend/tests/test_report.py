@@ -180,3 +180,36 @@ class TestRedactDiagnostics:
         diag = {"system": {"message_id": 34, "ok": True, "ratio": 1.5}}
         out = _redact_diagnostics(diag, "john", None)
         assert out["system"] == {"message_id": 34, "ok": True, "ratio": 1.5}
+
+
+def test_report_settings_reads_keep_the_last_good_value(tmp_path, monkeypatch):
+    """A settings read mid-swap (Windows) must not drop the redaction inputs."""
+    import json
+    from unittest.mock import patch
+
+    from structlog.testing import capture_logs
+
+    from backend.api import report
+    from backend.services import settings_store
+
+    settings_store._last_good_files.clear()
+    path = tmp_path / "settings.json"
+    path.write_text(
+        json.dumps({"user_nickname": "ひな", "output_dir": str(tmp_path)}),
+        encoding="utf-8",
+    )
+    with patch("backend.api.report.get_settings_path", return_value=path):
+        assert report._get_nickname() == "ひな"
+        assert report._get_output_dir() == str(tmp_path)
+
+        def held(p):
+            raise PermissionError(13, "denied")
+
+        monkeypatch.setattr(settings_store, "_open_json", held)
+        assert report._get_nickname() == "ひな"
+        assert report._get_output_dir() == str(tmp_path)
+        settings_store._last_good_files.clear()
+        with capture_logs() as logs:
+            assert report._get_nickname() is None
+        assert [e for e in logs if e["event"] == "report_nickname_read_failed"]
+    settings_store._last_good_files.clear()
