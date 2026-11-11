@@ -1,7 +1,7 @@
 import { describe, it, expect, vi } from 'vitest';
 import {
     assignMonths, canvasFilterSupported, colourBuckets, colourHex, dominantColour, FROST_SOURCE_PX, frostImage, isFrosted, jstMonth,
-    loadShareAssets, monthlyColours, monthWindow, sharePhotoSources, type CanvasEnv,
+    loadImageElement, loadShareAssets, monthlyColours, monthWindow, sharePhotoSources, type CanvasEnv,
 } from './sharePhotos';
 import { drawnSources, filterAt, recordingEnv } from '../__fixtures__/recordingCanvas';
 import { payload, photosData, posterData } from '../__fixtures__/payload';
@@ -191,5 +191,30 @@ describe('loadShareAssets', () => {
         expect(assets.skipped).toBe(1);
         expect(assets.months.length).toBeGreaterThan(0);
         expect(assets.months.every((m) => m.colour === '#c86432')).toBe(true);
+    });
+
+    it('stops on abort: passes the signal to every load, rejects with AbortError and frosts nothing', async () => {
+        const { env, made } = fakeEnv();
+        const recap = payload({ slides: [{ key: 's05_photos', fallback: null, data: photosData() }] });
+        const controller = new AbortController();
+        const signals: (AbortSignal | undefined)[] = [];
+        const load = vi.fn((_url: string, signal?: AbortSignal) => {
+            signals.push(signal);
+            return new Promise<CanvasImageSource>((resolve) => { setTimeout(() => resolve(img()), 0); });
+        });
+        const pending = loadShareAssets(recap, { env, loadImage: load, signal: controller.signal });
+        controller.abort();
+        await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+        expect(signals.length).toBeGreaterThan(0);
+        expect(signals.every((sig) => sig === controller.signal)).toBe(true);
+        expect(made).toHaveLength(0);
+    });
+
+    it('loadImageElement releases the image and rejects when aborted', async () => {
+        const controller = new AbortController();
+        const pending = loadImageElement('/api/content/media/s/a.jpg', controller.signal);
+        controller.abort();
+        await expect(pending).rejects.toMatchObject({ name: 'AbortError' });
+        await expect(loadImageElement('/x.jpg', controller.signal)).rejects.toMatchObject({ name: 'AbortError' });
     });
 });

@@ -499,6 +499,36 @@ describe('ShareDialog preview loading and the photo gate (L7)', () => {
         expect(shareLogs()).not.toContainEqual(expect.objectContaining({ reason: 'timeout' }));
     });
 
+    it.each([
+        ['resolves', (d: ReturnType<typeof deferred<Assets>>) => d.resolve({ photos: [], months: [], skipped: 3, blurFallback: true })],
+        ['rejects', (d: ReturnType<typeof deferred<Assets>>) => d.reject(new Error('写真 🌸 failed'))],
+    ] as const)('ignores a photo load that %s after Cancel, and aborts it on Cancel', async (_how, settle) => {
+        vi.useFakeTimers();
+        const photos = deferred<Assets>();
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => photos.promise);
+        open();
+        const opts = vi.mocked(loadShareAssets).mock.calls[vi.mocked(loadShareAssets).mock.calls.length - 1][1] as { signal?: AbortSignal };
+        expect(opts.signal?.aborted).toBe(false);
+        await act(async () => { vi.advanceTimersByTime(10_000); });
+        await act(async () => { fireEvent.click(screen.getByRole('button', { name: i18n.t('loading.cancel') })); });
+        await flush();
+        expect(opts.signal?.aborted).toBe(true);
+        const logsAfterCancel = shareLogs().length;
+        await act(async () => { settle(photos); });
+        await flush();
+        // Still the cancelled idle state: the skipped line, never the failure line, no new breadcrumbs.
+        expect(screen.getByText(i18n.t('recap.share.photosSkipped'))).toBeInTheDocument();
+        expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+        expect(shareLogs()).toHaveLength(logsAfterCancel);
+        expect(screen.getByRole('button', { name: 'GIF' })).not.toHaveAttribute('aria-disabled');
+        // The export runs with no photos (the late answer never replaced them).
+        vi.useRealTimers();
+        await userEvent.click(screen.getByRole('button', { name: 'GIF' }));
+        await screen.findByText('書き出しを始めました。');
+        const renderer = vi.mocked(renderGifFrames).mock.calls[0][0] as unknown as { assets: Assets };
+        expect(renderer.assets).toMatchObject({ photos: [], skipped: 0 });
+    });
+
     it('a reopening waits for its own photos again', async () => {
         const r = recap();
         const view = render(<ShareDialog isOpen recap={r} nickname="ゆき" onClose={vi.fn()} />);

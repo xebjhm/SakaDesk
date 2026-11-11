@@ -182,6 +182,9 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         let cancelled = false;
         let timer: ReturnType<typeof setTimeout> | undefined;
         const startedAt = Date.now();
+        // Aborted when this opening stops waiting (Cancel, timeout, close): the loads stop and
+        // nothing is frosted for an answer nobody will use.
+        const photosAbort = new AbortController();
         const timedOut = new Promise<'timeout'>((resolve) => {
             timer = setTimeout(() => resolve('timeout'), SHARE_ASSETS_TIMEOUT_MS);
         });
@@ -199,15 +202,17 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
             skipPhotosRef.current = null;
             logRecapShare('photo_skip', { reason: 'cancelled', member_id: memberId });
             logWait('recap_share', 'cancelled', Date.now() - startedAt);
+            photosAbort.abort();
             setAssets(NO_ASSETS);
             setAssetsSkipped(true);
         };
-        void Promise.race([loadShareAssets(recap), timedOut]).then((loaded) => {
+        void Promise.race([loadShareAssets(recap, { signal: photosAbort.signal }), timedOut]).then((loaded) => {
             if (cancelled) return;
             skipPhotosRef.current = null;
             if (loaded === 'timeout') {
                 logRecapShare('photo_skip', { reason: 'timeout', member_id: memberId });
                 logWait('recap_share', 'timeout', SHARE_ASSETS_TIMEOUT_MS);
+                photosAbort.abort();
                 withoutPhotos();
                 return;
             }
@@ -223,6 +228,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         return () => {
             cancelled = true;
             clearTimeout(timer);
+            photosAbort.abort();
             skipPhotosRef.current = null;
             abortExport();
         };

@@ -309,14 +309,34 @@ export function sharePhotoSources(recap: RecapPayload): SharePhotoSource[] {
 }
 
 /** Loads an image same-origin (recap media is served by the local server, so canvases stay clean). */
-export function loadImageElement(url: string): Promise<HTMLImageElement> {
+export function loadImageElement(url: string, signal?: AbortSignal): Promise<HTMLImageElement> {
     return new Promise((resolve, reject) => {
+        if (signal?.aborted) {
+            reject(abortError());
+            return;
+        }
         const img = new Image();
+        const done = () => signal?.removeEventListener('abort', onAbort);
+        // Aborted: drop the handlers and the source, so the download stops and the image is released.
+        const onAbort = () => {
+            img.onload = null;
+            img.onerror = null;
+            img.removeAttribute('src');
+            reject(abortError());
+        };
+        signal?.addEventListener('abort', onAbort, { once: true });
         img.decoding = 'async';
-        img.onload = () => resolve(img);
-        img.onerror = () => reject(new Error('image_load_failed'));
+        img.onload = () => { done(); resolve(img); };
+        img.onerror = () => { done(); reject(new Error('image_load_failed')); };
         img.src = url;
     });
+}
+
+/** The rejection of an aborted load (`name` `AbortError`, as `fetch` uses). */
+function abortError(): Error {
+    const e = new Error('aborted');
+    e.name = 'AbortError';
+    return e;
 }
 
 function sample(src: CanvasImageSource, env: CanvasEnv): Map<number, ColourBucket> | null {
@@ -340,11 +360,12 @@ export interface ShareAssets {
 
 /**
  * Reads the export's photos and keeps only their frosted copies and colours. The loaded
- * images go out of scope here; nothing raw is returned.
+ * images go out of scope here; nothing raw is returned. Aborting `signal` (the dialog's Cancel,
+ * timeout or close) stops the pending loads and rejects with an `AbortError` before any frosting.
  */
 export async function loadShareAssets(
     recap: RecapPayload,
-    deps: { env?: CanvasEnv; loadImage?: (url: string) => Promise<CanvasImageSource> } = {},
+    deps: { env?: CanvasEnv; loadImage?: (url: string, signal?: AbortSignal) => Promise<CanvasImageSource>; signal?: AbortSignal } = {},
 ): Promise<ShareAssets> {
     const env = deps.env ?? browserCanvasEnv;
     const loadImage = deps.loadImage ?? loadImageElement;
@@ -353,11 +374,12 @@ export async function loadShareAssets(
     const months = assignMonths(sources, window);
     const loaded = await Promise.all(sources.map(async (s) => {
         try {
-            return await loadImage(s.url);
+            return await loadImage(s.url, deps.signal);
         } catch {
             return null;
         }
     }));
+    if (deps.signal?.aborted) throw abortError();
     const photos: FrostedImage[] = [];
     const samples: { month: number; buckets: Map<number, ColourBucket> }[] = [];
     let skipped = 0;
