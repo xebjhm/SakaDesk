@@ -328,6 +328,9 @@ const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capt
         const timer = setTimeout(() => {
             posterCapture.request(url, controller.signal).then((ok) => {
                 if (ok) {
+                    // Exactly one reload: a poster that still 404s ends in the film tile for good
+                    // (request resolves true at once from its cached attempt: never loop).
+                    setCapture('done');
                     setTried([]);
                     invalidateMediaMeta(url);
                 } else if (!controller.signal.aborted) {

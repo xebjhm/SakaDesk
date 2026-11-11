@@ -420,6 +420,29 @@ describe('MediaTile: video', () => {
         expect(last().src).toBe(VTHUMB('fresh'));
     });
 
+    it('reloads once after a successful capture, then stops when the poster still 404s (m1)', async () => {
+        metaState.value = meta({ kind: 'video', poster: true });
+        capture.mockResolvedValue(true);
+        render(<MediaTile url={VID} kind="video" cssPx={200} testId="tile" />);
+        act(() => last().onError());
+        act(() => last().onError());
+        expect(screen.getByTestId('media-tile-film')).toBeInTheDocument();
+        const before = jobs.length;
+        await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+        await act(async () => { await Promise.resolve(); });
+        expect(capture).toHaveBeenCalledTimes(1);
+        expect(invalidate).toHaveBeenCalledTimes(1);
+        // The one reload: both poster sources are tried again and 404 again.
+        act(() => last().onError());
+        act(() => last().onError());
+        expect(jobs.length).toBe(before + 2);
+        expect(screen.getByTestId('media-tile-film')).toBeInTheDocument();
+        await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
+        expect(capture).toHaveBeenCalledTimes(1);
+        expect(invalidate).toHaveBeenCalledTimes(1);
+        expect(jobs.length).toBe(before + 2);
+    });
+
     it('tries the plain poster thumbnail when meta is unknown, never the video file', async () => {
         metaState.value = undefined;
         render(<MediaTile url={VID} kind="video" cssPx={200} testId="tile" />);
