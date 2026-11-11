@@ -119,6 +119,16 @@ def _reset_session_alert():
     session_alert._reset_for_tests()
 
 
+@pytest.fixture(autouse=True)
+def _stop_thumbnail_pool():
+    """The thumbnail route's IO pool is long-lived: never leave its threads alive
+    into a later test that forks (multi-threaded fork warnings / deadlocks)."""
+    yield
+    from backend.services import photo_thumb
+
+    photo_thumb.shutdown_io_pool()
+
+
 @pytest.fixture
 def client():
     """Sync TestClient for backend/tests API tests.

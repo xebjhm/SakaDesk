@@ -1369,3 +1369,15 @@ class TestFixRound1Widths:
         assert r.status_code == 200
         with Image.open(io.BytesIO(r.content)) as img:
             assert img.size == (480, 360)
+
+
+def test_shutdown_io_pool_stops_the_threads_and_a_new_pool_is_made_on_demand():
+    import threading
+
+    pool = photo_thumb._io_executor()
+    pool.submit(lambda: None).result()
+    photo_thumb.shutdown_io_pool()
+    assert not any(t.name.startswith("photo_thumb") for t in threading.enumerate())
+    photo_thumb.shutdown_io_pool()  # nothing running: a no-op
+    assert photo_thumb._io_executor() is not pool
+    photo_thumb.shutdown_io_pool()

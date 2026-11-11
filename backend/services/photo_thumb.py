@@ -752,6 +752,19 @@ def _io_executor() -> ThreadPoolExecutor:
         return _io_pool
 
 
+def shutdown_io_pool() -> None:
+    """Stop the thumbnail pool's threads (waits for running work); the next request makes a new pool.
+
+    For tests (no pool thread left alive when a later test forks) and for an
+    orderly process exit.
+    """
+    global _io_pool
+    with _io_pool_lock:
+        pool, _io_pool = _io_pool, None
+    if pool is not None:
+        pool.shutdown(wait=True)
+
+
 async def run_io(fn: Callable[..., _T], *args: object) -> _T:
     """Run blocking thumbnail work (path checks, cache lookups, decodes, reads)
     on the thumbnail pool, never the default executor.
