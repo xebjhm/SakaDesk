@@ -104,6 +104,25 @@ describe('VirtualMediaGrid', () => {
         ]);
     });
 
+    it('keys headers and rows by react-virtuoso 4.18 flat indices (headers counted)', () => {
+        // GroupedVirtuoso calls computeItemKey for headers too, with an index that counts them.
+        const groups = [{ key: 'g1', label: 'A', items: items('a', 12) }, { key: 'g2', label: 'B', items: items('b', 3) }];
+        const { rerender } = render(<Grid groups={groups} />);
+        expect(virtuosoCapture.groupedKeys).toEqual(['group:g1', 'row:a0', 'row:a5', 'row:a10', 'group:g2', 'row:b0']);
+        expect(new Set(virtuosoCapture.groupedKeys).size).toBe(virtuosoCapture.groupedKeys.length);
+        // An item key equal to a group key never collides with it.
+        rerender(<Grid groups={[{ key: 'x', label: 'A', items: [{ id: 'x' }] }, { key: 'y', label: 'B', items: [{ id: 'y' }] }]} />);
+        expect(virtuosoCapture.groupedKeys).toEqual(['group:x', 'row:x', 'group:y', 'row:y']);
+    });
+
+    it('keeps a row key stable when an earlier group grows', () => {
+        render(<Grid groups={[{ key: 'g1', label: 'A', items: items('a', 3) }, { key: 'g2', label: 'B', items: items('b', 3) }]} />);
+        const before = virtuosoCapture.groupedKeys.slice();
+        resetVirtuosoCapture();
+        render(<Grid groups={[{ key: 'g0', label: 'Z', items: items('z', 2) }, { key: 'g1', label: 'A', items: items('a', 3) }, { key: 'g2', label: 'B', items: items('b', 3) }]} />);
+        expect(virtuosoCapture.groupedKeys.slice(2)).toEqual(before);
+    });
+
     it('primes meta for the rendered rows plus two more screens', () => {
         render(<Grid groups={[{ key: 'g1', label: 'A', items: items('a', 50) }]} />);
         act(() => virtuosoCapture.rangeChanged!({ startIndex: 0, endIndex: 1 }));

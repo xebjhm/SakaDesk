@@ -58,26 +58,37 @@ interface Layout<T> {
     /** Each row: its group and the flat index of its first item. */
     rows: { group: number; first: number; items: T[] }[];
     flat: T[];
+    /**
+     * React keys in react-virtuoso's flat order, which counts group headers: header of group 0,
+     * its rows, header of group 1, ... `GroupedVirtuoso` (4.18) calls `computeItemKey` with this
+     * index for headers and rows alike. Headers are `group:<group key>`, rows `row:<first item
+     * key>`, so a row keeps its key when rows before it move, and the two never collide.
+     */
+    keys: string[];
 }
 
-function layout<T>(groups: MediaGridGroup<T>[], cols: number): Layout<T> {
+function layout<T>(groups: MediaGridGroup<T>[], cols: number, itemKey: (item: T) => string): Layout<T> {
     const rowCounts: number[] = [];
     const rowStarts: number[] = [];
     const itemStarts: number[] = [];
     const rows: Layout<T>['rows'] = [];
     const flat: T[] = [];
+    const keys: string[] = [];
     groups.forEach((group, g) => {
         rowStarts.push(rows.length);
         itemStarts.push(flat.length);
+        keys.push(`group:${group.key}`);
         const count = Math.ceil(group.items.length / cols);
         rowCounts.push(count);
         for (let r = 0; r < count; r += 1) {
-            rows.push({ group: g, first: flat.length + r * cols, items: group.items.slice(r * cols, (r + 1) * cols) });
+            const rowItems = group.items.slice(r * cols, (r + 1) * cols);
+            rows.push({ group: g, first: flat.length + r * cols, items: rowItems });
+            keys.push(`row:${itemKey(rowItems[0])}`);
         }
         // A loop, not a spread: one huge group (tens of thousands) must not hit the argument limit.
         for (const item of group.items) flat.push(item);
     });
-    return { rowCounts, rowStarts, itemStarts, rows, flat };
+    return { rowCounts, rowStarts, itemStarts, rows, flat, keys };
 }
 
 function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.ForwardedRef<VirtualMediaGridHandle>) {
@@ -87,7 +98,10 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
     const { cols, tilePx } = useGridColumns(wrapperRef, { minTilePx, maxTilePx, gapPx });
     const gap = gapPx ?? undefined;
     const rowGapPx = gapPx ?? MEDIA_GRID_GAP_REM * rootRemPx();
-    const grouped = useMemo(() => layout(groups, cols), [groups, cols]);
+    // `itemKey` is read through a ref so an inline callback does not re-chunk every render.
+    const itemKeyRef = useRef(itemKey);
+    itemKeyRef.current = itemKey;
+    const grouped = useMemo(() => layout(groups, cols, (item: T) => itemKeyRef.current(item)), [groups, cols]);
     const latest = useRef({ grouped, mediaUrl, cols });
     latest.current = { grouped, mediaUrl, cols };
 
@@ -158,10 +172,7 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
                     groupCounts={grouped.rowCounts}
                     increaseViewportBy={OVERSCAN}
                     defaultItemHeight={tilePx + rowGapPx}
-                    computeItemKey={(index) => {
-                        const row = grouped.rows[index];
-                        return row && row.items.length > 0 ? `row-${itemKey(row.items[0])}` : `row-${index}`;
-                    }}
+                    computeItemKey={(index) => grouped.keys[index] ?? `index:${index}`}
                     rangeChanged={onRange}
                     components={Footer ? { Footer } : undefined}
                     groupContent={(g) => (
