@@ -172,6 +172,26 @@ describe('BusyContent', () => {
         expect(label).toHaveClass('motion-reduce:not-sr-only', 'bg-sheet', 'rounded-pill', 'shadow-pill', 'self-start');
     });
 
+    it('with inertWhileBusy, makes the kept content inert and unclickable at once, and live again when ready', () => {
+        const onClick = vi.fn();
+        const { rerender } = render(<BusyContent busy inertWhileBusy><button type="button" onClick={onClick}>前の日 🌸</button></BusyContent>);
+        const content = screen.getByText('前の日 🌸').parentElement as HTMLElement;
+        expect(content).toHaveAttribute('inert');
+        expect(content).toHaveClass('pointer-events-none');
+        rerender(<BusyContent busy={false} inertWhileBusy><button type="button" onClick={onClick}>前の日 🌸</button></BusyContent>);
+        expect(content).not.toHaveAttribute('inert');
+        expect(content).not.toHaveClass('pointer-events-none');
+        fireEvent.click(screen.getByText('前の日 🌸'));
+        expect(onClick).toHaveBeenCalledTimes(1);
+    });
+
+    it('stays interactive while busy by default (backward compatible)', () => {
+        render(<BusyContent busy><button type="button">kept</button></BusyContent>);
+        const content = screen.getByText('kept').parentElement as HTMLElement;
+        expect(content).not.toHaveAttribute('inert');
+        expect(content).not.toHaveClass('pointer-events-none');
+    });
+
     it('is plain content when idle', () => {
         const { container } = render(<BusyContent busy={false}><p>ready</p></BusyContent>);
         expect(container.firstElementChild).not.toHaveAttribute('aria-busy');
