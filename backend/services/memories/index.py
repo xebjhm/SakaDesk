@@ -919,8 +919,11 @@ def _fresh_hashes_sync(
     :func:`_get_sync`) and one ``SELECT`` of the stored hashes; no index
     payload is read or parsed. A room whose stored hash differs (new data, or
     never built) or whose ``messages.json`` cannot be stat'ed gives ``None``.
-    A database error logs ``memory_index_hashes_failed`` and gives ``None``
-    for every room (the caller then falls back to :func:`get_member_index`).
+    A database error or a failed side-input load logs
+    ``memory_index_hashes_failed`` (``scope=db|inputs``) and gives ``None``
+    for every room; an unexpected error for one room logs ``scope=room`` and
+    gives ``None`` for it. The caller then falls back to
+    :func:`get_member_index`, which never raises (as ``_get_sync`` did).
     """
     if not member_dirs:
         return []
@@ -935,15 +938,29 @@ def _fresh_hashes_sync(
                 ).fetchall()
             )
     except sqlite3.Error as e:
-        logger.warning("memory_index_hashes_failed", error_type=type(e).__name__)
+        logger.warning(
+            "memory_index_hashes_failed", error_type=type(e).__name__, scope="db"
+        )
         return [None] * len(member_dirs)
-    inputs = _load_inputs(service_data_dir, fresh_scan=False)
+    try:
+        inputs = _load_inputs(service_data_dir, fresh_scan=False)
+    except Exception as e:  # noqa: BLE001 - fall back per room, never fail the request
+        logger.warning(
+            "memory_index_hashes_failed", error_type=type(e).__name__, scope="inputs"
+        )
+        return [None] * len(member_dirs)
     out: list[str | None] = []
     for d in member_dirs:
-        base = _identity(service_data_dir, d, inputs)
         try:
+            base = _identity(service_data_dir, d, inputs)
             current = _data_hash(d / "messages.json", base)
         except OSError:
+            out.append(None)
+            continue
+        except Exception as e:  # noqa: BLE001 - this room falls back to get_member_index
+            logger.warning(
+                "memory_index_hashes_failed", error_type=type(e).__name__, scope="room"
+            )
             out.append(None)
             continue
         out.append(current if stored.get(base.member_dir) == current else None)

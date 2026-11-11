@@ -833,3 +833,38 @@ async def test_data_hashes_fall_back_per_room_on_errors(tmp_path, monkeypatch):
     monkeypatch.undo()
     mi.set_db_path(tmp_path / "idx.db")
     assert mi._fresh_hashes_sync(tmp_path, [a, gone]) == [expected, None]
+
+
+def test_an_unexpected_room_error_falls_back_instead_of_failing(tmp_path, monkeypatch):
+    """Review M5: _get_sync caught every per-room error; the batched check must too."""
+    from structlog.testing import capture_logs
+
+    mi.set_db_path(tmp_path / "idx.db")
+    a = write_member(tmp_path, [msg(1, "2026-09-14T03:00:00Z", "picture")])
+    b = _second_room(tmp_path, [msg(2, "2026-09-15T03:00:00Z", "picture")])
+    import asyncio
+
+    asyncio.run(mi.build_all(tmp_path))
+    good = mi._fresh_hashes_sync(tmp_path, [a, b])
+    real = mi._identity
+
+    def flaky(sdir, d, inputs):
+        if d == a:
+            raise RuntimeError("unexpected")
+        return real(sdir, d, inputs)
+
+    monkeypatch.setattr(mi, "_identity", flaky)
+    with capture_logs() as logs:
+        assert mi._fresh_hashes_sync(tmp_path, [a, b]) == [None, good[1]]
+    (failed,) = [e for e in logs if e["event"] == "memory_index_hashes_failed"]
+    assert (failed["error_type"], failed["scope"]) == ("RuntimeError", "room")
+
+    def broken_inputs(*a, **k):
+        raise RuntimeError("inputs")
+
+    monkeypatch.setattr(mi, "_load_inputs", broken_inputs)
+    with capture_logs() as logs:
+        assert mi._fresh_hashes_sync(tmp_path, [a, b]) == [None, None]
+    assert [e["scope"] for e in logs if e["event"] == "memory_index_hashes_failed"] == [
+        "inputs"
+    ]
