@@ -327,6 +327,70 @@ class TestStore:
             assert conn.execute("PRAGMA user_version").fetchone()[0] == 1
 
 
+class TestKeyValue:
+    """The small ``media_meta_kv`` table (D-M4: the worker's persisted blog signatures)."""
+
+    def test_round_trip_prefix_read_and_delete(self):
+        assert media_meta.kv_get_prefix("blog_sig:") == {}
+        media_meta.kv_set("blog_sig:hinatazaka46", '["a", 1, 2]')
+        media_meta.kv_set("blog_sig:nogizaka46", '["b", 3, 4]')
+        media_meta.kv_set("other:🌸", "x")
+        media_meta.kv_set("blog_sig:nogizaka46", '["c", 5, 6]')  # replaced
+        assert media_meta.kv_get_prefix("blog_sig:") == {
+            "blog_sig:hinatazaka46": '["a", 1, 2]',
+            "blog_sig:nogizaka46": '["c", 5, 6]',
+        }
+        media_meta.kv_delete_prefix("blog_sig:")
+        assert media_meta.kv_get_prefix("blog_sig:") == {}
+        assert media_meta.kv_get_prefix("other:") == {"other:🌸": "x"}
+
+    def test_a_prefix_is_matched_literally(self):
+        media_meta.kv_set("a_b:1", "x")
+        media_meta.kv_set("axb:1", "y")
+        media_meta.kv_set("a%:1", "z")
+        assert media_meta.kv_get_prefix("a_b:") == {"a_b:1": "x"}
+        assert media_meta.kv_get_prefix("a%") == {"a%:1": "z"}
+
+    def test_clear_empties_the_kv_table_too(self):
+        media_meta.put(_row("a.jpg"))
+        media_meta.kv_set("blog_sig:hinatazaka46", "v")
+        media_meta.clear()
+        assert media_meta.kv_get_prefix("") == {}
+
+    def test_the_table_is_added_to_an_existing_db_without_a_reset(self):
+        media_meta.put(_row("a.jpg"))  # a DB made before the kv table existed
+        with closing(sqlite3.connect(media_meta.db_path())) as conn:
+            conn.execute("DROP TABLE IF EXISTS media_meta_kv")
+            conn.commit()
+        with capture_logs() as logs:
+            media_meta.kv_set("k", "v")
+        assert media_meta.kv_get_prefix("k") == {"k": "v"}
+        assert set(media_meta.get_many(["a.jpg"])) == {"a.jpg"}  # rows kept
+        assert not [e for e in logs if e["event"] == "media_meta_reset"]
+
+    def test_a_schema_reset_drops_the_kv_table(self):
+        media_meta.kv_set("blog_sig:hinatazaka46", "v")
+        with closing(sqlite3.connect(media_meta.db_path())) as conn:
+            conn.execute("PRAGMA user_version = 99")
+            conn.commit()
+        assert media_meta.kv_get_prefix("") == {}
+
+    def test_kv_errors_never_raise(self):
+        boom = sqlite3.OperationalError("database is locked")
+        with (
+            patch.object(media_meta, "_connect", side_effect=boom),
+            capture_logs() as logs,
+        ):
+            assert media_meta.kv_get_prefix("x") == {}
+            media_meta.kv_set("x", "y")
+            media_meta.kv_delete_prefix("x")
+        assert {e["op"] for e in logs if e["event"] == "media_meta_failed"} == {
+            "kv_get",
+            "kv_set",
+            "kv_delete",
+        }
+
+
 class TestResilience:
     def test_a_schema_mismatch_resets_the_db(self):
         path = media_meta.db_path()

@@ -37,6 +37,13 @@ path from :func:`photo_thumb.archive_rel` (never logged).
   (``media_pregen.hint``, via :func:`_hint`) so it processes them first; a
   video waiting for a client poster is not (:func:`waiting_for_poster`).
 
+- **Key-value side table.** ``media_meta_kv(k, v)`` holds small worker
+  state that must survive a restart (``media_pregen``'s blog listing
+  signatures: :func:`kv_get_prefix`, :func:`kv_set`,
+  :func:`kv_delete_prefix`). It is created on first use with ``CREATE TABLE
+  IF NOT EXISTS`` (an existing DB gains it without a reset), emptied by
+  :func:`clear` and dropped with the rows by a schema reset.
+
 Logs carry counts and codes only: ``media_meta`` (``requested``, ``ready``,
 ``stale``, ``missing``, ``invalid``, ``hinted``), ``path_traversal_blocked``
 (``view=media_meta``, ``count``; at most one per request), ``media_meta_reset``
@@ -198,6 +205,7 @@ def _ensure_schema(conn: sqlite3.Connection, path: Path) -> None:
             if tables:
                 logger.info("media_meta_reset", reason="schema")
                 conn.execute("DROP TABLE IF EXISTS media_meta")
+                conn.execute("DROP TABLE IF EXISTS media_meta_kv")
                 _forget_count(path)
             for statement in _DDL:
                 conn.execute(statement)
@@ -477,15 +485,67 @@ def prune() -> int:
 
 
 def clear() -> None:
-    """Delete every row. Blocking; never raises."""
+    """Delete every row, the key-value table's too. Blocking; never raises."""
     path = db_path()
 
     def op(conn: sqlite3.Connection) -> None:
         conn.execute("DELETE FROM media_meta")
+        conn.execute(_KV_DDL)
+        conn.execute("DELETE FROM media_meta_kv")
         with _lock:
             _row_counts[path] = 0
 
     _run("clear", op, None)
+
+
+# --- the key-value side table ----------------------------------------------------------
+
+_KV_DDL = (
+    "CREATE TABLE IF NOT EXISTS media_meta_kv "
+    "(k TEXT PRIMARY KEY, v TEXT NOT NULL) WITHOUT ROWID"
+)
+
+
+def _prefix_range(prefix: str) -> tuple[str, str]:
+    """``k >= lo AND k < hi`` matches ``prefix`` literally (no ``LIKE`` wildcards)."""
+    return prefix, prefix + "\U0010ffff"
+
+
+def kv_get_prefix(prefix: str) -> dict[str, str]:
+    """Every ``media_meta_kv`` entry whose key starts with ``prefix``. Blocking; never raises."""
+    lo, hi = _prefix_range(prefix)
+
+    def op(conn: sqlite3.Connection) -> dict[str, str]:
+        conn.execute(_KV_DDL)
+        rows = conn.execute(
+            "SELECT k, v FROM media_meta_kv WHERE k >= ? AND k < ?", (lo, hi)
+        ).fetchall()
+        return {k: v for k, v in rows}
+
+    return _run("kv_get", op, {})
+
+
+def kv_set(key: str, value: str) -> None:
+    """Store ``value`` under ``key`` (replacing it). Blocking; never raises."""
+
+    def op(conn: sqlite3.Connection) -> None:
+        conn.execute(_KV_DDL)
+        conn.execute(
+            "INSERT OR REPLACE INTO media_meta_kv(k, v) VALUES (?, ?)", (key, value)
+        )
+
+    _run("kv_set", op, None)
+
+
+def kv_delete_prefix(prefix: str) -> None:
+    """Delete every entry whose key starts with ``prefix``. Blocking; never raises."""
+    lo, hi = _prefix_range(prefix)
+
+    def op(conn: sqlite3.Connection) -> None:
+        conn.execute(_KV_DDL)
+        conn.execute("DELETE FROM media_meta_kv WHERE k >= ? AND k < ?", (lo, hi))
+
+    _run("kv_delete", op, None)
 
 
 def counts() -> dict[str, int]:

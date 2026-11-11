@@ -658,6 +658,201 @@ async def test_blog_phase_skips_an_unchanged_listing(h):
     assert reasons == [None, "unchanged", None, None]
 
 
+def _persisted() -> dict[str, str]:
+    return media_meta.kv_get_prefix(media_pregen.BLOG_SIG_PREFIX)
+
+
+async def _one_pass(h: Harness, **kw) -> MediaPregen:
+    p = h.make(**kw)
+    p.start()
+    await _idle(p)
+    await p.stop()
+    return p
+
+
+def _blog_reasons(logs) -> list:
+    return [
+        e.get("reason")
+        for e in _events(logs, "media_pregen_pass")
+        if e["phase"] == "blogs"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_the_unchanged_blog_listing_survives_a_restart(h):
+    """D-M4: after a restart the cached blog images are not walked again."""
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    reads: list[int] = []
+    real = bs.gallery_local_images
+
+    def local(*a):
+        reads.append(1)
+        return real(*a)
+
+    with (
+        patch.object(bs, "gallery_local_images", side_effect=local),
+        capture_logs() as logs,
+    ):
+        await _one_pass(h)
+        (key,) = _persisted()
+        assert key == media_pregen.BLOG_SIG_PREFIX + HINATA
+        assert str(h.root) not in _persisted()[key]  # a hash, never the path
+        first = len(h.processed)
+        await _one_pass(h)  # a new worker: the app restarted
+    assert len(reads) == 1 and len(h.processed) == first
+    assert _blog_reasons(logs) == [None, "unchanged"]
+    sig = _events(logs, "media_pregen_blog_sig")
+    assert [(e["state"], e.get("count")) for e in sig] == [
+        ("loaded", 0),
+        ("saved", 1),
+        ("loaded", 1),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_blog_write_forgets_the_persisted_signatures(h):
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    await _one_pass(h)
+    assert _persisted()
+    await asyncio.to_thread(bs.invalidate_gallery)  # off the loop: inline delete
+    assert _persisted() == {}
+    with capture_logs() as logs:
+        await _one_pass(h)  # listed again after the restart
+    assert _blog_reasons(logs) == [None]
+    assert _persisted()
+    bs.invalidate_gallery()  # on the loop: deleted on the executor
+    for _ in range(200):
+        if not _persisted():
+            break
+        await asyncio.sleep(0.01)
+    assert _persisted() == {}
+
+
+def test_forget_deletes_once_per_save(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(media_meta, "kv_delete_prefix", calls.append)
+    media_pregen.forget_blog_signatures()
+    media_pregen.forget_blog_signatures()  # nothing saved since: no DB call
+    assert calls == [media_pregen.BLOG_SIG_PREFIX]
+    media_pregen._note_persisted()
+    media_pregen.forget_blog_signatures()
+    assert len(calls) == 2
+
+
+@pytest.mark.asyncio
+async def test_forget_deletes_inline_when_the_executor_is_gone(monkeypatch):
+    calls: list[str] = []
+    monkeypatch.setattr(media_meta, "kv_delete_prefix", calls.append)
+    loop = asyncio.get_running_loop()
+
+    def closed(*a):
+        raise RuntimeError("cannot schedule new futures after shutdown")
+
+    monkeypatch.setattr(loop, "run_in_executor", closed)
+    with capture_logs() as logs:
+        media_pregen.forget_blog_signatures()
+    assert calls == [media_pregen.BLOG_SIG_PREFIX]
+    assert _events(logs, "media_pregen_blog_sig")[-1]["reason"] == "inline"
+
+
+@pytest.mark.asyncio
+async def test_a_blog_written_after_start_distrusts_the_loaded_signatures(h):
+    """Even when the delete lost a race, a version bump since start lists again."""
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    await _one_pass(h)
+    h.busy = "sync"
+    p = h.make()
+    p.start()
+    for _ in range(50):
+        await asyncio.sleep(0)
+    with patch.object(media_pregen, "forget_blog_signatures", lambda: None):
+        bs.invalidate_gallery()
+    assert _persisted()  # the delete "lost": the row is still there
+    h.busy = None
+    with capture_logs() as logs:
+        await _idle(p)
+        await p.stop()
+    assert _blog_reasons(logs) == [None]
+
+
+@pytest.mark.asyncio
+async def test_a_blog_written_during_the_walk_is_not_persisted(h):
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+
+    def on_process(item: Item) -> None:
+        with patch.object(media_pregen, "forget_blog_signatures", lambda: None):
+            bs.invalidate_gallery()
+
+    h.on_process = on_process
+    with capture_logs() as logs:
+        await _one_pass(h)
+    assert _persisted() == {}
+    assert _events(logs, "media_pregen_blog_sig")[-1]["reason"] == "blog_written"
+
+
+@pytest.mark.asyncio
+async def test_a_blog_written_while_saving_removes_the_saved_row(h, monkeypatch):
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    real = media_meta.kv_set
+
+    def racing(key, value):
+        real(key, value)
+        with patch.object(media_pregen, "forget_blog_signatures", lambda: None):
+            bs.invalidate_gallery()
+
+    monkeypatch.setattr(media_meta, "kv_set", racing)
+    with capture_logs() as logs:
+        await _one_pass(h)
+    assert _persisted() == {}
+    assert _events(logs, "media_pregen_blog_sig")[-1]["reason"] == "raced"
+
+
+@pytest.mark.asyncio
+async def test_clearing_drops_the_persisted_signatures(h, env):
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    p = h.make()
+    p.start()
+    await _idle(p)
+    assert _persisted()
+    with capture_logs() as logs:
+        await p.clear()
+        assert _persisted() == {}
+        await asyncio.sleep(0)
+        await _idle(p)
+    await p.stop()
+    assert _blog_reasons(logs) == [None]  # listed again, not "unchanged"
+
+
+@pytest.mark.asyncio
+async def test_unreadable_persisted_signatures_are_ignored(h):
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    media_meta.kv_set(media_pregen.BLOG_SIG_PREFIX + HINATA, "not json")
+    media_meta.kv_set(media_pregen.BLOG_SIG_PREFIX + SAKURA, '["a", "b", 1]')
+    media_meta.kv_set(media_pregen.BLOG_SIG_PREFIX + "nogizaka46", '{"a": 1}')
+    with capture_logs() as logs:
+        await _one_pass(h)
+    loaded = _events(logs, "media_pregen_blog_sig")[0]
+    assert (loaded["state"], loaded["count"], loaded["bad"]) == ("loaded", 0, 3)
+    assert _blog_reasons(logs) == [None]
+
+
 @pytest.mark.asyncio
 async def test_blog_listing_pauses_when_a_sync_starts_mid_enumeration(h):
     from backend.services import blog_service as bs

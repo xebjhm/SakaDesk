@@ -1698,10 +1698,17 @@ def invalidate_gallery() -> None:
 
     A cheap version bump that is part of every gallery signature, so neither
     the memo nor the worker's "unchanged" skip relies on the index being saved.
+    It also drops the worker's persisted blog signatures
+    (``media_pregen.forget_blog_signatures``).
     """
     global _gallery_version
     with _gallery_memo_lock:
         _gallery_version += 1
+    # The pre-generation worker's persisted "unchanged" signatures are stale
+    # too (they outlive this in-memory version). Cheap; never raises.
+    from backend.services import media_pregen
+
+    media_pregen.forget_blog_signatures()
 
 
 def gallery_version() -> int:

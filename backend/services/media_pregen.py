@@ -93,9 +93,31 @@ Per service the phases are (:func:`default_enumerate`):
    paths come straight from the scan (no per-image resolve). A logged no-op
    while full blog backup is off (``reason=backup_off``), when the blog
    listing is unchanged since the last completed blog phase of the service
-   (``reason=unchanged``: the same ``blog_service.gallery_signature``), when
+   (``reason=unchanged``: the same ``blog_service.gallery_signature``; see
+   *Persisted blog signatures* below), when
    there is no blog index (``reason=no_index``), or when the listing fails
    (``reason=failed``, ``media_pregen_blogs_failed``).
+
+**Persisted blog signatures** (D-M4). A completed blog phase stores its
+listing signature in ``media_meta.db`` (``media_meta.kv_set``, key
+:data:`BLOG_SIG_PREFIX` + service; value: a hash of the blogs base, the
+index mtime and the cached-blog count, never a path), so the "unchanged"
+skip survives a restart instead of re-walking every cached blog image. The
+in-session ``gallery_version`` is not stored: it restarts at every launch.
+Instead the stored rows are removed whenever that version would move:
+
+- every blog write (``blog_service.invalidate_gallery``) calls
+  :func:`forget_blog_signatures`, which deletes them (once per save, off
+  the event loop);
+- a signature is saved only when no blog was written since its listing,
+  and deleted again if one was written (or the caches were cleared) while
+  it was being saved;
+- the signatures loaded at start are trusted only while ``gallery_version``
+  has not moved since (a blog written this session lists again);
+- :func:`clear_caches` and a ``media_meta`` schema reset empty the table.
+
+Logged as ``media_pregen_blog_sig`` (``state=loaded|saved|skipped|forgotten``,
+``count``, ``bad``, ``reason``).
 
 Hinted files (``media_meta`` hints missing and stale rows of a meta batch)
 jump the queue at every batch boundary, deduplicated and capped at
@@ -191,6 +213,8 @@ COOLDOWN_MAX = 10_000
 WATCHDOG_GRACE_S = 5.0
 BLOG_SCAN_CHUNK = 50
 """``blog.json`` files read per worker step of the blog phase (a pause check runs between steps)."""
+BLOG_SIG_PREFIX = "blog_sig:"
+"""Key prefix of the persisted blog signatures in ``media_meta``'s key-value table."""
 SCAN_STEP_TIMEOUT_S = 120.0
 """One blog-listing step on the thread longer than this (a stalled drive) fails the blog phase."""
 """Added to the batch watchdog so ``generate_shell``'s own hang guard trips first."""
@@ -819,6 +843,10 @@ class MediaPregen:
         self._large: dict[str, set[str]] = {}  # service -> rels of ★ / cover items
         # service -> the blog listing signature of its last completed blog phase
         self._blog_sig: dict[str, tuple[str, int, int, int]] = {}
+        # service -> the persisted form loaded at start (trusted while the
+        # gallery version has not moved since; see the module)
+        self._loaded_sig: dict[str, tuple[str, int, int]] = {}
+        self._start_version = 0
 
     # --- public ---------------------------------------------------------------------
 
@@ -827,6 +855,9 @@ class MediaPregen:
         if self._task is not None:
             return
         self._loop = asyncio.get_running_loop()
+        from backend.services import blog_service
+
+        self._start_version = blog_service.gallery_version()
         self._shell_off_seen = bool(video_poster.shell_state()["off"])
         self._set_state("running")
         self._task = self._loop.create_task(self._main(), name="media_pregen")
@@ -939,6 +970,7 @@ class MediaPregen:
             self._progress.clear()
             self._cooldown.clear()
         self._blog_sig.clear()  # the blog thumbnails are gone too: list them again
+        self._loaded_sig.clear()  # (and _clear_files emptied the persisted ones)
         for service in self._services:
             self.request(service)
         return freed
@@ -976,10 +1008,17 @@ class MediaPregen:
             self._cooldown[rel] = now
 
     def _recover(self) -> None:
-        """Startup, blocking: Shell crash recovery (one UPDATE)."""
+        """Startup, blocking: Shell crash recovery (one UPDATE), then the persisted blog signatures."""
         recovered = media_meta.recover_pending()
         if recovered:
             logger.info("media_pregen_recovered", count=recovered)
+        self._loaded_sig, bad = _load_blog_sigs()
+        logger.info(
+            "media_pregen_blog_sig",
+            state="loaded",
+            count=len(self._loaded_sig),
+            bad=bad,
+        )
 
     def _measure(self) -> None:
         """Measure both caches once (a directory scan), after the startup delay."""
@@ -1147,7 +1186,40 @@ class MediaPregen:
             signature is not None
         ):  # completed: an unchanged listing is skipped next time
             self._blog_sig[service] = signature
+            await self._save_blog_sig(service, signature)
         return True
+
+    async def _save_blog_sig(
+        self, service: str, signature: tuple[str, int, int, int]
+    ) -> None:
+        """Persist a completed blog phase's signature (see the module); never raises."""
+        from backend.services import blog_service as bs
+
+        if bs.gallery_version() != signature[3]:
+            logger.info("media_pregen_blog_sig", state="skipped", reason="blog_written")
+            return
+        await asyncio.to_thread(
+            media_meta.kv_set, BLOG_SIG_PREFIX + service, _sig_value(signature)
+        )
+        _note_persisted()
+        if (
+            bs.gallery_version() != signature[3]
+            or self._turn_generation != self._generation
+        ):  # a blog write or a clear raced the save: it must not outlive them
+            await asyncio.to_thread(media_meta.kv_delete_prefix, BLOG_SIG_PREFIX)
+            logger.info("media_pregen_blog_sig", state="skipped", reason="raced")
+            return
+        logger.info("media_pregen_blog_sig", state="saved", count=1)
+
+    def _unchanged(self, service: str, signature: tuple[str, int, int, int]) -> bool:
+        """The listing equals the last completed one (this session, or persisted and still valid)."""
+        if self._blog_sig.get(service) == signature:
+            return True
+        from backend.services import blog_service as bs
+
+        return bs.gallery_version() == self._start_version and self._loaded_sig.get(
+            service
+        ) == _sig_form(signature)
 
     async def _call(self, fn: Callable[[], Any]) -> Any:
         """Run one short blocking step on the worker thread (background priority).
@@ -1210,7 +1282,7 @@ class MediaPregen:
                     partial(bs.gallery_member_blogs, index.base, member)
                 )
             signature = bs.gallery_signature(index, len(cached), version)
-            if self._blog_sig.get(service) == signature:
+            if self._unchanged(service, signature):
                 return Phase(PHASE_BLOGS, [], reason="unchanged"), None
             cached = await self._call(partial(bs.gallery_newest_first, cached))
             items: list[Item] = []
@@ -1339,6 +1411,84 @@ class MediaPregen:
             worker.abandon()
             self._worker = None
             return None
+
+
+# --- persisted blog signatures --------------------------------------------------------------
+
+
+def _sig_form(signature: tuple[str, int, int, int]) -> tuple[str, int, int]:
+    """The persisted form: a hash of the blogs base (never the path), the index mtime and the count."""
+    import hashlib
+
+    base = hashlib.sha256(signature[0].encode("utf-8")).hexdigest()[:16]
+    return (base, signature[1], signature[2])
+
+
+def _sig_value(signature: tuple[str, int, int, int]) -> str:
+    import json
+
+    return json.dumps(list(_sig_form(signature)))
+
+
+def _load_blog_sigs() -> tuple[dict[str, tuple[str, int, int]], int]:
+    """The persisted signatures by service and the count of unreadable ones. Blocking."""
+    import json
+
+    out: dict[str, tuple[str, int, int]] = {}
+    bad = 0
+    for key, value in media_meta.kv_get_prefix(BLOG_SIG_PREFIX).items():
+        try:
+            base, mtime_ns, count = json.loads(value)
+            if not (
+                isinstance(base, str)
+                and isinstance(mtime_ns, int)
+                and isinstance(count, int)
+            ):
+                raise ValueError
+        except (ValueError, TypeError):
+            bad += 1
+            continue
+        out[key[len(BLOG_SIG_PREFIX) :]] = (base, mtime_ns, count)
+    return out, bad
+
+
+_persisted_maybe = True
+"""False once :func:`forget_blog_signatures` deleted them and none was saved since."""
+
+
+def _note_persisted() -> None:
+    global _persisted_maybe
+    _persisted_maybe = True
+
+
+def forget_blog_signatures() -> None:
+    """A blog was written: delete the persisted blog signatures (``blog_service.invalidate_gallery``).
+
+    Cheap and never raises. The delete runs once per saved signature: on the
+    default executor when called on the event loop, inline otherwise (the
+    caller is then already off the loop). Logs ``media_pregen_blog_sig
+    state=forgotten``.
+    """
+    global _persisted_maybe
+    if not _persisted_maybe:
+        return
+    _persisted_maybe = False
+    logger.info("media_pregen_blog_sig", state="forgotten")
+    try:
+        loop = asyncio.get_running_loop()
+    except RuntimeError:  # not on the loop: already off it, delete inline
+        media_meta.kv_delete_prefix(BLOG_SIG_PREFIX)
+        return
+    try:
+        loop.run_in_executor(None, media_meta.kv_delete_prefix, BLOG_SIG_PREFIX)
+    except RuntimeError as e:  # the executor shut down (app exit): delete inline
+        logger.info(
+            "media_pregen_blog_sig",
+            state="forgotten",
+            reason="inline",
+            error_type=type(e).__name__,
+        )
+        media_meta.kv_delete_prefix(BLOG_SIG_PREFIX)
 
 
 # --- clearing ------------------------------------------------------------------------------
@@ -1477,9 +1627,10 @@ async def clear_caches() -> int:
 
 
 def _reset_for_tests() -> None:
-    global _active, _last_foreground
+    global _active, _last_foreground, _persisted_maybe
     _active = None
     _last_foreground = None
+    _persisted_maybe = True
 
 
 __all__ = [
@@ -1492,6 +1643,7 @@ __all__ = [
     "default_is_busy",
     "default_oshi_services",
     "default_process",
+    "forget_blog_signatures",
     "hint",
     "note_foreground",
     "request",
