@@ -233,6 +233,20 @@ describe('StatusBlock loading', () => {
         expect(screen.getByRole('status', { name: 'Loading…' })).toBeInTheDocument();
     });
 
+    it('shows the skeleton label under reduced motion from reveal (screen-reader only otherwise)', () => {
+        render(<StatusBlock kind="loading" surface="chat_room" label="読み込み中…🌸" skeleton={<div data-testid="sk" />} />);
+        advance(200);
+        const label = screen.getByText('読み込み中…🌸');
+        expect(label).toHaveClass('sr-only');
+        expect(label).toHaveClass('motion-reduce:not-sr-only');
+    });
+
+    it('keeps an always-visible skeleton label visible', () => {
+        render(<StatusBlock kind="loading" surface="chat_room" label="写真" labelVisibility="always" skeleton={<div />} />);
+        advance(200);
+        expect(screen.getByText('写真')).not.toHaveClass('sr-only');
+    });
+
     it('adds the slow hint at 3 s and the very-slow hint with an indeterminate bar at 10 s', () => {
         render(<StatusBlock kind="loading" surface="chat_room" />);
         advance(2999);

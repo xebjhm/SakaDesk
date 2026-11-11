@@ -35,6 +35,7 @@ export type StatusBlockLoadingProps = {
     /**
      * auto (default): the label is screen-reader only and shows under reduced motion; always: the label is
      * visible beside the glyph (use it when the label is a real title such as "Loading posts…").
+     * The same applies with a `skeleton`: under reduced motion its label shows from `reveal`.
      */
     labelVisibility?: SpinnerLabelVisibility;
     /** A layout-shaped `Skeleton` group drawn instead of the spinner. */
@@ -124,7 +125,8 @@ const LoadingBlock: React.FC<Common & StatusBlockLoadingProps> = ({
                 id={labelId}
                 className={cn(
                     'text-small text-secondary',
-                    skeleton ? 'sr-only' : SPINNER_LABEL_VISIBILITY[labelVisibility ?? (inline ? 'always' : 'auto')],
+                    // A skeleton stops pulsing under reduced motion: its label then shows (auto), as a spinner's does.
+                    SPINNER_LABEL_VISIBILITY[labelVisibility ?? (inline && !skeleton ? 'always' : 'auto')],
                 )}
             >
                 {name}
@@ -177,7 +179,7 @@ const ProblemBlock: React.FC<Common & StatusBlockProblemProps> = ({
  * the blog status block and the recap `Status`).
  *
  * - loading: an empty `role="status"` box (`aria-busy`) until `reveal`, then the `skeleton` or a spinner with its
- *   label; the slow hint from `slow`; from `verySlow` the very-slow hint plus Cancel (`onCancel`)
+ *   label (with a skeleton, the label is screen-reader only except under reduced motion); the slow hint from `slow`; from `verySlow` the very-slow hint plus Cancel (`onCancel`)
  *   or a `ProgressBar` (`progress`), and an indeterminate bar when neither is given. Logs `ui_wait`
  *   (`slow`, `very_slow` once per mount, `cancelled` on Cancel).
  * - error: `role="alert"`, danger icon tile, `loading.error` title, Retry (when `onRetry` is given).

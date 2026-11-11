@@ -715,7 +715,8 @@ Which primitive for which wait:
 **Reduced motion:** nothing spins, pulses, sweeps or fades. A spinner becomes a static glyph
 **with a visible label** (`labelVisibility="auto"` shows it through
 `motion-reduce:not-sr-only`), never an icon alone; an indeterminate `ProgressBar` shows its
-label the same way. The only exception is `labelVisibility="compact"`, for media tiles and
+label the same way, and so does a `StatusBlock` drawn with a `skeleton` (the placeholder stops
+pulsing, so its label shows from `reveal`). The only exception is `labelVisibility="compact"`, for media tiles and
 bubbles under 160 px, where the label stays in the accessibility tree only.
 
 **Media hand-off** (the media pipeline's `MediaTile` and its grid build on these, with no
