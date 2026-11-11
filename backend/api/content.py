@@ -36,6 +36,7 @@ from backend.services.platform import (
     copy_file_to_clipboard,
 )
 from backend.services.path_resolver import (
+    output_dir_from_settings,
     resolve_service_path,
     resolve_talk_room_path,
     resolve_messages_file,
@@ -104,18 +105,12 @@ def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
 
 
 def get_output_dir() -> Path:
-    """Get the configured output directory from settings."""
-    settings_path = get_settings_path()
-    if settings_path.exists():
-        try:
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
-                path_str = settings.get("output_dir")
-                if path_str:
-                    return Path(path_str)
-        except Exception as e:
-            logger.warning("Failed to load output_dir from settings", error=str(e))
-    return DEFAULT_OUTPUT_DIR
+    """Get the configured output directory from settings.
+
+    A transient read failure keeps the last value read
+    (``path_resolver.output_dir_from_settings``), never the default dir.
+    """
+    return output_dir_from_settings(get_settings_path(), DEFAULT_OUTPUT_DIR)
 
 
 def load_sync_metadata(

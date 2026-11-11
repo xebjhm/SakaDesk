@@ -100,18 +100,10 @@ def _local_date(timestamp: str) -> Optional[str]:
 
 
 def _get_output_dir() -> Path:
-    """Get configured output directory."""
-    settings_path = get_settings_path()
-    if settings_path.exists():
-        try:
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
-                path_str = settings.get("output_dir")
-                if path_str:
-                    return Path(path_str)
-        except Exception:
-            pass
-    return get_default_output_dir()
+    """Get configured output directory (a transient read failure keeps the last value)."""
+    from backend.services.path_resolver import output_dir_from_settings
+
+    return output_dir_from_settings(get_settings_path(), get_default_output_dir())
 
 
 async def _get_client_and_session(service: str):
