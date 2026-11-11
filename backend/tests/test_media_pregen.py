@@ -139,6 +139,7 @@ class Harness:
             enumerate_fn=self.enumerate,
             process_fn=self.process,
             output_dir_fn=lambda: self.root,
+            oshi_fn=_none,  # no settings read; the order tests pass their own
         )
         args.update(kw)
         return MediaPregen(services, **args)
@@ -203,10 +204,10 @@ async def test_phases_run_in_order_and_a_requested_service_first(h):
         (SAKURA, "newest"),
         (SAKURA, "favorites"),
         (SAKURA, "messages"),
-        (SAKURA, "blogs"),
         (HINATA, "newest"),
         (HINATA, "favorites"),
         (HINATA, "messages"),
+        (SAKURA, "blogs"),  # blogs only after every service's message media
         (HINATA, "blogs"),
     ]
     first = passes[0]
@@ -217,13 +218,155 @@ async def test_phases_run_in_order_and_a_requested_service_first(h):
         0,
     )
     assert first["bytes"] == 20 and "elapsed_ms" in first
-    assert passes[3]["reason"] == "not_available" and passes[3]["queued"] == 0
+    assert passes[6]["reason"] == "not_available" and passes[6]["queued"] == 0
     assert p.status_snapshot()["services"] == {
         SAKURA: {"done": 4, "total": 4},
         HINATA: {"done": 4, "total": 4},
     }
     states = [e["state"] for e in _events(logs, "media_pregen_state")]
     assert states[0] == "running" and "idle" in states and states[-1] == "stopped"
+
+
+NOGI = "nogizaka46"
+
+
+def _three_services(h: Harness) -> None:
+    for service, tag in ((NOGI, "n"), (SAKURA, "s"), (HINATA, "h")):
+        h.phases[service] = [
+            Phase("newest", [_item(h.root, f"{tag}-new.jpg")]),
+            Phase("messages", [_item(h.root, f"{tag}-msg.jpg")]),
+            Phase("blogs", [_item(h.root, f"{tag}-blog.jpg")]),
+        ]
+
+
+@pytest.mark.asyncio
+async def test_without_an_oshi_message_media_of_every_service_precede_any_blogs(h):
+    """D-M2: no service's blogs may starve a later service's message media."""
+    _three_services(h)
+
+    async def no_oshi() -> list[str]:
+        return []
+
+    p = h.make((HINATA, SAKURA, NOGI), oshi_fn=no_oshi)
+    with capture_logs() as logs:
+        p.start()
+        await _idle(p)
+        await p.stop()
+    assert h.processed == [
+        "n-new.jpg", "n-msg.jpg", "s-new.jpg", "s-msg.jpg", "h-new.jpg", "h-msg.jpg",
+        "n-blog.jpg", "s-blog.jpg", "h-blog.jpg",
+    ]  # fmt: skip
+    (order,) = _events(logs, "media_pregen_order")
+    assert order["services"] == [NOGI, SAKURA, HINATA] and order["oshi"] == 0
+
+
+@pytest.mark.asyncio
+async def test_the_oshi_service_goes_first_for_messages_and_for_blogs(h):
+    _three_services(h)
+
+    async def oshi() -> list[str]:
+        return [HINATA, "unknown46"]  # an unknown id is ignored
+
+    p = h.make((HINATA, SAKURA, NOGI), oshi_fn=oshi)
+    with capture_logs() as logs:
+        p.start()
+        await _idle(p)
+        await p.stop()
+    assert h.processed == [
+        "h-new.jpg", "h-msg.jpg", "n-new.jpg", "n-msg.jpg", "s-new.jpg", "s-msg.jpg",
+        "h-blog.jpg", "n-blog.jpg", "s-blog.jpg",
+    ]  # fmt: skip
+    (order,) = _events(logs, "media_pregen_order")
+    assert order["services"] == [HINATA, NOGI, SAKURA] and order["oshi"] == 1
+    assert p.status_snapshot()["services"][HINATA] == {"done": 3, "total": 3}
+
+
+@pytest.mark.asyncio
+async def test_requested_services_stay_first_with_the_oshi_first_among_them(h):
+    _three_services(h)
+
+    async def oshi() -> list[str]:
+        return [HINATA]
+
+    p = h.make((HINATA, SAKURA, NOGI), oshi_fn=oshi)
+    p.start()
+    p.request(SAKURA)  # before the startup pass begins
+    p.request(HINATA)
+    await _idle(p)
+    await p.stop()
+    assert h.processed == [
+        "h-new.jpg", "h-msg.jpg", "s-new.jpg", "s-msg.jpg", "n-new.jpg", "n-msg.jpg",
+        "h-blog.jpg", "s-blog.jpg", "n-blog.jpg",
+    ]  # fmt: skip
+
+
+@pytest.mark.asyncio
+async def test_a_failing_oshi_lookup_keeps_the_stable_order(h):
+    _three_services(h)
+
+    async def broken() -> list[str]:
+        raise RuntimeError("settings unreadable")
+
+    p = h.make((HINATA, SAKURA, NOGI), oshi_fn=broken)
+    with capture_logs() as logs:
+        p.start()
+        await _idle(p)
+        await p.stop()
+    assert h.processed[:2] == ["n-new.jpg", "n-msg.jpg"]
+    (failed,) = _events(logs, "media_pregen_oshi_failed")
+    assert failed["error_type"] == "RuntimeError"
+
+
+@pytest.mark.asyncio
+async def test_a_stop_during_the_blog_round_ends_the_pass(h):
+    _three_services(h)
+
+    def on_process(item: Item) -> None:
+        if item.path.name == "n-blog.jpg":
+            h.busy = "shutdown"
+
+    h.on_process = on_process
+    p = h.make((HINATA, SAKURA, NOGI), oshi_fn=lambda: _none())
+    p.start()
+    await _idle(p)
+    await p.stop()
+    assert h.processed[-1] == "n-blog.jpg"  # sakura / hinata blogs never ran
+
+
+async def _none() -> list[str]:
+    return []
+
+
+@pytest.mark.asyncio
+async def test_default_oshi_services_reads_the_settings():
+    from backend.services import settings_store
+
+    await settings_store.save_config(
+        {"oshi_members": {HINATA: ["12"], SAKURA: [], NOGI: "bad"}}
+    )
+    assert await media_pregen.default_oshi_services() == [HINATA]
+    await settings_store.save_config({"oshi_members": ["not", "a", "map"]})
+    with capture_logs() as logs:
+        assert await media_pregen.default_oshi_services() == []
+    (none,) = _events(logs, "media_pregen_oshi_none")
+    assert none["reason"] == "malformed"
+    await settings_store.save_config({})
+    with capture_logs() as logs:
+        assert await media_pregen.default_oshi_services() == []
+    assert _events(logs, "media_pregen_oshi_none")[0]["reason"] == "unset"
+
+
+@pytest.mark.asyncio
+async def test_default_oshi_services_never_raises(monkeypatch):
+    from backend.services import settings_store
+
+    async def boom():
+        raise OSError("disk")
+
+    monkeypatch.setattr(settings_store, "load_config", boom)
+    with capture_logs() as logs:
+        assert await media_pregen.default_oshi_services() == []
+    assert _events(logs, "media_pregen_oshi_failed")[0]["error_type"] == "OSError"
 
 
 @pytest.mark.asyncio

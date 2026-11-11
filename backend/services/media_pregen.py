@@ -61,9 +61,21 @@ inside the Shell: that video becomes ``shell_crash_suspect`` and never goes
 to the Shell again), waits :data:`STARTUP_DELAY_S`, measures both caches,
 then makes one full pass
 over every service. Afterwards it runs only on :func:`request` (a finished
-sync's index build, a finished blog backup) or :func:`hint`. A pass takes
-the services in ``sync_coordinator.order_services`` order, the requested
-ones first, and per service runs (:func:`default_enumerate`):
+sync's index build, a finished blog backup) or :func:`hint`.
+
+**Pass order** (:meth:`MediaPregen._order`): the requested services first,
+then the others; within each group the oshi services first
+(:func:`default_oshi_services`: a service with an oshi member in the
+``oshi_members`` setting), then ``sync_coordinator.order_services`` order.
+The pass runs in two rounds: phases 0-3 (message media) of **every** service
+in that order, then phase 4 (blogs) of every service in the same order. On a
+large archive the thumbnail fill line can be reached inside one service's
+blogs, so blogs never run before another service's message media (D-M2).
+Logged once per pass as ``media_pregen_order`` (``services``, ``oshi``
+count). Without an oshi, or when the setting cannot be read
+(``media_pregen_oshi_failed``), the order is the stable one.
+
+Per service the phases are (:func:`default_enumerate`):
 
 0. ``warm_album``: D4's ``album.warm_album`` (the 全員 album caches), then
    ``album.album_months`` (a cache hit) for every month's cover, which joins
@@ -111,8 +123,10 @@ only, never a path, ``rel`` or name: ``media_pregen_state`` (``state``),
 ``media_pregen_item_failed`` (debug: ``kind``,
 ``reason``, ``error_type``), ``media_pregen_warm_failed``,
 ``media_pregen_recovered`` (``count``), ``media_pregen_cache_cleared``
-(``freed_bytes``, ``count``), ``media_pregen_failed`` and
-``media_pregen_request_failed`` (``service``, ``error_type``).
+(``freed_bytes``, ``count``), ``media_pregen_failed``,
+``media_pregen_request_failed`` (``service``, ``error_type``),
+``media_pregen_order`` (``services``, ``oshi``), ``media_pregen_oshi_none``
+(``reason``) and ``media_pregen_oshi_failed`` (``error_type``).
 """
 
 from __future__ import annotations
@@ -239,6 +253,37 @@ SleepFn = Callable[[float], Awaitable[Any]]
 IsBusyFn = Callable[[], "str | None"]
 EnumerateFn = Callable[[str, Path], Awaitable[list[Phase]]]
 ProcessFn = Callable[[Item], ItemResult]
+OshiFn = Callable[[], Awaitable[Sequence[str]]]
+
+
+async def default_oshi_services() -> list[str]:
+    """Service ids with at least one oshi member in the ``oshi_members`` setting.
+
+    The frontend mirrors its oshi list (blog member ids per service) to
+    settings; any non-empty list marks the service as an oshi service. Never
+    raises: an unreadable setting logs ``media_pregen_oshi_failed`` and an
+    absent or malformed one ``media_pregen_oshi_none`` (``reason``); both
+    give ``[]`` (the stable order).
+    """
+    from backend.services import settings_store
+
+    try:
+        config = await settings_store.load_config()
+    except Exception as e:  # noqa: BLE001 - the order falls back, never fails
+        logger.warning("media_pregen_oshi_failed", error_type=type(e).__name__)
+        return []
+    raw = config.get("oshi_members")
+    if raw is None:
+        logger.info("media_pregen_oshi_none", reason="unset")
+        return []
+    if not isinstance(raw, dict):
+        logger.info("media_pregen_oshi_none", reason="malformed")
+        return []
+    return [
+        s
+        for s, ids in raw.items()
+        if isinstance(ids, list) and ids  # JSON keys are str
+    ]
 
 
 # --- the pause predicate ------------------------------------------------------------------
@@ -718,7 +763,8 @@ class MediaPregen:
     with ``clock``); ``sleep`` paces the task; ``enumerate_fn(service,
     output_dir)`` gives the phases; ``process_fn(item)`` runs on the thread;
     ``thread_factory`` makes it; ``output_dir_fn`` is blocking (run in a
-    worker thread).
+    worker thread); ``oshi_fn`` gives the oshi service ids (default
+    :func:`default_oshi_services`).
     """
 
     def __init__(
@@ -732,6 +778,7 @@ class MediaPregen:
         process_fn: ProcessFn | None = None,
         thread_factory: Callable[..., threading.Thread] = threading.Thread,
         output_dir_fn: Callable[[], Path] | None = None,
+        oshi_fn: OshiFn | None = None,
     ) -> None:
         from backend.services.sync_coordinator import order_services
 
@@ -746,6 +793,7 @@ class MediaPregen:
         self._process = process_fn or default_process
         self._thread_factory = thread_factory
         self._output_dir = output_dir_fn or media_meta._output_dir
+        self._oshi = oshi_fn or default_oshi_services
         # hints, requests, the cooldown memo and the progress (any thread)
         self._lock = threading.Lock()
         self._hints: dict[str, str] = {}  # rel -> service, in arrival order
@@ -945,9 +993,9 @@ class MediaPregen:
         :class:`_PassAborted` (``_turn_generation`` no longer matches).
         """
         self._turn_generation = self._generation
-        services = self._take_services()
-        if services:
-            return await self._run_pass(services)
+        requested, rest = self._take_services()
+        if requested or rest:
+            return await self._run_pass(await self._order(requested, rest))
         if self._has_work():
             return await self._step([])
         return None
@@ -981,15 +1029,31 @@ class MediaPregen:
                 self._set_state("stopped")
             self._idle.set()
 
-    def _take_services(self) -> list[str]:
+    def _take_services(self) -> tuple[list[str], list[str]]:
+        """``(requested, rest)`` of this pass, each in the stable service order."""
         with self._lock:
             requested = list(self._requested)
             self._requested.clear()
         first = [s for s in self._services if s in requested]
         if self._full_pass_due:
             self._full_pass_due = False
-            return first + [s for s in self._services if s not in requested]
-        return first
+            return first, [s for s in self._services if s not in requested]
+        return first, []
+
+    async def _order(self, requested: list[str], rest: list[str]) -> list[str]:
+        """The pass order: requested first, then the rest; oshi first within each (see the module)."""
+        try:
+            oshi = set(await self._oshi()) & self._known
+        except Exception as e:  # noqa: BLE001 - an injected oshi_fn may raise
+            logger.warning("media_pregen_oshi_failed", error_type=type(e).__name__)
+            oshi = set()
+
+        def oshi_first(group: list[str]) -> list[str]:
+            return [s for s in group if s in oshi] + [s for s in group if s not in oshi]
+
+        ordered = oshi_first(requested) + oshi_first(rest)
+        logger.info("media_pregen_order", services=ordered, oshi=len(oshi))
+        return ordered
 
     async def _ready(self) -> bool:
         """Wait while the pause predicate holds; ``False`` when the worker must stop.
@@ -1036,6 +1100,8 @@ class MediaPregen:
         return self._root
 
     async def _run_pass(self, services: list[str]) -> bool:
+        """Message media (phases 0-3) of every service, then every blog phase, both in ``services`` order."""
+        blogs: list[tuple[str, Phase]] = []
         for service in services:
             if not await self._ready():
                 return False
@@ -1047,8 +1113,13 @@ class MediaPregen:
                 self._large[service] = large
                 self._progress[service] = [0, sum(len(p.items) for p in phases)]
             for phase in phases:
-                if not await self._run_phase(service, phase):
+                if phase.name == PHASE_BLOGS:
+                    blogs.append((service, phase))  # after every service's messages
+                elif not await self._run_phase(service, phase):
                     return False
+        for service, phase in blogs:
+            if not await self._run_phase(service, phase):
+                return False
         return True
 
     async def _run_phase(self, service: str, phase: Phase) -> bool:
@@ -1419,6 +1490,7 @@ __all__ = [
     "clear_caches",
     "default_enumerate",
     "default_is_busy",
+    "default_oshi_services",
     "default_process",
     "hint",
     "note_foreground",
