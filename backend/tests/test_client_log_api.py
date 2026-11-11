@@ -909,6 +909,42 @@ def test_sidebar_load_breadcrumb_is_accepted(fields):
     assert {key: entry[key] for key in fields} == fields
 
 
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"outcome": "kept_room", "reason": "error", "error_code": 500},
+        {"outcome": "kept_room", "reason": "timeout"},
+        {"outcome": "error_state", "reason": "error", "error_code": 404},
+        {"outcome": "error_state", "reason": "timeout"},
+    ],
+)
+def test_chat_load_breadcrumb_is_accepted(fields):
+    """L5: a failed room load; a background refresh keeps the room (kept_room)."""
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log", json={"event": "chat_load", "fields": fields}
+        )
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == "chat_load"
+    assert entry["log_level"] == "info"
+    assert {key: entry[key] for key in fields} == fields
+
+
+def test_chat_load_rejects_a_path_as_a_field_value():
+    res = client.post(
+        "/api/client-log",
+        json={
+            "event": "chat_load",
+            "fields": {
+                "outcome": "kept_room",
+                "reason": "日向坂46/messages/58 金村 美玖",
+            },
+        },
+    )
+    assert res.status_code == 422
+
+
 def test_oshi_mirror_failed_is_allowlisted():
     r = client.post(
         "/api/client-log",

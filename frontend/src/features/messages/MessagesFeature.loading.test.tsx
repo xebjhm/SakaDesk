@@ -265,6 +265,7 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         expect(alert).not.toHaveTextContent(TIMEOUT);
         expect(document.body.textContent).not.toContain('SECRET-DETAIL');
         expect(menu.status).toBe('error');
+        expect(clientLog).toHaveBeenCalledWith('chat_load', { outcome: 'error_state', reason: 'error', error_code: 500 });
         // No log carries the room path or the error text.
         for (const call of [...errors.mock.calls, ...warns.mock.calls]) {
             const s = JSON.stringify(call);
@@ -298,6 +299,7 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         expect(alert).toHaveTextContent(TIMEOUT_HINT);
         expect(alert).not.toHaveTextContent(FAILED);
         expect(listSignals.B[0].aborted).toBe(true);
+        expect(clientLog).toHaveBeenCalledWith('chat_load', { outcome: 'error_state', reason: 'timeout' });
         expect(clientLog).toHaveBeenCalledWith('ui_wait', expect.objectContaining({ surface: 'chat_room', phase: 'timeout' }));
         const [, fields] = vi.mocked(clientLog).mock.calls.find(([e, f]) => e === 'ui_wait' && (f as { phase?: string }).phase === 'timeout')!;
         expect((fields as { wait_ms: number }).wait_ms).toBeGreaterThanOrEqual(CHAT_LOAD_TIMEOUT_MS);
@@ -337,9 +339,9 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
     });
 
     it.each([
-        ['times out', () => new Promise<Response>(() => {}), CHAT_LOAD_TIMEOUT_MS + 1000],
-        ['fails', () => HttpResponse.json({ detail: SECRET }, { status: 500 }), 1000],
-    ] as const)('a background refresh of the room on screen that %s keeps the room (no alert, gallery ready)', async (_name, reply, wait) => {
+        ['times out', () => new Promise<Response>(() => {}), CHAT_LOAD_TIMEOUT_MS + 1000, { outcome: 'kept_room', reason: 'timeout' }],
+        ['fails', () => HttpResponse.json({ detail: SECRET }, { status: 500 }), 1000, { outcome: 'kept_room', reason: 'error', error_code: 500 }],
+    ] as const)('a background refresh of the room on screen that %s keeps the room (no alert, gallery ready)', async (_name, reply, wait, breadcrumb) => {
         const warns = vi.spyOn(console, 'warn').mockImplementation(() => {});
         const { rerender } = await mountOnA();
         replies.A = reply;
@@ -362,6 +364,8 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         const failed = warns.mock.calls.find((c) => String(c[0]).includes('fetchMessages failed'));
         expect(failed?.[1]).toMatchObject({ background: true });
         expect(JSON.stringify(warns.mock.calls)).not.toContain(room('A').dir);
+        // The production breadcrumb (codes and the HTTP status only) records the kept room.
+        expect(vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'chat_load')).toEqual([['chat_load', breadcrumb]]);
         if (wait > CHAT_LOAD_TIMEOUT_MS) {
             expect(clientLog).toHaveBeenCalledWith('ui_wait', expect.objectContaining({ surface: 'chat_room', phase: 'timeout' }));
         }

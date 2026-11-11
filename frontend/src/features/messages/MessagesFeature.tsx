@@ -51,6 +51,7 @@ import { useLetterBreadcrumbs } from './hooks/useLetterBreadcrumbs';
 import { LetterRow } from './components/LetterRow';
 import { letterAvatars, type Letter } from './letters';
 import { setFavorite } from '../../utils/favoriteApi';
+import { clientLog } from '../../utils/clientLog';
 import { ChatSkeleton } from './components/ChatSkeleton';
 import { CHAT_LOAD_TIMEOUT_MS, deriveChatLoad, type ChatLoadFailure } from './chatLoadState';
 
@@ -419,6 +420,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             if (timedOut) logWait('chat_room', 'timeout', Date.now() - startedAt);
             // Codes only: never the path or the error text (the user sees translated copy).
             if (import.meta.env.DEV) console.warn('[MessagesFeature] fetchMessages failed', { groupChat, httpStatus, kind, background });
+            // Production breadcrumb for both paths (the timeout also posts ui_wait): codes and the HTTP status only.
+            clientLog('chat_load', {
+                outcome: background ? 'kept_room' : 'error_state',
+                reason: kind,
+                ...(httpStatus === undefined ? {} : { error_code: httpStatus }),
+            });
             // A background refresh never clears the room the user is reading (nor its scroll position);
             // the next sync or room visit refreshes it again.
             if (background) return;
