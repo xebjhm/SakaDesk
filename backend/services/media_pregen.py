@@ -963,6 +963,10 @@ class MediaPregen:
         if worker is not None:
             worker.abandon()
         freed = await asyncio.to_thread(_clear_files)
+        # A turn that started while the files were being deleted took the
+        # generation above: make it stale too, so none of its writes or
+        # progress outlive the clear.
+        self._generation += 1
         with self._lock:
             self._progress.clear()
             self._cooldown.clear()
@@ -1049,6 +1053,9 @@ class MediaPregen:
                     continue
                 except Exception as e:  # noqa: BLE001 - logged; the worker carries on
                     logger.warning("media_pregen_failed", error_type=type(e).__name__)
+                    # Pause before the next turn: an error that repeats every
+                    # turn (e.g. the output dir unreadable) must not spin.
+                    await self._sleep(POLL_PAUSED_S)
                     continue
                 if outcome is False:
                     break

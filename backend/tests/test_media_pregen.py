@@ -2398,3 +2398,44 @@ async def test_wait_idle_returns_when_the_task_ended_with_work_queued(h):
     p.hint(HINATA, ["日向坂46/a.jpg"])
     assert p.pending_hints() == 1
     await asyncio.wait_for(p.wait_idle(), 2)
+
+
+@pytest.mark.asyncio
+async def test_a_turn_starting_while_files_are_cleared_is_stale(h, env, monkeypatch):
+    """3.3 / M4-2: a pass that took the generation during _clear_files is dropped."""
+    h.phases[HINATA] = [Phase("messages", [_item(h.root, "0.jpg")])]
+    p = h.make()
+    p.start()
+    await _idle(p)
+    seen: list[int] = []
+    real = media_pregen._clear_files
+
+    def clearing():
+        seen.append(p._generation)  # what a turn starting now would take
+        return real()
+
+    monkeypatch.setattr(media_pregen, "_clear_files", clearing)
+    await p.clear()
+    await _idle(p)
+    await p.stop()
+    assert seen and p._generation != seen[0]
+
+
+@pytest.mark.asyncio
+async def test_a_failing_turn_pauses_before_the_next_one(h):
+    """3.2 / M4-3: an error in a turn never spins the loop (no log flood)."""
+    p = h.make()
+    calls: list[int] = []
+
+    async def turn():
+        calls.append(1)
+        if len(calls) == 1:
+            raise RuntimeError("boom")
+        return False  # stop the loop
+
+    p._turn = turn  # type: ignore[method-assign]
+    with capture_logs() as logs:
+        p.start()
+        await asyncio.wait_for(p._task, 5)
+    assert len(_events(logs, "media_pregen_failed")) == 1
+    assert h.sleeps == [media_pregen.STARTUP_DELAY_S, media_pregen.POLL_PAUSED_S]
