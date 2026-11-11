@@ -20,6 +20,9 @@ export const MEDIA_PIPELINE_KEYS = [
     'settings.mediaCacheFull',
     'settings.mediaCacheLoadFailed',
     'settings.mediaCacheClearFailed',
+    // M6: the message media gallery's tile buttons.
+    'media.gallery.openPhoto',
+    'media.gallery.openVideo',
 ] as const;
 
 function lookup(tree: unknown, path: string): unknown {
@@ -43,6 +46,15 @@ const SETTINGS_WORDING = {
         '已經到咗上限，睇嘅時候會換走舊啲嘅縮圖', '讀唔到快取大小', '清除唔到縮圖快取'],
 } as const;
 
+/** M6 tile labels (the plan's table; Japanese is the reference). */
+const GALLERY_WORDING = {
+    ja: ['{{date}} の写真を開く', '{{date}} の動画を開く'],
+    en: ['Open photo from {{date}}', 'Open video from {{date}}'],
+    'zh-TW': ['開啟 {{date}} 的照片', '開啟 {{date}} 的影片'],
+    'zh-CN': ['打开 {{date}} 的照片', '打开 {{date}} 的视频'],
+    yue: ['打開 {{date}} 嘅相', '打開 {{date}} 嘅片'],
+} as const;
+
 describe('media pipeline strings', () => {
     it.each(Object.keys(locales))('%s has every media pipeline key', (code) => {
         const tree = locales[code as keyof typeof locales];
@@ -58,6 +70,12 @@ describe('media pipeline strings', () => {
         MEDIA_PIPELINE_KEYS.slice(0, 8).forEach((key, i) => {
             expect(lookup(tree, key), `${code}.${key}`).toBe(want[i]);
         });
+    });
+
+    it.each(Object.entries(GALLERY_WORDING))('%s uses the agreed gallery tile wording', (code, want) => {
+        const tree = locales[code as keyof typeof locales];
+        expect(lookup(tree, 'media.gallery.openPhoto'), code).toBe(want[0]);
+        expect(lookup(tree, 'media.gallery.openVideo'), code).toBe(want[1]);
     });
 
     it('keeps the interpolation variables in every locale', () => {

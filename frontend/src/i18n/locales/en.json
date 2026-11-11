@@ -522,7 +522,11 @@
       "videos": "{{count}} videos",
       "voice": "{{count}} voice messages"
     },
-    "typeTabs": "Media type"
+    "typeTabs": "Media type",
+    "gallery": {
+      "openPhoto": "Open photo from {{date}}",
+      "openVideo": "Open video from {{date}}"
+    }
   },
   "sentLetters": {
     "title": "Sent Letters",

@@ -7,6 +7,8 @@ import { resetDialogStack } from '../../design/dialog/dialogStack';
 import type { Message } from '../../types';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+// The photo / video tabs are a virtual grid (M6): jsdom has no layout, so render every row.
+vi.mock('react-virtuoso', async () => (await import('../../__tests__/virtuosoMock')).virtuosoMock);
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 beforeEach(() => {
     resetDialogStack();
@@ -102,7 +104,7 @@ describe('MediaGalleryModal detail view direction', () => {
     it('the grid is newest first, but ArrowLeft opens the older photo and ArrowRight the newer', async () => {
         const messages = [pic(1, '2026-10-01T04:00:00Z'), pic(2, '2026-10-02T04:00:00Z'), pic(3, '2026-10-03T04:00:00Z')];
         render(<MediaGalleryModal isOpen onClose={vi.fn()} messages={messages} memberName="春野 ひなた" serviceId="hinatazaka46" />);
-        const thumbs = Array.from(document.querySelectorAll('img')).map((i) => i.closest('button')!);
+        const thumbs = screen.getAllByRole('button', { name: /^Open photo from / });
         await userEvent.click(thumbs[1]); // the middle photo (id 2)
         const viewer = await screen.findByRole('dialog', { name: 'Media viewer' });
         const shown = () => viewer.querySelector('img')?.getAttribute('src') ?? '';
@@ -122,7 +124,7 @@ describe('MediaGalleryModal detail view zoom', () => {
 
     const openDetail = async (msgs: Message[] = messages, thumb = 0) => {
         render(<MediaGalleryModal isOpen onClose={vi.fn()} messages={msgs} memberName="春野 ひなた" serviceId="hinatazaka46" />);
-        const thumbs = Array.from(document.querySelectorAll('img')).map((i) => i.closest('button')!);
+        const thumbs = screen.getAllByRole('button', { name: /^Open photo from / });
         await userEvent.click(thumbs[thumb]);
         const viewer = await screen.findByRole('dialog', { name: 'Media viewer' });
         const stage = screen.getByTestId('viewer-stage');

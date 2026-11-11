@@ -388,6 +388,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     };
 
+    // The media gallery's Retry after a failed room load.
+    const retryMessages = () => {
+        if (selectedGroupDir) fetchMessages(selectedGroupDir, isGroupChat, readState.lastReadId);
+    };
+
     // === CHAT SELECTION ===
     useEffect(() => {
         if (selectedGroupDir) {
@@ -805,6 +810,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             conversationPath={selectedGroupDir}
                             isGroupChat={isGroupChat}
                             messages={displayMessages}
+                            messagesStatus={error ? 'error' : loading && messages.length === 0 ? 'loading' : 'ready'}
+                            onRetryMessages={retryMessages}
                             memberName={selectedName || ''}
                             memberAvatar={headerAvatar}
                             letters={roomExtras.letters}

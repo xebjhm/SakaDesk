@@ -520,7 +520,11 @@
       "videos": "動画 {{count}}本",
       "voice": "ボイス {{count}}件"
     },
-    "typeTabs": "メディアの種類"
+    "typeTabs": "メディアの種類",
+    "gallery": {
+      "openPhoto": "{{date}} の写真を開く",
+      "openVideo": "{{date}} の動画を開く"
+    }
   },
   "sentLetters": {
     "title": "送信したレター",

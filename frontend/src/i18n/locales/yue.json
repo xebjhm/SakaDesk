@@ -520,7 +520,11 @@
       "videos": "{{count}} 條片",
       "voice": "{{count}} 個錄音"
     },
-    "typeTabs": "媒體類型"
+    "typeTabs": "媒體類型",
+    "gallery": {
+      "openPhoto": "打開 {{date}} 嘅相",
+      "openVideo": "打開 {{date}} 嘅片"
+    }
   },
   "sentLetters": {
     "title": "寄咗嘅信",

@@ -30,6 +30,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   are already in Memories. Each kind has its own switch in Settings, along
   with the time of day they arrive (Japan time).
 
+### Changed
+- **The media gallery opens fast, even in big rooms.** Photos and videos now
+  show as small thumbnails that load as you scroll, with a colour preview
+  while each one arrives, instead of loading every full-size photo at once.
+  While SakaDesk is still preparing thumbnails in the background, the gallery
+  shows how far it has got.
+
 ### Fixed
 - **No more red corner on the incoming-call window.** The rounded corners of
   the bottom-right call card are see-through again instead of showing a solid

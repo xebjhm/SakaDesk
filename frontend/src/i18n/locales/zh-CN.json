@@ -520,7 +520,11 @@
       "videos": "{{count}} 个视频",
       "voice": "{{count}} 条语音"
     },
-    "typeTabs": "媒体类型"
+    "typeTabs": "媒体类型",
+    "gallery": {
+      "openPhoto": "打开 {{date}} 的照片",
+      "openVideo": "打开 {{date}} 的视频"
+    }
   },
   "sentLetters": {
     "title": "已发送的信件",

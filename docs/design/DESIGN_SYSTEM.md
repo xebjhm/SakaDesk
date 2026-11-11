@@ -744,7 +744,12 @@ and no pulse, and the compact spinner above stands in. A failed picture shows a 
 `bg-sunken text-muted` state (an image-off glyph and `loading.error`; a ghost Retry only where the
 tile is not already inside a button, and it retries by itself when scrolled back into view),
 never an empty box. A video without a poster is the `Film` tile (`bg-sunken text-muted`); a grid
-never mounts a `<video>`.
+never mounts a `<video>`. A gallery that wraps each tile in its own button keeps the tile's
+`onFail(retry)` handle and calls it when a failed tile is clicked, instead of opening the viewer.
+For the grid-level states, `core/media/grid/galleryStatus.ts` has `useHeldLoading(active)` (keeps
+the first-load `StatusBlock` mounted until `minVisible`) and `usePregenProgress(open, service)` (the
+"Preparing thumbnails… done / total" `ProgressBar`, polled from `/api/media/status` only while the
+gallery is open and pre-generation runs); the message media gallery shows that bar in its footer.
 
 **Breadcrumb:** `ui_wait` (`surface`, `phase`, `wait_ms`) is allow-listed in
 `utils/clientLog.ts` and `backend/api/client_log.py` (a `ui_wait` phase must be one of the four

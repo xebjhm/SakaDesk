@@ -520,7 +520,11 @@
       "videos": "{{count}} 部影片",
       "voice": "{{count}} 則語音"
     },
-    "typeTabs": "媒體類型"
+    "typeTabs": "媒體類型",
+    "gallery": {
+      "openPhoto": "開啟 {{date}} 的照片",
+      "openVideo": "開啟 {{date}} 的影片"
+    }
   },
   "sentLetters": {
     "title": "已傳送的信件",
