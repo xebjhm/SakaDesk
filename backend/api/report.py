@@ -99,13 +99,14 @@ def _redact_nickname(text: str, nicknames: Nicknames) -> str:
     """Redact every user nickname from text, longest first, in one pass.
 
     One regex alternation, so a shorter nickname never matches inside a longer
-    one already redacted, nor inside the ``[REDACTED]`` placeholder.
+    one already redacted, nor inside the ``[REDACTED]`` placeholder. Matched
+    in any letter case (``Hina`` for ``hina``; no effect on CJK).
     """
     names = _nickname_list(nicknames)
     if not names:
         return text
     pattern = "|".join(re.escape(n) for n in names)
-    return re.sub(pattern, "[REDACTED]", text)
+    return re.sub(pattern, "[REDACTED]", text, flags=re.IGNORECASE)
 
 
 # Patterns for token-like / bearer / JWT / long secret strings. Ordered so the
@@ -223,7 +224,11 @@ def _get_output_dir() -> Optional[str]:
         # redaction is skipped and a path outside C:\Users could reach the public
         # bug report. Log so the gap is visible (member-path reduction + username
         # scrub still run). (Review follow-up to WP-11.)
-        logger.warning("report_output_dir_read_failed_redaction_partial", error=str(e))
+        # The error type only: the error text can carry the settings path.
+        logger.warning(
+            "report_output_dir_read_failed_redaction_partial",
+            error_type=type(e).__name__,
+        )
     return None
 
 

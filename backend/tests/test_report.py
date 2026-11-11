@@ -484,3 +484,37 @@ def test_report_endpoints_read_settings_off_the_event_loop(tmp_path, monkeypatch
     assert client.post("/api/report", json={"category": "sync_data"}).status_code == 200
     assert client.get("/api/report/diagnostics").status_code == 200
     assert on_loop and not any(on_loop)
+
+
+def test_a_nickname_is_redacted_in_any_letter_case():
+    """3.7 / B-M2a: ``Hina`` must not survive the nickname ``hina``."""
+    from backend.api import report
+
+    out = report._redact_nickname("Hina HINA hina ひな", ["hina"])
+    assert "hina" not in out.lower()
+    assert out == "[REDACTED] [REDACTED] [REDACTED] ひな"
+    assert report._redact_nickname("ひなた🌻 x", ["ひなた🌻"]) == "[REDACTED] x"
+
+
+def test_an_unreadable_output_dir_logs_the_error_type_not_its_text(tmp_path):
+    """3.8 / m10: the error text can carry the settings path."""
+    from unittest.mock import patch
+
+    from structlog.testing import capture_logs
+
+    from backend.api import report
+
+    secret = str(tmp_path / "ユーザー" / "settings.json")
+    with (
+        patch.object(report, "read_settings_file", side_effect=OSError(secret)),
+        capture_logs() as logs,
+    ):
+        assert report._get_output_dir() is None
+    (ev,) = [
+        e
+        for e in logs
+        if e["event"] == "report_output_dir_read_failed_redaction_partial"
+    ]
+    assert ev["error_type"] == "OSError"
+    assert "error" not in ev
+    assert secret not in str(ev)
