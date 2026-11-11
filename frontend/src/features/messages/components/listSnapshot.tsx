@@ -1,18 +1,9 @@
 import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
 import { clientLog } from '../../../utils/clientLog';
+import { getListSnapshot, rememberListSnapshot } from '../listSnapshotStore';
 
-/** Rooms whose last painted list is kept (detached DOM clones, a few dozen rows each). */
-export const LIST_SNAPSHOT_MAX = 8;
 /** The cover never outlives this, even if the live list never reports that it is positioned. */
 export const LIST_SNAPSHOT_COVER_MAX_MS = 1000;
-
-interface Snapshot {
-    node: HTMLElement;
-    scrollTop: number;
-}
-
-/** room key → its list as last painted (insertion order = LRU). */
-const snapshots = new Map<string, Snapshot>();
 
 const SCROLLER = '[data-virtuoso-scroller]';
 const ITEM_LIST = '[data-testid="virtuoso-item-list"]';
@@ -31,15 +22,7 @@ function positioned(root: HTMLElement): boolean {
 function remember(key: string, root: HTMLElement): void {
     // A list left before it was positioned is blank: keep the room's earlier snapshot instead.
     if (!positioned(root)) return;
-    const scroller = root.querySelector<HTMLElement>(SCROLLER);
-    snapshots.delete(key);
-    snapshots.set(key, { node: root.cloneNode(true) as HTMLElement, scrollTop: scroller?.scrollTop ?? 0 });
-    if (snapshots.size > LIST_SNAPSHOT_MAX) snapshots.delete(snapshots.keys().next().value!);
-}
-
-/** Forget every snapshot (tests). */
-export function resetListSnapshots(): void {
-    snapshots.clear();
+    rememberListSnapshot(key, root, root.querySelector<HTMLElement>(SCROLLER)?.scrollTop ?? 0);
 }
 
 interface RoomListProps {
@@ -50,7 +33,7 @@ interface RoomListProps {
 }
 
 const RoomList: React.FC<RoomListProps> = ({ roomKey, restore, children }) => {
-    const [snapshot] = useState(() => (restore ? snapshots.get(roomKey) ?? null : null));
+    const [snapshot] = useState(() => (restore ? getListSnapshot(roomKey) : null));
     const [covering, setCovering] = useState(snapshot !== null);
     const live = useRef<HTMLDivElement | null>(null);
     const cover = useRef<HTMLDivElement | null>(null);
@@ -115,8 +98,8 @@ const RoomList: React.FC<RoomListProps> = ({ roomKey, restore, children }) => {
  * Keeps a room's message list painted from the first frame of a revisit. Virtuoso hides a freshly
  * mounted list (`visibility: hidden`) for its first measure and scroll to the saved position,
  * about 200 ms of blank timeline on every room switch. When the room's list was painted before,
- * a clone of it as it was left (a detached DOM copy at its scroll position, inert and hidden from
- * assistive tech) covers the live list until Virtuoso shows it, then goes in the same task. The
+ * a clone of it as it was left (a detached, sanitised DOM copy at its scroll position, inert and
+ * hidden from assistive tech; `listSnapshotStore.ts`) covers the live list until Virtuoso shows it, then goes in the same task. The
  * live list keeps its guard: it is still never shown at a wrong position. A room never seen, a
  * list left before it was positioned, or a jump to a message (`restore` false) shows no cover. At
  * most `LIST_SNAPSHOT_COVER_MAX_MS`; past that the cover goes and logs `chat_load`

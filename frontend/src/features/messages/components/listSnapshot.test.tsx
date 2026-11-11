@@ -3,7 +3,8 @@ import { act, render, screen } from '@testing-library/react';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 import { clientLog } from '../../../utils/clientLog';
-import { KeepListPainted, LIST_SNAPSHOT_COVER_MAX_MS, LIST_SNAPSHOT_MAX, resetListSnapshots } from './listSnapshot';
+import { KeepListPainted, LIST_SNAPSHOT_COVER_MAX_MS } from './listSnapshot';
+import { forgetListSnapshots, getListSnapshot, LIST_SNAPSHOT_MAX } from '../listSnapshotStore';
 
 /** Virtuoso's DOM as far as the cover reads it: the scroller and the item list (hidden until positioned). */
 function FakeList({ room, hidden }: { room: string; hidden: boolean }) {
@@ -35,7 +36,7 @@ function visitAThenB() {
 }
 
 beforeEach(() => {
-    resetListSnapshots();
+    forgetListSnapshots();
     vi.mocked(clientLog).mockClear();
 });
 afterEach(() => vi.useRealTimers());
@@ -101,5 +102,46 @@ describe('KeepListPainted (I1: no blank frames on a revisit)', () => {
         rerender(<View room="x" hidden={false} />);
         rerender(<View room={rooms[LIST_SNAPSHOT_MAX + 1]} hidden />);
         expect(cover()).not.toBeNull();
+    });
+});
+
+describe('the stored snapshot is inert (W1, W2) and forgettable (W3)', () => {
+    function MediaList() {
+        return (
+            <div data-virtuoso-scroller="true" data-testid="virtuoso-scroller">
+                <div data-testid="virtuoso-item-list">
+                    <div id="msg-1" data-testid="row">
+                        <audio src="/api/content/media/hinatazaka46/v/1.m4a" preload="metadata" />
+                        <video preload="metadata" src="/api/content/media/hinatazaka46/v/2.mp4" autoPlay>
+                            <source src="/api/content/media/hinatazaka46/v/2.mp4" />
+                        </video>
+                        <label htmlFor="msg-1">日向坂 🌸</label>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
+    it('strips media sources, ids, for and test ids from the copy', () => {
+        const { rerender } = render(<KeepListPainted roomKey="M" restore><MediaList /></KeepListPainted>);
+        rerender(<KeepListPainted roomKey="N" restore><MediaList /></KeepListPainted>);
+        const copy = getListSnapshot('M')!.node;
+        expect(copy.querySelector('audio')).not.toBeNull();
+        expect(copy.querySelectorAll('audio[src], video[src], source, [preload], [autoplay]')).toHaveLength(0);
+        expect(copy.querySelectorAll('[id], [for], [data-testid]')).toHaveLength(0);
+        expect(copy.querySelector('[data-snapshot-testid="row"]')).not.toBeNull();
+        expect(copy.textContent).toContain('日向坂 🌸');
+        // The live list keeps its own.
+        expect(screen.getByTestId('row')).toHaveAttribute('id', 'msg-1');
+        expect(document.querySelector('audio')).toHaveAttribute('src');
+    });
+
+    it('forgetListSnapshots drops every room', () => {
+        const { rerender } = visitAThenB();
+        expect(getListSnapshot('A')).not.toBeNull();
+        forgetListSnapshots();
+        expect(getListSnapshot('A')).toBeNull();
+        rerender(<View room="A" hidden />);
+        expect(cover()).toBeNull();
     });
 });
