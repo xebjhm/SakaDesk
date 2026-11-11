@@ -946,6 +946,44 @@ describe('AlbumPage newest-month prefetch (D-M3)', () => {
         expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
     });
 
+    it('a cover change starts no new prefetch (m3)', async () => {
+        const first = renderAlbum();
+        await advance(10);
+        first.unmount();
+        renderAlbum();
+        await advance(30);
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+        vi.mocked(fetchAlbumMonth).mockClear();
+        vi.mocked(clientLog).mockClear();
+        fireEvent.contextMenu(within(section('2026-10')).getByTestId('album-tile-1'), { clientX: 40, clientY: 50 });
+        fireEvent.click(within(screen.getByRole('menu')).getByRole('menuitem', { name: 'Make this the month cover' }));
+        await advance(30);
+        expect(fetchAlbumMonths).toHaveBeenCalledTimes(3); // the first open, the reopen, the cover refetch
+        expect(monthCalls('2026-10')).toHaveLength(0);
+        expect(logged('memories_skip')).toEqual([]);
+    });
+
+    it('a band that took the prefetch and unmounts aborts it (m4)', async () => {
+        const first = renderAlbum();
+        await advance(10);
+        first.unmount();
+        vi.mocked(fetchAlbumMonth).mockClear();
+        let prefetchSignal: AbortSignal | undefined;
+        vi.mocked(fetchAlbumMonth).mockImplementationOnce((_s, _m, _o, signal) => {
+            prefetchSignal = signal;
+            return new Promise(() => {});
+        });
+        const answer = heldMonths();
+        const again = renderAlbum();
+        await advance(10);
+        answer(monthsPayload());
+        await advance(10);
+        expect(monthCalls('2026-10')).toHaveLength(1); // the band took the prefetch
+        expect(prefetchSignal?.aborted).toBe(false);
+        again.unmount();
+        expect(prefetchSignal?.aborted).toBe(true);
+    });
+
     it('leaving the album before the band takes the prefetch aborts it', async () => {
         const first = renderAlbum();
         await advance(10);

@@ -82,14 +82,22 @@ export function rememberNewestMonth(
     if (entry && entry.month !== month) drop(scope);
 }
 
-/** The prefetched request for `month` of the scope, handed over once (the band owns it then); else null. */
+/**
+ * The prefetched request for `month` of the scope, handed over once (the band owns it then); else
+ * null. The band's `signal` then owns its cancellation: aborting it (the band unmounts, or its
+ * scope changes) aborts the prefetch's request.
+ */
 export function takePrefetchedMonth(
-    service: string, member: string | undefined, kind: AlbumKind, month: string,
+    service: string, member: string | undefined, kind: AlbumKind, month: string, signal?: AbortSignal,
 ): Promise<AlbumMonthPayload> | null {
     const scope = scopeOf(service, member, kind);
     const entry = pending.get(scope);
     if (!entry || entry.month !== month) return null;
     pending.delete(scope);
+    if (signal) {
+        if (signal.aborted) entry.controller.abort();
+        else signal.addEventListener('abort', () => entry.controller.abort(), { once: true });
+    }
     return entry.promise;
 }
 

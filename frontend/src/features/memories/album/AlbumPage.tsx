@@ -191,8 +191,9 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
         },
     );
     // The top band's grid is asked for beside the months list (the newest month this scope showed
-    // last), so the open no longer waits for the list before its first grid request (D-M3).
-    useEffect(() => prefetchNewestMonth(service, member, kind), [service, member, kind, coverVersion]);
+    // last), so the open no longer waits for the list before its first grid request (D-M3). Not on
+    // a cover change: the window cache keeps the month payloads, so no band would take it (m3).
+    useEffect(() => prefetchNewestMonth(service, member, kind), [service, member, kind]);
     const shownMonths = months.data?.payload ?? null;
     const arrived = months.stale ? null : months.data;
     useEffect(() => {

@@ -138,7 +138,7 @@ const MonthLoader: React.FC<Pick<MonthSectionProps, 'service' | 'member' | 'kind
         'album_month',
         // The page's prefetch of this month, when it made one (the newest month, D-M3); a Retry
         // always asks anew.
-        (signal) => takePrefetchedMonth(service, member, kind, month) ?? fetchAlbumMonth(service, month, { member, kind }, signal),
+        (signal) => takePrefetchedMonth(service, member, kind, month, signal) ?? fetchAlbumMonth(service, month, { member, kind }, signal),
         [service, month, member, kind],
         // Committed on arrival: the band frees its fetch slot (MAX_IN_FLIGHT, D4) the moment the
         // answer lands, never after a min-visible hold (the band holds its skeleton instead).
