@@ -593,3 +593,176 @@ describe('AlbumPage cover choice', () => {
         expect(putAlbumCover).toHaveBeenCalledTimes(1);
     });
 });
+
+describe('AlbumPage loading (L4)', () => {
+    /** Small steps, each its own act, so React commits (and grants slots) as it would live. */
+    const advance = async (ms: number) => {
+        for (let t = 0; t < ms; t += 10) await act(async () => { await vi.advanceTimersByTimeAsync(Math.min(10, ms - t)); });
+    };
+    const skeletonTiles = (month: string) => section(month).querySelectorAll('[data-testid="album-band-skeleton"] [data-skeleton]');
+    const waitLogs = () => vi.mocked(clientLog).mock.calls.filter(([event]) => event === 'ui_wait').map(([, fields]) => fields);
+    const pending = () => new Promise<never>(() => {});
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-11-10T03:00:00Z'));
+    });
+
+    it('a cold band shows nothing at 199 ms, then min(count, 12) skeleton tiles in the grid box at 200 ms', async () => {
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([
+            monthSummary('2026-10', { count: 3 }),
+            monthSummary('2022-05', { count: 40, cover_color: null }),
+        ]));
+        vi.mocked(fetchAlbumMonth).mockImplementation(pending);
+        renderAlbum();
+        await act(async () => { await vi.advanceTimersByTimeAsync(0); });
+        expect(section('2026-10')).toBeInTheDocument();
+        await act(async () => { await vi.advanceTimersByTimeAsync(199); });
+        expect(skeletonTiles('2026-10')).toHaveLength(0);
+        expect(skeletonTiles('2022-05')).toHaveLength(0);
+        // The height is reserved by the same grid box, empty and hidden.
+        const box = within(section('2026-10')).getByTestId('album-band-skeleton');
+        expect(box.querySelector('[data-band-grid]')).toHaveClass('invisible');
+        await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+        expect(skeletonTiles('2026-10')).toHaveLength(3);
+        expect(skeletonTiles('2022-05')).toHaveLength(12);
+        const grid = within(section('2026-10')).getByTestId('album-band-skeleton').querySelector('[data-band-grid]');
+        expect(grid).not.toHaveClass('invisible');
+        // The same box as MonthGrid: the shared tile density columns and gap.
+        expect(grid).toHaveClass('grid', 'gap-2', MEDIA_GRID_COLS);
+        // A labelled status; the label is screen-reader only, visible under reduced motion.
+        const status = within(section('2026-10')).getByTestId('album-band-skeleton');
+        expect(status).toHaveAttribute('role', 'status');
+        expect(status).toHaveAccessibleName('Loading…');
+        expect(within(status).getByText('Loading…')).toHaveClass('sr-only', 'motion-reduce:not-sr-only');
+        // The polaroid cover still shows beside it.
+        expect(within(section('2026-10')).getByTestId('album-band-row').firstElementChild).not.toBe(box.parentElement);
+    });
+
+    it('renders a band error and a band timeout inside the band with Retry; loaded renders the grid', async () => {
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([monthSummary('2026-10'), monthSummary('2022-05', { cover_color: null })]));
+        // 2026-10 fails, then times out, then loads; the other band always loads.
+        const outcomes = [new MemoriesFetchError(500), new MemoriesTimeoutError()];
+        vi.mocked(fetchAlbumMonth).mockImplementation(async (_s, month) => {
+            const next = month === '2026-10' ? outcomes.shift() : undefined;
+            if (next) throw next;
+            return monthPayload(month);
+        });
+        renderAlbum();
+        await advance(30);
+        const alert = within(section('2026-10')).getByRole('alert');
+        expect(alert).toHaveTextContent("Couldn't load this");
+        expect(within(section('2026-10')).queryByTestId('album-band-skeleton')).toBeNull();
+        fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+        await advance(30);
+        const timeout = within(section('2026-10')).getByRole('alert');
+        expect(timeout).toHaveTextContent('This is taking longer than usual');
+        fireEvent.click(within(timeout).getByRole('button', { name: 'Try again' }));
+        await advance(30);
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+        expect(within(section('2026-10')).queryByRole('alert')).toBeNull();
+    });
+
+    it('holds a revealed band skeleton 400 ms, yet frees its fetch slot the moment the answer lands', async () => {
+        const fire = stubObserver();
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload(MANY.slice(0, 3).map((m) => monthSummary(m))));
+        vi.mocked(fetchAlbumMonth).mockImplementation((_s, month) => new Promise((resolve) => {
+            setTimeout(() => resolve(monthPayload(month)), 250);
+        }));
+        renderAlbum();
+        await advance(10);
+        for (const m of MANY.slice(0, 3)) fire(m);
+        await advance(10);
+        expect(fetchAlbumMonth).toHaveBeenCalledTimes(MAX_IN_FLIGHT);
+        // ~200 ms after the bands came: revealed.
+        await advance(200);
+        expect(skeletonTiles('2026-10').length).toBeGreaterThan(0);
+        // The answer at ~260 ms frees the slot at once: the third month starts now.
+        await advance(60);
+        expect(fetchAlbumMonth).toHaveBeenCalledTimes(3);
+        // ...but the shown skeleton stays to minVisible (revealed at ~210, held to ~610).
+        expect(within(section('2026-10')).queryByTestId('album-grid')).toBeNull();
+        expect(skeletonTiles('2026-10').length).toBeGreaterThan(0);
+        await advance(320);
+        expect(within(section('2026-10')).queryByTestId('album-grid')).toBeNull();
+        await advance(40);
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+        expect(within(section('2026-10')).queryByTestId('album-band-skeleton')).toBeNull();
+    });
+
+    it('a fast band (under 200 ms) swaps straight to its grid, never flashing a skeleton', async () => {
+        const fire = stubObserver();
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload([monthSummary('2026-10')]));
+        vi.mocked(fetchAlbumMonth).mockImplementation((_s, month) => new Promise((resolve) => {
+            setTimeout(() => resolve(monthPayload(month)), 120);
+        }));
+        renderAlbum();
+        await advance(10);
+        fire('2026-10');
+        await advance(150);
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+        expect(waitLogs()).toEqual([]);
+    });
+
+    it('re-aligns a ribbon-jump target only after its real grid has replaced the held skeleton', async () => {
+        const seen: Array<{ month: string; grid: boolean }> = [];
+        const original = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = vi.fn(function (this: Element) {
+            seen.push({ month: this.getAttribute('data-month') ?? '', grid: this.querySelector('[data-testid="album-grid"]') !== null });
+        });
+        restoreScroll = () => { Element.prototype.scrollIntoView = original; };
+        const fire = stubObserver();
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload(MANY.map((m) => monthSummary(m))));
+        vi.mocked(fetchAlbumMonth).mockImplementation((_s, month) => new Promise((resolve) => {
+            setTimeout(() => resolve(monthPayload(month)), 250);
+        }));
+        renderAlbum();
+        await advance(10);
+        fireEvent.click(within(screen.getByTestId('album-ribbon')).getByRole('button', { name: 'Go to May 2026' }), { detail: 0 });
+        fire('2026-05');
+        await advance(1000);
+        expect(within(section('2026-05')).getByTestId('album-grid')).toBeInTheDocument();
+        const target = seen.filter((s) => s.month === '2026-05');
+        expect(target).toEqual([{ month: '2026-05', grid: false }, { month: '2026-05', grid: true }]);
+    });
+
+    it('one page-level wait line: slow copy at 3 s, the explanation and a thin bar at 10 s, gone when the last band settles', async () => {
+        const fire = stubObserver();
+        const resolvers = new Map<string, () => void>();
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload(MANY.slice(0, 2).map((m) => monthSummary(m))));
+        vi.mocked(fetchAlbumMonth).mockImplementation((_s, month) => new Promise((resolve) => {
+            resolvers.set(month, () => resolve(monthPayload(month)));
+        }));
+        renderAlbum();
+        await advance(10);
+        fire(MANY[0]);
+        fire(MANY[1]);
+        await advance(10);
+        expect(fetchAlbumMonth).toHaveBeenCalledTimes(2);
+        const line = screen.getByTestId('album-wait-line');
+        expect(line).toHaveAttribute('role', 'status');
+        expect(line).toBeEmptyDOMElement();
+        await act(async () => { await vi.advanceTimersByTimeAsync(2980); });
+        expect(screen.queryByText('Laying out your photos…')).toBeNull();
+        await act(async () => { await vi.advanceTimersByTimeAsync(10); });
+        expect(screen.getAllByText('Laying out your photos…')).toHaveLength(1);
+        // No band repeats the slow copy.
+        expect(screen.queryByText('Preparing your memories…')).toBeNull();
+        await act(async () => { await vi.advanceTimersByTimeAsync(6999); });
+        expect(within(line).queryByRole('progressbar')).toBeNull();
+        await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+        expect(within(line).getByText('Months with many photos take a little longer to appear.')).toBeInTheDocument();
+        expect(within(line).getByRole('progressbar').className).toContain('h-0.5');
+        // One band settles: the line stays for the other.
+        await act(async () => { resolvers.get(MANY[0])!(); });
+        await advance(20);
+        expect(within(line).getByText('Months with many photos take a little longer to appear.')).toBeInTheDocument();
+        await act(async () => { resolvers.get(MANY[1])!(); });
+        await advance(20);
+        expect(line).toBeEmptyDOMElement();
+        expect(waitLogs()).toEqual([
+            { surface: 'memories_album_month', phase: 'slow', wait_ms: expect.any(Number) },
+            { surface: 'memories_album_month', phase: 'very_slow', wait_ms: expect.any(Number) },
+        ]);
+    });
+});

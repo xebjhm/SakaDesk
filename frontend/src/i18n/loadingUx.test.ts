@@ -19,6 +19,8 @@ export const LOADING_UX_KEYS: string[] = [
     // L5: the chat timeline while a room loads, and bubble photos
     'messageList.loadingSlow', 'messageList.loadingVerySlow', 'messageList.loadFailed', 'messageList.loadFailedHint',
     'messageList.loadTimeout', 'messageList.loadTimeoutHint', 'media.photoLoading',
+    // L4: the Memories hub's gathering line and first run; the album's page-level wait line
+    'memories.home.gathering', 'memories.home.firstVerySlow', 'memories.album.waitSlow', 'memories.album.waitVerySlow',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -79,6 +81,38 @@ describe('loading UX strings', () => {
             'memories.common.membersError': 'メンバーを読み込めませんでした',
         };
         for (const [key, text] of Object.entries(expected)) expect(lookup(ja, key), key).toBe(text);
+    });
+
+    it('uses the agreed L4 hub and album copy in every locale', () => {
+        const table: Record<string, Record<keyof typeof locales, string>> = {
+            'memories.home.gathering': {
+                ja: '思い出を集めています… 新しいカードが順に表示されます。',
+                en: "Gathering your memories… New cards will appear as they're ready.",
+                'zh-TW': '正在收集回憶…新的卡片會陸續出現。',
+                'zh-CN': '正在收集回忆…新的卡片会陆续出现。',
+                yue: '收集緊回憶…新卡會陸續出現。',
+            },
+            'memories.home.firstVerySlow': {
+                ja: '初回は思い出の索引を作るため、少し時間がかかります。下のカードは今すぐ開けます。',
+                en: 'The first time, building the memories index takes a little while. The cards below already open.',
+                'zh-TW': '第一次需要建立回憶索引，會花一點時間。下方的卡片現在就能開啟。',
+                'zh-CN': '第一次需要建立回忆索引，会花一点时间。下方的卡片现在就能打开。',
+                yue: '第一次要整回憶索引，要少少時間。下面啲卡而家已經開得。',
+            },
+            'memories.album.waitSlow': { ja: '写真を並べています…', en: 'Laying out your photos…', 'zh-TW': '正在排列照片…', 'zh-CN': '正在排列照片…', yue: '排緊相…' },
+            'memories.album.waitVerySlow': {
+                ja: '写真の多い月は、表示まで少し時間がかかります。',
+                en: 'Months with many photos take a little longer to appear.',
+                'zh-TW': '照片多的月份需要多一點時間才會顯示。',
+                'zh-CN': '照片多的月份需要多一点时间才会显示。',
+                yue: '相多嘅月份要耐少少先出到。',
+            },
+        };
+        for (const [key, perLocale] of Object.entries(table)) {
+            for (const [code, text] of Object.entries(perLocale)) {
+                expect(lookup(locales[code as keyof typeof locales], key), `${code} ${key}`).toBe(text);
+            }
+        }
     });
 
     it('uses the agreed L3 Memories copy in every locale', () => {

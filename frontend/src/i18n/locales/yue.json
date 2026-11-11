@@ -823,7 +823,9 @@
       "countVoices": "{{count, number}} 段語音",
       "countGacha": "今日仲有 {{count, number}} 次",
       "countDays": "{{count, number}} 日",
-      "gachaTomorrow": "聽日見"
+      "gachaTomorrow": "聽日見",
+      "gathering": "收集緊回憶…新卡會陸續出現。",
+      "firstVerySlow": "第一次要整回憶索引，要少少時間。下面啲卡而家已經開得。"
     },
     "common": {
       "back": "返回",
@@ -871,7 +873,9 @@
       "retryTile": "重新載入：{{label}}",
       "openBurst": "打開 {{count}} 張相",
       "resetCover": "封面轉返自動",
-      "coverFailed": "換唔到封面"
+      "coverFailed": "換唔到封面",
+      "waitSlow": "排緊相…",
+      "waitVerySlow": "相多嘅月份要耐少少先出到。"
     },
     "memoir": {
       "title": "成員回憶",

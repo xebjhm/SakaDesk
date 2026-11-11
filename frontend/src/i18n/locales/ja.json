@@ -823,7 +823,9 @@
       "countVoices": "{{count, number}} 件のボイス",
       "countGacha": "今日はあと {{count, number}} 回",
       "countDays": "{{count, number}} 日分",
-      "gachaTomorrow": "また明日"
+      "gachaTomorrow": "また明日",
+      "gathering": "思い出を集めています… 新しいカードが順に表示されます。",
+      "firstVerySlow": "初回は思い出の索引を作るため、少し時間がかかります。下のカードは今すぐ開けます。"
     },
     "common": {
       "back": "戻る",
@@ -871,7 +873,9 @@
       "retryTile": "再読み込み：{{label}}",
       "openBurst": "{{count}} 枚の写真を開く",
       "resetCover": "表紙を自動にもどす",
-      "coverFailed": "表紙を変えられませんでした"
+      "coverFailed": "表紙を変えられませんでした",
+      "waitSlow": "写真を並べています…",
+      "waitVerySlow": "写真の多い月は、表示まで少し時間がかかります。"
     },
     "memoir": {
       "title": "メンバーの思い出",

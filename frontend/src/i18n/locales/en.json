@@ -836,7 +836,9 @@
       "countGacha": "{{count, number}} left today",
       "countDays": "{{count, number}} day",
       "countDays_other": "{{count, number}} days",
-      "gachaTomorrow": "See you tomorrow"
+      "gachaTomorrow": "See you tomorrow",
+      "gathering": "Gathering your memories… New cards will appear as they're ready.",
+      "firstVerySlow": "The first time, building the memories index takes a little while. The cards below already open."
     },
     "common": {
       "back": "Back",
@@ -888,7 +890,9 @@
       "openBurst": "Open {{count}} photo",
       "openBurst_other": "Open {{count}} photos",
       "resetCover": "Choose the cover automatically",
-      "coverFailed": "Couldn't change the cover"
+      "coverFailed": "Couldn't change the cover",
+      "waitSlow": "Laying out your photos…",
+      "waitVerySlow": "Months with many photos take a little longer to appear."
     },
     "memoir": {
       "title": "Member memories",

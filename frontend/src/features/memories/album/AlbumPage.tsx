@@ -16,6 +16,8 @@ import { messageName } from '../shared/nameFromRoom';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { AlbumKind, AlbumMonthSummary, MemoriesCountedMember, MemoryMessage } from '../types';
+import { AlbumWaitLine } from './AlbumWaitLine';
+import { createBandWaits } from './bandWaits';
 import { ColorRibbon, type RibbonMonth } from './ColorRibbon';
 import { MonthSection } from './MonthSection';
 import { useAlbumWindow } from './useAlbumWindow';
@@ -77,7 +79,8 @@ function failureOf(err: unknown): { reason: MemoriesToggleReason; error_code?: n
  * The month bands in the pane's own scroll container, with the colour ribbon on the right edge.
  * Loading and windowing are `useAlbumWindow`'s: bands far from the viewport release their grids,
  * and a ribbon jump scrolls instantly and loads only where it lands. `frozen` (kept months of the
- * previous person or filter) stops every band's fetch; loaded grids stay.
+ * previous person or filter) stops every band's fetch; loaded grids stay. Above the bands, one
+ * page-level wait line (`AlbumWaitLine`) follows the bands still waiting for their grids.
  */
 const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, colors, nameOf, onSetCover, onResetCover, onScroller, frozen = false }) => {
     const scroller = useRef<HTMLDivElement | null>(null);
@@ -87,6 +90,8 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
     }, [onScroller]);
     const monthKeys = useMemo(() => months.map((m) => m.month), [months]);
     const win = useAlbumWindow(monthKeys, scroller);
+    // The bands waiting for their grids, for the wait line only (a band never re-renders the grid).
+    const [waits] = useState(createBandWaits);
 
     const ribbon: RibbonMonth[] = useMemo(
         () => months.map((m) => ({ month: m.month, color: colors[m.month] ?? null })),
@@ -94,28 +99,32 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
     );
 
     return (
-        <div className="flex min-h-0 flex-1 gap-2 pb-2 pr-2">
-            <div ref={setScroller} data-testid="album-scroller" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 pb-4">
-                {months.map((m, i) => (
-                    <MonthSection
-                        key={m.month}
-                        service={service}
-                        summary={m}
-                        member={member}
-                        kind={kind}
-                        data={win.cache.get(m.month)}
-                        requested={!frozen && win.isRequested(m.month, i)}
-                        live={win.isLive(m.month)}
-                        nameOf={nameOf}
-                        registerRef={win.registerRef}
-                        onLoaded={win.onLoaded}
-                        onSettled={win.onSettled}
-                        onSetCover={onSetCover}
-                        onResetCover={onResetCover}
-                    />
-                ))}
+        <div className="flex min-h-0 flex-1 flex-col">
+            <AlbumWaitLine waits={waits} />
+            <div className="flex min-h-0 flex-1 gap-2 pb-2 pr-2">
+                <div ref={setScroller} data-testid="album-scroller" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 pb-4">
+                    {months.map((m, i) => (
+                        <MonthSection
+                            key={m.month}
+                            service={service}
+                            summary={m}
+                            member={member}
+                            kind={kind}
+                            data={win.cache.get(m.month)}
+                            requested={!frozen && win.isRequested(m.month, i)}
+                            live={win.isLive(m.month)}
+                            nameOf={nameOf}
+                            registerRef={win.registerRef}
+                            onLoaded={win.onLoaded}
+                            onSettled={win.onSettled}
+                            waits={waits}
+                            onSetCover={onSetCover}
+                            onResetCover={onResetCover}
+                        />
+                    ))}
+                </div>
+                <ColorRibbon months={ribbon} onSelect={win.jump} />
             </div>
-            <ColorRibbon months={ribbon} onSelect={win.jump} />
         </div>
     );
 };

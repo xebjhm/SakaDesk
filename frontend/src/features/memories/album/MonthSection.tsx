@@ -1,5 +1,7 @@
-import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../../../i18n';
+import { useDelayedLoading } from '../../../design/loading';
+import { Skeleton, SPINNER_LABEL_VISIBILITY, type SkeletonTone } from '../../../design/primitives';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { MEDIA_GRID_COLS, MEDIA_GRID_GAP, MEDIA_GRID_MIN } from '../../../core/media/tileGrid';
 import { MediaGridContext, primeMediaMeta, useGridColumns } from '../../../core/media/grid';
@@ -10,6 +12,7 @@ import { sepiaClass } from '../shared/sepia';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { jstDateFormat } from '../shared/jst';
 import type { AlbumKind, AlbumMonthPayload, AlbumMonthSummary, MemoryMessage } from '../types';
+import type { BandWaits } from './bandWaits';
 import { BurstStack } from './BurstStack';
 import { PhotoTile } from './PhotoTile';
 import { PolaroidCover } from './PolaroidCover';
@@ -31,8 +34,14 @@ interface MonthSectionProps {
     /** Registers the band for the observers and ribbon jumps (null on unmount). */
     registerRef: (month: string, el: HTMLElement | null) => void;
     onLoaded: (month: string, data: AlbumMonthPayload) => void;
-    /** The month's request finished (ready or error). */
+    /**
+     * The month's band settled: its error is on screen, or its grid has replaced the skeleton (after
+     * the skeleton's min-visible hold), so a ribbon-jump re-align measures the real grid. The fetch
+     * slot is freed earlier, by `onLoaded` the moment the answer lands.
+     */
     onSettled: (month: string) => void;
+    /** The page-level wait line's store: this band waits for its grid (fetching, or holding its skeleton). */
+    waits?: BandWaits;
     /** 「この月の表紙にする」 on a picture / video tile of this month. */
     onSetCover?: (month: string, item: MemoryMessage) => void;
     /** 「表紙を自動にもどす」 on this month's cover (offered when its rule is `override`). */
@@ -43,23 +52,67 @@ interface MonthSectionProps {
 const tintOf = (color: string | null): string | undefined =>
     color ? `color-mix(in srgb, ${color} 18%, transparent)` : undefined;
 
-/** Fetches one month and hands it to the album's cache; shows the Memories load state (or its retry). */
-const MonthLoader: React.FC<Pick<MonthSectionProps, 'service' | 'member' | 'kind' | 'onLoaded' | 'onSettled'> & { month: string }> = ({
-    service, month, member, kind, onLoaded, onSettled,
-}) => {
+/** Most skeleton tiles a band draws while its grid loads (`min(count, BAND_SKELETON_MAX)`). */
+const BAND_SKELETON_MAX = 12;
+
+/** The month grid's box, shared by `MonthGrid` and its skeleton: the same columns and tile edge. */
+const ALBUM_GRID = cn('grid w-full min-w-0 grid-flow-row-dense', MEDIA_GRID_GAP, MEDIA_GRID_COLS);
+
+/**
+ * The band's tile skeleton while its grid loads (F28): `min(count, BAND_SKELETON_MAX)` square
+ * tiles in the very grid box of `MonthGrid` (`ALBUM_GRID`, the `tileGrid.ts` density that
+ * `useGridColumns` measures), so the band keeps roughly its final height. Until `revealed` the box
+ * is the same grid of empty, invisible cells (the height is reserved; nothing flashes). A
+ * `role="status"` named `loading.label`; the label is screen-reader only and shows under reduced
+ * motion, where the tiles stop pulsing.
+ */
+const BandSkeleton: React.FC<{ count: number; revealed: boolean; tone: SkeletonTone }> = ({ count, revealed, tone }) => {
+    const { t } = useTranslation();
+    const labelId = useId();
+    const tiles = Math.max(1, Math.min(count, BAND_SKELETON_MAX));
+    return (
+        <div
+            role="status"
+            data-testid="album-band-skeleton"
+            aria-busy={revealed ? undefined : true}
+            aria-labelledby={revealed ? labelId : undefined}
+            className="flex w-full min-w-0 flex-col gap-2"
+        >
+            <div data-band-grid aria-hidden="true" className={cn(ALBUM_GRID, !revealed && 'invisible')}>
+                {Array.from({ length: tiles }, (_, i) => (revealed
+                    ? <Skeleton key={i} shape="tile" tone={tone} className="w-full" />
+                    : <span key={i} className="block aspect-square w-full" />))}
+            </div>
+            {revealed && <span id={labelId} className={cn('text-small text-secondary', SPINNER_LABEL_VISIBILITY.auto)}>{t('loading.label')}</span>}
+        </div>
+    );
+};
+
+/**
+ * Fetches one month: a ready answer goes to the album's cache at once (`onLoaded`, which frees the
+ * fetch slot); an error or timeout renders inside the band (`MemoriesStatus` inline, with Retry)
+ * and settles the band. The skeleton is the band's (`BandSkeleton`), so it never restarts when a
+ * queued band's fetch begins. `onFailed` tells the band whether its error is showing.
+ */
+const MonthLoader: React.FC<Pick<MonthSectionProps, 'service' | 'member' | 'kind' | 'onLoaded' | 'onSettled'> & {
+    month: string;
+    onFailed: (failed: boolean) => void;
+}> = ({ service, month, member, kind, onLoaded, onSettled, onFailed }) => {
     const query = useMemoriesQuery(
         'album_month',
         (signal) => fetchAlbumMonth(service, month, { member, kind }, signal),
         [service, month, member, kind],
         // Committed on arrival: the band frees its fetch slot (MAX_IN_FLIGHT, D4) the moment the
-        // answer lands, never after a min-visible hold.
+        // answer lands, never after a min-visible hold (the band holds its skeleton instead).
         { count: (d) => d.items.length, settle: false },
     );
+    // Before paint, so the skeleton never shows beside the error.
+    useLayoutEffect(() => { onFailed(query.status === 'error'); }, [query.status, onFailed]);
     useEffect(() => {
         if (query.status === 'ready' && query.data) onLoaded(month, query.data);
-        if (query.status !== 'loading') onSettled(month);
+        else if (query.status === 'error') onSettled(month);
     }, [query.status, query.data, month, onLoaded, onSettled]);
-    return <MemoriesStatus query={query} view="album_month" />;
+    return query.status === 'error' ? <MemoriesStatus query={query} view="album_month" variant="inline" /> : null;
 };
 
 interface MonthGridProps {
@@ -100,7 +153,7 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
 
     return (
         <>
-            <div ref={gridRef} data-testid="album-grid" className={cn('grid w-full min-w-0 grid-flow-row-dense', MEDIA_GRID_GAP, MEDIA_GRID_COLS)}>
+            <div ref={gridRef} data-testid="album-grid" className={ALBUM_GRID}>
                 {entries.map((entry) => (entry.kind === 'burst'
                     ? <BurstStack key={entry.key} items={entry.items} title={label} nameOf={nameOf} sepia={sepia} onSetCover={onSetCover} tilePx={tilePx} />
                     : (
@@ -142,12 +195,18 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
  * primed into the meta store in one batch when its payload lands.
  * The grid is fetched once `requested` and mounted only while `live`; a band that is not live
  * keeps its last measured height, so the scroll position holds while its grid is released.
+ * A live band without its grid (queued for a fetch slot, or fetching) shows its tile skeleton
+ * (`BandSkeleton`, from the reveal delay); once shown, the skeleton stays at least `minVisible`
+ * (`useDelayedLoading`), a display-only hold: the answer reaches the album's cache on arrival, which
+ * frees the fetch slot, and `onSettled` (the ribbon-jump re-align) follows the real grid's commit.
+ * An error or timeout shows inside the band with Retry. While it fetches or holds its skeleton the
+ * band counts in the page's wait line (`waits`).
  * With `onSetCover` / `onResetCover` the tiles and the cover carry the cover-choice context menus
  * (spec 8: a user override comes first).
  * Memoised: bands re-render only when their own props change.
  */
 export const MonthSection = React.memo<MonthSectionProps>(({
-    service, summary, member, kind, data, requested, live, nameOf, registerRef, onLoaded, onSettled, onSetCover, onResetCover,
+    service, summary, member, kind, data, requested, live, nameOf, registerRef, onLoaded, onSettled, waits, onSetCover, onResetCover,
 }) => {
     const { t, i18n } = useTranslation();
     const month = summary.month;
@@ -167,7 +226,31 @@ export const MonthSection = React.memo<MonthSectionProps>(({
         [onResetCover, summary.cover_rule, month],
     );
     const height = useRef<number | null>(null);
-    const showGrid = live && data !== undefined;
+    // The loader's error is on screen (no skeleton then).
+    const [failed, setFailed] = useState(false);
+    // A live band without its grid shows the skeleton from the reveal delay, and keeps a shown one
+    // `minVisible` after the grid arrives (display only: the answer is already in the cache).
+    const held = useDelayedLoading(live && data === undefined && !failed);
+    const showGrid = live && data !== undefined && !held;
+    // The page wait line: fetching, or holding the skeleton over an arrived grid.
+    const waiting = live && requested && !failed && !showGrid;
+    useLayoutEffect(() => {
+        if (!waiting || !waits) return undefined;
+        waits.set(month, true);
+        return () => waits.set(month, false);
+    }, [waiting, waits, month]);
+    // The answer landed (slot freed); the band settles once its grid has committed (or it left).
+    const settleDue = useRef(false);
+    const loaded = useCallback((m: string, payload: AlbumMonthPayload) => {
+        settleDue.current = true;
+        onLoaded(m, payload);
+    }, [onLoaded]);
+    useLayoutEffect(() => {
+        if (settleDue.current && (showGrid || !live)) {
+            settleDue.current = false;
+            onSettled(month);
+        }
+    });
     useLayoutEffect(() => {
         if (showGrid && own.current) height.current = own.current.getBoundingClientRect().height;
     });
@@ -179,8 +262,17 @@ export const MonthSection = React.memo<MonthSectionProps>(({
 
     let body: React.ReactNode;
     if (showGrid) body = <MonthGrid data={data} kind={kind} nameOf={nameOf} label={label} sepia={sepia} onSetCover={setCover} />;
-    else if (live && requested) {
-        body = <MonthLoader service={service} month={month} member={member} kind={kind} onLoaded={onLoaded} onSettled={onSettled} />;
+    else if (live) {
+        body = (
+            <>
+                {/* Stays mounted through the skeleton's hold (ready, so it never refetches). */}
+                {requested && (
+                    <MonthLoader service={service} month={month} member={member} kind={kind} onLoaded={loaded} onSettled={onSettled} onFailed={setFailed} />
+                )}
+                {/* On the neutral sunken band the tiles take the paper skeleton tone, so they show. */}
+                {!failed && <BandSkeleton count={summary.count} revealed={held} tone={tint ? 'sunken' : 'paper'} />}
+            </>
+        );
     } else body = <div aria-hidden="true" data-testid="album-month-placeholder" className="min-h-64 flex-1" />;
 
     return (

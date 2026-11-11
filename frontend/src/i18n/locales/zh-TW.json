@@ -823,7 +823,9 @@
       "countVoices": "{{count, number}} 則語音",
       "countGacha": "今天還有 {{count, number}} 次",
       "countDays": "{{count, number}} 天",
-      "gachaTomorrow": "明天見"
+      "gachaTomorrow": "明天見",
+      "gathering": "正在收集回憶…新的卡片會陸續出現。",
+      "firstVerySlow": "第一次需要建立回憶索引，會花一點時間。下方的卡片現在就能開啟。"
     },
     "common": {
       "back": "返回",
@@ -871,7 +873,9 @@
       "retryTile": "重新載入：{{label}}",
       "openBurst": "開啟 {{count}} 張照片",
       "resetCover": "封面改回自動",
-      "coverFailed": "無法更換封面"
+      "coverFailed": "無法更換封面",
+      "waitSlow": "正在排列照片…",
+      "waitVerySlow": "照片多的月份需要多一點時間才會顯示。"
     },
     "memoir": {
       "title": "成員回憶",

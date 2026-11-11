@@ -712,6 +712,19 @@ empty payload is never kept (the next selection shows the loading state, never "
 and a failed load forgets the kept payload, so its Retry shows the loading state too.
 `MemberPane` takes `status` / `onRetry`: six `Skeleton` rows after `reveal`, or an inline error /
 timeout line with Retry below the 「全員」 row.
+The hub's first load draws a `Skeleton block` shaped like the On This Day card, the Memories slow
+line at 3 s and `memories.home.firstVerySlow` with an indeterminate bar at 10 s (no Cancel: the
+entry cards stay usable). While the board on screen is `refreshing` and still re-polled, one inline
+`StatusBlock` (`memories_hub`, stage `shown` at once) says it is still gathering under the title;
+when the polling stops with the board still refreshing, the line drops quietly and logs `ui_wait`
+`timeout` once.
+An album band without its grid draws `min(count, 12)` `Skeleton tile`s in the very grid box of the
+real grid (same columns and tile edge), from `reveal`, with an empty box of that size before it; a
+shown band skeleton stays `minVisible` for display only (the answer reaches the album's cache on
+arrival, which frees the D4 fetch slot; the band settles, and a ribbon jump re-aligns, after the real
+grid commits). Band errors and timeouts are inline with Retry. Slow copy is not repeated per band:
+one page-level wait line above the bands (`memories_album_month`) shows `memories.album.waitSlow`
+at 3 s and `memories.album.waitVerySlow` with a thin indeterminate bar at 10 s.
 
 Which primitive for which wait:
 

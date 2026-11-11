@@ -1,5 +1,5 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
 
@@ -13,13 +13,13 @@ vi.mock('./api', async (importOriginal) => {
     return { ...real, fetchHub: vi.fn() };
 });
 import { clientLog } from '../../utils/clientLog';
-import { fetchHub, MemoriesFetchError } from './api';
+import { fetchHub, MemoriesFetchError, MemoriesTimeoutError } from './api';
 import { HubSlots } from './home/HubSlots';
 import { MemoriesHome } from './MemoriesHome';
 import type { RecapCardState } from './home/RecapHubCard';
 import type { MemoriesRoute } from './MemoriesFeature';
 import { hubMoment, hubPayload } from './home/__fixtures__';
-import { REFRESH_WHILE_MS } from './shared/useMemoriesQuery';
+import { REFRESH_WHILE_MAX, REFRESH_WHILE_MS } from './shared/useMemoriesQuery';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
@@ -230,3 +230,98 @@ describe('MemoriesHome (hub board)', () => {
         expect(vi.mocked(HubSlots).mock.lastCall?.[0]).toMatchObject({ sameTime: null, capsule: null });
     });
 });
+
+describe('MemoriesHome loading (L4)', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(async () => {
+        vi.useRealTimers();
+        await i18n.changeLanguage('en');
+    });
+
+    const advance = (ms: number) => act(() => { vi.advanceTimersByTime(ms); });
+    const advanceAsync = (ms: number) => act(async () => { await vi.advanceTimersByTimeAsync(ms); });
+    const moment = () => screen.getByTestId('memories-hub-moment');
+    const waitLogs = () => vi.mocked(clientLog).mock.calls.filter(([event]) => event === 'ui_wait').map(([, fields]) => fields);
+
+    it('first load: nothing at 199 ms, the card skeleton at 200, slow copy at 3 s, the first-run explanation and a bar at 10 s', () => {
+        vi.mocked(fetchHub).mockReturnValue(new Promise(() => {}));
+        renderHome();
+        advance(199);
+        expect(within(moment()).queryByTestId('memories-hub-moment-skeleton')).toBeNull();
+        advance(1);
+        expect(within(moment()).getByTestId('memories-hub-moment-skeleton')).toBeInTheDocument();
+        advance(2799);
+        expect(screen.queryByText('Preparing your memories…')).toBeNull();
+        advance(1);
+        expect(screen.getByText('Preparing your memories…')).toBeInTheDocument();
+        advance(6999);
+        expect(screen.queryByText(/building the memories index/)).toBeNull();
+        expect(within(moment()).queryByRole('progressbar')).toBeNull();
+        advance(1);
+        expect(screen.getByText('The first time, building the memories index takes a little while. The cards below already open.')).toBeInTheDocument();
+        expect(within(moment()).getByRole('progressbar')).toBeInTheDocument();
+        // D-L1: no Cancel; the entry cards below stay usable.
+        expect(within(moment()).queryByRole('button')).toBeNull();
+        fireEventClick(screen.getByRole('button', { name: /Album/ }));
+        expect(go).toHaveBeenCalledWith({ page: 'album' });
+    });
+
+    it('first load: a 20 s timeout shows the timeout copy and Retry', async () => {
+        vi.mocked(fetchHub)
+            .mockImplementationOnce(() => new Promise((_resolve, reject) => { setTimeout(() => reject(new MemoriesTimeoutError()), 20000); }))
+            .mockResolvedValue(hubPayload());
+        renderHome();
+        await advanceAsync(20000);
+        expect(screen.getByText('This is taking longer than usual')).toBeInTheDocument();
+        const retry = within(moment()).getByRole('button', { name: 'Try again' });
+        fireEventClick(retry);
+        await advanceAsync(0);
+        expect(screen.getByTestId('memories-hub-otd')).toBeInTheDocument();
+    });
+
+    it('a refreshing board shows the gathering line at once (role status), and the next final poll removes it', async () => {
+        await i18n.changeLanguage('ja');
+        vi.mocked(fetchHub)
+            .mockResolvedValueOnce(hubPayload({ refreshing: true }))
+            .mockResolvedValue(hubPayload({ refreshing: false }));
+        renderHome();
+        await advanceAsync(0);
+        const line = screen.getByTestId('memories-hub-gathering');
+        expect(within(line).getByRole('status')).toHaveAttribute('data-stage', 'shown');
+        expect(line).toHaveTextContent('思い出を集めています… 新しいカードが順に表示されます。');
+        // Directly under the title, above the board; the board stays on screen.
+        expect(screen.getByRole('heading', { level: 1 }).nextElementSibling).toBe(line);
+        expect(screen.getByTestId('memories-hub-otd')).toBeInTheDocument();
+        await advanceAsync(REFRESH_WHILE_MS);
+        expect(screen.queryByTestId('memories-hub-gathering')).toBeNull();
+        expect(waitLogs()).toEqual([]);
+    });
+
+    it('drops the gathering line at the poll cap and logs ui_wait timeout once', async () => {
+        vi.mocked(fetchHub).mockResolvedValue(hubPayload({ refreshing: true }));
+        renderHome();
+        await advanceAsync(0);
+        expect(screen.getByTestId('memories-hub-gathering')).toBeInTheDocument();
+        for (let i = 0; i < REFRESH_WHILE_MAX; i += 1) await advanceAsync(REFRESH_WHILE_MS);
+        expect(fetchHub).toHaveBeenCalledTimes(REFRESH_WHILE_MAX + 1);
+        expect(screen.queryByTestId('memories-hub-gathering')).toBeNull();
+        await advanceAsync(REFRESH_WHILE_MS * 2);
+        const logs = waitLogs();
+        expect(logs).toEqual([{ surface: 'memories_hub', phase: 'timeout', wait_ms: REFRESH_WHILE_MS * REFRESH_WHILE_MAX }]);
+        // The board stays usable.
+        expect(screen.getByTestId('memories-hub-otd')).toBeInTheDocument();
+    });
+
+    it('shows no gathering line for a final board', async () => {
+        vi.mocked(fetchHub).mockResolvedValue(hubPayload({ refreshing: false }));
+        renderHome();
+        await advanceAsync(0);
+        expect(screen.getByTestId('memories-hub-otd')).toBeInTheDocument();
+        expect(screen.queryByTestId('memories-hub-gathering')).toBeNull();
+    });
+});
+
+/** A synchronous click (userEvent waits on timers, which are fake here). */
+function fireEventClick(el: HTMLElement) {
+    act(() => { el.click(); });
+}

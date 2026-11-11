@@ -88,7 +88,9 @@ describe('AlbumPage on the shared media tile', () => {
         renderAlbum();
         await screen.findByTestId('album-grid');
         const recent = new Set(urlsOf('2026-10'));
-        await waitFor(() => expect(h.metaBatches.some((b) => b.length === recent.size && b.every((u) => recent.has(u)))).toBe(true));
+        // The month's media go out together in one batch (its 16 ms flush may also carry the covers:
+        // the first grid can now land within the covers' flush).
+        await waitFor(() => expect(h.metaBatches.some((b) => [...recent].every((u) => b.includes(u)))).toBe(true));
         // the burst's hidden frames are primed too (only the first is drawn)
         expect(h.metaBatches.flat()).toContain(urlsOf('2026-10')[4]);
 

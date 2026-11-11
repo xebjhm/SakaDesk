@@ -16,8 +16,10 @@ export interface BusyContentProps {
     contentClassName?: string;
     /**
      * While `busy`, make the kept content `inert` and `pointer-events-none` at once (no click,
-     * focus or navigation on content that is about to be replaced). Default false: the content
-     * stays interactive, as before.
+     * focus or navigation on content that is about to be replaced). `inert` also hides the kept
+     * content from screen readers (it leaves the accessibility tree) until the step lands; the
+     * wrapper's `aria-busy` and the top bar still say it is loading. Default false: the content
+     * stays interactive and readable, as before.
      */
     inertWhileBusy?: boolean;
 }
@@ -27,7 +29,8 @@ export interface BusyContentProps {
  * delay (fast steps never flash) the content dims to `opacity-60` and a thin indeterminate
  * `ProgressBar` sits on the top edge (under reduced motion with its label on a sheet pill below it);
  * once shown, both stay at least `minVisible`. The bar never takes clicks. With `inertWhileBusy`
- * the kept content is `inert` and takes no pointer events while `busy` (from the first render).
+ * the kept content is `inert` (no focus, no clicks, hidden from screen readers) and takes no
+ * pointer events while `busy` (from the first render).
  */
 export const BusyContent: React.FC<BusyContentProps> = ({ busy, label, children, className, contentClassName, inertWhileBusy = false }) => {
     const { t } = useTranslation();

@@ -50,9 +50,10 @@ export interface MemoriesQueryOptions<T> {
      */
     keepPrevious?: { scope: unknown; isEmpty?: (data: T) => boolean };
     /**
-     * Hold a visible result for `settleDelay` (default true). False commits on arrival: for loads
-     * whose arrival frees shared capacity (the album's month fetch slots, D4) and whose host has no
-     * indicator worth holding.
+     * Hold a visible result for `settleDelay` (default true). False commits on arrival, for loads
+     * that must not wait out the hold: the album's month grids (the commit frees one of the
+     * `MAX_IN_FLIGHT` fetch slots, D4; the band holds its skeleton on screen itself) and its months
+     * list (it gates the first band's fetch, so the hold would add to the album's open time).
      */
     settle?: boolean;
 }
