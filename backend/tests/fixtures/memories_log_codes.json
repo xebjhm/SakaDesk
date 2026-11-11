@@ -287,7 +287,6 @@
     "export_start",
     "export",
     "export_failed",
-    "export_blocked",
     "preview_failed"
   ],
   "recap_opening.phase": [

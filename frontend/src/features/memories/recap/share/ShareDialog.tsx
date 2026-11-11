@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Check, Film, Image as ImageIcon, Share2, Sparkles } from 'lucide-react';
 import { useTranslation } from '../../../../i18n';
 import { Button, Modal, Pill, ProgressBar, Skeleton, Spinner, Switch } from '../../../../design/primitives';
-import { logWait, useDelayedLoading } from '../../../../design/loading';
+import { logWait, useDelayedLoading, useLoadingStages } from '../../../../design/loading';
 import { cn } from '../../../../utils/classnames';
 import { logRecapShare } from '../../memoriesLog';
 import type { RecapPayload } from '../api';
@@ -113,9 +113,12 @@ const ToggleRow: React.FC<{ label: string; checked: boolean; onChange: (next: bo
  * Each opening loads the frosted photos again. Until the preview's first draw a `Skeleton` covers
  * the canvas, with a labelled `Spinner` from the 200 ms reveal (held at least `minVisible`). While
  * the photos are pending every export button is blocked with 「写真を準備中…」, so no export ever
- * runs without them by accident (`runExport` refuses too and logs `export_blocked`). If they fail,
+ * runs without them by accident (a visible line beside the buttons says so, from 3 s that the
+ * wait goes on and from 10 s that it is slower than usual; `ui_wait` `slow` / `very_slow`). `runExport` takes the settled photos as an argument,
+ * so it cannot run without them. If they fail,
  * or are not ready within {@link SHARE_ASSETS_TIMEOUT_MS}, the exports open without photos and a
  * status line says so (`photo_skip` `load_failed` / `timeout`; the timeout also logs `ui_wait`).
+ * A preview that cannot be drawn shows a quiet 「読み込めませんでした」 note in its box (`preview_failed`).
  */
 export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nickname, onClose }) => {
     const { t, i18n } = useTranslation();
@@ -130,6 +133,8 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
     const [avatarError, setAvatarError] = useState<AvatarError | null>(null);
     /** The preview has been drawn once this opening (its loading cover can lift). */
     const [previewDrawn, setPreviewDrawn] = useState(false);
+    /** The last preview draw could not happen: the box shows a quiet note instead of a blank. */
+    const [previewFailed, setPreviewFailed] = useState(false);
     /** The photos failed or timed out: the exports run without them, and the dialog says so. */
     const [assetsFailed, setAssetsFailed] = useState(false);
     /** The running export's controller; null when none runs. */
@@ -163,6 +168,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         setAssets(null);
         setAssetsFailed(false);
         setPreviewDrawn(false);
+        setPreviewFailed(false);
         fontLoggedRef.current = false;
         previewFailLoggedRef.current = false;
         logRecapShare('open', { count: candidates.length, member_id: memberId });
@@ -223,7 +229,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
     }, [model, memberId]);
 
     // The preview: the share poster as it will be exported. The first draw lifts the loading
-    // cover; a draw that cannot happen lifts it too (over the empty canvas), with one breadcrumb.
+    // cover; a draw that cannot happen lifts it too and shows a quiet note, with one breadcrumb.
     useEffect(() => {
         if (!isOpen || !assets) return;
         let cancelled = false;
@@ -237,7 +243,9 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
                     format: 'video', scale: PREVIEW_SCALE, palette: readSharePalette(el), fonts: readShareFonts(el),
                 });
                 renderer.drawPoster(ctx);
+                setPreviewFailed(false);
             } catch {
+                setPreviewFailed(true);
                 if (!previewFailLoggedRef.current) {
                     previewFailLoggedRef.current = true;
                     logRecapShare('preview_failed', { reason: 'render_failed', member_id: memberId });
@@ -284,13 +292,9 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         }
     };
 
-    const runExport = async (choice: ExportChoice) => {
+    /** Runs one export with the settled photos (`ready`); the buttons only call it once they exist. */
+    const runExport = async (choice: ExportChoice, ready: ShareAssets) => {
         if (busy || exportRef.current) return;
-        if (assets === null) {
-            // The buttons are blocked while the photos load; this guard keeps any other path honest.
-            logRecapShare('export_blocked', { reason: 'assets_pending', member_id: memberId });
-            return;
-        }
         const controller = new AbortController();
         const { signal } = controller;
         exportRef.current = controller;
@@ -304,7 +308,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
             throwIfCancelled(signal);
             const el = rootRef.current ?? undefined;
             const base = { palette: readSharePalette(el), fonts: readShareFonts(el) };
-            const renderAssets = { ...assets, avatar: options.avatar ? avatar : null };
+            const renderAssets = { ...ready, avatar: options.avatar ? avatar : null };
             if (choice === 'gif') {
                 setPhase('frames');
                 const renderer = new ShareRenderer(model, renderAssets, { ...base, format: 'gif', scale: 1 });
@@ -392,6 +396,14 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
      * While one export runs, the other export buttons are visibly blocked (design-system disabled
      * state); before that, all three wait for the photos. The busy reason wins.
      */
+    /** An export button's click: nothing until the photos settle (the button is blocked meanwhile). */
+    const exportOn = (choice: ExportChoice) => (assets ? () => void runExport(choice, assets) : undefined);
+    /** The photos wait, staged: 「写真を準備中…」 from the reveal, still working from 3 s, why from 10 s (the 15 s timeout ends it). */
+    const { stage: photosStage } = useLoadingStages(isOpen && assets === null, { surface: 'recap_share' });
+    const photosWaitText = photosStage === 'hidden'
+        ? null
+        : photosStage === 'shown' ? t('recap.share.preparingPhotos')
+            : photosStage === 'slow' ? t('loading.slow') : t('loading.verySlow');
     const blockedBy = (choice: ExportChoice) => {
         if (busy && busy !== choice) return t('recap.share.busy');
         return assets === null ? t('recap.share.preparingPhotos') : undefined;
@@ -412,6 +424,10 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
                     {assetsFailed && (
                         <p role="status" className="text-small text-secondary">{t('recap.share.photosUnavailable')}</p>
                     )}
+                    {photosWaitText && (
+                        // Visible reason the buttons are dimmed (they also carry it as their description).
+                        <p data-testid="share-photos-waiting" role="status" className="text-small text-secondary">{photosWaitText}</p>
+                    )}
                     {(working || phase === 'handed_off') && (
                         <ProgressBar value={progress / 100} label={t('recap.share.progressLabel')} />
                     )}
@@ -423,17 +439,17 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
                                     {t('recap.share.cancelExport')}
                                 </Button>
                             )}
-                            <Button variant="secondary" size="sm" loading={busy === 'png'} disabledReason={blockedBy('png')} onClick={() => void runExport('png')}>
+                            <Button variant="secondary" size="sm" loading={busy === 'png'} disabledReason={blockedBy('png')} onClick={exportOn('png')}>
                                 <ImageIcon aria-hidden="true" className="h-4 w-4" />
                                 {t('recap.share.exportPng')}
                             </Button>
                             {support.supported && (
-                                <Button variant="secondary" size="sm" loading={busy === 'video'} disabledReason={blockedBy('video')} onClick={() => void runExport('video')}>
+                                <Button variant="secondary" size="sm" loading={busy === 'video'} disabledReason={blockedBy('video')} onClick={exportOn('video')}>
                                     <Film aria-hidden="true" className="h-4 w-4" />
                                     {t('recap.share.exportVideo')}
                                 </Button>
                             )}
-                            <Button variant="primary" size="sm" loading={busy === 'gif'} disabledReason={blockedBy('gif')} onClick={() => void runExport('gif')}>
+                            <Button variant="primary" size="sm" loading={busy === 'gif'} disabledReason={blockedBy('gif')} onClick={exportOn('gif')}>
                                 <Sparkles aria-hidden="true" className="h-4 w-4" />
                                 {t('recap.share.exportGif')}
                             </Button>
@@ -458,6 +474,11 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
                             <Skeleton shape="block" tone="sunken" className="absolute inset-0 aspect-[9/16] w-48 rounded-lg" />
                             {previewSpinner && <Spinner size="sm" label={t('recap.share.previewLoading')} className="relative" />}
                         </div>
+                    )}
+                    {!previewCovered && previewFailed && (
+                        <p data-testid="share-preview-failed" className="absolute inset-0 flex items-center justify-center p-4 text-center text-small text-muted">
+                            {t('loading.error')}
+                        </p>
                     )}
                 </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-4">

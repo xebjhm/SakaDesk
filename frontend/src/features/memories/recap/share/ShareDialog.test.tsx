@@ -371,6 +371,42 @@ describe('ShareDialog preview loading and the photo gate (L7)', () => {
         expect(spinner.querySelector('svg')).toHaveClass('animate-spin', 'motion-reduce:animate-none');
     });
 
+    it('says 「写真を準備中…」 beside the blocked buttons from 200 ms, then the still-working line at 3 s', async () => {
+        vi.useFakeTimers();
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => deferred<Assets>().promise);
+        open();
+        const line = () => screen.queryByTestId('share-photos-waiting');
+        act(() => { vi.advanceTimersByTime(199); });
+        expect(line()).toBeNull();
+        act(() => { vi.advanceTimersByTime(1); });
+        expect(line()).toHaveTextContent(PREPARING);
+        expect(line()).toHaveClass('text-small', 'text-secondary');
+        expect(line()).toBeVisible();
+        act(() => { vi.advanceTimersByTime(2_799); });
+        expect(line()).toHaveTextContent(PREPARING);
+        act(() => { vi.advanceTimersByTime(1); });
+        expect(line()).toHaveTextContent(i18n.t('loading.slow'));
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('ui_wait', { surface: 'recap_share', phase: 'slow', wait_ms: 3_000 });
+    });
+
+    it('drops the waiting line once the photos arrive', async () => {
+        const photos = deferred<Assets>();
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => photos.promise);
+        open();
+        expect(await screen.findByTestId('share-photos-waiting')).toHaveTextContent(PREPARING);
+        await act(async () => { photos.resolve({ photos: [], months: [], skipped: 0 }); });
+        await waitFor(() => expect(screen.queryByTestId('share-photos-waiting')).toBeNull());
+    });
+
+    it('a preview that cannot be drawn lifts the cover and says so quietly in the box', async () => {
+        getContext.mockImplementation(() => null as never);
+        open();
+        const note = await screen.findByTestId('share-preview-failed');
+        expect(note).toHaveTextContent(i18n.t('loading.error'));
+        expect(screen.queryByTestId('share-preview-loading')).toBeNull();
+        await waitFor(() => expect(shareLogs()).toContainEqual({ phase: 'preview_failed', reason: 'render_failed', member_id: '58' }));
+    });
+
     it('blocks every export with 「写真を準備中…」 until the photos settle, and a click starts nothing', async () => {
         vi.mocked(videoSupport).mockReturnValue({ supported: true, mimeType: 'video/webm;codecs=vp9' });
         vi.mocked(loadShareAssets).mockImplementationOnce(() => deferred<Assets>().promise);

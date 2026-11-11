@@ -309,7 +309,7 @@ export function logRecapPoster(
 
 export const RECAP_SHARE_PHASES = [
     'open', 'close', 'option', 'style', 'sentence', 'font_fallback', 'photo_skip', 'video_unsupported',
-    'share_blur_fallback', 'export_start', 'export', 'export_failed', 'export_blocked', 'preview_failed',
+    'share_blur_fallback', 'export_start', 'export', 'export_failed', 'preview_failed',
 ] as const;
 export type RecapSharePhase = (typeof RECAP_SHARE_PHASES)[number];
 
@@ -327,8 +327,7 @@ export type RecapSharePhase = (typeof RECAP_SHARE_PHASES)[number];
  * `export` the `kind` and `outcome` (`handed_off`: the save dialog was asked to open);
  * `export_failed` the `kind`, a `reason` (`render_failed`, `encode_failed`, `record_failed`,
  * `write_failed`, `cancelled`: Cancel, closing or reopening aborted it) and `error_code` (the handoff's code, or the server's reason
- * code); `export_blocked` a `reason` (`assets_pending`: an export was asked for before the photos
- * settled, so none started); and `preview_failed` a `reason` (`render_failed`: the preview could
+ * code); and `preview_failed` a `reason` (`render_failed`: the preview could
  * not be drawn, so its loading cover is lifted over the empty canvas). Ids, codes and counts only: never her words, the nickname or file names.
  */
 export function logRecapShare(
