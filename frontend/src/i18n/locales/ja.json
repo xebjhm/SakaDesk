@@ -1370,6 +1370,7 @@
       "previewLoading": "プレビューを準備中…",
       "preparingPhotos": "写真を準備中…",
       "photosUnavailable": "写真を読み込めなかったため、写真なしで書き出します。",
+      "photosSkipped": "写真の読み込みをやめたため、写真なしで書き出します。",
       "handedOff": "書き出しを始めました。",
       "failed": "書き出せませんでした。",
       "cancelled": "書き出しを取りやめました。",

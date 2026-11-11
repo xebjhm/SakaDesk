@@ -1370,6 +1370,7 @@
       "previewLoading": "正在准备预览…",
       "preparingPhotos": "正在准备照片…",
       "photosUnavailable": "照片无法加载，导出的内容将不含照片。",
+      "photosSkipped": "已停止等待照片，导出的内容将不含照片。",
       "handedOff": "已开始导出。",
       "failed": "无法导出。",
       "cancelled": "已取消导出。",

@@ -320,7 +320,8 @@ export type RecapSharePhase = (typeof RECAP_SHARE_PHASES)[number];
  * `load_failed`); `style` the `style` (`collage`, `colour`);
  * `sentence` an `outcome` (`added`, `removed`) and `count` chosen; `font_fallback` a `fallback`
  * (`font_timeout`, `font_failed`, `font_unsupported`); `photo_skip` a `reason` (`load_failed`;
- * `timeout`: the photos took longer than `SHARE_ASSETS_TIMEOUT_MS`, so the export goes without them)
+ * `timeout`: the photos took longer than `SHARE_ASSETS_TIMEOUT_MS`, so the export goes without them;
+ * `cancelled`: the fan pressed Cancel on the very-slow photo wait, with the same result)
  * and `count`; `video_unsupported` a `reason` (`no_media_recorder`, `no_capture_stream`,
  * `no_codec`); `share_blur_fallback` a `reason` (`filter_unsupported`: the canvas has no `filter`,
  * so photos are box-blurred by rescaling instead) and `count` (frosted photos); `export_start` the `kind` (`gif`, `webm`, `png`; a video that came out as MP4 reports `mp4` afterwards), `style` and `count` (sentences);

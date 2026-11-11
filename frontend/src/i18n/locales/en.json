@@ -1416,6 +1416,7 @@
       "previewLoading": "Preparing the preview…",
       "preparingPhotos": "Preparing photos…",
       "photosUnavailable": "Photos couldn't load, so the export will have no photos.",
+      "photosSkipped": "Stopped waiting for the photos, so the export will have no photos.",
       "handedOff": "The export has started.",
       "failed": "Could not export.",
       "cancelled": "The export was cancelled.",

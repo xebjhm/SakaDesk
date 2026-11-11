@@ -473,6 +473,32 @@ describe('ShareDialog preview loading and the photo gate (L7)', () => {
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('ui_wait', { surface: 'recap_share', phase: 'timeout', wait_ms: 15_000 });
     });
 
+    it('offers Cancel from the very-slow mark (10 s); it stops the photo wait and returns to idle without photos', async () => {
+        vi.useFakeTimers();
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => new Promise<Assets>(() => {}));
+        open();
+        const cancel = () => screen.queryByRole('button', { name: i18n.t('loading.cancel') });
+        await act(async () => { vi.advanceTimersByTime(9_999); });
+        expect(cancel()).toBeNull();
+        await act(async () => { vi.advanceTimersByTime(1); });
+        expect(screen.getByTestId('share-photos-waiting')).toHaveTextContent(i18n.t('loading.verySlow'));
+        expect(cancel()).not.toBeNull();
+        await act(async () => { fireEvent.click(cancel()!); });
+        await flush();
+        // Idle: no wait line, no Cancel, the exports open (without photos) and the dialog says why.
+        expect(screen.queryByTestId('share-photos-waiting')).toBeNull();
+        expect(cancel()).toBeNull();
+        expect(screen.getByText(i18n.t('recap.share.photosSkipped'))).toBeInTheDocument();
+        expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+        expect(screen.getByRole('button', { name: 'GIF' })).not.toHaveAttribute('aria-disabled');
+        expect(shareLogs()).toContainEqual({ phase: 'photo_skip', reason: 'cancelled', member_id: '58' });
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('ui_wait', { surface: 'recap_share', phase: 'cancelled', wait_ms: 10_000 });
+        // The 15 s timeout no longer fires afterwards.
+        await act(async () => { vi.advanceTimersByTime(10_000); });
+        await flush();
+        expect(shareLogs()).not.toContainEqual(expect.objectContaining({ reason: 'timeout' }));
+    });
+
     it('a reopening waits for its own photos again', async () => {
         const r = recap();
         const view = render(<ShareDialog isOpen recap={r} nickname="ゆき" onClose={vi.fn()} />);

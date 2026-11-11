@@ -1370,6 +1370,7 @@
       "previewLoading": "準備緊預覽…",
       "preparingPhotos": "準備緊相…",
       "photosUnavailable": "相載入唔到，匯出嘅內容唔會有相。",
+      "photosSkipped": "已經唔再等啲相，匯出嘅內容唔會有相。",
       "handedOff": "已經開始匯出。",
       "failed": "匯出唔到。",
       "cancelled": "已經取消咗匯出。",

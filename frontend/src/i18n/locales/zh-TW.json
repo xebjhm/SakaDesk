@@ -1370,6 +1370,7 @@
       "previewLoading": "正在準備預覽…",
       "preparingPhotos": "正在準備照片…",
       "photosUnavailable": "照片無法載入，匯出的內容將不含照片。",
+      "photosSkipped": "已停止等待照片，匯出的內容將不含照片。",
       "handedOff": "已開始匯出。",
       "failed": "無法匯出。",
       "cancelled": "已取消匯出。",

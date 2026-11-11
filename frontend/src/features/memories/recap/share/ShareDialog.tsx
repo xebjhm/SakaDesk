@@ -114,7 +114,8 @@ const ToggleRow: React.FC<{ label: string; checked: boolean; onChange: (next: bo
  * the canvas, with a labelled `Spinner` from the 200 ms reveal (held at least `minVisible`). While
  * the photos are pending every export button is blocked with 「写真を準備中…」, so no export ever
  * runs without them by accident (a visible line beside the buttons says so, from 3 s that the
- * wait goes on and from 10 s that it is slower than usual; `ui_wait` `slow` / `very_slow`). `runExport` takes the settled photos as an argument,
+ * wait goes on and from 10 s that it is slower than usual, with a Cancel that stops the wait and
+ * opens the exports without photos (`photo_skip` `cancelled`, `ui_wait` `cancelled`); `ui_wait` `slow` / `very_slow`). `runExport` takes the settled photos as an argument,
  * so it cannot run without them. If they fail,
  * or are not ready within {@link SHARE_ASSETS_TIMEOUT_MS}, the exports open without photos and a
  * status line says so (`photo_skip` `load_failed` / `timeout`; the timeout also logs `ui_wait`).
@@ -137,6 +138,10 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
     const [previewFailed, setPreviewFailed] = useState(false);
     /** The photos failed or timed out: the exports run without them, and the dialog says so. */
     const [assetsFailed, setAssetsFailed] = useState(false);
+    /** The fan cancelled the photo wait: the exports run without them, and the dialog says so. */
+    const [assetsSkipped, setAssetsSkipped] = useState(false);
+    /** Stops this opening's photo wait (Cancel from the very-slow mark); null when none runs. */
+    const skipPhotosRef = useRef<(() => void) | null>(null);
     /** The running export's controller; null when none runs. */
     const exportRef = useRef<AbortController | null>(null);
     const rootRef = useRef<HTMLDivElement>(null);
@@ -167,6 +172,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         setPhase('idle');
         setAssets(null);
         setAssetsFailed(false);
+        setAssetsSkipped(false);
         setPreviewDrawn(false);
         setPreviewFailed(false);
         fontLoggedRef.current = false;
@@ -175,6 +181,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         if (!support.supported) logRecapShare('video_unsupported', { reason: support.reason, member_id: memberId });
         let cancelled = false;
         let timer: ReturnType<typeof setTimeout> | undefined;
+        const startedAt = Date.now();
         const timedOut = new Promise<'timeout'>((resolve) => {
             timer = setTimeout(() => resolve('timeout'), SHARE_ASSETS_TIMEOUT_MS);
         });
@@ -183,8 +190,21 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
             setAssets(NO_ASSETS);
             setAssetsFailed(true);
         };
+        // Cancel: stop waiting (the late answer is ignored, the timeout cleared) and go back to
+        // idle with the exports open, without photos.
+        skipPhotosRef.current = () => {
+            if (cancelled) return;
+            cancelled = true;
+            clearTimeout(timer);
+            skipPhotosRef.current = null;
+            logRecapShare('photo_skip', { reason: 'cancelled', member_id: memberId });
+            logWait('recap_share', 'cancelled', Date.now() - startedAt);
+            setAssets(NO_ASSETS);
+            setAssetsSkipped(true);
+        };
         void Promise.race([loadShareAssets(recap), timedOut]).then((loaded) => {
             if (cancelled) return;
+            skipPhotosRef.current = null;
             if (loaded === 'timeout') {
                 logRecapShare('photo_skip', { reason: 'timeout', member_id: memberId });
                 logWait('recap_share', 'timeout', SHARE_ASSETS_TIMEOUT_MS);
@@ -196,12 +216,14 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
             setAssets(loaded);
         }).catch(() => {
             if (cancelled) return;
+            skipPhotosRef.current = null;
             logRecapShare('photo_skip', { reason: 'load_failed', member_id: memberId });
             withoutPhotos();
         }).finally(() => clearTimeout(timer));
         return () => {
             cancelled = true;
             clearTimeout(timer);
+            skipPhotosRef.current = null;
             abortExport();
         };
         // Once per opening of this recap.
@@ -424,9 +446,20 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
                     {assetsFailed && (
                         <p role="status" className="text-small text-secondary">{t('recap.share.photosUnavailable')}</p>
                     )}
+                    {assetsSkipped && (
+                        <p role="status" className="text-small text-secondary">{t('recap.share.photosSkipped')}</p>
+                    )}
                     {photosWaitText && (
                         // Visible reason the buttons are dimmed (they also carry it as their description).
-                        <p data-testid="share-photos-waiting" role="status" className="text-small text-secondary">{photosWaitText}</p>
+                        // From the very-slow mark it offers Cancel (the loading contract: never a dead end).
+                        <div className="flex flex-wrap items-center gap-2">
+                            <p data-testid="share-photos-waiting" role="status" className="text-small text-secondary">{photosWaitText}</p>
+                            {photosStage === 'verySlow' && (
+                                <Button variant="ghost" size="sm" onClick={() => skipPhotosRef.current?.()}>
+                                    {t('loading.cancel')}
+                                </Button>
+                            )}
+                        </div>
                     )}
                     {(working || phase === 'handed_off') && (
                         <ProgressBar value={progress / 100} label={t('recap.share.progressLabel')} />
