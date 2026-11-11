@@ -72,4 +72,17 @@ describe('SettingsModal spinners', () => {
         expect(within(spinner).getByText(name)).not.toHaveClass('sr-only');
         expect(spinner.querySelector('svg')).toHaveClass('animate-spin', 'motion-reduce:animate-none');
     });
+
+    it('test connection without a key says why it is unavailable', async () => {
+        server.use(
+            http.get('/api/translation/config', () => HttpResponse.json({ provider: 'gemini', model: null, has_api_key: false })),
+            http.get('/api/translation/models', () => HttpResponse.json({})),
+        );
+        useAppStore.setState({ transcriptionEnabled: true });
+        renderModal();
+        tab(i18n.t('settings.tabAi'));
+        const button = await screen.findByRole('button', { name: i18n.t('translation.settings.testConnection') });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        expect(button).toHaveAccessibleDescription(i18n.t('translation.settings.testErrorNoKey'));
+    });
 });

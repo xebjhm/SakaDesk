@@ -1205,7 +1205,7 @@ function AiTab() {
                                         size="sm"
                                         onClick={handleTestConnection}
                                         loading={testing}
-                                        disabled={!apiKeyInput && !hasApiKey}
+                                        disabledReason={!apiKeyInput && !hasApiKey ? t('translation.settings.testErrorNoKey') : undefined}
                                     >
                                         {t('translation.settings.testConnection')}
                                     </Button>

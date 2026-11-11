@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeAll, beforeEach, vi } from 'vitest';
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { act, render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../__tests__/mocks/server';
@@ -306,6 +306,9 @@ describe('Memories feature', () => {
             }));
             render(<MemoriesFeature service="hinatazaka46" />);
             const loading = screen.getByTestId('memories-recap-loading');
+            // A fast shelf never flashes: the loading face stays neutral for the 200 ms reveal.
+            expect(loading).not.toHaveTextContent('Loading');
+            await act(async () => { await new Promise((r) => setTimeout(r, 200)); });
             expect(loading).toHaveTextContent('Loading');
             // The shared Spinner (L7): a labelled status whose glyph stands still under reduced motion.
             const spinner = within(loading).getByRole('status', { name: i18n.t('common.loading') });
