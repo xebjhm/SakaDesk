@@ -171,14 +171,14 @@ describe('VirtualMediaGrid', () => {
     });
 
     it('logs failed tiles as one throttled media_grid tile_failed count, flushed on unmount (m6)', () => {
+        let seen: MediaGridTileReporter | null = null;
+        function FailingTile() {
+            const reporter = useContext(MediaGridContext);
+            useEffect(() => { seen = reporter; }, [reporter]);
+            return <span />;
+        }
         vi.useFakeTimers();
         try {
-            let seen: MediaGridTileReporter | null = null;
-            function FailingTile() {
-                const reporter = useContext(MediaGridContext);
-                useEffect(() => { seen = reporter; }, [reporter]);
-                return <span />;
-            }
             const { unmount } = render(<Grid groups={[{ key: 'g1', label: 'A', items: items('a', 3) }]} renderTile={() => <FailingTile />} />);
             act(() => { seen!.tileFailed(); seen!.tileFailed(); seen!.tileFailed(); });
             expect(clientLog).not.toHaveBeenCalled();
