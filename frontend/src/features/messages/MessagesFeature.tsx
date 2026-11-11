@@ -446,15 +446,16 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     };
 
     // === CHAT SELECTION ===
-    useEffect(() => {
+    // Applied while rendering (the "state from the previous render" pattern), never in an effect:
+    // the first render of a newly selected room already has its read state and, when cached, its
+    // messages with `messagesForDir === selectedGroupDir`, so a cached room never commits a frame
+    // without its list (I1). Without cache, the messagesForDir guard hides the previous room and
+    // the chat skeleton (StatusBlock) covers the wait: the timeline is never blank.
+    const [appliedDir, setAppliedDir] = useState<string | undefined>(selectedGroupDir);
+    if (appliedDir !== selectedGroupDir) {
+        setAppliedDir(selectedGroupDir);
         if (selectedGroupDir) {
-            // Load read state first to get lastReadId for API
-            const storedReadState = loadReadState(selectedGroupDir);
-            setReadState(storedReadState);
-
-            // Use cached messages for instant render; fetchMessages refreshes in the background.
-            // Without cache, the messagesForDir guard hides the previous room and the chat
-            // skeleton (StatusBlock) covers the wait: the timeline is never blank.
+            setReadState(loadReadState(selectedGroupDir));
             const cached = messagesCacheRef.current.get(selectedGroupDir);
             if (cached) {
                 setMessages(cached.messages);
@@ -462,10 +463,17 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 setTotalMessages(cached.totalMessages);
                 setMaxMessageId(cached.maxMessageId);
                 setMessagesService(cached.service);
-                showDir(selectedGroupDir);
+                setMessagesForDir(selectedGroupDir);
             }
+        }
+    }
 
-            fetchMessages(selectedGroupDir, isGroupChat, storedReadState.lastReadId);
+    useEffect(() => {
+        if (selectedGroupDir) {
+            // The ref mirror for fetchMessages (the state was set while rendering, above): a cached
+            // room is on screen, so its fetch is a background refresh.
+            if (messagesCacheRef.current.has(selectedGroupDir)) showDir(selectedGroupDir);
+            fetchMessages(selectedGroupDir, isGroupChat, loadReadState(selectedGroupDir).lastReadId);
             setIsSidebarOpen(false);
         }
     }, [selectedGroupDir, isGroupChat, showDir]);
@@ -528,11 +536,16 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         failure: loadFailure && loadFailure.dir === selectedGroupDir ? loadFailure.kind : null,
     });
     // Display only (the derivation above stays the one rule): once the skeleton has shown, keep it
-    // minVisible even when the letters, not the fetch, end the wait. Scoped to the room that waited,
-    // so a cached room opened next renders at once.
-    const [waitDir, setWaitDir] = useState<string | undefined>();
-    if (chatLoad.chatWaiting && waitDir !== selectedGroupDir) setWaitDir(selectedGroupDir);
+    // minVisible even when the letters, not the fetch, end the wait. Scoped to the room the hold
+    // revealed for (recorded when the hold turns on), so a hold that started for room X never covers
+    // room Y: a cached room opened during it renders at once (I1).
     const waitHeld = useDelayedLoading(chatLoad.chatWaiting);
+    const [waitDir, setWaitDir] = useState<string | undefined>();
+    const [heldBefore, setHeldBefore] = useState(false);
+    if (waitHeld !== heldBefore) {
+        setHeldBefore(waitHeld);
+        setWaitDir(waitHeld ? selectedGroupDir : undefined);
+    }
     const showWait = !chatLoad.failure && (chatLoad.chatWaiting || (waitHeld && waitDir === selectedGroupDir));
     // The room's message list is on screen (not its wait, skeleton or an empty room).
     const listShown = Boolean(

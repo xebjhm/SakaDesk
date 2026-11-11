@@ -39,7 +39,9 @@ export interface ChatLoadState {
 /**
  * The one derivation of the chat's loading state. The timeline (skeleton, failure) and the media
  * gallery (`listStatus`) both read it, so they can never disagree. A cached room has
- * `messagesForDir === selectedGroupDir` from its first render, so it never waits. Pure.
+ * `messagesForDir === selectedGroupDir` from its first render (MessagesFeature applies the cache
+ * while rendering) and, when its letters are cached too, `lettersReady` (useRoomLetters reads its
+ * cache while rendering), so it never waits. Pure.
  */
 export function deriveChatLoad({ selectedGroupDir, messagesForDir, messageCount, lettersReady, failure }: ChatLoadInput): ChatLoadState {
     const open = !!selectedGroupDir;

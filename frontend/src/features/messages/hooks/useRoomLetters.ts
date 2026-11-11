@@ -111,10 +111,15 @@ export function useRoomLetters(
         return () => controller.abort();
     }, [service, refreshKey]);
 
+    // Read while rendering, before the effect above commits them: a group chat (no letters) or a
+    // room whose letters are cached is ready from its first render, so a cached room's list never
+    // waits a frame for its letters (I1).
+    const own = roomKey !== null && loaded?.key === roomKey ? loaded : null;
+    const known = own ? own.letters : roomKey !== null ? (isGroupChat ? NO_LETTERS : lettersCache.get(roomKey)) : undefined;
     return {
-        letters: loaded && loaded.key === roomKey ? loaded.letters : NO_LETTERS,
+        letters: known ?? NO_LETTERS,
         profile: profile && profile.service === service ? profile.profile : null,
-        ready: roomKey !== null && loaded?.key === roomKey,
-        unavailable: roomKey !== null && loaded?.key === roomKey && loaded.unavailable,
+        ready: known !== undefined,
+        unavailable: own?.unavailable ?? false,
     };
 }

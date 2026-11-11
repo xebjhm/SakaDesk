@@ -314,6 +314,53 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         expect(hasText(room('A').text)).toBe(true);
     });
 
+    /** Every node a commit added under the timeline while `act` runs (MutationObserver records). */
+    async function addedWhile(run: () => Promise<void>): Promise<Element[]> {
+        const added: Node[] = [];
+        const collect = (records: MutationRecord[]) => records.forEach((r) => added.push(...Array.from(r.addedNodes)));
+        const observer = new MutationObserver(collect);
+        observer.observe(timeline(), { childList: true, subtree: true });
+        await run();
+        collect(observer.takeRecords());
+        observer.disconnect();
+        return added.filter((n): n is Element => n instanceof Element);
+    }
+    const isWaitBox = (el: Element) =>
+        el.matches('[aria-busy="true"], [data-testid="chat-skeleton"]')
+        || !!el.querySelector('[aria-busy="true"], [data-testid="chat-skeleton"]');
+
+    it('I1: switching to a cached room never commits a frame without its list (no wait box)', async () => {
+        await mountOnA();
+        await open('B');
+        await advance(1000);
+        expect(hasText(room('B').text)).toBe(true);
+        const added = await addedWhile(() => open('A'));
+        expect(added.some(isWaitBox)).toBe(false);
+        expect(hasText(room('A').text)).toBe(true);
+        expect(timeline().querySelector('[role="status"][aria-busy="true"]')).toBeNull();
+    });
+
+    it("I1: another room's skeleton hold never covers a cached room opened next", async () => {
+        await mountOnA();
+        const c = gated('C');
+        replies.C = c.reply;
+        await open('C');
+        await advance(250); // C's skeleton is shown (the hold runs to 600 ms)
+        expect(skeleton()).not.toBeNull();
+        const added = await addedWhile(() => open('A'));
+        expect(added.some(isWaitBox)).toBe(false);
+        expect(skeleton()).toBeNull();
+        expect(hasText(room('A').text)).toBe(true);
+        for (let t = 0; t < 500; t += 50) {
+            await advance(50);
+            expect(hasText(room('A').text), `at ${t} ms`).toBe(true);
+            expect(timeline().querySelector('[role="status"][aria-busy="true"]'), `at ${t} ms`).toBeNull();
+            expect(skeleton(), `at ${t} ms`).toBeNull();
+        }
+        c.open();
+        await flush();
+    });
+
     it('F4: a server error shows the failure copy and Retry, never the error text; Retry refetches', async () => {
         const errors = vi.spyOn(console, 'error').mockImplementation(() => {});
         const warns = vi.spyOn(console, 'warn').mockImplementation(() => {});
