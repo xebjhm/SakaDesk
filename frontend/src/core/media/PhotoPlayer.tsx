@@ -39,7 +39,8 @@ interface PhotoPlayerProps {
     fallbackSrc?: string;
     /**
      * Bubble only: called once the shown image has loaded (or was already complete from the
-     * cache on mount). The bubble image starts transparent and fades in at that moment.
+     * cache on mount). Given it, the image starts transparent and fades in at that moment (the
+     * caller shows the pending state meanwhile); without it the image paints as it arrives.
      */
     onLoad?: () => void;
 }
@@ -144,8 +145,9 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
             onError={fail}
             onLoad={() => markLoaded(shownSrc)}
             className={cn(
-                'w-full h-full object-contain transition-opacity duration-base ease-standard motion-reduce:transition-none',
-                loadedSrc === shownSrc ? 'opacity-100' : 'opacity-0',
+                'w-full h-full object-contain',
+                onLoad && 'transition-opacity duration-base ease-standard motion-reduce:transition-none',
+                onLoad && (loadedSrc === shownSrc ? 'opacity-100' : 'opacity-0'),
                 onClick && 'cursor-pointer',
                 className,
             )}

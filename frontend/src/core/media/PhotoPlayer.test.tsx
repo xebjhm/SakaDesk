@@ -70,6 +70,11 @@ describe('PhotoPlayer', () => {
             expect(onLoad).not.toHaveBeenCalled();
         });
 
+        it('a bubble without onLoad (the letter viewer) paints at once, with no fade', () => {
+            const { getByAltText } = render(<PhotoPlayer variant="bubble" src="/letter.jpg" alt="photo" />);
+            expect(getByAltText('photo').className).not.toContain('opacity-0');
+        });
+
         it('the fullscreen variant has no fade', () => {
             const { getByAltText } = render(<PhotoPlayer variant="fullscreen" src="/full.jpg" alt="photo" />);
             expect(getByAltText('photo').className).not.toContain('opacity-0');

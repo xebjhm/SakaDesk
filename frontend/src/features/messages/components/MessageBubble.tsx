@@ -202,10 +202,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     mediaThumbWidth,
 }) => {
     const { t } = useTranslation();
-    // The message whose picture has loaded (or failed): a new message in this bubble loads again.
-    const [photoSettledId, setPhotoSettledId] = useState<number | null>(null);
-    const photoPending = photoSettledId !== message.id;
-    const settlePhoto = useCallback(() => setPhotoSettledId(message.id), [message.id]);
     const time = clockLabel(new Date(message.timestamp), timeZone);
     // Card radius; the first bubble of a run keeps a small top-left corner.
     const bubbleCorners = cn('rounded-card', runStart && 'rounded-tl-tail');
@@ -250,6 +246,12 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         ? buildMediaUrl(service, message.media_file, api_base)
         : null;
     const pictureThumb = mediaUrl && mediaThumbWidth !== undefined ? thumbnailUrl(mediaUrl, mediaThumbWidth) : undefined;
+    // The picture (message and shown src) that has loaded or failed: a new message in this bubble,
+    // or a new src for the same one, loads again, so the box never sits blank without its pulse.
+    const photoKey = `${message.id}|${pictureThumb ?? mediaUrl ?? ''}`;
+    const [photoSettledKey, setPhotoSettledKey] = useState<string | null>(null);
+    const photoPending = photoSettledKey !== photoKey;
+    const settlePhoto = useCallback(() => setPhotoSettledKey(photoKey), [photoKey]);
 
     // Transcription — only active for voice and non-muted video messages
     const isTranscribable = message.type === 'voice' || (message.type === 'video' && !message.is_muted);

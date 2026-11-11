@@ -95,6 +95,17 @@ describe('MessageBubble photo loading (L5 / F5)', () => {
         expect(box().className).toContain('animate-pulse');
     });
 
+    it('a new picture src for the same message pulses again (never a blank box)', async () => {
+        const { rerender } = render(<MessageBubble {...props} message={picture} />);
+        fireEvent.load(photo());
+        expect(box().className).not.toContain('animate-pulse');
+        rerender(<MessageBubble {...props} message={picture} mediaThumbWidth={640} />);
+        expect(box().className).toContain('animate-pulse');
+        expect(photo().className).toContain('opacity-0');
+        fireEvent.load(photo());
+        expect(box().className).not.toContain('animate-pulse');
+    });
+
     it('video bubbles keep their viewer stage and never pulse', () => {
         render(<MessageBubble {...props} message={video} />);
         const stage = screen.getByTestId('bubble-media-box');
