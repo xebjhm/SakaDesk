@@ -8,7 +8,7 @@ import { formatMessageDate } from '../shared/jst';
 import { NARRATION_CLASS } from '../shared/typeRoles';
 import { formatCount, formatSecondsOfDay, s03Copy, s09StubCopy, withNickname } from './recapCopy';
 import { posterFilename, posterNumbers, posterSince, posterYears, safeMemberId } from './posterCopy';
-import { canvasToPng, renderToCanvas, SaveError, savePng } from './posterImage';
+import { canvasToPng, NOWRAP_ATTR, renderToCanvas, SaveError, savePng } from './posterImage';
 import { ShareDialog } from './share/ShareDialog';
 import { StarDial } from './slides/StarDial';
 import { MemoryThumb } from '../shared/MemoryThumb';
@@ -57,7 +57,7 @@ const PosterStub: React.FC<{ stub: RecapStub }> = ({ stub }) => {
     const seconds = message && stub.seconds_after_midnight !== null ? formatSecondsOfDay(stub.seconds_after_midnight) : null;
     const date = message && !seconds ? formatMessageDate(message.ts, i18n.language) : null;
     return (
-        <li data-testid="poster-stub" className="flex items-center gap-2 rounded-sm border border-dashed border-subtle bg-card px-2 py-1">
+        <li data-testid="poster-stub" {...{ [NOWRAP_ATTR]: '' }} className="flex items-center gap-2 whitespace-nowrap rounded-sm border border-dashed border-subtle bg-card px-2 py-1">
             <span className="font-sans text-caption text-muted">{t(copy.label.key, copy.label.params)}</span>
             {seconds && <span className="font-mono text-caption tabular-nums text-primary">{seconds}</span>}
             {date && <time dateTime={message?.ts} className="text-caption tabular-nums text-primary">{date}</time>}

@@ -5,7 +5,7 @@ vi.mock('../../../utils/download', () => ({ openDownloadUrl: vi.fn() }));
 import { toCanvas } from 'html-to-image';
 import { openDownloadUrl } from '../../../utils/download';
 import {
-    buildFontEmbedCSS, embedFontFaces, MAX_FONT_FACES, pickFontFaces, renderToCanvas, saveBlob, SaveError, savePng,
+    buildFontEmbedCSS, embedFontFaces, EXPORT_FIT_CSS, MAX_FONT_FACES, NOWRAP_ATTR, pickFontFaces, renderToCanvas, saveBlob, SaveError, savePng,
     unicodeRangeMatches,
 } from './posterImage';
 
@@ -156,7 +156,18 @@ describe('renderToCanvas', () => {
         const fetchImpl = vi.fn(() => new Promise<Response>(() => {}));
         const out = await renderToCanvas(node, { fetchImpl: fetchImpl as unknown as typeof fetch, requestTimeoutMs: 10000, fontBudgetMs: 5 });
         expect(out.fontFallbacks).toEqual(['font_embed_timeout']);
-        expect(vi.mocked(toCanvas).mock.calls[0][1]).toEqual(expect.objectContaining({ fontEmbedCSS: '' }));
+        expect(vi.mocked(toCanvas).mock.calls[0][1]).toEqual(expect.objectContaining({ fontEmbedCSS: EXPORT_FIT_CSS }));
+    });
+
+    it('always adds the single-line fit rules, which beat the clone\'s copied inline widths', async () => {
+        // html-to-image copies every computed style inline (widths in px, white-space normal), so
+        // a pill measured with the screen font wraps when the export font is wider (D-M6).
+        const node = stage('A', []);
+        await renderToCanvas(node, { fetchImpl: vi.fn() as unknown as typeof fetch });
+        const css = vi.mocked(toCanvas).mock.calls[0][1]!.fontEmbedCSS!;
+        expect(css).toContain(`[${NOWRAP_ATTR}]`);
+        expect(css).toContain('white-space: nowrap !important');
+        expect(css).toContain('width: max-content !important');
     });
 
     it('logs font_embed_failed when the stylesheet cannot be read at all', async () => {

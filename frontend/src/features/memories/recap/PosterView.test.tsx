@@ -13,6 +13,7 @@ vi.mock('./posterImage', async (importOriginal) => {
     const actual = await importOriginal<typeof import('./posterImage')>();
     return {
         SaveError: actual.SaveError,
+        NOWRAP_ATTR: actual.NOWRAP_ATTR,
         readCssVar: actual.readCssVar,
         saveBlob: actual.saveBlob,
         renderToCanvas: vi.fn(async () => ({ canvas: {}, fontFallbacks: [], fontTruncation: null })),
@@ -66,6 +67,9 @@ describe('PosterView', () => {
             .toHaveAttribute('src', '/api/content/thumb/s.jpg?w=480');
         expect(within(poster).getAllByTestId('poster-stub')).toHaveLength(1);
         expect(within(poster).getByTestId('poster-stub')).toHaveTextContent('0:00:07');
+        // One line on screen and in the exported image (D-M6: the PNG wrapped the date stub).
+        expect(within(poster).getByTestId('poster-stub')).toHaveAttribute('data-image-nowrap');
+        expect(within(poster).getByTestId('poster-stub').className).toContain('whitespace-nowrap');
     });
 
     it('shows at most three relationship numbers, never a total', () => {

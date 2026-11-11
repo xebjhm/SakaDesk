@@ -37,6 +37,17 @@ export const EXPORT_POST_TIMEOUT_MS = 30000;
 const IMAGE_PLACEHOLDER = 'data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7';
 /** Children marked with this attribute are left out of the image. */
 export const EXCLUDE_ATTR = 'data-image-exclude';
+/** Elements marked with this attribute (and their children) stay on one line in the image. */
+export const NOWRAP_ATTR = 'data-image-nowrap';
+/**
+ * Rules added to every image's embedded stylesheet. `html-to-image` copies each computed style
+ * onto the clone inline, widths in px included, so a pill measured with the screen font wraps
+ * (CJK breaks anywhere) when the export draws a slightly wider font. `!important` rules beat
+ * those inline copies: marked elements keep one line and size to their text in the export's font.
+ */
+export const EXPORT_FIT_CSS =
+    `[${NOWRAP_ATTR}], [${NOWRAP_ATTR}] * { white-space: nowrap !important; width: max-content !important; `
+    + 'min-width: max-content !important; max-width: none !important; flex-shrink: 0 !important; }';
 
 /** A CSS custom property's computed value (canvas renderers read the tokens this way, never literals). */
 export function readCssVar(name: string, el: Element = document.documentElement): string {
@@ -278,7 +289,8 @@ export interface RenderResult {
 
 /**
  * Draws the node on a canvas `width` pixels wide (the height follows its aspect). Children
- * marked {@link EXCLUDE_ATTR} are left out. Font embedding never blocks past its budget; it
+ * marked {@link EXCLUDE_ATTR} are left out; those marked {@link NOWRAP_ATTR} stay on one line
+ * ({@link EXPORT_FIT_CSS}). Font embedding never blocks past its budget; it
  * degrades to system fonts instead. Rejects when the node cannot be drawn.
  */
 export async function renderToCanvas(node: HTMLElement, opts: RenderOptions = {}): Promise<RenderResult> {
@@ -308,7 +320,7 @@ export async function renderToCanvas(node: HTMLElement, opts: RenderOptions = {}
     const shown = node.getBoundingClientRect().width || node.offsetWidth;
     const canvas = await toCanvas(node, {
         pixelRatio: shown > 0 ? width / shown : 1,
-        fontEmbedCSS,
+        fontEmbedCSS: fontEmbedCSS ? `${fontEmbedCSS}\n${EXPORT_FIT_CSS}` : EXPORT_FIT_CSS,
         cacheBust: false,
         imagePlaceholder: IMAGE_PLACEHOLDER,
         filter: (n) => !(n instanceof Element && n.hasAttribute(EXCLUDE_ATTR)),
