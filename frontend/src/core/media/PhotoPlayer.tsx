@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useLayoutEffect, useRef } from 'react';
 import { ImageOff } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 
@@ -37,6 +37,11 @@ interface PhotoPlayerProps {
      * too is the broken-photo look shown and `onError` called.
      */
     fallbackSrc?: string;
+    /**
+     * Bubble only: called once the shown image has loaded (or was already complete from the
+     * cache on mount). The bubble image starts transparent and fades in at that moment.
+     */
+    onLoad?: () => void;
 }
 
 /**
@@ -69,6 +74,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     className,
     onError,
     fallbackSrc,
+    onLoad,
 }) => {
     const [hasError, setHasError] = useState(false);
     // The `src` that failed while a `fallbackSrc` was given: the image then shows the fallback.
@@ -79,6 +85,27 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     useEffect(() => { setHasError(false); }, [src]);
     const effectiveLoading = loading ?? 'eager';
     const shownSrc = fallbackSrc && failedSrc === src ? fallbackSrc : src;
+    // Bubble fade-in: the src that has loaded. A new src (or the switch to the fallback) starts transparent again.
+    const [loadedSrc, setLoadedSrc] = useState<string | null>(null);
+    const imgRef = useRef<HTMLImageElement>(null);
+    const onLoadRef = useRef(onLoad);
+    useLayoutEffect(() => { onLoadRef.current = onLoad; });
+    // Reported once per src: a cached image seen complete on mount may still fire its load event.
+    const reportedSrcRef = useRef<string | null>(null);
+    const markLoaded = (loaded: string) => {
+        setLoadedSrc(loaded);
+        if (reportedSrcRef.current === loaded) return;
+        reportedSrcRef.current = loaded;
+        onLoadRef.current?.();
+    };
+    // An image already in the cache is complete before React can attach onLoad: show it at once
+    // (before paint, so it never flashes transparent). naturalWidth 0 means complete but broken.
+    useLayoutEffect(() => {
+        if (variant !== 'bubble') return;
+        const img = imgRef.current;
+        if (img?.complete && img.naturalWidth > 0) markLoaded(shownSrc);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- markLoaded only touches state and refs
+    }, [variant, shownSrc]);
 
     const fallback = (extraClasses?: string) => <PhotoFallback className={extraClasses} />;
     const fail = () => {
@@ -109,12 +136,19 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     if (hasError) return fallback(cn('w-full h-full', className));
     return (
         <img
+            ref={imgRef}
             src={shownSrc}
             alt={alt}
             loading={effectiveLoading}
             onClick={onClick}
             onError={fail}
-            className={cn('w-full h-full object-contain', onClick && 'cursor-pointer', className)}
+            onLoad={() => markLoaded(shownSrc)}
+            className={cn(
+                'w-full h-full object-contain transition-opacity duration-base ease-standard motion-reduce:transition-none',
+                loadedSrc === shownSrc ? 'opacity-100' : 'opacity-0',
+                onClick && 'cursor-pointer',
+                className,
+            )}
         />
     );
 };

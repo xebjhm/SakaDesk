@@ -18,7 +18,8 @@ import { useJustBecame } from '../../../hooks/useJustBecame';
 import { buildMediaUrl, MEDIA_API_BASE, thumbnailUrl, type ThumbWidth } from '../mediaUrl';
 import { groupTokens } from '../../../design/tokens';
 import { serviceGroupId } from '../../../config/serviceGroup';
-import { Avatar } from '../../../design/primitives';
+import { Avatar, SKELETON_PULSE, Spinner } from '../../../design/primitives';
+import { useDelayedLoading } from '../../../design/loading';
 
 interface MessageBubbleProps {
     message: Message;
@@ -91,6 +92,11 @@ const DEFAULT_MEDIA_HEIGHT = 200;
 interface MediaContainerProps {
     message: Message;
     isVideo?: boolean;
+    /**
+     * Picture only: the photo has not loaded yet. The box pulses (`SKELETON_PULSE` on `bg-sunken`);
+     * under reduced motion, where the pulse stops, a labelled spinner shows from `reveal` instead.
+     */
+    pending?: boolean;
     children: React.ReactNode;
 }
 
@@ -98,7 +104,10 @@ interface MediaContainerProps {
  * Container for media that uses pre-calculated dimensions to prevent layout jitter.
  * Falls back to default dimensions if width/height not available.
  */
-const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = false, children }) => {
+const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = false, pending = false, children }) => {
+    const { t } = useTranslation();
+    // After `reveal`, so a photo from the cache never flashes the spinner.
+    const showSpinner = useDelayedLoading(pending);
     let containerStyle: React.CSSProperties = {
         minHeight: DEFAULT_MEDIA_HEIGHT,
     };
@@ -125,13 +134,20 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
 
     return (
         <div
+            data-testid="bubble-media-box"
             className={cn(
-                "rounded-sm overflow-hidden mb-2 flex items-center justify-center",
-                isVideo ? "bg-viewer-stage" : "bg-elevated"
+                "relative rounded-sm overflow-hidden mb-2 flex items-center justify-center",
+                isVideo ? "bg-viewer-stage" : pending ? cn("bg-sunken", SKELETON_PULSE) : "bg-elevated"
             )}
             style={containerStyle}
         >
             {children}
+            {!isVideo && showSpinner && (
+                // Only under reduced motion (the pulse is static there); its label then shows too.
+                <div className="pointer-events-none absolute inset-0 hidden items-center justify-center motion-reduce:flex">
+                    <Spinner size="sm" tone="muted" label={t('media.photoLoading')} />
+                </div>
+            )}
         </div>
     );
 };
@@ -186,6 +202,10 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     mediaThumbWidth,
 }) => {
     const { t } = useTranslation();
+    // The message whose picture has loaded (or failed): a new message in this bubble loads again.
+    const [photoSettledId, setPhotoSettledId] = useState<number | null>(null);
+    const photoPending = photoSettledId !== message.id;
+    const settlePhoto = useCallback(() => setPhotoSettledId(message.id), [message.id]);
     const time = clockLabel(new Date(message.timestamp), timeZone);
     // Card radius; the first bubble of a run keeps a small top-left corner.
     const bubbleCorners = cn('rounded-card', runStart && 'rounded-tl-tail');
@@ -404,7 +424,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                         {/* Picture */}
                         {message.type === 'picture' && mediaUrl && (
-                            <MediaContainer message={message}>
+                            <MediaContainer message={message} pending={photoPending}>
                                 <PhotoPlayer
                                     variant="bubble"
                                     src={pictureThumb ?? mediaUrl}
@@ -412,6 +432,8 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     loading={mediaLoading}
                                     alt={t('messageList.attachment')}
                                     onClick={() => onMediaClick?.(mediaUrl, 'picture', message.timestamp)}
+                                    onLoad={settlePhoto}
+                                    onError={settlePhoto}
                                 />
                             </MediaContainer>
                         )}
