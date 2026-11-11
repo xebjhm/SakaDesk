@@ -38,7 +38,6 @@ interface MemberPaneProps {
     className?: string;
 }
 
-
 const AVATAR_PX = 32;
 
 /** The pane's narrowest width, in rem: what it gets at the 960 x 640 minimum window. */
@@ -96,7 +95,7 @@ const LoadingRows: React.FC = () => {
 };
 
 /**
- * The Memories left list (album, favorites, memoir, radio, calendar): an optional all row, then one
+ * The Memories left list (album, favorites, memoir, radio): an optional all row, then one
  * row per person with her avatar, name (`lang="ja"`), an oshi heart in the semantic oshi tone
  * (never the group accent) and a trailing detail (never a 0) on its own line below the name, so a
  * long detail (「1 小時 1 分」) never takes the name's width. Scrolls inside itself.

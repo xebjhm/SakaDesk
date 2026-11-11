@@ -1,5 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../../../i18n';
+import { useDelayedLoading } from '../../../design/loading';
 import { Avatar, Skeleton } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { resizedAvatarUrl } from '../../messages/mediaUrl';
@@ -73,17 +74,20 @@ export const MemoirHeader: React.FC<MemoirHeaderProps> = ({ header, onNames, onD
 /**
  * The header's place while it loads (same height), so the tabs and binder do not jump: paper
  * `Skeleton`s (her avatar circle and two lines) under `role="status"` with an `sr-only`
- * `loading.label` (visible under reduced motion, where the skeletons hold still).
+ * `loading.label` (visible under reduced motion, where the skeletons hold still). The boxes hold
+ * the layout from the first render and pulse only from the reveal delay.
  */
 export const MemoirHeaderPlaceholder: React.FC = () => {
     const { t } = useTranslation();
     const label = t('loading.label');
+    // The boxes hold the layout at once; they pulse only from the reveal delay (no flash on a fast load).
+    const still = !useDelayedLoading(true) && 'animate-none';
     return (
         <div data-testid="memoir-header-loading" role="status" aria-busy="true" aria-label={label} className="flex shrink-0 items-center gap-4 px-4 py-3">
-            <Skeleton shape="circle" tone="paper" className="h-14 w-14 shrink-0" />
+            <Skeleton shape="circle" tone="paper" className={cn('h-14 w-14 shrink-0', still)} />
             <span aria-hidden="true" className="flex min-w-0 flex-1 flex-col gap-2">
-                <Skeleton shape="line" tone="paper" className="h-6 w-40" />
-                <Skeleton shape="line" tone="paper" className="h-6 w-64" />
+                <Skeleton shape="line" tone="paper" className={cn('h-6 w-40', still)} />
+                <Skeleton shape="line" tone="paper" className={cn('h-6 w-64', still)} />
             </span>
             {/* Under reduced motion the skeletons hold still: the label then shows. */}
             <span className="sr-only shrink-0 text-small text-secondary motion-reduce:not-sr-only">{label}</span>

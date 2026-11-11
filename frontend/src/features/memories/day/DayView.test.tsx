@@ -202,8 +202,25 @@ describe('DayView keeps the previous day (F24)', () => {
         const kept = screen.getByTestId('day-merged');
         expect(kept.textContent).toContain('リハ終わり！');
         expect(kept.closest('[aria-busy="true"]')).not.toBeNull();
+        expect(kept.closest('[inert]')).not.toBeNull();
         finish(dayPayload({ date: '2024-09-15', messages: [dayMessage(MIKU, { id: 77, ts: '2024-09-15T03:00:00Z', text: '次の日 🍜' })] }));
         await waitFor(() => expect(screen.getByTestId('day-merged').textContent).toContain('次の日 🍜'));
         expect(screen.getByTestId('day-merged').closest('[aria-busy="true"]')).toBeNull();
+    });
+});
+
+describe('DayView never keeps an empty day', () => {
+    it('a step away from an empty day shows the loading state, not the empty line under the new date', async () => {
+        vi.mocked(fetchDay).mockResolvedValueOnce(dayPayload({ messages: [] }));
+        const { rerender } = renderDay();
+        expect(await screen.findByText('No memories from this day here yet. Try opening another day.')).toBeInTheDocument();
+        vi.mocked(fetchDay).mockImplementationOnce(() => new Promise(() => {}));
+        rerender(
+            <NicknameProvider nickname="みーぱん">
+                <DayView service="hinatazaka46" date="2024-09-15" />
+            </NicknameProvider>,
+        );
+        expect(screen.queryByText('No memories from this day here yet. Try opening another day.')).toBeNull();
+        await waitFor(() => expect(screen.getByRole('status', { name: 'Loading…' })).toBeInTheDocument());
     });
 });

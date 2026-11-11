@@ -269,6 +269,39 @@ describe('useMemoriesQuery', () => {
             expect(result.current).toMatchObject({ status: 'ready', data: { n: 3 }, stale: false });
         });
 
+        it('never keeps an empty payload (isEmpty): the next load reads as a plain loading', async () => {
+            const { load, resolvers } = deferred();
+            const { result, rerender } = renderHook(
+                ({ dep }) => useMemoriesQuery('day', load, [dep], { keepPrevious: { scope: 's', isEmpty: (d) => d.n === 0 } }),
+                { initialProps: { dep: 1 } },
+            );
+            await act(async () => { resolvers[0]({ n: 0, title: '空' }); });
+            rerender({ dep: 2 });
+            expect(result.current).toMatchObject({ status: 'loading', data: null, stale: false });
+            await act(async () => { resolvers[1]({ n: 5, title: '思い出 🌸' }); });
+            rerender({ dep: 3 });
+            expect(result.current).toMatchObject({ status: 'loading', data: { n: 5 }, stale: true });
+        });
+
+        it('a Retry after an error does not bring back the older kept payload', async () => {
+            let fail = false;
+            const load = vi.fn(async () => {
+                if (fail) throw new MemoriesTimeoutError();
+                return { n: 1 };
+            });
+            const { result, rerender } = renderHook(
+                ({ dep }) => useMemoriesQuery('timeline_month', load, [dep], { keepPrevious: { scope: 's' } }),
+                { initialProps: { dep: 1 } },
+            );
+            await waitFor(() => expect(result.current.status).toBe('ready'));
+            fail = true;
+            rerender({ dep: 2 });
+            await waitFor(() => expect(result.current.failure).toBe('timeout'));
+            load.mockImplementation(() => new Promise(() => {}));
+            act(() => result.current.retry());
+            expect(result.current).toMatchObject({ status: 'loading', data: null, stale: false });
+        });
+
         it('an error of the next key drops the kept payload', async () => {
             let fail = false;
             const load = async () => {
@@ -325,6 +358,36 @@ describe('useMemoriesQuery', () => {
             expect(result.current.status).toBe('loading');
             await act(async () => { await vi.advanceTimersByTimeAsync(300); });
             expect(result.current).toMatchObject({ status: 'error', failure: 'error' });
+        });
+
+        it('a deps change during the hold drops the held result; nothing commits under the new key', async () => {
+            vi.useFakeTimers();
+            const load = vi.fn((_signal: AbortSignal) => new Promise<{ n: number }>((resolve) => { setTimeout(() => resolve({ n: 1 }), 300); }));
+            const { result, rerender } = renderHook(({ dep }) => useMemoriesQuery('album', load, [dep]), { initialProps: { dep: 1 } });
+            await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+            expect(result.current.status).toBe('loading');
+            load.mockImplementation(() => new Promise(() => {}));
+            rerender({ dep: 2 });
+            await act(async () => { await vi.advanceTimersByTimeAsync(1000); });
+            expect(result.current).toMatchObject({ status: 'loading', data: null });
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it('an unmount during the hold clears its timer', async () => {
+            vi.useFakeTimers();
+            const load = () => new Promise<{ n: number }>((resolve) => { setTimeout(() => resolve({ n: 1 }), 300); });
+            const { unmount } = renderHook(() => useMemoriesQuery('album', load, []));
+            await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+            unmount();
+            expect(vi.getTimerCount()).toBe(0);
+        });
+
+        it('settle: false commits at once (the album month loader frees its fetch slot on arrival)', async () => {
+            vi.useFakeTimers();
+            const load = () => new Promise<{ n: number }>((resolve) => { setTimeout(() => resolve({ n: 1 }), 300); });
+            const { result } = renderHook(() => useMemoriesQuery('album_month', load, [], { settle: false }));
+            await act(async () => { await vi.advanceTimersByTimeAsync(300); });
+            expect(result.current.status).toBe('ready');
         });
 
         it('a quiet reload commits at once', async () => {

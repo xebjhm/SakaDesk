@@ -43,7 +43,8 @@ const CapsuleDue: React.FC<{ service: string; monthDay: string; go: OnThisDayPag
  * none). With `route.year` it is the detail (A): the year list and that year's
  * 那一天 view, ← / → (and ‹ ›) stepping between years with messages (older / newer). One
  * request per month-day serves both; while the next month-day loads, the previous one stays on
- * screen (`keepPrevious`, `BusyContent`: `aria-busy`, dimmed after the reveal delay).
+ * screen (`keepPrevious`, `BusyContent`: `aria-busy` and inert, dimmed after the reveal delay);
+ * an empty day is never kept (the next one shows the loading state).
  */
 export const OnThisDayPage: React.FC<OnThisDayPageProps> = ({ service, route, go }) => {
     const { t, i18n } = useTranslation();
@@ -52,7 +53,8 @@ export const OnThisDayPage: React.FC<OnThisDayPageProps> = ({ service, route, go
     const query = useMemoriesQuery('on_this_day', (signal) => fetchOnThisDay(service, monthDay, signal), [service, monthDay], {
         count: (d) => d.years.filter((y) => y.has_messages).length,
         // A month-day step keeps the previous day's years on screen, dimmed, until the next arrive.
-        keepPrevious: { scope: service },
+        // An empty day is never kept: its empty copy would read as the next day's answer.
+        keepPrevious: { scope: service, isEmpty: (d) => !d.years.some((y) => y.has_messages) },
     });
     const data = query.data;
     const years = useMemo(() => data?.years ?? [], [data]);
@@ -125,7 +127,7 @@ export const OnThisDayPage: React.FC<OnThisDayPageProps> = ({ service, route, go
             content = <YearStrip years={withMessages} resetKey={monthDay} onOpen={toYear} />;
         }
         body = (
-            <BusyContent busy={query.stale} className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col">
+            <BusyContent busy={query.stale} inertWhileBusy className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col">
                 {content}
             </BusyContent>
         );

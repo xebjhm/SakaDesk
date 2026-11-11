@@ -168,7 +168,14 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
         'album',
         async (signal) => ({ payload: await fetchAlbumMonths(service, { member, kind }, signal), member, kind }),
         [service, member, kind, coverVersion],
-        { count: (d) => d.payload.months.length, keepPrevious: { scope: service } },
+        // Committed on arrival (no min-visible hold): the first band's fetch waits for these months
+        // (D4 first / second open). An empty payload is never kept (its empty state would answer
+        // for the next selection).
+        {
+            count: (d) => d.payload.months.length,
+            keepPrevious: { scope: service, isEmpty: (d) => d.payload.months.length === 0 },
+            settle: false,
+        },
     );
     const shownMonths = months.data?.payload ?? null;
     // A kept payload of another person or filter: its bands draw what they have and fetch nothing.
@@ -219,7 +226,11 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     // The tiles' grid reporter (visibility root: the album's scroll container) and the background
     // thumbnail preparation, shown while there are bands on screen.
     const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
-    const itemCount = useMemo(() => (shownMonths?.months ?? []).reduce((n, m) => n + m.count, 0), [shownMonths]);
+    // The kept months of another person or filter are not this grid's: they count nothing.
+    const itemCount = useMemo(
+        () => (switching ? 0 : (shownMonths?.months ?? []).reduce((n, m) => n + m.count, 0)),
+        [shownMonths, switching],
+    );
     const reporter = useMediaGridReporter('album', scrollRoot, itemCount);
 
     const pickMember = (key: string | null) => {

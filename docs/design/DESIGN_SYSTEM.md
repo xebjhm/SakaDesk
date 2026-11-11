@@ -691,7 +691,7 @@ A shown indicator stays at least 400 ms (`minVisible`; `settleDelay(elapsed)` gi
 | `Skeleton` | `shape` `line` / `block` / `circle` / `tile`, `tone` `sunken` (default, `bg-sunken`) / `paper` (`bg-skeleton`) / `data` (no colour; the caller paints `style`), `className`, `style` | `SKELETON_PULSE` (`animate-pulse motion-reduce:animate-none`); always `aria-hidden`, the parent carries `role="status"` and a label |
 | `StatusBlock` | `kind` `loading` / `empty` / `error` / `timeout`, `surface` (a `ui_wait` code), `variant` `pane` / `dialog` (default) / `block` / `fill` / `inline`, `title`, `hint`, `icon`; loading: `label`, `skeleton`, `slowHint`, `verySlowHint`, `onCancel`, `cancelLabel`, `progress`, `stage` (previews only); empty: `title` (required), `action`; timeout: `onRetry` (required); error: `onRetry` (give it whenever the load can run again; without it the alert shows with no button); both: `retryLabel`, `retryVariant` | loading: an empty `role="status"` box with `aria-busy` (same size) until `reveal`, then (without `aria-busy`, so the label, the slow line and the explanation are announced) the skeleton or an accent spinner, then the hints, Cancel (ghost) and bar as in the timing table. error: `role="alert"`, danger icon tile, `loading.error`, Retry (`secondary`). timeout: `role="alert"`, neutral `Clock` tile (`bg-sunken text-muted`, never danger), `loading.timeout` + `loading.timeoutHint`, Retry. empty: `EmptyState` |
 | `ProgressBar` | `value` (0..1; null / undefined = indeterminate), `label` (required, the accessible name), `valueText`, `size` `thin` / `sm` / `md` (`h-0.5` / `h-2` / `h-4`), `showLabel`, `labelClassName` | `bg-sunken rounded-full` track, `bg-expressive-progress` fill (`transition-all duration-base`, none under reduced motion); indeterminate: a `w-1/3` segment on `animate-progress-indeterminate` |
-| `BusyContent` | `busy`, `label`, `children`, `className`, `contentClassName` | keeps the previous content, `aria-busy`; after `reveal` the content dims to `opacity-60` and a thin indeterminate `ProgressBar` sits on the top edge (no pointer events). Under reduced motion its label shows on a small `bg-sheet` pill under the bar, never painted straight over the content |
+| `BusyContent` | `busy`, `label`, `children`, `className`, `contentClassName`, `inertWhileBusy` | keeps the previous content, `aria-busy` (with `inertWhileBusy` also `inert` and `pointer-events-none` at once, for kept content whose clicks would act on the old selection); after `reveal` the content dims to `opacity-60` and a thin indeterminate `ProgressBar` sits on the top edge (no pointer events). Under reduced motion its label shows on a small `bg-sheet` pill under the bar, never painted straight over the content |
 
 Variants of `StatusBlock`: `pane` fills a flex pane (`flex-1 p-6`: Memories, chat), `dialog`
 sits in a dialog body (`px-6 py-12`), `block` is a fixed `h-72` block, `fill` fills the scroll
@@ -700,11 +700,16 @@ visible, `text-small text-secondary`; error and timeout drop the icon tile and u
 
 **Memories views** (`features/memories/shared/`): `useMemoriesQuery` reports `failure`
 (`timeout` / `error`), `stale` (kept payload) and `polling` (a quiet `refreshWhile` reload is
-pending), and holds a visible result for `settleDelay` so a revealed indicator stays `minVisible`.
+pending), and holds a visible result for `settleDelay` so a revealed indicator stays `minVisible`
+(`settle: false` commits on arrival: the album months and month bands, so a D4 fetch slot frees the
+moment its answer lands).
 `MemoriesStatus` maps a query onto `StatusBlock` (surface `memories_<view>`, the Memories slow /
 very-slow copy, `memories.common.loadError` or the `memories.common.timeout` copy, Retry). A step
 inside a loaded view (timeline month, On This Day month-day, 那一天, calendar month, album person
-or filter) passes `keepPrevious: { scope }` and wraps the kept body in `BusyContent busy={query.stale}`.
+or filter) passes `keepPrevious: { scope, isEmpty }` and wraps the kept body in
+`BusyContent busy={query.stale}` (`inertWhileBusy` for the timeline, On This Day and 那一天). An
+empty payload is never kept (the next selection shows the loading state, never "nothing here"),
+and a failed load forgets the kept payload, so its Retry shows the loading state too.
 `MemberPane` takes `status` / `onRetry`: six `Skeleton` rows after `reveal`, or an inline error /
 timeout line with Retry below the 「全員」 row.
 

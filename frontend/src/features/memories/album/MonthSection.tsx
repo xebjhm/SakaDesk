@@ -51,7 +51,9 @@ const MonthLoader: React.FC<Pick<MonthSectionProps, 'service' | 'member' | 'kind
         'album_month',
         (signal) => fetchAlbumMonth(service, month, { member, kind }, signal),
         [service, month, member, kind],
-        { count: (d) => d.items.length },
+        // Committed on arrival: the band frees its fetch slot (MAX_IN_FLIGHT, D4) the moment the
+        // answer lands, never after a min-visible hold.
+        { count: (d) => d.items.length, settle: false },
     );
     useEffect(() => {
         if (query.status === 'ready' && query.data) onLoaded(month, query.data);

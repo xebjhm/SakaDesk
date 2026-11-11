@@ -133,8 +133,8 @@ function anchorDate(view: TimelineMonthPayload): string | undefined {
  * then up to twelve photos (the media viewer, jump logged as `timeline`), the labelled word slots
  * (empty ones left out) and the milestones. A month change aborts the fetch in flight; until the
  * new month arrives the last loaded one of hers stays (`keepPrevious`, `BusyContent`: `aria-busy`,
- * dimmed after the reveal delay, not clickable; its number is not shown under the new month's
- * label). The header holds the host's `headerSlot`; with `thenNow` the body
+ * dimmed after the reveal delay, inert: its photos would open the viewer at the new month's
+ * index; its number is not shown under the new month's label). The header holds the host's `headerSlot`; with `thenNow` the body
  * is `ThenNowPanel` instead: the day mode for the month's anchor date ({@link anchorDate}) and
  * 初見と今 for her.
  */
@@ -174,12 +174,11 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
             return m ? [{ slot, label, m }] : [];
         });
         body = (
-            <BusyContent busy={stale}>
+            <BusyContent busy={stale} inertWhileBusy>
                 <div
                     data-testid="timeline-month-body"
                     aria-busy={stale ? 'true' : undefined}
-                    // The kept month's photos open the viewer of the month on screen: not until it lands.
-                    className={cn('flex flex-col gap-4', stale && 'pointer-events-none')}
+                    className="flex flex-col gap-4"
                 >
                     {viewerItems.viewable.length > 0 && (
                         <ul data-testid="timeline-photos" className="flex gap-2 overflow-x-auto pb-1">

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 import { MemoirHeader, MemoirHeaderPlaceholder } from './MemoirHeader';
@@ -70,5 +70,19 @@ describe('MemoirHeaderPlaceholder', () => {
         expect(skeletons[0]).toHaveClass('rounded-pill', 'h-14', 'w-14', 'bg-skeleton');
         expect(skeletons.slice(1).every((s) => s.classList.contains('bg-skeleton') && s.classList.contains('h-6'))).toBe(true);
         expect(box.textContent).not.toContain('読み込み中...');
+    });
+
+    it('holds the skeletons still until the reveal delay (a fast header never flashes a pulse)', () => {
+        vi.useFakeTimers();
+        try {
+            render(<MemoirHeaderPlaceholder />);
+            const skeletons = () => [...screen.getByTestId('memoir-header-loading').querySelectorAll('[data-skeleton]')];
+            act(() => { vi.advanceTimersByTime(199); });
+            expect(skeletons().every((s) => s.classList.contains('animate-none') && !s.classList.contains('animate-pulse'))).toBe(true);
+            act(() => { vi.advanceTimersByTime(1); });
+            expect(skeletons().every((s) => s.classList.contains('animate-pulse'))).toBe(true);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 });

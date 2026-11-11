@@ -148,6 +148,46 @@ describe('AlbumPage', () => {
         expect(section('2025-03').closest('[aria-busy="true"]')).toBeNull();
     });
 
+    it('a switch away from an empty filter shows the loading state, never the stale empty state', async () => {
+        vi.mocked(fetchAlbumMonths).mockImplementation(async (_s, q) => (q.kind === 'favorite' ? monthsPayload([]) : monthsPayload()));
+        renderAlbum();
+        await screen.findByTestId('album-month-2026-10');
+        await userEvent.click(screen.getByRole('button', { name: /Favorites/ }));
+        expect(await screen.findByText('There are no photos to lay out here yet.')).toBeInTheDocument();
+        vi.mocked(fetchAlbumMonths).mockImplementationOnce(() => new Promise(() => {}));
+        await userEvent.click(screen.getByRole('button', { name: 'All' }));
+        // The empty payload is not kept: the album's loading state shows (after the reveal delay).
+        expect(screen.queryByText('There are no photos to lay out here yet.')).toBeNull();
+        await waitFor(() => expect(screen.getByRole('status', { name: 'Loading…' })).toBeInTheDocument());
+    });
+
+    it('frees a band fetch slot when its answer arrives: six ~250 ms bands fill in ~750 ms (D4, no min-visible hold)', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-11-10T03:00:00Z'));
+        const fire = stubObserver();
+        vi.mocked(fetchAlbumMonths).mockResolvedValue(monthsPayload(MANY.map((m) => monthSummary(m))));
+        vi.mocked(fetchAlbumMonth).mockImplementation((_s, month) => new Promise((resolve) => {
+            setTimeout(() => resolve(monthPayload(month)), 250);
+        }));
+        // Small steps, each its own act, so React commits (and grants slots) as it would live.
+        const advance = async (ms: number) => {
+            for (let t = 0; t < ms; t += 10) await act(async () => { await vi.advanceTimersByTimeAsync(Math.min(10, ms - t)); });
+        };
+        renderAlbum();
+        await advance(10);
+        expect(screen.getByTestId('album-month-2026-10')).toBeInTheDocument();
+        for (const m of MANY.slice(0, 6)) fire(m);
+        await advance(10);
+        expect(fetchAlbumMonth).toHaveBeenCalledTimes(MAX_IN_FLIGHT);
+        // Two at a time, each slot freed on arrival: the third pair starts at ~500 ms (a 400 ms hold would make it ~1200).
+        await advance(510);
+        expect(fetchAlbumMonth).toHaveBeenCalledTimes(6);
+        await advance(260);
+        for (const m of MANY.slice(0, 6)) {
+            expect(section(m).querySelector('[data-testid^="album-tile-"]'), m).not.toBeNull();
+        }
+    });
+
     it('shows the member list loading, then its error with Retry', async () => {
         vi.mocked(fetchAlbumMembers).mockReset()
             .mockRejectedValueOnce(new MemoriesFetchError(500))

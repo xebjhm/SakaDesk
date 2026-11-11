@@ -41,11 +41,20 @@ export interface MemoriesQueryOptions<T> {
     refreshWhile?: (data: T) => boolean;
     /**
      * Keep the last ready payload on screen while the next deps load, when it was loaded under an
-     * equal `scope` (`Object.is`; arrays compare element-wise, so `[service, member]` is fine).
-     * The query then reads `loading` with that payload and `stale: true`; a different scope (or
-     * the first load) reads null data. An error of the next deps drops it.
+     * equal `scope` (`Object.is`; arrays compare element-wise, so `[service, member]` is fine) and
+     * is not empty (`isEmpty`, e.g. no months: an empty view under the next selection would read
+     * as its final answer). The query then reads `loading` with that payload and `stale: true`; a
+     * different scope, an empty payload or the first load reads null data. A failed (non-quiet)
+     * run forgets the kept payload, so neither its error nor the Retry after it brings back older
+     * content.
      */
-    keepPrevious?: { scope: unknown };
+    keepPrevious?: { scope: unknown; isEmpty?: (data: T) => boolean };
+    /**
+     * Hold a visible result for `settleDelay` (default true). False commits on arrival: for loads
+     * whose arrival frees shared capacity (the album's month fetch slots, D4) and whose host has no
+     * indicator worth holding.
+     */
+    settle?: boolean;
 }
 
 /** Delay between quiet reloads of `refreshWhile`. */
@@ -82,16 +91,18 @@ interface QueryState<T> {
  * `retry` or an unmount aborts the run in flight, and an aborted run never touches state or
  * logs. A result is kept with the key (`target`, attempt, `deps`) it was loaded for, so on
  * the very render where the deps change the hook already reads `loading`, never the previous
- * deps' data as ready (with `keepPrevious` it reads `loading` with the previous payload,
- * `stale: true`). Every finished run logs `memories_load`: `outcome` `ok` with `count` (the
- * `count` option, else the first top-level list length), `timeout` (the API gave up, see
- * `MEMORIES_TIMEOUT_MS`; the query reads `failure: 'timeout'`) or `error` with `error_code` (the
- * HTTP status of a rejected request; `failure: 'error'`).
+ * deps' data as ready (with `keepPrevious` it reads `loading` with the previous non-empty
+ * payload of the scope, `stale: true`; a failed run forgets it).
+ * Every finished run logs `memories_load`: `outcome` `ok` with `count` (the `count` option, else
+ * the first top-level list length), `timeout` (the API gave up, see `MEMORIES_TIMEOUT_MS`; the
+ * query reads `failure: 'timeout'`) or `error` with `error_code` (the HTTP status of a rejected
+ * request; `failure: 'error'`).
  * A run that settles `e` ms after it started commits after `settleDelay(e)`, so a loading
- * indicator revealed at `motion.loading.reveal` stays at least `minVisible`; quiet reloads
- * commit at once. `load`, `count`, `refreshWhile` and the `keepPrevious` scope are read through
- * refs: only `deps`, `retry` and `enabled` start a new run. `refreshWhile` reloads the same key
- * quietly (see the option); `polling` is true while such a reload is scheduled or in flight.
+ * indicator revealed at `motion.loading.reveal` stays at least `minVisible`; quiet reloads and
+ * `settle: false` queries commit at once. `load`, `count`, `refreshWhile`, `settle` and the
+ * `keepPrevious` scope are read through refs (`isEmpty` at render): only `deps`, `retry` and
+ * `enabled` start a new run. `refreshWhile` reloads the same key quietly (see the option);
+ * `polling` is true while such a reload is scheduled or in flight.
  * A disabled query (`enabled: false`) never loads or logs and reads `ready` with null data.
  */
 export function useMemoriesQuery<T>(
@@ -109,6 +120,8 @@ export function useMemoriesQuery<T>(
     const keep = options.keepPrevious;
     const scopeRef = useRef<unknown>(keep?.scope);
     scopeRef.current = keep?.scope;
+    const settleRef = useRef(options.settle ?? true);
+    settleRef.current = options.settle ?? true;
     const [attempt, setAttempt] = useState(0);
     const enabled = options.enabled ?? true;
     const key: unknown[] = [target, attempt, enabled, ...deps];
@@ -128,7 +141,7 @@ export function useMemoriesQuery<T>(
             const startedAt = performance.now();
             // Hold a visible (non-quiet) result so a shown indicator stays `minVisible`.
             const commit = (apply: () => void) => {
-                const delay = quiet ? 0 : settleDelay(performance.now() - startedAt);
+                const delay = quiet || !settleRef.current ? 0 : settleDelay(performance.now() - startedAt);
                 if (delay <= 0) apply();
                 else settle = setTimeout(() => { if (!controller.signal.aborted) apply(); }, delay);
             };
@@ -157,7 +170,11 @@ export function useMemoriesQuery<T>(
                         setState((prev) => (prev && prev.polling ? { ...prev, polling: false } : prev));
                         return;
                     }
-                    commit(() => setState({ key: runKey, status: 'error', data: null, failure: timedOut ? 'timeout' : 'error', polling: false }));
+                    commit(() => {
+                        // Its Retry must not resurface an older payload under this selection.
+                        lastReady.current = null;
+                        setState({ key: runKey, status: 'error', data: null, failure: timedOut ? 'timeout' : 'error', polling: false });
+                    });
                 },
             );
         };
@@ -175,6 +192,7 @@ export function useMemoriesQuery<T>(
     if (state && sameKey(state.key, key)) {
         return { status: state.status, data: state.data, failure: state.failure, stale: false, polling: state.polling, retry };
     }
-    const kept = keep && lastReady.current && sameScope(lastReady.current.scope, keep.scope) ? lastReady.current.data : null;
+    const last = lastReady.current;
+    const kept = keep && last && sameScope(last.scope, keep.scope) && !keep.isEmpty?.(last.data) ? last.data : null;
     return { status: 'loading', data: kept, failure: null, stale: kept !== null, polling: false, retry };
 }

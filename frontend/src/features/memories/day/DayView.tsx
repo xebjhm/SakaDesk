@@ -41,8 +41,8 @@ const CHIP_AVATAR_PX = 20;
  * `memories_toggle` `day_mode`). Under the header sits the day's 時光膠囊 strip (the fan's notes on
  * that date, also on a one-person day), left out only when the host passes `showCapsule={false}`.
  * While another day (or the switch) loads, the previous day stays on screen (`keepPrevious`,
- * `BusyContent`: `aria-busy`, dimmed after the reveal delay); the first load and an error show
- * the Memories load state.
+ * `BusyContent`: `aria-busy` and inert, dimmed after the reveal delay) unless it was empty; the
+ * first load, a step from an empty day and an error show the Memories load state.
  */
 export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, headerSlot, showCapsule = true }) => {
     const { t, i18n } = useTranslation();
@@ -59,7 +59,8 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
         (signal) => fetchDay(service, { date, member: memberPath, others: withOthers }, signal),
         [service, date, memberPath, withOthers],
         // A day step (or the switch) keeps the previous day on screen, dimmed, until the next arrives.
-        { count: (d) => d.messages.length, keepPrevious: { scope: service } },
+        // An empty day is never kept: its empty line would read as the next day's answer.
+        { count: (d) => d.messages.length, keepPrevious: { scope: service, isEmpty: (d) => d.messages.length === 0 } },
     );
     const data = query.data;
     const people = useMemo(() => (data ? dayPeople(data.members, data.messages) : []), [data]);
@@ -149,7 +150,7 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
                     </label>
                 </div>
             )}
-            <BusyContent busy={query.stale} className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col">
+            <BusyContent busy={query.stale} inertWhileBusy className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col">
                 <div ref={setScroller} className="min-h-0 flex-1 overflow-auto px-4 pb-4">{body}</div>
             </BusyContent>
         </section>

@@ -260,10 +260,24 @@ describe('OnThisDayPage keeps the previous step (F24)', () => {
         await waitFor(() => expect(fetchOnThisDay).toHaveBeenLastCalledWith('hinatazaka46', '09-15', expect.anything()));
         const kept = screen.getByText('初めての握手会');
         expect(kept.closest('[aria-busy="true"]')).not.toBeNull();
+        // The kept day is inert: its year columns cannot open a year of the new date.
+        expect(kept.closest('[inert]')).not.toBeNull();
         expect(screen.queryByRole('status')).toBeNull();
         finish({ month_day: '09-15', years: [{ year: 2023, has_messages: true, message_count: 1, member_count: 1, preview: [{ ...memoryMessage({ id: 51, text: '新しい日 🌸' }), name: '金村 美玖' }], more: null, thumb: null }] });
         expect(await screen.findByText('新しい日 🌸')).toBeInTheDocument();
         expect(screen.queryByText('初めての握手会')).toBeNull();
         expect(screen.getByText('新しい日 🌸').closest('[aria-busy="true"]')).toBeNull();
+    });
+});
+
+describe('OnThisDayPage never keeps an empty day', () => {
+    it('a step away from an empty day shows the loading state, not the empty copy under the new date', async () => {
+        vi.mocked(fetchOnThisDay).mockResolvedValueOnce({ month_day: '06-04', years: [{ year: 2022, has_messages: false }] });
+        const { rerender } = renderPage({ page: 'onThisDay', monthDay: '06-04' });
+        expect(await screen.findByText('No memories from this day here yet. Try opening another day.')).toBeInTheDocument();
+        vi.mocked(fetchOnThisDay).mockImplementationOnce(() => new Promise(() => {}));
+        rerender(<OnThisDayPage service="hinatazaka46" route={{ page: 'onThisDay', monthDay: '06-05' }} go={go} />);
+        expect(screen.queryByText('No memories from this day here yet. Try opening another day.')).toBeNull();
+        await waitFor(() => expect(screen.getByRole('status', { name: 'Loading…' })).toBeInTheDocument());
     });
 });
