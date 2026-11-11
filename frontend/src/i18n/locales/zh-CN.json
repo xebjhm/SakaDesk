@@ -864,6 +864,7 @@
       "empty": "这里还没有可以排列的照片。",
       "setCover": "设为这个月的封面",
       "retryTile": "重新加载：{{label}}",
+      "openBurst": "打开 {{count}} 张照片",
       "resetCover": "封面改回自动",
       "coverFailed": "无法更换封面"
     },

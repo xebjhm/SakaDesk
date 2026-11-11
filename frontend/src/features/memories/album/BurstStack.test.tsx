@@ -1,5 +1,7 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import { installMediaTileHarness } from '../../../__tests__/mediaTileHarness';
+import { MediaGridContext, type MediaGridTileReporter } from '../../../core/media/grid';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 
@@ -12,6 +14,7 @@ import { BurstStack } from './BurstStack';
 import { photo } from './__fixtures__';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
+afterEach(() => { vi.unstubAllGlobals(); });
 beforeEach(() => {
     vi.mocked(openChat).mockClear();
     vi.mocked(clientLog).mockClear();
@@ -74,5 +77,59 @@ describe('BurstStack', () => {
         const rows = within(await screen.findByRole('dialog')).getAllByTestId('burst-frame');
         expect(within(rows[1]).getByTestId('burst-frame-star')).toHaveClass('text-semantic-star');
         expect(within(rows[0]).queryByTestId('burst-frame-star')).toBeNull();
+    });
+
+    it('names the stack by what it does: open the photos', () => {
+        renderStack();
+        expect(screen.getByRole('button', { name: 'Open 3 photos' })).toBeInTheDocument();
+    });
+
+    it('opens the sequence even when its still failed to load (the frames own their retry)', async () => {
+        const h = installMediaTileHarness();
+        renderStack();
+        const stack = screen.getByRole('button', { name: 'Open 3 photos' });
+        // the first frame's thumbnail and full file both fail
+        await waitFor(() => expect(h.requested()).toHaveLength(1));
+        await h.fail();
+        await waitFor(() => expect(h.requested()).toHaveLength(2));
+        await h.fail();
+        await waitFor(() => expect(within(stack).getByTestId('memory-thumb')).toHaveAttribute('data-state', 'failed'));
+        expect(stack).toHaveAccessibleName('Open 3 photos');
+        await userEvent.click(stack);
+        const dialog = await screen.findByRole('dialog');
+        expect(within(dialog).getAllByTestId('burst-frame')).toHaveLength(3);
+    });
+
+    it('observes the dialog frames against the viewport, not the album scroller (portalled)', async () => {
+        // Record the root of the observer each tile is observed with; every tile reports on screen.
+        const rootOf = new Map<Element, Element | Document | null>();
+        class RecordingObserver {
+            constructor(private cb: IntersectionObserverCallback, private opts: IntersectionObserverInit = {}) {}
+            observe(el: Element) {
+                rootOf.set(el, this.opts.root ?? null);
+                queueMicrotask(() => this.cb([{ target: el, isIntersecting: true } as unknown as IntersectionObserverEntry], this as unknown as IntersectionObserver));
+            }
+            unobserve() {}
+            disconnect() {}
+            takeRecords() { return []; }
+        }
+        vi.stubGlobal('IntersectionObserver', RecordingObserver);
+        const scroller = document.createElement('div');
+        const reporter: MediaGridTileReporter = { root: scroller, tileVisible: vi.fn(), tileReady: vi.fn() };
+        render(
+            <MediaGridContext.Provider value={reporter}>
+                <NicknameProvider nickname="みーぱん">
+                    <BurstStack items={ITEMS} title="September 2024" nameOf={() => '金村 美玖'} sepia="" />
+                </NicknameProvider>
+            </MediaGridContext.Provider>,
+        );
+        const stack = screen.getByRole('button', { name: 'Open 3 photos' });
+        await waitFor(() => expect(rootOf.get(within(stack).getByTestId('memory-thumb'))).toBe(scroller));
+        await userEvent.click(stack);
+        const frames = within(await screen.findByRole('dialog')).getAllByTestId('memory-thumb');
+        expect(frames).toHaveLength(3);
+        await waitFor(() => frames.forEach((f) => expect(rootOf.has(f) && rootOf.get(f)).toBeNull()));
+        // only the stack's still is counted by the album's breadcrumb, never a dialog tile
+        expect(vi.mocked(reporter.tileVisible).mock.calls).toEqual([[1]]);
     });
 });

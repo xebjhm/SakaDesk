@@ -864,6 +864,7 @@
       "empty": "ここに並べる写真は、まだありません。",
       "setCover": "この月の表紙にする",
       "retryTile": "再読み込み：{{label}}",
+      "openBurst": "{{count}} 枚の写真を開く",
       "resetCover": "表紙を自動にもどす",
       "coverFailed": "表紙を変えられませんでした"
     },

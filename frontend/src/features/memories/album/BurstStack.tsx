@@ -4,7 +4,7 @@ import { useTranslation } from '../../../i18n';
 import { Button, Menu, MenuItem, Modal } from '../../../design/primitives';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { cn } from '../../../utils/classnames';
-import { useTileRetry } from '../../../core/media/grid';
+import { MediaGridContext, useTileRetry } from '../../../core/media/grid';
 import { logMemoriesToggle } from '../memoriesLog';
 import { jumpToChat } from '../shared/jumpToChat';
 import { MemoryText } from '../shared/MemoryText';
@@ -89,8 +89,11 @@ const FrameButton: React.FC<FrameButtonProps> = ({ item, label, sepia, disabled,
  * a jump to her chat; a frame opens the media viewer over the burst. A ★ photo in the burst
  * shows the yellow star on the stack and beside its frame. Opening and every close (including
  * a jump) log `memories_toggle` `album_burst`. With `onSetCover` each frame's context menu offers
- * 「この月の表紙にする」 (a burst frame can be the cover too). A stack or frame whose still failed to
- * load retries it on click instead (`useTileRetry`), and its name says so.
+ * 「この月の表紙にする」 (a burst frame can be the cover too). The stack always opens the sequence
+ * (named 「{{count}} 枚の写真を開く」), even when its still failed to load (the tile shows the quiet
+ * failed state): the other frames may be fine. A frame whose still failed retries it on click
+ * instead of opening the viewer (`useTileRetry`), and its name says so. The dialog and the viewer
+ * reset the media grid context (portalled: their tiles observe against the viewport).
  */
 export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, sepia, onSetCover, tilePx = TILE_PX }) => {
     const { t } = useTranslation();
@@ -112,14 +115,13 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
     };
     const first = items[0];
     const hasStar = items.some((m) => m.favorited);
-    const still = useTileRetry();
 
     return (
         <>
             <button
                 type="button"
-                aria-label={still.failed ? t('memories.album.retryTile', { label: count }) : count}
-                onClick={() => still.click(() => toggle(true))}
+                aria-label={t('memories.album.openBurst', { count: items.length })}
+                onClick={() => toggle(true)}
                 className={cn(
                     'group relative block aspect-square w-full rounded-sm',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
@@ -134,8 +136,6 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
                             message={first}
                             px={tilePx}
                             large={first.favorited}
-                            onFail={still.onFail}
-                            onStateChange={still.onStateChange}
                             className={cn('h-full w-full', sepia)}
                         />
                     )}
@@ -152,44 +152,50 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
                     <span className="min-w-0 truncate">{count}</span>
                 </span>
             </button>
-            <Modal isOpen={open} onClose={() => toggle(false)} title={title} header="plain" className="max-w-2xl">
-                <ol className="flex flex-col gap-4">
-                    {items.map((m) => {
-                        const words = m.caption ?? m.text;
-                        const index = viewer.viewable.indexOf(m);
-                        return (
-                            <li key={albumItemKey(m)} data-testid="burst-frame" className="flex items-start gap-4">
-                                <FrameButton
-                                    item={m}
-                                    label={words ?? title}
-                                    sepia={sepia}
-                                    disabled={index < 0}
-                                    onOpen={() => setViewerIndex(index)}
-                                    onSetCover={onSetCover}
-                                />
-                                {m.favorited && (
-                                    <Star data-testid="burst-frame-star" aria-hidden="true" className="h-4 w-4 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
-                                )}
-                                <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
-                                    {words && <MemoryText text={words} className="text-body text-primary" />}
-                                    <Button variant="ghost" size="sm" onClick={() => { toggle(false); jumpToChat(m, nameOf(m), 'album'); }}>
-                                        <MessageCircle aria-hidden="true" className="h-4 w-4" />
-                                        {t('memories.common.jumpToChat')}
-                                    </Button>
-                                </div>
-                            </li>
-                        );
-                    })}
-                </ol>
-            </Modal>
-            {viewerIndex !== null && viewer.items[viewerIndex] && (
-                <MediaViewerModal
-                    mediaItems={viewer.items}
-                    currentIndex={viewerIndex}
-                    onClose={() => setViewerIndex(null)}
-                    onNavigate={setViewerIndex}
-                />
-            )}
+            {/*
+              * The dialog and the viewer are portalled out of the album's scroll container: their
+              * tiles observe against the viewport and are not counted by the album's breadcrumb.
+              */}
+            <MediaGridContext.Provider value={null}>
+                <Modal isOpen={open} onClose={() => toggle(false)} title={title} header="plain" className="max-w-2xl">
+                    <ol className="flex flex-col gap-4">
+                        {items.map((m) => {
+                            const words = m.caption ?? m.text;
+                            const index = viewer.viewable.indexOf(m);
+                            return (
+                                <li key={albumItemKey(m)} data-testid="burst-frame" className="flex items-start gap-4">
+                                    <FrameButton
+                                        item={m}
+                                        label={words ?? title}
+                                        sepia={sepia}
+                                        disabled={index < 0}
+                                        onOpen={() => setViewerIndex(index)}
+                                        onSetCover={onSetCover}
+                                    />
+                                    {m.favorited && (
+                                        <Star data-testid="burst-frame-star" aria-hidden="true" className="h-4 w-4 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
+                                    )}
+                                    <div className="flex min-w-0 flex-1 flex-col items-start gap-2">
+                                        {words && <MemoryText text={words} className="text-body text-primary" />}
+                                        <Button variant="ghost" size="sm" onClick={() => { toggle(false); jumpToChat(m, nameOf(m), 'album'); }}>
+                                            <MessageCircle aria-hidden="true" className="h-4 w-4" />
+                                            {t('memories.common.jumpToChat')}
+                                        </Button>
+                                    </div>
+                                </li>
+                            );
+                        })}
+                    </ol>
+                </Modal>
+                {viewerIndex !== null && viewer.items[viewerIndex] && (
+                    <MediaViewerModal
+                        mediaItems={viewer.items}
+                        currentIndex={viewerIndex}
+                        onClose={() => setViewerIndex(null)}
+                        onNavigate={setViewerIndex}
+                    />
+                )}
+            </MediaGridContext.Provider>
         </>
     );
 };

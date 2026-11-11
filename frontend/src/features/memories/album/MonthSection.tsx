@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useTranslation } from '../../../i18n';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { MEDIA_GRID_COLS, MEDIA_GRID_GAP, MEDIA_GRID_MIN } from '../../../core/media/tileGrid';
-import { primeMediaMeta, useGridColumns } from '../../../core/media/grid';
+import { MediaGridContext, primeMediaMeta, useGridColumns } from '../../../core/media/grid';
 import { cn } from '../../../utils/classnames';
 import { fetchAlbumMonth } from '../api';
 import { LoadState } from '../shared/LoadState';
@@ -115,12 +115,15 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
                     )))}
             </div>
             {viewerIndex !== null && viewer.items[viewerIndex] && (
-                <MediaViewerModal
-                    mediaItems={viewer.items}
-                    currentIndex={viewerIndex}
-                    onClose={() => setViewerIndex(null)}
-                    onNavigate={setViewerIndex}
-                />
+                // Portalled out of the album's scroll container: outside its media grid context.
+                <MediaGridContext.Provider value={null}>
+                    <MediaViewerModal
+                        mediaItems={viewer.items}
+                        currentIndex={viewerIndex}
+                        onClose={() => setViewerIndex(null)}
+                        onNavigate={setViewerIndex}
+                    />
+                </MediaGridContext.Provider>
             )}
         </>
     );

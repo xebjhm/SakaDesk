@@ -864,6 +864,7 @@
       "empty": "呢度仲未有相可以排出嚟。",
       "setCover": "設做呢個月嘅封面",
       "retryTile": "重新載入：{{label}}",
+      "openBurst": "打開 {{count}} 張相",
       "resetCover": "封面轉返自動",
       "coverFailed": "換唔到封面"
     },

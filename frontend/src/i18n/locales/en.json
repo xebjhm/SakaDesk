@@ -880,6 +880,8 @@
       "empty": "There are no photos to lay out here yet.",
       "setCover": "Make this the month cover",
       "retryTile": "Retry loading: {{label}}",
+      "openBurst": "Open {{count}} photo",
+      "openBurst_other": "Open {{count}} photos",
       "resetCover": "Choose the cover automatically",
       "coverFailed": "Couldn't change the cover"
     },

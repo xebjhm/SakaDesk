@@ -28,6 +28,8 @@ export const MEDIA_PIPELINE_KEYS = [
     'media.gallery.retryPhoto',
     // M8: a failed Memories album tile (its click retries); the label is the tile's own name.
     'memories.album.retryTile',
+    // M8 fix round 1: the burst stack's name (it always opens the sequence, even when its still failed).
+    'memories.album.openBurst',
 ] as const;
 
 function lookup(tree: unknown, path: string): unknown {
@@ -78,6 +80,15 @@ const ALBUM_WORDING = {
     yue: '重新載入：{{label}}',
 } as const;
 
+/** M8 fix round 1: the burst stack's name (Japanese is the reference; en has its plural too). */
+const BURST_WORDING = {
+    ja: '{{count}} 枚の写真を開く',
+    en: 'Open {{count}} photo',
+    'zh-TW': '開啟 {{count}} 張照片',
+    'zh-CN': '打开 {{count}} 张照片',
+    yue: '打開 {{count}} 張相',
+} as const;
+
 describe('media pipeline strings', () => {
     it.each(Object.keys(locales))('%s has every media pipeline key', (code) => {
         const tree = locales[code as keyof typeof locales];
@@ -110,6 +121,11 @@ describe('media pipeline strings', () => {
     it.each(Object.entries(ALBUM_WORDING))('%s uses the agreed album retry wording', (code, want) => {
         const tree = locales[code as keyof typeof locales];
         expect(lookup(tree, 'memories.album.retryTile'), code).toBe(want);
+    });
+
+    it.each(Object.entries(BURST_WORDING))('%s uses the agreed burst stack wording', (code, want) => {
+        const tree = locales[code as keyof typeof locales];
+        expect(lookup(tree, 'memories.album.openBurst'), code).toBe(want);
     });
 
     it('keeps the interpolation variables in every locale', () => {
