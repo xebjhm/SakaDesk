@@ -18,7 +18,8 @@ const ROWS: readonly (readonly string[])[] = [
  * The chat timeline's loading placeholder: 6 message rows laid out like `MessageList` rows
  * (avatar column, then the bubbles). Always `aria-hidden`; the `StatusBlock` that shows it
  * carries `role="status"` and the label. It shrinks (clipped) in a short pane, so the slow and
- * very-slow lines below it stay in view.
+ * very-slow lines below it stay in view; that needs the `StatusBlock` pane to be bounded too
+ * (`MessagesFeature` gives it `min-h-0`), or the box keeps the skeleton's full height and spills below the fold.
  */
 export const ChatSkeleton: React.FC = () => (
     <div aria-hidden="true" data-testid="chat-skeleton" className="flex min-h-0 w-full shrink flex-col gap-4 self-stretch overflow-hidden px-4 py-3">

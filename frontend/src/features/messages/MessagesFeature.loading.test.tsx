@@ -185,6 +185,28 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         expect(screen.getByRole('heading', { name: room('B').name })).toBeInTheDocument();
     });
 
+    it('D-L2: in a short pane the status box is bounded, so the skeleton shrinks and the copy stays in view', async () => {
+        // jsdom has no layout: this locks the classes that keep the slow line, the explanation and
+        // the bar inside the pane at 960×640 (verified in Chromium). Without \`min-h-0\` the flex-1
+        // box keeps its content height (min-height: auto) and pushes them below the fold.
+        await mountOnA();
+        const b = gated('B');
+        replies.B = b.reply;
+        await open('B');
+        await advance(10000);
+        expect(hasText(VERY_SLOW)).toBe(true);
+        const status = loadingStatus()!;
+        expect(status).toHaveClass('flex-1', 'min-h-0');
+        expect(status.parentElement).toHaveClass('absolute', 'inset-0', 'flex', 'flex-col');
+        expect(skeleton()).toHaveClass('min-h-0', 'shrink', 'overflow-hidden');
+        // The copy and the bar come after the skeleton and never shrink away.
+        const children = Array.from(status.children);
+        expect(children.indexOf(skeleton()!)).toBe(0);
+        expect(children.indexOf(screen.getByText(VERY_SLOW))).toBeGreaterThan(0);
+        b.open();
+        await flush();
+    });
+
     it('F1: a room answering at 250 ms keeps the skeleton until 600 ms (min-visible), and the box is never empty', async () => {
         await mountOnA();
         const b = gated('B');

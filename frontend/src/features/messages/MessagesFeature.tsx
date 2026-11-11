@@ -928,12 +928,15 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
                     {showWait && (
                         // Keyed by room: a new room starts its own wait (reveal, slow, very slow).
+                        // `min-h-0` bounds the flex-1 box by the pane (else min-height: auto keeps the
+                        // skeleton's full height), so in a short window the skeleton shrinks and the
+                        // slow line, the explanation and the bar stay above the fold (D-L2).
                         <div key={selectedGroupDir} className="absolute inset-0 flex flex-col">
                             <StatusBlock
                                 kind="loading"
                                 variant="pane"
                                 surface="chat_room"
-                                className="items-stretch justify-start px-0 pt-0"
+                                className="min-h-0 items-stretch justify-start px-0 pt-0"
                                 skeleton={<ChatSkeleton />}
                                 label={t('messageList.loadingMessages')}
                                 slowHint={t('messageList.loadingSlow')}
