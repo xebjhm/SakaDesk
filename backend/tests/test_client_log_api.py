@@ -1290,6 +1290,7 @@ def test_ui_wait_requires_surface_phase_and_wait(missing):
         {"grid": "blogs", "first_tile_ms": 0, "visible": 0, "count": 0},
         {"grid": "album", "first_tile_ms": 95, "visible": 18, "count": 13518},
         {"reason": "meta_failed", "count": 200},
+        {"grid": "album", "reason": "tile_failed", "count": 3},
     ],
 )
 def test_media_grid_breadcrumb_is_accepted(fields):

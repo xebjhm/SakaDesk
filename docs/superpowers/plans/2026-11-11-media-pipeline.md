@@ -216,7 +216,7 @@ CREATE INDEX IF NOT EXISTS media_meta_by_updated ON media_meta(updated_at);
 - `media_pregen_item_failed` (debug): `kind`, `reason`, `error_type`.
 
 **Client events** (Task M5):
-- `media_grid`: `grid=album|messages|blogs`, `first_tile_ms`, `visible`, `count`, `reason?` (`meta_failed`).
+- `media_grid`: `grid=album|messages|blogs`, `first_tile_ms`, `visible`, `count`, `reason?` (`meta_failed`; `tile_failed` with `grid` and `count`: tiles that exhausted every source, at most once per 5 s per grid, the rest on unmount).
 - `media_poster`: `outcome=captured|failed|skipped`, `reason=timeout|decode|upload|limit`.
 
 **Frontend shared layer** (`frontend/src/core/media/grid/`):

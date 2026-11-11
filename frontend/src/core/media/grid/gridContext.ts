@@ -9,6 +9,8 @@ export interface MediaGridTileReporter {
     tileVisible(delta: 1 | -1): void;
     /** A visible tile's image is ready (the grid logs the first one). */
     tileReady(): void;
+    /** A tile tried every source and failed (the grid logs a throttled count). */
+    tileFailed(): void;
     /** The scroll parent the tiles' visibility is measured against (`null`: the viewport). */
     root?: Element | null;
 }

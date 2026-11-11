@@ -300,12 +300,13 @@ const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capt
 
     useReportState(phase, onStateChange);
 
-    // onFail once per failure, with the retry handle.
+    // onFail once per failure, with the retry handle; the grid counts it for its breadcrumb.
     useEffect(() => {
         if (phase !== 'failed' || failCalled.current) return;
         failCalled.current = true;
+        reporter?.tileFailed();
         onFail?.(retry);
-    }, [phase, onFail, retry]);
+    }, [phase, onFail, retry, reporter]);
 
     // A failed tile retries by itself when it scrolls back into view.
     const prevVisibility = useRef(visibility);

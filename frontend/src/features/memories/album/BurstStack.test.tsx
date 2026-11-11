@@ -115,7 +115,7 @@ describe('BurstStack', () => {
         }
         vi.stubGlobal('IntersectionObserver', RecordingObserver);
         const scroller = document.createElement('div');
-        const reporter: MediaGridTileReporter = { root: scroller, tileVisible: vi.fn(), tileReady: vi.fn() };
+        const reporter: MediaGridTileReporter = { root: scroller, tileVisible: vi.fn(), tileReady: vi.fn(), tileFailed: vi.fn() };
         render(
             <MediaGridContext.Provider value={reporter}>
                 <NicknameProvider nickname="みーぱん">

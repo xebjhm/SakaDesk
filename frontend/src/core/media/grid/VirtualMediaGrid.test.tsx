@@ -13,6 +13,7 @@ import { VirtualMediaGrid, type MediaGridGroup, type VirtualMediaGridHandle } fr
 import { firstVisibleItem, rowOfItem } from './gridAnchor';
 import { gridColumns } from './useGridColumns';
 import { MediaGridContext, type MediaGridTileReporter } from './gridContext';
+import { TILE_FAIL_LOG_MS } from './useMediaGridReporter';
 import { mediaGridColumns } from '../tileGrid';
 
 interface Item { id: string }
@@ -167,6 +168,30 @@ describe('VirtualMediaGrid', () => {
         expect(fields).toMatchObject({ grid: 'messages', visible: 7, count: 7 });
         expect(Number.isInteger(fields!.first_tile_ms)).toBe(true);
         expect(fields!.first_tile_ms as number).toBeGreaterThanOrEqual(0);
+    });
+
+    it('logs failed tiles as one throttled media_grid tile_failed count, flushed on unmount (m6)', () => {
+        vi.useFakeTimers();
+        try {
+            let seen: MediaGridTileReporter | null = null;
+            function FailingTile() {
+                const reporter = useContext(MediaGridContext);
+                useEffect(() => { seen = reporter; }, [reporter]);
+                return <span />;
+            }
+            const { unmount } = render(<Grid groups={[{ key: 'g1', label: 'A', items: items('a', 3) }]} renderTile={() => <FailingTile />} />);
+            act(() => { seen!.tileFailed(); seen!.tileFailed(); seen!.tileFailed(); });
+            expect(clientLog).not.toHaveBeenCalled();
+            act(() => { vi.advanceTimersByTime(TILE_FAIL_LOG_MS); });
+            expect(clientLog).toHaveBeenCalledTimes(1);
+            expect(clientLog).toHaveBeenCalledWith('media_grid', { grid: 'messages', reason: 'tile_failed', count: 3 });
+            act(() => { seen!.tileFailed(); });
+            unmount();
+            expect(clientLog).toHaveBeenCalledTimes(2);
+            expect(vi.mocked(clientLog).mock.calls[1]).toEqual(['media_grid', { grid: 'messages', reason: 'tile_failed', count: 1 }]);
+        } finally {
+            vi.useRealTimers();
+        }
     });
 
     it('keeps the first visible item in view when a resize changes the column count', () => {

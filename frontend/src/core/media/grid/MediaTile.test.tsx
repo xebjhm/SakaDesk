@@ -328,8 +328,24 @@ describe('MediaTile: picture', () => {
         expect(container.querySelector('[data-spinner]')).toBeNull();
     });
 
+    it('reports to the grid once when every candidate failed (m6)', () => {
+        const reporter: MediaGridTileReporter = { tileReady: vi.fn(), tileVisible: vi.fn(), tileFailed: vi.fn() };
+        render(
+            <MediaGridContext.Provider value={reporter}>
+                <MediaTile url={PIC} kind="picture" cssPx={200} testId="tile" />
+            </MediaGridContext.Provider>,
+        );
+        let guard = 0;
+        while (screen.getByTestId('tile').getAttribute('data-state') !== 'failed' && guard++ < 10) {
+            act(() => last().onError());
+        }
+        expect(screen.getByTestId('tile').getAttribute('data-state')).toBe('failed');
+        expect(reporter.tileFailed).toHaveBeenCalledTimes(1);
+        expect(reporter.tileReady).not.toHaveBeenCalled();
+    });
+
     it('reports its first visible ready to the grid', () => {
-        const reporter: MediaGridTileReporter = { tileReady: vi.fn(), tileVisible: vi.fn() };
+        const reporter: MediaGridTileReporter = { tileReady: vi.fn(), tileVisible: vi.fn(), tileFailed: vi.fn() };
         render(
             <MediaGridContext.Provider value={reporter}>
                 <MediaTile url={PIC} kind="picture" cssPx={200} />
