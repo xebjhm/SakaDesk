@@ -99,9 +99,13 @@ Per service the phases are (:func:`default_enumerate`):
    (``reason=failed``, ``media_pregen_blogs_failed``).
 
 **Persisted blog signatures** (D-M4). A completed blog phase stores its
-listing signature in ``media_meta.db`` (``media_meta.kv_set``, key
-:data:`BLOG_SIG_PREFIX` + service; value: a hash of the blogs base, the
-index mtime and the cached-blog count, never a path), so the "unchanged"
+listing signature (in memory and on disk) only when it ran clean: a phase
+that ran at the fill line (placeholders only), lost a batch to the watchdog
+or had a failed item stores none (``media_pregen_blog_sig state=skipped
+reason=degraded``), so the next pass walks it again. The signature goes
+in ``media_meta.db`` (``media_meta.kv_set``, key :data:`BLOG_SIG_PREFIX` +
+service; value: a hash of the blogs base, the index mtime and the
+cached-blog count, never a path), so the "unchanged"
 skip survives a restart instead of re-walking every cached blog image. The
 in-session ``gallery_version`` is not stored: it restarts at every launch.
 Instead the stored rows are removed whenever that version would move:
@@ -826,6 +830,9 @@ class MediaPregen:
         self._paused_at = 0.0
         self._shell_off_seen = False
         self._thumbs_full = False
+        # Set by _run_batch when a batch made no variants (fill line) or was lost
+        # to the watchdog; _run_phase then keeps a blog listing as not done.
+        self._phase_degraded = False
         self._generation = 0  # bumped by clear(): the pass in flight is dropped
         self._turn_generation = 0
         # service -> the blog listing signature of its last completed blog phase
@@ -1166,15 +1173,22 @@ class MediaPregen:
             _log_pass(service, phase.name, 0, counts, start, phase.reason)
             return True
         items = list(phase.items)
+        self._phase_degraded = False
         for i in range(0, len(items), PREGEN_BATCH):
             if not await self._step(items[i : i + PREGEN_BATCH], counts, service):
                 return False
         _log_pass(service, phase.name, len(items), counts, start)
-        if (
-            signature is not None
-        ):  # completed: an unchanged listing is skipped next time
-            self._blog_sig[service] = signature
-            await self._save_blog_sig(service, signature)
+        if signature is None:
+            return True
+        if self._phase_degraded or counts["failed"] > 0:
+            # Placeholders only (fill line), a batch lost to the watchdog or a
+            # failed item: the listing is not done, so it is neither remembered
+            # nor persisted, and the next pass walks it again.
+            logger.info("media_pregen_blog_sig", state="skipped", reason="degraded")
+            return True
+        # Completed: an unchanged listing is skipped next time.
+        self._blog_sig[service] = signature
+        await self._save_blog_sig(service, signature)
         return True
 
     async def _save_blog_sig(
@@ -1335,12 +1349,14 @@ class MediaPregen:
             raise _PassAborted  # cleared since this pass began: it is stale
         if self._thumbs_full:  # at the fill line: placeholders and posters only
             batch = [replace(i, widths=()) for i in batch]
+            self._phase_degraded = True
         started = self._clock()
         results = await self._execute(batch)
         work = self._clock() - started
         if self._turn_generation != self._generation:
             raise _PassAborted  # cleared during this batch
         if results is None:  # the watchdog fired; this batch is lost for the pass
+            self._phase_degraded = True
             return True
         for res in results:
             if counts is not None:

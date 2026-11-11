@@ -716,6 +716,72 @@ async def test_the_unchanged_blog_listing_survives_a_restart(h):
     ]
 
 
+def _degraded_skips(logs) -> list[dict]:
+    return [
+        e
+        for e in _events(logs, "media_pregen_blog_sig")
+        if e.get("reason") == "degraded"
+    ]
+
+
+@pytest.mark.asyncio
+async def test_a_blog_phase_at_the_fill_line_saves_no_signature(h):
+    """3.1 / B-M3: only placeholders were made, so the listing is not done."""
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    h.busy = "budget_full"
+    with capture_logs() as logs:
+        p = await _one_pass(h)
+    assert _persisted() == {}
+    assert HINATA not in p._blog_sig
+    assert len(_degraded_skips(logs)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_blog_phase_with_a_failed_item_saves_no_signature(h):
+    """3.1: a failed item is retried on the next pass, not skipped as unchanged."""
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    h.process = lambda item: ItemResult("failed", 0)  # type: ignore[method-assign]
+    with capture_logs() as logs:
+        p = await _one_pass(h)
+    assert _persisted() == {}
+    assert HINATA not in p._blog_sig
+    assert len(_degraded_skips(logs)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_blog_phase_with_a_dropped_batch_saves_no_signature(h):
+    """3.1: a batch lost to the watchdog is not counted as done."""
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    p = h.make()
+
+    async def hung(batch):
+        return None
+
+    p._execute = hung  # type: ignore[method-assign]
+    with capture_logs() as logs:
+        p.start()
+        await _idle(p)
+        await p.stop()
+    assert _persisted() == {}
+    assert HINATA not in p._blog_sig
+    assert len(_degraded_skips(logs)) == 1
+
+
+@pytest.mark.asyncio
+async def test_a_clean_blog_phase_after_a_degraded_one_saves_its_signature(h):
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    h.busy = "budget_full"
+    await _one_pass(h)
+    h.busy = None
+    p = await _one_pass(h)
+    assert list(_persisted()) == [media_pregen.BLOG_SIG_PREFIX + HINATA]
+    assert HINATA in p._blog_sig
+
+
 @pytest.mark.asyncio
 async def test_a_blog_write_forgets_the_persisted_signatures(h):
     from backend.services import blog_service as bs
