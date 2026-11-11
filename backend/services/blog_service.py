@@ -993,6 +993,9 @@ class BlogService:
         await self._atomic_write(
             cache_file, json.dumps(content, ensure_ascii=False, indent=2)
         )
+        # The persisted gallery listing keys on this folder's mtime, which
+        # FAT/exFAT (an external archive drive) do not move when entries change.
+        await asyncio.to_thread(_bump_folder_mtime, item.cache_path)
         # Every blog write ends here (backup, on-demand fetch): the photo
         # gallery listings are stale even if the index is never saved after it
         # (a cancelled backup run). Only this blog's service is stale (N3).
@@ -1749,12 +1752,35 @@ def _read_blog_json(path: Path) -> dict:
     return data
 
 
+_FAT_MTIME_STEP_NS = 2_000_000_000
+"""FAT stores mtimes in 2 s steps: a bump smaller than this could round back."""
+
+
+def _bump_folder_mtime(folder: Path) -> None:
+    """Move ``folder``'s mtime forward (to now, and at least one FAT step). Blocking.
+
+    Called after every blog write, so ``gallery_member_listing`` reads the
+    blog again on any filesystem. Never raises; a failure is logged with its
+    error type only (no path).
+    """
+    try:
+        old = folder.stat().st_mtime_ns
+        new = max(time.time_ns(), old + _FAT_MTIME_STEP_NS)
+        os.utime(folder, ns=(new, new))
+    except OSError as e:
+        logger.warning("blog_folder_touch_failed", error_type=type(e).__name__)
+
+
 def _plain_segment(name: str) -> bool:
-    """One path segment that cannot leave its folder (no separator, not ``.`` / ``..``)."""
+    """One path segment that cannot leave its folder.
+
+    No separator, no ``:`` (on Windows ``base / "C:x"`` replaces the drive and
+    ``a:b`` names an alternate data stream), not ``.`` / ``..``.
+    """
     return (
         bool(name)
         and name not in (".", "..")
-        and not any(c in name for c in ("/", "\\", "\x00"))
+        and not any(c in name for c in ("/", "\\", "\x00", ":"))
     )
 
 
@@ -2005,8 +2031,11 @@ def gallery_member_listing(
     equals the one stored with its images (``media_meta`` key-value store,
     :data:`GALLERY_STORE_PREFIX`) is taken from the store without opening
     anything. Every blog write replaces ``blog.json`` inside its folder (a
-    temp file renamed into place, after its images), which changes the
-    folder's mtime, so a new or rewritten blog is read again; others are not.
+    temp file renamed into place, after its images) and then moves the
+    folder's mtime forward explicitly (``_bump_folder_mtime``: now, and at
+    least one 2 s FAT step), because FAT/exFAT do not move a folder's mtime
+    when its entries change. So a new or rewritten blog is read again on any
+    filesystem; others are not.
     Otherwise the blog is read as before (``blog.json`` stat and read, one
     ``is_file`` per image) and stored when its folder mtime is known and its
     ``blog.json`` was readable. Trade-off: an image file deleted by hand

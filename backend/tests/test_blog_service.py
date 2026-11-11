@@ -1062,3 +1062,58 @@ def test_gallery_orders_naive_as_utc_and_unparsable_last_and_skips_a_folder_with
     )
     # aware = 03-01 01:00 UTC > naive (03-01 00:00, read as UTC) > unparsable.
     assert [i["blog_id"] for i in _gallery()] == ["aware", "naive", "bad"]
+
+
+def test_a_folder_name_with_a_colon_is_not_a_plain_segment():
+    """3.5: ``base / "C:x"`` replaces the drive on Windows; ``a:b`` is a data stream."""
+    from backend.services import blog_service as bs
+
+    assert bs._plain_segment("C:x") is False
+    assert bs._plain_segment("a:b") is False
+    assert bs._plain_segment("20260205_b1") is True
+    assert bs._plain_segment("金村 美玖 🌸") is True
+
+
+def test_a_blog_write_moves_its_folder_mtime_even_where_the_fs_does_not(tmp_path):
+    """3.6 / m8: FAT/exFAT keep a folder's mtime when its entries change."""
+    import os as _os
+    from types import SimpleNamespace
+
+    from backend.services import blog_service as bs
+
+    class Scraper:
+        async def get_blog_detail(self, blog_id, member_id=None):
+            return SimpleNamespace(images=[], content="<p>x</p>")
+
+    folder = tmp_path / "b"
+    folder.mkdir()
+    (folder / "blog.json").write_text("{}", encoding="utf-8")
+    old_ns = 1_700_000_000_000_000_000
+    _os.utime(folder, ns=(old_ns, old_ns))
+    svc = BlogService()
+    real = svc._atomic_write
+
+    async def fat_write(path, text):
+        await real(path, text)
+        _os.utime(folder, ns=(old_ns, old_ns))  # the FAT volume kept the mtime
+
+    item = bs.BlogDownloadItem(
+        "b1", "58", MEMBER, TITLE_NEW, "2026-02-05T10:00:00+09:00", "u", folder
+    )
+    with patch.object(svc, "_atomic_write", side_effect=fat_write):
+        asyncio.run(
+            svc._download_single_blog(None, Scraper(), item, download_images=False)
+        )
+    assert folder.stat().st_mtime_ns >= old_ns + 2_000_000_000
+
+
+def test_a_failed_folder_touch_is_logged_and_never_raises(tmp_path):
+    from structlog.testing import capture_logs
+
+    from backend.services import blog_service as bs
+
+    with capture_logs() as logs:
+        bs._bump_folder_mtime(tmp_path / "missing")
+    (ev,) = [e for e in logs if e["event"] == "blog_folder_touch_failed"]
+    assert ev["error_type"] == "FileNotFoundError"
+    assert str(tmp_path) not in str(ev)
