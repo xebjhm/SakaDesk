@@ -340,3 +340,126 @@ describe('ShareDialog blur fallback', () => {
         }));
     });
 });
+
+/** A promise the test settles by hand (the photos still loading). */
+function deferred<T>() {
+    let resolve: (v: T) => void = () => {};
+    let reject: (e: unknown) => void = () => {};
+    const promise = new Promise<T>((res, rej) => { resolve = res; reject = rej; });
+    return { promise, resolve, reject };
+}
+
+type Assets = Awaited<ReturnType<typeof loadShareAssets>>;
+const PREVIEW_LOADING = 'プレビューを準備中…';
+const PREPARING = '写真を準備中…';
+const UNAVAILABLE = '写真を読み込めなかったため、写真なしで書き出します。';
+const flush = async () => { for (let i = 0; i < 6; i += 1) await act(async () => {}); };
+
+describe('ShareDialog preview loading and the photo gate (L7)', () => {
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('covers the blank preview with a skeleton and reveals its spinner at 200 ms, not 199', async () => {
+        vi.useFakeTimers();
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => deferred<Assets>().promise);
+        open();
+        const overlay = screen.getByTestId('share-preview-loading');
+        expect(overlay.querySelector('[data-skeleton]')).not.toBeNull();
+        act(() => { vi.advanceTimersByTime(199); });
+        expect(screen.queryByRole('status', { name: PREVIEW_LOADING })).toBeNull();
+        act(() => { vi.advanceTimersByTime(1); });
+        const spinner = screen.getByRole('status', { name: PREVIEW_LOADING });
+        expect(spinner.querySelector('svg')).toHaveClass('animate-spin', 'motion-reduce:animate-none');
+    });
+
+    it('blocks every export with 「写真を準備中…」 until the photos settle, and a click starts nothing', async () => {
+        vi.mocked(videoSupport).mockReturnValue({ supported: true, mimeType: 'video/webm;codecs=vp9' });
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => deferred<Assets>().promise);
+        open();
+        await screen.findByRole('dialog');
+        for (const name of ['GIF', '画像', '動画']) {
+            const button = screen.getByRole('button', { name });
+            expect(button).toHaveAttribute('aria-disabled', 'true');
+            expect(button).toHaveAttribute('title', PREPARING);
+            expect(button).toHaveAccessibleDescription(PREPARING);
+        }
+        fireEvent.click(screen.getByRole('button', { name: 'GIF' }));
+        fireEvent.click(screen.getByRole('button', { name: '画像' }));
+        fireEvent.click(screen.getByRole('button', { name: '動画' }));
+        await flush();
+        expect(renderGifFrames).not.toHaveBeenCalled();
+        expect(saveShareBlob).not.toHaveBeenCalled();
+        expect(recordVideo).not.toHaveBeenCalled();
+        expect(shareLogs().some((f) => (f as { phase: string }).phase === 'export_start')).toBe(false);
+    });
+
+    it('removes the overlay after the first draw and enables the exports once the photos arrive', async () => {
+        const photos = deferred<Assets>();
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => photos.promise);
+        open();
+        expect(screen.getByTestId('share-preview-loading')).toBeInTheDocument();
+        await act(async () => { photos.resolve({ photos: [], months: [], skipped: 0 }); });
+        await waitFor(() => expect(screen.queryByTestId('share-preview-loading')).toBeNull());
+        expect(screen.getByRole('button', { name: 'GIF' })).not.toHaveAttribute('aria-disabled');
+        expect(screen.getByRole('button', { name: '画像' })).not.toHaveAttribute('aria-disabled');
+        expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+    });
+
+    it('when the photos fail, says the export will have no photos and lets it run without them', async () => {
+        const photos = deferred<Assets>();
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => photos.promise);
+        open();
+        await act(async () => { photos.reject(new Error('写真 🌸 failed')); });
+        const line = await screen.findByText(UNAVAILABLE);
+        expect(line).toHaveClass('text-small', 'text-secondary');
+        expect(screen.getByRole('button', { name: 'GIF' })).not.toHaveAttribute('aria-disabled');
+        await userEvent.click(screen.getByRole('button', { name: 'GIF' }));
+        await screen.findByText('書き出しを始めました。');
+        const renderer = vi.mocked(renderGifFrames).mock.calls[0][0] as unknown as { assets: Assets };
+        expect(renderer.assets.photos).toEqual([]);
+        expect(shareLogs()).toContainEqual({ phase: 'photo_skip', reason: 'load_failed', member_id: '58' });
+        expect(JSON.stringify(shareLogs())).not.toMatch(/写真|🌸/);
+    });
+
+    it('gives up on the photos at 15 s (not 14,999 ms), says so and logs the timeout', async () => {
+        vi.useFakeTimers();
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => new Promise<Assets>(() => {}));
+        open();
+        await act(async () => { vi.advanceTimersByTime(14_999); });
+        await flush();
+        expect(screen.queryByText(UNAVAILABLE)).toBeNull();
+        expect(screen.getByRole('button', { name: 'GIF' })).toHaveAttribute('aria-disabled', 'true');
+        await act(async () => { vi.advanceTimersByTime(1); });
+        await flush();
+        expect(screen.getByText(UNAVAILABLE)).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'GIF' })).not.toHaveAttribute('aria-disabled');
+        expect(screen.queryByTestId('share-preview-loading')).toBeNull();
+        expect(shareLogs()).toContainEqual({ phase: 'photo_skip', reason: 'timeout', member_id: '58' });
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('ui_wait', { surface: 'recap_share', phase: 'timeout', wait_ms: 15_000 });
+    });
+
+    it('a reopening waits for its own photos again', async () => {
+        const r = recap();
+        const view = render(<ShareDialog isOpen recap={r} nickname="ゆき" onClose={vi.fn()} />);
+        await waitFor(() => expect(screen.queryByTestId('share-preview-loading')).toBeNull());
+        vi.mocked(loadShareAssets).mockImplementationOnce(() => deferred<Assets>().promise);
+        view.rerender(<ShareDialog isOpen={false} recap={r} nickname="ゆき" onClose={vi.fn()} />);
+        view.rerender(<ShareDialog isOpen recap={r} nickname="ゆき" onClose={vi.fn()} />);
+        await flush();
+        expect(screen.getByTestId('share-preview-loading')).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'GIF' })).toHaveAttribute('aria-disabled', 'true');
+    });
+
+    it('shows the export progress on the shared ProgressBar with its value', async () => {
+        vi.mocked(renderGifFrames).mockImplementationOnce((_r, _c, opts) => {
+            opts?.onProgress?.(0.5);
+            return untilAborted(opts?.signal, new ShareCancelledError());
+        });
+        open();
+        await waitFor(() => expect(screen.getByRole('button', { name: 'GIF' })).not.toHaveAttribute('aria-disabled'));
+        await userEvent.click(screen.getByRole('button', { name: 'GIF' }));
+        const bar = await screen.findByRole('progressbar', { name: i18n.t('recap.share.progressLabel') });
+        await waitFor(() => expect(bar).toHaveAttribute('aria-valuenow', '40'));
+        expect(bar.querySelector('[data-progress-fill]')).toHaveClass('motion-reduce:transition-none');
+        await userEvent.click(screen.getByRole('button', { name: 'やめる' }));
+    });
+});

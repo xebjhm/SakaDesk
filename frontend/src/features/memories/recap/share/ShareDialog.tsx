@@ -1,7 +1,8 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Check, Film, Image as ImageIcon, Share2, Sparkles } from 'lucide-react';
 import { useTranslation } from '../../../../i18n';
-import { Button, Modal, Pill, Switch } from '../../../../design/primitives';
+import { Button, Modal, Pill, ProgressBar, Skeleton, Spinner, Switch } from '../../../../design/primitives';
+import { logWait, useDelayedLoading } from '../../../../design/loading';
 import { cn } from '../../../../utils/classnames';
 import { logRecapShare } from '../../memoriesLog';
 import type { RecapPayload } from '../api';
@@ -42,6 +43,8 @@ const VIDEO_SCALE = 1.5;
 /** The preview draws the poster at half the logical size. */
 const PREVIEW_SCALE = 0.5;
 const NO_ASSETS: ShareAssets = { photos: [], months: [], skipped: 0 };
+/** The photos get this long to load; then the export goes without them and says so. */
+export const SHARE_ASSETS_TIMEOUT_MS = 15_000;
 const STYLES: ShareStyle[] = ['collage', 'colour'];
 
 function makeCanvas(width: number, height: number): HTMLCanvasElement {
@@ -106,6 +109,13 @@ const ToggleRow: React.FC<{ label: string; checked: boolean; onChange: (next: bo
  * An export is cancellable: Cancel, closing the dialog (or the poster, which unmounts it) and
  * reopening it abort the running export's `AbortController`. That stops drawing and recording,
  * stops the stream tracks and aborts the upload; an aborted export never opens a download.
+ *
+ * Each opening loads the frosted photos again. Until the preview's first draw a `Skeleton` covers
+ * the canvas, with a labelled `Spinner` from the 200 ms reveal (held at least `minVisible`). While
+ * the photos are pending every export button is blocked with 「写真を準備中…」, so no export ever
+ * runs without them by accident (`runExport` refuses too and logs `export_blocked`). If they fail,
+ * or are not ready within {@link SHARE_ASSETS_TIMEOUT_MS}, the exports open without photos and a
+ * status line says so (`photo_skip` `load_failed` / `timeout`; the timeout also logs `ui_wait`).
  */
 export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nickname, onClose }) => {
     const { t, i18n } = useTranslation();
@@ -118,12 +128,17 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
     const [phase, setPhase] = useState<Phase>('idle');
     const [progress, setProgress] = useState(0);
     const [avatarError, setAvatarError] = useState<AvatarError | null>(null);
+    /** The preview has been drawn once this opening (its loading cover can lift). */
+    const [previewDrawn, setPreviewDrawn] = useState(false);
+    /** The photos failed or timed out: the exports run without them, and the dialog says so. */
+    const [assetsFailed, setAssetsFailed] = useState(false);
     /** The running export's controller; null when none runs. */
     const exportRef = useRef<AbortController | null>(null);
     const rootRef = useRef<HTMLDivElement>(null);
     const previewRef = useRef<HTMLCanvasElement>(null);
     const fileRef = useRef<HTMLInputElement>(null);
     const fontLoggedRef = useRef(false);
+    const previewFailLoggedRef = useRef(false);
     const support = useMemo(() => videoSupport(), []);
     const showYears = yearsAvailable(recap);
 
@@ -145,22 +160,42 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         setBusy(null);
         setProgress(0);
         setPhase('idle');
+        setAssets(null);
+        setAssetsFailed(false);
+        setPreviewDrawn(false);
         fontLoggedRef.current = false;
+        previewFailLoggedRef.current = false;
         logRecapShare('open', { count: candidates.length, member_id: memberId });
         if (!support.supported) logRecapShare('video_unsupported', { reason: support.reason, member_id: memberId });
         let cancelled = false;
-        void loadShareAssets(recap).then((loaded) => {
+        let timer: ReturnType<typeof setTimeout> | undefined;
+        const timedOut = new Promise<'timeout'>((resolve) => {
+            timer = setTimeout(() => resolve('timeout'), SHARE_ASSETS_TIMEOUT_MS);
+        });
+        /** No photos this opening: the exports go without them, and the dialog says so. */
+        const withoutPhotos = () => {
+            setAssets(NO_ASSETS);
+            setAssetsFailed(true);
+        };
+        void Promise.race([loadShareAssets(recap), timedOut]).then((loaded) => {
             if (cancelled) return;
+            if (loaded === 'timeout') {
+                logRecapShare('photo_skip', { reason: 'timeout', member_id: memberId });
+                logWait('recap_share', 'timeout', SHARE_ASSETS_TIMEOUT_MS);
+                withoutPhotos();
+                return;
+            }
             if (loaded.skipped > 0) logRecapShare('photo_skip', { reason: 'load_failed', count: loaded.skipped, member_id: memberId });
             if (loaded.blurFallback) logRecapShare('share_blur_fallback', { reason: 'filter_unsupported', count: loaded.photos.length, member_id: memberId });
             setAssets(loaded);
         }).catch(() => {
             if (cancelled) return;
             logRecapShare('photo_skip', { reason: 'load_failed', member_id: memberId });
-            setAssets(NO_ASSETS);
-        });
+            withoutPhotos();
+        }).finally(() => clearTimeout(timer));
         return () => {
             cancelled = true;
+            clearTimeout(timer);
             abortExport();
         };
         // Once per opening of this recap.
@@ -187,22 +222,35 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         return fallback;
     }, [model, memberId]);
 
-    // The preview: the share poster as it will be exported.
+    // The preview: the share poster as it will be exported. The first draw lifts the loading
+    // cover; a draw that cannot happen lifts it too (over the empty canvas), with one breadcrumb.
     useEffect(() => {
         if (!isOpen || !assets) return;
         let cancelled = false;
         void fontsReady().then(() => {
-            const canvas = previewRef.current;
-            const ctx = canvas?.getContext('2d');
-            if (cancelled || !canvas || !ctx) return;
-            const el = rootRef.current ?? undefined;
-            const renderer = new ShareRenderer(model, { ...assets, avatar: options.avatar ? avatar : null }, {
-                format: 'video', scale: PREVIEW_SCALE, palette: readSharePalette(el), fonts: readShareFonts(el),
-            });
-            renderer.drawPoster(ctx);
+            if (cancelled) return;
+            try {
+                const ctx = previewRef.current?.getContext('2d');
+                if (!ctx) throw new Error('no_canvas');
+                const el = rootRef.current ?? undefined;
+                const renderer = new ShareRenderer(model, { ...assets, avatar: options.avatar ? avatar : null }, {
+                    format: 'video', scale: PREVIEW_SCALE, palette: readSharePalette(el), fonts: readShareFonts(el),
+                });
+                renderer.drawPoster(ctx);
+            } catch {
+                if (!previewFailLoggedRef.current) {
+                    previewFailLoggedRef.current = true;
+                    logRecapShare('preview_failed', { reason: 'render_failed', member_id: memberId });
+                }
+            }
+            setPreviewDrawn(true);
         });
         return () => { cancelled = true; };
-    }, [isOpen, assets, model, avatar, options.avatar, fontsReady]);
+    }, [isOpen, assets, model, avatar, options.avatar, fontsReady, memberId]);
+
+    /** The preview's spinner: revealed after 200 ms, held at least `minVisible` once shown. */
+    const previewSpinner = useDelayedLoading(isOpen && !previewDrawn);
+    const previewCovered = !previewDrawn || previewSpinner;
 
     const setOption = (key: 'nickname' | 'avatar' | 'years' | 'footer', next: boolean) => {
         setOptions((o) => ({ ...o, [key]: next }));
@@ -238,6 +286,11 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
 
     const runExport = async (choice: ExportChoice) => {
         if (busy || exportRef.current) return;
+        if (assets === null) {
+            // The buttons are blocked while the photos load; this guard keeps any other path honest.
+            logRecapShare('export_blocked', { reason: 'assets_pending', member_id: memberId });
+            return;
+        }
         const controller = new AbortController();
         const { signal } = controller;
         exportRef.current = controller;
@@ -251,7 +304,7 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
             throwIfCancelled(signal);
             const el = rootRef.current ?? undefined;
             const base = { palette: readSharePalette(el), fonts: readShareFonts(el) };
-            const renderAssets = { ...(assets ?? NO_ASSETS), avatar: options.avatar ? avatar : null };
+            const renderAssets = { ...assets, avatar: options.avatar ? avatar : null };
             if (choice === 'gif') {
                 setPhase('frames');
                 const renderer = new ShareRenderer(model, renderAssets, { ...base, format: 'gif', scale: 1 });
@@ -335,8 +388,14 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
         record: t('recap.share.progressRecord'), handed_off: t('recap.share.handedOff'), failed: t('recap.share.failed'),
         cancelled: t('recap.share.cancelled'),
     }[phase];
-    /** While one export runs, the other export buttons are visibly blocked (design-system disabled state). */
-    const blockedBy = (choice: ExportChoice) => (busy && busy !== choice ? t('recap.share.busy') : undefined);
+    /**
+     * While one export runs, the other export buttons are visibly blocked (design-system disabled
+     * state); before that, all three wait for the photos. The busy reason wins.
+     */
+    const blockedBy = (choice: ExportChoice) => {
+        if (busy && busy !== choice) return t('recap.share.busy');
+        return assets === null ? t('recap.share.preparingPhotos') : undefined;
+    };
 
     return (
         <Modal
@@ -350,20 +409,11 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
             bodyClassName="flex flex-col gap-4"
             footer={
                 <div className="flex w-full flex-col gap-2">
+                    {assetsFailed && (
+                        <p role="status" className="text-small text-secondary">{t('recap.share.photosUnavailable')}</p>
+                    )}
                     {(working || phase === 'handed_off') && (
-                        <div
-                            role="progressbar"
-                            aria-label={t('recap.share.progressLabel')}
-                            aria-valuemin={0}
-                            aria-valuemax={100}
-                            aria-valuenow={progress}
-                            className="h-2 overflow-hidden rounded-full bg-sunken"
-                        >
-                            <div
-                                className="h-full rounded-full bg-expressive-progress transition-all duration-base ease-standard motion-reduce:transition-none"
-                                style={{ width: `${progress}%` }}
-                            />
-                        </div>
+                        <ProgressBar value={progress / 100} label={t('recap.share.progressLabel')} />
                     )}
                     <div className="flex flex-wrap items-center justify-between gap-2">
                         <p role="status" className={`min-h-5 text-secondary ${NARRATION_CLASS}`}>{statusText}</p>
@@ -393,14 +443,23 @@ export const ShareDialog: React.FC<ShareDialogProps> = ({ isOpen, recap, nicknam
             }
         >
             <div ref={rootRef} className="flex flex-col gap-4 sm:flex-row">
-                <canvas
-                    ref={previewRef}
-                    width={SHARE_WIDTH * PREVIEW_SCALE}
-                    height={SHARE_HEIGHT * PREVIEW_SCALE}
-                    role="img"
-                    aria-label={t('recap.share.preview')}
-                    className="aspect-[9/16] w-48 shrink-0 self-center rounded-lg bg-sunken shadow-card"
-                />
+                <div className="relative shrink-0 self-center">
+                    <canvas
+                        ref={previewRef}
+                        width={SHARE_WIDTH * PREVIEW_SCALE}
+                        height={SHARE_HEIGHT * PREVIEW_SCALE}
+                        role="img"
+                        aria-label={t('recap.share.preview')}
+                        className="block aspect-[9/16] w-48 rounded-lg bg-sunken shadow-card"
+                    />
+                    {previewCovered && (
+                        // The cover itself is aria-hidden (Skeleton); only the spinner's status is announced.
+                        <div data-testid="share-preview-loading" className="absolute inset-0 flex items-center justify-center">
+                            <Skeleton shape="block" tone="sunken" className="absolute inset-0 aspect-[9/16] w-48 rounded-lg" />
+                            {previewSpinner && <Spinner size="sm" label={t('recap.share.previewLoading')} className="relative" />}
+                        </div>
+                    )}
+                </div>
                 <div className="flex min-w-0 flex-1 flex-col gap-4">
                     <p className={`text-secondary ${NARRATION_CLASS}`}>{t('recap.share.intro')}</p>
 

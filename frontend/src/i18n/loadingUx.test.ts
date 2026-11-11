@@ -21,6 +21,8 @@ export const LOADING_UX_KEYS: string[] = [
     'messageList.loadTimeout', 'messageList.loadTimeoutHint', 'media.photoLoading',
     // L4: the Memories hub's gathering line and first run; the album's page-level wait line
     'memories.home.gathering', 'memories.home.firstVerySlow', 'memories.album.waitSlow', 'memories.album.waitVerySlow',
+    // L7: the recap share dialog's preview and photo gate
+    'recap.share.previewLoading', 'recap.share.preparingPhotos', 'recap.share.photosUnavailable',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -134,6 +136,25 @@ describe('loading UX strings', () => {
                 yue: '可能仲準備緊，再試多次啦。',
             },
             'memories.common.membersError': { ja: 'メンバーを読み込めませんでした', en: "Couldn't load the members", 'zh-TW': '無法載入成員', 'zh-CN': '无法加载成员', yue: '載入唔到成員' },
+        };
+        for (const [key, perLocale] of Object.entries(table)) {
+            for (const [code, text] of Object.entries(perLocale)) {
+                expect(lookup(locales[code as keyof typeof locales], key), `${code} ${key}`).toBe(text);
+            }
+        }
+    });
+
+    it('uses the agreed L7 share dialog copy in every locale', () => {
+        const table: Record<string, Record<keyof typeof locales, string>> = {
+            'recap.share.previewLoading': { ja: 'プレビューを準備中…', en: 'Preparing the preview…', 'zh-TW': '正在準備預覽…', 'zh-CN': '正在准备预览…', yue: '準備緊預覽…' },
+            'recap.share.preparingPhotos': { ja: '写真を準備中…', en: 'Preparing photos…', 'zh-TW': '正在準備照片…', 'zh-CN': '正在准备照片…', yue: '準備緊相…' },
+            'recap.share.photosUnavailable': {
+                ja: '写真を読み込めなかったため、写真なしで書き出します。',
+                en: "Photos couldn't load, so the export will have no photos.",
+                'zh-TW': '照片無法載入，匯出的內容將不含照片。',
+                'zh-CN': '照片无法加载，导出的内容将不含照片。',
+                yue: '相載入唔到，匯出嘅內容唔會有相。',
+            },
         };
         for (const [key, perLocale] of Object.entries(table)) {
             for (const [code, text] of Object.entries(perLocale)) {
