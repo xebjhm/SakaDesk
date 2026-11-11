@@ -63,8 +63,8 @@ let deps: Deps = DEFAULT_DEPS;
 let captureMax = POSTER_CAPTURE_MAX;
 let started = 0;
 let limitLogged = false;
-/** URLs attempted (or being attempted) this session → their result. */
-const attempts = new Map<string, Promise<boolean>>();
+/** URLs attempted (or being attempted) this session → their end (a cancelled one is removed). */
+const attempts = new Map<string, Promise<'captured' | 'failed' | 'cancelled'>>();
 /** The serial chain: each capture starts after the previous one settled. */
 let chain: Promise<unknown> = Promise.resolve();
 
@@ -191,18 +191,45 @@ function runCapture(url: string, signal?: AbortSignal): Promise<CaptureEnd> {
     });
 }
 
+/** An attempt's end as later requesters see it; `cancelled` was refunded and settles no one. */
+type AttemptEnd = 'captured' | 'failed' | 'cancelled';
+
+/**
+ * Wait for another requester's attempt. A real result (captured / failed) is shared; a cancelled
+ * attempt (its tile left the screen) settles no one: this requester asks again, so it starts its
+ * own attempt (or joins a newer one). This requester's own `signal` stops the wait at once.
+ */
+function join(url: string, attempt: Promise<AttemptEnd>, signal?: AbortSignal): Promise<boolean> {
+    return new Promise<boolean>((resolve) => {
+        let done = false;
+        const onAbort = () => {
+            if (done) return;
+            done = true;
+            resolve(false);
+        };
+        signal?.addEventListener('abort', onAbort, { once: true });
+        void attempt.then((end) => {
+            if (done) return;
+            done = true;
+            signal?.removeEventListener('abort', onAbort);
+            resolve(end === 'cancelled' ? request(url, signal) : end === 'captured');
+        });
+    });
+}
+
 /**
  * Capture and upload the poster of the media-route video `url`. Resolves `true` when the backend
  * stored it (201) or already had one (200); `false` on failure, past the session cap, for a
  * non-media URL, or when `signal` aborts first (the tile left the screen or unmounted). A URL
  * already attempted this session is never captured again: asking again returns the first
- * attempt's result. An aborted request is not an attempt (it is refunded and may run later).
+ * attempt's result. An aborted request is not an attempt (it is refunded and may run later), and
+ * it never settles a requester that joined it: that one retries with its own signal.
  */
 function request(url: string, signal?: AbortSignal): Promise<boolean> {
     if (!url.startsWith(MEDIA_PREFIX)) return Promise.resolve(false);
-    const known = attempts.get(url);
-    if (known) return known;
     if (signal?.aborted) return Promise.resolve(false);
+    const known = attempts.get(url);
+    if (known) return join(url, known, signal);
     if (started >= captureMax) {
         if (!limitLogged) {
             limitLogged = true;
@@ -218,13 +245,13 @@ function request(url: string, signal?: AbortSignal): Promise<boolean> {
         started -= 1;
         clientLog('media_poster', { outcome: 'skipped', reason: 'hidden' });
     };
-    const result: Promise<boolean> = new Promise<boolean>((resolve) => {
+    const result: Promise<AttemptEnd> = new Promise<AttemptEnd>((resolve) => {
         // Waiting in the serial chain: an abort resolves at once (the chain skips it later).
         const onQueuedAbort = () => {
             if (settled) return;
             settled = true;
             refund();
-            resolve(false);
+            resolve('cancelled');
         };
         signal?.addEventListener('abort', onQueuedAbort, { once: true });
         chain = chain.then(async () => {
@@ -233,11 +260,11 @@ function request(url: string, signal?: AbortSignal): Promise<boolean> {
             const end = await runCapture(url, signal);
             settled = true;
             if (end === 'hidden') refund();
-            resolve(end === 'captured');
+            resolve(end === 'hidden' ? 'cancelled' : end);
         });
     });
     attempts.set(url, result);
-    return result;
+    return result.then((end) => end === 'captured');
 }
 
 export const posterCapture = { request };

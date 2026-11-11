@@ -283,6 +283,60 @@ describe('posterCapture', () => {
         expect(FakeVideo.all).toHaveLength(1);
     });
 
+    it('runs a real attempt for a second requester when the first one is cancelled (queued)', async () => {
+        const busy = posterCapture.request(`${VIDEO}busy`); // keeps the serial chain occupied
+        const a = new AbortController();
+        const first = posterCapture.request(VIDEO, a.signal);
+        const second = posterCapture.request(VIDEO); // joins the first attempt, still visible
+        a.abort();
+        await expect(first).resolves.toBe(false);
+        await busy;
+        await expect(second).resolves.toBe(true);
+        expect(FakeVideo.all).toHaveLength(2); // busy + the second requester's own attempt
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+    });
+
+    it('runs a real attempt for a second requester when the first one is cancelled mid-capture', async () => {
+        FakeVideo.mode = 'hang';
+        const a = new AbortController();
+        const first = posterCapture.request(VIDEO, a.signal);
+        await flushMicro();
+        const second = posterCapture.request(VIDEO);
+        FakeVideo.mode = 'ok';
+        a.abort();
+        await expect(first).resolves.toBe(false);
+        await expect(second).resolves.toBe(true);
+        expect(FakeVideo.all).toHaveLength(2);
+        expect(FakeVideo.all[0].released()).toBe(true);
+    });
+
+    it('lets a waiting requester that left the screen stop waiting, without starting a capture', async () => {
+        FakeVideo.mode = 'hang';
+        const a = new AbortController();
+        const first = posterCapture.request(VIDEO, a.signal);
+        await flushMicro();
+        const b = new AbortController();
+        const second = posterCapture.request(VIDEO, b.signal);
+        let secondResult: boolean | null = null;
+        void second.then((r) => { secondResult = r; });
+        b.abort();
+        await flushMicro();
+        expect(secondResult).toBe(false); // settled while the first attempt still runs
+        a.abort();
+        await expect(first).resolves.toBe(false);
+        await flushMicro();
+        expect(FakeVideo.all).toHaveLength(1);
+    });
+
+    it('still gives a second requester a real failure', async () => {
+        fetchMock.mockImplementationOnce(async () => new Response('', { status: 400 }));
+        const first = posterCapture.request(VIDEO);
+        const second = posterCapture.request(VIDEO);
+        await expect(first).resolves.toBe(false);
+        await expect(second).resolves.toBe(false);
+        expect(FakeVideo.all).toHaveLength(1);
+    });
+
     it('ignores URLs outside the media route', async () => {
         await expect(posterCapture.request('/api/blogs/image?x=1')).resolves.toBe(false);
         expect(FakeVideo.all).toHaveLength(0);
