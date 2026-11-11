@@ -108,27 +108,28 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
     const latest = useRef({ grouped, mediaUrl, cols });
     latest.current = { grouped, mediaUrl, cols };
 
-    useImperativeHandle(ref, () => ({
-        scrollToGroup(key) {
-            const groupIndex = groups.findIndex((g) => g.key === key);
-            if (groupIndex < 0) return;
-            virtuosoRef.current?.scrollToIndex({ groupIndex, align: 'start' });
-        },
-        scrollToItem(flatIndex) {
-            const { itemStarts, rowStarts, flat } = latest.current.grouped;
-            const row = rowOfItem(flatIndex, itemStarts, rowStarts, flat.length, latest.current.cols);
-            if (row === null) return;
-            virtuosoRef.current?.scrollToIndex({ index: row, align: 'start' });
-        },
-    }), [groups]);
-
     // Resize anchoring (D-M5): a column change reflows every row, so the same pixel scrollTop
-    // lands on other items (another month). Track the first visible item while the user scrolls
-    // and, after a column change, scroll that item's new row back to the top.
-    const anchorRef = useRef<number | null>(null);
-    const reflowingRef = useRef(false);
+    // lands on other items (another month). The anchor is the first visible item's KEY (so a
+    // data change can never turn it into another item; a key no longer listed anchors nothing).
+    // It is measured while the user scrolls. A programmatic scroll (a re-anchor, a jump) pins it:
+    // the item stays the anchor, unmeasured, until a user gesture (wheel, touch, key, pointer),
+    // so repeated column changes keep the same item even where the sticky header covers part of
+    // its row. A change of `groups` unpins it and re-measures what is on screen.
+    const anchorRef = useRef<string | null>(null);
+    const pinnedRef = useRef(false);
+    const prevColsRef = useRef(cols);
+
+    /** Pins the item at `flatIndex` of the current layout as the anchor. */
+    const pinAnchor = useCallback((flatIndex: number) => {
+        const item = latest.current.grouped.flat[flatIndex];
+        if (item === undefined) return;
+        anchorRef.current = itemKeyRef.current(item);
+        pinnedRef.current = true;
+    }, []);
+
     const measureAnchor = useCallback(() => {
-        if (reflowingRef.current) return;
+        // Pinned, or a column change rendered whose effect has not run yet (its rows are reflowed).
+        if (pinnedRef.current || latest.current.cols !== prevColsRef.current) return;
         const wrapper = wrapperRef.current;
         if (!wrapper || !scrollParent) return;
         const header = wrapper.querySelector<HTMLElement>('[data-media-grid-header]');
@@ -138,8 +139,26 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
             const rect = el.getBoundingClientRect();
             rows.push({ top: rect.top, bottom: rect.bottom, first: Number(el.dataset.first) });
         });
-        anchorRef.current = firstVisibleItem(rows, viewTop);
+        const first = firstVisibleItem(rows, viewTop);
+        const item = first === null ? undefined : latest.current.grouped.flat[first];
+        anchorRef.current = item === undefined ? null : itemKeyRef.current(item);
     }, [scrollParent]);
+
+    useImperativeHandle(ref, () => ({
+        scrollToGroup(key) {
+            const groupIndex = groups.findIndex((g) => g.key === key);
+            if (groupIndex < 0) return;
+            pinAnchor(latest.current.grouped.itemStarts[groupIndex]);
+            virtuosoRef.current?.scrollToIndex({ groupIndex, align: 'start' });
+        },
+        scrollToItem(flatIndex) {
+            const { itemStarts, rowStarts, flat } = latest.current.grouped;
+            const row = rowOfItem(flatIndex, itemStarts, rowStarts, flat.length, latest.current.cols);
+            if (row === null) return;
+            pinAnchor(flatIndex);
+            virtuosoRef.current?.scrollToIndex({ index: row, align: 'start' });
+        },
+    }), [groups, pinAnchor]);
 
     useEffect(() => {
         if (!scrollParent) return undefined;
@@ -148,33 +167,46 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
             if (frame) return;
             frame = requestAnimationFrame(() => { frame = 0; measureAnchor(); });
         };
+        // Only the user's own scrolling releases a pinned anchor.
+        const onGesture = () => { pinnedRef.current = false; };
+        const gestures = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
         scrollParent.addEventListener('scroll', onScroll, { passive: true });
+        gestures.forEach((type) => scrollParent.addEventListener(type, onGesture, { passive: true }));
         return () => {
             scrollParent.removeEventListener('scroll', onScroll);
+            gestures.forEach((type) => scrollParent.removeEventListener(type, onGesture));
             if (frame) cancelAnimationFrame(frame);
         };
     }, [scrollParent, measureAnchor]);
 
-    const prevColsRef = useRef(cols);
+    // New data: re-measure what is on screen (one frame later, once Virtuoso has the new rows).
+    const firstGroupsRef = useRef(true);
+    useEffect(() => {
+        if (firstGroupsRef.current) {
+            firstGroupsRef.current = false;
+            return undefined;
+        }
+        pinnedRef.current = false;
+        const frame = requestAnimationFrame(() => measureAnchor());
+        return () => cancelAnimationFrame(frame);
+    }, [groups, measureAnchor]);
+
     useLayoutEffect(() => {
         const before = prevColsRef.current;
         prevColsRef.current = cols;
-        const anchor = anchorRef.current;
-        // The very first item needs no anchoring: the top stays the top.
-        if (before === cols || anchor === null || anchor <= 0) return undefined;
-        reflowingRef.current = true;
+        const key = anchorRef.current;
+        if (before === cols || key === null) return undefined;
+        const index = latest.current.grouped.flat.findIndex((item) => itemKeyRef.current(item) === key);
+        // The very first item needs no anchoring (the top stays the top); an unlisted key anchors nothing.
+        if (index <= 0) return undefined;
+        pinnedRef.current = true;
         // One frame later, so Virtuoso has taken the new group counts before it scrolls.
         const frame = requestAnimationFrame(() => {
             const { itemStarts, rowStarts, flat } = latest.current.grouped;
-            const row = rowOfItem(anchor, itemStarts, rowStarts, flat.length, latest.current.cols);
+            const row = rowOfItem(index, itemStarts, rowStarts, flat.length, latest.current.cols);
             if (row !== null) virtuosoRef.current?.scrollToIndex({ index: row, align: 'start' });
-            reflowingRef.current = false;
-            anchorRef.current = anchor;
         });
-        return () => {
-            cancelAnimationFrame(frame);
-            reflowingRef.current = false;
-        };
+        return () => cancelAnimationFrame(frame);
     }, [cols]);
 
     const onRange = useCallback((range: ListRange) => {
@@ -241,7 +273,8 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
  * unmount. Visible rows plus two screens ahead are primed into the meta store; tiles report the
  * first visible ready image for the `media_grid` breadcrumb (`grid`, `first_tile_ms`, `visible`,
  * `count`), logged once per mount. When a resize changes the column count, the first visible
- * item is scrolled back to the top of the reflowed rows (resize anchoring).
+ * item (by key) is scrolled back to the top of the reflowed rows (resize anchoring); after that
+ * or a jump it stays the anchor until the user scrolls.
  */
 export const VirtualMediaGrid = forwardRef(VirtualMediaGridInner) as <T>(
     props: VirtualMediaGridProps<T> & { ref?: React.Ref<VirtualMediaGridHandle> },

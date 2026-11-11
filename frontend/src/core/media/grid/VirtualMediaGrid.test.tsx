@@ -203,6 +203,106 @@ describe('VirtualMediaGrid', () => {
         }
     });
 
+    describe('anchor persistence (review I2, I3)', () => {
+        const rowPx = 60;
+        const headerPx = 40;
+        /** Which item's row is on screen, and where its top sits (px from the scroll parent's top). */
+        let screen_: { item: string; top: number } | null = null;
+        let rect: ReturnType<typeof vi.spyOn>;
+        beforeEach(() => {
+            vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
+            screen_ = null;
+            rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+                if (this.hasAttribute('data-media-grid-header')) return { top: 0, bottom: headerPx, height: headerPx } as DOMRect;
+                if (this.hasAttribute('data-media-grid-row') && screen_) {
+                    const rows = Array.from(document.querySelectorAll<HTMLElement>('[data-media-grid-row]'));
+                    const at = rows.findIndex((r) => Array.from(r.children).some((c) => c.textContent === screen_!.item));
+                    const top = (rows.indexOf(this) - at) * rowPx + screen_.top;
+                    return { top, bottom: top + rowPx, height: rowPx } as DOMRect;
+                }
+                return { top: 0, bottom: 0, height: 0 } as DOMRect;
+            });
+        });
+        afterEach(() => {
+            rect.mockRestore();
+            vi.useRealTimers();
+        });
+        const scrollEvent = () => act(() => {
+            document.body.dispatchEvent(new Event('scroll'));
+            vi.advanceTimersToNextFrame();
+        });
+        const resize = (width: number) => {
+            act(() => lastObserver!.resize(width));
+            act(() => { vi.advanceTimersToNextFrame(); });
+        };
+        const lastScroll = () => virtuosoCapture.scrollToIndex[virtuosoCapture.scrollToIndex.length - 1];
+
+        it('keeps the same item over repeated column changes, though the header covers its re-anchored row', () => {
+            render(<Grid groups={[{ key: 'g1', label: 'A', items: items('a', 60) }]} />);
+            screen_ = { item: 'a15', top: headerPx };
+            act(() => virtuosoCapture.rangeChanged!({ startIndex: 2, endIndex: 6 }));
+            resize(600); // 5 → 4 columns
+            expect(lastScroll()).toEqual({ index: Math.floor(15 / 4), align: 'start' });
+            // Virtuoso aligned that row under the sticky header: most of it is covered, so a fresh
+            // measure would pick the NEXT row. The scroll it caused must not move the anchor.
+            screen_ = { item: 'a15', top: 0 };
+            scrollEvent();
+            act(() => virtuosoCapture.rangeChanged!({ startIndex: 3, endIndex: 7 }));
+            resize(400); // 4 → 2 columns
+            expect(lastScroll()).toEqual({ index: Math.floor(15 / gridColumns(400).cols), align: 'start' });
+            resize(800); // back to 5
+            expect(lastScroll()).toEqual({ index: 3, align: 'start' });
+        });
+
+        it('re-measures after a user gesture', () => {
+            render(<Grid groups={[{ key: 'g1', label: 'A', items: items('a', 60) }]} />);
+            screen_ = { item: 'a15', top: headerPx };
+            act(() => virtuosoCapture.rangeChanged!({ startIndex: 2, endIndex: 6 }));
+            resize(600);
+            act(() => { document.body.dispatchEvent(new Event('wheel')); });
+            screen_ = { item: 'a40', top: headerPx };
+            scrollEvent();
+            resize(400);
+            expect(lastScroll()).toEqual({ index: Math.floor(40 / gridColumns(400).cols), align: 'start' });
+        });
+
+        it('a jump pins its target as the anchor', () => {
+            const ref = React.createRef<VirtualMediaGridHandle>();
+            render(<Grid gridRef={ref} groups={[{ key: 'g1', label: 'A', items: items('a', 60) }]} />);
+            act(() => ref.current!.scrollToItem(22));
+            screen_ = { item: 'a20', top: 0 }; // where Virtuoso put row 4 (items 20–24), header over it
+            scrollEvent();
+            resize(600);
+            expect(lastScroll()).toEqual({ index: Math.floor(22 / 4), align: 'start' });
+        });
+
+        it('never anchors a stale item after the groups change', () => {
+            const { rerender } = render(<Grid groups={[{ key: 'g1', label: 'A', items: items('a', 60) }]} />);
+            screen_ = { item: 'a15', top: headerPx };
+            act(() => virtuosoCapture.rangeChanged!({ startIndex: 2, endIndex: 6 }));
+            // Another member: none of the old items is listed, and nothing is measured on screen yet.
+            screen_ = null;
+            rerender(<Grid groups={[{ key: 'h1', label: 'B', items: items('b', 60) }]} />);
+            act(() => { vi.advanceTimersToNextFrame(); });
+            const before = virtuosoCapture.scrollToIndex.length;
+            resize(600);
+            expect(virtuosoCapture.scrollToIndex.length).toBe(before);
+        });
+
+        it('keeps the anchor item, not its index, when a page is prepended', () => {
+            const tail = items('a', 60);
+            const { rerender } = render(<Grid groups={[{ key: 'g1', label: 'A', items: tail }]} />);
+            screen_ = { item: 'a15', top: headerPx };
+            act(() => virtuosoCapture.rangeChanged!({ startIndex: 2, endIndex: 6 }));
+            // A newer month arrives above; the same item is still on screen.
+            rerender(<Grid groups={[{ key: 'g0', label: 'Z', items: items('z', 7) }, { key: 'g1', label: 'A', items: tail }]} />);
+            act(() => { vi.advanceTimersToNextFrame(); });
+            resize(600);
+            // g0 has 7 items → 2 rows at 4 columns; a15 is row 2 + floor(15 / 4) = 5.
+            expect(lastScroll()).toEqual({ index: 2 + Math.floor(15 / 4), align: 'start' });
+        });
+    });
+
     it('does not scroll on a resize that keeps the column count, or when at the top', () => {
         vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
         try {
