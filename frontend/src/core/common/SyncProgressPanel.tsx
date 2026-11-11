@@ -29,7 +29,8 @@ export interface SyncProgressPanelProps {
  * Scanning (loading UX L6): while a running or queued sync has no total yet (a scan phase, see
  * `SCAN_PHASES`), the count row reads "getting ready" instead of "0 / 0 · 0 %" and the bar is
  * indeterminate; after 10 s of a running scan a line explains why (a queued sync's detail row
- * already explains its wait). Cancel already sits in the dialog footer and the inline view.
+ * already explains its wait). Cancel already sits in the dialog footer and the inline view. A
+ * running phase whose total stays 0 (verifying) shows its count alone over an indeterminate bar.
  */
 export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }) => {
     const { t } = useTranslation();
@@ -41,6 +42,10 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
     // A queued sync waits for another one: the detail row already says so (place in line), so
     // the "checking for new messages" explanation would be wrong there.
     const showScanExplanation = scanning && progress.state !== 'queued' && scanStage === 'verySlow';
+    // A running phase with no total (verifying counts members with total 0): the count alone
+    // over an indeterminate bar, never "N / 0 · 0 %".
+    const unknownTotal = !scanning && progress.state === 'running' && total === 0;
+    const countText = (progress.completed ?? 0).toLocaleString();
     const ratio = total > 0 ? (progress.completed || 0) / total : 0;
     const percent = Math.round(ratio * 100);
     const currentIndex = PHASE_ORDER.indexOf(progress.phase || '');
@@ -63,6 +68,8 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
             <div className="flex flex-col gap-2">
                 {scanning ? (
                     <p className="text-small font-semibold text-secondary">{t('sync.preparing')}</p>
+                ) : unknownTotal ? (
+                    <p data-testid="sync-count" className="text-small font-semibold tabular-nums text-secondary">{countText}</p>
                 ) : (
                     <div className="flex justify-between text-small font-semibold tabular-nums">
                         <span className="text-secondary">
@@ -73,10 +80,12 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                 )}
                 {/* e4e4118: a 16 px light-grey track; fill = the pastel (dialog) or the title gradient (inline). */}
                 <ProgressBar
-                    value={scanning ? null : ratio}
+                    value={scanning || unknownTotal ? null : ratio}
                     size="md"
                     label={t('sync.progress')}
-                    valueText={scanning ? undefined : `${progress.completed?.toLocaleString() || 0} / ${progress.total?.toLocaleString() || 0}`}
+                    valueText={scanning
+                        ? undefined
+                        : unknownTotal ? countText : `${progress.completed?.toLocaleString() || 0} / ${progress.total?.toLocaleString() || 0}`}
                     fillTestId="sync-progress-fill"
                 />
                 {showScanExplanation && (

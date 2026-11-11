@@ -207,7 +207,8 @@
     "maybeLater": "Maybe Later",
     "waitingSlow": "Opening the sign-in window…",
     "waitingVerySlow": "Finish signing in in the browser window that opened. You can cancel at any time.",
-    "finishing": "Almost done…"
+    "finishing": "Almost done…",
+    "cancelling": "Cancelling…"
   },
   "tos": {
     "title": "Terms of Service",

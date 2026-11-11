@@ -207,7 +207,8 @@
     "maybeLater": "遲啲先",
     "waitingSlow": "開緊登入視窗…",
     "waitingVerySlow": "請喺開咗嘅瀏覽器視窗完成登入。你隨時可以取消。",
-    "finishing": "就快搞掂…"
+    "finishing": "就快搞掂…",
+    "cancelling": "取消緊…"
   },
   "tos": {
     "title": "服務條款",

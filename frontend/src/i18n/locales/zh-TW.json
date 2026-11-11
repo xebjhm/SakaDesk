@@ -207,7 +207,8 @@
     "maybeLater": "以後再說",
     "waitingSlow": "正在開啟登入視窗…",
     "waitingVerySlow": "請在開啟的瀏覽器視窗中完成登入。你可以隨時取消。",
-    "finishing": "即將完成…"
+    "finishing": "即將完成…",
+    "cancelling": "正在取消…"
   },
   "tos": {
     "title": "服務條款",

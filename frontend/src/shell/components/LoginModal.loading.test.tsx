@@ -315,4 +315,54 @@ describe('login while connecting (L6)', () => {
         expect(onClose).toHaveBeenCalledOnce();
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login_cancel', outcome: 'error', reason: 'timeout' });
     });
+
+    // Fix round 2 (R1): a reconciled success goes straight to finishing, never back to connecting.
+    it('a reconciled success never flashes the connecting copy or logs its waits twice', async () => {
+        stubFetch({ cancelled: false });
+        authMock.value = {
+            checkAuth: vi.fn(async () => ({ hinatazaka46: { authenticated: true, expires_at: 2_000_000_000 } })),
+            getServiceExpiresAt: () => null,
+        };
+        const seen: string[] = [];
+        render(<LoginModal serviceId="hinatazaka46" {...props} onClose={vi.fn()} onSuccess={vi.fn()} />);
+        act(() => { fireEvent.click(loginButton()); });
+        await flush();
+        advance(10_000);
+        await flush();
+        const veryslowLogs = () => vi.mocked(clientLog).mock.calls.filter(([e, f]) => e === 'ui_wait' && (f as { phase?: string }).phase === 'very_slow').length;
+        expect(veryslowLogs()).toBe(1);
+        act(() => { fireEvent.click(cancelButton()); });
+        expect(screen.queryByText(t('login.waitingVerySlow'))).toBeNull();
+        // Watch every commit while the cancel settles: the very-slow copy must never come back.
+        const observer = new MutationObserver(() => {
+            if (document.body.textContent?.includes(t('login.waitingVerySlow'))) seen.push('flash');
+        });
+        observer.observe(document.body, { subtree: true, childList: true, characterData: true });
+        await flush();
+        await flush();
+        observer.disconnect();
+        expect(seen).toEqual([]);
+        expect(cancelButton()).toHaveAccessibleDescription('まもなく完了します…');
+        expect(veryslowLogs()).toBe(1);
+    });
+
+    // Fix round 2 (R2): a slow cancel says it is still cancelling at 3 s.
+    it('a cancel still running at 3 s says so', async () => {
+        stubFetch();
+        const base = vi.mocked(fetch).getMockImplementation()!;
+        vi.mocked(fetch).mockImplementation((input, init) => (String(input).startsWith('/api/auth/login/cancel')
+            ? new Promise<Response>(() => {})
+            : base(input, init)));
+        render(<LoginModal serviceId="hinatazaka46" {...props} onClose={vi.fn()} />);
+        act(() => { fireEvent.click(loginButton()); });
+        await flush();
+        act(() => { fireEvent.click(cancelButton()); });
+        advance(2999);
+        expect(screen.queryByText('キャンセルしています…')).toBeNull();
+        advance(1);
+        const line = screen.getByText('キャンセルしています…');
+        expect(line).toHaveAttribute('role', 'status');
+        expect(line).toHaveClass('text-small', 'text-secondary');
+        expect(clientLog).toHaveBeenCalledWith('ui_wait', expect.objectContaining({ surface: 'login_cancel', phase: 'slow' }));
+    });
 });

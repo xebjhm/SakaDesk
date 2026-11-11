@@ -207,7 +207,8 @@
     "maybeLater": "以后再说",
     "waitingSlow": "正在打开登录窗口…",
     "waitingVerySlow": "请在打开的浏览器窗口中完成登录。你可以随时取消。",
-    "finishing": "即将完成…"
+    "finishing": "即将完成…",
+    "cancelling": "正在取消…"
   },
   "tos": {
     "title": "服务条款",

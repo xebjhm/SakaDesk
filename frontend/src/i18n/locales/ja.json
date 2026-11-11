@@ -207,7 +207,8 @@
     "maybeLater": "あとで",
     "waitingSlow": "ログイン画面を開いています…",
     "waitingVerySlow": "開いたブラウザのウィンドウでログインを完了してください。いつでもキャンセルできます。",
-    "finishing": "まもなく完了します…"
+    "finishing": "まもなく完了します…",
+    "cancelling": "キャンセルしています…"
   },
   "tos": {
     "title": "利用規約",

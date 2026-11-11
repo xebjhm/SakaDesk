@@ -34,8 +34,8 @@ export interface CancelLoginResult {
     backend: CancelBackendOutcome;
     /**
      * The login had already succeeded (the verifier saw the service authenticated with a new
-     * token). The lock is then still held: the login's owner (`awaitLoginCancel`) runs the
-     * normal success path and releases it.
+     * token). The lock is then still held, already in `finishing`: the login's owner
+     * (`awaitLoginCancel`) runs the normal success path and releases it.
      */
     completed: boolean;
     /** The service of the login that was cancelled (an id). */
@@ -177,8 +177,14 @@ async function settleCancel(
     }
     cancelling = false;
     pendingCancel = null;
-    if (completed) emit();
-    else unlockLogin();
+    if (completed) {
+        // Straight to finishing in the same notification: a render in between would show the
+        // connecting state again (its staged copy and a second ui_wait).
+        phase = 'finishing';
+        emit();
+    } else {
+        unlockLogin();
+    }
     return { backend, completed, service };
 }
 

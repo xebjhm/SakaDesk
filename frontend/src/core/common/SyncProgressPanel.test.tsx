@@ -170,10 +170,27 @@ describe('SyncProgressPanel scanning', () => {
         ['downloading', 3],
         ['verifying', 1],
         ['repairing', 2],
-    ])('a %s phase with total 0 is not scanning', (phase, phaseNumber) => {
-        render(<SyncProgressPanel progress={{ ...SCANNING, phase, phase_number: phaseNumber }} />);
+    ])('a running %s phase with total 0 is not scanning, and never reads "N / 0 · 0%"', (phase, phaseNumber) => {
+        // Fix round 2 (R4): verifying counts members with total 0; show the count over an indeterminate bar.
+        render(<SyncProgressPanel progress={{ ...SCANNING, phase, phase_number: phaseNumber, completed: 3 }} />);
         expect(screen.queryByText('Getting ready to sync…')).toBeNull();
-        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+        const bar = screen.getByRole('progressbar', { name: 'Sync progress' });
+        expect(bar).not.toHaveAttribute('aria-valuenow');
+        expect(bar).toHaveAttribute('aria-valuetext', '3');
+        expect(screen.getByTestId('sync-count')).toHaveTextContent(/^3$/);
+        expect(screen.queryByText(/\/ 0/)).toBeNull();
+        expect(screen.queryByText(/%/)).toBeNull();
+    });
+
+    it('a large verify count keeps its CJK-locale grouping and stays indeterminate', async () => {
+        await i18n.changeLanguage('ja');
+        try {
+            render(<SyncProgressPanel progress={{ ...SCANNING, phase: 'verifying', completed: 12345 }} />);
+            expect(screen.getByTestId('sync-count')).toHaveTextContent((12345).toLocaleString());
+            expect(screen.queryByText('同期の準備中…')).toBeNull();
+        } finally {
+            await i18n.changeLanguage('en');
+        }
     });
 
     it('discovering with total 0 is still scanning', () => {

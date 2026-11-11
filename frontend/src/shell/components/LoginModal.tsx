@@ -100,6 +100,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     const finishing = phase === 'finishing';
     // A login being cancelled is winding down: no "finish in the browser" copy for it.
     const { stage } = useLoadingStages(phase === 'connecting' && !cancelling, { surface: 'login', startedAt: startedAt ?? undefined });
+    // A cancel waiting on the backend (browser closing; at most 15 s): "still cancelling" from 3 s.
+    const { stage: cancelStage } = useLoadingStages(cancelling, { surface: 'login_cancel' });
+    const cancelSlow = cancelStage === 'slow' || cancelStage === 'verySlow';
     // Null outside an AuthProvider (dialog tests): a cancel then cannot re-check and stays a cancel.
     const auth = useOptionalAuth();
     const authRef = useRef(auth);
@@ -349,9 +352,11 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     <div className="flex flex-col gap-4 overflow-y-auto p-6">
                         <p className="text-body text-secondary">{description}</p>
 
-                        {(stage === 'slow' || stage === 'verySlow') && (
+                        {(stage === 'slow' || stage === 'verySlow' || cancelSlow) && (
                             <p role="status" aria-live="polite" className="text-small text-secondary">
-                                {stage === 'verySlow' ? t('login.waitingVerySlow') : t('login.waitingSlow')}
+                                {cancelSlow
+                                    ? t('login.cancelling')
+                                    : stage === 'verySlow' ? t('login.waitingVerySlow') : t('login.waitingSlow')}
                             </p>
                         )}
 
