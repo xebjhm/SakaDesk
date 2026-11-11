@@ -655,12 +655,16 @@ describe('AlbumPage loading (L4)', () => {
             const grid = box.querySelector<HTMLElement>('[data-band-grid]')!;
             // Reserved from mount (before the reveal), so the reveal and the grid never move the band.
             expect(box).toHaveAttribute('data-rows', '7');
-            expect(grid.style.minHeight).toBe(`${7 * 144 + 6 * 8}px`);
+            // On the wrapper: the grid box is MonthGrid's exactly (no height of its own, so rows stay packed).
+            expect(box.style.minHeight).toBe(`${7 * 144 + 6 * 8}px`);
+            expect(grid.style.minHeight).toBe('');
+            expect(grid.className).toBe(within(section('2022-05')).getByTestId('album-band-skeleton').querySelector('[data-band-grid]')!.className);
             // A month with a favourite reserves its pinned 2 x 2 tile too (43 cells: 8 rows).
             expect(within(section('2022-05')).getByTestId('album-band-skeleton')).toHaveAttribute('data-rows', '8');
             await act(async () => { await vi.advanceTimersByTimeAsync(200); });
             expect(skeletonTiles('2026-10')).toHaveLength(12);
-            expect(grid.style.minHeight).toBe(`${7 * 144 + 6 * 8}px`);
+            expect(box.style.minHeight).toBe(`${7 * 144 + 6 * 8}px`);
+            expect(grid.style.minHeight).toBe('');
         } finally {
             width.mockRestore();
         }

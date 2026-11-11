@@ -716,13 +716,15 @@ The hub's first load reserves the moment's place from mount (`min-h-48`), draws 
 shaped like the On This Day card from `reveal`, the Memories slow line at 3 s and
 `memories.home.firstVerySlow` with an indeterminate bar at 10 s (no Cancel: the entry cards stay
 usable and never move at the reveal). Under the title an empty `role="status"` region is always
-mounted; while the board on screen is `refreshing` and still re-polled it holds one inline
-`StatusBlock` (`memories_hub`, stage `shown` at once) saying it is still gathering. When the polling
+mounted; while the board on screen is `refreshing` and still re-polled it holds one row in the
+inline `StatusBlock` look (decorative spinner beside the visible line, no second live region, shown
+at once) saying it is still gathering. When the polling
 ends at its cap (`pollCapped`) the line drops quietly and logs `ui_wait` `timeout` once.
 An album band without its grid shows its skeleton in the very grid box of the real grid, measured
 with `useGridColumns`: its `minHeight` reserves `ceil(cells / cols)` rows at the measured tile edge
 (one cell per item, plus one pinned ★ when the month has a favourite and the filter pins them), and
-at most 12 `Skeleton tile`s pulse. Bursts and further favourites are unknown until the grid lands,
+at most 12 `Skeleton tile`s pulse (the `minHeight` sits on the wrapper, so the grid box stays the
+real grid's and its rows stay packed at the top). Bursts and further favourites are unknown until the grid lands,
 so a month with them can still change height then. Before `reveal` the box is the same size, empty;
 under reduced motion the label floats as a pill over the tiles, so it never changes the height. A
 shown band skeleton stays `minVisible` for display only (the answer reaches the album's cache on

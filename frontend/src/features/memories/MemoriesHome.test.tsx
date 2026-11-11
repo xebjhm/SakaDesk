@@ -306,7 +306,10 @@ describe('MemoriesHome loading (L4)', () => {
         expect(line).toBeEmptyDOMElement();
         await act(async () => { answer(hubPayload({ refreshing: true })); });
         expect(screen.getByTestId('memories-hub-gathering')).toBe(line);
-        expect(within(line).getByRole('status')).toHaveAttribute('data-stage', 'shown');
+        expect(line.querySelector('[data-stage="shown"]')).not.toBeNull();
+        // One live region only: the line inside is not a second status.
+        expect(within(line).queryByRole('status')).toBeNull();
+        expect(line.querySelector('[role="status"]')).toBeNull();
         expect(line).toHaveTextContent('思い出を集めています… 新しいカードが順に表示されます。');
         // Directly under the title, above the board; the board stays on screen.
         expect(screen.getByRole('heading', { level: 1 }).nextElementSibling).toBe(line);

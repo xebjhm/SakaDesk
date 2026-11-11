@@ -68,7 +68,8 @@ interface BandSkeletonProps {
 /**
  * The band's tile skeleton while its grid loads (F28), in the very grid box of `MonthGrid`
  * (`ALBUM_GRID`). The box is measured with `useGridColumns` (the `tileGrid.ts` columns and tile
- * edge) and its `minHeight` reserves `bandSkeletonRows` rows: one cell per item, plus one pinned ★
+ * edge); the wrapper's `minHeight` (the grid box itself stays identical to `MonthGrid`'s, so its
+ * rows sit packed at the top) reserves `bandSkeletonRows` rows: one cell per item, plus one pinned ★
  * when likely (`bandSkeleton.ts` lists what stays unknown until the grid lands: bursts and
  * favourites beyond the first). At most `BAND_SKELETON_MAX` tiles pulse; the rest of the reserved
  * height stays empty. Until `revealed` the same box holds empty, invisible cells (nothing flashes,
@@ -92,13 +93,14 @@ const BandSkeleton: React.FC<BandSkeletonProps> = ({ count, pinsLikely, revealed
             aria-busy={revealed ? undefined : true}
             aria-labelledby={revealed ? labelId : undefined}
             className="relative w-full min-w-0"
+            // On the wrapper, never the grid: a taller grid would stretch its rows apart.
+            style={minHeight > 0 ? { minHeight } : undefined}
         >
             <div
                 ref={gridRef}
                 data-band-grid
                 aria-hidden="true"
                 className={cn(ALBUM_GRID, !revealed && 'invisible')}
-                style={minHeight > 0 ? { minHeight } : undefined}
             >
                 {Array.from({ length: tiles }, (_, i) => (revealed
                     ? <Skeleton key={i} shape="tile" tone={tone} className="w-full" />
