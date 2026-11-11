@@ -16,7 +16,9 @@ import { messageName } from '../shared/nameFromRoom';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { AlbumKind, AlbumMonthSummary, MemoriesCountedMember, MemoryMessage } from '../types';
-import { peekPrefetchedMonth, prefetchNewestMonth, rememberNewestMonth } from './albumPrefetch';
+import {
+    peekPrefetchedMonth, prefetchNewestMonth, prefetchSettled, rememberedNewestMonth, rememberNewestMonth,
+} from './albumPrefetch';
 import { AlbumWaitLine } from './AlbumWaitLine';
 import { createBandWaits } from './bandWaits';
 import { ColorRibbon, type RibbonMonth } from './ColorRibbon';
@@ -41,7 +43,8 @@ interface AlbumGridProps {
     member: string | undefined;
     kind: AlbumKind;
     months: AlbumMonthSummary[];
-    colors: Record<string, string | null>;
+    /** The ribbon colours; null until loaded (each month's cover tint stands in meanwhile). */
+    colors: Record<string, string | null> | null;
     nameOf: (m: MemoryMessage) => string;
     /** Absent while the grid is kept for another person or filter (no cover menu). */
     onSetCover?: (month: string, item: MemoryMessage) => void;
@@ -63,6 +66,9 @@ const AlbumPregenBar: React.FC<{ service: string; active: boolean }> = ({ servic
     const pregen = usePregenProgress(active, service, logAlbumPregen);
     return pregen ? <PregenProgressBar progress={pregen} className="ml-auto min-w-0 flex-1" /> : null;
 };
+
+/** A warm open defers the requests its first band does not need at most this long (ms). */
+export const OPEN_DEFER_MAX_MS = 1500;
 
 /** How long the cover-failure toast stays (ms). */
 const TOAST_MS = 4000;
@@ -97,7 +103,7 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
     const [waits] = useState(createBandWaits);
 
     const ribbon: RibbonMonth[] = useMemo(
-        () => months.map((m) => ({ month: m.month, color: colors[m.month] ?? null })),
+        () => months.map((m) => ({ month: m.month, color: colors ? colors[m.month] ?? null : m.cover_color })),
         [months, colors],
     );
 
@@ -157,12 +163,20 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
  * `memories_load` `album_pregen`).
  * The newest month's grid is prefetched beside the months list (`albumPrefetch.ts`: the month this
  * scope showed last this session), and the top band takes that answer when the list names the same
- * month, so a reopen makes one round trip to its first grid instead of two.
+ * month, so a reopen makes one round trip to its first grid instead of two. On such a warm open the
+ * members (and so their avatars), the ribbon colours and the thumbnail status wait until the
+ * prefetch lands, fails or is dropped (at most `OPEN_DEFER_MAX_MS`): the member pane shows its
+ * loading rows and the ribbon each month's cover tint meanwhile. The months list still goes beside
+ * the prefetch: the bands (and the newer-month check) need it.
  */
 export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     const { t } = useTranslation();
     const member = route.memberPath;
     const [kind, setKind] = useState<AlbumKind>('all');
+    // A warm open (the newest month is prefetched): the requests the first band does not need
+    // (members and their avatars, the ribbon colours, the thumbnail status) wait until that month
+    // has landed or failed, at most OPEN_DEFER_MAX_MS, so it does not queue behind them (D-M3).
+    const [deferring, setDeferring] = useState(() => rememberedNewestMonth(service, member, kind) !== undefined);
     const [coverVersion, setCoverVersion] = useState(0);
     // The id of the latest cover failure (0 = none): the toast shows while it is set.
     const [coverFailure, setCoverFailure] = useState(0);
@@ -176,6 +190,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
 
     const members = useMemoriesQuery('album_members', (signal) => fetchAlbumMembers(service, signal), [service], {
         count: (d) => d.members.length,
+        enabled: !deferring,
     });
     // Tagged with the person and filter they were loaded for: on a switch the previous months stay
     // on screen (dimmed) until hers arrive, and their bands keep drawing the previous grids.
@@ -196,6 +211,21 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     // last), so the open no longer waits for the list before its first grid request (D-M3). Not on
     // a cover change: the window cache keeps the month payloads, so no band would take it (m3).
     useEffect(() => prefetchNewestMonth(service, member, kind), [service, member, kind]);
+    // After the prefetch effect above (effects run in order), on the page's first open only.
+    useEffect(() => {
+        if (!deferring) return undefined;
+        let open = true;
+        const release = () => { if (open) { open = false; setDeferring(false); } };
+        const settled = prefetchSettled(service, member, kind);
+        if (settled === null) release();
+        else void settled.then(release);
+        const timer = setTimeout(release, OPEN_DEFER_MAX_MS);
+        return () => {
+            open = false;
+            clearTimeout(timer);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- the first open's scope only
+    }, []);
     const shownMonths = months.data?.payload ?? null;
     const arrived = months.stale ? null : months.data;
     useEffect(() => {
@@ -229,6 +259,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     const colors = useMemoriesQuery('album_colors', (signal) => fetchAlbumColors(service, member, signal), [service, member], {
         count: (d) => Object.keys(d.colors).length,
         keepPrevious: { scope: service },
+        enabled: !deferring,
     });
 
     const people = members.data?.members;
@@ -286,7 +317,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
                     member={shownFor.member}
                     kind={shownFor.kind}
                     months={shownMonths.months}
-                    colors={colors.data?.colors ?? {}}
+                    colors={colors.data?.colors ?? null}
                     nameOf={nameOf}
                     // A cover is chosen for the person and filter on screen, not for the kept ones.
                     onSetCover={switching ? undefined : onSetCover}
@@ -309,7 +340,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
                     onSelect={pickMember}
                     allLabel={t('memories.common.all')}
                     allTrailing={total > 0 ? total : undefined}
-                    status={memberPaneStatus(members)}
+                    status={deferring ? 'loading' : memberPaneStatus(members)}
                     onRetry={members.retry}
                 />
                 <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
@@ -328,7 +359,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
                             </Pill>
                         ))}
                         {/* Quiet background progress: thumbnails still being prepared (or paused). */}
-                        <AlbumPregenBar service={service} active={itemCount > 0} />
+                        <AlbumPregenBar service={service} active={itemCount > 0 && !deferring} />
                     </div>
                     <MediaGridContext.Provider value={reporter}>{body}</MediaGridContext.Provider>
                     {coverFailure > 0 && (

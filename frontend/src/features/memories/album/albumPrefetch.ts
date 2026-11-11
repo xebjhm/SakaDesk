@@ -115,6 +115,20 @@ export function peekPrefetchedMonth(
     return entry && entry.month === month ? entry.promise : null;
 }
 
+/** The newest month the scope showed last this session (a reopen prefetches it); else undefined. */
+export function rememberedNewestMonth(service: string, member: string | undefined, kind: AlbumKind): string | undefined {
+    return newest.get(scopeOf(service, member, kind));
+}
+
+/**
+ * Resolves (never rejects) once the scope's prefetch in flight lands, fails or is dropped; null
+ * when there is none. The page defers the requests its first band does not need until then.
+ */
+export function prefetchSettled(service: string, member: string | undefined, kind: AlbumKind): Promise<void> | null {
+    const entry = pending.get(scopeOf(service, member, kind));
+    return entry ? entry.promise.then(() => undefined, () => undefined) : null;
+}
+
 /** Forget every remembered month and abort every prefetch (tests). */
 export function resetAlbumPrefetch(): void {
     pending.forEach((entry) => entry.controller.abort());

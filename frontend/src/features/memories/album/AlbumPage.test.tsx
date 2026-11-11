@@ -26,7 +26,7 @@ import {
 } from '../api';
 import { NicknameProvider } from '../shared/useNickname';
 import type { MemoriesRoute } from '../MemoriesFeature';
-import { AlbumPage } from './AlbumPage';
+import { AlbumPage, OPEN_DEFER_MAX_MS } from './AlbumPage';
 import { resetAlbumPrefetch } from './albumPrefetch';
 import { MEDIA_GRID_COLS } from '../../../core/media/tileGrid';
 import { MAX_IN_FLIGHT } from './useAlbumWindow';
@@ -1133,5 +1133,67 @@ describe('AlbumPage warm open: the prefetched band holds its skeleton reveal (D-
         await step(1);
         expect(revealed('2026-10')).toBe(true);
         expect(skips()).toEqual([{ target: 'album_prefetch', reason: 'prefetch_none' }]);
+    });
+});
+
+describe('AlbumPage warm open: requests the first band does not need wait for the prefetch (D-M3)', () => {
+    const step = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-11-10T03:00:00Z'));
+    });
+
+    async function reopenWithHeldPrefetch() {
+        const first = renderAlbum();
+        await step(10);
+        first.unmount();
+        vi.mocked(fetchAlbumMembers).mockClear();
+        vi.mocked(fetchAlbumColors).mockClear();
+        vi.mocked(fetchAlbumMonths).mockClear();
+        const gate = { settle: (_ok: boolean) => {} };
+        vi.mocked(fetchAlbumMonth).mockImplementationOnce((_s, month) => new Promise((resolve, reject) => {
+            gate.settle = (ok) => (ok ? resolve(monthPayload(month)) : reject(new MemoriesFetchError(500)));
+        }));
+        renderAlbum();
+        await step(10);
+        return gate;
+    }
+
+    it('the first open asks for members and colours at once', async () => {
+        renderAlbum();
+        await step(0);
+        expect(fetchAlbumMembers).toHaveBeenCalledTimes(1);
+        expect(fetchAlbumColors).toHaveBeenCalledTimes(1);
+    });
+
+    it('a reopen sends only the months beside the prefetch; members and colours follow its answer', async () => {
+        const gate = await reopenWithHeldPrefetch();
+        expect(fetchAlbumMonths).toHaveBeenCalledTimes(1);
+        expect(fetchAlbumMembers).not.toHaveBeenCalled();
+        expect(fetchAlbumColors).not.toHaveBeenCalled();
+        // The member pane shows its loading state meanwhile (never an empty list).
+        expect(screen.queryByText('金村 美玖')).toBeNull();
+        await act(async () => { gate.settle(true); });
+        await step(10);
+        expect(fetchAlbumMembers).toHaveBeenCalledTimes(1);
+        expect(fetchAlbumColors).toHaveBeenCalledTimes(1);
+    });
+
+    it('a failed prefetch releases them too', async () => {
+        const gate = await reopenWithHeldPrefetch();
+        await act(async () => { gate.settle(false); });
+        await step(10);
+        expect(fetchAlbumMembers).toHaveBeenCalledTimes(1);
+        expect(fetchAlbumColors).toHaveBeenCalledTimes(1);
+    });
+
+    it('a prefetch that never answers releases them at OPEN_DEFER_MAX_MS', async () => {
+        await reopenWithHeldPrefetch();
+        await step(OPEN_DEFER_MAX_MS - 20);
+        expect(fetchAlbumMembers).not.toHaveBeenCalled();
+        await step(20);
+        expect(fetchAlbumMembers).toHaveBeenCalledTimes(1);
+        expect(fetchAlbumColors).toHaveBeenCalledTimes(1);
     });
 });
