@@ -157,7 +157,8 @@
     "same_time_none",
     "card_missing",
     "prefetch_none",
-    "prefetch_unused"
+    "prefetch_unused",
+    "prefetch_reveal_held"
   ],
   "memories_radio.phase": [
     "play",

@@ -1,6 +1,7 @@
 import React, { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from '../../../i18n';
 import { useDelayedLoading } from '../../../design/loading';
+import { motion } from '../../../design/tokens';
 import { Skeleton, SPINNER_LABEL_VISIBILITY, type SkeletonTone } from '../../../design/primitives';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { MEDIA_GRID_COLS, MEDIA_GRID_GAP, MEDIA_GRID_GAP_REM, MEDIA_GRID_MIN } from '../../../core/media/tileGrid';
@@ -20,7 +21,8 @@ import { PhotoTile } from './PhotoTile';
 import { PolaroidCover } from './PolaroidCover';
 import { albumItemKey, albumViewerItems, formatMonth, monthParts, viewerIndexOf } from './albumViewer';
 import { gridEntries } from './gridEntries';
-import { takePrefetchedMonth } from './albumPrefetch';
+import { peekPrefetchedMonth, takePrefetchedMonth } from './albumPrefetch';
+import { logMemoriesSkip } from '../memoriesLog';
 
 interface MonthSectionProps {
     service: string;
@@ -50,6 +52,14 @@ interface MonthSectionProps {
     /** 「表紙を自動にもどす」 on this month's cover (offered when its rule is `override`). */
     onResetCover?: (month: string) => void;
 }
+
+/**
+ * A band that will take the page's prefetch (a warm open, D-M3) reveals its skeleton this long
+ * after it mounts instead of after `motion.loading.reveal`, unless the prefetch settles first:
+ * the prefetched month usually lands just after the normal reveal, and the skeleton's min-visible
+ * hold would then become the open's critical path.
+ */
+export const PREFETCH_REVEAL_MS = 1000;
 
 /** The band tint from the cover photo (the data-driven exception, DESIGN_SYSTEM.md). */
 const tintOf = (color: string | null): string | undefined =>
@@ -234,7 +244,9 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
  * The grid is fetched once `requested` and mounted only while `live`; a band that is not live
  * keeps its last measured height, so the scroll position holds while its grid is released.
  * A live band without its grid (queued for a fetch slot, or fetching) shows its tile skeleton
- * (`BandSkeleton`, from the reveal delay); once shown, the skeleton stays at least `minVisible`
+ * (`BandSkeleton`, from the reveal delay; a band taking the page's prefetch holds that reveal until
+ * the prefetch settles or `PREFETCH_REVEAL_MS` after its mount, logged once as `memories_skip`
+ * `album_prefetch` `prefetch_reveal_held` when it outlasts the normal reveal); once shown, the skeleton stays at least `minVisible`
  * (`useDelayedLoading`), a display-only hold: the answer reaches the album's cache on arrival, which
  * frees the fetch slot, and `onSettled` (the ribbon-jump re-align) follows the real grid's commit.
  * An error or timeout shows inside the band with Retry. While it fetches or holds its skeleton the
@@ -266,9 +278,36 @@ export const MonthSection = React.memo<MonthSectionProps>(({
     const height = useRef<number | null>(null);
     // The loader's error is on screen (no skeleton then).
     const [failed, setFailed] = useState(false);
+    // The page's prefetch of this month, still in flight when the band mounts (a warm open): the
+    // skeleton's reveal waits for it until PREFETCH_REVEAL_MS after the mount (D-M3).
+    const [prefetch] = useState(() => peekPrefetchedMonth(service, member, kind, month));
+    const [prefetchHold, setPrefetchHold] = useState(prefetch !== null);
+    const dataRef = useRef(data);
+    dataRef.current = data;
+    useEffect(() => {
+        if (!prefetch) return undefined;
+        let holding = true;
+        const end = () => {
+            if (!holding) return;
+            holding = false;
+            setPrefetchHold(false);
+        };
+        prefetch.then(end, end);
+        // The normal reveal starts after the hold, so the skeleton shows at PREFETCH_REVEAL_MS.
+        const timer = setTimeout(end, PREFETCH_REVEAL_MS - motion.loading.reveal);
+        // The normal reveal would have shown the skeleton now: leave a breadcrumb that the hold mattered.
+        const logTimer = setTimeout(() => {
+            if (holding && dataRef.current === undefined) logMemoriesSkip('album_prefetch', 'prefetch_reveal_held');
+        }, motion.loading.reveal);
+        return () => {
+            holding = false;
+            clearTimeout(timer);
+            clearTimeout(logTimer);
+        };
+    }, [prefetch]);
     // A live band without its grid shows the skeleton from the reveal delay, and keeps a shown one
     // `minVisible` after the grid arrives (display only: the answer is already in the cache).
-    const held = useDelayedLoading(live && data === undefined && !failed);
+    const held = useDelayedLoading(live && data === undefined && !failed && !prefetchHold);
     const showGrid = live && data !== undefined && !held;
     // The page wait line: fetching, or holding the skeleton over an arrived grid.
     const waiting = live && requested && !failed && !showGrid;

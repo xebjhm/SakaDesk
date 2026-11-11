@@ -57,3 +57,45 @@ describe('useAlbumWindow jump re-align', () => {
         expect(scrolled).toEqual([]);
     });
 });
+
+describe('useAlbumWindow firstAlone (D-M3 warm open)', () => {
+    function setup(firstAlone: boolean) {
+        vi.useFakeTimers();
+        const near = stubObserver();
+        const months = ['2026-10', '2026-09', '2026-08'];
+        const bands = months.map((m) => {
+            const el = document.createElement('section');
+            el.setAttribute('data-month', m);
+            el.scrollIntoView = () => {};
+            return [m, el] as const;
+        });
+        const root = { current: document.createElement('div') };
+        const hook = renderHook(() => useAlbumWindow(months, root, { firstAlone }));
+        act(() => { for (const [m, el] of bands) hook.result.current.registerRef(m, el); });
+        months.forEach((m) => near(m));
+        return hook;
+    }
+
+    it('grants only the top month until it is cached', () => {
+        const { result } = setup(true);
+        expect(result.current.isRequested('2026-10', 0)).toBe(true);
+        expect(result.current.isRequested('2026-09', 1)).toBe(false);
+        act(() => { result.current.onLoaded('2026-10', { month: '2026-10', items: [] } as never); });
+        expect(result.current.isRequested('2026-09', 1)).toBe(true);
+        expect(result.current.isRequested('2026-08', 2)).toBe(true);
+    });
+
+    it('a jump releases the hold', () => {
+        const { result } = setup(true);
+        expect(result.current.isRequested('2026-09', 1)).toBe(false);
+        act(() => { result.current.jump('2026-09'); });
+        act(() => { vi.advanceTimersByTime(SETTLE_MS); });
+        expect(result.current.isRequested('2026-09', 1)).toBe(true);
+    });
+
+    it('without it, two months are fetched at once', () => {
+        const { result } = setup(false);
+        expect(result.current.isRequested('2026-10', 0)).toBe(true);
+        expect(result.current.isRequested('2026-09', 1)).toBe(true);
+    });
+});

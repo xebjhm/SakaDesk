@@ -999,3 +999,139 @@ describe('AlbumPage newest-month prefetch (D-M3)', () => {
         expect(logged('memories_skip')).toEqual([{ target: 'album_prefetch', reason: 'prefetch_unused' }]);
     });
 });
+
+describe('AlbumPage warm open: the prefetched band holds its skeleton reveal (D-M3)', () => {
+    const step = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
+    const monthCalls = (month: string) => vi.mocked(fetchAlbumMonth).mock.calls.filter((c) => c[1] === month);
+    /** A revealed band skeleton (an unrevealed one is an invisible, `aria-busy` box of the same size). */
+    const revealed = (month: string) => {
+        const sk = within(section(month)).queryByTestId('album-band-skeleton');
+        return sk !== null && sk.getAttribute('aria-busy') !== 'true';
+    };
+    const skips = () => vi.mocked(clientLog).mock.calls
+        .filter(([e, f]) => e === 'memories_skip' && (f as { target?: string }).target === 'album_prefetch')
+        .map(([, f]) => f);
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-11-10T03:00:00Z'));
+    });
+
+    /** Open once (the newest month is remembered), then reopen with the prefetch answered at `prefetchMs` and the months held. */
+    async function warmOpen(prefetchMs: number | null) {
+        const first = renderAlbum();
+        await step(10);
+        first.unmount();
+        vi.mocked(fetchAlbumMonth).mockClear();
+        vi.mocked(clientLog).mockClear();
+        const gate = { open: () => {} };
+        vi.mocked(fetchAlbumMonth).mockImplementationOnce((_s, month) => new Promise((resolve) => {
+            const answer = () => resolve(monthPayload(month));
+            gate.open = answer;
+            if (prefetchMs !== null) setTimeout(answer, prefetchMs);
+        }));
+        let answerMonths: (v: ReturnType<typeof monthsPayload>) => void = () => {};
+        vi.mocked(fetchAlbumMonths).mockImplementationOnce(() => new Promise((resolve) => { answerMonths = resolve; }));
+        const view = renderAlbum();
+        await step(0);
+        expect(monthCalls('2026-10')).toHaveLength(1); // the prefetch, beside the months
+        await act(async () => { answerMonths(monthsPayload()); });
+        expect(section('2026-10')).toBeInTheDocument(); // the band mounted: t = 0 for the hold
+        return { view, gate };
+    }
+
+    it('a prefetch landing before 1 s never reveals a skeleton, and logs the held reveal once', async () => {
+        await warmOpen(600);
+        for (let t = 0; t < 1200; t += 10) {
+            await step(10);
+            expect(revealed('2026-10'), `at ${t + 10} ms`).toBe(false);
+        }
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+        expect(monthCalls('2026-10')).toHaveLength(1);
+        expect(skips()).toEqual([{ target: 'album_prefetch', reason: 'prefetch_reveal_held' }]);
+    });
+
+    it('a prefetch landing before the normal reveal logs nothing', async () => {
+        await warmOpen(50);
+        await step(1200);
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+        expect(skips()).toEqual([]);
+    });
+
+    it('a slow prefetch reveals the skeleton at 1 s and holds it the 400 ms minimum', async () => {
+        const { gate } = await warmOpen(null);
+        // Small steps, each its own act, so React commits the hold's end when it fires (as live).
+        for (let t = 0; t < 990; t += 10) {
+            await step(10);
+            expect(revealed('2026-10'), `at ${t + 10} ms`).toBe(false);
+        }
+        await step(9); // 999
+        expect(revealed('2026-10')).toBe(false);
+        await step(1); // 1000
+        expect(revealed('2026-10')).toBe(true);
+        await step(100); // 1100: the prefetch lands
+        await act(async () => { gate.open(); });
+        await step(0);
+        expect(revealed('2026-10')).toBe(true);
+        await step(289); // 1389
+        expect(revealed('2026-10')).toBe(true);
+        expect(within(section('2026-10')).queryByTestId('album-grid')).toBeNull();
+        await step(11); // 1400 = 1000 + minVisible
+        expect(revealed('2026-10')).toBe(false);
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+    });
+
+    it("the second band's request starts only after the prefetched first band settles", async () => {
+        const fire = stubObserver();
+        const { gate } = await warmOpen(null);
+        fire('2026-10');
+        fire('2022-05');
+        await step(500);
+        expect(monthCalls('2022-05')).toHaveLength(0);
+        await act(async () => { gate.open(); });
+        await step(0);
+        expect(monthCalls('2022-05')).toHaveLength(1);
+        await step(1000);
+        expect(within(section('2022-05')).getByTestId('album-grid')).toBeInTheDocument();
+    });
+
+    it('a failed prefetch also releases the other bands', async () => {
+        const fire = stubObserver();
+        const first = renderAlbum();
+        await step(10);
+        first.unmount();
+        vi.mocked(fetchAlbumMonth).mockClear();
+        let fail: (e: Error) => void = () => {};
+        vi.mocked(fetchAlbumMonth).mockImplementationOnce(() => new Promise((_r, reject) => { fail = reject; }));
+        let answerMonths: (v: ReturnType<typeof monthsPayload>) => void = () => {};
+        vi.mocked(fetchAlbumMonths).mockImplementationOnce(() => new Promise((resolve) => { answerMonths = resolve; }));
+        renderAlbum();
+        await step(0);
+        await act(async () => { answerMonths(monthsPayload()); });
+        fire('2026-10');
+        fire('2022-05');
+        await step(100);
+        expect(monthCalls('2022-05')).toHaveLength(0);
+        await act(async () => { fail(new MemoriesFetchError(500)); });
+        await step(10);
+        expect(within(section('2026-10')).getByRole('alert')).toBeInTheDocument();
+        expect(monthCalls('2022-05')).toHaveLength(1);
+    });
+
+    it('the first open of the session keeps the normal 200 ms reveal and both fetch slots', async () => {
+        const fire = stubObserver();
+        vi.mocked(fetchAlbumMonth).mockImplementation(() => new Promise(() => {}));
+        renderAlbum();
+        await step(0);
+        fire('2026-10');
+        fire('2022-05');
+        await step(0);
+        expect(monthCalls('2026-10')).toHaveLength(1);
+        expect(monthCalls('2022-05')).toHaveLength(1);
+        await step(199);
+        expect(revealed('2026-10')).toBe(false);
+        await step(1);
+        expect(revealed('2026-10')).toBe(true);
+        expect(skips()).toEqual([{ target: 'album_prefetch', reason: 'prefetch_none' }]);
+    });
+});

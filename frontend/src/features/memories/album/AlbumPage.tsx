@@ -16,7 +16,7 @@ import { messageName } from '../shared/nameFromRoom';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { AlbumKind, AlbumMonthSummary, MemoriesCountedMember, MemoryMessage } from '../types';
-import { prefetchNewestMonth, rememberNewestMonth } from './albumPrefetch';
+import { peekPrefetchedMonth, prefetchNewestMonth, rememberNewestMonth } from './albumPrefetch';
 import { AlbumWaitLine } from './AlbumWaitLine';
 import { createBandWaits } from './bandWaits';
 import { ColorRibbon, type RibbonMonth } from './ColorRibbon';
@@ -90,7 +90,9 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
         onScroller?.(el);
     }, [onScroller]);
     const monthKeys = useMemo(() => months.map((m) => m.month), [months]);
-    const win = useAlbumWindow(monthKeys, scroller);
+    // A warm open: the top band takes the page's prefetch, so its fetch runs alone (D-M3).
+    const [firstAlone] = useState(() => months[0] !== undefined && peekPrefetchedMonth(service, member, kind, months[0].month) !== null);
+    const win = useAlbumWindow(monthKeys, scroller, { firstAlone });
     // The bands waiting for their grids, for the wait line only (a band never re-renders the grid).
     const [waits] = useState(createBandWaits);
 

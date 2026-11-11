@@ -60,12 +60,20 @@ export interface AlbumWindow {
  *   are final); a band that unmounts stops being waited for.
  *
  * - at most {@link MAX_IN_FLIGHT} grids are fetched at once, in the order they were asked for;
- *   the newest month (the top band) is asked for on mount, so the first grid comes first.
+ *   the newest month (the top band) is asked for on mount, so the first grid comes first;
+ * - with `firstAlone` (the top band takes the page's prefetch, a warm open, D-M3) the top band's
+ *   fetch runs alone: no other month is granted a slot until it is cached or settled (its error
+ *   shown), so it never queues behind the next band's (often much larger) request. The hold ends
+ *   early when the top band is not live, or at a jump.
  *
  * Without it, every band is live and the months load one after another in list order.
  * State changes only when a band enters or leaves a margin, so scrolling does not re-render.
  */
-export function useAlbumWindow(months: string[], root: RefObject<HTMLElement>): AlbumWindow {
+export function useAlbumWindow(
+    months: string[],
+    root: RefObject<HTMLElement>,
+    options: { firstAlone?: boolean } = {},
+): AlbumWindow {
     const lazy = typeof IntersectionObserver !== 'undefined';
     const [requested, setRequested] = useState<MonthSet>(() => new Set());
     const [live, setLive] = useState<MonthSet>(() => new Set());
@@ -83,6 +91,8 @@ export function useAlbumWindow(months: string[], root: RefObject<HTMLElement>): 
     const settledRef = useRef(settled);
     settledRef.current = settled;
 
+    // The top month while its fetch must run alone (firstAlone); null once released.
+    const alone = useRef<string | null>(options.firstAlone && months[0] !== undefined ? months[0] : null);
     // Months in the order they were first asked for (append-only): the queue of MAX_IN_FLIGHT.
     const order = useRef<string[]>([]);
     // Months whose fetch was granted a slot (see the grants below).
@@ -185,6 +195,7 @@ export function useAlbumWindow(months: string[], root: RefObject<HTMLElement>): 
 
     const jump = useCallback((month: string) => {
         suspended.current = true;
+        alone.current = null;
         // Months asked for but not loaded yet are dropped: the jump decides anew where to load
         // once it settles (a scrub never pays for the bands it passed, nor the first band).
         const keep = (m: string) => cacheRef.current.has(m) || settledRef.current.has(m);
@@ -202,10 +213,15 @@ export function useAlbumWindow(months: string[], root: RefObject<HTMLElement>): 
     // slots go to asked-for, mounted months in the order they were asked for. A settled month
     // stays requested, so its retry keeps working. Idempotent, so safe to run on every render.
     if (lazy) {
+        const first = alone.current;
+        if (first !== null && (cache.has(first) || settled.has(first))) alone.current = null;
+        // While the top band's prefetched fetch runs alone, only it may be granted.
+        const solo = alone.current !== null && live.has(alone.current) ? alone.current : null;
         const busy = [...started.current].filter((m) => live.has(m) && !settled.has(m) && !cache.has(m));
-        let free = MAX_IN_FLIGHT - busy.length;
+        let free = (solo !== null ? 1 : MAX_IN_FLIGHT) - busy.length;
         for (const m of order.current) {
             if (free <= 0) break;
+            if (solo !== null && m !== solo) continue;
             if (started.current.has(m) || !requested.has(m) || !live.has(m) || settled.has(m) || cache.has(m)) continue;
             started.current.add(m);
             free -= 1;

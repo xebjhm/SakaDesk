@@ -724,7 +724,12 @@ with `useGridColumns`: its `minHeight` reserves `ceil(cells / cols)` rows at the
 (one cell per item, plus one pinned ★ when the month has a favourite and the filter pins them), and
 at most 12 `Skeleton tile`s pulse (the `minHeight` sits on the wrapper, so the grid box stays the
 real grid's and its rows stay packed at the top). Bursts and further favourites are unknown until the grid lands,
-so a month with them can still change height then. Before `reveal` the box is the same size, empty;
+so a month with them can still change height then. On a warm reopen the top band takes the page's
+newest-month prefetch: it holds its reveal until that prefetch settles or `PREFETCH_REVEAL_MS`
+(1 s) after the band mounts (then the normal skeleton and its `minVisible` apply; a hold that
+outlasts the normal reveal logs `memories_skip` `album_prefetch` `prefetch_reveal_held`), and no
+other band's fetch starts until it has landed or failed. The first open of a session and every other
+band keep the normal timing. Before `reveal` the box is the same size, empty;
 under reduced motion the label floats as a pill over the tiles, so it never changes the height. A
 shown band skeleton stays `minVisible` for display only (the answer reaches the album's cache on
 arrival, which frees the D4 fetch slot, and the loader unmounts, so a band that leaves and returns

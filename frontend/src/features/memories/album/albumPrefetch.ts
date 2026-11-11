@@ -14,7 +14,9 @@ import type { AlbumKind, AlbumMonthPayload } from '../types';
  * Breadcrumbs (codes and counts only): `memories_load` `album_prefetch` (`ok` with `count`,
  * `timeout`, or `error` with the HTTP status) when a prefetch settles; `memories_skip`
  * `album_prefetch` `prefetch_none` (nothing remembered for the scope: the first open) or
- * `prefetch_unused` (the list named another month, or the page left before the band took it).
+ * `prefetch_unused` (the list named another month, or the page left before the band took it);
+ * `prefetch_reveal_held` (`MonthSection`: the top band held its skeleton reveal for the prefetch
+ * past the normal reveal delay).
  */
 
 interface Pending {
@@ -99,6 +101,18 @@ export function takePrefetchedMonth(
         else signal.addEventListener('abort', () => entry.controller.abort(), { once: true });
     }
     return entry.promise;
+}
+
+/**
+ * The prefetched request for `month` of the scope while no band has taken it yet (it stays
+ * pending); else null. The top band reads it at its first render to hold its skeleton reveal, and
+ * the album window to run that band's fetch alone (D-M3 warm open).
+ */
+export function peekPrefetchedMonth(
+    service: string, member: string | undefined, kind: AlbumKind, month: string,
+): Promise<AlbumMonthPayload> | null {
+    const entry = pending.get(scopeOf(service, member, kind));
+    return entry && entry.month === month ? entry.promise : null;
 }
 
 /** Forget every remembered month and abort every prefetch (tests). */

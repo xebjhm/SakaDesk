@@ -134,12 +134,14 @@ export function logMemoriesToggle(
  * (the binder is shown without the card detail).
  * Album (D-M3): `prefetch_none` no newest month is remembered for the album's scope (its first
  * open this session), so nothing was prefetched; `prefetch_unused` a prefetched month was dropped
- * (the months list named another newest month, or the page left before its band took it).
+ * (the months list named another newest month, or the page left before its band took it);
+ * `prefetch_reveal_held` the top band held its skeleton past the normal reveal delay while the
+ * prefetch it will take was still in flight (a warm open, up to `PREFETCH_REVEAL_MS`).
  */
 export const MEMORIES_SKIP_REASONS = [
     'focus_missing', 'empty_note', 'unknown_card',
     'transcript_missing', 'pull_missing', 'day24_thin', 'note_empty', 'same_time_none',
-    'card_missing', 'prefetch_none', 'prefetch_unused',
+    'card_missing', 'prefetch_none', 'prefetch_unused', 'prefetch_reveal_held',
 ] as const;
 export type MemoriesSkipReason = (typeof MEMORIES_SKIP_REASONS)[number];
 
