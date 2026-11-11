@@ -7,8 +7,10 @@
  *
  * - **One at a time**, and each capture also takes a slot of the load scheduler (it opens a media
  *   connection, like a thumbnail).
+ * - **Visible tiles only:** the tile's `AbortSignal` cancels a capture at every stage (waiting in
+ *   the serial chain, waiting for a scheduler slot, or running: the video load and the upload
+ *   are aborted and the element released). A cancelled request is not counted as an attempt.
  * - **Bounded per session:** at most `POSTER_CAPTURE_MAX` captures, and a URL is attempted once.
- *   A request aborted while it waits (the tile left the screen) is not counted as an attempt.
  * - **Frame:** seeks to `min(1 s, 10 %)`, draws the longest side at most `POSTER_MAX_SIDE` px,
  *   encodes WebP (q 0.8; JPEG when WebP encoding is unavailable). The backend accepts WebP / JPEG
  *   of at most 1 MiB and 4096 px, so a 640 px frame always fits.
@@ -16,7 +18,8 @@
  *   (`releaseMediaElement`), on success, failure and timeout (`POSTER_CAPTURE_TIMEOUT_MS`).
  *
  * Logs `media_poster` with `outcome` (`captured` / `failed` / `skipped`) and `reason`
- * (`timeout` / `decode` / `upload` / `limit`) only, never the URL.
+ * (`timeout` / `decode` / `upload` / `limit` / `hidden`: the tile left the screen first) only,
+ * never the URL.
  */
 import { clientLog } from '../../../utils/clientLog';
 import { MEDIA_API_BASE } from '../../../features/messages/mediaUrl';
@@ -138,22 +141,51 @@ async function capture(url: string, signal: AbortSignal): Promise<void> {
     }
 }
 
-/** One capture in a scheduler slot, bounded by the timeout; resolves true when the poster is stored. */
-function runCapture(url: string): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
-        scheduleTask('visible', async () => {
-            const controller = new AbortController();
+/** A capture's end: stored, failed, or cancelled because its tile left the screen. */
+type CaptureEnd = 'captured' | 'failed' | 'hidden';
+
+/**
+ * One capture in a scheduler slot, bounded by the timeout. `signal` (the tile's) cancels it at
+ * any stage: while it waits for a slot the scheduler ticket is cancelled (the capture never
+ * starts and the slot is never taken); once running, the video load and the upload are aborted
+ * and the element is released (`capture`'s `finally`). A cancel is not a failure: no log here.
+ */
+function runCapture(url: string, signal?: AbortSignal): Promise<CaptureEnd> {
+    return new Promise<CaptureEnd>((resolve) => {
+        if (signal?.aborted) {
+            resolve('hidden');
+            return;
+        }
+        const controller = new AbortController();
+        let running = false;
+        let ticket: { cancel(): void } | null = null;
+        const onAbort = () => {
+            if (running) {
+                controller.abort();
+                return;
+            }
+            ticket?.cancel();
+            resolve('hidden');
+        };
+        signal?.addEventListener('abort', onAbort, { once: true });
+        ticket = scheduleTask('visible', async () => {
+            running = true;
             const timer = setTimeout(() => controller.abort(), POSTER_CAPTURE_TIMEOUT_MS);
             try {
                 await capture(url, controller.signal);
                 clientLog('media_poster', { outcome: 'captured' });
-                resolve(true);
+                resolve('captured');
             } catch (err) {
-                const reason: FailReason = err instanceof CaptureError ? err.reason : 'decode';
-                clientLog('media_poster', { outcome: 'failed', reason });
-                resolve(false);
+                if (signal?.aborted) {
+                    resolve('hidden');
+                } else {
+                    const reason: FailReason = err instanceof CaptureError ? err.reason : 'decode';
+                    clientLog('media_poster', { outcome: 'failed', reason });
+                    resolve('failed');
+                }
             } finally {
                 clearTimeout(timer);
+                signal?.removeEventListener('abort', onAbort);
             }
         });
     });
@@ -161,14 +193,15 @@ function runCapture(url: string): Promise<boolean> {
 
 /**
  * Capture and upload the poster of the media-route video `url`. Resolves `true` when the backend
- * stored it (201) or already had one (200); `false` on failure, past the session cap, for a URL
- * already attempted this session, for a non-media URL, or when `signal` aborts before the
- * capture starts (that one may be asked again later).
+ * stored it (201) or already had one (200); `false` on failure, past the session cap, for a
+ * non-media URL, or when `signal` aborts first (the tile left the screen or unmounted). A URL
+ * already attempted this session is never captured again: asking again returns the first
+ * attempt's result. An aborted request is not an attempt (it is refunded and may run later).
  */
 function request(url: string, signal?: AbortSignal): Promise<boolean> {
     if (!url.startsWith(MEDIA_PREFIX)) return Promise.resolve(false);
     const known = attempts.get(url);
-    if (known) return known.then(() => false);
+    if (known) return known;
     if (signal?.aborted) return Promise.resolve(false);
     if (started >= captureMax) {
         if (!limitLogged) {
@@ -178,21 +211,29 @@ function request(url: string, signal?: AbortSignal): Promise<boolean> {
         return Promise.resolve(false);
     }
     started += 1;
-    let begun = false;
-    const result = new Promise<boolean>((resolve) => {
-        const onAbort = () => {
-            if (begun) return;
-            begun = true; // never starts now
-            attempts.delete(url);
-            started -= 1;
+    let settled = false;
+    // `refund` runs only after `result` exists (an abort or the chain, never inside the executor).
+    const refund = () => {
+        if (attempts.get(url) === result) attempts.delete(url);
+        started -= 1;
+        clientLog('media_poster', { outcome: 'skipped', reason: 'hidden' });
+    };
+    const result: Promise<boolean> = new Promise<boolean>((resolve) => {
+        // Waiting in the serial chain: an abort resolves at once (the chain skips it later).
+        const onQueuedAbort = () => {
+            if (settled) return;
+            settled = true;
+            refund();
             resolve(false);
         };
-        signal?.addEventListener('abort', onAbort, { once: true });
+        signal?.addEventListener('abort', onQueuedAbort, { once: true });
         chain = chain.then(async () => {
-            if (begun) return;
-            begun = true;
-            signal?.removeEventListener('abort', onAbort);
-            resolve(await runCapture(url));
+            if (settled) return;
+            signal?.removeEventListener('abort', onQueuedAbort);
+            const end = await runCapture(url, signal);
+            settled = true;
+            if (end === 'hidden') refund();
+            resolve(end === 'captured');
         });
     });
     attempts.set(url, result);

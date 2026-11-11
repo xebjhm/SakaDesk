@@ -1277,6 +1277,7 @@ def test_media_grid_breadcrumb_is_accepted(fields):
         {"outcome": "failed", "reason": "decode"},
         {"outcome": "failed", "reason": "upload"},
         {"outcome": "skipped", "reason": "limit"},
+        {"outcome": "skipped", "reason": "hidden"},
     ],
 )
 def test_media_poster_breadcrumb_is_accepted(fields):

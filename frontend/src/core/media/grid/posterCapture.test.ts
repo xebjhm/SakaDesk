@@ -6,7 +6,7 @@ import {
     POSTER_CAPTURE_MAX, POSTER_CAPTURE_TIMEOUT_MS, POSTER_MAX_SIDE, posterCapture,
     resetPosterCaptureForTests, setPosterCaptureDepsForTests, setPosterCaptureMaxForTests,
 } from './posterCapture';
-import { resetLoadSchedulerForTests } from './loadScheduler';
+import { resetLoadSchedulerForTests, scheduleTask } from './loadScheduler';
 
 type Mode = 'ok' | 'metaError' | 'hang' | 'seekError' | 'noFrame';
 
@@ -225,6 +225,62 @@ describe('posterCapture', () => {
         const pre = new AbortController();
         pre.abort();
         await expect(posterCapture.request(`${VIDEO}c`, pre.signal)).resolves.toBe(false);
+    });
+
+    it('never starts a capture whose tile left the screen while it waited for a scheduler slot', async () => {
+        const frees: (() => void)[] = [];
+        for (let i = 0; i < 4; i += 1) scheduleTask('visible', () => new Promise<void>((r) => frees.push(r)));
+        const controller = new AbortController();
+        const req = posterCapture.request(VIDEO, controller.signal);
+        await flushMicro();
+        expect(FakeVideo.all).toHaveLength(0); // queued behind the four busy slots
+        controller.abort();
+        await expect(req).resolves.toBe(false);
+        frees.forEach((f) => f());
+        await flushMicro();
+        expect(FakeVideo.all).toHaveLength(0);
+        expect(fetchMock).not.toHaveBeenCalled();
+        expect(clientLog).toHaveBeenCalledWith('media_poster', { outcome: 'skipped', reason: 'hidden' });
+        // Not an attempt: the URL can be captured once it is visible again, and the slot is free.
+        await expect(posterCapture.request(VIDEO)).resolves.toBe(true);
+        expect(FakeVideo.all).toHaveLength(1);
+    });
+
+    it('aborts and releases a running capture when its tile unmounts, and frees the chain', async () => {
+        FakeVideo.mode = 'hang';
+        const controller = new AbortController();
+        const req = posterCapture.request(VIDEO, controller.signal);
+        await flushMicro();
+        expect(FakeVideo.all).toHaveLength(1);
+        controller.abort();
+        await expect(req).resolves.toBe(false);
+        expect(FakeVideo.all[0].released()).toBe(true);
+        expect(clientLog).not.toHaveBeenCalledWith('media_poster', expect.objectContaining({ outcome: 'failed' }));
+        expect(clientLog).toHaveBeenCalledWith('media_poster', { outcome: 'skipped', reason: 'hidden' });
+        FakeVideo.mode = 'ok';
+        await expect(posterCapture.request(`${VIDEO}2`)).resolves.toBe(true);
+    });
+
+    it('aborts an upload in flight when the tile unmounts', async () => {
+        const controller = new AbortController();
+        fetchMock.mockImplementationOnce((_u: string, init: RequestInit) => new Promise<Response>((_res, rej) => {
+            init.signal!.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError')));
+        }));
+        const req = posterCapture.request(VIDEO, controller.signal);
+        await flushMicro();
+        await flushMicro();
+        expect(fetchMock).toHaveBeenCalledTimes(1);
+        controller.abort();
+        await expect(req).resolves.toBe(false);
+        expect(FakeVideo.all[0].released()).toBe(true);
+    });
+
+    it('gives a second requester the first attempt\'s result', async () => {
+        const first = posterCapture.request(VIDEO);
+        const second = posterCapture.request(VIDEO);
+        await expect(first).resolves.toBe(true);
+        await expect(second).resolves.toBe(true);
+        expect(FakeVideo.all).toHaveLength(1);
     });
 
     it('ignores URLs outside the media route', async () => {
