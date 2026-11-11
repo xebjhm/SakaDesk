@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
-import { useTileVisibility, useTileVisibilityState } from './useTileVisibility';
+import { useTileVisibilityState } from './useTileVisibility';
 
 class StubObserver {
     static all: StubObserver[] = [];
@@ -19,7 +19,7 @@ class StubObserver {
 
 function Probe({ id, root }: { id: string; root?: Element | null }) {
     const ref = useRef<HTMLDivElement>(null);
-    const v = useTileVisibility(ref, root ?? null);
+    const v = useTileVisibilityState(ref, root ?? null).priority;
     return <div ref={ref} data-testid={id}>{v}</div>;
 }
 
@@ -29,7 +29,7 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-describe('useTileVisibility', () => {
+describe('useTileVisibilityState', () => {
     it('shares one observer per root and reports visible / near', () => {
         const root = document.createElement('div');
         const { unmount } = render(<><Probe id="a" root={root} /><Probe id="b" root={root} /></>);

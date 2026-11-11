@@ -615,7 +615,7 @@ cd frontend && npx vitest run src/shell/components src/i18n/mediaPipeline.test.t
   - Each job is `const img = new Image(); img.decoding = 'async'; img.src = src; await img.decode()`. `decode()` rejection falls back to the `onload` / `onerror` result.
   - `setPriority` moves a waiting job between queues. `cancel` removes a waiting job; for a running one, it sets `img.src = ''` and frees the slot.
   - A src decoded once this session is remembered (an LRU of `READY_CACHE_MAX`), and a later `scheduleImage` for it calls `onReady` synchronously, which makes the second open in a session instant.
-- **`useTileVisibility(ref, root)`** shares one `IntersectionObserver` per root element (`rootMargin: '0px'`). It returns `'visible'` while the tile intersects and `'near'` otherwise; a mounted tile is by definition within the grid's overscan. Without `IntersectionObserver` (jsdom, old engines) it returns `'visible'`.
+- **`useTileVisibility(ref, root)`** (shipped as `useTileVisibilityState(ref, root)`, which also reports whether the first observation has arrived; read `.priority`) shares one `IntersectionObserver` per root element (`rootMargin: '0px'`). It returns `'visible'` while the tile intersects and `'near'` otherwise; a mounted tile is by definition within the grid's overscan. Without `IntersectionObserver` (jsdom, old engines) it returns `'visible'`.
 - **`MediaTile`:**
   - **Wrapper:** `style={{ backgroundColor: meta?.color ?? undefined }}`, with `bg-sunken` when there is no colour; `overflow-hidden` plus the caller's `className`.
   - **Blur layer:** when `meta.blur` exists, an `aria-hidden` `<img>` with `blur-placeholder scale-110 object-cover`.

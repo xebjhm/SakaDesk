@@ -65,8 +65,3 @@ export function useTileVisibilityState(ref: RefObject<Element | null>, root: Ele
     }, [ref, root, supported]);
     return { priority: state.visible ? 'visible' : 'near', known: state.known };
 }
-
-/** `useTileVisibilityState(ref, root).priority`. */
-export function useTileVisibility(ref: RefObject<Element | null>, root: Element | null = null): LoadPriority {
-    return useTileVisibilityState(ref, root).priority;
-}

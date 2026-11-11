@@ -5,7 +5,7 @@ import { act, fireEvent, render, screen, within } from '@testing-library/react';
 import i18n from '../../i18n';
 import { clientLog } from '../../utils/clientLog';
 import { LoginModal } from './LoginModal';
-import { isLoginBusy, resetLoginLock } from './loginLock';
+import { getLoginPhase, resetLoginLock } from './loginLock';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
@@ -119,7 +119,7 @@ describe('login while connecting (L6)', () => {
         expect(net.cancels().map((c) => c.init?.method)).toEqual(['POST']);
         expect(cancelTargets(net)).toEqual([['hinatazaka46', true]]);
         expect(params(net.login().url).get('attempt')).toMatch(/^[A-Za-z0-9_-]{1,64}$/);
-        expect(isLoginBusy()).toBe(false);
+        expect(getLoginPhase()).toBe('idle');
         expect(onClose).toHaveBeenCalledOnce();
         expect(screen.queryByRole('alert')).toBeNull();
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'cancelled' });
@@ -137,7 +137,7 @@ describe('login while connecting (L6)', () => {
         net.login().resolve(json({ detail: 'login_cancelled' }, 409));
         await flush();
         expect(screen.queryByRole('alert')).toBeNull();
-        expect(isLoginBusy()).toBe(false);
+        expect(getLoginPhase()).toBe('idle');
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'cancelled' });
         expect(clientLog).toHaveBeenCalledWith('ui_wait', expect.objectContaining({ surface: 'login', phase: 'cancelled' }));
         expect(onClose).not.toHaveBeenCalled();
@@ -164,7 +164,7 @@ describe('login while connecting (L6)', () => {
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login_cancel', outcome: 'skipped' });
         await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
         expect(onSuccess).toHaveBeenCalledOnce();
-        expect(isLoginBusy()).toBe(false);
+        expect(getLoginPhase()).toBe('idle');
     });
 
     it('a failed login still shows the error text', async () => {
@@ -191,7 +191,7 @@ describe('login while connecting (L6)', () => {
         await flush();
         expect(net.login().init?.signal?.aborted).toBe(true);
         expect(cancelTargets(net)).toEqual([['hinatazaka46', true]]);
-        expect(isLoginBusy()).toBe(false);
+        expect(getLoginPhase()).toBe('idle');
         expect(onClose).toHaveBeenCalledOnce();
     });
 
@@ -204,7 +204,7 @@ describe('login while connecting (L6)', () => {
         expect(cancelButton()).not.toHaveAttribute('aria-disabled');
         act(() => { fireEvent.click(cancelButton()); });
         await flush();
-        expect(isLoginBusy()).toBe(false);
+        expect(getLoginPhase()).toBe('idle');
         expect(onClose).toHaveBeenCalledOnce();
         net.geo().resolve(json({ blocked: false }));
         await flush();
@@ -226,11 +226,11 @@ describe('login while connecting (L6)', () => {
         await flush();
         expect(checkAuth).toHaveBeenCalledOnce();
         expect(onClose).not.toHaveBeenCalled();
-        expect(isLoginBusy()).toBe(true); // held for the success path
+        expect(getLoginPhase()).not.toBe('idle'); // held for the success path
         await act(async () => { await vi.advanceTimersByTimeAsync(1500); });
         expect(net.calls.some((c) => c.url === '/api/settings/service/hinatazaka46/init')).toBe(true);
         expect(onSuccess).toHaveBeenCalledOnce();
-        expect(isLoginBusy()).toBe(false);
+        expect(getLoginPhase()).toBe('idle');
         expect(onClose).not.toHaveBeenCalled();
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login_cancel', outcome: 'skipped', reason: 'completed' });
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'ok' });
@@ -254,7 +254,7 @@ describe('login while connecting (L6)', () => {
         expect(net.calls.some((c) => c.url.includes('/init'))).toBe(false);
         expect(onSuccess).not.toHaveBeenCalled();
         expect(onClose).toHaveBeenCalledOnce();
-        expect(isLoginBusy()).toBe(false);
+        expect(getLoginPhase()).toBe('idle');
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login_cancel', outcome: 'ok', reason: 'not_cancelled' });
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login', outcome: 'cancelled' });
     });
@@ -272,7 +272,7 @@ describe('login while connecting (L6)', () => {
         await flush();
         expect(onClose).toHaveBeenCalledOnce();
         expect(onSuccess).not.toHaveBeenCalled();
-        expect(isLoginBusy()).toBe(false);
+        expect(getLoginPhase()).toBe('idle');
     });
 
     it.each([
@@ -291,7 +291,7 @@ describe('login while connecting (L6)', () => {
         act(() => { fireEvent.click(cancelButton()); });
         await flush();
         expect(net.login().init?.signal?.aborted).toBe(true);
-        expect(isLoginBusy()).toBe(false);
+        expect(getLoginPhase()).toBe('idle');
         expect(onClose).toHaveBeenCalledOnce();
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login_cancel', outcome: 'error', reason });
     });
@@ -308,10 +308,10 @@ describe('login while connecting (L6)', () => {
         await flush();
         act(() => { fireEvent.click(cancelButton()); });
         await act(async () => { await vi.advanceTimersByTimeAsync(14_999); });
-        expect(isLoginBusy()).toBe(true);
+        expect(getLoginPhase()).not.toBe('idle');
         expect(screen.queryByText(t('login.waitingVerySlow'))).toBeNull(); // winding down, no "finish in the browser"
         await act(async () => { await vi.advanceTimersByTimeAsync(1); });
-        expect(isLoginBusy()).toBe(false);
+        expect(getLoginPhase()).toBe('idle');
         expect(onClose).toHaveBeenCalledOnce();
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'login_cancel', outcome: 'error', reason: 'timeout' });
     });

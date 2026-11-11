@@ -159,6 +159,10 @@ export function useDelayedLoading(active: boolean): boolean {
  * `stale: true`; a new scope has nothing to keep (`shown: null`). Once ready, returns `data` with
  * `stale: false`. Only ready, non-null data is remembered, after commit, so a payload rebuilt on
  * every render (`items.filter(...)`) never causes an extra render.
+ *
+ * Kept on purpose with no consumer yet: it is the design system's documented keep-previous hook
+ * (`docs/design/DESIGN_SYSTEM.md`, Loading and waiting) for a refresh or step inside a loaded view
+ * outside Memories (Memories uses `useMemoriesQuery`'s `keepPrevious`). Covered by its own tests.
  */
 export function useKeepPrevious<T>(
     data: T | null,

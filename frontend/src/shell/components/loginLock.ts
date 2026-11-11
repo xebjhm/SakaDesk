@@ -83,10 +83,6 @@ export function unlockLogin(): void {
     emit();
 }
 
-export function isLoginBusy(): boolean {
-    return phase !== 'idle';
-}
-
 export function getLoginPhase(): LoginPhase {
     return phase;
 }

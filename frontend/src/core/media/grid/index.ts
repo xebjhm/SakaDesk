@@ -7,7 +7,7 @@ export {
     MAX_IMAGE_INFLIGHT, READY_CACHE_MAX, forgetImage, isImageReady, scheduleImage, scheduleTask,
     type LoadPriority, type LoadTicket,
 } from './loadScheduler';
-export { useTileVisibility, useTileVisibilityState, type TileVisibility } from './useTileVisibility';
+export { useTileVisibilityState, type TileVisibility } from './useTileVisibility';
 export { MediaTile, AUTO_RETRY_MAX, CAPTURE_DWELL_MS, META_WAIT_MS, type MediaTileProps, type MediaTileState } from './MediaTile';
 export { MediaTileButton, type MediaTileButtonProps } from './MediaTileButton';
 export { useTileRetry, type TileRetry } from './useTileRetry';
