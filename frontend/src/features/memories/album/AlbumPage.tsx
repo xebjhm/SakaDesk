@@ -7,7 +7,7 @@ import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
 import {
     deleteAlbumCover, fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonths, MemoriesFetchError, MemoriesTimeoutError, putAlbumCover,
 } from '../api';
-import { logMemoriesToggle, type MemoriesToggleReason } from '../memoriesLog';
+import { logMemoriesLoad, logMemoriesToggle, type MemoriesToggleReason } from '../memoriesLog';
 import { LoadState } from '../shared/LoadState';
 import { MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { cn } from '../../../utils/classnames';
@@ -44,6 +44,18 @@ interface AlbumGridProps {
     /** Receives the scroll container (the tiles measure their visibility against it). */
     onScroller?: (el: HTMLDivElement | null) => void;
 }
+
+/** The album's pre-generation breadcrumb: `memories_load` `album_pregen` (not a dialog load). */
+const logAlbumPregen = (outcome: 'ok' | 'error') => logMemoriesLoad('album_pregen', outcome);
+
+/**
+ * The quiet "Preparing thumbnails… done / total" line (or its paused form) while the background
+ * worker prepares this service. Its own component, so a status poll re-renders only the line.
+ */
+const AlbumPregenBar: React.FC<{ service: string; active: boolean }> = ({ service, active }) => {
+    const pregen = usePregenProgress(active, service, logAlbumPregen);
+    return pregen ? <PregenProgressBar progress={pregen} className="ml-auto min-w-0 flex-1" /> : null;
+};
 
 /** How long the cover-failure toast stays (ms). */
 const TOAST_MS = 4000;
@@ -120,7 +132,8 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
  * Tiles are the shared media tile (media pipeline): the page provides their grid reporter, which
  * logs the `media_grid` first-paint breadcrumb (`grid: 'album'`, `first_tile_ms` from the page's
  * mount) once per page mount, and shows the quiet "Preparing thumbnails… done / total" line (or
- * its paused form) in the filter row while the background worker prepares this service.
+ * its paused form) in the filter row while the background worker prepares this service (logged as
+ * `memories_load` `album_pregen`).
  */
 export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     const { t } = useTranslation();
@@ -195,7 +208,6 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
     const itemCount = useMemo(() => (shownMonths?.months ?? []).reduce((n, m) => n + m.count, 0), [shownMonths]);
     const reporter = useMediaGridReporter('album', scrollRoot, itemCount);
-    const pregen = usePregenProgress(itemCount > 0, service);
 
     const pickMember = (key: string | null) => {
         if ((key ?? undefined) === member) return;
@@ -262,7 +274,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
                             </Pill>
                         ))}
                         {/* Quiet background progress: thumbnails still being prepared (or paused). */}
-                        {pregen && <PregenProgressBar progress={pregen} className="ml-auto min-w-0 flex-1" />}
+                        <AlbumPregenBar service={service} active={itemCount > 0} />
                     </div>
                     <MediaGridContext.Provider value={reporter}>{body}</MediaGridContext.Provider>
                     {coverFailure > 0 && (

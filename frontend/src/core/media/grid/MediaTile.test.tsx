@@ -7,9 +7,12 @@ import type { LoadPriority } from './loadScheduler';
 
 // --- controllable stand-ins for the tile's collaborators ------------------------------------
 const metaState: { value: MediaMeta | null | undefined } = { value: undefined };
+/** What the store already holds (the eager tile reads it once, without subscribing). */
+const cachedMeta: { value: MediaMeta | null | undefined } = { value: undefined };
 const invalidate = vi.fn();
 vi.mock('./mediaMeta', () => ({
     useMediaMeta: () => metaState.value,
+    readMediaMeta: () => cachedMeta.value,
     invalidateMediaMeta: (u: string) => invalidate(u),
     isMediaRouteUrl: (u: unknown) => typeof u === 'string' && u.startsWith('/api/content/media/'),
 }));
@@ -48,6 +51,7 @@ const last = () => jobs[jobs.length - 1];
 const frame = async () => { await act(async () => { await vi.advanceTimersByTimeAsync(20); }); };
 
 beforeEach(() => {
+    cachedMeta.value = undefined;
     vi.useFakeTimers();
     jobs.length = 0;
     ready.clear();
@@ -291,6 +295,24 @@ describe('MediaTile: picture', () => {
         expect(container.querySelector('img[data-media-tile-image]')!.getAttribute('src')).toBe(PIC);
         fireEvent.error(container.querySelector('img[data-media-tile-image]')!);
         expect(onFail).toHaveBeenCalledTimes(1);
+    });
+
+    it('an eager tile uses a v the store already holds, and fails as a plain box with no caption', () => {
+        cachedMeta.value = meta({ v: 'abc' });
+        const onFail = vi.fn();
+        const { container } = render(<MediaTile url={PIC} kind="picture" cssPx={200} eager onFail={onFail} />);
+        cachedMeta.value = undefined;
+        const img = () => container.querySelector('img[data-media-tile-image]') as HTMLImageElement;
+        expect(img().getAttribute('src')).toBe(`${THUMB(320)}&v=abc`);
+        fireEvent.error(img());
+        expect(img().getAttribute('src')).toBe(THUMB(320));
+        fireEvent.error(img());
+        expect(img().getAttribute('src')).toBe(PIC);
+        fireEvent.error(img());
+        expect(onFail).toHaveBeenCalledTimes(1);
+        expect(container.querySelector('[data-state]')).toHaveAttribute('data-state', 'failed');
+        expect(container.querySelector('[data-media-tile-failed]')).toHaveClass('bg-sunken');
+        expect(container).not.toHaveTextContent(/\S/);
     });
 
     it('under reduced motion shows a compact spinner after reveal while waiting', async () => {

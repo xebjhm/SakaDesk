@@ -38,7 +38,8 @@
     "capsule_due",
     "same_time",
     "day24",
-    "then_now"
+    "then_now",
+    "album_pregen"
   ],
   "memories_load.outcome": [
     "ok",
@@ -72,7 +73,8 @@
     "capsule_due",
     "same_time",
     "day24",
-    "then_now"
+    "then_now",
+    "album_pregen"
   ],
   "memories_toggle.target": [
     "other_services",
@@ -138,7 +140,8 @@
     "capsule_due",
     "same_time",
     "day24",
-    "then_now"
+    "then_now",
+    "album_pregen"
   ],
   "memories_skip.reason": [
     "focus_missing",

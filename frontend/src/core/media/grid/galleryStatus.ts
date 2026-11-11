@@ -3,7 +3,7 @@
  * visible time of a first-load indicator, and the "Preparing thumbnails… done / total" progress of
  * the background pre-generation worker (`GET /api/media/status`).
  */
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { settleDelay } from '../../../design/loading';
 import { logDialogLoad } from '../../../design/dialog/dialogLog';
 
@@ -75,17 +75,27 @@ export function pregenLabelKey(progress: PregenProgress): 'settings.mediaCachePr
     return progress.paused ? 'settings.mediaCachePaused' : 'settings.mediaCachePreparing';
 }
 
+/** How a surface logs one pre-generation status read: `ok` once per activation, or `error`. Codes only. */
+export type PregenLog = (outcome: 'ok' | 'error') => void;
+
+/** The galleries' breadcrumb: `dialog_load` (`media_gallery_pregen`). */
+export const logGalleryPregen: PregenLog = (outcome) => logDialogLoad('media_gallery_pregen', outcome);
+
 /**
  * The pre-generation progress for a gallery, while `active` (the gallery is open). Reads
  * `/api/media/status` once on open, and again every `PREGEN_POLL_MS` only while pre-generation is
  * still running for `service`; stops as soon as it is done, the cache is full, the read fails or
  * the gallery closes (no request after that). A pause keeps the polling (the worker resumes on its
  * own). Each activation (the gallery opens, or comes back to a tab with thumbnails) reads afresh
- * and logs `dialog_load` (`media_gallery_pregen`): `ok` once per activation, not per poll, or
+ * and logs through `log` (default `logGalleryPregen`, `dialog_load` `media_gallery_pregen`; a
+ * surface that is not a dialog passes its own): `ok` once per activation, not per poll, or
  * `error`; codes only.
  */
-export function usePregenProgress(active: boolean, service: string | undefined): PregenProgress | null {
+export function usePregenProgress(active: boolean, service: string | undefined, log: PregenLog = logGalleryPregen): PregenProgress | null {
     const [progress, setProgress] = useState<PregenProgress | null>(null);
+    // The latest logger, read when a status read settles (a new function does not restart polling).
+    const logRef = useRef(log);
+    logRef.current = log;
 
     useEffect(() => {
         if (!active) {
@@ -106,7 +116,7 @@ export function usePregenProgress(active: boolean, service: string | undefined):
                     if (cancelled) return;
                     if (!logged) {
                         logged = true;
-                        logDialogLoad('media_gallery_pregen', 'ok');
+                        logRef.current('ok');
                     }
                     const next = pregenProgress(body, service);
                     setProgress(next);
@@ -115,7 +125,7 @@ export function usePregenProgress(active: boolean, service: string | undefined):
                 .catch(() => {
                     if (cancelled) return;
                     setProgress(null);
-                    logDialogLoad('media_gallery_pregen', 'error');
+                    logRef.current('error');
                 });
         };
         read();

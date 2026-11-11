@@ -749,12 +749,18 @@ never mounts a `<video>`. A gallery that wraps each tile in its own button keeps
 `onFail(retry)` handle and calls it when a failed tile is clicked, instead of opening the viewer;
 `MediaTileButton` does this for the galleries and, through the tile's `onStateChange`, switches the
 button's accessible name to the retry action while the tile is failed. The rule itself is
-`useTileRetry()`, which the Memories album's own tile buttons (photo tiles, burst stacks and
-frames) use too, naming a failed tile `memories.album.retryTile`. Every Memories still is a
-`MediaTile` through `MemoryThumb` (with `px`); `loading="eager"` (the recap poster export and the
-recap slides) is the synchronous `<img>` variant with no pulsing placeholder, and a `MemoryThumb`
-without `px` is the original file as a plain `<img>`. The album shows `PregenProgressBar` at the
-end of its filter row.
+`useTileRetry()`, which the Memories album's photo tiles and burst-sequence frames use too, naming
+a failed tile `memories.album.retryTile`. Only a tile whose click would show that same file
+retries: a burst stack always opens its sequence (named `memories.album.openBurst`; its still
+still shows the failed state), where each frame owns its retry. Tiles in a portalled dialog or
+viewer sit under `MediaGridContext.Provider value={null}`, so they observe against the viewport,
+not the grid's scroll container. Every Memories still is a `MediaTile` through `MemoryThumb`
+(with `px`); `loading="eager"` (the recap poster export and the recap slides) is the synchronous
+`<img>` variant with no pulsing placeholder, using a `v` the meta store already holds, and a failed
+eager tile is a plain `bg-sunken` box with no caption (it is decorative or baked into an export).
+A `MemoryThumb` without `px` is the original file as a plain `<img>`. The album shows
+`PregenProgressBar` at the end of its filter row (its status reads log `memories_load`
+`album_pregen`, through `usePregenProgress`'s `log` parameter, not as a dialog load).
 For the grid-level states, `core/media/grid/galleryStatus.ts` has `useHeldLoading(active)` (keeps
 the first-load `StatusBlock` mounted until `minVisible`), `pregenProgress(status, service)` (the one
 "thumbnails are still being prepared" rule, shared with Settings: `{done, total, paused}`) and

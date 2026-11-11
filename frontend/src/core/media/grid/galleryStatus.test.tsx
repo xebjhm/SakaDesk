@@ -125,6 +125,18 @@ describe('usePregenProgress', () => {
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'media_gallery_pregen', outcome: 'ok' });
     });
 
+    it('logs through the surface\'s own logger instead of the gallery dialog code', async () => {
+        replies = [body(), 500];
+        const log = vi.fn();
+        renderHook(() => usePregenProgress(true, 'hinatazaka46', log));
+        await advance(0);
+        expect(log).toHaveBeenCalledWith('ok');
+        await advance(PREGEN_POLL_MS);
+        expect(log).toHaveBeenLastCalledWith('error');
+        expect(log).toHaveBeenCalledTimes(2);
+        expect(clientLog).not.toHaveBeenCalled();
+    });
+
     it('keeps polling through a pause and shows the resumed progress', async () => {
         replies = [body({ state: 'paused', paused_reason: 'foreground' }), body({ services: { hinatazaka46: { done: 5, total: 10 } } })];
         const { result } = renderHook(() => usePregenProgress(true, 'hinatazaka46'));

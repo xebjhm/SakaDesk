@@ -133,7 +133,7 @@ describe('Timeline', () => {
         expect(screen.getByTestId('timeline-slot-top')).toHaveTextContent('ずっとみーぱんに伝えたかったこと');
         expect(screen.getByTestId('timeline-month-body')).toHaveAttribute('aria-busy', 'true');
         // no month loading status (a photo tile's own compact spinner is not one)
-        expect(screen.queryAllByRole('status').filter((el) => !el.closest('[data-state]'))).toEqual([]);
+        expect(screen.queryAllByRole('status').filter((el) => !el.closest('[data-testid="memory-thumb"]'))).toEqual([]);
         expect(screen.queryByText('37 件')).not.toBeInTheDocument();
         fireEvent.keyDown(rail, { key: 'ArrowLeft' });
         await waitFor(() => expect(vi.mocked(fetchTimelineMonth).mock.lastCall?.[2]).toBe('2024-10'));

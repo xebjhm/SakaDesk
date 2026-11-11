@@ -44,13 +44,14 @@ export function logMemoriesPage(page: MemoriesPage): void {
  * its member list, a program's tracks and the cassette shelf; `gacha` the gacha state;
  * `calendar` one calendar month, `calendar_months` the month picker; `capsule` an anchor's notes,
  * `capsule_due` the notes resurfacing on a date; `same_time` the 同じ時刻 line; `day24` her 24
- * hours; `then_now` あの日と今日 (day mode and 初見 vs 今).
+ * hours; `then_now` あの日と今日 (day mode and 初見 vs 今); `album_pregen` the album's read of the
+ * thumbnail pre-generation status (media pipeline: `ok` once per activation, or `error`).
  */
 export const MEMORIES_VIEWS = [
     'hub', 'on_this_day', 'day', 'album', 'favorites', 'memoir', 'binder', 'names', 'timeline',
     'album_members', 'album_month', 'album_colors', 'film_strip', 'timeline_month', 'memoir_members',
     'radio', 'radio_members', 'radio_program', 'radio_cassettes', 'gacha', 'calendar', 'calendar_months',
-    'capsule', 'capsule_due', 'same_time', 'day24', 'then_now',
+    'capsule', 'capsule_due', 'same_time', 'day24', 'then_now', 'album_pregen',
 ] as const;
 export type MemoriesView = (typeof MEMORIES_VIEWS)[number];
 

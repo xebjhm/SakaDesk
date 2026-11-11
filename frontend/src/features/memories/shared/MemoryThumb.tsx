@@ -42,7 +42,8 @@ const FilmTile: React.FC<{ className?: string }> = ({ className }) => (
 
 /**
  * The original file as a plain `<img>`: no thumbnail, no scheduler, no meta (callers that need
- * the full picture and pass no `px`).
+ * the full picture and pass no `px`). Kept on purpose: media-pipeline ruling M8-2 requires this
+ * path even though every current caller passes `px` (tested in `MemoryThumb.test.tsx`).
  */
 const OriginalPicture: React.FC<{
     url: string; className?: string; onFail?: (retry: () => void) => void; loading?: 'lazy' | 'eager';

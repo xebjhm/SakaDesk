@@ -9,7 +9,7 @@ import { Skeleton, SKELETON_PULSE } from '../../../design/primitives/Skeleton';
 import { Spinner } from '../../../design/primitives/Spinner';
 import { useDelayedLoading } from '../../../design/loading';
 import { motion } from '../../../design/tokens';
-import { invalidateMediaMeta, isMediaRouteUrl, useMediaMeta, type MediaMeta } from './mediaMeta';
+import { invalidateMediaMeta, isMediaRouteUrl, readMediaMeta, useMediaMeta, type MediaMeta } from './mediaMeta';
 import { forgetImage, isImageReady, scheduleImage, type LoadPriority, type LoadTicket } from './loadScheduler';
 import { useTileVisibilityState } from './useTileVisibility';
 import { posterCapture } from './posterCapture';
@@ -168,15 +168,21 @@ interface InnerProps extends Omit<MediaTileProps, 'cssPx' | 'large'> {
     width: ThumbWidth;
 }
 
-/** The eager variant: a plain `<img>` at once with the same fallbacks (no scheduler, no meta). */
+/**
+ * The eager variant: a plain `<img>` at once with the same fallbacks (no scheduler, no meta wait).
+ * Meta the store already holds supplies `v` (the year-long cached variant); nothing is fetched for
+ * it. A failed eager tile is a plain sunken box with no caption: eager tiles are decorative stills
+ * (a recap slide's wall) or baked into an exported image, where an error line would be read as content.
+ */
 const EagerTile: React.FC<InnerProps> = ({ url, kind, width, className, onFail, onStateChange, testId }) => {
+    const [meta] = useState(() => (url ? readMediaMeta(url) : undefined));
     const [tried, setTried] = useState<readonly string[]>([]);
     const failCalled = useRef(false);
     const retry = useCallback(() => {
         failCalled.current = false;
         setTried([]);
     }, []);
-    const list = url ? candidates(url, kind, width, null) : [];
+    const list = url ? candidates(url, kind, width, meta ?? null) : [];
     const src = list.find((c) => !tried.includes(c));
     const phase: Phase = src ? 'ready' : kind === 'video' ? 'film' : 'failed';
     useReportState(phase, onStateChange);
@@ -188,7 +194,7 @@ const EagerTile: React.FC<InnerProps> = ({ url, kind, width, className, onFail, 
     return (
         <div data-testid={testId} data-state={phase} className={cn('relative overflow-hidden', className)}>
             {phase === 'film' && <FilmTile />}
-            {phase === 'failed' && <FailedTile />}
+            {phase === 'failed' && <span aria-hidden="true" data-media-tile-failed="" className={cn(FILL, 'bg-sunken')} />}
             {src && (
                 <img
                     data-media-tile-image=""

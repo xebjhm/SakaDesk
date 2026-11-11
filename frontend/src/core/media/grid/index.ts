@@ -20,5 +20,6 @@ export {
 export { MediaGridContext, type MediaGridTileReporter } from './gridContext';
 export { useMediaGridReporter, type MediaGridCode } from './useMediaGridReporter';
 export {
-    PREGEN_POLL_MS, pregenLabelKey, pregenProgress, useHeldLoading, usePregenProgress, type PregenProgress,
+    PREGEN_POLL_MS, logGalleryPregen, pregenLabelKey, pregenProgress, useHeldLoading, usePregenProgress, type PregenLog,
+    type PregenProgress,
 } from './galleryStatus';

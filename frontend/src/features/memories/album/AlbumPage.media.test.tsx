@@ -126,6 +126,9 @@ describe('AlbumPage on the shared media tile', () => {
         const first = renderAlbum();
         expect(await screen.findByText('Preparing thumbnails… 3 / 10')).toBeInTheDocument();
         expect(screen.getByRole('progressbar')).toBeInTheDocument();
+        // logged as the album's own Memories code, never as the gallery dialog's
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_load', { target: 'album_pregen', outcome: 'ok' });
+        expect(vi.mocked(clientLog).mock.calls.some(([event]) => event === 'dialog_load')).toBe(false);
         first.unmount();
 
         state = 'paused';
