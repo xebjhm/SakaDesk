@@ -501,7 +501,10 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
             config_state["notifications"] = True
             config_state["blogs_full_backup"] = False
     except Exception as e:
-        config_state["error"] = str(e)
+        # A code, never str(e): the endpoint needs no login and an OSError's
+        # text carries the settings path.
+        config_state["error"] = "settings_unreadable"
+        logger.warning("diagnostics_config_read_failed", error_type=type(e).__name__)
 
     # Sync State
     sync_state = SyncState()
@@ -631,7 +634,8 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
                 logs_summary.errors = errors[-50:]
                 logs_summary.warnings = warnings[-50:]
     except Exception as e:
-        logs_summary.recent.append(f"Error reading logs: {e}")
+        logs_summary.recent.append("logs_unreadable")  # a code: str(e) has paths
+        logger.warning("diagnostics_logs_read_failed", error_type=type(e).__name__)
 
     return DiagnosticsResponse(
         system=sys_info,
