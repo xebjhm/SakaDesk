@@ -534,6 +534,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     if (chatLoad.chatWaiting && waitDir !== selectedGroupDir) setWaitDir(selectedGroupDir);
     const waitHeld = useDelayedLoading(chatLoad.chatWaiting);
     const showWait = !chatLoad.failure && (chatLoad.chatWaiting || (waitHeld && waitDir === selectedGroupDir));
+    // The room's message list is on screen (not its wait, skeleton or an empty room).
+    const listShown = Boolean(
+        selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir
+        && roomExtras.lettersReady && !showWait,
+    );
     // Milestone cards (spec §9, decision D10): member chats only; counts only once loaded for this room.
     const milestone = useMilestone({
         roomKey: selectedGroupDir && messagesService && !isGroupChat ? `${messagesService}|${selectedGroupDir}` : null,
@@ -741,6 +746,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     });
     useUiStateReporter(selectedGroupDir);
     const callActive = incomingCall.phase !== 'idle';
+    // The unread arrows float over the list only: never over the room's wait, skeleton or failure
+    // (N4: at 960×640 the down arrow sat over the loading skeleton), nor over a call.
+    const unreadArrows = listShown && !chatLoad.failure && !callActive;
 
     // Keyboard navigation through the shared timeline jump (inert while a call covers the timeline)
     const handleKeyDown = useTimelineKeyNav(jumpTo, callActive);
@@ -969,7 +977,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         </div>
                     )}
 
-                    {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && roomExtras.lettersReady && !showWait && (
+                    {listShown && selectedGroupDir && messagesService && (
                         <MessageList
                             memberId={selectedGroupDir}
                             timeline={timeline}
@@ -1006,7 +1014,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
                 {/* Navigation Buttons */}
                 {/* Up arrow: bottom-right, when the oldest unread is ABOVE the view */}
-                {selectedGroupDir && hasUnreadAbove && !callActive && (
+                {unreadArrows && hasUnreadAbove && (
                     <IconButton
                         variant="accent"
                         className="absolute bottom-4 right-4 z-20"
@@ -1017,7 +1025,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     />
                 )}
                 {/* Down arrow: top-right below the header, when the oldest unread is BELOW the view */}
-                {selectedGroupDir && hasUnreadBelow && !callActive && (
+                {unreadArrows && hasUnreadBelow && (
                     <IconButton
                         variant="accent"
                         className="absolute right-4 top-20 z-20"

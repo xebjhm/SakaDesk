@@ -8,6 +8,15 @@ import { clientLog } from '../../utils/clientLog';
 import { LETTERS_WAIT_MS } from './hooks/useRoomLetters';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+// N4: a test can force the first unread row far below the view (null: the real rule).
+const unread = vi.hoisted(() => ({ forced: null as number | null }));
+vi.mock('./timeline/jumpTarget', async (importOriginal) => {
+    const real = await importOriginal<typeof import('./timeline/jumpTarget')>();
+    return {
+        ...real,
+        firstUnreadIndex: (...args: Parameters<typeof real.firstUnreadIndex>) => unread.forced ?? real.firstUnreadIndex(...args),
+    };
+});
 vi.mock('react-virtuoso', async () => (await import('../../__tests__/virtuosoMock')).virtuosoMock);
 // The sidebar is a stand-in: one button per room, so a test can switch rooms directly.
 vi.mock('./components/MemberList', () => ({
@@ -41,6 +50,7 @@ const ROOMS = [
     { id: 'D', dir: '日向坂46/messages/41 藤嶌 果歩/91 藤嶌 果歩', name: '藤嶌 果歩', text: 'D のメッセージ 🐬' },
     { id: 'E', dir: '日向坂46/messages/42 渡辺 莉奈/92 渡辺 莉奈', name: '渡辺 莉奈', text: 'E のメッセージ 🍰' },
     { id: 'F', dir: '日向坂46/messages/43 山下 葉留花/93 山下 葉留花', name: '山下 葉留花', text: 'F のメッセージ 🌷' },
+    { id: 'G', dir: '日向坂46/messages/44 石塚 瑶季/94 石塚 瑶季', name: '石塚 瑶季', text: 'G のメッセージ 🍙' },
 ] as const;
 type RoomId = (typeof ROOMS)[number]['id'];
 const room = (id: RoomId) => ROOMS.find((r) => r.id === id)!;
@@ -53,6 +63,7 @@ const FAILED_HINT = '保存したデータはそのままです。もう一度�
 const TIMEOUT = '読み込みに時間がかかりすぎています';
 const TIMEOUT_HINT = 'アプリがまだ処理中かもしれません。少し待ってからもう一度お試しください。';
 const RETRY = 'もう一度';
+const JUMP = '未読の最初へ移動';
 const SECRET = 'SECRET-DETAIL /home/someone/日向坂46';
 
 const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };
@@ -138,10 +149,11 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         vi.mocked(clientLog).mockClear();
         menu.status = undefined;
         menu.retry = undefined;
+        unread.forced = null;
         for (const k of Object.keys(listCalls)) delete listCalls[k];
         for (const k of Object.keys(listSignals)) delete listSignals[k];
-        replies = { A: okList('A'), B: okList('B'), C: okList('C'), D: okList('D'), E: okList('E'), F: okList('F') };
-        letterReplies = { A: noLetters, B: noLetters, C: noLetters, D: noLetters, E: noLetters, F: noLetters };
+        replies = { A: okList('A'), B: okList('B'), C: okList('C'), D: okList('D'), E: okList('E'), F: okList('F'), G: okList('G') };
+        letterReplies = { A: noLetters, B: noLetters, C: noLetters, D: noLetters, E: noLetters, F: noLetters, G: noLetters };
         serve();
     });
     afterEach(() => {
@@ -205,6 +217,34 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         expect(children.indexOf(screen.getByText(VERY_SLOW))).toBeGreaterThan(0);
         b.open();
         await flush();
+    });
+
+    it('N4: the unread arrows never float over the skeleton or a failure', async () => {
+        const arrow = () => screen.queryByRole('button', { name: JUMP });
+        // An unread message far below whatever is on screen, for any timeline.
+        unread.forced = 99;
+        await mountOnA();
+        expect(arrow()).not.toBeNull(); // the loaded list offers it
+        // Messages in, letters pending: the skeleton stays up over a known timeline.
+        const letters = deferred();
+        letterReplies.G = async () => { await letters.promise; return noLetters(); };
+        await open('G');
+        expect(arrow()).toBeNull(); // the wait before the reveal has none
+        await advance(1000);
+        expect(skeleton()).not.toBeNull();
+        expect(arrow()).toBeNull();
+        letters.resolve();
+        await flush();
+        expect(hasText(room('G').text)).toBe(true);
+        expect(arrow()).not.toBeNull(); // the list is up again
+
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        replies.C = () => HttpResponse.json({ detail: SECRET }, { status: 500 });
+        await open('C');
+        await advance(300);
+        expect(screen.getByRole('alert')).toHaveTextContent(FAILED);
+        expect(arrow()).toBeNull();
     });
 
     it('F1: a room answering at 250 ms keeps the skeleton until 600 ms (min-visible), and the box is never empty', async () => {
