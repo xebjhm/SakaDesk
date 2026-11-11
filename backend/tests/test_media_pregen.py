@@ -333,56 +333,63 @@ async def test_default_enumerate_without_media_or_service(out):
         assert await media_pregen.default_enumerate("nope", out) == []
 
 
-def _blog_image(out: Path, member: str, folder: str, name: str) -> tuple[Path, str]:
-    from backend.services import archive_urls
-
-    path = _jpeg(out / "日向坂46" / "blogs" / member / folder / "images" / name)
-    url = archive_urls.media_url(HINATA, ["blogs", member, folder, "images", name])
-    return path, url
+# --- phase 4: blogs (M7) --------------------------------------------------------------
 
 
-@pytest.mark.asyncio
-async def test_default_enumerate_blog_phase_comes_from_gallery_images(out):
-    """M7: phase 4 is every cached blog image of the service (gallery_images(service, None))."""
-    from backend.services import blog_service
-    from backend.services.memories import index as memory_index
+def _blog_archive(root: Path, members: dict) -> dict[str, list[Path]]:
+    """A blog index plus cached blogs: ``{mid: (name, [(blog_id, published_at, images)])}``.
 
-    new, new_url = _blog_image(out, SECRET + " 美玖", "20260205_b2", "img_0.jpg")
-    old, old_url = _blog_image(out, SECRET + " 美玖", "20260103_b1", "img_0.jpg")
-    (out / "日向坂46" / "blogs" / "x" / "a.txt").parent.mkdir(parents=True)
-    (out / "日向坂46" / "blogs" / "x" / "a.txt").write_text("x", encoding="utf-8")
-    images = [
-        {"media_url": new_url},
-        {"media_url": new_url},  # a duplicate: once
-        {"media_url": old_url},
-        {"media_url": "/api/content/media/hinatazaka46/../../../secret.jpg"},
-        {"media_url": "/api/content/media/hinatazaka46/blogs/x/a.txt"},
-    ]
-    gallery = patch.object(blog_service, "gallery_images", return_value=images)
-    with (
-        patch.object(memory_index, "media_rows", return_value=[]),
-        patch.object(blog_service, "blog_backup_enabled", side_effect=_on),
-        gallery as called,
-        capture_logs() as logs,
-    ):
-        phases = await media_pregen.default_enumerate(HINATA, out)
-    called.assert_awaited_once_with(HINATA, None)
-    [blogs] = phases
-    assert blogs.name == "blogs" and blogs.reason is None
-    assert [(i.path, i.kind, i.widths, i.root) for i in blogs.items] == [
-        (new.resolve(), "picture", photo_thumb.PREGEN_WIDTHS, out),
-        (old.resolve(), "picture", photo_thumb.PREGEN_WIDTHS, out),
-    ]
-    assert SECRET not in repr(logs)
-    # The worker makes the blog image's thumbnail like any other picture.
-    item = blogs.items[0]
-    result = media_pregen.default_process(item)
-    assert result.outcome == "done"
-    st = item.path.stat()
-    name = photo_thumb.variant_name(
-        _rel(out, item.path), st.st_size, st.st_mtime_ns, photo_thumb.PREGEN_WIDTHS[0]
+    Returns each blog's image paths by blog id.
+    """
+    import json
+
+    base = root / "日向坂46" / "blogs"
+    base.mkdir(parents=True, exist_ok=True)
+    index: dict = {"members": {}}
+    paths: dict[str, list[Path]] = {}
+    for mid, (name, blogs) in members.items():
+        index["members"][mid] = {
+            "name": name,
+            "blogs": [
+                {"id": b, "title": "🌸", "published_at": ts} for b, ts, _ in blogs
+            ],
+        }
+        for blog_id, ts, count in blogs:
+            folder = base / name / f"{ts[:10].replace('-', '')}_{blog_id}"
+            images = [
+                {
+                    "original_url": f"https://x/{i}",
+                    "local_path": f"./images/img_{i}.jpg",
+                }
+                for i in range(count)
+            ]
+            paths[blog_id] = [
+                _jpeg(folder / "images" / f"img_{i}.jpg", (64, 48))
+                for i in range(count)
+            ]
+            (folder / "blog.json").write_text(
+                json.dumps({"images": images}), encoding="utf-8"
+            )
+    (base / "index.json").write_text(
+        json.dumps(index, ensure_ascii=False), encoding="utf-8"
     )
-    assert (photo_thumb.cache_dir() / name).is_file()
+    return paths
+
+
+TWO_MEMBERS = {
+    "58": (
+        SECRET + " 美玖",
+        [
+            ("b1", "2026-01-03T10:00:00+09:00", 1),
+            ("b2", "2026-02-05T10:00:00+09:00", 2),
+        ],
+    ),
+    "60": ("上村 ひなの", [("c1", "2026-01-20T10:00:00Z", 1)]),
+}
+
+
+def _blog_only(h: Harness) -> None:
+    h.phases[HINATA] = [Phase("blogs", [], source=media_pregen.BlogSource(HINATA))]
 
 
 async def _on():
@@ -394,40 +401,16 @@ async def _off():
 
 
 @pytest.mark.asyncio
-async def test_blog_phase_with_messages_and_a_failed_gallery_read(out):
+async def test_default_enumerate_lists_the_blog_phase_lazily(out):
     from backend.services import blog_service
-    from backend.services.memories import album
     from backend.services.memories import index as memory_index
 
-    rows = [_media_row("a", "a/p/1.jpg", "picture", "2026-01-01T00:00:00+00:00")]
-
-    async def warm(service, s):
-        return None
-
-    async def months(*a, **kw):
-        return {"months": []}
-
-    async def boom(service, member):
-        raise RuntimeError(SECRET)
-
     with (
-        patch.object(memory_index, "media_rows", return_value=rows),
-        patch.object(album, "warm_album", side_effect=warm),
-        patch.object(album, "album_months", side_effect=months),
+        patch.object(memory_index, "media_rows", return_value=[]),
         patch.object(blog_service, "blog_backup_enabled", side_effect=_on),
-        patch.object(blog_service, "gallery_images", side_effect=boom),
-        capture_logs() as logs,
     ):
         phases = await media_pregen.default_enumerate(HINATA, out)
-    assert phases[-1].name == "blogs" and phases[-1].reason == "failed"
-    assert phases[-1].items == []
-    assert {
-        "event": "media_pregen_blogs_failed",
-        "service": HINATA,
-        "error_type": "RuntimeError",
-        "log_level": "warning",
-    } in logs
-    assert SECRET not in repr(logs)
+    assert phases == [Phase("blogs", [], source=media_pregen.BlogSource(HINATA))]
 
 
 @pytest.mark.asyncio
@@ -435,38 +418,268 @@ async def test_blog_phase_is_skipped_while_blog_backup_is_off(out):
     from backend.services import blog_service
     from backend.services.memories import index as memory_index
 
-    _blog_image(out, "m", "20260205_b2", "img_0.jpg")
     with (
         patch.object(memory_index, "media_rows", return_value=[]),
         patch.object(blog_service, "blog_backup_enabled", side_effect=_off),
-        patch.object(blog_service, "gallery_images", side_effect=AssertionError),
     ):
         assert await media_pregen.default_enumerate(HINATA, out) == []
 
 
 @pytest.mark.asyncio
-async def test_blog_items_are_built_off_the_event_loop(out):
-    from backend.services import blog_service
-    from backend.services.memories import index as memory_index
+async def test_blog_phase_lists_on_the_worker_thread_newest_first_with_no_resolve(h):
+    """Every listing step runs on the background thread; paths come from the scan."""
+    from backend.services import blog_service as bs
 
-    _, url = _blog_image(out, "m", "20260205_b2", "img_0.jpg")
-    loop_thread = threading.get_ident()
-    seen: dict[str, int] = {}
-    real = media_pregen._blog_items
+    paths = _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    seen: list[Path] = []
+    h.on_process = lambda item: seen.append(item.path)
+    step_threads: list[str] = []
+    real_member = bs.gallery_member_blogs
 
-    def items(*args):
-        seen["thread"] = threading.get_ident()
-        return real(*args)
+    def member(*a):
+        step_threads.append(threading.current_thread().name)
+        return real_member(*a)
 
+    resolves = []
+    real_resolve = Path.resolve
+
+    def resolve(self, *a, **kw):
+        resolves.append(self)
+        return real_resolve(self, *a, **kw)
+
+    p = h.make()
     with (
-        patch.object(memory_index, "media_rows", return_value=[]),
-        patch.object(blog_service, "blog_backup_enabled", side_effect=_on),
-        patch.object(blog_service, "gallery_images", return_value=[{"media_url": url}]),
-        patch.object(media_pregen, "_blog_items", side_effect=items),
+        patch.object(bs, "gallery_member_blogs", side_effect=member),
+        patch.object(Path, "resolve", resolve),
+        capture_logs() as logs,
     ):
-        phases = await media_pregen.default_enumerate(HINATA, out)
-    assert len(phases[0].items) == 1
-    assert seen["thread"] != loop_thread
+        p.start()
+        await _idle(p)
+        await p.stop()
+    assert seen == [*paths["b2"], paths["c1"][0], paths["b1"][0]]  # newest first
+    assert step_threads == ["media_pregen", "media_pregen"]
+    assert resolves == []  # no per-image (or per-base) resolve while listing
+    assert p.status_snapshot()["services"][HINATA] == {"done": 4, "total": 4}
+    [blogs] = [e for e in _events(logs, "media_pregen_pass") if e["phase"] == "blogs"]
+    assert (blogs["queued"], blogs["done"]) == (4, 4)
+    assert SECRET not in repr(logs) and "🌸" not in repr(logs)
+
+
+@pytest.mark.asyncio
+async def test_blog_phase_skips_an_unchanged_listing(h):
+    """The second pass after a message sync re-reads no blog.json; a blog write lists again."""
+    import os
+
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    reads: list[int] = []
+    real = bs.gallery_local_images
+
+    def local(*a):
+        reads.append(1)
+        return real(*a)
+
+    p = h.make()
+    with (
+        patch.object(bs, "gallery_local_images", side_effect=local),
+        capture_logs() as logs,
+    ):
+        p.start()
+        await _idle(p)
+        first = len(h.processed)
+        p.request(HINATA)  # e.g. a finished message sync
+        await asyncio.sleep(0)
+        await _idle(p)
+        assert len(h.processed) == first and len(reads) == 1
+        bs.invalidate_gallery()  # a blog was written (backup or on-demand fetch)
+        p.request(HINATA)
+        await asyncio.sleep(0)
+        await _idle(p)
+        assert len(h.processed) == 2 * first and len(reads) == 2
+        index = h.root / "日向坂46" / "blogs" / "index.json"
+        st = index.stat()
+        os.utime(index, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+        p.request(HINATA)
+        await asyncio.sleep(0)
+        await _idle(p)
+        assert len(reads) == 3  # the index changed: listed again
+        await p.stop()
+    reasons = [
+        e.get("reason")
+        for e in _events(logs, "media_pregen_pass")
+        if e["phase"] == "blogs"
+    ]
+    assert reasons == [None, "unchanged", None, None]
+
+
+@pytest.mark.asyncio
+async def test_blog_listing_pauses_when_a_sync_starts_mid_enumeration(h):
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    trail: list[object] = []
+    real = bs.gallery_member_blogs
+
+    def member(*a):
+        trail.append("member")
+        if trail.count("member") == 1:
+            h.busy = "sync"  # a sync starts while the first member is listed
+        return real(*a)
+
+    def on_sleep(s):
+        trail.append(s)
+        if h.busy and s == media_pregen.POLL_PAUSED_S:
+            h.busy = None
+
+    h.on_sleep = on_sleep
+    p = h.make()
+    with (
+        patch.object(bs, "gallery_member_blogs", side_effect=member),
+        capture_logs() as logs,
+    ):
+        p.start()
+        await _idle(p)
+        await p.stop()
+    first, second = (i for i, t in enumerate(trail) if t == "member")
+    assert media_pregen.POLL_PAUSED_S in trail[first:second]  # paused between the steps
+    assert {"event": "media_pregen_pause", "state": "paused", "reason": "sync"} in [
+        {k: e.get(k) for k in ("event", "state", "reason")} for e in logs
+    ]
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("at", ["enumerate", "index", "order"])
+async def test_blog_listing_stops_on_shutdown_at_any_step(h, at):
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    stop = shutdown_state.begin_shutdown
+    real_enum, real_index, real_order = (
+        h.enumerate,
+        bs.gallery_index,
+        bs.gallery_newest_first,
+    )
+
+    async def enumerate_(service, root):
+        if at == "enumerate":
+            stop()
+        return await real_enum(service, root)
+
+    def index(*a):
+        if at == "index":
+            stop()
+        return real_index(*a)
+
+    def order(*a):
+        if at == "order":
+            stop()
+        return real_order(*a)
+
+    p = h.make(enumerate_fn=enumerate_)
+    with (
+        patch.object(bs, "gallery_index", side_effect=index),
+        patch.object(bs, "gallery_newest_first", side_effect=order),
+    ):
+        p.start()
+        await asyncio.wait_for(p._task, 10)
+    assert h.processed == []
+
+
+@pytest.mark.asyncio
+async def test_blog_listing_is_dropped_when_the_caches_are_cleared_meanwhile(h):
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    p = h.make()
+    real = bs.gallery_member_blogs
+    calls = []
+    loop = asyncio.get_running_loop()
+
+    def member(*a):
+        calls.append(1)
+        if len(calls) == 1:
+            # as clear() does, while this step runs: a new generation, passes re-requested
+            p._generation += 1
+            loop.call_soon_threadsafe(p.request, HINATA)
+        return real(*a)
+
+    with patch.object(bs, "gallery_member_blogs", side_effect=member):
+        p.start()
+        await _idle(p)
+        await p.stop()
+    # The stale pass was dropped after its first step; the next pass listed everything.
+    assert len(h.processed) == 4
+
+
+@pytest.mark.asyncio
+async def test_blog_listing_without_an_index_or_with_a_failure(h):
+    from backend.services import blog_service as bs
+
+    _blog_only(h)
+    p = h.make()
+    with capture_logs() as logs:
+        p.start()
+        await _idle(p)
+        _blog_archive(h.root, TWO_MEMBERS)
+        with patch.object(bs, "gallery_index", side_effect=RuntimeError(SECRET)):
+            p.request(HINATA)
+            await asyncio.sleep(0)
+            await _idle(p)
+        await p.stop()
+    reasons = [
+        e.get("reason")
+        for e in _events(logs, "media_pregen_pass")
+        if e["phase"] == "blogs"
+    ]
+    assert reasons == ["no_index", "failed"]
+    assert {
+        "event": "media_pregen_blogs_failed",
+        "service": HINATA,
+        "error_type": "RuntimeError",
+        "log_level": "warning",
+    } in logs
+    assert SECRET not in repr(logs) and h.processed == []
+
+
+@pytest.mark.asyncio
+async def test_a_hung_listing_step_fails_the_blog_phase_and_abandons_the_thread(h):
+    from backend.services import blog_service as bs
+
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    release = threading.Event()
+
+    def hang(*a):
+        release.wait(5)
+        return None
+
+    p = h.make()
+    try:
+        with (
+            patch.object(media_pregen, "SCAN_STEP_TIMEOUT_S", 0.05),
+            patch.object(bs, "gallery_index", side_effect=hang),
+            capture_logs() as logs,
+        ):
+            p.start()
+            await _idle(p)
+            await p.stop()
+    finally:
+        release.set()
+    assert {"event": "media_pregen_pause", "reason": "batch_hung"} in [
+        {k: e.get(k) for k in ("event", "reason")} for e in logs
+    ]
+    reasons = [
+        e.get("reason")
+        for e in _events(logs, "media_pregen_pass")
+        if e["phase"] == "blogs"
+    ]
+    assert reasons == ["failed"]
 
 
 @pytest.mark.asyncio

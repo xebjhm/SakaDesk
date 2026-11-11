@@ -73,11 +73,17 @@ ones first, and per service runs (:func:`default_enumerate`):
    route derives 320 / 160 from it on demand).
 2. ``favorites``: the other ★ items, with ``photo_thumb.LARGE_WIDTH`` too.
 3. ``messages``: every other message media, newest first.
-4. ``blogs``: every cached blog image of the service
-   (``blog_service.gallery_images(service, None)``, newest first) at
-   ``PREGEN_WIDTHS``. A logged no-op while full blog backup is off
-   (``reason=backup_off``: the gallery shows nothing then) or when the
-   listing fails (``reason=failed``, ``media_pregen_blogs_failed``).
+4. ``blogs``: every cached blog image of the service, newest first, at
+   ``PREGEN_WIDTHS``. It is listed lazily (:meth:`MediaPregen._expand_blogs`)
+   with ``blog_service``'s gallery building blocks, one step at a time on
+   the worker thread (background priority) and with a pause check before
+   each step, so a sync or a gallery opened meanwhile pauses it. Archive
+   paths come straight from the scan (no per-image resolve). A logged no-op
+   while full blog backup is off (``reason=backup_off``), when the blog
+   listing is unchanged since the last completed blog phase of the service
+   (``reason=unchanged``: the same ``blog_service.gallery_signature``), when
+   there is no blog index (``reason=no_index``), or when the listing fails
+   (``reason=failed``, ``media_pregen_blogs_failed``).
 
 Hinted files (``media_meta`` hints missing and stale rows of a meta batch)
 jump the queue at every batch boundary, deduplicated and capped at
@@ -169,6 +175,10 @@ HINT_COOLDOWN_S = 600.0
 COOLDOWN_MAX = 10_000
 """Entries in the cooldown memo at most (expired ones are dropped first)."""
 WATCHDOG_GRACE_S = 5.0
+BLOG_SCAN_CHUNK = 50
+"""``blog.json`` files read per worker step of the blog phase (a pause check runs between steps)."""
+SCAN_STEP_TIMEOUT_S = 120.0
+"""One blog-listing step on the thread longer than this (a stalled drive) fails the blog phase."""
 """Added to the batch watchdog so ``generate_shell``'s own hang guard trips first."""
 
 PHASE_WARM = "warm_album"
@@ -204,13 +214,24 @@ class ItemResult:
     rel: str | None = None
 
 
+@dataclass(frozen=True)
+class BlogSource:
+    """Phase 4's items are listed when the phase runs (:meth:`MediaPregen._expand_blogs`)."""
+
+    service: str
+
+
 @dataclass
 class Phase:
-    """One phase of a service's pass; ``reason`` makes it a logged no-op."""
+    """One phase of a service's pass; ``reason`` makes it a logged no-op.
+
+    ``source`` (the blog phase) lists the items lazily, on the worker thread.
+    """
 
     name: str
     items: list[Item]
     reason: str | None = None
+    source: BlogSource | None = None
 
 
 ClockFn = Callable[[], float]
@@ -356,43 +377,13 @@ async def _album_covers(service: str, sdir: Path) -> list[str]:
     return covers
 
 
-def _blog_items(root: Path, images: Sequence[dict]) -> list[Item]:
-    """Phase 4's items: each gallery image's archive file, once, in gallery order.
-
-    Blocking (each media URL is resolved and checked to lie inside the
-    output dir, ``archive_urls.media_route_path``): run it in a thread.
-    """
-    from backend.services import archive_urls
-
-    items: list[Item] = []
-    seen: set[Path] = set()
-    for image in images:
-        path = archive_urls.media_route_path(root, image["media_url"])
-        if path is None or path in seen or media_meta.kind_of(path) != "picture":
-            continue
-        seen.add(path)
-        items.append(Item(root, path, "picture", photo_thumb.PREGEN_WIDTHS))
-    return items
-
-
-async def _blog_phase(service: str, root: Path) -> Phase:
-    """Phase 4: the service's cached blog images (``gallery_images(service, None)``).
-
-    A logged no-op (``reason``) while full blog backup is off (``backup_off``)
-    or when the listing fails (``failed``; ``media_pregen_blogs_failed``).
-    """
+async def _blog_phase(service: str) -> Phase:
+    """Phase 4: a logged no-op while full blog backup is off, else listed lazily (:class:`BlogSource`)."""
     from backend.services import blog_service
 
     if not await blog_service.blog_backup_enabled():
         return Phase(PHASE_BLOGS, [], reason="backup_off")
-    try:
-        images = await blog_service.gallery_images(service, None)
-    except Exception as e:  # noqa: BLE001 - the other phases still run
-        logger.warning(
-            "media_pregen_blogs_failed", service=service, error_type=type(e).__name__
-        )
-        return Phase(PHASE_BLOGS, [], reason="failed")
-    return Phase(PHASE_BLOGS, await asyncio.to_thread(_blog_items, root, images))
+    return Phase(PHASE_BLOGS, [], source=BlogSource(service))
 
 
 async def default_enumerate(service: str, root: Path) -> list[Phase]:
@@ -401,8 +392,9 @@ async def default_enumerate(service: str, root: Path) -> list[Phase]:
     The media rows come from the memory index (``index.media_rows``) and the
     phases are built (:func:`_phases`), both in a worker thread: only phase 0
     (cached album views, as the album API runs them) runs on the loop, and
-    only when the service has media. The blog phase (:func:`_blog_phase`)
-    follows; a service with neither message media nor blog images gives ``[]``.
+    only when the service has media. The blog phase (:func:`_blog_phase`,
+    listed when it runs) follows; a service with no message media and blog
+    backup off gives ``[]``.
     """
     from backend.services.memories import index as memory_index
     from backend.services.memories import people
@@ -416,8 +408,8 @@ async def default_enumerate(service: str, root: Path) -> list[Phase]:
     if rows:
         covers = await _album_covers(service, sdir)
         phases = await asyncio.to_thread(_phases, root, sdir, rows, covers)
-    blogs = await _blog_phase(service, root)
-    if not phases and not blogs.items:
+    blogs = await _blog_phase(service)
+    if not phases and blogs.source is None:
         return []
     return [*phases, blogs]
 
@@ -588,13 +580,18 @@ def _safe_process(process: ProcessFn, item: Item) -> ItemResult:
 
 def _deliver(
     loop: asyncio.AbstractEventLoop,
-    fut: asyncio.Future[list[ItemResult]],
-    results: list[ItemResult],
+    fut: asyncio.Future[Any],
+    results: Any,
+    error: BaseException | None = None,
 ) -> None:
-    """Complete ``fut`` on its loop; dropped when it was cancelled or the loop closed."""
+    """Complete ``fut`` on its loop (``error`` raises there); dropped when it was cancelled or the loop closed."""
 
     def complete() -> None:
-        if not fut.done():
+        if fut.done():
+            return
+        if error is not None:
+            fut.set_exception(error)
+        else:
             fut.set_result(results)
 
     try:
@@ -603,7 +600,7 @@ def _deliver(
         pass
 
 
-_Job = tuple[list[Item], asyncio.AbstractEventLoop, "asyncio.Future[list[ItemResult]]"]
+_Job = tuple[Callable[[], Any], asyncio.AbstractEventLoop, "asyncio.Future[Any]"]
 
 
 class _Worker:
@@ -620,18 +617,26 @@ class _Worker:
 
     def _run(self) -> None:
         low_priority.enter_background_mode()
-        stop = shutdown_state.shutdown_event()
         while True:
             job = self._jobs.get()
             if job is None:
                 return
-            batch, loop, fut = job
-            results: list[ItemResult] = []
-            for item in batch:
-                if self._abandoned.is_set() or stop.is_set():
-                    break
-                results.append(_safe_process(self._process, item))
-            _deliver(loop, fut, results)
+            work, loop, fut = job
+            try:
+                result = work()
+            except Exception as e:  # noqa: BLE001 - a listing step failed: raise it on the loop
+                _deliver(loop, fut, None, e)
+                continue
+            _deliver(loop, fut, result)
+
+    def _batch(self, batch: list[Item]) -> list[ItemResult]:
+        stop = shutdown_state.shutdown_event()
+        results: list[ItemResult] = []
+        for item in batch:
+            if self._abandoned.is_set() or stop.is_set():
+                break
+            results.append(_safe_process(self._process, item))
+        return results
 
     def submit(
         self,
@@ -639,7 +644,16 @@ class _Worker:
         loop: asyncio.AbstractEventLoop,
         fut: asyncio.Future[list[ItemResult]],
     ) -> None:
-        self._jobs.put((batch, loop, fut))
+        self._jobs.put((lambda: self._batch(batch), loop, fut))
+
+    def call(
+        self,
+        fn: Callable[[], Any],
+        loop: asyncio.AbstractEventLoop,
+        fut: asyncio.Future[Any],
+    ) -> None:
+        """Run ``fn`` (one short blocking step) on the thread; its result or error completes ``fut``."""
+        self._jobs.put((fn, loop, fut))
 
     def abandon(self) -> None:
         """Stop before the next file and exit after the current one (if it ever returns)."""
@@ -755,6 +769,8 @@ class MediaPregen:
         self._generation = 0  # bumped by clear(): the pass in flight is dropped
         self._turn_generation = 0
         self._large: dict[str, set[str]] = {}  # service -> rels of ★ / cover items
+        # service -> the blog listing signature of its last completed blog phase
+        self._blog_sig: dict[str, tuple[str, int, int, int]] = {}
 
     # --- public ---------------------------------------------------------------------
 
@@ -874,6 +890,7 @@ class MediaPregen:
         with self._lock:
             self._progress.clear()
             self._cooldown.clear()
+        self._blog_sig.clear()  # the blog thumbnails are gone too: list them again
         for service in self._services:
             self.request(service)
         return freed
@@ -1037,6 +1054,16 @@ class MediaPregen:
     async def _run_phase(self, service: str, phase: Phase) -> bool:
         start = time.perf_counter()
         counts: Counter[str] = Counter()
+        signature = None
+        if phase.source is not None:
+            expanded = await self._expand_blogs(phase.source)
+            if expanded is None:
+                return False
+            phase, signature = expanded
+            with self._lock:
+                entry = self._progress.get(service)
+                if entry is not None:
+                    entry[1] += len(phase.items)
         if phase.reason is not None:
             _log_pass(service, phase.name, 0, counts, start, phase.reason)
             return True
@@ -1045,7 +1072,99 @@ class MediaPregen:
             if not await self._step(items[i : i + PREGEN_BATCH], counts, service):
                 return False
         _log_pass(service, phase.name, len(items), counts, start)
+        if (
+            signature is not None
+        ):  # completed: an unchanged listing is skipped next time
+            self._blog_sig[service] = signature
         return True
+
+    async def _call(self, fn: Callable[[], Any]) -> Any:
+        """Run one short blocking step on the worker thread (background priority).
+
+        Raises ``TimeoutError`` after :data:`SCAN_STEP_TIMEOUT_S` (the thread is
+        then abandoned, like a hung batch) and :class:`_PassAborted` when the
+        caches were cleared meanwhile.
+        """
+        loop = asyncio.get_running_loop()
+        worker = self._worker
+        if worker is None:
+            worker = self._worker = _Worker(self._process, self._thread_factory)
+        fut: asyncio.Future[Any] = loop.create_future()
+        worker.call(fn, loop, fut)
+        try:
+            result = await asyncio.wait_for(fut, SCAN_STEP_TIMEOUT_S)
+        except asyncio.TimeoutError:
+            logger.warning(
+                "media_pregen_pause", state="paused", reason="batch_hung", paused_ms=0
+            )
+            worker.abandon()
+            self._worker = None
+            raise
+        if self._turn_generation != self._generation:
+            raise _PassAborted
+        return result
+
+    async def _expand_blogs(
+        self, source: BlogSource
+    ) -> tuple[Phase, tuple[str, int, int, int] | None] | None:
+        """List the blog phase's items step by step; ``None`` when the worker must stop.
+
+        Each step (the index read, one member's folder listing, then
+        :data:`BLOG_SCAN_CHUNK` ``blog.json`` reads) runs on the worker thread
+        after a pause check (:meth:`_ready`). Archive paths come straight from
+        the scan, under the worker's output dir. Returns the phase and the
+        listing signature (``None`` for a no-op phase): ``reason=unchanged``
+        when the signature matches the last completed blog phase,
+        ``no_index`` without an index, ``failed`` on an error
+        (``media_pregen_blogs_failed``, codes only).
+        """
+        from functools import partial
+
+        from backend.services import blog_service as bs
+
+        service = source.service
+        try:
+            if not await self._ready():
+                return None
+            root = await self._root_dir()
+            version = bs.gallery_version()
+            index = await self._call(partial(bs.gallery_index, service, None, root))
+            if index is None:
+                return Phase(PHASE_BLOGS, [], reason="no_index"), None
+            cached: list[bs.CachedBlog] = []
+            for member in index.members:
+                if not await self._ready():
+                    return None
+                cached += await self._call(
+                    partial(bs.gallery_member_blogs, index.base, member)
+                )
+            signature = bs.gallery_signature(index, len(cached), version)
+            if self._blog_sig.get(service) == signature:
+                return Phase(PHASE_BLOGS, [], reason="unchanged"), None
+            cached = await self._call(partial(bs.gallery_newest_first, cached))
+            items: list[Item] = []
+            widths = photo_thumb.PREGEN_WIDTHS
+            for i in range(0, len(cached), BLOG_SCAN_CHUNK):
+                if not await self._ready():
+                    return None
+                found, _skipped = await self._call(
+                    partial(
+                        bs.gallery_local_images,
+                        service,
+                        cached[i : i + BLOG_SCAN_CHUNK],
+                    )
+                )
+                items.extend(Item(root, img.path, "picture", widths) for img in found)
+            return Phase(PHASE_BLOGS, items), signature
+        except _PassAborted:
+            raise
+        except Exception as e:  # noqa: BLE001 - the other phases already ran
+            logger.warning(
+                "media_pregen_blogs_failed",
+                service=service,
+                error_type=type(e).__name__,
+            )
+            return Phase(PHASE_BLOGS, [], reason="failed"), None
 
     def _take_hints(self, root: Path) -> list[Item]:
         big = photo_thumb.PREGEN_WIDTHS + (photo_thumb.LARGE_WIDTH,)

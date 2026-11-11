@@ -321,6 +321,13 @@ def gallery_archive(tmp_path):
             },
             "61": "not a member",
             "62": {"name": "x", "blogs": ["not a blog", {"id": 5}, {"id": "n"}]},
+            "63": {"name": None, "blogs": []},  # malformed: skipped, not a 500
+            "64": {"name": "y", "blogs": None},
+            "65": {"name": "..", "blogs": [{"id": "z", "published_at": "2026"}]},
+            "66": {
+                "name": "w",
+                "blogs": [{"id": "../up", "published_at": "2026-01-01T00:00:00Z"}],
+            },
             "60": {
                 "name": "上村 ひなの",
                 "blogs": [
@@ -456,12 +463,6 @@ def test_gallery_media_url_resolves_to_the_file_and_the_thumb_route_serves_it(
             r = TestClient(app).get(f"/api/content/thumb/{rest}?w=160")
     finally:
         photo_thumb.reset_cache_state()
-        # The route's IO pool is long-lived (made lazily again): never leave its
-        # thread running into later tests that fork.
-        with photo_thumb._io_pool_lock:
-            pool, photo_thumb._io_pool = photo_thumb._io_pool, None
-        if pool is not None:
-            pool.shutdown(wait=True)
     assert r.status_code == 200
     assert r.headers["content-type"] == "image/webp"
 
@@ -546,7 +547,7 @@ def test_gallery_skips_an_unreadable_blog_json_and_logs_codes_only(gallery_archi
     assert all(e["reason"] == "unreadable" for e in skips)
     [summary] = [e for e in logs if e["event"] == "blog_gallery"]
     assert (summary["blogs"], summary["images"], summary["skipped"]) == (3, 2, 2)
-    assert summary["memo"] == "miss" and summary["service"] == "hinatazaka46"
+    assert summary["memo"] == "off" and summary["service"] == "hinatazaka46"
 
 
 def test_gallery_cjk_and_emoji_survive_in_the_response_but_never_in_logs(
@@ -624,3 +625,148 @@ def test_gallery_ignores_a_blog_json_without_an_image_list(gallery_archive):
     b1 = gallery_archive / "日向坂46" / "blogs" / MEMBER / "20260103_b1"
     _blog_json(b1, [], raw=json.dumps({"images": "none"}))
     assert [i["blog_id"] for i in _gallery()] == ["b2", "b2"]
+
+
+def test_gallery_sorts_by_parsed_time_across_mixed_offsets(gallery_archive):
+    """2026-02-05T01:00+09:00 (= 02-04 16:00 UTC) is older than 2026-02-04T20:00Z."""
+    import json as _json
+
+    index_path = gallery_archive / "日向坂46" / "blogs" / "index.json"
+    index = _json.loads(index_path.read_text(encoding="utf-8"))
+    index["members"]["58"]["blogs"] = [
+        {"id": "jst", "title": "a", "published_at": "2026-02-05T01:00:00+09:00"},
+        {"id": "utc", "title": "b", "published_at": "2026-02-04T20:00:00Z"},
+    ]
+    index_path.write_text(_json.dumps(index, ensure_ascii=False), encoding="utf-8")
+    for folder in ("20260205_jst", "20260204_utc"):
+        f = gallery_archive / "日向坂46" / "blogs" / MEMBER / folder
+        _blog_json(
+            f, [{"original_url": "https://q/0.jpg", "local_path": "./images/img_0.jpg"}]
+        )
+        _img(f, "img_0.jpg")
+    # As strings "2026-02-05T01…" > "2026-02-04T20…"; as instants utc is newer.
+    assert [i["blog_id"] for i in _gallery()] == ["utc", "jst"]
+
+
+def test_gallery_memo_hit_reports_the_skips_of_the_scan_it_reuses(gallery_archive):
+    bad = gallery_archive / "日向坂46" / "blogs" / MEMBER / "20260103_b1"
+    _blog_json(bad, [], raw="{not json")
+    _gallery()
+    with capture_logs() as logs:
+        _gallery()
+    [summary] = [e for e in logs if e["event"] == "blog_gallery"]
+    assert (summary["memo"], summary["skipped"]) == ("hit", 1)
+
+
+def test_gallery_whole_service_listing_is_not_memoised(gallery_archive):
+    from backend.services import blog_service as bs
+
+    _gallery(member_id=None)
+    assert ("hinatazaka46", None) not in bs._gallery_memo
+
+
+def test_gallery_version_bump_invalidates_the_memo(gallery_archive):
+    from backend.services import blog_service as bs
+
+    real = bs._read_blog_json
+    reads = []
+    with patch.object(
+        bs, "_read_blog_json", side_effect=lambda p: reads.append(p) or real(p)
+    ):
+        _gallery()
+        _gallery()
+        assert len(reads) == 2  # hit
+        bs.invalidate_gallery()
+        _gallery()
+        assert len(reads) == 4  # a blog was written: read again
+
+
+def test_every_blog_write_bumps_the_gallery_version(tmp_path):
+    """Backup and on-demand fetch both end in _download_single_blog (no index save needed)."""
+    from types import SimpleNamespace
+
+    from backend.services import blog_service as bs
+
+    class Scraper:
+        async def get_blog_detail(self, blog_id, member_id=None):
+            return SimpleNamespace(images=[], content="<p>x</p>")
+
+    item = bs.BlogDownloadItem(
+        "b1", "58", MEMBER, TITLE_NEW, "2026-02-05T10:00:00+09:00", "u", tmp_path / "b"
+    )
+    before = bs.gallery_version()
+    asyncio.run(
+        BlogService()._download_single_blog(
+            None, Scraper(), item, download_images=False
+        )
+    )
+    assert (tmp_path / "b" / "blog.json").is_file()
+    assert bs.gallery_version() == before + 1
+
+
+def test_gallery_counts_with_one_listing_per_member_and_ignores_empty_blog_json(
+    gallery_archive,
+):
+    import os as _os
+
+    from backend.services import blog_service as bs
+
+    real = _os.scandir
+    listed = []
+
+    def counting(path):
+        listed.append(path)
+        return real(path)
+
+    with patch.object(bs.os, "scandir", side_effect=counting):
+        _gallery(member_id=None)
+    # One listing per well-formed member (58, 60, 62, 66), none per blog entry.
+    assert len(listed) == 4
+    # An interrupted download (empty blog.json) is not cached; completing it changes the count.
+    b3 = gallery_archive / "日向坂46" / "blogs" / MEMBER / "20260301_b3"
+    _blog_json(b3, [], raw="")
+    _img(b3, "img_0.jpg")
+    assert "b3" not in [i["blog_id"] for i in _gallery()]
+    _blog_json(
+        b3, [{"original_url": "https://w/0.jpg", "local_path": "./images/img_0.jpg"}]
+    )
+    assert [i["blog_id"] for i in _gallery()][0] == "b3"
+
+
+def test_gallery_index_reads_a_given_output_dir(gallery_archive):
+    """The worker passes its own output dir, so no settings read happens on its thread."""
+    from backend.services import blog_service as bs
+
+    with patch(
+        "backend.services.blog_service.get_output_dir", side_effect=AssertionError
+    ):
+        index = bs.gallery_index("hinatazaka46", "58", gallery_archive)
+    assert index is not None and index.base == gallery_archive / "日向坂46" / "blogs"
+    assert [m.folder for m in index.members] == [MEMBER]
+
+
+def test_gallery_orders_naive_as_utc_and_unparsable_last_and_skips_a_folder_without_json(
+    gallery_archive,
+):
+    import json as _json
+
+    index_path = gallery_archive / "日向坂46" / "blogs" / "index.json"
+    index = _json.loads(index_path.read_text(encoding="utf-8"))
+    index["members"]["58"]["blogs"] = [
+        {"id": "bad", "title": "a", "published_at": "someday"},
+        {"id": "naive", "title": "b", "published_at": "2026-03-01T00:00:00"},
+        {"id": "aware", "title": "c", "published_at": "2026-02-28T23:00:00-02:00"},
+        {"id": "nojson", "title": "d", "published_at": "2026-04-01T00:00:00Z"},
+    ]
+    index_path.write_text(_json.dumps(index, ensure_ascii=False), encoding="utf-8")
+    for folder in ("someday_bad", "20260301_naive", "20260228_aware"):
+        f = gallery_archive / "日向坂46" / "blogs" / MEMBER / folder
+        _blog_json(
+            f, [{"original_url": "https://q/0.jpg", "local_path": "./images/img_0.jpg"}]
+        )
+        _img(f, "img_0.jpg")
+    _img(
+        gallery_archive / "日向坂46" / "blogs" / MEMBER / "20260401_nojson", "img_0.jpg"
+    )
+    # aware = 03-01 01:00 UTC > naive (03-01 00:00, read as UTC) > unparsable.
+    assert [i["blog_id"] for i in _gallery()] == ["aware", "naive", "bad"]
