@@ -47,6 +47,8 @@ export interface VirtualMediaGridProps<T> {
 const OVERSCAN = { top: 400, bottom: 1200 } as const;
 /** Screens of items primed ahead of the rendered rows. */
 const PRIME_SCREENS_AHEAD = 2;
+/** The stable "no slots" value for `components` (never `undefined`, see below). */
+const NO_COMPONENTS = {} as const;
 
 interface Layout<T> {
     /** Rows per group. */
@@ -136,7 +138,9 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
     // The first-paint breadcrumb: mount → the first visible tile's image ready, once per mount.
     const reporter = useMediaGridReporter(grid, scrollParent, grouped.flat.length);
 
-    const Footer = useMemo(() => (footer ? () => <>{footer}</> : undefined), [footer]);
+    // Always an object: react-virtuoso 4.18 reads keys off `components` (`u => u[key]`), so
+    // `components={undefined}` throws "reading 'EmptyPlaceholder'" on mount (D-M1).
+    const components = useMemo(() => (footer ? { Footer: () => <>{footer}</> } : NO_COMPONENTS), [footer]);
 
     return (
         <div ref={wrapperRef} className={cn('w-full', className)}>
@@ -149,7 +153,7 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
                     defaultItemHeight={tilePx + rowGapPx}
                     computeItemKey={(index) => grouped.keys[index] ?? `index:${index}`}
                     rangeChanged={onRange}
-                    components={Footer ? { Footer } : undefined}
+                    components={components}
                     groupContent={(g) => (
                         <div className="bg-sheet px-4 py-3 text-small font-semibold text-secondary">{groups[g]?.label}</div>
                     )}
