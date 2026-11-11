@@ -27,7 +27,7 @@ export type DialogLoadOutcome = 'ok' | 'error' | 'partial' | 'cancelled' | 'skip
  * message text.
  */
 export type DialogLoadReason = 'auth' | 'unreachable' | 'no_key' | 'failed' | 'too_large' | 'not_image' | 'empty' | 'blocked'
-    | 'after_login';
+    | 'after_login' | 'completed' | 'not_cancelled' | 'timeout';
 export type CloseReason = 'escape' | 'backdrop' | 'button';
 
 /** One `dialog` breadcrumb. Never pass names, ids, paths or text. */

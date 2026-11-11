@@ -218,3 +218,129 @@ def test_login_cancel_marker_is_consumed_once(auth_service):
         assert seen == [True, False]
 
     asyncio.run(run())
+
+
+# ---------------------------------------------------------------------------
+# L6 fix round 1: early cancel, timeout, finished attempts, no path in logs
+# ---------------------------------------------------------------------------
+
+
+def test_cancel_before_the_login_registers_stops_it_before_a_browser_opens(
+    auth_service,
+):
+    """A cancel for an attempt that has not reached the backend yet is kept;
+    that login then refuses to start and never opens a browser."""
+    from structlog.testing import capture_logs
+
+    from backend.services.auth_service import LoginCancelledError
+
+    async def run():
+        with capture_logs() as logs:
+            assert await auth_service.cancel_login("hinatazaka46", "a1") is True
+        (entry,) = [e for e in logs if e["event"] == "login_cancel"]
+        assert entry["outcome"] == "pending"
+        with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
+            mock_auth.login = AsyncMock(return_value={"access_token": "x"})
+            with pytest.raises(LoginCancelledError):
+                await auth_service.login_with_browser("hinatazaka46", "a1")
+            mock_auth.login.assert_not_called()
+        assert not auth_service._browser_lock.locked()
+        # Honoured once: the same attempt id is now finished.
+        assert await auth_service.cancel_login("hinatazaka46", "a1") is False
+
+    asyncio.run(run())
+
+
+def test_cancel_while_the_login_waits_for_the_lock_is_honoured(auth_service):
+    """The window between the entry check and registration (waiting for the
+    lock or an older login's supersede) cannot lose a cancel."""
+    import contextlib
+
+    from backend.services.auth_service import LoginCancelledError
+
+    async def run():
+        with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
+            mock_auth.login = AsyncMock(return_value={"access_token": "x"})
+            await auth_service._browser_lock.acquire()
+            task = asyncio.create_task(
+                auth_service.login_with_browser("hinatazaka46", "b2")
+            )
+            await asyncio.sleep(0)
+            assert await auth_service.cancel_login("hinatazaka46", "b2") is True
+            auth_service._browser_lock.release()
+            with contextlib.suppress(LoginCancelledError):
+                await task
+            assert isinstance(task.exception(), LoginCancelledError)
+            mock_auth.login.assert_not_called()
+
+    asyncio.run(run())
+
+
+def test_cancel_after_a_finished_attempt_returns_false(auth_service):
+    async def run():
+        with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
+            mock_auth.login = AsyncMock(return_value={"access_token": "x"})
+            with patch.object(auth_service, "_save_credentials"):
+                assert (
+                    await auth_service.login_with_browser("hinatazaka46", "c3") is True
+                )
+        assert await auth_service.cancel_login("hinatazaka46", "c3") is False
+        assert ("hinatazaka46", "c3") not in auth_service._pending_cancels
+
+    asyncio.run(run())
+
+
+def test_cancel_login_wait_is_bounded(auth_service):
+    """A login that does not unwind in time: the cancel answers True after the
+    bounded wait, logs login_cancel_timeout, and the marker stays until the
+    login is done."""
+    from structlog.testing import capture_logs
+
+    async def run():
+        started = asyncio.Event()
+        release = asyncio.Event()
+
+        async def stubborn_login(**_kwargs):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            except asyncio.CancelledError:
+                await release.wait()  # the browser takes long to close
+                raise
+
+        with patch("backend.services.auth_service.LOGIN_CANCEL_WAIT_SECONDS", 0.05):
+            with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
+                mock_auth.login = AsyncMock(side_effect=stubborn_login)
+                task = asyncio.create_task(
+                    auth_service.login_with_browser("hinatazaka46")
+                )
+                await asyncio.wait_for(started.wait(), timeout=2)
+                with capture_logs() as logs:
+                    assert await auth_service.cancel_login("hinatazaka46") is True
+                (timeout_entry,) = [
+                    e for e in logs if e["event"] == "login_cancel_timeout"
+                ]
+                assert set(timeout_entry) == {"event", "service", "wait_s", "log_level"}
+                assert "hinatazaka46" in auth_service._cancelled
+                release.set()
+                with pytest.raises(asyncio.CancelledError):
+                    await task
+                await asyncio.sleep(0)
+                assert "hinatazaka46" not in auth_service._cancelled
+
+    asyncio.run(run())
+
+
+def test_starting_browser_login_log_carries_no_path(auth_service):
+    from structlog.testing import capture_logs
+
+    async def run():
+        with patch("backend.services.auth_service.BrowserAuth") as mock_auth:
+            mock_auth.login = AsyncMock(return_value=None)
+            with capture_logs() as logs:
+                await auth_service.login_with_browser("hinatazaka46")
+        (entry,) = [e for e in logs if e["event"] == "Starting browser login"]
+        assert "session_dir" not in entry
+        assert isinstance(entry["has_session_dir"], bool)
+
+    asyncio.run(run())

@@ -13,12 +13,17 @@ import { FEATURE_DEFINITIONS } from '../../config/features';
 import type { FeatureId } from '../../store/appStore';
 import { cn } from '../../utils/classnames';
 import { ConfirmDialog } from './ConfirmDialog';
+import { useOptionalAuth } from '../context/AuthContext';
 import {
-    type CancelLoginOutcome,
+    type CancelLoginResult,
+    type LoginVerifier,
+    awaitLoginCancel,
     cancelLogin,
     getLoginPhase,
     getLoginStartedAt,
+    isLoginCancelling,
     loginGeneration,
+    newLoginAttempt,
     ownsLogin,
     setLoginAbort,
     setLoginFinishing,
@@ -38,17 +43,23 @@ async function readDetail(res: Response): Promise<string | null> {
     }
 }
 
-/** A login stopped by Cancel: the dialog breadcrumb plus `ui_wait` with how long it had waited. */
-function logCancelled(): void {
+/** A login stopped by Cancel: the dialog breadcrumb plus `ui_wait` with how long it had waited since `started`. */
+function logCancelled(started: number | null): void {
     logDialogLoad('login', 'cancelled');
-    const started = getLoginStartedAt();
     logWait('login', 'cancelled', started === null ? 0 : Date.now() - started);
 }
 
-/** The `login_cancel` breadcrumb for how the backend cancel request ended. */
-function logCancelOutcome(outcome: CancelLoginOutcome): void {
-    if (outcome === 'ok') logDialogLoad('login_cancel', 'ok');
-    else if (outcome === 'failed' || outcome === 'unreachable') logDialogLoad('login_cancel', 'error', undefined, outcome);
+/**
+ * The `login_cancel` breadcrumb (codes only): `ok` cancelled; `ok`/`not_cancelled` nothing left to
+ * cancel and the service is not logged in; `skipped`/`completed` the login had succeeded after
+ * all (its success path runs); `error`/`failed|unreachable|timeout` the cancel request failed;
+ * `skipped` nothing to cancel.
+ */
+function logCancelOutcome({ backend, completed }: CancelLoginResult): void {
+    if (completed) logDialogLoad('login_cancel', 'skipped', undefined, 'completed');
+    else if (backend === 'cancelled') logDialogLoad('login_cancel', 'ok');
+    else if (backend === 'not_cancelled') logDialogLoad('login_cancel', 'ok', undefined, 'not_cancelled');
+    else if (backend === 'failed' || backend === 'unreachable' || backend === 'timeout') logDialogLoad('login_cancel', 'error', undefined, backend);
     else logDialogLoad('login_cancel', 'skipped');
 }
 
@@ -84,9 +95,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     // App-wide (loginLock): a dialog mounted while another one's login is in flight shows it as busy.
     const phase = useSyncExternalStore(subscribeLoginLock, getLoginPhase);
     const startedAt = useSyncExternalStore(subscribeLoginLock, getLoginStartedAt);
+    const cancelling = useSyncExternalStore(subscribeLoginLock, isLoginCancelling);
     const isLoading = phase !== 'idle';
     const finishing = phase === 'finishing';
-    const { stage } = useLoadingStages(phase === 'connecting', { surface: 'login', startedAt: startedAt ?? undefined });
+    // A login being cancelled is winding down: no "finish in the browser" copy for it.
+    const { stage } = useLoadingStages(phase === 'connecting' && !cancelling, { surface: 'login', startedAt: startedAt ?? undefined });
+    // Null outside an AuthProvider (dialog tests): a cancel then cannot re-check and stays a cancel.
+    const auth = useOptionalAuth();
+    const authRef = useRef(auth);
+    authRef.current = auth;
+    const onCloseRef = useRef(onClose);
+    onCloseRef.current = onClose;
     const [error, setError] = useState<string | null>(null);
     const [showGeoWarning, setShowGeoWarning] = useState(false);
 
@@ -120,22 +139,55 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     // synchronously on the first click, before the Yodel geo check, so a second click (in this
     // dialog or in one mounted later) cannot start a second login.
 
+    /**
+     * After a cancel the backend did not confirm: did the login of `service` complete after all?
+     * True when the re-checked status shows it authenticated with a new token (a still-valid old
+     * token of an expired session does not count).
+     */
+    const verifyLogin: LoginVerifier = async (service, baselineExpiresAt) => {
+        const current = authRef.current;
+        if (!current) return false;
+        const snapshot = await current.checkAuth();
+        const status = snapshot?.[service];
+        if (!status?.authenticated) return false;
+        const expiresAt = status.expires_at ? status.expires_at * 1000 : null;
+        return baselineExpiresAt === null || expiresAt !== baselineExpiresAt;
+    };
+
     /** Logs in for `loginService`; the caller holds the lock (taken at `gen`), which this releases when done. */
     const doLogin = async (loginService: string, gen: number) => {
         setError(null);
         const controller = new AbortController();
-        setLoginAbort(controller, loginService);
+        const attempt = newLoginAttempt();
+        const started = getLoginStartedAt();
+        setLoginAbort(controller, {
+            service: loginService,
+            attempt,
+            baselineExpiresAt: authRef.current?.getServiceExpiresAt(loginService) ?? null,
+        });
         try {
-            const res = await fetch(
-                `/api/auth/login?service=${encodeURIComponent(loginService)}`,
-                { method: 'POST', signal: controller.signal }
-            );
-            if (res.status === 409 && (await readDetail(res)) === 'login_cancelled') {
+            let res: Response | null = null;
+            try {
+                res = await fetch(
+                    `/api/auth/login?service=${encodeURIComponent(loginService)}&attempt=${encodeURIComponent(attempt)}`,
+                    { method: 'POST', signal: controller.signal }
+                );
+            } catch (err: unknown) {
+                if (!controller.signal.aborted) throw err;
+                // Cancel (this dialog or another): it decides whether the login completed after all.
+                const result = await awaitLoginCancel();
+                if (!result?.completed) {
+                    logCancelled(started);
+                    return;
+                }
+            }
+            if (res && res.status === 409 && (await readDetail(res)) === 'login_cancelled') {
                 // The backend stopped this login (POST /login/cancel): a cancel, not a failure.
-                logCancelled();
+                logCancelled(started);
                 return;
             }
-            if (!res.ok) throw new Error(t('login.loginFailed'));
+            if (res && !res.ok) throw new Error(t('login.loginFailed'));
+            // Answered OK, or a cancel found it completed: the normal success path.
             setLoginFinishing();
 
             // Initialize service settings entry
@@ -160,11 +212,6 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 logDialogLoad('login', 'skipped');
             }
         } catch (err: unknown) {
-            if (controller.signal.aborted) {
-                // Cancel (this dialog or another): cancelLogin owns the unlock.
-                logCancelled();
-                return;
-            }
             logDialogLoad('login', 'error', undefined, 'failed');
             if (currentServiceRef.current === loginService) {
                 setError(err instanceof Error ? err.message : t('login.loginFailed'));
@@ -225,15 +272,26 @@ export const LoginModal: React.FC<LoginModalProps> = ({
     };
 
     /**
-     * Close, Cancel, Escape and the backdrop. While connecting they cancel the login first; once
-     * the login answered OK (`finishing`) they are refused, so a working login is never undone.
+     * Close, Cancel, Escape and the backdrop. While connecting they cancel the login, then close
+     * once the backend answered (if the login turns out to have succeeded, its success path runs
+     * instead). Once the login answered OK (`finishing`) they are refused, so a working login is
+     * never undone.
      */
     const handleDismiss = () => {
         if (getLoginPhase() === 'finishing') {
             logDialogLoad('login_cancel', 'skipped');
             return;
         }
-        if (getLoginPhase() === 'connecting') void cancelLogin(serviceId).then(logCancelOutcome);
+        if (getLoginPhase() === 'connecting') {
+            if (isLoginCancelling()) return; // already winding down
+            void cancelLogin(serviceId, verifyLogin).then((result) => {
+                logCancelOutcome(result);
+                // This dialog's login completed after all: its success path moves on (onSuccess).
+                if (result.completed && result.service === currentServiceRef.current) return;
+                onCloseRef.current();
+            });
+            return;
+        }
         onClose();
     };
 
@@ -309,6 +367,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                                 variant="secondary"
                                 className="flex-1"
                                 onClick={handleDismiss}
+                                loading={cancelling}
                                 disabledReason={finishing ? t('login.finishing') : undefined}
                             >
                                 {isFreshPrompt ? t('login.maybeLater') : t('common.cancel')}

@@ -33,13 +33,17 @@ export type ServiceAuthRecord = Record<string, ServiceAuthState>;
  * Auth context value providing authentication state and actions.
  * Use the `useAuth` hook to access this in components.
  */
+/** `GET /api/auth/status` per service, as `checkAuth` read it (`expires_at` in epoch seconds). */
+export type AuthStatusSnapshot = Record<string, { authenticated: boolean; token_expired?: boolean; expires_at?: number }>;
+
 export interface AuthContextValue {
     isAuthenticated: boolean | null;
     authCheckComplete: boolean;
     authStatus: MultiGroupAuthStatus | null;
     authError: string | null;
     setAuthError: (error: string | null) => void;
-    checkAuth: () => Promise<void>;
+    /** Re-reads every service's status; resolves with the backend's answer, or null when the check failed. */
+    checkAuth: () => Promise<AuthStatusSnapshot | null>;
     connectedServices: string[];
     isServiceConnected: (serviceId: string) => boolean;
     isServiceDisconnected: (serviceId: string) => boolean;
@@ -77,11 +81,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const refreshRetryCountRef = useRef<Record<string, number>>({});
     const hasInitializedRef = useRef(false);
 
-    const checkAuth = useCallback(async () => {
+    const checkAuth = useCallback(async (): Promise<AuthStatusSnapshot | null> => {
         log(' Checking auth status for all services...');
         try {
             const res = await fetch('/api/auth/status');
-            const data: { services: Record<string, { authenticated: boolean; token_expired?: boolean; expires_at?: number }> } = await res.json();
+            const data: { services: AuthStatusSnapshot } = await res.json();
 
             // Use functional update to access previous state and merge properly.
             // This prevents clearing frontend-only disconnect state for services
@@ -150,10 +154,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
             setAuthError(null);
             log(`Auth check complete: ${authenticatedServices.length} service(s) authenticated (backend)`);
+            return data.services;
         } catch (e) {
             console.error('[Auth] Auth check failed:', e);  // Keep error logging
             // Force false on ANY check failure (incl. re-checks) so sync guards bail.
             setIsAuthenticated(false);
+            return null;
         } finally {
             setAuthCheckComplete(true);
         }
@@ -390,6 +396,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
             {children}
         </AuthContext.Provider>
     );
+}
+
+/** `useAuth` for components that may render outside an `AuthProvider` (dialog tests): null there. */
+export function useOptionalAuth(): AuthContextValue | null {
+    return useContext(AuthContext);
 }
 
 export function useAuth(): AuthContextValue {
