@@ -17,7 +17,7 @@ import { ContentSheet } from '../../core/layout/ContentSheet';
 import { getSyncDetail } from '../../utils/syncFormatters';
 import { useTranslation, Trans } from '../../i18n';
 import { Avatar, EmptyState, IconButton, Spinner, StatusBlock } from '../../design/primitives';
-import { logWait, settleDelay } from '../../design/loading';
+import { logWait, settleDelay, useDelayedLoading } from '../../design/loading';
 import { groupTokens } from '../../design/tokens';
 import { serviceGroupId } from '../../config/serviceGroup';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
@@ -185,6 +185,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const fetchIdRef = useRef(0);
     // The running fetch's controller: aborted when a newer fetch supersedes it, on its deadline and on unmount.
     const fetchAbortRef = useRef<AbortController | null>(null);
+    // The room wait in progress (cleared when a fetch settles): a refetch of the same room (a sync
+    // mid-load) keeps its start, so the min-visible hold and the 60 s deadline do not start over.
+    const roomWaitRef = useRef<{ path: string; startedAt: number } | null>(null);
     useEffect(() => () => {
         fetchIdRef.current += 1; // the aborted fetch is stale: no failure state, no log
         fetchAbortRef.current?.abort();
@@ -329,27 +332,38 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // === FETCH MESSAGES (Load All) ===
     // limit=0 loads the whole room in one request. One AbortController per fetch: a newer fetch
-    // aborts it (its result would be discarded anyway), and so does CHAT_LOAD_TIMEOUT_MS, which ends
-    // in the timeout state with Retry instead of an endless skeleton. While the room is not on
-    // screen yet (the skeleton may show), the result is held through `settleDelay`, so a shown
-    // skeleton stays at least minVisible.
+    // aborts it (its result would be discarded anyway), and so does CHAT_LOAD_TIMEOUT_MS. A room
+    // that never loaded then shows the timeout or failure state with Retry; a room already on
+    // screen (a background refresh) is kept as it is, and the failure only leaves a breadcrumb.
+    // While the room is not on screen yet (the skeleton may show), the result is held through
+    // `settleDelay`, so a shown skeleton stays at least minVisible.
     const fetchMessages = async (path: string, groupChat: boolean, lastReadId: number = 0) => {
         const thisId = ++fetchIdRef.current;
         fetchAbortRef.current?.abort();
         const controller = new AbortController();
         fetchAbortRef.current = controller;
-        const startedAt = Date.now();
         const holdForSkeleton = shownDirRef.current !== path;
+        const carried = holdForSkeleton && roomWaitRef.current?.path === path ? roomWaitRef.current.startedAt : null;
+        const startedAt = carried ?? Date.now();
+        roomWaitRef.current = { path, startedAt };
         let timedOut = false;
         const deadline = setTimeout(() => {
             timedOut = true;
             controller.abort();
-        }, CHAT_LOAD_TIMEOUT_MS);
+        }, Math.max(0, CHAT_LOAD_TIMEOUT_MS - (Date.now() - startedAt)));
         const isCurrent = () => thisId === fetchIdRef.current;
-        /** Wait out the skeleton's min-visible time; false when a newer fetch took over meanwhile. */
+        /** Wait out the skeleton's min-visible time (cut short by an abort); false when a newer fetch took over. */
         const settle = async () => {
             const hold = holdForSkeleton ? settleDelay(Date.now() - startedAt) : 0;
-            if (hold > 0) await new Promise((resolve) => setTimeout(resolve, hold));
+            if (hold > 0 && !controller.signal.aborted) {
+                await new Promise<void>((resolve) => {
+                    const timer = setTimeout(resolve, hold);
+                    controller.signal.addEventListener('abort', () => {
+                        clearTimeout(timer);
+                        resolve();
+                    }, { once: true });
+                });
+            }
             return isCurrent();
         };
         setLoadFailure(null);
@@ -401,9 +415,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         } catch {
             if (!isCurrent()) return; // superseded (and aborted): never a failure
             const kind: ChatLoadFailure = timedOut ? 'timeout' : 'error';
+            const background = !holdForSkeleton;
             if (timedOut) logWait('chat_room', 'timeout', Date.now() - startedAt);
             // Codes only: never the path or the error text (the user sees translated copy).
-            if (import.meta.env.DEV) console.warn('[MessagesFeature] fetchMessages failed', { groupChat, httpStatus, kind });
+            if (import.meta.env.DEV) console.warn('[MessagesFeature] fetchMessages failed', { groupChat, httpStatus, kind, background });
+            // A background refresh never clears the room the user is reading (nor its scroll position);
+            // the next sync or room visit refreshes it again.
+            if (background) return;
             if (!(await settle())) return;
             setLoadFailure({ dir: path, kind });
             setMessages([]);
@@ -411,6 +429,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             setMembersMap({});
         } finally {
             clearTimeout(deadline);
+            if (isCurrent()) roomWaitRef.current = null;
         }
     };
 
@@ -501,6 +520,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         lettersReady: roomExtras.lettersReady,
         failure: loadFailure && loadFailure.dir === selectedGroupDir ? loadFailure.kind : null,
     });
+    // Display only (the derivation above stays the one rule): once the skeleton has shown, keep it
+    // minVisible even when the letters, not the fetch, end the wait. Scoped to the room that waited,
+    // so a cached room opened next renders at once.
+    const [waitDir, setWaitDir] = useState<string | undefined>();
+    if (chatLoad.chatWaiting && waitDir !== selectedGroupDir) setWaitDir(selectedGroupDir);
+    const waitHeld = useDelayedLoading(chatLoad.chatWaiting);
+    const showWait = !chatLoad.failure && (chatLoad.chatWaiting || (waitHeld && waitDir === selectedGroupDir));
     // Milestone cards (spec §9, decision D10): member chats only; counts only once loaded for this room.
     const milestone = useMilestone({
         roomKey: selectedGroupDir && messagesService && !isGroupChat ? `${messagesService}|${selectedGroupDir}` : null,
@@ -836,7 +862,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     )}
                     {syncProgress.state === 'running' && (
                         <ChatHeaderPill light={isLightHeader} tone="status">
-                            <Spinner size="sm" tone="current" decorative />
+                            <Spinner size="sm" tone="current" decorative className="h-3 w-3" />
                             <span>{getSyncDetail(syncProgress, t, t('sync.syncing'))}</span>
                         </ChatHeaderPill>
                     )}
@@ -893,7 +919,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         </div>
                     )}
 
-                    {chatLoad.chatWaiting && (
+                    {showWait && (
                         // Keyed by room: a new room starts its own wait (reveal, slow, very slow).
                         <div key={selectedGroupDir} className="absolute inset-0 flex flex-col">
                             <StatusBlock
@@ -933,7 +959,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         </div>
                     )}
 
-                    {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && roomExtras.lettersReady && (
+                    {selectedGroupDir && messages.length > 0 && messagesService && messagesForDir === selectedGroupDir && roomExtras.lettersReady && !showWait && (
                         <MessageList
                             memberId={selectedGroupDir}
                             timeline={timeline}

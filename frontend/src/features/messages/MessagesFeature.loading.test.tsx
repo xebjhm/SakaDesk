@@ -40,6 +40,7 @@ const ROOMS = [
     // Letters are cached per room for the module's life: each letters test uses its own room.
     { id: 'D', dir: '日向坂46/messages/41 藤嶌 果歩/91 藤嶌 果歩', name: '藤嶌 果歩', text: 'D のメッセージ 🐬' },
     { id: 'E', dir: '日向坂46/messages/42 渡辺 莉奈/92 渡辺 莉奈', name: '渡辺 莉奈', text: 'E のメッセージ 🍰' },
+    { id: 'F', dir: '日向坂46/messages/43 山下 葉留花/93 山下 葉留花', name: '山下 葉留花', text: 'F のメッセージ 🌷' },
 ] as const;
 type RoomId = (typeof ROOMS)[number]['id'];
 const room = (id: RoomId) => ROOMS.find((r) => r.id === id)!;
@@ -139,11 +140,14 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         menu.retry = undefined;
         for (const k of Object.keys(listCalls)) delete listCalls[k];
         for (const k of Object.keys(listSignals)) delete listSignals[k];
-        replies = { A: okList('A'), B: okList('B'), C: okList('C'), D: okList('D'), E: okList('E') };
-        letterReplies = { A: noLetters, B: noLetters, C: noLetters, D: noLetters, E: noLetters };
+        replies = { A: okList('A'), B: okList('B'), C: okList('C'), D: okList('D'), E: okList('E'), F: okList('F') };
+        letterReplies = { A: noLetters, B: noLetters, C: noLetters, D: noLetters, E: noLetters, F: noLetters };
         serve();
     });
-    afterEach(() => { vi.useRealTimers(); });
+    afterEach(() => {
+        vi.useRealTimers();
+        vi.restoreAllMocks();
+    });
 
     it('F1: an uncached room shows the skeleton (never the previous room), then the slow and very-slow copy', async () => {
         await mountOnA();
@@ -270,13 +274,12 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
 
         replies.B = okList('B');
         fireEvent.click(screen.getByRole('button', { name: RETRY }));
-        await advance(300);
+        // Past reveal + minVisible: once the retry's skeleton has shown, it stays 400 ms.
+        await advance(700);
         expect(listCalls.B).toBe(2);
         expect(hasText(room('B').text)).toBe(true);
         expect(screen.queryByRole('alert')).toBeNull();
         expect(menu.status).toBe('ready');
-        errors.mockRestore();
-        warns.mockRestore();
     });
 
     it('F4: a load still pending at 60 s times out with its own copy, Retry and a ui_wait breadcrumb', async () => {
@@ -302,9 +305,9 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
 
         replies.B = okList('B');
         fireEvent.click(screen.getByRole('button', { name: RETRY }));
-        await advance(300);
+        // Past reveal + minVisible: once the retry's skeleton has shown, it stays 400 ms.
+        await advance(700);
         expect(hasText(room('B').text)).toBe(true);
-        vi.mocked(console.warn).mockRestore();
     });
 
     it('aborts a superseded fetch when another room is opened', async () => {
@@ -331,7 +334,89 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         await advance(1000);
         expect(listSignals.B[0].aborted).toBe(true);
         expect(warns.mock.calls.some((c) => String(c[0]).includes('fetchMessages failed'))).toBe(false);
-        warns.mockRestore();
+    });
+
+    it.each([
+        ['times out', () => new Promise<Response>(() => {}), CHAT_LOAD_TIMEOUT_MS + 1000],
+        ['fails', () => HttpResponse.json({ detail: SECRET }, { status: 500 }), 1000],
+    ] as const)('a background refresh of the room on screen that %s keeps the room (no alert, gallery ready)', async (_name, reply, wait) => {
+        const warns = vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const { rerender } = await mountOnA();
+        replies.A = reply;
+        rerender(<MessagesFeature {...props} syncVersion={1} />);
+        await flush();
+        expect(listCalls.A).toBe(2);
+        for (let t = 0; t < wait; t += 5000) {
+            await advance(Math.min(5000, wait - t));
+            expect(hasText(room('A').text)).toBe(true);
+            expect(screen.queryByRole('alert')).toBeNull();
+            expect(skeleton()).toBeNull();
+            expect(menu.status).toBe('ready');
+        }
+        await flush();
+        expect(hasText(room('A').text)).toBe(true);
+        expect(screen.queryByRole('alert')).toBeNull();
+        expect(menu.status).toBe('ready');
+        expect(document.body.textContent).not.toContain('SECRET-DETAIL');
+        // A breadcrumb (codes only) records the failed refresh.
+        const failed = warns.mock.calls.find((c) => String(c[0]).includes('fetchMessages failed'));
+        expect(failed?.[1]).toMatchObject({ background: true });
+        expect(JSON.stringify(warns.mock.calls)).not.toContain(room('A').dir);
+        if (wait > CHAT_LOAD_TIMEOUT_MS) {
+            expect(clientLog).toHaveBeenCalledWith('ui_wait', expect.objectContaining({ surface: 'chat_room', phase: 'timeout' }));
+        }
+    });
+
+    it('a superseded fetch that answers late never commits over the new room', async () => {
+        await mountOnA();
+        const b = gated('B');
+        replies.B = b.reply;
+        await open('B');
+        await advance(100);
+        await open('C');
+        await advance(700);
+        expect(hasText(room('C').text)).toBe(true);
+        b.open();
+        await advance(1000);
+        expect(hasText(room('C').text)).toBe(true);
+        expect(hasText(room('B').text)).toBe(false);
+        expect(screen.getByRole('heading', { name: room('C').name })).toBeInTheDocument();
+    });
+
+    it('the skeleton stays min-visible when the letters end the wait just after reveal', async () => {
+        await mountOnA();
+        const letters = deferred();
+        letterReplies.F = async () => { await letters.promise; return noLetters(); };
+        await open('F');
+        await advance(150); // messages already in, letters pending
+        expect(listCalls.F).toBe(1);
+        await advance(60); // 210: revealed
+        expect(skeleton()).not.toBeNull();
+        letters.resolve();
+        await flush();
+        await advance(379); // 589
+        expect(skeleton()).not.toBeNull();
+        expect(hasText(room('F').text)).toBe(false);
+        await advance(11); // 600 = reveal + minVisible
+        expect(skeleton()).toBeNull();
+        expect(hasText(room('F').text)).toBe(true);
+    });
+
+    it('a refetch of the same room keeps its 60 s deadline (a sync mid-load does not restart it)', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        const { rerender } = await mountOnA();
+        replies.B = () => new Promise<Response>(() => {});
+        await open('B');
+        await advance(30_000);
+        rerender(<MessagesFeature {...props} syncVersion={1} />);
+        await flush();
+        expect(listCalls.B).toBe(2);
+        expect(listSignals.B[0].aborted).toBe(true);
+        await advance(29_999);
+        expect(screen.queryByRole('alert')).toBeNull();
+        await advance(1);
+        await flush();
+        expect(screen.getByRole('alert')).toHaveTextContent(TIMEOUT);
     });
 
     it('the gallery list state follows the same derivation: loading while the room is pending', async () => {
@@ -357,5 +442,8 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         expect(spinner).not.toBeNull();
         expect(spinner).toHaveAttribute('aria-hidden', 'true');
         expect(spinner?.getAttribute('class')).toContain('motion-reduce:animate-none');
+        // Pill-sized, as before the Spinner swap.
+        expect(spinner?.getAttribute('class')).toContain('h-3');
+        expect(spinner?.getAttribute('class')).not.toContain('h-4');
     });
 });
