@@ -38,9 +38,11 @@ def output_dir_from_settings(settings_path: Path, default: Path) -> Path:
     (``error_type``, ``fallback=last_good|default``; never a path).
     """
     key = str(settings_path)
-    if not settings_path.exists():
-        return default
     try:
+        # inside the try: on Python 3.12 exists() re-raises a PermissionError
+        # from stat, the very Windows race this function guards against
+        if not settings_path.exists():
+            return default
         settings = _read_settings(settings_path)
     except (OSError, ValueError) as e:
         with _last_good_lock:

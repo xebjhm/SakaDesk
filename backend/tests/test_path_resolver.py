@@ -201,3 +201,20 @@ def test_archive_checks_survive_a_transient_settings_failure(settings):
             keys, transient = album_colors._stat_keys(sdir, [mf])
             assert keys[mf] is not None and transient == 0
     assert not [e for e in logs if e["event"] == "path_traversal_blocked"]
+
+
+def test_an_exists_check_that_raises_keeps_the_last_output_dir(settings):
+    """Review M6: Path.exists() re-raises PermissionError on Python 3.12."""
+    from structlog.testing import capture_logs
+
+    from backend.services import path_resolver
+
+    path, out = settings
+    assert path_resolver.output_dir_from_settings(path, Path("/d")) == out
+    with (
+        patch.object(Path, "exists", side_effect=PermissionError(13, "denied")),
+        capture_logs() as logs,
+    ):
+        assert path_resolver.output_dir_from_settings(path, Path("/d")) == out
+    (event,) = [e for e in logs if e["event"] == "output_dir_settings_unreadable"]
+    assert (event["error_type"], event["fallback"]) == ("PermissionError", "last_good")
