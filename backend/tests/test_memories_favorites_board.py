@@ -198,6 +198,7 @@ async def test_members_by_count_without_oshi_and_never_zero(svc):
     assert members[0]["member_id"] == "58" and members[0]["name"] == "金村 美玖"
     assert members[0]["avatar_url"].startswith("/api/content/media/")
     assert members[1]["avatar_url"] is None
+    assert [m["oshi"] for m in members] == [False, False]
 
 
 @pytest.mark.asyncio
@@ -205,6 +206,7 @@ async def test_oshi_is_listed_first(svc, monkeypatch):
     set_oshi(monkeypatch, {"松田好花"})
     members = (await board(svc))["members"]
     assert [m["count"] for m in members] == [2, 4]
+    assert [m["oshi"] for m in members] == [True, False]  # only the oshi is flagged
 
 
 @pytest.mark.asyncio

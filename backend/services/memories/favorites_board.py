@@ -54,7 +54,7 @@ logger = structlog.get_logger(__name__)
 
 VIEW = "favorites"
 # Bump on any rule or payload change of the cached part (the hash has it).
-VERSION = 2
+VERSION = 3
 _NO_TIME = datetime.min.replace(tzinfo=timezone.utc)
 
 _Starred = tuple[mi.MemberSummary, str, Fact]
@@ -137,6 +137,7 @@ async def _board(service: str, sdir: Path) -> dict:
                 "name": s.name,
                 "avatar_url": avatars[people.person_key(s)].current,
                 "count": n,
+                "oshi": s.name_norm in oshi,
             }
             for s, n in rows
         ]

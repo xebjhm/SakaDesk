@@ -121,4 +121,20 @@ describe('FavoritesPage', () => {
         unmount();
         expect(useVoicePlayback.getState().playing).toBeNull();
     });
+
+    it('hearts the oshi only, in the payload order (D15)', async () => {
+        const member = (path: string, name: string, count: number, oshi: boolean) => ({
+            member_path: path, member_id: null, name, avatar_url: null, count, oshi,
+        });
+        vi.mocked(fetchFavorites).mockResolvedValue(favoritesPayload({
+            total: 8,
+            members: [member('p/b', '松尾', 2, true), member('p/a', '上村', 4, false), member('p/c', '金村', 2, false)],
+        }));
+        renderPage();
+        await screen.findByTestId('cork-board');
+        expect(screen.getAllByTestId('member-pane-oshi')).toHaveLength(1);
+        const rows = screen.getAllByTestId('member-pane-name-line');
+        expect(rows.map((r) => r.textContent)).toEqual(['松尾', '上村', '金村']);
+        expect(within(rows[0] as HTMLElement).getByTestId('member-pane-oshi')).toBeInTheDocument();
+    });
 });

@@ -26,7 +26,8 @@ type ListPart = Pick<FavoritesPayload, 'total' | 'members'>;
 
 /**
  * The favorites overview (spec 10). Left: 「すべてのお気に入り」 with the ★ total and each person
- * with her ★ count (people without one are not listed; a zero total shows no number). Picking a
+ * with her ★ count (people without one are not listed; a zero total shows no number), oshi first
+ * with the oshi heart as in the other panes, then by count. Picking a
  * person moves the route (`go`, logged `member_filter`), which refetches the board; the list
  * (always over everyone) stays from the last load meanwhile. Right: the cork board, or the
  * invitation copy when nothing is starred. Opening an item shows the film strip of her messages
@@ -50,6 +51,7 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ service, route, go
     const people = list?.members;
     // Leaving the page silences any voice it started.
     useEffect(() => () => stopMemoriesVoices(), []);
+    // The payload is already oshi first, then by count (the order of the other member panes).
     const items: MemberPaneItem[] = useMemo(() => (people ?? []).map((m) => ({
         key: m.member_path, memberPath: m.member_path, name: m.name, avatarUrl: m.avatar_url, oshi: m.oshi, trailing: m.count,
     })), [people]);
