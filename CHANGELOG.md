@@ -37,8 +37,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   loading every full-size photo at once. While SakaDesk is still preparing
   thumbnails in the background, both show how far it has got, or that it is
   paused.
+- **Videos show a still frame in every gallery.** Video tiles now show a
+  frame from the video instead of a blank square, prepared in the
+  background and kept small on disk.
+- **You can always tell when SakaDesk is still loading.** Chats, galleries,
+  Memories, sign-in and settings show a clear loading state instead of a
+  blank or frozen screen. Long waits explain what is happening and offer
+  Cancel or Retry.
 
 ### Fixed
+- **Bug reports hide your nickname for every group.** Previously the
+  nickname you use in each group's app could appear in a bug report's logs;
+  it is now replaced, along with your Windows user name and archive folder.
 - **No more red corner on the incoming-call window.** The rounded corners of
   the bottom-right call card are see-through again instead of showing a solid
   red patch, on every display scale.
