@@ -261,7 +261,7 @@ export interface VirtualMediaGridProps<T> { groups: MediaGridGroup<T>[]; itemKey
 **Files:**
 - Modify: `backend/services/photo_thumb.py`
   - Raise `CACHE_CAP_BYTES` to `1 * 1024**3`, with the justification comment pointing at this plan's budget table.
-  - Add `PREGEN_WIDTHS: tuple[int, ...] = (160, 320)` and `LARGE_WIDTH = 640`.
+  - Add `PREGEN_WIDTHS: tuple[int, ...] = (160, 320)` and `LARGE_WIDTH = 640`. *(Superseded: see the rulings in the budget justification, lines 106–107. `PREGEN_WIDTHS = (480,)`; `LARGE_WIDTH` was removed by D-M7.)*
   - Add `version_token(size, mtime_ns) -> str`.
   - Add `archive_rel(output_dir: Path, path: Path) -> str`, the single key helper: the resolved path relative to the resolved output dir, in POSIX form. The route and the worker both use it.
   - Add `Placeholder` (a frozen dataclass: `rgb: RGB`, `blur: bytes | None`) and `placeholder_of(img: Image.Image) -> Placeholder`:
@@ -510,11 +510,11 @@ export interface VirtualMediaGridProps<T> { groups: MediaGridGroup<T>[]; itemKey
 
   While paused, the task sleeps `POLL_PAUSED_S` and re-checks. Each pause or resume logs `media_pregen_pause` once with `reason` and `paused_ms`, never every poll.
 - **Pass** per service, in order: services in `order_services` order, with the service that has a pending `request()` first.
-  - **Phase 0 `warm_album`:** if D4 did not already add a post-index warm-up, it calls `album.album_months(service, sdir, member=None, kind="all")` and then `album.album_month` for the newest `ALBUM_WARM_MONTHS` months (all cached views, run on the loop as the API does). The album covers it returns (`cover.media_url`) join phase 1 with the 640 width. If D4 provides the warm-up, this phase calls that code and only collects the covers.
+  - **Phase 0 `warm_album`:** if D4 did not already add a post-index warm-up, it calls `album.album_months(service, sdir, member=None, kind="all")` and then `album.album_month` for the newest `ALBUM_WARM_MONTHS` months (all cached views, run on the loop as the API does). The album covers it returns (`cover.media_url`) join phase 1 with the 640 width *(superseded: the default widths since D-M7, lines 106–107)*. If D4 provides the warm-up, this phase calls that code and only collects the covers.
   - **Phase 1 `newest`:** message media with `ts_utc` within `NEWEST_DAYS` of the newest item in each room, at widths `PREGEN_WIDTHS`.
-  - **Phase 2 `favorites`:** ★ items at `PREGEN_WIDTHS + (LARGE_WIDTH,)`.
+  - **Phase 2 `favorites`:** ★ items at `PREGEN_WIDTHS + (LARGE_WIDTH,)`. *(Superseded: ★ items use `PREGEN_WIDTHS` only, see the rulings at lines 106–107 / D-M7.)*
   - **Phase 3 `messages`:** all remaining message media, newest first, at `PREGEN_WIDTHS`.
-  - **Phase 4 `blogs`:** the cached blog images of the service (from `blog_service.gallery_images` over every member, Task M7; until M7 lands, this phase is a logged no-op `reason=not_available`), newest first, at `PREGEN_WIDTHS`.
+  - **Phase 4 `blogs`:** the cached blog images of the service (from `blog_service.gallery_images` over every member, Task M7; until M7 lands, this phase is a logged no-op `reason=not_available`), newest first, at `PREGEN_WIDTHS`. *(Superseded in order, D-M2: the blog phases of every service run after the message phases of every service, oshi first in both rounds; see line 113.)*
   - Hinted rels (`hint()`) jump the queue at every batch boundary, deduplicated and capped at 2,000 pending hints. A hint for a rel outside every known service is dropped.
 - **Process one file** (`default_process`, blocking, on the worker thread). It checks `shutdown_event()` first.
   - **Picture:** `photo_thumb.make_set(source, rel, widths, root, need_placeholder=row_missing_or_stale)`, then `media_meta.put(ready|failed)` with the placeholder and size.
@@ -923,7 +923,7 @@ timeout 60 grep -rn "ctypes.WinDLL\|windll" backend/services | grep -v "pragma: 
 **Name consistency:** the same names are used throughout:
 - the modules `photo_thumb`, `media_meta`, `video_poster`, `win_shell_thumb`, `low_priority`, `media_pregen` and `blog_service.gallery_images`;
 - the routes `/api/content/thumb` (`w`, `v`), `/api/media/meta`, `/api/media/poster/{path}`, `/api/media/status`, `/api/media/cache` and `/api/blogs/gallery`;
-- the constants `CACHE_CAP_BYTES`, `PREGEN_FILL_RATIO`, `POSTER_CACHE_CAP_BYTES`, `MAX_ROWS`, `BLUR_MAX_BYTES`, `META_BATCH_MAX`, `MAX_IMAGE_INFLIGHT`, `READY_CACHE_MAX`, `META_CACHE_MAX`, `POSTER_CAPTURE_MAX`, `SHELL_TIMEOUT_S`, `IDLE_AFTER_S`, `PREGEN_WIDTHS` and `LARGE_WIDTH`;
+- the constants `CACHE_CAP_BYTES`, `PREGEN_FILL_RATIO`, `POSTER_CACHE_CAP_BYTES`, `MAX_ROWS`, `BLUR_MAX_BYTES`, `META_BATCH_MAX`, `MAX_IMAGE_INFLIGHT`, `READY_CACHE_MAX`, `META_CACHE_MAX`, `POSTER_CAPTURE_MAX`, `SHELL_TIMEOUT_S`, `IDLE_AFTER_S`, `PREGEN_WIDTHS` and `LARGE_WIDTH` *(superseded: `LARGE_WIDTH` was removed by D-M7, see lines 106–107)*;
 - the phases `warm_album`, `newest`, `favorites`, `messages` and `blogs`;
 - the pause reasons `sync`, `refresh`, `blog_backup`, `foreground`, `budget_full`, `shutdown` and `shell_hung`;
 - the frontend `MediaTile`, `VirtualMediaGrid`, `mediaMeta`, `loadScheduler`, `posterCapture`, `useTileVisibility` and `useGridColumns`;
