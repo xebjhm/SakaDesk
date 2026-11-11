@@ -105,7 +105,6 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
         if (variant !== 'bubble') return;
         const img = imgRef.current;
         if (img?.complete && img.naturalWidth > 0) markLoaded(shownSrc);
-        // eslint-disable-next-line react-hooks/exhaustive-deps -- markLoaded only touches state and refs
     }, [variant, shownSrc]);
 
     const fallback = (extraClasses?: string) => <PhotoFallback className={extraClasses} />;
