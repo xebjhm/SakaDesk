@@ -127,7 +127,7 @@ const FailedTile: React.FC<{ onRetry?: () => void }> = ({ onRetry }) => {
     );
 };
 
-/** The placeholder: the mean colour (data-driven `style`) or the sunken tone, pulsing, with the blur preview on top. */
+/** The placeholder: the mean colour (data-driven `style`) or the default skeleton veil, pulsing, with the blur preview on top. */
 const Placeholder: React.FC<{ meta: MediaMeta | null | undefined }> = ({ meta }) => {
     const color = meta?.color ?? undefined;
     return (

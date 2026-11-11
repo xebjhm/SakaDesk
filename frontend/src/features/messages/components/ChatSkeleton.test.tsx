@@ -25,12 +25,12 @@ describe('ChatSkeleton', () => {
         for (let i = 1; i < bubbleCounts.length; i += 1) expect(bubbleCounts[i]).not.toBe(bubbleCounts[i - 1]);
     });
 
-    it('uses sunken tone placeholders that stop pulsing under reduced motion', () => {
+    it('uses default-tone (veil) placeholders that stop pulsing under reduced motion', () => {
         const { container } = render(<ChatSkeleton />);
         const skeletons = Array.from(container.querySelectorAll('[data-skeleton]'));
         expect(skeletons.length).toBeGreaterThan(6);
         for (const el of skeletons) {
-            expect(el.className).toContain('bg-sunken');
+            expect(el.className).toContain('bg-skeleton-veil');
             expect(el.className).toContain('motion-reduce:animate-none');
         }
     });

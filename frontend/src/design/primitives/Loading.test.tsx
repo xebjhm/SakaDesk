@@ -95,14 +95,14 @@ describe('Skeleton', () => {
         expect(container.firstElementChild).toHaveClass(...classes);
     });
 
-    it.each([['sunken', 'bg-sunken'], ['paper', 'bg-skeleton']] as const)('tone %s -> %s', (tone, cls) => {
+    it.each([['sunken', 'bg-skeleton-veil'], ['paper', 'bg-skeleton']] as const)('tone %s -> %s', (tone, cls) => {
         const { container } = render(<Skeleton shape="block" tone={tone} />);
         expect(container.firstElementChild).toHaveClass(cls);
     });
 
     it('defaults to the sunken tone', () => {
         const { container } = render(<Skeleton shape="block" />);
-        expect(container.firstElementChild).toHaveClass('bg-sunken');
+        expect(container.firstElementChild).toHaveClass('bg-skeleton-veil');
     });
 
     it('lets data tone paint its own colour', () => {

@@ -70,14 +70,14 @@ describe('MediaTile: picture', () => {
         expect(skeleton.style.backgroundColor).toBe('teal');
         expect(skeleton.className).toContain('animate-pulse');
         expect(skeleton.className).toContain('motion-reduce:animate-none');
-        expect(skeleton.className).not.toContain('bg-sunken');
+        expect(skeleton.className).not.toContain('bg-skeleton-veil');
         expect(screen.getByTestId('tile').querySelector('img:not([aria-hidden])')).toBeNull();
     });
 
-    it('uses the sunken skeleton when there is no colour', () => {
+    it('uses the default skeleton veil when there is no colour', () => {
         metaState.value = meta({ color: null, blur: null });
         const { container } = render(<MediaTile url={PIC} kind="picture" cssPx={200} />);
-        expect(container.querySelector('[data-skeleton]')!.className).toContain('bg-sunken');
+        expect(container.querySelector('[data-skeleton]')!.className).toContain('bg-skeleton-veil');
         expect(container.querySelector('img')).toBeNull();
     });
 

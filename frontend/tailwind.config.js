@@ -125,6 +125,8 @@ export default {
                 'control-off': 'var(--ds-border-strong)',
                 // Loading skeleton base (Favourites video placeholder).
                 skeleton: 'var(--ds-border-strong)',
+                // The default Skeleton tone: a translucent ink veil, visible on any light surface.
+                'skeleton-veil': 'var(--ds-overlay-skeleton)',
                 'group-marker': 'var(--ds-group-marker)',
                 // Chat header pills (pre-D2 look): glass / shade on the title gradient, title-text tints on a light header.
                 'header-glass': 'var(--ds-overlay-glass)',

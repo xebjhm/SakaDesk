@@ -43,6 +43,12 @@ export const color = {
         frost: 'rgba(255, 255, 255, 0.72)',
         /** Hairline under the frosted feed header: the pre-D2 white at 40 %. */
         frostBorder: 'rgba(255, 255, 255, 0.4)',
+        /**
+         * The default loading skeleton: the primary ink at 12 %, a veil that darkens whatever it
+         * sits on (sheet, card, the sunken band, a cover-tinted band), so a waiting tile always
+         * reads as loading. An opaque `sunken` tile vanished on a light tinted band (D-L1).
+         */
+        skeleton: 'rgba(31, 41, 55, 0.12)',
     },
     /**
      * Semantic colours (v2, harmonized ~35 % below signal chroma). Global: they never follow

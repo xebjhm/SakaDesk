@@ -10,7 +10,11 @@ export type SkeletonTone = 'sunken' | 'paper' | 'data';
 export interface SkeletonProps {
     /** line: a text line; block: a card-shaped box; circle: an avatar; tile: a square media tile. */
     shape: SkeletonShape;
-    /** sunken (default, on cards and sheets) / paper (`bg-skeleton`, on paper and cork) / data (no colour: the caller paints it via `style`). */
+    /**
+     * sunken (default: `bg-skeleton-veil`, a translucent ink veil that shows on sheets, cards, the
+     * sunken band and tinted bands) / paper (`bg-skeleton`, on paper and cork) / data (no colour:
+     * the caller paints it via `style`).
+     */
     tone?: SkeletonTone;
     className?: string;
     /** Data-driven colour only (DESIGN_SYSTEM "data-driven exception"), e.g. a photo's mean colour with `tone="data"`. */
@@ -23,7 +27,7 @@ const SHAPE: Record<SkeletonShape, string> = {
     circle: 'rounded-pill aspect-square',
     tile: 'aspect-square rounded-sm',
 };
-const TONE: Record<SkeletonTone, string> = { sunken: 'bg-sunken', paper: 'bg-skeleton', data: '' };
+const TONE: Record<SkeletonTone, string> = { sunken: 'bg-skeleton-veil', paper: 'bg-skeleton', data: '' };
 
 /**
  * A layout-shaped placeholder. Always `aria-hidden`: the parent region carries `role="status"` and
