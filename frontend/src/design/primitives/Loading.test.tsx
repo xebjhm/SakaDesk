@@ -361,10 +361,13 @@ describe('StatusBlock error, timeout and empty', () => {
         expect(screen.queryByRole('button')).toBeNull();
     });
 
-    it('requires a title for empty', () => {
+    it('requires onRetry for timeout and a title for empty; an error may omit Retry', () => {
+        // @ts-expect-error: a timeout always offers Retry.
+        const late: StatusBlockProps = { kind: 'timeout', surface: 'x' };
         // @ts-expect-error: an empty state always has a title.
         const blank: StatusBlockProps = { kind: 'empty', surface: 'x' };
-        expect(blank.kind).toBe('empty');
+        const bare: StatusBlockProps = { kind: 'error', surface: 'x' };
+        expect([late.kind, blank.kind, bare.kind]).toEqual(['timeout', 'empty', 'error']);
     });
 });
 

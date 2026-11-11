@@ -56,17 +56,20 @@ export type StatusBlockLoadingProps = {
 /** `title` is required: an empty state always names what is missing. */
 export type StatusBlockEmptyProps = { kind: 'empty'; title: string; action?: React.ReactNode };
 
-export type StatusBlockProblemProps = {
-    kind: 'error' | 'timeout';
-    /**
-     * Shows the Retry button. Give it whenever the failed load can be run again; omit it only when
-     * the host has nothing to retry (the error then shows without a button, never an empty state).
-     */
-    onRetry?: () => void;
+type RetryStyle = {
     /** Translated; default `loading.retry`. */
     retryLabel?: string;
     retryVariant?: 'secondary' | 'primary';
 };
+
+/**
+ * A timeout always offers Retry (L1: never a dead end). An error offers it whenever the failed
+ * load can run again; omit `onRetry` only when the host has nothing to retry (the error then
+ * shows without a button, never an empty state).
+ */
+export type StatusBlockProblemProps =
+    | ({ kind: 'timeout'; onRetry: () => void } & RetryStyle)
+    | ({ kind: 'error'; onRetry?: () => void } & RetryStyle);
 
 export type StatusBlockProps =
     | (Common & StatusBlockLoadingProps)
@@ -178,7 +181,7 @@ const ProblemBlock: React.FC<Common & StatusBlockProblemProps> = ({
  *   or a `ProgressBar` (`progress`), and an indeterminate bar when neither is given. Logs `ui_wait`
  *   (`slow`, `very_slow` once per mount, `cancelled` on Cancel).
  * - error: `role="alert"`, danger icon tile, `loading.error` title, Retry (when `onRetry` is given).
- * - timeout: `role="alert"`, neutral `Clock` tile, `loading.timeout` + `loading.timeoutHint`, Retry (when `onRetry` is given).
+ * - timeout: `role="alert"`, neutral `Clock` tile, `loading.timeout` + `loading.timeoutHint`, Retry (always).
  * - empty: `EmptyState` (title, hint as its sentence, `action`).
  */
 export const StatusBlock: React.FC<StatusBlockProps> = (props) => {
