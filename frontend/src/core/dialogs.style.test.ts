@@ -47,7 +47,6 @@ const FILES = [
     '../shell/components/SettingRow.tsx',
     'layout/ServiceRail.tsx',
     'layout/UpgradeIcon.tsx',
-    'common/DialogStatus.tsx',
     // D2d
     'common/SyncProgressPanel.tsx',
     '../shell/components/SyncModal.tsx',

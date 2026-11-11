@@ -1,6 +1,6 @@
 import React from 'react';
 import { Sparkles } from 'lucide-react';
-import { Button, Card } from '../../../design/primitives';
+import { Button, Card, Spinner } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
 import { HUB_CARD_BUTTON, HUB_CARD_STILL, HubCardFace } from './HubEntryCard';
 
@@ -28,7 +28,7 @@ const CardFace: React.FC<{ sub: React.ReactNode }> = ({ sub }) => {
 /**
  * The hub's year-recap card (R1/R9). The card names the
  * year it opens ("{year}年の、ここまで" while that year is still running). While the
- * shelf of yearbooks loads it is a neutral, non-interactive card; if the shelf fails
+ * shelf of yearbooks loads it is a neutral, non-interactive card with a labelled `Spinner`; if the shelf fails
  * it offers a retry; before Dec 1 with no past year on the shelf it is a quiet card
  * saying when it opens.
  */
@@ -48,8 +48,9 @@ export const RecapHubCard: React.FC<RecapHubCardProps> = ({ recap, onOpenRecap, 
         );
     } else if (recap.kind === 'loading') {
         body = (
-            <div data-testid="memories-recap-loading" role="status" aria-busy="true" className={quiet}>
-                <CardFace sub={t('common.loading')} />
+            // The Spinner is the status (named by its visible label, static under reduced motion).
+            <div data-testid="memories-recap-loading" aria-busy="true" className={quiet}>
+                <CardFace sub={<Spinner size="sm" tone="muted" label={t('common.loading')} labelVisibility="always" />} />
             </div>
         );
     } else if (recap.kind === 'failed') {

@@ -307,6 +307,9 @@ describe('Memories feature', () => {
             render(<MemoriesFeature service="hinatazaka46" />);
             const loading = screen.getByTestId('memories-recap-loading');
             expect(loading).toHaveTextContent('Loading');
+            // The shared Spinner (L7): a labelled status whose glyph stands still under reduced motion.
+            const spinner = within(loading).getByRole('status', { name: i18n.t('common.loading') });
+            expect(spinner.querySelector('svg')).toHaveClass('motion-reduce:animate-none');
             // The recap card is not clickable (the hub's other cards are, C13).
             expect(screen.queryByRole('button', { name: /Year recap/ })).toBeNull();
             expect(screen.getByTestId('memories-home').textContent).not.toMatch(/20\d\d/);

@@ -4,4 +4,3 @@ export { DynamicBackground } from './DynamicBackground';
 export { Portal } from './Portal';
 export { ErrorBoundary } from './ErrorBoundary';
 export { SettingsMenu } from './SettingsMenu';
-export { DialogStatus, type DialogStatusProps } from './DialogStatus';

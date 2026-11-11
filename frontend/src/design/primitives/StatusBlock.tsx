@@ -178,8 +178,8 @@ const ProblemBlock: React.FC<Common & StatusBlockProblemProps> = ({
 };
 
 /**
- * The one loading / empty / error / timeout state (replaces `LoadState`, `DialogStatus`,
- * the blog status block and the recap `Status`).
+ * The one loading / empty / error / timeout state (it replaced the older per-feature status
+ * components: Memories, dialogs, blogs and the recap).
  *
  * - loading: an empty `role="status"` box (`aria-busy`) until `reveal`, then the `skeleton` or a spinner with its
  *   label (with a skeleton, the label is screen-reader only except under reduced motion); the slow hint from `slow`; from `verySlow` the very-slow hint plus Cancel (`onCancel`)

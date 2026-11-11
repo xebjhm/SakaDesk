@@ -285,11 +285,4 @@ describe('visible loading titles (the label is not sr-only outside reduced motio
         expect(screen.getByText(i18n.t('blogs.firstSyncHint'))).toBeInTheDocument();
         visible(i18n.t('blogs.syncingBlogs'));
     });
-
-    it('the DialogStatus adapter shows a given title visibly', async () => {
-        const { DialogStatus } = await import('../core/common/DialogStatus');
-        render(<DialogStatus kind="loading" title="読み込み中… 🌸" />);
-        advance(200);
-        visible('読み込み中… 🌸');
-    });
 });
