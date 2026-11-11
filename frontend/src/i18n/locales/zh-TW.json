@@ -367,6 +367,7 @@
     "loadingMessages": "正在載入訊息...",
     "loadingSlow": "仍在載入訊息…",
     "loadingVerySlow": "訊息很多的聊天室需要多一點時間開啟。",
+    "emptyRoom": "還沒有訊息",
     "loadFailed": "無法載入訊息",
     "loadFailedHint": "已儲存的資料都還在，請再試一次。",
     "loadTimeout": "載入訊息花了太久",

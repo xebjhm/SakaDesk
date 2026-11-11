@@ -367,6 +367,7 @@
     "loadingMessages": "載入緊訊息...",
     "loadingSlow": "仲載入緊訊息…",
     "loadingVerySlow": "訊息多嘅聊天室要耐少少先開到。",
+    "emptyRoom": "重未有訊息",
     "loadFailed": "載入唔到訊息",
     "loadFailedHint": "儲咗嘅資料仲喺度，再試多次啦。",
     "loadTimeout": "載入訊息用咗太耐",

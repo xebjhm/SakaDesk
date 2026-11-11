@@ -965,6 +965,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             />
                         </div>
                     )}
+                    {chatLoad.empty && !showWait && (
+                        <div className="absolute inset-0 flex items-center justify-center">
+                            <EmptyState icon={<MessageCircle />} title={t('messageList.emptyRoom')} />
+                        </div>
+                    )}
                     {chatLoad.failure && (
                         <div className="absolute inset-0 flex flex-col">
                             {chatLoad.failure === 'timeout' ? (

@@ -8,7 +8,7 @@ const base: ChatLoadInput = { selectedGroupDir: B, messagesForDir: B, messageCou
 describe('deriveChatLoad', () => {
     it('no room open: nothing waits, the gallery is ready', () => {
         expect(deriveChatLoad({ ...base, selectedGroupDir: undefined, failure: 'error' })).toEqual({
-            roomPending: false, lettersPending: false, chatWaiting: false, failure: null, listStatus: 'ready',
+            roomPending: false, lettersPending: false, empty: false, chatWaiting: false, failure: null, listStatus: 'ready',
         });
     });
 
@@ -34,5 +34,19 @@ describe('deriveChatLoad', () => {
 
     it('a loaded room is ready', () => {
         expect(deriveChatLoad(base)).toMatchObject({ chatWaiting: false, failure: null, listStatus: 'ready' });
+    });
+
+    it('empty is only a loaded, successful room with no messages', () => {
+        const none = { ...base, messageCount: 0 };
+        expect(deriveChatLoad(none).empty).toBe(true);
+        expect(deriveChatLoad({ ...none, lettersReady: false }).empty).toBe(true);
+        expect(deriveChatLoad(base).empty).toBe(false);
+        // Loading: the fetch has not landed (the previous room's state does not count).
+        expect(deriveChatLoad({ ...none, messagesForDir: A }).empty).toBe(false);
+        expect(deriveChatLoad({ ...none, messagesForDir: null }).empty).toBe(false);
+        // Failure (error or timeout) and no room open.
+        expect(deriveChatLoad({ ...none, failure: 'error' }).empty).toBe(false);
+        expect(deriveChatLoad({ ...none, failure: 'timeout' }).empty).toBe(false);
+        expect(deriveChatLoad({ ...none, selectedGroupDir: undefined }).empty).toBe(false);
     });
 });

@@ -367,6 +367,7 @@
     "loadingMessages": "正在加载消息...",
     "loadingSlow": "仍在加载消息…",
     "loadingVerySlow": "消息很多的聊天室需要多一点时间打开。",
+    "emptyRoom": "还没有消息",
     "loadFailed": "无法加载消息",
     "loadFailedHint": "已保存的数据都还在，请再试一次。",
     "loadTimeout": "加载消息花了太久",

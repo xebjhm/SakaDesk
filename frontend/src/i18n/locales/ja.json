@@ -367,6 +367,7 @@
     "loadingMessages": "メッセージを読み込み中...",
     "loadingSlow": "まだメッセージを読み込んでいます…",
     "loadingVerySlow": "メッセージの多いトークは、開くまで少し時間がかかります。",
+    "emptyRoom": "まだメッセージはありません",
     "loadFailed": "メッセージを読み込めませんでした",
     "loadFailedHint": "保存したデータはそのままです。もう一度お試しください。",
     "loadTimeout": "読み込みに時間がかかりすぎています",

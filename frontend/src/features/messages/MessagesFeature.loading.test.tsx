@@ -62,6 +62,7 @@ const FAILED = 'メッセージを読み込めませんでした';
 const FAILED_HINT = '保存したデータはそのままです。もう一度お試しください。';
 const TIMEOUT = '読み込みに時間がかかりすぎています';
 const TIMEOUT_HINT = 'アプリがまだ処理中かもしれません。少し待ってからもう一度お試しください。';
+const EMPTY = 'まだメッセージはありません';
 const RETRY = 'もう一度';
 const JUMP = '未読の最初へ移動';
 const SECRET = 'SECRET-DETAIL /home/someone/日向坂46';
@@ -390,6 +391,40 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
         expect(hasText(room('B').text)).toBe(true);
         expect(screen.queryByRole('alert')).toBeNull();
         expect(menu.status).toBe('ready');
+    });
+
+    it('a loaded room with no messages shows the empty line, never while loading, failed or timed out', async () => {
+        vi.spyOn(console, 'warn').mockImplementation(() => {});
+        await mountOnA();
+        const emptyList = () => HttpResponse.json({
+            member: { id: 'B', name: room('B').name, path: room('B').dir, thumbnail_local: null, thumbnail: null, portrait: null, phone_image: null },
+            messages: [], total_count: 0, max_message_id: 0,
+        });
+        // Loading: the fetch has not landed.
+        const gate = deferred();
+        replies.B = async () => { await gate.promise; return emptyList(); };
+        await open('B');
+        await advance(300);
+        expect(hasText(EMPTY)).toBe(false);
+        gate.resolve();
+        await advance(700);
+        expect(hasText(EMPTY)).toBe(true);
+        expect(skeleton()).toBeNull();
+        expect(screen.queryByRole('alert')).toBeNull();
+
+        // Error: the failure copy only.
+        replies.C = () => HttpResponse.json({ detail: 'x' }, { status: 500 });
+        await open('C');
+        await advance(300);
+        expect(screen.getByRole('alert')).toHaveTextContent(FAILED);
+        expect(hasText(EMPTY)).toBe(false);
+
+        // Timeout: the timeout copy only.
+        replies.D = () => new Promise<Response>(() => {});
+        await open('D');
+        await advance(CHAT_LOAD_TIMEOUT_MS + 100);
+        expect(screen.getByRole('alert')).toHaveTextContent(TIMEOUT);
+        expect(hasText(EMPTY)).toBe(false);
     });
 
     it('F4: a load still pending at 60 s times out with its own copy, Retry and a ui_wait breadcrumb', async () => {

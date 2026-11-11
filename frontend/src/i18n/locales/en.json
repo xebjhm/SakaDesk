@@ -367,6 +367,7 @@
     "loadingMessages": "Loading messages...",
     "loadingSlow": "Still loading messages…",
     "loadingVerySlow": "Chats with many messages take a little longer to open.",
+    "emptyRoom": "No messages yet",
     "loadFailed": "Couldn't load the messages",
     "loadFailedHint": "Your saved messages are safe. Try again.",
     "loadTimeout": "Loading the messages is taking too long",

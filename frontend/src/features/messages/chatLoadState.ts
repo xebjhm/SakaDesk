@@ -25,6 +25,8 @@ export interface ChatLoadState {
     roomPending: boolean;
     /** The messages are in, the letters that interleave with them are not yet (F2). */
     lettersPending: boolean;
+    /** The room loaded successfully and has no messages: the timeline shows its empty line. */
+    empty: boolean;
     /** The timeline shows the chat skeleton. */
     chatWaiting: boolean;
     /** The open room's failure, shown with Retry in place of the timeline. */
@@ -51,6 +53,7 @@ export function deriveChatLoad({ selectedGroupDir, messagesForDir, messageCount,
     const lettersPending = loaded && !shownFailure && messageCount > 0 && !lettersReady;
     return {
         roomPending,
+        empty: loaded && !shownFailure && messageCount === 0,
         lettersPending,
         chatWaiting: roomPending || lettersPending,
         failure: shownFailure,
