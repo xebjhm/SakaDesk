@@ -1,5 +1,5 @@
 // frontend/src/features/blogs/api.ts
-import type { BlogMembersResponse, BlogListResponse, BlogContentResponse, RecentPostsResponse, BlogMembersWithThumbnailsResponse } from '../../types';
+import type { BlogMembersResponse, BlogListResponse, BlogContentResponse, RecentPostsResponse, BlogMembersWithThumbnailsResponse, BlogGalleryResponse } from '../../types';
 import type { AvatarWidth } from '../messages/mediaUrl';
 
 const API_BASE = '/api/blogs';
@@ -59,6 +59,23 @@ export async function getBlogList(
     const res = await fetch(`${API_BASE}/list?${params}`);
     if (!res.ok) {
         throw new Error(`Failed to fetch blog list: ${res.status}`);
+    }
+    return res.json();
+}
+
+/**
+ * The member's blog photo gallery in one request: every locally cached image of her blogs,
+ * newest first (an empty list while full blog backup is off).
+ */
+export async function getBlogGallery(
+    service: string,
+    memberId: string,
+    signal?: AbortSignal,
+): Promise<BlogGalleryResponse> {
+    const params = new URLSearchParams({ service, member_id: memberId });
+    const res = await fetch(`${API_BASE}/gallery?${params}`, { signal });
+    if (!res.ok) {
+        throw new Error(`Failed to fetch blog gallery: ${res.status}`);
     }
     return res.json();
 }

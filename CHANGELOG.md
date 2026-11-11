@@ -31,11 +31,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with the time of day they arrive (Japan time).
 
 ### Changed
-- **The media gallery opens fast, even in big rooms.** Photos and videos now
-  show as small thumbnails that load as you scroll, with a colour preview
-  while each one arrives, instead of loading every full-size photo at once.
-  While SakaDesk is still preparing thumbnails in the background, the gallery
-  shows how far it has got.
+- **The media gallery and the blog photo album open fast, even with
+  thousands of photos.** Photos and videos now show as small thumbnails that
+  load as you scroll, with a colour preview while each one arrives, instead of
+  loading every full-size photo at once. While SakaDesk is still preparing
+  thumbnails in the background, both show how far it has got, or that it is
+  paused.
 
 ### Fixed
 - **No more red corner on the incoming-call window.** The rounded corners of

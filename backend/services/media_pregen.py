@@ -73,8 +73,11 @@ ones first, and per service runs (:func:`default_enumerate`):
    route derives 320 / 160 from it on demand).
 2. ``favorites``: the other ★ items, with ``photo_thumb.LARGE_WIDTH`` too.
 3. ``messages``: every other message media, newest first.
-4. ``blogs``: the cached blog images (Task M7; until then a logged no-op,
-   ``reason=not_available``).
+4. ``blogs``: every cached blog image of the service
+   (``blog_service.gallery_images(service, None)``, newest first) at
+   ``PREGEN_WIDTHS``. A logged no-op while full blog backup is off
+   (``reason=backup_off``: the gallery shows nothing then) or when the
+   listing fails (``reason=failed``, ``media_pregen_blogs_failed``).
 
 Hinted files (``media_meta`` hints missing and stale rows of a meta batch)
 jump the queue at every batch boundary, deduplicated and capped at
@@ -272,7 +275,7 @@ _OLDEST = datetime.min.replace(tzinfo=timezone.utc)
 def _phases(
     root: Path, sdir: Path, rows: Sequence[MediaRow], covers: Sequence[str]
 ) -> list[Phase]:
-    """Phases 1-4 from the media rows and the album covers.
+    """Phases 1-3 from the media rows and the album covers (the blog phase: :func:`_blog_phase`).
 
     Pure (no IO) but CPU-bound on a large service (~14k rows): run it in a
     worker thread, never on the event loop (:func:`default_enumerate`).
@@ -323,7 +326,6 @@ def _phases(
         Phase(PHASE_NEWEST, ordered(newest) + cover_items),
         Phase(PHASE_FAVORITES, ordered(favorites)),
         Phase(PHASE_MESSAGES, ordered(rest)),
-        Phase(PHASE_BLOGS, [], reason="not_available"),  # Task M7 wires it
     ]
 
 
@@ -354,13 +356,53 @@ async def _album_covers(service: str, sdir: Path) -> list[str]:
     return covers
 
 
+def _blog_items(root: Path, images: Sequence[dict]) -> list[Item]:
+    """Phase 4's items: each gallery image's archive file, once, in gallery order.
+
+    Blocking (each media URL is resolved and checked to lie inside the
+    output dir, ``archive_urls.media_route_path``): run it in a thread.
+    """
+    from backend.services import archive_urls
+
+    items: list[Item] = []
+    seen: set[Path] = set()
+    for image in images:
+        path = archive_urls.media_route_path(root, image["media_url"])
+        if path is None or path in seen or media_meta.kind_of(path) != "picture":
+            continue
+        seen.add(path)
+        items.append(Item(root, path, "picture", photo_thumb.PREGEN_WIDTHS))
+    return items
+
+
+async def _blog_phase(service: str, root: Path) -> Phase:
+    """Phase 4: the service's cached blog images (``gallery_images(service, None)``).
+
+    A logged no-op (``reason``) while full blog backup is off (``backup_off``)
+    or when the listing fails (``failed``; ``media_pregen_blogs_failed``).
+    """
+    from backend.services import blog_service
+
+    if not await blog_service.blog_backup_enabled():
+        return Phase(PHASE_BLOGS, [], reason="backup_off")
+    try:
+        images = await blog_service.gallery_images(service, None)
+    except Exception as e:  # noqa: BLE001 - the other phases still run
+        logger.warning(
+            "media_pregen_blogs_failed", service=service, error_type=type(e).__name__
+        )
+        return Phase(PHASE_BLOGS, [], reason="failed")
+    return Phase(PHASE_BLOGS, await asyncio.to_thread(_blog_items, root, images))
+
+
 async def default_enumerate(service: str, root: Path) -> list[Phase]:
-    """The phases of one service's pass (see the module); ``[]`` with no media.
+    """The phases of one service's pass (see the module); ``[]`` with nothing to make.
 
     The media rows come from the memory index (``index.media_rows``) and the
     phases are built (:func:`_phases`), both in a worker thread: only phase 0
     (cached album views, as the album API runs them) runs on the loop, and
-    only when the service has media.
+    only when the service has media. The blog phase (:func:`_blog_phase`)
+    follows; a service with neither message media nor blog images gives ``[]``.
     """
     from backend.services.memories import index as memory_index
     from backend.services.memories import people
@@ -370,10 +412,14 @@ async def default_enumerate(service: str, root: Path) -> list[Phase]:
     except ValueError:
         return []
     rows = await asyncio.to_thread(memory_index.media_rows, sdir)
-    if not rows:
+    phases: list[Phase] = []
+    if rows:
+        covers = await _album_covers(service, sdir)
+        phases = await asyncio.to_thread(_phases, root, sdir, rows, covers)
+    blogs = await _blog_phase(service, root)
+    if not phases and not blogs.items:
         return []
-    covers = await _album_covers(service, sdir)
-    return await asyncio.to_thread(_phases, root, sdir, rows, covers)
+    return [*phases, blogs]
 
 
 # --- processing one file (blocking, on the worker thread) --------------------------------

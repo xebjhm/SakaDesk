@@ -313,7 +313,8 @@ async def test_default_enumerate_builds_the_phases(out):
         ("a/picture/old.jpg", "picture", base),
         ("b/picture/bad.jpg", "picture", base),
     ]
-    assert names["blogs"].items == [] and names["blogs"].reason == "not_available"
+    # Blog backup is off in the test settings: the blog phase is a logged no-op.
+    assert names["blogs"].items == [] and names["blogs"].reason == "backup_off"
     assert all(i.root == out for p in phases for i in p.items)
     [warm_log] = _events(logs, "media_pregen_pass")
     assert warm_log["phase"] == "warm_album" and warm_log["queued"] == 1
@@ -330,6 +331,142 @@ async def test_default_enumerate_without_media_or_service(out):
     ):
         assert await media_pregen.default_enumerate(HINATA, out) == []
         assert await media_pregen.default_enumerate("nope", out) == []
+
+
+def _blog_image(out: Path, member: str, folder: str, name: str) -> tuple[Path, str]:
+    from backend.services import archive_urls
+
+    path = _jpeg(out / "日向坂46" / "blogs" / member / folder / "images" / name)
+    url = archive_urls.media_url(HINATA, ["blogs", member, folder, "images", name])
+    return path, url
+
+
+@pytest.mark.asyncio
+async def test_default_enumerate_blog_phase_comes_from_gallery_images(out):
+    """M7: phase 4 is every cached blog image of the service (gallery_images(service, None))."""
+    from backend.services import blog_service
+    from backend.services.memories import index as memory_index
+
+    new, new_url = _blog_image(out, SECRET + " 美玖", "20260205_b2", "img_0.jpg")
+    old, old_url = _blog_image(out, SECRET + " 美玖", "20260103_b1", "img_0.jpg")
+    (out / "日向坂46" / "blogs" / "x" / "a.txt").parent.mkdir(parents=True)
+    (out / "日向坂46" / "blogs" / "x" / "a.txt").write_text("x", encoding="utf-8")
+    images = [
+        {"media_url": new_url},
+        {"media_url": new_url},  # a duplicate: once
+        {"media_url": old_url},
+        {"media_url": "/api/content/media/hinatazaka46/../../../secret.jpg"},
+        {"media_url": "/api/content/media/hinatazaka46/blogs/x/a.txt"},
+    ]
+    gallery = patch.object(blog_service, "gallery_images", return_value=images)
+    with (
+        patch.object(memory_index, "media_rows", return_value=[]),
+        patch.object(blog_service, "blog_backup_enabled", side_effect=_on),
+        gallery as called,
+        capture_logs() as logs,
+    ):
+        phases = await media_pregen.default_enumerate(HINATA, out)
+    called.assert_awaited_once_with(HINATA, None)
+    [blogs] = phases
+    assert blogs.name == "blogs" and blogs.reason is None
+    assert [(i.path, i.kind, i.widths, i.root) for i in blogs.items] == [
+        (new.resolve(), "picture", photo_thumb.PREGEN_WIDTHS, out),
+        (old.resolve(), "picture", photo_thumb.PREGEN_WIDTHS, out),
+    ]
+    assert SECRET not in repr(logs)
+    # The worker makes the blog image's thumbnail like any other picture.
+    item = blogs.items[0]
+    result = media_pregen.default_process(item)
+    assert result.outcome == "done"
+    st = item.path.stat()
+    name = photo_thumb.variant_name(
+        _rel(out, item.path), st.st_size, st.st_mtime_ns, photo_thumb.PREGEN_WIDTHS[0]
+    )
+    assert (photo_thumb.cache_dir() / name).is_file()
+
+
+async def _on():
+    return True
+
+
+async def _off():
+    return False
+
+
+@pytest.mark.asyncio
+async def test_blog_phase_with_messages_and_a_failed_gallery_read(out):
+    from backend.services import blog_service
+    from backend.services.memories import album
+    from backend.services.memories import index as memory_index
+
+    rows = [_media_row("a", "a/p/1.jpg", "picture", "2026-01-01T00:00:00+00:00")]
+
+    async def warm(service, s):
+        return None
+
+    async def months(*a, **kw):
+        return {"months": []}
+
+    async def boom(service, member):
+        raise RuntimeError(SECRET)
+
+    with (
+        patch.object(memory_index, "media_rows", return_value=rows),
+        patch.object(album, "warm_album", side_effect=warm),
+        patch.object(album, "album_months", side_effect=months),
+        patch.object(blog_service, "blog_backup_enabled", side_effect=_on),
+        patch.object(blog_service, "gallery_images", side_effect=boom),
+        capture_logs() as logs,
+    ):
+        phases = await media_pregen.default_enumerate(HINATA, out)
+    assert phases[-1].name == "blogs" and phases[-1].reason == "failed"
+    assert phases[-1].items == []
+    assert {
+        "event": "media_pregen_blogs_failed",
+        "service": HINATA,
+        "error_type": "RuntimeError",
+        "log_level": "warning",
+    } in logs
+    assert SECRET not in repr(logs)
+
+
+@pytest.mark.asyncio
+async def test_blog_phase_is_skipped_while_blog_backup_is_off(out):
+    from backend.services import blog_service
+    from backend.services.memories import index as memory_index
+
+    _blog_image(out, "m", "20260205_b2", "img_0.jpg")
+    with (
+        patch.object(memory_index, "media_rows", return_value=[]),
+        patch.object(blog_service, "blog_backup_enabled", side_effect=_off),
+        patch.object(blog_service, "gallery_images", side_effect=AssertionError),
+    ):
+        assert await media_pregen.default_enumerate(HINATA, out) == []
+
+
+@pytest.mark.asyncio
+async def test_blog_items_are_built_off_the_event_loop(out):
+    from backend.services import blog_service
+    from backend.services.memories import index as memory_index
+
+    _, url = _blog_image(out, "m", "20260205_b2", "img_0.jpg")
+    loop_thread = threading.get_ident()
+    seen: dict[str, int] = {}
+    real = media_pregen._blog_items
+
+    def items(*args):
+        seen["thread"] = threading.get_ident()
+        return real(*args)
+
+    with (
+        patch.object(memory_index, "media_rows", return_value=[]),
+        patch.object(blog_service, "blog_backup_enabled", side_effect=_on),
+        patch.object(blog_service, "gallery_images", return_value=[{"media_url": url}]),
+        patch.object(media_pregen, "_blog_items", side_effect=items),
+    ):
+        phases = await media_pregen.default_enumerate(HINATA, out)
+    assert len(phases[0].items) == 1
+    assert seen["thread"] != loop_thread
 
 
 @pytest.mark.asyncio

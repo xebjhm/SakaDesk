@@ -587,6 +587,7 @@ export const BlogsFeature: React.FC<BlogsFeatureProps> = ({ blogBackupEnabled = 
                     onClose={() => setIsPhotoGalleryOpen(false)}
                     blogs={timelineBlogs}
                     serviceId={activeService ?? ''}
+                    memberId={timelineMember.id}
                     backupEnabled={blogBackupEnabled}
                     onJumpToBlog={handleJumpToBlogFromGallery}
                 />

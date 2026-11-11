@@ -12,10 +12,12 @@ import contextlib
 import hashlib
 import json
 import os
+import re
 import shutil
 import tempfile
 import threading
 import time
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Dict, List, Optional, cast
@@ -1647,6 +1649,210 @@ class BlogBackupManager:
             logger.error(f"Standalone blog backup error for {service}: {e}")
         finally:
             self._deregister_own(service, cancel_event)
+
+
+# =============================================================================
+# Blog photo gallery (media pipeline 0.5.0, M7)
+# =============================================================================
+
+GALLERY_MEMO_MAX = 32
+"""Cached gallery listings kept at most (one per service and member; oldest dropped first)."""
+
+_GALLERY_IMAGE_NAME = re.compile(r"^img_\d+\.\w+$")
+"""A cached blog image's file name (the same rule as ``GET /api/blogs/image``)."""
+
+# (service, member_id) -> ((base, index mtime_ns, blog.json files seen), images)
+_gallery_memo: "OrderedDict[tuple[str, Optional[str]], tuple[tuple[str, int, int], list[dict]]]" = OrderedDict()
+_gallery_memo_lock = threading.Lock()
+
+
+def reset_gallery_memo_for_tests() -> None:
+    with _gallery_memo_lock:
+        _gallery_memo.clear()
+
+
+def _read_gallery_index(path: Path) -> Any:
+    """The parsed blog ``index.json`` (raises on a missing or broken file)."""
+    with open(path, encoding="utf-8") as f:
+        return json.load(f)
+
+
+def _read_blog_json(path: Path) -> dict:
+    """A cached ``blog.json`` as a dict (raises ``ValueError`` when it is not one)."""
+    with open(path, encoding="utf-8") as f:
+        data = json.load(f)
+    if not isinstance(data, dict):
+        raise ValueError("blog.json is not an object")
+    return data
+
+
+def _gallery_images_of(
+    service: str, blog: dict, folder: Path, content: dict
+) -> list[dict]:
+    """The gallery entries of one cached blog: each image whose local file exists."""
+    from urllib.parse import quote
+
+    from backend.services.archive_urls import media_url
+
+    images = content.get("images")
+    if not isinstance(images, list):
+        return []
+    parts = [
+        "blogs",
+        folder.parent.name,
+        folder.name,
+    ]  # <service folder>/blogs/<member>/<date>_<id>
+    out: list[dict] = []
+    for idx, img in enumerate(images):
+        local = img.get("local_path") if isinstance(img, dict) else None
+        if not isinstance(local, str):
+            continue
+        name = Path(local).name
+        if (
+            not _GALLERY_IMAGE_NAME.match(name)
+            or not (folder / "images" / name).is_file()
+        ):
+            continue
+        out.append(
+            {
+                "blog_id": blog["id"],
+                "published_at": blog["published_at"],
+                "title": blog.get("title", ""),
+                "image_index": idx,
+                "media_url": media_url(service, [*parts, "images", name]),
+                "src": (
+                    f"/api/blogs/image?service={quote(service)}"
+                    f"&blog_id={quote(blog['id'])}&filename={quote(name)}"
+                ),
+            }
+        )
+    return out
+
+
+def _gallery_scan(
+    service: str, member_id: Optional[str]
+) -> tuple[list[dict], dict[str, Any]]:
+    """The gallery listing and its summary counts. Blocking: run it in a thread.
+
+    Resolves the blogs folder once, loads the index once, then checks each
+    of the member's (or every member's) blogs for a ``blog.json``. When the
+    index mtime and the number of ``blog.json`` files seen match the memo,
+    the memoised listing is returned without reading any of them.
+    """
+    base = BlogService().get_blogs_base_path(service)
+    index_path = base / "index.json"
+    try:
+        mtime_ns = index_path.stat().st_mtime_ns
+        index = _read_gallery_index(index_path)
+    except FileNotFoundError:
+        return [], {"blogs": 0, "images": 0, "skipped": 0, "memo": "none"}
+    except (OSError, ValueError) as e:
+        logger.warning(
+            "blog_gallery_index_unreadable",
+            service=service,
+            error_type=type(e).__name__,
+        )
+        return [], {"blogs": 0, "images": 0, "skipped": 0, "memo": "none"}
+    found = index.get("members") if isinstance(index, dict) else None
+    members: dict = found if isinstance(found, dict) else {}
+    chosen = (
+        list(members.values())
+        if member_id is None
+        else [members[member_id]]
+        if member_id in members
+        else []
+    )
+    cached: list[tuple[dict, Path]] = []
+    for member in chosen:
+        if not isinstance(member, dict):
+            continue
+        name = member.get("name", "")
+        for blog in member.get("blogs", []):
+            if not (
+                isinstance(blog, dict)
+                and isinstance(blog.get("id"), str)
+                and isinstance(blog.get("published_at"), str)
+            ):
+                continue  # a malformed index entry: no folder to look in
+            date = blog["published_at"][:10].replace("-", "")
+            folder = _blog_folder(base, name, blog["id"], date)
+            if (folder / "blog.json").is_file():
+                cached.append((blog, folder))
+    key = (str(base), mtime_ns, len(cached))
+    memo_key = (service, member_id)
+    with _gallery_memo_lock:
+        hit = _gallery_memo.get(memo_key)
+        if hit is not None and hit[0] == key:
+            _gallery_memo.move_to_end(memo_key)
+            return hit[1], {
+                "blogs": len(cached),
+                "images": len(hit[1]),
+                "skipped": 0,
+                "memo": "hit",
+            }
+    images: list[dict] = []
+    skipped = 0
+    for blog, folder in cached:
+        try:
+            content = _read_blog_json(folder / "blog.json")
+        except (OSError, ValueError) as e:
+            skipped += 1
+            logger.warning(
+                "blog_gallery_skip",
+                service=service,
+                reason="unreadable",
+                error_type=type(e).__name__,
+            )
+            continue
+        images.extend(_gallery_images_of(service, blog, folder, content))
+    # Newest first, then the image order inside a blog (two stable sorts).
+    images.sort(key=lambda i: (i["blog_id"], i["image_index"]))
+    images.sort(key=lambda i: i["published_at"], reverse=True)
+    with _gallery_memo_lock:
+        _gallery_memo[memo_key] = (key, images)
+        _gallery_memo.move_to_end(memo_key)
+        while len(_gallery_memo) > GALLERY_MEMO_MAX:
+            _gallery_memo.popitem(last=False)
+    return images, {
+        "blogs": len(cached),
+        "images": len(images),
+        "skipped": skipped,
+        "memo": "miss",
+    }
+
+
+async def gallery_images(service: str, member_id: Optional[str] = None) -> list[dict]:
+    """Every locally cached image of a member's blogs (every member's when ``None``).
+
+    One entry per image whose file exists: ``{blog_id, published_at, title,
+    image_index, media_url, src}``, newest ``published_at`` first, then
+    ``image_index``. ``media_url`` is the media-route URL of the file (for
+    ``/api/content/thumb`` and ``/api/media/meta``); ``src`` is the
+    ``/api/blogs/image`` URL the viewer shows. The index is loaded once and
+    every ``blog.json`` is read in one worker-thread pass
+    (:func:`_gallery_scan`), memoised per ``(service, member_id)`` on the
+    index mtime and the count of ``blog.json`` files seen. An unreadable
+    ``blog.json`` is skipped (``blog_gallery_skip``). Logs one
+    ``blog_gallery`` summary (counts only). The returned list is shared with
+    the memo: do not mutate it. Raises ``ValueError`` for an unknown service.
+    """
+    validate_service(service)
+    start = time.perf_counter()
+    images, counts = await asyncio.to_thread(_gallery_scan, service, member_id)
+    logger.info(
+        "blog_gallery",
+        service=service,
+        elapsed_ms=round((time.perf_counter() - start) * 1000),
+        **counts,
+    )
+    return images
+
+
+async def blog_backup_enabled() -> bool:
+    """The global "full blog backup" setting (``blogs_full_backup``)."""
+    from backend.services.settings_store import load_config
+
+    return bool((await load_config()).get("blogs_full_backup"))
 
 
 _blog_backup_manager: BlogBackupManager | None = None
