@@ -829,6 +829,11 @@
       "back": "返回",
       "retry": "再試一次",
       "loadError": "載入唔到",
+      "slow": "準備緊你嘅回憶…",
+      "verySlow": "第一次開或者啱啱同步完，整理資料要少少時間。",
+      "timeout": "今次比平時耐",
+      "timeoutHint": "可能仲準備緊，再試多次啦。",
+      "membersError": "載入唔到成員",
       "jumpToChat": "喺傾偈度睇",
       "all": "全部成員",
       "nicknameMasked": "＊＊＊"

@@ -1,7 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from '../../../i18n';
-import { Select } from '../../../design/primitives';
-import { cn } from '../../../utils/classnames';
+import { BusyContent, Select } from '../../../design/primitives';
 import { buildMonthGrid, MONTH_KEYS, pickerYearRange } from '../../../core/calendar/monthGrid';
 import { MonthYearPicker } from '../../../core/calendar/MonthYearPicker';
 import { MonthTitleButton, NewerMonthButton, OlderMonthButton, WeekdayHeader } from '../../../core/calendar/MonthNav';
@@ -9,7 +8,7 @@ import { useMonthPickerView } from '../../../core/calendar/useMonthPickerView';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import { fetchCalendarMonth, fetchCalendarMonths, fetchMemoirMembers } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { PageHeader } from '../shared/PageHeader';
 import { jstNow } from '../shared/jst';
 import { nameFromRoom } from '../shared/nameFromRoom';
@@ -68,8 +67,9 @@ interface MonthGridProps {
 
 /**
  * The weekday header and the 6 × 7 day cells of one month, filling the pane (no page scroll).
- * While the next month loads, the month already on screen stays (dimmed, `aria-busy`) instead
- * of a loading line; the very first load and an error show the load state.
+ * While the next month (or member) loads, the month already on screen stays (`keepPrevious`,
+ * `BusyContent`: `aria-busy`, dimmed after the reveal delay) instead of a loading line; the very
+ * first load and an error show the Memories load state.
  */
 const MonthGrid: React.FC<MonthGridProps> = ({ service, month, member, label, onOpenDay }) => {
     const { t } = useTranslation();
@@ -77,13 +77,11 @@ const MonthGrid: React.FC<MonthGridProps> = ({ service, month, member, label, on
         'calendar',
         (signal) => fetchCalendarMonth(service, month, member, signal),
         [service, month, member],
-        { count: (d) => d.days.length },
+        // The month on screen stays while another month (or member) loads.
+        { count: (d) => d.days.length, keepPrevious: { scope: service } },
     );
-    // The last month drawn, kept on screen while another one loads.
-    const [kept, setKept] = useState<CalendarMonthPayload | null>(null);
-    if (query.data && kept !== query.data) setKept(query.data);
-    const shown = query.data ?? (query.status === 'loading' ? kept : null);
-    const busy = shown !== null && shown !== query.data;
+    const shown: CalendarMonthPayload | null = query.data;
+    const busy = query.stale;
 
     const shownMonth = shown?.month;
     const cells = useMemo(() => {
@@ -101,27 +99,26 @@ const MonthGrid: React.FC<MonthGridProps> = ({ service, month, member, label, on
         <div className="flex min-h-0 flex-1 flex-col px-4 pb-4">
             <WeekdayHeader className="shrink-0 gap-1 pb-1" cellClassName="" />
             {!shown || cells.length === 0 ? (
-                <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />
+                <MemoriesStatus query={query} view="calendar" />
             ) : (
-                <div
-                    ref={setGridEl}
-                    role="group"
-                    aria-label={label}
-                    aria-busy={busy || undefined}
-                    className={cn(
-                        'relative grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1 transition-opacity duration-fast ease-standard',
-                        busy && 'opacity-60',
-                    )}
-                >
-                    {cells.map((cell) => (
-                        <DayCell key={cell.dateStr} cell={cell} data={byDate.get(cell.dateStr)} px={cellPx} onOpen={onOpenDay} />
-                    ))}
-                    {!busy && shown.days.length === 0 && (
-                        <p className="pointer-events-none absolute inset-0 m-auto h-fit w-fit rounded-pill bg-frost px-4 py-2 text-small text-secondary backdrop-blur-frost">
-                            {t('memories.calendar.empty')}
-                        </p>
-                    )}
-                </div>
+                <BusyContent busy={busy} className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col">
+                    <div
+                        ref={setGridEl}
+                        role="group"
+                        aria-label={label}
+                        aria-busy={busy || undefined}
+                        className="relative grid min-h-0 flex-1 grid-cols-7 grid-rows-6 gap-1"
+                    >
+                        {cells.map((cell) => (
+                            <DayCell key={cell.dateStr} cell={cell} data={byDate.get(cell.dateStr)} px={cellPx} onOpen={onOpenDay} />
+                        ))}
+                        {!busy && shown.days.length === 0 && (
+                            <p className="pointer-events-none absolute inset-0 m-auto h-fit w-fit rounded-pill bg-frost px-4 py-2 text-small text-secondary backdrop-blur-frost">
+                                {t('memories.calendar.empty')}
+                            </p>
+                        )}
+                    </div>
+                </BusyContent>
             )}
         </div>
     );
@@ -188,10 +185,10 @@ export const CalendarAlbumPage: React.FC<CalendarAlbumPageProps> = ({ service, r
 
     let body: React.ReactNode;
     if (!parsed) {
-        body = <LoadState status={months.status === 'error' ? 'error' : 'loading'} onRetry={months.retry} />;
+        body = <MemoriesStatus query={months} view="calendar_months" />;
     } else if (picking) {
         body = months.status !== 'ready' ? (
-            <LoadState status={months.status === 'error' ? 'error' : 'loading'} onRetry={months.retry} />
+            <MemoriesStatus query={months} view="calendar_months" />
         ) : (
             <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
                 <MonthYearPicker

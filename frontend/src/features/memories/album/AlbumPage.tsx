@@ -1,20 +1,21 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { ImageIcon, Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { EmptyState, Pill } from '../../../design/primitives';
+import { BusyContent, EmptyState, Pill } from '../../../design/primitives';
 import { MediaGridContext, PregenProgressBar, useMediaGridReporter, usePregenProgress } from '../../../core/media/grid';
 import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
 import {
     deleteAlbumCover, fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonths, MemoriesFetchError, MemoriesTimeoutError, putAlbumCover,
 } from '../api';
 import { logMemoriesLoad, logMemoriesToggle, type MemoriesToggleReason } from '../memoriesLog';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from '../shared/MemberPane';
+import { memberPaneStatus } from '../shared/memberPaneStatus';
 import { cn } from '../../../utils/classnames';
 import { messageName } from '../shared/nameFromRoom';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
-import type { AlbumKind, AlbumMonthSummary, AlbumMonthsPayload, MemoriesCountedMember, MemoryMessage } from '../types';
+import type { AlbumKind, AlbumMonthSummary, MemoriesCountedMember, MemoryMessage } from '../types';
 import { ColorRibbon, type RibbonMonth } from './ColorRibbon';
 import { MonthSection } from './MonthSection';
 import { useAlbumWindow } from './useAlbumWindow';
@@ -39,10 +40,13 @@ interface AlbumGridProps {
     months: AlbumMonthSummary[];
     colors: Record<string, string | null>;
     nameOf: (m: MemoryMessage) => string;
-    onSetCover: (month: string, item: MemoryMessage) => void;
-    onResetCover: (month: string) => void;
+    /** Absent while the grid is kept for another person or filter (no cover menu). */
+    onSetCover?: (month: string, item: MemoryMessage) => void;
+    onResetCover?: (month: string) => void;
     /** Receives the scroll container (the tiles measure their visibility against it). */
     onScroller?: (el: HTMLDivElement | null) => void;
+    /** Kept on screen while another person or filter loads: no band starts (or keeps) a fetch. */
+    frozen?: boolean;
 }
 
 /** The album's pre-generation breadcrumb: `memories_load` `album_pregen` (not a dialog load). */
@@ -72,9 +76,10 @@ function failureOf(err: unknown): { reason: MemoriesToggleReason; error_code?: n
 /**
  * The month bands in the pane's own scroll container, with the colour ribbon on the right edge.
  * Loading and windowing are `useAlbumWindow`'s: bands far from the viewport release their grids,
- * and a ribbon jump scrolls instantly and loads only where it lands.
+ * and a ribbon jump scrolls instantly and loads only where it lands. `frozen` (kept months of the
+ * previous person or filter) stops every band's fetch; loaded grids stay.
  */
-const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, colors, nameOf, onSetCover, onResetCover, onScroller }) => {
+const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, colors, nameOf, onSetCover, onResetCover, onScroller, frozen = false }) => {
     const scroller = useRef<HTMLDivElement | null>(null);
     const setScroller = useCallback((el: HTMLDivElement | null) => {
         scroller.current = el;
@@ -99,7 +104,7 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
                         member={member}
                         kind={kind}
                         data={win.cache.get(m.month)}
-                        requested={win.isRequested(m.month, i)}
+                        requested={!frozen && win.isRequested(m.month, i)}
                         live={win.isLive(m.month)}
                         nameOf={nameOf}
                         registerRef={win.registerRef}
@@ -121,10 +126,14 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
  * is the neutral `star` tone with the yellow star, never the accent; a change logs
  * `memories_toggle` `album_filter`), the month bands newest first in the pane's own scroll
  * container (each grid loads lazily) and the colour ribbon. Picking a person moves the route
- * (`go`), which refetches the months and the ribbon.
+ * (`go`), which refetches the months and the ribbon; the row selects at once and, until her
+ * months arrive, the previous months stay on screen (`keepPrevious` within the service,
+ * `BusyContent`: `aria-busy`, dimmed after the reveal delay; their bands fetch nothing and offer
+ * no cover menu). A filter switch does the same. The member list shows its loading rows, or its
+ * error / timeout line with Retry, in the `MemberPane`.
  * Cover choice (spec 8): a tile's context menu sets the month cover (`putAlbumCover`, for the
  * person on screen or 全員), an override cover's menu clears it (`deleteAlbumCover`). Either
- * way the months refetch (`coverVersion`; the bands stay on screen meanwhile), also after a
+ * way the months refetch (`coverVersion`; the bands stay on screen, dimmed, meanwhile), also after a
  * failure, since a timed-out write may have landed: never retried. Success logs
  * `memories_toggle` `album_cover` (`on` = set, `off` = cleared); a failure logs `off` with its
  * `reason` (`not_in_month`, `timeout`, `request_failed`) and `error_code` (HTTP status, when the
@@ -153,14 +162,17 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     const members = useMemoriesQuery('album_members', (signal) => fetchAlbumMembers(service, signal), [service], {
         count: (d) => d.members.length,
     });
-    const months = useMemoriesQuery('album', (signal) => fetchAlbumMonths(service, { member, kind }, signal), [service, member, kind, coverVersion], {
-        count: (d) => d.months.length,
-    });
-    // The last months of this person and filter, kept while a cover change refetches them.
-    const monthsKey = `${member ?? ''}|${kind}`;
-    const [kept, setKept] = useState<{ key: string; data: AlbumMonthsPayload } | null>(null);
-    if (months.data && kept?.data !== months.data) setKept({ key: monthsKey, data: months.data });
-    const shownMonths = months.data ?? (months.status === 'loading' && kept?.key === monthsKey ? kept.data : null);
+    // Tagged with the person and filter they were loaded for: on a switch the previous months stay
+    // on screen (dimmed) until hers arrive, and their bands keep drawing the previous grids.
+    const months = useMemoriesQuery(
+        'album',
+        async (signal) => ({ payload: await fetchAlbumMonths(service, { member, kind }, signal), member, kind }),
+        [service, member, kind, coverVersion],
+        { count: (d) => d.payload.months.length, keepPrevious: { scope: service } },
+    );
+    const shownMonths = months.data?.payload ?? null;
+    // A kept payload of another person or filter: its bands draw what they have and fetch nothing.
+    const switching = months.stale && (months.data?.member !== member || months.data?.kind !== kind);
 
     const changeCover = useCallback(async (on: boolean, run: (signal: AbortSignal) => Promise<void>) => {
         write.current?.abort();
@@ -186,6 +198,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     }, [changeCover, service, member]);
     const colors = useMemoriesQuery('album_colors', (signal) => fetchAlbumColors(service, member, signal), [service, member], {
         count: (d) => Object.keys(d.colors).length,
+        keepPrevious: { scope: service },
     });
 
     const people = members.data?.members;
@@ -222,7 +235,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
 
     let body: React.ReactNode;
     if (!shownMonths) {
-        body = <LoadState status={months.status === 'error' ? 'error' : 'loading'} onRetry={months.retry} />;
+        body = <MemoriesStatus query={months} view="album" />;
     } else if (!shownMonths.months.length) {
         body = (
             <div className="flex flex-1 items-center justify-center">
@@ -230,19 +243,24 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
             </div>
         );
     } else {
+        const shownFor = months.data!;
         body = (
-            <AlbumGrid
-                key={`${member ?? ''}|${kind}`}
-                service={service}
-                member={member}
-                kind={kind}
-                months={shownMonths.months}
-                colors={colors.data?.colors ?? {}}
-                nameOf={nameOf}
-                onSetCover={onSetCover}
-                onResetCover={onResetCover}
-                onScroller={setScrollRoot}
-            />
+            <BusyContent busy={months.stale} className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col">
+                <AlbumGrid
+                    key={`${shownFor.member ?? ''}|${shownFor.kind}`}
+                    service={service}
+                    member={shownFor.member}
+                    kind={shownFor.kind}
+                    months={shownMonths.months}
+                    colors={colors.data?.colors ?? {}}
+                    nameOf={nameOf}
+                    // A cover is chosen for the person and filter on screen, not for the kept ones.
+                    onSetCover={switching ? undefined : onSetCover}
+                    onResetCover={switching ? undefined : onResetCover}
+                    onScroller={setScrollRoot}
+                    frozen={switching}
+                />
+            </BusyContent>
         );
     }
 
@@ -257,6 +275,8 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
                     onSelect={pickMember}
                     allLabel={t('memories.common.all')}
                     allTrailing={total > 0 ? total : undefined}
+                    status={memberPaneStatus(members)}
+                    onRetry={members.retry}
                 />
                 <div className="relative flex min-h-0 min-w-0 flex-1 flex-col">
                     <div className="flex shrink-0 flex-wrap items-center gap-2 px-4 py-2">

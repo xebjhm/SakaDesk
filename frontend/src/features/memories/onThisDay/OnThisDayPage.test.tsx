@@ -249,3 +249,21 @@ describe('OnThisDayPage capsule', () => {
         expect(fetchCapsuleDue).not.toHaveBeenCalled();
     });
 });
+
+describe('OnThisDayPage keeps the previous step (F24)', () => {
+    it('a month-day step keeps the previous years visible and aria-busy, and swaps when ready', async () => {
+        const { rerender } = renderPage({ page: 'onThisDay', monthDay: '09-14' });
+        await screen.findAllByTestId('otd-column');
+        let finish: (v: OnThisDayPayload) => void = () => {};
+        vi.mocked(fetchOnThisDay).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+        rerender(<OnThisDayPage service="hinatazaka46" route={{ page: 'onThisDay', monthDay: '09-15' }} go={go} />);
+        await waitFor(() => expect(fetchOnThisDay).toHaveBeenLastCalledWith('hinatazaka46', '09-15', expect.anything()));
+        const kept = screen.getByText('初めての握手会');
+        expect(kept.closest('[aria-busy="true"]')).not.toBeNull();
+        expect(screen.queryByRole('status')).toBeNull();
+        finish({ month_day: '09-15', years: [{ year: 2023, has_messages: true, message_count: 1, member_count: 1, preview: [{ ...memoryMessage({ id: 51, text: '新しい日 🌸' }), name: '金村 美玖' }], more: null, thumb: null }] });
+        expect(await screen.findByText('新しい日 🌸')).toBeInTheDocument();
+        expect(screen.queryByText('初めての握手会')).toBeNull();
+        expect(screen.getByText('新しい日 🌸').closest('[aria-busy="true"]')).toBeNull();
+    });
+});

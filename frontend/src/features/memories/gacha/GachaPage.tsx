@@ -8,7 +8,7 @@ import { fetchGacha, MemoriesFetchError, MemoriesTimeoutError, postGachaPull } f
 import { FilmStrip } from '../favorites/FilmStrip';
 import { logMemoriesGacha, logMemoriesLoad } from '../memoriesLog';
 import { formatJstDate } from '../shared/jst';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { useReducedMotion } from '../shared/useReducedMotion';
@@ -202,7 +202,7 @@ export const GachaPage: React.FC<GachaPageProps> = ({ service, go }) => {
 
     let body: React.ReactNode;
     if (state.status !== 'ready' || !data) {
-        body = <LoadState status={state.status === 'error' ? 'error' : 'loading'} onRetry={state.retry} />;
+        body = <MemoriesStatus query={state} view="gacha" />;
     } else if (!data.available) {
         body = (
             <div className="flex flex-1 items-center justify-center">

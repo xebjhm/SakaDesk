@@ -11,7 +11,7 @@ import { MergedTimeline } from '../day/MergedTimeline';
 import { dayPeople, type DayPerson } from '../day/people';
 import { formatJstClock, formatJstDate } from '../shared/jst';
 import { jumpToChat } from '../shared/jumpToChat';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { MemoryText } from '../shared/MemoryText';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { BinderCard, MemoryMessage } from '../types';
@@ -181,7 +181,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, nam
                         </h3>
                         {day.status === 'ready' && data
                             ? <MergedTimeline messages={data.messages} people={people} service={service} />
-                            : day.status !== 'ready' && <LoadState status={day.status === 'error' ? 'error' : 'loading'} onRetry={day.retry} />}
+                            : day.status !== 'ready' && <MemoriesStatus query={day} view="day" />}
                     </section>
                 )}
             </div>

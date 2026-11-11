@@ -3,7 +3,7 @@ import { useTranslation } from '../../../i18n';
 import { Pill } from '../../../design/primitives';
 import { fetchThenNowDay, fetchThenNowFirstWeek } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { jstNow } from '../shared/jst';
 import type { ThenNowDayPayload, ThenNowFirstWeekPayload, ThenNowRowKind, ThenNowSide } from '../types';
@@ -103,8 +103,10 @@ export const ThenNowPanel: React.FC<ThenNowPanelProps> = ({ service, date, membe
     };
 
     let body: React.ReactNode;
-    if (failed) body = <LoadState status="error" onRetry={retry} />;
-    else if (loading) body = <LoadState status="loading" onRetry={retry} />;
+    // Either failed side makes the panel's state; a timeout of either reads as the timeout copy.
+    const timedOut = day.failure === 'timeout' || week.failure === 'timeout';
+    if (failed) body = <MemoriesStatus query={{ status: 'error', failure: timedOut ? 'timeout' : 'error', retry }} view="then_now" />;
+    else if (loading) body = <MemoriesStatus query={{ status: 'loading', failure: null, retry }} view="then_now" />;
     else if (mode === 'day' && day.data) {
         body = (
             <ThenNowPair variant="pane" then={daySide(day.data.then)} now={daySide(day.data.now)} sharedKeyword={day.data.shared_keyword} />

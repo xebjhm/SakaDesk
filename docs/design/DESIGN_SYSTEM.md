@@ -591,7 +591,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |
-| Loading, empty, error or timeout of a pane, block or dialog | `StatusBlock` (see "Loading and waiting"). `DialogStatus`, `BlogStatus` and `LoadState` still exist until the loading-UX wave moves them onto it |
+| Loading, empty, error or timeout of a pane, block or dialog | `StatusBlock` (see "Loading and waiting"); a Memories view reaches it through `MemoriesStatus` (below). `DialogStatus` and `BlogStatus` still exist until the loading-UX wave moves them onto it |
 | A layout-shaped placeholder while a first load runs | `Skeleton` inside a `StatusBlock` `skeleton` |
 | A small wait that does not gate content (a row, a play control) | `Spinner` after `useDelayedLoading` |
 | A long job, or a known total | `ProgressBar` (indeterminate until the total is known) |
@@ -697,6 +697,16 @@ Variants of `StatusBlock`: `pane` fills a flex pane (`flex-1 p-6`: Memories, cha
 sits in a dialog body (`px-6 py-12`), `block` is a fixed `h-72` block, `fill` fills the scroll
 area (`h-full min-h-96`, a `lg` spinner), `inline` is one row (`sm` spinner with its label
 visible, `text-small text-secondary`; error and timeout drop the icon tile and use a ghost Retry).
+
+**Memories views** (`features/memories/shared/`): `useMemoriesQuery` reports `failure`
+(`timeout` / `error`), `stale` (kept payload) and `polling` (a quiet `refreshWhile` reload is
+pending), and holds a visible result for `settleDelay` so a revealed indicator stays `minVisible`.
+`MemoriesStatus` maps a query onto `StatusBlock` (surface `memories_<view>`, the Memories slow /
+very-slow copy, `memories.common.loadError` or the `memories.common.timeout` copy, Retry). A step
+inside a loaded view (timeline month, On This Day month-day, 那一天, calendar month, album person
+or filter) passes `keepPrevious: { scope }` and wraps the kept body in `BusyContent busy={query.stale}`.
+`MemberPane` takes `status` / `onRetry`: six `Skeleton` rows after `reveal`, or an inline error /
+timeout line with Retry below the 「全員」 row.
 
 Which primitive for which wait:
 

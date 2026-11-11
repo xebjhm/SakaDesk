@@ -1,13 +1,25 @@
 import { useCallback, useEffect, useRef, useState, type DependencyList } from 'react';
+import { settleDelay } from '../../../design/loading';
 import { MemoriesFetchError, MemoriesTimeoutError } from '../api';
 import { logMemoriesLoad, type MemoriesView } from '../memoriesLog';
 
 export type MemoriesQueryStatus = 'loading' | 'ready' | 'error';
+/** Why a load failed: `timeout` (no answer within `MEMORIES_TIMEOUT_MS`) or any other `error`. */
+export type MemoriesQueryFailure = 'timeout' | 'error';
 
 export interface MemoriesQuery<T> {
     status: MemoriesQueryStatus;
-    /** The payload of the current deps; null while loading or after an error. */
+    /**
+     * The payload of the current deps; null while loading or after an error. With `keepPrevious`,
+     * while loading it is the previous payload of the same scope (`stale: true`).
+     */
     data: T | null;
+    /** Why the load failed (`status: 'error'`); null otherwise. */
+    failure: MemoriesQueryFailure | null;
+    /** True while `data` is the kept payload of the previous deps (`keepPrevious`). */
+    stale: boolean;
+    /** True while a quiet `refreshWhile` reload is scheduled or in flight (the cap not yet reached). */
+    polling: boolean;
     /** Load again (after an error or a timeout). */
     retry: () => void;
 }
@@ -27,6 +39,13 @@ export interface MemoriesQueryOptions<T> {
      * `REFRESH_WHILE_MAX` reloads per key.
      */
     refreshWhile?: (data: T) => boolean;
+    /**
+     * Keep the last ready payload on screen while the next deps load, when it was loaded under an
+     * equal `scope` (`Object.is`; arrays compare element-wise, so `[service, member]` is fine).
+     * The query then reads `loading` with that payload and `stale: true`; a different scope (or
+     * the first load) reads null data. An error of the next deps drops it.
+     */
+    keepPrevious?: { scope: unknown };
 }
 
 /** Delay between quiet reloads of `refreshWhile`. */
@@ -46,16 +65,33 @@ function topLevelCount(data: unknown): number | undefined {
 const sameKey = (a: readonly unknown[], b: readonly unknown[]) =>
     a.length === b.length && a.every((v, i) => Object.is(v, b[i]));
 
+/** `keepPrevious` scope equality: `Object.is`, element-wise for two arrays. */
+const sameScope = (a: unknown, b: unknown) =>
+    Array.isArray(a) && Array.isArray(b) ? sameKey(a, b) : Object.is(a, b);
+
+interface QueryState<T> {
+    key: unknown[];
+    status: MemoriesQueryStatus;
+    data: T | null;
+    failure: MemoriesQueryFailure | null;
+    polling: boolean;
+}
+
 /**
  * Load one Memories view. `load` gets a fresh `AbortSignal` per run; a change of `deps`, a
  * `retry` or an unmount aborts the run in flight, and an aborted run never touches state or
  * logs. A result is kept with the key (`target`, attempt, `deps`) it was loaded for, so on
  * the very render where the deps change the hook already reads `loading`, never the previous
- * deps' data. Every finished run logs `memories_load`: `outcome` `ok` with `count` (the
+ * deps' data as ready (with `keepPrevious` it reads `loading` with the previous payload,
+ * `stale: true`). Every finished run logs `memories_load`: `outcome` `ok` with `count` (the
  * `count` option, else the first top-level list length), `timeout` (the API gave up, see
- * `MEMORIES_TIMEOUT_MS`) or `error` with `error_code` (the HTTP status of a rejected request).
- * `load`, `count` and `refreshWhile` are read through refs: only `deps`, `retry` and `enabled`
- * start a new run. `refreshWhile` reloads the same key quietly (see the option).
+ * `MEMORIES_TIMEOUT_MS`; the query reads `failure: 'timeout'`) or `error` with `error_code` (the
+ * HTTP status of a rejected request; `failure: 'error'`).
+ * A run that settles `e` ms after it started commits after `settleDelay(e)`, so a loading
+ * indicator revealed at `motion.loading.reveal` stays at least `minVisible`; quiet reloads
+ * commit at once. `load`, `count`, `refreshWhile` and the `keepPrevious` scope are read through
+ * refs: only `deps`, `retry` and `enabled` start a new run. `refreshWhile` reloads the same key
+ * quietly (see the option); `polling` is true while such a reload is scheduled or in flight.
  * A disabled query (`enabled: false`) never loads or logs and reads `ready` with null data.
  */
 export function useMemoriesQuery<T>(
@@ -70,35 +106,58 @@ export function useMemoriesQuery<T>(
     countRef.current = options.count;
     const refreshRef = useRef(options.refreshWhile);
     refreshRef.current = options.refreshWhile;
+    const keep = options.keepPrevious;
+    const scopeRef = useRef<unknown>(keep?.scope);
+    scopeRef.current = keep?.scope;
     const [attempt, setAttempt] = useState(0);
     const enabled = options.enabled ?? true;
     const key: unknown[] = [target, attempt, enabled, ...deps];
-    const [state, setState] = useState<{ key: unknown[]; status: MemoriesQueryStatus; data: T | null } | null>(null);
+    const [state, setState] = useState<QueryState<T> | null>(null);
+    // The last ready payload and the scope it was loaded under (for `keepPrevious`).
+    const lastReady = useRef<{ scope: unknown; data: T } | null>(null);
 
     useEffect(() => {
         if (!enabled) return undefined;
         const runKey = key;
+        const runScope = scopeRef.current;
         const controller = new AbortController();
         let timer: ReturnType<typeof setTimeout> | undefined;
+        let settle: ReturnType<typeof setTimeout> | undefined;
         let reloads = 0;
         const run = (quiet: boolean) => {
+            const startedAt = performance.now();
+            // Hold a visible (non-quiet) result so a shown indicator stays `minVisible`.
+            const commit = (apply: () => void) => {
+                const delay = quiet ? 0 : settleDelay(performance.now() - startedAt);
+                if (delay <= 0) apply();
+                else settle = setTimeout(() => { if (!controller.signal.aborted) apply(); }, delay);
+            };
             loadRef.current(controller.signal).then(
                 (data) => {
                     if (controller.signal.aborted) return;
                     const count = countRef.current ? countRef.current(data) : topLevelCount(data);
                     logMemoriesLoad(target, 'ok', count === undefined ? {} : { count });
-                    setState({ key: runKey, status: 'ready', data });
-                    if (refreshRef.current?.(data) && reloads < REFRESH_WHILE_MAX) {
-                        reloads += 1;
-                        timer = setTimeout(() => run(true), REFRESH_WHILE_MS);
-                    }
+                    const again = Boolean(refreshRef.current?.(data)) && reloads < REFRESH_WHILE_MAX;
+                    commit(() => {
+                        lastReady.current = { scope: runScope, data };
+                        setState({ key: runKey, status: 'ready', data, failure: null, polling: again });
+                        if (again) {
+                            reloads += 1;
+                            timer = setTimeout(() => run(true), REFRESH_WHILE_MS);
+                        }
+                    });
                 },
                 (err: unknown) => {
                     if (controller.signal.aborted) return;
-                    if (err instanceof MemoriesTimeoutError) logMemoriesLoad(target, 'timeout');
+                    const timedOut = err instanceof MemoriesTimeoutError;
+                    if (timedOut) logMemoriesLoad(target, 'timeout');
                     else logMemoriesLoad(target, 'error', err instanceof MemoriesFetchError ? { error_code: err.httpStatus } : {});
-                    // A failed quiet reload keeps the payload on screen.
-                    if (!quiet) setState({ key: runKey, status: 'error', data: null });
+                    // A failed quiet reload keeps the payload on screen (and ends the polling).
+                    if (quiet) {
+                        setState((prev) => (prev && prev.polling ? { ...prev, polling: false } : prev));
+                        return;
+                    }
+                    commit(() => setState({ key: runKey, status: 'error', data: null, failure: timedOut ? 'timeout' : 'error', polling: false }));
                 },
             );
         };
@@ -106,13 +165,16 @@ export function useMemoriesQuery<T>(
         return () => {
             controller.abort();
             if (timer !== undefined) clearTimeout(timer);
+            if (settle !== undefined) clearTimeout(settle);
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps -- `key` is target + attempt + the caller's deps
     }, key);
 
     const retry = useCallback(() => setAttempt((n) => n + 1), []);
-    if (!enabled) return { status: 'ready', data: null, retry };
-    return state && sameKey(state.key, key)
-        ? { status: state.status, data: state.data, retry }
-        : { status: 'loading', data: null, retry };
+    if (!enabled) return { status: 'ready', data: null, failure: null, stale: false, polling: false, retry };
+    if (state && sameKey(state.key, key)) {
+        return { status: state.status, data: state.data, failure: state.failure, stale: false, polling: state.polling, retry };
+    }
+    const kept = keep && lastReady.current && sameScope(lastReady.current.scope, keep.scope) ? lastReady.current.data : null;
+    return { status: 'loading', data: kept, failure: null, stale: kept !== null, polling: false, retry };
 }

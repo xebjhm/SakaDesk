@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Heart } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { Avatar, Pill, Switch } from '../../../design/primitives';
+import { Avatar, BusyContent, Pill, Switch } from '../../../design/primitives';
 import { holidayName } from '../../../utils/jpHolidays';
 import { getServicePrimaryColor } from '../../../data/services';
 import { groupMarkerStyle } from '../../search/groupMarker';
@@ -11,7 +11,7 @@ import { fetchDay } from '../api';
 import { CapsuleStrip } from '../capsule/CapsuleStrip';
 import { logMemoriesToggle } from '../memoriesLog';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { MergedTimeline } from './MergedTimeline';
 import { Swimlanes } from './Swimlanes';
 import { dayPeople } from './people';
@@ -40,6 +40,9 @@ const CHIP_AVATAR_PX = 20;
  * (merged timeline / swimlanes, A by default, kept for as long as the view is mounted; logs
  * `memories_toggle` `day_mode`). Under the header sits the day's 時光膠囊 strip (the fan's notes on
  * that date, also on a one-person day), left out only when the host passes `showCapsule={false}`.
+ * While another day (or the switch) loads, the previous day stays on screen (`keepPrevious`,
+ * `BusyContent`: `aria-busy`, dimmed after the reveal delay); the first load and an error show
+ * the Memories load state.
  */
 export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, headerSlot, showCapsule = true }) => {
     const { t, i18n } = useTranslation();
@@ -55,7 +58,8 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
         'day',
         (signal) => fetchDay(service, { date, member: memberPath, others: withOthers }, signal),
         [service, date, memberPath, withOthers],
-        { count: (d) => d.messages.length },
+        // A day step (or the switch) keeps the previous day on screen, dimmed, until the next arrives.
+        { count: (d) => d.messages.length, keepPrevious: { scope: service } },
     );
     const data = query.data;
     const people = useMemo(() => (data ? dayPeople(data.members, data.messages) : []), [data]);
@@ -88,8 +92,8 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
     };
 
     let body: React.ReactNode;
-    if (query.status !== 'ready' || !data) {
-        body = <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
+    if (!data) {
+        body = <MemoriesStatus query={query} view="day" />;
     } else if (!messages.length) {
         body = <p className="p-6 text-center text-small text-secondary">{t('memories.onThisDay.empty')}</p>;
     } else if (mode === 'merged') {
@@ -145,7 +149,9 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
                     </label>
                 </div>
             )}
-            <div ref={setScroller} className="min-h-0 flex-1 overflow-auto px-4 pb-4">{body}</div>
+            <BusyContent busy={query.stale} className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col">
+                <div ref={setScroller} className="min-h-0 flex-1 overflow-auto px-4 pb-4">{body}</div>
+            </BusyContent>
         </section>
     );
 };

@@ -9,7 +9,7 @@ import { formatJstClock } from '../shared/jst';
 import { formatDayHeading } from '../day/format';
 import { isEditable } from '../shared/keys';
 import { LazyVoice } from '../shared/LazyVoice';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { memoryMediaSrc } from '../shared/mediaSrc';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
@@ -250,7 +250,7 @@ export const FilmStrip: React.FC<FilmStripProps> = ({ service, memberPath, date,
         >
             {day.status === 'ready' && day.data
                 ? <Strip day={day.data} index={index} setIndex={setIndex} from={from} onClose={onClose} />
-                : <LoadState status={day.status === 'error' ? 'error' : 'loading'} onRetry={day.retry} />}
+                : <MemoriesStatus query={day} view="film_strip" />}
         </Modal>
     );
 };

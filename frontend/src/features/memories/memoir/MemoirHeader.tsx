@@ -1,6 +1,6 @@
 import React from 'react';
 import { useTranslation } from '../../../i18n';
-import { Avatar } from '../../../design/primitives';
+import { Avatar, Skeleton } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { resizedAvatarUrl } from '../../messages/mediaUrl';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
@@ -70,17 +70,23 @@ export const MemoirHeader: React.FC<MemoirHeaderProps> = ({ header, onNames, onD
     );
 };
 
-/** The header's place while it loads (same height), so the tabs and binder do not jump. */
+/**
+ * The header's place while it loads (same height), so the tabs and binder do not jump: paper
+ * `Skeleton`s (her avatar circle and two lines) under `role="status"` with an `sr-only`
+ * `loading.label` (visible under reduced motion, where the skeletons hold still).
+ */
 export const MemoirHeaderPlaceholder: React.FC = () => {
     const { t } = useTranslation();
+    const label = t('loading.label');
     return (
-        <div data-testid="memoir-header-loading" role="status" aria-busy="true" className="flex shrink-0 items-center gap-4 px-4 py-3">
-            <span className="sr-only">{t('common.loading')}</span>
-            <span aria-hidden="true" className="h-14 w-14 shrink-0 rounded-pill bg-sunken" />
+        <div data-testid="memoir-header-loading" role="status" aria-busy="true" aria-label={label} className="flex shrink-0 items-center gap-4 px-4 py-3">
+            <Skeleton shape="circle" tone="paper" className="h-14 w-14 shrink-0" />
             <span aria-hidden="true" className="flex min-w-0 flex-1 flex-col gap-2">
-                <span className="h-6 w-40 rounded-md bg-sunken" />
-                <span className="h-6 w-64 rounded-pill bg-sunken" />
+                <Skeleton shape="line" tone="paper" className="h-6 w-40" />
+                <Skeleton shape="line" tone="paper" className="h-6 w-64" />
             </span>
+            {/* Under reduced motion the skeletons hold still: the label then shows. */}
+            <span className="sr-only shrink-0 text-small text-secondary motion-reduce:not-sr-only">{label}</span>
         </div>
     );
 };

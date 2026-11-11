@@ -5,7 +5,7 @@ import { MEDIA_GRID_COLS, MEDIA_GRID_GAP, MEDIA_GRID_MIN } from '../../../core/m
 import { MediaGridContext, primeMediaMeta, useGridColumns } from '../../../core/media/grid';
 import { cn } from '../../../utils/classnames';
 import { fetchAlbumMonth } from '../api';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { sepiaClass } from '../shared/sepia';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { jstDateFormat } from '../shared/jst';
@@ -43,7 +43,7 @@ interface MonthSectionProps {
 const tintOf = (color: string | null): string | undefined =>
     color ? `color-mix(in srgb, ${color} 18%, transparent)` : undefined;
 
-/** Fetches one month and hands it to the album's cache; shows the loading line or the retry. */
+/** Fetches one month and hands it to the album's cache; shows the Memories load state (or its retry). */
 const MonthLoader: React.FC<Pick<MonthSectionProps, 'service' | 'member' | 'kind' | 'onLoaded' | 'onSettled'> & { month: string }> = ({
     service, month, member, kind, onLoaded, onSettled,
 }) => {
@@ -57,7 +57,7 @@ const MonthLoader: React.FC<Pick<MonthSectionProps, 'service' | 'member' | 'kind
         if (query.status === 'ready' && query.data) onLoaded(month, query.data);
         if (query.status !== 'loading') onSettled(month);
     }, [query.status, query.data, month, onLoaded, onSettled]);
-    return <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
+    return <MemoriesStatus query={query} view="album_month" />;
 };
 
 interface MonthGridProps {

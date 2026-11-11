@@ -2,7 +2,7 @@ import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
-import { MemoirHeader } from './MemoirHeader';
+import { MemoirHeader, MemoirHeaderPlaceholder } from './MemoirHeader';
 import { voiceChip } from './binderModel';
 import { headerPayload } from './__fixtures__';
 
@@ -53,5 +53,22 @@ describe('MemoirHeader', () => {
         expect(onDay24).toHaveBeenCalled();
         // not one of the counted moments
         expect(screen.getAllByTestId('memoir-chip')).toHaveLength(3);
+    });
+});
+
+describe('MemoirHeaderPlaceholder', () => {
+    it('draws paper skeletons (a circle and two lines) at the header height, labelled for screen readers', () => {
+        render(<MemoirHeaderPlaceholder />);
+        const box = screen.getByTestId('memoir-header-loading');
+        expect(box).toHaveAttribute('role', 'status');
+        expect(box).toHaveClass('flex', 'shrink-0', 'items-center', 'gap-4', 'px-4', 'py-3');
+        expect(screen.getByRole('status', { name: '読み込み中…' })).toBe(box);
+        const label = box.querySelector('.sr-only');
+        expect(label).toHaveTextContent('読み込み中…');
+        const skeletons = [...box.querySelectorAll('[data-skeleton]')];
+        expect(skeletons).toHaveLength(3);
+        expect(skeletons[0]).toHaveClass('rounded-pill', 'h-14', 'w-14', 'bg-skeleton');
+        expect(skeletons.slice(1).every((s) => s.classList.contains('bg-skeleton') && s.classList.contains('h-6'))).toBe(true);
+        expect(box.textContent).not.toContain('読み込み中...');
     });
 });

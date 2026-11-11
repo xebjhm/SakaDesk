@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Play } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { Avatar, Button, Card, EmptyState } from '../../../design/primitives';
+import { Avatar, BusyContent, Button, Card, EmptyState } from '../../../design/primitives';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { cn } from '../../../utils/classnames';
 import { fetchTimelineMonth, fetchTimelineMonths } from '../api';
@@ -10,7 +10,7 @@ import { logMemoriesSkip } from '../memoriesLog';
 import { formatJstDate, jstNow } from '../shared/jst';
 import { jumpToChat } from '../shared/jumpToChat';
 import { LazyVoice } from '../shared/LazyVoice';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { memoryMediaSrc } from '../shared/mediaSrc';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
@@ -132,8 +132,9 @@ function anchorDate(view: TimelineMonthPayload): string | undefined {
  * The selected month: her avatar then, the serif month label and the month's one number (never 0),
  * then up to twelve photos (the media viewer, jump logged as `timeline`), the labelled word slots
  * (empty ones left out) and the milestones. A month change aborts the fetch in flight; until the
- * new month arrives the last loaded one stays, dimmed and `aria-busy` (its number is not shown
- * under the new month's label). The header holds the host's `headerSlot`; with `thenNow` the body
+ * new month arrives the last loaded one of hers stays (`keepPrevious`, `BusyContent`: `aria-busy`,
+ * dimmed after the reveal delay, not clickable; its number is not shown under the new month's
+ * label). The header holds the host's `headerSlot`; with `thenNow` the body
  * is `ThenNowPanel` instead: the day mode for the month's anchor date ({@link anchorDate}) and
  * 初見と今 for her.
  */
@@ -144,16 +145,12 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
         'timeline_month',
         (signal) => fetchTimelineMonth(service, memberPath, fetchMonth, signal),
         [service, memberPath, fetchMonth],
-        { count: (d) => d.count },
+        // While a new month loads (a scrub, a wheel run) the last loaded month of hers stays, dimmed.
+        { count: (d) => d.count, keepPrevious: { scope: [service, memberPath] } },
     );
-    const data = query.data?.month === month ? query.data : null;
-    // While a new month loads (a scrub, a wheel run) the last loaded month stays, dimmed.
-    const [shown, setShown] = useState<TimelineMonthPayload | null>(null);
-    useEffect(() => {
-        if (query.data) setShown(query.data);
-    }, [query.data]);
+    const data = query.status === 'ready' && query.data?.month === month ? query.data : null;
     const failed = query.status === 'error' && fetchMonth === month;
-    const view = data ?? (failed ? null : shown);
+    const view = failed ? null : query.data;
     const stale = view !== null && view !== data;
     const [viewer, setViewer] = useState<{ month: string; index: number } | null>(null);
     const viewerItems = useMemo(() => albumViewerItems(view?.photos ?? [], {
@@ -168,47 +165,47 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
     if (thenNow) {
         body = data
             ? <ThenNowPanel key={data.month} service={service} date={anchorDate(data)} member={memberPath} />
-            : <LoadState status={failed ? 'error' : 'loading'} onRetry={query.retry} />;
+            : <MemoriesStatus query={failed ? query : { ...query, status: 'loading' }} view="timeline_month" />;
     } else if (!view) {
-        body = <LoadState status={failed ? 'error' : 'loading'} onRetry={query.retry} />;
+        body = <MemoriesStatus query={failed ? query : { ...query, status: 'loading' }} view="timeline_month" />;
     } else {
         const slots = SLOTS.flatMap(({ slot, label }) => {
             const m = view.messages[slot];
             return m ? [{ slot, label, m }] : [];
         });
         body = (
-            <div
-                data-testid="timeline-month-body"
-                aria-busy={stale ? 'true' : undefined}
-                className={cn(
-                    'flex flex-col gap-4 transition-opacity duration-fast motion-reduce:transition-none',
-                    stale ? 'pointer-events-none opacity-60' : 'opacity-100',
-                )}
-            >
-                {viewerItems.viewable.length > 0 && (
-                    <ul data-testid="timeline-photos" className="flex gap-2 overflow-x-auto pb-1">
-                        {viewerItems.viewable.map((p) => (
-                            <li key={`${p.room}|${p.id}`} className="shrink-0">
-                                <button
-                                    type="button"
-                                    aria-label={formatCardDate(formatJstDate(p.ts), i18n.language)}
-                                    onClick={() => setViewer({ month, index: viewerIndexOf(viewerItems.viewable, p) })}
-                                    className="relative block h-24 w-24 overflow-hidden rounded-sm bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-                                >
-                                    <MemoryThumb message={p} px={PHOTO_PX} className="h-full w-full" />
-                                    {p.type === 'video' && <Play aria-hidden="true" className="absolute left-1 top-1 h-3.5 w-3.5 fill-current text-inverse drop-shadow-sm" />}
-                                </button>
-                            </li>
-                        ))}
-                    </ul>
-                )}
-                {slots.length > 0 && (
-                    <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
-                        {slots.map(({ slot, label, m }) => <SlotCard key={slot} slot={slot} label={label} message={m} name={name} />)}
-                    </div>
-                )}
-                <Milestones milestones={view.milestones} month={view.month} />
-            </div>
+            <BusyContent busy={stale}>
+                <div
+                    data-testid="timeline-month-body"
+                    aria-busy={stale ? 'true' : undefined}
+                    // The kept month's photos open the viewer of the month on screen: not until it lands.
+                    className={cn('flex flex-col gap-4', stale && 'pointer-events-none')}
+                >
+                    {viewerItems.viewable.length > 0 && (
+                        <ul data-testid="timeline-photos" className="flex gap-2 overflow-x-auto pb-1">
+                            {viewerItems.viewable.map((p) => (
+                                <li key={`${p.room}|${p.id}`} className="shrink-0">
+                                    <button
+                                        type="button"
+                                        aria-label={formatCardDate(formatJstDate(p.ts), i18n.language)}
+                                        onClick={() => setViewer({ month, index: viewerIndexOf(viewerItems.viewable, p) })}
+                                        className="relative block h-24 w-24 overflow-hidden rounded-sm bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                    >
+                                        <MemoryThumb message={p} px={PHOTO_PX} className="h-full w-full" />
+                                        {p.type === 'video' && <Play aria-hidden="true" className="absolute left-1 top-1 h-3.5 w-3.5 fill-current text-inverse drop-shadow-sm" />}
+                                    </button>
+                                </li>
+                            ))}
+                        </ul>
+                    )}
+                    {slots.length > 0 && (
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                            {slots.map(({ slot, label, m }) => <SlotCard key={slot} slot={slot} label={label} message={m} name={name} />)}
+                        </div>
+                    )}
+                    <Milestones milestones={view.milestones} month={view.month} />
+                </div>
+            </BusyContent>
         );
     }
 
@@ -286,7 +283,7 @@ export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name })
     );
 
     if (months.status !== 'ready' || !list) {
-        return <LoadState status={months.status === 'error' ? 'error' : 'loading'} onRetry={months.retry} />;
+        return <MemoriesStatus query={months} view="timeline" />;
     }
     if (!month) {
         return <EmptyState icon={<CalendarDays />} title={t('memories.timeline.empty')} />;
@@ -305,7 +302,7 @@ export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name })
                         headerSlot={<ThenNowToggle on={thenNow} available onChange={setThenNow} />}
                     />
                 )
-                : <LoadState status="loading" onRetry={months.retry} />}
+                : <MemoriesStatus query={{ status: 'loading', failure: null, retry: months.retry }} view="timeline_month" />}
             <MonthRail
                 months={list}
                 index={index}

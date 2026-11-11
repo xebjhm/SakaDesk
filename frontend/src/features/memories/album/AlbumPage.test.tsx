@@ -118,7 +118,8 @@ describe('AlbumPage', () => {
     it('lists everyone with counts and refetches the months for a picked member', async () => {
         const { go, rerender } = renderAlbum();
         const all = await screen.findByRole('button', { name: /Everyone/ });
-        expect(all).toHaveTextContent('12');
+        // The 全員 row is there while the list loads; a slow first load settles after minVisible.
+        await waitFor(() => expect(all).toHaveTextContent('12'));
         expect(screen.getByRole('button', { name: /小坂 菜緒/ })).toHaveTextContent('3');
         await waitFor(() => expect(fetchAlbumMonths).toHaveBeenCalledWith('hinatazaka46', { member: undefined, kind: 'all' }, expect.anything()));
 
@@ -128,6 +129,35 @@ describe('AlbumPage', () => {
         await waitFor(() => expect(fetchAlbumMonths).toHaveBeenLastCalledWith('hinatazaka46', { member: NAO_PATH, kind: 'all' }, expect.anything()));
         expect(fetchAlbumColors).toHaveBeenLastCalledWith('hinatazaka46', NAO_PATH, expect.anything());
         expect(screen.getByRole('button', { name: /小坂 菜緒/ })).toHaveAttribute('aria-current', 'true');
+    });
+
+    it('a member switch keeps the previous months dimmed while hers load; the row selects at once (D-L3)', async () => {
+        const { rerender } = renderAlbum();
+        await screen.findByTestId('album-month-2026-10');
+        let finish: (v: ReturnType<typeof monthsPayload>) => void = () => {};
+        vi.mocked(fetchAlbumMonths).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+        rerender({ page: 'album', memberPath: NAO_PATH });
+        await waitFor(() => expect(fetchAlbumMonths).toHaveBeenLastCalledWith('hinatazaka46', { member: NAO_PATH, kind: 'all' }, expect.anything()));
+        expect(screen.getByRole('button', { name: /小坂 菜緒/ })).toHaveAttribute('aria-current', 'true');
+        // The previous months stay, busy, instead of a loading line.
+        expect(section('2026-10').closest('[aria-busy="true"]')).not.toBeNull();
+        expect(screen.queryByRole('status', { name: 'Loading…' })).toBeNull();
+        finish(monthsPayload([monthSummary('2025-03')]));
+        expect(await screen.findByTestId('album-month-2025-03')).toBeInTheDocument();
+        expect(screen.queryByTestId('album-month-2026-10')).toBeNull();
+        expect(section('2025-03').closest('[aria-busy="true"]')).toBeNull();
+    });
+
+    it('shows the member list loading, then its error with Retry', async () => {
+        vi.mocked(fetchAlbumMembers).mockReset()
+            .mockRejectedValueOnce(new MemoriesFetchError(500))
+            .mockResolvedValue(membersPayload());
+        renderAlbum();
+        const alert = await screen.findByText("Couldn't load the members");
+        const retry = within(alert.closest('[role="alert"]') as HTMLElement).getByRole('button');
+        await userEvent.click(retry);
+        expect(await screen.findByRole('button', { name: /小坂 菜緒/ })).toBeInTheDocument();
+        expect(fetchAlbumMembers).toHaveBeenCalledTimes(2);
     });
 
     it('never shows a 0 and shows the empty state when there is nothing', async () => {

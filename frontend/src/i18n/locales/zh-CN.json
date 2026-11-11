@@ -829,6 +829,11 @@
       "back": "返回",
       "retry": "再试一次",
       "loadError": "无法加载",
+      "slow": "正在准备你的回忆…",
+      "verySlow": "第一次打开或刚同步完时，整理资料需要一点时间。",
+      "timeout": "这次比平时久",
+      "timeoutHint": "可能还在准备中，请再试一次。",
+      "membersError": "无法加载成员",
       "jumpToChat": "在聊天中查看",
       "all": "全员",
       "nicknameMasked": "＊＊＊"

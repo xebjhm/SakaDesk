@@ -8,7 +8,7 @@ import { fetchDay24 } from '../api';
 import { logMemoriesSkip } from '../memoriesLog';
 import { formatJstClock, formatJstDate, jstNow } from '../shared/jst';
 import { LazyVoice } from '../shared/LazyVoice';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { memoryMediaSrc } from '../shared/mediaSrc';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
@@ -117,7 +117,7 @@ export const Day24View: React.FC<Day24ViewProps> = ({ service, memberPath, name,
         );
     }
     if (!view) {
-        return <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
+        return <MemoriesStatus query={query} view="day24" />;
     }
     const [before, after] = t('memories.day24.title', { name: NAME_MARK }).split(NAME_MARK);
     const subtitle = view.years === 1 ? t('memories.day24.fromOneYear') : t('memories.day24.fromYears', { count: view.years });
@@ -140,7 +140,7 @@ export const Day24View: React.FC<Day24ViewProps> = ({ service, memberPath, name,
                 />
             </header>
             {query.status === 'error' ? (
-                <LoadState status="error" onRetry={query.retry} />
+                <MemoriesStatus query={query} view="day24" />
             ) : (
                 <div
                     data-testid="day24-slots"

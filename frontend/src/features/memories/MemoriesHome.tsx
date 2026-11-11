@@ -8,7 +8,7 @@ import { HubSlots } from './home/HubSlots';
 import { HUB_CARDS, hubCardCounts, hubCardLine } from './home/hubCards';
 import { OnThisDayCard } from './home/OnThisDayCard';
 import { RecapHubCard, type RecapCardState } from './home/RecapHubCard';
-import { LoadState } from './shared/LoadState';
+import { MemoriesStatus } from './shared/memoriesStatus';
 import { useMemoriesQuery } from './shared/useMemoriesQuery';
 
 export type { RecapCardState } from './home/RecapHubCard';
@@ -25,7 +25,7 @@ interface MemoriesHomeProps {
  * The Memories hub board (spec 4), a fixed viewport: the title, then one board that scrolls
  * inside the pane when it is short (the large On This Day card with the wave-4 slots around
  * it, then the grid of entry cards), so every card stays reachable at the smallest window. The entry cards are usable while `/hub` loads or after it fails
- * (they only lack their counts); the moment's place shows the loading line or the retry. A
+ * (they only lack their counts); the moment's place shows the staged Memories load state (`MemoriesStatus`), or its error / timeout with Retry. A
  * zero count shows no number (the gacha card says 「また明日」 instead; a `null` `gacha_left`
  * shows no line); a `null` moment or countdown leaves its card out. The recap
  * card keeps its own shelf states (`RecapHubCard`).
@@ -43,7 +43,7 @@ export const MemoriesHome: React.FC<MemoriesHomeProps> = ({ service, recap, onOp
 
     let moment: React.ReactNode = null;
     if (hub.status !== 'ready') {
-        moment = <LoadState status={hub.status} onRetry={hub.retry} />;
+        moment = <MemoriesStatus query={hub} view="hub" />;
     } else if (data?.on_this_day) {
         moment = <OnThisDayCard moment={data.on_this_day} go={go} />;
     }

@@ -322,3 +322,48 @@ describe('RecapEntry', () => {
         expect(screen.getByRole('button', { name: '前の年' }).parentElement).toHaveClass('invisible');
     });
 });
+
+describe('RecapEntry status (StatusBlock)', () => {
+    it('loading: a status box, revealed after the delay with its label', async () => {
+        serve();
+        vi.mocked(fetchRecapMembers).mockImplementationOnce(() => new Promise(() => {}));
+        render(<RecapEntry service="hinatazaka46" year={2026} onBack={() => {}} />);
+        const status = screen.getByRole('status');
+        expect(status).toHaveAttribute('data-stage', 'hidden');
+        await waitFor(() => expect(screen.getByRole('status')).toHaveAttribute('data-stage', 'shown'));
+        expect(screen.getByRole('status', { name: '読み込み中…' })).toBeInTheDocument();
+    });
+
+    it('error: the recap failure copy as an alert with Retry', async () => {
+        serve();
+        vi.mocked(fetchRecapMembers).mockResolvedValueOnce({ status: 'failed', error: new Error('boom') });
+        render(<RecapEntry service="hinatazaka46" year={2026} onBack={() => {}} />);
+        const alert = await screen.findByRole('alert');
+        expect(alert).toHaveAttribute('data-kind', 'error');
+        expect(alert).toHaveTextContent(i18n.t('recap.entry.loadFailed'));
+        expect(alert).not.toHaveTextContent('いつもより時間がかかっています');
+        await userEvent.click(screen.getByRole('button', { name: '再試行' }));
+        expect(await screen.findByRole('button', { name: /金村 美玖/ })).toBeInTheDocument();
+    });
+
+    it('timeout: its own copy and hint with Retry, never the failure copy (overview and member)', async () => {
+        serve();
+        vi.mocked(fetchRecapMembers).mockResolvedValueOnce({ status: 'timeout' });
+        const { unmount } = render(<RecapEntry service="hinatazaka46" year={2026} onBack={() => {}} />);
+        const alert = await screen.findByRole('alert');
+        expect(alert).toHaveAttribute('data-kind', 'timeout');
+        expect(alert).toHaveTextContent('いつもより時間がかかっています');
+        expect(alert).toHaveTextContent('準備はまだ続いているかもしれません。もう一度お試しください。');
+        expect(alert).not.toHaveTextContent(i18n.t('recap.entry.loadFailed'));
+        await userEvent.click(screen.getByRole('button', { name: '再試行' }));
+        expect(await screen.findByRole('button', { name: /金村 美玖/ })).toBeInTheDocument();
+        unmount();
+
+        vi.mocked(fetchMemberRecap).mockResolvedValueOnce({ status: 'timeout' });
+        render(<RecapEntry service="hinatazaka46" year={2026} memberPath={MEMBER_PATH} onBack={() => {}} />);
+        const memberAlert = await screen.findByRole('alert');
+        expect(memberAlert).toHaveAttribute('data-kind', 'timeout');
+        await userEvent.click(screen.getByRole('button', { name: '再試行' }));
+        expect(await screen.findByTestId('recap-stage')).toBeInTheDocument();
+    });
+});

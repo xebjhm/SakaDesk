@@ -1,14 +1,14 @@
 import React, { useMemo, useState } from 'react';
 import { CalendarDays, CalendarHeart, ChevronLeft, ChevronRight } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { Button, EmptyState, IconButton } from '../../../design/primitives';
+import { BusyContent, Button, EmptyState, IconButton } from '../../../design/primitives';
 import { CalendarModal } from '../../../core/modals/CalendarModal';
 import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
 import { fetchCapsuleDue, fetchOnThisDay } from '../api';
 import { CapsuleResurface } from '../capsule/CapsuleResurface';
 import { PageHeader } from '../shared/PageHeader';
 import { isEditable } from '../shared/keys';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { formatMonthDayLabel } from '../day/format';
 import { YearStrip } from './YearStrip';
@@ -42,7 +42,8 @@ const CapsuleDue: React.FC<{ service: string; monthDay: string; go: OnThisDayPag
  * opens that year), under the fan's 時光膠囊 notes resurfacing on that month-day (hidden when
  * none). With `route.year` it is the detail (A): the year list and that year's
  * 那一天 view, ← / → (and ‹ ›) stepping between years with messages (older / newer). One
- * request per month-day serves both.
+ * request per month-day serves both; while the next month-day loads, the previous one stays on
+ * screen (`keepPrevious`, `BusyContent`: `aria-busy`, dimmed after the reveal delay).
  */
 export const OnThisDayPage: React.FC<OnThisDayPageProps> = ({ service, route, go }) => {
     const { t, i18n } = useTranslation();
@@ -50,6 +51,8 @@ export const OnThisDayPage: React.FC<OnThisDayPageProps> = ({ service, route, go
     const [calendarOpen, setCalendarOpen] = useState(false);
     const query = useMemoriesQuery('on_this_day', (signal) => fetchOnThisDay(service, monthDay, signal), [service, monthDay], {
         count: (d) => d.years.filter((y) => y.has_messages).length,
+        // A month-day step keeps the previous day's years on screen, dimmed, until the next arrive.
+        keepPrevious: { scope: service },
     });
     const data = query.data;
     const years = useMemo(() => data?.years ?? [], [data]);
@@ -106,18 +109,26 @@ export const OnThisDayPage: React.FC<OnThisDayPageProps> = ({ service, route, go
         );
     }
 
-    if (query.status !== 'ready') {
-        body = <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
-    } else if (detail) {
-        body = <OnThisDayDetail service={service} monthDay={monthDay} year={route.year!} years={years} onSelectYear={toYear} />;
-    } else if (!withMessages.length) {
-        body = (
-            <div className="flex flex-1 items-center justify-center">
-                <EmptyState icon={<CalendarHeart />} title={dateLabel} description={t('memories.onThisDay.empty')} action={pickDate} />
-            </div>
-        );
+    if (!data) {
+        body = <MemoriesStatus query={query} view="on_this_day" />;
     } else {
-        body = <YearStrip years={withMessages} resetKey={monthDay} onOpen={toYear} />;
+        let content: React.ReactNode;
+        if (detail) {
+            content = <OnThisDayDetail service={service} monthDay={monthDay} year={route.year!} years={years} onSelectYear={toYear} />;
+        } else if (!withMessages.length) {
+            content = (
+                <div className="flex flex-1 items-center justify-center">
+                    <EmptyState icon={<CalendarHeart />} title={dateLabel} description={t('memories.onThisDay.empty')} action={pickDate} />
+                </div>
+            );
+        } else {
+            content = <YearStrip years={withMessages} resetKey={monthDay} onOpen={toYear} />;
+        }
+        body = (
+            <BusyContent busy={query.stale} className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col">
+                {content}
+            </BusyContent>
+        );
     }
 
     return (

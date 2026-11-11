@@ -6,7 +6,7 @@ import { cn } from '../../../utils/classnames';
 import { fetchRadioProgram } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
 import { createAudioElement } from '../shared/clipSequencer';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { RadioProgram } from '../types';
 import { CassetteShelf } from './CassetteShelf';
@@ -203,7 +203,7 @@ export const Station: React.FC<StationProps> = ({ service, member, memberName, s
     const track = airScope === scope ? player.track : null;
 
     if (!overview) {
-        return <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
+        return <MemoriesStatus query={query} view="radio_program" />;
     }
     if (overview.programs.length === 0) {
         return (

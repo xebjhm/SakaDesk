@@ -4,9 +4,10 @@ import { useTranslation } from '../../../i18n';
 import { Pill } from '../../../design/primitives';
 import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
 import { fetchMemoirCards, fetchMemoirHeader, fetchMemoirMembers } from '../api';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { cn } from '../../../utils/classnames';
 import { MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from '../shared/MemberPane';
+import { memberPaneStatus } from '../shared/memberPaneStatus';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import { logMemoriesSkip } from '../memoriesLog';
@@ -78,7 +79,7 @@ const BinderPane: React.FC<{ service: string; memberPath: string; name: string; 
     }, [data, memberPath, cardKey, link]);
 
     if (binder.status !== 'ready' || !binder.data) {
-        return <LoadState status={binder.status === 'error' ? 'error' : 'loading'} onRetry={binder.retry} />;
+        return <MemoriesStatus query={binder} view="binder" />;
     }
     return (
         <>
@@ -90,7 +91,8 @@ const BinderPane: React.FC<{ service: string; memberPath: string; name: string; 
 
 /**
  * The member memoir (spec 5). Left: every person, oshi first (`MemberPane`), each with her binder
- * progress and, for a graduated member, a small memorial marker in neutral ink. Without a
+ * progress and, for a graduated member, a small memorial marker in neutral ink (skeleton rows while
+ * the list loads; with a routed person its error / timeout line and Retry too). Without a
  * `memberPath` the first person is shown. Right: her header (`MemoirHeader`) over the 生写真帳 /
  * タイムライン tabs (`route.tab`, default the binder): the `Binder` or the `Timeline` with its month
  * rail. The names chip routes to the `names` tab (`NameMoments`) and the 「彼女の24時間」 chip to the
@@ -132,7 +134,7 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
     // A routed person loads at once; without one the pane waits for the list's first person.
     let pane: React.ReactNode = null;
     if (!memberPath && list.status !== 'ready') {
-        pane = <LoadState status={list.status === 'error' ? 'error' : 'loading'} onRetry={list.retry} />;
+        pane = <MemoriesStatus query={list} view="memoir_members" />;
     } else if (memberPath) {
         const name = header.data?.name ?? selected?.name ?? '';
         pane = (
@@ -146,7 +148,7 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
                         />
                     )
                     : header.status === 'error'
-                        ? <LoadState status="error" onRetry={header.retry} />
+                        ? <MemoriesStatus query={header} view="memoir" />
                         : <MemoirHeaderPlaceholder />}
                 <div role="group" className="flex shrink-0 gap-2 px-4 pb-2">
                     <Pill selected={tab === 'binder'} onClick={() => pickTab('binder')}>{t('memories.memoir.tabBinder')}</Pill>
@@ -181,6 +183,9 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
                     items={items}
                     selectedKey={memberPath ?? null}
                     onSelect={pickMember}
+                    // Without a routed person the pane's body already shows the list's error (and Retry).
+                    status={memberPath ? memberPaneStatus(list) : list.status === 'loading' ? 'loading' : 'ready'}
+                    onRetry={list.retry}
                 />
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">{pane}</div>
             </div>

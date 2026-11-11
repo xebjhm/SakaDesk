@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { ArrowLeft, ChevronLeft, ChevronRight, Heart, Image as ImageIcon, Loader2, Sparkles } from 'lucide-react';
+import { ArrowLeft, ChevronLeft, ChevronRight, Heart, Image as ImageIcon, Sparkles } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { Button, Card, EmptyState, IconButton } from '../../../design/primitives';
+import { Button, Card, EmptyState, IconButton, StatusBlock } from '../../../design/primitives';
 import { logRecapLoad, logRecapOpening, logRecapPoster, type RecapLoadOutcome } from '../memoriesLog';
 import type { PollResult } from '../../../utils/pollJson';
 import { fetchMemberRecap, fetchRecapMembers, type RecapOverview, type RecapOverviewMember, type RecapPayload } from './api';
@@ -29,7 +29,8 @@ interface RecapEntryProps {
     onBack: () => void;
 }
 
-type Load<T> = { status: 'loading' } | { status: 'ok'; data: T } | { status: 'error' };
+/** A failed load says why: `timeout` (the poll gave up waiting) or any other `error`. */
+type Load<T> = { status: 'loading' } | { status: 'ok'; data: T } | { status: 'error'; failure: 'timeout' | 'error' };
 
 /** A member recap load, tagged with the member path it was requested for. */
 type MemberLoad = { path: string | null; load: Load<RecapPayload> };
@@ -52,23 +53,42 @@ function outcomeOf<T>(res: PollResult<T>): Exclude<RecapLoadOutcome, 'ok' | 'emp
 
 const playable = (recap: RecapPayload) => recap.slides.filter((s) => SLIDE_REGISTRY[s.key]).length;
 
+/** The recap's wait: the staged Memories loading state (`ui_wait` surface `memories_recap`). */
 const Status: React.FC = () => {
     const { t } = useTranslation();
     return (
-        <div role="status" className="flex flex-1 items-center justify-center text-muted">
-            <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin motion-reduce:animate-none" />
-            <span className="sr-only">{t('common.loading')}</span>
-        </div>
+        <StatusBlock
+            kind="loading"
+            surface="memories_recap"
+            variant="pane"
+            slowHint={t('memories.common.slow')}
+            verySlowHint={t('memories.common.verySlow')}
+        />
     );
 };
 
-const Failed: React.FC<{ onRetry: () => void }> = ({ onRetry }) => {
+/** A failed load: the recap failure copy, or the Memories timeout copy, each with Retry. */
+const Failed: React.FC<{ failure: 'timeout' | 'error'; onRetry: () => void }> = ({ failure, onRetry }) => {
     const { t } = useTranslation();
-    return (
-        <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-            <p className="text-small text-secondary">{t('recap.entry.loadFailed')}</p>
-            <Button variant="secondary" onClick={onRetry}>{t('common.retry')}</Button>
-        </div>
+    return failure === 'timeout' ? (
+        <StatusBlock
+            kind="timeout"
+            surface="memories_recap"
+            variant="pane"
+            title={t('memories.common.timeout')}
+            hint={t('memories.common.timeoutHint')}
+            onRetry={onRetry}
+            retryLabel={t('common.retry')}
+        />
+    ) : (
+        <StatusBlock
+            kind="error"
+            surface="memories_recap"
+            variant="pane"
+            title={t('recap.entry.loadFailed')}
+            onRetry={onRetry}
+            retryLabel={t('common.retry')}
+        />
     );
 };
 
@@ -194,7 +214,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                 setOverview({ status: 'ok', data: res.data });
             } else {
                 logRecapLoad('members', outcome, res.status === 'rejected' ? { error_code: res.httpStatus } : {});
-                setOverview({ status: 'error' });
+                setOverview({ status: 'error', failure: outcome === 'timeout' ? 'timeout' : 'error' });
             }
         });
         return () => controller.abort();
@@ -220,7 +240,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                 }
             } else {
                 logRecapLoad('member', outcome, res.status === 'rejected' ? { error_code: res.httpStatus } : {});
-                setMemberLoad({ path: selected, load: { status: 'error' } });
+                setMemberLoad({ path: selected, load: { status: 'error', failure: outcome === 'timeout' ? 'timeout' : 'error' } });
             }
         });
         return () => controller.abort();
@@ -239,7 +259,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
     if (selected) {
         if (recap.status === 'loading') return <div data-testid="recap-entry" className="flex flex-1"><Status /></div>;
         if (recap.status === 'error') {
-            return <div data-testid="recap-entry" className="flex flex-1"><Failed onRetry={() => setMemberAttempt((n) => n + 1)} /></div>;
+            return <div data-testid="recap-entry" className="flex flex-1"><Failed failure={recap.failure} onRetry={() => setMemberAttempt((n) => n + 1)} /></div>;
         }
         const data = recap.data;
         if (view.kind === 'poster' && data.poster && data.tier !== 'none') {
@@ -306,7 +326,7 @@ export const RecapEntry: React.FC<RecapEntryProps> = ({ service, year: initialYe
                 )}
             </header>
             {overview.status === 'loading' && <Status />}
-            {overview.status === 'error' && <Failed onRetry={() => setAttempt((n) => n + 1)} />}
+            {overview.status === 'error' && <Failed failure={overview.failure} onRetry={() => setAttempt((n) => n + 1)} />}
             {overview.status === 'ok' && members.length === 0 && <NotYet past={past} />}
             {members.length > 0 && (
                 <section className="mx-auto flex w-full max-w-md flex-col gap-3">

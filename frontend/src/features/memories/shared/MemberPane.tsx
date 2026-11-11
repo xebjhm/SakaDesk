@@ -1,7 +1,10 @@
 import React from 'react';
 import { Heart, Users } from 'lucide-react';
-import { Avatar } from '../../../design/primitives';
+import { useDelayedLoading } from '../../../design/loading';
+import { Avatar, Skeleton, StatusBlock } from '../../../design/primitives';
+import { useTranslation } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
+import type { MemberPaneStatus } from './memberPaneStatus';
 import { resizedAvatarUrl } from '../../messages/mediaUrl';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
 
@@ -25,8 +28,16 @@ interface MemberPaneProps {
     allLabel?: string;
     /** Right-hand detail of the all row. */
     allTrailing?: React.ReactNode;
+    /**
+     * The member list's load state (default `ready`): `loading` draws skeleton rows after the
+     * reveal delay, `error` / `timeout` an inline line with Retry (`onRetry`) below the all row.
+     */
+    status?: MemberPaneStatus;
+    /** Retry of the member list (shown with `status` `error` / `timeout`). */
+    onRetry?: () => void;
     className?: string;
 }
+
 
 const AVATAR_PX = 32;
 
@@ -61,13 +72,41 @@ const TRAILING = 'min-w-0 truncate text-small tabular-nums text-muted';
 // Group colour only on the selected row (identity / current state).
 const SELECTED = 'bg-accent-subtle font-semibold text-accent-strong hover:bg-accent-subtle';
 
+/** Skeleton rows drawn while the member list loads. */
+const SKELETON_ROWS = 6;
+
+/** Six avatar + name skeleton rows under a labelled `role="status"`, from the reveal delay on. */
+const LoadingRows: React.FC = () => {
+    const { t } = useTranslation();
+    const shownNow = useDelayedLoading(true);
+    const label = t('loading.label');
+    if (!shownNow) return <div role="status" aria-busy="true" aria-label={label} />;
+    return (
+        <div role="status" aria-label={label} className="flex flex-col gap-1">
+            {Array.from({ length: SKELETON_ROWS }, (_, i) => (
+                <div key={i} data-testid="member-pane-skeleton-row" className="flex items-center gap-3 px-3 py-2">
+                    <Skeleton shape="circle" className="h-8 w-8 shrink-0" />
+                    <Skeleton shape="line" className="w-24" />
+                </div>
+            ))}
+            {/* Under reduced motion the skeletons hold still: the label says what is happening. */}
+            <span className="sr-only px-3 text-small text-secondary motion-reduce:not-sr-only">{label}</span>
+        </div>
+    );
+};
+
 /**
- * The Memories left list (album, favorites, memoir): an optional all row, then one row per
- * person with her avatar, name (`lang="ja"`), an oshi heart in the semantic oshi tone (never
- * the group accent) and a trailing detail (never a 0) on its own line below the name, so a long
- * detail (「1 小時 1 分」) never takes the name's width. Scrolls inside itself.
+ * The Memories left list (album, favorites, memoir, radio, calendar): an optional all row, then one
+ * row per person with her avatar, name (`lang="ja"`), an oshi heart in the semantic oshi tone
+ * (never the group accent) and a trailing detail (never a 0) on its own line below the name, so a
+ * long detail (「1 小時 1 分」) never takes the name's width. Scrolls inside itself.
+ * While the list loads (`status` `loading`) the all row stays and six skeleton rows follow from
+ * the reveal delay (`role="status"`, `loading.label`); a failed load shows an inline
+ * `StatusBlock` below the all row: `memories.common.membersError` (error) or the Memories
+ * timeout copy (timeout), each with Retry (`onRetry`; without one the line shows no button).
  */
-export const MemberPane: React.FC<MemberPaneProps> = ({ items, selectedKey, onSelect, allLabel, allTrailing, className }) => {
+export const MemberPane: React.FC<MemberPaneProps> = ({ items, selectedKey, onSelect, allLabel, allTrailing, status = 'ready', onRetry, className }) => {
+    const { t } = useTranslation();
     const width = useAvatarWidth(AVATAR_PX);
     return (
         <nav className={cn('flex min-h-0 flex-col gap-1 overflow-y-auto p-2', className)}>
@@ -89,7 +128,32 @@ export const MemberPane: React.FC<MemberPaneProps> = ({ items, selectedKey, onSe
                     </span>
                 </button>
             )}
-            {items.map((item) => {
+            {status === 'loading' && <LoadingRows />}
+            {(status === 'error' || status === 'timeout') && (
+                status === 'timeout' && onRetry ? (
+                    <StatusBlock
+                        kind="timeout"
+                        variant="inline"
+                        surface="memories_members"
+                        title={t('memories.common.timeout')}
+                        hint={t('memories.common.timeoutHint')}
+                        onRetry={onRetry}
+                        retryLabel={t('memories.common.retry')}
+                        className="px-3 py-2"
+                    />
+                ) : (
+                    <StatusBlock
+                        kind="error"
+                        variant="inline"
+                        surface="memories_members"
+                        title={t(status === 'timeout' ? 'memories.common.timeout' : 'memories.common.membersError')}
+                        onRetry={onRetry}
+                        retryLabel={t('memories.common.retry')}
+                        className="px-3 py-2"
+                    />
+                )
+            )}
+            {status === 'ready' && items.map((item) => {
                 const selected = item.key === selectedKey;
                 return (
                     <button

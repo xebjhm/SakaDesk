@@ -1,8 +1,9 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { act, render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 import { MEMBER_PANE_MIN_REM, MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from './MemberPane';
+import { memberPaneStatus } from './memberPaneStatus';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 
@@ -107,5 +108,60 @@ describe('MemberPane', () => {
         expect(screen.getByRole('button', { name: /二部 ひな/ }).textContent).not.toContain('0');
         expect(screen.getByRole('button', { name: /All/ }).textContent).not.toContain('0');
         expect(screen.getByRole('button', { name: /小坂 菜緒/ })).toHaveTextContent('3');
+    });
+
+    describe('loading and error states (F25)', () => {
+        afterEach(() => { vi.useRealTimers(); });
+
+        it('draws six skeleton rows only after the reveal delay, under a labelled status; the all row stays', () => {
+            vi.useFakeTimers();
+            render(<MemberPane items={[]} selectedKey={null} onSelect={() => {}} allLabel="全員" status="loading" />);
+            expect(screen.getByTestId('member-pane-all-label')).toHaveTextContent('全員');
+            act(() => { vi.advanceTimersByTime(199); });
+            expect(screen.queryAllByTestId('member-pane-skeleton-row')).toHaveLength(0);
+            act(() => { vi.advanceTimersByTime(1); });
+            const region = screen.getByRole('status', { name: 'Loading…' });
+            const rows = within(region).getAllByTestId('member-pane-skeleton-row');
+            expect(rows).toHaveLength(6);
+            const circle = rows[0].querySelector('[data-skeleton]');
+            expect(circle).toHaveClass('h-8', 'w-8', 'rounded-pill');
+            expect(rows[0].querySelectorAll('[data-skeleton]')).toHaveLength(2);
+        });
+
+        it('an error shows the members error line below the all row, with Retry calling onRetry', async () => {
+            const onRetry = vi.fn();
+            render(<MemberPane items={[]} selectedKey={null} onSelect={() => {}} allLabel="全員" status="error" onRetry={onRetry} />);
+            const alert = screen.getByRole('alert');
+            expect(alert).toHaveTextContent("Couldn't load the members");
+            expect(alert).toHaveAttribute('data-kind', 'error');
+            // Below the all row.
+            const all = screen.getByTestId('member-pane-all-label').closest('button')!;
+            expect(all.compareDocumentPosition(alert) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+            await userEvent.click(within(alert).getByRole('button'));
+            expect(onRetry).toHaveBeenCalledTimes(1);
+        });
+
+        it('a timeout uses the timeout copy, never the error copy', () => {
+            render(<MemberPane items={[]} selectedKey={null} onSelect={() => {}} status="timeout" onRetry={() => {}} />);
+            const alert = screen.getByRole('alert');
+            expect(alert).toHaveAttribute('data-kind', 'timeout');
+            expect(alert).toHaveTextContent('This is taking longer than usual');
+            expect(alert).not.toHaveTextContent("Couldn't load the members");
+            expect(within(alert).getByRole('button')).toBeInTheDocument();
+        });
+
+        it('maps a members query onto the pane status (a timeout keeps its own state)', () => {
+            expect(memberPaneStatus({ status: 'loading', failure: null })).toBe('loading');
+            expect(memberPaneStatus({ status: 'ready', failure: null })).toBe('ready');
+            expect(memberPaneStatus({ status: 'error', failure: 'error' })).toBe('error');
+            expect(memberPaneStatus({ status: 'error', failure: 'timeout' })).toBe('timeout');
+        });
+
+        it('renders CJK names once ready, with no status or alert', () => {
+            render(<MemberPane items={items} selectedKey={null} onSelect={() => {}} status="ready" />);
+            expect(screen.getAllByTestId('member-pane-name').map((n) => n.textContent)).toEqual(['金村 美玖', '小坂 菜緒']);
+            expect(screen.queryByRole('status')).toBeNull();
+            expect(screen.queryByRole('alert')).toBeNull();
+        });
     });
 });

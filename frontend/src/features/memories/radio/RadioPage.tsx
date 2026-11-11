@@ -5,7 +5,7 @@ import { EmptyState } from '../../../design/primitives';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import { fetchRadioMembers } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { cn } from '../../../utils/classnames';
 import { MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { PageHeader } from '../shared/PageHeader';
@@ -62,7 +62,7 @@ export const RadioPage: React.FC<RadioPageProps> = ({ service, route, go }) => {
 
     let body: React.ReactNode;
     if (list.status !== 'ready' || !list.data) {
-        body = <LoadState status={list.status === 'error' ? 'error' : 'loading'} onRetry={list.retry} />;
+        body = <MemoriesStatus query={list} view="radio_members" />;
     } else if (list.data.members.length === 0) {
         body = (
             <div className="flex flex-1 items-center justify-center">
@@ -84,6 +84,8 @@ export const RadioPage: React.FC<RadioPageProps> = ({ service, route, go }) => {
                     onSelect={pickMember}
                     allLabel={t('memories.radio.all')}
                     allTrailing={formatVoiceLength(t, list.data?.total_seconds) ?? undefined}
+                    // Skeleton rows while the list loads; its error (and Retry) is the body's, shown once.
+                    status={list.status === 'loading' ? 'loading' : 'ready'}
                 />
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">{body}</div>
             </div>

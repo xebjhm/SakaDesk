@@ -842,6 +842,11 @@
       "back": "Back",
       "retry": "Try again",
       "loadError": "Couldn't load this.",
+      "slow": "Preparing your memories…",
+      "verySlow": "The first time, or right after a sync, sorting the archive takes a little while.",
+      "timeout": "This is taking longer than usual",
+      "timeoutHint": "It may still be getting ready. Try again.",
+      "membersError": "Couldn't load the members",
       "jumpToChat": "View in chat",
       "all": "Everyone",
       "nicknameMasked": "＊＊＊"

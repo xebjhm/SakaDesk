@@ -186,3 +186,24 @@ describe('DayView', () => {
         expect(fetchCapsule).not.toHaveBeenCalled();
     });
 });
+
+describe('DayView keeps the previous day (F24)', () => {
+    it('a day step keeps the previous day visible and aria-busy, and swaps when ready', async () => {
+        const { rerender } = renderDay();
+        await screen.findByTestId('day-merged');
+        let finish: (v: ReturnType<typeof dayPayload>) => void = () => {};
+        vi.mocked(fetchDay).mockImplementationOnce(() => new Promise((resolve) => { finish = resolve; }));
+        rerender(
+            <NicknameProvider nickname="みーぱん">
+                <DayView service="hinatazaka46" date="2024-09-15" />
+            </NicknameProvider>,
+        );
+        await waitFor(() => expect(fetchDay).toHaveBeenLastCalledWith('hinatazaka46', expect.objectContaining({ date: '2024-09-15' }), expect.anything()));
+        const kept = screen.getByTestId('day-merged');
+        expect(kept.textContent).toContain('リハ終わり！');
+        expect(kept.closest('[aria-busy="true"]')).not.toBeNull();
+        finish(dayPayload({ date: '2024-09-15', messages: [dayMessage(MIKU, { id: 77, ts: '2024-09-15T03:00:00Z', text: '次の日 🍜' })] }));
+        await waitFor(() => expect(screen.getByTestId('day-merged').textContent).toContain('次の日 🍜'));
+        expect(screen.getByTestId('day-merged').closest('[aria-busy="true"]')).toBeNull();
+    });
+});

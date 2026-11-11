@@ -6,7 +6,7 @@ import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
 import { fetchFavorites } from '../api';
 import { logMemoriesToggle } from '../memoriesLog';
 import { formatJstDate } from '../shared/jst';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { cn } from '../../../utils/classnames';
 import { MEMBER_PANE_WIDTH, MemberPane, type MemberPaneItem } from '../shared/MemberPane';
 import { PageHeader } from '../shared/PageHeader';
@@ -73,7 +73,7 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ service, route, go
 
     let body: React.ReactNode;
     if (board.status !== 'ready' || !board.data) {
-        body = <LoadState status={board.status === 'error' ? 'error' : 'loading'} onRetry={board.retry} />;
+        body = <MemoriesStatus query={board} view="favorites" />;
     } else if (!board.data.items.length) {
         body = (
             <div className="flex flex-1 items-center justify-center bg-memories-cork">
@@ -99,6 +99,8 @@ export const FavoritesPage: React.FC<FavoritesPageProps> = ({ service, route, go
                     onSelect={pickMember}
                     allLabel={t('memories.favorites.all')}
                     allTrailing={total > 0 ? total : undefined}
+                    // Skeleton rows until the first board lands; its error (and Retry) is the body's, shown once.
+                    status={!list && board.status === 'loading' ? 'loading' : 'ready'}
                 />
                 <div className="flex min-h-0 min-w-0 flex-1 flex-col">{body}</div>
             </div>

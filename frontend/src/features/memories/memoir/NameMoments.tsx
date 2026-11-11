@@ -7,7 +7,7 @@ import { fetchNameMoments } from '../api';
 import { FilmStrip } from '../favorites/FilmStrip';
 import { logMemoriesToggle } from '../memoriesLog';
 import { formatJstDate } from '../shared/jst';
-import { LoadState } from '../shared/LoadState';
+import { MemoriesStatus } from '../shared/memoriesStatus';
 import { MemoryText } from '../shared/MemoryText';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { NameMoment } from '../types';
@@ -100,7 +100,7 @@ export const NameMoments: React.FC<NameMomentsProps> = ({ service, memberPath, n
 
     let body: React.ReactNode;
     if (query.status !== 'ready' || !query.data) {
-        body = <LoadState status={query.status === 'error' ? 'error' : 'loading'} onRetry={query.retry} />;
+        body = <MemoriesStatus query={query} view="names" />;
     } else if (query.data.items.length === 0) {
         body = <EmptyState icon={<Sparkles />} title={t('memories.names.empty')} />;
     } else {
