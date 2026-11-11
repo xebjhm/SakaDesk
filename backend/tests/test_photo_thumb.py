@@ -1380,3 +1380,83 @@ def test_shutdown_io_pool_stops_the_threads_and_a_new_pool_is_made_on_demand():
     photo_thumb.shutdown_io_pool()  # nothing running: a no-op
     assert photo_thumb._io_executor() is not pool
     photo_thumb.shutdown_io_pool()
+
+
+def _rewrite(path: Path, size: tuple[int, int]) -> None:
+    """Rewrite ``path`` in place with new bytes and a later mtime."""
+    st = path.stat()
+    _jpeg(path, size)
+    os.utime(path, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+
+
+class TestSourceRewrittenDuringDecode:
+    """3.4 / M1-1: bytes decoded after a rewrite are never stored under the old key."""
+
+    def _rewriting_decode(self, src: Path):
+        real = photo_thumb._decode
+
+        def decode(*a, **k):
+            out = real(*a, **k)
+            _rewrite(src, (640, 480))
+            return out
+
+        return decode
+
+    def test_make_set_skips_the_write(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (1200, 900))
+        root = tmp_path / "c"
+        with patch.object(photo_thumb, "_decode", self._rewriting_decode(src)):
+            res = photo_thumb.make_set(src, "a.jpg", (160, 320), root)
+        assert res.written == {} and res.reason == "unavailable"
+        assert not root.exists() or not any(root.glob("*.webp"))
+
+    def test_thumbnail_skips_the_write(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (1200, 900))
+        root = tmp_path / "c"
+        with patch.object(photo_thumb, "_decode", self._rewriting_decode(src)):
+            out = _run(photo_thumb.thumbnail_with_token(src, "a.jpg", 160, root))
+        assert out is None
+        assert not root.exists() or not any(root.glob("*.webp"))
+
+    def test_route_in_place_rewrite_old_v_is_no_cache_new_v_is_immutable(self, archive):
+        """M1-6: after an in-place rewrite the old ``v`` never gets ``immutable``."""
+        src = _jpeg(archive / "picture" / "1.jpg", (900, 900))
+        st = src.stat()
+        old_v = photo_thumb.version_token(st.st_size, st.st_mtime_ns)
+        first = client.get(f"{URL}/picture/1.jpg?w=160&v={old_v}")
+        assert first.headers["cache-control"] == "private, max-age=31536000, immutable"
+        _rewrite(src, (600, 300))
+        st = src.stat()
+        new_v = photo_thumb.version_token(st.st_size, st.st_mtime_ns)
+        assert new_v != old_v
+        stale = client.get(f"{URL}/picture/1.jpg?w=160&v={old_v}")
+        assert stale.status_code == 200
+        assert stale.headers["cache-control"] == "private, no-cache"
+        assert stale.headers["etag"] != first.headers["etag"]
+        fresh = client.get(f"{URL}/picture/1.jpg?w=160&v={new_v}")
+        assert fresh.headers["cache-control"] == "private, max-age=31536000, immutable"
+        assert fresh.content == stale.content
+        with Image.open(io.BytesIO(fresh.content)) as img:
+            assert img.size == (160, 80)
+
+    def test_a_source_deleted_during_the_decode_writes_nothing(self, tmp_path):
+        src = _jpeg(tmp_path / "a.jpg", (1200, 900))
+        root = tmp_path / "c"
+        st = src.stat()
+        real = photo_thumb._decode
+
+        def decode(*a, **k):
+            out = real(*a, **k)
+            src.unlink()
+            return out
+
+        with patch.object(photo_thumb, "_decode", decode):
+            made = photo_thumb.make(
+                src,
+                root / "x.webp",
+                160,
+                root,
+                key_stat=(st.st_size, st.st_mtime_ns),
+            )
+        assert made is None
+        assert not (root / "x.webp").exists()

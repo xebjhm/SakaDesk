@@ -591,6 +591,22 @@ def _store(
     return target, True
 
 
+def _changed_since(source: Path, stat: tuple[int, int]) -> bool:
+    """True if ``source`` no longer has ``(size, mtime_ns)`` (rewritten or gone). Blocking.
+
+    Logged as ``memories_skip reason=changed``: the bytes just decoded may be
+    the new file's, so they must not be stored under the key of the old one.
+    """
+    try:
+        st = source.stat()
+        changed = (st.st_size, st.st_mtime_ns) != stat
+    except OSError:
+        changed = True
+    if changed:
+        _skip("changed")
+    return changed
+
+
 def make(
     source: Path,
     target: Path,
@@ -599,15 +615,21 @@ def make(
     cap: int = CACHE_CAP_BYTES,
     fmt: str = FORMAT_WEBP,
     formats: tuple[str, ...] | None = None,
+    key_stat: tuple[int, int] | None = None,
 ) -> Path | None:
     """Render ``source`` into ``target``; ``None`` on any failure. Blocking; never raises.
 
     ``formats`` narrows the decoder allowlist (default :func:`picture_formats`).
+    ``key_stat`` is the source ``(size, mtime_ns)`` that ``target`` is keyed
+    by: when given, the source is stat-ed again after the decode and nothing
+    is written if it changed meanwhile (``None``).
     """
     try:
         img = _render(source, width, formats)
     except Exception as e:  # noqa: BLE001 - untrusted input: any failure is a skip
         _decode_failure(e)
+        return None
+    if key_stat is not None and _changed_since(source, key_stat):
         return None
     return _store(img, root, target, cap, fmt)[0]
 
@@ -671,8 +693,10 @@ def make_set(
     ``key_stat`` overrides the ``(size, mtime_ns)`` the variants are keyed by
     (and :attr:`SetResult.stat`): a video's variants are rendered from its
     poster but keyed by the **video's** stat, the key the route looks up.
-    The source is still stat-ed (a missing one is ``unavailable``).
-    Blocking; never raises.
+    The source is still stat-ed (a missing one is ``unavailable``), and
+    stat-ed again after the decode: a source rewritten meanwhile writes
+    nothing (``unavailable``, logged ``reason=changed``), so new bytes are
+    never stored under the old key. Blocking; never raises.
     """
     try:
         return _make_set(
@@ -716,6 +740,9 @@ def _make_set(
         )
     except Exception as e:  # noqa: BLE001 - untrusted input: any failure is a skip
         return _failed_set(_decode_failure(e), stat, present)
+    if _changed_since(source, (st.st_size, st.st_mtime_ns)):
+        # Rewritten during the decode: retried later under its new key.
+        return _failed_set("unavailable", stat, present)
     placeholder = placeholder_of(img)
     written: dict[int, Path] = {}
     for w in missing:
@@ -844,8 +871,18 @@ async def thumbnail_with_token(
                 return None
             source, formats = poster, ("WEBP",)
         logger.debug("photo_thumb_cache", outcome="miss", width=width)
+        # A picture is re-stat-ed after the decode (a poster is keyed by the
+        # video's stat, and is replaced only atomically with its own key).
         made = await run_io(
-            make, source, target, width, root, cap, FORMAT_WEBP, formats
+            make,
+            source,
+            target,
+            width,
+            root,
+            cap,
+            FORMAT_WEBP,
+            formats,
+            None if video else stat,
         )
     return None if made is None else ThumbResult(made, token)
 
