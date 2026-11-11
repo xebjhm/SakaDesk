@@ -11,6 +11,11 @@ Reads of archive files go through :func:`read_archive_json` and
 :func:`archive_file_ok`, which resolve symlinks and require the file to stay
 inside the output directory.
 
+:func:`is_plain_relative` is the lexical gate every client path passes before
+anything resolves it: on Windows a rooted, drive or UNC path joined to a base
+replaces the base, and resolving ``//host/share`` would open an SMB
+connection (leaking the user's NTLM hash) before any containment check.
+
 :func:`media_disk_path` is the one translation of a media-route path
 (``<service id>/<rest>``) to its on-disk path (``<display name>/<rest>``),
 shared by the media route and :func:`classify_media_route` (which maps a whole
@@ -22,7 +27,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from datetime import datetime
-from pathlib import Path
+from pathlib import Path, PurePosixPath, PureWindowsPath
 from typing import Literal
 from urllib.parse import quote, unquote, urlsplit
 
@@ -45,16 +50,45 @@ class _Missing:
 MISSING = _Missing()
 
 
+def is_plain_relative(path: str) -> bool:
+    """True if ``path`` is a plain relative path that cannot replace a base it is joined to.
+
+    Lexical only (never touches the filesystem), and the same on every
+    platform. False when the path has a Windows drive or root
+    (``C:x``, ``C:/x``, ``\\\\host\\share``), is POSIX-absolute, starts
+    with ``/`` or ``\\``, has an empty segment before its last
+    (``a//host/share``), or has a ``:`` anywhere (a drive or an alternate data
+    stream). ``"."``, ``""`` and a trailing separator are plain.
+    """
+    if path.startswith(("/", "\\")) or ":" in path:
+        return False
+    win = PureWindowsPath(path)
+    if win.drive or win.root or PurePosixPath(path).is_absolute():
+        return False
+    segments = path.replace("\\", "/").split("/")
+    return all(segments[:-1]) or segments == [""]
+
+
 def resolve_within(output_dir: Path, path: Path) -> Path:
     """Resolved ``path`` if it stays inside ``output_dir`` (symlinks followed).
 
-    Raises :class:`ArchiveReadError` otherwise. Nothing about the path is put in
-    the error.
+    ``path`` may be absolute (a server-built archive path). It must lie
+    lexically under ``output_dir`` (as given or resolved) and its part below it
+    must be :func:`is_plain_relative`; both are checked before ``path`` is
+    resolved. Raises :class:`ArchiveReadError` otherwise. Nothing about the
+    path is put in the error.
     """
     from backend.api.content import validate_path_within_dir
 
     try:
-        return validate_path_within_dir(output_dir, str(path))
+        if path.is_absolute():
+            try:
+                rel = path.relative_to(output_dir)
+            except ValueError:
+                rel = path.relative_to(output_dir.resolve())
+        else:
+            rel = path
+        return validate_path_within_dir(output_dir, rel.as_posix())
     except (HTTPException, OSError, ValueError, RuntimeError):
         raise ArchiveReadError("outside output dir") from None
 
@@ -132,7 +166,8 @@ def classify_media_route(
 
     - ``"invalid"``: not such a URL (another route, an absolute or
       cross-origin URL, an unknown service, an empty ``rest``, control
-      characters);
+      characters, or a ``rest`` that is not :func:`is_plain_relative`, which
+      is checked before anything is resolved);
     - ``"outside"``: it resolves outside the service folder or the output
       dir (traversal, a symlink out, or the folder itself).
 
@@ -152,7 +187,7 @@ def classify_media_route(
     if service is None:
         return "invalid"
     display_name, rest = disk_path.split("/", 1)
-    if not rest:
+    if not rest or not is_plain_relative(rest):
         return "invalid"
     try:
         base = output_dir.resolve()

@@ -63,6 +63,7 @@ from backend.services import (
 from backend.services.archive_urls import (
     ArchiveReadError,
     archive_file_ok,
+    is_plain_relative,
     media_disk_path,
 )
 from backend.services.media_range import MediaFileResponse
@@ -80,9 +81,18 @@ DEFAULT_OUTPUT_DIR = get_default_output_dir()
 
 
 def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
-    """Validate that a user-provided path stays within the base directory."""
+    """Validate that a user-provided path stays within the base directory.
+
+    Raises 400 for control characters, and 403 for a path that is not
+    ``archive_urls.is_plain_relative`` (rooted, drive, UNC or with a ``:``),
+    checked before anything is resolved, or that resolves (symlinks
+    followed) outside ``base_dir``. Returns the resolved path.
+    """
     if "\x00" in user_path or "\n" in user_path or "\r" in user_path:
         raise HTTPException(status_code=400, detail="Invalid path characters")
+    if not is_plain_relative(user_path):
+        logger.warning("path_rooted_blocked")
+        raise HTTPException(status_code=403, detail="Access denied")
 
     base_resolved = base_dir.resolve()
     target_path = (base_dir / user_path).resolve()
