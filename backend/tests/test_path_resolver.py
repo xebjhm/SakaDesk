@@ -192,10 +192,12 @@ def test_archive_checks_survive_a_transient_settings_failure(settings):
     pic.write_bytes(b"\xff\xd8\xff")
     mf = pic.relative_to(sdir).as_posix()
     with patch("backend.services.platform.get_settings_path", return_value=path):
-        assert album_colors._stat_keys(sdir, [mf])[mf] is not None
+        keys, transient = album_colors._stat_keys(sdir, [mf])
+        assert keys[mf] is not None and transient == 0
         with (
             patch.object(path_resolver, "_read_settings", side_effect=PermissionError),
             capture_logs() as logs,
         ):
-            assert album_colors._stat_keys(sdir, [mf])[mf] is not None
+            keys, transient = album_colors._stat_keys(sdir, [mf])
+            assert keys[mf] is not None and transient == 0
     assert not [e for e in logs if e["event"] == "path_traversal_blocked"]

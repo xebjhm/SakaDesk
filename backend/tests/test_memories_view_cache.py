@@ -141,3 +141,29 @@ async def test_unserialisable_payload_is_returned_uncached(sdir, payload):
     assert len(calls) == 2  # nothing was stored
     assert outcomes(logs) == ["unserialisable", "unserialisable"]
     assert not [e for e in logs if e["event"] == "memories_view_cache_failed"]
+
+
+@pytest.mark.asyncio
+async def test_a_transient_build_is_returned_but_never_stored(sdir):
+    """A view built from a transient failure (e.g. probes that could not read the
+    archive) must not be cached: the next open builds it again."""
+    calls = []
+
+    async def build():
+        calls.append(1)
+        if len(calls) == 1:
+            return vc.Uncacheable({"colors": {}}, "probe_unavailable")
+        return {"colors": {"2024-09": "#aa0000"}}
+
+    with capture_logs() as logs:
+        assert await vc.cached_view(sdir, "album_colors", "k", "h", build) == {
+            "colors": {}
+        }
+        assert await vc.cached_view(sdir, "album_colors", "k", "h", build) == {
+            "colors": {"2024-09": "#aa0000"}
+        }
+        await vc.cached_view(sdir, "album_colors", "k", "h", build)
+    assert len(calls) == 2
+    assert outcomes(logs) == ["transient", "miss", "hit"]
+    ev = next(e for e in logs if e["event"] == "memories_view_cache")
+    assert ev["reason"] == "probe_unavailable"

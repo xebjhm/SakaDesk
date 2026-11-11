@@ -15,8 +15,13 @@ a non-null ``text``, ``caption``, ``sentence``, ``segments`` (transcript
 segments) or ``note`` (capsule note body) (``outcome=uncacheable``).
 
 Every read logs ``memories_view_cache`` with ``view`` and ``outcome``
-(``hit`` / ``miss`` / ``uncacheable`` / ``unserialisable``; the last one is a
-payload that is not strict JSON, returned uncached instead of failing). The key is never logged: it may be
+(``hit`` / ``miss`` / ``uncacheable`` / ``unserialisable`` / ``transient``;
+``unserialisable`` is a payload that is not strict JSON, returned uncached
+instead of failing). A ``build`` that hit a transient failure (an archive
+file it could not read just now) returns :class:`Uncacheable`: its payload is
+served but never stored (``outcome=transient``, ``reason``), so the next open
+builds the view again instead of serving the degraded one until the data
+changes. The key is never logged: it may be
 derived from room folders. SQLite errors are logged
 (``memories_view_cache_failed``, ``op=read|write``) and never raise.
 """
@@ -29,6 +34,7 @@ import hashlib
 import json
 import sqlite3
 from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -44,6 +50,17 @@ _SCHEMA = (
     "PRIMARY KEY(service_dir, view, key)) WITHOUT ROWID"
 )
 _TEXT_KEYS = ("text", "caption", "sentence", "segments", "note")
+
+
+@dataclass(frozen=True)
+class Uncacheable:
+    """A build result to serve but not store: it was degraded by a transient failure.
+
+    ``reason`` is a code (logged), never a path.
+    """
+
+    payload: dict
+    reason: str
 
 
 def view_hash(*parts: object) -> str:
@@ -118,11 +135,12 @@ async def cached_view(
     view: str,
     key: str,
     data_hash: str,
-    build: Callable[[], Awaitable[dict]],
+    build: Callable[[], Awaitable[dict | Uncacheable]],
 ) -> dict:
     """The payload of ``view`` / ``key`` for ``sdir``: cached, or built and stored.
 
-    On a miss ``build()`` is awaited; its payload is stored unless it contains
+    On a miss ``build()`` is awaited; an :class:`Uncacheable` result is returned
+    unstored (``outcome=transient``). Otherwise its payload is stored unless it contains
     text (see the module docstring) or cannot be serialised as strict JSON
     (``outcome=unserialisable``; the built payload is still returned). The DB
     is read and written, and the text check walks the payload, in a worker.
@@ -132,7 +150,13 @@ async def cached_view(
     if hit is not None:
         logger.info("memories_view_cache", view=view, outcome="hit")
         return hit
-    payload = await build()
+    built = await build()
+    if isinstance(built, Uncacheable):
+        logger.info(
+            "memories_view_cache", view=view, outcome="transient", reason=built.reason
+        )
+        return built.payload
+    payload = built
     if await asyncio.to_thread(contains_text, payload):
         logger.warning("memories_view_cache", view=view, outcome="uncacheable")
         return payload
@@ -151,4 +175,4 @@ async def cached_view(
     return payload
 
 
-__all__ = ["cached_view", "contains_text", "view_hash"]
+__all__ = ["Uncacheable", "cached_view", "contains_text", "view_hash"]

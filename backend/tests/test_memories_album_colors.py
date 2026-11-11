@@ -577,3 +577,99 @@ async def test_ribbon_recolours_after_media_repair(svc, monkeypatch):
     os.utime(room / "picture", ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
     again = await ac.month_colors_for(SERVICE, svc, None)
     assert is_reddish(again["colors"]["2024-09"])
+
+
+# --- a transient probe failure never poisons the cached ribbon -------------------------
+
+
+@pytest.mark.asyncio
+async def test_probes_count_transient_failures(svc, monkeypatch, tmp_path):
+    jpeg(svc / ROOM / "picture" / "1.jpg", RED)
+    rel = f"{ROOM}/picture/1.jpg"
+    absent = f"{ROOM}/picture/absent.jpg"
+    got = await ac.probes(svc, [rel, absent])
+    assert got.transient == 0  # an absent file is a real answer
+    monkeypatch.setattr(people, "output_dir", lambda: tmp_path / "elsewhere")
+    with capture_logs() as logs:
+        got = await ac.probes(svc, [rel])
+    assert got == {rel: None} and got.transient == 1
+    (log,) = [e for e in logs if e["event"] == "memories_album_probe"]
+    assert log["transient"] == 1
+    assert (await ac.probes(svc, [])).transient == 0
+
+
+@pytest.mark.asyncio
+async def test_ribbon_built_during_a_settings_race_is_not_cached(
+    svc, monkeypatch, tmp_path
+):
+    """The 05:15:20Z incident: the output dir read as the default for a moment,
+    every sample looked outside it, and the empty ribbon was cached for good."""
+    from backend.services.memories import oshi as oshi_mod
+
+    async def no_oshi(service):
+        return set()
+
+    monkeypatch.setattr(oshi_mod, "oshi_names", no_oshi)
+    room = _ribbon_room(svc, [pic(1, "2024-09-01T03:00:00Z")])
+    jpeg(room / "picture" / "1.jpg", RED)
+    out = people.output_dir()
+    monkeypatch.setattr(people, "output_dir", lambda: tmp_path / "default")
+    with capture_logs() as logs:
+        first = await ac.month_colors_for(SERVICE, svc, None)
+    assert first == {"colors": {"2024-09": None}}
+    assert [e["outcome"] for e in logs if e["event"] == "memories_view_cache"] == [
+        "transient"
+    ]
+    monkeypatch.setattr(people, "output_dir", lambda: out)
+    again = await ac.month_colors_for(SERVICE, svc, None)  # the next open heals
+    assert is_reddish(again["colors"]["2024-09"])
+
+
+@pytest.mark.asyncio
+async def test_a_ribbon_poisoned_before_the_fix_heals_on_the_next_open(
+    svc, monkeypatch
+):
+    """Entries cached under the old COLORS_VERSION are never served again."""
+    from backend.services.memories import oshi as oshi_mod
+
+    async def no_oshi(service):
+        return set()
+
+    monkeypatch.setattr(oshi_mod, "oshi_names", no_oshi)
+    room = _ribbon_room(svc, [pic(1, "2024-09-01T03:00:00Z")])
+    jpeg(room / "picture" / "1.jpg", RED)
+    assert ac.COLORS_VERSION == 3
+    with monkeypatch.context() as m:  # what a pre-fix build stored
+        m.setattr(ac, "COLORS_VERSION", 2)
+
+        async def poisoned(*a, **k):
+            return ac.Probes({}, transient=0)
+
+        m.setattr(ac, "probes", poisoned)
+        stale = await ac.month_colors_for(SERVICE, svc, None)
+    assert stale == {"colors": {"2024-09": None}}
+    healed = await ac.month_colors_for(SERVICE, svc, None)
+    assert is_reddish(healed["colors"]["2024-09"])
+
+
+@pytest.mark.asyncio
+async def test_month_colors_status_reports_a_transient_build(
+    svc, monkeypatch, tmp_path
+):
+    from backend.services.memories import oshi as oshi_mod
+
+    async def no_oshi(service):
+        return set()
+
+    monkeypatch.setattr(oshi_mod, "oshi_names", no_oshi)
+    room = _ribbon_room(svc, [pic(1, "2024-09-01T03:00:00Z")])
+    jpeg(room / "picture" / "1.jpg", RED)
+    out = people.output_dir()
+    monkeypatch.setattr(people, "output_dir", lambda: tmp_path / "default")
+    _, transient = await ac.month_colors_status(SERVICE, svc, None)
+    assert transient is True
+    monkeypatch.setattr(people, "output_dir", lambda: out)
+    body, transient = await ac.month_colors_status(SERVICE, svc, None)
+    assert transient is False and is_reddish(body["colors"]["2024-09"])
+    body, transient = await ac.month_colors_status(SERVICE, svc, None)  # a hit
+    assert transient is False and is_reddish(body["colors"]["2024-09"])

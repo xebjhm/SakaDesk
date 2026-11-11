@@ -424,9 +424,9 @@ async def test_cassettes_colours_from_month_colours(svc, monkeypatch):
                 "2023-07": None,
                 "2024-01": None,
             }
-        }
+        }, False
 
-    monkeypatch.setattr(album_colors, "month_colors_for", fake)
+    monkeypatch.setattr(album_colors, "month_colors_status", fake)
     body = await radio.radio_cassettes(SERVICE, svc, member=None)
     assert body["cassettes"] == [
         {
@@ -454,7 +454,7 @@ async def test_cassettes_without_voices_skip_colours(tmp_path, monkeypatch):
     async def boom(*a):
         raise AssertionError("not needed without voices")
 
-    monkeypatch.setattr(album_colors, "month_colors_for", boom)
+    monkeypatch.setattr(album_colors, "month_colors_status", boom)
     with capture_logs() as logs:
         assert await radio.radio_cassettes(SERVICE, sdir, member=None) == {
             "cassettes": []
@@ -468,13 +468,35 @@ async def test_cassette_colour_fills_in_when_pictures_arrive(svc, monkeypatch):
     colors: dict[str, str | None] = {"2023-05": None}
 
     async def fake(service, sdir, member):
-        return {"colors": dict(colors)}
+        return {"colors": dict(colors)}, False
 
-    monkeypatch.setattr(album_colors, "month_colors_for", fake)
+    monkeypatch.setattr(album_colors, "month_colors_status", fake)
     first = await radio.radio_cassettes(SERVICE, svc, member=None)
     assert first["cassettes"][0]["color"] is None
     colors["2023-05"] = "#336699"
     (svc / ROOM_A / "picture").mkdir()  # media repair adds the pictures
+    again = await radio.radio_cassettes(SERVICE, svc, member=None)
+    assert again["cassettes"][0]["color"] == "#336699"
+
+
+@pytest.mark.asyncio
+async def test_cassettes_from_transient_colours_are_not_cached(svc, monkeypatch):
+    """A ribbon degraded by unreadable probes must not freeze the tape colours."""
+    state = {"transient": True}
+
+    async def fake(service, sdir, member):
+        if state["transient"]:
+            return {"colors": {"2023-05": None}}, True
+        return {"colors": {"2023-05": "#336699"}}, False
+
+    monkeypatch.setattr(album_colors, "month_colors_status", fake)
+    with capture_logs() as logs:
+        first = await radio.radio_cassettes(SERVICE, svc, member=None)
+    assert first["cassettes"][0]["color"] is None
+    assert "transient" in [
+        e["outcome"] for e in logs if e["event"] == "memories_view_cache"
+    ]
+    state["transient"] = False
     again = await radio.radio_cassettes(SERVICE, svc, member=None)
     assert again["cassettes"][0]["color"] == "#336699"
 

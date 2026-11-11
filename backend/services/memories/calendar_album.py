@@ -53,7 +53,7 @@ from backend.services.memories import album, album_colors, people
 from backend.services.memories import index as mi
 from backend.services.memories.facts import Fact
 from backend.services.memories.timeline import MONTH_RE, month_of
-from backend.services.memories.view_cache import cached_view, view_hash
+from backend.services.memories.view_cache import Uncacheable, cached_view, view_hash
 
 logger = structlog.get_logger(__name__)
 
@@ -194,16 +194,20 @@ async def calendar_month(
         sorted(oshi_rooms),
     )
 
-    async def build() -> dict:
+    async def build() -> dict | Uncacheable:
         tagged = await people.scope_facts(sdir, persons)
         owners = {r: people.person_key(s) for s in persons for r in s.member_dirs}
         members, cands = await asyncio.to_thread(_bucket, tagged, month, owners)
         found = await album.consulted_probes(sdir, cands, {}, oshi_rooms)
         shot = album.screenshot_fn(found)
         chosen = await asyncio.to_thread(_choose, cands, oshi_rooms, shot)
-        return await asyncio.to_thread(
+        payload = await asyncio.to_thread(
             _month_payload, service, sdir, month, members, chosen, shot
         )
+        # photo picks from probes that could not read the archive: never cached
+        if found.transient:
+            return Uncacheable(payload, "probe_unavailable")
+        return payload
 
     payload = await cached_view(sdir, VIEW_MONTH, f"{scope}:{month}", data_hash, build)
     logger.info(

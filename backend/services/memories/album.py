@@ -68,7 +68,7 @@ from backend.services.memories import album_colors, covers, people
 from backend.services.memories import index as mi
 from backend.services.memories.facts import Fact
 from backend.services.memories.timeline import MONTH_RE, month_of
-from backend.services.memories.view_cache import cached_view, view_hash
+from backend.services.memories.view_cache import Uncacheable, cached_view, view_hash
 
 logger = structlog.get_logger(__name__)
 
@@ -77,7 +77,9 @@ VIEW_MEMBERS = "album_members"
 VIEW_MONTHS = "album_months"
 VIEW_MONTH = "album_month"
 # Bump on any rule or payload change (the album cache hashes have it).
-ALBUM_VERSION = 5
+# 6: month covers / tints built from transiently unreadable probes are no
+# longer cached; the bump drops any such entry cached before.
+ALBUM_VERSION = 6
 KINDS = frozenset({"all", "picture", "video", "favorite"})
 SCREENSHOT_CHECKS = 3
 BURST_MIN = 3
@@ -275,7 +277,7 @@ async def _avatars_by_room(
     return {r: timelines[people.person_key(owners[r])] for r in rooms}
 
 
-_Probes = dict[str, album_colors.ImageProbe | None]
+_Probes = album_colors.Probes
 
 
 def _picture_file(f: Fact) -> str | None:
@@ -392,7 +394,7 @@ async def album_months(
         sorted(overrides.items()),
     )
 
-    async def build() -> dict:
+    async def build() -> dict | Uncacheable:
         tagged = await people.scope_facts(sdir, persons, types=people.MEDIA_TYPES)
         months = await asyncio.to_thread(_by_month, tagged, kind)
         found = await consulted_probes(sdir, months, overrides, oshi_rooms)
@@ -405,12 +407,17 @@ async def album_months(
             for (_, f), _ in chosen.values()
             if (mf := _picture_file(f)) is not None and mf not in found
         ]
-        found.update(await album_colors.probes(sdir, extra))
+        more = await album_colors.probes(sdir, extra)
+        transient = found.transient + more.transient
+        found.update(more)
         rooms = {room for (room, _), _ in chosen.values()}
         avatars = await _avatars_by_room(sdir, persons, rooms)
-        return await asyncio.to_thread(
+        payload = await asyncio.to_thread(
             _months_payload, service, sdir, months, chosen, avatars, found
         )
+        # covers and tints from probes that could not read the archive just
+        # now: serve them, never cache them (the next open rebuilds)
+        return Uncacheable(payload, "probe_unavailable") if transient else payload
 
     payload = await cached_view(sdir, VIEW_MONTHS, f"{scope}:{kind}", data_hash, build)
     if texts:

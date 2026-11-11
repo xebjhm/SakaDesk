@@ -204,15 +204,17 @@ async def test_calendar_screenshot_demoted(svc, monkeypatch):
 
     async def fake_probes(sdir, files):
         asked.append(sorted(files))
-        return {
-            f: album_colors.ImageProbe(
-                width=100,
-                height=300 if f == f"{ROOM_A}/picture/2.jpg" else 100,
-                fmt="PNG",
-                rgb=None,
-            )
-            for f in files
-        }
+        return album_colors.Probes(
+            {
+                f: album_colors.ImageProbe(
+                    width=100,
+                    height=300 if f == f"{ROOM_A}/picture/2.jpg" else 100,
+                    fmt="PNG",
+                    rgb=None,
+                )
+                for f in files
+            }
+        )
 
     monkeypatch.setattr(album_colors, "probes", fake_probes)
     d14 = by_date(await month(svc))["2024-09-14"]
@@ -293,3 +295,28 @@ async def test_calendar_rebuilds_when_media_arrive(svc):
     assert [e["outcome"] for e in logs if e["event"] == "memories_view_cache"] == [
         "miss"
     ]
+
+
+@pytest.mark.asyncio
+async def test_calendar_month_with_transient_probes_is_not_cached(svc, monkeypatch):
+    real = album_colors.probes
+
+    async def unavailable(sdir, files):
+        return album_colors.Probes({f: None for f in files}, transient=len(files))
+
+    monkeypatch.setattr(album_colors, "probes", unavailable)
+    with capture_logs() as logs:
+        await month(svc)
+    outs = [e["outcome"] for e in logs if e["event"] == "memories_view_cache"]
+    assert "transient" in outs
+    monkeypatch.setattr(album_colors, "probes", real)
+    with capture_logs() as logs:
+        await month(svc)
+        await month(svc)
+    outs = [
+        e["outcome"]
+        for e in logs
+        if e["event"] == "memories_view_cache"
+        and e["view"] == calendar_album.VIEW_MONTH
+    ]
+    assert outs == ["miss", "hit"]

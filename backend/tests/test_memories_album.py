@@ -369,7 +369,7 @@ async def test_album_months_screenshot_demoted(svc, monkeypatch):
             out[f] = ac.ImageProbe(
                 width=100, height=300 if tall else 100, fmt="PNG", rgb=None
             )
-        return out
+        return ac.Probes(out)
 
     monkeypatch.setattr(ac, "probes", fake_probes)
     a = await person(svc, ROOM_A)
@@ -586,3 +586,32 @@ async def test_warm_album_never_raises(svc, monkeypatch):
         await album.warm_album(SERVICE, svc)
     (ev,) = [e for e in logs if e["event"] == "memories_album_warm_failed"]
     assert ev["error_type"] == "RuntimeError"
+
+
+@pytest.mark.asyncio
+async def test_album_months_with_transient_probes_is_not_cached(svc, monkeypatch):
+    """A cover choice / tint made while probes could not read the archive is
+    served once and rebuilt on the next open (never cached)."""
+    from backend.services.memories import album_colors
+
+    assert album.ALBUM_VERSION == 6  # entries cached before the fix are dropped
+    real = album_colors.probes
+
+    async def unavailable(sdir, files):
+        return album_colors.Probes({f: None for f in files}, transient=len(files))
+
+    monkeypatch.setattr(album_colors, "probes", unavailable)
+    with capture_logs() as logs:
+        await album.album_months(SERVICE, svc, member=None, kind="all")
+    assert "transient" in [
+        e["outcome"] for e in logs if e["event"] == "memories_view_cache"
+    ]
+    monkeypatch.setattr(album_colors, "probes", real)
+    with capture_logs() as logs:
+        await album.album_months(SERVICE, svc, member=None, kind="all")
+        await album.album_months(SERVICE, svc, member=None, kind="all")
+    assert [
+        e["outcome"]
+        for e in logs
+        if e["event"] == "memories_view_cache" and e["view"] == album.VIEW_MONTHS
+    ] == ["miss", "hit"]

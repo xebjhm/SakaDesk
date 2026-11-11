@@ -53,7 +53,7 @@ from collections import Counter
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
-from typing import BinaryIO, cast
+from typing import Any, BinaryIO, cast
 
 import structlog
 from PIL import Image
@@ -63,14 +63,16 @@ from backend.services.photo_thumb import picture_formats
 from backend.services.memories import index as mi
 from backend.services.memories import people
 from backend.services.memories.facts import Fact
-from backend.services.memories.view_cache import cached_view, view_hash
+from backend.services.memories.view_cache import Uncacheable, cached_view, view_hash
 
 logger = structlog.get_logger(__name__)
 
 VIEW = "album_color"
 VIEW_COLORS = "album_colors"
 # Bump on any rule or payload change of the ribbon (its cache hash has it).
-COLORS_VERSION = 2
+# 3: ribbons built from transiently unreadable probes are no longer cached;
+# the bump drops any such entry cached before (they heal on the next open).
+COLORS_VERSION = 3
 MONTH_SAMPLE = 8
 PROBE_BATCH_DEFAULT = 64
 PROBE_BATCH = PROBE_BATCH_DEFAULT
@@ -199,10 +201,20 @@ def probe_image(path: Path) -> ImageProbe | None:
 # --- probe cache --------------------------------------------------------------------
 
 
-def _stat_keys(sdir: Path, media_files: Sequence[str]) -> dict[str, str | None]:
-    """``media_file -> stat_key``, ``None`` for absent / outside / unreadable. Blocking."""
+def _stat_keys(
+    sdir: Path, media_files: Sequence[str]
+) -> tuple[dict[str, str | None], int]:
+    """``media_file -> stat_key`` (``None`` for absent / outside / unreadable) and
+    the count that failed transiently. Blocking.
+
+    An absent file is a real answer. A file outside the output dir or one
+    that cannot be stat'ed is counted transient: a settings read that failed
+    for a moment (the output dir then reads as the default) or a held file
+    looks exactly like that, so a view built from it must not be cached.
+    """
     root = people.output_dir()
     out: dict[str, str | None] = {}
+    transient = 0
     for mf in media_files:
         path = sdir / mf
         try:
@@ -212,9 +224,10 @@ def _stat_keys(sdir: Path, media_files: Sequence[str]) -> dict[str, str | None]:
             st = path.stat()
         except (ArchiveReadError, OSError):
             out[mf] = None
+            transient += 1
             continue
         out[mf] = f"{st.st_size}:{st.st_mtime_ns}"
-    return out
+    return out, transient
 
 
 def _rgb_to_int(rgb: RGB | None) -> int | None:
@@ -295,16 +308,32 @@ def _probe_batch(paths: Sequence[Path]) -> list[tuple[ImageProbe | None, bool]]:
     return [_probe_image(p) for p in paths]
 
 
-async def probes(sdir: Path, media_files: list[str]) -> dict[str, ImageProbe | None]:
-    """``media_file -> probe`` (``None`` when absent, outside, or unreadable), cached."""
+class Probes(dict[str, "ImageProbe | None"]):
+    """:func:`probes`' result: ``media_file -> probe`` plus ``transient``.
+
+    ``transient`` counts files that could not be checked or read just now
+    (outside the output dir, unstat-able, held). A view built from a result
+    with ``transient > 0`` must not be cached (``view_cache.Uncacheable``).
+    """
+
+    def __init__(self, *args: Any, transient: int = 0) -> None:
+        super().__init__(*args)
+        self.transient = transient
+
+
+async def probes(sdir: Path, media_files: list[str]) -> Probes:
+    """``media_file -> probe`` (``None`` when absent, outside, or unreadable), cached.
+
+    The result's ``transient`` counts the transient failures (see :class:`Probes`).
+    """
     if not media_files:
-        return {}
+        return Probes()
     files = list(dict.fromkeys(media_files))
     service_dir = str(sdir)
-    keys = await asyncio.to_thread(_stat_keys, sdir, files)
+    keys, transient = await asyncio.to_thread(_stat_keys, sdir, files)
     present = [mf for mf in files if keys[mf] is not None]
     rows = await asyncio.to_thread(_read_rows, service_dir, present)
-    out: dict[str, ImageProbe | None] = {mf: None for mf in files}
+    out = Probes({mf: None for mf in files})
     misses: list[str] = []
     for mf in present:
         row = rows.get(mf)
@@ -322,6 +351,8 @@ async def probes(sdir: Path, media_files: list[str]) -> dict[str, ImageProbe | N
             failed += probe is None
             if cacheable:  # a transient failure is retried next time
                 fresh.append((mf, keys[mf] or "", probe))
+            else:
+                transient += 1
     if fresh:
         await asyncio.to_thread(_write_rows, service_dir, fresh)
     logger.info(
@@ -330,7 +361,9 @@ async def probes(sdir: Path, media_files: list[str]) -> dict[str, ImageProbe | N
         probed=len(misses),
         failed=failed,
         missing=len(files) - len(present),
+        transient=transient,
     )
+    out.transient = transient
     return out
 
 
@@ -393,12 +426,25 @@ async def month_colors_for(
     ``service`` is unused (the ribbon has no URLs); it keeps the signature
     uniform with the other album services.
     """
+    return (await month_colors_status(service, sdir, member))[0]
+
+
+async def month_colors_status(
+    service: str, sdir: Path, member: mi.MemberSummary | None
+) -> tuple[dict, bool]:
+    """:func:`month_colors_for` and whether it was built from transient probe failures.
+
+    A transient ribbon is not cached here; a caller that folds it into its
+    own cached view (radio cassettes) must not cache that view either.
+    """
+    transient = False
     persons, scope, hashes = await people.album_scope(sdir, member)
     data_hash = view_hash(
         COLORS_VERSION, hashes, await people.media_dir_mtimes(sdir, persons)
     )
 
-    async def build() -> dict:
+    async def build() -> dict | Uncacheable:
+        nonlocal transient
         tagged = await people.scope_facts(sdir, persons, types=people.MEDIA_TYPES)
         samples = await asyncio.to_thread(_month_samples, tagged)
         found = await probes(sdir, [mf for files in samples.values() for mf in files])
@@ -415,17 +461,23 @@ async def month_colors_for(
             months=len(colors),
             colored=sum(1 for c in colors.values() if c is not None),
         )
+        if found.transient:
+            transient = True
+            return Uncacheable({"colors": colors}, "probe_unavailable")
         return {"colors": colors}
 
-    return await cached_view(sdir, VIEW_COLORS, scope, data_hash, build)
+    payload = await cached_view(sdir, VIEW_COLORS, scope, data_hash, build)
+    return payload, transient
 
 
 __all__ = [
     "ImageProbe",
+    "Probes",
     "hex_of",
     "is_screenshot_like",
     "month_color",
     "month_colors_for",
+    "month_colors_status",
     "probe_image",
     "probes",
 ]

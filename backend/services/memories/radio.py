@@ -88,7 +88,7 @@ from backend.services.memories import transcripts
 from backend.services.memories.facts import Fact
 from backend.services.memories.lexicon import GREETING_RES
 from backend.services.memories.selection import JST, normalize
-from backend.services.memories.view_cache import cached_view, view_hash
+from backend.services.memories.view_cache import Uncacheable, cached_view, view_hash
 
 logger = structlog.get_logger(__name__)
 
@@ -469,15 +469,17 @@ async def radio_cassettes(
         album_colors.COLORS_VERSION,
     )
 
-    async def build() -> dict:
+    async def build() -> dict | Uncacheable:
         by_year: dict[int, list[Fact]] = {}
         for _, f in _voices(await people.scope_facts(sdir, persons)):
             by_year.setdefault(f.jst_date.year, []).append(f)
         colors: dict[str, str | None] = {}
+        transient = False
         if by_year:
-            colors = (await album_colors.month_colors_for(service, sdir, member))[
-                "colors"
-            ]
+            ribbon, transient = await album_colors.month_colors_status(
+                service, sdir, member
+            )
+            colors = ribbon["colors"]
         cassettes = []
         for y in sorted(by_year):
             rgbs = [
@@ -493,6 +495,8 @@ async def radio_cassettes(
                     "color": album_colors.month_color(rgbs),
                 }
             )
+        if transient:  # tape colours from a degraded ribbon: never cached
+            return Uncacheable({"cassettes": cassettes}, "probe_unavailable")
         return {"cassettes": cassettes}
 
     body = await cached_view(sdir, VIEW_CASSETTES, scope, data_hash, build)
