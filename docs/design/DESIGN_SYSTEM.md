@@ -470,7 +470,7 @@ Brand moments are for waiting, starting, finishing and looking back
 - **`EmptyState`** (`icon`, `title`, `description`, `action`): a fixed
   pattern. A `bg-expressive-soft` circle (aurora in brand context, group 50 →
   100 in group context) holding a line icon in `text-muted` (the pre-D2 grey), a `font-display` title, one
-  sentence and one action. `DialogStatus` and `BlogStatus` draw their `empty` kind with it (the hint is its sentence, the retry its action); the chat's no-conversation screen uses it too, and so does the Talk sidebar's failed-load state (a `CloudOff` icon, a reassuring sentence and a `secondary` Retry). A meaning icon keeps its own colour (the blog feed's Favorite-filter heart stays oshi).
+  sentence and one action. `StatusBlock` draws its `empty` kind with it (the hint is its sentence, `action` its action); the chat's no-conversation screen uses it too, and so does the Talk sidebar's failed-load state (a `CloudOff` icon, a reassuring sentence and a `secondary` Retry). A meaning icon keeps its own colour (the blog feed's Favorite-filter heart stays oshi).
 - **`Atmosphere`** (`fade`): L2. Three drifting orbs (`bg-expressive-orb-*`,
   `animate-orb-drift-1/2`, `animate-orb-breathe`) behind its children.
   Each orb is a square box (a width plus `aspect-square`, never a separate height),
@@ -591,7 +591,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |
-| Loading, empty, error or timeout of a pane, block or dialog | `StatusBlock` (see "Loading and waiting"); a Memories view reaches it through `MemoriesStatus` (below). `DialogStatus` and `BlogStatus` still exist until the loading-UX wave moves them onto it |
+| Loading, empty, error or timeout of a pane, block or dialog | `StatusBlock` (see "Loading and waiting"); a Memories view reaches it through `MemoriesStatus` (below). It is the only status component: the older per-feature ones are gone |
 | A layout-shaped placeholder while a first load runs | `Skeleton` inside a `StatusBlock` `skeleton` |
 | A small wait that does not gate content (a row, a play control) | `Spinner` after `useDelayedLoading` |
 | A long job, or a known total | `ProgressBar` (indeterminate until the total is known) |
@@ -652,10 +652,9 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
   `ConfirmDialog` (expressive header of its opener's context, the warning / danger / info
   meaning in a semantic icon tile, a `secondary` Cancel where focus starts, then `primary`,
   `warning` or `danger`) and never `window.confirm`, and loading, empty and
-  error states are `DialogStatus` (spinner `text-accent`; the error tile is
-  `bg-semantic-danger-icon`, the empty tile `bg-expressive-soft`; `retryVariant` is
+  error states are `StatusBlock` (`variant="dialog"`; spinner `text-accent`; the error tile is
+  `bg-semantic-danger-icon`, the empty state `EmptyState`; `retryVariant` is
   `secondary` by default and `primary` for the gradient retry the blog dialogs use).
-  `BlogStatus`'s retry is always `primary`.
 
 ### Loading and waiting
 
@@ -746,6 +745,7 @@ Which primitive for which wait:
 | Media playback (video, voice, radio) | `useMediaPlayback` buffering: a `Spinner` on the play control, never a lit "playing" state before sound |
 | Small write (favourite, setting, cover, capsule) | Optimistic UI plus a row `Spinner` after `useDelayedLoading`; revert plus a quiet error |
 | Button-triggered job under about 10 s (login, export PNG, pull) | `Button loading`, with Cancel kept enabled |
+| An action that needs data still loading (the recap share export before its photos) | the button blocked with a `disabledReason` that names the wait (「写真を準備中…」); a cover `Skeleton` plus a revealed `Spinner` over the preview; a per-surface timeout that opens the action without the data and says so in a `text-small text-secondary` status line |
 | Long job (sync, export, upgrade, index build, transcription) | `ProgressBar` (indeterminate until a total is known), phase copy, Cancel |
 | Background work the user did not trigger (hub refresh, search index, blog backup) | `StatusBlock variant="inline"`, never blocking |
 
@@ -1228,8 +1228,9 @@ file may be listed. Use `Spinner` / `StatusBlock` instead. To rewrite it, from
 
     UPDATE_LOADING_BASELINE=1 npx vitest run src/design/guard.test.ts
 
-The loading-UX wave starts it at the current hand-built spinners and ends it
-empty.
+The loading-UX wave started it at the hand-built spinners of the time and
+ended it empty (`{}`); `guard.test.ts` pins that it stays empty, so any new
+hand-built spinner fails the build.
 
 #### The dialog style ratchet
 

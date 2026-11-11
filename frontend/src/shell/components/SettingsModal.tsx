@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useId } from 'react';
-import { Loader2, RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucide-react';
+import { RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
 import { Modal, Button, Switch, Input, Select, Spinner } from '../../design/primitives';
@@ -665,7 +665,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             {t('settings.blogFullBackup')}
                             {blogBackupRunning && (
                                 <span className="flex items-center gap-1 text-caption font-normal text-secondary">
-                                    <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+                                    <Spinner size="sm" tone="muted" decorative />
                                     {blogBackupStats
                                         ? t('settings.blogBackupProgress', { cached: blogBackupStats.cached, total: blogBackupStats.total })
                                         : t('settings.blogBackupWorking')}
@@ -686,7 +686,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <div className="flex items-center justify-between gap-4">
                                 <div className="flex items-center gap-1 text-small text-muted">
                                     {blogSizeLoading
-                                        ? <><Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />{t('settings.blogBackupCalculating')}</>
+                                        ? <><Spinner size="sm" tone="muted" decorative />{t('settings.blogBackupCalculating')}</>
                                         : blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}
                                 </div>
                                 <Button
@@ -694,9 +694,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     size="sm"
                                     className={DANGER_GHOST}
                                     onClick={() => setConfirm('clean')}
-                                    disabled={isClearing}
+                                    loading={isClearing}
                                 >
-                                    {isClearing ? t('common.loading') : t('settings.cleanBlogCache')}
+                                    {t('settings.cleanBlogCache')}
                                 </Button>
                             </div>
                         )}
@@ -864,11 +864,8 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload, saveError }: {
             error={saveError}
         >
             <div className="mt-2 flex items-center gap-3">
-                <Button variant="secondary" size="sm" onClick={handleCheckNow} disabled={checking}>
-                    {checking
-                        ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                        : <RefreshCw className="h-4 w-4" />
-                    }
+                <Button variant="secondary" size="sm" onClick={handleCheckNow} loading={checking}>
+                    <RefreshCw aria-hidden="true" className="h-4 w-4" />
                     {t('settings.checkForUpdates')}
                 </Button>
                 {/* Mounted empty so the result is announced when it arrives. */}
@@ -918,6 +915,8 @@ function AiTab() {
     // Only "loading" when there is nothing cached to show yet (first open / after
     // a restart). Reopens seed from aiConfigCache and render instantly.
     const [configLoading, setConfigLoading] = useState(() => aiConfigCache === null);
+    /** The loading line appears after the 200 ms reveal and stays at least `minVisible`. */
+    const configLoadingShown = useDelayedLoading(configLoading);
 
     useEffect(() => {
         fetch('/api/translation/config')
@@ -1150,11 +1149,8 @@ function AiTab() {
             {showProvider && (
                 <SettingRow label={t('settings.aiProvider')}>
                     <div className="flex flex-col gap-3">
-                        {configLoading && (
-                            <div className="flex items-center gap-2 text-caption text-muted">
-                                <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
-                                {t('common.loading')}
-                            </div>
+                        {configLoadingShown && (
+                            <Spinner size="sm" tone="muted" label={t('common.loading')} labelVisibility="always" />
                         )}
                         <div className="flex flex-col gap-1">
                             <label htmlFor={`${fieldId}-provider`} className={FIELD_LABEL}>{t('translation.settings.provider')}</label>
@@ -1208,9 +1204,9 @@ function AiTab() {
                                         variant="secondary"
                                         size="sm"
                                         onClick={handleTestConnection}
-                                        disabled={testing || (!apiKeyInput && !hasApiKey)}
+                                        loading={testing}
+                                        disabled={!apiKeyInput && !hasApiKey}
                                     >
-                                        {testing && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />}
                                         {t('translation.settings.testConnection')}
                                     </Button>
                                 </div>

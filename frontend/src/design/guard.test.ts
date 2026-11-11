@@ -149,7 +149,7 @@ describe('countLoadingViolations', () => {
 describe('isLoadingScanned', () => {
     it.each([
         ['features/messages/components/MessageList.tsx', true],
-        ['core/common/DialogStatus.tsx', true],
+        ['core/common/InlineTranslation.tsx', true],
         ['design/DesignPage.tsx', true],
         ['design/primitives/Spinner.tsx', false],
         ['design/primitives/Button.tsx', false],
@@ -187,5 +187,10 @@ describe('loading ratchet repository', () => {
     it('has no design-system file in the loading baseline', () => {
         const baseline = JSON.parse(readFileSync(LOADING_BASELINE, 'utf-8')) as Record<string, number>;
         expect(Object.keys(baseline).filter((rel) => rel.startsWith('design/'))).toEqual([]);
+    });
+
+    it('ends the loading-UX wave empty: no hand-built loading indicator is left anywhere (L7)', () => {
+        expect(JSON.parse(readFileSync(LOADING_BASELINE, 'utf-8'))).toEqual({});
+        expect(scanTree(SRC, countLoadingViolations, isLoadingScanned)).toEqual({});
     });
 });
