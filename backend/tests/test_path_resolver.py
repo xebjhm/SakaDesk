@@ -218,3 +218,20 @@ def test_an_exists_check_that_raises_keeps_the_last_output_dir(settings):
         assert path_resolver.output_dir_from_settings(path, Path("/d")) == out
     (event,) = [e for e in logs if e["event"] == "output_dir_settings_unreadable"]
     assert (event["error_type"], event["fallback"]) == ("PermissionError", "last_good")
+
+
+def test_an_emptied_output_dir_forgets_the_last_good_custom_dir(tmp_path):
+    """3.9 / B-M7: after output_dir is cleared, a transient failure serves the default."""
+    import json
+
+    from backend.services import path_resolver
+
+    settings = tmp_path / "settings.json"
+    default = tmp_path / "default"
+    custom = tmp_path / "custom 🌸"
+    settings.write_text(json.dumps({"output_dir": str(custom)}), encoding="utf-8")
+    assert path_resolver.output_dir_from_settings(settings, default) == custom
+    settings.write_text(json.dumps({"output_dir": ""}), encoding="utf-8")
+    assert path_resolver.output_dir_from_settings(settings, default) == default
+    with patch.object(path_resolver, "_read_settings", side_effect=OSError("busy")):
+        assert path_resolver.output_dir_from_settings(settings, default) == default

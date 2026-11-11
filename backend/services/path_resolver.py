@@ -55,6 +55,10 @@ def output_dir_from_settings(settings_path: Path, default: Path) -> Path:
         return last if last is not None else default
     path_str = settings.get("output_dir") if isinstance(settings, dict) else None
     if not path_str:
+        # The last value read is now the default: a later transient failure
+        # must not bring back a custom dir the user cleared.
+        with _last_good_lock:
+            _last_good[key] = default
         return default
     out = Path(path_str)
     with _last_good_lock:
