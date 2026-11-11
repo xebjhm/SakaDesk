@@ -199,17 +199,123 @@ def test_report_settings_reads_keep_the_last_good_value(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     with patch("backend.api.report.get_settings_path", return_value=path):
-        assert report._get_nickname() == "ひな"
+        assert report._get_nicknames() == ["ひな"]
         assert report._get_output_dir() == str(tmp_path)
 
         def held(p):
             raise PermissionError(13, "denied")
 
         monkeypatch.setattr(settings_store, "_open_json", held)
-        assert report._get_nickname() == "ひな"
+        assert report._get_nicknames() == ["ひな"]
         assert report._get_output_dir() == str(tmp_path)
         settings_store._last_good_files.clear()
         with capture_logs() as logs:
-            assert report._get_nickname() is None
+            assert report._get_nicknames() == []
         assert [e for e in logs if e["event"] == "report_nickname_read_failed"]
     settings_store._last_good_files.clear()
+
+
+# --- every service nickname is redacted (user_nicknames dict + legacy key) -------------
+
+NICKS = {"hinatazaka46": "ひなたの🌻", "sakurazaka46": "さくら推し"}
+LEGACY = "ひなた"  # a substring of the hinatazaka46 nickname
+
+
+def _settings(tmp_path, data):
+    import json
+
+    from backend.services import settings_store
+
+    settings_store._last_good_files.clear()
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return path
+
+
+def test_get_nicknames_reads_every_service_and_the_legacy_key(tmp_path):
+    from unittest.mock import patch
+
+    from backend.api import report
+
+    path = _settings(
+        tmp_path,
+        {
+            "user_nicknames": {**NICKS, "nogizaka46": "", "yodel": None, "x": 5},
+            "user_nickname": LEGACY,
+        },
+    )
+    with patch("backend.api.report.get_settings_path", return_value=path):
+        got = report._get_nicknames()
+    # longest first (ties by text), empty / non-string values skipped, no duplicates
+    assert got == ["さくら推し", "ひなたの🌻", "ひなた"]
+    assert [len(n) for n in got] == sorted((len(n) for n in got), reverse=True)
+
+
+def test_get_nicknames_without_settings_or_nicknames(tmp_path):
+    from unittest.mock import patch
+
+    from backend.api import report
+
+    with patch(
+        "backend.api.report.get_settings_path", return_value=tmp_path / "none.json"
+    ):
+        assert report._get_nicknames() == []
+    path = _settings(tmp_path, {"user_nicknames": ["not", "a", "map"]})
+    with patch("backend.api.report.get_settings_path", return_value=path):
+        assert report._get_nicknames() == []
+
+
+def test_every_nickname_is_redacted_longest_first():
+    from backend.api import report
+
+    line = "reply to ひなたの🌻 and さくら推し; legacy ひなた; plain ひな"
+    out = report._redact_nickname(line, ["ひなた", "さくら推し", "ひなたの🌻"])
+    assert out == "reply to [REDACTED] and [REDACTED]; legacy [REDACTED]; plain ひな"
+    assert "🌻" not in out  # no partial leak of the longer nickname
+    # one pass: a nickname inside the placeholder is not re-redacted
+    assert report._redact_nickname("RED x", ["RED"]) == "[REDACTED] x"
+    assert report._redact_nickname("x", []) == "x"
+
+
+def test_scrub_and_diagnostics_redact_every_nickname():
+    from backend.api import report
+
+    nicks = ["ひなたの🌻", "さくら推し", "ひなた"]
+    line = report.scrub_log_line("hi ひなたの🌻 / さくら推し", "", nicks)
+    assert "ひなた" not in line and "さくら推し" not in line
+    payload = {
+        "context": {"error_message": "さくら推し failed", "screen": ["ひなた"]},
+        "logs": {"recent": ["ひなたの🌻 opened"]},
+    }
+    out = report._redact_diagnostics(payload, "", nicks)
+    assert not any(n in repr(out) for n in nicks)
+
+
+def test_report_endpoint_redacts_both_services_and_the_legacy_key(
+    tmp_path, monkeypatch
+):
+    from unittest.mock import patch
+
+    from fastapi.testclient import TestClient
+
+    from backend.api import report
+    from backend.main import app
+
+    path = _settings(tmp_path, {"user_nicknames": NICKS, "user_nickname": LEGACY})
+    log = tmp_path / "debug.log"
+    log.write_text(
+        "[error] sync failed for ひなたの🌻\n[warning] さくら推し timeout\n"
+        "[info] legacy ひなた seen\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(report, "get_logs_dir", lambda: tmp_path)
+    with patch("backend.api.report.get_settings_path", return_value=path):
+        client = TestClient(app)
+        body = client.post(
+            "/api/report",
+            json={"category": "other", "error_message": "さくら推し ひなた"},
+        ).json()
+        diag = client.get("/api/report/diagnostics").json()
+    for blob in (repr(body), repr(diag)):
+        assert "ひなた" not in blob and "さくら推し" not in blob and "🌻" not in blob
+    assert "[REDACTED]" in repr(body["diagnostics"]["logs"])

@@ -19,7 +19,7 @@ from pysaka.credentials import get_token_manager
 from pysaka import Group, get_jwt_remaining_seconds
 
 from backend.version import APP_VERSION
-from backend.api.report import _get_username, _get_nickname, scrub_log_line
+from backend.api.report import _get_username, _get_nicknames, scrub_log_line
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 logger = structlog.get_logger(__name__)
@@ -582,12 +582,12 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
     # Logs with categorization
     # debug.log has everything (recent context); error.log is pre-filtered
     #
-    # SEC-5: scrub every emitted log line for PII (OS username, cached nickname)
+    # SEC-5: scrub every emitted log line for PII (OS username, cached nicknames)
     # and token-like/bearer/JWT/long-secret strings before returning it, matching
     # report.py's redaction. Diagnostics is reachable without auth, so raw log
     # tails must never leak credentials or paths.
     username = _get_username()
-    nickname = _get_nickname()
+    nickname = _get_nicknames()  # every service's nickname, longest first
 
     def _scrub(line: str) -> str:
         return scrub_log_line(line.strip(), username, nickname)

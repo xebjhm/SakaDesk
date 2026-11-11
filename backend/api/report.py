@@ -10,7 +10,8 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, cast
+from collections.abc import Sequence
+from typing import Any, Optional, Union, cast
 from urllib.parse import urlencode, quote
 
 import structlog
@@ -81,11 +82,29 @@ def _redact_path(text: str, username: str) -> str:
     return result
 
 
-def _redact_nickname(text: str, nickname: Optional[str]) -> str:
-    """Redact user nickname from text."""
-    if not nickname:
+Nicknames = Union[str, Sequence[str], None]
+"""One nickname, several (one per service plus the legacy key), or none."""
+
+
+def _nickname_list(nicknames: Nicknames) -> list[str]:
+    """Non-empty distinct nicknames, longest first (a nickname that is a
+    substring of another must not leave part of the longer one behind)."""
+    items = [nicknames] if isinstance(nicknames, str) else list(nicknames or ())
+    unique = {n for n in items if isinstance(n, str) and n}
+    return sorted(unique, key=lambda n: (-len(n), n))
+
+
+def _redact_nickname(text: str, nicknames: Nicknames) -> str:
+    """Redact every user nickname from text, longest first, in one pass.
+
+    One regex alternation, so a shorter nickname never matches inside a longer
+    one already redacted, nor inside the ``[REDACTED]`` placeholder.
+    """
+    names = _nickname_list(nicknames)
+    if not names:
         return text
-    return text.replace(nickname, "[REDACTED]")
+    pattern = "|".join(re.escape(n) for n in names)
+    return re.sub(pattern, "[REDACTED]", text)
 
 
 # Patterns for token-like / bearer / JWT / long secret strings. Ordered so the
@@ -114,7 +133,7 @@ def _scrub_secrets(text: str) -> str:
     return result
 
 
-def scrub_log_line(line: str, username: str, nickname: Optional[str]) -> str:
+def scrub_log_line(line: str, username: str, nickname: Nicknames) -> str:
     """Full redaction for a single emitted log line: path + nickname + secrets.
 
     Shared by the report and diagnostics endpoints (SEC-5).
@@ -160,7 +179,7 @@ def _redact_member_path(value: str) -> str:
 
 
 def _redact_diagnostics(
-    obj, username: str, nickname: Optional[str], output_dir: Optional[str] = None
+    obj, username: str, nickname: Nicknames, output_dir: Optional[str] = None
 ):
     """Recursively scrub an entire diagnostics structure before it leaves the app.
 
@@ -199,7 +218,7 @@ def _get_output_dir() -> Optional[str]:
     return None
 
 
-def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> dict:
+def _get_smart_logs(log_path: Path, username: str, nickname: Nicknames) -> dict:
     """
     Smart log filtering:
     1. Errors/warnings from dedicated error.log (or fall back to debug.log)
@@ -320,16 +339,31 @@ def _get_sync_state() -> dict:
     return {"last_sync": None, "last_error": None}
 
 
-def _get_nickname() -> Optional[str]:
-    """Get cached user nickname for redaction."""
+def _get_nicknames() -> list[str]:
+    """Every cached user nickname to redact, longest first.
+
+    ``api/profile.py`` caches one nickname per service under
+    ``user_nicknames`` (a dict); an older build stored a single
+    ``user_nickname`` string. Both are collected; empty and non-string values
+    are skipped. Read with ``settings_store.read_settings_file`` (locked,
+    retried, last good value on a transient failure).
+    """
     try:
         data = read_settings_file(get_settings_path())
-        if isinstance(data, dict):
-            return cast(Optional[str], data.get("user_nickname"))
     except Exception as e:
-        # Not silent: without the nickname its redaction is skipped.
+        # Not silent: without the nicknames their redaction is skipped.
         logger.warning("report_nickname_read_failed", error_type=type(e).__name__)
-    return None
+        return []
+    if not isinstance(data, dict):
+        return []
+    found: list[Any] = []
+    per_service = data.get("user_nicknames")
+    if isinstance(per_service, dict):
+        found.extend(per_service.values())
+    found.append(data.get("user_nickname"))
+    names = _nickname_list(found)
+    logger.debug("report_nicknames", count=len(names))
+    return names
 
 
 def _build_github_url(
@@ -394,7 +428,7 @@ async def generate_report(
     """Generate bug report diagnostics and GitHub URL."""
 
     username = _get_username()
-    nickname = _get_nickname()
+    nickname = _get_nicknames()
 
     # Base diagnostics
     diagnostics = {
@@ -452,7 +486,7 @@ async def generate_report(
 async def get_diagnostics_only():
     """Get diagnostics without creating GitHub URL (for preview)."""
     username = _get_username()
-    nickname = _get_nickname()
+    nickname = _get_nicknames()
 
     diagnostics = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
