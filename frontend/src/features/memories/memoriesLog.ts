@@ -45,13 +45,14 @@ export function logMemoriesPage(page: MemoriesPage): void {
  * `calendar` one calendar month, `calendar_months` the month picker; `capsule` an anchor's notes,
  * `capsule_due` the notes resurfacing on a date; `same_time` the 同じ時刻 line; `day24` her 24
  * hours; `then_now` あの日と今日 (day mode and 初見 vs 今); `album_pregen` the album's read of the
- * thumbnail pre-generation status (media pipeline: `ok` once per activation, or `error`).
+ * thumbnail pre-generation status (media pipeline: `ok` once per activation, or `error`);
+ * `album_prefetch` the album's newest-month prefetch beside its months list (`albumPrefetch.ts`).
  */
 export const MEMORIES_VIEWS = [
     'hub', 'on_this_day', 'day', 'album', 'favorites', 'memoir', 'binder', 'names', 'timeline',
     'album_members', 'album_month', 'album_colors', 'film_strip', 'timeline_month', 'memoir_members',
     'radio', 'radio_members', 'radio_program', 'radio_cassettes', 'gacha', 'calendar', 'calendar_months',
-    'capsule', 'capsule_due', 'same_time', 'day24', 'then_now', 'album_pregen',
+    'capsule', 'capsule_due', 'same_time', 'day24', 'then_now', 'album_pregen', 'album_prefetch',
 ] as const;
 export type MemoriesView = (typeof MEMORIES_VIEWS)[number];
 
@@ -131,11 +132,14 @@ export function logMemoriesToggle(
  * was not saved; `same_time_none` nothing at this JST minute (the line is hidden).
  * Notifications wave: `card_missing` a notification's card is not an earned card of her binder
  * (the binder is shown without the card detail).
+ * Album (D-M3): `prefetch_none` no newest month is remembered for the album's scope (its first
+ * open this session), so nothing was prefetched; `prefetch_unused` a prefetched month was dropped
+ * (the months list named another newest month, or the page left before its band took it).
  */
 export const MEMORIES_SKIP_REASONS = [
     'focus_missing', 'empty_note', 'unknown_card',
     'transcript_missing', 'pull_missing', 'day24_thin', 'note_empty', 'same_time_none',
-    'card_missing',
+    'card_missing', 'prefetch_none', 'prefetch_unused',
 ] as const;
 export type MemoriesSkipReason = (typeof MEMORIES_SKIP_REASONS)[number];
 

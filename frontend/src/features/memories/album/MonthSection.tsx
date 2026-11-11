@@ -20,6 +20,7 @@ import { PhotoTile } from './PhotoTile';
 import { PolaroidCover } from './PolaroidCover';
 import { albumItemKey, albumViewerItems, formatMonth, monthParts, viewerIndexOf } from './albumViewer';
 import { gridEntries } from './gridEntries';
+import { takePrefetchedMonth } from './albumPrefetch';
 
 interface MonthSectionProps {
     service: string;
@@ -124,8 +125,8 @@ const BandSkeleton: React.FC<BandSkeletonProps> = ({ count, pinsLikely, revealed
 };
 
 /**
- * Fetches one month: a ready answer goes to the album's cache at once (`onLoaded`, which frees the
- * fetch slot); an error or timeout renders inside the band (`MemoriesStatus` inline, with Retry)
+ * Fetches one month (or takes the page's prefetch of it, `albumPrefetch.ts`): a ready answer goes
+ * to the album's cache at once (`onLoaded`, which frees the fetch slot); an error or timeout renders inside the band (`MemoriesStatus` inline, with Retry)
  * and settles the band. The skeleton is the band's (`BandSkeleton`), so it never restarts when a
  * queued band's fetch begins. `onFailed` tells the band whether its error is showing.
  */
@@ -135,7 +136,9 @@ const MonthLoader: React.FC<Pick<MonthSectionProps, 'service' | 'member' | 'kind
 }> = ({ service, month, member, kind, onLoaded, onSettled, onFailed }) => {
     const query = useMemoriesQuery(
         'album_month',
-        (signal) => fetchAlbumMonth(service, month, { member, kind }, signal),
+        // The page's prefetch of this month, when it made one (the newest month, D-M3); a Retry
+        // always asks anew.
+        (signal) => takePrefetchedMonth(service, member, kind, month) ?? fetchAlbumMonth(service, month, { member, kind }, signal),
         [service, month, member, kind],
         // Committed on arrival: the band frees its fetch slot (MAX_IN_FLIGHT, D4) the moment the
         // answer lands, never after a min-visible hold (the band holds its skeleton instead).

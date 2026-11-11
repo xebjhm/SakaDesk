@@ -39,7 +39,8 @@
     "same_time",
     "day24",
     "then_now",
-    "album_pregen"
+    "album_pregen",
+    "album_prefetch"
   ],
   "memories_load.outcome": [
     "ok",
@@ -74,7 +75,8 @@
     "same_time",
     "day24",
     "then_now",
-    "album_pregen"
+    "album_pregen",
+    "album_prefetch"
   ],
   "memories_toggle.target": [
     "other_services",
@@ -141,7 +143,8 @@
     "same_time",
     "day24",
     "then_now",
-    "album_pregen"
+    "album_pregen",
+    "album_prefetch"
   ],
   "memories_skip.reason": [
     "focus_missing",
@@ -152,7 +155,9 @@
     "day24_thin",
     "note_empty",
     "same_time_none",
-    "card_missing"
+    "card_missing",
+    "prefetch_none",
+    "prefetch_unused"
   ],
   "memories_radio.phase": [
     "play",

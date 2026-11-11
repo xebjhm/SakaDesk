@@ -23,6 +23,7 @@ import { fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonth, fetchAlbumMonths 
 import { NicknameProvider } from '../shared/useNickname';
 import type { AlbumMonthPayload } from '../types';
 import { AlbumPage } from './AlbumPage';
+import { resetAlbumPrefetch } from './albumPrefetch';
 import { colorsPayload, membersPayload, monthPayload, monthsPayload, monthSummary, photo } from './__fixtures__';
 
 /**
@@ -49,6 +50,7 @@ let h: MediaTileHarness;
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 beforeEach(() => {
+    resetAlbumPrefetch();
     server.use(http.get('/api/transcription/:service/:id', () => new HttpResponse(null, { status: 404 })));
     h = installMediaTileHarness();
     vi.mocked(clientLog).mockClear();

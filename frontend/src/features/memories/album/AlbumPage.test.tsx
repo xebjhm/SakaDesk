@@ -27,6 +27,7 @@ import {
 import { NicknameProvider } from '../shared/useNickname';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import { AlbumPage } from './AlbumPage';
+import { resetAlbumPrefetch } from './albumPrefetch';
 import { MEDIA_GRID_COLS } from '../../../core/media/tileGrid';
 import { MAX_IN_FLIGHT } from './useAlbumWindow';
 import { MEMBER_PANE_WIDTH } from '../shared/MemberPane';
@@ -36,6 +37,7 @@ import {
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 beforeEach(() => {
+    resetAlbumPrefetch();
     // The media viewer asks for transcripts of what it shows.
     server.use(http.get('/api/transcription/:service/:id', () => new HttpResponse(null, { status: 404 })));
     vi.useFakeTimers({ toFake: ['Date'] });
@@ -68,7 +70,7 @@ function renderAlbum(route: AlbumRoute = { page: 'album' }) {
             <AlbumPage service="hinatazaka46" route={next} go={go} />
         </NicknameProvider>,
     );
-    return { go, rerender };
+    return { go, rerender, unmount: utils.unmount };
 }
 
 const section = (month: string) => screen.getByTestId(`album-month-${month}`);
@@ -857,5 +859,105 @@ describe('AlbumPage loading (L4)', () => {
             { surface: 'memories_album_month', phase: 'slow', wait_ms: expect.any(Number) },
             { surface: 'memories_album_month', phase: 'very_slow', wait_ms: expect.any(Number) },
         ]);
+    });
+});
+
+describe('AlbumPage newest-month prefetch (D-M3)', () => {
+    /** Small steps, each its own act, so React commits as it would live. */
+    const advance = async (ms: number) => {
+        for (let t = 0; t < ms; t += 10) await act(async () => { await vi.advanceTimersByTimeAsync(Math.min(10, ms - t)); });
+    };
+    const logged = (event: string) => vi.mocked(clientLog).mock.calls
+        .filter(([e, f]) => e === event && (f as { target?: string }).target === 'album_prefetch')
+        .map(([, f]) => f);
+    const monthCalls = (month: string) => vi.mocked(fetchAlbumMonth).mock.calls.filter((c) => c[1] === month);
+    /** A months request the test answers by hand. */
+    const heldMonths = () => {
+        let answer: (v: ReturnType<typeof monthsPayload>) => void = () => {};
+        vi.mocked(fetchAlbumMonths).mockImplementationOnce(() => new Promise((resolve) => { answer = resolve; }));
+        return (v: ReturnType<typeof monthsPayload>) => answer(v);
+    };
+
+    beforeEach(() => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-11-10T03:00:00Z'));
+    });
+
+    it('the first open prefetches nothing; a reopen asks for the newest grid beside the months and the band takes it', async () => {
+        const first = renderAlbum();
+        await advance(10);
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+        expect(logged('memories_skip')).toEqual([{ target: 'album_prefetch', reason: 'prefetch_none' }]);
+        first.unmount();
+        vi.mocked(fetchAlbumMonth).mockClear();
+        vi.mocked(clientLog).mockClear();
+
+        const answer = heldMonths();
+        renderAlbum();
+        await advance(10);
+        // Asked for before the months list answered: no longer chained behind it.
+        expect(monthCalls('2026-10')).toHaveLength(1);
+        expect(monthCalls('2026-10')[0][2]).toEqual({ member: undefined, kind: 'all' });
+        answer(monthsPayload());
+        await advance(10);
+        // The answer is already there: the grid shows at once, never behind a skeleton.
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+        expect(monthCalls('2026-10')).toHaveLength(1); // the band took the prefetch: no second request
+        expect(logged('memories_load')).toContainEqual({ target: 'album_prefetch', outcome: 'ok', count: monthPayload('2026-10').items.length });
+        expect(logged('memories_skip')).toEqual([]);
+    });
+
+    it('new photos after a sync: a newer month drops the prefetch and its band asks for itself', async () => {
+        renderAlbum().unmount();
+        await advance(10);
+        const first = renderAlbum();
+        await advance(10);
+        first.unmount();
+        vi.mocked(fetchAlbumMonth).mockClear();
+        vi.mocked(clientLog).mockClear();
+
+        const answer = heldMonths();
+        renderAlbum();
+        await advance(10);
+        const prefetch = monthCalls('2026-10')[0];
+        expect(prefetch).toBeDefined();
+        answer(monthsPayload([monthSummary('2026-11'), monthSummary('2026-10')]));
+        await advance(10);
+        expect((prefetch[3] as AbortSignal).aborted).toBe(true);
+        expect(logged('memories_skip')).toEqual([{ target: 'album_prefetch', reason: 'prefetch_unused' }]);
+        expect(monthCalls('2026-11')).toHaveLength(1);
+        expect(within(section('2026-11')).getByTestId('album-grid')).toBeInTheDocument();
+    });
+
+    it('a failed prefetch shows the band error; Retry asks anew', async () => {
+        const first = renderAlbum();
+        await advance(10);
+        first.unmount();
+        vi.mocked(fetchAlbumMonth).mockClear();
+        vi.mocked(clientLog).mockClear();
+        vi.mocked(fetchAlbumMonth).mockRejectedValueOnce(new MemoriesFetchError(500));
+        renderAlbum();
+        await advance(30);
+        expect(logged('memories_load')).toContainEqual({ target: 'album_prefetch', outcome: 'error', error_code: 500 });
+        const alert = within(section('2026-10')).getByRole('alert');
+        fireEvent.click(within(alert).getByRole('button', { name: 'Try again' }));
+        await advance(30);
+        expect(monthCalls('2026-10')).toHaveLength(2);
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+    });
+
+    it('leaving the album before the band takes the prefetch aborts it', async () => {
+        const first = renderAlbum();
+        await advance(10);
+        first.unmount();
+        vi.mocked(fetchAlbumMonth).mockClear();
+        vi.mocked(clientLog).mockClear();
+        heldMonths();
+        const again = renderAlbum();
+        await advance(10);
+        const prefetch = monthCalls('2026-10')[0];
+        again.unmount();
+        expect((prefetch[3] as AbortSignal).aborted).toBe(true);
+        expect(logged('memories_skip')).toEqual([{ target: 'album_prefetch', reason: 'prefetch_unused' }]);
     });
 });

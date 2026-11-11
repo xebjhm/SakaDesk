@@ -16,6 +16,7 @@ import { messageName } from '../shared/nameFromRoom';
 import { PageHeader } from '../shared/PageHeader';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { AlbumKind, AlbumMonthSummary, MemoriesCountedMember, MemoryMessage } from '../types';
+import { prefetchNewestMonth, rememberNewestMonth } from './albumPrefetch';
 import { AlbumWaitLine } from './AlbumWaitLine';
 import { createBandWaits } from './bandWaits';
 import { ColorRibbon, type RibbonMonth } from './ColorRibbon';
@@ -152,6 +153,9 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
  * mount) once per page mount, and shows the quiet "Preparing thumbnails… done / total" line (or
  * its paused form) in the filter row while the background worker prepares this service (logged as
  * `memories_load` `album_pregen`).
+ * The newest month's grid is prefetched beside the months list (`albumPrefetch.ts`: the month this
+ * scope showed last this session), and the top band takes that answer when the list names the same
+ * month, so a reopen makes one round trip to its first grid instead of two.
  */
 export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     const { t } = useTranslation();
@@ -186,7 +190,14 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
             settle: false,
         },
     );
+    // The top band's grid is asked for beside the months list (the newest month this scope showed
+    // last), so the open no longer waits for the list before its first grid request (D-M3).
+    useEffect(() => prefetchNewestMonth(service, member, kind), [service, member, kind, coverVersion]);
     const shownMonths = months.data?.payload ?? null;
+    const arrived = months.stale ? null : months.data;
+    useEffect(() => {
+        if (arrived) rememberNewestMonth(service, arrived.member, arrived.kind, arrived.payload.months[0]?.month);
+    }, [service, arrived]);
     // A kept payload of another person or filter: its bands draw what they have and fetch nothing.
     const switching = months.stale && (months.data?.member !== member || months.data?.kind !== kind);
 
