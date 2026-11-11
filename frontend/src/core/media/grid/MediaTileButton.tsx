@@ -1,5 +1,6 @@
-import React, { useCallback, useRef, useState } from 'react';
-import { MediaTile, type MediaTileState } from './MediaTile';
+import React from 'react';
+import { MediaTile } from './MediaTile';
+import { useTileRetry } from './useTileRetry';
 
 export interface MediaTileButtonProps {
     /** The media-route URL of the item (thumbnails and meta come from it). */
@@ -23,24 +24,15 @@ export interface MediaTileButtonProps {
  * One gallery tile: a square button around the shared `MediaTile`. A click opens the viewer;
  * on a tile whose picture failed it calls the tile's `onFail(retry)` handle instead, and the
  * button's accessible name then says so (`retryLabel`). The state comes from the tile's
- * `onStateChange`, so an automatic retry on scroll-back restores the open action at once.
+ * `onStateChange`, so an automatic retry on scroll-back restores the open action at once
+ * (`useTileRetry`, the rule the Memories album shares).
  */
 export const MediaTileButton: React.FC<MediaTileButtonProps> = ({ url, kind, cssPx, large = false, label, retryLabel, onOpen, children }) => {
-    const retryRef = useRef<(() => void) | null>(null);
-    const [failed, setFailed] = useState(false);
-    const onFail = useCallback((retry: () => void) => { retryRef.current = retry; }, []);
-    const onStateChange = useCallback((state: MediaTileState) => setFailed(state === 'failed'), []);
-    const onClick = () => {
-        if (failed && retryRef.current) {
-            retryRef.current();
-            return;
-        }
-        onOpen();
-    };
+    const { failed, onFail, onStateChange, click } = useTileRetry();
     return (
         <button
             type="button"
-            onClick={onClick}
+            onClick={() => click(onOpen)}
             aria-label={failed ? retryLabel : label}
             className="relative block aspect-square w-full overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
         >

@@ -1,11 +1,11 @@
-import React, { forwardRef, useCallback, useEffect, useImperativeHandle, useMemo, useRef } from 'react';
+import React, { forwardRef, useCallback, useImperativeHandle, useMemo, useRef } from 'react';
 import { GroupedVirtuoso, type GroupedVirtuosoHandle, type ListRange } from 'react-virtuoso';
-import { clientLog } from '../../../utils/clientLog';
 import { cn } from '../../../utils/classnames';
 import { primeMediaMeta } from './mediaMeta';
 import { rootRemPx, useGridColumns } from './useGridColumns';
 import { MEDIA_GRID_GAP_REM } from '../tileGrid';
-import { MediaGridContext, type MediaGridTileReporter } from './gridContext';
+import { MediaGridContext } from './gridContext';
+import { useMediaGridReporter, type MediaGridCode } from './useMediaGridReporter';
 
 export interface MediaGridGroup<T> {
     key: string;
@@ -31,7 +31,7 @@ export interface VirtualMediaGridProps<T> {
     /** The scrolling element (the Modal body); the grid scrolls with it. */
     scrollParent: HTMLElement | null;
     /** The `media_grid` breadcrumb's grid code. */
-    grid: 'messages' | 'blogs';
+    grid: Exclude<MediaGridCode, 'album'>;
     /** Narrowest tile in px (default `tileGrid.ts`, 9rem). */
     minTilePx?: number;
     /** Widest tile in px (default: none, `tileGrid.ts`'s at most 6 per row). */
@@ -134,32 +134,7 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
     }, []);
 
     // The first-paint breadcrumb: mount → the first visible tile's image ready, once per mount.
-    const mountedAt = useRef(performance.now());
-    const visibleCount = useRef(0);
-    const logged = useRef(false);
-    const total = grouped.flat.length;
-    const totalRef = useRef(total);
-    totalRef.current = total;
-    const reporter = useMemo<MediaGridTileReporter>(() => ({
-        root: scrollParent,
-        tileVisible(delta) {
-            visibleCount.current = Math.max(0, visibleCount.current + delta);
-        },
-        tileReady() {
-            if (logged.current) return;
-            logged.current = true;
-            clientLog('media_grid', {
-                grid,
-                first_tile_ms: Math.max(0, Math.round(performance.now() - mountedAt.current)),
-                visible: visibleCount.current,
-                count: totalRef.current,
-            });
-        },
-    }), [grid, scrollParent]);
-
-    useEffect(() => {
-        mountedAt.current = performance.now();
-    }, []);
+    const reporter = useMediaGridReporter(grid, scrollParent, grouped.flat.length);
 
     const Footer = useMemo(() => (footer ? () => <>{footer}</> : undefined), [footer]);
 
