@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 
@@ -42,7 +42,7 @@ describe('CapsuleResurface', () => {
         renderItem(resurfaceItem({
             message: memoryMessage({ id: 42, type: 'picture', text: null, caption: '海！', media_url: '/api/content/media/hinatazaka46/p.jpg' }),
         }));
-        expect(screen.getByTestId('capsule-resurface-message').querySelector('img')).not.toBeNull();
+        expect(within(screen.getByTestId('capsule-resurface-message')).getByTestId('memory-thumb')).toBeInTheDocument();
         expect(screen.getByTestId('memory-text')).toHaveTextContent('海！');
     });
 

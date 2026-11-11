@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import { installMediaTileHarness } from '../../../__tests__/mediaTileHarness';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 import { buildMonthGrid } from '../../../core/calendar/monthGrid';
@@ -7,23 +8,26 @@ import { DayCell } from './DayCell';
 import { calendarDay, cellPhoto } from './__fixtures__';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
+afterEach(() => { vi.unstubAllGlobals(); });
 
 const SEPT = buildMonthGrid(2024, 8);
 const cellOf = (dateStr: string) => SEPT.find((c) => c.dateStr === dateStr)!;
 
 describe('DayCell', () => {
-    it('draws the day photo through the thumbnail route at the drawn cell size', () => {
+    it('draws the day photo through the thumbnail route at the drawn cell size', async () => {
+        const h = installMediaTileHarness();
         render(<DayCell cell={cellOf('2024-09-14')} data={calendarDay('2024-09-14', 2, cellPhoto(41, '2024-09-14'))} px={300} onOpen={vi.fn()} />);
-        const img = screen.getByRole('button').querySelector('img')!;
-        expect(img.getAttribute('src')).toMatch(/^\/api\/content\/thumb\/hinatazaka46\/.+\/41\.jpg\?w=320$/);
+        expect(within(screen.getByRole('button')).getByTestId('memory-thumb')).toBeInTheDocument();
+        await waitFor(() => expect(h.requested()).toHaveLength(1));
+        expect(h.requested()[0]).toMatch(/^\/api\/content\/thumb\/hinatazaka46\/.+\/41\.jpg\?w=320$/);
     });
 
     it('draws a video-only day as a still with the video mark', () => {
         const clip = cellPhoto(42, '2024-09-14', { type: 'video', media_url: '/api/content/media/hinatazaka46/messages/r/video/42.mp4' });
         render(<DayCell cell={cellOf('2024-09-14')} data={calendarDay('2024-09-14', 1, clip)} onOpen={vi.fn()} />);
-        const still = screen.getByTestId('memory-thumb-video') as HTMLVideoElement;
-        expect(still).toHaveAttribute('preload', 'metadata');
-        expect(still.muted).toBe(true);
+        // the shared tile (poster or film tile), never a <video>
+        expect(screen.getByTestId('memory-thumb')).toBeInTheDocument();
+        expect(screen.getByRole('button').querySelector('video')).toBeNull();
         expect(screen.getByTestId('calendar-video-mark')).toBeInTheDocument();
     });
 

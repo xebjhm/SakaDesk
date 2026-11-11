@@ -1,5 +1,6 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { installMediaTileHarness } from '../../../__tests__/mediaTileHarness';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import i18n from '../../../i18n';
@@ -57,6 +58,8 @@ beforeEach(() => {
 });
 
 const renderPage = (route: OnThisDayRoute) => render(<OnThisDayPage service="hinatazaka46" route={route} go={go} />);
+
+afterEach(() => { vi.unstubAllGlobals(); });
 
 describe('OnThisDayPage overview', () => {
     it('shows one column per year with messages, never the empty years', async () => {
@@ -127,12 +130,15 @@ describe('OnThisDayPage overview, details', () => {
     });
 
     it('never puts a video thumb into an image', async () => {
+        const h = installMediaTileHarness();
         renderPage({ page: 'onThisDay', monthDay: '09-14' });
         const columns = await screen.findAllByTestId('otd-column');
         expect(columns[0].querySelector('img')).toBeNull();
-        expect(within(columns[0]).getByTestId('memory-thumb-video')).toHaveAttribute('src', '/api/content/media/hinatazaka46/v.mp4');
+        expect(columns[0].querySelector('video')).toBeNull();
+        expect(within(columns[0]).getByTestId('memory-thumb')).toBeInTheDocument();
         // a picture column asks for a thumbnail (the media viewer keeps the full file)
-        expect(columns[1].querySelector('img')).toHaveAttribute('src', '/api/content/thumb/hinatazaka46/p.jpg?w=160');
+        await waitFor(() => expect(h.requested()).toContain('/api/content/thumb/hinatazaka46/p.jpg?w=160'));
+        expect(h.requested()).not.toContain('/api/content/media/hinatazaka46/v.mp4');
     });
 
     it('starts at the newest year and keeps the user’s scroll across re-renders', async () => {
@@ -174,7 +180,8 @@ describe('OnThisDayPage detail', () => {
         renderPage({ page: 'onThisDay', monthDay: '09-14', year: 2024 });
         const rows = await screen.findAllByTestId('otd-year-row');
         expect(rows[2].querySelector('img')).toBeNull();
-        expect(within(rows[2]).getByTestId('memory-thumb-video')).toBeInTheDocument();
+        expect(rows[2].querySelector('video')).toBeNull();
+        expect(within(rows[2]).getByTestId('memory-thumb')).toBeInTheDocument();
     });
 
     it('lists the years, dims the empty ones and makes them unclickable', async () => {

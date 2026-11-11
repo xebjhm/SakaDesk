@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import { installMediaTileHarness } from '../../../__tests__/mediaTileHarness';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 import { NicknameProvider } from '../shared/useNickname';
@@ -40,13 +41,17 @@ describe('CardTile', () => {
         expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ key: 'first.message' }));
     });
 
-    it('shows a photo face from its thumbnail', () => {
+    it('shows a photo face from its thumbnail', async () => {
+        const h = installMediaTileHarness();
         renderTile(card({
             key: 'first.picture',
             face: face({ type: 'picture', text: null, media_url: '/api/content/media/hinatazaka46/p.jpg', media_file: 'messages/p.jpg' }),
         }));
         // the thumbnail route, not the full file
-        expect(screen.getByTestId('card-tile').querySelector('img')).toHaveAttribute('src', expect.stringContaining('/api/content/thumb/'));
+        expect(within(screen.getByTestId('card-tile')).getByTestId('memory-thumb')).toBeInTheDocument();
+        await waitFor(() => expect(h.requested()).toHaveLength(1));
+        expect(h.requested()[0]).toContain('/api/content/thumb/');
+        vi.unstubAllGlobals();
         expect(screen.queryByTestId('memory-text')).toBeNull();
     });
 

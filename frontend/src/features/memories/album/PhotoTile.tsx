@@ -3,13 +3,20 @@ import { ImageIcon, Play, Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Menu, MenuItem } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
+import { useTileRetry } from '../../../core/media/grid';
+import { MEDIA_GRID_GAP_REM, MEDIA_TILE_MIN_REM } from '../../../core/media/tileGrid';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import type { MemoryMessage } from '../types';
 import { useContextMenu } from './useContextMenu';
 
-/** A tile's drawn size in CSS px (about a sixth of a wide pane); a ★ tile is twice that. */
-export const TILE_PX = 160;
+/**
+ * A tile's drawn edge in CSS px before the grid has measured itself: the minimum tile of
+ * `tileGrid.ts` (the grid passes its measured `tilePx` once known). A pinned ★ tile spans two.
+ */
+export const TILE_PX = MEDIA_TILE_MIN_REM * 16;
+/** The grid gap in CSS px (`tileGrid.ts`): a pinned ★ tile spans two tiles and the gap between. */
+const GAP_PX = MEDIA_GRID_GAP_REM * 16;
 
 interface PhotoTileProps {
     item: MemoryMessage;
@@ -22,6 +29,8 @@ interface PhotoTileProps {
     onOpen: (item: MemoryMessage) => void;
     /** Offers 「この月の表紙にする」 in the tile's context menu (pictures and videos only). */
     onSetCover?: (item: MemoryMessage) => void;
+    /** One grid tile's drawn edge in CSS px (the grid's measured `tilePx`; picks the thumbnail width). */
+    tilePx?: number;
 }
 
 /**
@@ -31,9 +40,12 @@ interface PhotoTileProps {
  * wears a washi-tape strip.
  * With `onSetCover`, a picture or video tile's context menu (right-click, the context-menu key or
  * Shift+F10) offers 「この月の表紙にする」; other tiles keep the browser's menu.
+ * The still is the shared media tile (placeholder, then the thumbnail sized from `tilePx`; a ★
+ * asks for up to the 640 px variant). A click on a still that failed to load retries it instead
+ * of opening the viewer, and the tile's name says so (`useTileRetry`).
  * Memoised: a month's grid re-renders only when its own data changes.
  */
-export const PhotoTile = React.memo<PhotoTileProps>(({ item, sepia, pinned = false, label, onOpen, onSetCover }) => {
+export const PhotoTile = React.memo<PhotoTileProps>(({ item, sepia, pinned = false, label, onOpen, onSetCover, tilePx = TILE_PX }) => {
     const { t } = useTranslation();
     const ref = useRef<HTMLButtonElement>(null);
     const coverable = onSetCover !== undefined && (item.type === 'picture' || item.type === 'video');
@@ -41,15 +53,16 @@ export const PhotoTile = React.memo<PhotoTileProps>(({ item, sepia, pinned = fal
     const words = item.caption ?? item.text;
     const star = item.favorited;
     const large = star && pinned;
+    const still = useTileRetry();
     return (
         <>
             <button
                 ref={ref}
                 type="button"
                 data-testid={`album-tile-${item.id}`}
-                aria-label={label}
+                aria-label={still.failed ? t('memories.album.retryTile', { label }) : label}
                 aria-haspopup={coverable ? 'menu' : undefined}
-                onClick={() => onOpen(item)}
+                onClick={() => still.click(() => onOpen(item))}
                 onContextMenu={menu.onContextMenu}
                 onKeyDown={menu.onKeyDown}
                 className={cn(
@@ -59,7 +72,14 @@ export const PhotoTile = React.memo<PhotoTileProps>(({ item, sepia, pinned = fal
                 )}
             >
                 <span className="block h-full w-full overflow-hidden rounded-sm">
-                    <MemoryThumb message={item} px={large ? TILE_PX * 2 : TILE_PX} className={cn('h-full w-full', sepia)} />
+                    <MemoryThumb
+                        message={item}
+                        px={large ? tilePx * 2 + GAP_PX : tilePx}
+                        large={star}
+                        onFail={still.onFail}
+                        onStateChange={still.onStateChange}
+                        className={cn('h-full w-full', sepia)}
+                    />
                 </span>
                 {item.type === 'video' && (
                     <Play aria-hidden="true" className="absolute left-2 top-2 h-4 w-4 fill-current text-inverse drop-shadow-sm" />

@@ -4,6 +4,7 @@ import { useTranslation } from '../../../i18n';
 import { Button, Menu, MenuItem, Modal } from '../../../design/primitives';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { cn } from '../../../utils/classnames';
+import { useTileRetry } from '../../../core/media/grid';
 import { logMemoriesToggle } from '../memoriesLog';
 import { jumpToChat } from '../shared/jumpToChat';
 import { MemoryText } from '../shared/MemoryText';
@@ -26,6 +27,8 @@ interface BurstStackProps {
     sepia: string;
     /** Offers 「この月の表紙にする」 in each sequence frame's context menu. */
     onSetCover?: (item: MemoryMessage) => void;
+    /** One grid tile's drawn edge in CSS px (the grid's measured `tilePx`; picks the thumbnail width). */
+    tilePx?: number;
 }
 
 interface FrameButtonProps {
@@ -37,26 +40,37 @@ interface FrameButtonProps {
     onSetCover?: (item: MemoryMessage) => void;
 }
 
-/** One sequence frame: opens the viewer; its context menu can make it the month cover. */
+/**
+ * One sequence frame: opens the viewer (a frame whose still failed retries it instead); its
+ * context menu can make it the month cover.
+ */
 const FrameButton: React.FC<FrameButtonProps> = ({ item, label, sepia, disabled, onOpen, onSetCover }) => {
     const { t } = useTranslation();
     const ref = useRef<HTMLButtonElement>(null);
     const coverable = onSetCover !== undefined && (item.type === 'picture' || item.type === 'video');
     const menu = useContextMenu(coverable);
+    const still = useTileRetry();
     return (
         <>
             <button
                 ref={ref}
                 type="button"
                 disabled={disabled}
-                aria-label={label}
+                aria-label={still.failed ? t('memories.album.retryTile', { label }) : label}
                 aria-haspopup={coverable ? 'menu' : undefined}
-                onClick={onOpen}
+                onClick={() => still.click(onOpen)}
                 onContextMenu={menu.onContextMenu}
                 onKeyDown={menu.onKeyDown}
                 className="block w-40 shrink-0 overflow-hidden rounded-sm bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
-                <MemoryThumb message={item} px={FRAME_PX} className={cn('aspect-square h-full w-full', sepia)} />
+                <MemoryThumb
+                    message={item}
+                    px={FRAME_PX}
+                    large={item.favorited}
+                    onFail={still.onFail}
+                    onStateChange={still.onStateChange}
+                    className={cn('aspect-square h-full w-full', sepia)}
+                />
             </button>
             {menu.point && onSetCover && (
                 <Menu aria-label={label} onClose={menu.close} point={menu.point} returnFocusRef={ref}>
@@ -75,9 +89,10 @@ const FrameButton: React.FC<FrameButtonProps> = ({ item, label, sepia, disabled,
  * a jump to her chat; a frame opens the media viewer over the burst. A ★ photo in the burst
  * shows the yellow star on the stack and beside its frame. Opening and every close (including
  * a jump) log `memories_toggle` `album_burst`. With `onSetCover` each frame's context menu offers
- * 「この月の表紙にする」 (a burst frame can be the cover too).
+ * 「この月の表紙にする」 (a burst frame can be the cover too). A stack or frame whose still failed to
+ * load retries it on click instead (`useTileRetry`), and its name says so.
  */
-export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, sepia, onSetCover }) => {
+export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, sepia, onSetCover, tilePx = TILE_PX }) => {
     const { t } = useTranslation();
     const [open, setOpen] = useState(false);
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
@@ -97,13 +112,14 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
     };
     const first = items[0];
     const hasStar = items.some((m) => m.favorited);
+    const still = useTileRetry();
 
     return (
         <>
             <button
                 type="button"
-                aria-label={count}
-                onClick={() => toggle(true)}
+                aria-label={still.failed ? t('memories.album.retryTile', { label: count }) : count}
+                onClick={() => still.click(() => toggle(true))}
                 className={cn(
                     'group relative block aspect-square w-full rounded-sm',
                     'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
@@ -113,7 +129,16 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
                 <span aria-hidden="true" className="absolute inset-0 translate-x-1 translate-y-1 rotate-2 rounded-sm bg-memories-paper shadow-memories-polaroid motion-reduce:rotate-0" />
                 <span aria-hidden="true" className="absolute inset-0 -rotate-1 rounded-sm bg-memories-paper shadow-memories-polaroid motion-reduce:rotate-0" />
                 <span className="relative block h-full w-full overflow-hidden rounded-sm bg-sunken">
-                    {first && <MemoryThumb message={first} px={TILE_PX} className={cn('h-full w-full', sepia)} />}
+                    {first && (
+                        <MemoryThumb
+                            message={first}
+                            px={tilePx}
+                            large={first.favorited}
+                            onFail={still.onFail}
+                            onStateChange={still.onStateChange}
+                            className={cn('h-full w-full', sepia)}
+                        />
+                    )}
                 </span>
                 {hasStar && (
                     <Star data-testid="burst-star" aria-hidden="true" className="absolute right-2 top-2 h-4 w-4 fill-current text-semantic-star drop-shadow-sm" />

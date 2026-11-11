@@ -54,7 +54,7 @@ describe('CorkBoard', () => {
         expect(within(note).getByTestId('memory-text')).toHaveClass('line-clamp-6');
 
         const print = screen.getByTestId('cork-print-12');
-        expect(print.querySelector('img')).not.toBeNull();
+        expect(within(print).getByTestId('memory-thumb')).toBeInTheDocument();
         expect(within(print).getByText('今日の空')).toBeInTheDocument();
 
         const voice = screen.getByTestId('cork-voice-13');

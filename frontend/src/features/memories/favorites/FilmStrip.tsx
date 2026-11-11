@@ -53,7 +53,7 @@ const FrameBody: React.FC<{ m: DayMessage; focused: boolean; shown: ReadonlySet<
             <span className="block text-caption tabular-nums text-muted">{formatJstClock(m.ts)}</span>
             {(m.type === 'picture' || m.type === 'video') && (
                 <span className="relative mt-1 block aspect-square w-full overflow-hidden rounded-sm bg-sunken">
-                    <MemoryThumb message={m} px={focused ? FOCUS_PX : SIDE_PX} className="h-full w-full" />
+                    <MemoryThumb message={m} px={focused ? FOCUS_PX : SIDE_PX} large className="h-full w-full" />
                     {m.type === 'video' && (
                         <Play aria-hidden="true" className="absolute left-2 top-2 h-4 w-4 fill-current text-inverse drop-shadow-sm" />
                     )}

@@ -89,7 +89,8 @@ describe('Swimlanes', () => {
         render(<Swimlanes members={[NAO]} messages={[video]} />);
         const card = screen.getByTestId('day-lane-card');
         expect(card.querySelector('img')).toBeNull();
-        expect(within(card).getByTestId('memory-thumb-video')).toHaveAttribute('src', '/api/content/media/v.mp4');
+        expect(card.querySelector('video')).toBeNull();
+        expect(within(card).getByTestId('memory-thumb')).toBeInTheDocument();
         await userEvent.click(screen.getByRole('button', { expanded: false }));
         fireEvent.contextMenu(screen.getByTestId('day-lane-card').querySelector('video')!);
         expect(screen.queryByRole('menu')).toBeNull();

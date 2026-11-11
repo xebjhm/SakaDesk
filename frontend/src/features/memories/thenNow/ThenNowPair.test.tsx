@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
+import { installMediaTileHarness } from '../../../__tests__/mediaTileHarness';
 import i18n from '../../../i18n';
 import { memoryMessage } from '../__fixtures__/memories';
 import { ThenNowPair, type ThenNowSideView } from './ThenNowPair';
@@ -11,7 +12,7 @@ beforeEach(() => {
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(new Date('2026-11-10T03:00:00Z'));
 });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 const side = (year: number, over: Partial<ThenNowSideView> = {}): ThenNowSideView => ({
     year,
@@ -77,7 +78,8 @@ describe('ThenNowPair (pane)', () => {
         expect(within(now).getByText('小坂 菜緒')).toHaveAttribute('lang', 'ja');
     });
 
-    it('draws a photo through the thumbnail route and a voice as a lazy ▶', () => {
+    it('draws a photo through the thumbnail route and a voice as a lazy ▶', async () => {
+        const h = installMediaTileHarness();
         render(
             <ThenNowPair
                 variant="pane"
@@ -86,7 +88,9 @@ describe('ThenNowPair (pane)', () => {
             />,
         );
         const [then, now] = sides();
-        expect(then.querySelector('img')?.getAttribute('src')).toContain('/api/content/thumb');
+        expect(within(then).getByTestId('memory-thumb')).toBeInTheDocument();
+        await waitFor(() => expect(h.requested()).toHaveLength(1));
+        expect(h.requested()[0]).toContain('/api/content/thumb');
         expect(within(now).getByRole('button')).toHaveTextContent('00:12');
     });
 });

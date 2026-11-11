@@ -879,6 +879,7 @@
       "ribbon": "Months by colour",
       "empty": "There are no photos to lay out here yet.",
       "setCover": "Make this the month cover",
+      "retryTile": "Retry loading: {{label}}",
       "resetCover": "Choose the cover automatically",
       "coverFailed": "Couldn't change the cover"
     },

@@ -205,13 +205,13 @@ describe('AlbumPage', () => {
         expect(within(cover).getByTestId('memory-text')).toHaveAttribute('lang', 'ja');
         expect(recent.style.backgroundColor).toContain('color-mix');
         expect(recent.style.backgroundColor).toContain('coral');
-        expect(cover.querySelector('img')!.className).not.toContain('sepia-memories');
+        expect(within(cover).getByTestId('memory-thumb').className).not.toContain('sepia-memories');
 
         const old = section('2022-05');
         // a null colour falls back to the neutral band
         expect(old.style.backgroundColor).toBe('');
         expect(old).toHaveClass('bg-sunken');
-        expect(within(old).getByTestId('album-polaroid').querySelector('img')).toHaveClass('sepia-memories-3');
+        expect(within(within(old).getByTestId('album-polaroid')).getByTestId('memory-thumb')).toHaveClass('sepia-memories-3');
     });
 
     it('labels a cover without words with the month only', async () => {
@@ -236,12 +236,10 @@ describe('AlbumPage', () => {
         // the burst 3-4-5 collapses to one stack
         expect(within(grid).queryByTestId('album-tile-4')).toBeNull();
         expect(within(grid).getByRole('button', { name: /3 photos/ })).toBeInTheDocument();
-        // tiles are lazy images; a video is never an image
-        const img = within(grid).getByTestId('album-tile-1').querySelector('img')!;
-        expect(img).toHaveAttribute('loading', 'lazy');
-        expect(img).toHaveAttribute('decoding', 'async');
-        expect(within(grid).getByTestId('album-tile-6').querySelector('img')).toBeNull();
-        expect(within(grid).getByTestId('album-tile-6').querySelector('video')).toHaveAttribute('preload', 'metadata');
+        // tiles are shared media tiles (placeholder first); a video never mounts a <video>
+        expect(within(within(grid).getByTestId('album-tile-1')).getByTestId('memory-thumb')).toHaveAttribute('data-state', 'loading');
+        expect(within(grid).getByTestId('album-tile-6').querySelector('video')).toBeNull();
+        expect(within(within(grid).getByTestId('album-tile-6')).getByTestId('memory-thumb')).toBeInTheDocument();
         // her words within 3 minutes, as a frosted caption
         const caption = within(within(grid).getByTestId('album-tile-1')).getByTestId('album-hover-caption');
         expect(caption).toHaveClass('backdrop-blur-frost');

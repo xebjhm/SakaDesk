@@ -33,9 +33,9 @@ describe('BurstStack', () => {
     it('shows a stacked still with the photo count', () => {
         renderStack();
         const stack = screen.getByRole('button', { name: /3 photos/ });
-        expect(stack.querySelectorAll('img')).toHaveLength(1);
-        expect(stack.querySelector('img')).toHaveClass('sepia-memories-1');
-        expect(stack.querySelector('img')).toHaveAttribute('loading', 'lazy');
+        // one shared media tile, aged with the month's sepia
+        expect(within(stack).getAllByTestId('memory-thumb')).toHaveLength(1);
+        expect(within(stack).getByTestId('memory-thumb')).toHaveClass('sepia-memories-1');
     });
 
     it('opens the sequence in order with each caption beside it', async () => {
@@ -44,8 +44,8 @@ describe('BurstStack', () => {
         const dialog = await screen.findByRole('dialog');
         const rows = within(dialog).getAllByTestId('burst-frame');
         expect(rows).toHaveLength(3);
-        expect(rows[0].querySelector('img')).toHaveAttribute('src', expect.stringContaining('/3.jpg'));
-        expect(rows[2].querySelector('img')).toHaveAttribute('src', expect.stringContaining('/5.jpg'));
+        expect(within(rows[0]).getByTestId('memory-thumb')).toBeInTheDocument();
+        expect(within(rows[2]).getByTestId('memory-thumb')).toBeInTheDocument();
         expect(within(rows[0]).getByTestId('memory-text')).toHaveTextContent('連写1、みーぱん');
         expect(within(rows[1]).getByTestId('memory-text')).toHaveTextContent('連写2');
         expect(within(rows[2]).queryByTestId('memory-text')).toBeNull();

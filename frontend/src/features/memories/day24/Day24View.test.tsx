@@ -51,7 +51,7 @@ describe('Day24View', () => {
         expect(slots.map((s) => within(s).getByTestId('day24-time').textContent)).toEqual(['07:30', '12:30', '15:10', '18:30', '22:30']);
         expect(slots.map((s) => within(s).getByTestId('day24-year').textContent)).toEqual(['2022年', '2024年', '2023年', '2024年', '2022年']);
         expect(within(slots[4]).getByTestId('memory-text')).toHaveAttribute('lang', 'ja');
-        expect(slots[1].querySelector('img')?.getAttribute('src')).toContain('/api/content/thumb');
+        expect(within(slots[1]).getByTestId('memory-thumb')).toBeInTheDocument();
         expect(screen.getByTestId('day24-sky')).toHaveClass('bg-memories-sky');
         expect(vi.mocked(fetchDay24).mock.calls[0]?.slice(0, 3)).toEqual(['hinatazaka46', MEMBER_PATH, undefined]);
     });

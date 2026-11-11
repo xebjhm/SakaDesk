@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useSta
 import { useTranslation } from '../../../i18n';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { MEDIA_GRID_COLS, MEDIA_GRID_GAP, MEDIA_GRID_MIN } from '../../../core/media/tileGrid';
+import { primeMediaMeta, useGridColumns } from '../../../core/media/grid';
 import { cn } from '../../../utils/classnames';
 import { fetchAlbumMonth } from '../api';
 import { LoadState } from '../shared/LoadState';
@@ -72,6 +73,12 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
     const { t, i18n } = useTranslation();
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
     const entries = useMemo(() => gridEntries(data), [data]);
+    // The month's placeholders and versions in one meta batch as soon as its payload lands
+    // (burst frames included, which only draw when their sequence opens).
+    useEffect(() => { primeMediaMeta(data.items.map((i) => i.media_url)); }, [data]);
+    // The drawn tile edge (the same `tileGrid.ts` maths as the CSS grid) picks each thumbnail width.
+    const gridRef = useRef<HTMLDivElement>(null);
+    const { tilePx } = useGridColumns(gridRef);
     const viewer = useMemo(
         () => albumViewerItems(data.items, {
             nameOf,
@@ -91,9 +98,9 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
 
     return (
         <>
-            <div data-testid="album-grid" className={cn('grid w-full min-w-0 grid-flow-row-dense', MEDIA_GRID_GAP, MEDIA_GRID_COLS)}>
+            <div ref={gridRef} data-testid="album-grid" className={cn('grid w-full min-w-0 grid-flow-row-dense', MEDIA_GRID_GAP, MEDIA_GRID_COLS)}>
                 {entries.map((entry) => (entry.kind === 'burst'
-                    ? <BurstStack key={entry.key} items={entry.items} title={label} nameOf={nameOf} sepia={sepia} onSetCover={onSetCover} />
+                    ? <BurstStack key={entry.key} items={entry.items} title={label} nameOf={nameOf} sepia={sepia} onSetCover={onSetCover} tilePx={tilePx} />
                     : (
                         <PhotoTile
                             key={albumItemKey(entry.item)}
@@ -103,6 +110,7 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
                             label={entry.item.caption ?? entry.item.text ?? dateLabel.format(new Date(entry.item.ts))}
                             onOpen={onOpen}
                             onSetCover={onSetCover}
+                            tilePx={tilePx}
                         />
                     )))}
             </div>
@@ -125,6 +133,8 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
  * (`MEDIA_GRID_COLS`, the shared media tile density); a band too narrow for the polaroid and a
  * two-tile grid side by side wraps the grid below the polaroid (`MEDIA_GRID_MIN`). The month label is the band's heading: above the band
  * when the polaroid carries her words, else the polaroid's own caption (never shown twice).
+ * Tiles are the shared media tile, sized from the grid's measured tile edge; a month's media are
+ * primed into the meta store in one batch when its payload lands.
  * The grid is fetched once `requested` and mounted only while `live`; a band that is not live
  * keeps its last measured height, so the scroll position holds while its grid is released.
  * With `onSetCover` / `onResetCover` the tiles and the cover carry the cover-choice context menus

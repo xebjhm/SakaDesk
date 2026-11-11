@@ -863,6 +863,7 @@
       "ribbon": "每月的颜色",
       "empty": "这里还没有可以排列的照片。",
       "setCover": "设为这个月的封面",
+      "retryTile": "重新加载：{{label}}",
       "resetCover": "封面改回自动",
       "coverFailed": "无法更换封面"
     },

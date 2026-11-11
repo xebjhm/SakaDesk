@@ -70,7 +70,7 @@ const BoardItem = React.memo<ItemProps>(({ item, name, date, onOpen }) => {
                 className={cn('block w-full p-2 pb-3 text-left', PAPER, FOCUS)}
             >
                 <span className="relative block aspect-square w-full overflow-hidden bg-sunken">
-                    <MemoryThumb message={item} px={PRINT_PX} className="h-full w-full" />
+                    <MemoryThumb message={item} px={PRINT_PX} large className="h-full w-full" />
                     {item.type === 'video' && (
                         <Play aria-hidden="true" className="absolute left-2 top-2 h-4 w-4 fill-current text-inverse drop-shadow-sm" />
                     )}

@@ -1,23 +1,27 @@
-import React, { useRef, useState } from 'react';
+import React, { useState } from 'react';
 import { Film } from 'lucide-react';
 import { cn } from '../../../utils/classnames';
-import { useDevicePixelRatio } from '../../../hooks/useDevicePixelRatio';
-import { thumbnailUrl, thumbWidthFor } from '../../messages/mediaUrl';
+import { MediaTile, type MediaTileState } from '../../../core/media/grid';
+import { THUMB_PREGEN_WIDTH } from '../../messages/mediaUrl';
 import type { MemoryMessage } from '../types';
-import { useInView } from './useInView';
 
 interface MemoryThumbProps {
     message: Pick<MemoryMessage, 'type' | 'media_url'>;
-    /** Size, radius and filters (e.g. `sepiaClass`); applied to the image, the video or the tile. */
+    /** Size, radius and filters (e.g. `sepiaClass`); applied to the tile (or the original image). */
     className?: string;
     /**
-     * The still's drawn longest side in CSS px: a picture is then loaded from the thumbnail route
-     * at the matching width (`thumbWidthFor`), falling back to the full file if that fails.
-     * Without it the full file is used.
+     * The still's drawn longest side in CSS px: the still is then the shared `MediaTile`, loaded
+     * from the thumbnail route at the matching width (`thumbWidthFor`). Without it a picture is
+     * its original file, loaded directly (callers that need the original).
      */
     px?: number;
-    /** Called when a picture cannot load at all (the full file failed too), so the caller can hide its frame. */
-    onFail?: () => void;
+    /**
+     * Called when a picture cannot load at all (with `px`: the thumbnail and the full file both
+     * failed), so the caller can hide its frame. It receives `retry`, which starts loading again.
+     */
+    onFail?: (retry: () => void) => void;
+    /** The tile's state (`loading | ready | failed | film`) whenever it changes (with `px`). */
+    onStateChange?: (state: MediaTileState) => void;
     /** A picture's loading hint (default `lazy`); the recap poster passes `eager` (it is exported as an image). */
     loading?: 'lazy' | 'eager';
     /**
@@ -27,71 +31,76 @@ interface MemoryThumbProps {
     large?: boolean;
 }
 
+/** A video's drawn size when the caller gives none (its poster comes from the pre-generated width). */
+const VIDEO_FALLBACK_PX = THUMB_PREGEN_WIDTH;
+
 const FilmTile: React.FC<{ className?: string }> = ({ className }) => (
     <span aria-hidden="true" data-testid="memory-thumb-video-tile" className={cn('flex items-center justify-center bg-sunken text-muted', className)}>
         <Film className="h-5 w-5" />
     </span>
 );
 
-const PictureThumb: React.FC<{
-    url: string; px?: number; className?: string; onFail?: () => void; loading?: 'lazy' | 'eager'; large?: boolean;
-}> = ({
-    url, px, className, onFail, loading = 'lazy', large = false,
-}) => {
-    const dpr = useDevicePixelRatio();
-    // The URL that failed: a thumbnail error switches this picture to its full file.
-    const [failed, setFailed] = useState<string | null>(null);
-    const thumb = px !== undefined ? thumbnailUrl(url, thumbWidthFor(px, dpr, { large })) : undefined;
-    const src = thumb && failed !== thumb ? thumb : url;
+/**
+ * The original file as a plain `<img>`: no thumbnail, no scheduler, no meta (callers that need
+ * the full picture and pass no `px`).
+ */
+const OriginalPicture: React.FC<{
+    url: string; className?: string; onFail?: (retry: () => void) => void; loading?: 'lazy' | 'eager';
+}> = ({ url, className, onFail, loading = 'lazy' }) => {
+    const [attempt, setAttempt] = useState(0);
     return (
         <img
-            src={src}
+            key={attempt}
+            src={url}
             alt=""
             draggable={false}
             loading={loading}
             decoding="async"
-            onError={() => { if (src !== url) setFailed(src); else onFail?.(); }}
+            onError={() => onFail?.(() => setAttempt((n) => n + 1))}
             className={cn('object-cover', className)}
         />
     );
 };
 
-/** A video still mounted only while near the viewport (a live player costs memory); else the film tile. */
-const VideoThumb: React.FC<{ url: string; className?: string }> = ({ url, className }) => {
-    const ref = useRef<HTMLSpanElement>(null);
-    const inView = useInView(ref);
-    return (
-        <span ref={ref} className={cn('block overflow-hidden', className)}>
-            {inView ? (
-                <video
-                    data-testid="memory-thumb-video"
-                    src={url}
-                    muted
-                    playsInline
-                    preload="metadata"
-                    aria-hidden="true"
-                    className="pointer-events-none h-full w-full object-cover"
-                />
-            ) : (
-                <FilmTile className="h-full w-full" />
-            )}
-        </span>
-    );
-};
-
 /**
- * A small still of a picture or video message: a picture as a lazy, async-decoded `<img>` (from
- * the thumbnail route when `px` is given, the full file on error); a video as a muted,
- * metadata-only `<video>` showing its first frame (the recap's approach, `S05Photos`), mounted
- * only while near the viewport (a film tile otherwise), never a video in an `<img>`. A video
- * without a URL is a neutral film tile; anything else renders nothing. Decorative: callers label
- * the surrounding control.
+ * A small still of a picture or video message on the media pipeline's shared tile (`MediaTile`):
+ * the placeholder (mean colour and blur, pulsing; a spinner under reduced motion), then the
+ * thumbnail at `px` fading in through the priority scheduler, with the fallbacks `?v` → plain
+ * thumbnail → full file → `onFail(retry)` and a quiet failed state. `loading="eager"` renders a
+ * synchronous `<img>` with the same fallbacks (the recap poster export). A video shows its poster
+ * thumbnail (captured in the browser while visible if none exists) or the film tile; it never
+ * mounts a `<video>`. Without `px` a picture is its original file (no thumbnail is tried first).
+ * A video without a URL is a neutral film tile; anything else renders nothing. Decorative:
+ * callers label the surrounding control.
  */
-export const MemoryThumb: React.FC<MemoryThumbProps> = ({ message, className, px, onFail, loading, large }) => {
+export const MemoryThumb: React.FC<MemoryThumbProps> = ({ message, className, px, onFail, onStateChange, loading, large = false }) => {
     if (message.type === 'picture' && message.media_url) {
-        return <PictureThumb url={message.media_url} px={px} className={className} onFail={onFail} loading={loading} large={large} />;
+        if (px === undefined) return <OriginalPicture url={message.media_url} className={className} onFail={onFail} loading={loading} />;
+        return (
+            <MediaTile
+                url={message.media_url}
+                kind="picture"
+                cssPx={px}
+                large={large}
+                eager={loading === 'eager'}
+                className={className}
+                onFail={onFail}
+                onStateChange={onStateChange}
+                testId="memory-thumb"
+            />
+        );
     }
     if (message.type !== 'video') return null;
     if (!message.media_url) return <FilmTile className={className} />;
-    return <VideoThumb url={message.media_url} className={className} />;
+    return (
+        <MediaTile
+            url={message.media_url}
+            kind="video"
+            cssPx={px ?? VIDEO_FALLBACK_PX}
+            large={large}
+            className={className}
+            onStateChange={onStateChange}
+            testId="memory-thumb"
+        />
+    );
 };

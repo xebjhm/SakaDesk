@@ -863,6 +863,7 @@
       "ribbon": "月の色",
       "empty": "ここに並べる写真は、まだありません。",
       "setCover": "この月の表紙にする",
+      "retryTile": "再読み込み：{{label}}",
       "resetCover": "表紙を自動にもどす",
       "coverFailed": "表紙を変えられませんでした"
     },

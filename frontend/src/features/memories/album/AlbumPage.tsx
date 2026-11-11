@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { ImageIcon, Star } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { EmptyState, Pill } from '../../../design/primitives';
+import { MediaGridContext, PregenProgressBar, useMediaGridReporter, usePregenProgress } from '../../../core/media/grid';
 import type { CorePageProps, MemoriesRoute } from '../MemoriesFeature';
 import {
     deleteAlbumCover, fetchAlbumColors, fetchAlbumMembers, fetchAlbumMonths, MemoriesFetchError, MemoriesTimeoutError, putAlbumCover,
@@ -40,6 +41,8 @@ interface AlbumGridProps {
     nameOf: (m: MemoryMessage) => string;
     onSetCover: (month: string, item: MemoryMessage) => void;
     onResetCover: (month: string) => void;
+    /** Receives the scroll container (the tiles measure their visibility against it). */
+    onScroller?: (el: HTMLDivElement | null) => void;
 }
 
 /** How long the cover-failure toast stays (ms). */
@@ -59,8 +62,12 @@ function failureOf(err: unknown): { reason: MemoriesToggleReason; error_code?: n
  * Loading and windowing are `useAlbumWindow`'s: bands far from the viewport release their grids,
  * and a ribbon jump scrolls instantly and loads only where it lands.
  */
-const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, colors, nameOf, onSetCover, onResetCover }) => {
-    const scroller = useRef<HTMLDivElement>(null);
+const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, colors, nameOf, onSetCover, onResetCover, onScroller }) => {
+    const scroller = useRef<HTMLDivElement | null>(null);
+    const setScroller = useCallback((el: HTMLDivElement | null) => {
+        scroller.current = el;
+        onScroller?.(el);
+    }, [onScroller]);
     const monthKeys = useMemo(() => months.map((m) => m.month), [months]);
     const win = useAlbumWindow(monthKeys, scroller);
 
@@ -71,7 +78,7 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
 
     return (
         <div className="flex min-h-0 flex-1 gap-2 pb-2 pr-2">
-            <div ref={scroller} data-testid="album-scroller" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 pb-4">
+            <div ref={setScroller} data-testid="album-scroller" className="flex min-h-0 min-w-0 flex-1 flex-col gap-4 overflow-y-auto overflow-x-hidden px-4 pb-4">
                 {months.map((m, i) => (
                     <MonthSection
                         key={m.month}
@@ -110,6 +117,10 @@ const AlbumGrid: React.FC<AlbumGridProps> = ({ service, member, kind, months, co
  * `memories_toggle` `album_cover` (`on` = set, `off` = cleared); a failure logs `off` with its
  * `reason` (`not_in_month`, `timeout`, `request_failed`) and `error_code` (HTTP status, when the
  * backend answered) and shows the inline toast.
+ * Tiles are the shared media tile (media pipeline): the page provides their grid reporter, which
+ * logs the `media_grid` first-paint breadcrumb (`grid: 'album'`, `first_tile_ms` from the page's
+ * mount) once per page mount, and shows the quiet "Preparing thumbnails… done / total" line (or
+ * its paused form) in the filter row while the background worker prepares this service.
  */
 export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     const { t } = useTranslation();
@@ -179,6 +190,13 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
     })), [people]);
     const total = members.data?.total ?? 0;
 
+    // The tiles' grid reporter (visibility root: the album's scroll container) and the background
+    // thumbnail preparation, shown while there are bands on screen.
+    const [scrollRoot, setScrollRoot] = useState<HTMLDivElement | null>(null);
+    const itemCount = useMemo(() => (shownMonths?.months ?? []).reduce((n, m) => n + m.count, 0), [shownMonths]);
+    const reporter = useMediaGridReporter('album', scrollRoot, itemCount);
+    const pregen = usePregenProgress(itemCount > 0, service);
+
     const pickMember = (key: string | null) => {
         if ((key ?? undefined) === member) return;
         logMemoriesToggle('member_filter', key !== null);
@@ -211,6 +229,7 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
                 nameOf={nameOf}
                 onSetCover={onSetCover}
                 onResetCover={onResetCover}
+                onScroller={setScrollRoot}
             />
         );
     }
@@ -242,8 +261,10 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
                                 {t(f.key)}
                             </Pill>
                         ))}
+                        {/* Quiet background progress: thumbnails still being prepared (or paused). */}
+                        {pregen && <PregenProgressBar progress={pregen} className="ml-auto min-w-0 flex-1" />}
                     </div>
-                    {body}
+                    <MediaGridContext.Provider value={reporter}>{body}</MediaGridContext.Provider>
                     {coverFailure > 0 && (
                         <div
                             role="status"

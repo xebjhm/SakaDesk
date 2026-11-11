@@ -132,7 +132,8 @@ describe('Timeline', () => {
         // while the new month loads, the previous one stays (dimmed), never a blank pane
         expect(screen.getByTestId('timeline-slot-top')).toHaveTextContent('ずっとみーぱんに伝えたかったこと');
         expect(screen.getByTestId('timeline-month-body')).toHaveAttribute('aria-busy', 'true');
-        expect(screen.queryByRole('status')).not.toBeInTheDocument();
+        // no month loading status (a photo tile's own compact spinner is not one)
+        expect(screen.queryAllByRole('status').filter((el) => !el.closest('[data-state]'))).toEqual([]);
         expect(screen.queryByText('37 件')).not.toBeInTheDocument();
         fireEvent.keyDown(rail, { key: 'ArrowLeft' });
         await waitFor(() => expect(vi.mocked(fetchTimelineMonth).mock.lastCall?.[2]).toBe('2024-10'));

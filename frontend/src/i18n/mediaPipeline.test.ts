@@ -26,6 +26,8 @@ export const MEDIA_PIPELINE_KEYS = [
     // M6 review fixes: a paused pre-generation, and a failed tile (its click retries).
     'settings.mediaCachePaused',
     'media.gallery.retryPhoto',
+    // M8: a failed Memories album tile (its click retries); the label is the tile's own name.
+    'memories.album.retryTile',
 ] as const;
 
 function lookup(tree: unknown, path: string): unknown {
@@ -67,6 +69,15 @@ const REVIEW_WORDING = {
     yue: ['縮圖準備暫停咗 · {{done}} / {{total}}', '重新載入 {{date}} 嘅相'],
 } as const;
 
+/** M8: the failed album tile's label (Japanese is the reference). */
+const ALBUM_WORDING = {
+    ja: '再読み込み：{{label}}',
+    en: 'Retry loading: {{label}}',
+    'zh-TW': '重新載入：{{label}}',
+    'zh-CN': '重新加载：{{label}}',
+    yue: '重新載入：{{label}}',
+} as const;
+
 describe('media pipeline strings', () => {
     it.each(Object.keys(locales))('%s has every media pipeline key', (code) => {
         const tree = locales[code as keyof typeof locales];
@@ -94,6 +105,11 @@ describe('media pipeline strings', () => {
         const tree = locales[code as keyof typeof locales];
         expect(lookup(tree, 'settings.mediaCachePaused'), code).toBe(want[0]);
         expect(lookup(tree, 'media.gallery.retryPhoto'), code).toBe(want[1]);
+    });
+
+    it.each(Object.entries(ALBUM_WORDING))('%s uses the agreed album retry wording', (code, want) => {
+        const tree = locales[code as keyof typeof locales];
+        expect(lookup(tree, 'memories.album.retryTile'), code).toBe(want);
     });
 
     it('keeps the interpolation variables in every locale', () => {

@@ -72,11 +72,13 @@ export const S05Photos: React.FC<SlideProps<S05PhotosData>> = ({ data, nickname,
         <div className="relative flex h-full flex-col items-center justify-center gap-6 overflow-hidden px-8 text-center">
             {wall.length > 0 && (
                 <div data-testid="s05-wall" aria-hidden="true" className="absolute inset-0 grid grid-cols-4 content-center gap-1 opacity-30 blur-sm">
+                    {/* Eager: a slide paints at once, with no pulsing placeholder (a paused player holds every animation). */}
                     {wall.map((url, i) => (
                         <MemoryThumb
                             key={`${url}:${i}`}
                             message={{ type: 'picture', media_url: url }}
                             px={WALL_TILE_PX}
+                            loading="eager"
                             className="aspect-square w-full rounded-xs"
                         />
                     ))}

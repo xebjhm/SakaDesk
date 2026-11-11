@@ -748,7 +748,13 @@ never an empty box. A video without a poster is the `Film` tile (`bg-sunken text
 never mounts a `<video>`. A gallery that wraps each tile in its own button keeps the tile's
 `onFail(retry)` handle and calls it when a failed tile is clicked, instead of opening the viewer;
 `MediaTileButton` does this for the galleries and, through the tile's `onStateChange`, switches the
-button's accessible name to the retry action while the tile is failed.
+button's accessible name to the retry action while the tile is failed. The rule itself is
+`useTileRetry()`, which the Memories album's own tile buttons (photo tiles, burst stacks and
+frames) use too, naming a failed tile `memories.album.retryTile`. Every Memories still is a
+`MediaTile` through `MemoryThumb` (with `px`); `loading="eager"` (the recap poster export and the
+recap slides) is the synchronous `<img>` variant with no pulsing placeholder, and a `MemoryThumb`
+without `px` is the original file as a plain `<img>`. The album shows `PregenProgressBar` at the
+end of its filter row.
 For the grid-level states, `core/media/grid/galleryStatus.ts` has `useHeldLoading(active)` (keeps
 the first-load `StatusBlock` mounted until `minVisible`), `pregenProgress(status, service)` (the one
 "thumbnails are still being prepared" rule, shared with Settings: `{done, total, paused}`) and

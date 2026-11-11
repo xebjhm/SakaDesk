@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
+import { installMediaTileHarness } from '../../../__tests__/mediaTileHarness';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../../i18n';
 import { NicknameProvider } from '../shared/useNickname';
@@ -36,12 +37,14 @@ describe('GachaCard', () => {
         expect(card).toHaveTextContent(/2024.*9.*14.*21:52/);
     });
 
-    it('shows a photo through the thumbnail route', () => {
-        const { container } = renderCard(gachaPull({ reason: 'photo' }, {
+    it('shows a photo through the thumbnail route', async () => {
+        const h = installMediaTileHarness();
+        renderCard(gachaPull({ reason: 'photo' }, {
             type: 'picture', text: null, caption: 'きれい', media_url: '/api/content/media/x.jpg',
         }));
-        const img = container.querySelector('img');
-        expect(img?.getAttribute('src')).toContain('/api/content/thumb');
+        await waitFor(() => expect(h.requested()).toHaveLength(1));
+        expect(h.requested()[0]).toContain('/api/content/thumb');
+        vi.unstubAllGlobals();
         expect(screen.getByText('きれい')).toBeInTheDocument();
         expect(screen.getByText('写真')).toBeInTheDocument();
     });
