@@ -725,16 +725,79 @@ def _degraded_skips(logs) -> list[dict]:
 
 
 @pytest.mark.asyncio
-async def test_a_blog_phase_at_the_fill_line_saves_no_signature(h):
-    """3.1 / B-M3: only placeholders were made, so the listing is not done."""
+async def test_a_blog_phase_at_the_fill_line_saves_its_signature(h):
+    """R1: a cache that stays full keeps the D-M4 skip (placeholders only is enough)."""
     _blog_archive(h.root, TWO_MEMBERS)
     _blog_only(h)
     h.busy = "budget_full"
     with capture_logs() as logs:
         p = await _one_pass(h)
-    assert _persisted() == {}
-    assert HINATA not in p._blog_sig
-    assert len(_degraded_skips(logs)) == 1
+        assert list(_persisted()) == [media_pregen.BLOG_SIG_PREFIX + HINATA]
+        assert HINATA in p._blog_sig
+        await _one_pass(h)  # a restart, still full
+    assert _blog_reasons(logs) == [None, "unchanged"]
+    assert _degraded_skips(logs) == []
+
+
+@pytest.mark.asyncio
+async def test_the_budget_turning_ok_forgets_the_blog_signatures(h):
+    """R1: after an eviction makes room, the blogs skipped while full are walked again."""
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    h.busy = "budget_full"
+    p = h.make()
+    with capture_logs() as logs:
+        p.start()
+        await _idle(p)
+        assert _persisted()
+        first = len(h.processed)
+        h.busy = None  # an eviction trimmed the cache below the fill line
+        p.request(HINATA)
+        await asyncio.sleep(0)
+        await _idle(p)
+        await p.stop()
+    assert {
+        "event": "media_pregen_blog_sig",
+        "state": "forgotten",
+        "reason": "budget_ok",
+        "log_level": "info",
+    } in logs
+    assert _blog_reasons(logs) == [None, None]  # walked again, not "unchanged"
+    assert len(h.processed) == 2 * first
+    assert list(_persisted()) == [media_pregen.BLOG_SIG_PREFIX + HINATA]  # saved anew
+
+
+@pytest.mark.asyncio
+async def test_a_repeatedly_unavailable_blog_image_still_saves_the_signature(h):
+    """R2: a per-file ``unavailable`` failure never blocks the signature."""
+    _blog_archive(h.root, TWO_MEMBERS)
+    _blog_only(h)
+    h.process = lambda item: ItemResult("failed", 0, reason="unavailable")  # type: ignore[method-assign]
+    with capture_logs() as logs:
+        p = await _one_pass(h)
+    assert list(_persisted()) == [media_pregen.BLOG_SIG_PREFIX + HINATA]
+    assert HINATA in p._blog_sig
+    assert _degraded_skips(logs) == []
+
+
+def test_default_process_marks_an_unopenable_file_unavailable(tmp_path):
+    root = tmp_path / "out"
+    item = Item(root, root / "日向坂46" / "gone.jpg", "picture", (480,))
+    assert media_pregen.default_process(item) == ItemResult(
+        "failed", reason="unavailable"
+    )
+
+
+def test_a_make_set_unavailable_is_reported_as_unavailable(out):
+    src = _jpeg(_room(out) / "picture" / "1.jpg")
+    item = Item(out, src, "picture", (480,))
+    gone = photo_thumb.SetResult(None, {}, {}, None, None, "unavailable")
+    bad = photo_thumb.SetResult(None, {}, {}, None, None, "unreadable")
+    rel = _rel(out, src)
+    assert media_pregen._record(item, rel, gone) == ItemResult(
+        "failed", reason="unavailable"
+    )
+    assert media_pregen._record(item, rel, bad) == ItemResult("failed")
 
 
 @pytest.mark.asyncio
@@ -774,9 +837,11 @@ async def test_a_blog_phase_with_a_dropped_batch_saves_no_signature(h):
 async def test_a_clean_blog_phase_after_a_degraded_one_saves_its_signature(h):
     _blog_archive(h.root, TWO_MEMBERS)
     _blog_only(h)
-    h.busy = "budget_full"
+    real = h.process
+    h.process = lambda item: ItemResult("failed", 0)  # type: ignore[method-assign]
     await _one_pass(h)
-    h.busy = None
+    assert _persisted() == {}
+    h.process = real  # type: ignore[method-assign]
     p = await _one_pass(h)
     assert list(_persisted()) == [media_pregen.BLOG_SIG_PREFIX + HINATA]
     assert HINATA in p._blog_sig

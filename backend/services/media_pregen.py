@@ -99,10 +99,16 @@ Per service the phases are (:func:`default_enumerate`):
    (``reason=failed``, ``media_pregen_blogs_failed``).
 
 **Persisted blog signatures** (D-M4). A completed blog phase stores its
-listing signature (in memory and on disk) only when it ran clean: a phase
-that ran at the fill line (placeholders only), lost a batch to the watchdog
-or had a failed item stores none (``media_pregen_blog_sig state=skipped
-reason=degraded``), so the next pass walks it again. The signature goes
+listing signature (in memory and on disk) unless it lost a batch to the
+watchdog or had a failed item (``media_pregen_blog_sig state=skipped
+reason=degraded``), so the next pass walks it again. A per-file
+``unavailable`` failure (a cloud-only placeholder, an ACL denial) can repeat
+on every pass, so it does not count. A phase that ran at the fill line
+(placeholders only) is saved, so a cache that stays full keeps its skip
+across restarts; when the budget turns from ``full`` back to ``ok``
+(``media_pregen_budget state=ok``), every blog signature is forgotten, in
+memory and on disk (``state=forgotten reason=budget_ok``), so the first pass
+with room walks the blogs once more. The signature goes
 in ``media_meta.db`` (``media_meta.kv_set``, key :data:`BLOG_SIG_PREFIX` +
 service; value: a hash of the blogs base, the index mtime and the
 cached-blog count, never a path), so the "unchanged"
@@ -256,12 +262,15 @@ class ItemResult:
     """The outcome of one file: ``done|skipped|failed|waiting``.
 
     ``waiting`` is a video with no poster yet (the client capture fills it);
-    ``rel`` is set for it, so hints for it cool down.
+    ``rel`` is set for it, so hints for it cool down. ``reason`` is set to
+    ``unavailable`` for a ``failed`` file that could not be opened or stat-ed
+    (it does not block a blog signature).
     """
 
     outcome: str
     bytes: int = 0
     rel: str | None = None
+    reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -533,7 +542,9 @@ def _record(item: Item, rel: str, res: photo_thumb.SetResult) -> ItemResult:
                 )
             )
         _item_failed(item.kind, res.reason)
-        return ItemResult("failed")
+        return ItemResult(
+            "failed", reason="unavailable" if res.reason == "unavailable" else None
+        )
     if res.placeholder is not None and res.stat is not None:
         r, g, b = res.placeholder.rgb
         width, height = res.size if res.size is not None else (None, None)
@@ -635,7 +646,7 @@ def default_process(item: Item) -> ItemResult:
         st = item.path.stat()
     except OSError as e:
         _item_failed(item.kind, "unavailable", e)
-        return ItemResult("failed")
+        return ItemResult("failed", reason="unavailable")
     except ValueError as e:  # outside the output dir
         _item_failed(item.kind, "error", e)
         return ItemResult("failed")
@@ -830,8 +841,8 @@ class MediaPregen:
         self._paused_at = 0.0
         self._shell_off_seen = False
         self._thumbs_full = False
-        # Set by _run_batch when a batch made no variants (fill line) or was lost
-        # to the watchdog; _run_phase then keeps a blog listing as not done.
+        # Set by _run_batch when a batch was lost to the watchdog; _run_phase
+        # then keeps a blog listing as not done.
         self._phase_degraded = False
         self._generation = 0  # bumped by clear(): the pass in flight is dropped
         self._turn_generation = 0
@@ -1117,6 +1128,8 @@ class MediaPregen:
                 if full != self._thumbs_full:
                     self._thumbs_full = full
                     logger.info("media_pregen_budget", state="full" if full else "ok")
+                    if not full:
+                        await self._forget_full_blog_sigs()
                 if self._paused_reason is not None:
                     logger.info(
                         "media_pregen_pause",
@@ -1187,16 +1200,31 @@ class MediaPregen:
         _log_pass(service, phase.name, len(items), counts, start)
         if signature is None:
             return True
-        if self._phase_degraded or counts["failed"] > 0:
-            # Placeholders only (fill line), a batch lost to the watchdog or a
-            # failed item: the listing is not done, so it is neither remembered
-            # nor persisted, and the next pass walks it again.
+        if self._phase_degraded or counts["failed_settles"] > 0:
+            # A batch lost to the watchdog, or an item that failed for a reason
+            # other than a per-file ``unavailable``: the listing is not done, so
+            # it is neither remembered nor persisted, and the next pass walks
+            # it again.
             logger.info("media_pregen_blog_sig", state="skipped", reason="degraded")
             return True
         # Completed: an unchanged listing is skipped next time.
         self._blog_sig[service] = signature
         await self._save_blog_sig(service, signature)
         return True
+
+    async def _forget_full_blog_sigs(self) -> None:
+        """The cache dropped below the fill line: forget every blog signature. Never raises.
+
+        Blog phases that ran at the fill line made placeholders only, yet saved
+        their signatures (a cache that stays full keeps its skip across
+        restarts). Once there is room again, the next pass walks the blogs once
+        more (memory and persisted rows). Logs ``media_pregen_blog_sig
+        state=forgotten reason=budget_ok``.
+        """
+        self._blog_sig.clear()
+        self._loaded_sig.clear()
+        await asyncio.to_thread(media_meta.kv_delete_prefix, BLOG_SIG_PREFIX)
+        logger.info("media_pregen_blog_sig", state="forgotten", reason="budget_ok")
 
     async def _save_blog_sig(
         self, service: str, signature: tuple[str, int, int, int]
@@ -1356,7 +1384,6 @@ class MediaPregen:
             raise _PassAborted  # cleared since this pass began: it is stale
         if self._thumbs_full:  # at the fill line: placeholders and posters only
             batch = [replace(i, widths=()) for i in batch]
-            self._phase_degraded = True
         started = self._clock()
         results = await self._execute(batch)
         work = self._clock() - started
@@ -1369,6 +1396,11 @@ class MediaPregen:
             if counts is not None:
                 counts[res.outcome] += 1
                 counts["bytes"] += res.bytes
+                if res.outcome == "failed" and res.reason != "unavailable":
+                    # A per-file ``unavailable`` (cloud-only placeholder, ACL
+                    # denial) can repeat on every pass: it never blocks a blog
+                    # signature, or the skip would be lost for good.
+                    counts["failed_settles"] += 1
             if service is not None:
                 with self._lock:
                     entry = self._progress.get(service)
