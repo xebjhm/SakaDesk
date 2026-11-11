@@ -337,6 +337,30 @@ async def test_album_months_cache_holds_no_text(svc):
 
 
 @pytest.mark.asyncio
+async def test_album_warm_reopen_reads_no_text_file_and_sees_a_sync(svc, monkeypatch):
+    a = await person(svc, ROOM_A)
+    await album.album_months(SERVICE, svc, member=a, kind="all")
+    await album.album_month(SERVICE, svc, "2024-09", member=a, kind="all")
+    reads = []
+    real = people.load_texts
+    monkeypatch.setattr(people, "load_texts", lambda *a_: reads.append(1) or real(*a_))
+    months = await album.album_months(SERVICE, svc, member=a, kind="all")
+    grid = await album.album_month(SERVICE, svc, "2024-09", member=a, kind="all")
+    assert reads == []  # the second open: no messages.json parsed
+    assert months["months"][1]["cover"]["caption"] == CAPTION
+    assert {i["id"]: i["caption"] for i in grid["items"]}[2] == CAPTION
+    # a sync edits the caption: the next open shows the new words at once
+    room = svc / ROOM_A / "messages.json"
+    body = json.loads(room.read_text(encoding="utf-8"))
+    body["messages"][0]["content"] = "新しいキャプション"
+    room.write_text(json.dumps(body, ensure_ascii=False), encoding="utf-8")
+    grid = await album.album_month(SERVICE, svc, "2024-09", member=a, kind="all")
+    assert {i["id"]: i["caption"] for i in grid["items"]}[2] == "新しいキャプション"
+    months = await album.album_months(SERVICE, svc, member=a, kind="all")
+    assert months["months"][1]["cover"]["caption"] == "新しいキャプション"
+
+
+@pytest.mark.asyncio
 async def test_album_months_override(svc, monkeypatch):
     seen: list[str] = []
 

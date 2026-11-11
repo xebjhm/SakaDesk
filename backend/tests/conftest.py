@@ -110,6 +110,16 @@ def _reset_binder_bad_start_log():
 
 
 @pytest.fixture(autouse=True)
+def _reset_text_memo():
+    """attach_texts memoises texts per room file; never leak them between tests."""
+    from backend.services.memories import people
+
+    people.clear_text_memo()
+    yield
+    people.clear_text_memo()
+
+
+@pytest.fixture(autouse=True)
 def _reset_session_alert():
     """session_alert keeps module-level state; never leak it between tests."""
     from backend.services import session_alert

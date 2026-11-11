@@ -31,8 +31,9 @@ API:
   concurrency), ``current_avatars(sdir, rooms)``.
 - ``message_ref(service, sdir, room, fact, *, avatar=None)`` -- the shared
   message object, text-free; ``async attach_texts(sdir, refs)`` fills
-  ``text`` / ``caption`` with one ``load_texts`` per room, at most
-  :data:`IO_CONCURRENCY` rooms at once.
+  ``text`` / ``caption`` from an in-memory memo checked against each room's
+  ``messages.json`` stat, else with one ``load_texts`` per room, at most
+  :data:`IO_CONCURRENCY` rooms at once (``clear_text_memo()`` empties it).
 - ``async service_facts_on(sdir, summaries, *, day=None, month_day=None)``.
 - ``async room_hashes(sdir, summary)``, ``async person_hashes(sdir, persons)``
   (the same per person, one freshness check for all their rooms).
@@ -54,6 +55,7 @@ from __future__ import annotations
 import asyncio
 import hashlib
 import sqlite3
+import threading
 from collections import OrderedDict
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
@@ -404,29 +406,145 @@ def message_ref(
     }
 
 
+# Texts kept by the attach_texts memo (all rooms together); least recently used
+# rooms are dropped beyond it. Album months and grids ask for a few hundred.
+TEXT_MEMO_MAX = 50_000
+
+_Stamp = tuple[int, int]
+
+
+@dataclass
+class _RoomTexts:
+    """Texts read from one ``messages.json`` while it had ``stamp``."""
+
+    stamp: _Stamp
+    texts: dict[int, str]
+
+
+_text_memo: OrderedDict[str, _RoomTexts] = OrderedDict()
+_text_memo_lock = threading.Lock()
+
+
+def clear_text_memo() -> None:
+    """Forget every memoised text (tests; the memo is in memory only)."""
+    with _text_memo_lock:
+        _text_memo.clear()
+
+
+def _text_memo_size() -> int:
+    with _text_memo_lock:
+        return sum(len(e.texts) for e in _text_memo.values())
+
+
+def _stamp(path: Path) -> _Stamp | None:
+    """``(st_size, st_mtime_ns)`` of ``path`` (what ``index._data_hash`` uses), or ``None``."""
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return st.st_size, st.st_mtime_ns
+
+
+def _memo_lookup(
+    sdir: Path, wanted: dict[str, set[int]]
+) -> tuple[dict[str, dict[int, str]], dict[str, _Stamp | None]]:
+    """Split rooms into memo hits (their texts) and misses (their stamp). Blocking.
+
+    A hit needs the file's current stamp to equal the memoised one and every
+    wanted id to be memoised.
+    """
+    stamps = {room: _stamp(sdir / room / "messages.json") for room in wanted}
+    hits: dict[str, dict[int, str]] = {}
+    misses: dict[str, _Stamp | None] = {}
+    with _text_memo_lock:
+        for room, ids in wanted.items():
+            stamp = stamps[room]
+            key = str(sdir / room)
+            entry = _text_memo.get(key)
+            if stamp is not None and entry is not None and entry.stamp == stamp:
+                if ids <= entry.texts.keys():
+                    _text_memo.move_to_end(key)
+                    hits[room] = {i: entry.texts[i] for i in ids}
+                    continue
+            misses[room] = stamp
+    return hits, misses
+
+
+def _load_and_memo(
+    sdir: Path, room: str, ids: set[int], before: _Stamp | None
+) -> tuple[dict[int, str], bool]:
+    """``load_texts`` for one room, memoised when the file held still. Blocking.
+
+    Returns ``(texts, kept)``. Only texts that were found are kept (a failed
+    read or a missing id is read again next time), and only when the file's
+    stamp is the same before and after the read (a sync writing it meanwhile
+    is never memoised under the old stamp).
+    """
+    texts = load_texts(sdir, sdir / room, ids)
+    if before is None or _stamp(sdir / room / "messages.json") != before:
+        return texts, False
+    key = str(sdir / room)
+    with _text_memo_lock:
+        entry = _text_memo.get(key)
+        if entry is None or entry.stamp != before:
+            entry = _text_memo[key] = _RoomTexts(before, {})
+        entry.texts.update(texts)
+        _text_memo.move_to_end(key)
+        total = sum(len(e.texts) for e in _text_memo.values())
+        while _text_memo and total > TEXT_MEMO_MAX:
+            _, dropped = _text_memo.popitem(last=False)
+            total -= len(dropped.texts)
+    return texts, True
+
+
 async def attach_texts(sdir: Path, refs: list[dict]) -> None:
     """Fill ``text`` and ``caption`` of ``refs`` in place.
 
     Every ref must belong to ``sdir``'s service: refs are grouped by room
     only, and two services can share a relative room path, so a caller that
     mixes services calls this once per service with its own ``sdir``.
-    One ``load_texts`` per room (in a worker, at most
-    :data:`IO_CONCURRENCY` rooms at once), for the refs' own ids and
-    caption ids only. An empty text becomes ``None``. Refs whose id (or
-    caption id) is not in ``messages.json`` keep ``None`` and are counted in
-    one ``memories_skip`` (``view=attach_texts``, ``reason=text_missing``).
+    Texts come from an in-memory memo (never stored on disk) keyed by each
+    room's ``messages.json`` size and mtime, so new data after a sync is read
+    at once; rooms the memo cannot answer get one ``load_texts`` each (in a
+    worker, at most :data:`IO_CONCURRENCY` rooms at once), for the refs' own
+    ids and caption ids only. An empty text becomes ``None``. Refs whose id
+    (or caption id) is not in ``messages.json`` keep ``None`` and are counted
+    in one ``memories_skip`` (``view=attach_texts``, ``reason=text_missing``).
+    Logs one ``memories_text_memo`` (``rooms``, ``hit``, ``loaded``,
+    ``unstable`` = read but not memoised: the file changed during the read
+    or could not be stat'ed).
     """
     by_room: dict[str, list[dict]] = {}
     for ref in refs:
         by_room.setdefault(ref["room"], []).append(ref)
-    gate = asyncio.Semaphore(IO_CONCURRENCY)
-
-    async def fill(room: str, group: list[dict]) -> int:
+    if not by_room:
+        return
+    wanted: dict[str, set[int]] = {}
+    for room, group in by_room.items():
         ids = {r["id"] for r in group}
         ids |= {r["caption_id"] for r in group if r.get("caption_id") is not None}
+        wanted[room] = ids
+    hits, misses = await asyncio.to_thread(_memo_lookup, sdir, wanted)
+    gate = asyncio.Semaphore(IO_CONCURRENCY)
+
+    async def load(
+        room: str, before: _Stamp | None
+    ) -> tuple[str, dict[int, str], bool]:
         async with gate:
-            texts = await asyncio.to_thread(load_texts, sdir, sdir / room, ids)
-        missing = 0
+            texts, kept = await asyncio.to_thread(
+                _load_and_memo, sdir, room, wanted[room], before
+            )
+        return room, texts, kept
+
+    loaded = await asyncio.gather(*(load(r, st) for r, st in misses.items()))
+    found = dict(hits)
+    unstable = 0
+    for room, texts, kept in loaded:
+        found[room] = texts
+        unstable += not kept
+    missing = 0
+    for room, group in by_room.items():
+        texts = found[room]
         for r in group:
             own = texts.get(r["id"])
             cap_id = r.get("caption_id")
@@ -435,10 +553,13 @@ async def attach_texts(sdir: Path, refs: list[dict]) -> None:
                 missing += 1
             r["text"] = own or None
             r["caption"] = cap or None
-        return missing
-
-    counts = await asyncio.gather(*(fill(room, g) for room, g in by_room.items()))
-    missing = sum(counts)
+    logger.info(
+        "memories_text_memo",
+        rooms=len(by_room),
+        hit=len(hits),
+        loaded=len(loaded),
+        unstable=unstable,
+    )
     if missing:
         logger.info(
             "memories_skip", view="attach_texts", reason="text_missing", count=missing

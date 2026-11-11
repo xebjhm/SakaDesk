@@ -327,6 +327,143 @@ async def test_attach_texts_with_no_refs_reads_nothing(svc, monkeypatch):
     await people.attach_texts(svc, [])
 
 
+def _counting_loads(monkeypatch):
+    calls = []
+    real = mf.load_texts
+
+    def counting(sdir, mdir, ids=None):
+        calls.append(mdir)
+        return real(sdir, mdir, ids)
+
+    monkeypatch.setattr(people, "load_texts", counting)
+    return calls
+
+
+async def _matsuda_refs(svc):
+    s = await matsuda(svc)
+    tagged = await mf.get_person_facts(svc, s)
+    return [people.message_ref(SERVICE, svc, room, f) for room, f in tagged]
+
+
+@pytest.mark.asyncio
+async def test_attach_texts_memo_serves_unchanged_rooms_without_reading(
+    svc, monkeypatch
+):
+    calls = _counting_loads(monkeypatch)
+    first = await _matsuda_refs(svc)
+    await people.attach_texts(svc, first)
+    assert len(calls) == 2
+    again = await _matsuda_refs(svc)
+    with capture_logs() as logs:
+        await people.attach_texts(svc, again)
+    assert len(calls) == 2  # both rooms unchanged: no file read
+    assert [(r["text"], r["caption"]) for r in again] == [
+        (r["text"], r["caption"]) for r in first
+    ]
+    (ev,) = [e for e in logs if e["event"] == "memories_text_memo"]
+    assert (ev["rooms"], ev["hit"], ev["loaded"], ev["unstable"]) == (2, 2, 0, 0)
+
+
+@pytest.mark.asyncio
+async def test_attach_texts_memo_sees_a_sync_at_once(svc, monkeypatch):
+    await people.attach_texts(svc, await _matsuda_refs(svc))
+    calls = _counting_loads(monkeypatch)
+    # a sync rewrites one room (new words for message 1, one message more)
+    write_room(
+        svc,
+        "94 松田 好花",
+        "64 松田 好花",
+        [
+            msg(1, "2026-11-10T03:00:00Z", content="書き直した言葉"),
+            msg(2, "2026-11-11T03:00:00Z", content="翌日"),
+            msg(3, "2026-11-12T03:00:00Z", content="もう一つ"),
+        ],
+    )
+    refs = await _matsuda_refs(svc)
+    await people.attach_texts(svc, refs)
+    assert calls == [svc / NEW_ROOM]  # only the changed room is read again
+    by = {(r["room"], r["id"]): r["text"] for r in refs}
+    assert by[(NEW_ROOM, 1)] == "書き直した言葉"
+    assert by[(NEW_ROOM, 3)] == "もう一つ"
+    assert by[(OLD_ROOM, 1)] == SECRET
+
+
+@pytest.mark.asyncio
+async def test_attach_texts_memo_reads_again_for_ids_it_lacks(svc, monkeypatch):
+    refs = await _matsuda_refs(svc)
+    await people.attach_texts(svc, [r for r in refs if r["id"] == 1])
+    calls = _counting_loads(monkeypatch)
+    await people.attach_texts(svc, refs)
+    assert sorted(calls) == sorted([svc / OLD_ROOM, svc / NEW_ROOM])
+    assert {r["text"] for r in refs if r["room"] == NEW_ROOM} == {"新しい部屋", "翌日"}
+
+
+@pytest.mark.asyncio
+async def test_attach_texts_memo_never_keeps_a_failed_or_missing_read(svc, monkeypatch):
+    (fact,) = [f for f in await mf.get_facts(svc, svc / OLD_ROOM) if f.id == 1]
+    ref = people.message_ref(SERVICE, svc, OLD_ROOM, fact)
+    monkeypatch.setattr(people, "load_texts", lambda *a: {})  # unreadable just now
+    await people.attach_texts(svc, [ref])
+    assert ref["text"] is None
+    calls = _counting_loads(monkeypatch)
+    ref2 = {**ref}
+    await people.attach_texts(svc, [ref2, {**ref, "id": 999}])
+    assert ref2["text"] == SECRET  # read again, not served from a failed read
+    calls.clear()
+    gone = {**ref, "id": 999}
+    await people.attach_texts(svc, [gone])
+    assert calls == [svc / OLD_ROOM] and gone["text"] is None  # missing: no memo
+
+
+@pytest.mark.asyncio
+async def test_attach_texts_memo_skips_a_file_that_changed_during_the_read(
+    svc, monkeypatch
+):
+    real = mf.load_texts
+    target = svc / OLD_ROOM / "messages.json"
+
+    def racing(sdir, mdir, ids=None):
+        out = real(sdir, mdir, ids)
+        if mdir == svc / OLD_ROOM:  # a sync rewrites it right after the read
+            target.write_text(target.read_text(encoding="utf-8") + " ", "utf-8")
+        return out
+
+    monkeypatch.setattr(people, "load_texts", racing)
+    with capture_logs() as logs:
+        await people.attach_texts(svc, await _matsuda_refs(svc))
+    (ev,) = [e for e in logs if e["event"] == "memories_text_memo"]
+    assert (ev["loaded"], ev["unstable"]) == (2, 1)
+    calls = _counting_loads(monkeypatch)
+    await people.attach_texts(svc, await _matsuda_refs(svc))
+    assert calls == [svc / OLD_ROOM]  # never served from the racing read
+
+
+@pytest.mark.asyncio
+async def test_attach_texts_memo_unstatable_room_is_read_not_kept(svc, monkeypatch):
+    real_stamp = people._stamp
+    monkeypatch.setattr(
+        people,
+        "_stamp",
+        lambda path: None if "40 松田" in str(path) else real_stamp(path),
+    )
+    refs = await _matsuda_refs(svc)
+    with capture_logs() as logs:
+        await people.attach_texts(svc, refs)
+    assert {r["text"] for r in refs if r["room"] == OLD_ROOM} >= {SECRET}
+    (ev,) = [e for e in logs if e["event"] == "memories_text_memo"]
+    assert (ev["hit"], ev["loaded"], ev["unstable"]) == (0, 2, 1)
+
+
+@pytest.mark.asyncio
+async def test_attach_texts_memo_is_bounded(svc, monkeypatch):
+    monkeypatch.setattr(people, "TEXT_MEMO_MAX", 2)
+    await people.attach_texts(svc, await _matsuda_refs(svc))  # 3 + 2 texts
+    assert people._text_memo_size() <= 2
+    calls = _counting_loads(monkeypatch)
+    await people.attach_texts(svc, await _matsuda_refs(svc))
+    assert calls  # the evicted room is read again
+
+
 # --- date facts / hashes / letters --------------------------------------------------------
 
 
