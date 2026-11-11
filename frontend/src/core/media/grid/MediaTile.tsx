@@ -1,4 +1,4 @@
-import React, { useContext, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useContext, useEffect, useRef, useState } from 'react';
 import { Film, ImageOff, RotateCw } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
@@ -9,9 +9,9 @@ import { Skeleton, SKELETON_PULSE } from '../../../design/primitives/Skeleton';
 import { Spinner } from '../../../design/primitives/Spinner';
 import { useDelayedLoading } from '../../../design/loading';
 import { motion } from '../../../design/tokens';
-import { invalidateMediaMeta, useMediaMeta, type MediaMeta } from './mediaMeta';
-import { isImageReady, scheduleImage, type LoadPriority, type LoadTicket } from './loadScheduler';
-import { useTileVisibility } from './useTileVisibility';
+import { invalidateMediaMeta, isMediaRouteUrl, useMediaMeta, type MediaMeta } from './mediaMeta';
+import { forgetImage, isImageReady, scheduleImage, type LoadPriority, type LoadTicket } from './loadScheduler';
+import { useTileVisibilityState } from './useTileVisibility';
 import { posterCapture } from './posterCapture';
 import { MediaGridContext } from './gridContext';
 
@@ -29,8 +29,13 @@ export interface MediaTileProps {
     eager?: boolean;
     /** Capture a missing video poster in the browser while the tile is visible (default true). */
     capturePoster?: boolean;
-    /** The picture could not load at all (thumbnail and full file failed). */
-    onFail?: () => void;
+    /**
+     * The picture could not load at all (thumbnail and full file failed). It receives `retry`,
+     * which starts the fallback chain again: a gallery that wraps tiles in its own button keeps
+     * it and calls it when a failed tile is clicked (instead of opening the viewer). Called once
+     * per failure; `retry` stays valid for the tile's life.
+     */
+    onFail?: (retry: () => void) => void;
     /**
      * Show a Retry button on a failed tile. Off by default: galleries wrap each tile in their own
      * button, and a button inside a button is invalid. A failed tile always retries by itself
@@ -44,6 +49,13 @@ export interface MediaTileProps {
 export const CAPTURE_DWELL_MS = 300;
 /** Automatic retries of a failed tile when it scrolls back into view, per mount. */
 export const AUTO_RETRY_MAX = 2;
+/**
+ * On a first open a tile whose meta is not known yet waits at most this long for the batch
+ * (16 ms flush + one local round trip), so its first request already carries `v` and lands in the
+ * year-long immutable cache. The placeholder shows meanwhile; a late or failed batch falls back
+ * to the plain thumbnail.
+ */
+export const META_WAIT_MS = 150;
 
 type Phase = 'loading' | 'ready' | 'failed' | 'film';
 
@@ -56,11 +68,15 @@ function nextFrame(cb: () => void): () => void {
     return () => clearTimeout(id);
 }
 
-/** The sources to try, best first: `?v` → no `v` → (pictures) the full file. A video is never loaded as an image. */
+/**
+ * The sources to try, best first: `?v` → no `v` → (pictures) the full file. A video is only ever
+ * loaded through the thumbnail route (its poster), never as a file in an image.
+ */
 function candidates(url: string, kind: MediaTileProps['kind'], width: ThumbWidth, meta: MediaMeta | null | undefined): string[] {
     const plain = thumbnailUrl(url, width) as string;
     const list: string[] = [];
     if (kind === 'video') {
+        if (!isMediaRouteUrl(url)) return list;
         if (meta === undefined || meta === null) list.push(plain);
         else if (meta.poster) list.push(thumbnailUrl(url, width, meta.v) as string, plain);
     } else {
@@ -142,14 +158,18 @@ interface InnerProps extends Omit<MediaTileProps, 'cssPx' | 'large'> {
 const EagerTile: React.FC<InnerProps> = ({ url, kind, width, className, onFail, testId }) => {
     const [tried, setTried] = useState<readonly string[]>([]);
     const failCalled = useRef(false);
+    const retry = useCallback(() => {
+        failCalled.current = false;
+        setTried([]);
+    }, []);
     const list = url ? candidates(url, kind, width, null) : [];
     const src = list.find((c) => !tried.includes(c));
     const phase: Phase = src ? 'ready' : kind === 'video' ? 'film' : 'failed';
     useEffect(() => {
         if (phase !== 'failed' || failCalled.current) return;
         failCalled.current = true;
-        onFail?.();
-    }, [phase, onFail]);
+        onFail?.(retry);
+    }, [phase, onFail, retry]);
     return (
         <div data-testid={testId} data-state={phase} className={cn('relative overflow-hidden', className)}>
             {phase === 'film' && <FilmTile />}
@@ -170,22 +190,26 @@ const EagerTile: React.FC<InnerProps> = ({ url, kind, width, className, onFail, 
     );
 };
 
+/** The best source to load now: one already decoded this session wins (no request at all), else the first untried. */
+function pick(list: readonly string[], tried: readonly string[], allowNew: boolean): string | undefined {
+    const untried = list.filter((c) => !tried.includes(c));
+    return untried.find(isImageReady) ?? (allowNew ? untried[0] : undefined);
+}
+
 const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capturePoster = true, onFail, retryButton = false, testId }) => {
     const meta = useMediaMeta(url);
     const ref = useRef<HTMLDivElement>(null);
     const reporter = useContext(MediaGridContext);
-    const visibility = useTileVisibility(ref, reporter?.root ?? null);
+    const { priority: visibility, known: visibilityKnown } = useTileVisibilityState(ref, reporter?.root ?? null);
     const priorityRef = useRef<LoadPriority>(visibility);
     priorityRef.current = visibility;
     const ticketRef = useRef<LoadTicket | null>(null);
 
     const list = url ? candidates(url, kind, width, meta) : [];
-    // A src decoded earlier this session shows at once, without a fade (the second open is instant).
-    const [initialReady] = useState(() => {
-        const first = meta !== undefined ? list[0] : undefined;
-        return first && isImageReady(first) ? first : null;
-    });
-    const [frameDone, setFrameDone] = useState(meta !== undefined);
+    // A source decoded earlier this session (the plain one from a first open, or `?v`) shows at
+    // once, without a placeholder or a fade: re-mounts and reopens are instant.
+    const [initialReady] = useState(() => list.find(isImageReady) ?? null);
+    const [metaWaitOver, setMetaWaitOver] = useState(meta !== undefined);
     const [tried, setTried] = useState<readonly string[]>([]);
     const [loadingSrc, setLoadingSrc] = useState<string | null>(null);
     const [readySrc, setReadySrc] = useState<string | null>(initialReady);
@@ -193,18 +217,23 @@ const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capt
     const [placeholderGone, setPlaceholderGone] = useState(initialReady !== null);
     const [capture, setCapture] = useState<'idle' | 'done'>('idle');
 
-    const waitingForFrame = meta === undefined && !frameDone;
-    const next = waitingForFrame ? undefined : list.find((c) => !tried.includes(c));
+    const waitingForMeta = meta === undefined && !metaWaitOver;
+    // Nothing new starts before the meta batch (bounded) and the first visibility report; a
+    // source already decoded needs neither.
+    const next = pick(list, tried, !waitingForMeta && visibilityKnown);
+    // Something is left to try (it starts once the gates above open).
+    const pending = list.some((c) => !tried.includes(c));
     let phase: Phase;
     if (readySrc) phase = 'ready';
-    else if (loadingSrc || waitingForFrame || next) phase = 'loading';
+    else if (loadingSrc || pending) phase = 'loading';
     else phase = kind === 'video' ? 'film' : 'failed';
 
-    // Do not wait for meta: one frame after mount, start the plain thumbnail (meta, if it arrived, adds `v`).
+    // Wait a bounded moment for the meta batch, so the first request carries `v`.
     useEffect(() => {
-        if (frameDone) return undefined;
-        return nextFrame(() => setFrameDone(true));
-    }, [frameDone]);
+        if (metaWaitOver) return undefined;
+        const timer = setTimeout(() => setMetaWaitOver(true), META_WAIT_MS);
+        return () => clearTimeout(timer);
+    }, [metaWaitOver]);
 
     // Pick the next source once the previous one settled (a load in flight is never switched).
     useEffect(() => {
@@ -242,18 +271,18 @@ const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capt
         return () => clearTimeout(timer);
     }, [shown, placeholderGone]);
 
-    // onFail once per failure.
     const failCalled = useRef(false);
+    const retry = useCallback(() => {
+        failCalled.current = false;
+        setTried([]);
+    }, []);
+
+    // onFail once per failure, with the retry handle.
     useEffect(() => {
         if (phase !== 'failed' || failCalled.current) return;
         failCalled.current = true;
-        onFail?.();
-    }, [phase, onFail]);
-
-    const retry = () => {
-        failCalled.current = false;
-        setTried([]);
-    };
+        onFail?.(retry);
+    }, [phase, onFail, retry]);
 
     // A failed tile retries by itself when it scrolls back into view.
     const prevVisibility = useRef(visibility);
@@ -265,10 +294,11 @@ const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capt
             autoRetries.current += 1;
             retry();
         }
-    }, [visibility, phase]);
+    }, [visibility, phase, retry]);
 
     // Video without a poster: capture one in the browser once the tile has been visible a moment.
-    const canCapture = kind === 'video' && phase === 'film' && capturePoster && !!url && capture === 'idle' && visibility === 'visible';
+    // Leaving the screen or unmounting aborts it at any stage (queued, waiting for a slot, running).
+    const canCapture = kind === 'video' && phase === 'film' && capturePoster && isMediaRouteUrl(url) && capture === 'idle' && visibility === 'visible';
     useEffect(() => {
         if (!canCapture || !url) return undefined;
         const controller = new AbortController();
@@ -313,7 +343,13 @@ const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capt
                     alt=""
                     draggable={false}
                     decoding="async"
-                    onError={() => { setTried((t) => [...t, readySrc]); setReadySrc(null); setShown(false); setPlaceholderGone(false); }}
+                    onError={() => {
+                        forgetImage(readySrc);
+                        setTried((t) => [...t, readySrc]);
+                        setReadySrc(null);
+                        setShown(false);
+                        setPlaceholderGone(false);
+                    }}
                     className={cn(
                         FILL,
                         'object-cover transition-opacity duration-base ease-standard motion-reduce:transition-none',
@@ -330,9 +366,11 @@ const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capt
  * One media grid tile (the media pipeline's shared tile): the placeholder (mean colour and blur,
  * pulsing; a compact spinner under reduced motion), then the thumbnail fading in, or a video's
  * poster. Thumbnails load through the priority scheduler (visible first, at most four in flight)
- * at `thumbWidthFor(cssPx, dpr)` with the content version `v` from the meta store; they never wait
- * for meta (the plain thumbnail starts one frame after mount). Fallbacks: picture `?v` → no `v` →
- * full file → `onFail` and a quiet failed state; video poster `?v` → no `v` → a client capture
+ * at `thumbWidthFor(cssPx, dpr)` with the content version `v` from the meta store. A source already
+ * decoded this session (plain or `?v`) shows at once with no request; otherwise a first open waits
+ * at most `META_WAIT_MS` for the meta batch (then loads the plain thumbnail) and for the tile's
+ * first visibility report, so visible tiles take the slots first. Fallbacks: picture `?v` → no `v` →
+ * full file → `onFail(retry)` and a quiet failed state; video poster `?v` → no `v` → a client capture
  * while visible (even when meta said a poster exists: it may have been evicted) → the film tile. A
  * video never mounts a `<video>` here. Decorative (`alt=""`): callers label their own button.
  * The tile fills its box: give it a size (e.g. `aspect-square w-full`) through `className`.

@@ -1,7 +1,7 @@
 import { useRef } from 'react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
-import { useTileVisibility } from './useTileVisibility';
+import { useTileVisibility, useTileVisibilityState } from './useTileVisibility';
 
 class StubObserver {
     static all: StubObserver[] = [];
@@ -51,6 +51,18 @@ describe('useTileVisibility', () => {
         render(<><Probe id="a" /><Probe id="b" root={document.createElement('div')} /></>);
         expect(StubObserver.all).toHaveLength(2);
         expect(StubObserver.all[0].options.root).toBeNull();
+    });
+
+    it('reports known only after the first observer callback', () => {
+        function StateProbe() {
+            const ref = useRef<HTMLDivElement>(null);
+            const { priority, known } = useTileVisibilityState(ref);
+            return <div ref={ref} data-testid="s">{`${priority}:${known}`}</div>;
+        }
+        render(<StateProbe />);
+        expect(screen.getByTestId('s').textContent).toBe('near:false');
+        act(() => StubObserver.all[0].fire(screen.getByTestId('s'), false));
+        expect(screen.getByTestId('s').textContent).toBe('near:true');
     });
 
     it('treats every tile as visible without IntersectionObserver', () => {

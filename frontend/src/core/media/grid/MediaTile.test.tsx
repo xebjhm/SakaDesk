@@ -11,6 +11,7 @@ const invalidate = vi.fn();
 vi.mock('./mediaMeta', () => ({
     useMediaMeta: () => metaState.value,
     invalidateMediaMeta: (u: string) => invalidate(u),
+    isMediaRouteUrl: (u: unknown) => typeof u === 'string' && u.startsWith('/api/content/media/'),
 }));
 
 interface Job { src: string; priority: LoadPriority; onReady: () => void; onError: () => void; setPriority: ReturnType<typeof vi.fn>; cancel: ReturnType<typeof vi.fn> }
@@ -23,15 +24,18 @@ vi.mock('./loadScheduler', () => ({
         return { setPriority: job.setPriority, cancel: job.cancel };
     },
     isImageReady: (src: string) => ready.has(src),
+    forgetImage: (src: string) => { ready.delete(src); },
 }));
 
-const visibility: { value: LoadPriority } = { value: 'visible' };
-vi.mock('./useTileVisibility', () => ({ useTileVisibility: () => visibility.value }));
+const visibility: { value: LoadPriority; known: boolean } = { value: 'visible', known: true };
+vi.mock('./useTileVisibility', () => ({
+    useTileVisibilityState: () => ({ priority: visibility.value, known: visibility.known }),
+}));
 
 const capture = vi.fn<(url: string, signal?: AbortSignal) => Promise<boolean>>();
 vi.mock('./posterCapture', () => ({ posterCapture: { request: (u: string, s?: AbortSignal) => capture(u, s) } }));
 
-import { MediaTile } from './MediaTile';
+import { MediaTile, META_WAIT_MS } from './MediaTile';
 import { MediaGridContext, type MediaGridTileReporter } from './gridContext';
 
 const PIC = '/api/content/media/hinatazaka46/messages/m/picture/123.jpg';
@@ -51,6 +55,7 @@ beforeEach(() => {
     capture.mockReset();
     metaState.value = meta();
     visibility.value = 'visible';
+    visibility.known = true;
 });
 afterEach(() => vi.useRealTimers());
 
@@ -110,7 +115,7 @@ describe('MediaTile: picture', () => {
         expect(container.querySelector('[data-skeleton]')).toBeNull();
     });
 
-    it('shows a src decoded earlier this session at once, without a fade', () => {
+    it('shows a ?v src decoded earlier this session at once, without a fade', () => {
         ready.add(THUMB(320, 'a1b2c3d4e5f6'));
         render(<MediaTile url={PIC} kind="picture" cssPx={200} testId="tile" />);
         const img = screen.getByTestId('tile').querySelector('img[data-media-tile-image]') as HTMLImageElement;
@@ -151,11 +156,74 @@ describe('MediaTile: picture', () => {
         expect(jobs).toHaveLength(count + 1);
     });
 
-    it('starts the plain thumbnail one frame after mount when meta is not there yet', async () => {
-        metaState.value = undefined;
-        render(<MediaTile url={PIC} kind="picture" cssPx={200} />);
+    it('re-mounts instantly on the plain src a first open decoded, even once meta (with v) is known', () => {
+        ready.add(THUMB(320)); // the first open loaded the plain thumbnail before meta arrived
+        const { container } = render(<MediaTile url={PIC} kind="picture" cssPx={200} testId="tile" />);
+        const img = screen.getByTestId('tile').querySelector('img[data-media-tile-image]') as HTMLImageElement;
+        expect(img.getAttribute('src')).toBe(THUMB(320));
+        expect(img.className).toContain('opacity-100');
+        expect(container.querySelector('[data-skeleton]')).toBeNull();
         expect(jobs).toHaveLength(0);
-        await frame();
+    });
+
+    it('re-mounts instantly on the plain src while meta is still unknown', () => {
+        metaState.value = undefined;
+        ready.add(THUMB(320));
+        const { container } = render(<MediaTile url={PIC} kind="picture" cssPx={200} />);
+        expect(container.querySelector('img[data-media-tile-image]')!.className).toContain('opacity-100');
+        expect(container.querySelector('[data-skeleton]')).toBeNull();
+        expect(jobs).toHaveLength(0);
+    });
+
+    it('waits a bounded time for meta, then starts the plain thumbnail', async () => {
+        metaState.value = undefined;
+        const { container } = render(<MediaTile url={PIC} kind="picture" cssPx={200} />);
+        expect(jobs).toHaveLength(0);
+        expect(container.querySelector('[data-skeleton]')).not.toBeNull(); // the placeholder shows meanwhile
+        await act(async () => { await vi.advanceTimersByTimeAsync(META_WAIT_MS - 1); });
+        expect(jobs).toHaveLength(0);
+        await act(async () => { await vi.advanceTimersByTimeAsync(1); });
+        expect(last().src).toBe(THUMB(320));
+    });
+
+    it('requests the ?v thumbnail on a first open when meta arrives in time', async () => {
+        metaState.value = undefined;
+        const { rerender } = render(<MediaTile url={PIC} kind="picture" cssPx={200} />);
+        await act(async () => { await vi.advanceTimersByTimeAsync(40); });
+        expect(jobs).toHaveLength(0);
+        metaState.value = meta();
+        rerender(<MediaTile url={PIC} kind="picture" cssPx={200} />);
+        expect(jobs).toHaveLength(1);
+        expect(last().src).toBe(THUMB(320, 'a1b2c3d4e5f6'));
+        await act(async () => { await vi.advanceTimersByTimeAsync(META_WAIT_MS); });
+        expect(jobs).toHaveLength(1);
+    });
+
+    it('takes no slot before its first visibility report', () => {
+        visibility.known = false;
+        const { rerender } = render(<MediaTile url={PIC} kind="picture" cssPx={200} />);
+        expect(jobs).toHaveLength(0);
+        visibility.known = true;
+        visibility.value = 'near';
+        rerender(<MediaTile url={PIC} kind="picture" cssPx={200} />);
+        expect(last().priority).toBe('near');
+    });
+
+    it('hands onFail a retry that restarts the chain (for galleries that wrap tiles in a button)', () => {
+        let retry: (() => void) | undefined;
+        render(<MediaTile url={PIC} kind="picture" cssPx={200} onFail={(r) => { retry = r; }} testId="tile" />);
+        for (let i = 0; i < 3; i += 1) act(() => last().onError());
+        expect(screen.getByTestId('tile').getAttribute('data-state')).toBe('failed');
+        act(() => retry!());
+        expect(last().src).toBe(THUMB(320, 'a1b2c3d4e5f6'));
+        expect(screen.getByTestId('tile').getAttribute('data-state')).toBe('loading');
+    });
+
+    it('forgets a decoded src whose rendered image failed, then falls back', () => {
+        ready.add(THUMB(320, 'a1b2c3d4e5f6'));
+        const { container } = render(<MediaTile url={PIC} kind="picture" cssPx={200} />);
+        fireEvent.error(container.querySelector('img[data-media-tile-image]')!);
+        expect(ready.has(THUMB(320, 'a1b2c3d4e5f6'))).toBe(false);
         expect(last().src).toBe(THUMB(320));
     });
 
@@ -309,11 +377,23 @@ describe('MediaTile: video', () => {
     it('tries the plain poster thumbnail when meta is unknown, never the video file', async () => {
         metaState.value = undefined;
         render(<MediaTile url={VID} kind="video" cssPx={200} testId="tile" />);
-        await frame();
+        await act(async () => { await vi.advanceTimersByTimeAsync(META_WAIT_MS); });
         expect(last().src).toBe(VTHUMB());
         act(() => last().onError());
         expect(jobs.every(j => !j.src.endsWith('.mp4'))).toBe(true);
         expect(screen.getByTestId('media-tile-film')).toBeInTheDocument();
+    });
+
+    it('never loads a video outside the media route as an image', () => {
+        render(<MediaTile url="/api/blogs/video?x=1.mp4" kind="video" cssPx={200} />);
+        expect(jobs).toHaveLength(0);
+        expect(screen.getByTestId('media-tile-film')).toBeInTheDocument();
+    });
+
+    it('loads the plain poster when the meta batch failed (null)', () => {
+        metaState.value = null;
+        render(<MediaTile url={VID} kind="video" cssPx={200} />);
+        expect(last().src).toBe(VTHUMB());
     });
 
     it('shows the film tile for a video without a URL', () => {

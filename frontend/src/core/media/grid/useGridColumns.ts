@@ -56,14 +56,17 @@ export function gridColumns(width: number, opts: GridColumnOptions = {}): GridCo
 /**
  * The columns and tile size of the grid wrapper in `ref`, kept current by a `ResizeObserver` (its
  * content width). Before the first measure (or without `ResizeObserver`) the wrapper's
- * `clientWidth` is used; a width still unknown lays out one minimum-size tile per row.
+ * `clientWidth` minus its horizontal padding is used; a width still unknown lays out one minimum-size tile per row.
  */
 export function useGridColumns(ref: RefObject<HTMLElement | null>, opts: GridColumnOptions = {}): GridColumns & { width: number } {
     const [width, setWidth] = useState(0);
     useLayoutEffect(() => {
         const el = ref.current;
         if (!el) return undefined;
-        setWidth(el.clientWidth);
+        // The content width, like `contentRect.width` below (clientWidth includes the padding).
+        const style = typeof window.getComputedStyle === 'function' ? window.getComputedStyle(el) : null;
+        const padding = style ? (parseFloat(style.paddingLeft) || 0) + (parseFloat(style.paddingRight) || 0) : 0;
+        setWidth(Math.max(0, Math.floor(el.clientWidth - padding)));
         if (typeof ResizeObserver !== 'function') return undefined;
         const observer = new ResizeObserver((entries) => {
             const entry = entries[entries.length - 1];

@@ -3,7 +3,8 @@ import { GroupedVirtuoso, type GroupedVirtuosoHandle, type ListRange } from 'rea
 import { clientLog } from '../../../utils/clientLog';
 import { cn } from '../../../utils/classnames';
 import { primeMediaMeta } from './mediaMeta';
-import { useGridColumns } from './useGridColumns';
+import { rootRemPx, useGridColumns } from './useGridColumns';
+import { MEDIA_GRID_GAP_REM } from '../tileGrid';
 import { MediaGridContext, type MediaGridTileReporter } from './gridContext';
 
 export interface MediaGridGroup<T> {
@@ -73,7 +74,8 @@ function layout<T>(groups: MediaGridGroup<T>[], cols: number): Layout<T> {
         for (let r = 0; r < count; r += 1) {
             rows.push({ group: g, first: flat.length + r * cols, items: group.items.slice(r * cols, (r + 1) * cols) });
         }
-        flat.push(...group.items);
+        // A loop, not a spread: one huge group (tens of thousands) must not hit the argument limit.
+        for (const item of group.items) flat.push(item);
     });
     return { rowCounts, rowStarts, itemStarts, rows, flat };
 }
@@ -84,6 +86,7 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
     const virtuosoRef = useRef<GroupedVirtuosoHandle>(null);
     const { cols, tilePx } = useGridColumns(wrapperRef, { minTilePx, maxTilePx, gapPx });
     const gap = gapPx ?? undefined;
+    const rowGapPx = gapPx ?? MEDIA_GRID_GAP_REM * rootRemPx();
     const grouped = useMemo(() => layout(groups, cols), [groups, cols]);
     const latest = useRef({ grouped, mediaUrl, cols });
     latest.current = { grouped, mediaUrl, cols };
@@ -154,6 +157,11 @@ function VirtualMediaGridInner<T>(props: VirtualMediaGridProps<T>, ref: React.Fo
                     customScrollParent={scrollParent ?? undefined}
                     groupCounts={grouped.rowCounts}
                     increaseViewportBy={OVERSCAN}
+                    defaultItemHeight={tilePx + rowGapPx}
+                    computeItemKey={(index) => {
+                        const row = grouped.rows[index];
+                        return row && row.items.length > 0 ? `row-${itemKey(row.items[0])}` : `row-${index}`;
+                    }}
                     rangeChanged={onRange}
                     components={Footer ? { Footer } : undefined}
                     groupContent={(g) => (

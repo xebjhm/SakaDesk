@@ -47,6 +47,11 @@ export function isImageReady(src: string): boolean {
     return ready.has(src);
 }
 
+/** Forget `src` (its rendered `<img>` failed after all): the next schedule loads it again. */
+export function forgetImage(src: string): void {
+    ready.delete(src);
+}
+
 function remember(src: string): void {
     ready.delete(src);
     ready.set(src, true);
