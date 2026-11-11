@@ -15,6 +15,8 @@ from structlog.testing import capture_logs
 from backend.services import media_meta, photo_thumb, video_poster, win_shell_thumb
 
 SECRET = "秘密の部屋"
+# The real function, captured before the autouse fixture patches it.
+REAL_POSTER_DIR = video_poster.poster_dir
 
 
 @pytest.fixture(autouse=True)
@@ -74,10 +76,7 @@ def test_poster_name_is_a_hash_of_the_version():
 
 
 def test_default_poster_dir_is_beside_the_thumbnails():
-    with patch.object(video_poster, "poster_dir", video_poster._default_poster_dir):
-        assert video_poster.poster_dir() == (
-            photo_thumb.cache_dir().parent / "video_posters"
-        )
+    assert REAL_POSTER_DIR() == photo_thumb.cache_dir().parent / "video_posters"
 
 
 def test_poster_path_none_when_absent_or_unstatable(env):
