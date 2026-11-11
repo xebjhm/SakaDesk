@@ -106,7 +106,9 @@ export const BurstStack: React.FC<BurstStackProps> = ({ items, title, nameOf, se
             sourceLabel: t('memories.common.jumpToChat'),
             onBeforeJump: () => { setViewerIndex(null); setOpen(false); logMemoriesToggle('album_burst', false); },
         }),
-        [items, nameOf, t],
+        // `open`: the sequence reads the names current when it opens (`nameOf` is stable).
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+        [items, nameOf, t, open],
     );
 
     const toggle = (next: boolean) => {

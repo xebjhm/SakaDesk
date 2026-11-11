@@ -187,15 +187,23 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, initialWidth = 0, kind, nam
     // The drawn tile edge (the same `tileGrid.ts` maths as the CSS grid) picks each thumbnail width.
     const gridRef = useRef<HTMLDivElement>(null);
     const { tilePx } = useGridColumns(gridRef, {}, initialWidth);
+    // Built again when the viewer opens: `nameOf` is stable and reads the names current then (the
+    // members may land after the grid's first paint), while `viewable` (the tiles' onOpen) keeps
+    // its identity, so opening the viewer re-renders no tile.
+    const viewerOpen = viewerIndex !== null;
+    const viewable = useMemo(
+        () => albumViewerItems(data.items, { nameOf, sourceLabel: '' }).viewable,
+        [data, nameOf],
+    );
     const viewer = useMemo(
         () => albumViewerItems(data.items, {
             nameOf,
             sourceLabel: t('memories.common.jumpToChat'),
             onBeforeJump: () => setViewerIndex(null),
         }),
-        [data, nameOf, t],
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- viewerOpen: read the names anew on open
+        [data, nameOf, t, viewerOpen],
     );
-    const viewable = viewer.viewable;
     const onOpen = useCallback((item: MemoryMessage) => {
         const index = viewerIndexOf(viewable, item);
         if (index >= 0) setViewerIndex(index);

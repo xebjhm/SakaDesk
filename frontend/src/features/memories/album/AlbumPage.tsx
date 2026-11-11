@@ -268,10 +268,14 @@ export const AlbumPage: React.FC<AlbumPageProps> = ({ service, route, go }) => {
         [people],
     );
     const selectedName = member !== undefined ? byPath.get(member)?.name : undefined;
-    const nameOf = useCallback(
-        (m: MemoryMessage) => messageName(m, byPath.get(m.member_path)?.name ?? selectedName),
-        [byPath, selectedName],
-    );
+    // Stable (W4): the names are read through a ref when a viewer or a jump asks for them, so the
+    // members landing after the first grid paint (a warm open defers them) never re-render the bands.
+    const names = useRef({ byPath, selectedName });
+    names.current = { byPath, selectedName };
+    const nameOf = useCallback((m: MemoryMessage) => {
+        const { byPath: known, selectedName: fallback } = names.current;
+        return messageName(m, known.get(m.member_path)?.name ?? fallback);
+    }, []);
     const items: MemberPaneItem[] = useMemo(() => (people ?? []).map((m) => ({
         key: m.member_path, memberPath: m.member_path, name: m.name, avatarUrl: m.avatar_url, oshi: m.oshi, trailing: m.count,
     })), [people]);

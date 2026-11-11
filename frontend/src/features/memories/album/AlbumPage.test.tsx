@@ -1240,3 +1240,25 @@ describe('AlbumPage: a band grid renders its tiles once on arrival (D-M3 paint)'
         }
     });
 });
+
+describe('AlbumPage: members landing after the first grid paint re-render no tile (W4)', () => {
+    it('keeps nameOf stable, so the band grids do not render again', async () => {
+        vi.useFakeTimers();
+        vi.setSystemTime(new Date('2026-11-10T03:00:00Z'));
+        const step = async (ms: number) => { await act(async () => { await vi.advanceTimersByTimeAsync(ms); }); };
+        const first = renderAlbum();
+        await step(10);
+        first.unmount();
+        let answerMembers: () => void = () => {};
+        vi.mocked(fetchAlbumMembers).mockImplementation(() => new Promise((resolve) => { answerMembers = () => resolve(membersPayload()); }));
+        renderAlbum();
+        await step(50); // the prefetch lands, the grids paint, then the members are asked for
+        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+        expect(fetchAlbumMembers).toHaveBeenCalled();
+        tileRenders.count = 0;
+        await act(async () => { answerMembers(); });
+        await step(10);
+        expect(screen.getByText('金村 美玖')).toBeInTheDocument(); // the pane got its rows
+        expect(tileRenders.count).toBe(0);
+    });
+});
