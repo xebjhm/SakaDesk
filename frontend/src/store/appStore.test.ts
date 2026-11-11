@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach } from 'vitest'
 import { useAppStore } from './appStore'
+import { getListSnapshot, rememberListSnapshot } from '../features/messages/listSnapshotStore'
 
 describe('appStore', () => {
     // Reset store state before each test
@@ -41,6 +42,15 @@ describe('appStore', () => {
             addSelectedService('sakurazaka46')
             removeSelectedService('hinatazaka46')
             expect(useAppStore.getState().selectedServices).toEqual(['sakurazaka46'])
+        })
+
+        it('removing a service forgets the chat list snapshots (W3)', () => {
+            const root = document.createElement('div')
+            root.textContent = '日向坂 🌸'
+            rememberListSnapshot('日向坂46/messages/34 金村 美玖/58 金村 美玖', root, 0)
+            useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'] })
+            useAppStore.getState().removeSelectedService('hinatazaka46')
+            expect(getListSnapshot('日向坂46/messages/34 金村 美玖/58 金村 美玖')).toBeNull()
         })
 
         it('should switch active service when removing the active one', () => {

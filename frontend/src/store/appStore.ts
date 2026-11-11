@@ -44,6 +44,7 @@ import { DEFAULT_SERVICE_ORDER } from '../data/services';
 import { persisted } from '../core/persistence/persisted';
 import type { RecentPost } from '../types';
 import type { MemoriesRoute } from '../features/memories/MemoriesFeature';
+import { forgetListSnapshots } from '../features/messages/listSnapshotStore';
 
 /** Available feature tabs within a service. */
 export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai' | 'memories';
@@ -296,6 +297,8 @@ export const useAppStore = create<AppState>()(
                 })),
             removeSelectedService: (serviceId) =>
                 set((state) => {
+                    // The removed service's rooms must not reappear as list snapshots (W3).
+                    forgetListSnapshots();
                     const newSelected = state.selectedServices.filter((id) => id !== serviceId);
                     // If removing the active service, switch to first remaining or null
                     const newActiveService =
