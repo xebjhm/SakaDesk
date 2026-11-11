@@ -105,16 +105,16 @@
 **Justification** (sizes are WebP q82 of phone photos):
 - **Revised ruling (M4 fix round 1):** one pre-generated size, `PREGEN_WIDTHS = (480,)`; 640 only for ★ and covers. Grid tiles ask for the smallest allowed width ≥ rendered width × DPR, capped at 480 for non-★ tiles (★ and covers may use 640). 320 and 160 requests are rendered on demand from the cached 480 (a derived miss: no source decode). The earlier (160, 320) set, then the (320, 480) proposal, are superseded: (320, 480) roughly doubled the per-item cost.
 - **Revised ruling (M9 fix wave B, D-M7):** 640 is no longer pre-generated for ★ items or covers. M9 measured covers requesting `w=320` and only 7 `w=640` requests in a whole session, so the 640 work was wasted. `ALLOWED_WIDTHS` keeps 640, so `large` requests are rendered on demand; `LARGE_WIDTH` was removed from the backend.
-- **Per-size averages:** 160 px ≈ 6 KB, 320 px ≈ 19 KB, 480 px ≈ **35 KB** (an estimate; M9 measures it), 640 px ≈ 55 KB. The default set (480) is about **35 KB per item**.
-- **One large service** (the acceptance run shows 13,518 album items for 日向坂46) at the default set: 14k × 35 KB ≈ **490 MB**.
-- **640 px for ★ and covers** (about 5%): 700 × 55 KB ≈ **40 MB** (dropped by D-M7: now on demand only).
-- **That service's blog images:** assume 15k × 35 KB ≈ **525 MB**.
-- **Total:** about **1.05 GB**, over the 870 MiB fill line. The messages of one large service and its ★ / covers (≈ 530 MB) fit; its blog images fit only partly. On-demand 320 / 160 derivatives of viewed tiles add a little and are evicted first when unused.
-- **A second large service** does not fit completely either. The worker covers the services in priority order (Task M4), and LRU eviction removes the least recently viewed variants. The ★ and newest-months phases come first, so what users open first stays cached.
+- **Per-size averages:** 160 px ≈ 4 KB, 320 px ≈ 11 KB, 480 px ≈ **24 KB**, 640 px ≈ 33 KB (measured in M9 on a real archive: 18,370 `-480.webp` files averaged 23.0 KB on disk, and the pass logged 24.2 KB per done item; the planning estimate was 35 KB). The default set (480) is about **24 KB per item**, so the 870 MiB fill line holds about 38k items.
+- **One large service** (the acceptance run shows 13,518 album items for 日向坂46) at the default set: 14k × 24 KB ≈ **336 MB**.
+- **640 px for ★ and covers:** none pre-generated (D-M7); on-demand 640 variants are rare (7 requests in the M9 session).
+- **That service's blog images:** assume 15k × 24 KB ≈ **360 MB**.
+- **Total:** about **0.7 GB** for one large service with its blogs, under the 870 MiB fill line. The rest of the line (≈ 200 MB, ≈ 9k items) goes to the other services. On-demand 320 / 160 derivatives of viewed tiles add a little and are evicted first when unused.
+- **Several large services** do not fit completely (the M9 archive totals ≈ 63k items ≈ 1.5 GB). The worker therefore pre-generates the message media of **every** service before any blog images, the oshi service first in both rounds (D-M2), and LRU eviction removes the least recently viewed variants. Within a service the ★ and newest-months phases come first, so what users open first stays cached.
 - **Posters:** at about 45 KB each, 256 MiB holds about 5,800 videos, which covers every service's videos with headroom. They get their own cap because a poster costs a Shell call or a client capture to recreate, so thumbnail churn must never evict them.
 - **Meta rows** are about 400 B each: 300k rows ≈ 120 MB at worst, about 26 MB for 65k real items.
 - **Worst-case total ≈ 1.4 GB**, about 2–5% of a typical archive. The Windows Explorer thumbnail cache is in the same range.
-- **M9 measures the real averages** (`media_pregen_pass bytes / done`), in particular the 35 KB estimate for 480 px. If the per-item average differs from 35 KB by more than 25%, update this table and the constants in the M9 fix-up.
+- **M9 measured the real averages** (`media_pregen_pass bytes / done`): 23–24 KB per 480 px item, 31–34% under the 35 KB estimate. This table now uses ≈ 24 KB. The budget values (1 GiB thumbnails, 0.85 fill line, 256 MiB posters) are unchanged: the user approved them (2026-11-11).
 
 ## Shared contracts (all tasks)
 

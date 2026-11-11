@@ -135,10 +135,10 @@ MAX_SOURCE_PIXELS = 50_000_000
 CACHE_CAP_BYTES = 1 * 1024**3
 """1 GiB. Sized in the media pipeline plan's "Cache budget" table
 (``docs/superpowers/plans/2026-11-11-media-pipeline.md``): one 480 px WebP
-is about 35 KB per item (to be measured in M9), so one large service's
-messages (~14k pictures, ~490 MB) fit under the pre-generation fill line
-(0.85 of the cap, 870 MiB);
-its blog images (~525 MB more) and a second large service do not fit
+is about 24 KB per item (measured in M9: 23.0 KB on disk, 24.2 KB per done
+item), so the pre-generation fill line (0.85 of the cap, 870 MiB) holds
+about 38k items: one large service's messages (~14k pictures, ~336 MB) and
+its blog images (~15k, ~360 MB) fit, a second large service does not fit
 completely, and LRU eviction keeps what was viewed last. 320 / 160 px
 requests are rendered on demand from the cached 480 (derived misses)."""
 PREGEN_WIDTHS: tuple[int, ...] = (480,)
