@@ -9,6 +9,12 @@ import { formatSyncEta, formatSyncTime, formatSyncSpeedParts, getSyncDetail } fr
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 const PHASE_ORDER = ['scanning', 'discovering', 'syncing', 'downloading', 'complete'];
+/**
+ * Phases before the backend knows how much there is to do (`total` starts at 0 in `scanning`;
+ * `''` before the first phase, `queued` while waiting in line). A later phase with `total = 0`
+ * (nothing to sync or download, verify or repair) is real progress, not scanning.
+ */
+const SCAN_PHASES: ReadonlySet<string> = new Set(['', 'starting', 'scanning', 'discovering', 'queued']);
 
 export interface SyncProgressPanelProps {
     progress: SyncProgress;
@@ -20,15 +26,21 @@ export interface SyncProgressPanelProps {
  * group, as `e4e4118`), three stat tiles, the detail row (accent) or the media warning (semantic
  * warning) while running, and the phase steps.
  *
- * Scanning (loading UX L6): while a running or queued sync has no total yet, the count row reads
- * "getting ready" instead of "0 / 0 · 0 %" and the bar is indeterminate; after 10 s of scanning a
- * line explains why (Cancel already sits in the dialog footer and the inline view).
+ * Scanning (loading UX L6): while a running or queued sync has no total yet (a scan phase, see
+ * `SCAN_PHASES`), the count row reads "getting ready" instead of "0 / 0 · 0 %" and the bar is
+ * indeterminate; after 10 s of a running scan a line explains why (a queued sync's detail row
+ * already explains its wait). Cancel already sits in the dialog footer and the inline view.
  */
 export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }) => {
     const { t } = useTranslation();
     const total = progress.total ?? 0;
-    const scanning = (progress.state === 'running' || progress.state === 'queued') && total === 0;
+    const scanning = (progress.state === 'running' || progress.state === 'queued')
+        && total === 0
+        && SCAN_PHASES.has(progress.phase ?? '');
     const { stage: scanStage } = useLoadingStages(scanning, { surface: 'sync_scan' });
+    // A queued sync waits for another one: the detail row already says so (place in line), so
+    // the "checking for new messages" explanation would be wrong there.
+    const showScanExplanation = scanning && progress.state !== 'queued' && scanStage === 'verySlow';
     const ratio = total > 0 ? (progress.completed || 0) / total : 0;
     const percent = Math.round(ratio * 100);
     const currentIndex = PHASE_ORDER.indexOf(progress.phase || '');
@@ -67,7 +79,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                     valueText={scanning ? undefined : `${progress.completed?.toLocaleString() || 0} / ${progress.total?.toLocaleString() || 0}`}
                     fillTestId="sync-progress-fill"
                 />
-                {scanning && scanStage === 'verySlow' && (
+                {showScanExplanation && (
                     <p className="text-small text-secondary">{t('sync.preparingVerySlow')}</p>
                 )}
             </div>

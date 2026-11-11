@@ -162,4 +162,30 @@ describe('SyncProgressPanel scanning', () => {
         rerender(<SyncProgressPanel progress={{ ...RUNNING, phase: 'downloading', phase_number: 3 }} />);
         expect(screen.getByTestId('sync-media-warning').querySelector('svg')).toHaveAttribute('data-spinner');
     });
+
+    // Fix round 1: what the backend sends. scanning starts at total 0; a later phase can report
+    // total 0 when there is nothing to do (start_phase('syncing'|'downloading', ..., 0, ...)).
+    it.each([
+        ['syncing', 2],
+        ['downloading', 3],
+        ['verifying', 1],
+        ['repairing', 2],
+    ])('a %s phase with total 0 is not scanning', (phase, phaseNumber) => {
+        render(<SyncProgressPanel progress={{ ...SCANNING, phase, phase_number: phaseNumber }} />);
+        expect(screen.queryByText('Getting ready to sync…')).toBeNull();
+        expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
+    });
+
+    it('discovering with total 0 is still scanning', () => {
+        render(<SyncProgressPanel progress={{ ...SCANNING, phase: 'discovering' }} />);
+        expect(screen.getByText('Getting ready to sync…')).toBeInTheDocument();
+    });
+
+    it('a queued wait never gets the "checking for new messages" line, even after 10 s', () => {
+        vi.useFakeTimers();
+        render(<SyncProgressPanel progress={{ state: 'queued', phase: 'queued', queue_position: 2 }} />);
+        act(() => { vi.advanceTimersByTime(10_000); });
+        expect(screen.queryByText('Checking for new messages. A large archive takes a little longer.')).toBeNull();
+        expect(screen.getByText('Waiting for another sync to finish (#2 in line)')).toBeInTheDocument();
+    });
 });
