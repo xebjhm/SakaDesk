@@ -16,7 +16,7 @@
 
 **Architecture (the five agreed moves):**
 1. **Pre-generated thumbnails.** A background worker (`backend/services/media_pregen.py`) runs at low priority, on one background-priority thread. It is throttled and pauses while any sync, Memories refresh, blog backup or foreground media request is active. It writes the exact cache variants that `/api/content/thumb` serves:
-   - the variants are 160 and 320 for everything, plus 640 for ★ items and album covers;
+   - the variants are 160 and 320 for everything, plus 640 for ★ items and album covers (superseded: one pre-generated 480 for everything, see the revised rulings under "Cache budget");
    - every size comes from **one** decode of the source;
    - the route keeps a miss path only as a safety net.
 2. **Video poster frames**, generated once and cached in their own bounded cache:
@@ -37,7 +37,7 @@
 
 ## Global Constraints
 
-- **Tile sizing (acceptance r2, 2026-11-11):** column/tile maths come from the single constant module `frontend/src/core/media/tileGrid.ts` (tiles ≥ 9rem, ≤ 6 per row; ~250 px wide on wide windows). `VirtualMediaGrid`/`useGridColumns` must import it instead of the `min 112 / max 180` defaults below, and tiles pick the thumbnail variant by rendered width × DPR using `thumbWidthFor` (smallest allowed width ≥ rendered width × DPR, capped at 480 for grid tiles; ★ items and album covers pass `large` and may use 640 — see the revised ruling under Cache budget). M9 measures the per-item estimate.
+- **Tile sizing (acceptance r2, 2026-11-11):** column/tile maths come from the single constant module `frontend/src/core/media/tileGrid.ts` (tiles ≥ 9rem, ≤ 6 per row; ~250 px wide on wide windows). `VirtualMediaGrid`/`useGridColumns` must import it instead of the `min 112 / max 180` defaults below, and tiles pick the thumbnail variant by rendered width × DPR using `thumbWidthFor` (smallest allowed width ≥ rendered width × DPR, capped at 480 for grid tiles; ★ items and album covers pass `large` and may use 640, which the route renders on demand — it is not pre-generated, see the revised ruling under Cache budget). M9 measures the per-item estimate.
 
 - **User decisions (2026-11-11):** cache budget ~1.4 GB total as planned (thumbs 1 GiB + posters 256 MiB) is approved. Album keeps its own layout, tiles shared (D-1). On-demand fallback stays (D-3).
 - **Loading feedback is mandatory (user, 2026-11-11):** a tile waiting for its image must clearly look *loading*, never blank or frozen: the dominant-colour/blur placeholder carries a subtle shimmer/pulse (design-system motion token; static under `prefers-reduced-motion`, where a small spinner or progress indicator is used instead), and it fades into the image on load. A tile that failed shows a quiet retry state, never an empty box. Grid-level loading (first page, more pages, background pre-generation in progress) shows a visible indicator too. Every gallery task (P5–P8) must test the loading, loaded and failed states.
@@ -96,7 +96,7 @@
 
 | Cache | Constant | Value | Holds |
 |---|---|---|---|
-| Thumbnails (`cache/photo_thumbs/`) | `photo_thumb.CACHE_CAP_BYTES` | **1 GiB** (was 300 MB) | WebP 480 variants (pre-generated), 640 for ★ / covers, on-demand 320 / 160 derived from the 480, and toast JPEGs |
+| Thumbnails (`cache/photo_thumbs/`) | `photo_thumb.CACHE_CAP_BYTES` | **1 GiB** (was 300 MB) | WebP 480 variants (pre-generated for every item), on-demand 320 / 160 derived from the 480, on-demand 640 for `large` requests, and toast JPEGs |
 | Pre-generation fill line | `media_pregen.PREGEN_FILL_RATIO` | **0.85** of the thumbnail cap (870 MiB) | the worker stops adding variants once the cache passes it (it still makes placeholders and Shell posters), so on-demand misses and toasts keep headroom and the worker never evicts what it just made |
 | Eviction low water | `photo_thumb.CACHE_LOW_WATER` | **0.75** of a cap | an eviction (above the cap) trims to here, below the fill line, so the worker can add again after an eviction (hysteresis) |
 | Video posters (`cache/video_posters/`) | `video_poster.POSTER_CACHE_CAP_BYTES` | **256 MiB** | one WebP of at most 640 px per video |
@@ -104,9 +104,10 @@
 
 **Justification** (sizes are WebP q82 of phone photos):
 - **Revised ruling (M4 fix round 1):** one pre-generated size, `PREGEN_WIDTHS = (480,)`; 640 only for ★ and covers. Grid tiles ask for the smallest allowed width ≥ rendered width × DPR, capped at 480 for non-★ tiles (★ and covers may use 640). 320 and 160 requests are rendered on demand from the cached 480 (a derived miss: no source decode). The earlier (160, 320) set, then the (320, 480) proposal, are superseded: (320, 480) roughly doubled the per-item cost.
+- **Revised ruling (M9 fix wave B, D-M7):** 640 is no longer pre-generated for ★ items or covers. M9 measured covers requesting `w=320` and only 7 `w=640` requests in a whole session, so the 640 work was wasted. `ALLOWED_WIDTHS` keeps 640, so `large` requests are rendered on demand; `LARGE_WIDTH` was removed from the backend.
 - **Per-size averages:** 160 px ≈ 6 KB, 320 px ≈ 19 KB, 480 px ≈ **35 KB** (an estimate; M9 measures it), 640 px ≈ 55 KB. The default set (480) is about **35 KB per item**.
 - **One large service** (the acceptance run shows 13,518 album items for 日向坂46) at the default set: 14k × 35 KB ≈ **490 MB**.
-- **640 px for ★ and covers** (about 5%): 700 × 55 KB ≈ **40 MB**.
+- **640 px for ★ and covers** (about 5%): 700 × 55 KB ≈ **40 MB** (dropped by D-M7: now on demand only).
 - **That service's blog images:** assume 15k × 35 KB ≈ **525 MB**.
 - **Total:** about **1.05 GB**, over the 870 MiB fill line. The messages of one large service and its ★ / covers (≈ 530 MB) fit; its blog images fit only partly. On-demand 320 / 160 derivatives of viewed tiles add a little and are evicted first when unused.
 - **A second large service** does not fit completely either. The worker covers the services in priority order (Task M4), and LRU eviction removes the least recently viewed variants. The ★ and newest-months phases come first, so what users open first stays cached.

@@ -56,9 +56,10 @@ serves a WebP no wider or taller than one of :data:`ALLOWED_WIDTHS` instead
   (:func:`placeholder_of`: mean colour and a 16 px WebP blur of at most
   :data:`BLUR_MAX_BYTES`) and its display size (the header size with EXIF
   orientation applied). The background pre-generation
-  worker (``media_pregen``) writes :data:`PREGEN_WIDTHS` (480 px; plus
-  :data:`LARGE_WIDTH` for starred items and covers; 320 / 160 px are derived
-  on demand from the 480) through it: the **same
+  worker (``media_pregen``) writes :data:`PREGEN_WIDTHS` (480 px for every
+  item, starred items and covers included; 320 / 160 px are derived on
+  demand from the 480, and 640 for ``large`` requests is rendered on demand
+  only) through it: the **same
   files under the same keys** the route serves, so a pre-generated variant is
   a route hit. The key's ``rel_path`` always comes from :func:`archive_rel`
   (the resolved, output-dir-relative POSIX path), for the route and the
@@ -135,15 +136,14 @@ CACHE_CAP_BYTES = 1 * 1024**3
 """1 GiB. Sized in the media pipeline plan's "Cache budget" table
 (``docs/superpowers/plans/2026-11-11-media-pipeline.md``): one 480 px WebP
 is about 35 KB per item (to be measured in M9), so one large service's
-messages (~14k pictures, ~490 MB) plus its starred / cover 640 px variants
-(~40 MB) fit under the pre-generation fill line (0.85 of the cap, 870 MiB);
+messages (~14k pictures, ~490 MB) fit under the pre-generation fill line
+(0.85 of the cap, 870 MiB);
 its blog images (~525 MB more) and a second large service do not fit
 completely, and LRU eviction keeps what was viewed last. 320 / 160 px
 requests are rendered on demand from the cached 480 (derived misses)."""
 PREGEN_WIDTHS: tuple[int, ...] = (480,)
-"""The variant pre-generated for every picture (smaller widths derive from it)."""
-LARGE_WIDTH = 640
-"""The extra variant pre-generated for starred items and album covers."""
+"""The only variant pre-generated, for every picture (starred items and covers
+too). Smaller widths derive from it; 640 is rendered on demand only."""
 BLUR_MAX_BYTES = 600
 """Largest placeholder blur kept; a bigger one (a very noisy picture) becomes ``None``."""
 BLUR_PX = 16

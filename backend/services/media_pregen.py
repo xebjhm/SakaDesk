@@ -79,11 +79,11 @@ Per service the phases are (:func:`default_enumerate`):
 
 0. ``warm_album``: D4's ``album.warm_album`` (the 全員 album caches), then
    ``album.album_months`` (a cache hit) for every month's cover, which joins
-   phase 1 with the 640 px width.
+   phase 1.
 1. ``newest``: message media within :data:`NEWEST_DAYS` of the newest item
    of its room, newest first, at ``photo_thumb.PREGEN_WIDTHS`` (480 px; the
    route derives 320 / 160 from it on demand).
-2. ``favorites``: the other ★ items, with ``photo_thumb.LARGE_WIDTH`` too.
+2. ``favorites``: the other ★ items.
 3. ``messages``: every other message media, newest first.
 4. ``blogs``: every cached blog image of the service, newest first, at
    ``PREGEN_WIDTHS``. It is listed lazily (:meth:`MediaPregen._expand_blogs`)
@@ -121,8 +121,13 @@ Logged as ``media_pregen_blog_sig`` (``state=loaded|saved|skipped|forgotten``,
 
 Hinted files (``media_meta`` hints missing and stale rows of a meta batch)
 jump the queue at every batch boundary, deduplicated and capped at
-:data:`HINTS_MAX`; a hinted ★ item or cover keeps its 640 width. A video that can only wait for a client capture is not
+:data:`HINTS_MAX`. A video that can only wait for a client capture is not
 re-queued from hints for :data:`HINT_COOLDOWN_S`.
+
+Every item, ★ items and covers included, is made at
+``photo_thumb.PREGEN_WIDTHS`` only (D-M7: covers ask for 320 and tiles for
+at most 480, both served from the 480). 640 stays a width the route renders
+on demand for ``large`` requests; it is never pre-generated.
 
 **Per file** (:func:`default_process`, on the thread): one stat; a file
 whose variants and fresh meta row are all present is ``skipped`` with no
@@ -371,7 +376,6 @@ def _phases(
     worker thread, never on the event loop (:func:`default_enumerate`).
     """
     base = photo_thumb.PREGEN_WIDTHS
-    big = base + (photo_thumb.LARGE_WIDTH,)
     stamped = [(r, _parse_ts(r.ts_utc)) for r in rows]
     latest: dict[str, datetime] = {}
     for r, ts in stamped:
@@ -390,8 +394,7 @@ def _phases(
         if kind is None or mf in seen:
             continue
         seen.add(mf)
-        large = r.favorited or mf in cover_set
-        item = Item(root, path, kind, big if large else base)
+        item = Item(root, path, kind, base)
         key = ts if ts is not None else _OLDEST
         if ts is not None and ts >= latest[r.member_dir] - window:
             newest.append((key, item))
@@ -403,7 +406,7 @@ def _phases(
             rest.append((key, item))
     in_newest = {i.path for _, i in newest}  # a set: O(1) per cover
     cover_items = [
-        Item(root, sdir / c, kind, big)
+        Item(root, sdir / c, kind, base)
         for c in dict.fromkeys(_norm(c) for c in covers)
         if (kind := media_meta.kind_of(sdir / c)) is not None
         and sdir / c not in in_newest
@@ -737,24 +740,6 @@ class _PassAborted(Exception):
     """The caches were cleared while a pass ran: drop it (the passes are re-requested)."""
 
 
-def _large_rels(phases: Sequence[Phase]) -> set[str]:
-    """Rels (output-relative, POSIX) of the items that get the 640 width. Blocking-ish (CPU).
-
-    Lets a hinted ★ item or cover keep its 640 variant. Computed from the
-    unresolved paths, which equal the ``archive_rel`` keys unless a symlink
-    sits in between (then the hint just gets the default width).
-    """
-    out: set[str] = set()
-    for phase in phases:
-        for item in phase.items:
-            if photo_thumb.LARGE_WIDTH in item.widths:
-                try:
-                    out.add(item.path.relative_to(item.root).as_posix())
-                except ValueError:
-                    continue
-    return out
-
-
 def _log_pass(
     service: str,
     phase: str,
@@ -840,7 +825,6 @@ class MediaPregen:
         self._thumbs_full = False
         self._generation = 0  # bumped by clear(): the pass in flight is dropped
         self._turn_generation = 0
-        self._large: dict[str, set[str]] = {}  # service -> rels of ★ / cover items
         # service -> the blog listing signature of its last completed blog phase
         self._blog_sig: dict[str, tuple[str, int, int, int]] = {}
         # service -> the persisted form loaded at start (trusted while the
@@ -1147,9 +1131,7 @@ class MediaPregen:
             self._root = None
             root = await self._root_dir()
             phases = await self._enumerate(service, root)
-            large = await asyncio.to_thread(_large_rels, phases)
             with self._lock:
-                self._large[service] = large
                 self._progress[service] = [0, sum(len(p.items) for p in phases)]
             for phase in phases:
                 if phase.name == PHASE_BLOGS:
@@ -1310,17 +1292,15 @@ class MediaPregen:
             return Phase(PHASE_BLOGS, [], reason="failed"), None
 
     def _take_hints(self, root: Path) -> list[Item]:
-        big = photo_thumb.PREGEN_WIDTHS + (photo_thumb.LARGE_WIDTH,)
         with self._lock:
             rels = list(itertools.islice(self._hints, PREGEN_BATCH))
-            taken = [(rel, self._hints.pop(rel)) for rel in rels]
-            large = {r for r, svc in taken if r in self._large.get(svc, ())}
+            for rel in rels:
+                del self._hints[rel]
         items = []
-        for rel, _ in taken:
+        for rel in rels:
             kind = media_meta.kind_of(Path(PurePosixPath(rel).name))
             if kind is not None:  # checked in hint(); kept for the type
-                widths = big if rel in large else photo_thumb.PREGEN_WIDTHS
-                items.append(Item(root, root / rel, kind, widths))
+                items.append(Item(root, root / rel, kind, photo_thumb.PREGEN_WIDTHS))
         return items
 
     async def _step(

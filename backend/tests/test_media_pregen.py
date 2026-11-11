@@ -393,7 +393,11 @@ def _media_row(member, media_file, type_, ts, fav=False):
 
 @pytest.mark.asyncio
 async def test_default_enumerate_builds_the_phases(out):
-    """Phase 0 warms the album (D4's warm_album) and adds the covers at 640."""
+    """Phase 0 warms the album (D4's warm_album) and adds the covers to phase 1.
+
+    D-M7: nothing is pre-generated at 640 (covers ask for 320, ★ tiles for
+    480); 640 stays an on-demand width of the route.
+    """
     from backend.services.memories import album
     from backend.services.memories import index as memory_index
 
@@ -443,15 +447,15 @@ async def test_default_enumerate_builds_the_phases(out):
         ]
 
     base = photo_thumb.PREGEN_WIDTHS
-    big = base + (photo_thumb.LARGE_WIDTH,)
     assert shape(names["newest"]) == [
         ("a/picture/new.jpg", "picture", base),
         ("a/video/new.mp4", "video", base),
         ("a/picture/mid.jpg", "picture", base),
         ("b/picture/only.jpg", "picture", base),
-        ("a/picture/cover.jpg", "picture", big),
+        ("a/picture/cover.jpg", "picture", base),
     ]
-    assert shape(names["favorites"]) == [("a/picture/fav.jpg", "picture", big)]
+    assert shape(names["favorites"]) == [("a/picture/fav.jpg", "picture", base)]
+    assert all(640 not in i.widths for p in phases for i in p.items)
     assert shape(names["messages"]) == [
         ("a/picture/old.jpg", "picture", base),
         ("b/picture/bad.jpg", "picture", base),
@@ -2208,9 +2212,10 @@ def test_covers_deduplicate_against_phase_1_in_linear_time(out):
 
 
 @pytest.mark.asyncio
-async def test_a_hinted_starred_item_keeps_its_640(h):
+async def test_hinted_items_get_the_pregen_widths_only(h):
+    """D-M7: a hinted ★ item or cover gets 480 like any other (no 640)."""
     h.root.mkdir(parents=True)
-    star = Item(h.root, h.root / "日向坂46" / "s.jpg", "picture", (480, 640))
+    star = Item(h.root, h.root / "日向坂46" / "s.jpg", "picture", (480,))
     h.phases[HINATA] = [Phase("favorites", [star])]
     seen: list[tuple[str, tuple[int, ...]]] = []
     h.on_process = lambda item: seen.append((item.path.name, item.widths))
@@ -2221,16 +2226,14 @@ async def test_a_hinted_starred_item_keeps_its_640(h):
     await asyncio.sleep(0)
     await _idle(p)
     await p.stop()
-    assert seen[1:] == [("s.jpg", (480, 640)), ("plain.jpg", (480,))]
+    assert seen[1:] == [("s.jpg", (480,)), ("plain.jpg", (480,))]
 
 
-def test_large_rels_skip_items_outside_their_root(tmp_path):
-    inside = Item(tmp_path, tmp_path / "a" / "1.jpg", "picture", (480, 640))
-    outside = Item(tmp_path / "x", tmp_path / "b.jpg", "picture", (480, 640))
-    plain = Item(tmp_path, tmp_path / "c.jpg", "picture", (480,))
-    assert media_pregen._large_rels([Phase("p", [inside, outside, plain])]) == {
-        "a/1.jpg"
-    }
+def test_nothing_is_pre_generated_at_640():
+    assert photo_thumb.PREGEN_WIDTHS == (480,)
+    assert 640 in photo_thumb.ALLOWED_WIDTHS  # still served on demand
+    assert not hasattr(photo_thumb, "LARGE_WIDTH")
+    assert not hasattr(media_pregen, "_large_rels")
 
 
 @pytest.mark.asyncio

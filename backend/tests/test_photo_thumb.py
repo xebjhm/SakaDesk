@@ -717,14 +717,13 @@ class TestConstants:
     def test_cache_cap_is_one_gib(self):
         assert photo_thumb.CACHE_CAP_BYTES == 1024**3
 
-    def test_pregen_widths_are_allowed_and_large_is_640(self):
+    def test_pregen_widths_are_allowed_and_640_is_on_demand_only(self):
         assert photo_thumb.PREGEN_WIDTHS == (480,)
         assert photo_thumb.ALLOWED_WIDTHS == frozenset({160, 320, 480, 640})
-        assert photo_thumb.LARGE_WIDTH == 640
-        # every pre-generated width is one the route serves
-        assert {*photo_thumb.PREGEN_WIDTHS, photo_thumb.LARGE_WIDTH} <= set(
-            photo_thumb.ALLOWED_WIDTHS
-        )
+        # every pre-generated width is one the route serves; 640 (``large``
+        # requests) is rendered on demand only (D-M7)
+        assert set(photo_thumb.PREGEN_WIDTHS) <= set(photo_thumb.ALLOWED_WIDTHS)
+        assert not hasattr(photo_thumb, "LARGE_WIDTH")
 
     def test_public_cache_helpers_keep_their_private_aliases(self):
         assert photo_thumb.cache_state_add is photo_thumb._added
