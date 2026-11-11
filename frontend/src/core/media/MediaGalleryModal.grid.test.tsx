@@ -156,11 +156,15 @@ describe('MediaGalleryModal on the shared virtual grid (M6)', () => {
             act(() => FakeImage.all.filter((img) => img.onerror).forEach((img) => { const fail = img.onerror!; img.onerror = null; img.onload = null; fail(); }));
         }
         expect(tile.querySelector('[data-state="failed"]')).not.toBeNull();
+        // Its accessible name says what a click does now: retry, not open.
+        const date = formatDateTime(pic(1, '2026-10-01').timestamp);
+        expect(tile).toHaveAccessibleName(`Retry loading photo from ${date}`);
         const before = FakeImage.all.length;
         await userEvent.click(tile);
         expect(screen.queryByRole('dialog', { name: 'Media viewer' })).toBeNull();
         await waitFor(() => expect(FakeImage.all.length).toBeGreaterThan(before));
         expect(tile.querySelector('[data-state="failed"]')).toBeNull();
+        expect(tile).toHaveAccessibleName(`Open photo from ${date}`);
         // A tile that is not failed opens the viewer as usual.
         await userEvent.click(tile);
         expect(await screen.findByRole('dialog', { name: 'Media viewer' })).toBeInTheDocument();
@@ -253,8 +257,16 @@ describe('MediaGalleryModal grid-level loading states', () => {
         expect(onRetryList).toHaveBeenCalledTimes(1);
     });
 
+    it('shows the error without a Retry when the host gives no retry, never "No photos yet"', () => {
+        renderGallery([], { listStatus: 'error' });
+        const alert = screen.getByRole('alert');
+        expect(alert).toHaveTextContent("Couldn't load");
+        expect(within(alert).queryByRole('button')).toBeNull();
+        expect(screen.queryByText('No photos yet')).toBeNull();
+    });
+
     it('shows a quiet "Preparing thumbnails" bar while pre-generation runs, and polls gently', async () => {
-        statusBody = { state: 'paused', paused_reason: 'foreground', thumbs_full: false, services: { hinatazaka46: { done: 3, total: 10 } }, posters: {}, cache: {} };
+        statusBody = { state: 'running', paused_reason: null, thumbs_full: false, services: { hinatazaka46: { done: 3, total: 10 } }, posters: {}, cache: {} };
         vi.useFakeTimers({ shouldAdvanceTime: true });
         renderGallery([pic(1, '2026-10-01')]);
         const bar = await screen.findByRole('progressbar', { name: 'Preparing thumbnails… 3 / 10' });
@@ -268,10 +280,24 @@ describe('MediaGalleryModal grid-level loading states', () => {
         expect(statusCalls).toBe(2);
     });
 
+    it('says the bar is paused while the worker yields (here to the gallery itself), so it never looks frozen', async () => {
+        statusBody = { state: 'paused', paused_reason: 'foreground', thumbs_full: false, services: { hinatazaka46: { done: 3, total: 10 } }, posters: {}, cache: {} };
+        renderGallery([pic(1, '2026-10-01')]);
+        const bar = await screen.findByRole('progressbar', { name: 'Thumbnail preparation paused · 3 / 10' });
+        expect(bar).toHaveAttribute('aria-valuenow', '30');
+        expect(screen.queryByText(/Preparing thumbnails/)).toBeNull();
+    });
+
     it('shows no pre-generation bar when the thumbnail cache is full, and none on the voice tab', async () => {
         statusBody = { state: 'running', paused_reason: null, thumbs_full: true, services: { hinatazaka46: { done: 3, total: 10 } }, posters: {}, cache: {} };
-        renderGallery([pic(1, '2026-10-01')]);
+        renderGallery([pic(1, '2026-10-01'), voice(3, '2026-10-03')]);
         await waitFor(() => expect(statusCalls).toBe(1));
+        expect(screen.queryByRole('progressbar')).toBeNull();
+        // The voice tab has no thumbnails: no bar, and no status read there.
+        statusBody = { state: 'running', paused_reason: null, thumbs_full: false, services: { hinatazaka46: { done: 3, total: 10 } }, posters: {}, cache: {} };
+        await userEvent.click(screen.getByRole('tab', { name: 'Voice messages' }));
+        await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
+        expect(statusCalls).toBe(1);
         expect(screen.queryByRole('progressbar')).toBeNull();
     });
 

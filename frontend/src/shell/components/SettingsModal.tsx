@@ -18,6 +18,7 @@ import { pollJson, SIDEBAR_POLL_TIMEOUT_MS } from '../../utils/pollJson';
 import { useUpgradeStore } from '../../core/upgrade/upgradeStore';
 import { UpdateActions } from '../../core/upgrade/UpdateActions';
 import { isJstSlot, jstSlotToLocal } from '../../features/memories/shared/jst';
+import { pregenLabelKey, pregenProgress } from '../../core/media/grid/galleryStatus';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -83,6 +84,8 @@ const DANGER_GHOST = 'text-status-danger hover:text-status-danger';
 /** `GET /api/media/status`, the parts the thumbnail cache row reads. */
 interface MediaCacheStatus {
     state: 'idle' | 'running' | 'paused' | 'stopped';
+    /** Why the worker is paused (`sync`, `refresh`, `blog_backup`, `foreground`, `shutdown`), else null. */
+    paused_reason: string | null;
     /** The thumbnail cache is at the worker's fill line: no new variants are made. */
     thumbs_full: boolean;
     services: Record<string, { done: number; total: number }>;
@@ -99,22 +102,10 @@ function asMediaStatus(data: unknown): MediaCacheStatus | null {
     const d = data as Partial<MediaCacheStatus> | null;
     if (!d || typeof d.state !== 'string' || typeof d.cache?.thumbs_bytes !== 'number'
         || typeof d.cache?.posters_bytes !== 'number') return null;
-    return { state: d.state, thumbs_full: d.thumbs_full === true, services: d.services ?? {}, cache: d.cache };
-}
-
-/**
- * `{done, total}` over every service while the worker runs or pauses with work left, else null.
- * A full cache shows its own line instead: the worker then makes no new thumbnails.
- */
-function mediaProgress(status: MediaCacheStatus | null): { done: number; total: number } | null {
-    if (!status || status.thumbs_full || (status.state !== 'running' && status.state !== 'paused')) return null;
-    let done = 0;
-    let total = 0;
-    for (const s of Object.values(status.services)) {
-        done += s.done;
-        total += s.total;
-    }
-    return total > 0 && done < total ? { done, total } : null;
+    return {
+        state: d.state, paused_reason: typeof d.paused_reason === 'string' ? d.paused_reason : null,
+        thumbs_full: d.thumbs_full === true, services: d.services ?? {}, cache: d.cache,
+    };
 }
 
 /** Outcome of a per-service batch: `ok`, `error` when every request failed, else `partial` with the failure count. */
@@ -383,7 +374,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             setMediaClearing(false);
         }
     };
-    const mediaPreparing = mediaProgress(mediaStatus);
+    // The galleries' rule (`pregenProgress`), over every service. A full cache shows its own line instead.
+    const mediaPreparing = pregenProgress(mediaStatus, undefined);
     const mediaLoadingShown = useDelayedLoading(mediaLoading && !mediaStatus);
 
     // Runs after both in-app confirmations (see the ConfirmDialog below).
@@ -714,9 +706,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         label={<>
                             {t('settings.mediaCache')}
                             {mediaPreparing && (
+                                // Paused: says so, with no spinner, so a line that is not moving never looks stuck.
                                 <span className="flex items-center gap-1 text-caption font-normal text-secondary">
-                                    <Spinner size="sm" tone="muted" decorative />
-                                    {t('settings.mediaCachePreparing', mediaPreparing)}
+                                    {!mediaPreparing.paused && <Spinner size="sm" tone="muted" decorative />}
+                                    {t(pregenLabelKey(mediaPreparing), { done: mediaPreparing.done, total: mediaPreparing.total })}
                                 </span>
                             )}
                             {mediaStatus?.thumbs_full && (

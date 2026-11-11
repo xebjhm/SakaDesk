@@ -58,7 +58,11 @@ export type StatusBlockEmptyProps = { kind: 'empty'; title: string; action?: Rea
 
 export type StatusBlockProblemProps = {
     kind: 'error' | 'timeout';
-    onRetry: () => void;
+    /**
+     * Shows the Retry button. Give it whenever the failed load can be run again; omit it only when
+     * the host has nothing to retry (the error then shows without a button, never an empty state).
+     */
+    onRetry?: () => void;
     /** Translated; default `loading.retry`. */
     retryLabel?: string;
     retryVariant?: 'secondary' | 'primary';
@@ -160,7 +164,7 @@ const ProblemBlock: React.FC<Common & StatusBlockProblemProps> = ({
             )}
             <p className={cn(inline ? 'text-small' : 'text-body', timeout ? (inline ? 'text-secondary' : 'text-primary') : 'text-status-danger')}>{heading}</p>
             {sentence && <p className="text-small text-muted">{sentence}</p>}
-            <Button variant={inline ? 'ghost' : retryVariant} size="sm" onClick={onRetry}>{retryLabel ?? t('loading.retry')}</Button>
+            {onRetry && <Button variant={inline ? 'ghost' : retryVariant} size="sm" onClick={onRetry}>{retryLabel ?? t('loading.retry')}</Button>}
         </div>
     );
 };
@@ -173,8 +177,8 @@ const ProblemBlock: React.FC<Common & StatusBlockProblemProps> = ({
  *   label; the slow hint from `slow`; from `verySlow` the very-slow hint plus Cancel (`onCancel`)
  *   or a `ProgressBar` (`progress`), and an indeterminate bar when neither is given. Logs `ui_wait`
  *   (`slow`, `very_slow` once per mount, `cancelled` on Cancel).
- * - error: `role="alert"`, danger icon tile, `loading.error` title, Retry.
- * - timeout: `role="alert"`, neutral `Clock` tile, `loading.timeout` + `loading.timeoutHint`, Retry.
+ * - error: `role="alert"`, danger icon tile, `loading.error` title, Retry (when `onRetry` is given).
+ * - timeout: `role="alert"`, neutral `Clock` tile, `loading.timeout` + `loading.timeoutHint`, Retry (when `onRetry` is given).
  * - empty: `EmptyState` (title, hint as its sentence, `action`).
  */
 export const StatusBlock: React.FC<StatusBlockProps> = (props) => {

@@ -810,7 +810,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             conversationPath={selectedGroupDir}
                             isGroupChat={isGroupChat}
                             messages={displayMessages}
-                            messagesStatus={error ? 'error' : loading && messages.length === 0 ? 'loading' : 'ready'}
+                            messagesStatus={error ? 'error' : loading && messagesForDir !== selectedGroupDir ? 'loading' : 'ready'}
                             onRetryMessages={retryMessages}
                             memberName={selectedName || ''}
                             memberAvatar={headerAvatar}

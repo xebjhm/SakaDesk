@@ -82,6 +82,7 @@
     "mediaCache": "縮圖快取",
     "mediaCacheSize": "用咗 {{size}}",
     "mediaCachePreparing": "準備緊縮圖… {{done}} / {{total}}",
+    "mediaCachePaused": "縮圖準備暫停咗 · {{done}} / {{total}}",
     "mediaCacheClear": "清除",
     "mediaCacheCleared": "已經清除咗縮圖快取",
     "mediaCacheFull": "已經到咗上限，睇嘅時候會換走舊啲嘅縮圖",
@@ -523,7 +524,8 @@
     "typeTabs": "媒體類型",
     "gallery": {
       "openPhoto": "打開 {{date}} 嘅相",
-      "openVideo": "打開 {{date}} 嘅片"
+      "openVideo": "打開 {{date}} 嘅片",
+      "retryPhoto": "重新載入 {{date}} 嘅相"
     }
   },
   "sentLetters": {

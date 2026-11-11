@@ -98,7 +98,7 @@ describe('thumbnail cache row', () => {
         await waitFor(() => expect(screen.queryByTestId('media-cache-loading')).toBeNull());
     });
 
-    it('shows the preparing line while the worker runs or pauses, and polls until idle', async () => {
+    it('shows the preparing line while the worker runs, a quiet paused line while it pauses, and polls until idle', async () => {
         vi.useFakeTimers({ shouldAdvanceTime: true });
         try {
             serveStatus(
@@ -108,11 +108,15 @@ describe('thumbnail cache row', () => {
             );
             renderModal();
             openSync();
-            expect(await screen.findByText('Preparing thumbnails… 120 / 500')).toBeInTheDocument();
+            const running = await screen.findByText('Preparing thumbnails… 120 / 500');
+            expect(running.querySelector('[data-spinner]')).not.toBeNull();
             await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-            expect(await screen.findByText('Preparing thumbnails… 320 / 500')).toBeInTheDocument();
+            // Paused (here for a sync): says so, with no spinner, so it never looks frozen.
+            const paused = await screen.findByText('Thumbnail preparation paused · 320 / 500');
+            expect(paused.querySelector('[data-spinner]')).toBeNull();
+            expect(screen.queryByText(/Preparing thumbnails/)).toBeNull();
             await act(async () => { await vi.advanceTimersByTimeAsync(5000); });
-            await waitFor(() => expect(screen.queryByText(/Preparing thumbnails/)).toBeNull());
+            await waitFor(() => expect(screen.queryByText(/Preparing thumbnails|preparation paused/)).toBeNull());
         } finally {
             vi.useRealTimers();
         }

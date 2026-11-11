@@ -689,7 +689,7 @@ A shown indicator stays at least 400 ms (`minVisible`; `settleDelay(elapsed)` gi
 |---|---|---|
 | `Spinner` | `size` `sm` / `md` / `lg` (`h-4` / `h-6` / `h-8`), `tone` `accent` / `muted` / `current` / `viewer`, `label` (default `loading.label`), `labelVisibility` `auto` / `always` / `compact`, `decorative` | lucide `Loader2`, `animate-spin motion-reduce:animate-none`; `role="status"` named by its label. `decorative` (aria-hidden, no role, no label) only next to visible text that describes the wait |
 | `Skeleton` | `shape` `line` / `block` / `circle` / `tile`, `tone` `sunken` (default, `bg-sunken`) / `paper` (`bg-skeleton`) / `data` (no colour; the caller paints `style`), `className`, `style` | `SKELETON_PULSE` (`animate-pulse motion-reduce:animate-none`); always `aria-hidden`, the parent carries `role="status"` and a label |
-| `StatusBlock` | `kind` `loading` / `empty` / `error` / `timeout`, `surface` (a `ui_wait` code), `variant` `pane` / `dialog` (default) / `block` / `fill` / `inline`, `title`, `hint`, `icon`; loading: `label`, `skeleton`, `slowHint`, `verySlowHint`, `onCancel`, `cancelLabel`, `progress`, `stage` (previews only); empty: `title` (required), `action`; error and timeout: `onRetry` (required), `retryLabel`, `retryVariant` | loading: an empty `role="status"` box with `aria-busy` (same size) until `reveal`, then (without `aria-busy`, so the label, the slow line and the explanation are announced) the skeleton or an accent spinner, then the hints, Cancel (ghost) and bar as in the timing table. error: `role="alert"`, danger icon tile, `loading.error`, Retry (`secondary`). timeout: `role="alert"`, neutral `Clock` tile (`bg-sunken text-muted`, never danger), `loading.timeout` + `loading.timeoutHint`, Retry. empty: `EmptyState` |
+| `StatusBlock` | `kind` `loading` / `empty` / `error` / `timeout`, `surface` (a `ui_wait` code), `variant` `pane` / `dialog` (default) / `block` / `fill` / `inline`, `title`, `hint`, `icon`; loading: `label`, `skeleton`, `slowHint`, `verySlowHint`, `onCancel`, `cancelLabel`, `progress`, `stage` (previews only); empty: `title` (required), `action`; error and timeout: `onRetry` (give it whenever the load can run again; without it the alert shows with no button), `retryLabel`, `retryVariant` | loading: an empty `role="status"` box with `aria-busy` (same size) until `reveal`, then (without `aria-busy`, so the label, the slow line and the explanation are announced) the skeleton or an accent spinner, then the hints, Cancel (ghost) and bar as in the timing table. error: `role="alert"`, danger icon tile, `loading.error`, Retry (`secondary`). timeout: `role="alert"`, neutral `Clock` tile (`bg-sunken text-muted`, never danger), `loading.timeout` + `loading.timeoutHint`, Retry. empty: `EmptyState` |
 | `ProgressBar` | `value` (0..1; null / undefined = indeterminate), `label` (required, the accessible name), `valueText`, `size` `thin` / `sm` / `md` (`h-0.5` / `h-2` / `h-4`), `showLabel`, `labelClassName` | `bg-sunken rounded-full` track, `bg-expressive-progress` fill (`transition-all duration-base`, none under reduced motion); indeterminate: a `w-1/3` segment on `animate-progress-indeterminate` |
 | `BusyContent` | `busy`, `label`, `children`, `className`, `contentClassName` | keeps the previous content, `aria-busy`; after `reveal` the content dims to `opacity-60` and a thin indeterminate `ProgressBar` sits on the top edge (no pointer events). Under reduced motion its label shows on a small `bg-sheet` pill under the bar, never painted straight over the content |
 
@@ -745,11 +745,18 @@ and no pulse, and the compact spinner above stands in. A failed picture shows a 
 tile is not already inside a button, and it retries by itself when scrolled back into view),
 never an empty box. A video without a poster is the `Film` tile (`bg-sunken text-muted`); a grid
 never mounts a `<video>`. A gallery that wraps each tile in its own button keeps the tile's
-`onFail(retry)` handle and calls it when a failed tile is clicked, instead of opening the viewer.
+`onFail(retry)` handle and calls it when a failed tile is clicked, instead of opening the viewer;
+`MediaTileButton` does this for the galleries and, through the tile's `onStateChange`, switches the
+button's accessible name to the retry action while the tile is failed.
 For the grid-level states, `core/media/grid/galleryStatus.ts` has `useHeldLoading(active)` (keeps
-the first-load `StatusBlock` mounted until `minVisible`) and `usePregenProgress(open, service)` (the
-"Preparing thumbnails… done / total" `ProgressBar`, polled from `/api/media/status` only while the
-gallery is open and pre-generation runs); the message media gallery shows that bar in its footer.
+the first-load `StatusBlock` mounted until `minVisible`), `pregenProgress(status, service)` (the one
+"thumbnails are still being prepared" rule, shared with Settings: `{done, total, paused}`) and
+`usePregenProgress(active, service)` (polled from `/api/media/status` only while the gallery shows
+thumbnails and pre-generation runs or is paused; each activation reads afresh and logs one `ok`).
+`PregenProgressBar` draws it in a gallery footer: "Preparing thumbnails… done / total" as a thin
+bar, or, while the worker is paused (a sync, a refresh, a blog backup or the gallery itself in
+use), "…paused · done / total", dimmed, so a bar that is not moving never looks frozen. Settings
+shows the same states as a line (a spinner only while running).
 
 **Breadcrumb:** `ui_wait` (`surface`, `phase`, `wait_ms`) is allow-listed in
 `utils/clientLog.ts` and `backend/api/client_log.py` (a `ui_wait` phase must be one of the four

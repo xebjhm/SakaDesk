@@ -23,6 +23,9 @@ export const MEDIA_PIPELINE_KEYS = [
     // M6: the message media gallery's tile buttons.
     'media.gallery.openPhoto',
     'media.gallery.openVideo',
+    // M6 review fixes: a paused pre-generation, and a failed tile (its click retries).
+    'settings.mediaCachePaused',
+    'media.gallery.retryPhoto',
 ] as const;
 
 function lookup(tree: unknown, path: string): unknown {
@@ -55,6 +58,15 @@ const GALLERY_WORDING = {
     yue: ['打開 {{date}} 嘅相', '打開 {{date}} 嘅片'],
 } as const;
 
+/** M6 review fixes: the paused progress line and the failed tile's label (Japanese is the reference). */
+const REVIEW_WORDING = {
+    ja: ['サムネイルの準備を一時停止中 · {{done}} / {{total}}', '{{date}} の写真を再読み込み'],
+    en: ['Thumbnail preparation paused · {{done}} / {{total}}', 'Retry loading photo from {{date}}'],
+    'zh-TW': ['縮圖準備已暫停 · {{done}} / {{total}}', '重新載入 {{date}} 的照片'],
+    'zh-CN': ['缩略图准备已暂停 · {{done}} / {{total}}', '重新加载 {{date}} 的照片'],
+    yue: ['縮圖準備暫停咗 · {{done}} / {{total}}', '重新載入 {{date}} 嘅相'],
+} as const;
+
 describe('media pipeline strings', () => {
     it.each(Object.keys(locales))('%s has every media pipeline key', (code) => {
         const tree = locales[code as keyof typeof locales];
@@ -76,6 +88,12 @@ describe('media pipeline strings', () => {
         const tree = locales[code as keyof typeof locales];
         expect(lookup(tree, 'media.gallery.openPhoto'), code).toBe(want[0]);
         expect(lookup(tree, 'media.gallery.openVideo'), code).toBe(want[1]);
+    });
+
+    it.each(Object.entries(REVIEW_WORDING))('%s uses the agreed paused and retry wording', (code, want) => {
+        const tree = locales[code as keyof typeof locales];
+        expect(lookup(tree, 'settings.mediaCachePaused'), code).toBe(want[0]);
+        expect(lookup(tree, 'media.gallery.retryPhoto'), code).toBe(want[1]);
     });
 
     it('keeps the interpolation variables in every locale', () => {

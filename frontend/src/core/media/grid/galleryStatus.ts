@@ -40,19 +40,24 @@ export function useHeldLoading(active: boolean): boolean {
     return active || holding;
 }
 
-export interface PregenProgress { done: number; total: number }
+/** `paused`: the worker yields for now (a sync, a Memories refresh, a blog backup or a gallery in use) and resumes on its own. */
+export interface PregenProgress { done: number; total: number; paused: boolean }
 
 type ServiceCounts = Record<string, { done?: unknown; total?: unknown }>;
 
 /**
- * `{done, total}` of the thumbnail pre-generation for `service` (every service summed when it is
- * not given) while the worker runs or pauses with work left; null when it is idle or stopped, has
- * nothing left, the cache is full (`thumbs_full`: it makes no new thumbnails), or the body is
- * malformed. Pure. A gallery pauses the worker (`foreground`), so `paused` still counts.
+ * The one rule for "thumbnails are still being prepared" (`GET /api/media/status`), shared by the
+ * galleries and Settings: `{done, total, paused}` for `service` (every service summed when it is
+ * not given) while the worker runs or pauses with work left. Null when it is idle or stopped,
+ * shutting down (`paused_reason: 'shutdown'`, it will not resume), has nothing left, the cache is
+ * full (`thumbs_full`: it makes no new thumbnails), or the body is malformed. Pure. A paused
+ * worker (a gallery in use pauses it with `foreground`) still counts, with `paused` set, so the
+ * caller can show a quiet paused state instead of a progress line that looks frozen.
  */
 export function pregenProgress(body: unknown, service: string | undefined): PregenProgress | null {
-    const d = body as { state?: unknown; thumbs_full?: unknown; services?: ServiceCounts } | null;
+    const d = body as { state?: unknown; paused_reason?: unknown; thumbs_full?: unknown; services?: ServiceCounts } | null;
     if (!d || (d.state !== 'running' && d.state !== 'paused') || d.thumbs_full === true) return null;
+    if (d.state === 'paused' && d.paused_reason === 'shutdown') return null;
     const services = d.services && typeof d.services === 'object' ? d.services : {};
     const entries = service === undefined ? Object.values(services) : services[service] ? [services[service]] : [];
     let done = 0;
@@ -62,15 +67,22 @@ export function pregenProgress(body: unknown, service: string | undefined): Preg
         done += s.done;
         total += s.total;
     }
-    return total > 0 && done < total ? { done, total } : null;
+    return total > 0 && done < total ? { done, total, paused: d.state === 'paused' } : null;
+}
+
+/** The i18n key of a progress line: "Preparing thumbnails… done / total", or its paused form. */
+export function pregenLabelKey(progress: PregenProgress): 'settings.mediaCachePreparing' | 'settings.mediaCachePaused' {
+    return progress.paused ? 'settings.mediaCachePaused' : 'settings.mediaCachePreparing';
 }
 
 /**
  * The pre-generation progress for a gallery, while `active` (the gallery is open). Reads
  * `/api/media/status` once on open, and again every `PREGEN_POLL_MS` only while pre-generation is
  * still running for `service`; stops as soon as it is done, the cache is full, the read fails or
- * the gallery closes (no request after that). Logs `dialog_load` (`media_gallery_pregen`, `ok`
- * once per open, or `error`); codes only.
+ * the gallery closes (no request after that). A pause keeps the polling (the worker resumes on its
+ * own). Each activation (the gallery opens, or comes back to a tab with thumbnails) reads afresh
+ * and logs `dialog_load` (`media_gallery_pregen`): `ok` once per activation, not per poll, or
+ * `error`; codes only.
  */
 export function usePregenProgress(active: boolean, service: string | undefined): PregenProgress | null {
     const [progress, setProgress] = useState<PregenProgress | null>(null);
@@ -81,7 +93,7 @@ export function usePregenProgress(active: boolean, service: string | undefined):
             return undefined;
         }
         let cancelled = false;
-        let logged = false;
+        let logged = false; // per activation
         let timer: ReturnType<typeof setTimeout> | undefined;
         const controller = new AbortController();
         const read = () => {

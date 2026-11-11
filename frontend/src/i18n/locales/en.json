@@ -82,6 +82,7 @@
     "mediaCache": "Thumbnail cache",
     "mediaCacheSize": "{{size}} used",
     "mediaCachePreparing": "Preparing thumbnails… {{done}} / {{total}}",
+    "mediaCachePaused": "Thumbnail preparation paused · {{done}} / {{total}}",
     "mediaCacheClear": "Clear",
     "mediaCacheCleared": "Thumbnail cache cleared",
     "mediaCacheFull": "Full. Older thumbnails are replaced as you browse",
@@ -525,7 +526,8 @@
     "typeTabs": "Media type",
     "gallery": {
       "openPhoto": "Open photo from {{date}}",
-      "openVideo": "Open video from {{date}}"
+      "openVideo": "Open video from {{date}}",
+      "retryPhoto": "Retry loading photo from {{date}}"
     }
   },
   "sentLetters": {

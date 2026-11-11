@@ -354,14 +354,17 @@ describe('StatusBlock error, timeout and empty', () => {
         expect(screen.getByRole('alert')).toHaveClass(...classes);
     });
 
-    it('requires onRetry for error and timeout, and a title for empty', () => {
-        // @ts-expect-error: an error state always offers Retry.
-        const bad: StatusBlockProps = { kind: 'error', surface: 'x' };
-        // @ts-expect-error: a timeout always offers Retry.
-        const late: StatusBlockProps = { kind: 'timeout', surface: 'x' };
+    it('shows an error with no Retry when there is nothing to retry (no onRetry)', () => {
+        render(<StatusBlock kind="error" surface="media_gallery" />);
+        const alert = screen.getByRole('alert');
+        expect(alert).toHaveTextContent("Couldn't load this");
+        expect(screen.queryByRole('button')).toBeNull();
+    });
+
+    it('requires a title for empty', () => {
         // @ts-expect-error: an empty state always has a title.
         const blank: StatusBlockProps = { kind: 'empty', surface: 'x' };
-        expect([bad.kind, late.kind, blank.kind]).toEqual(['error', 'timeout', 'empty']);
+        expect(blank.kind).toBe('empty');
     });
 });
 

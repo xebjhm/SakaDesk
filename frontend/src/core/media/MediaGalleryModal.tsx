@@ -7,9 +7,10 @@ import type { Message } from '../../types';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { PhotoPlayer } from './PhotoPlayer';
-import { Modal, Button, IconButton, Avatar, StatusBlock, ProgressBar } from '../../design/primitives';
+import { Modal, Button, IconButton, Avatar, StatusBlock } from '../../design/primitives';
 import {
-    MediaTile, VirtualMediaGrid, useHeldLoading, usePregenProgress, type MediaGridGroup, type VirtualMediaGridHandle,
+    MediaTileButton, PregenProgressBar, VirtualMediaGrid, useHeldLoading, usePregenProgress,
+    type MediaGridGroup, type VirtualMediaGridHandle,
 } from './grid';
 import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
@@ -34,7 +35,7 @@ interface MediaGalleryModalProps extends BaseModalProps {
     /**
      * The room's message list (the gallery's items): `loading` while its first load runs (a
      * `StatusBlock` after the L1 reveal delay, held at least `minVisible`), `error` when it failed
-     * (a `StatusBlock` with Retry, `onRetryList`). Default `ready`.
+     * (a `StatusBlock`, with Retry when `onRetryList` is given). Default `ready`.
      */
     listStatus?: 'loading' | 'error' | 'ready';
     /** Retry the failed list load (the error state's Retry button). */
@@ -111,33 +112,24 @@ interface GalleryTileProps {
 }
 
 /**
- * One photo / video tile of the grid: a labelled button around the shared `MediaTile` (a
- * thumbnail or poster, never a full-size image or a `<video>`), with the video mute and duration
- * overlays. ★ items ask for the large (640) thumbnail, which pre-generation makes for them. A tile
- * whose image failed retries on click (the `onFail` handle) instead of opening the viewer.
+ * One photo / video tile of the grid: the shared `MediaTileButton` (a thumbnail or poster, never a
+ * full-size image or a `<video>`) with the video mute and duration overlays. ★ items ask for the
+ * large (640) thumbnail, which pre-generation makes for them. A tile whose image failed retries on
+ * click instead of opening the viewer, and its accessible name says so.
  */
 const GalleryTile = memo(function GalleryTile({ item, url, kind, tilePx, onOpen }: GalleryTileProps) {
     const { t } = useTranslation();
-    const buttonRef = useRef<HTMLButtonElement>(null);
-    const retryRef = useRef<(() => void) | null>(null);
-    const onFail = useCallback((retry: () => void) => { retryRef.current = retry; }, []);
-    const onClick = () => {
-        const failed = buttonRef.current?.querySelector('[data-state="failed"]') !== null;
-        if (failed && retryRef.current) {
-            retryRef.current();
-            return;
-        }
-        onOpen(item);
-    };
+    const date = formatDateTime(item.timestamp);
     return (
-        <button
-            ref={buttonRef}
-            type="button"
-            onClick={onClick}
-            aria-label={t(kind === 'picture' ? 'media.gallery.openPhoto' : 'media.gallery.openVideo', { date: formatDateTime(item.timestamp) })}
-            className="relative block aspect-square w-full overflow-hidden bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+        <MediaTileButton
+            url={url}
+            kind={kind}
+            cssPx={tilePx}
+            large={item.is_favorite === true}
+            label={t(kind === 'picture' ? 'media.gallery.openPhoto' : 'media.gallery.openVideo', { date })}
+            retryLabel={t('media.gallery.retryPhoto', { date })}
+            onOpen={() => onOpen(item)}
         >
-            <MediaTile url={url} kind={kind} cssPx={tilePx} large={item.is_favorite === true} onFail={onFail} className="h-full w-full" />
             {kind === 'video' && (
                 <>
                     {/* Mute icon - bottom left with background like official app */}
@@ -152,7 +144,7 @@ const GalleryTile = memo(function GalleryTile({ item, url, kind, tilePx, onOpen 
                     </div>
                 </>
             )}
-        </button>
+        </MediaTileButton>
     );
 });
 
@@ -668,7 +660,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         if (listLoading) {
             return <StatusBlock kind="loading" variant="dialog" surface="media_gallery" />;
         }
-        if (listStatus === 'error' && onRetryList) {
+        if (listStatus === 'error') {
+            // Without a retry handler the error still shows (never "No photos yet"), just with no Retry.
             return <StatusBlock kind="error" variant="dialog" surface="media_gallery" onRetry={onRetryList} />;
         }
         if (activeTab === 'voice') {
@@ -698,18 +691,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                                 {activeTab === 'videos' && t('media.count.videos', { count: mediaItems.videos.length })}
                                 {activeTab === 'voice' && t('media.count.voice', { count: mediaItems.voice.length })}
                             </p>
-                            {pregen && (
-                                // Quiet background progress: thumbnails still being prepared.
-                                <ProgressBar
-                                    value={pregen.done / pregen.total}
-                                    label={t('settings.mediaCachePreparing', { done: pregen.done, total: pregen.total })}
-                                    valueText={`${pregen.done} / ${pregen.total}`}
-                                    size="thin"
-                                    showLabel
-                                    labelClassName="text-caption text-muted"
-                                    className="max-w-xs"
-                                />
-                            )}
+                            {/* Quiet background progress: thumbnails still being prepared (or paused). */}
+                            {pregen && <PregenProgressBar progress={pregen} />}
                         </div>
                         <Button variant="ghost" onClick={() => setShowCalendar(true)}>
                             <Calendar className="h-4 w-4" />

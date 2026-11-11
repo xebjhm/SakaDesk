@@ -8,7 +8,9 @@ export {
     type LoadPriority, type LoadTicket,
 } from './loadScheduler';
 export { useTileVisibility, useTileVisibilityState, type TileVisibility } from './useTileVisibility';
-export { MediaTile, AUTO_RETRY_MAX, CAPTURE_DWELL_MS, META_WAIT_MS, type MediaTileProps } from './MediaTile';
+export { MediaTile, AUTO_RETRY_MAX, CAPTURE_DWELL_MS, META_WAIT_MS, type MediaTileProps, type MediaTileState } from './MediaTile';
+export { MediaTileButton, type MediaTileButtonProps } from './MediaTileButton';
+export { PregenProgressBar } from './PregenProgressBar';
 export { POSTER_CAPTURE_MAX, POSTER_CAPTURE_TIMEOUT_MS, POSTER_MAX_SIDE, posterCapture } from './posterCapture';
 export { gridColumns, useGridColumns, type GridColumnOptions, type GridColumns } from './useGridColumns';
 export {
@@ -16,5 +18,5 @@ export {
 } from './VirtualMediaGrid';
 export { MediaGridContext, type MediaGridTileReporter } from './gridContext';
 export {
-    PREGEN_POLL_MS, pregenProgress, useHeldLoading, usePregenProgress, type PregenProgress,
+    PREGEN_POLL_MS, pregenLabelKey, pregenProgress, useHeldLoading, usePregenProgress, type PregenProgress,
 } from './galleryStatus';

@@ -69,6 +69,27 @@ describe('MessagesFeature → media gallery list state', () => {
         await waitFor(() => expect(menu.status).toBe('ready'));
     });
 
+    it.each([
+        ['a loaded room', ok],
+        ['a room with no messages', () => HttpResponse.json({ member, messages: [], total_count: 0, max_message_id: 0 })],
+    ])('%s stays ready during a background refresh (no spinner over its grid or empty state)', async (_name, reply) => {
+        listReply = reply;
+        serve();
+        const { rerender } = render(<MessagesFeature {...props} />);
+        await waitFor(() => expect(menu.status).toBe('ready'));
+        const before = listCalls;
+        let release!: () => void;
+        const gate = new Promise<void>((r) => { release = r; });
+        const seen: (string | undefined)[] = [];
+        listReply = async () => { await gate; return reply(); };
+        rerender(<MessagesFeature {...props} syncVersion={1} />);
+        await waitFor(() => expect(listCalls).toBe(before + 1));
+        seen.push(menu.status);
+        await act(async () => { release(); });
+        await waitFor(() => expect(menu.status).toBe('ready'));
+        expect(seen).toEqual(['ready']);
+    });
+
     it('is error when the room list failed, and Retry loads it again', async () => {
         listReply = () => new HttpResponse(null, { status: 500 });
         serve();

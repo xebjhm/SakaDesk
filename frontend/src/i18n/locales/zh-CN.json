@@ -82,6 +82,7 @@
     "mediaCache": "缩略图缓存",
     "mediaCacheSize": "已使用 {{size}}",
     "mediaCachePreparing": "正在准备缩略图… {{done}} / {{total}}",
+    "mediaCachePaused": "缩略图准备已暂停 · {{done}} / {{total}}",
     "mediaCacheClear": "清除",
     "mediaCacheCleared": "已清除缩略图缓存",
     "mediaCacheFull": "已达上限，浏览时会替换较旧的缩略图",
@@ -523,7 +524,8 @@
     "typeTabs": "媒体类型",
     "gallery": {
       "openPhoto": "打开 {{date}} 的照片",
-      "openVideo": "打开 {{date}} 的视频"
+      "openVideo": "打开 {{date}} 的视频",
+      "retryPhoto": "重新加载 {{date}} 的照片"
     }
   },
   "sentLetters": {

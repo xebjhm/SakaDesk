@@ -42,8 +42,17 @@ export interface MediaTileProps {
      * when it scrolls back into view (at most `AUTO_RETRY_MAX` times per mount).
      */
     retryButton?: boolean;
+    /**
+     * Called with the tile's state (`loading | ready | failed | film`, the same as its
+     * `data-state`) whenever it changes, including an automatic retry. A gallery button uses it to
+     * name a failed tile by what its click does (retry).
+     */
+    onStateChange?: (state: MediaTileState) => void;
     testId?: string;
 }
+
+/** A tile's state, as on its `data-state`. */
+export type MediaTileState = 'loading' | 'ready' | 'failed' | 'film';
 
 /** A video must stay visible this long before its poster is captured (skips fast scrolling). */
 export const CAPTURE_DWELL_MS = 300;
@@ -57,7 +66,12 @@ export const AUTO_RETRY_MAX = 2;
  */
 export const META_WAIT_MS = 150;
 
-type Phase = 'loading' | 'ready' | 'failed' | 'film';
+type Phase = MediaTileState;
+
+/** Report each state change to `onStateChange`. */
+function useReportState(phase: Phase, onStateChange: ((state: MediaTileState) => void) | undefined): void {
+    useEffect(() => { onStateChange?.(phase); }, [phase, onStateChange]);
+}
 
 function nextFrame(cb: () => void): () => void {
     if (typeof requestAnimationFrame === 'function') {
@@ -155,7 +169,7 @@ interface InnerProps extends Omit<MediaTileProps, 'cssPx' | 'large'> {
 }
 
 /** The eager variant: a plain `<img>` at once with the same fallbacks (no scheduler, no meta). */
-const EagerTile: React.FC<InnerProps> = ({ url, kind, width, className, onFail, testId }) => {
+const EagerTile: React.FC<InnerProps> = ({ url, kind, width, className, onFail, onStateChange, testId }) => {
     const [tried, setTried] = useState<readonly string[]>([]);
     const failCalled = useRef(false);
     const retry = useCallback(() => {
@@ -165,6 +179,7 @@ const EagerTile: React.FC<InnerProps> = ({ url, kind, width, className, onFail, 
     const list = url ? candidates(url, kind, width, null) : [];
     const src = list.find((c) => !tried.includes(c));
     const phase: Phase = src ? 'ready' : kind === 'video' ? 'film' : 'failed';
+    useReportState(phase, onStateChange);
     useEffect(() => {
         if (phase !== 'failed' || failCalled.current) return;
         failCalled.current = true;
@@ -196,7 +211,7 @@ function pick(list: readonly string[], tried: readonly string[], allowNew: boole
     return untried.find(isImageReady) ?? (allowNew ? untried[0] : undefined);
 }
 
-const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capturePoster = true, onFail, retryButton = false, testId }) => {
+const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capturePoster = true, onFail, retryButton = false, onStateChange, testId }) => {
     const meta = useMediaMeta(url);
     const ref = useRef<HTMLDivElement>(null);
     const reporter = useContext(MediaGridContext);
@@ -276,6 +291,8 @@ const ScheduledTile: React.FC<InnerProps> = ({ url, kind, width, className, capt
         failCalled.current = false;
         setTried([]);
     }, []);
+
+    useReportState(phase, onStateChange);
 
     // onFail once per failure, with the retry handle.
     useEffect(() => {

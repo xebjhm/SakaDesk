@@ -156,6 +156,30 @@ describe('MediaTile: picture', () => {
         expect(jobs).toHaveLength(count + 1);
     });
 
+    it('reports each state change, including a silent automatic retry', () => {
+        const onStateChange = vi.fn();
+        const { rerender } = render(<MediaTile url={PIC} kind="picture" cssPx={200} onStateChange={onStateChange} />);
+        expect(onStateChange).toHaveBeenLastCalledWith('loading');
+        for (let i = 0; i < 3; i += 1) act(() => last().onError());
+        expect(onStateChange).toHaveBeenLastCalledWith('failed');
+        visibility.value = 'near';
+        rerender(<MediaTile url={PIC} kind="picture" cssPx={200} onStateChange={onStateChange} />);
+        visibility.value = 'visible';
+        rerender(<MediaTile url={PIC} kind="picture" cssPx={200} onStateChange={onStateChange} />);
+        expect(onStateChange).toHaveBeenLastCalledWith('loading');
+        act(() => last().onReady());
+        expect(onStateChange).toHaveBeenLastCalledWith('ready');
+    });
+
+    it('reports the eager tile\'s state too', () => {
+        const onStateChange = vi.fn();
+        const { container } = render(<MediaTile url={PIC} kind="picture" cssPx={200} eager onStateChange={onStateChange} />);
+        expect(onStateChange).toHaveBeenLastCalledWith('ready');
+        fireEvent.error(container.querySelector('img[data-media-tile-image]')!);
+        fireEvent.error(container.querySelector('img[data-media-tile-image]')!);
+        expect(onStateChange).toHaveBeenLastCalledWith('failed');
+    });
+
     it('re-mounts instantly on the plain src a first open decoded, even once meta (with v) is known', () => {
         ready.add(THUMB(320)); // the first open loaded the plain thumbnail before meta arrived
         const { container } = render(<MediaTile url={PIC} kind="picture" cssPx={200} testId="tile" />);

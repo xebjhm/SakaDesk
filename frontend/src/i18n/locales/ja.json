@@ -82,6 +82,7 @@
     "mediaCache": "サムネイルキャッシュ",
     "mediaCacheSize": "{{size}} 使用中",
     "mediaCachePreparing": "サムネイルを準備中… {{done}} / {{total}}",
+    "mediaCachePaused": "サムネイルの準備を一時停止中 · {{done}} / {{total}}",
     "mediaCacheClear": "削除",
     "mediaCacheCleared": "サムネイルキャッシュを削除しました",
     "mediaCacheFull": "上限に達しました。閲覧に合わせて古いサムネイルから入れ替わります",
@@ -523,7 +524,8 @@
     "typeTabs": "メディアの種類",
     "gallery": {
       "openPhoto": "{{date}} の写真を開く",
-      "openVideo": "{{date}} の動画を開く"
+      "openVideo": "{{date}} の動画を開く",
+      "retryPhoto": "{{date}} の写真を再読み込み"
     }
   },
   "sentLetters": {

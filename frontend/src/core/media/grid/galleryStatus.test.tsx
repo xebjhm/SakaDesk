@@ -7,6 +7,7 @@ import { PREGEN_POLL_MS, pregenProgress, useHeldLoading, usePregenProgress } fro
 
 interface Status {
     state: string;
+    paused_reason?: string | null;
     thumbs_full?: boolean;
     services?: Record<string, { done: number; total: number }>;
 }
@@ -57,12 +58,23 @@ describe('useHeldLoading (L1 minVisible)', () => {
 
 describe('pregenProgress', () => {
     it('reads the service while the worker runs or pauses with work left', () => {
-        expect(pregenProgress(body(), 'hinatazaka46')).toEqual({ done: 3, total: 10 });
-        expect(pregenProgress(body({ state: 'paused' }), 'hinatazaka46')).toEqual({ done: 3, total: 10 });
+        expect(pregenProgress(body(), 'hinatazaka46')).toEqual({ done: 3, total: 10, paused: false });
+        expect(pregenProgress(body({ state: 'paused', paused_reason: 'foreground' }), 'hinatazaka46')).toEqual({ done: 3, total: 10, paused: true });
+    });
+
+    it('marks every pause the worker resumes from as paused (sync, refresh, blog backup, browsing)', () => {
+        for (const reason of ['sync', 'refresh', 'blog_backup', 'foreground', null]) {
+            expect(pregenProgress(body({ state: 'paused', paused_reason: reason }), 'hinatazaka46')?.paused).toBe(true);
+        }
+    });
+
+    it('is null while the worker shuts down (it will not resume)', () => {
+        expect(pregenProgress(body({ state: 'paused', paused_reason: 'shutdown' }), 'hinatazaka46')).toBeNull();
+        expect(pregenProgress(body({ state: 'stopped' }), 'hinatazaka46')).toBeNull();
     });
 
     it('sums every service without a service id', () => {
-        expect(pregenProgress(body({ services: { a: { done: 1, total: 2 }, b: { done: 3, total: 4 } } }), undefined)).toEqual({ done: 4, total: 6 });
+        expect(pregenProgress(body({ services: { a: { done: 1, total: 2 }, b: { done: 3, total: 4 } } }), undefined)).toEqual({ done: 4, total: 6, paused: false });
     });
 
     it('is null when done, idle, full, for another service or malformed', () => {
@@ -100,17 +112,37 @@ describe('usePregenProgress', () => {
         const { result } = renderHook(() => usePregenProgress(true, 'hinatazaka46'));
         await advance(0);
         expect(fetchMock).toHaveBeenCalledWith('/api/media/status', expect.anything());
-        expect(result.current).toEqual({ done: 3, total: 10 });
+        expect(result.current).toEqual({ done: 3, total: 10, paused: false });
         await advance(PREGEN_POLL_MS - 1);
         expect(fetchMock).toHaveBeenCalledTimes(1);
         await advance(1);
-        expect(result.current).toEqual({ done: 6, total: 10 });
+        expect(result.current).toEqual({ done: 6, total: 10, paused: false });
         await advance(PREGEN_POLL_MS);
         expect(result.current).toBeNull();
         await advance(PREGEN_POLL_MS * 3);
         expect(fetchMock).toHaveBeenCalledTimes(3); // idle: no more polls
         expect(clientLog).toHaveBeenCalledTimes(1);
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'media_gallery_pregen', outcome: 'ok' });
+    });
+
+    it('keeps polling through a pause and shows the resumed progress', async () => {
+        replies = [body({ state: 'paused', paused_reason: 'foreground' }), body({ services: { hinatazaka46: { done: 5, total: 10 } } })];
+        const { result } = renderHook(() => usePregenProgress(true, 'hinatazaka46'));
+        await advance(0);
+        expect(result.current).toEqual({ done: 3, total: 10, paused: true });
+        await advance(PREGEN_POLL_MS);
+        expect(result.current).toEqual({ done: 5, total: 10, paused: false });
+    });
+
+    it('logs ok once per activation: each open (or return from the voice tab) reads afresh', async () => {
+        replies = [body({ state: 'idle', services: {} })];
+        const { rerender } = renderHook(({ on }) => usePregenProgress(on, 'hinatazaka46'), { initialProps: { on: true } });
+        await advance(0);
+        rerender({ on: false });
+        rerender({ on: true });
+        await advance(0);
+        expect(fetchMock).toHaveBeenCalledTimes(2);
+        expect(vi.mocked(clientLog).mock.calls.filter(([, f]) => (f as { outcome?: string }).outcome === 'ok')).toHaveLength(2);
     });
 
     it('reads once and never polls when nothing runs', async () => {
@@ -136,7 +168,7 @@ describe('usePregenProgress', () => {
         expect(fetchMock).not.toHaveBeenCalled();
         rerender({ on: true });
         await advance(0);
-        expect(result.current).toEqual({ done: 3, total: 10 });
+        expect(result.current).toEqual({ done: 3, total: 10, paused: false });
         rerender({ on: false });
         expect(result.current).toBeNull();
         await advance(PREGEN_POLL_MS * 3);
