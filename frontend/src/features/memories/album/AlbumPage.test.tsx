@@ -6,6 +6,17 @@ import i18n from '../../../i18n';
 import { server } from '../../../__tests__/mocks/server';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
+// Counts PhotoTile renders driven by the month grid (D-M3 paint), rendering the real tile.
+const tileRenders = vi.hoisted(() => ({ count: 0 }));
+vi.mock('./PhotoTile', async (importOriginal) => {
+    const real = await importOriginal<typeof import('./PhotoTile')>();
+    const { createElement } = await import('react');
+    const Counted = (props: React.ComponentProps<typeof real.PhotoTile>) => {
+        tileRenders.count += 1;
+        return createElement(real.PhotoTile, props);
+    };
+    return { ...real, PhotoTile: Counted };
+});
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
@@ -1195,5 +1206,37 @@ describe('AlbumPage warm open: requests the first band does not need wait for th
         await step(20);
         expect(fetchAlbumMembers).toHaveBeenCalledTimes(1);
         expect(fetchAlbumColors).toHaveBeenCalledTimes(1);
+    });
+});
+
+describe('AlbumPage: a band grid renders its tiles once on arrival (D-M3 paint)', () => {
+    /** The 2026-10 grid answers when the test says so. */
+    const deferredMonth = () => {
+        let release: () => void = () => {};
+        vi.mocked(fetchAlbumMonth).mockImplementation(async (_s, month) => {
+            if (month === '2026-10') await new Promise<void>((r) => { release = r; });
+            return monthPayload(month);
+        });
+        return { resolve: () => release() };
+    };
+    it('takes the measured width from its skeleton, so the tiles never render twice before paint', async () => {
+        const width = vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(800);
+        try {
+            const month = deferredMonth();
+            renderAlbum();
+            await act(async () => { await Promise.resolve(); });
+            const band = await screen.findByTestId('album-month-2026-10');
+            expect(within(band).getByTestId('album-band-skeleton')).toBeInTheDocument();
+            tileRenders.count = 0;
+            await act(async () => { month.resolve(); });
+            expect(within(band).getByTestId('album-grid')).toBeInTheDocument();
+            // The next band follows (its skeleton measured too): wait for its grid as well.
+            await within(section('2022-05')).findByTestId('album-grid');
+            const tiles = screen.getAllByTestId(/^album-tile-/).length;
+            expect(tiles).toBeGreaterThan(3);
+            expect(tileRenders.count).toBe(tiles); // every tile rendered exactly once
+        } finally {
+            width.mockRestore();
+        }
     });
 });

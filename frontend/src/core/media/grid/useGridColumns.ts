@@ -57,9 +57,15 @@ export function gridColumns(width: number, opts: GridColumnOptions = {}): GridCo
  * The columns and tile size of the grid wrapper in `ref`, kept current by a `ResizeObserver` (its
  * content width). Before the first measure (or without `ResizeObserver`) the wrapper's
  * `clientWidth` minus its horizontal padding is used; a width still unknown lays out one minimum-size tile per row.
+ * `initialWidth` seeds the first render with a width already measured for the same box (e.g. by
+ * the skeleton that held its place), so a large grid does not render twice before its first paint.
  */
-export function useGridColumns(ref: RefObject<HTMLElement | null>, opts: GridColumnOptions = {}): GridColumns & { width: number } {
-    const [width, setWidth] = useState(0);
+export function useGridColumns(
+    ref: RefObject<HTMLElement | null>,
+    opts: GridColumnOptions = {},
+    initialWidth = 0,
+): GridColumns & { width: number } {
+    const [width, setWidth] = useState(initialWidth);
     useLayoutEffect(() => {
         const el = ref.current;
         if (!el) return undefined;

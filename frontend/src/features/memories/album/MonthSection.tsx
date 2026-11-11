@@ -74,6 +74,8 @@ interface BandSkeletonProps {
     pinsLikely: boolean;
     revealed: boolean;
     tone: SkeletonTone;
+    /** Receives the measured grid width (the real grid starts from it: one render, not two). */
+    onWidth?: (width: number) => void;
 }
 
 /**
@@ -88,11 +90,12 @@ interface BandSkeletonProps {
  * only, and under reduced motion (the tiles stand still) it shows as a small pill over the top-left
  * tile, so it never changes the band's height.
  */
-const BandSkeleton: React.FC<BandSkeletonProps> = ({ count, pinsLikely, revealed, tone }) => {
+const BandSkeleton: React.FC<BandSkeletonProps> = ({ count, pinsLikely, revealed, tone, onWidth }) => {
     const { t } = useTranslation();
     const labelId = useId();
     const gridRef = useRef<HTMLDivElement>(null);
     const { cols, width } = useGridColumns(gridRef);
+    useLayoutEffect(() => { if (width > 0) onWidth?.(width); }, [width, onWidth]);
     const rows = bandSkeletonRows(count, cols, pinsLikely);
     const minHeight = bandSkeletonHeight(rows, cols, width, MEDIA_GRID_GAP_REM * rootRemPx());
     const tiles = Math.max(1, Math.min(count, BAND_SKELETON_MAX));
@@ -165,6 +168,8 @@ const MonthLoader: React.FC<Pick<MonthSectionProps, 'service' | 'member' | 'kind
 
 interface MonthGridProps {
     data: AlbumMonthPayload;
+    /** The grid box's width as its skeleton measured it (0: unknown). */
+    initialWidth?: number;
     kind: AlbumKind;
     nameOf: (m: MemoryMessage) => string;
     label: string;
@@ -172,7 +177,7 @@ interface MonthGridProps {
     onSetCover?: (item: MemoryMessage) => void;
 }
 
-const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia, onSetCover }) => {
+const MonthGrid: React.FC<MonthGridProps> = ({ data, initialWidth = 0, kind, nameOf, label, sepia, onSetCover }) => {
     const { t, i18n } = useTranslation();
     const [viewerIndex, setViewerIndex] = useState<number | null>(null);
     const entries = useMemo(() => gridEntries(data), [data]);
@@ -181,7 +186,7 @@ const MonthGrid: React.FC<MonthGridProps> = ({ data, kind, nameOf, label, sepia,
     useEffect(() => { primeMediaMeta(data.items.map((i) => i.media_url)); }, [data]);
     // The drawn tile edge (the same `tileGrid.ts` maths as the CSS grid) picks each thumbnail width.
     const gridRef = useRef<HTMLDivElement>(null);
-    const { tilePx } = useGridColumns(gridRef);
+    const { tilePx } = useGridColumns(gridRef, {}, initialWidth);
     const viewer = useMemo(
         () => albumViewerItems(data.items, {
             nameOf,
@@ -276,6 +281,9 @@ export const MonthSection = React.memo<MonthSectionProps>(({
         [onResetCover, summary.cover_rule, month],
     );
     const height = useRef<number | null>(null);
+    // The skeleton's measured grid width: the real grid's first render starts from it.
+    const gridWidth = useRef(0);
+    const onSkeletonWidth = useCallback((w: number) => { gridWidth.current = w; }, []);
     // The loader's error is on screen (no skeleton then).
     const [failed, setFailed] = useState(false);
     // The page's prefetch of this month, still in flight when the band mounts (a warm open): the
@@ -338,7 +346,7 @@ export const MonthSection = React.memo<MonthSectionProps>(({
     if (!showGrid && height.current) style.minHeight = height.current;
 
     let body: React.ReactNode;
-    if (showGrid) body = <MonthGrid data={data} kind={kind} nameOf={nameOf} label={label} sepia={sepia} onSetCover={setCover} />;
+    if (showGrid) body = <MonthGrid data={data} initialWidth={gridWidth.current} kind={kind} nameOf={nameOf} label={label} sepia={sepia} onSetCover={setCover} />;
     else if (live) {
         body = (
             <>
@@ -348,7 +356,7 @@ export const MonthSection = React.memo<MonthSectionProps>(({
                     <MonthLoader service={service} month={month} member={member} kind={kind} onLoaded={loaded} onSettled={onSettled} onFailed={setFailed} />
                 )}
                 {/* On the neutral sunken band the tiles take the paper skeleton tone, so they show. */}
-                {!failed && <BandSkeleton count={summary.count} pinsLikely={summary.has_favorites && kind !== 'favorite'} revealed={held} tone={tint ? 'sunken' : 'paper'} />}
+                {!failed && <BandSkeleton count={summary.count} pinsLikely={summary.has_favorites && kind !== 'favorite'} revealed={held} tone={tint ? 'sunken' : 'paper'} onWidth={onSkeletonWidth} />}
             </>
         );
     } else body = <div aria-hidden="true" data-testid="album-month-placeholder" className="min-h-64 flex-1" />;
