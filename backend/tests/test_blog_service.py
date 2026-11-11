@@ -1,6 +1,7 @@
 import pytest
 import asyncio
 import json
+from pathlib import Path
 from unittest.mock import ANY, AsyncMock, patch
 
 from PIL import Image
@@ -372,9 +373,13 @@ def gallery_archive(tmp_path):
         c1, [{"original_url": "https://z/0.jpg", "local_path": "./images/img_0.jpg"}]
     )
     _img(c1, "img_0.jpg")
+    from backend.services import media_meta
+
     bs.reset_gallery_memo_for_tests()
+    media_meta.set_db_path(tmp_path / "meta.db")  # the persisted listings (N2)
     with patch("backend.services.blog_service.get_output_dir", return_value=out):
         yield out
+    media_meta.set_db_path(None)
     bs.reset_gallery_memo_for_tests()
 
 
@@ -511,8 +516,198 @@ def test_gallery_memo_hit_then_invalidated_by_the_index_mtime(gallery_archive):
         index = gallery_archive / "日向坂46" / "blogs" / "index.json"
         st = index.stat()
         os.utime(index, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
-        _gallery()
-        assert len(reads) == 4  # the index changed: read again
+        with capture_logs() as logs:
+            assert _gallery() == first
+        # the index changed: the memo misses; the unchanged blogs come from
+        # the persisted listing (N2), so still no blog.json read
+        assert [e["memo"] for e in logs if e["event"] == "blog_gallery"] == ["miss"]
+        assert len(reads) == 2
+
+
+# --- the persisted listing (N2: a cold start after a reboot) ------------------------------
+
+
+def _restart():
+    """A new app session: the in-memory memo is gone, the persisted listing stays."""
+    from backend.services import blog_service as bs
+
+    bs.reset_gallery_memo_for_tests()
+
+
+def _counting_reads():
+    """Count ``blog.json`` reads and image ``is_file`` checks of a listing."""
+    from backend.services import blog_service as bs
+
+    real_read, real_is_file = bs._read_blog_json, Path.is_file
+    seen = {"reads": 0, "is_file": 0}
+
+    def read(p):
+        seen["reads"] += 1
+        return real_read(p)
+
+    def is_file(self):
+        seen["is_file"] += 1
+        return real_is_file(self)
+
+    return seen, (
+        patch.object(bs, "_read_blog_json", side_effect=read),
+        patch.object(Path, "is_file", is_file),
+    )
+
+
+def _summary(logs):
+    (e,) = [e for e in logs if e["event"] == "blog_gallery"]
+    return e
+
+
+def _bump(folder):
+    import os
+
+    st = folder.stat()
+    os.utime(folder, ns=(st.st_atime_ns, st.st_mtime_ns + 5_000_000_000))
+
+
+def test_gallery_cold_start_opens_no_blog_from_the_persisted_listing(gallery_archive):
+    first = _gallery()
+    _restart()
+    seen, (p1, p2) = _counting_reads()
+    with p1, p2, capture_logs() as logs:
+        again = _gallery()
+    assert again == first
+    assert seen == {"reads": 0, "is_file": 0}  # no blog.json, no image stat
+    e = _summary(logs)
+    assert (e["memo"], e["reused"], e["read"], e["store_bad"]) == ("miss", 2, 0, 0)
+
+
+def test_gallery_persisted_listing_reads_only_a_rewritten_blog(gallery_archive):
+    _gallery()
+    b2 = gallery_archive / "日向坂46" / "blogs" / MEMBER / "20260205_b2"
+    _img(b2, "img_2.jpg")
+    _blog_json(
+        b2,
+        [
+            {"original_url": "https://y/0.jpg", "local_path": "./images/img_0.jpg"},
+            {"original_url": "https://y/1.jpg", "local_path": "./images/img_1.jpg"},
+            {"original_url": "https://y/2.jpg", "local_path": "./images/img_2.jpg"},
+        ],
+    )
+    _bump(b2)  # a blog write renames blog.json into place: the folder mtime moves
+    _restart()
+    seen, (p1, p2) = _counting_reads()
+    with p1, p2, capture_logs() as logs:
+        images = _gallery()
+    assert seen["reads"] == 1
+    assert [(i["blog_id"], i["image_index"]) for i in images] == [
+        ("b2", 0),
+        ("b2", 1),
+        ("b2", 2),
+        ("b1", 0),
+    ]
+    e = _summary(logs)
+    assert (e["reused"], e["read"]) == (1, 1)
+
+
+def test_gallery_persisted_listing_follows_new_and_removed_blogs(gallery_archive):
+    import shutil
+
+    _gallery()
+    folder = gallery_archive / "日向坂46" / "blogs" / MEMBER
+    b3 = folder / "20260301_b3"
+    _blog_json(
+        b3, [{"original_url": "https://n/0.jpg", "local_path": "./images/img_0.jpg"}]
+    )
+    _img(b3, "img_0.jpg")
+    shutil.rmtree(folder / "20260103_b1")
+    _restart()
+    with capture_logs() as logs:
+        images = _gallery()
+    assert [(i["blog_id"], i["image_index"]) for i in images] == [
+        ("b3", 0),
+        ("b2", 0),
+        ("b2", 1),
+    ]
+    assert (_summary(logs)["reused"], _summary(logs)["read"]) == (1, 1)
+    _restart()
+    seen, (p1, p2) = _counting_reads()
+    with p1, p2:
+        assert _gallery() == images
+    assert seen["reads"] == 0  # the store followed: b3 kept, b1 dropped
+
+
+def test_gallery_persisted_listing_holds_no_path_or_title(gallery_archive):
+    from backend.services import blog_service as bs
+    from backend.services import media_meta
+
+    _gallery(member_id=None)
+    rows = media_meta.kv_get_prefix(bs.GALLERY_STORE_PREFIX)
+    assert len(rows) == 2  # one per member folder
+    blob = json.dumps(rows, ensure_ascii=False)
+    for needle in (MEMBER, "上村", TITLE_NEW, TITLE_OLD, str(gallery_archive)):
+        assert needle not in blob
+    assert all(len(k) == len(bs.GALLERY_STORE_PREFIX) + 16 for k in rows)
+
+
+@pytest.mark.parametrize(
+    "stored",
+    [
+        "{not json",
+        json.dumps({"v": 2, "blogs": {}}),
+        json.dumps({"v": 1, "blogs": []}),
+        json.dumps({"v": 1, "blogs": {"20260205_b2": [1, [[0, "../x.jpg"]]]}}),
+        json.dumps({"v": 1, "blogs": {"20260205_b2": "bad"}}),
+    ],
+)
+def test_gallery_unreadable_persisted_listing_is_read_again_and_replaced(
+    gallery_archive, stored
+):
+    from backend.services import blog_service as bs
+    from backend.services import media_meta
+
+    first = _gallery()
+    (key,) = media_meta.kv_get_prefix(bs.GALLERY_STORE_PREFIX)
+    media_meta.kv_set(key, stored)
+    _restart()
+    with capture_logs() as logs:
+        assert _gallery() == first
+    e = _summary(logs)
+    assert (e["store_bad"], e["reused"], e["read"]) == (1, 0, 2)
+    _restart()
+    with capture_logs() as logs:
+        assert _gallery() == first
+    assert (_summary(logs)["store_bad"], _summary(logs)["reused"]) == (0, 2)
+
+
+def test_gallery_without_a_store_or_folder_mtimes_still_lists(gallery_archive):
+    from backend.services import blog_service as bs
+    from backend.services import media_meta
+
+    first = _gallery()
+    _restart()
+    with (
+        patch.object(media_meta, "kv_get_prefix", return_value={}),
+        patch.object(media_meta, "kv_set") as kv_set,
+        patch.object(bs, "_entry_mtime", return_value=None),
+        capture_logs() as logs,
+    ):
+        assert _gallery() == first
+    e = _summary(logs)
+    assert (e["reused"], e["read"]) == (0, 2)
+    kv_set.assert_not_called()  # nothing to validate against: nothing stored
+
+
+def test_gallery_entry_mtime_unreadable_is_none(tmp_path):
+    import os
+
+    from backend.services import blog_service as bs
+
+    (tmp_path / "d").mkdir()
+    with os.scandir(tmp_path) as it:
+        (entry,) = list(it)
+    with patch.object(type(entry), "stat", side_effect=OSError):
+        assert bs._entry_mtime(entry) is None
+    with os.scandir(tmp_path) as it:
+        (entry,) = list(it)
+    assert bs._entry_mtime(entry) == (tmp_path / "d").stat().st_mtime_ns
 
 
 def test_gallery_memo_invalidated_when_a_blog_json_appears(gallery_archive):
@@ -670,15 +865,22 @@ def test_gallery_version_bump_invalidates_the_memo(gallery_archive):
 
     real = bs._read_blog_json
     reads = []
-    with patch.object(
-        bs, "_read_blog_json", side_effect=lambda p: reads.append(p) or real(p)
+    with (
+        patch.object(
+            bs, "_read_blog_json", side_effect=lambda p: reads.append(p) or real(p)
+        ),
+        capture_logs() as logs,
     ):
         _gallery()
         _gallery()
         assert len(reads) == 2  # hit
         bs.invalidate_gallery()
         _gallery()
-        assert len(reads) == 4  # a blog was written: read again
+    assert [e["memo"] for e in logs if e["event"] == "blog_gallery"] == [
+        "miss",
+        "hit",
+        "miss",  # a blog was written: listed again (its folder tells which)
+    ]
 
 
 def test_a_blog_write_in_another_service_keeps_this_listing(gallery_archive):
@@ -687,21 +889,27 @@ def test_a_blog_write_in_another_service_keeps_this_listing(gallery_archive):
 
     real = bs._read_blog_json
     reads = []
-    with patch.object(
-        bs, "_read_blog_json", side_effect=lambda p: reads.append(p) or real(p)
+    with (
+        patch.object(
+            bs, "_read_blog_json", side_effect=lambda p: reads.append(p) or real(p)
+        ),
+        capture_logs() as logs,
     ):
         _gallery()
         before = bs.gallery_version("hinatazaka46")
         bs.invalidate_gallery("nogizaka46")
         assert bs.gallery_version("hinatazaka46") == before
         _gallery()
-        assert len(reads) == 2  # still a memo hit
         bs.invalidate_gallery("hinatazaka46")
         _gallery()
-        assert len(reads) == 4
         bs.invalidate_gallery()  # unknown service: every listing is stale
         _gallery()
-        assert len(reads) == 6
+    assert [e["memo"] for e in logs if e["event"] == "blog_gallery"] == [
+        "miss",
+        "hit",  # a write in another service keeps this listing
+        "miss",
+        "miss",
+    ]
 
 
 def test_a_blog_write_bumps_only_its_service(tmp_path):
