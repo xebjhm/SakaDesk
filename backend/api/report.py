@@ -3,6 +3,7 @@ Bug Report API for SakaDesk.
 Collects diagnostics with smart log filtering and redaction.
 """
 
+import asyncio
 import json
 import os
 import platform
@@ -459,8 +460,18 @@ PASTE_HERE
 async def generate_report(
     context: ReportContext, what_doing: str = "", what_wrong: str = ""
 ):
-    """Generate bug report diagnostics and GitHub URL."""
+    """Generate bug report diagnostics and GitHub URL.
 
+    The gathering reads settings (under the cross-thread settings lock), the
+    token store and the logs, so it runs in a worker thread, off the loop.
+    """
+    return await asyncio.to_thread(_generate_report, context, what_doing, what_wrong)
+
+
+def _generate_report(
+    context: ReportContext, what_doing: str, what_wrong: str
+) -> "ReportResponse":
+    """Blocking body of :func:`generate_report`."""
     username = _get_username()
     nickname = _get_nicknames()
 
@@ -520,7 +531,12 @@ async def generate_report(
 
 @router.get("/diagnostics")
 async def get_diagnostics_only():
-    """Get diagnostics without creating GitHub URL (for preview)."""
+    """Get diagnostics without creating GitHub URL (for preview), off the loop."""
+    return await asyncio.to_thread(_diagnostics_only)
+
+
+def _diagnostics_only() -> dict:
+    """Blocking body of :func:`get_diagnostics_only`."""
     username = _get_username()
     nickname = _get_nicknames()
 
@@ -545,6 +561,7 @@ async def get_diagnostics_only():
         diagnostics["logs"] = _get_smart_logs(log_path, username, nickname, output_dir)
 
     # Scrub the whole payload — the diagnostics modal renders/copies these values.
-    diagnostics = _redact_diagnostics(diagnostics, username, nickname or [], output_dir)
-
-    return diagnostics
+    redacted: dict = _redact_diagnostics(
+        diagnostics, username, nickname or [], output_dir
+    )
+    return redacted

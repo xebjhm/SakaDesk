@@ -459,3 +459,28 @@ def test_reports_withhold_logs_when_the_nicknames_cannot_be_read(tmp_path, monke
     assert "🌻" not in unquote(body["github_url"])
     assert preview["logs"]["withheld"] == "nicknames_unavailable"
     assert diag["logs"]["recent"] == [] and diag["logs"]["errors"] == []
+
+
+# --- M1: the report endpoints read settings off the event loop -------------------------
+
+
+def test_report_endpoints_read_settings_off_the_event_loop(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from backend.api import report
+    from backend.main import app
+    from backend.services import settings_store
+
+    on_loop: list[bool] = []
+    real = report.read_settings_file
+
+    def spy(path):
+        on_loop.append(settings_store._on_event_loop())
+        return real(path)
+
+    monkeypatch.setattr(report, "read_settings_file", spy)
+    monkeypatch.setattr(report, "get_logs_dir", lambda: tmp_path)
+    client = TestClient(app)
+    assert client.post("/api/report", json={"category": "sync_data"}).status_code == 200
+    assert client.get("/api/report/diagnostics").status_code == 200
+    assert on_loop and not any(on_loop)
