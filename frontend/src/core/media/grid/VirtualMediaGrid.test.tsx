@@ -10,6 +10,7 @@ const prime = vi.fn();
 vi.mock('./mediaMeta', () => ({ primeMediaMeta: (urls: readonly (string | null | undefined)[]) => prime(urls) }));
 
 import { VirtualMediaGrid, type MediaGridGroup, type VirtualMediaGridHandle } from './VirtualMediaGrid';
+import { firstVisibleItem, rowOfItem } from './gridAnchor';
 import { gridColumns } from './useGridColumns';
 import { MediaGridContext, type MediaGridTileReporter } from './gridContext';
 import { mediaGridColumns } from '../tileGrid';
@@ -19,9 +20,21 @@ const items = (prefix: string, n: number): Item[] => Array.from({ length: n }, (
 const urlOf = (item: Item) => `/api/content/media/s/${item.id}.jpg`;
 
 let observedWidth = 800;
+let lastObserver: { resize(width: number): void } | null = null;
 class StubResizeObserver {
-    constructor(private cb: ResizeObserverCallback) {}
+    private target: Element | null = null;
+    constructor(private cb: ResizeObserverCallback) {
+        // eslint-disable-next-line @typescript-eslint/no-this-alias
+        const self = this;
+        lastObserver = {
+            resize(width: number) {
+                observedWidth = width;
+                self.cb([{ target: self.target, contentRect: { width } } as unknown as ResizeObserverEntry], self as unknown as ResizeObserver);
+            },
+        };
+    }
     observe(target: Element) {
+        this.target = target;
         this.cb([{ target, contentRect: { width: observedWidth } } as unknown as ResizeObserverEntry], this as unknown as ResizeObserver);
     }
     unobserve() {}
@@ -156,9 +169,85 @@ describe('VirtualMediaGrid', () => {
         expect(fields!.first_tile_ms as number).toBeGreaterThanOrEqual(0);
     });
 
+    it('keeps the first visible item in view when a resize changes the column count', () => {
+        vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
+        try {
+            // 5 columns at 800 px: rows of 60 px from y = 0; the scroll parent's top is at 0 and
+            // the sticky header 40 px tall, so the first visible row is the one under the header.
+            const rowPx = 60;
+            const rect = vi.spyOn(HTMLElement.prototype, 'getBoundingClientRect').mockImplementation(function (this: HTMLElement) {
+                if (this.hasAttribute('data-media-grid-header')) return { top: 0, bottom: 40, height: 40 } as DOMRect;
+                if (this.hasAttribute('data-media-grid-row')) {
+                    const rows = Array.from(document.querySelectorAll('[data-media-grid-row]'));
+                    // Scrolled so that row 3 (items 15–19) sits right under the header.
+                    const top = (rows.indexOf(this) - 3) * rowPx + 40;
+                    return { top, bottom: top + rowPx, height: rowPx } as DOMRect;
+                }
+                return { top: 0, bottom: 0, height: 0 } as DOMRect;
+            });
+            render(<Grid groups={[{ key: 'g1', label: 'A', items: items('a', 40) }]} />);
+            act(() => virtuosoCapture.rangeChanged!({ startIndex: 2, endIndex: 6 }));
+            expect(virtuosoCapture.scrollToIndex).toEqual([]);
+            // 800 → 600 px: 5 → 4 columns (gridColumns), so item 15 moves to row floor(15 / 4) = 3.
+            act(() => lastObserver!.resize(600));
+            expect(gridColumns(600).cols).toBe(4);
+            act(() => { vi.advanceTimersToNextFrame(); });
+            expect(virtuosoCapture.scrollToIndex).toEqual([{ index: 3, align: 'start' }]);
+            // 600 → 400 px: 4 → 2 columns; item 15 moves to row 7.
+            act(() => lastObserver!.resize(400));
+            act(() => { vi.advanceTimersToNextFrame(); });
+            expect(virtuosoCapture.scrollToIndex[virtuosoCapture.scrollToIndex.length - 1]).toEqual({ index: Math.floor(15 / gridColumns(400).cols), align: 'start' });
+            rect.mockRestore();
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
+    it('does not scroll on a resize that keeps the column count, or when at the top', () => {
+        vi.useFakeTimers({ toFake: ['requestAnimationFrame', 'cancelAnimationFrame'] });
+        try {
+            render(<Grid groups={[{ key: 'g1', label: 'A', items: items('a', 40) }]} />);
+            // jsdom rects are all 0: the first row counts as visible, i.e. the top.
+            act(() => virtuosoCapture.rangeChanged!({ startIndex: 0, endIndex: 4 }));
+            act(() => lastObserver!.resize(820));
+            act(() => lastObserver!.resize(600));
+            act(() => { vi.advanceTimersToNextFrame(); });
+            expect(virtuosoCapture.scrollToIndex).toEqual([]);
+        } finally {
+            vi.useRealTimers();
+        }
+    });
+
     it('lays out one column before the width is known (no ResizeObserver)', () => {
         vi.stubGlobal('ResizeObserver', undefined);
         render(<Grid groups={[{ key: 'g1', label: 'A', items: items('a', 3) }]} />);
         expect(document.querySelectorAll('[data-media-grid-row]')).toHaveLength(3);
+    });
+});
+
+describe('resize anchoring helpers', () => {
+    it('firstVisibleItem picks the first row whose middle is below the view top', () => {
+        const rows = [
+            { top: -50, bottom: 10, first: 0 },
+            { top: 10, bottom: 70, first: 5 },
+            { top: 70, bottom: 130, first: 10 },
+        ];
+        expect(firstVisibleItem(rows, 0)).toBe(5);
+        // A sticky header of 50 px hides most of the row at 10–70 (middle 40).
+        expect(firstVisibleItem(rows, 50)).toBe(10);
+        expect(firstVisibleItem(rows, 500)).toBeNull();
+        expect(firstVisibleItem([], 0)).toBeNull();
+        // DOM order does not matter.
+        expect(firstVisibleItem([rows[2], rows[1]], 0)).toBe(5);
+    });
+
+    it('rowOfItem maps a flat index to its row for a column count, across groups', () => {
+        // Groups of 12 and 3 items at 5 columns: rows [0,1,2] then [3].
+        expect(rowOfItem(7, [0, 12], [0, 3], 15, 5)).toBe(1);
+        expect(rowOfItem(13, [0, 12], [0, 3], 15, 5)).toBe(3);
+        // At 4 columns: rows [0,1,2] then [3].
+        expect(rowOfItem(11, [0, 12], [0, 3], 15, 4)).toBe(2);
+        expect(rowOfItem(-1, [0, 12], [0, 3], 15, 5)).toBeNull();
+        expect(rowOfItem(15, [0, 12], [0, 3], 15, 5)).toBeNull();
     });
 });
