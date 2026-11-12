@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import datetime, timezone
 from unittest.mock import patch
 
@@ -123,18 +124,25 @@ async def test_a_month_day_with_nothing_and_no_future_years(out):
     assert [y["year"] for y in payload["years"]] == [2024, 2025]
 
 
-def test_message_kind_rules():
+def test_message_kind_is_one_rule_for_both_features():
+    from backend.services.memories.facts import message_kind
     from backend.tests.test_memories_cards import fact
 
-    assert dv.message_kind(fact(1, "2025-01-01 07:00", greet=("ohayo",))) == "ohayo"
-    assert dv.message_kind(fact(1, "2025-01-01 23:00", greet=("oyasumi",))) == "oyasumi"
+    assert message_kind(fact(1, "2025-01-01 07:00", greet=("ohayo",))) == "ohayo"
+    # a quoted おはよう at night is no morning greeting
+    assert message_kind(fact(1, "2025-01-01 22:00", greet=("ohayo",))) is None
+    assert message_kind(fact(1, "2025-01-01 23:00", greet=("oyasumi",))) == "oyasumi"
     both = ("ohayo", "oyasumi")
-    assert dv.message_kind(fact(1, "2025-01-01 09:00", greet=both)) == "ohayo"
-    assert dv.message_kind(fact(1, "2025-01-01 21:00", greet=both)) == "oyasumi"
-    assert dv.message_kind(fact(1, "2025-01-01 21:00", "picture")) == "photo"
-    assert dv.message_kind(fact(1, "2025-01-01 21:00", "video")) == "photo"
-    assert dv.message_kind(fact(1, "2025-01-01 21:00", "voice")) == "voice"
-    assert dv.message_kind(fact(1, "2025-01-01 21:00")) is None
+    assert message_kind(fact(1, "2025-01-01 09:00", greet=both)) == "ohayo"
+    assert message_kind(fact(1, "2025-01-01 21:00", greet=both)) == "oyasumi"
+    qa = dataclasses.replace(
+        fact(1, "2025-01-01 23:00", greet=("oyasumi",)), is_qa=True
+    )
+    assert message_kind(qa) is None
+    assert message_kind(fact(1, "2025-01-01 21:00", "picture")) == "photo"
+    assert message_kind(fact(1, "2025-01-01 21:00", "video")) == "video"
+    assert message_kind(fact(1, "2025-01-01 21:00", "voice")) == "voice"
+    assert message_kind(fact(1, "2025-01-01 21:00")) is None
 
 
 # --- route ----------------------------------------------------------------------------

@@ -42,7 +42,7 @@ const msgKey = (m: { service: string; room: string; id: number }) => `${m.servic
  * 歷年同一天 (B1): the same calendar day in every year, one column per year (oldest on the
  * left), each message placed by its JST time of day on one thin hour axis, so 07:10 in one year
  * sits beside 07:25 in the next. A busy hour grows to hold its cards (`hourBands`, shared with the
- * swimlanes). Matching kinds in neighbouring years (おはよう, photo, voice, おやすみ within
+ * swimlanes). Matching kinds in neighbouring years (おはよう, photo, video, voice, おやすみ within
  * 90 minutes, `MATCH_WINDOW_MS`) are joined by faint dotted guide lines; an hour that is quiet in a year
  * while another year has messages shows a faint dashed gap. Cards are the swimlanes' `LaneCard`
  * (a click expands it, with the jump to her chat; `memories_toggle` `lane_card`); an older year's

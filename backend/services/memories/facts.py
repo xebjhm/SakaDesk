@@ -619,6 +619,28 @@ def first_last(
 NEW_YEAR_MIDNIGHT_MINUTES = 30
 
 
+MORNING_HOURS = range(4, 12)
+
+
+def message_kind(f: Fact) -> str | None:
+    """The kind 初見と今 pairs and 歷年同一天 joins on (one rule for both).
+
+    ``photo`` (a picture), ``video``, ``voice``; for a text that is not a
+    Q&A post (``Fact.is_qa``): ``ohayo`` (おはよう sent 04:00-11:59 JST, so a
+    quoted おはよう at night is not a morning greeting), else ``oyasumi`` (a
+    text with おやすみ); otherwise ``None``.
+    """
+    if f.type == "picture":
+        return "photo"
+    if f.type in ("video", "voice"):
+        return f.type
+    if f.type != "text" or f.is_qa:
+        return None
+    if f.has_greeting("ohayo") and f.hour in MORNING_HOURS:
+        return "ohayo"
+    return "oyasumi" if f.has_greeting("oyasumi") else None
+
+
 def is_new_year_midnight(f: Fact) -> bool:
     """Sent on January 1 (JST) before 00:30: the 元旦 message of the recap's
     S01 and the binder's ``special.newyear``."""

@@ -42,9 +42,9 @@ messages in the payload).
   or everyone of the active service; never other services;
 - ``messages`` per year are the day view's message objects (texts attached,
   ``person_key``, sorted by ``(ts, id, room)``), promo included (the real
-  chat), each with ``kind`` for the UI's guide lines: ``ohayo`` / ``oyasumi``
-  (a text with that greeting; both: ``ohayo`` before 12:00 JST, else
-  ``oyasumi``), ``photo`` (a picture or video), ``voice``, else ``None``;
+  chat), each with ``kind`` for the UI's guide lines
+  (:func:`facts.message_kind`, the rule 初見と今 shares: ``ohayo`` only
+  04:00-11:59, Q&A posts never a greeting, ``photo`` / ``video`` apart);
 - the subscription welcome (``Fact.is_welcome``) is left out: it is the
   room's automatic greeting, not her day;
 - ``members`` are the people with a message on any of those days, oshi
@@ -67,7 +67,7 @@ import structlog
 from backend.services import service_utils
 from backend.services.memories import index as mi
 from backend.services.memories import people
-from backend.services.memories.facts import Fact
+from backend.services.memories.facts import Fact, message_kind
 from backend.services.memories.selection import JST
 
 logger = structlog.get_logger(__name__)
@@ -204,22 +204,6 @@ async def day_view(
     }
 
 
-def message_kind(fact: Fact) -> str | None:
-    """The kind the 歷年同一天 guide lines match on (see the module docstring)."""
-    if fact.type in people.MEDIA_TYPES:
-        return "photo"
-    if fact.type == "voice":
-        return "voice"
-    if fact.type != "text":
-        return None
-    ohayo, oyasumi = fact.has_greeting("ohayo"), fact.has_greeting("oyasumi")
-    if ohayo and oyasumi:
-        return "ohayo" if fact.hour < 12 else "oyasumi"
-    if ohayo:
-        return "ohayo"
-    return "oyasumi" if oyasumi else None
-
-
 def _group_years(kept: list[_Tagged], refs: list[dict]) -> list[dict]:
     """One entry per year with messages, oldest first. Pure."""
     years: dict[int, dict] = {}
@@ -269,4 +253,4 @@ async def day_years(
     return {"month_day": month_day, "members": members, "years": years}
 
 
-__all__ = ["day_person_key", "day_view", "day_years", "message_kind"]
+__all__ = ["day_person_key", "day_view", "day_years"]

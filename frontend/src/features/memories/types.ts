@@ -188,8 +188,8 @@ export interface DayPayload {
     other_services: string[];
 }
 
-/** The kind 歷年同一天 joins across years (`day_view.message_kind`). */
-export type DayYearsKind = 'ohayo' | 'oyasumi' | 'photo' | 'voice';
+/** The kind 歷年同一天 joins across years (`facts.message_kind`, the rule 初見と今 shares). */
+export type DayYearsKind = 'ohayo' | 'oyasumi' | 'photo' | 'video' | 'voice';
 
 /** A 歷年同一天 message: a day-view message with its {@link DayYearsKind}, or null. */
 export interface DayYearsMessage extends DayMessage {

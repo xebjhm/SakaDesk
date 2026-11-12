@@ -19,9 +19,9 @@ or ``None`` (no row has both sides), for one person:
 - the pool is her own words and media: never the subscription welcome
   (``Fact.is_welcome``), never promo; the greeting rows also skip Q&A posts
   (``Fact.is_qa``);
-- kinds, in row order: ``ohayo`` (a text with おはよう sent 04:00-11:59
-  JST), ``photo`` (a picture), ``voice``, ``oyasumi`` (a text with
-  おやすみ);
+- kinds, in row order (:func:`facts.message_kind`, shared with
+  歷年同一天): ``ohayo`` (a text with おはよう sent 04:00-11:59 JST),
+  ``photo`` (a picture), ``voice``, ``oyasumi`` (a text with おやすみ);
 - ``then`` is her first of the kind; ``now`` is the best of the kind in
   the :data:`RECENT_DAYS` JST days ending on her newest one (words: the
   highest ``importance``; photos: the highest ``photo_score``; voices: the
@@ -51,7 +51,7 @@ import structlog
 from backend.services.memories import people
 from backend.services.memories import cards as cards_mod
 from backend.services.memories import index as mi
-from backend.services.memories.facts import Fact, get_person_facts
+from backend.services.memories.facts import Fact, get_person_facts, message_kind
 from backend.services.memories.lexicon import ECHO_KEYWORDS
 from backend.services.memories.selection import normalize
 
@@ -84,19 +84,6 @@ def latest_week_window(today: date) -> tuple[date, date]:
 # --- first-meet rows (初見と今) -----------------------------------------------------------
 
 
-def _meet_kind(f: Fact, kind: str) -> bool:
-    """Whether ``f`` is a first-meet candidate of ``kind`` (welcome / promo already out)."""
-    if kind == "photo":
-        return f.type == "picture"
-    if kind == "voice":
-        return f.type == "voice"
-    if f.type != "text" or f.is_qa:
-        return False
-    if kind == "ohayo":
-        return f.has_greeting("ohayo") and 4 <= f.hour < 12
-    return f.has_greeting("oyasumi")
-
-
 def _recent_score(f: Fact, kind: str) -> tuple:
     """Higher is better; the trailing ``ts`` makes ties go to the later message."""
     if kind == "photo":
@@ -124,7 +111,7 @@ def _meet_rows(
     rows: list[tuple[str, _Room, _Room]] = []
     skipped: list[str] = []
     for kind in FIRST_MEET_KINDS:
-        items = [t for t in pool if _meet_kind(t[1], kind)]
+        items = [t for t in pool if message_kind(t[1]) == kind]
         if not items:
             skipped.append(kind)
             continue
