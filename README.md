@@ -223,7 +223,7 @@ When running the backend, interactive API documentation is available at:
 - **windows-toasts** - Native Windows toast notifications (Windows only)
 - **pywin32** - Start Menu shortcut / app identity so toasts show as banners (Windows only)
 - **pykakasi** + **jaconv** - Japanese transliteration for search
-- **tk** - Tkinter for native file dialogs
+- **tkinter** (Python standard library) - Native file dialogs
 
 > `pywebview` is used at runtime to create the desktop window but is a build-time/system dependency, not listed in `pyproject.toml`.
 
