@@ -73,3 +73,47 @@ describe('avatarWidthFor', () => {
         expect(avatarWidthFor(64, Number.NaN)).toBe(64);
     });
 });
+
+describe('thumbnailUrl / thumbWidthFor', () => {
+    it('points a local archived picture at the thumbnail route with the width', async () => {
+        const { thumbnailUrl } = await import('./mediaUrl');
+        expect(thumbnailUrl('/api/content/media/hinatazaka46/messages/a%20b/picture/1.jpg', 320))
+            .toBe('/api/content/thumb/hinatazaka46/messages/a%20b/picture/1.jpg?w=320');
+        expect(thumbnailUrl('https://cdn.example/x.jpg', 320)).toBe('https://cdn.example/x.jpg');
+        expect(thumbnailUrl(null, 320)).toBeUndefined();
+    });
+
+    it('appends the content version v when given, and leaves the url unchanged without it', async () => {
+        const { thumbnailUrl } = await import('./mediaUrl');
+        const u = '/api/content/media/hinatazaka46/messages/a%20b/picture/1.jpg';
+        expect(thumbnailUrl(u, 320, 'a1b2c3d4e5f6'))
+            .toBe('/api/content/thumb/hinatazaka46/messages/a%20b/picture/1.jpg?w=320&v=a1b2c3d4e5f6');
+        expect(thumbnailUrl(u, 320)).toBe('/api/content/thumb/hinatazaka46/messages/a%20b/picture/1.jpg?w=320');
+        expect(thumbnailUrl(u, 320, undefined)).toBe(thumbnailUrl(u, 320));
+        expect(thumbnailUrl(u, 320, '')).toBe(thumbnailUrl(u, 320));
+        expect(thumbnailUrl(`${u}?x=1`, 160, 'a1b2c3d4e5f6'))
+            .toBe('/api/content/thumb/hinatazaka46/messages/a%20b/picture/1.jpg?x=1&w=160&v=a1b2c3d4e5f6');
+        expect(thumbnailUrl('https://cdn.example/x.jpg', 320, 'a1b2c3d4e5f6')).toBe('https://cdn.example/x.jpg');
+    });
+
+    it('picks the smallest allowed width covering the drawn size', async () => {
+        const { thumbWidthFor } = await import('./mediaUrl');
+        expect(thumbWidthFor(96, 1)).toBe(160);
+        expect(thumbWidthFor(160, 1.5)).toBe(320);
+        expect(thumbWidthFor(200, 2)).toBe(480);
+        expect(thumbWidthFor(100, Number.NaN)).toBe(160);
+    });
+
+    it('caps grid tiles at the pre-generated 480; ★ items and covers may use 640', async () => {
+        const { thumbWidthFor, THUMB_WIDTHS, THUMB_PREGEN_WIDTH, THUMB_LARGE_WIDTH } = await import('./mediaUrl');
+        expect(THUMB_WIDTHS).toEqual([160, 320, 480, 640]);
+        expect([THUMB_PREGEN_WIDTH, THUMB_LARGE_WIDTH]).toEqual([480, 640]);
+        expect(thumbWidthFor(250, 1.75)).toBe(480); // ~440 px
+        expect(thumbWidthFor(250, 2)).toBe(480); // 500 px: capped, not 640
+        expect(thumbWidthFor(900, 2)).toBe(480);
+        expect(thumbWidthFor(250, 2, { large: true })).toBe(640);
+        expect(thumbWidthFor(200, 2, { large: true })).toBe(480);
+        expect(thumbWidthFor(900, 2, { large: true })).toBe(640);
+        expect(thumbWidthFor(150, 2, { large: false })).toBe(320);
+    });
+});

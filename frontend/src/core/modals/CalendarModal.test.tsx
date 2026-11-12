@@ -194,9 +194,8 @@ describe('CalendarModal component', () => {
         />
       )
 
-      // Loading indicator should be visible
-      const loadingElement = document.querySelector('.animate-spin')
-      expect(loadingElement).toBeInTheDocument()
+      // The indicator is delayed by the 200 ms reveal (no flash on fast loads).
+      await waitFor(() => expect(document.querySelector('.animate-spin')).toBeInTheDocument())
     })
 
     it('should show error state on API failure', async () => {
@@ -498,6 +497,44 @@ describe('CalendarModal component', () => {
 
       expect(screen.getByRole('dialog', { name: 'Jump to Date' })).toBeInTheDocument()
       expect(dayButtons().filter(b => !(b as HTMLButtonElement).disabled).map(b => b.getAttribute('data-day'))).toEqual(['15', '20'])
+    })
+  })
+
+  describe('Any-day dates mode', () => {
+    it('lets every day be picked without showing a count', async () => {
+      const onSelectDate = vi.fn()
+      render(<CalendarModal isOpen onClose={vi.fn()} dates={[]} selectAnyDay onSelectDate={onSelectDate} />)
+      const day = document.querySelector<HTMLButtonElement>('button[data-day="3"]:not([data-outside])')!
+      expect(day).not.toBeDisabled()
+      expect(day).not.toHaveAttribute('aria-describedby')
+      await userEvent.click(day)
+      const picked = onSelectDate.mock.calls[0][0] as Date
+      expect([picked.getFullYear(), picked.getMonth(), picked.getDate()]).toEqual([YEAR, 5, 3])
+    })
+
+    it('opens on the initial month each time', async () => {
+      const { rerender } = render(<CalendarModal isOpen onClose={vi.fn()} dates={[]} selectAnyDay initialMonth={new Date(YEAR, 8, 14)} onSelectDate={vi.fn()} />)
+      expect(screen.getByRole('button', { name: /September 2026/ })).toBeInTheDocument()
+      await userEvent.click(screen.getByRole('button', { name: /next month/i }))
+      rerender(<CalendarModal isOpen={false} onClose={vi.fn()} dates={[]} selectAnyDay initialMonth={new Date(YEAR, 8, 14)} onSelectDate={vi.fn()} />)
+      rerender(<CalendarModal isOpen onClose={vi.fn()} dates={[]} selectAnyDay initialMonth={new Date(YEAR, 8, 14)} onSelectDate={vi.fn()} />)
+      expect(screen.getByRole('button', { name: /September 2026/ })).toBeInTheDocument()
+    })
+
+    it('shows every picker month as available, without the no-messages hint', async () => {
+      render(<CalendarModal isOpen onClose={vi.fn()} dates={[]} selectAnyDay onSelectDate={vi.fn()} />)
+      await userEvent.click(screen.getByRole('button', { name: /June 2026/ }))
+      const grid = screen.getByRole('group', { name: /month/i })
+      for (const btn of within(grid).getAllByRole('button')) {
+        if (btn.getAttribute('aria-pressed') === 'true') continue
+        expect(btn.className).toContain('text-primary')
+        expect(btn.textContent).not.toMatch(/no messages/i)
+      }
+    })
+
+    it('keeps days without dates disabled by default', () => {
+      render(<CalendarModal isOpen onClose={vi.fn()} dates={[]} onSelectDate={vi.fn()} />)
+      expect(document.querySelector('button[data-day="3"]:not([data-outside])')).toBeDisabled()
     })
   })
 })

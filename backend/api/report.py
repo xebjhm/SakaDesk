@@ -3,6 +3,7 @@ Bug Report API for SakaDesk.
 Collects diagnostics with smart log filtering and redaction.
 """
 
+import asyncio
 import json
 import os
 import platform
@@ -10,7 +11,8 @@ import re
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional, cast
+from collections.abc import Sequence
+from typing import Any, Optional, Union, cast
 from urllib.parse import urlencode, quote
 
 import structlog
@@ -18,6 +20,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from backend.services.platform import get_logs_dir, get_settings_path
+from backend.services.settings_store import read_settings_file
 from pysaka.credentials import get_token_manager
 from pysaka import Group, get_jwt_remaining_seconds
 
@@ -80,11 +83,30 @@ def _redact_path(text: str, username: str) -> str:
     return result
 
 
-def _redact_nickname(text: str, nickname: Optional[str]) -> str:
-    """Redact user nickname from text."""
-    if not nickname:
+Nicknames = Union[str, Sequence[str], None]
+"""One nickname, several (one per service plus the legacy key), or none."""
+
+
+def _nickname_list(nicknames: Nicknames) -> list[str]:
+    """Non-empty distinct nicknames, longest first (a nickname that is a
+    substring of another must not leave part of the longer one behind)."""
+    items = [nicknames] if isinstance(nicknames, str) else list(nicknames or ())
+    unique = {n for n in items if isinstance(n, str) and n}
+    return sorted(unique, key=lambda n: (-len(n), n))
+
+
+def _redact_nickname(text: str, nicknames: Nicknames) -> str:
+    """Redact every user nickname from text, longest first, in one pass.
+
+    One regex alternation, so a shorter nickname never matches inside a longer
+    one already redacted, nor inside the ``[REDACTED]`` placeholder. Matched
+    in any letter case (``Hina`` for ``hina``; no effect on CJK).
+    """
+    names = _nickname_list(nicknames)
+    if not names:
         return text
-    return text.replace(nickname, "[REDACTED]")
+    pattern = "|".join(re.escape(n) for n in names)
+    return re.sub(pattern, "[REDACTED]", text, flags=re.IGNORECASE)
 
 
 # Patterns for token-like / bearer / JWT / long secret strings. Ordered so the
@@ -113,12 +135,24 @@ def _scrub_secrets(text: str) -> str:
     return result
 
 
-def scrub_log_line(line: str, username: str, nickname: Optional[str]) -> str:
-    """Full redaction for a single emitted log line: path + nickname + secrets.
+def scrub_log_line(
+    line: str, username: str, nickname: Nicknames, output_dir: Optional[str] = None
+) -> str:
+    """Full redaction for a single emitted log line, in a fixed order.
 
-    Shared by the report and diagnostics endpoints (SEC-5).
+    1. the custom output dir (``[REDACTED_DIR]``), 2. the username in user
+    profile paths (``/[REDACTED]``), 3. the nicknames, 4. secrets. Paths come
+    first: a nickname that overlaps the username or a folder of the output dir
+    (``hin`` / ``hina``) must not rewrite part of the path before the path
+    patterns see it, which left ``C:\\Users\\[REDACTED]a`` or the whole
+    custom dir behind. The output dir goes before the username, so a data dir
+    under the user profile is replaced whole. Shared by the report and
+    diagnostics endpoints (SEC-5).
     """
-    return _scrub_secrets(_redact_path(_redact_nickname(line, nickname), username))
+    text = _redact_output_dir(line, output_dir)
+    text = _redact_path(text, username)
+    text = _redact_nickname(text, nickname)
+    return _scrub_secrets(text)
 
 
 def _redact_output_dir(text: str, output_dir: Optional[str]) -> str:
@@ -129,18 +163,14 @@ def _redact_output_dir(text: str, output_dir: Optional[str]) -> str:
     """
     if not output_dir:
         return text
-    result = text
     variants = {
         output_dir,
         output_dir.replace("\\", "/"),
         output_dir.replace("/", "\\"),
     }
-    for variant in variants:
-        if variant:
-            result = re.sub(
-                re.escape(variant), "[REDACTED_DIR]", result, flags=re.IGNORECASE
-            )
-    return result
+    names = sorted((v for v in variants if v), key=lambda v: (-len(v), v))
+    pattern = "|".join(re.escape(v) for v in names)
+    return re.sub(pattern, "[REDACTED_DIR]", text, flags=re.IGNORECASE)
 
 
 def _redact_member_path(value: str) -> str:
@@ -159,7 +189,7 @@ def _redact_member_path(value: str) -> str:
 
 
 def _redact_diagnostics(
-    obj, username: str, nickname: Optional[str], output_dir: Optional[str] = None
+    obj, username: str, nickname: Nicknames, output_dir: Optional[str] = None
 ):
     """Recursively scrub an entire diagnostics structure before it leaves the app.
 
@@ -179,27 +209,35 @@ def _redact_diagnostics(
     if isinstance(obj, list):
         return [_redact_diagnostics(v, username, nickname, output_dir) for v in obj]
     if isinstance(obj, str):
-        return _redact_output_dir(scrub_log_line(obj, username, nickname), output_dir)
+        return scrub_log_line(obj, username, nickname, output_dir)
     return obj
 
 
 def _get_output_dir() -> Optional[str]:
     """Read the configured sync output dir (for redaction of custom data paths)."""
     try:
-        settings_path = get_settings_path()
-        if settings_path.exists():
-            with open(settings_path, "r", encoding="utf-8") as f:
-                return cast(Optional[str], json.load(f).get("output_dir"))
+        data = read_settings_file(get_settings_path())
+        if isinstance(data, dict):
+            return cast(Optional[str], data.get("output_dir"))
     except Exception as e:
         # Do NOT fail silently: if the output dir can't be read, custom-data-dir
         # redaction is skipped and a path outside C:\Users could reach the public
         # bug report. Log so the gap is visible (member-path reduction + username
         # scrub still run). (Review follow-up to WP-11.)
-        logger.warning("report_output_dir_read_failed_redaction_partial", error=str(e))
+        # The error type only: the error text can carry the settings path.
+        logger.warning(
+            "report_output_dir_read_failed_redaction_partial",
+            error_type=type(e).__name__,
+        )
     return None
 
 
-def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> dict:
+def _get_smart_logs(
+    log_path: Path,
+    username: str,
+    nickname: Nicknames,
+    output_dir: Optional[str] = None,
+) -> dict:
     """
     Smart log filtering:
     1. Errors/warnings from dedicated error.log (or fall back to debug.log)
@@ -218,7 +256,7 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
             all_lines = f.readlines()
 
         for line in all_lines[-30:]:
-            recent.append(scrub_log_line(line.strip(), username, nickname))
+            recent.append(scrub_log_line(line.strip(), username, nickname, output_dir))
 
         # Errors/warnings: prefer error.log (pre-filtered, smaller)
         error_log = log_path.parent / "error.log"
@@ -235,7 +273,9 @@ def _get_smart_logs(log_path: Path, username: str, nickname: Optional[str]) -> d
 
         for line in error_lines:
             if _is_error_or_warning(line):
-                errors.append(scrub_log_line(line.strip(), username, nickname))
+                errors.append(
+                    scrub_log_line(line.strip(), username, nickname, output_dir)
+                )
 
         # Deduplicate (errors that appear in recent don't need to be in both)
         recent_set = set(recent)
@@ -285,56 +325,85 @@ def _get_token_expiry() -> dict:
 def _get_sync_state() -> dict:
     """Get current sync state from per-service metadata files."""
     try:
-        settings_path = get_settings_path()
-        if settings_path.exists():
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
-                output_dir = settings.get("output_dir")
-                if output_dir:
-                    # Check per-service metadata files
-                    latest_sync = None
-                    last_error = None
-                    output_path = Path(output_dir)
+        settings = read_settings_file(get_settings_path())
+        if isinstance(settings, dict):
+            output_dir = settings.get("output_dir")
+            if output_dir:
+                # Check per-service metadata files
+                latest_sync = None
+                last_error = None
+                output_path = Path(output_dir)
 
-                    for service_dir in output_path.iterdir():
-                        if not service_dir.is_dir():
-                            continue
-                        metadata_path = service_dir / "sync_metadata.json"
-                        if metadata_path.exists():
-                            try:
-                                with open(metadata_path, "r", encoding="utf-8") as mf:
-                                    metadata = json.load(mf)
-                                    utc_sync = metadata.get("last_sync")
-                                    if utc_sync:
-                                        if (
-                                            latest_sync is None
-                                            or utc_sync > latest_sync
-                                        ):
-                                            latest_sync = utc_sync
-                                    if metadata.get("last_error"):
-                                        last_error = metadata.get("last_error")
-                            except Exception:
-                                pass
+                for service_dir in output_path.iterdir():
+                    if not service_dir.is_dir():
+                        continue
+                    metadata_path = service_dir / "sync_metadata.json"
+                    if metadata_path.exists():
+                        try:
+                            with open(metadata_path, "r", encoding="utf-8") as mf:
+                                metadata = json.load(mf)
+                                utc_sync = metadata.get("last_sync")
+                                if utc_sync:
+                                    if latest_sync is None or utc_sync > latest_sync:
+                                        latest_sync = utc_sync
+                                if metadata.get("last_error"):
+                                    last_error = metadata.get("last_error")
+                        except Exception:
+                            pass
 
-                    return {
-                        "last_sync": latest_sync,
-                        "last_error": last_error,
-                    }
+                return {
+                    "last_sync": latest_sync,
+                    "last_error": last_error,
+                }
     except Exception:
         pass
     return {"last_sync": None, "last_error": None}
 
 
-def _get_nickname() -> Optional[str]:
-    """Get cached user nickname for redaction."""
+def _get_nicknames() -> Optional[list[str]]:
+    """Every cached user nickname to redact, longest first; ``None`` if unknown.
+
+    ``api/profile.py`` caches one nickname per service under
+    ``user_nicknames`` (a dict); an older build stored a single
+    ``user_nickname`` string. Both are collected; empty and non-string values
+    are skipped. Read with ``settings_store.read_settings_file`` (locked,
+    retried, last good value on a transient failure). ``None`` means the
+    settings could not be read and no last good value exists: the callers
+    then fail closed (:func:`_withhold_free_text`), never send unredacted logs.
+    """
     try:
-        settings_path = get_settings_path()
-        if settings_path.exists():
-            with open(settings_path, "r", encoding="utf-8") as f:
-                return cast(Optional[str], json.load(f).get("user_nickname"))
-    except Exception:
-        pass
-    return None
+        data = read_settings_file(get_settings_path())
+    except Exception as e:
+        logger.warning("report_nickname_read_failed", error_type=type(e).__name__)
+        return None
+    if not isinstance(data, dict):
+        return []
+    found: list[Any] = []
+    per_service = data.get("user_nicknames")
+    if isinstance(per_service, dict):
+        found.extend(per_service.values())
+    found.append(data.get("user_nickname"))
+    names = _nickname_list(found)
+    logger.debug("report_nicknames", count=len(names))
+    return names
+
+
+WITHHELD_LOGS = {"errors": [], "recent": [], "withheld": "nicknames_unavailable"}
+
+
+def _withhold_free_text(diagnostics: dict) -> None:
+    """Fail closed when the nicknames are unknown: drop the logs and free text.
+
+    Log lines and the error message are where a nickname would appear; with
+    no nickname list they cannot be redacted, so they are not sent at all.
+    """
+    diagnostics["logs"] = dict(WITHHELD_LOGS)
+    context = diagnostics.get("context")
+    if isinstance(context, dict):
+        for key in ("error_message", "current_screen"):
+            if key in context:
+                context[key] = None
+    logger.warning("report_logs_withheld", reason="nicknames_unavailable")
 
 
 def _build_github_url(
@@ -396,10 +465,20 @@ PASTE_HERE
 async def generate_report(
     context: ReportContext, what_doing: str = "", what_wrong: str = ""
 ):
-    """Generate bug report diagnostics and GitHub URL."""
+    """Generate bug report diagnostics and GitHub URL.
 
+    The gathering reads settings (under the cross-thread settings lock), the
+    token store and the logs, so it runs in a worker thread, off the loop.
+    """
+    return await asyncio.to_thread(_generate_report, context, what_doing, what_wrong)
+
+
+def _generate_report(
+    context: ReportContext, what_doing: str, what_wrong: str
+) -> "ReportResponse":
+    """Blocking body of :func:`generate_report`."""
     username = _get_username()
-    nickname = _get_nickname()
+    nickname = _get_nicknames()
 
     # Base diagnostics
     diagnostics = {
@@ -437,13 +516,15 @@ async def generate_report(
 
     # Smart logs
     log_path = get_logs_dir() / "debug.log"
-    diagnostics["logs"] = _get_smart_logs(log_path, username, nickname)
+    output_dir = _get_output_dir()
+    if nickname is None:  # settings unreadable: fail closed
+        _withhold_free_text(diagnostics)
+    else:
+        diagnostics["logs"] = _get_smart_logs(log_path, username, nickname, output_dir)
 
     # Scrub the WHOLE payload (not just logs) before it becomes a public issue URL
     # body and a clipboard copy — member_path, sync errors, custom data paths.
-    diagnostics = _redact_diagnostics(
-        diagnostics, username, nickname, _get_output_dir()
-    )
+    diagnostics = _redact_diagnostics(diagnostics, username, nickname or [], output_dir)
 
     # Build GitHub URL from the already-redacted diagnostics
     github_url = _build_github_url(
@@ -455,9 +536,14 @@ async def generate_report(
 
 @router.get("/diagnostics")
 async def get_diagnostics_only():
-    """Get diagnostics without creating GitHub URL (for preview)."""
+    """Get diagnostics without creating GitHub URL (for preview), off the loop."""
+    return await asyncio.to_thread(_diagnostics_only)
+
+
+def _diagnostics_only() -> dict:
+    """Blocking body of :func:`get_diagnostics_only`."""
     username = _get_username()
-    nickname = _get_nickname()
+    nickname = _get_nicknames()
 
     diagnostics = {
         "generated_at": datetime.now(timezone.utc).isoformat(),
@@ -473,11 +559,14 @@ async def get_diagnostics_only():
     }
 
     log_path = get_logs_dir() / "debug.log"
-    diagnostics["logs"] = _get_smart_logs(log_path, username, nickname)
+    output_dir = _get_output_dir()
+    if nickname is None:  # settings unreadable: fail closed
+        _withhold_free_text(diagnostics)
+    else:
+        diagnostics["logs"] = _get_smart_logs(log_path, username, nickname, output_dir)
 
     # Scrub the whole payload — the diagnostics modal renders/copies these values.
-    diagnostics = _redact_diagnostics(
-        diagnostics, username, nickname, _get_output_dir()
+    redacted: dict = _redact_diagnostics(
+        diagnostics, username, nickname or [], output_dir
     )
-
-    return diagnostics
+    return redacted

@@ -40,6 +40,7 @@ from backend.services.ui_state import set_ui_state  # noqa: E402
 from tray import TrayController  # noqa: E402
 from call_popup_window import CallPopupWindow  # noqa: E402
 from window_chrome import make_title_bar_handler  # noqa: E402
+from window_diagnostics import attach_window_diagnostics  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
 # Setup logging
@@ -310,6 +311,74 @@ def make_open_login_handler(window, focus_fn):
             logger.warning(
                 "notify_open_login_failed",
                 service=service,
+                error_type=type(e).__name__,
+            )
+
+    return handler
+
+
+_MEMORIES_TARGETS = {"onThisDay": "on_this_day", "memoir": "memoir", "recap": "recap"}
+
+
+def _memories_target(route: object) -> str:
+    """The snake_case log code of ``route``'s page, else ``unknown``."""
+    page = route.get("page") if isinstance(route, dict) else None
+    return (
+        _MEMORIES_TARGETS.get(page, "unknown") if isinstance(page, str) else "unknown"
+    )
+
+
+def make_open_memories_handler(window, focus_fn):
+    """Build the Memories toast-click handler: show ``window``, open Memories.
+
+    Like :func:`make_open_login_handler`: shows the window (never
+    ``restore()``), calls ``focus_fn(hwnd)``, then asks the frontend to open
+    Memories via ``window.__sakadeskOpenMemories({"service", "route"})``,
+    which returns whether it navigated. The payload is JSON-encoded, so a
+    member path can never break out of the script. Logs
+    ``notify_open_memories`` (``service``, ``target`` = page code,
+    ``delivered=True``) or ``notify_open_memories_failed`` with
+    ``reason=refused`` (the frontend answered false: a malformed link, an
+    unknown group or onboarding; its own breadcrumb has the exact code),
+    ``reason=not_ready`` (the bridge is not mounted yet) or ``error_type``.
+    Never logs the route; never raises.
+    """
+
+    def handler(service: str, route: dict) -> None:
+        target = _memories_target(route)
+        try:
+            window.show()
+            focus_fn(_native_hwnd(window))
+            payload = json.dumps(
+                {"service": service, "route": route}, ensure_ascii=False
+            )
+            # json.dumps leaves "</" alone; escape it so the payload can never
+            # close a <script> element wherever the string ends up.
+            payload = payload.replace("</", "<\\/")
+            delivered = window.evaluate_js(
+                "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
+                + payload
+                + ") === true : null"
+            )
+            if delivered is True:
+                logger.info(
+                    "notify_open_memories",
+                    service=service,
+                    target=target,
+                    delivered=True,
+                )
+            else:
+                logger.warning(
+                    "notify_open_memories_failed",
+                    service=service,
+                    target=target,
+                    reason="refused" if delivered is False else "not_ready",
+                )
+        except Exception as e:
+            logger.warning(
+                "notify_open_memories_failed",
+                service=service,
+                target=target,
                 error_type=type(e).__name__,
             )
 
@@ -961,6 +1030,30 @@ def show_error_dialog(error_msg: str, tb: str):
             print(f"FATAL ERROR: {error_msg}\n{tb}")
 
 
+def _main_window_kwargs(geom: dict, port: int, background: bool) -> dict[str, Any]:
+    """``webview.create_window`` arguments of the main window.
+
+    ``min_size`` keeps the window at least ``window_geometry.MIN_LOGICAL``
+    (960 x 640 CSS px) so no page collapses; pywebview's default minimum is
+    200 x 100. Unlike the geometry (device pixels), ``min_size`` is LOGICAL:
+    WinForms DPI-scales it itself (see ``window_geometry.min_window_size``).
+    """
+    min_size = window_geometry.min_window_size()
+    logger.info("window_min_size", width=min_size[0], height=min_size[1])
+    return {
+        "title": "SakaDesk",
+        "url": f"http://{HOST}:{port}",
+        "width": geom["width"],
+        "height": geom["height"],
+        "x": geom.get("x"),
+        "y": geom.get("y"),
+        "resizable": True,
+        "min_size": min_size,
+        "background_color": "#F0F2F5",
+        "hidden": background,
+    }
+
+
 def _load_window_geometry() -> dict:
     """Load saved window size/position from settings.json, or return defaults.
 
@@ -976,8 +1069,10 @@ def _load_window_geometry() -> dict:
     data = None
     if settings_path.exists():
         try:
-            settings = json.loads(settings_path.read_text(encoding="utf-8"))
-            data = settings.get("window")
+            # Locked, retried and last-good (settings_store.read_settings_file):
+            # never a half-swapped file on Windows.
+            settings = settings_store.read_settings_file(settings_path)
+            data = settings.get("window") if isinstance(settings, dict) else None
         except Exception:
             logger.warning("Failed to read window geometry from settings.json")
 
@@ -1079,17 +1174,7 @@ def main() -> None:
         # Create window
         # background_color matches app's bg-[#F0F2F5] to prevent white
         # showing through Windows 11 rounded corners
-        window = webview.create_window(
-            title="SakaDesk",
-            url=f"http://{HOST}:{port}",
-            width=geom["width"],
-            height=geom["height"],
-            x=geom.get("x"),
-            y=geom.get("y"),
-            resizable=True,
-            background_color="#F0F2F5",
-            hidden=background,
-        )
+        window = webview.create_window(**_main_window_kwargs(geom, port, background))
 
         # Windows 11: recolour the native title bar to the app surface. Only
         # non-locking events (``before_show`` is locking: the GUI thread waits
@@ -1098,6 +1183,12 @@ def main() -> None:
         _title_bar = make_title_bar_handler(window)
         window.events.shown += _title_bar
         window.events.loaded += _title_bar
+
+        # N-R4-1: numeric breadcrumbs of the form's size state (window_geometry
+        # phase=...). Log only: nothing changes the window. The form exists at
+        # before_show; never raises.
+        if platform.system() == "Windows":
+            window.events.before_show += lambda: attach_window_diagnostics(window)
 
         # Save window geometry on close by reading current dimensions directly.
         # We read window.width/height/x/y properties instead of relying on
@@ -1125,6 +1216,10 @@ def main() -> None:
         # "Log in again" toast click -> show, focus and open that login dialog.
         desktop_bridge.set_open_login_handler(
             make_open_login_handler(window, _focus_window)
+        )
+        # Memories toast click -> show, focus and open Memories at the route.
+        desktop_bridge.set_open_memories_handler(
+            make_open_memories_handler(window, _focus_window)
         )
 
         show_window = make_open_window_handler(window, _focus_window)

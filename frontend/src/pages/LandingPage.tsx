@@ -123,9 +123,9 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
     };
 
     return (
-        <BrandScope className="min-h-screen bg-window">
-            <Atmosphere className="min-h-screen">
-                <div className="flex min-h-screen items-center justify-center p-4">
+        <BrandScope className="h-screen overflow-y-auto overscroll-contain bg-window">
+            <Atmosphere className="min-h-full">
+                <div className="flex min-h-full items-center justify-center p-4">
                     <Sheet className="flex w-full max-w-4xl flex-col gap-8 p-10 animate-reveal motion-reduce:animate-none">
                         <header className="flex flex-col gap-2 text-center">
                             <h1 className="font-display text-display font-bold text-primary">{t('landing.welcome')}</h1>

@@ -1,0 +1,139 @@
+import { describe, it, expect } from 'vitest';
+import en from './locales/en.json';
+import ja from './locales/ja.json';
+import zhCN from './locales/zh-CN.json';
+import zhTW from './locales/zh-TW.json';
+import yue from './locales/yue.json';
+
+const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
+
+/**
+ * Every user-facing key of the 0.5.0 media pipeline (dotted paths). Each UI task
+ * (M4 Settings, M5 grid, ...) appends its keys here.
+ */
+export const MEDIA_PIPELINE_KEYS = [
+    'settings.mediaCache',
+    'settings.mediaCacheSize',
+    'settings.mediaCachePreparing',
+    'settings.mediaCacheClear',
+    'settings.mediaCacheCleared',
+    'settings.mediaCacheFull',
+    'settings.mediaCacheLoadFailed',
+    'settings.mediaCacheClearFailed',
+    // M6: the message media gallery's tile buttons.
+    'media.gallery.openPhoto',
+    'media.gallery.openVideo',
+    // M6 review fixes: a paused pre-generation, and a failed tile (its click retries).
+    'settings.mediaCachePaused',
+    'media.gallery.retryPhoto',
+    // M8: a failed Memories album tile (its click retries); the label is the tile's own name.
+    'memories.album.retryTile',
+    // M8 fix round 1: the burst stack's name (it always opens the sequence, even when its still failed).
+    'memories.album.openBurst',
+] as const;
+
+function lookup(tree: unknown, path: string): unknown {
+    return path.split('.').reduce<unknown>(
+        (node, part) => (node && typeof node === 'object' ? (node as Record<string, unknown>)[part] : undefined),
+        tree,
+    );
+}
+
+/** The agreed wording (Japanese is the reference copy). */
+const SETTINGS_WORDING = {
+    ja: ['サムネイルキャッシュ', '{{size}} 使用中', 'サムネイルを準備中… {{done}} / {{total}}', '削除', 'サムネイルキャッシュを削除しました',
+        '上限に達しました。閲覧に合わせて古いサムネイルから入れ替わります', 'キャッシュ容量を読み込めませんでした', 'サムネイルキャッシュを削除できませんでした'],
+    en: ['Thumbnail cache', '{{size}} used', 'Preparing thumbnails… {{done}} / {{total}}', 'Clear', 'Thumbnail cache cleared',
+        'Full. Older thumbnails are replaced as you browse', "Couldn't read the cache size", "Couldn't clear the thumbnail cache"],
+    'zh-TW': ['縮圖快取', '已使用 {{size}}', '正在準備縮圖… {{done}} / {{total}}', '清除', '已清除縮圖快取',
+        '已達上限，瀏覽時會替換較舊的縮圖', '無法讀取快取大小', '無法清除縮圖快取'],
+    'zh-CN': ['缩略图缓存', '已使用 {{size}}', '正在准备缩略图… {{done}} / {{total}}', '清除', '已清除缩略图缓存',
+        '已达上限，浏览时会替换较旧的缩略图', '无法读取缓存大小', '无法清除缩略图缓存'],
+    yue: ['縮圖快取', '用咗 {{size}}', '準備緊縮圖… {{done}} / {{total}}', '清除', '已經清除咗縮圖快取',
+        '已經到咗上限，睇嘅時候會換走舊啲嘅縮圖', '讀唔到快取大小', '清除唔到縮圖快取'],
+} as const;
+
+/** M6 tile labels (the plan's table; Japanese is the reference). */
+const GALLERY_WORDING = {
+    ja: ['{{date}} の写真を開く', '{{date}} の動画を開く'],
+    en: ['Open photo from {{date}}', 'Open video from {{date}}'],
+    'zh-TW': ['開啟 {{date}} 的照片', '開啟 {{date}} 的影片'],
+    'zh-CN': ['打开 {{date}} 的照片', '打开 {{date}} 的视频'],
+    yue: ['打開 {{date}} 嘅相', '打開 {{date}} 嘅片'],
+} as const;
+
+/** M6 review fixes: the paused progress line and the failed tile's label (Japanese is the reference). */
+const REVIEW_WORDING = {
+    ja: ['サムネイルの準備を一時停止中 · {{done}} / {{total}}', '{{date}} の写真を再読み込み'],
+    en: ['Thumbnail preparation paused · {{done}} / {{total}}', 'Retry loading photo from {{date}}'],
+    'zh-TW': ['縮圖準備已暫停 · {{done}} / {{total}}', '重新載入 {{date}} 的照片'],
+    'zh-CN': ['缩略图准备已暂停 · {{done}} / {{total}}', '重新加载 {{date}} 的照片'],
+    yue: ['縮圖準備暫停咗 · {{done}} / {{total}}', '重新載入 {{date}} 嘅相'],
+} as const;
+
+/** M8: the failed album tile's label (Japanese is the reference). */
+const ALBUM_WORDING = {
+    ja: '再読み込み：{{label}}',
+    en: 'Retry loading: {{label}}',
+    'zh-TW': '重新載入：{{label}}',
+    'zh-CN': '重新加载：{{label}}',
+    yue: '重新載入：{{label}}',
+} as const;
+
+/** M8 fix round 1: the burst stack's name (Japanese is the reference; en has its plural too). */
+const BURST_WORDING = {
+    ja: '{{count}} 枚の写真を開く',
+    en: 'Open {{count}} photo',
+    'zh-TW': '開啟 {{count}} 張照片',
+    'zh-CN': '打开 {{count}} 张照片',
+    yue: '打開 {{count}} 張相',
+} as const;
+
+describe('media pipeline strings', () => {
+    it.each(Object.keys(locales))('%s has every media pipeline key', (code) => {
+        const tree = locales[code as keyof typeof locales];
+        for (const key of MEDIA_PIPELINE_KEYS) {
+            const value = lookup(tree, key);
+            expect(typeof value, `${code}.${key}`).toBe('string');
+            expect((value as string).trim(), `${code}.${key}`).not.toBe('');
+        }
+    });
+
+    it.each(Object.entries(SETTINGS_WORDING))('%s uses the agreed Settings wording', (code, want) => {
+        const tree = locales[code as keyof typeof locales];
+        MEDIA_PIPELINE_KEYS.slice(0, 8).forEach((key, i) => {
+            expect(lookup(tree, key), `${code}.${key}`).toBe(want[i]);
+        });
+    });
+
+    it.each(Object.entries(GALLERY_WORDING))('%s uses the agreed gallery tile wording', (code, want) => {
+        const tree = locales[code as keyof typeof locales];
+        expect(lookup(tree, 'media.gallery.openPhoto'), code).toBe(want[0]);
+        expect(lookup(tree, 'media.gallery.openVideo'), code).toBe(want[1]);
+    });
+
+    it.each(Object.entries(REVIEW_WORDING))('%s uses the agreed paused and retry wording', (code, want) => {
+        const tree = locales[code as keyof typeof locales];
+        expect(lookup(tree, 'settings.mediaCachePaused'), code).toBe(want[0]);
+        expect(lookup(tree, 'media.gallery.retryPhoto'), code).toBe(want[1]);
+    });
+
+    it.each(Object.entries(ALBUM_WORDING))('%s uses the agreed album retry wording', (code, want) => {
+        const tree = locales[code as keyof typeof locales];
+        expect(lookup(tree, 'memories.album.retryTile'), code).toBe(want);
+    });
+
+    it.each(Object.entries(BURST_WORDING))('%s uses the agreed burst stack wording', (code, want) => {
+        const tree = locales[code as keyof typeof locales];
+        expect(lookup(tree, 'memories.album.openBurst'), code).toBe(want);
+    });
+
+    it('keeps the interpolation variables in every locale', () => {
+        for (const code of Object.keys(locales)) {
+            const tree = locales[code as keyof typeof locales];
+            expect(lookup(tree, 'settings.mediaCacheSize')).toContain('{{size}}');
+            expect(lookup(tree, 'settings.mediaCachePreparing')).toContain('{{done}}');
+            expect(lookup(tree, 'settings.mediaCachePreparing')).toContain('{{total}}');
+        }
+    });
+});

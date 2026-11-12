@@ -2,6 +2,7 @@
 import React from 'react';
 import { useAppStore, type FeatureId } from '../../store/appStore';
 import { BlogsFeature } from '../../features/blogs';
+import { MemoriesFeature } from '../../features/memories';
 import { InlineSyncView } from './InlineSyncView';
 import { ContentSheet } from './ContentSheet';
 import { FadeOnChange } from './FadeOnChange';
@@ -15,6 +16,8 @@ interface ContentAreaProps {
     syncProgress?: SyncProgress;
     isInitialSyncing?: boolean;
     blogBackupEnabled?: boolean;
+    /** The fan's nickname for this service. */
+    userNickname?: string;
 }
 
 const ComingSoon: React.FC<{ feature: FeatureId }> = ({ feature }) => {
@@ -40,6 +43,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
     syncProgress,
     isInitialSyncing,
     blogBackupEnabled,
+    userNickname,
 }) => {
     const { getActiveFeature } = useAppStore();
     const activeFeature = getActiveFeature(service);
@@ -50,6 +54,8 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
         content = <ContentSheet><InlineSyncView service={service} syncProgress={syncProgress} /></ContentSheet>;
     } else if (activeFeature === 'blogs') {
         content = <ContentSheet><BlogsFeature blogBackupEnabled={blogBackupEnabled} /></ContentSheet>;
+    } else if (activeFeature === 'memories') {
+        content = <ContentSheet><MemoriesFeature service={service} nickname={userNickname} /></ContentSheet>;
     } else if (activeFeature === 'news' || activeFeature === 'fanclub' || activeFeature === 'ai') {
         content = <ContentSheet><ComingSoon feature={activeFeature} /></ContentSheet>;
     } else {

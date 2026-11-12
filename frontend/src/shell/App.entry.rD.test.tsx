@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { render, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../__tests__/mocks/server';
@@ -37,7 +37,10 @@ describe('first launch on the brand atmosphere (R-d)', () => {
         const { unmount } = render(<AuthProvider><App /></AuthProvider>);
         const boot = screen.getByTestId('boot-screen');
         expect(boot.closest('[data-scope="brand"]')).not.toBeNull();
-        expect(boot.querySelector('svg')).toHaveClass('animate-spin', 'text-accent');
+        expect(boot.querySelector('svg')).toHaveClass('animate-spin', 'text-accent', 'motion-reduce:animate-none');
+        // L6: the Spinner primitive is the status; its label shows under reduced motion.
+        const status = within(boot).getByRole('status', { name: 'Loading...' });
+        expect(within(status).getByText('Loading...')).toHaveClass('sr-only', 'motion-reduce:not-sr-only');
         unmount();
     });
 

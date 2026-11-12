@@ -186,6 +186,22 @@ def _load_view(member_dir: Path) -> Optional[_IndexView]:
     return view
 
 
+def history(member_dir: Path) -> list[dict[str, Optional[str]]]:
+    """Archived images as ``{kind, file, first_seen}``, oldest first.
+
+    ``first_seen`` is when pysaka first archived the file (UTC ISO), so the
+    oldest entry of each kind marks when archiving began, not a change.
+    Validated entries only; ``[]`` when there is no readable index.
+    """
+    view = _load_view(member_dir)
+    if view is None:
+        return []
+    return [
+        {"kind": e["kind"], "file": e["file"], "first_seen": e["first_seen"]}
+        for e in reversed(view.entries)
+    ]
+
+
 def index_files(member_dir: Path) -> list[Path]:
     path = member_dir / DIR_NAME / INDEX_NAME
     return [path] if path.exists() else []

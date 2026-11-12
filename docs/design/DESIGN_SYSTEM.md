@@ -381,7 +381,11 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 
 - **Faces:** `font-sans` (default, body and UI) and `font-display` (serif, for
   brand-moment headings only: landing hero, empty-state titles, about,
-  celebration numbers). `font-reading` is the Japanese serif for blog titles
+  celebration numbers, year-recap slide titles).
+  The year recap (`features/memories/recap/slides/common.tsx`) has three type roles: the slide
+  title (`Headline`: `font-display text-heading font-semibold`, UI language, never `lang="ja"`),
+  her quoted words (`Quote`: `font-display` marked `lang="ja"`) and the app's narration
+  (`Narration`: `font-sans text-small`, so it never reads as her words). The year poster (`recap/PosterView.tsx`) keeps the same roles; its polaroid caption uses `font-display` (there is no handwritten face in the stack). The share export (`recap/share/ShareRenderer.ts`) draws on a canvas with the same roles: the UI language's display serif for headings and numbers, the Japanese serif (`fontFamily.reading`) for her words, the sans for narration; it loads them with `document.fonts.load` (with a timeout, else system fonts) and reads every colour from the token CSS variables. The multi-member opening (`recap/Opening.tsx`, slides in `recap/slides/OpeningSlides.tsx`) plays through the same story player with the same roles: a serif `Headline`, member names as `lang="ja"` sans, role titles as neutral `bg-expressive-soft` chips, sans `Narration`; its stars are one equal size in `text-primary` (never the yellow favourite star, never sized by message volume), laid out by `starGrid` in a size-container grid whose star and caption sizes are container units, so every member fits the stage at any roster size (names truncate, stars never clip). The container-unit sizing needs CSS that has no token, so it lives in named `tailwind.config.js` utilities rather than arbitrary values: `recap-star-grid` (the size container: `--star-cols` x `--star-rows` equal cells, at most 5.5rem a row), `recap-star-size` (the star, `--star-size`) and `recap-star-label` (the captions, `--star-label` at line height 1.2, `STAR_LINE_HEIGHT`); the slide sets the four variables from `starGrid`. `size-em` sizes an inline icon (the oshi heart) to one text height. `font-reading` is the Japanese serif for blog titles
   only; post bodies stay in the sans.
 - **Per UI language** (`design/fonts.ts`, `fontStacks`): the UI language picks
   the glyph set, and only that language's family is loaded from Google Fonts
@@ -445,7 +449,8 @@ is `circle` for floating buttons (`overlay` and `accent` by default) and
 | hover | `hover:brightness-106` and `hover:-translate-y-px`; the glow grows (`shadow-accent-glow-hover`) |
 | pressed | `active:scale-97` and `active:brightness-94`; the glow shrinks |
 | focus-visible | 2 px `ring-accent` with a 2 px `ring-offset-surface` gap. **Exception, buttons on the expressive header** (the dialog close button, the chat header ⋯): no accent on the title layer, so `ring-expressive-header-focus` with `ring-offset-0`. That ring is the header text colour on a gradient header (the same colour as `ring-expressive-header`) and the group's strong title tone (step 700) on a light title header (Sakurazaka: `#a72f5d`, 6.5:1 on white, where the pale title text is only 2.4:1) |
-| loading | `loading` prop: a spinner is overlaid, the label stays so the width does not change, clicks are swallowed, `aria-busy` is set |
+| loading | `loading` prop: a decorative `Spinner` (`sm`, `tone="current"`) is overlaid in the centre, the label stays (at `opacity-0`) so the width does not change, clicks are swallowed, `aria-busy` is set |
+| loading, reduced motion | the glyph stops and moves to the leading edge (`motion-reduce:left-1 motion-reduce:right-auto`), the label stays readable at `motion-reduce:opacity-60` (nudged clear of the glyph with `motion-reduce:translate-x-2`, a transform, so the width is unchanged): never an icon alone |
 | selected | `bg-accent-subtle` background + `border-accent-border` + `text-accent-strong` text |
 | **disabled** | **keeps its colour** at 40 % opacity, no shadow, `cursor-not-allowed`, and **always shows a reason** |
 
@@ -465,7 +470,7 @@ Brand moments are for waiting, starting, finishing and looking back
 - **`EmptyState`** (`icon`, `title`, `description`, `action`): a fixed
   pattern. A `bg-expressive-soft` circle (aurora in brand context, group 50 →
   100 in group context) holding a line icon in `text-muted` (the pre-D2 grey), a `font-display` title, one
-  sentence and one action. `DialogStatus` and `BlogStatus` draw their `empty` kind with it (the hint is its sentence, the retry its action); the chat's no-conversation screen uses it too, and so does the Talk sidebar's failed-load state (a `CloudOff` icon, a reassuring sentence and a `secondary` Retry). A meaning icon keeps its own colour (the blog feed's Favorite-filter heart stays oshi).
+  sentence and one action. `StatusBlock` draws its `empty` kind with it (the hint is its sentence, `action` its action); the chat's no-conversation screen uses it too, and so does the Talk sidebar's failed-load state (a `CloudOff` icon, a reassuring sentence and a `secondary` Retry). A meaning icon keeps its own colour (the blog feed's Favorite-filter heart stays oshi).
 - **`Atmosphere`** (`fade`): L2. Three drifting orbs (`bg-expressive-orb-*`,
   `animate-orb-drift-1/2`, `animate-orb-breathe`) behind its children.
   Each orb is a square box (a width plus `aspect-square`, never a separate height),
@@ -527,6 +532,9 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   `duration-base`, `duration-glide`, `ease-standard`
   (`cubic-bezier(0.2, 0, 0, 1)`). framer-motion reads numbers:
   `transition={{ duration: motion.duration.base / 1000, ease: motion.easing.standard }}`.
+- `motion.loading` is wait timing, not an animation: `reveal` 200, `slow` 3000,
+  `verySlow` 10000, `minVisible` 400 ms (CSS `--ds-loading-reveal`, `--ds-loading-slow`,
+  `--ds-loading-very-slow`, `--ds-loading-min-visible`). See "Loading and waiting".
 - Every animation is 150-200 ms. The listed exceptions: `duration-glide`
   (scroll glides, and the blog feed caption card's hover nudge through
   `transition-caption`), `animate-landing` (1400 ms, the landed-row highlight),
@@ -534,8 +542,15 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
   `animate-orb-breathe`), About's easter egg (`animate-heart-float` 800 ms,
   `animate-heartbeat` 1.2 s), and the celebrations: `animate-toast-in` 350 ms
   (the toast entrance), `animate-shimmer` 1.2 s, `animate-shimmer-sweep` 1.4 s (the looping
-  loading sweep on a Favourites video placeholder; hidden under reduced motion), `animate-pop` 500 ms,
-  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, and the blog feed's
+  loading sweep on a Favourites video placeholder; hidden under reduced motion),
+  `animate-progress-indeterminate` 1.4 s (the indeterminate `ProgressBar` segment; a static
+  segment under reduced motion), `animate-pop` 500 ms,
+  `animate-confetti` 1.2 s, `animate-sparkle` 900 ms, the year recap's slide motion
+  (`animate-star-fall` 600 ms, `animate-fan-in` 500 ms, `animate-petal-fall` 1.6 s and the
+  long letter's `animate-letter-scroll` 6 s, all on the `ease-standard` curve; the letter scroll
+  reads its distance from `--letter-scroll`;
+  every recap slide's motion (reveals, star fall, photo fan, petals, letter scroll) holds while the player is paused through
+  `animation-play-state`), and the blog feed's
   original motion (`duration-lift` 500 ms, `duration-zoom` 700 ms and the
   caption's `transition-caption` on the feed tile, `duration-lens` 300 ms on the
   timeline rail's zoom; see "The blog feed"). All stop or become static with reduced motion
@@ -565,7 +580,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Group background behind everything | `Canvas` |
 | Main content area or dialog body | `Sheet` / `Modal` |
 | A boxed item on a sheet | `Card` |
-| Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for a 推 filter). The blog feed's All / Favorite is its own segmented control (see "The blog feed") |
+| Tab or filter | `Pill` (`selected`: `bg-accent-subtle`, `text-accent-strong`, `ring-accent-border`; `tone="oshi"` for a 推 filter; `tone="star"` for a ★ favourite filter: a neutral `bg-sunken` / `text-primary` / `ring-strong` selected state beside the yellow `text-semantic-star` icon, never the accent). The blog feed's All / Favorite is its own segmented control (see "The blog feed") |
 | Unread count | `Badge count={n}` (hidden at 0, `99+` cap, unread glow) |
 | Person or member | `Avatar` (`selected`: accent ring with a white gap + halo; a muted look or hover zoom goes on the image via `imgClassName` / `imgStyle`, never on a wrapper, so the ring stays sharp and in place; an archived avatar drawn small gets `resizedAvatarUrl(url, useAvatarWidth(<drawn CSS px>))`, a resized copy matched to the screen density, never the ~1000 px original) |
 | Timeline date | `DatePill` (`sticky` inside scrolling timelines) |
@@ -576,9 +591,13 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Menu or dropdown of actions | `Menu` + `MenuItem` (`radio` for one-of options) |
 | On/off setting | `Switch` |
 | Text field / choice | `Input` / `Select` |
-| Loading, empty, error inside a dialog | `DialogStatus` |
+| Loading, empty, error or timeout of a pane, block or dialog | `StatusBlock` (see "Loading and waiting"); a Memories view reaches it through `MemoriesStatus` (below). It is the only status component: the older per-feature ones are gone |
+| A layout-shaped placeholder while a first load runs | `Skeleton` inside a `StatusBlock` `skeleton` |
+| A small wait that does not gate content (a row, a play control) | `Spinner` after `useDelayedLoading` |
+| A long job, or a known total | `ProgressBar` (indeterminate until the total is known) |
+| A refresh or step inside a loaded view | `BusyContent` around the kept content (`useKeepPrevious`) |
 | Empty list or screen | `EmptyState` |
-| Image still loading | Neutral skeleton `bg-sunken animate-pulse motion-reduce:animate-none` (`SafeImage` `skeletonClassName`); keep the `<img>` laid out at `opacity-0`, never `hidden`, so `loading="lazy"` can fire |
+| Image still loading | `Skeleton` (`shape="tile"`, or `SafeImage` `skeletonClassName` with `SKELETON_PULSE` and `bg-sunken`); keep the `<img>` laid out at `opacity-0`, never `hidden`, so `loading="lazy"` can fire |
 | Video or voice buffering / failed | `useMediaPlayback` (`core/media/useMediaPlayback.ts`). Buffering (waiting for data while playing): a `Loader2` spinner with `animate-spin motion-reduce:animate-none`, centred over the video in `text-viewer` (`role="status"`, `common.loading`), or in place of the voice player's play icon (`aria-busy`). Failed: a neutral message (`videoPlayer.playbackError` / `voicePlayer.playbackError`, never danger red) with a Retry (`common.retry`) that reloads the element at the same position and plays: on the video a `bg-viewer-scrim` panel with an `overlay` Button, on the voice player a `text-secondary` caption with a `ghost` Button. Every `<video>` / `<audio>` element gets its source through `useMediaSource` (`core/media/mediaElement.ts`), which releases it (pause, drop `src`, `load()`) before the source changes and on unmount; viewers key the player by source. The one detached preload `Audio()` in `preloadAudio.ts` has no element to hook, so it is released manually |
 | Low-density screen background | `Atmosphere` |
 | One-time celebration | `CelebrationToast` / `MilestoneCard` |
@@ -633,10 +652,172 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
   `ConfirmDialog` (expressive header of its opener's context, the warning / danger / info
   meaning in a semantic icon tile, a `secondary` Cancel where focus starts, then `primary`,
   `warning` or `danger`) and never `window.confirm`, and loading, empty and
-  error states are `DialogStatus` (spinner `text-accent`; the error tile is
-  `bg-semantic-danger-icon`, the empty tile `bg-expressive-soft`; `retryVariant` is
+  error states are `StatusBlock` (`variant="dialog"`; spinner `text-accent`; the error tile is
+  `bg-semantic-danger-icon`, the empty state `EmptyState`; `retryVariant` is
   `secondary` by default and `primary` for the gradient retry the blog dialogs use).
-  `BlogStatus`'s retry is always `primary`.
+
+### Loading and waiting
+
+Every wait must look like loading: never a blank area, never a control that seems to ignore the
+click. The timing lives in `motion.loading` (`design/tokens/motion.ts`); the hooks in
+`design/loading.ts`; the primitives in `design/primitives/`.
+
+| Elapsed | What the user sees |
+|---|---|
+| 0–200 ms (`reveal`) | Nothing new; the previous content stays, so fast loads never flash. Only a button's pressed state and an optimistic change apply at once |
+| ≥ 200 ms | The indicator for this kind of wait (table below) |
+| ≥ 3 s (`slow`) | One line of specific "still working" copy, `text-small text-secondary` (default `loading.slow`) |
+| ≥ 10 s (`verySlow`) | Why it is slow (default `loading.verySlow`), plus Cancel when the job can be cancelled, or progress: a determinate `ProgressBar`, or an indeterminate one next to the explanation when there is neither (decision D-L1). The rest of the screen stays usable |
+| Timeout (per surface) | `StatusBlock kind="timeout"`: Retry, with copy that differs from a failure. Never an endless spinner |
+
+A shown indicator stays at least 400 ms (`minVisible`; `settleDelay(elapsed)` gives the hold).
+
+**Hooks** (`design/loading.ts`):
+
+| Hook | Use |
+|---|---|
+| `useLoadingStages(active, { surface?, startedAt? })` | `{ stage, waitMs }`: `hidden` → `shown` → `slow` → `verySlow`; resets when `active` turns off. With `surface` it logs `ui_wait` once for `slow` and once for `very_slow`. Measured on `performance.now()`, and an early timer is re-armed, so a wait never sticks. Keep `startedAt` stable (state or a ref): a new value restarts the wait |
+| `useDelayedLoading(active)` | true from `reveal` until `active` is off and the indicator has shown `minVisible`; for indicators that do not gate content |
+| `useKeepPrevious(data, { scope, loading })` | `{ shown, stale }`: while loading, the last ready payload of the same scope (`stale: true`); a new scope keeps nothing. Pass a primitive `scope`; `data` may be rebuilt every render |
+| `settleDelay(elapsedMs)` | ms to hold a finished result so a shown indicator stays `minVisible` |
+| `logWait(surface, phase, waitMs)` | the `ui_wait` breadcrumb (`surface` a code `^[a-z0-9_]{1,40}$`, `phase` `slow` / `very_slow` / `timeout` / `cancelled`, `wait_ms`); never throws |
+
+**Primitives:**
+
+| Primitive | Props | Look |
+|---|---|---|
+| `Spinner` | `size` `sm` / `md` / `lg` (`h-4` / `h-6` / `h-8`), `tone` `accent` / `muted` / `current` / `viewer`, `label` (default `loading.label`), `labelVisibility` `auto` / `always` / `compact`, `decorative` | lucide `Loader2`, `animate-spin motion-reduce:animate-none`; `role="status"` named by its label. `decorative` (aria-hidden, no role, no label) only next to visible text that describes the wait |
+| `Skeleton` | `shape` `line` / `block` / `circle` / `tile`, `tone` `sunken` (default, `bg-skeleton-veil`: the primary ink at 12 % (`--ds-overlay-skeleton`), a veil that darkens whatever it sits on, so tiles show on sheets, cards, the sunken band and cover-tinted bands alike) / `paper` (`bg-skeleton`) / `data` (no colour; the caller paints `style`), `className`, `style` | `SKELETON_PULSE` (`animate-pulse motion-reduce:animate-none`); always `aria-hidden`, the parent carries `role="status"` and a label |
+| `StatusBlock` | `kind` `loading` / `empty` / `error` / `timeout`, `surface` (a `ui_wait` code), `variant` `pane` / `dialog` (default) / `block` / `fill` / `inline`, `title`, `hint`, `icon`; loading: `label`, `skeleton`, `slowHint`, `verySlowHint`, `onCancel`, `cancelLabel`, `progress`, `stage` (previews only); empty: `title` (required), `action`; timeout: `onRetry` (required); error: `onRetry` (give it whenever the load can run again; without it the alert shows with no button); both: `retryLabel`, `retryVariant` | loading: an empty `role="status"` box with `aria-busy` (same size) until `reveal`, then (without `aria-busy`, so the label, the slow line and the explanation are announced) the skeleton or an accent spinner, then the hints, Cancel (ghost) and bar as in the timing table. error: `role="alert"`, danger icon tile, `loading.error`, Retry (`secondary`). timeout: `role="alert"`, neutral `Clock` tile (`bg-sunken text-muted`, never danger), `loading.timeout` + `loading.timeoutHint`, Retry. empty: `EmptyState` |
+| `ProgressBar` | `value` (0..1; null / undefined = indeterminate), `label` (required, the accessible name), `valueText`, `size` `thin` / `sm` / `md` (`h-0.5` / `h-2` / `h-4`), `showLabel`, `labelClassName` | `bg-sunken rounded-full` track, `bg-expressive-progress` fill (`transition-all duration-base`, none under reduced motion); indeterminate: a `w-1/3` segment on `animate-progress-indeterminate` |
+| `BusyContent` | `busy`, `label`, `children`, `className`, `contentClassName`, `inertWhileBusy` | keeps the previous content, `aria-busy` (with `inertWhileBusy` also `inert` and `pointer-events-none` at once, for kept content whose clicks would act on the old selection); after `reveal` the content dims to `opacity-60` and a thin indeterminate `ProgressBar` sits on the top edge (no pointer events). Under reduced motion its label shows on a small `bg-sheet` pill under the bar, never painted straight over the content |
+
+Variants of `StatusBlock`: `pane` fills a flex pane (`flex-1 p-6`: Memories, chat), `dialog`
+sits in a dialog body (`px-6 py-12`), `block` is a fixed `h-72` block, `fill` fills the scroll
+area (`h-full min-h-96`, a `lg` spinner), `inline` is one row (`sm` spinner with its label
+visible, `text-small text-secondary`; error and timeout drop the icon tile and use a ghost Retry).
+
+**Memories views** (`features/memories/shared/`): `useMemoriesQuery` reports `failure`
+(`timeout` / `error`), `stale` (kept payload) and `polling` (a quiet `refreshWhile` reload is
+pending), and holds a visible result for `settleDelay` so a revealed indicator stays `minVisible`
+(`settle: false` commits on arrival: the album months and month bands, so a D4 fetch slot frees the
+moment its answer lands).
+`MemoriesStatus` maps a query onto `StatusBlock` (surface `memories_<view>`, the Memories slow /
+very-slow copy, `memories.common.loadError` or the `memories.common.timeout` copy, Retry). A step
+inside a loaded view (timeline month, On This Day month-day, 那一天, calendar month, album person
+or filter) passes `keepPrevious: { scope, isEmpty }` and wraps the kept body in
+`BusyContent busy={query.stale}` (`inertWhileBusy` for the timeline, On This Day and 那一天). An
+empty payload is never kept (the next selection shows the loading state, never "nothing here"),
+and a failed load forgets the kept payload, so its Retry shows the loading state too.
+`MemberPane` takes `status` / `onRetry`: six `Skeleton` rows after `reveal`, or an inline error /
+timeout line with Retry below the 「全員」 row.
+The hub's first load reserves the moment's place from mount (`min-h-48`), draws a `Skeleton block`
+shaped like the On This Day card from `reveal`, the Memories slow line at 3 s and
+`memories.home.firstVerySlow` with an indeterminate bar at 10 s (no Cancel: the entry cards stay
+usable and never move at the reveal). Under the title an empty `role="status"` region is always
+mounted; while the board on screen is `refreshing` and still re-polled it holds one row in the
+inline `StatusBlock` look (decorative spinner beside the visible line, no second live region, shown
+at once) saying it is still gathering. When the polling
+ends at its cap (`pollCapped`) the line drops quietly and logs `ui_wait` `timeout` once.
+An album band without its grid shows its skeleton in the very grid box of the real grid, measured
+with `useGridColumns`: its `minHeight` reserves `ceil(cells / cols)` rows at the measured tile edge
+(one cell per item, plus one pinned ★ when the month has a favourite and the filter pins them), and
+at most 12 `Skeleton tile`s pulse (the `minHeight` sits on the wrapper, so the grid box stays the
+real grid's and its rows stay packed at the top). Bursts and further favourites are unknown until the grid lands,
+so a month with them can still change height then. On a warm reopen the top band takes the page's
+newest-month prefetch: it holds its reveal until that prefetch settles or `PREFETCH_REVEAL_MS`
+(1 s) after the band mounts (then the normal skeleton and its `minVisible` apply; a hold that
+outlasts the normal reveal logs `memories_skip` `album_prefetch` `prefetch_reveal_held`), and no
+other band's fetch starts until it has landed or failed; the member list, the ribbon colours and the
+thumbnail status are asked for only then too (at most 1.5 s later), the `MemberPane` showing its
+loading rows and the ribbon each month's cover tint meanwhile. The first open of a session and every
+other band keep the normal timing. Before `reveal` the box is the same size, empty;
+under reduced motion the label floats as a pill over the tiles, so it never changes the height. A
+shown band skeleton stays `minVisible` for display only (the answer reaches the album's cache on
+arrival, which frees the D4 fetch slot, and the loader unmounts, so a band that leaves and returns
+never refetches; the band settles, and a ribbon jump re-aligns, after the real grid commits). Band
+errors and timeouts are inline with Retry. Slow copy is not repeated per band: one page-level wait
+line floats as a pill over the top of the bands (`memories_album_month`; its clock starts at the
+oldest band still waiting), with `memories.album.waitSlow` at 3 s and
+`memories.album.waitVerySlow` plus a thin indeterminate bar at 10 s.
+
+Which primitive for which wait:
+
+| Kind of wait | Pattern |
+|---|---|
+| First load of a page or pane with a known layout (chat, sidebar, member pane, album month, binder, hub moment) | `StatusBlock` with a layout-shaped `Skeleton` |
+| First load with an unknown layout, or inside a dialog | `StatusBlock` with its spinner |
+| Refresh, filter or step inside a loaded view (month, year, member, sync refresh) | `BusyContent` (keep-previous: dimmed content plus a top `ProgressBar`) |
+| Image, video still or thumbnail | the media pipeline's `MediaTile` (below), or `SafeImage` with a `Skeleton` look until migrated |
+| Media playback (video, voice, radio) | `useMediaPlayback` buffering: a `Spinner` on the play control, never a lit "playing" state before sound |
+| Small write (favourite, setting, cover, capsule) | Optimistic UI plus a row `Spinner` after `useDelayedLoading`; revert plus a quiet error |
+| Button-triggered job under about 10 s (login, export PNG, pull) | `Button loading`, with Cancel kept enabled |
+| An action that needs data still loading (the recap share export before its photos) | the button blocked with a `disabledReason` that names the wait (「写真を準備中…」), the same words in a visible `text-small text-secondary` status line beside it from `reveal` (the slow and very-slow copy from 3 s and 10 s, plus a ghost Cancel from 10 s that stops the wait and opens the action without the data, saying so); a cover `Skeleton` plus a revealed `Spinner` over the preview; a per-surface timeout that opens the action without the data and says so in a `text-small text-secondary` status line |
+| Long job (sync, export, upgrade, index build, transcription) | `ProgressBar` (indeterminate until a total is known), phase copy, Cancel |
+| Background work the user did not trigger (hub refresh, search index, blog backup) | `StatusBlock variant="inline"`, never blocking |
+
+**Reduced motion:** nothing spins, pulses, sweeps or fades. A spinner becomes a static glyph
+**with a visible label** (`labelVisibility="auto"` shows it through
+`motion-reduce:not-sr-only`), never an icon alone; an indeterminate `ProgressBar` shows its
+label the same way, and so does a `StatusBlock` drawn with a `skeleton` (the placeholder stops
+pulsing, so its label shows from `reveal`). The only exception is `labelVisibility="compact"`, for media tiles and
+bubbles under 160 px, where the label stays in the accessibility tree only.
+
+**Media hand-off** (the media pipeline's `MediaTile` and its grid build on these, with no
+shimmer or spinner of their own):
+
+- The placeholder layer is `<Skeleton shape="tile" tone="data" style={{ backgroundColor: meta?.color ?? undefined }} />`,
+  or `tone="sunken"` when there is no colour; it is static under reduced motion.
+- Under reduced motion a tile still waiting after `reveal` shows
+  `<Spinner size="sm" tone="muted" labelVisibility="compact" />` centred. `Spinner` has no
+  reduced-motion-only mode: `MediaTile` itself wraps it in `hidden motion-reduce:inline-flex`
+  (so it shows only under reduced motion, where the skeleton stops pulsing) and gates it with
+  `useDelayedLoading`. Do not add a `Spinner` variant for this.
+- A failed tile uses the media plan's own retry state. Grid-level states (first page, more pages,
+  pre-generation running) use `StatusBlock` (`variant="dialog"`, surfaces `media_gallery` /
+  `blog_gallery` / `memories_album`), or a `ProgressBar` for the "Preparing thumbnails… done / total" row.
+- The fade-in stays `transition-opacity duration-base ease-standard motion-reduce:transition-none`.
+
+**Media tile** (`core/media/grid/MediaTile`, built in M5): the photo's mean colour is runtime
+data, so it is applied through `style` on the placeholder `Skeleton` (`tone="data"`), the
+documented data-driven exception like the album band tint; never as a class or a literal. The
+colour sits on the pulsing layer, not on the tile box, so the pulse stays visible. When the meta
+store has a 16 px preview, an `aria-hidden` `<img>` with `blur-placeholder scale-110 object-cover`
+(the `blur-placeholder` token, 12 px) pulses on top of it. The thumbnail mounts at `opacity-0` and
+fades to `opacity-100` with `duration-base ease-standard`; with `motion-reduce` there is no fade
+and no pulse, and the compact spinner above stands in. A failed picture shows a quiet
+`bg-sunken text-muted` state (an image-off glyph and `loading.error`; a ghost Retry only where the
+tile is not already inside a button, and it retries by itself when scrolled back into view),
+never an empty box. A video without a poster is the `Film` tile (`bg-sunken text-muted`); a grid
+never mounts a `<video>`. A gallery that wraps each tile in its own button keeps the tile's
+`onFail(retry)` handle and calls it when a failed tile is clicked, instead of opening the viewer;
+`MediaTileButton` does this for the galleries and, through the tile's `onStateChange`, switches the
+button's accessible name to the retry action while the tile is failed. The rule itself is
+`useTileRetry()`, which the Memories album's photo tiles and burst-sequence frames use too, naming
+a failed tile `memories.album.retryTile`. Only a tile whose click would show that same file
+retries: a burst stack always opens its sequence (named `memories.album.openBurst`; its still
+still shows the failed state), where each frame owns its retry. Tiles in a portalled dialog or
+viewer sit under `MediaGridContext.Provider value={null}`, so they observe against the viewport,
+not the grid's scroll container. Every Memories still is a `MediaTile` through `MemoryThumb`
+(with `px`); `loading="eager"` (the recap poster export and the recap slides) is the synchronous
+`<img>` variant with no pulsing placeholder, using a `v` the meta store already holds, and a failed
+eager tile is a plain `bg-sunken` box with no caption (it is decorative or baked into an export).
+A `MemoryThumb` without `px` is the original file as a plain `<img>`. The album shows
+`PregenProgressBar` at the end of its filter row (its status reads log `memories_load`
+`album_pregen`, through `usePregenProgress`'s `log` parameter, not as a dialog load).
+For the grid-level states, `core/media/grid/galleryStatus.ts` has `useHeldLoading(active)` (keeps
+the first-load `StatusBlock` mounted until `minVisible`), `pregenProgress(status, service)` (the one
+"thumbnails are still being prepared" rule, shared with Settings: `{done, total, paused}`) and
+`usePregenProgress(active, service)` (polled from `/api/media/status` only while the gallery shows
+thumbnails and pre-generation runs or is paused; each activation reads afresh and logs one `ok`).
+`PregenProgressBar` draws it in a gallery footer: "Preparing thumbnails… done / total" as a thin
+bar, or, while the worker is paused (a sync, a refresh, a blog backup or the gallery itself in
+use), "…paused · done / total", dimmed, so a bar that is not moving never looks frozen. Settings
+shows the same states as a line (a spinner only while running).
+
+**Breadcrumb:** `ui_wait` (`surface`, `phase`, `wait_ms`) is allow-listed in
+`utils/clientLog.ts` and `backend/api/client_log.py` (a `ui_wait` phase must be one of the four
+codes; `wait_ms` is a non-negative integer on every event). Ids and codes only.
 
 ### Developer surfaces
 
@@ -677,6 +858,10 @@ pre-D2 panel's values; use them for developer tooling only.
   while the dates are still loading, focus stays on the title and moves into the picker once it
   renders (unless the user has moved focus elsewhere). `calendar_picker` breadcrumbs: `phase` `open` (`count` years),
   `select` (`has_target`: the month has dates) and `back` (`reason` `escape` / `button`).
+- **Free date picker:** in Dates mode, `selectAnyDay` makes every day selectable and
+  `text-primary` (On This Day's 日付をえらぶ picks any month-day); dated days keep their count, and
+  the year / month picker shows every year and month as available. `initialMonth` (any mode)
+  sets the month shown on each open (On This Day opens on the month being viewed).
 
 ### Menus
 
@@ -770,6 +955,215 @@ D2b replacements were rejected. Its values live in `design/tokens/blogFeed.ts`.
   zoomed (`border-strong` otherwise) and the tooltip glows with `shadow-accent-glow`. The zoom
   transitions run `duration-lens` (300 ms): track width, year markers and dot `ease-in-out`,
   the lens `ease-out`; none with reduced motion.
+
+### Memories keepsake surfaces
+
+The Memories screens (hub, memoir, On This Day, album, favorites) show the fan's keepsakes on
+neutral materials. Their values live in `design/tokens/memories.ts` and are written as
+`--ds-mem-*` variables; none of them follows the group accent.
+
+| Utility | Variable | Use |
+|---|---|---|
+| `bg-memories-paper` / `border-memories-paper` | `--ds-mem-paper` / `--ds-mem-paper-line` | Letter and polaroid white (a warm paper, never pure white) and its hairline. |
+| `bg-memories-cork` | `--ds-mem-cork` | The favourites cork board base. |
+| `bg-memories-washi` | `--ds-mem-washi` | Translucent washi tape pinning a polaroid. |
+| `bg-memories-foil` | `--ds-mem-foil` | The holographic sheen of a special card, built from the aurora stops (`aurora.stops`). |
+| `bg-memories-ruled` | `--ds-mem-ruled` | The ruled lines of a 特別な日 postcard's back: a paper-line hairline every 20 px, the `text-small` line height (pair it with `bg-local` in a scroller). |
+| `shadow-memories-polaroid` | `--ds-mem-shadow-polaroid` | A polaroid lying on a surface. |
+| `border-memories-silhouette` | `--ds-mem-silhouette` | The dashed outline of an unearned card (`border-dashed`), the neutral `border-strong` value. |
+| `sepia-memories-1/2/3` | `--ds-mem-sepia-1/2/3` | A photo aged by its year (see below). |
+| `bg-memories-rarity-n` | `--ds-mem-rarity-n` | Gacha N rarity: the neutral `border-strong` value. |
+| `bg-memories-rarity-r` | `--ds-mem-rarity-r` | Gacha R rarity: a warm rose gold, its hue well away from the magenta oshi pink. |
+| `bg-memories-rarity-sr` | `--ds-mem-rarity-sr` | Gacha SR rarity: the foil's gold, a gold sheen through the aurora peach stop (not the star yellow). |
+| `bg-memories-night` / `text-memories-night-ink` | `--ds-mem-night` / `--ds-mem-night-ink` | The voice radio's night surface (deep navy into the brand ink, lit by the aurora lavender) and the text on it (the aurora sky stop). |
+| `bg-memories-onair` | `--ds-mem-onair` | The radio's ON AIR lamp: a warm red-orange, apart from danger red. Non-text only (a lamp dot on the night surface); there is no text utility. |
+| `bg-memories-sky` | `--ds-mem-sky` | 彼女の24時間's vertical sky: dawn, day, dusk, night. |
+| `bg-memories-note` | `--ds-mem-note` | A 時光膠囊 sticky note: a warm paper yellow, apart from the favourite star. |
+
+- **Sepia by age.** `sepiaClass(year)` (`features/memories/shared/sepia.ts`) gives a keepsake
+  from this year no filter, last year `sepia-memories-1`, two years ago `sepia-memories-2` and
+  three or more years ago `sepia-memories-3` (full sepia). Years are counted in JST. The year
+  recap's 去年の、同じ日 slide (S08, drawn by `ThenNowPair`) is not age-graded:
+  its older card always uses `sepia-memories-3`, the approved full-sepia look. Apply it to the photo or card, never to text
+  you need to read at full contrast. `sepiaClass` returns literal class names from a lookup, so
+  Tailwind sees them; never build a `sepia-memories-${n}` name at runtime.
+- **Foil only for special cards.** `bg-memories-foil` marks a binder card the catalogue flags as
+  foil (`foil: true`) and a gacha SR card, and nothing else: not hover states, not headings, not
+  the hub.
+- **The fun-wave surfaces are semantic.** Rarity, night, on-air, sky and note have fixed meanings
+  and never follow the group accent; none of them reuses the oshi pink, the favourite star yellow
+  or danger red. Group colour stays for identity, the current state and one primary action. The
+  on-air lamp is an indicator, not an error: never use it for failures (that is
+  `semantic-danger`). Rarity colours mark a gacha card's tier only.
+- **Inks on the fun surfaces.** On `bg-memories-night` use `text-memories-night-ink` (at least
+  4.5:1 over the whole gradient). The on-air lamp is a non-text indicator (at least 3:1 on the
+  night). Rarity fills, `bg-memories-note` and the light top of `bg-memories-sky` take the
+  ordinary dark text roles (`text-primary`); the night end of the sky carries no text.
+- **Paper, cork and tape are materials, not colours.** Use them for the surfaces they name; text
+  on them uses the ordinary text roles.
+- **Album colour ribbon and month tint (data-driven exception).** Like the member penlight
+  colours, the album's monthly colours are runtime data (`#rrggbb` probed from her photos),
+  applied through `style`, never written as literals in source, and used by exactly two
+  elements: the colour ribbon's segments take the `/album/colors` values as their background,
+  and each month band (`album/MonthSection.tsx`) is tinted from its own `cover_color` as
+  `color-mix(in srgb, <colour> 18%, transparent)` (spec 8: the band tint comes from the cover
+  photo). A `null` colour falls back to the neutral `bg-sunken` (band and segment alike).
+- **The album** (`features/memories/album/`): month bands each hold a polaroid cover
+  (`bg-memories-paper`, `shadow-memories-polaroid`, her nearby words in `font-display
+  text-small` on one line, else the month label) and a square grid; photos are aged with
+  `sepiaClass` by year. A ★ photo wears the yellow `text-semantic-star` and, except under the
+  ★ filter (where every photo is one), spans 2×2 with a `bg-memories-washi` strip; a burst of
+  three or more is one stacked still with 「{{count}} 枚」 (the star on the stack and beside the
+  frame when it holds a ★) that opens the sequence (`Modal`) with each caption beside its frame.
+  The month label is shown once: the band heading when the polaroid carries her words, else the
+  polaroid's caption. A tile's hover / focus caption is a frosted card (`bg-frost
+  backdrop-blur-frost`). Stills come from the thumbnail route (`thumbnailUrl`, full file on
+  error); a video still mounts its player only while in view. The filters are `Pill`s, the ★
+  one `tone="star"`. The ribbon on the right is a scrubber (click, drag, ↑ / ↓ / Home / End, one
+  Tab stop) whose segments share its height; its jumps are instant (never an animated scroll
+  through every band) and the tilt is static under reduced motion.
+  Cover choice: a picture / video tile's context menu (right-click, the context-menu key or
+  Shift+F10, all claimed so the WebView's native menu never opens beside it) is a point `Menu`
+  with 「この月の表紙にする」; a burst's sequence frames offer it too. A cover the fan chose (rule
+  `override`) sits in a menu button (`role="button"`, `aria-haspopup="menu"`, named by the month;
+  the `figure` carries no ARIA) whose click or menu keys offer 「表紙を自動にもどす」. A failure
+  shows the dark inline toast (`bg-toast text-viewer`, `role="status"`) over the pane.
+- **The calendar album** (`features/memories/calendar/`): the date-search calendar's grid and
+  picker (`core/calendar/monthGrid.ts`, `MonthYearPicker`, shared with `CalendarModal`) filling
+  the pane: a weekday header in the calendar tones, then 6 × 7 `rounded-md` cells in `grid-rows-6`
+  (no page scroll at the smallest window). A day with messages is a `bg-card shadow-card` button
+  under its best photo (thumbnail route at the measured cell size; a video-only day shows the
+  clip's first frame with a small play mark) with the date (calendar tone) and the holiday name
+  (`lang="ja"`, truncated) on `bg-frost` chips, and at most five `bg-card ring-strong` member dots;
+  the people count is never printed, only in the accessible name. Days without messages are inert
+  `bg-sunken` cells, neighbouring months' days are faded (`opacity-60`). ‹ / › step to the older /
+  newer month (the month on screen stays, dimmed and `aria-busy`, while the next one loads);
+  the member filter is a `Select`. The toolbar, weekday header and picker host are the shared
+  `core/calendar` pieces (`MonthNav.tsx`, `useMonthPickerView`), the same as `CalendarModal`.
+- **The favorites board** (`features/memories/favorites/`): a `bg-memories-cork` board scrolling
+  inside the pane. Text favourites are `bg-memories-paper` notes (her words clamped to six
+  lines), photos and videos are paper prints with her words as the caption, voices are paper
+  cards whose `VoicePlayer` (and its audio) mounts only on ▶ (`shared/LazyVoice`: one Memories
+  voice plays at a time; opening the strip or leaving the page stops it). Each item is held by a
+  `bg-memories-washi` strip, names her and the JST date, and leans by a tilt picked from a
+  literal class list by its id (`tiltClass`, −2…2°; upright under reduced motion). The board
+  carries no ★ on every item (they all are); the film strip (`FilmStrip`, a `Modal`) shows the
+  focused message larger on paper with the yellow `text-semantic-star` when it is a favourite,
+  its neighbours of that day as dimmed frames, ‹ / › (and ← / →) for older / newer. Long boards
+  mount only the chunks near the viewport.
+- **The voice radio** (`features/memories/radio/`): the station is a `bg-memories-night`
+  surface in `text-memories-night-ink` at any hour (the station's brand moment, not a clock).
+  The ON AIR lamp is a `bg-memories-onair` dot lit only while sound plays (off: a dimmed
+  `bg-current` dot) beside the serif station title. Program cards, the now-playing card and the
+  prev / next controls sit on the translucent `bg-viewer-control` (the dark-viewer control
+  surface); the picked card wears the accent ring (current state) and ▶ / ❚❚ is the one
+  `accent` button. Each card shows at most one number (its track count, once loaded). The
+  waveform's bars are `bg-current`, so they take the night ink; they are a still row under
+  reduced motion or without Web Audio. Lyrics dim the lines around the current one
+  (`opacity-60`) and scroll inside their own box. The cassette tapes take the year's probe colour
+  through `style` (the album ribbon's data-driven exception; a `null` year is the neutral
+  `bg-sunken` tape) under a `bg-memories-paper` label. The sleep timer is a `Pill` with a `Menu`.
+- **The gacha** (`features/memories/gacha/`): the capsule machine is CSS shapes from tokens: a
+  `bg-frost backdrop-blur-frost` dome of capsules over a neutral `bg-card` base with a
+  `bg-memories-paper` knob and a `bg-sunken` slot. A capsule's top half is its rarity fill
+  (`bg-memories-rarity-n/r/sr`, from a literal lookup), its bottom half paper; the history row
+  repeats the capsules with their JST pull dates and scrolls inside itself. The knob turns by
+  drag, click, Enter or Space and shows 「今日はあと {{count}} 回」 under it, or 「また明日」 at 0
+  (never the number). The capsule rolls out (`duration-base`) and the card opens; under reduced
+  motion both fade. The card is `bg-memories-paper` with `shadow-memories-polaroid`: the rarity
+  label in its fill with the reason line, her words, photo or voice (`LazyVoice`), her name and
+  the message's real JST date and time, the context link (the film strip) and the ★ in the yellow
+  `text-semantic-star`. SR wears the still `bg-memories-foil` sheen with one `animate-shimmer`
+  sweep (removed under reduced motion).
+- **The memoir binder** (`features/memories/memoir/`): each shelf has a serif Japanese title
+  (`lang="ja"`, an `h3` under her name, Japanese in every language) and a localised subtitle.
+  Every card has a condition line for its silhouette. An earned card is a
+  `bg-memories-paper` print with `shadow-memories-polaroid`: her photo or her words (four lines),
+  the date and the serif title. An unearned card is a `border-2 border-dashed
+  border-memories-silhouette` outline with the condition and, when there is progress, a thin
+  `bg-sunken` bar filled with the neutral `bg-skeleton` (never danger, never a digit). A foil
+  card (earned only) has a still `bg-memories-foil` sheen under its face and one `animate-shimmer`
+  sweep over it (`motion-reduce:hidden`: under reduced motion only the still sheen stays). The
+  graduation card's memorial foil never sweeps. The あなた shelf shows an envelope and the fan's
+  date, never her words, and opens the fan's own letter.
+- **特別な日 postcards** (`memoir/Postcard.tsx`, `postcardModel.ts`): an earned 特別な日 card is a
+  `bg-memories-paper` postcard (`rounded-sm`, `shadow-memories-polaroid`) with a stamp (a
+  `border-2 border-dotted border-memories-silhouette` box on `bg-memories-washi` holding the day's
+  lucide glyph in `text-secondary`) and a round postmark (`rounded-pill border border-current
+  text-muted`, tilted `-rotate-12`: year and `M.D`, plus the JST clock on a back; the shelf's
+  day name sits in the caption under the stack, so nothing is cut inside the circle). On the front
+  the greeting (two lines at most), the postmark and the stamp share a `h-14` top zone that her
+  words never enter; her words clamp at three `text-small` lines (an ellipsis on a line boundary),
+  in a plain block (never as a flex item, which WebView2 blockified to `flow-root`) and capped by
+  `max-h-small-3` (three `text-small` line heights). The caption stays above the fanned cards (`z-40`).
+  The stack and its caption fill the shelf tiles' `h-52`, so bottom edges line up. A dev-only
+  sample (a 3-year stack and its backs, `PostcardPreview`) sits on `?view=design`. Several years stack (at most three layers, the newest on top, resting at `rotate-1`
+  / `-rotate-3` / `-rotate-6`); hovering or focusing the stack fans the layers out with
+  `motion-safe:group-hover:` / `motion-safe:group-focus-visible:` rotate and translate steps on
+  `duration-base ease-standard`, so under reduced motion nothing moves. One focusable button per
+  stack, named by the title and described by 「はがき N 枚 ・ years」. Themes come from fixed roles,
+  never the accent for decoration beyond pastel: 元旦's 謹賀新年 is `text-calendar-holiday`, the
+  birthday card carries a thin `bg-memories-foil` band, the anniversary cards (加入紀念日, the
+  subscription anniversary) a thin `bg-accent-subtle` band; the only pink is the ♥
+  (`fill-semantic-oshi text-semantic-oshi-solid`) beside her name for the fan's 推し. The card
+  detail shows the postcard backs newest first: her words on `bg-memories-ruled bg-local`, the stamp,
+  the postmark, the day's photo aged with `sepiaClass` and 「{{name}} より」; each back is an
+  `aria-pressed` button (the picked one wears `ring-accent-border`) in one roving Tab stop moved by
+  the arrow keys, Home and End, and leans by a still `±rotate-1`.
+- **The hub board** (`features/memories/MemoriesHome.tsx`, `home/`): a fixed viewport with a
+  serif title over one board (the large On This Day card, then a grid of entry cards) that
+  scrolls inside the pane when it is short, so every card stays reachable at the smallest window. The On This Day card is the hub's brand moment: an `Atmosphere`
+  (`fade`) behind a `bg-frost backdrop-blur-frost` card holding the rule's serif label (never
+  "today" for a nearby or first moment), her name, her words (three lines) and that day's photo
+  on `bg-memories-paper`, aged with `sepiaClass` (a photo that cannot load hides its frame). The entry cards (`hubCards.ts` registry, the
+  recap card included) share one neutral face: a `bg-expressive-soft` icon disc in `text-muted`,
+  a serif title and one count line, hidden when the count is zero. The 誕生日・記念日 card
+  carries one number per line (the days, or the anniversary year on the day itself). The
+  group colour appears only as the hover glow and focus ring.
+- **The time capsule** (`features/memories/capsule/`): the fan's own notes are `bg-memories-note`
+  sticky notes under a `bg-memories-washi` strip, leaning by the cork board's id tilt (static; flat
+  under reduced motion), body in `text-primary` with the written date in `text-secondary`. The
+  body is the fan's words, so it never carries `lang="ja"`. A day view (unless its host passes `showCapsule={false}`) and
+  an earned binder card carry a strip of notes with a ghost 「メモを貼る」 button; the editor is a
+  plain `Modal` whose textarea uses the field look, shows a remaining count only past 1800 of
+  2000 characters (a line without a number at the limit) and asks before 「はがす」. A resurfaced
+  note sits beside her message of that day on `bg-memories-paper` (serif 「N年前のあなたが書いたメモ」
+  over both), below the hub's On This Day card and above On This Day's year strip.
+- **The same-time line** (`home/SameTimeLine.tsx`): a quiet one-line button above the hub's On
+  This Day card, `text-small text-secondary` with the JST clock in `text-muted` and her words in
+  `text-primary`, truncated to one line; `hover:bg-sunken`, no group colour beyond the focus ring.
+- **初見と今** (`features/memories/thenNow/FirstMeetPanel.tsx`): the memoir timeline's month
+  header holds a 初見と今 `Pill` (pressed while the rows replace the month). Column heads 初見 / 今
+  (serif, her avatar at the time, a `text-caption text-muted` caption), then one row per kind under
+  a `border-subtle` rule: the kind label, her first message and a recent one as
+  `bg-memories-paper shadow-memories-polaroid` buttons (below `lg` the two sides stack, each with
+  its 初見 / 今 label, and the column heads hide) (JST date and clock in `text-caption
+  text-muted`, the photo, the voice length or her words in three lines; the older photo wears
+  `sepiaClass`), and between them an arrow over the time apart (「1 年 8 天」, `font-display
+  text-small text-secondary`, never 0; the voice row adds 「長了 N 秒」 in `text-caption`), under a panel header with the serif title and, on the right (wrapping below when narrow), a
+  `text-small text-secondary` subtitle with the whole span. A side opens her day (`MemberDayDialog`). No motion beyond the
+  shared lift on hover (`motion-reduce:` none). `ThenNowPair` is now only the recap's S08 pair (its
+  stacked slide cards, the older one in full sepia, the shared keyword as a `<mark>`).
+- **歷年同一天** (`features/memories/day/YearLanes.tsx`, `yearLanesLayout.ts`): the day view's third mode
+  `Pill`. A sticky `w-12` hour axis (`text-caption tabular-nums text-muted`; `z-30`, above the `z-20` year headers, its top cell sticky too so the corner stays fixed both ways) beside one `w-56` column
+  per year (a sticky serif year over its date with the weekday and its message count), each a `bg-sunken` lane holding the
+  swimlanes' `LaneCard`s placed by JST time of day (`clockLayout`: a busy hour is at least 96 px
+  and grows to hold its cards; hours with no message in any year collapse into one 28 px row with
+  a dashed `border-subtle` rule and the range 「08:00–15:00」). Year columns are `min-w-56 flex-1`,
+  so few years fill the pane; the axis and the lane bodies start `mt-2` below the header so the
+  first hour label is not hidden, and the day view's scroller drops its side padding in this mode
+  so the opaque axis is flush with its left edge. Neighbouring
+  years' matching kinds are joined by an `aria-hidden` SVG of dotted lines in `text-muted
+  opacity-60` across the 40 px gutter; an hour quiet in this year but not in another is a
+  `border-dashed border-strong` outline with 「這個時段沒有訊息」 in `text-caption text-muted` when
+  tall enough. An older year's stills wear `sepiaClass`; with several people each card shows her
+  small avatar. The columns keep their width and the day view's scroller scrolls sideways.
+- **彼女の24時間** (`features/memories/day24/`): the memoir's `day24` tab (reached from a header
+  chip, neither tab pill selected). A serif title with her name `lang="ja"`, a `text-secondary`
+  subtitle, and a narrow `bg-memories-sky` day line (morning at the top, night at the bottom, no
+  text on it) beside `bg-card shadow-card` slots: the JST time in serif `tabular-nums`, the year in
+  `text-caption text-muted` (both metadata) and her words, still or voice. 🎲 is a secondary
+  `IconButton`. A thin day is an `EmptyState` with no number. No animation.
 
 ### The group rail and the profile card
 
@@ -865,6 +1259,26 @@ Review the diff: numbers should only go down.
 The v2 foundation added the superseded group-role utilities to the ratchet, so
 the baseline lists the files that still use them; counts only go down from
 here.
+
+#### The loading ratchet
+
+The same test file runs a second ratchet over hand-built loading indicators
+(`countLoadingViolations`, `isLoadingScanned` in `design/guard.ts`): a raw
+`animate-spin` (with any variant prefix, counted once) and any use of the
+`common.loading` text (a child, a prop such as `sub=`, a ternary, a variable).
+Only a primitive's accessible name (`aria-label={t('common.loading')}`,
+`label={t('common.loading')}`) is not counted. It scans the same files as the style guard minus `design/primitives/`
+(the primitives own the animation) and compares them with
+`loading-guard-baseline.json` under the same rules: a new file must have 0,
+counts only go down, an improved count must be written back, and no `design/`
+file may be listed. Use `Spinner` / `StatusBlock` instead. To rewrite it, from
+`frontend/`:
+
+    UPDATE_LOADING_BASELINE=1 npx vitest run src/design/guard.test.ts
+
+The loading-UX wave started it at the hand-built spinners of the time and
+ended it empty (`{}`); `guard.test.ts` pins that it stays empty, so any new
+hand-built spinner fails the build.
 
 #### The dialog style ratchet
 

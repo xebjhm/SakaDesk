@@ -18,6 +18,8 @@ interface LayoutProps {
     syncProgressByService?: Record<string, SyncProgress>;
     initialSyncServices?: Record<string, true>;
     blogBackupEnabled?: boolean;
+    /** The fan's nickname per service (`%%%` in her messages). */
+    userNicknames?: Record<string, string>;
 }
 
 /**
@@ -35,6 +37,7 @@ export const Layout: React.FC<LayoutProps> = ({
     syncProgressByService,
     initialSyncServices,
     blogBackupEnabled,
+    userNicknames,
 }) => {
     const { t } = useTranslation();
     const { activeService, setActiveService, selectedServices, getServiceOrder } = useAppStore();
@@ -72,6 +75,7 @@ export const Layout: React.FC<LayoutProps> = ({
                         syncProgress={syncProgressByService?.[activeService]}
                         isInitialSyncing={!!initialSyncServices?.[activeService]}
                         blogBackupEnabled={blogBackupEnabled}
+                        userNickname={userNicknames?.[activeService]}
                     />
                 </Canvas>
             ) : (

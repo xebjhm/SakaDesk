@@ -1,0 +1,207 @@
+import { describe, it, expect } from 'vitest';
+import en from './locales/en.json';
+import ja from './locales/ja.json';
+import zhCN from './locales/zh-CN.json';
+import zhTW from './locales/zh-TW.json';
+import yue from './locales/yue.json';
+
+const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
+
+/** Every recap string (R4; later recap tasks append). */
+const RECAP_KEYS: readonly string[] = [
+    'recap.entry.heading', 'recap.entry.year', 'recap.entry.olderYear', 'recap.entry.newerYear', 'recap.entry.back',
+    'recap.entry.choose', 'recap.entry.partial', 'recap.entry.loadFailed', 'recap.entry.oshi',
+    'recap.entry.emptyTitle', 'recap.entry.emptyBody',
+    'recap.titles.morning', 'recap.titles.nickname', 'recap.titles.longest', 'recap.titles.voice',
+    'recap.titles.night', 'recap.titles.photos', 'recap.titles.first',
+    'recap.opening.label', 'recap.opening.starsTitle', 'recap.opening.starsNarration', 'recap.opening.starsLabel',
+    'recap.opening.firstChip', 'recap.opening.titlesTitle', 'recap.opening.titlesNarration',
+    'memories.home.recapCard', 'memories.home.opensOn',
+    'recap.player.label', 'recap.player.prev', 'recap.player.next', 'recap.player.pause', 'recap.player.play',
+    'recap.player.progress', 'recap.youFallback',
+    'recap.s01.title', 'recap.s01.sub', 'recap.s01.joined', 'recap.s01.notification',
+    'recap.s02.title', 'recap.s02.count', 'recap.s02.single', 'recap.s02.daisuki', 'recap.s02.daisukiWord', 'recap.s02.daisukiTitle', 'recap.s02.daisukiSingle',
+    'recap.s03.titleNight', 'recap.s03.titleMorning', 'recap.s03.titleNoon', 'recap.s03.peak', 'recap.s03.flat',
+    'recap.s03.clockLabel',
+    'recap.s04.title', 'recap.s04.titleDay', 'recap.s04.titleMorning', 'recap.s04.titleEvening',
+    'recap.s04.firstOhayo', 'recap.s04.firstMorning', 'recap.s04.latestOyasumi', 'recap.s04.latestArigato',
+    'recap.s04.latestOtsukare', 'recap.s04.countOyasumi', 'recap.s04.countArigato', 'recap.s04.countOtsukare',
+    'recap.s05.title', 'recap.s05.mostlyBursts', 'recap.s05.bestPhoto', 'recap.s05.burstLabel',
+    'recap.s06.title', 'recap.s06.play', 'recap.s06.hint', 'recap.s06.playing', 'recap.s06.video', 'recap.s06.count',
+    'recap.s07.title', 'recap.s07.count',
+    'recap.s08.title', 'recap.s08.titleYears', 'recap.s08.titleEcho', 'recap.s08.keyword', 'recap.s08.years',
+    'recap.s08.firstWeekTitle', 'recap.s08.firstWeek', 'recap.s08.firstRecordedWeekTitle', 'recap.s08.firstRecordedWeek',
+    'recap.s08.now',
+    'recap.s09.title', 'recap.s09.birthday', 'recap.s09.christmas', 'recap.s09.newyear', 'recap.s09.anniversary',
+    'recap.s09.anniversaryNote', 'recap.s09.sealed',
+    'recap.s10.title', 'recap.s10.favorites', 'recap.s10.letters', 'recap.s10.lettersLabel', 'recap.s10.firstFavorite',
+    'recap.s10.bookLabel', 'recap.s10.inviteTitle', 'recap.s10.inviteTitleLater', 'recap.s10.inviteFavorites', 'recap.s10.inviteLetters',
+    'recap.s11.title', 'recap.s11.joyTitle', 'recap.s11.petalsLabel',
+    'recap.s12.title',
+    'recap.s13.title', 'recap.s13.partialTitle', 'recap.s13.partialNote', 'recap.s13.narration',
+    'recap.s13.graduatedTitle', 'recap.s13.graduatedLine', 'recap.s13.lastTextTitle', 'recap.s13.lastTextPartialTitle', 'recap.s13.lastTextPartialNote',
+    'recap.poster.label', 'recap.poster.with', 'recap.poster.numbers.nickname', 'recap.poster.numbers.oyasumi',
+    'recap.poster.numbers.photos', 'recap.poster.numbers.voice', 'recap.poster.numbers.daisuki',
+    'recap.poster.start', 'recap.poster.mid', 'recap.poster.recent', 'recap.poster.avatarChanged', 'recap.poster.years',
+    'recap.poster.dedicated', 'recap.poster.since', 'recap.poster.save', 'recap.poster.handedOff', 'recap.poster.saveFailed',
+    'recap.poster.replay', 'recap.poster.open',
+];
+
+/** Recap keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
+const EN_PLURALS: readonly string[] = [
+    'recap.s02.count', 'recap.s02.daisuki',
+    'recap.s04.countOyasumi', 'recap.s04.countArigato', 'recap.s04.countOtsukare', 'recap.s06.count',
+    'recap.s07.count', 'recap.s08.titleYears', 'recap.s08.years', 'recap.s10.favorites', 'recap.s10.letters',
+    'recap.poster.numbers.nickname', 'recap.poster.numbers.oyasumi', 'recap.poster.numbers.photos',
+    'recap.poster.numbers.voice', 'recap.poster.numbers.daisuki', 'recap.poster.years',
+];
+
+const lookup = (data: unknown, dotted: string): unknown =>
+    dotted.split('.').reduce<unknown>((node, part) => (node as Record<string, unknown> | undefined)?.[part], data);
+
+describe('recap strings', () => {
+    it.each(Object.entries(locales))('%s has every recap key', (_code, data) => {
+        for (const dotted of RECAP_KEYS) expect(lookup(data, dotted), dotted).toBeTruthy();
+    });
+
+    it('English has the plural form of every counted recap key', () => {
+        for (const dotted of EN_PLURALS) expect(lookup(en, `${dotted}_other`), dotted).toBeTruthy();
+    });
+
+    it('year copy takes the year as a parameter, never a hard-coded year', () => {
+        for (const data of Object.values(locales)) {
+            expect(JSON.stringify(lookup(data, 'recap'))).not.toMatch(/20\d\d/);
+        }
+    });
+
+    it('daisuki copy never says or implies she called the fan\'s name', () => {
+        // In daisuki mode she never wrote the fan's nickname, so no line may claim a name or a call.
+        const NAME_OR_CALL = /名前|呼|叫|喚|唤|\bname\b|\bcall/i;
+        const DAISUKI_KEYS = ['recap.s02.daisukiTitle', 'recap.s02.daisuki', 'recap.s02.daisuki_other', 'recap.s02.daisukiSingle'];
+        for (const [code, data] of Object.entries(locales)) {
+            for (const dotted of DAISUKI_KEYS) {
+                const text = lookup(data, dotted);
+                if (text === undefined && dotted.endsWith('_other') && code !== 'en') continue;
+                expect(text, `${code} ${dotted}`).toBeTruthy();
+                expect(String(text), `${code} ${dotted}`).not.toMatch(NAME_OR_CALL);
+            }
+        }
+    });
+
+    it('the empty-state body looks forward and never describes thin data or an absence', () => {
+        const ABSENCE = /まだ|少し|only a few|still|few|一點|一点|少少|還只|还只|仲係/i;
+        for (const [code, data] of Object.entries(locales)) {
+            expect(String(lookup(data, 'recap.entry.emptyBody')), code).not.toMatch(ABSENCE);
+        }
+    });
+    it('the evening greeting is the latest by clock time, never called the year\'s latest or last', () => {
+        // s04 picks the greeting sent latest in the night, not the most recent one of the year.
+        const YEAR_LATEST = /今年|this year|of the year|最後|last|最新|最近|newest|recent/i;
+        for (const [code, data] of Object.entries(locales)) {
+            for (const v of ['Oyasumi', 'Arigato', 'Otsukare']) {
+                expect(String(lookup(data, `recap.s04.latest${v}`)), `${code} ${v}`).not.toMatch(YEAR_LATEST);
+            }
+        }
+    });
+
+    it('the fan\'s own days and traces never say or imply that she saw, read or knew them', () => {
+        // Messages are broadcast: s09's anniversary and every s10 line speak only of the fan's side.
+        const KNEW = /読ん|見て|知って|覚え|気づ|read|saw|seen|knew|know|remember|notice|讀|读|看過|看过|睇過|睇过|知道|記得|记得|發現|发现/i;
+        const KEYS = ['recap.s09.anniversary', 'recap.s09.anniversaryNote', 'recap.s10.title', 'recap.s10.favorites',
+            'recap.s10.letters', 'recap.s10.lettersLabel', 'recap.s10.firstFavorite', 'recap.s10.bookLabel',
+            'recap.s10.inviteTitle', 'recap.s10.inviteTitleLater', 'recap.s10.inviteFavorites', 'recap.s10.inviteLetters'];
+        for (const [code, data] of Object.entries(locales)) {
+            for (const dotted of KEYS) expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(KNEW);
+        }
+    });
+
+    it('the subscription anniversary is when her messages began reaching the fan, never a meeting', () => {
+        // The data is the fan's subscription start; "met" / 出会う / 遇見 invent a mutual encounter.
+        const MET = /出会|出逢|巡り会|めぐりあ|邂逅|\bmet\b|\bmeet|encounter|遇見|遇见|相遇|相識|相识|認識|认识|識咗|识咗|結識|结识/i;
+        const KEYS = ['recap.s09.title', 'recap.s09.anniversary', 'recap.s09.anniversaryNote',
+            'recap.s08.firstWeekTitle', 'recap.s08.firstWeek', 'recap.s08.firstRecordedWeekTitle', 'recap.s08.firstRecordedWeek'];
+        for (const [code, data] of Object.entries(locales)) {
+            for (const dotted of KEYS) expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(MET);
+        }
+        // It names the anniversary of a start, not the start itself (the stub shows this year's day).
+        for (const [code, data] of Object.entries(locales)) {
+            expect(String(lookup(data, 'recap.s09.anniversary')), code).toMatch(/記念日|anniversary|紀念日|纪念日/i);
+        }
+    });
+
+    it('role titles and the opening never invent a meeting, a rank, a number or "every day"', () => {
+        // `first` is the fan's subscription start: never "met". The opening shows no ranks or counts (spec §9.6).
+        const MET = /出会|出逢|巡り会|めぐりあ|邂逅|\bmet\b|\bmeet|encounter|遇見|遇见|相遇|相識|相识|認識|认识|識咗|识咗|結識|结识/i;
+        const RANK = /\d|第一名|冠軍|冠军|一位|ランキング|順位|rank|#|No\.|名次|排名/i;
+        const EVERY_DAY = /每天|每日|天天|日日|毎日(?!つづいた)|毎日そば|every ?day|each day|daily|all year|一年中|一整年|成年/i;
+        const TITLE_KEYS = ['morning', 'nickname', 'longest', 'voice', 'night', 'photos', 'first'].map((k) => `recap.titles.${k}`);
+        const OPENING_KEYS = ['label', 'starsNarration', 'starsLabel', 'firstChip', 'titlesTitle', 'titlesNarration'].map((k) => `recap.opening.${k}`);
+        for (const [code, data] of Object.entries(locales)) {
+            for (const dotted of [...TITLE_KEYS, ...OPENING_KEYS, 'recap.opening.starsTitle']) {
+                const text = String(lookup(data, dotted));
+                expect(text, `${code} ${dotted}`).not.toMatch(MET);
+            }
+            for (const dotted of [...TITLE_KEYS, ...OPENING_KEYS]) {
+                expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(RANK);
+                // no title or opening line knows that she wrote "every day" of the year
+                expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(EVERY_DAY);
+            }
+            // The stars slide's only parameter is the year it names.
+            expect(String(lookup(data, 'recap.opening.starsTitle')).replace('{{year}}', ''), code).not.toMatch(/\d|\{\{/);
+        }
+    });
+
+    it('every role title is distinct within a locale', () => {
+        for (const [code, data] of Object.entries(locales)) {
+            const titles = Object.values(lookup(data, 'recap.titles') as Record<string, string>);
+            expect(new Set(titles).size, code).toBe(titles.length);
+        }
+    });
+
+    it('the first week counted from the archive never claims to be the fan\'s own', () => {
+        const YOURS = /あなた|your|you|你|妳/i;
+        for (const [code, data] of Object.entries(locales)) {
+            for (const k of ['recap.s08.firstRecordedWeekTitle', 'recap.s08.firstRecordedWeek']) {
+                expect(String(lookup(data, k)), `${code} ${k}`).not.toMatch(YOURS);
+            }
+        }
+    });
+
+    it('the past-year invite title never speaks of "next year"', () => {
+        const NEXT = /来年|next year|明年|下一年|出年/i;
+        for (const [code, data] of Object.entries(locales)) {
+            expect(String(lookup(data, 'recap.s10.inviteTitleLater')), code).not.toMatch(NEXT);
+            expect(String(lookup(data, 'recap.entry.emptyTitlePast')), code).not.toMatch(NEXT);
+        }
+    });
+
+    it('the letter count shows the grouped number parameter, so 1,240 keeps its separator', () => {
+        for (const [code, data] of Object.entries(locales)) {
+            expect(String(lookup(data, 'recap.s07.count')), code).toContain('{{n}}');
+            expect(String(lookup(data, 'recap.s07.count')), code).not.toContain('{{count}}');
+        }
+    });
+
+    it('the poster footer speaks only of the fan\'s own subscription and never of a reply or of her knowing', () => {
+        const KNEW = /返事|返信|reply|replied|answer|回覆|回复|覆你|読ん|知って|覚え|read|knew|know|remember|知道|記得|记得/i;
+        const KEYS = ['recap.poster.with', 'recap.poster.years', 'recap.poster.dedicated', 'recap.poster.since', 'recap.poster.avatarChanged'];
+        for (const [code, data] of Object.entries(locales)) {
+            for (const dotted of KEYS) expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(KNEW);
+            expect(String(lookup(data, 'recap.poster.since')), code).toMatch(/購読|subscribed|訂閱|订阅/i);
+        }
+    });
+
+    it('the Japanese hub card uses a Japanese term, not the Chinese 年度回顧', () => {
+        expect(lookup(ja, 'memories.home.recapCard')).toBe('一年の振り返り');
+    });
+
+    it('the poster save copy says the save started, never that it finished or that a dialog shows', () => {
+        const SAVED = /保存しました|saved|已儲存|已保存|已經儲存|儲存咗/i;
+        const DIALOG = /ダイアログ|dialog|對話框|对话框/i;
+        for (const [code, data] of Object.entries(locales)) {
+            const copy = String(lookup(data, 'recap.poster.handedOff'));
+            expect(copy, code).not.toMatch(SAVED);
+            expect(copy, code).not.toMatch(DIALOG);
+        }
+    });
+});

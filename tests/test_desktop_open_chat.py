@@ -379,3 +379,116 @@ def test_login_handler_quotes_a_hostile_service_id_safely():
     window = _FakeWindow()
     desktop.make_open_login_handler(window, lambda _h: None)('x");alert(1);("')
     assert json.dumps('x");alert(1);("') in window.calls[1][1][0]
+
+
+OTD_ROUTE = {"page": "onThisDay", "monthDay": "11-10", "year": 2023}
+OTD_SCRIPT = (
+    "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
+    '{"service": "hinatazaka46", "route": {"page": "onThisDay", '
+    '"monthDay": "11-10", "year": 2023}}) === true : null'
+)
+
+
+def _mem(logs: list[dict]) -> list[dict]:
+    return [e for e in logs if e["event"].startswith("notify_open_memories")]
+
+
+def test_memories_handler_shows_focuses_and_asks_the_frontend():
+    window = _FakeWindow()
+    focused: list[object] = []
+    handler = desktop.make_open_memories_handler(window, focused.append)
+    with capture_logs() as logs:
+        handler("hinatazaka46", OTD_ROUTE)
+    assert [c[0] for c in window.calls] == ["show", "evaluate_js"]
+    assert window.calls[1][1] == (OTD_SCRIPT,)
+    assert len(focused) == 1
+    assert _mem(logs) == [
+        {
+            "event": "notify_open_memories",
+            "service": "hinatazaka46",
+            "target": "on_this_day",
+            "delivered": True,
+            "log_level": "info",
+        }
+    ]
+
+
+def test_memories_handler_escapes_a_hostile_member_path():
+    window = _FakeWindow()
+    path = '日向坂46/x");alert(1);("</script><script>'
+    route = {"page": "memoir", "memberPath": path, "tab": "binder"}
+    with capture_logs() as logs:
+        desktop.make_open_memories_handler(window, lambda _h: None)(
+            "hinatazaka46", route
+        )
+    script = window.calls[1][1][0]
+    prefix = "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
+    suffix = ") === true : null"
+    assert script.startswith(prefix) and script.endswith(suffix)
+    payload = json.loads(script[len(prefix) : -len(suffix)])
+    assert payload == {"service": "hinatazaka46", "route": route}
+    assert '\\");alert' in script  # the quote stays inside the JSON string
+    assert "</script>" not in script
+    assert _mem(logs)[0]["target"] == "memoir"
+    assert "日向坂" not in repr(logs) and "alert" not in repr(logs)
+
+
+def test_memories_handler_logs_not_ready_and_an_unknown_page():
+    handler = desktop.make_open_memories_handler(
+        _FakeWindow(js_result=None), lambda _h: None
+    )
+    with capture_logs() as logs:
+        handler("sakurazaka46", {"page": "secret 金村", "year": 2025})
+        handler("sakurazaka46", {"page": "recap", "year": 2025})
+    assert [(e["event"], e["target"], e["reason"]) for e in _mem(logs)] == [
+        ("notify_open_memories_failed", "unknown", "not_ready"),
+        ("notify_open_memories_failed", "recap", "not_ready"),
+    ]
+    assert "金村" not in repr(logs) and "2025" not in repr(logs)
+
+
+def test_memories_handler_logs_a_frontend_refusal_as_refused():
+    # The bridge is mounted but answered false (malformed, unknown group,
+    # onboarding): that is a refusal, not "not ready".
+    handler = desktop.make_open_memories_handler(
+        _FakeWindow(js_result=False), lambda _h: None
+    )
+    with capture_logs() as logs:
+        handler("sakurazaka46", OTD_ROUTE)
+    assert [(e["event"], e["target"], e["reason"]) for e in _mem(logs)] == [
+        ("notify_open_memories_failed", "on_this_day", "refused"),
+    ]
+
+
+def test_memories_handler_never_raises_and_logs_only_the_error_type():
+    handler = desktop.make_open_memories_handler(
+        _FakeWindow(fail_on="evaluate_js"), lambda _h: None
+    )
+    with capture_logs() as logs:
+        handler("sakurazaka46", OTD_ROUTE)
+    (failed,) = [e for e in logs if e["event"] == "notify_open_memories_failed"]
+    assert failed["error_type"] == "RuntimeError"
+    assert failed["target"] == "on_this_day"
+    assert "secret" not in repr(logs)
+
+
+def test_memories_handler_survives_an_unserialisable_route():
+    window = _FakeWindow()
+    with capture_logs() as logs:
+        desktop.make_open_memories_handler(window, lambda _h: None)(
+            "sakurazaka46", {"page": "recap", "year": {2025}}
+        )
+    assert [c[0] for c in window.calls] == ["show"]
+    (failed,) = [e for e in logs if e["event"] == "notify_open_memories_failed"]
+    assert failed["target"] == "recap"
+    assert failed["error_type"] == "TypeError"
+
+
+def test_memories_handler_tolerates_a_non_dict_route():
+    with capture_logs() as logs:
+        desktop.make_open_memories_handler(
+            _FakeWindow(js_result=False), lambda _h: None
+        )("sakurazaka46", None)  # type: ignore[arg-type]
+    (failed,) = _mem(logs)
+    assert failed["target"] == "unknown"
+    assert failed["reason"] == "refused"

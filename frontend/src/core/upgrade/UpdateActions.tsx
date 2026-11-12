@@ -1,5 +1,5 @@
 import { Download, ArrowUpCircle, ExternalLink, RotateCcw } from 'lucide-react';
-import { Button } from '../../design/primitives';
+import { Button, ProgressBar } from '../../design/primitives';
 import { useTranslation } from '../../i18n';
 import { useUpgradeStore, upgradeStage, openReleasePage } from './upgradeStore';
 
@@ -53,19 +53,7 @@ export function UpdateActions() {
                             {t('update.cancelDownload')}
                         </Button>
                     </div>
-                    <div
-                        role="progressbar"
-                        aria-label={t('update.downloading', { version })}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={percent}
-                        className="h-2 overflow-hidden rounded-full bg-sunken"
-                    >
-                        <div
-                            className="h-full rounded-full bg-expressive-progress transition-all duration-base ease-standard motion-reduce:transition-none"
-                            style={{ width: `${percent}%` }}
-                        />
-                    </div>
+                    <ProgressBar value={percent / 100} label={t('update.downloading', { version })} />
                 </>
             )}
 

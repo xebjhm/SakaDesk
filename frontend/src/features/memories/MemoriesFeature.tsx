@@ -1,0 +1,202 @@
+import React, { useEffect, useRef, useState } from 'react';
+import { MemoriesHome, type RecapCardState } from './MemoriesHome';
+import { RecapEntry } from './recap/RecapEntry';
+import { fetchRecapYears } from './recap/api';
+import { defaultRecapYear, offeredRecapYears, recapAvailability } from './recap/availability';
+import { logMemoriesOpen, logMemoriesPage, logRecapLoad } from './memoriesLog';
+import { OnThisDayPage } from './onThisDay/OnThisDayPage';
+import { AlbumPage } from './album/AlbumPage';
+import { FavoritesPage } from './favorites/FavoritesPage';
+import { MemoirPage } from './memoir/MemoirPage';
+import { NicknameProvider } from './shared/useNickname';
+import { RadioPage } from './radio/RadioPage';
+import { GachaPage } from './gacha/GachaPage';
+import { CalendarAlbumPage } from './calendar/CalendarAlbumPage';
+import { DayPage } from './calendar/DayPage';
+import { useAppStore } from '../../store/appStore';
+import { useMemoriesUiReporter } from './useMemoriesUiReporter';
+
+/** Pages of the Memories router (the core pages, then the fun wave's). */
+export type MemoriesRoute =
+    | { page: 'home' }
+    | { page: 'recap'; year: number; memberPath?: string }
+    /** `monthDay` is `MM-DD`; `year` set = the detail (A) of that year. */
+    | { page: 'onThisDay'; monthDay?: string; year?: number }
+    | { page: 'album'; memberPath?: string }
+    /** `cardKey` (binder tab, a notification deep link) opens that earned card's detail once. */
+    | { page: 'memoir'; memberPath?: string; tab?: 'binder' | 'timeline' | 'names' | 'day24'; cardKey?: string }
+    | { page: 'favorites'; memberPath?: string }
+    | { page: 'radio'; memberPath?: string }
+    | { page: 'gacha' }
+    /** `month` is `YYYY-MM` (JST). */
+    | { page: 'calendar'; month?: string; memberPath?: string }
+    /**
+     * `date` is `YYYY-MM-DD` (JST); `from` is where back returns (`DayOrigin`, home when unset);
+     * `memberPath` filters the day to one person (the calendar's member filter, kept on back).
+     */
+    | { page: 'day'; date: string; from?: DayOrigin; memberPath?: string };
+
+/**
+ * Where a day page was opened from: `'calendar'` (back returns to the day's month with the same
+ * member filter) or her memoir 24h tab (back returns to that tab).
+ */
+export type DayOrigin = 'calendar' | { page: 'memoir'; memberPath: string; tab: 'day24' };
+
+/** A core page's route (the four pages added by the core wave). */
+export type CoreRoute = Extract<MemoriesRoute, { page: 'onThisDay' | 'album' | 'memoir' | 'favorites' }>;
+
+/** What every core page receives from the router. */
+export interface CorePageProps {
+    service: string;
+    route: CoreRoute;
+    go: (next: MemoriesRoute) => void;
+}
+
+const HOME: MemoriesRoute = { page: 'home' };
+
+type ShelfState = { status: 'loading' } | { status: 'failed' } | { status: 'ready'; years: number[] };
+const LOADING: ShelfState = { status: 'loading' };
+
+interface MemoriesFeatureProps {
+    service: string;
+    /** The fan's nickname for this service (`%%%` in her messages). */
+    nickname?: string;
+    /** The page to open on first render (a deep link); a service change still returns home. */
+    initialRoute?: MemoriesRoute;
+}
+
+/**
+ * The Memories router. A notification click stores a deep link in the app store
+ * (`memoriesDeepLink`); the router opens it when it is for this service (on mount, while already
+ * open on another page, or once a service switch reaches it), logs the page and clears the link.
+ */
+export const MemoriesFeature: React.FC<MemoriesFeatureProps> = ({ service, nickname, initialRoute }) => {
+    useMemoriesUiReporter();
+    const deepLink = useAppStore((s) => s.memoriesDeepLink);
+    const clearMemoriesDeepLink = useAppStore((s) => s.clearMemoriesDeepLink);
+    // The route is tagged with its service so a service change falls back to home on the same
+    // render (no flash of the old service's page), and with the nonce of the deep link it came
+    // from (null for any other route).
+    const [state, setState] = useState<{ service: string; route: MemoriesRoute; linkNonce: number | null }>(() => (
+        deepLink?.service === service
+            ? { service, route: deepLink.route, linkNonce: deepLink.nonce }
+            : { service, route: initialRoute ?? HOME, linkNonce: null }
+    ));
+    // A deep link for this service not applied yet wins on this very render (React's
+    // set-state-during-render pattern), so neither the old page nor home is ever committed
+    // before the linked page. Otherwise re-tag on a service change, so switching back to the
+    // earlier service does not restore its old page.
+    const pending = deepLink && deepLink.service === service && deepLink.nonce !== state.linkNonce ? deepLink : null;
+    if (pending) setState({ service, route: pending.route, linkNonce: pending.nonce });
+    else if (state.service !== service) setState({ service, route: HOME, linkNonce: null });
+    const route = pending ? pending.route : state.service === service ? state.route : HOME;
+
+    // A route given on mount opens without a `go`: log it like one (once, also under StrictMode).
+    // A deep link present on mount is logged by the effect below instead.
+    const initialPage = useRef(deepLink?.service === service ? undefined : initialRoute?.page);
+    useEffect(() => {
+        const page = initialPage.current;
+        initialPage.current = undefined;
+        if (page && page !== 'home') logMemoriesPage(page);
+    }, []);
+
+    // Log and consume the deep link once its page is committed. The store is read again so a
+    // StrictMode re-run (same closure, link already cleared) logs nothing.
+    useEffect(() => {
+        if (!deepLink || deepLink.service !== service) return;
+        if (useAppStore.getState().memoriesDeepLink?.nonce !== deepLink.nonce) return;
+        logMemoriesPage(deepLink.route.page);
+        clearMemoriesDeepLink(deepLink.nonce);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- a link is consumed once per nonce (or service change)
+    }, [deepLink?.nonce, service]);
+
+    const go = (next: MemoriesRoute) => {
+        setState((s) => ({ ...s, service, route: next }));
+        logMemoriesPage(next.page);
+    };
+
+    // The shelf of yearbooks (years with a recap), tagged with its service. Loading,
+    // failed and loaded (possibly empty) are kept apart: the hub never offers a year
+    // it has not confirmed.
+    // Tagged with its service and attempt so a service change or a retry reads as loading
+    // on the same render.
+    const [attempt, setAttempt] = useState(0);
+    const [shelf, setShelf] = useState<{ service: string; attempt: number; state: ShelfState }>({
+        service, attempt, state: LOADING,
+    });
+    const shelfState: ShelfState = shelf.service === service && shelf.attempt === attempt ? shelf.state : LOADING;
+
+    useEffect(() => {
+        logMemoriesOpen(service);
+    }, [service]);
+
+    useEffect(() => {
+        const controller = new AbortController();
+        void fetchRecapYears(service, controller.signal).then((res) => {
+            if (res.status === 'ok') {
+                const years = Array.isArray(res.data.years) ? res.data.years.filter((y) => Number.isInteger(y)) : [];
+                logRecapLoad('years', years.length ? 'ok' : 'empty', { count: years.length });
+                setShelf({ service, attempt, state: { status: 'ready', years } });
+            } else if (res.status !== 'aborted') {
+                // A `skipped` poll (the same request already in flight) is a failure here too: the
+                // card offers a retry rather than spinning forever. `aborted` is our own cleanup.
+                logRecapLoad('years', res.status, res.status === 'rejected' ? { error_code: res.httpStatus } : {});
+                setShelf({ service, attempt, state: { status: 'failed' } });
+            }
+        });
+        return () => controller.abort();
+    }, [service, attempt]);
+
+    // Unlocks are JST (Dec 1 opens the current year; from Jan 1 the year just ended comes first).
+    const avail = recapAvailability();
+    const dataYears = shelfState.status === 'ready' ? shelfState.years : null;
+    // Only the recap page uses the unknown-shelf fallback (every year up to the newest open one).
+    const offered = offeredRecapYears(avail, dataYears);
+    const openYear = defaultRecapYear(avail, offered);
+    let card: RecapCardState;
+    if (shelfState.status === 'loading') card = { kind: 'loading' };
+    else if (shelfState.status === 'failed') card = { kind: 'failed' };
+    else if (openYear === null) card = { kind: 'closed' };
+    else card = { kind: 'open', year: openYear, partial: avail.currentOpen && openYear === avail.year };
+
+    let page: React.ReactNode;
+    if (route.page === 'recap') {
+        page = (
+            <RecapEntry
+                service={service}
+                year={route.year}
+                memberPath={route.memberPath}
+                nickname={nickname}
+                years={offered}
+                onBack={() => go(HOME)}
+            />
+        );
+    } else if (route.page === 'home') {
+        page = (
+            <MemoriesHome
+                service={service}
+                recap={card}
+                onOpenRecap={(year) => go({ page: 'recap', year })}
+                onRetry={() => setAttempt((n) => n + 1)}
+                go={go}
+            />
+        );
+    } else if (route.page === 'onThisDay') {
+        page = <OnThisDayPage service={service} route={route} go={go} />;
+    } else if (route.page === 'album') {
+        page = <AlbumPage service={service} route={route} go={go} />;
+    } else if (route.page === 'favorites') {
+        page = <FavoritesPage service={service} route={route} go={go} />;
+    } else if (route.page === 'radio') {
+        page = <RadioPage service={service} route={route} go={go} />;
+    } else if (route.page === 'gacha') {
+        page = <GachaPage service={service} go={go} />;
+    } else if (route.page === 'calendar') {
+        page = <CalendarAlbumPage service={service} route={route} go={go} />;
+    } else if (route.page === 'day') {
+        page = <DayPage service={service} route={route} go={go} />;
+    } else {
+        page = <MemoirPage service={service} route={route} go={go} />;
+    }
+    return <NicknameProvider nickname={nickname}>{page}</NicknameProvider>;
+};

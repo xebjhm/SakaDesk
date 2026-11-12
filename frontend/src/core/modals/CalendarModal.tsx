@@ -1,15 +1,17 @@
-import React, { useState, useEffect, useMemo, useCallback, useId, useRef } from 'react';
-import { ArrowLeft, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Calendar as CalendarIcon } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useCallback, useId } from 'react';
+import { Calendar as CalendarIcon } from 'lucide-react';
 import { cn } from '../../utils/classnames';
-import { IconButton, Button, Modal } from '../../design/primitives';
-import { DialogStatus } from '../common/DialogStatus';
+import { Button, Modal, StatusBlock } from '../../design/primitives';
 import { logDialogLoad } from '../../design/dialog/dialogLog';
 import type { BaseModalProps } from '../../types/modal';
 import type { Message } from '../../types';
 import { useTranslation } from '../../i18n';
 import { toLocalDateStr } from '../../utils/dateFormatters';
 import { holidayName } from '../../utils/jpHolidays';
-import { clientLog } from '../../utils/clientLog';
+import { buildMonthGrid, dayTone, DAY_TONE_CLASS, MONTH_KEYS, pickerYearRange } from '../calendar/monthGrid';
+import { MonthYearPicker } from '../calendar/MonthYearPicker';
+import { MonthTitleButton, NewerMonthButton, OlderMonthButton, WeekdayHeader } from '../calendar/MonthNav';
+import { useMonthPickerView } from '../calendar/useMonthPickerView';
 
 export interface DateCount {
     date: string;
@@ -32,6 +34,9 @@ export interface DateCount {
  * 1. API mode: Pass `conversationPath` to fetch dates from the server
  * 2. Messages mode: Pass `messages` array to compute dates locally (for media gallery)
  * 3. Dates mode: Pass `dates` array of pre-computed DateCount objects (for blog photo gallery)
+ *    With `selectAnyDay`, every day is selectable (a free date picker, e.g. On This Day)
+ *    and the year / month picker shows every year and month as available.
+ * `initialMonth` (any mode) sets the month shown on each open.
  *
  * The onSelectDate callback receives either:
  * - A date string "YYYY-MM-DD" (API mode)
@@ -40,6 +45,8 @@ export interface DateCount {
 interface CalendarModalPropsBase extends BaseModalProps {
     /** Title for the modal (default: "Date Search") */
     title?: string;
+    /** The month shown each time the modal opens (default: the month it was last on, first this month). */
+    initialMonth?: Date;
 }
 
 interface CalendarModalPropsAPI extends CalendarModalPropsBase {
@@ -63,21 +70,16 @@ interface CalendarModalPropsDates extends CalendarModalPropsBase {
     dates: DateCount[];
     /** Callback when a date is selected (receives Date object) */
     onSelectDate: (date: Date) => void;
+    /** Every day is selectable, not only the dated ones (a free date picker); counts still come from `dates`. */
+    selectAnyDay?: boolean;
     conversationPath?: never;
     messages?: never;
 }
 
 type CalendarModalProps = CalendarModalPropsAPI | CalendarModalPropsMessages | CalendarModalPropsDates;
 
-const WEEKDAY_KEYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'] as const;
-const MONTH_KEYS = ['jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'] as const;
-
-/** Years the picker offers when there are no dates at all: this year and the nine before it. */
-const FALLBACK_PICKER_YEARS = 10;
-
-/** Weekday / day text colour: Sunday and holidays red, Saturday blue, else null (neutral). */
-const weekendTone = (weekday: number, isHoliday: boolean): string | null =>
-    weekday === 0 || isHoliday ? 'text-calendar-holiday' : weekday === 6 ? 'text-calendar-saturday' : null;
+/** A tone's text colour class, or null (neutral). */
+const toneClass = (tone: ReturnType<typeof dayTone>): string | null => (tone ? DAY_TONE_CLASS[tone] : null);
 
 /**
  * Day tooltip placement: edge columns align to their edge so long holiday names stay in the
@@ -100,6 +102,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
         isOpen,
         onClose,
         title,
+        initialMonth,
     } = props;
 
     const { t } = useTranslation();
@@ -111,15 +114,10 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     const [apiDates, setApiDates] = useState<DateCount[]>([]);
     const [loading, setLoading] = useState(false);
     const [loadFailed, setLoadFailed] = useState(false);
-    const [view, setView] = useState<'days' | 'picker'>('days');
-    const [pickerYear, setPickerYear] = useState(() => new Date().getFullYear());
-    const titleButtonRef = useRef<HTMLButtonElement>(null);
-    const pickerFocusRef = useRef<HTMLButtonElement>(null);
-    const pickerYearRef = useRef<HTMLButtonElement>(null);
-    const previousView = useRef(view);
-    // Set when the picker opens; cleared once focus has moved into the rendered picker (which
-    // waits while the dates are still loading).
-    const pickerFocusPending = useRef(false);
+    // The day grid / picker swap: Escape, the open / back breadcrumbs and the focus return to the
+    // title (only while open: closing resets the view and the dialog layer restores focus itself).
+    const pickerView = useMonthPickerView(isOpen);
+    const { picking, titleRef: titleButtonRef, dismiss: dismissPicker } = pickerView;
     const tooltipIdBase = useId();
 
     // Determine mode
@@ -128,6 +126,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     const conversationPath = !isMessagesMode && !isDatesMode ? (props as CalendarModalPropsAPI).conversationPath : undefined;
     const messages = isMessagesMode ? (props as CalendarModalPropsMessages).messages : undefined;
     const directDates = isDatesMode ? (props as CalendarModalPropsDates).dates : undefined;
+    const anyDay = isDatesMode && (props as CalendarModalPropsDates).selectAnyDay === true;
 
     // Compute dates from messages (Messages mode)
     const messageDates = useMemo(() => {
@@ -189,47 +188,23 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
 
     // Picker years: the first dated year (or the fallback window) up to this year, always
     // including the year on screen.
-    const pickerYears = useMemo(() => {
-        const thisYear = new Date().getFullYear();
-        const shownYear = currentDate.getFullYear();
-        const dated = [...yearsWithMessages];
-        const first = Math.min(dated.length ? Math.min(...dated) : thisYear - FALLBACK_PICKER_YEARS + 1, shownYear);
-        const last = Math.max(thisYear, shownYear, ...dated);
-        return Array.from({ length: last - first + 1 }, (_, i) => first + i);
-    }, [currentDate, yearsWithMessages]);
+    const pickerYears = useMemo(
+        () => pickerYearRange(yearsWithMessages, currentDate.getFullYear(), new Date().getFullYear()),
+        [currentDate, yearsWithMessages],
+    );
 
-    // Every open starts on the day grid.
+    // Every open starts on the day grid (on `initialMonth` when given).
+    const initialMonthTime = initialMonth && !Number.isNaN(initialMonth.getTime()) ? initialMonth.getTime() : null;
     useEffect(() => {
-        if (!isOpen) setView('days');
-    }, [isOpen]);
-
-    // Move focus with the view: into the picker (the shown month, with the shown year scrolled
-    // into view) and back to the title button. A picker opened while the dates are loading keeps
-    // focus on the title button and takes it once the picker renders, unless the user has moved
-    // focus elsewhere meanwhile.
-    const pickerShown = view === 'picker' && !loading && !loadFailed;
-    useEffect(() => {
-        const viewChanged = previousView.current !== view;
-        previousView.current = view;
-        if (!isOpen) { // closing resets the view; the dialog layer restores focus itself
-            pickerFocusPending.current = false;
-            return;
+        if (!isOpen) dismissPicker();
+        else if (initialMonthTime !== null) {
+            const start = new Date(initialMonthTime);
+            setCurrentDate(new Date(start.getFullYear(), start.getMonth(), 1));
         }
-        if (viewChanged && view === 'days') {
-            pickerFocusPending.current = false;
-            titleButtonRef.current?.focus();
-            return;
-        }
-        if (viewChanged && view === 'picker') pickerFocusPending.current = true;
-        if (!pickerShown || !pickerFocusPending.current) return;
-        pickerFocusPending.current = false;
-        pickerYearRef.current?.scrollIntoView?.({ block: 'nearest' });
-        const active = document.activeElement;
-        if (viewChanged || active === titleButtonRef.current || active === document.body || active === null) {
-            pickerFocusRef.current?.focus();
-            pickerFocusRef.current?.scrollIntoView?.({ block: 'nearest' });
-        }
-    }, [view, isOpen, pickerShown]);
+    }, [isOpen, initialMonthTime, dismissPicker]);
+    // Moving focus into the picker is the picker's own (on mount, from the title button or from
+    // nowhere): a picker opened while the dates are loading takes focus once it renders, unless
+    // the user has moved it meanwhile.
 
     // Get message count for a date
     const getMessageCount = (dateStr: string): number => {
@@ -237,57 +212,11 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
         return item?.count || 0;
     };
 
-    // Generate calendar days for current month
-    const calendarDays = useMemo(() => {
-        const year = currentDate.getFullYear();
-        const month = currentDate.getMonth();
-
-        // First day of month
-        const firstDay = new Date(year, month, 1);
-        const startDayOfWeek = firstDay.getDay();
-
-        // Last day of month
-        const lastDay = new Date(year, month + 1, 0);
-        const daysInMonth = lastDay.getDate();
-
-        // Previous month days to fill
-        const prevMonthLastDay = new Date(year, month, 0).getDate();
-
-        const days: Array<{ date: Date; isCurrentMonth: boolean; dateStr: string }> = [];
-
-        // Previous month days
-        for (let i = startDayOfWeek - 1; i >= 0; i--) {
-            const d = new Date(year, month - 1, prevMonthLastDay - i);
-            days.push({
-                date: d,
-                isCurrentMonth: false,
-                dateStr: formatLocalDate(d),
-            });
-        }
-
-        // Current month days
-        for (let i = 1; i <= daysInMonth; i++) {
-            const d = new Date(year, month, i);
-            days.push({
-                date: d,
-                isCurrentMonth: true,
-                dateStr: formatLocalDate(d),
-            });
-        }
-
-        // Next month days to fill (to complete 6 rows)
-        const remaining = 42 - days.length;
-        for (let i = 1; i <= remaining; i++) {
-            const d = new Date(year, month + 1, i);
-            days.push({
-                date: d,
-                isCurrentMonth: false,
-                dateStr: formatLocalDate(d),
-            });
-        }
-
-        return days;
-    }, [currentDate]);
+    // The 42 cells of the month on screen (Sunday first).
+    const calendarDays = useMemo(
+        () => buildMonthGrid(currentDate.getFullYear(), currentDate.getMonth()),
+        [currentDate],
+    );
 
     const goToPrevMonth = () => {
         setCurrentDate(new Date(currentDate.getFullYear(), currentDate.getMonth() - 1, 1));
@@ -301,31 +230,9 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
         setCurrentDate(new Date());
     };
 
-    const openPicker = () => {
-        setPickerYear(currentDate.getFullYear());
-        setView('picker');
-        clientLog('calendar_picker', { phase: 'open', count: pickerYears.length });
-    };
-
-    const closePicker = (reason: 'escape' | 'button') => {
-        setView('days');
-        clientLog('calendar_picker', { phase: 'back', reason });
-    };
-
-    const selectMonth = (month: number) => {
-        setCurrentDate(new Date(pickerYear, month, 1));
-        setView('days');
-        clientLog('calendar_picker', {
-            phase: 'select',
-            has_target: monthsWithMessages.has(`${pickerYear}-${String(month + 1).padStart(2, '0')}`),
-        });
-    };
-
-    // Escape inside the picker goes back to the day grid; claiming the key keeps the dialog open.
-    const handleKeyDown = (e: React.KeyboardEvent<HTMLDivElement>) => {
-        if (view !== 'picker' || e.key !== 'Escape' || e.defaultPrevented || e.nativeEvent.isComposing) return;
-        e.preventDefault();
-        closePicker('escape');
+    const selectMonth = (year: number, month: number) => {
+        setCurrentDate(new Date(year, month, 1));
+        dismissPicker();
     };
 
     const monthLabel = (month: number) => t(`calendar.months.${MONTH_KEYS[month]}`);
@@ -333,7 +240,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
     const focusRing = 'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface';
 
     const handleDateClick = (dateStr: string, date: Date) => {
-        if (datesWithMessages.has(dateStr)) {
+        if (anyDay || datesWithMessages.has(dateStr)) {
             if (isMessagesMode || isDatesMode) {
                 (props as CalendarModalPropsMessages | CalendarModalPropsDates).onSelectDate(date);
             } else {
@@ -355,7 +262,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
             icon={<CalendarIcon />}
             closeLabel={t('common.close')}
             logId="calendar"
-            onKeyDown={handleKeyDown}
+            onKeyDown={pickerView.onKeyDown}
             className="max-w-md"
             bodyClassName="px-6 pb-4"
             footer={
@@ -367,118 +274,54 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
             }
         >
             <div className="flex items-center justify-between pb-2">
-                {view === 'picker' ? (
-                    <IconButton size="sm" aria-label={t('calendar.backToDays')} icon={<ArrowLeft />} onClick={() => closePicker('button')} />
-                ) : (
-                    <IconButton size="sm" aria-label={t('calendar.prevMonth')} icon={<ChevronLeft />} onClick={goToPrevMonth} />
-                )}
+                <OlderMonthButton
+                    picking={picking}
+                    label={t('calendar.prevMonth')}
+                    onClick={goToPrevMonth}
+                    onBack={() => pickerView.closePicker('button')}
+                />
                 <div className="flex items-center gap-2">
-                    <button
+                    <MonthTitleButton
                         ref={titleButtonRef}
-                        type="button"
-                        aria-expanded={view === 'picker'}
-                        onClick={() => (view === 'picker' ? closePicker('button') : openPicker())}
-                        className={cn(
-                            'flex items-center gap-1 rounded-lg px-2 py-1 text-title font-semibold text-primary',
-                            'transition-colors duration-fast ease-standard hover:bg-sunken',
-                            focusRing,
-                        )}
-                    >
-                        <span>{monthTitle}</span>
-                        <span className="sr-only">, {t('calendar.pickMonth')}</span>
-                        <span aria-hidden="true" className="flex h-4 w-4 items-center justify-center text-secondary">
-                            {view === 'picker' ? <ChevronUp /> : <ChevronDown />}
-                        </span>
-                    </button>
-                    {view === 'days' && <Button variant="ghost" size="sm" onClick={goToToday}>{t('calendar.today')}</Button>}
+                        title={monthTitle}
+                        pickLabel={t('calendar.pickMonth')}
+                        expanded={picking}
+                        onClick={() => (picking ? pickerView.closePicker('button') : pickerView.openPicker(pickerYears.length))}
+                    />
+                    {!picking && <Button variant="ghost" size="sm" onClick={goToToday}>{t('calendar.today')}</Button>}
                 </div>
-                {view === 'picker' ? (
-                    <span aria-hidden="true" className="h-8 w-8" />
-                ) : (
-                    <IconButton size="sm" aria-label={t('calendar.nextMonth')} icon={<ChevronRight />} onClick={goToNextMonth} />
-                )}
+                <NewerMonthButton picking={picking} label={t('calendar.nextMonth')} onClick={goToNextMonth} />
             </div>
 
             {loading ? (
-                <DialogStatus kind="loading" />
+                <StatusBlock kind="loading" surface="dialog_calendar" />
             ) : loadFailed ? (
-                <DialogStatus kind="error" title={t('calendar.loadFailed')} onRetry={fetchDates} retryLabel={t('common.retry')} />
-            ) : view === 'picker' ? (
-                <div className="flex gap-4">
-                    <div role="group" aria-label={t('calendar.yearList')} className="flex max-h-72 w-24 shrink-0 flex-col gap-1 overflow-y-auto p-1">
-                        {pickerYears.map(year => {
-                            const selected = year === pickerYear;
-                            return (
-                                <button
-                                    key={year}
-                                    ref={selected ? pickerYearRef : undefined}
-                                    type="button"
-                                    aria-pressed={selected}
-                                    onClick={() => setPickerYear(year)}
-                                    className={cn(
-                                        'rounded-lg px-3 py-2 text-left text-small transition-colors duration-fast ease-standard',
-                                        focusRing,
-                                        selected
-                                            ? 'bg-accent-subtle font-semibold text-accent-strong'
-                                            : cn('hover:bg-sunken', yearsWithMessages.has(year) ? 'text-primary' : 'text-muted'),
-                                    )}
-                                >
-                                    {t('calendar.yearValue', { year })}
-                                </button>
-                            );
-                        })}
-                    </div>
-                    <div role="group" aria-label={t('calendar.monthGrid')} className="grid flex-1 grid-cols-3 content-start gap-2 p-1">
-                        {MONTH_KEYS.map((key, month) => {
-                            const hasMessages = monthsWithMessages.has(`${pickerYear}-${String(month + 1).padStart(2, '0')}`);
-                            const selected = pickerYear === currentDate.getFullYear() && month === currentDate.getMonth();
-                            return (
-                                <button
-                                    key={key}
-                                    ref={selected ? pickerFocusRef : undefined}
-                                    type="button"
-                                    aria-pressed={selected}
-                                    onClick={() => selectMonth(month)}
-                                    className={cn(
-                                        'relative flex flex-col items-center justify-center rounded-lg px-2 py-3 text-small',
-                                        'transition-colors duration-fast ease-standard',
-                                        focusRing,
-                                        selected
-                                            ? 'bg-accent-subtle font-semibold text-accent-strong'
-                                            : cn('hover:bg-sunken', hasMessages ? 'text-primary' : 'text-muted'),
-                                    )}
-                                >
-                                    <span>{monthLabel(month)}</span>
-                                    {!hasMessages && <span className="sr-only">, {t('calendar.noMessages')}</span>}
-                                    {hasMessages && <span aria-hidden="true" className="absolute bottom-1 h-1.5 w-1.5 rounded-pill bg-accent" />}
-                                </button>
-                            );
-                        })}
-                    </div>
-                </div>
+                <StatusBlock kind="error" surface="dialog_calendar" title={t('calendar.loadFailed')} onRetry={fetchDates} retryLabel={t('common.retry')} />
+            ) : picking ? (
+                <MonthYearPicker
+                    years={pickerYears}
+                    year={currentDate.getFullYear()}
+                    month={currentDate.getMonth()}
+                    hasData={(ym) => monthsWithMessages.has(ym)}
+                    allAvailable={anyDay}
+                    onPick={selectMonth}
+                    onBack={dismissPicker}
+                    anchorRef={titleButtonRef}
+                />
             ) : (
                 <>
-                    <div className="mb-2 grid grid-cols-7">
-                        {WEEKDAY_KEYS.map((dayKey, i) => (
-                            <div
-                                key={dayKey}
-                                data-testid="calendar-weekday"
-                                className={cn('py-2 text-center text-caption font-semibold', weekendTone(i, false) ?? 'text-muted')}
-                            >
-                                {t(`calendar.weekdays.${dayKey}`)}
-                            </div>
-                        ))}
-                    </div>
+                    <WeekdayHeader className="mb-2" />
                     <div className="grid grid-cols-7 gap-1">
-                        {calendarDays.map(({ date, isCurrentMonth, dateStr }, index) => {
+                        {calendarDays.map(({ date, inMonth: isCurrentMonth, dateStr }, index) => {
                             const hasMessages = datesWithMessages.has(dateStr);
+                            const selectable = anyDay || hasMessages;
                             const today = isToday(dateStr);
                             // Out-of-month days stay uniformly muted: text-muted at 80 % is 3.3:1 on white.
                             const holiday = isCurrentMonth ? holidayName(dateStr) : null;
                             const countText = hasMessages ? t('calendar.itemCount', { count: getMessageCount(dateStr) }) : null;
                             const tone = !isCurrentMonth
                                 ? 'text-muted opacity-80'
-                                : weekendTone(date.getDay(), holiday !== null) ?? (hasMessages ? 'text-primary' : 'text-muted');
+                                : toneClass(dayTone(date)) ?? (selectable ? 'text-primary' : 'text-muted');
                             const tooltipId = `${tooltipIdBase}-day-${index}`;
                             return (
                                 <button
@@ -487,13 +330,13 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                     data-day={date.getDate()}
                                     data-outside={isCurrentMonth ? undefined : ''}
                                     onClick={() => handleDateClick(dateStr, date)}
-                                    disabled={!hasMessages}
+                                    disabled={!selectable}
                                     aria-describedby={countText ? `${tooltipId}-count` : undefined}
                                     className={cn(
                                         'group/day relative flex aspect-square flex-col items-center justify-center rounded-pill text-small',
                                         'transition-colors duration-fast ease-standard',
                                         focusRing,
-                                        hasMessages && 'cursor-pointer hover:bg-accent-subtle',
+                                        selectable && 'cursor-pointer hover:bg-accent-subtle',
                                         tone,
                                         today ? 'font-semibold border-2 border-accent' : 'border-2 border-transparent',
                                     )}

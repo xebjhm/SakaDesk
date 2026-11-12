@@ -4,8 +4,7 @@ import { AlertTriangle, ChevronRight, Image, Image as ImageIcon, Newspaper } fro
 import type { BlogMember, BlogMeta } from '../../../types';
 import { getMemberNameKanji } from '../../../data/memberData';
 import { cn, formatMonthYear, formatShortDate } from '../../../utils/classnames';
-import { Modal, Card, Button } from '../../../design/primitives';
-import { DialogStatus } from '../../../core/common/DialogStatus';
+import { Modal, Card, Button, StatusBlock } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
 import { clientLog } from '../../../utils/clientLog';
 
@@ -110,8 +109,8 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                 </>
             }
         >
-            {loading && <DialogStatus kind="loading" title={t('blogs.loadingTimeline')} />}
-            {error && !loading && <DialogStatus kind="error" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} retryVariant="primary" />}
+            {loading && <StatusBlock kind="loading" surface="blog_timeline" label={t('blogs.loadingTimeline')} labelVisibility="always" />}
+            {error && !loading && <StatusBlock kind="error" surface="blog_timeline" icon={<AlertTriangle />} title={error} onRetry={onRetry} retryLabel={t('blogs.retry')} retryVariant="primary" />}
             {!loading && !error && monthGroups.length > 0 && (
                 <div className="flex flex-col gap-3">
                     {monthGroups.map((group, index) => (
@@ -127,7 +126,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                     ))}
                 </div>
             )}
-            {!loading && !error && blogs.length === 0 && <DialogStatus kind="empty" icon={<Newspaper />} title={t('blogs.noBlogPostsFound')} />}
+            {!loading && !error && blogs.length === 0 && <StatusBlock kind="empty" surface="blog_timeline" icon={<Newspaper />} title={t('blogs.noBlogPostsFound')} />}
         </Modal>
     );
 };

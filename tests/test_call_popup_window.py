@@ -172,8 +172,9 @@ def test_rect_width_height():
 
 def test_constants():
     assert cpw.TITLE == "SakaDesk Call"
-    assert cpw.BACKGROUND_COLOR == "#0D0F14"
     assert cpw.TRANSPARENCY_KEY == (3, 1, 2)
+    # The form is born in the key colour: pywebview's red never exists.
+    assert cpw.BACKGROUND_COLOR == "#030102"
     assert cpw.DWMWCP_DONOTROUND == 1
     assert (cpw.POPUP_WIDTH_DIP, cpw.POPUP_MARGIN_DIP) == (300, 12)
     assert cpw.POPUP_LOAD_TIMEOUT_S == 15.0
@@ -202,8 +203,10 @@ def test_ensure_creates_once_with_exact_arguments_then_reuses():
             on_top=True,
             hidden=True,
             shadow=False,
-            transparent=True,
-            background_color="#0D0F14",
+            # transparent=True would paint the form pure red first, and
+            # WebView2 keeps that red under the card's corners for good.
+            transparent=False,
+            background_color="#030102",
         )
     ]
     assert actions(logs) == ["created", "reused"]
@@ -271,10 +274,16 @@ def test_ensure_applies_the_transparency_key_in_before_show_without_hwnd():
     assert seen == [win]
 
 
+class FakeWebView2:
+    def __init__(self):
+        self.DefaultBackgroundColor = None
+
+
 class FakeForm:
     def __init__(self, invoke_required):
         self.InvokeRequired = invoke_required
         self.BackColor = self.TransparencyKey = None
+        self.webview = FakeWebView2()
         self.invoked = 0
 
     def Invoke(self, action):
@@ -291,6 +300,8 @@ def install_fake_dotnet(monkeypatch):
     drawing = types.ModuleType("System.Drawing")
 
     class Color:
+        Transparent = "transparent"
+
         @staticmethod
         def FromArgb(a, r, g, b):
             return (a, r, g, b)
@@ -310,6 +321,8 @@ def test_apply_transparency_key_sets_both_colours_via_invoke(monkeypatch):
         cpw._apply_transparency_key(win)
     assert form.invoked == 1
     assert form.BackColor == form.TransparencyKey == (255, 3, 1, 2)
+    # The page's transparent pixels show the keyed form colour beneath.
+    assert form.webview.DefaultBackgroundColor == "transparent"
     assert {
         "event": "call_popup_transparency",
         "applied": True,
@@ -325,6 +338,23 @@ def test_apply_transparency_key_runs_directly_on_the_gui_thread(monkeypatch):
     cpw._apply_transparency_key(win)
     assert form.invoked == 0
     assert form.BackColor == form.TransparencyKey == (255, 3, 1, 2)
+    assert form.webview.DefaultBackgroundColor == "transparent"
+
+
+def test_the_window_never_gets_a_colour_other_than_the_key(monkeypatch):
+    """Every layer under the page carries the key: nothing paints unkeyed."""
+    install_fake_dotnet(monkeypatch)
+    win = FakeWindow()
+    win.native = FakeForm(invoke_required=False)
+    win.native.Handle = 0x1234
+    w, created, _ = make([win], apply_transparency=cpw._apply_transparency_key)
+    assert w.ensure() is True
+    key_hex = "#{:02X}{:02X}{:02X}".format(*cpw.TRANSPARENCY_KEY)
+    assert created[0]["transparent"] is False
+    assert created[0]["background_color"].upper() == key_hex
+    form = win.native
+    assert form.BackColor == form.TransparencyKey == (255, *cpw.TRANSPARENCY_KEY)
+    assert form.webview.DefaultBackgroundColor == "transparent"
 
 
 def test_apply_transparency_key_logs_and_does_not_raise_on_error(monkeypatch):

@@ -38,6 +38,7 @@ const FILES = [
     '../features/incomingCall/CallScreen.tsx',
     'common/SettingsMenu.tsx',
     '../features/search/SearchModal.tsx',
+    '../features/memories/recap/share/ShareDialog.tsx',
     '../features/search/components/SearchInput.tsx',
     '../features/search/components/SearchFilterBar.tsx',
     '../features/search/components/SearchResultItem.tsx',
@@ -46,7 +47,6 @@ const FILES = [
     '../shell/components/SettingRow.tsx',
     'layout/ServiceRail.tsx',
     'layout/UpgradeIcon.tsx',
-    'common/DialogStatus.tsx',
     // D2d
     'common/SyncProgressPanel.tsx',
     '../shell/components/SyncModal.tsx',

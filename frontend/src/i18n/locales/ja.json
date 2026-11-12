@@ -48,6 +48,16 @@
     "zoomFit": "画面に合わせる",
     "debug": "デバッグ"
   },
+  "loading": {
+    "label": "読み込み中…",
+    "slow": "まだ読み込んでいます…",
+    "verySlow": "いつもより時間がかかっています。もう少しお待ちください。",
+    "timeout": "時間がかかりすぎています",
+    "timeoutHint": "処理はまだ続いているかもしれません。少し待ってからもう一度お試しください。",
+    "error": "読み込めませんでした",
+    "retry": "もう一度",
+    "cancel": "キャンセル"
+  },
   "settings": {
     "title": "設定",
     "tabGeneral": "一般",
@@ -69,6 +79,15 @@
     "blogBackupWorking": "ブログをバックアップ中…",
     "blogBackupCalculating": "バックアップ容量を計算中…",
     "cleanBlogCache": "バックアップを削除",
+    "mediaCache": "サムネイルキャッシュ",
+    "mediaCacheSize": "{{size}} 使用中",
+    "mediaCachePreparing": "サムネイルを準備中… {{done}} / {{total}}",
+    "mediaCachePaused": "サムネイルの準備を一時停止中 · {{done}} / {{total}}",
+    "mediaCacheClear": "削除",
+    "mediaCacheCleared": "サムネイルキャッシュを削除しました",
+    "mediaCacheFull": "上限に達しました。閲覧に合わせて古いサムネイルから入れ替わります",
+    "mediaCacheLoadFailed": "キャッシュ容量を読み込めませんでした",
+    "mediaCacheClearFailed": "サムネイルキャッシュを削除できませんでした",
     "cleanBlogCacheConfirm": "バックアップしたすべてのブログを削除しますか？ディスク容量は解放されますが、ブログを再度ダウンロードする必要があります。",
     "cleanBlogCacheConfirm2": "本当に削除しますか？この操作は取り消せません。",
     "verifyFixMedia": "メディアを検証・修復",
@@ -104,6 +123,23 @@
     "notificationsDesc": "メンバーから新着メッセージが届いたら Windows の通知を表示します",
     "notificationsHideContent": "通知にメッセージ内容を表示しない",
     "notificationsHideContentDesc": "通知には新着があることだけを表示します",
+    "memoriesNotify": {
+      "title": "思い出の通知",
+      "desc": "思い出を開いている間は通知しません",
+      "onThisDay": "毎日の「あの日」",
+      "onThisDayDesc": "過去の同じ日にメッセージがある日だけ、1日1回",
+      "time": "通知の時刻",
+      "timeDesc": "毎日の「あの日」、誕生日のお知らせ、記念日、12月のふりかえりの時刻（当日の誕生日は0時、1月の完成は1月1日0時から）",
+      "timeHint": "日本時間。お住まいの地域では {{local}}",
+      "birthday": "誕生日",
+      "birthdayDesc": "当日の0時と、7日前・前日のお知らせ",
+      "anniversary": "メンバーシップ記念日",
+      "anniversaryDesc": "1年目・2年目…の記念日と、100日・500日・1000日",
+      "recap": "一年の振り返り",
+      "recapDesc": "12月1日の公開、クリスマス、1月の完成",
+      "cards": "きらめくカード",
+      "cardsDesc": "生写真帳に特別なカードが加わったとき"
+    },
     "serviceSettings": "サービス設定",
     "syncCurrentOff": "現在: 手動同期のみ",
     "syncCurrentFixed": "現在: {{minutes}}分ごと",
@@ -169,7 +205,11 @@
     "loginAnyway": "このままログイン",
     "connectPromptTitle": "アカウントを連携しますか？",
     "connectPromptDesc": "ログインすると{{service}}のメッセージを同期できます。ログインせずにブログを閲覧することも可能です。",
-    "maybeLater": "あとで"
+    "maybeLater": "あとで",
+    "waitingSlow": "ログイン画面を開いています…",
+    "waitingVerySlow": "開いたブラウザのウィンドウでログインを完了してください。いつでもキャンセルできます。",
+    "finishing": "まもなく完了します…",
+    "cancelling": "キャンセルしています…"
   },
   "tos": {
     "title": "利用規約",
@@ -239,7 +279,9 @@
     "stepPending": "未完了",
     "phaseQueued": "待機中",
     "queuedDetail": "ほかの同期の完了を待っています（{{position}}番目）",
-    "filesFailed": "· {{count}} 件失敗"
+    "filesFailed": "· {{count}} 件失敗",
+    "preparing": "同期の準備中…",
+    "preparingVerySlow": "新しいメッセージを確認しています。メッセージが多いと少し時間がかかります。"
   },
   "about": {
     "title": "アプリについて",
@@ -323,6 +365,13 @@
     "welcomeTitle": "SakaDeskへようこそ",
     "welcomeSubtitle": "サイドバーからトークを選択して開始してください。",
     "loadingMessages": "メッセージを読み込み中...",
+    "loadingSlow": "まだメッセージを読み込んでいます…",
+    "loadingVerySlow": "メッセージの多いトークは、開くまで少し時間がかかります。",
+    "emptyRoom": "まだメッセージはありません",
+    "loadFailed": "メッセージを読み込めませんでした",
+    "loadFailedHint": "保存したデータはそのままです。もう一度お試しください。",
+    "loadTimeout": "読み込みに時間がかかりすぎています",
+    "loadTimeoutHint": "アプリがまだ処理中かもしれません。少し待ってからもう一度お試しください。",
     "selectConversation": "トークを選択してください",
     "groupChat": "グループチャット",
     "unread": "未読 {{count}}件",
@@ -405,7 +454,8 @@
     "blogs": "ブログ",
     "news": "ニュース",
     "fanclub": "ファンクラブ",
-    "ai": "AIエージェント"
+    "ai": "AIエージェント",
+    "memories": "思い出"
   },
   "landing": {
     "welcome": "SakaDeskへようこそ",
@@ -478,7 +528,13 @@
       "videos": "動画 {{count}}本",
       "voice": "ボイス {{count}}件"
     },
-    "typeTabs": "メディアの種類"
+    "typeTabs": "メディアの種類",
+    "gallery": {
+      "openPhoto": "{{date}} の写真を開く",
+      "openVideo": "{{date}} の動画を開く",
+      "retryPhoto": "{{date}} の写真を再読み込み"
+    },
+    "photoLoading": "写真を読み込み中…"
   },
   "sentLetters": {
     "title": "送信したレター",
@@ -712,7 +768,10 @@
     "sampleToastBody": "12,846 件のメッセージを保存しました",
     "sampleMilestone": "購読開始からの日数",
     "sampleDisabledReason": "先にグループを選んでください",
-    "displaySample": "すべてのメッセージを残す"
+    "displaySample": "すべてのメッセージを残す",
+    "loading": "読み込み表示",
+    "playWait": "待ち時間を再生",
+    "postcards": "思い出のはがき（サンプルデータ）"
   },
   "letters": {
     "openImage": "レターを開く",
@@ -740,5 +799,621 @@
     "diskUsageComputedAt": "計算日時: {{time}}",
     "diskUsageCalculating": "計算中…",
     "diskUsageFailed": "計算できませんでした"
+  },
+  "memories": {
+    "home": {
+      "recapCard": "一年の振り返り",
+      "opensOn": "12月1日に、ここが開きます。",
+      "title": "思い出",
+      "yearsAgo": "{{count}}年前の今日",
+      "thisWeek": "{{count}}年前の、この週",
+      "firstMessage": "はじめのころの一通",
+      "open": "ひらく",
+      "album": "アルバム",
+      "memoir": "メンバーの思い出",
+      "favorites": "お気に入り",
+      "countAlbum": "{{count, number}} 枚",
+      "countMembers": "{{count, number}} 人",
+      "countFavorites": "{{count, number}} 件",
+      "birthdayIn": "{{name}}の誕生日まで、あと {{count, number}} 日",
+      "birthdayToday": "今日は{{name}}の誕生日",
+      "anniversaryIn": "{{name}}とのメンバーシップ記念日まで、あと {{count, number}} 日",
+      "anniversaryToday": "今日はメンバーシップ {{years}} 年目の記念日",
+      "radio": "ボイスラジオ",
+      "gacha": "思い出ガチャ",
+      "calendar": "カレンダー",
+      "countVoices": "{{count, number}} 件のボイス",
+      "countGacha": "今日はあと {{count, number}} 回",
+      "countDays": "{{count, number}} 日分",
+      "gachaTomorrow": "また明日",
+      "gathering": "思い出を集めています… 新しいカードが順に表示されます。",
+      "firstVerySlow": "初回は思い出の索引を作るため、少し時間がかかります。下のカードは今すぐ開けます。"
+    },
+    "common": {
+      "back": "戻る",
+      "retry": "もう一度",
+      "loadError": "読み込めませんでした",
+      "slow": "思い出を準備しています…",
+      "verySlow": "初めて開くときや同期の直後は、アーカイブの整理に少し時間がかかります。",
+      "timeout": "いつもより時間がかかっています",
+      "timeoutHint": "準備はまだ続いているかもしれません。もう一度お試しください。",
+      "membersError": "メンバーを読み込めませんでした",
+      "jumpToChat": "トークで見る",
+      "all": "全員",
+      "nicknameMasked": "＊＊＊"
+    },
+    "onThisDay": {
+      "title": "あの年の今日",
+      "more": "ほか {{count}} 件",
+      "noMessages": "この日はメッセージがありません",
+      "empty": "この日の思い出は、まだここにありません。別の日を開いてみてください。",
+      "pickDate": "日付をえらぶ",
+      "prevDay": "前の日",
+      "nextDay": "次の日",
+      "olderYear": "前の年",
+      "newerYear": "次の年"
+    },
+    "day": {
+      "count": "{{count}} 件のメッセージ",
+      "otherGroups": "ほかのグループも含める",
+      "modeMerged": "時系列",
+      "modeLanes": "メンバー別",
+      "expand": "ひらく",
+      "modeYears": "歴年の同じ日",
+      "yearsGap": "この時間はメッセージなし"
+    },
+    "album": {
+      "title": "アルバム",
+      "filterAll": "すべて",
+      "filterPhotos": "写真",
+      "filterVideos": "動画",
+      "filterFavorites": "お気に入り",
+      "burst": "{{count}} 枚",
+      "monthLabel": "{{year}}年{{month}}月",
+      "ribbonLabel": "{{year}}年{{month}}月へ",
+      "ribbon": "月の色",
+      "empty": "ここに並べる写真は、まだありません。",
+      "setCover": "この月の表紙にする",
+      "retryTile": "再読み込み：{{label}}",
+      "openBurst": "{{count}} 枚の写真を開く",
+      "resetCover": "表紙を自動にもどす",
+      "coverFailed": "表紙を変えられませんでした",
+      "waitSlow": "写真を並べています…",
+      "waitVerySlow": "写真の多い月は、表示まで少し時間がかかります。"
+    },
+    "memoir": {
+      "title": "メンバーの思い出",
+      "tabBinder": "生写真帳",
+      "tabTimeline": "タイムライン",
+      "progress": "{{earned, number}} / {{total, number}} 枚",
+      "chipDays": "メンバーシップ {{days, number}} 日",
+      "chipNames": "名前を呼んでくれた {{count, number}} 回",
+      "chipVoice": "ボイス合計 {{h}}時間{{m}}分",
+      "chipVoiceMinutes": "ボイス合計 {{m}}分",
+      "chipVoiceHours": "ボイス合計 {{h}}時間"
+    },
+    "favorites": {
+      "title": "お気に入り",
+      "all": "すべてのお気に入り",
+      "voice": "ボイス",
+      "empty": "★をつけたメッセージが、ここに飾られます。",
+      "play": "ボイスを再生"
+    },
+    "filmStrip": {
+      "older": "前のメッセージ",
+      "newer": "次のメッセージ",
+      "title": "この日のつづき"
+    },
+    "shelves": {
+      "first": {
+        "title": "初めて",
+        "subtitle": "はじめて届いたもの"
+      },
+      "anniversary": {
+        "title": "記念日",
+        "subtitle": "メンバーシップの節目"
+      },
+      "numbers": {
+        "title": "数字",
+        "subtitle": "積み重ねてきた数"
+      },
+      "special": {
+        "title": "特別な日",
+        "subtitle": "毎年めぐってくる日"
+      },
+      "records": {
+        "title": "記録",
+        "subtitle": "いちばんの記録"
+      },
+      "moments": {
+        "title": "瞬間",
+        "subtitle": "ふとした瞬間"
+      },
+      "you": {
+        "title": "あなた",
+        "subtitle": "あなたが送ったもの"
+      },
+      "change": {
+        "title": "変化",
+        "subtitle": "写真が変わった日"
+      },
+      "graduation": {
+        "title": "卒業",
+        "subtitle": "卒業の日まで"
+      }
+    },
+    "cards": {
+      "firstMessage": "最初のメッセージ",
+      "firstMessageCondition": "最初のメッセージが届いたら",
+      "firstPicture": "最初の写真",
+      "firstPictureCondition": "最初の写真が届いたら",
+      "firstVideo": "最初の動画",
+      "firstVideoCondition": "最初の動画が届いたら",
+      "firstVoice": "最初のボイス",
+      "firstVoiceCondition": "最初のボイスが届いたら",
+      "firstNickname": "はじめて名前を呼んでくれた日",
+      "firstNicknameCondition": "はじめて名前を呼んでくれたら",
+      "annivDays": "{{days, number}}日目",
+      "annivDaysCondition": "メンバーシップ {{days, number}} 日目に",
+      "annivYears": "{{years, number}}年目の記念日",
+      "annivYearsCondition": "メンバーシップ {{years, number}} 年目の記念日に",
+      "countMessages": "{{count, number}}通目",
+      "countMessagesCondition": "{{count, number}}通目が届いたら",
+      "countPictures": "{{count, number}}枚目の写真",
+      "countPicturesCondition": "{{count, number}}枚目の写真が届いたら",
+      "voiceHour": "ボイス累計 1 時間",
+      "voiceHourCondition": "ボイスが累計1時間になったら",
+      "nicknames100": "100回目の名前",
+      "nicknames100Condition": "名前を呼んでくれたのが100回になったら",
+      "newyear": "元旦",
+      "newyearCondition": "新しい年の、最初の一通",
+      "valentine": "バレンタイン",
+      "valentineCondition": "バレンタインに届いたメッセージ",
+      "christmas": "クリスマス",
+      "christmasCondition": "クリスマスに届いたメッセージ",
+      "birthday": "お誕生日",
+      "birthdayCondition": "彼女のお誕生日に届いたメッセージ",
+      "subAnniversary": "あなたの記念日",
+      "subAnniversaryCondition": "あなたのメンバーシップ記念日に届いたメッセージ",
+      "joinDay": "加入記念日",
+      "joinDayCondition": "あなたがメンバーシップに加入した日",
+      "longest": "いちばん長いメッセージ",
+      "longestCondition": "いちばん長く綴られたメッセージ",
+      "busiestDay": "いちばんにぎやかな日",
+      "busiestDayCondition": "メッセージがいちばん多かった日",
+      "nicknameDay": "いちばん名前を呼んでくれた日",
+      "nicknameDayCondition": "名前をいちばん多く呼んでくれた日",
+      "longestVoice": "いちばん長いボイス",
+      "longestVoiceCondition": "いちばん長かったボイス",
+      "greetingPair": "いちばん早いおはようと、いちばん遅いおやすみ",
+      "greetingPairCondition": "いちばん早い時刻のおはようと、いちばん遅い時刻のおやすみ",
+      "midnight": "日付が変わった瞬間",
+      "midnightCondition": "日付が変わってすぐに届いたメッセージ",
+      "synchro": "シンクロ",
+      "synchroCondition": "別々の日に、同じ時刻のメッセージ",
+      "oyasumiFirst": "最初のおやすみ",
+      "oyasumiFirstCondition": "最初の「おやすみ」が届いたら",
+      "oyasumi100": "100回目のおやすみ",
+      "oyasumi100Condition": "「おやすみ」が100回届いたら",
+      "daisukiFirst": "最初の大好き",
+      "daisukiFirstCondition": "最初の「大好き」が届いたら",
+      "daisuki100": "100回目の大好き",
+      "daisuki100Condition": "「大好き」が100回届いたら",
+      "letterFirst": "はじめて送った手紙",
+      "letterFirstCondition": "はじめて手紙を送ったら",
+      "letters": "{{count, number}}通の手紙",
+      "lettersCondition": "手紙を{{count, number}}通送ったら",
+      "avatarChange": "新しい写真",
+      "avatarChangeCondition": "写真が変わった日",
+      "avatarDays": "この写真と、{{days, number}} 日",
+      "lastMessage": "最後の一通",
+      "lastMessageCondition": "卒業までの、最後の一通",
+      "notYet": "まだ"
+    },
+    "cardDetail": {
+      "lastMessage": "最後のメッセージ",
+      "forever": "ずっと、ここに。",
+      "oldLast": "前の写真で、最後のメッセージ",
+      "newFirst": "新しい写真で、最初のメッセージ",
+      "oldAvatar": "前の写真",
+      "newAvatar": "新しい写真",
+      "dayOf": "{{date}} のメッセージ",
+      "nearestDay": "いちばん近い日のメッセージ（{{date}}）",
+      "earliestOhayo": "いちばん早いおはよう",
+      "latestOyasumi": "いちばん遅いおやすみ"
+    },
+    "names": {
+      "title": "名前を呼ばれた瞬間",
+      "allYears": "すべて",
+      "back": "生写真帳へ",
+      "empty": "ここには、名前を呼んでくれた瞬間が並びます"
+    },
+    "timeline": {
+      "count": "{{count}} 件",
+      "top": "この月の一通",
+      "late": "夜ふけの一通",
+      "nickname": "名前を呼んでくれた一通",
+      "milestones": "この月のできごと",
+      "rail": "月をえらぶ",
+      "older": "前の月",
+      "newer": "次の月",
+      "empty": "ここには、月ごとの思い出が並びます"
+    },
+    "radio": {
+      "title": "ボイスラジオ",
+      "all": "全員",
+      "station": "{{name}}の深夜放送局",
+      "stationAll": "深夜放送局",
+      "onAir": "ON AIR",
+      "offAir": "OFF AIR",
+      "programsLabel": "番組",
+      "programs": {
+        "oyasumi": "おやすみ放送",
+        "oyasumiSub": "夜9時から明け方までの声",
+        "ohayo": "おはよう放送",
+        "ohayoSub": "朝5時から10時までの声",
+        "otsukare": "おつかれチャージ",
+        "otsukareSub": "朝10時から夜9時までの声",
+        "chrono": "あの頃から順番に",
+        "chronoSub": "選んだ年を、はじめから",
+        "favorites": "★ お気に入りの声",
+        "favoritesSub": "★をつけたボイス",
+        "oyasumiClips": "精選・おやすみだけ",
+        "oyasumiClipsSub": "“おやすみ”のところだけ"
+      },
+      "trackCount": "{{count, number}} 件",
+      "play": "再生",
+      "pause": "一時停止",
+      "next": "次の声",
+      "prev": "前の声",
+      "sleep": "おやすみタイマー",
+      "sleepOff": "タイマーなし",
+      "sleepMinutes": "{{count}} 分後に止める",
+      "sleepLeft": "あと {{count}} 分",
+      "cassette": "{{year}}年のテープ",
+      "cassetteLength": "{{length}}",
+      "cassettes": "年ごとのテープ",
+      "empty": "ここで流せる声は、まだありません。",
+      "lengthHours": "{{hours}}時間{{minutes}}分",
+      "lengthHoursOnly": "{{hours}}時間",
+      "lengthMinutes": "{{count}}分",
+      "lengthUnder": "1分未満",
+      "totalHours": "ボイス合計 {{hours}}時間{{minutes}}分",
+      "totalHoursOnly": "ボイス合計 {{hours}}時間",
+      "totalMinutes": "ボイス合計 {{count}}分",
+      "totalUnder": "ボイス合計 1分未満"
+    },
+    "gacha": {
+      "title": "思い出ガチャ",
+      "turn": "ハンドルを回す",
+      "hint": "ハンドルを回してね",
+      "left": "今日はあと {{count, number}} 回",
+      "tomorrow": "また明日",
+      "history": "これまでに出た思い出",
+      "context": "この日の前後を見る",
+      "favorite": "★をつける",
+      "unfavorite": "★をはずす",
+      "empty": "ガチャに入れる思い出が、まだありません。",
+      "missing": "このメッセージは見つかりませんでした",
+      "rarity": {
+        "n": "ノーマル",
+        "r": "R",
+        "sr": "SR"
+      },
+      "reason": {
+        "midnight": "日付が変わった瞬間",
+        "birthday": "お誕生日のメッセージ",
+        "subAnniversary": "あなたの記念日に届いたメッセージ",
+        "lastMessage": "最後のメッセージ",
+        "nickname": "名前を呼んでくれた",
+        "favorite": "★をつけたメッセージ",
+        "voice": "声",
+        "message": "メッセージ",
+        "photo": "写真"
+      },
+      "refreshFailed": "ガチャの結果を確かめられませんでした"
+    },
+    "calendar": {
+      "title": "カレンダー",
+      "all": "全員",
+      "members": "{{count}} 人のメンバー",
+      "prevMonth": "前の月",
+      "nextMonth": "次の月",
+      "pickMonth": "年月をえらぶ",
+      "empty": "この月の思い出は、まだありません。",
+      "memberFilter": "メンバーでしぼる"
+    },
+    "capsule": {
+      "add": "メモを貼る",
+      "edit": "メモを書きなおす",
+      "save": "しまう",
+      "delete": "はがす",
+      "deleteConfirm": "このメモをはがしますか？",
+      "cancel": "やめる",
+      "placeholder": "この日のこと、あなたの言葉で。",
+      "written": "{{date}}に書いたメモ",
+      "yearsAgo": "{{count}}年前のあなたが書いたメモ",
+      "limit": "あと {{count}} 文字",
+      "full": "これ以上は書けません",
+      "failed": "メモを保存できませんでした",
+      "deleteFailed": "メモをはがせませんでした",
+      "local": "このメモはこのパソコンにだけ保存されます"
+    },
+    "sameTime": {
+      "now": "いま {{clock}}",
+      "pastYear": "{{date}} {{time}}、{{name}}は",
+      "thisYear": "{{date}} {{time}}、{{name}}は"
+    },
+    "thenNow": {
+      "rowPhoto": "写真",
+      "rowOhayo": "おはよう",
+      "rowVoice": "ボイス",
+      "none": "はじめてと最近は、まだ一組になりません。",
+      "title": "初見と今",
+      "then": "初見",
+      "now": "今",
+      "thenCaption": "はじめての",
+      "nowCaption": "最近の",
+      "rowOyasumi": "おやすみ",
+      "elapsedYears": "{{count}}年",
+      "elapsedDays": "{{count}}日",
+      "elapsedJoin": "{{years}}{{days}}",
+      "openSide": "{{date}} の一日をひらく",
+      "voiceLonger": "{{count}}秒長く",
+      "voiceShorter": "{{count}}秒短く",
+      "spanYears": "はじめてから今まで・約{{count}}年",
+      "spanMonths": "はじめてから今まで・約{{count}}か月"
+    },
+    "day24": {
+      "tab": "彼女の24時間",
+      "title": "{{name}}の一日",
+      "fromYears": "{{count}}年分のメッセージから",
+      "fromOneYear": "ある年のメッセージから",
+      "reroll": "ほかの一日をつくる",
+      "thin": "もう少しメッセージが届いたら、ここに一日ができます。",
+      "year": "{{year}}年"
+    },
+    "postcard": {
+      "greeting": {
+        "newyear": "謹賀新年",
+        "birthday": "お誕生日おめでとう",
+        "anniversary": "記念日",
+        "valentine": "ハッピーバレンタイン",
+        "christmas": "メリークリスマス"
+      },
+      "from": "{{name}} より",
+      "stack": "はがき {{count, number}} 枚",
+      "year": "{{year}} 年のはがき",
+      "rack": "毎年のはがき"
+    }
+  },
+  "recap": {
+    "entry": {
+      "heading": "同じ坂道を歩いた一年",
+      "year": "{{year}}年",
+      "olderYear": "前の年",
+      "newerYear": "次の年",
+      "back": "戻る",
+      "choose": "誰との一年を振り返りますか？",
+      "partial": "{{year}}年の、ここまで",
+      "loadFailed": "読み込めませんでした。",
+      "oshi": "推し",
+      "emptyTitle": "来年のあなたへ",
+      "emptyTitlePast": "これからのあなたへ",
+      "emptyBody": "これから届く一通を、ここで待っています。"
+    },
+    "titles": {
+      "morning": "いちばん“おはよう”をくれた朝の光",
+      "nickname": "いちばん名前を呼んでくれた絆",
+      "longest": "いちばん長い真心を綴った筆跡",
+      "voice": "いちばん声を届けてくれた人",
+      "night": "いちばん多くの夜に寄り添ってくれた優しさ",
+      "photos": "いちばん多くの景色を見せてくれた人",
+      "first": "いちばん長く、そばにいてくれた人"
+    },
+    "opening": {
+      "label": "年間の振り返り・オープニング",
+      "starsTitle": "わたしの{{year}}",
+      "starsNarration": "今年、あなたの空にいた人たち。",
+      "firstChip": "今年最初の一通",
+      "starsLabel": "今年の星々",
+      "titlesTitle": "ひとりひとりの、ひかり",
+      "titlesNarration": "ここからは、ひとりずつ。"
+    },
+    "player": {
+      "label": "年間の振り返り",
+      "prev": "前へ",
+      "next": "次へ",
+      "pause": "一時停止",
+      "play": "再生",
+      "progress": "{{current}} / {{total}}"
+    },
+    "youFallback": "あなた",
+    "s01": {
+      "title": "{{year}}年、ふたりの物語はこの一通から始まりました。",
+      "sub": "あなたと彼女の、{{count}}年目。",
+      "joined": "あなたと彼女の{{year}}年は、{{date}}から。",
+      "notification": "新着メッセージ"
+    },
+    "s02": {
+      "title": "季節が巡っても、彼女が名前を呼ぶ声だけは変わらない温度でした。",
+      "daisukiTitle": "季節が巡っても、“大好き”の温度は変わりませんでした。",
+      "count": "今年、{{count}}回 名前を呼んでくれた。",
+      "single": "今年、一度だけ。でも、確かに呼んでくれた。",
+      "daisuki": "“大好き”を、{{count}}回。",
+      "daisukiWord": "大好き",
+      "daisukiSingle": "今年、一度だけの“大好き”。"
+    },
+    "s03": {
+      "titleNight": "彼女の夜は、あなたの夜。",
+      "titleMorning": "彼女の朝は、あなたの朝。",
+      "titleNoon": "彼女の昼下がりは、あなたの昼下がり。",
+      "peak": "いちばん星が集まる時間の、ひとこと。",
+      "flat": "どの時間にも、彼女のことばがあった。",
+      "clockLabel": "彼女の一日の星時計"
+    },
+    "s04": {
+      "title": "おはようと、おやすみ。",
+      "titleDay": "一日のはじまりと、おわりに。",
+      "titleMorning": "一日のはじまりに。",
+      "titleEvening": "一日のおわりに。",
+      "firstOhayo": "今年最初の、おはよう",
+      "firstMorning": "今年最初の、朝のことば",
+      "latestOyasumi": "いちばん遅い時間の、おやすみ",
+      "latestArigato": "いちばん遅い時間の、ありがとう",
+      "latestOtsukare": "いちばん遅い時間の、おつかれさま",
+      "countOyasumi": "{{count}}回の「おやすみ」で、一日を締めくくった。",
+      "countArigato": "「ありがとう」を、{{count}}回。",
+      "countOtsukare": "「おつかれさま」を、{{count}}回。"
+    },
+    "s05": {
+      "title": "見せたかった景色。",
+      "mostlyBursts": "彼女は、いつもまとめて見せてくれる人。",
+      "bestPhoto": "今年の、この一枚。",
+      "burstLabel": "一度に届いた写真"
+    },
+    "s06": {
+      "title": "今年、届いた声。",
+      "play": "声を聴く",
+      "hint": "▶を押すと、声が流れます。",
+      "playing": "再生中",
+      "video": "動画から届いた声。",
+      "count": "今年、{{count}}回 声が届いた。"
+    },
+    "s07": {
+      "title": "いちばん長い手紙。",
+      "count": "{{n}} 文字の想い"
+    },
+    "s08": {
+      "title": "去年の、同じ日。",
+      "titleYears": "{{count}}年前の、同じ日。",
+      "titleEcho": "あの頃と、いま。",
+      "keyword": "あの頃も、いまも、同じことば。",
+      "years": "{{count}}年の時を越えて。",
+      "firstWeekTitle": "はじめての一週間と、いま。",
+      "firstRecordedWeekTitle": "記録に残る、最初の一週間と、いま。",
+      "firstWeek": "はじめての週",
+      "firstRecordedWeek": "記録に残る最初の週",
+      "now": "いま"
+    },
+    "s09": {
+      "title": "特別な日。",
+      "birthday": "彼女の誕生日",
+      "christmas": "クリスマス",
+      "newyear": "新しい年の、はじまり",
+      "anniversary": "メッセージが届きはじめた記念日",
+      "anniversaryNote": "この日も、彼女のことばが届いていた。",
+      "sealed": "12月25日に、ここが開きます。"
+    },
+    "s10": {
+      "title": "あなたも、ここにいた。",
+      "favorites": "今年、{{count}}回の★を残した。",
+      "letters": "今年、{{count}}通の手紙を書いた。",
+      "lettersLabel": "あなたが書いた手紙",
+      "firstFavorite": "今年はじめての★は、{{date}}。",
+      "bookLabel": "あなたがつけた★",
+      "inviteTitle": "来年は、あなたの足あとも。",
+      "inviteTitleLater": "これからは、あなたの足あとも。",
+      "inviteFavorites": "心に残ったメッセージに★をつけると、ここに並びます。",
+      "inviteLetters": "あなたが送った手紙も、ここに並びます。"
+    },
+    "s11": {
+      "title": "大好き と ありがとう。",
+      "joyTitle": "あたたかい、ことばたち。",
+      "petalsLabel": "今年のことばの花びら"
+    },
+    "s12": {
+      "title": "{{year}}年、彼女のひとこと"
+    },
+    "s13": {
+      "title": "{{year}}年、最後のおやすみ。",
+      "partialTitle": "いちばん新しい、おやすみ",
+      "partialNote": "12月31日のおやすみで、完成します。",
+      "narration": "来年も、よろしくね。",
+      "graduatedTitle": "最後のメッセージ",
+      "graduatedLine": "ずっと、ここに。",
+      "lastTextTitle": "{{year}}年、最後のことば。",
+      "lastTextPartialTitle": "いちばん新しい、ことば",
+      "lastTextPartialNote": "12月31日のことばで、完成します。"
+    },
+    "poster": {
+      "label": "{{year}}年のポスター",
+      "with": "with {{nickname}}",
+      "numbers": {
+        "nickname": "{{count}}回、名前を呼んでくれた。",
+        "oyasumi": "{{count}}回の『おやすみ』で一日を締めくくった。",
+        "photos": "{{count}}枚の景色を見せてくれた。",
+        "voice": "{{count}}回、声が届いた。",
+        "daisuki": "“大好き”を、{{count}}回。"
+      },
+      "start": "はじまり",
+      "mid": "まんなか",
+      "recent": "さいきん",
+      "avatarChanged": "今年、アイコンが変わった。",
+      "years": "メッセージを受け取って、{{count}}年目。",
+      "dedicated": "Dedicated to {{nickname}}",
+      "since": "{{date}}から購読",
+      "save": "画像を保存",
+      "handedOff": "画像の保存を始めました。",
+      "saveFailed": "保存できませんでした。",
+      "replay": "もう一度見る",
+      "open": "ポスターを見る"
+    },
+    "share": {
+      "open": "シェア用に書き出す",
+      "title": "シェア用に書き出す",
+      "intro": "写真はすべてぼかして書き出します。名前やアイコンは、オンにしたものだけが入ります。",
+      "preview": "書き出しのプレビュー",
+      "styleLabel": "スタイル",
+      "style": {
+        "collage": "すりガラスのコラージュ",
+        "colour": "色の記録"
+      },
+      "sentencesLabel": "彼女のことば（2つまで）",
+      "sentencesLimit": "2つまで選べます。外してから選んでください。",
+      "sentencesNone": "今年は、書き出せることばがありません。",
+      "identityLabel": "あなたの情報（オンにしたものだけ）",
+      "nickname": "ニックネームを入れる",
+      "avatar": "自分のアイコンを入れる",
+      "pickAvatar": "画像を選ぶ",
+      "changeAvatar": "画像を変える",
+      "avatarMissing": "アイコンにする画像を選んでください。",
+      "avatarError": {
+        "not_image": "画像ではないファイルです。画像を選んでください。",
+        "too_large": "10MBより大きい画像です。もっと小さい画像を選んでください。",
+        "load_failed": "この画像は読み込めませんでした。別の画像を選んでください。"
+      },
+      "years": "「{{count}}年目」を入れる",
+      "footerToggle": "「SakaDesk」を入れる",
+      "exportGif": "GIF",
+      "exportVideo": "動画",
+      "exportPng": "画像",
+      "progressFrames": "書き出しの準備中…",
+      "progressAssemble": "GIFを組み立てています…",
+      "progressRecord": "動画を録画しています…",
+      "progressLabel": "書き出しの進み具合",
+      "previewLoading": "プレビューを準備中…",
+      "preparingPhotos": "写真を準備中…",
+      "photosUnavailable": "写真を読み込めなかったため、写真なしで書き出します。",
+      "photosSkipped": "写真の読み込みをやめたため、写真なしで書き出します。",
+      "handedOff": "書き出しを始めました。",
+      "failed": "書き出せませんでした。",
+      "cancelled": "書き出しを取りやめました。",
+      "cancelExport": "やめる",
+      "busy": "ほかの書き出しを進めています。",
+      "tagline": "同じ坂道を歩いた一年",
+      "clockLabel": "彼女のことばが、いちばん多い時間",
+      "clockHour": "{{hour}}時台",
+      "clockFlat": "朝も、昼も、夜も。",
+      "photosLabel": "今年の景色",
+      "photosCount": "{{count}}枚の景色",
+      "greeting": {
+        "oyasumi": "おやすみ",
+        "arigato": "ありがとう",
+        "otsukare": "おつかれさま"
+      },
+      "stubsLabel": "特別な日",
+      "footer": "SakaDesk"
+    }
   }
 }

@@ -13,7 +13,7 @@ import { formatDateTime, formatDownloadFilename } from '../../utils/classnames';
 import { toValidDate } from '../../utils/dateFormatters';
 
 /** Where the viewer was opened from (breadcrumb `surface`). */
-export type LetterViewerSource = 'sent_letters' | 'timeline';
+export type LetterViewerSource = 'sent_letters' | 'timeline' | 'memories';
 
 export interface LetterViewerModalProps {
     /** The letters in the order of the list the viewer was opened from (see `order`); the list keeps that order, but ← / → always step in time order. */

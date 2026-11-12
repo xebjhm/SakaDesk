@@ -17,6 +17,7 @@ from pydantic import (
     StrictInt,
     StringConstraints,
     field_validator,
+    model_validator,
 )
 
 router = APIRouter(prefix="/api/client-log", tags=["client-log"])
@@ -38,6 +39,7 @@ ClientEvent = Literal[
     "app_load_failed",
     "notify_open_chat",
     "notify_open_login",
+    "notify_open_memories",
     "backend_sync_followed",
     "backend_sync_skipped",
     "design_tokens_applied",
@@ -79,14 +81,35 @@ ClientEvent = Literal[
     "poll_retry",
     "poll_gave_up",
     "translation_batch_failed",
+    "translation_legacy_reuse",
+    "translation_legacy_resave_failed",
     "conv_hydrate_retry",
     "conv_hydrate_failed",
+    "oshi_mirror_failed",
     "conv_hydrate_recovered",
     "conv_write_failed",
     "read_state_save_deferred",
     "read_state_pending_flushed",
     "read_state_sync_failed",
     "sidebar_load",
+    "chat_load",
+    "memories_open",
+    "memories_page",
+    "memories_load",
+    "memories_jump",
+    "memories_toggle",
+    "memories_skip",
+    "memories_radio",
+    "memories_gacha",
+    "memories_capsule",
+    "recap_load",
+    "recap_play",
+    "recap_poster",
+    "recap_share",
+    "recap_opening",
+    "ui_wait",
+    "media_grid",
+    "media_poster",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -126,6 +149,12 @@ ALLOWED_FIELDS = frozenset(
         "caller",
         "written",
         "dropped",
+        "kind",
+        "style",
+        "wait_ms",
+        "grid",
+        "first_tile_ms",
+        "visible",
     }
 )
 WARNING_EVENTS = frozenset(
@@ -138,11 +167,22 @@ WARNING_EVENTS = frozenset(
         "poll_failed",
         "poll_gave_up",
         "translation_batch_failed",
+        "translation_legacy_resave_failed",
         "conv_hydrate_failed",
         "conv_write_failed",
         "read_state_sync_failed",
     }
 )
+
+# The loading-UX wait breadcrumb (frontend design/loading.ts `logWait`): a slow, very slow,
+# timed-out or cancelled wait, with its surface code and how long it had waited.
+UI_WAIT_PHASES = frozenset({"slow", "very_slow", "timeout", "cancelled"})
+UI_WAIT_FIELDS = frozenset({"surface", "phase", "wait_ms"})
+
+# Measured numbers: a non-negative integer on every event, never a code string such as "180".
+# ``wait_ms`` is the loading-UX wait; ``first_tile_ms`` and ``visible`` are the media grid's
+# first-paint breadcrumb (``media_grid``, media pipeline 0.5.0).
+NON_NEGATIVE_INT_FIELDS = frozenset({"wait_ms", "first_tile_ms", "visible"})
 
 CodeStr = Annotated[str, StringConstraints(pattern=r"^[a-z0-9_]{1,40}$")]
 FieldValue = Union[StrictBool, StrictInt, CodeStr]
@@ -158,7 +198,23 @@ class ClientLogEntry(BaseModel):
         # Do not echo the offending keys back: they are client-supplied text.
         if not set(value) <= ALLOWED_FIELDS:
             raise ValueError("unknown field key")
+        for key in NON_NEGATIVE_INT_FIELDS & set(value):
+            number = value[key]
+            if isinstance(number, bool) or not isinstance(number, int) or number < 0:
+                raise ValueError(f"{key} must be a non-negative integer")
         return value
+
+    @model_validator(mode="after")
+    def _ui_wait_is_complete(self) -> "ClientLogEntry":
+        # A wait breadcrumb is only useful with all three fields. Do not echo values back:
+        # they are client-supplied text.
+        if self.event != "ui_wait":
+            return self
+        if not UI_WAIT_FIELDS <= set(self.fields):
+            raise ValueError("ui_wait needs surface, phase and wait_ms")
+        if self.fields["phase"] not in UI_WAIT_PHASES:
+            raise ValueError("unknown ui_wait phase")
+        return self
 
 
 @router.post("", status_code=204)

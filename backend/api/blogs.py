@@ -14,7 +14,12 @@ from typing import List, Optional
 import structlog
 
 from backend.services import avatar_resize
-from backend.services.blog_service import BlogService, get_blog_backup_manager
+from backend.services.blog_service import (
+    BlogService,
+    blog_backup_enabled,
+    gallery_images,
+    get_blog_backup_manager,
+)
 from backend.services.service_utils import validate_service
 
 logger = structlog.get_logger(__name__)
@@ -399,6 +404,43 @@ async def get_blog_list(service: str = Query(...), member_id: str = Query(...)):
             service=service,
             member_id=member_id,
             error=str(e),
+        )
+        raise HTTPException(status_code=500, detail="An internal error occurred")
+
+
+class BlogGalleryImage(BaseModel):
+    blog_id: str
+    published_at: str
+    title: str
+    image_index: int
+    media_url: str
+    src: str
+
+
+class BlogGalleryResponse(BaseModel):
+    images: List[BlogGalleryImage]
+
+
+@router.get("/gallery", response_model=BlogGalleryResponse)
+async def get_blog_gallery(service: str = Query(...), member_id: str = Query(...)):
+    """The member's blog photo gallery in one call (``blog_service.gallery_images``).
+
+    Every locally cached image of the member's blogs, newest first:
+    ``{"images": [{blog_id, published_at, title, image_index, media_url, src}]}``.
+    An unknown service answers 400; with full blog backup off (the gallery
+    shows its "turn on backup" state) the list is empty.
+    """
+    try:
+        validate_service(service)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    if not await blog_backup_enabled():
+        return {"images": []}
+    try:
+        return {"images": await gallery_images(service, member_id)}
+    except Exception as e:  # noqa: BLE001 - one 500 with codes only
+        logger.error(
+            "blog_gallery_failed", service=service, error_type=type(e).__name__
         )
         raise HTTPException(status_code=500, detail="An internal error occurred")
 

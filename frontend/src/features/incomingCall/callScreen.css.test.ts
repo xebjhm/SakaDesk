@@ -33,4 +33,14 @@ describe('callScreen.css edges', () => {
         expect(r).toMatch(/border-radius:\s*16px/);
         expect(css).not.toMatch(/\.sd-call-halo--inset\[[^{]*\{[^}]*inset 0 0 0 \d/);
     });
+
+    it('stops every breathing halo under reduced motion with a selector that out-ranks the phase rules (D-L4)', () => {
+        const start = css.indexOf('@media (prefers-reduced-motion: reduce)');
+        expect(start).toBeGreaterThanOrEqual(0);
+        const block = css.slice(start);
+        // `.sd-call-halo[data-phase="ringing"]` is (0,2,0); a bare `.sd-call-halo` (0,1,0) loses to it.
+        const stops = (selector: string) => new RegExp(`(^|[\\s,])${selector.replace(/[.[\]]/g, '\\$&')}\\s*[,{][^}]*animation:\\s*none`, 'm').test(block);
+        expect(stops('.sd-call-halo[data-phase]')).toBe(true);
+        expect(stops('.sd-call-halo--inset[data-phase]')).toBe(true);
+    });
 });

@@ -1,6 +1,6 @@
 // frontend/src/core/common/SyncProgressPanel.test.tsx
-import { describe, it, expect, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, beforeAll, afterEach, vi } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
 import i18n from '../../i18n';
 import { SyncProgressPanel } from './SyncProgressPanel';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
@@ -71,8 +71,8 @@ describe('SyncProgressPanel', () => {
         expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuetext', '5 / 20');
     });
 
-    it('a zero total shows 0%', () => {
-        render(<SyncProgressPanel progress={{ ...RUNNING, total: 0, completed: 0 }} />);
+    it('a finished sync with a zero total still shows 0% (only a running or queued sync scans)', () => {
+        render(<SyncProgressPanel progress={{ ...RUNNING, state: 'complete', phase: 'complete', total: 0, completed: 0 }} />);
         expect(screen.getByText('0%')).toBeInTheDocument();
         expect(screen.getByRole('progressbar')).toHaveAttribute('aria-valuenow', '0');
     });
@@ -102,6 +102,107 @@ describe('SyncProgressPanel', () => {
 
     it('a queued sync shows its place in line in the detail row', () => {
         render(<SyncProgressPanel progress={{ state: 'queued', phase: 'queued', queue_position: 2 }} />);
+        expect(screen.getByText('Waiting for another sync to finish (#2 in line)')).toBeInTheDocument();
+    });
+});
+
+// Loading UX L6 (F16): before totals arrive the panel scans, never "0 / 0 · 0 %".
+describe('SyncProgressPanel scanning', () => {
+    const SCANNING: SyncProgress = { state: 'running', phase: 'scanning', phase_number: 1, completed: 0, total: 0, detail: 'Fixture detail' };
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('a running sync with no total shows "getting ready" and an indeterminate bar, not 0 / 0 or 0%', () => {
+        render(<SyncProgressPanel progress={SCANNING} />);
+        expect(screen.getByText('Getting ready to sync…')).toBeInTheDocument();
+        const bar = screen.getByRole('progressbar', { name: 'Sync progress' });
+        expect(bar).not.toHaveAttribute('aria-valuenow');
+        expect(screen.queryByText('0 / 0')).toBeNull();
+        expect(screen.queryByText('0%')).toBeNull();
+        expect(screen.getByTestId('sync-progress-fill')).toHaveClass('animate-progress-indeterminate', 'motion-reduce:animate-none');
+    });
+
+    it('a queued sync with no total is indeterminate too', () => {
+        render(<SyncProgressPanel progress={{ state: 'queued', phase: 'queued', queue_position: 1 }} />);
+        expect(screen.getByRole('progressbar')).not.toHaveAttribute('aria-valuenow');
+        expect(screen.queryByText('0%')).toBeNull();
+    });
+
+    it('explains a long scan at 10 s (in Japanese too)', async () => {
+        vi.useFakeTimers();
+        await i18n.changeLanguage('ja');
+        try {
+            render(<SyncProgressPanel progress={SCANNING} />);
+            expect(screen.getByText('同期の準備中…')).toBeInTheDocument();
+            act(() => { vi.advanceTimersByTime(9999); });
+            expect(screen.queryByText('新しいメッセージを確認しています。メッセージが多いと少し時間がかかります。')).toBeNull();
+            act(() => { vi.advanceTimersByTime(1); });
+            expect(screen.getByText('新しいメッセージを確認しています。メッセージが多いと少し時間がかかります。')).toHaveClass('text-small', 'text-secondary');
+        } finally {
+            await i18n.changeLanguage('en');
+        }
+    });
+
+    it('switches to the determinate bar with the numbers once the total arrives', () => {
+        const { rerender } = render(<SyncProgressPanel progress={SCANNING} />);
+        rerender(<SyncProgressPanel progress={RUNNING} />);
+        expect(screen.queryByText('Getting ready to sync…')).toBeNull();
+        expect(screen.getByText('5 / 20')).toBeInTheDocument();
+        expect(screen.getByText('25%')).toBeInTheDocument();
+        const bar = screen.getByRole('progressbar', { name: 'Sync progress' });
+        expect(bar).toHaveAttribute('aria-valuenow', '25');
+        expect(bar).toHaveAttribute('aria-valuetext', '5 / 20');
+        expect(screen.getByTestId('sync-progress-fill').style.width).toBe('25%');
+    });
+
+    it('the row spinners are the decorative Spinner next to their phase text', () => {
+        const { rerender } = render(<SyncProgressPanel progress={RUNNING} />);
+        const detail = screen.getByTestId('sync-detail').querySelector('svg');
+        expect(detail).toHaveAttribute('data-spinner');
+        expect(detail).toHaveAttribute('aria-hidden', 'true');
+        rerender(<SyncProgressPanel progress={{ ...RUNNING, phase: 'downloading', phase_number: 3 }} />);
+        expect(screen.getByTestId('sync-media-warning').querySelector('svg')).toHaveAttribute('data-spinner');
+    });
+
+    // Fix round 1: what the backend sends. scanning starts at total 0; a later phase can report
+    // total 0 when there is nothing to do (start_phase('syncing'|'downloading', ..., 0, ...)).
+    it.each([
+        ['syncing', 2],
+        ['downloading', 3],
+        ['verifying', 1],
+        ['repairing', 2],
+    ])('a running %s phase with total 0 is not scanning, and never reads "N / 0 · 0%"', (phase, phaseNumber) => {
+        // Fix round 2 (R4): verifying counts members with total 0; show the count over an indeterminate bar.
+        render(<SyncProgressPanel progress={{ ...SCANNING, phase, phase_number: phaseNumber, completed: 3 }} />);
+        expect(screen.queryByText('Getting ready to sync…')).toBeNull();
+        const bar = screen.getByRole('progressbar', { name: 'Sync progress' });
+        expect(bar).not.toHaveAttribute('aria-valuenow');
+        expect(bar).toHaveAttribute('aria-valuetext', '3');
+        expect(screen.getByTestId('sync-count')).toHaveTextContent(/^3$/);
+        expect(screen.queryByText(/\/ 0/)).toBeNull();
+        expect(screen.queryByText(/%/)).toBeNull();
+    });
+
+    it('a large verify count keeps its CJK-locale grouping and stays indeterminate', async () => {
+        await i18n.changeLanguage('ja');
+        try {
+            render(<SyncProgressPanel progress={{ ...SCANNING, phase: 'verifying', completed: 12345 }} />);
+            expect(screen.getByTestId('sync-count')).toHaveTextContent((12345).toLocaleString());
+            expect(screen.queryByText('同期の準備中…')).toBeNull();
+        } finally {
+            await i18n.changeLanguage('en');
+        }
+    });
+
+    it('discovering with total 0 is still scanning', () => {
+        render(<SyncProgressPanel progress={{ ...SCANNING, phase: 'discovering' }} />);
+        expect(screen.getByText('Getting ready to sync…')).toBeInTheDocument();
+    });
+
+    it('a queued wait never gets the "checking for new messages" line, even after 10 s', () => {
+        vi.useFakeTimers();
+        render(<SyncProgressPanel progress={{ state: 'queued', phase: 'queued', queue_position: 2 }} />);
+        act(() => { vi.advanceTimersByTime(10_000); });
+        expect(screen.queryByText('Checking for new messages. A large archive takes a little longer.')).toBeNull();
         expect(screen.getByText('Waiting for another sync to finish (#2 in line)')).toBeInTheDocument();
     });
 });

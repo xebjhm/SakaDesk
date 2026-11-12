@@ -15,10 +15,11 @@ import { TranslateButton } from '../../../core/common/TranslateButton';
 import { InlineTranslation } from '../../../core/common/InlineTranslation';
 import { useAppStore } from '../../../store/appStore';
 import { useJustBecame } from '../../../hooks/useJustBecame';
-import { buildMediaUrl, MEDIA_API_BASE } from '../mediaUrl';
+import { buildMediaUrl, MEDIA_API_BASE, thumbnailUrl, type ThumbWidth } from '../mediaUrl';
 import { groupTokens } from '../../../design/tokens';
 import { serviceGroupId } from '../../../config/serviceGroup';
-import { Avatar } from '../../../design/primitives';
+import { Avatar, SKELETON_PULSE, Spinner } from '../../../design/primitives';
+import { useDelayedLoading } from '../../../design/loading';
 
 interface MessageBubbleProps {
     message: Message;
@@ -38,6 +39,28 @@ interface MessageBubbleProps {
     userNickname?: string;
     /** First message of a run (same sender, same day, ≤ 5 min apart): shows avatar, name and time. */
     runStart?: boolean;
+    /** IANA zone for the time label (Memories passes `Asia/Tokyo`); default: the machine's local clock. */
+    timeZone?: string;
+    /** A keepsake view (Memories): no context menu, long-press or favourite actions. Translate and transcript still work with `memberPath`. */
+    readOnly?: boolean;
+    /**
+     * Opt-in lazy loading for the picture (Memories' read-only day lists, which are not
+     * virtualised). Default: the photo's own default (`eager` for a bubble), as in the chat.
+     */
+    mediaLoading?: 'lazy' | 'eager';
+    /**
+     * Opt-in: draw the picture from the thumbnail route at this width (`thumbnailUrl`), falling
+     * back to the full file on error. The click still hands the full file to `onMediaClick`, so
+     * the viewer shows it. Default: the full file, as in the chat.
+     */
+    mediaThumbWidth?: ThumbWidth;
+}
+
+/** `HH:MM` of `date` on the local clock, or in `timeZone` when given. */
+function clockLabel(date: Date, timeZone: string | undefined): string {
+    if (!timeZone) return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    if (Number.isNaN(date.getTime())) return '';
+    return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(date);
 }
 
 const SHELTER_ICONS = {
@@ -69,6 +92,11 @@ const DEFAULT_MEDIA_HEIGHT = 200;
 interface MediaContainerProps {
     message: Message;
     isVideo?: boolean;
+    /**
+     * Picture only: the photo has not loaded yet. The box pulses (`SKELETON_PULSE` on `bg-sunken`);
+     * under reduced motion, where the pulse stops, a labelled spinner shows from `reveal` instead.
+     */
+    pending?: boolean;
     children: React.ReactNode;
 }
 
@@ -76,7 +104,10 @@ interface MediaContainerProps {
  * Container for media that uses pre-calculated dimensions to prevent layout jitter.
  * Falls back to default dimensions if width/height not available.
  */
-const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = false, children }) => {
+const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = false, pending = false, children }) => {
+    const { t } = useTranslation();
+    // After `reveal`, so a photo from the cache never flashes the spinner.
+    const showSpinner = useDelayedLoading(pending);
     let containerStyle: React.CSSProperties = {
         minHeight: DEFAULT_MEDIA_HEIGHT,
     };
@@ -103,13 +134,20 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
 
     return (
         <div
+            data-testid="bubble-media-box"
             className={cn(
-                "rounded-sm overflow-hidden mb-2 flex items-center justify-center",
-                isVideo ? "bg-viewer-stage" : "bg-elevated"
+                "relative rounded-sm overflow-hidden mb-2 flex items-center justify-center",
+                isVideo ? "bg-viewer-stage" : pending ? cn("bg-sunken", SKELETON_PULSE) : "bg-elevated"
             )}
             style={containerStyle}
         >
             {children}
+            {!isVideo && showSpinner && (
+                // Only under reduced motion (the pulse is static there); its label then shows too.
+                <div className="pointer-events-none absolute inset-0 hidden items-center justify-center motion-reduce:flex">
+                    <Spinner size="sm" tone="muted" label={t('media.photoLoading')} />
+                </div>
+            )}
         </div>
     );
 };
@@ -158,10 +196,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     memberPath,
     userNickname,
     runStart = true,
+    timeZone,
+    readOnly = false,
+    mediaLoading,
+    mediaThumbWidth,
 }) => {
     const { t } = useTranslation();
-    const date = new Date(message.timestamp);
-    const time = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    const time = clockLabel(new Date(message.timestamp), timeZone);
     // Card radius; the first bubble of a run keeps a small top-left corner.
     const bubbleCorners = cn('rounded-card', runStart && 'rounded-tl-tail');
 
@@ -204,6 +245,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const mediaUrl = message.media_file && service
         ? buildMediaUrl(service, message.media_file, api_base)
         : null;
+    const pictureThumb = mediaUrl && mediaThumbWidth !== undefined ? thumbnailUrl(mediaUrl, mediaThumbWidth) : undefined;
+    // The picture (message and shown src) that has loaded or failed: a new message in this bubble,
+    // or a new src for the same one, loads again, so the box never sits blank without its pulse.
+    const photoKey = `${message.id}|${pictureThumb ?? mediaUrl ?? ''}`;
+    const [photoSettledKey, setPhotoSettledKey] = useState<string | null>(null);
+    const photoPending = photoSettledKey !== photoKey;
+    const settlePhoto = useCallback(() => setPhotoSettledKey(photoKey), [photoKey]);
 
     // Transcription — only active for voice and non-muted video messages
     const isTranscribable = message.type === 'voice' || (message.type === 'video' && !message.is_muted);
@@ -311,13 +359,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     return (
         <div
             className={cn('group/row relative flex gap-3', runStart ? 'pt-3' : 'pt-1')}
-            onContextMenu={handleContextMenu}
-            onTouchStart={handleTouchStartFavorite}
-            onTouchEnd={handleTouchEndFavorite}
-            onTouchCancel={handleTouchEndFavorite}
+            onContextMenu={readOnly ? undefined : handleContextMenu}
+            onTouchStart={readOnly ? undefined : handleTouchStartFavorite}
+            onTouchEnd={readOnly ? undefined : handleTouchEndFavorite}
+            onTouchCancel={readOnly ? undefined : handleTouchEndFavorite}
         >
             {/* Context Menu */}
-            {contextMenu && (
+            {contextMenu && !readOnly && (
                 <MessageContextMenu
                     x={contextMenu.x}
                     y={contextMenu.y}
@@ -378,12 +426,16 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                         {/* Picture */}
                         {message.type === 'picture' && mediaUrl && (
-                            <MediaContainer message={message}>
+                            <MediaContainer message={message} pending={photoPending}>
                                 <PhotoPlayer
                                     variant="bubble"
-                                    src={mediaUrl}
+                                    src={pictureThumb ?? mediaUrl}
+                                    fallbackSrc={pictureThumb ? mediaUrl : undefined}
+                                    loading={mediaLoading}
                                     alt={t('messageList.attachment')}
                                     onClick={() => onMediaClick?.(mediaUrl, 'picture', message.timestamp)}
+                                    onLoad={settlePhoto}
+                                    onError={settlePhoto}
                                 />
                             </MediaContainer>
                         )}

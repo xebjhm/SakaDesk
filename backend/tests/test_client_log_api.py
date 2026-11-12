@@ -1,5 +1,8 @@
 """Tests for POST /api/client-log (whitelisted UI breadcrumbs)."""
 
+import json
+from pathlib import Path
+
 import pytest
 from fastapi.testclient import TestClient
 from structlog.testing import capture_logs
@@ -279,6 +282,22 @@ def test_notify_open_login_accepts_delivered():
     assert res.status_code == 204
     (event,) = _client_events(logs)
     assert event["delivered"] is True
+
+
+def test_notify_open_memories_accepts_delivered_and_refusals():
+    for fields in (
+        {"service": "sakurazaka46", "delivered": True, "target": "on_this_day"},
+        {"delivered": False, "reason": "unknown_service"},
+        {"service": "sakurazaka46", "delivered": False, "reason": "onboarding"},
+    ):
+        with capture_logs() as logs:
+            res = client.post(
+                "/api/client-log",
+                json={"event": "notify_open_memories", "fields": fields},
+            )
+        assert res.status_code == 204, fields
+        (event,) = _client_events(logs)
+        assert event["delivered"] is fields["delivered"]
 
 
 @pytest.mark.parametrize(
@@ -888,3 +907,442 @@ def test_sidebar_load_breadcrumb_is_accepted(fields):
     assert entry["event"] == "sidebar_load"
     assert entry["log_level"] == "info"
     assert {key: entry[key] for key in fields} == fields
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"outcome": "kept_room", "reason": "error", "error_code": 500},
+        {"outcome": "kept_room", "reason": "timeout"},
+        {"outcome": "error_state", "reason": "error", "error_code": 404},
+        {"outcome": "error_state", "reason": "timeout"},
+    ],
+)
+def test_chat_load_breadcrumb_is_accepted(fields):
+    """L5: a failed room load; a background refresh keeps the room (kept_room)."""
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log", json={"event": "chat_load", "fields": fields}
+        )
+    assert res.status_code == 204
+    [entry] = _client_events(logs)
+    assert entry["event"] == "chat_load"
+    assert entry["log_level"] == "info"
+    assert {key: entry[key] for key in fields} == fields
+
+
+def test_chat_load_rejects_a_path_as_a_field_value():
+    res = client.post(
+        "/api/client-log",
+        json={
+            "event": "chat_load",
+            "fields": {
+                "outcome": "kept_room",
+                "reason": "日向坂46/messages/58 金村 美玖",
+            },
+        },
+    )
+    assert res.status_code == 422
+
+
+def test_oshi_mirror_failed_is_allowlisted():
+    r = client.post(
+        "/api/client-log",
+        json={"event": "oshi_mirror_failed", "fields": {"error_type": "typeerror"}},
+    )
+    assert r.status_code == 204
+
+
+def test_memories_events_are_allowlisted():
+    for event, fields in (
+        ("memories_open", {"service": "hinatazaka46"}),
+        ("memories_page", {"target": "recap"}),
+    ):
+        r = client.post("/api/client-log", json={"event": event, "fields": fields})
+        assert r.status_code == 204
+
+
+def test_memories_core_events_are_allowlisted():
+    for event, fields in (
+        ("memories_load", {"target": "album", "outcome": "ok", "count": 12}),
+        (
+            "memories_load",
+            {"target": "on_this_day", "outcome": "error", "error_code": 404},
+        ),
+        ("memories_load", {"target": "hub", "outcome": "timeout"}),
+        ("memories_jump", {"target": "favorites", "has_target": True}),
+        ("memories_toggle", {"target": "other_services", "outcome": "on"}),
+        (
+            "memories_skip",
+            {"target": "film_strip", "reason": "focus_missing", "message_id": 123},
+        ),
+    ):
+        r = client.post("/api/client-log", json={"event": event, "fields": fields})
+        assert r.status_code == 204
+
+
+def test_memories_jump_rejects_a_member_path():
+    r = client.post(
+        "/api/client-log",
+        json={
+            "event": "memories_jump",
+            "fields": {"target": "日向坂46/messages/34 金村 美玖", "has_target": True},
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_recap_events_are_allowlisted():
+    for event, fields in (
+        (
+            "recap_load",
+            {"target": "member", "outcome": "ok", "count": 4, "member_id": "58"},
+        ),
+        ("recap_load", {"target": "members", "outcome": "rejected", "error_code": 500}),
+        (
+            "recap_play",
+            {
+                "phase": "step",
+                "index": 1,
+                "key": "s02_name",
+                "reason": "key",
+                "member_id": "58",
+            },
+        ),
+        ("recap_play", {"phase": "skip", "key": "s03_clock", "reason": "not_built"}),
+    ):
+        r = client.post("/api/client-log", json={"event": event, "fields": fields})
+        assert r.status_code == 204
+
+
+def test_recap_opening_events_are_allowlisted():
+    for fields in (
+        {"phase": "show", "count": 4},
+        {"phase": "skip", "reason": "single_member", "count": 1},
+        {"phase": "end", "count": 2},
+        {"phase": "close", "index": 0},
+    ):
+        r = client.post(
+            "/api/client-log", json={"event": "recap_opening", "fields": fields}
+        )
+        assert r.status_code == 204, fields
+
+
+def test_recap_years_load_is_allowlisted():
+    r = client.post(
+        "/api/client-log",
+        json={
+            "event": "recap_load",
+            "fields": {"target": "years", "outcome": "ok", "count": 3},
+        },
+    )
+    assert r.status_code == 204
+
+
+def test_recap_poster_events_are_allowlisted():
+    for fields in (
+        {"phase": "open", "count": 3, "member_id": "58", "surface": "list"},
+        {"phase": "skip", "reason": "no_poster", "member_id": "58"},
+        {"phase": "font_fallback", "fallback": "font_embed_timeout"},
+        {
+            "phase": "font_fallback",
+            "fallback": "font_truncated",
+            "count": 70,
+            "dropped": 6,
+            "member_id": "58",
+        },
+        {"phase": "save", "outcome": "handed_off", "member_id": "58"},
+        {"phase": "save_failed", "reason": "render_failed", "member_id": "58"},
+        {
+            "phase": "save_failed",
+            "reason": "write_failed",
+            "error_code": "export_too_large",
+            "member_id": "58",
+        },
+    ):
+        r = client.post(
+            "/api/client-log", json={"event": "recap_poster", "fields": fields}
+        )
+        assert r.status_code == 204
+
+
+def test_recap_poster_rejects_file_names():
+    r = client.post(
+        "/api/client-log",
+        json={
+            "event": "recap_poster",
+            "fields": {"phase": "save", "outcome": "sakadesk-recap-2026-58.png"},
+        },
+    )
+    assert r.status_code == 422
+
+
+def test_recap_share_events_are_allowlisted():
+    for fields in (
+        {"phase": "open", "member_id": "58", "count": 4},
+        {"phase": "close", "member_id": "58"},
+        {"phase": "option", "key": "nickname", "outcome": "on"},
+        {"phase": "style", "style": "colour"},
+        {"phase": "sentence", "outcome": "removed", "count": 1},
+        {"phase": "font_fallback", "fallback": "font_timeout"},
+        {"phase": "photo_skip", "reason": "load_failed", "count": 2},
+        {"phase": "video_unsupported", "reason": "no_media_recorder"},
+        {"phase": "export_start", "kind": "gif", "style": "collage", "count": 30},
+        {"phase": "export", "kind": "webm", "outcome": "handed_off"},
+        {
+            "phase": "export_failed",
+            "kind": "gif",
+            "reason": "assemble_failed",
+            "error_code": "too_many_frames",
+        },
+    ):
+        r = client.post(
+            "/api/client-log", json={"event": "recap_share", "fields": fields}
+        )
+        assert r.status_code == 204, fields
+
+
+def test_recap_share_rejects_free_text():
+    r = client.post(
+        "/api/client-log",
+        json={"event": "recap_share", "fields": {"phase": "sentence", "key": "大好き"}},
+    )
+    assert r.status_code == 422
+
+
+def test_every_memories_code_the_frontend_emits_is_allowlisted():
+    """Post every page, view, toggle and phase code the Memories UI can send.
+
+    The fixture mirrors the TS constants in ``memoriesLog.ts`` (``memoriesLog.test.ts``
+    fails when they drift), so a camelCase code can never be dropped silently again.
+    """
+    fixture = Path(__file__).parent / "fixtures" / "memories_log_codes.json"
+    codes = json.loads(fixture.read_text(encoding="utf-8"))
+    assert codes
+    for key, values in codes.items():
+        event, field = key.split(".")
+        assert values, key
+        for value in values:
+            r = client.post(
+                "/api/client-log", json={"event": event, "fields": {field: value}}
+            )
+            assert r.status_code == 204, (key, value)
+
+
+def test_a_camel_case_page_code_is_rejected():
+    r = client.post(
+        "/api/client-log",
+        json={"event": "memories_page", "fields": {"target": "onThisDay"}},
+    )
+    assert r.status_code == 422
+
+
+def test_translation_legacy_events_are_allowlisted():
+    for event, fields in (
+        ("translation_legacy_reuse", {"count": 1}),
+        ("translation_legacy_resave_failed", {"error_type": "typeerror"}),
+    ):
+        with capture_logs() as logs:
+            r = client.post("/api/client-log", json={"event": event, "fields": fields})
+        assert r.status_code == 204
+        level = "warning" if event.endswith("_failed") else "info"
+        assert logs[-1]["log_level"] == level
+
+
+def test_the_memories_fun_events_post_every_fixture_code():
+    """The fun-wave events (radio, gacha, capsule) are allowlisted with each code.
+
+    ``memoriesLog.test.ts`` keeps the fixture equal to the TS constants; here every
+    new ``event.field`` key must be present and each of its values accepted.
+    """
+    fixture = Path(__file__).parent / "fixtures" / "memories_log_codes.json"
+    codes = json.loads(fixture.read_text(encoding="utf-8"))
+    for key in (
+        "memories_radio.phase",
+        "memories_radio.kind",
+        "memories_radio.reason",
+        "memories_radio.outcome",
+        "memories_gacha.phase",
+        "memories_gacha.kind",
+        "memories_gacha.reason",
+        "memories_gacha.outcome",
+        "memories_capsule.phase",
+        "memories_capsule.kind",
+        "memories_capsule.outcome",
+        "memories_capsule.error_code",
+        "memories_toggle.reason",
+    ):
+        assert codes.get(key), key
+        event, field = key.split(".")
+        for value in codes[key]:
+            r = client.post(
+                "/api/client-log", json={"event": event, "fields": {field: value}}
+            )
+            assert r.status_code == 204, (key, value)
+    for page in ("radio", "gacha", "calendar", "day"):
+        assert page in codes["memories_page.target"], page
+
+
+def test_the_memories_fun_events_take_their_numeric_fields():
+    for event, fields in (
+        (
+            "memories_radio",
+            {"phase": "track", "kind": "oyasumi", "index": 2, "count": 9},
+        ),
+        (
+            "memories_gacha",
+            {"phase": "reveal", "kind": "sr", "index": 0, "message_id": 42},
+        ),
+        ("memories_capsule", {"phase": "save", "kind": "day", "count": 1}),
+        (
+            "memories_toggle",
+            {
+                "target": "album_cover",
+                "outcome": "off",
+                "reason": "not_in_month",
+                "error_code": 400,
+            },
+        ),
+    ):
+        r = client.post("/api/client-log", json={"event": event, "fields": fields})
+        assert r.status_code == 204, event
+
+
+def test_the_capsule_event_rejects_a_body_field():
+    r = client.post(
+        "/api/client-log",
+        json={"event": "memories_capsule", "fields": {"phase": "save", "body": "x"}},
+    )
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("phase", ["slow", "very_slow", "timeout", "cancelled"])
+def test_ui_wait_breadcrumb_is_accepted(phase):
+    with capture_logs() as logs:
+        r = client.post(
+            "/api/client-log",
+            json={
+                "event": "ui_wait",
+                "fields": {"surface": "chat_room", "phase": phase, "wait_ms": 3000},
+            },
+        )
+    assert r.status_code == 204
+    event = _client_events(logs)[0]
+    assert event["event"] == "ui_wait"
+    assert event["log_level"] == "info"
+    assert event["surface"] == "chat_room"
+    assert event["phase"] == phase
+    assert event["wait_ms"] == 3000
+
+
+def test_ui_wait_accepts_zero_wait():
+    r = client.post(
+        "/api/client-log",
+        json={
+            "event": "ui_wait",
+            "fields": {"surface": "login", "phase": "cancelled", "wait_ms": 0},
+        },
+    )
+    assert r.status_code == 204
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"surface": "Chat Room", "phase": "slow", "wait_ms": 3000},
+        {"surface": "読み込み中🌸", "phase": "slow", "wait_ms": 3000},
+        {"surface": "chat_room", "phase": "stalled", "wait_ms": 3000},
+        {"surface": "chat_room", "phase": "slow", "wait_ms": -1},
+        {"surface": "chat_room", "phase": "slow", "wait_ms": True},
+        {"surface": "chat_room", "phase": "slow", "wait_ms": "3000"},
+    ],
+)
+def test_ui_wait_rejects_text_unknown_phases_and_bad_waits(fields):
+    with capture_logs() as logs:
+        r = client.post("/api/client-log", json={"event": "ui_wait", "fields": fields})
+    assert r.status_code == 422
+    assert _client_events(logs) == []
+
+
+def test_wait_ms_is_never_negative_on_any_event():
+    r = client.post(
+        "/api/client-log",
+        json={"event": "dialog_load", "fields": {"wait_ms": -5}},
+    )
+    assert r.status_code == 422
+
+
+@pytest.mark.parametrize("missing", ["surface", "phase", "wait_ms"])
+def test_ui_wait_requires_surface_phase_and_wait(missing):
+    fields = {"surface": "chat_room", "phase": "slow", "wait_ms": 3000}
+    del fields[missing]
+    r = client.post("/api/client-log", json={"event": "ui_wait", "fields": fields})
+    assert r.status_code == 422
+
+
+# --- media pipeline (0.5.0, Task M5): the shared grid and the client poster capture ---
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"grid": "messages", "first_tile_ms": 180, "visible": 12, "count": 340},
+        {"grid": "blogs", "first_tile_ms": 0, "visible": 0, "count": 0},
+        {"grid": "album", "first_tile_ms": 95, "visible": 18, "count": 13518},
+        {"reason": "meta_failed", "count": 200},
+        {"grid": "album", "reason": "tile_failed", "count": 3},
+    ],
+)
+def test_media_grid_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        r = client.post(
+            "/api/client-log", json={"event": "media_grid", "fields": fields}
+        )
+    assert r.status_code == 204
+    event = _client_events(logs)[0]
+    assert event["event"] == "media_grid"
+    assert event["log_level"] == "info"
+    for key, value in fields.items():
+        assert event[key] == value
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"outcome": "captured"},
+        {"outcome": "failed", "reason": "timeout"},
+        {"outcome": "failed", "reason": "decode"},
+        {"outcome": "failed", "reason": "upload"},
+        {"outcome": "skipped", "reason": "limit"},
+        {"outcome": "skipped", "reason": "hidden"},
+    ],
+)
+def test_media_poster_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        r = client.post(
+            "/api/client-log", json={"event": "media_poster", "fields": fields}
+        )
+    assert r.status_code == 204
+    assert _client_events(logs)[0]["event"] == "media_poster"
+
+
+@pytest.mark.parametrize(
+    ("event", "fields"),
+    [
+        ("media_grid", {"grid": "Messages Gallery"}),
+        ("media_grid", {"grid": "画像🌸"}),
+        ("media_grid", {"grid": "messages", "url": "x"}),
+        ("media_grid", {"grid": "/api/content/media/hinatazaka46/a.jpg"}),
+        ("media_grid", {"first_tile_ms": "180"}),
+        ("media_grid", {"visible": 1.5}),
+        ("media_grid", {"first_tile_ms": -1}),
+        ("media_grid", {"visible": True}),
+        ("media_poster", {"outcome": "failed", "reason": "Network error"}),
+        ("media_poster", {"outcome": "failed", "path": "hinatazaka46/messages/a.mp4"}),
+    ],
+)
+def test_media_breadcrumbs_reject_text_and_unknown_keys(event, fields):
+    with capture_logs() as logs:
+        r = client.post("/api/client-log", json={"event": event, "fields": fields})
+    assert r.status_code == 422
+    assert _client_events(logs) == []

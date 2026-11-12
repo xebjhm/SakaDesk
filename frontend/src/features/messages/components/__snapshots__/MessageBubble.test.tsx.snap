@@ -49,12 +49,13 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
         class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
       >
         <div
-          class="rounded-sm overflow-hidden mb-2 flex items-center justify-center bg-elevated"
+          class="relative rounded-sm overflow-hidden mb-2 flex items-center justify-center bg-sunken animate-pulse motion-reduce:animate-none"
+          data-testid="bubble-media-box"
           style="width: 320px; height: 240px;"
         >
           <img
             alt="Attachment"
-            class="w-full h-full object-contain cursor-pointer"
+            class="w-full h-full object-contain transition-opacity duration-base ease-standard motion-reduce:transition-none opacity-0 cursor-pointer"
             loading="eager"
             src="/api/content/media/%E6%97%A5%E5%90%91%E5%9D%8246/path/to/photo.jpg"
           />

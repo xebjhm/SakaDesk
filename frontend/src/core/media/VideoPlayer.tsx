@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Download, Repeat, MoreVertical, Loader2, RotateCcw } from 'lucide-react';
+import { Play, Pause, Volume2, VolumeX, Maximize, Minimize, Download, Repeat, MoreVertical, RotateCcw } from 'lucide-react';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { copyVideoToClipboard } from '../../utils/clipboard';
@@ -14,7 +14,7 @@ import { useJustBecame } from '../../hooks/useJustBecame';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
-import { Button, Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
+import { Button, Spinner, Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
 
 const VOLUME_STORAGE_KEY = 'sakadesk_video_amp';
 
@@ -470,12 +470,10 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             {/* Buffering: waiting for data while playing */}
             {playbackStatus === 'buffering' && (
                 <div
-                    role="status"
-                    aria-label={t('common.loading')}
                     data-testid="video-buffering"
                     className="pointer-events-none absolute inset-0 flex items-center justify-center"
                 >
-                    <Loader2 aria-hidden="true" className="h-10 w-10 animate-spin text-viewer motion-reduce:animate-none" />
+                    <Spinner size="lg" tone="viewer" label={t('common.loading')} />
                 </div>
             )}
 

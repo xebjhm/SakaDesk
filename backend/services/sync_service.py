@@ -10,6 +10,7 @@ from collections import defaultdict
 from pathlib import Path
 from datetime import datetime, timezone, timedelta
 from typing import Any, Optional
+from zoneinfo import ZoneInfo
 from pysaka import (
     Client,
     Group,
@@ -20,7 +21,7 @@ from pysaka import (
 )
 from pysaka.credentials import get_token_manager
 from backend.api.progress import progress_manager
-from backend.services import desktop_bridge, refresh_gate
+from backend.services import desktop_bridge, media_pregen, refresh_gate
 from backend.services.background_tasks import track_background_task
 from backend.services.call_popup import (
     PendingCall,
@@ -41,6 +42,13 @@ from backend.services.nickname import nickname_for
 from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
 from backend.services.chat_kind import is_member_dir
+from backend.services.memories.index import build_all as build_memory_index
+from backend.services.memories import index as memory_index
+from backend.services.memories.album import warm_album
+from backend.services.memories.index import sync_writing as memory_index_sync_writing
+from backend.services.memories.member_profiles import refresh_member_profiles
+from backend.services.memories.notify_scheduler import request_card_check
+from backend.services.memories.subscriptions import archive_subscription_starts
 from backend.services.i18n import get_strings, resolve_ui_language
 from backend.services.quiet_state import query_quiet_state
 from backend.services.ui_state import get_ui_state
@@ -425,6 +433,10 @@ class SyncService:
         pending_call: PendingCall | None = None
         call_dispatched = False
         call_abort_reason = "sync_failed"
+        # Marks the service dir as being written while this run is in flight,
+        # so Memories reads serve the stored index instead of rebuilding on
+        # every messages.json write (closed in the finally below).
+        index_writer = contextlib.ExitStack()
 
         try:
             # Load Configuration FIRST - needed for force_resync and all subsequent operations
@@ -440,6 +452,7 @@ class SyncService:
 
             self._resolve_service_paths(app_settings)
             assert self.metadata_file is not None  # set by _resolve_service_paths
+            index_writer.enter_context(memory_index_sync_writing(self.service_data_dir))
 
             # Handle Force Resync: reset only the per-member message cursor so every
             # member is re-fetched from scratch. Do NOT delete sync_metadata.json —
@@ -1316,6 +1329,14 @@ class SyncService:
                 metadata["last_sync"] = datetime.now(timezone.utc).isoformat()
                 await self.save_metadata(metadata)
 
+                # Best-effort, off the critical path (after notifications and
+                # the metadata save): archive the earliest subscription start
+                # for Memories. Never fails the sync; auth and rate-limit
+                # errors are logged inside and surface elsewhere.
+                await self._archive_subscription_starts(
+                    client, session, sorted({int(g) for g in tasks_by_group})
+                )
+
                 logger.info(
                     "sync_complete",
                     total_elapsed=f"{time.monotonic() - sync_t0:.1f}s",
@@ -1365,6 +1386,7 @@ class SyncService:
                 )
 
             progress.complete()
+            self._schedule_memories_refresh()
             return True
 
         except asyncio.CancelledError:
@@ -1399,6 +1421,7 @@ class SyncService:
             progress.error(str(e))
             return False
         finally:
+            index_writer.close()
             if pending_call is not None and not call_dispatched:
                 # Never awaits: abandon spawns its fallback toast as a background
                 # task. A failure is logged and must not skip the bookkeeping below.
@@ -1415,6 +1438,83 @@ class SyncService:
             if self._generation == my_generation:
                 self.running = False
                 self._task = None
+
+    async def _archive_subscription_starts(
+        self, client: Any, session: Any, group_ids: list[int]
+    ) -> None:
+        """Run the Memories subscription archive; never raises."""
+        try:
+            await archive_subscription_starts(
+                client,
+                session,
+                group_ids,
+                self.service_data_dir,
+                today=datetime.now(ZoneInfo("Asia/Tokyo")).date(),
+            )
+        except Exception as e:
+            logger.warning("subscription_starts_failed", error_type=type(e).__name__)
+
+    async def _refresh_memories(self) -> None:
+        """Refresh member profiles, rebuild the memory index, then warm the album.
+
+        A built index also asks the thumbnail pre-generation worker for a
+        pass over this service (``media_pregen.request_safely``; never
+        raises, waits until this refresh ends).
+
+        Sequential on purpose: birthdays are part of each room's index hash,
+        so building the index while the profile refresh is still running made
+        every room rebuild a second time once the birthdays landed. A failed
+        profile refresh is logged and the index is still built. Ends the
+        pending mark set by :meth:`_schedule_memories_refresh`.
+        """
+        sdir = self.service_data_dir
+        try:
+            try:
+                await refresh_member_profiles(self._service, sdir)
+            except Exception as e:
+                logger.warning(
+                    "memories_member_profiles_failed",
+                    service=self._service,
+                    error_type=type(e).__name__,
+                )
+            await build_memory_index(sdir)
+            # Pre-generate this service's thumbnails once the worker is idle.
+            media_pregen.request_safely(self._service)
+            # Fill the album caches now, so the first album open is warm.
+            await warm_album(self._service, sdir)
+        finally:
+            memory_index.end_refresh(sdir)
+
+    def _schedule_memories_refresh(self) -> None:
+        """Refresh member profiles and the memory index in the background.
+
+        Scheduled as one tracked task (profiles first, then the index; see
+        :meth:`_refresh_memories`) so it never blocks or fails the sync; it
+        logs its own failures (``background_task.failed``). Then asks the
+        Memories notifier for a foil card check of this service
+        (``request_card_check``, a no-op when no notifier runs).
+        """
+        try:
+            # Pending from now (not from when the task first runs), so the hub
+            # never sees a gap between the sync's end and the refresh.
+            memory_index.begin_refresh(self.service_data_dir)
+            try:
+                track_background_task(
+                    self._refresh_memories(),
+                    name="memories_index",
+                )
+            except BaseException:
+                memory_index.end_refresh(self.service_data_dir)
+                raise
+            # Foil card unlocks: checked once the index above has had time to build.
+            request_card_check(self._service)
+            logger.info("memories_refresh_scheduled", service=self._service)
+        except Exception as e:
+            logger.warning(
+                "memories_refresh_schedule_failed",
+                service=self._service,
+                error_type=type(e).__name__,
+            )
 
     async def _notify_new_messages(
         self, collector: NewMessageCollector, app_settings: dict[str, Any]

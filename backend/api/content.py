@@ -36,6 +36,7 @@ from backend.services.platform import (
     copy_file_to_clipboard,
 )
 from backend.services.path_resolver import (
+    output_dir_from_settings,
     resolve_service_path,
     resolve_talk_room_path,
     resolve_messages_file,
@@ -53,13 +54,23 @@ from backend.services.messages_cache import (
     get_messages_summary,
     stat_key,
 )
-from backend.services import avatar_resize, profile_images_service
+from backend.services import (
+    avatar_resize,
+    media_pregen,
+    photo_thumb,
+    profile_images_service,
+)
+from backend.services.archive_urls import (
+    ArchiveReadError,
+    archive_file_ok,
+    is_plain_relative,
+    media_disk_path,
+)
 from backend.services.media_range import MediaFileResponse
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
     get_service_identifier,
-    get_service_display_name,
 )
 
 router = APIRouter()
@@ -70,9 +81,18 @@ DEFAULT_OUTPUT_DIR = get_default_output_dir()
 
 
 def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
-    """Validate that a user-provided path stays within the base directory."""
+    """Validate that a user-provided path stays within the base directory.
+
+    Raises 400 for control characters, and 403 for a path that is not
+    ``archive_urls.is_plain_relative`` (rooted, drive, UNC or with a ``:``),
+    checked before anything is resolved, or that resolves (symlinks
+    followed) outside ``base_dir``. Returns the resolved path.
+    """
     if "\x00" in user_path or "\n" in user_path or "\r" in user_path:
         raise HTTPException(status_code=400, detail="Invalid path characters")
+    if not is_plain_relative(user_path):
+        logger.warning("path_rooted_blocked")
+        raise HTTPException(status_code=403, detail="Access denied")
 
     base_resolved = base_dir.resolve()
     target_path = (base_dir / user_path).resolve()
@@ -95,18 +115,12 @@ def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
 
 
 def get_output_dir() -> Path:
-    """Get the configured output directory from settings."""
-    settings_path = get_settings_path()
-    if settings_path.exists():
-        try:
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
-                path_str = settings.get("output_dir")
-                if path_str:
-                    return Path(path_str)
-        except Exception as e:
-            logger.warning("Failed to load output_dir from settings", error=str(e))
-    return DEFAULT_OUTPUT_DIR
+    """Get the configured output directory from settings.
+
+    A transient read failure keeps the last value read
+    (``path_resolver.output_dir_from_settings``), never the default dir.
+    """
+    return output_dir_from_settings(get_settings_path(), DEFAULT_OUTPUT_DIR)
 
 
 def load_sync_metadata(
@@ -850,20 +864,14 @@ def _compute_unread_counts(
 def _resolve_media_path(file_path: str) -> Path:
     """Resolve a media file path, translating service ID to display name.
 
-    Raises HTTPException 404 if the resolved path does not exist.
+    Raises HTTPException 400 for control characters, 403 outside the output
+    dir and 404 if the resolved path does not exist. A path whose first
+    segment is not a known service id is read relative to the output dir.
     """
     output_dir = get_output_dir()
-
-    parts = file_path.split("/", 1)
-    if len(parts) == 2:
-        service_part, rest = parts
-        try:
-            display_name = get_service_display_name(service_part)
-            file_path = f"{display_name}/{rest}"
-        except ValueError:
-            pass
-
-    safe_path = validate_path_within_dir(output_dir, file_path)
+    # The translation is shared with archive_urls.media_route_path (POST /api/media/meta).
+    disk_path, _service = media_disk_path(file_path)
+    safe_path = validate_path_within_dir(output_dir, disk_path)
     if not safe_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     return safe_path
@@ -883,8 +891,10 @@ async def get_media(file_path: str):
     disconnects, so paused or abandoned video/voice downloads never hold one
     of WebView2's six per-host connections. Requests without ``Range`` (e.g.
     ``<img>``) get the full file with ``200``. See ``backend.services.media_range``;
-    it also logs the ``media_request`` breadcrumb.
+    it also logs the ``media_request`` breadcrumb. Each request tells the
+    thumbnail pre-generation worker the UI is busy (``media_pregen.note_foreground``).
     """
+    media_pregen.note_foreground()
     safe_path = _resolve_media_path(file_path)
     return MediaFileResponse(safe_path)
 
@@ -906,6 +916,101 @@ async def get_avatar(file_path: str, w: int = Query(...)):
     if served == safe_path:
         return FileResponse(safe_path)
     return FileResponse(served, media_type="image/webp")
+
+
+_THUMB_CACHE_CONTROL = "private, max-age=86400"
+_THUMB_CACHE_IMMUTABLE = "private, max-age=31536000, immutable"
+_THUMB_CACHE_STALE = "private, no-cache"
+
+
+def _etags(if_none_match: Optional[str]) -> set[str]:
+    """The entity tags of an ``If-None-Match`` header (weak prefixes dropped)."""
+    if not if_none_match:
+        return set()
+    return {t.strip().removeprefix("W/") for t in if_none_match.split(",")}
+
+
+@router.get("/thumb/{file_path:path}")
+async def get_thumb(
+    file_path: str,
+    w: int = Query(...),
+    v: Optional[str] = Query(None, pattern="^[0-9a-f]{12}$"),
+    if_none_match: Optional[str] = Header(default=None),
+):
+    """Serve an archived picture (or a video's poster) downscaled to fit ``w`` px (WebP).
+
+    ``file_path`` is the same as for ``/media/{file_path}`` and is validated
+    the same way (403 outside the output dir), then must be a regular file
+    inside it (``archive_file_ok``). ``w`` must be one of
+    ``photo_thumb.ALLOWED_WIDTHS`` (400 otherwise). A video is served from
+    its cached poster frame (``backend.services.video_poster``; ``v`` is the
+    video's version); this route never makes a poster. A missing file, a
+    video without a poster, any other non-picture (voice, unknown) or a
+    picture that cannot be decoded safely answers 404, so the client falls
+    back (the full media URL, or a client poster capture for a video). The
+    variant is cached on disk under the ``photo_thumb.archive_rel`` key (see
+    ``backend.services.photo_thumb``), the same files the pre-generation
+    worker writes.
+
+    ``v`` is the optional content version (``photo_thumb.version_token`` of
+    the source's size and mtime; 12 lowercase hex chars, 422 otherwise). It
+    sets ``Cache-Control``: a ``v`` matching the current file gets
+    ``private, max-age=31536000, immutable`` (the URL names this content for
+    good); a stale ``v`` still gets the current variant, with
+    ``private, no-cache``; no ``v`` gets ``private, max-age=86400``. Every
+    answer carries a stable ``ETag`` (the variant's hash name; a matching
+    ``If-None-Match`` gets 304) and ``X-Content-Type-Options: nosniff``. The
+    body is read into memory first (thumbnails are small), so a variant
+    evicted meanwhile answers 404, never a 500. Each request tells the
+    pre-generation worker a gallery is in use (``media_pregen.note_foreground``).
+    """
+    media_pregen.note_foreground()
+    if w not in photo_thumb.ALLOWED_WIDTHS:
+        logger.info("thumb_request_rejected", reason="width", width=w)
+        raise HTTPException(status_code=400, detail="Unsupported width")
+    # The path checks stat the archive: off the event loop, on the thumbnail
+    # pool, so hundreds of tile requests never stall other requests.
+    safe_path, rel = await photo_thumb.run_io(_thumb_source, file_path)
+    result = await photo_thumb.thumbnail_with_token(safe_path, rel, w)
+    if result is None:
+        raise HTTPException(status_code=404, detail="No thumbnail")
+    served = result.path
+    if v is None:
+        cache_control = _THUMB_CACHE_CONTROL
+    elif v == result.token:
+        cache_control = _THUMB_CACHE_IMMUTABLE
+    else:
+        cache_control = _THUMB_CACHE_STALE
+    # The variant's name is a hash of (path, size, mtime, width): a stable ETag.
+    headers = {
+        "ETag": f'"{served.stem}"',
+        "Cache-Control": cache_control,
+        "X-Content-Type-Options": "nosniff",
+    }
+    if headers["ETag"] in _etags(if_none_match):
+        return Response(status_code=304, headers=headers)
+    body = await photo_thumb.run_io(photo_thumb.read_variant, served)
+    if body is None:
+        raise HTTPException(status_code=404, detail="No thumbnail")
+    return Response(content=body, media_type="image/webp", headers=headers)
+
+
+def _thumb_source(file_path: str) -> tuple[Path, str]:
+    """``(validated archive file, its cache key from photo_thumb.archive_rel)``. Blocking.
+
+    403 outside the output dir, 404 when it is not a regular archive file.
+    """
+    safe_path = _resolve_media_path(file_path)
+    output_dir = get_output_dir()
+    try:
+        is_file = archive_file_ok(output_dir, safe_path)
+    except ArchiveReadError:
+        logger.info("memories_skip", view="photo_thumb", reason="unreadable")
+        raise HTTPException(status_code=404, detail="File not found") from None
+    if not is_file:
+        logger.info("memories_skip", view="photo_thumb", reason="not_file")
+        raise HTTPException(status_code=404, detail="File not found")
+    return safe_path, photo_thumb.archive_rel(output_dir, safe_path)
 
 
 # =============================================================================

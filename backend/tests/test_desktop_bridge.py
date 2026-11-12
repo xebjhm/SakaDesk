@@ -18,10 +18,12 @@ TARGET = ChatTarget(
 def _reset():
     desktop_bridge.set_open_chat_handler(None)
     desktop_bridge.set_open_login_handler(None)
+    desktop_bridge.set_open_memories_handler(None)
     desktop_bridge.set_tray_alert_handler(None)
     yield
     desktop_bridge.set_open_chat_handler(None)
     desktop_bridge.set_open_login_handler(None)
+    desktop_bridge.set_open_memories_handler(None)
     desktop_bridge.set_tray_alert_handler(None)
 
 
@@ -262,3 +264,43 @@ def test_set_tray_alert_without_handler_logs_once_and_failure_is_caught() -> Non
     with capture_logs() as logs:
         desktop_bridge.set_tray_alert(True)
     assert [e["event"] for e in logs] == ["tray_alert_failed"]
+
+
+ROUTE = {
+    "page": "memoir",
+    "memberPath": "日向坂46/messages/34 金村 美玖",
+    "tab": "binder",
+}
+
+
+def test_open_memories_calls_the_handler() -> None:
+    seen: list[tuple[str, dict]] = []
+    desktop_bridge.set_open_memories_handler(lambda s, r: seen.append((s, r)))
+    desktop_bridge.open_memories("hinatazaka46", ROUTE)
+    assert seen == [("hinatazaka46", ROUTE)]
+
+
+def test_open_memories_without_handler_logs_once_until_rearmed() -> None:
+    with capture_logs() as logs:
+        desktop_bridge.open_memories("hinatazaka46", ROUTE)
+        desktop_bridge.open_memories("hinatazaka46", ROUTE)
+        desktop_bridge.set_open_memories_handler(None)
+        desktop_bridge.open_memories("hinatazaka46", ROUTE)
+    assert [e["event"] for e in logs] == [
+        "memories_open_unhandled",
+        "memories_open_unhandled",
+    ]
+    assert all(e["reason"] == "no_handler" for e in logs)
+    assert "金村" not in repr(logs)
+
+
+def test_open_memories_handler_error_is_caught() -> None:
+    def boom(_s: str, _r: dict) -> None:
+        raise RuntimeError("route 金村")
+
+    desktop_bridge.set_open_memories_handler(boom)
+    with capture_logs() as logs:
+        desktop_bridge.open_memories("hinatazaka46", ROUTE)
+    (event,) = [e for e in logs if e["event"] == "memories_open_failed"]
+    assert event["error_type"] == "RuntimeError"
+    assert "金村" not in repr(logs) and "memoir" not in repr(logs)

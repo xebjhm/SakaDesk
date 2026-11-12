@@ -6,8 +6,14 @@ export default {
     ],
     theme: {
         extend: {
+            maxHeight: {
+                // Three text-small lines: the fallback cap of a line-clamp-3 block (the 特別な日 postcard front).
+                'small-3': 'calc(var(--ds-font-small-leading) * 3)',
+            },
             brightness: { 94: '.94', 106: '1.06' },
             backdropBlur: { frost: '20px' },
+            // The media tile's blur preview (a 16 px image blown up to the tile; DESIGN_SYSTEM "Media tile").
+            blur: { placeholder: '12px' },
             backdropSaturate: { 180: '1.8' },
             fontFamily: {
                 sans: 'var(--ds-font-family-sans)',
@@ -56,6 +62,15 @@ export default {
                 'tile-vignette': 'linear-gradient(to top, var(--ds-blog-vignette) 0%, transparent 20%)',
                 // Timeline rail lens (e4e4118 "light through a lens"): a strong-colour glow at 8 % ("15" hex
                 // alpha) centred on the zoom; TimelineRail sets --ds-rail-lens-y.
+                // Memories keepsake surfaces (tokens/memories.ts): the cork board and the special-card foil.
+                'memories-cork': 'var(--ds-mem-cork)',
+                'memories-foil': 'var(--ds-mem-foil)',
+                // The ruled lines of a 特別な日 postcard's back (20 px, the text-small line height).
+                'memories-ruled': 'var(--ds-mem-ruled)',
+                // Memories fun wave (semantic): the SR rarity sheen, the radio night and the 24h sky.
+                'memories-rarity-sr': 'var(--ds-mem-rarity-sr)',
+                'memories-night': 'var(--ds-mem-night)',
+                'memories-sky': 'var(--ds-mem-sky)',
                 'accent-lens': 'radial-gradient(ellipse 100% 30% at 50% var(--ds-rail-lens-y), color-mix(in srgb, var(--ds-accent-strong) 8%, transparent) 0%, transparent 70%)',
                 // Theme-aware gradients
                 'theme-gradient': 'linear-gradient(to right, var(--color-gradient-from), var(--color-gradient-to))',
@@ -116,6 +131,8 @@ export default {
                 'control-off': 'var(--ds-border-strong)',
                 // Loading skeleton base (Favourites video placeholder).
                 skeleton: 'var(--ds-border-strong)',
+                // The default Skeleton tone: a translucent ink veil, visible on any light surface.
+                'skeleton-veil': 'var(--ds-overlay-skeleton)',
                 'group-marker': 'var(--ds-group-marker)',
                 // Chat header pills (pre-D2 look): glass / shade on the title gradient, title-text tints on a light header.
                 'header-glass': 'var(--ds-overlay-glass)',
@@ -132,8 +149,18 @@ export default {
                 'tile-glass': 'var(--ds-blog-glass)',
                 // The feed's All / Favorite segmented control track (e4e4118 black at 5 %).
                 'segment-track': 'var(--ds-blog-segment-track)',
+                // Memories keepsake surfaces: letter / polaroid paper and translucent washi tape.
+                'memories-paper': 'var(--ds-mem-paper)',
+                'memories-washi': 'var(--ds-mem-washi)',
+                // Memories fun wave (semantic): N / R rarity, the on-air lamp and the capsule note.
+                'memories-rarity-n': 'var(--ds-mem-rarity-n)',
+                'memories-rarity-r': 'var(--ds-mem-rarity-r)',
+                'memories-onair': 'var(--ds-mem-onair)',
+                'memories-note': 'var(--ds-mem-note)',
             },
             textColor: {
+                // Memories fun wave (semantic): ink on the radio night (the on-air lamp is non-text only).
+                'memories-night-ink': 'var(--ds-mem-night-ink)',
                 accent: 'var(--ds-accent)',
                 'accent-strong': 'var(--ds-accent-strong)',
                 'accent-tonal': 'var(--ds-accent-tonal-text)',
@@ -188,6 +215,9 @@ export default {
                 'group-subtle': 'var(--ds-group-subtle-border)',
                 surface: 'var(--ds-surface-sheet)',
                 'tile-glass': 'var(--ds-blog-glass-border)',
+                // Memories: the paper's hairline and an unearned card's dashed silhouette.
+                'memories-paper': 'var(--ds-mem-paper-line)',
+                'memories-silhouette': 'var(--ds-mem-silhouette)',
                 'group-shelter-picture': 'var(--ds-group-shelter-picture)',
                 'group-shelter-video': 'var(--ds-group-shelter-video)',
                 'group-shelter-voice': 'var(--ds-group-shelter-voice)',
@@ -250,6 +280,8 @@ export default {
                 caption: 'var(--ds-blog-shadow-caption)',
                 'caption-hover': 'var(--ds-shadow-accent-caption)',
                 segment: 'var(--ds-blog-shadow-segment)',
+                // Memories: a polaroid lying on a surface.
+                'memories-polaroid': 'var(--ds-mem-shadow-polaroid)',
             },
             fontSize: {
                 caption: ['var(--ds-font-caption-size)', { lineHeight: 'var(--ds-font-caption-leading)' }],
@@ -303,6 +335,8 @@ export default {
                 },
                 shimmer: { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(100%)' } },
                 'shimmer-sweep': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(200%)' } },
+                // Indeterminate ProgressBar: a 1/3-wide segment sweeps across the track (design/primitives/ProgressBar.tsx).
+                'progress-indeterminate': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(300%)' } },
                 pop: { '0%': { opacity: '0', transform: 'scale(0.9)' }, '100%': { opacity: '1', transform: 'scale(1)' } },
                 burst: {
                     '0%': { opacity: '1', transform: 'translate(0, 0) rotate(0deg)' },
@@ -313,6 +347,12 @@ export default {
                     '10%': { opacity: '1' },
                     '100%': { opacity: '0', transform: 'translate(var(--dx), var(--dy)) rotate(540deg)' },
                 },
+                // Recap star clock: a star drops into place (the end state is the element's own).
+                'star-fall': { '0%': { opacity: '0', transform: 'translateY(-14px)' } },
+                // Recap burst: a photo fans out from the stack (the end state is the element's own transform).
+                'fan-in': { '0%': { opacity: '0', transform: 'translateY(12px) rotate(0deg) scale(0.92)' } },
+                // Recap petals: a petal drifts down into place (the end state is the element's own transform).
+                'petal-fall': { '0%': { opacity: '0', transform: 'translateY(-160px) rotate(-40deg)' } },
                 heartbeat: {
                     '0%, 100%': { transform: 'scale(1)' },
                     '15%': { transform: 'scale(1.3)' },
@@ -330,14 +370,24 @@ export default {
                 'orb-breathe': 'orb-breathe 22s ease-in-out infinite',
                 'heart-float': 'heart-float 800ms ease-out forwards',
                 heartbeat: 'heartbeat 1.2s ease-in-out infinite',
+                'star-fall': 'star-fall 600ms var(--ds-ease-standard) both',
+                'fan-in': 'fan-in 500ms var(--ds-ease-standard) both',
+                'petal-fall': 'petal-fall 1600ms var(--ds-ease-standard) both',
                 shimmer: 'shimmer 1.2s 300ms var(--ds-ease-standard) both',
                 'shimmer-sweep': 'shimmer-sweep 1.4s var(--ds-ease-standard) infinite',
+                'progress-indeterminate': 'progress-indeterminate 1.4s var(--ds-ease-standard) infinite',
                 pop: 'pop 500ms cubic-bezier(0.2, 1.4, 0.4, 1) both',
                 confetti: 'burst 1.2s cubic-bezier(0.2, 0.7, 0.3, 1) both',
                 sparkle: 'sparkle-burst 900ms 350ms cubic-bezier(0.2, 0.7, 0.3, 1) both',
             },
             scale: {
                 97: '0.97',
+            },
+            // Memories: a photo aged by its year (shared/sepia.ts): 1 = last year, 2, 3 = three or more.
+            sepia: {
+                'memories-1': 'var(--ds-mem-sepia-1)',
+                'memories-2': 'var(--ds-mem-sepia-2)',
+                'memories-3': 'var(--ds-mem-sepia-3)',
             },
             transitionDuration: {
                 fast: 'var(--ds-duration-fast)',
@@ -369,6 +419,24 @@ export default {
                     transitionDuration: 'var(--ds-duration-glide)',
                     transitionTimingFunction: 'var(--ds-ease-spring), ease',
                 },
+            });
+        },
+        // The recap opening's star grid (recap/slides/OpeningSlides.tsx, docs/design/DESIGN_SYSTEM.md):
+        // a size container of --star-cols x --star-rows equal cells (capped at 5.5rem a row), whose star
+        // and caption sizes (--star-size, --star-label) are container units set by the slide, so every
+        // member fits the stage at any roster size.
+        ({ addUtilities }) => {
+            addUtilities({
+                '.recap-star-grid': {
+                    containerType: 'size',
+                    gridTemplateColumns: 'repeat(var(--star-cols), minmax(0, 1fr))',
+                    gridTemplateRows: 'repeat(var(--star-rows), minmax(0, 1fr))',
+                    maxHeight: 'calc(var(--star-rows) * 5.5rem)',
+                },
+                '.recap-star-size': { width: 'var(--star-size)', height: 'var(--star-size)' },
+                '.recap-star-label': { fontSize: 'var(--star-label)', lineHeight: '1.2' },
+                // An inline icon one text-height tall (follows the surrounding font size).
+                '.size-em': { width: '1em', height: '1em' },
             });
         },
     ],

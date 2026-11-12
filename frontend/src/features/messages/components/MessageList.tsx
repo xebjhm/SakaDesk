@@ -2,6 +2,7 @@ import React, { useRef, useCallback, useMemo, useEffect } from 'react';
 import { GroupedVirtuoso, type GroupedVirtuosoHandle, type GroupedVirtuosoProps, type ListRange, type TopItemListProps } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { useChatScroll } from '../hooks/useChatScroll';
+import { KeepListPainted } from './listSnapshot';
 import { MessageBubble } from './MessageBubble';
 import { notifyVisibleMessages } from '../hooks/useMessageVisibility';
 import { cn } from '../../../utils/classnames';
@@ -237,6 +238,8 @@ export const MessageList: React.FC<ChatListProps> = ({
     // lets the next one push it away. Indices passed around are item indices (probe fact 3).
     return (
         <TimelineFooterContext.Provider value={footer ?? null}>
+            {/* A revisited room shows its last painted list while Virtuoso positions the new one. */}
+            <KeepListPainted roomKey={virtuosoKey} restore={targetMessageId == null}>
             <GroupedVirtuoso
                 key={virtuosoKey}
                 ref={virtuosoRef}
@@ -254,6 +257,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                 rangeChanged={onRangeChange}
                 itemContent={(index) => renderItem(timeline.items[index])}
             />
+            </KeepListPainted>
         </TimelineFooterContext.Provider>
     );
 };

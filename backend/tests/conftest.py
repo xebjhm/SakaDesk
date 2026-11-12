@@ -72,6 +72,54 @@ def _isolate_machine_state(tmp_path_factory: pytest.TempPathFactory):
 
 
 @pytest.fixture(autouse=True)
+def _no_memories_refresh(monkeypatch):
+    """A completed sync schedules Memories refreshes; never scrape or scan in tests.
+
+    Autospecced from the real functions, so a signature change at the call
+    site in sync_service fails the tests instead of passing silently.
+    """
+    from unittest.mock import create_autospec
+
+    from backend.services.memories.index import build_all
+    from backend.services.memories.member_profiles import refresh_member_profiles
+
+    monkeypatch.setattr(
+        "backend.services.sync_service.refresh_member_profiles",
+        create_autospec(refresh_member_profiles, return_value=False),
+    )
+    monkeypatch.setattr(
+        "backend.services.sync_service.build_memory_index",
+        create_autospec(build_all, return_value=0),
+    )
+    from backend.services.memories.album import warm_album
+
+    monkeypatch.setattr(
+        "backend.services.sync_service.warm_album",
+        create_autospec(warm_album, return_value=None),
+    )
+
+
+@pytest.fixture(autouse=True)
+def _reset_binder_bad_start_log():
+    """binder logs a bad subscription start once per person per JST day;
+    never let one test's log hide another's."""
+    from backend.services.memories import binder
+
+    binder.reset_bad_start_log_for_tests()
+    yield
+
+
+@pytest.fixture(autouse=True)
+def _reset_text_memo():
+    """attach_texts memoises texts per room file; never leak them between tests."""
+    from backend.services.memories import people
+
+    people.clear_text_memo()
+    yield
+    people.clear_text_memo()
+
+
+@pytest.fixture(autouse=True)
 def _reset_session_alert():
     """session_alert keeps module-level state; never leak it between tests."""
     from backend.services import session_alert
@@ -79,6 +127,16 @@ def _reset_session_alert():
     session_alert._reset_for_tests()
     yield
     session_alert._reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _stop_thumbnail_pool():
+    """The thumbnail route's IO pool is long-lived: never leave its threads alive
+    into a later test that forks (multi-threaded fork warnings / deadlocks)."""
+    yield
+    from backend.services import photo_thumb
+
+    photo_thumb.shutdown_io_pool()
 
 
 @pytest.fixture

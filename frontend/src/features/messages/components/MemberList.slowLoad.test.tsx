@@ -59,16 +59,24 @@ describe('MemberList slow first load', () => {
     });
 
     it('issues exactly one groups request on mount', async () => {
+        // This file polls every 50 ms (for the timeout test). An answer landing just before a
+        // tick let that tick (a normal poll, not a mount request) fire before 'Alice' was
+        // observed, so the count read 2 on a loaded machine. Freeze the poll interval here so
+        // only the mount request is counted; the loader's own timers stay real.
+        vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] });
         let calls = 0;
         server.use(
-            http.get('/api/content/groups', () => {
+            http.get('/api/content/groups', async () => {
                 calls += 1;
+                // 46 ms: just before the first 50 ms tick, the window that made this flaky.
+                await new Promise((r) => setTimeout(r, 46));
                 return HttpResponse.json({ groups: [GROUP], last_sync: {} });
             }),
             http.post('/api/content/unread_counts', () => HttpResponse.json({})),
         );
         render(<MemberList activeService="hinatazaka46" isSyncing={false} onSelectGroup={vi.fn()} />);
         expect(await screen.findByText('Alice')).toBeInTheDocument();
+        await act(async () => { await new Promise((r) => setTimeout(r, 60)); });
         expect(calls).toBe(1);
     });
 

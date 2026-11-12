@@ -8,6 +8,7 @@ This ensures consistent behavior across CLI and GUI:
 """
 
 import asyncio
+import collections
 import contextlib
 import structlog
 from typing import Any, Dict, Mapping, Optional, cast
@@ -40,6 +41,18 @@ logger = structlog.get_logger(__name__)
 # background and saves its result; this status call answers outcome ``error``.
 STATUS_RENEW_TIMEOUT_SECONDS = 20.0
 
+# How long ``cancel_login`` waits for a cancelled browser login to unwind (its
+# browser closing) before it answers anyway; the login keeps unwinding.
+LOGIN_CANCEL_WAIT_SECONDS = 10.0
+
+# How many login attempt ids ``cancel_login`` remembers (finished ones, and
+# cancels that arrived before their login registered).
+_ATTEMPT_MEMORY = 32
+
+
+class LoginCancelledError(Exception):
+    """A login whose attempt was cancelled before it opened a browser."""
+
 
 def _region_is_blocked(country_code: Optional[str]) -> bool:
     """Yodel's web service is Japan-only. A known non-JP country is blocked; an
@@ -56,6 +69,26 @@ class AuthService:
         self._browser_lock = asyncio.Lock()
         # The in-progress browser-login task, so a newer login can supersede it.
         self._active_login_task: Optional["asyncio.Task[Any]"] = None
+        # The service of ``_active_login_task`` (an id), so a cancel for one
+        # service never stops another's login.
+        self._active_login_service: Optional[str] = None
+        # Services whose login the user cancelled (``cancel_login``) and that are
+        # still unwinding. ``POST /login`` reads it (``consume_login_cancel``) to
+        # answer 409 instead of propagating the cancellation; a cancellation
+        # without a marker (shutdown, a superseding login) still propagates.
+        self._cancelled: set[str] = set()
+        # The frontend's id for the active login (``attempt``), when it sent one.
+        self._active_login_attempt: Optional[str] = None
+        # Attempts that already finished, so a late cancel answers False (the
+        # login may have succeeded) instead of waiting for a login that is over.
+        self._finished_attempts: "collections.deque[str]" = collections.deque(
+            maxlen=_ATTEMPT_MEMORY
+        )
+        # Cancels that arrived before their login registered (still in transit,
+        # or behind an older login's supersede): the login refuses to start.
+        self._pending_cancels: "collections.deque[tuple[str, str]]" = collections.deque(
+            maxlen=_ATTEMPT_MEMORY
+        )
         # SD-BE-API-04: in-process cache of the loaded session per service.
         # The OS keyring read (Windows Credential Manager) costs hundreds of ms
         # and GET /api/auth/status is polled by the frontend for EVERY service on
@@ -478,15 +511,28 @@ class AuthService:
             await save
             raise
 
-    async def login_with_browser(self, service: str):
+    async def login_with_browser(self, service: str, attempt: Optional[str] = None):
         """
         Launch browser for OAuth login.
 
         Args:
             service: The service to log in to (e.g., 'hinatazaka46').
+            attempt: The frontend's id for this login, so a cancel that arrives
+                before the login registers is not lost.
+
+        Returns True once the credentials are saved, False when the browser flow
+        returned nothing or failed. A cancellation (``cancel_login``, a newer
+        login superseding this one, or shutdown) re-raises ``CancelledError``;
+        the caller tells the user's Cancel apart with ``consume_login_cancel``.
+        Once the credentials are saved the login can no longer be cancelled.
+
+        Raises:
+            LoginCancelledError: ``attempt`` was cancelled before the login
+                registered; no browser was opened.
         """
         validate_service(service)
         group = self._get_group(service)
+        self._refuse_if_cancelled_early(service, attempt)
 
         # Supersede any in-progress browser login (e.g. the user switched
         # services, or a previous window was abandoned). Cancelling closes the
@@ -495,12 +541,17 @@ class AuthService:
         await self._supersede_active_login(service)
 
         async with self._browser_lock:
+            # A cancel may have arrived while this waited for the supersede or
+            # the lock; once registered below, a cancel finds this task.
+            self._refuse_if_cancelled_early(service, attempt)
             self._active_login_task = asyncio.current_task()
+            self._active_login_service = service
+            self._active_login_attempt = attempt
             try:
                 logger.info(
                     "Starting browser login",
                     service=service,
-                    session_dir=str(self._session_dir),
+                    has_session_dir=bool(self._session_dir),
                 )
 
                 creds = await BrowserAuth.login(
@@ -516,6 +567,9 @@ class AuthService:
                     # rotated credentials over this fresh login.
                     async with refresh_gate.hold(service):
                         self._save_credentials(service, creds)
+                    # Saved on a single-session token: from here a Cancel must
+                    # not undo the login, so it is no longer the active one.
+                    self._clear_active_login(finished=attempt)
                     logger.info(
                         "Login successful, credentials saved to TokenManager",
                         service=service,
@@ -525,7 +579,9 @@ class AuthService:
 
             except asyncio.CancelledError:
                 logger.info(
-                    "Browser login superseded by a newer request", service=service
+                    "browser_login_cancelled",
+                    service=service,
+                    reason="user" if service in self._cancelled else "superseded",
                 )
                 raise
             except Exception as e:
@@ -535,8 +591,111 @@ class AuthService:
                 return False
             finally:
                 if self._active_login_task is asyncio.current_task():
-                    self._active_login_task = None
+                    self._clear_active_login(finished=attempt)
 
+        return False
+
+    def _clear_active_login(self, finished: Optional[str] = None) -> None:
+        self._active_login_task = None
+        self._active_login_service = None
+        self._active_login_attempt = None
+        if finished is not None:
+            self._finished_attempts.append(finished)
+
+    def _refuse_if_cancelled_early(self, service: str, attempt: Optional[str]) -> None:
+        """Raise ``LoginCancelledError`` when ``attempt`` has a pending cancel."""
+        if attempt is None or (service, attempt) not in self._pending_cancels:
+            return
+        self._pending_cancels.remove((service, attempt))
+        self._finished_attempts.append(attempt)
+        logger.info("browser_login_cancelled", service=service, reason="early")
+        raise LoginCancelledError()
+
+    async def _cancel_and_wait(
+        self, task: "asyncio.Task[Any]", timeout: Optional[float] = None
+    ) -> bool:
+        """Cancel ``task`` and wait for it to unwind (its browser closes, the
+        lock is released). Returns False when ``timeout`` ran out first; the
+        task keeps unwinding."""
+        task.cancel()
+        done, _ = await asyncio.wait({task}, timeout=timeout)
+        if task in done and not task.cancelled():
+            # Retrieve the result so an exception is never reported unretrieved.
+            with contextlib.suppress(Exception):
+                task.exception()
+        return task in done
+
+    async def cancel_login(self, service: str, attempt: Optional[str] = None) -> bool:
+        """Cancel the browser login of ``service`` (the dialog's Cancel).
+
+        - The active login of ``service`` (and of ``attempt``, when both carry
+          one): cancels it and waits up to ``LOGIN_CANCEL_WAIT_SECONDS`` for it
+          to unwind (its browser closes, ``_browser_lock`` is released). While
+          it unwinds, ``service`` carries the marker ``consume_login_cancel``
+          reads. A wait that runs out is logged ``login_cancel_timeout`` and
+          still answers True; the marker stays until the login is done.
+        - An ``attempt`` that has not registered yet and has not finished: the
+          cancel is kept, and that login refuses to start (no browser opens).
+        - Otherwise (no login, another service's, or one that finished, which
+          may have saved its credentials): nothing happens.
+
+        Returns True when a login was cancelled (or will refuse to start), False
+        otherwise. Logs ``login_cancel`` (service, outcome ``cancelled`` |
+        ``pending`` | ``none``).
+
+        Raises:
+            ValueError: ``service`` is not a known service.
+        """
+        validate_service(service)
+        task = self._active_login_task
+        active = (
+            task is not None
+            and not task.done()
+            and self._active_login_service == service
+            and (attempt is None or self._active_login_attempt in (None, attempt))
+        )
+        if not active or task is None:
+            if attempt is not None and attempt not in self._finished_attempts:
+                self._pending_cancels.append((service, attempt))
+                logger.info("login_cancel", service=service, outcome="pending")
+                return True
+            logger.info("login_cancel", service=service, outcome="none")
+            return False
+        self._cancelled.add(service)
+        logger.info("login_cancel", service=service, outcome="cancelled")
+
+        def drop_marker(_task: "asyncio.Task[Any]") -> None:
+            self._cancelled.discard(service)
+
+        try:
+            finished = await self._cancel_and_wait(task, LOGIN_CANCEL_WAIT_SECONDS)
+        except asyncio.CancelledError:
+            # This request itself was cancelled (shutdown): the login still
+            # unwinds and drops the marker when done.
+            task.add_done_callback(drop_marker)
+            raise
+        if finished:
+            self._cancelled.discard(service)
+        else:
+            logger.warning(
+                "login_cancel_timeout",
+                service=service,
+                wait_s=LOGIN_CANCEL_WAIT_SECONDS,
+            )
+            task.add_done_callback(drop_marker)
+        return True
+
+    def consume_login_cancel(self, service: str) -> bool:
+        """True once if ``cancel_login`` is unwinding ``service``'s login.
+
+        ``POST /login`` calls this when ``login_with_browser`` raised
+        ``CancelledError``: True means the user cancelled (answer 409), False
+        means another cancellation (shutdown, a superseding login) that must
+        propagate. The marker is removed, so it is read at most once.
+        """
+        if service in self._cancelled:
+            self._cancelled.discard(service)
+            return True
         return False
 
     async def _supersede_active_login(self, new_service: str) -> None:
@@ -546,10 +705,8 @@ class AuthService:
             logger.info(
                 "Superseding in-progress browser login", new_service=new_service
             )
-            task.cancel()
             # Wait for it to unwind (closing its browser, releasing the lock).
-            with contextlib.suppress(asyncio.CancelledError, Exception):
-                await task
+            await self._cancel_and_wait(task)
 
     def _save_credentials(self, service: str, creds: Mapping[str, Any]):
         """Save credentials to pysaka's TokenManager (CLI pattern)."""

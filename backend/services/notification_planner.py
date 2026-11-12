@@ -9,7 +9,7 @@ directory.
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -56,6 +56,22 @@ class ToastPlan:
 
 
 @dataclass(frozen=True)
+class MemoryToastPlan:
+    """One Memories toast (spec 15), built by ``memories.notify_content``."""
+
+    kind: str  # on_this_day | birthday | birthday_soon | anniversary | recap | card
+    service: str  # the service the click opens (never "*")
+    subject: str  # ledger subject
+    occasion: str  # ledger occasion
+    title: str
+    body: str
+    avatar: Path | None  # AppLogo image (find_avatar of her newest room)
+    hero: Path | None  # Hero image (On This Day photo), None when hidden
+    route: Mapping[str, str | int]  # the Memories route, camelCase keys
+    member_id: str | None  # for logs
+
+
+@dataclass(frozen=True)
 class Skip:
     """A chat that was suppressed. ``reason``: diverted|disabled|viewing."""
 
@@ -75,14 +91,20 @@ class UiState:
     focused: bool
 
 
+def clip_text(text: str, limit: int = PREVIEW_MAX_CHARS) -> str:
+    """``text`` whitespace-collapsed, cut to ``limit`` characters plus ``…``."""
+    text = " ".join(text.split())
+    return text[:limit] + "…" if len(text) > limit else text
+
+
 def preview_text(
     message: dict[str, Any], strings: dict[str, str], nickname: str | None = None
 ) -> str:
     """One-line preview of ``message``.
 
     The nickname placeholder (``%%%`` / ``％％％``) is replaced by ``nickname``
-    first (left as is when ``nickname`` is empty); then the text is
-    whitespace-collapsed and cut to 80 characters (plus ``…``).
+    first (left as is when ``nickname`` is empty); then :func:`clip_text`
+    whitespace-collapses it and cuts it to 80 characters (plus ``…``).
     Pictures, videos and voice use their localized label; empty text and
     unknown types use ``sent_message``.
     """
@@ -91,11 +113,8 @@ def preview_text(
     if media_key is not None:
         return strings[media_key]
     if kind == "text":
-        raw = apply_nickname(str(message.get("content") or ""), nickname)
-        text = " ".join(raw.split())
+        text = clip_text(apply_nickname(str(message.get("content") or ""), nickname))
         if text:
-            if len(text) > PREVIEW_MAX_CHARS:
-                return text[:PREVIEW_MAX_CHARS] + "…"
             return text
     return strings["sent_message"]
 

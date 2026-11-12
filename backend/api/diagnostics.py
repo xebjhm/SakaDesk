@@ -14,11 +14,12 @@ from pathlib import Path
 
 import structlog
 from backend.services.platform import get_app_data_dir, get_settings_path, get_logs_dir
+from backend.services.settings_store import read_settings_file
 from pysaka.credentials import get_token_manager
 from pysaka import Group, get_jwt_remaining_seconds
 
 from backend.version import APP_VERSION
-from backend.api.report import _get_username, _get_nickname, scrub_log_line
+from backend.api.report import _get_username, _get_nicknames, scrub_log_line
 
 router = APIRouter(prefix="/api/diagnostics", tags=["diagnostics"])
 logger = structlog.get_logger(__name__)
@@ -429,9 +430,9 @@ def _normalise_output_dir(value: object) -> Optional[str]:
 def _configured_output_dir() -> Optional[str]:
     """The configured output folder from settings, or None (blocking read)."""
     try:
-        if get_settings_path().exists():
-            with open(get_settings_path(), "r", encoding="utf-8") as f:
-                return _normalise_output_dir(json.load(f).get("output_dir"))
+        data = read_settings_file(get_settings_path())
+        if isinstance(data, dict):
+            return _normalise_output_dir(data.get("output_dir"))
     except Exception as e:
         logger.warning("diagnostics_settings_read_failed", error_type=type(e).__name__)
     return None
@@ -480,17 +481,16 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
     config_state = {}
     output_dir: Optional[str] = None
     try:
-        if get_settings_path().exists():
-            with open(get_settings_path(), "r", encoding="utf-8") as f:
-                data = json.load(f)
-                config_state["is_configured"] = data.get("is_configured", False)
-                config_state["output_dir_configured"] = "output_dir" in data
-                config_state["auto_sync"] = data.get("auto_sync_enabled", True)
-                config_state["sync_interval"] = data.get("sync_interval_minutes", 1)
-                config_state["adaptive_sync"] = data.get("adaptive_sync_enabled", True)
-                config_state["notifications"] = data.get("notifications_enabled", True)
-                config_state["blogs_full_backup"] = data.get("blogs_full_backup", False)
-                output_dir = _normalise_output_dir(data.get("output_dir"))
+        data = read_settings_file(get_settings_path())
+        if data is not None:
+            config_state["is_configured"] = data.get("is_configured", False)
+            config_state["output_dir_configured"] = "output_dir" in data
+            config_state["auto_sync"] = data.get("auto_sync_enabled", True)
+            config_state["sync_interval"] = data.get("sync_interval_minutes", 1)
+            config_state["adaptive_sync"] = data.get("adaptive_sync_enabled", True)
+            config_state["notifications"] = data.get("notifications_enabled", True)
+            config_state["blogs_full_backup"] = data.get("blogs_full_backup", False)
+            output_dir = _normalise_output_dir(data.get("output_dir"))
         else:
             # No settings file yet — show all defaults
             config_state["is_configured"] = False
@@ -501,7 +501,10 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
             config_state["notifications"] = True
             config_state["blogs_full_backup"] = False
     except Exception as e:
-        config_state["error"] = str(e)
+        # A code, never str(e): the endpoint needs no login and an OSError's
+        # text carries the settings path.
+        config_state["error"] = "settings_unreadable"
+        logger.warning("diagnostics_config_read_failed", error_type=type(e).__name__)
 
     # Sync State
     sync_state = SyncState()
@@ -582,15 +585,15 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
     # Logs with categorization
     # debug.log has everything (recent context); error.log is pre-filtered
     #
-    # SEC-5: scrub every emitted log line for PII (OS username, cached nickname)
+    # SEC-5: scrub every emitted log line for PII (OS username, cached nicknames)
     # and token-like/bearer/JWT/long-secret strings before returning it, matching
     # report.py's redaction. Diagnostics is reachable without auth, so raw log
     # tails must never leak credentials or paths.
     username = _get_username()
-    nickname = _get_nickname()
+    nickname = _get_nicknames()  # every service's nickname, longest first
 
     def _scrub(line: str) -> str:
-        return scrub_log_line(line.strip(), username, nickname)
+        return scrub_log_line(line.strip(), username, nickname, output_dir)
 
     logs_summary = LogsSummary(recent=[], errors=[], warnings=[])
     # SD-BE-API-01: tail-read the logs instead of slurping the whole (possibly
@@ -599,7 +602,9 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
     debug_tail: list[str] = []
     try:
         log_dir = get_logs_dir()
-        if log_dir.exists():
+        if nickname is None:  # settings unreadable: fail closed, send no log lines
+            logger.warning("diagnostics_logs_withheld", reason="nicknames_unavailable")
+        elif log_dir.exists():
             # Recent logs from debug.log (last 50 lines)
             debug_log = log_dir / "debug.log"
             if debug_log.exists():
@@ -629,7 +634,8 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
                 logs_summary.errors = errors[-50:]
                 logs_summary.warnings = warnings[-50:]
     except Exception as e:
-        logs_summary.recent.append(f"Error reading logs: {e}")
+        logs_summary.recent.append("logs_unreadable")  # a code: str(e) has paths
+        logger.warning("diagnostics_logs_read_failed", error_type=type(e).__name__)
 
     return DiagnosticsResponse(
         system=sys_info,

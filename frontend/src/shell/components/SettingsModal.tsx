@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useId } from 'react';
-import { Loader2, RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucide-react';
+import { RefreshCw, SlidersHorizontal, Sparkles, Download } from 'lucide-react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation, SUPPORTED_LANGUAGES, type SupportedLanguage } from '../../i18n';
-import { Modal, Button, Switch, Input, Select } from '../../design/primitives';
+import { Modal, Button, Switch, Input, Select, Spinner } from '../../design/primitives';
+import { useDelayedLoading } from '../../design/loading';
 import { logDialogLoad, type DialogLoadSurface, type DialogLoadReason } from '../../design/dialog/dialogLog';
 import { cn } from '../../utils/classnames';
 import { ConfirmDialog } from './ConfirmDialog';
@@ -16,6 +17,8 @@ import { getServiceDisplayName } from '../../data/services';
 import { pollJson, SIDEBAR_POLL_TIMEOUT_MS } from '../../utils/pollJson';
 import { useUpgradeStore } from '../../core/upgrade/upgradeStore';
 import { UpdateActions } from '../../core/upgrade/UpdateActions';
+import { isJstSlot, jstSlotToLocal } from '../../features/memories/shared/jst';
+import { pregenLabelKey, pregenProgress } from '../../core/media/grid/galleryStatus';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -32,7 +35,34 @@ type SettingsTab = 'general' | 'sync' | 'ai' | 'updates';
 
 /** A settings row that saves app settings (the failure shows on that row). */
 type SaveRow = 'outputDir' | 'incomingCall' | 'callPopup' | 'closeToTray' | 'autostart' | 'notifications'
-    | 'notificationsHideContent' | 'syncMode' | 'blogFullBackup' | 'syncReadToPhone' | 'autoDownload' | 'reset';
+    | 'notificationsHideContent' | MemoriesNotifyRow | 'syncMode' | 'blogFullBackup' | 'syncReadToPhone' | 'autoDownload' | 'reset';
+
+/** The Memories notification kinds with a switch each: the i18n key under `settings.memoriesNotify`, the settings key, its default. */
+const MEMORIES_NOTIFY_KINDS = [
+    { id: 'onThisDay', key: 'memories_notify_on_this_day', fallback: true },
+    { id: 'birthday', key: 'memories_notify_birthday', fallback: true },
+    { id: 'anniversary', key: 'memories_notify_anniversary', fallback: true },
+    { id: 'recap', key: 'memories_notify_recap', fallback: true },
+    { id: 'cards', key: 'memories_notify_cards', fallback: false },
+] as const;
+
+/** A Memories notification row (its own save-failure slot): the time or one kind. */
+type MemoriesNotifyRow = `memoriesNotify.${'time' | (typeof MEMORIES_NOTIFY_KINDS)[number]['id']}`;
+
+/** The kinds that fire at the configurable JST time (cards are event-driven). */
+const MEMORIES_TIMED_KINDS = MEMORIES_NOTIFY_KINDS.filter(({ id }) => id !== 'cards');
+
+/** The default JST time of the daily Memories notifications. */
+const MEMORIES_NOTIFY_TIME_DEFAULT = '12:00';
+
+/** The hourly JST times the Memories time select offers (`00:00`–`23:00`). */
+const MEMORIES_NOTIFY_HOURS = Array.from({ length: 24 }, (_, h) => `${String(h).padStart(2, '0')}:00`);
+
+/** The time options: every hour, plus a well-formed saved value that is not on the hour, in time order. */
+function memoriesTimeOptions(value: string): string[] {
+    if (MEMORIES_NOTIFY_HOURS.includes(value) || !isJstSlot(value)) return MEMORIES_NOTIFY_HOURS;
+    return [...MEMORIES_NOTIFY_HOURS, value].sort();
+}
 
 /** The in-app confirm on screen: reset, delete backup (two steps), deep re-sync. */
 type ConfirmKind = 'reset' | 'clean' | 'clean2' | 'deep' | null;
@@ -50,6 +80,33 @@ const RADIO_ROW = 'flex cursor-pointer items-center gap-3 rounded-card p-2 trans
 const FIELD_LABEL = 'text-small font-semibold text-secondary';
 /** Text-only danger action (Delete backup, Clear API key). */
 const DANGER_GHOST = 'text-status-danger hover:text-status-danger';
+
+/** `GET /api/media/status`, the parts the thumbnail cache row reads. */
+interface MediaCacheStatus {
+    state: 'idle' | 'running' | 'paused' | 'stopped';
+    /** Why the worker is paused (`sync`, `refresh`, `blog_backup`, `foreground`, `shutdown`), else null. */
+    paused_reason: string | null;
+    /** The thumbnail cache is at the worker's fill line: no new variants are made. */
+    thumbs_full: boolean;
+    services: Record<string, { done: number; total: number }>;
+    cache: { thumbs_bytes: number; posters_bytes: number };
+}
+
+/** Re-read the thumbnail worker's status this often while it prepares thumbnails. */
+const MEDIA_STATUS_POLL_MS = 5000;
+/** How long the "cache cleared" toast stays. */
+const MEDIA_TOAST_MS = 2000;
+
+/** A status body with the fields the row reads, else null (a refused or malformed answer). */
+function asMediaStatus(data: unknown): MediaCacheStatus | null {
+    const d = data as Partial<MediaCacheStatus> | null;
+    if (!d || typeof d.state !== 'string' || typeof d.cache?.thumbs_bytes !== 'number'
+        || typeof d.cache?.posters_bytes !== 'number') return null;
+    return {
+        state: d.state, paused_reason: typeof d.paused_reason === 'string' ? d.paused_reason : null,
+        thumbs_full: d.thumbs_full === true, services: d.services ?? {}, cache: d.cache,
+    };
+}
 
 /** Outcome of a per-service batch: `ok`, `error` when every request failed, else `partial` with the failure count. */
 function batchOutcome(failed: number, total: number): ['ok'] | ['error'] | ['partial', number] {
@@ -92,6 +149,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const [isClearing, setIsClearing] = useState(false);
     const [blogBackupRunning, setBlogBackupRunning] = useState(false);
     const [blogBackupStats, setBlogBackupStats] = useState<{cached: number, total: number} | null>(null);
+    const [mediaStatus, setMediaStatus] = useState<MediaCacheStatus | null>(null);
+    const [mediaLoading, setMediaLoading] = useState(false);
+    const [mediaClearing, setMediaClearing] = useState(false);
+    const [mediaReload, setMediaReload] = useState(0);
+    const [mediaToast, setMediaToast] = useState<string | null>(null);
+    // The last thumbnail-cache request that failed (shown on the row), or null.
+    const [mediaError, setMediaError] = useState<'load' | 'clear' | null>(null);
+    const mediaToastTimer = React.useRef<ReturnType<typeof setTimeout> | null>(null);
     // Optimistic toggle: local override while the API call is in flight
     const [blogTogglePending, setBlogTogglePending] = useState<boolean | null>(null);
     const blogBackupEnabled = blogTogglePending ?? appSettings.blogs_full_backup;
@@ -103,6 +168,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     const notificationsEnabled = appSettings.notifications_enabled ?? true;
     const notificationsHideContent = appSettings.notifications_hide_content ?? false;
     const syncReadToPhone = appSettings.sync_read_to_phone ?? false;
+    // The time drives every timed kind: it is idle only when all of them are off.
+    const memoriesTimeIdle = MEMORIES_TIMED_KINDS.every(({ key, fallback }) => !(appSettings[key] ?? fallback));
+    // A malformed saved time (never written by the backend) shows as the default.
+    const savedMemoriesTime = appSettings.memories_notify_time ?? MEMORIES_NOTIFY_TIME_DEFAULT;
+    const memoriesTime = isJstSlot(savedMemoriesTime) ? savedMemoriesTime : MEMORIES_NOTIFY_TIME_DEFAULT;
+    const memoriesTimeLocal = jstSlotToLocal(memoriesTime);
     // Clear pending state once appSettings catches up
     React.useEffect(() => {
         if (blogTogglePending !== null && appSettings.blogs_full_backup === blogTogglePending) {
@@ -232,6 +303,81 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         return () => { cancelled = true; clearTimeout(pollTimer); statsAbort.abort(); };
     }, [appSettings.blogs_full_backup, selectedServices]);
 
+    // The thumbnail cache row (Sync tab): read the worker's status when the tab opens,
+    // and again every few seconds while it prepares thumbnails; stop when the tab or dialog closes.
+    const syncTabOpen = activeTab === 'sync';
+    useEffect(() => {
+        if (!syncTabOpen) return;
+        let cancelled = false;
+        let pollTimer: ReturnType<typeof setTimeout> | undefined;
+        // One `ok` breadcrumb per open, not one per poll.
+        let logged = false;
+        const load = () => {
+            fetch('/api/media/status')
+                .then(res => {
+                    if (!res.ok) throw new Error('media status refused');
+                    return res.json();
+                })
+                .then(body => {
+                    const data = asMediaStatus(body);
+                    if (!data) throw new Error('media status malformed');
+                    if (cancelled) return;
+                    if (!logged) {
+                        logged = true;
+                        logDialogLoad('settings_media_cache', 'ok');
+                    }
+                    setMediaStatus(data);
+                    setMediaError(e => (e === 'load' ? null : e));
+                    if (data.state === 'running' || data.state === 'paused') {
+                        pollTimer = setTimeout(load, MEDIA_STATUS_POLL_MS);
+                    }
+                })
+                .catch(() => {
+                    if (cancelled) return;
+                    setMediaStatus(null);
+                    setMediaError('load');
+                    logDialogLoad('settings_media_cache', 'error');
+                })
+                .finally(() => {
+                    if (!cancelled) setMediaLoading(false);
+                });
+        };
+        setMediaLoading(true);
+        load();
+        return () => { cancelled = true; clearTimeout(pollTimer); };
+    }, [syncTabOpen, mediaReload]);
+
+    useEffect(() => () => {
+        if (mediaToastTimer.current) clearTimeout(mediaToastTimer.current);
+    }, []);
+
+    const showMediaToast = (message: string) => {
+        if (mediaToastTimer.current) clearTimeout(mediaToastTimer.current);
+        setMediaToast(message);
+        mediaToastTimer.current = setTimeout(() => setMediaToast(null), MEDIA_TOAST_MS);
+    };
+
+    // Thumbnails and posters are regenerated in the background, so no confirm is needed.
+    const handleClearMediaCache = async () => {
+        setMediaClearing(true);
+        try {
+            const res = await fetch('/api/media/cache', { method: 'DELETE' });
+            if (!res.ok) throw new Error('media cache clear refused');
+            logDialogLoad('settings_media_clean', 'ok');
+            setMediaError(null);
+            showMediaToast(t('settings.mediaCacheCleared'));
+            setMediaReload(n => n + 1);
+        } catch {
+            setMediaError('clear');
+            logDialogLoad('settings_media_clean', 'error');
+        } finally {
+            setMediaClearing(false);
+        }
+    };
+    // The galleries' rule (`pregenProgress`), over every service. A full cache shows its own line instead.
+    const mediaPreparing = pregenProgress(mediaStatus, undefined);
+    const mediaLoadingShown = useDelayedLoading(mediaLoading && !mediaStatus);
+
     // Runs after both in-app confirmations (see the ConfirmDialog below).
     const handleCleanBlogCache = async () => {
         setIsClearing(true);
@@ -270,6 +416,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
             autostart: false,
             notifications_enabled: true,
             notifications_hide_content: false,
+            ...Object.fromEntries(MEMORIES_NOTIFY_KINDS.map(({ key, fallback }) => [key, fallback])),
+            memories_notify_time: MEMORIES_NOTIFY_TIME_DEFAULT,
         });
         setTranscriptionEnabled(true);
         setTranslationEnabled(false);
@@ -389,6 +537,52 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             />
                         }
                     />
+
+                    <section className="flex flex-col gap-1">
+                        <h3 className={FIELD_LABEL}>{t('settings.memoriesNotify.title')}</h3>
+                        <p className="max-w-md text-small text-muted">{t('settings.memoriesNotify.desc')}</p>
+                    </section>
+
+                    <SettingRow
+                        label={t('settings.memoriesNotify.time')}
+                        error={rowError('memoriesNotify.time')}
+                        description={
+                            <>
+                                <span className="block">{t('settings.memoriesNotify.timeDesc')}</span>
+                                {memoriesTimeLocal && <span className="block">{t('settings.memoriesNotify.timeHint', { local: memoriesTimeLocal })}</span>}
+                            </>
+                        }
+                        control={
+                            <Select
+                                aria-label={t('settings.memoriesNotify.time')}
+                                value={memoriesTime}
+                                onChange={(e) => save('memoriesNotify.time', { memories_notify_time: e.target.value })}
+                                disabled={!notificationsEnabled || memoriesTimeIdle}
+                                className="w-auto"
+                            >
+                                {memoriesTimeOptions(memoriesTime).map((hhmm) => (
+                                    <option key={hhmm} value={hhmm}>{hhmm}</option>
+                                ))}
+                            </Select>
+                        }
+                    />
+
+                    {MEMORIES_NOTIFY_KINDS.map(({ id, key, fallback }) => (
+                        <SettingRow
+                            key={id}
+                            label={t(`settings.memoriesNotify.${id}`)}
+                            error={rowError(`memoriesNotify.${id}`)}
+                            description={t(`settings.memoriesNotify.${id}Desc`)}
+                            control={
+                                <Switch
+                                    checked={appSettings[key] ?? fallback}
+                                    onCheckedChange={(v) => save(`memoriesNotify.${id}`, { [key]: v })}
+                                    disabled={!notificationsEnabled}
+                                    aria-label={t(`settings.memoriesNotify.${id}`)}
+                                />
+                            }
+                        />
+                    ))}
                 </>)}
 
                 {activeTab === 'sync' && (<>
@@ -471,7 +665,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             {t('settings.blogFullBackup')}
                             {blogBackupRunning && (
                                 <span className="flex items-center gap-1 text-caption font-normal text-secondary">
-                                    <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+                                    <Spinner size="sm" tone="muted" decorative />
                                     {blogBackupStats
                                         ? t('settings.blogBackupProgress', { cached: blogBackupStats.cached, total: blogBackupStats.total })
                                         : t('settings.blogBackupWorking')}
@@ -492,7 +686,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                             <div className="flex items-center justify-between gap-4">
                                 <div className="flex items-center gap-1 text-small text-muted">
                                     {blogSizeLoading
-                                        ? <><Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />{t('settings.blogBackupCalculating')}</>
+                                        ? <><Spinner size="sm" tone="muted" decorative />{t('settings.blogBackupCalculating')}</>
                                         : blogCacheSize ? t('settings.blogCacheSize', { size: blogCacheSize }) : ''}
                                 </div>
                                 <Button
@@ -500,10 +694,55 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                                     size="sm"
                                     className={DANGER_GHOST}
                                     onClick={() => setConfirm('clean')}
-                                    disabled={isClearing}
+                                    loading={isClearing}
                                 >
-                                    {isClearing ? t('common.loading') : t('settings.cleanBlogCache')}
+                                    {t('settings.cleanBlogCache')}
                                 </Button>
+                            </div>
+                        )}
+                    </SettingRow>
+
+                    <SettingRow
+                        label={<>
+                            {t('settings.mediaCache')}
+                            {mediaPreparing && (
+                                // Paused: says so, with no spinner, so a line that is not moving never looks stuck.
+                                <span className="flex items-center gap-1 text-caption font-normal text-secondary">
+                                    {!mediaPreparing.paused && <Spinner size="sm" tone="muted" decorative />}
+                                    {t(pregenLabelKey(mediaPreparing), { done: mediaPreparing.done, total: mediaPreparing.total })}
+                                </span>
+                            )}
+                            {mediaStatus?.thumbs_full && (
+                                <span data-testid="media-cache-full" className="text-caption font-normal text-secondary">
+                                    {t('settings.mediaCacheFull')}
+                                </span>
+                            )}
+                        </>}
+                        error={mediaError === 'load'
+                            ? t('settings.mediaCacheLoadFailed')
+                            : mediaError === 'clear' ? t('settings.mediaCacheClearFailed') : undefined}
+                        description={mediaLoadingShown
+                            ? <span data-testid="media-cache-loading">
+                                <Spinner size="sm" tone="muted" label={t('common.loading')} labelVisibility="always" />
+                            </span>
+                            : mediaStatus
+                                ? t('settings.mediaCacheSize', { size: formatBytes(mediaStatus.cache.thumbs_bytes + mediaStatus.cache.posters_bytes) })
+                                : undefined}
+                        control={
+                            <Button
+                                variant="ghost"
+                                size="sm"
+                                className={DANGER_GHOST}
+                                onClick={handleClearMediaCache}
+                                disabled={mediaClearing}
+                            >
+                                {t('settings.mediaCacheClear')}
+                            </Button>
+                        }
+                    >
+                        {mediaToast && (
+                            <div role="status" className="self-start rounded-pill bg-toast px-3 py-1 text-caption text-viewer animate-reveal motion-reduce:animate-none">
+                                {mediaToast}
                             </div>
                         )}
                     </SettingRow>
@@ -625,11 +864,8 @@ function UpdatesSection({ autoDownload, onToggleAutoDownload, saveError }: {
             error={saveError}
         >
             <div className="mt-2 flex items-center gap-3">
-                <Button variant="secondary" size="sm" onClick={handleCheckNow} disabled={checking}>
-                    {checking
-                        ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />
-                        : <RefreshCw className="h-4 w-4" />
-                    }
+                <Button variant="secondary" size="sm" onClick={handleCheckNow} loading={checking}>
+                    <RefreshCw aria-hidden="true" className="h-4 w-4" />
                     {t('settings.checkForUpdates')}
                 </Button>
                 {/* Mounted empty so the result is announced when it arrives. */}
@@ -679,6 +915,8 @@ function AiTab() {
     // Only "loading" when there is nothing cached to show yet (first open / after
     // a restart). Reopens seed from aiConfigCache and render instantly.
     const [configLoading, setConfigLoading] = useState(() => aiConfigCache === null);
+    /** The loading line appears after the 200 ms reveal and stays at least `minVisible`. */
+    const configLoadingShown = useDelayedLoading(configLoading);
 
     useEffect(() => {
         fetch('/api/translation/config')
@@ -911,11 +1149,8 @@ function AiTab() {
             {showProvider && (
                 <SettingRow label={t('settings.aiProvider')}>
                     <div className="flex flex-col gap-3">
-                        {configLoading && (
-                            <div className="flex items-center gap-2 text-caption text-muted">
-                                <Loader2 className="h-3 w-3 animate-spin motion-reduce:animate-none" />
-                                {t('common.loading')}
-                            </div>
+                        {configLoadingShown && (
+                            <Spinner size="sm" tone="muted" label={t('common.loading')} labelVisibility="always" />
                         )}
                         <div className="flex flex-col gap-1">
                             <label htmlFor={`${fieldId}-provider`} className={FIELD_LABEL}>{t('translation.settings.provider')}</label>
@@ -969,9 +1204,9 @@ function AiTab() {
                                         variant="secondary"
                                         size="sm"
                                         onClick={handleTestConnection}
-                                        disabled={testing || (!apiKeyInput && !hasApiKey)}
+                                        loading={testing}
+                                        disabledReason={!apiKeyInput && !hasApiKey ? t('translation.settings.testErrorNoKey') : undefined}
                                     >
-                                        {testing && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />}
                                         {t('translation.settings.testConnection')}
                                     </Button>
                                 </div>

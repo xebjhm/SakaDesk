@@ -44,7 +44,7 @@ export class ErrorBoundary extends Component<Props, State> {
             const { error, errorInfo } = this.state;
 
             return (
-                <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+                <div className="h-screen overflow-y-auto bg-gray-100 flex items-center justify-center p-4">
                     <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
                         {/* Header */}
                         <div className="bg-red-500 px-6 py-4">

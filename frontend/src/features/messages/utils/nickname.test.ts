@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Message } from '../../../types';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { applyNickname } from './nickname';
+import { applyNickname, replaceNickname } from './nickname';
 
 const msg = (id: number, content: string | null): Message => ({ id, timestamp: '2026-01-01T00:00:00Z', type: 'text', is_favorite: false, content });
 
@@ -20,6 +20,14 @@ describe('applyNickname', () => {
 
     it('inserts the nickname literally (no $ patterns)', () => {
         expect(applyNickname([msg(1, '%%%!')], '$&$1')[0].content).toBe('$&$1!');
+    });
+});
+
+describe('replaceNickname', () => {
+    it('replaces every ASCII and fullwidth placeholder in one string, literally', () => {
+        expect(replaceNickname('%%%、おやすみ ％％％', 'ゆき')).toBe('ゆき、おやすみ ゆき');
+        expect(replaceNickname('%%%!', '$&')).toBe('$&!');
+        expect(replaceNickname('no placeholder', 'ゆき')).toBe('no placeholder');
     });
 });
 

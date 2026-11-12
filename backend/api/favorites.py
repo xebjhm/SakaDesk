@@ -19,7 +19,6 @@ FAVORITE-READ LIMITATION (revisit later):
 """
 
 import asyncio
-import json
 import structlog
 import aiohttp
 from pathlib import Path
@@ -36,6 +35,7 @@ from backend.services.platform import (
     is_test_mode,
     get_default_output_dir,
 )
+from backend.services import app_state
 from backend.services.messages_cache import get_messages_summary
 from backend.services.service_utils import (
     get_service_enum,
@@ -55,18 +55,10 @@ class FavoriteResponse(BaseModel):
 
 
 def _get_output_dir() -> Path:
-    """Get configured output directory."""
-    settings_path = get_settings_path()
-    if settings_path.exists():
-        try:
-            with open(settings_path, "r", encoding="utf-8") as f:
-                settings = json.load(f)
-                path_str = settings.get("output_dir")
-                if path_str:
-                    return Path(path_str)
-        except Exception:
-            pass
-    return get_default_output_dir()
+    """Get configured output directory (a transient read failure keeps the last value)."""
+    from backend.services.path_resolver import output_dir_from_settings
+
+    return output_dir_from_settings(get_settings_path(), get_default_output_dir())
 
 
 def _update_local_favorite(message_id: int, is_favorite: bool, service: str) -> bool:
@@ -132,6 +124,25 @@ def _update_local_favorite(message_id: int, is_favorite: bool, service: str) -> 
     return False
 
 
+async def _record_favorite_log(
+    service: str, message_id: int, is_favorite: bool
+) -> None:
+    """Write the favorite_log row. Best-effort: a failure is logged, never raised,
+    so the server-side toggle the user already made still reports success."""
+    try:
+        await asyncio.to_thread(
+            app_state.record_favorite, service, message_id, is_favorite
+        )
+    except Exception as e:
+        logger.warning(
+            "favorite_log_failed",
+            service=service,
+            message_id=message_id,
+            is_favorite=is_favorite,
+            error_type=type(e).__name__,
+        )
+
+
 async def _get_client_and_session(service: str):
     """Get pysaka client and aiohttp session with auth for given service."""
     if is_test_mode():
@@ -193,6 +204,7 @@ async def add_favorite(message_id: int, service: str):
         if success:
             # Update local cache (blocking FS scan + write offloaded off the loop)
             await asyncio.to_thread(_update_local_favorite, message_id, True, service)
+            await _record_favorite_log(service, message_id, True)
             return FavoriteResponse(
                 success=True, message_id=message_id, is_favorite=True
             )
@@ -230,6 +242,7 @@ async def remove_favorite(message_id: int, service: str):
         if success:
             # Update local cache (blocking FS scan + write offloaded off the loop)
             await asyncio.to_thread(_update_local_favorite, message_id, False, service)
+            await _record_favorite_log(service, message_id, False)
             return FavoriteResponse(
                 success=True, message_id=message_id, is_favorite=False
             )

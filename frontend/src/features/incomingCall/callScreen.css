@@ -183,7 +183,8 @@
 .sd-call-halo--inset[data-phase="connected"], .sd-call-halo--inset[data-phase="ended"] { box-shadow: none; animation: none; }
 
 @media (prefers-reduced-motion: reduce) {
-  .sd-call-halo { animation: none; }
+  /* [data-phase] lifts these to (0,2,0), so they beat .sd-call-halo[data-phase="ringing"]. */
+  .sd-call-halo, .sd-call-halo[data-phase] { animation: none; }
   .sd-call-halo--inset[data-phase] { animation: none; } /* beats the phase rule's specificity */
   .sd-call-ripple { animation: none; display: none; }
 }

@@ -8,6 +8,11 @@
  * values are allowed (fixed layout sizes are legitimate). Comments are
  * stripped first. guard.test.ts compares the counts with guard-baseline.json:
  * new files must be clean, and existing counts may only go down.
+ *
+ * A second ratchet (`countLoadingViolations`, `isLoadingScanned`) counts
+ * hand-built loading indicators outside `design/primitives/`: raw
+ * `animate-spin` and `common.loading` used as text. It is compared
+ * with loading-guard-baseline.json under the same rules.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -77,9 +82,27 @@ function stripComments(source: string): string {
     return out;
 }
 
-export function countViolations(source: string): number {
+function countPatterns(source: string, patterns: readonly RegExp[]): number {
     const code = stripComments(source);
-    return PATTERNS.reduce((sum, pattern) => sum + (code.match(pattern)?.length ?? 0), 0);
+    return patterns.reduce((sum, pattern) => sum + (code.match(pattern)?.length ?? 0), 0);
+}
+
+export function countViolations(source: string): number {
+    return countPatterns(source, PATTERNS);
+}
+
+/**
+ * Hand-built loading indicators: a raw spin (any variant prefix counts once) and any use of the
+ * `common.loading` text (a child, a prop such as `sub=`, a ternary, a variable), except as the
+ * accessible name of a primitive (`aria-label={t('common.loading')}`, `label={t('common.loading')}`).
+ */
+export const LOADING_PATTERNS: readonly RegExp[] = [
+    /(?<![\w-])animate-spin(?![\w-])/g,
+    /(?<!(?:aria-label|label)=\{\s*)\bt\(\s*['"]common\.loading['"]\s*\)/g,
+];
+
+export function countLoadingViolations(source: string): number {
+    return countPatterns(source, LOADING_PATTERNS);
 }
 
 export function isScanned(relPath: string): boolean {
@@ -89,7 +112,16 @@ export function isScanned(relPath: string): boolean {
     return !EXCLUDED_PREFIXES.some((prefix) => relPath.startsWith(prefix));
 }
 
-export function scanTree(srcRoot: string): Record<string, number> {
+/** Same files as `isScanned`, minus `design/primitives/` (the primitives own the loading animation). */
+export function isLoadingScanned(relPath: string): boolean {
+    return isScanned(relPath) && !relPath.startsWith('design/primitives/');
+}
+
+export function scanTree(
+    srcRoot: string,
+    count: (source: string) => number = countViolations,
+    scanned: (relPath: string) => boolean = isScanned,
+): Record<string, number> {
     const result: Record<string, number> = {};
     const walk = (dir: string): void => {
         for (const entry of readdirSync(dir, { withFileTypes: true })) {
@@ -99,40 +131,61 @@ export function scanTree(srcRoot: string): Record<string, number> {
                 continue;
             }
             const rel = path.relative(srcRoot, full).split(path.sep).join('/');
-            if (!isScanned(rel)) continue;
-            const count = countViolations(readFileSync(full, 'utf-8'));
-            if (count > 0) result[rel] = count;
+            if (!scanned(rel)) continue;
+            const n = count(readFileSync(full, 'utf-8'));
+            if (n > 0) result[rel] = n;
         }
     };
     walk(srcRoot);
     return Object.fromEntries(Object.entries(result).sort(([a], [b]) => a.localeCompare(b)));
 }
 
-const HINT = 'use design tokens (docs/design/DESIGN_SYSTEM.md)';
-const BASELINE_PATH = 'src/design/guard-baseline.json';
+/** How `compareToBaseline` words its problems for one ratchet. */
+export interface BaselineLabels {
+    /** What is counted, e.g. "hard-coded style value(s)". */
+    noun: string;
+    /** What to do instead. */
+    hint: string;
+    /** The baseline file, relative to `frontend/`. */
+    path: string;
+}
+
+export const STYLE_LABELS: BaselineLabels = {
+    noun: 'hard-coded style value(s)',
+    hint: 'use design tokens (docs/design/DESIGN_SYSTEM.md)',
+    path: 'src/design/guard-baseline.json',
+};
+
+export const LOADING_LABELS: BaselineLabels = {
+    noun: 'hand-built loading indicator(s)',
+    hint: 'use Spinner / StatusBlock (docs/design/DESIGN_SYSTEM.md, "Loading and waiting")',
+    path: 'src/design/loading-guard-baseline.json',
+};
 
 export function compareToBaseline(
     current: Record<string, number>,
     baseline: Record<string, number>,
     exists: (relPath: string) => boolean,
+    labels: BaselineLabels = STYLE_LABELS,
 ): string[] {
+    const { noun, hint, path: baselinePath } = labels;
     const problems: string[] = [];
     for (const [file, count] of Object.entries(current)) {
         const allowed = baseline[file];
         if (allowed === undefined) {
-            problems.push(`${file}: ${count} hard-coded style value(s) in a new file — ${HINT}`);
+            problems.push(`${file}: ${count} ${noun} in a new file — ${hint}`);
         } else if (count > allowed) {
-            problems.push(`${file}: ${count} hard-coded style value(s), baseline allows ${allowed} — ${HINT}`);
+            problems.push(`${file}: ${count} ${noun}, baseline allows ${allowed} — ${hint}`);
         } else if (count < allowed) {
-            problems.push(`${file}: improved to ${count} (baseline ${allowed}) — lower it in ${BASELINE_PATH}`);
+            problems.push(`${file}: improved to ${count} (baseline ${allowed}) — lower it in ${baselinePath}`);
         }
     }
     for (const [file, allowed] of Object.entries(baseline)) {
         if (file in current) continue;
         problems.push(
             exists(file)
-                ? `${file}: improved to 0 (baseline ${allowed}) — remove it from ${BASELINE_PATH}`
-                : `${file}: listed in ${BASELINE_PATH} but the file no longer exists — remove the entry`,
+                ? `${file}: improved to 0 (baseline ${allowed}) — remove it from ${baselinePath}`
+                : `${file}: listed in ${baselinePath} but the file no longer exists — remove the entry`,
         );
     }
     return problems;

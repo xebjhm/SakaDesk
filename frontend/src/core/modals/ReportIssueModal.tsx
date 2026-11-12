@@ -1,7 +1,7 @@
 import { useState } from 'react';
-import { Bug, Loader2, ExternalLink, Database, Play, LogIn, HelpCircle } from 'lucide-react';
+import { Bug, ExternalLink, Database, Play, LogIn, HelpCircle } from 'lucide-react';
 import { useTranslation } from '../../i18n';
-import { Modal, Button, Input } from '../../design/primitives';
+import { Modal, Button, Input, Spinner } from '../../design/primitives';
 import { logDialogLoad } from '../../design/dialog/dialogLog';
 import { cn } from '../../utils/classnames';
 
@@ -107,7 +107,7 @@ export function ReportIssueModal({
                 <>
                     <Button variant="ghost" onClick={handleClose}>{t('common.cancel')}</Button>
                     <Button variant="primary" onClick={handleSubmit} disabled={!category || loading}>
-                        {loading ? <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" /> : <ExternalLink className="h-4 w-4" />}
+                        {loading ? <Spinner size="sm" tone="current" decorative /> : <ExternalLink className="h-4 w-4" />}
                         {loading ? t('report.generating') : t('report.createGitHubIssue')}
                     </Button>
                 </>

@@ -43,9 +43,11 @@ import { persist, createJSONStorage } from 'zustand/middleware';
 import { DEFAULT_SERVICE_ORDER } from '../data/services';
 import { persisted } from '../core/persistence/persisted';
 import type { RecentPost } from '../types';
+import type { MemoriesRoute } from '../features/memories/MemoriesFeature';
+import { forgetListSnapshots } from '../features/messages/listSnapshotStore';
 
 /** Available feature tabs within a service. */
-export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai';
+export type FeatureId = 'messages' | 'blogs' | 'news' | 'fanclub' | 'ai' | 'memories';
 
 /** Blog filtering mode: show all members or only favorites. */
 export type BlogSelectionMode = 'all' | 'favorite';
@@ -161,6 +163,18 @@ interface AppState {
     /** Set the target message to scroll to. */
     setTargetMessageId: (id: number | null) => void;
 
+    // ─── Memories Deep Link ──────────────────────────────────────────────────
+
+    /**
+     * A Memories page to open (a notification click; non-persisted). `nonce` grows with every
+     * link, so a second click to the same page is still a new link. Consumed by MemoriesFeature.
+     */
+    memoriesDeepLink: { service: string; route: MemoriesRoute; nonce: number } | null;
+    /** Store a deep link, show the service's Memories feature and switch service when it differs. */
+    openMemoriesAt: (service: string, route: MemoriesRoute) => void;
+    /** Clear the deep link, only when it is still the one with this nonce. */
+    clearMemoriesDeepLink: (nonce: number) => void;
+
     // ─── Blog Search Navigation ──────────────────────────────────────────────
 
     /** Target blog to open from search results (non-persisted). */
@@ -229,6 +243,15 @@ const DEFAULT_FEATURE_ORDER: FeatureId[] = ['messages', 'blogs', 'news', 'fanclu
 // set via onRehydrateStorage below). Until then, persist writes are suppressed.
 let hasHydratedFromBackend = false;
 
+// The last Memories deep-link nonce handed out; kept outside the store so a cleared link's
+// nonce is never reused (a stale clear can then never drop a newer link).
+let memoriesLinkNonce = 0;
+
+type MemoriesDeepLink = AppState['memoriesDeepLink'];
+/** The deep link, or null when its service is no longer selected (it could never be opened). */
+const linkStillSelected = (link: MemoriesDeepLink, services: string[]): MemoriesDeepLink =>
+    link && services.includes(link.service) ? link : null;
+
 const backendStateStorage = {
     getItem: (name: string): string | null => persisted.getPref<string | null>(name, null),
     setItem: (name: string, value: string): void => {
@@ -274,6 +297,8 @@ export const useAppStore = create<AppState>()(
                 })),
             removeSelectedService: (serviceId) =>
                 set((state) => {
+                    // The removed service's rooms must not reappear as list snapshots (W3).
+                    forgetListSnapshots();
                     const newSelected = state.selectedServices.filter((id) => id !== serviceId);
                     // If removing the active service, switch to first remaining or null
                     const newActiveService =
@@ -283,9 +308,14 @@ export const useAppStore = create<AppState>()(
                     return {
                         selectedServices: newSelected,
                         activeService: newActiveService,
+                        memoriesDeepLink: linkStillSelected(state.memoriesDeepLink, newSelected),
                     };
                 }),
-            setSelectedServices: (services) => set({ selectedServices: services }),
+            setSelectedServices: (services) =>
+                set((state) => ({
+                    selectedServices: services,
+                    memoriesDeepLink: linkStillSelected(state.memoriesDeepLink, services),
+                })),
 
             activeService: null,
             setActiveService: (service) => set({ activeService: service }),
@@ -360,6 +390,18 @@ export const useAppStore = create<AppState>()(
             targetMessageId: null,
             setTargetMessageId: (id) => set({ targetMessageId: id }),
 
+            memoriesDeepLink: null,
+            openMemoriesAt: (service, route) => {
+                memoriesLinkNonce += 1;
+                const nonce = memoriesLinkNonce;
+                set({ memoriesDeepLink: { service, route, nonce } });
+                get().setActiveFeature(service, 'memories');
+                if (get().activeService !== service) get().setActiveService(service);
+            },
+            clearMemoriesDeepLink: (nonce) => {
+                if (get().memoriesDeepLink?.nonce === nonce) set({ memoriesDeepLink: null });
+            },
+
             targetBlog: null,
             setTargetBlog: (target) => set({ targetBlog: target }),
 
@@ -393,6 +435,9 @@ export const useAppStore = create<AppState>()(
             setTranscriptionEnabled: (enabled) => set({ transcriptionEnabled: enabled }),
         }),
         {
+            // The backend reads this bundle at state.selectedServices
+            // (backend/services/memories/notify_scheduler.py); keep that path stable.
+            // Pinned by src/store/appStore.persistence.test.ts.
             name: 'sakadesk-app-state',
             version: 4,
             storage: createJSONStorage(() => backendStateStorage),

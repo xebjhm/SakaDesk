@@ -1,8 +1,8 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
-import { AlertCircle, Loader2, X } from 'lucide-react'
-import { Button, IconButton } from '../design/primitives'
+import { AlertCircle, X } from 'lucide-react'
+import { Button, IconButton, Spinner } from '../design/primitives'
 import { useTranslation } from '../i18n'
 import { DiagnosticsModal, ReportIssueModal, AboutModal } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
@@ -19,8 +19,10 @@ import type { SearchModalHandle } from '../features/search'
 import { persisted } from '../core/persistence/persisted'
 import { applyStartupLanguage } from './language'
 import { openChatFromToast } from './openChat'
+import { openMemoriesFromToast } from './openMemories'
 import { clientLog } from '../utils/clientLog'
 import { markVoiceHeard } from './markVoiceHeard'
+import { useOshiMirror } from './useOshiMirror'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
@@ -237,6 +239,10 @@ function App() {
             .finally(() => setPrefsHydrated(true));
     }, []);
 
+    // Mirror the oshi list to backend settings, only once persisted state has
+    // hydrated (never overwrite the backend with the empty startup map).
+    useOshiMirror(prefsHydrated);
+
     // SD-FE-STATE-03: flush any pending debounced prefs writes when the window
     // is being hidden/closed. pywebview tears down the JS context on close, so a
     // change made within the 300ms debounce (a settings toggle, ToS acceptance,
@@ -292,6 +298,14 @@ function App() {
         return () => { delete window.__sakadeskOpenLogin; };
     }, []);
 
+    // Desktop Memories toast click: open Memories at the toast's page. Refused during
+    // onboarding, like the login toast (the main view is hidden behind it).
+    useEffect(() => {
+        window.__sakadeskOpenMemories = (payload: unknown) =>
+            openMemoriesFromToast(payload, () => openLoginStateRef.current.onboarding);
+        return () => { delete window.__sakadeskOpenMemories; };
+    }, []);
+
     // Desktop popup answered a voice: the main window (sole writer) marks it heard.
     useEffect(() => {
         window.__sakadeskMarkVoiceHeard = markVoiceHeard;
@@ -308,8 +322,9 @@ function App() {
     if (!authCheckComplete || !prefsHydrated) {
         return (
             <BrandScope className="flex h-screen items-center justify-center bg-window">
-                <span data-testid="boot-screen" role="status" aria-label={t('common.loading')}>
-                    <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-accent motion-reduce:animate-none" />
+                {/* The Spinner is the status (named by its label, shown under reduced motion). */}
+                <span data-testid="boot-screen">
+                    <Spinner size="md" label={t('common.loading')} labelVisibility="auto" />
                 </span>
             </BrandScope>
         );
@@ -552,6 +567,7 @@ function App() {
                         syncProgressByService={syncProgressByService}
                         initialSyncServices={initialSyncServices}
                         blogBackupEnabled={appSettings?.blogs_full_backup}
+                        userNicknames={appSettings?.user_nicknames}
                         messagesContent={
                             <MessagesFeature
                                 appSettings={appSettings}

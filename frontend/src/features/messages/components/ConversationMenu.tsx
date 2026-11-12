@@ -21,6 +21,10 @@ interface ChatHeaderMenuProps {
     conversationPath: string;
     isGroupChat: boolean;
     messages: Message[];
+    /** The room list's load state, shown by the media gallery (`loading` only before any message arrived). */
+    messagesStatus?: 'loading' | 'error' | 'ready';
+    /** Reload the room list (the media gallery's Retry). */
+    onRetryMessages?: () => void;
     memberName: string;
     /** Full-size avatar URL; the media gallery and favourites get resized variants for their small avatars. */
     memberAvatar?: string;
@@ -44,6 +48,8 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     conversationPath,
     isGroupChat,
     messages,
+    messagesStatus = 'ready',
+    onRetryMessages,
     memberName,
     memberAvatar,
     letters,
@@ -147,6 +153,8 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                 isOpen={activeModal === 'media'}
                 onClose={() => setActiveModal(null)}
                 messages={messages}
+                listStatus={messagesStatus}
+                onRetryList={onRetryMessages}
                 memberName={memberName}
                 memberAvatar={galleryAvatar}
                 serviceId={activeService}

@@ -1289,3 +1289,140 @@ async def test_stale_running_flag_ends_the_run_visibly(tmp_path):
     with capture_logs() as logs:
         await svc.verify_and_fix_media()
     assert _events(logs, "verify_skipped")[0]["reason"] == "already_running"
+
+
+_ARCHIVE = "backend.services.sync_service.archive_subscription_starts"
+
+
+async def test_subscription_archive_called_with_synced_group_ids(tmp_path):
+    m = _manager(scanned=True, extra=[])
+    with patch(_ARCHIVE, new=AsyncMock(return_value=1)) as archive:
+        await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+    archive.assert_awaited_once()
+    assert archive.await_args.args[2] == [43]
+
+
+async def test_subscription_archive_failure_does_not_fail_sync(tmp_path):
+    m = _manager(scanned=True, extra=[])
+    saved: dict = {}
+    with (
+        patch(_ARCHIVE, new=AsyncMock(side_effect=RuntimeError("boom"))),
+        capture_logs() as logs,
+    ):
+        await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=API_MEMBERS,
+            mock_manager=m,
+            saved=saved,
+        )
+    assert "last_sync" in saved
+    (ev,) = _events(logs, "subscription_starts_failed")
+    assert ev["error_type"] == "RuntimeError"
+
+
+async def test_subscription_archive_runs_after_metadata_save(tmp_path):
+    """Off the critical path: after notifications and the metadata save."""
+    m = _manager(scanned=True, extra=[])
+    order: list[str] = []
+    saved: dict = {}
+
+    async def archive(*a, **kw):
+        order.append("archive" if "last_sync" in saved else "archive_early")
+        return 1
+
+    with patch(_ARCHIVE, new=AsyncMock(side_effect=archive)):
+        ok = await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=API_MEMBERS,
+            mock_manager=m,
+            saved=saved,
+        )
+    assert ok is True and order == ["archive"]
+
+
+# --- Memories refresh hooks --------------------------------------------------
+
+
+async def test_completed_sync_schedules_memories_refreshes(tmp_path):
+    m = _manager(scanned=True, extra=[])
+    profiles = AsyncMock(return_value=True)
+    index = AsyncMock(return_value=2)
+    bg: list = []
+    progress = MagicMock()
+    with (
+        patch("backend.services.sync_service.refresh_member_profiles", profiles),
+        patch("backend.services.sync_service.build_memory_index", index),
+        patch(
+            "backend.services.sync_service.track_background_task",
+            lambda coro, name=None: bg.append((name, coro)),
+        ),
+    ):
+        ok = await _run_start_sync(
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=API_MEMBERS,
+            mock_manager=m,
+            progress_mock=progress,
+        )
+        assert ok is True
+        progress.complete.assert_called_once()
+        # Scheduled as one background task, not awaited inline.
+        profiles.assert_not_awaited()
+        index.assert_not_awaited()
+        assert {n for n, _ in bg if n.startswith("memories_")} == {"memories_index"}
+        for _, coro in bg:
+            await coro
+        profiles.assert_awaited_once()
+        index.assert_awaited_once()
+    assert profiles.await_args.args[0] == "hinatazaka46"
+    assert index.await_args.args[0] == profiles.await_args.args[1]
+
+
+async def test_completed_sync_requests_a_memories_card_check(tmp_path):
+    m = _manager(scanned=True, extra=[])
+    check = MagicMock()
+    with patch("backend.services.sync_service.request_card_check", check):
+        ok = await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+    assert ok is True
+    check.assert_called_once_with("hinatazaka46")
+
+
+async def test_failed_memories_refresh_does_not_affect_sync(tmp_path):
+    m = _manager(scanned=True, extra=[])
+    profiles = AsyncMock(side_effect=RuntimeError("scrape boom"))
+    index = AsyncMock(side_effect=RuntimeError("index boom"))
+    with (
+        patch("backend.services.sync_service.refresh_member_profiles", profiles),
+        patch("backend.services.sync_service.build_memory_index", index),
+    ):
+        ok = await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+        await asyncio.sleep(0)
+        await asyncio.sleep(0)
+    assert ok is True
+    profiles.assert_awaited_once()
+    index.assert_awaited_once()
+
+
+async def test_memories_scheduling_failure_does_not_fail_sync(tmp_path):
+    m = _manager(scanned=True, extra=[])
+
+    def _boom(coro, name=None):
+        coro.close()
+        raise RuntimeError("no loop")
+
+    with patch("backend.services.sync_service.track_background_task", _boom):
+        ok = await _run_start_sync(
+            SyncService(), tmp_path, groups=[GROUP], members=API_MEMBERS, mock_manager=m
+        )
+    assert ok is True

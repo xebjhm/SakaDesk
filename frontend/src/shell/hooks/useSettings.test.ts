@@ -1,6 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useSettings } from './useSettings'
+import { getListSnapshot, rememberListSnapshot } from '../../features/messages/listSnapshotStore'
 
 // ── Hoisted mocks for appStore ──────────────────────────────────────────────
 // selectedServices is mutable so each test can configure it independently.
@@ -335,5 +336,26 @@ describe('useSettings – save error', () => {
         expect(result.current.settingsErrorKey).toBe('settings.saveFailed')
         act(() => { result.current.clearSettingsError() })
         expect(result.current.settingsErrorKey).toBeNull()
+    })
+})
+
+describe('useSettings – list snapshots (W3)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        mockSelectedServices.value = ['hinatazaka46']
+    })
+
+    it('an output-dir change forgets the chat list snapshots; other saves keep them', async () => {
+        const { impl } = buildFetch()
+        vi.stubGlobal('fetch', vi.fn(impl))
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        const root = document.createElement('div')
+        root.textContent = '日向坂 🌸'
+        rememberListSnapshot('room', root, 0)
+        await act(async () => { await result.current.saveSettings({ blogs_full_backup: true }) })
+        expect(getListSnapshot('room')).not.toBeNull()
+        await act(async () => { await result.current.saveSettings({ output_dir: '/tmp/other' }) })
+        expect(getListSnapshot('room')).toBeNull()
     })
 })

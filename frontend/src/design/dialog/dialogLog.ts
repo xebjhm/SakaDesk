@@ -5,7 +5,7 @@ export type DialogLogId =
     | 'calendar' | 'background' | 'favorites' | 'media_gallery' | 'media_viewer' | 'blog_gallery'
     | 'member_select' | 'member_timeline' | 'about' | 'report_issue' | 'diagnostics' | 'add_service'
     | 'confirm' | 'reveal_all' | 'settings' | 'search' | 'member_profile' | 'login' | 'sync' | 'setup'
-    | 'tos' | 'sent_letters' | 'letter_viewer';
+    | 'tos' | 'sent_letters' | 'letter_viewer' | 'recap_share';
 
 /** `surface` of the `dialog_load` breadcrumb: a data load inside a dialog. */
 export type DialogLoadSurface =
@@ -13,10 +13,11 @@ export type DialogLoadSurface =
     | 'settings_blog_cache' | 'settings_blog_backup' | 'settings_update_check' | 'settings_blog_clean'
     | 'settings_blog_stats' | 'settings_ai_config' | 'settings_ai_models' | 'settings_ai_key_clear' | 'settings_ai_save'
     | 'settings_ai_cache_clear' | 'settings_ai_test' | 'settings_app_save'
+    | 'settings_media_cache' | 'settings_media_clean' | 'media_gallery_pregen'
     | 'report_issue'
     | 'search_status' | 'search_backup_status' | 'search_more' | 'search_members'
     | 'background_upload'
-    | 'login' | 'login_geo';
+    | 'login' | 'login_geo' | 'login_cancel';
 
 /** `skipped`: nothing to do (no images, a rejected file); `cancelled`: aborted or superseded. */
 export type DialogLoadOutcome = 'ok' | 'error' | 'partial' | 'cancelled' | 'skipped';
@@ -26,7 +27,7 @@ export type DialogLoadOutcome = 'ok' | 'error' | 'partial' | 'cancelled' | 'skip
  * message text.
  */
 export type DialogLoadReason = 'auth' | 'unreachable' | 'no_key' | 'failed' | 'too_large' | 'not_image' | 'empty' | 'blocked'
-    | 'after_login';
+    | 'after_login' | 'completed' | 'not_cancelled' | 'timeout';
 export type CloseReason = 'escape' | 'backdrop' | 'button';
 
 /** One `dialog` breadcrumb. Never pass names, ids, paths or text. */

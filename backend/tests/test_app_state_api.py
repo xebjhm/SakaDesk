@@ -80,3 +80,34 @@ def test_translations_batch_duplicates_do_not_count_toward_max(client, tmp_path)
     app_state.init_db()
     keys = ",".join(["k:1"] * (MAX_TRANSLATION_KEYS * 2))
     assert client.get(f"/api/app-state/translations?keys={keys}").status_code == 200
+
+
+def test_prefs_api_hides_and_refuses_internal_memories_keys(client, tmp_path):
+    app_state.set_db_path(tmp_path / "app_state.db")
+    app_state.init_db()
+    app_state.set_prefs({"memories_gacha_salt": "0123456789abcdef", "language": "ja"})
+
+    got = client.get("/api/app-state/prefs").json()
+    assert got == {"language": "ja"}
+
+    resp = client.patch(
+        "/api/app-state/prefs",
+        json={"memories_gacha_salt": "ffffffffffffffff", "language": "en"},
+    )
+    assert resp.status_code == 400
+    prefs = app_state.get_prefs()
+    assert prefs["memories_gacha_salt"] == "0123456789abcdef"
+    assert prefs["language"] == "ja"  # rejected as a whole
+
+
+def test_migrate_dump_drops_internal_memories_keys(client, tmp_path):
+    app_state.set_db_path(tmp_path / "app_state.db")
+    app_state.init_db()
+    app_state.set_prefs({"memories_gacha_salt": "0123456789abcdef"})
+    client.post(
+        "/api/app-state/migrate",
+        json={"prefs": {"memories_gacha_salt": "ffffffffffffffff", "volume": 0.5}},
+    )
+    prefs = app_state.get_prefs()
+    assert prefs["memories_gacha_salt"] == "0123456789abcdef"
+    assert prefs["volume"] == 0.5

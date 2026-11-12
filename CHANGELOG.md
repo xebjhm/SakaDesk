@@ -7,6 +7,52 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Relive your archive with each member.** The new Memories page opens on a
+  board with a moment from this day in past years and leads to On This Day
+  with that whole day's messages, a photo album by month, your favorites on a
+  cork board, and a memoir for each member. A memoir collects cards for her
+  milestones, a month-by-month timeline and the times she called you by name.
+- **Look back on your year with each member.** Memories also has a year
+  recap: a short story of her messages, photos and voice from the year,
+  a poster you can save, and a share image or video that blurs her photos.
+  It opens on December 1 with the year so far, and past years stay on the
+  shelf; with several members it starts with all of them together.
+- **Listen, draw and leave notes in Memories.** A late-night voice radio with
+  a sleep timer, a memory gacha with three draws a day, and a photo calendar
+  that opens any day. Set an old day beside this year, see her day pieced
+  together from different years, or pick a month's album cover; notes you
+  leave on a day or a card come back a year later and stay on this PC.
+- **Memories can now remind you.** SakaDesk can send a Windows notification
+  for On This Day, members' birthdays, your membership anniversaries and the
+  year recap, and, if you turn it on, when a foil card joins a binder.
+  Clicking one opens that page in Memories, and nothing is shown while you
+  are already in Memories. Each kind has its own switch in Settings, along
+  with the time of day they arrive (Japan time).
+
+### Changed
+- **The media gallery and the blog photo album open fast, even with
+  thousands of photos.** Photos and videos now show as small thumbnails that
+  load as you scroll, with a colour preview while each one arrives, instead of
+  loading every full-size photo at once. While SakaDesk is still preparing
+  thumbnails in the background, both show how far it has got, or that it is
+  paused.
+- **Videos show a still frame in every gallery.** Video tiles now show a
+  frame from the video instead of a blank square, prepared in the
+  background and kept small on disk.
+- **You can always tell when SakaDesk is still loading.** Chats, galleries,
+  Memories, sign-in and settings show a clear loading state instead of a
+  blank or frozen screen. Long waits explain what is happening and offer
+  Cancel or Retry.
+
+### Fixed
+- **Bug reports hide your nickname for every group.** Previously the
+  nickname you use in each group's app could appear in a bug report's logs;
+  it is now replaced, along with your Windows user name and archive folder.
+- **No more red corner on the incoming-call window.** The rounded corners of
+  the bottom-right call card are see-through again instead of showing a solid
+  red patch, on every display scale.
+
 ## [0.4.2] - 2026-11-10
 
 ### Added

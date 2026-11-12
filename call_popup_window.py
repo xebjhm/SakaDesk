@@ -6,11 +6,12 @@ so the main window's title lookup cannot find it), created hidden once and
 reused for every call:
 
 - :meth:`CallPopupWindow.ensure` creates it with ``focus=False``, ``hidden=True``
-  ``on_top=True``, ``transparent=True`` and ``shadow=False``, adds
+  ``on_top=True``, ``shadow=False`` and ``transparent=False`` with the form
+  colour already :data:`TRANSPARENCY_KEY` (see :data:`BACKGROUND_COLOR`), adds
   ``WS_EX_TOOLWINDOW`` (no taskbar button, not in Alt+Tab), turns DWM's own
   corner rounding off (the page draws a 16px rounded card on a colour-keyed
-  transparent window) and swaps pywebview's red transparency key for
-  :data:`TRANSPARENCY_KEY`, then waits for the page to load.
+  transparent window) and colour-keys the form on :data:`TRANSPARENCY_KEY`
+  with a transparent WebView2 background, then waits for the page to load.
   Two failed creations in a row make the host unavailable for the process.
 - :meth:`CallPopupWindow.reveal` places it with :func:`popup_rect` (the primary
   monitor's work area, ``POPUP_WIDTH_DIP`` wide at 9:16, ``POPUP_MARGIN_DIP``
@@ -55,12 +56,17 @@ from backend.services.desktop_bridge import HeardTarget
 logger = structlog.get_logger(__name__)
 
 TITLE = "SakaDesk Call"
-BACKGROUND_COLOR = "#0D0F14"
-# pywebview's transparent=True colour-keys the form on pure red, so antialiased
-# card corners would blend into a red fringe. Near-black instead: a photo under
-# the call screen's gradients is very unlikely to hit it exactly, and the
-# antialiased card edge blends into a faint dark edge rather than red.
+# The colour key. Near-black, not pywebview's pure red: a photo under the call
+# screen's gradients is very unlikely to hit it exactly, and the antialiased
+# card edge blends into a faint dark edge rather than red.
 TRANSPARENCY_KEY = (3, 1, 2)
+# The form is created in the key colour with ``transparent=False``, and
+# :func:`_apply_transparency_key` adds the key and the transparent WebView2
+# background. pywebview's ``transparent=True`` must not be used: it paints the
+# form pure red first, and WebView2 keeps that red under the page's transparent
+# pixels (the card's corners) inside the creation-size area for good; a later
+# BackColor change, invalidate or RedrawWindow never replaces it.
+BACKGROUND_COLOR = "#{:02X}{:02X}{:02X}".format(*TRANSPARENCY_KEY)
 POPUP_WIDTH_DIP = 300
 POPUP_MARGIN_DIP = 12
 POPUP_LOAD_TIMEOUT_S = 15.0
@@ -204,9 +210,11 @@ def _load_dwmapi() -> Any:
 
 
 def _apply_transparency_key(window: Any) -> None:
-    """Swap pywebview's red colour key for :data:`TRANSPARENCY_KEY` on ``window``.
+    """Colour-key ``window`` on :data:`TRANSPARENCY_KEY`, with a see-through page.
 
-    Sets ``BackColor`` and ``TransparencyKey`` of the WinForms form on its GUI
+    Sets ``BackColor`` and ``TransparencyKey`` of the WinForms form to the key
+    and the WebView2 control's ``DefaultBackgroundColor`` to ``Color.Transparent``
+    (what ``transparent=True`` would do, minus its red), on the form's GUI
     thread (``Invoke`` when ``InvokeRequired``). pythonnet is imported lazily.
     Never raises: success logs ``call_popup_transparency`` (``applied=True``),
     failure logs ``call_popup_transparency_failed`` with ``error_type``.
@@ -221,6 +229,7 @@ def _apply_transparency_key(window: Any) -> None:
         def apply() -> None:
             form.BackColor = key
             form.TransparencyKey = key
+            form.webview.DefaultBackgroundColor = Color.Transparent
 
         if form.InvokeRequired:
             form.Invoke(System.Action(apply))
@@ -398,7 +407,7 @@ class CallPopupWindow:
                     on_top=True,
                     hidden=True,
                     shadow=False,
-                    transparent=True,
+                    transparent=False,
                     background_color=BACKGROUND_COLOR,
                 )
                 created = window

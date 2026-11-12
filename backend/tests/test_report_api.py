@@ -29,7 +29,7 @@ class TestGenerateReport:
             "groups_configured": [],
         },
     )
-    @patch("backend.api.report._get_nickname", return_value=None)
+    @patch("backend.api.report._get_nicknames", return_value=[])
     @patch("backend.api.report._get_username", return_value="testuser")
     def test_generate_report_sync_data(
         self, mock_user, mock_nick, mock_token, mock_sync, mock_logs
@@ -68,7 +68,7 @@ class TestGenerateReport:
             "groups_configured": [],
         },
     )
-    @patch("backend.api.report._get_nickname", return_value=None)
+    @patch("backend.api.report._get_nicknames", return_value=[])
     @patch("backend.api.report._get_username", return_value="testuser")
     def test_generate_report_playback(
         self, mock_user, mock_nick, mock_token, mock_sync, mock_logs
@@ -103,7 +103,7 @@ class TestGenerateReport:
             "groups_configured": ["hinatazaka46"],
         },
     )
-    @patch("backend.api.report._get_nickname", return_value=None)
+    @patch("backend.api.report._get_nicknames", return_value=[])
     @patch("backend.api.report._get_username", return_value="testuser")
     def test_generate_report_login(
         self, mock_user, mock_nick, mock_token, mock_sync, mock_logs
@@ -135,7 +135,7 @@ class TestGenerateReport:
             "groups_configured": [],
         },
     )
-    @patch("backend.api.report._get_nickname", return_value=None)
+    @patch("backend.api.report._get_nicknames", return_value=[])
     @patch("backend.api.report._get_username", return_value="testuser")
     def test_generate_report_other(
         self, mock_user, mock_nick, mock_token, mock_sync, mock_logs
@@ -175,7 +175,7 @@ class TestGenerateReport:
             "groups_configured": [],
         },
     )
-    @patch("backend.api.report._get_nickname", return_value=None)
+    @patch("backend.api.report._get_nicknames", return_value=[])
     @patch("backend.api.report._get_username", return_value="testuser")
     def test_generate_report_github_url_format(
         self, mock_user, mock_nick, mock_token, mock_sync, mock_logs
@@ -210,7 +210,7 @@ class TestGetDiagnosticsOnly:
             "groups_configured": [],
         },
     )
-    @patch("backend.api.report._get_nickname", return_value=None)
+    @patch("backend.api.report._get_nicknames", return_value=[])
     @patch("backend.api.report._get_username", return_value="testuser")
     def test_get_diagnostics_only(
         self, mock_user, mock_nick, mock_token, mock_sync, mock_logs
@@ -241,7 +241,7 @@ class TestGetDiagnosticsOnly:
             "groups_configured": ["hinatazaka46"],
         },
     )
-    @patch("backend.api.report._get_nickname", return_value="TestNick")
+    @patch("backend.api.report._get_nicknames", return_value=["TestNick"])
     @patch("backend.api.report._get_username", return_value="testuser")
     def test_get_diagnostics_with_errors(
         self, mock_user, mock_nick, mock_token, mock_sync, mock_logs
@@ -428,7 +428,7 @@ class TestHelperFunctions:
 
     def test_get_nickname_from_settings(self, tmp_path):
         """Reads nickname from settings file."""
-        from backend.api.report import _get_nickname
+        from backend.api.report import _get_nicknames
 
         settings_path = tmp_path / "settings.json"
         settings_path.write_text(
@@ -436,19 +436,19 @@ class TestHelperFunctions:
             encoding="utf-8",
         )
         with patch("backend.api.report.get_settings_path", return_value=settings_path):
-            result = _get_nickname()
-        assert result == "TestNick"
+            result = _get_nicknames()
+        assert result == ["TestNick"]
 
     def test_get_nickname_missing_file(self, tmp_path):
-        """Returns None when settings file does not exist."""
-        from backend.api.report import _get_nickname
+        """Returns no nicknames when settings file does not exist."""
+        from backend.api.report import _get_nicknames
 
         with patch(
             "backend.api.report.get_settings_path",
             return_value=tmp_path / "missing.json",
         ):
-            result = _get_nickname()
-        assert result is None
+            result = _get_nicknames()
+        assert result == []
 
     def test_get_username_fallback(self):
         """Falls back to env var when os.getlogin() fails."""

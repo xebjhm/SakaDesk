@@ -544,3 +544,23 @@ async def test_progress_says_which_kind_of_job_it_shows(h):
     h.release("hinatazaka46")
     h.release("yodel")
     await c.wait_idle()
+
+
+async def test_busy_covers_running_and_queued_jobs(h):
+    c = h.coordinator()
+    assert c.busy() is False
+    c.enqueue("hinatazaka46", origin="api")
+    c.enqueue("nogizaka46", origin="api")
+    assert c.busy() is True
+    h.release("hinatazaka46")
+    await _settle()
+    assert c.busy() is True  # the queued job runs now
+    h.release("nogizaka46")
+    await c.wait_idle()
+    assert c.busy() is False
+
+
+async def test_busy_with_only_a_queued_job():
+    c = SyncCoordinator()
+    c._queue.append(sc.SyncJob("hinatazaka46"))
+    assert c._running is None and c.busy() is True

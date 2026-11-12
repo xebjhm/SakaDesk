@@ -48,6 +48,16 @@
     "zoomFit": "适应屏幕",
     "debug": "调试"
   },
+  "loading": {
+    "label": "加载中…",
+    "slow": "仍在加载…",
+    "verySlow": "这次比平时久一些，请再稍候。",
+    "timeout": "等待时间太久了",
+    "timeoutHint": "后台可能仍在处理，请稍候再试一次。",
+    "error": "无法加载",
+    "retry": "再试一次",
+    "cancel": "取消"
+  },
   "settings": {
     "title": "设置",
     "tabGeneral": "常规",
@@ -69,6 +79,15 @@
     "blogBackupWorking": "正在备份博客…",
     "blogBackupCalculating": "正在计算备份大小…",
     "cleanBlogCache": "删除备份",
+    "mediaCache": "缩略图缓存",
+    "mediaCacheSize": "已使用 {{size}}",
+    "mediaCachePreparing": "正在准备缩略图… {{done}} / {{total}}",
+    "mediaCachePaused": "缩略图准备已暂停 · {{done}} / {{total}}",
+    "mediaCacheClear": "清除",
+    "mediaCacheCleared": "已清除缩略图缓存",
+    "mediaCacheFull": "已达上限，浏览时会替换较旧的缩略图",
+    "mediaCacheLoadFailed": "无法读取缓存大小",
+    "mediaCacheClearFailed": "无法清除缩略图缓存",
     "cleanBlogCacheConfirm": "删除所有已备份的 Blog 数据？这将释放磁盘空间，但 Blog 需要重新下载。",
     "cleanBlogCacheConfirm2": "确定要删除吗？此操作无法撤消。",
     "verifyFixMedia": "校验并修复媒体",
@@ -104,6 +123,23 @@
     "notificationsDesc": "成员发来新消息时显示 Windows 通知",
     "notificationsHideContent": "通知不显示消息内容",
     "notificationsHideContentDesc": "通知只会显示有新消息，不显示内容",
+    "memoriesNotify": {
+      "title": "回忆通知",
+      "desc": "正在看回忆时不会通知",
+      "onThisDay": "每日的“那一天”",
+      "onThisDayDesc": "只在往年同一天有消息时，每天一次",
+      "time": "通知时间",
+      "timeDesc": "每日的“那一天”、生日提醒、纪念日与12月回顾通知的时间（生日当天为0点，1月的完整回顾从1月1日0点起）",
+      "timeHint": "日本时间（你所在地区为 {{local}}）",
+      "birthday": "生日",
+      "birthdayDesc": "当天0点，以及7天前和前一天提醒",
+      "anniversary": "会员纪念日",
+      "anniversaryDesc": "1 周年、2 周年…，以及第100、500、1000天",
+      "recap": "年度回顾",
+      "recapDesc": "12月1日开放、圣诞节，以及1月完整时",
+      "cards": "闪亮卡片",
+      "cardsDesc": "相册多了特别的卡时"
+    },
     "serviceSettings": "服务设置",
     "syncCurrentOff": "目前: 仅手动同步",
     "syncCurrentFixed": "目前: 每 {{minutes}} 分钟",
@@ -169,7 +205,11 @@
     "loginAnyway": "仍要登录",
     "connectPromptTitle": "连接您的账户？",
     "connectPromptDesc": "登录以同步您的 {{service}} 消息。您也可以不登录直接浏览 Blog。",
-    "maybeLater": "以后再说"
+    "maybeLater": "以后再说",
+    "waitingSlow": "正在打开登录窗口…",
+    "waitingVerySlow": "请在打开的浏览器窗口中完成登录。你可以随时取消。",
+    "finishing": "即将完成…",
+    "cancelling": "正在取消…"
   },
   "tos": {
     "title": "服务条款",
@@ -239,7 +279,9 @@
     "stepPending": "待处理",
     "phaseQueued": "等待中",
     "queuedDetail": "等待其他同步完成（排第 {{position}} 位）",
-    "filesFailed": "· {{count}} 个失败"
+    "filesFailed": "· {{count}} 个失败",
+    "preparing": "正在准备同步…",
+    "preparingVerySlow": "正在检查新消息。消息多时会花一点时间。"
   },
   "about": {
     "title": "关于",
@@ -323,6 +365,13 @@
     "welcomeTitle": "欢迎使用 SakaDesk",
     "welcomeSubtitle": "从侧边栏选择一个对话开始。",
     "loadingMessages": "正在加载消息...",
+    "loadingSlow": "仍在加载消息…",
+    "loadingVerySlow": "消息很多的聊天室需要多一点时间打开。",
+    "emptyRoom": "还没有消息",
+    "loadFailed": "无法加载消息",
+    "loadFailedHint": "已保存的数据都还在，请再试一次。",
+    "loadTimeout": "加载消息花了太久",
+    "loadTimeoutHint": "应用可能仍在处理，请稍候再试。",
     "selectConversation": "选择一个对话",
     "groupChat": "群聊",
     "unread": "{{count}} 条未读",
@@ -405,7 +454,8 @@
     "blogs": "Blog",
     "news": "新闻",
     "fanclub": "粉丝俱乐部",
-    "ai": "AI 助手"
+    "ai": "AI 助手",
+    "memories": "回忆"
   },
   "landing": {
     "welcome": "欢迎使用 SakaDesk",
@@ -478,7 +528,13 @@
       "videos": "{{count}} 个视频",
       "voice": "{{count}} 条语音"
     },
-    "typeTabs": "媒体类型"
+    "typeTabs": "媒体类型",
+    "gallery": {
+      "openPhoto": "打开 {{date}} 的照片",
+      "openVideo": "打开 {{date}} 的视频",
+      "retryPhoto": "重新加载 {{date}} 的照片"
+    },
+    "photoLoading": "正在加载照片…"
   },
   "sentLetters": {
     "title": "已发送的信件",
@@ -712,7 +768,10 @@
     "sampleToastBody": "已保存 12,846 条消息",
     "sampleMilestone": "订阅以来的天数",
     "sampleDisabledReason": "请先选择团体",
-    "displaySample": "留住每一条消息"
+    "displaySample": "留住每一条消息",
+    "loading": "加载状态",
+    "playWait": "模拟等待",
+    "postcards": "回忆明信片（示例数据）"
   },
   "letters": {
     "openImage": "打开信件",
@@ -740,5 +799,621 @@
     "diskUsageComputedAt": "计算于 {{time}}",
     "diskUsageCalculating": "正在计算…",
     "diskUsageFailed": "无法计算"
+  },
+  "memories": {
+    "home": {
+      "recapCard": "年度回顾",
+      "opensOn": "12月1日，这里就会打开。",
+      "title": "回忆",
+      "yearsAgo": "{{count}}年前的今天",
+      "thisWeek": "{{count}}年前的这一周",
+      "firstMessage": "最初那段日子的一封",
+      "open": "打开",
+      "album": "相册",
+      "memoir": "成员回忆",
+      "favorites": "收藏",
+      "countAlbum": "{{count, number}} 张",
+      "countMembers": "{{count, number}} 位",
+      "countFavorites": "{{count, number}} 条",
+      "birthdayIn": "距离{{name}}的生日，还有 {{count, number}} 天",
+      "birthdayToday": "今天是{{name}}的生日",
+      "anniversaryIn": "距离和{{name}}的会员纪念日，还有 {{count, number}} 天",
+      "anniversaryToday": "今天是会员 {{years}} 周年纪念日",
+      "radio": "语音电台",
+      "gacha": "回忆扭蛋",
+      "calendar": "日历",
+      "countVoices": "{{count, number}} 条语音",
+      "countGacha": "今天还有 {{count, number}} 次",
+      "countDays": "{{count, number}} 天",
+      "gachaTomorrow": "明天见",
+      "gathering": "正在收集回忆…新的卡片会陆续出现。",
+      "firstVerySlow": "第一次需要建立回忆索引，会花一点时间。下方的卡片现在就能打开。"
+    },
+    "common": {
+      "back": "返回",
+      "retry": "再试一次",
+      "loadError": "无法加载",
+      "slow": "正在准备你的回忆…",
+      "verySlow": "第一次打开或刚同步完时，整理资料需要一点时间。",
+      "timeout": "这次比平时久",
+      "timeoutHint": "可能还在准备中，请再试一次。",
+      "membersError": "无法加载成员",
+      "jumpToChat": "在聊天中查看",
+      "all": "全员",
+      "nicknameMasked": "＊＊＊"
+    },
+    "onThisDay": {
+      "title": "那年今日",
+      "more": "还有 {{count}} 条",
+      "noMessages": "这天没有消息",
+      "empty": "这一天的回忆还不在这里。换一天看看吧。",
+      "pickDate": "选择日期",
+      "prevDay": "前一天",
+      "nextDay": "后一天",
+      "olderYear": "前一年",
+      "newerYear": "后一年"
+    },
+    "day": {
+      "count": "{{count}} 条消息",
+      "otherGroups": "包含其他团体",
+      "modeMerged": "按时间",
+      "modeLanes": "按成员",
+      "expand": "展开",
+      "modeYears": "历年同一天",
+      "yearsGap": "这个时段没有消息"
+    },
+    "album": {
+      "title": "相册",
+      "filterAll": "全部",
+      "filterPhotos": "照片",
+      "filterVideos": "视频",
+      "filterFavorites": "收藏",
+      "burst": "{{count}} 张",
+      "monthLabel": "{{year}}年{{month}}月",
+      "ribbonLabel": "前往 {{year}}年{{month}}月",
+      "ribbon": "每月的颜色",
+      "empty": "这里还没有可以排列的照片。",
+      "setCover": "设为这个月的封面",
+      "retryTile": "重新加载：{{label}}",
+      "openBurst": "打开 {{count}} 张照片",
+      "resetCover": "封面改回自动",
+      "coverFailed": "无法更换封面",
+      "waitSlow": "正在排列照片…",
+      "waitVerySlow": "照片多的月份需要多一点时间才会显示。"
+    },
+    "memoir": {
+      "title": "成员回忆",
+      "tabBinder": "卡册",
+      "tabTimeline": "时光轴",
+      "progress": "{{earned, number}} / {{total, number}} 张",
+      "chipDays": "订阅 {{days, number}} 天",
+      "chipNames": "她叫了你 {{count, number}} 次",
+      "chipVoice": "语音共 {{h}} 小时 {{m}} 分",
+      "chipVoiceMinutes": "语音共 {{m}} 分",
+      "chipVoiceHours": "语音共 {{h}} 小时"
+    },
+    "favorites": {
+      "title": "收藏",
+      "all": "全部收藏",
+      "voice": "语音",
+      "empty": "标上 ★ 的消息，会贴在这里。",
+      "play": "播放语音"
+    },
+    "filmStrip": {
+      "older": "上一条消息",
+      "newer": "下一条消息",
+      "title": "这一天的前前后后"
+    },
+    "shelves": {
+      "first": {
+        "title": "初めて",
+        "subtitle": "第一次收到的"
+      },
+      "anniversary": {
+        "title": "記念日",
+        "subtitle": "订阅的里程碑"
+      },
+      "numbers": {
+        "title": "数字",
+        "subtitle": "累积的数字"
+      },
+      "special": {
+        "title": "特別な日",
+        "subtitle": "每年都会来的日子"
+      },
+      "records": {
+        "title": "記録",
+        "subtitle": "最高纪录"
+      },
+      "moments": {
+        "title": "瞬間",
+        "subtitle": "不经意的瞬间"
+      },
+      "you": {
+        "title": "あなた",
+        "subtitle": "你寄出的信"
+      },
+      "change": {
+        "title": "変化",
+        "subtitle": "头像换新的日子"
+      },
+      "graduation": {
+        "title": "卒業",
+        "subtitle": "直到毕业那天"
+      }
+    },
+    "cards": {
+      "firstMessage": "第一条消息",
+      "firstMessageCondition": "收到第一条消息时",
+      "firstPicture": "第一张照片",
+      "firstPictureCondition": "收到第一张照片时",
+      "firstVideo": "第一个视频",
+      "firstVideoCondition": "收到第一个视频时",
+      "firstVoice": "第一条语音",
+      "firstVoiceCondition": "收到第一条语音时",
+      "firstNickname": "第一次叫你名字的那天",
+      "firstNicknameCondition": "她第一次叫你名字时",
+      "annivDays": "第 {{days, number}} 天",
+      "annivDaysCondition": "订阅第 {{days, number}} 天",
+      "annivYears": "{{years, number}} 周年纪念日",
+      "annivYearsCondition": "订阅 {{years, number}} 周年",
+      "countMessages": "第 {{count, number}} 条",
+      "countMessagesCondition": "收到第 {{count, number}} 条时",
+      "countPictures": "第 {{count, number}} 张照片",
+      "countPicturesCondition": "收到第 {{count, number}} 张照片时",
+      "voiceHour": "语音累计 1 小时",
+      "voiceHourCondition": "语音累计满 1 小时",
+      "nicknames100": "第 100 次的名字",
+      "nicknames100Condition": "她叫你名字满 100 次",
+      "newyear": "元旦",
+      "newyearCondition": "新的一年的第一条",
+      "valentine": "情人节",
+      "valentineCondition": "情人节收到的消息",
+      "christmas": "圣诞节",
+      "christmasCondition": "圣诞节收到的消息",
+      "birthday": "生日",
+      "birthdayCondition": "她生日那天收到的消息",
+      "subAnniversary": "你的纪念日",
+      "subAnniversaryCondition": "你的订阅纪念日收到的消息",
+      "joinDay": "加入纪念日",
+      "joinDayCondition": "你加入的那一天",
+      "longest": "最长的一条消息",
+      "longestCondition": "写得最长的一条消息",
+      "busiestDay": "最热闹的一天",
+      "busiestDayCondition": "消息最多的一天",
+      "nicknameDay": "最常叫你名字的一天",
+      "nicknameDayCondition": "叫你名字最多次的一天",
+      "longestVoice": "最长的语音",
+      "longestVoiceCondition": "最长的一条语音",
+      "greetingPair": "最早的早安与最晚的晚安",
+      "greetingPairCondition": "时间最早的早安与最晚的晚安",
+      "midnight": "日期变换的瞬间",
+      "midnightCondition": "日期刚换过时收到的消息",
+      "synchro": "同步",
+      "synchroCondition": "不同的日子，同一个时刻的消息",
+      "oyasumiFirst": "第一次晚安",
+      "oyasumiFirstCondition": "收到第一句晚安时",
+      "oyasumi100": "第 100 次晚安",
+      "oyasumi100Condition": "收到第 100 句晚安时",
+      "daisukiFirst": "第一次说最喜欢",
+      "daisukiFirstCondition": "收到第一句“最喜欢”时",
+      "daisuki100": "第 100 次说最喜欢",
+      "daisuki100Condition": "收到第 100 句“最喜欢”时",
+      "letterFirst": "第一封寄出的信",
+      "letterFirstCondition": "寄出第一封信时",
+      "letters": "{{count, number}} 封信",
+      "lettersCondition": "寄出 {{count, number}} 封信时",
+      "avatarChange": "新的头像",
+      "avatarChangeCondition": "头像换新的那天",
+      "avatarDays": "和这个头像一起 {{days, number}} 天",
+      "lastMessage": "最后一条",
+      "lastMessageCondition": "毕业前的最后一条",
+      "notYet": "还没"
+    },
+    "cardDetail": {
+      "lastMessage": "最后的消息",
+      "forever": "一直，都在这里。",
+      "oldLast": "旧头像的最后一条消息",
+      "newFirst": "新头像的第一条消息",
+      "oldAvatar": "之前的头像",
+      "newAvatar": "新的头像",
+      "dayOf": "{{date}} 的消息",
+      "nearestDay": "最接近那天的消息（{{date}}）",
+      "earliestOhayo": "最早的早安",
+      "latestOyasumi": "最晚的晚安"
+    },
+    "names": {
+      "title": "被叫名字的瞬间",
+      "allYears": "全部",
+      "back": "回到卡册",
+      "empty": "这里排列着被叫名字的瞬间"
+    },
+    "timeline": {
+      "count": "{{count}} 条",
+      "top": "这个月的一条",
+      "late": "深夜的一条",
+      "nickname": "叫了你名字的一条",
+      "milestones": "这个月的事",
+      "rail": "选择月份",
+      "older": "前一个月",
+      "newer": "下一个月",
+      "empty": "这里排列着每个月的回忆"
+    },
+    "radio": {
+      "title": "语音电台",
+      "all": "全员",
+      "station": "{{name}}的深夜放送局",
+      "stationAll": "深夜放送局",
+      "onAir": "ON AIR",
+      "offAir": "OFF AIR",
+      "programsLabel": "节目",
+      "programs": {
+        "oyasumi": "晚安放送",
+        "oyasumiSub": "晚上9点到天亮的声音",
+        "ohayo": "早安放送",
+        "ohayoSub": "早上5点到10点的声音",
+        "otsukare": "辛苦了充电站",
+        "otsukareSub": "早上10点到晚上9点的声音",
+        "chrono": "从那时候依序播放",
+        "chronoSub": "选好的那一年，从头开始",
+        "favorites": "★ 收藏的声音",
+        "favoritesSub": "你加了★的语音",
+        "oyasumiClips": "精选・只有晚安",
+        "oyasumiClipsSub": "只有“晚安”的片段"
+      },
+      "trackCount": "{{count, number}} 条",
+      "play": "播放",
+      "pause": "暂停",
+      "next": "下一条声音",
+      "prev": "上一条声音",
+      "sleep": "睡眠定时",
+      "sleepOff": "不定时",
+      "sleepMinutes": "{{count}} 分钟后停止",
+      "sleepLeft": "还剩 {{count}} 分钟",
+      "cassette": "{{year}} 年的磁带",
+      "cassetteLength": "{{length}}",
+      "cassettes": "每年的磁带",
+      "empty": "这里还没有可以播放的声音。",
+      "lengthHours": "{{hours}} 小时 {{minutes}} 分",
+      "lengthHoursOnly": "{{hours}} 小时",
+      "lengthMinutes": "{{count}} 分钟",
+      "lengthUnder": "不到 1 分钟",
+      "totalHours": "语音共 {{hours}} 小时 {{minutes}} 分",
+      "totalHoursOnly": "语音共 {{hours}} 小时",
+      "totalMinutes": "语音共 {{count}} 分钟",
+      "totalUnder": "语音共不到 1 分钟"
+    },
+    "gacha": {
+      "title": "回忆扭蛋",
+      "turn": "转动把手",
+      "hint": "转动把手，抽一个回忆吧",
+      "left": "今天还能转 {{count, number}} 次",
+      "tomorrow": "明天见",
+      "history": "抽到过的回忆",
+      "context": "看这一天的前后",
+      "favorite": "加上★",
+      "unfavorite": "取消★",
+      "empty": "还没有能放进扭蛋的回忆。",
+      "missing": "找不到这条消息",
+      "rarity": {
+        "n": "普通",
+        "r": "R",
+        "sr": "SR"
+      },
+      "reason": {
+        "midnight": "换日的瞬间",
+        "birthday": "生日当天的消息",
+        "subAnniversary": "你订阅纪念日那天的消息",
+        "lastMessage": "最后一条消息",
+        "nickname": "叫了你的名字",
+        "favorite": "你加了★的消息",
+        "voice": "语音",
+        "message": "消息",
+        "photo": "照片"
+      },
+      "refreshFailed": "无法确认扭蛋结果"
+    },
+    "calendar": {
+      "title": "日历",
+      "all": "全员",
+      "members": "{{count}} 位成员",
+      "prevMonth": "上个月",
+      "nextMonth": "下个月",
+      "pickMonth": "选择年月",
+      "empty": "这个月还没有回忆。",
+      "memberFilter": "按成员筛选"
+    },
+    "capsule": {
+      "add": "贴一张便条",
+      "edit": "重写便条",
+      "save": "收好",
+      "delete": "撕下",
+      "deleteConfirm": "要撕下这张便条吗？",
+      "cancel": "算了",
+      "placeholder": "这一天，用你自己的话写下。",
+      "written": "{{date}} 写的便条",
+      "yearsAgo": "{{count}} 年前的你写的便条",
+      "limit": "还可以写 {{count}} 字",
+      "full": "已经写满了",
+      "failed": "无法保存便条",
+      "deleteFailed": "无法撕下便条",
+      "local": "这张便条只会保存在这台电脑上"
+    },
+    "sameTime": {
+      "now": "现在 {{clock}}",
+      "pastYear": "{{date}} {{time}}，{{name}}说",
+      "thisYear": "{{date}} {{time}}，{{name}}说"
+    },
+    "thenNow": {
+      "rowPhoto": "照片",
+      "rowOhayo": "早安",
+      "rowVoice": "语音",
+      "none": "第一次和最近的消息，还凑不成一对。",
+      "title": "初见与现在",
+      "then": "初见",
+      "now": "现在",
+      "thenCaption": "第一次",
+      "nowCaption": "最近",
+      "rowOyasumi": "晚安",
+      "elapsedYears": "{{count}} 年",
+      "elapsedDays": "{{count}} 天",
+      "elapsedJoin": "{{years}} {{days}}",
+      "openSide": "打开 {{date}} 那一天",
+      "voiceLonger": "长了 {{count}} 秒",
+      "voiceShorter": "短了 {{count}} 秒",
+      "spanYears": "从最初到现在・相隔约 {{count}} 年",
+      "spanMonths": "从最初到现在・相隔约 {{count}} 个月"
+    },
+    "day24": {
+      "tab": "她的24小时",
+      "title": "{{name}}的一天",
+      "fromYears": "来自 {{count}} 个年份的消息",
+      "fromOneYear": "来自某一年的消息",
+      "reroll": "拼出另一天",
+      "thin": "再多收到一些消息，这里就会拼出她的一天。",
+      "year": "{{year}} 年"
+    },
+    "postcard": {
+      "greeting": {
+        "newyear": "恭贺新年",
+        "birthday": "生日快乐",
+        "anniversary": "纪念日",
+        "valentine": "情人节快乐",
+        "christmas": "圣诞快乐"
+      },
+      "from": "来自 {{name}}",
+      "stack": "{{count, number}} 张明信片",
+      "year": "{{year}} 年的明信片",
+      "rack": "她每年寄来的明信片"
+    }
+  },
+  "recap": {
+    "entry": {
+      "heading": "走在同一条坡道上的一年",
+      "year": "{{year}}年",
+      "olderYear": "上一年",
+      "newerYear": "下一年",
+      "back": "返回",
+      "choose": "想回顾和谁的这一年？",
+      "partial": "{{year}}年，到目前为止",
+      "loadFailed": "无法加载回顾。",
+      "oshi": "推し",
+      "emptyTitle": "给明年的你",
+      "emptyTitlePast": "给往后的你",
+      "emptyBody": "接下来的每一封，都会在这里等你。"
+    },
+    "titles": {
+      "morning": "最常对你说早安的晨光",
+      "nickname": "叫你名字最多次的羁绊",
+      "longest": "写下最长真心话的笔迹",
+      "voice": "把声音留给你最多的人",
+      "night": "陪你度过最多夜晚的温柔",
+      "photos": "让你看最多风景的人",
+      "first": "陪你走得最久的那个人"
+    },
+    "opening": {
+      "label": "年度回顾・开场",
+      "starsTitle": "我的{{year}}",
+      "starsNarration": "今年，在你天空里的她们。",
+      "firstChip": "今年的第一封",
+      "starsLabel": "今年的星星",
+      "titlesTitle": "每一个人，各自的光",
+      "titlesNarration": "接下来，一个一个慢慢看。"
+    },
+    "player": {
+      "label": "年度回顾",
+      "prev": "上一张",
+      "next": "下一张",
+      "pause": "暂停",
+      "play": "播放",
+      "progress": "{{current}} / {{total}}"
+    },
+    "youFallback": "你",
+    "s01": {
+      "title": "{{year}}年，两人的故事从这一封开始。",
+      "sub": "你和她的第{{count}}年。",
+      "joined": "你和她的{{year}}年，从{{date}}开始。",
+      "notification": "新消息"
+    },
+    "s02": {
+      "title": "即使季节更替，她呼唤你名字的声音始终是同样的温度。",
+      "daisukiTitle": "即使季节更替，“大好き”的温度始终没有改变。",
+      "count": "今年，她叫了你的名字{{count}}次。",
+      "single": "今年只有一次。但她确实呼唤了你。",
+      "daisuki": "“大好き”，{{count}}次。",
+      "daisukiWord": "大好き",
+      "daisukiSingle": "今年，只有一次的“大好き”。"
+    },
+    "s03": {
+      "titleNight": "她的夜晚，也是你的夜晚。",
+      "titleMorning": "她的早晨，也是你的早晨。",
+      "titleNoon": "她的午后，也是你的午后。",
+      "peak": "星星最密集的时刻，她的一句话。",
+      "flat": "无论哪个时刻，都有她的话语。",
+      "clockLabel": "她一天的星空时钟"
+    },
+    "s04": {
+      "title": "早安，与晚安。",
+      "titleDay": "在一天的开始与结束。",
+      "titleMorning": "在一天的开始。",
+      "titleEvening": "在一天的结束。",
+      "firstOhayo": "今年第一句早安",
+      "firstMorning": "今年第一句早晨的话",
+      "latestOyasumi": "最晚时刻的一句晚安",
+      "latestArigato": "最晚时刻的一句谢谢",
+      "latestOtsukare": "最晚时刻的一句辛苦了",
+      "countOyasumi": "用{{count}}次“晚安”为一天画上句号。",
+      "countArigato": "“谢谢”，{{count}}次。",
+      "countOtsukare": "“辛苦了”，{{count}}次。"
+    },
+    "s05": {
+      "title": "她想分享的风景。",
+      "mostlyBursts": "她总是一口气分享好多张。",
+      "bestPhoto": "今年的这一张。",
+      "burstLabel": "一起传来的照片"
+    },
+    "s06": {
+      "title": "今年收到的声音。",
+      "play": "聆听她的声音",
+      "hint": "按下 ▶，就能听见她的声音。",
+      "playing": "播放中",
+      "video": "来自视频的声音。",
+      "count": "今年，收到了{{count}}次她的声音。"
+    },
+    "s07": {
+      "title": "最长的一封信。",
+      "count": "{{n}} 字的心意"
+    },
+    "s08": {
+      "title": "去年的，同一天。",
+      "titleYears": "{{count}}年前的，同一天。",
+      "titleEcho": "那时，与现在。",
+      "keyword": "那时和现在，同样的话语。",
+      "years": "跨越了{{count}}年。",
+      "firstWeekTitle": "最初的一周，与现在。",
+      "firstRecordedWeekTitle": "记录里最初的一周，与现在。",
+      "firstWeek": "最初的一周",
+      "firstRecordedWeek": "记录里最初的一周",
+      "now": "现在"
+    },
+    "s09": {
+      "title": "特别的日子。",
+      "birthday": "她的生日",
+      "christmas": "圣诞节",
+      "newyear": "新的一年，开始",
+      "anniversary": "她的消息开始送达的纪念日",
+      "anniversaryNote": "这一天，她的话语也送达了。",
+      "sealed": "12月25日，这里就会打开。"
+    },
+    "s10": {
+      "title": "你也在这里。",
+      "favorites": "今年，你留下了{{count}}颗★。",
+      "letters": "今年，你写了{{count}}封信。",
+      "lettersLabel": "你写的信",
+      "firstFavorite": "今年第一颗★，在{{date}}。",
+      "bookLabel": "你加上的★",
+      "inviteTitle": "明年，也留下你的足迹。",
+      "inviteTitleLater": "从今以后，也留下你的足迹。",
+      "inviteFavorites": "为留在心里的消息加上★，就会排在这里。",
+      "inviteLetters": "你寄出的信，也会排在这里。"
+    },
+    "s11": {
+      "title": "最喜欢，与谢谢。",
+      "joyTitle": "温暖的话语。",
+      "petalsLabel": "今年话语的花瓣"
+    },
+    "s12": {
+      "title": "{{year}}年，她的一句话"
+    },
+    "s13": {
+      "title": "{{year}}年，最后的晚安。",
+      "partialTitle": "最新的一句晚安",
+      "partialNote": "等到12月31日的晚安，就会完成。",
+      "narration": "明年也请多多关照。",
+      "graduatedTitle": "最后的消息",
+      "graduatedLine": "一直都在这里。",
+      "lastTextTitle": "{{year}}年，最后的话语。",
+      "lastTextPartialTitle": "最新的话语",
+      "lastTextPartialNote": "等到12月31日的话语，就会完成。"
+    },
+    "poster": {
+      "label": "{{year}}年的海报",
+      "with": "与{{nickname}}一起",
+      "numbers": {
+        "nickname": "她叫了你的名字{{count}}次。",
+        "oyasumi": "用{{count}}次“晚安”为一天画上句号。",
+        "photos": "她分享了{{count}}张风景。",
+        "voice": "收到了{{count}}次她的声音。",
+        "daisuki": "“大好き”，{{count}}次。"
+      },
+      "start": "起点",
+      "mid": "途中",
+      "recent": "最近",
+      "avatarChanged": "今年，她换了头像。",
+      "years": "收到她消息的第{{count}}年。",
+      "dedicated": "献给{{nickname}}",
+      "since": "自{{date}}开始订阅",
+      "save": "保存图片",
+      "handedOff": "已开始保存图片。",
+      "saveFailed": "无法保存图片。",
+      "replay": "再看一次",
+      "open": "查看海报"
+    },
+    "share": {
+      "open": "导出分享版",
+      "title": "导出分享版",
+      "intro": "所有照片都会模糊后导出。名字和头像只有在你开启时才会加入。",
+      "preview": "导出预览",
+      "styleLabel": "样式",
+      "style": {
+        "collage": "毛玻璃拼贴",
+        "colour": "色彩记录"
+      },
+      "sentencesLabel": "她的话（最多两句）",
+      "sentencesLimit": "最多选两句，请先移除一句。",
+      "sentencesNone": "今年没有可以导出的话。",
+      "identityLabel": "你的信息（只加入开启的项目）",
+      "nickname": "加入昵称",
+      "avatar": "加入自己的头像",
+      "pickAvatar": "选择图片",
+      "changeAvatar": "更换图片",
+      "avatarMissing": "请选择作为头像的图片。",
+      "avatarError": {
+        "not_image": "这个文件不是图片，请选择图片文件。",
+        "too_large": "这张图片超过 10 MB，请选择较小的图片。",
+        "load_failed": "无法读取这张图片，请选择另一张。"
+      },
+      "years": "加入“第{{count}}年”",
+      "footerToggle": "加入“SakaDesk”",
+      "exportGif": "GIF",
+      "exportVideo": "视频",
+      "exportPng": "图片",
+      "progressFrames": "正在准备导出…",
+      "progressAssemble": "正在组合 GIF…",
+      "progressRecord": "正在录制视频…",
+      "progressLabel": "导出进度",
+      "previewLoading": "正在准备预览…",
+      "preparingPhotos": "正在准备照片…",
+      "photosUnavailable": "照片无法加载，导出的内容将不含照片。",
+      "photosSkipped": "已停止等待照片，导出的内容将不含照片。",
+      "handedOff": "已开始导出。",
+      "failed": "无法导出。",
+      "cancelled": "已取消导出。",
+      "cancelExport": "取消",
+      "busy": "另一个导出正在进行。",
+      "tagline": "走在同一条坂道上的一年",
+      "clockLabel": "她的话语最多的时刻",
+      "clockHour": "{{hour}}点左右",
+      "clockFlat": "早上、中午，还有夜晚。",
+      "photosLabel": "今年的风景",
+      "photosCount": "{{count}}张风景",
+      "greeting": {
+        "oyasumi": "晚安",
+        "arigato": "谢谢",
+        "otsukare": "辛苦了"
+      },
+      "stubsLabel": "特别的日子",
+      "footer": "SakaDesk"
+    }
   }
 }

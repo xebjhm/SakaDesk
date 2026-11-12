@@ -1,10 +1,10 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { cn } from '../../../utils/classnames';
-import { Users, RefreshCw, CloudOff } from 'lucide-react';
+import { Users, CloudOff, RefreshCw } from 'lucide-react';
 import type { MemberInfo } from '../../../types';
 import { formatName, getShortName } from '../../../utils';
 import { UI_CONSTANTS } from '../../../config/uiConstants';
-import { Avatar, Badge, Button, EmptyState, IconButton } from '../../../design/primitives';
+import { Avatar, Badge, Button, EmptyState, IconButton, Spinner } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
@@ -402,7 +402,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             <div className="relative flex items-center justify-center px-4 py-3">
                 <h1 className="text-title font-semibold text-primary">{t('memberList.title')}</h1>
                 <div className="absolute right-4 flex items-center gap-2">
-                    {isSyncing && <RefreshCw className="h-4 w-4 animate-spin text-accent" />}
+                    {isSyncing && <Spinner size="sm" tone="accent" decorative />}
                 </div>
             </div>
 
@@ -410,7 +410,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             <div className="flex-1 overflow-y-auto px-2 pb-16">
                 {loading ? (
                     <div className="flex flex-col items-center gap-2 p-6 text-center text-small text-secondary">
-                        <RefreshCw className="h-5 w-5 animate-spin text-accent" />
+                        <Spinner size="md" tone="accent" decorative />
                         <span>{t('memberList.loadingConversations')}</span>
                     </div>
                 ) : loadError && groups.length === 0 ? (
@@ -454,7 +454,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 <div className="pointer-events-auto inline-flex items-center gap-1 rounded-pill bg-pill py-1 pl-3 pr-1 text-caption text-secondary shadow-pill">
                     {isSyncing ? (
                         <span className="flex items-center gap-1 py-1 pr-2 font-semibold text-accent">
-                            <RefreshCw className="h-3 w-3 animate-spin" />
+                            <Spinner size="sm" tone="current" decorative />
                             {t('sync.syncing')}
                         </span>
                     ) : (

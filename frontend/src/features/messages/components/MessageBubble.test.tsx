@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest'
-import { render, screen } from '@testing-library/react'
+import { act, fireEvent, render, screen } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { http, HttpResponse } from 'msw'
 import { server } from '../../../__tests__/mocks/server'
@@ -137,6 +137,33 @@ describe('MessageBubble component', () => {
     // Should have avatar + media image
     const mediaImage = images.find(img => img.getAttribute('src')?.includes('photo.jpg'))
     expect(mediaImage).toBeInTheDocument()
+  })
+
+  describe('opt-in media props (Memories read-only lists)', () => {
+    const picture = createMessage({ type: 'picture', media_file: 'messages/1/picture/2.jpg', width: 800, height: 600 })
+    const FULL = '/api/content/media/%E6%97%A5%E5%90%91%E5%9D%8246/messages/1/picture/2.jpg'
+    const THUMB = '/api/content/thumb/%E6%97%A5%E5%90%91%E5%9D%8246/messages/1/picture/2.jpg?w=640'
+
+    it('keeps the chat default: the full file, loaded eagerly', () => {
+      render(<MessageBubble {...defaultProps} message={picture} />)
+      const img = screen.getByAltText('Attachment')
+      expect(img).toHaveAttribute('src', FULL)
+      expect(img).toHaveAttribute('loading', 'eager')
+    })
+
+    it('draws a lazy thumbnail, falls back to the full file and hands the viewer the full file', () => {
+      const onMediaClick = vi.fn()
+      render(
+        <MessageBubble {...defaultProps} message={picture} mediaLoading="lazy" mediaThumbWidth={640} onMediaClick={onMediaClick} />,
+      )
+      const img = screen.getByAltText('Attachment')
+      expect(img).toHaveAttribute('src', THUMB)
+      expect(img).toHaveAttribute('loading', 'lazy')
+      fireEvent.click(img)
+      expect(onMediaClick).toHaveBeenCalledWith(FULL, 'picture', picture.timestamp)
+      fireEvent.error(img)
+      expect(screen.getByAltText('Attachment')).toHaveAttribute('src', FULL)
+    })
   })
 
   it('should linkify URLs in text content', () => {
@@ -395,5 +422,43 @@ describe('MessageBubble component', () => {
   it('draws the unread shelter icon at full opacity', () => {
     render(<MessageBubble {...defaultProps} isUnread={true} />)
     expect(screen.getByTestId('unread-shelter').querySelector('svg')?.getAttribute('class')).not.toMatch(/opacity/)
+  })
+})
+
+describe('MessageBubble read-only and time zone (Memories)', () => {
+  const props = { message: createMessage(), member_name: 'Test User', service: 'hinatazaka46' }
+
+  it('opens the favourite menu on right-click by default', () => {
+    render(<MessageBubble {...props} />)
+    fireEvent.contextMenu(screen.getByText('Hello world'))
+    expect(screen.getByRole('menu')).toBeInTheDocument()
+  })
+
+  it('opens no menu when read-only', () => {
+    render(<MessageBubble {...props} readOnly />)
+    fireEvent.contextMenu(screen.getByText('Hello world'))
+    expect(screen.queryByRole('menu')).toBeNull()
+  })
+
+  it.each([
+    { readOnly: false, menus: 1 },
+    { readOnly: true, menus: 0 },
+  ])('a long press opens $menus menu(s) when readOnly=$readOnly', ({ readOnly, menus }) => {
+    vi.useFakeTimers()
+    try {
+      render(<MessageBubble {...props} readOnly={readOnly} />)
+      fireEvent.touchStart(screen.getByText('Hello world'), { touches: [{ clientX: 1, clientY: 1 }] })
+      act(() => { vi.advanceTimersByTime(700) })
+      expect(screen.queryAllByRole('menu')).toHaveLength(menus)
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('shows the time in the given zone instead of the local clock', () => {
+    // 2024-01-15 00:30 JST is 15:30 UTC the day before (the suite runs in UTC).
+    render(<MessageBubble {...props} message={createMessage({ timestamp: '2024-01-14T15:30:00Z' })} timeZone="Asia/Tokyo" />)
+    expect(screen.getByText('00:30')).toBeInTheDocument()
+    expect(screen.queryByText('15:30')).toBeNull()
   })
 })

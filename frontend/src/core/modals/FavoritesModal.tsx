@@ -6,8 +6,7 @@ import { VoicePlayer } from '../media/VoicePlayer';
 import { useMediaSource } from '../media/mediaElement';
 import { SafeImage } from '../common';
 import type { BaseModalProps } from '../../types/modal';
-import { Modal, Card, Avatar, IconButton } from '../../design/primitives';
-import { DialogStatus } from '../common/DialogStatus';
+import { Modal, Card, Avatar, IconButton, StatusBlock } from '../../design/primitives';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { clientLog } from '../../utils/clientLog';
@@ -266,7 +265,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                 footer={<p className="mr-auto text-small text-muted">{t('favorites.count', { count: favoriteMessages.length })}</p>}
             >
                 {favoriteMessages.length === 0 ? (
-                    <DialogStatus kind="empty" icon={<Star />} title={t('favorites.noFavorites')} hint={t('favorites.addHint')} />
+                    <StatusBlock kind="empty" surface="dialog_favorites" icon={<Star />} title={t('favorites.noFavorites')} hint={t('favorites.addHint')} />
                 ) : (
                     <div className="flex flex-col gap-3">{favoriteMessages.map(renderMessageCard)}</div>
                 )}

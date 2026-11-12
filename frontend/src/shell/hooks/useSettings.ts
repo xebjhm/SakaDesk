@@ -30,6 +30,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
 import { SERVICE_FEATURES } from '../../config/features';
+import { forgetListSnapshots } from '../../features/messages/listSnapshotStore';
 
 /** Per-service settings for sync and blog backup. */
 export interface ServiceSettings {
@@ -116,6 +117,8 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
             });
             if (!res.ok) throw new Error("Failed to save");
             const data = await res.json();
+            // Another archive: the chat's list snapshots show rooms of the old one (W3).
+            if ('output_dir' in updates) forgetListSnapshots();
             setAppSettings(data);
             setOutputDirInput(data.output_dir);
 

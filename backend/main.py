@@ -74,7 +74,9 @@ from backend.api import (  # noqa: E402
     transcription,
     translation,
     app_state as app_state_api,
+    memories,
     archive,
+    media,
 )
 from backend.api_no_store import ApiNoStoreMiddleware  # noqa: E402
 from backend.services import app_state  # noqa: E402
@@ -232,9 +234,18 @@ async def lifespan(app: FastAPI):
     _writer_stops.append(_stop_all_sync_services)
     _writer_stops.append(get_blog_backup_manager().stop_async)
     _writer_stops.append(stop_search_service)
+    # The thumbnail pre-generation worker: stopped (its thread abandoned after
+    # media_pregen.STOP_TIMEOUT_S) before tracked tasks drain.
+    from backend.services import media_pregen
+
+    _writer_stops.append(media_pregen.stop)
     _writer_stops.append(drain_background_tasks)
 
     background_task = asyncio.create_task(_deferred_blog_backup())
+
+    from backend.services.memories.exports import sweep_loop
+
+    export_sweep_task = asyncio.create_task(sweep_loop())
 
     # Warm the translation key-status cache in the background so the first
     # Settings -> AI open is instant instead of paying the OS keyring read then.
@@ -261,6 +272,22 @@ async def lifespan(app: FastAPI):
         auto_sync_scheduler.start()
     else:
         logger.info("auto_sync_scheduler_skipped", reason="env")
+
+    # Memories notifications (spec 15): one background task, same env gate.
+    from backend.services.memories import notify_scheduler
+
+    memories_notifier: notify_scheduler.MemoriesNotifyScheduler | None = None
+    if scheduler_allowed_in_env():
+        memories_notifier = notify_scheduler.MemoriesNotifyScheduler(get_all_services())
+        memories_notifier.start()
+    else:
+        logger.info("memories_notify_skipped", reason="env")
+
+    # Thumbnail pre-generation (idle, throttled; stopped via _writer_stops above).
+    if scheduler_allowed_in_env():
+        media_pregen.start(get_all_services())
+    else:
+        logger.info("media_pregen_skipped", reason="env")
 
     yield
 
@@ -289,6 +316,12 @@ async def lifespan(app: FastAPI):
         except asyncio.CancelledError:
             pass
 
+    export_sweep_task.cancel()
+    try:
+        await export_sweep_task
+    except asyncio.CancelledError:
+        pass
+
     # Drop any popup call (no toast) before syncs and writers stop.
     from backend.services.call_popup import get_call_popup_controller
 
@@ -302,6 +335,11 @@ async def lifespan(app: FastAPI):
     # begin_shutdown() has run).
     if auto_sync_scheduler is not None:
         await auto_sync_scheduler.stop()
+
+    # The Memories notifier writes app_state.db (ledger, card baselines) under
+    # the data lock, so it must stop before the write barrier below.
+    if memories_notifier is not None:
+        await memories_notifier.stop()
 
     # Ordered write barrier (must not be reordered): quiesce+drain every
     # writer registered above, THEN allow final synchronous writes (window
@@ -447,6 +485,7 @@ app.add_middleware(ApiNoStoreMiddleware)
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(content.router, prefix="/api/content", tags=["content"])
+app.include_router(media.router, prefix="/api/media", tags=["media"])
 app.include_router(settings.router)
 app.include_router(diagnostics.router)
 app.include_router(profile.router)
@@ -468,6 +507,7 @@ app.include_router(
 )
 app.include_router(translation.router, prefix="/api/translation", tags=["translation"])
 app.include_router(app_state_api.router, prefix="/api/app-state", tags=["app-state"])
+app.include_router(memories.router)
 
 
 @app.get("/health")

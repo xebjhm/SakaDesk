@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
-import { Search, Loader2, X, SlidersHorizontal } from 'lucide-react';
-import { IconButton } from '../../../design/primitives';
+import { Search, X, SlidersHorizontal } from 'lucide-react';
+import { IconButton, Spinner } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { useTranslation } from '../../../i18n';
 import type { ContentTypeFilter } from '../types';
@@ -69,7 +69,7 @@ export const SearchInput: React.FC<SearchInputProps> = ({
         />
       )}
       {isLoading ? (
-        <Loader2 aria-hidden="true" className="h-5 w-5 shrink-0 animate-spin text-muted motion-reduce:animate-none" />
+        <Spinner size="sm" tone="muted" decorative className="shrink-0" />
       ) : value ? (
         <IconButton size="sm" aria-label={t('common.close')} icon={<X className="h-4 w-4" />} onClick={() => onChange('')} />
       ) : (
