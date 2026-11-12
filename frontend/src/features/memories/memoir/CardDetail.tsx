@@ -15,7 +15,7 @@ import type { BinderCard, MemoryMessage } from '../types';
 import { cardCopy } from './cardCopy';
 import { CardTile } from './CardTile';
 import { formatCardDate, useCopy } from './binderModel';
-import { isPostcardCard, postcardYears } from './postcard';
+import { isPostcardCard, postcardYears } from './postcardModel';
 import { PostcardRack } from './Postcard';
 
 const AVATAR_PX = 80;

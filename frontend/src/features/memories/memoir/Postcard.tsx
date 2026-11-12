@@ -10,7 +10,7 @@ import type { BinderCard, MemoryMessage } from '../types';
 import {
     STACK_LAYERS, postcardTheme, postcardYears, postmarkDay, stackYears,
     type PostcardTheme, type PostcardYear,
-} from './postcard';
+} from './postcardModel';
 
 /** The fan's view of who sent the postcards: her display name, and whether she is the fan's 推し (the ♥). */
 export interface PostcardSender {

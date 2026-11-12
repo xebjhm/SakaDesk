@@ -8,7 +8,7 @@ import type { DayMember, DayYearsYear } from '../types';
 import { hourBands } from './laneLayout';
 import { dayPeople, type DayPerson } from './people';
 import { LaneCard } from './Swimlanes';
-import { axisLabel, clockMs, clockSpan, gapRuns, guidePairs, type LaneEntry } from './yearLanes';
+import { axisLabel, clockMs, clockSpan, gapRuns, guidePairs, type LaneEntry } from './yearLanesLayout';
 
 interface YearLanesProps {
     members: DayMember[];

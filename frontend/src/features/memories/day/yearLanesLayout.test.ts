@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { axisLabel, clockMs, clockSpan, gapRuns, guidePairs, MATCH_WINDOW_MS, type LaneEntry } from './yearLanes';
+import { axisLabel, clockMs, clockSpan, gapRuns, guidePairs, MATCH_WINDOW_MS, type LaneEntry } from './yearLanesLayout';
 
 const H = 60 * 60 * 1000;
 const M = 60 * 1000;

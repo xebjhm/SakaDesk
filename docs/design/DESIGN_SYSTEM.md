@@ -1086,7 +1086,7 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   sweep over it (`motion-reduce:hidden`: under reduced motion only the still sheen stays). The
   graduation card's memorial foil never sweeps. The あなた shelf shows an envelope and the fan's
   date, never her words, and opens the fan's own letter.
-- **特別な日 postcards** (`memoir/Postcard.tsx`, `postcard.ts`): an earned 特別な日 card is a
+- **特別な日 postcards** (`memoir/Postcard.tsx`, `postcardModel.ts`): an earned 特別な日 card is a
   `bg-memories-paper` postcard (`rounded-sm`, `shadow-memories-polaroid`) with a stamp (a
   `border-2 border-dotted border-memories-silhouette` box on `bg-memories-washi` holding the day's
   lucide glyph in `text-secondary`) and a round postmark (`rounded-pill border border-current
@@ -1136,7 +1136,7 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   text-small text-secondary`, never 0). A side opens her day (`MemberDayDialog`). No motion beyond the
   shared lift on hover (`motion-reduce:` none). `ThenNowPair` is now only the recap's S08 pair (its
   stacked slide cards, the older one in full sepia, the shared keyword as a `<mark>`).
-- **歷年同一天** (`features/memories/day/YearLanes.tsx`, `yearLanes.ts`): the day view's third mode
+- **歷年同一天** (`features/memories/day/YearLanes.tsx`, `yearLanesLayout.ts`): the day view's third mode
   `Pill`. A sticky `w-12` hour axis (`text-caption tabular-nums text-muted`) beside one `w-56` column
   per year (a sticky serif year over its message count), each a `bg-sunken` lane holding the
   swimlanes' `LaneCard`s placed by JST time of day (`hourBands`, 96 px a quiet hour). Neighbouring

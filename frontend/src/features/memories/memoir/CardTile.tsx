@@ -10,7 +10,7 @@ import { MemoryThumb } from '../shared/MemoryThumb';
 import type { BinderCard, MemoryMessage } from '../types';
 import { cardCopy } from './cardCopy';
 import { formatCardDate, useCopy } from './binderModel';
-import { isPostcardCard } from './postcard';
+import { isPostcardCard } from './postcardModel';
 import { PostcardStack, type PostcardSender } from './Postcard';
 
 /** The あなた shelf: the fan's own letters, never shown with her words (spec 1.5); a click opens the letter itself. */

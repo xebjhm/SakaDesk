@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import { card, face } from './__fixtures__';
-import { isPostcardCard, postcardTheme, postcardYears, postmarkDay, stackYears } from './postcard';
+import { isPostcardCard, postcardTheme, postcardYears, postmarkDay, stackYears } from './postcardModel';
 
 describe('postcard model', () => {
     it('makes one postcard per stacked year, oldest first, with its photo', () => {
