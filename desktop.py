@@ -40,6 +40,7 @@ from backend.services.ui_state import set_ui_state  # noqa: E402
 from tray import TrayController  # noqa: E402
 from call_popup_window import CallPopupWindow  # noqa: E402
 from window_chrome import make_title_bar_handler  # noqa: E402
+from window_diagnostics import attach_window_diagnostics  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
 # Setup logging
@@ -1182,6 +1183,12 @@ def main() -> None:
         _title_bar = make_title_bar_handler(window)
         window.events.shown += _title_bar
         window.events.loaded += _title_bar
+
+        # N-R4-1: numeric breadcrumbs of the form's size state (window_geometry
+        # phase=...) and the MinimumSize guard (window_min_size_reapplied).
+        # The form exists at before_show; never raises.
+        if platform.system() == "Windows":
+            window.events.before_show += lambda: attach_window_diagnostics(window)
 
         # Save window geometry on close by reading current dimensions directly.
         # We read window.width/height/x/y properties instead of relying on
