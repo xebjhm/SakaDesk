@@ -31,7 +31,7 @@ from bisect import bisect_left, bisect_right
 from collections import Counter
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field, fields
-from datetime import date, datetime, timedelta, timezone
+from datetime import date, datetime, timezone
 from pathlib import Path
 from typing import Any, Optional
 
@@ -205,7 +205,6 @@ class MemberIndex:
     avatar_changes: list[dict[str, Any]] = field(default_factory=list)
     first_nickname_id: int | None = None  # includes promo texts, never the welcome
     counts_by_year: dict[int, dict[str, int]] = field(default_factory=dict)
-    longest_streak_days: int = 0
     bursts: list[list[int]] = field(default_factory=list)
     # Per-message importance, photo score and caption link live in the
     # ``message_facts`` rows (``importance`` / ``photo_score`` / ``caption_id``).
@@ -240,6 +239,7 @@ class MemberIndex:
         d["counts_by_year"] = {int(y): v for y, v in d["counts_by_year"].items()}
         for key in ("captions", "importance", "photo_scores"):
             d.pop(key, None)  # written by index versions before 4
+        d.pop("longest_streak_days", None)  # written before the streak cards went
         d["promo_ids"] = set(d["promo_ids"])
         d.pop("cache_stale", None)
         return cls(**d)
@@ -529,16 +529,6 @@ def _parse_date(raw: str | None) -> date | None:
         return None
 
 
-def _longest_streak(days: set[date]) -> int:
-    best = run = 0
-    prev: date | None = None
-    for d in sorted(days):
-        run = run + 1 if prev is not None and d - prev == timedelta(days=1) else 1
-        best = max(best, run)
-        prev = d
-    return best
-
-
 def _utc_iso(ts: datetime) -> str:
     return ts.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
 
@@ -651,14 +641,12 @@ def _derive(
         greetings.update(sel.classes_from_mask(masks[w.id]))
     idx.greeting_counts = dict(greetings)
 
-    # Histogram, firsts / lasts, per-year counts, streak, fact rows.
+    # Histogram, firsts / lasts, per-year counts, fact rows.
     extras = extras or {}
-    days: set[date] = set()
     rows: list[tuple[Any, ...]] = []
     for m in msgs:
         local = sel.jst(m.ts)
         iso = _utc_iso(m.ts)
-        days.add(local.date())
         promo = m.id in idx.promo_ids
         if not promo:
             idx.hour_hist[local.hour] += 1
@@ -692,7 +680,6 @@ def _derive(
     if msgs:
         last = msgs[-1]
         idx.last_message = {"id": last.id, "ts": _utc_iso(last.ts), "type": last.type}
-    idx.longest_streak_days = _longest_streak(days)
     return rows
 
 

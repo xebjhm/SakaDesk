@@ -20,7 +20,6 @@ export const S03Clock: React.FC<SlideProps<S03ClockData>> = ({ data, nickname, r
     const { t } = useTranslation();
     const copy = s03Copy(data);
     const body = heldReveal(reducedMotion, paused, STAR_FALL_MS - 400);
-    const lines = heldReveal(reducedMotion, paused, STAR_FALL_MS);
     return (
         <div className="flex h-full flex-col items-center justify-center gap-5 px-8 text-center">
             <Headline>{t(copy.title.key, copy.title.params)}</Headline>
@@ -30,11 +29,6 @@ export const S03Clock: React.FC<SlideProps<S03ClockData>> = ({ data, nickname, r
                     {copy.lead && <Narration>{t(copy.lead.key, copy.lead.params)}</Narration>}
                     {data.representative && <MessageBody message={data.representative} nickname={nickname} quoteClassName="line-clamp-4" />}
                 </div>
-            )}
-            {copy.streak && (
-                <Narration className={cn('tabular-nums', lines.className)} style={lines.style}>
-                    {t(copy.streak.key, copy.streak.params)}
-                </Narration>
             )}
         </div>
     );

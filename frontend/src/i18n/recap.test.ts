@@ -13,7 +13,7 @@ const RECAP_KEYS: readonly string[] = [
     'recap.entry.choose', 'recap.entry.partial', 'recap.entry.loadFailed', 'recap.entry.oshi',
     'recap.entry.emptyTitle', 'recap.entry.emptyBody',
     'recap.titles.morning', 'recap.titles.nickname', 'recap.titles.longest', 'recap.titles.voice',
-    'recap.titles.night', 'recap.titles.photos', 'recap.titles.steady', 'recap.titles.first',
+    'recap.titles.night', 'recap.titles.photos', 'recap.titles.first',
     'recap.opening.label', 'recap.opening.starsTitle', 'recap.opening.starsNarration', 'recap.opening.starsLabel',
     'recap.opening.firstChip', 'recap.opening.titlesTitle', 'recap.opening.titlesNarration',
     'memories.home.recapCard', 'memories.home.opensOn',
@@ -22,7 +22,7 @@ const RECAP_KEYS: readonly string[] = [
     'recap.s01.title', 'recap.s01.sub', 'recap.s01.joined', 'recap.s01.notification',
     'recap.s02.title', 'recap.s02.count', 'recap.s02.single', 'recap.s02.daisuki', 'recap.s02.daisukiWord', 'recap.s02.daisukiTitle', 'recap.s02.daisukiSingle',
     'recap.s03.titleNight', 'recap.s03.titleMorning', 'recap.s03.titleNoon', 'recap.s03.peak', 'recap.s03.flat',
-    'recap.s03.streak', 'recap.s03.clockLabel',
+    'recap.s03.clockLabel',
     'recap.s04.title', 'recap.s04.titleDay', 'recap.s04.titleMorning', 'recap.s04.titleEvening',
     'recap.s04.firstOhayo', 'recap.s04.firstMorning', 'recap.s04.latestOyasumi', 'recap.s04.latestArigato',
     'recap.s04.latestOtsukare', 'recap.s04.countOyasumi', 'recap.s04.countArigato', 'recap.s04.countOtsukare',
@@ -49,7 +49,7 @@ const RECAP_KEYS: readonly string[] = [
 
 /** Recap keys with an English plural (`<key>_other` in en.json only, the repo's pattern). */
 const EN_PLURALS: readonly string[] = [
-    'recap.s02.count', 'recap.s02.daisuki', 'recap.s03.streak',
+    'recap.s02.count', 'recap.s02.daisuki',
     'recap.s04.countOyasumi', 'recap.s04.countArigato', 'recap.s04.countOtsukare', 'recap.s06.count',
     'recap.s07.count', 'recap.s08.titleYears', 'recap.s08.years', 'recap.s10.favorites', 'recap.s10.letters',
     'recap.poster.numbers.nickname', 'recap.poster.numbers.oyasumi', 'recap.poster.numbers.photos',
@@ -134,7 +134,7 @@ describe('recap strings', () => {
         const MET = /出会|出逢|巡り会|めぐりあ|邂逅|\bmet\b|\bmeet|encounter|遇見|遇见|相遇|相識|相识|認識|认识|識咗|识咗|結識|结识/i;
         const RANK = /\d|第一名|冠軍|冠军|一位|ランキング|順位|rank|#|No\.|名次|排名/i;
         const EVERY_DAY = /每天|每日|天天|日日|毎日(?!つづいた)|毎日そば|every ?day|each day|daily|all year|一年中|一整年|成年/i;
-        const TITLE_KEYS = ['morning', 'nickname', 'longest', 'voice', 'night', 'photos', 'steady', 'first'].map((k) => `recap.titles.${k}`);
+        const TITLE_KEYS = ['morning', 'nickname', 'longest', 'voice', 'night', 'photos', 'first'].map((k) => `recap.titles.${k}`);
         const OPENING_KEYS = ['label', 'starsNarration', 'starsLabel', 'firstChip', 'titlesTitle', 'titlesNarration'].map((k) => `recap.opening.${k}`);
         for (const [code, data] of Object.entries(locales)) {
             for (const dotted of [...TITLE_KEYS, ...OPENING_KEYS, 'recap.opening.starsTitle']) {
@@ -143,9 +143,7 @@ describe('recap strings', () => {
             }
             for (const dotted of [...TITLE_KEYS, ...OPENING_KEYS]) {
                 expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(RANK);
-                // `steady` is the longest run of consecutive days, never "every day" of the year;
-                // no other title or opening line knows that either. 毎日つづいた (the run went on
-                // day by day) is the one true use.
+                // no title or opening line knows that she wrote "every day" of the year
                 expect(String(lookup(data, dotted)), `${code} ${dotted}`).not.toMatch(EVERY_DAY);
             }
             // The stars slide's only parameter is the year it names.

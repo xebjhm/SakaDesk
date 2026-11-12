@@ -251,9 +251,7 @@ def _leaders(metrics, title):
     vals = {
         k: v[title]
         for k, v in metrics.items()
-        if v[title] is not None
-        and (v[title] >= recap.STREAK_MIN if title == "steady" else True)
-        and (title == "first" or v[title] > 0)
+        if v[title] is not None and (title == "first" or v[title] > 0)
     }
     top = max(vals.values(), default=None)
     return {k for k, v in vals.items() if v == top}
@@ -319,15 +317,11 @@ def test_titles_maximise_titled_members_by_star_order():
     assert _check_titles(metrics, ["c", "d"]) == {"c": "voice", "d": None}
 
 
-def test_titles_never_for_zero_or_a_short_streak():
-    metrics = {
-        "a": _metrics(steady=6, longest=10),
-        "b": _metrics(steady=3, voice=0),
-    }
+def test_titles_never_for_zero_and_no_streak_title():
+    metrics = {"a": _metrics(longest=10), "b": _metrics(voice=0)}
     titles = _check_titles(metrics, ["a", "b"])
     assert titles == {"a": "longest", "b": None}
-    metrics = {"a": _metrics(steady=7), "b": _metrics(steady=6)}
-    assert _check_titles(metrics, ["a", "b"]) == {"a": "steady", "b": None}
+    assert "steady" not in recap.TITLE_ORDER
 
 
 def test_titles_log_counts_only():
@@ -352,7 +346,6 @@ def test_titles_properties_on_random_rosters():
         metrics = {}
         for i in range(n):
             vals = {t: rng.choice([0, 0, 1, 2, 3]) for t in recap.TITLE_ORDER}
-            vals["steady"] = rng.choice([0, 3, 7, 8])
             vals["first"] = rng.choice([None, -3, -2])
             metrics[f"m{i}"] = vals
         _check_titles(metrics, list(metrics))
@@ -1483,7 +1476,7 @@ async def test_broken_recap_cache_rows_are_rebuilt(full):
 async def test_recap_version_is_part_of_the_cache_key(full, monkeypatch):
     # Bumped for the recap wave's payload changes: rows cached by an earlier
     # dev build must not be served.
-    assert recap.RECAP_VERSION == "4"
+    assert recap.RECAP_VERSION == "5"
     monkeypatch.setattr(recap, "RECAP_VERSION", "1")
     await build(full, "金村美玖", PARTIAL)
     monkeypatch.undo()

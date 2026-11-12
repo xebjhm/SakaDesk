@@ -97,7 +97,7 @@ from backend.services.memories.then_now import (
 logger = structlog.get_logger(__name__)
 
 # "3": S08 echo keywords match NFKC text (then_now.keywords_in).
-RECAP_VERSION = "4"
+RECAP_VERSION = "5"
 
 SLIDE_KEYS = (
     "s01_first",
@@ -127,7 +127,6 @@ TITLE_ORDER = (
     "voice",
     "night",
     "photos",
-    "steady",
     "first",
 )
 
@@ -136,8 +135,6 @@ MAX_WALL = 120
 MAX_FRAGMENTS = 24
 MAX_PETALS = 15
 MAX_BURST_ITEMS = 30
-STREAK_MIN = 7
-STREAK_MIN_MESSAGES = 30
 FLAT_RATIO = 1.3
 VOICE_MIN_SECONDS = 4.0
 CLIP_SECONDS = 6.0
@@ -221,8 +218,6 @@ def recap_window(
 def _qualifies(title: str, value: float | None) -> bool:
     if value is None:
         return False
-    if title == "steady":
-        return value >= STREAK_MIN
     return title == "first" or value > 0
 
 
@@ -232,9 +227,7 @@ def assign_titles(
     """Distinct role titles that are literally true superlatives.
 
     ``metrics[member][title]`` is higher-is-better. A value qualifies when it
-    is not ``None`` and, for counts, above 0; ``steady`` (the longest run of
-    consecutive days) qualifies from :data:`STREAK_MIN` days, the threshold s03
-    shows a streak at. A member *leads* a title when their qualifying value is
+    is not ``None`` and, for counts, above 0. A member *leads* a title when their qualifying value is
     the top value among all members in ``metrics`` (ties all lead).
 
     Only leaders can hold a title; each member holds at most one title and each
@@ -565,12 +558,7 @@ def _s03_clock(ctx: _Ctx) -> dict:
         "stars": stars,
         "peak_hour": peak,
         "representative": ctx.message(rep),
-        "longest_streak": None,
     }
-    if len(msgs) >= STREAK_MIN_MESSAGES:
-        streak = mf.longest_streak(f.jst_date for _, f in ctx.window)
-        if streak >= STREAK_MIN:
-            data["longest_streak"] = streak
     fallback = None
     mean = len(msgs) / 24
     if hist[peak] / mean < FLAT_RATIO:
@@ -1664,7 +1652,6 @@ def _member_stats(
         # distinct nights (the title says "the most nights"), not messages
         "night": len({i[1].jst_date for i in nonpromo if 21 <= i[1].hour <= 23}),
         "photos": sum(1 for i in nonpromo if i[1].type == "picture"),
-        "steady": mf.longest_streak(i[1].jst_date for i in window),
         "first": -sub.toordinal() if sub else None,
     }
     return _MemberStats(

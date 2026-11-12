@@ -55,7 +55,7 @@ async def test_builds_and_caches(tmp_path):
     assert idx.hour_hist[21] == 4 and idx.nickname_count == 1
     assert idx.first_nickname_id == 2 and idx.bursts == [[3, 4, 5]]
     assert facts_of(tmp_path, d)[3].caption_id == 2 and 6 in idx.promo_ids
-    assert idx.greeting_counts["oyasumi"] == 1 and idx.longest_streak_days == 2
+    assert idx.greeting_counts["oyasumi"] == 1
     again = await mi.get_member_index(tmp_path, d)  # cache hit
     assert again.data_hash == idx.data_hash
     assert again == idx

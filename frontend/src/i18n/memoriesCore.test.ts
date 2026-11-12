@@ -38,7 +38,7 @@ export const MEMORIES_CORE_KEYS: string[] = [
     'memories.cards.countPictures', 'memories.cards.voiceHour', 'memories.cards.nicknames100', 'memories.cards.newyear',
     'memories.cards.valentine', 'memories.cards.christmas', 'memories.cards.birthday', 'memories.cards.subAnniversary',
     'memories.cards.longest', 'memories.cards.busiestDay', 'memories.cards.nicknameDay', 'memories.cards.longestVoice',
-    'memories.cards.greetingPair', 'memories.cards.streak', 'memories.cards.midnight', 'memories.cards.synchro',
+    'memories.cards.greetingPair', 'memories.cards.midnight', 'memories.cards.synchro',
     'memories.cards.oyasumiFirst', 'memories.cards.oyasumi100', 'memories.cards.daisukiFirst', 'memories.cards.daisuki100',
     'memories.cards.letterFirst', 'memories.cards.letters', 'memories.cards.avatarChange', 'memories.cards.avatarDays',
     'memories.cards.lastMessage', 'memories.cards.stack', 'memories.cards.notYet', 'memories.cardDetail.lastMessage',
@@ -53,7 +53,7 @@ export const MEMORIES_CORE_KEYS: string[] = [
     // r4: the subscription start day (加入紀念日)
     'memories.cards.joinDay', 'memories.cards.joinDayCondition',
     'memories.cards.longestCondition', 'memories.cards.busiestDayCondition', 'memories.cards.nicknameDayCondition',
-    'memories.cards.longestVoiceCondition', 'memories.cards.greetingPairCondition', 'memories.cards.streakCondition',
+    'memories.cards.longestVoiceCondition', 'memories.cards.greetingPairCondition',
     'memories.cards.midnightCondition', 'memories.cards.synchroCondition', 'memories.cards.oyasumiFirstCondition',
     'memories.cards.oyasumi100Condition', 'memories.cards.daisukiFirstCondition', 'memories.cards.daisuki100Condition',
     'memories.cards.letterFirstCondition', 'memories.cards.lettersCondition', 'memories.cards.avatarChangeCondition',
@@ -221,7 +221,6 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.nicknameDay')).toBe('いちばん名前を呼んでくれた日');
         expect(lookup(ja, 'memories.cards.longestVoice')).toBe('いちばん長いボイス');
         expect(lookup(ja, 'memories.cards.greetingPair')).toBe('いちばん早いおはようと、いちばん遅いおやすみ');
-        expect(lookup(ja, 'memories.cards.streak')).toBe('{{days, number}}日つづけて');
         expect(lookup(ja, 'memories.cards.midnight')).toBe('日付が変わった瞬間');
         expect(lookup(ja, 'memories.cards.synchro')).toBe('シンクロ');
         expect(lookup(ja, 'memories.cards.oyasumiFirst')).toBe('最初のおやすみ');
@@ -258,7 +257,6 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.nicknameDayCondition')).toBe('名前をいちばん多く呼んでくれた日');
         expect(lookup(ja, 'memories.cards.longestVoiceCondition')).toBe('いちばん長かったボイス');
         expect(lookup(ja, 'memories.cards.greetingPairCondition')).toBe('いちばん早い時刻のおはようと、いちばん遅い時刻のおやすみ');
-        expect(lookup(ja, 'memories.cards.streakCondition')).toBe('{{days, number}}日つづけてメッセージが届いたら');
         expect(lookup(ja, 'memories.cards.midnightCondition')).toBe('日付が変わってすぐに届いたメッセージ');
         expect(lookup(ja, 'memories.cards.synchroCondition')).toBe('別々の日に、同じ時刻のメッセージ');
         expect(lookup(ja, 'memories.cards.oyasumiFirstCondition')).toBe('最初の「おやすみ」が届いたら');

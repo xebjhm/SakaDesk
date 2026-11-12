@@ -59,7 +59,7 @@ Cross-cutting: warm presentations §14, notifications §15, data layer §3
 A new backend service builds and caches per-member derived data so pages do not rescan `messages.json`:
 
 - per message: JST date/hour, type, `is_promo`, `has_nickname`, greeting class (おはよう / おやすみ / 大好き / ありがとう), char length, burst id, caption pairing, importance score, photo score;
-- per member: hour histogram, daily streaks, first/last message, firsts per type, counts per year, burst list, avatar changes, special-day messages;
+- per member: hour histogram, first/last message, firsts per type, counts per year, burst list, avatar changes, special-day messages;
 - incremental: recomputed for members whose `messages.json` changed (mtime/size or data hash); stored in a local SQLite cache in the app data dir; scans run in an executor with progress breadcrumbs.
 
 ### 3.3 Selection rules (LLM-free, shared)
@@ -125,7 +125,7 @@ Shelves of cards. Earned cards face up (photo or her words, Japanese original, w
 | 記念日 | subscription **100日, 1年, 500日, 2年, 1000日, 3年, 4年, 5年, then yearly** — card face = her message that day (nearest one if none that day) |
 | 数字 | 100 / 1,000 / 5,000 / 10,000 (foil) messages; 100 / 1,000 photos; 1 h total voice; 100 nicknames |
 | 特別な日 (yearly stacks) | 元旦 (her message on 1/1 JST, the first one before 00:30 preferred; a year with no 1/1 message has no entry); バレンタイン; クリスマス; **her birthday** (foil); 加入紀念日 (the fan's first day = the date of the room's subscription welcome, else the stored subscription start; single card: her own words that day, or the label alone); your subscription anniversary day |
-| 記録 (updates over time) | longest message; busiest day; most-nickname day; longest voice; **earliest おはよう vs latest おやすみ** (pair card); daily streak 7 / 30 / 100 days |
+| 記録 (updates over time) | longest message; busiest day; most-nickname day; longest voice; **earliest おはよう vs latest おやすみ** (pair card) (the daily streak cards were removed by the user) |
 | 瞬間 | **日付が変わった瞬間** (foil; a message at 00:00–00:05); **シンクロ** (rare; two messages at the same HH:MM:SS on different days); おやすみ first / 100th; 大好き first / 100th |
 | あなた | first letter you sent; 10 / 50 letters (the fan's own items only) |
 | 変化 | **avatar change** cards: new avatar + her message that day; detail shows "this avatar was with you N days, M messages", the last message with the old avatar and the first with the new |
@@ -172,7 +172,7 @@ Two parts plus a share export: **A** story slides played inside the content pane
 2. **名前を、呼ばれた** — the nickname appears large, letter by letter; fragments of her nickname sentences drift in; it settles on the **first and the most recent** nickname sentence of the year. Members without `%%%` → the same layout with 大好き; one occurrence → "今年、一度だけ。でも、確かに呼んでくれた。"
 
 **日常・朝夕與光影**
-3. **彼女の夜は、あなたの夜** — a 24-hour star clock (each message a star, no axis numbers); the peak hour glows with a representative message; longest daily streak line if ≥ 7.
+3. **彼女の夜は、あなたの夜** — a 24-hour star clock (each message a star, no axis numbers); the peak hour glows with a representative message (no streak line: removed by the user).
 4. **おはようと、おやすみ** — her first おはよう and latest おやすみ of the year, the おやすみ count; fallbacks to ありがとう / お疲れ or skip.
 5. **見せたかった景色** — this year's photos as a soft background wall, then the year's biggest burst fanned out at compressed real timing, with its caption; a line for members who mostly send bursts ("彼女は、いつもまとめて見せてくれる人。").
 6. **声** — the openings (~6 s each) of three voices (first of the year, longest mid-year, latest), crossfaded; plays only when the fan presses ▶; transcript subtitles when available; video audio or skip as fallbacks.

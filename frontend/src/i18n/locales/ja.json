@@ -984,8 +984,6 @@
       "longestVoiceCondition": "いちばん長かったボイス",
       "greetingPair": "いちばん早いおはようと、いちばん遅いおやすみ",
       "greetingPairCondition": "いちばん早い時刻のおはようと、いちばん遅い時刻のおやすみ",
-      "streak": "{{days, number}}日つづけて",
-      "streakCondition": "{{days, number}}日つづけてメッセージが届いたら",
       "midnight": "日付が変わった瞬間",
       "midnightCondition": "日付が変わってすぐに届いたメッセージ",
       "synchro": "シンクロ",
@@ -1191,7 +1189,6 @@
       "voice": "いちばん声を届けてくれた人",
       "night": "いちばん多くの夜に寄り添ってくれた優しさ",
       "photos": "いちばん多くの景色を見せてくれた人",
-      "steady": "いちばん長く、毎日つづいた人",
       "first": "いちばん長く、そばにいてくれた人"
     },
     "opening": {
@@ -1233,7 +1230,6 @@
       "titleNoon": "彼女の昼下がりは、あなたの昼下がり。",
       "peak": "いちばん星が集まる時間の、ひとこと。",
       "flat": "どの時間にも、彼女のことばがあった。",
-      "streak": "{{count}}日つづけて、彼女のことばが届いた。",
       "clockLabel": "彼女の一日の星時計"
     },
     "s04": {

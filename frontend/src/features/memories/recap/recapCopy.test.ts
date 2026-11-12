@@ -111,7 +111,7 @@ describe('recapCopy', () => {
     });
     describe('s03', () => {
         const clock = (over: Partial<S03ClockData> = {}): S03ClockData => ({
-            stars: [], peak_hour: 22, representative: message(9, 'x'), longest_streak: null, ...over,
+            stars: [], peak_hour: 22, representative: message(9, 'x'), ...over,
         });
 
         it('titles the peak hour by its time of day and glows it', () => {
@@ -134,11 +134,6 @@ describe('recapCopy', () => {
             expect(s03Copy(clock({ representative: null })).lead).toBeNull();
         });
 
-        it('shows the longest streak only from 7 days', () => {
-            expect(s03Copy(clock({ longest_streak: 6 })).streak).toBeNull();
-            expect(s03Copy(clock({ longest_streak: null })).streak).toBeNull();
-            expect(s03Copy(clock({ longest_streak: 7 })).streak).toEqual({ key: 'recap.s03.streak', params: { count: 7 } });
-        });
     });
 
     describe('s04', () => {

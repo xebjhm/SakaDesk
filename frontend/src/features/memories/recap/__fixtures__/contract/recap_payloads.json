@@ -45,7 +45,6 @@
     {
      "data": {
       "band": "night",
-      "longest_streak": null,
       "peak_hour": 23,
       "representative": null,
       "stars": [
@@ -369,7 +368,6 @@
     },
     {
      "data": {
-      "longest_streak": 56,
       "peak_hour": 12,
       "representative": {
        "avatar_url": null,
@@ -1759,7 +1757,6 @@
     },
     {
      "data": {
-      "longest_streak": 56,
       "peak_hour": 12,
       "representative": {
        "avatar_url": null,
@@ -3074,7 +3071,6 @@
     },
     {
      "data": {
-      "longest_streak": null,
       "peak_hour": 12,
       "representative": null,
       "stars": [
@@ -3277,7 +3273,6 @@
     },
     {
      "data": {
-      "longest_streak": null,
       "peak_hour": 20,
       "representative": {
        "avatar_url": "/api/content/media/hinatazaka46/messages/34%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/58%20%E9%87%91%E6%9D%91%20%E7%BE%8E%E7%8E%96/profile_images/thumbnail/b.jpg",
@@ -3555,7 +3550,6 @@
     },
     {
      "data": {
-      "longest_streak": null,
       "peak_hour": 20,
       "representative": {
        "avatar_url": null,
@@ -3730,7 +3724,6 @@
     },
     {
      "data": {
-      "longest_streak": null,
       "peak_hour": 20,
       "representative": {
        "avatar_url": null,

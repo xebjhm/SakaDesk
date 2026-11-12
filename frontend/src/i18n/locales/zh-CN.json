@@ -984,8 +984,6 @@
       "longestVoiceCondition": "最长的一条语音",
       "greetingPair": "最早的早安与最晚的晚安",
       "greetingPairCondition": "时间最早的早安与最晚的晚安",
-      "streak": "连续 {{days, number}} 天",
-      "streakCondition": "连续 {{days, number}} 天收到消息",
       "midnight": "日期变换的瞬间",
       "midnightCondition": "日期刚换过时收到的消息",
       "synchro": "同步",
@@ -1191,7 +1189,6 @@
       "voice": "把声音留给你最多的人",
       "night": "陪你度过最多夜晚的温柔",
       "photos": "让你看最多风景的人",
-      "steady": "连续最多天陪着你的人",
       "first": "陪你走得最久的那个人"
     },
     "opening": {
@@ -1233,7 +1230,6 @@
       "titleNoon": "她的午后，也是你的午后。",
       "peak": "星星最密集的时刻，她的一句话。",
       "flat": "无论哪个时刻，都有她的话语。",
-      "streak": "连续{{count}}天，都收到了她的话语。",
       "clockLabel": "她一天的星空时钟"
     },
     "s04": {

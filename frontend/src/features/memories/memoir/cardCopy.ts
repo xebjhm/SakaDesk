@@ -6,7 +6,6 @@
  *
  * - `anniv.dN` → `annivDays` (`days`), `anniv.yN` → `annivYears` (`years`, yearly from 6 on);
  * - `count.messages.N` / `count.pictures.N` → `countMessages` / `countPictures` (`count`);
- * - `record.streak.N` → `streak` (`days`);
  * - `you.letter.1` → `letterFirst`, `you.letter.N` → `letters` (`count`);
  * - `change.avatar.<date>` and a same-day `change.avatar.<date>.<n>` → `avatarChange`.
  *
@@ -61,7 +60,6 @@ const PATTERNS: Array<{ re: RegExp; copy: string; param: string }> = [
     { re: /^anniv\.y(\d+)$/, copy: 'annivYears', param: 'years' },
     { re: /^count\.messages\.(\d+)$/, copy: 'countMessages', param: 'count' },
     { re: /^count\.pictures\.(\d+)$/, copy: 'countPictures', param: 'count' },
-    { re: /^record\.streak\.(\d+)$/, copy: 'streak', param: 'days' },
     { re: /^you\.letter\.(\d+)$/, copy: 'letters', param: 'count' },
 ];
 

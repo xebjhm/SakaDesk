@@ -34,7 +34,6 @@ const PLACEHOLDERS: Record<string, Record<string, string[]>> = {
     'anniv.y{year}': { year: ['6', '7', '12'] },
     'count.messages.{n}': { n: intTuple('_MESSAGE_COUNTS').map(String) },
     'count.pictures.{n}': { n: intTuple('_PICTURE_COUNTS').map(String) },
-    'record.streak.{n}': { n: intTuple('_STREAKS').map(String) },
     'moment.{greeting}.1': { greeting: loopValues('greeting') },
     'moment.{greeting}.100': { greeting: loopValues('greeting') },
     'you.letter.{n}': { n: intTuple('_LETTER_COUNTS').map(String) },
@@ -75,7 +74,7 @@ describe('cardCopy', () => {
         expect(cardCopy('anniv.y12')?.title).toEqual({ key: 'memories.cards.annivYears', params: { years: 12 } });
         expect(cardCopy('count.messages.5000')?.title).toEqual({ key: 'memories.cards.countMessages', params: { count: 5000 } });
         expect(cardCopy('count.pictures.100')?.title).toEqual({ key: 'memories.cards.countPictures', params: { count: 100 } });
-        expect(cardCopy('record.streak.30')?.title).toEqual({ key: 'memories.cards.streak', params: { days: 30 } });
+        expect(cardCopy('record.streak.30')).toBeNull(); // the streak cards are gone
         expect(cardCopy('you.letter.1')?.title).toEqual({ key: 'memories.cards.letterFirst' });
         expect(cardCopy('you.letter.50')?.title).toEqual({ key: 'memories.cards.letters', params: { count: 50 } });
         expect(cardCopy('change.avatar.2024-05-01')?.title).toEqual({ key: 'memories.cards.avatarChange' });
@@ -102,7 +101,7 @@ describe('cardCopy', () => {
         // the walk really reached the catalogue (shelves, generic patterns, per-date avatar keys)
         expect(keys).toEqual(expect.arrayContaining([
             'first.message', 'first.voice', 'anniv.d1000', 'anniv.y12', 'count.messages.10000', 'count.voice_hour',
-            'special.sub_anniversary', 'special.join_day', 'record.greeting_pair', 'record.streak.100', 'moment.synchro', 'moment.daisuki.1',
+            'special.sub_anniversary', 'special.join_day', 'record.greeting_pair', 'moment.synchro', 'moment.daisuki.1',
             'you.letter.10', 'change.avatar.2024-05-01.2', 'grad.last',
         ]));
         for (const key of keys) {

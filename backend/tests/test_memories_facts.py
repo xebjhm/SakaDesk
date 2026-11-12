@@ -119,7 +119,7 @@ async def test_pure_helpers(member):
     assert agg.greeting_counts == {"oyasumi": 1, "daisuki": 1, "ohiru": 1}
     assert agg.voice_count == 2 and agg.voice_seconds == 14.5
     assert agg.media_in_bursts == 3
-    assert agg.active_days == 4 and agg.longest_streak_days == 4  # JST 1/2..1/5
+    assert agg.active_days == 4  # JST 1/2..1/5
     assert agg.first.id == 2 and agg.last.id == 7
     assert mf.aggregate([]) == mf.Aggregate()
 

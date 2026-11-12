@@ -107,7 +107,7 @@ const SLIDE_DATA: Record<RecapSlideKey, Check> = {
     } satisfies Shape<S02NameData>),
     s03_clock: obj<S03ClockData>({
         stars: arrayOf(obj<S03ClockData['stars'][number]>({ h: int, m: int, type: oneOf(...MESSAGE_TYPES) })),
-        peak_hour: int, representative: nullable(message), longest_streak: nullable(int),
+        peak_hour: int, representative: nullable(message),
         band: oneOf('night', 'noon', 'morning'),
     } satisfies Shape<S03ClockData>, ['band']),
     s04_greetings: obj<S04GreetingsData>({
@@ -163,7 +163,7 @@ const payload = obj<RecapPayload>({
     slides: arrayOf(slide), poster: nullable(poster),
 } satisfies Shape<RecapPayload>);
 
-const TITLE_KEYS = ['morning', 'nickname', 'longest', 'voice', 'night', 'photos', 'steady', 'first'].map((k) => `recap.titles.${k}`);
+const TITLE_KEYS = ['morning', 'nickname', 'longest', 'voice', 'night', 'photos', 'first'].map((k) => `recap.titles.${k}`);
 const overview = obj<RecapOverview>({
     year: int, phase: oneOf('partial', 'final'), christmas_open: bool,
     members: arrayOf(obj<RecapOverviewMember>({

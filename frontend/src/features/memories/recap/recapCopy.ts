@@ -89,24 +89,18 @@ const DAY_PART_TITLE: Record<DayPart, string> = {
     night: 'recap.s03.titleNight', noon: 'recap.s03.titleNoon', morning: 'recap.s03.titleMorning',
 };
 
-/** The longest streak line appears from this many days (the spec: "if ≥ 7"). */
-export const STREAK_MIN_DAYS = 7;
-
 /**
  * s03. The title follows the peak hour's part of the day; a flat day (`band`)
  * has no peak to glow, so it takes the band and says her words were there at
- * every hour. The streak is the slide's one number.
+ * every hour.
  */
-export function s03Copy(data: S03ClockData): { title: CopyLine; lead: CopyLine | null; streak: CopyLine | null; glow: boolean } {
+export function s03Copy(data: S03ClockData): { title: CopyLine; lead: CopyLine | null; glow: boolean } {
     const flat = data.band !== undefined;
     const part = data.band ?? dayPart(data.peak_hour);
     let lead: CopyLine | null = null;
     if (flat) lead = { key: 'recap.s03.flat' };
     else if (data.representative) lead = { key: 'recap.s03.peak' };
-    const streak = data.longest_streak !== null && data.longest_streak >= STREAK_MIN_DAYS
-        ? { key: 'recap.s03.streak', params: { count: data.longest_streak } }
-        : null;
-    return { title: { key: DAY_PART_TITLE[part] }, lead, streak, glow: !flat };
+    return { title: { key: DAY_PART_TITLE[part] }, lead, glow: !flat };
 }
 
 const VARIANT_SUFFIX: Record<S04GreetingsData['variant'], string> = {

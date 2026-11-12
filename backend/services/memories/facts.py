@@ -7,7 +7,7 @@ message to the ``message_facts`` table. Year-scoped features (the recap's
 pure helpers on the returned list::
 
     facts = await get_facts(service_data_dir, member_dir, start, end, until=now)
-    agg = aggregate(facts)                       # counts, hour histogram, streak
+    agg = aggregate(facts)                       # counts, hour histogram
     first, last = first_last(facts, types={"text"})
     nick = select(facts, nickname=True)          # %%% messages
     voices = voice_durations(facts, min_seconds=4)
@@ -105,7 +105,7 @@ import time
 from collections import Counter
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import date, datetime, timedelta
+from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
@@ -653,17 +653,6 @@ def voice_durations(
     ]
 
 
-def longest_streak(days: Iterable[date]) -> int:
-    """Longest run of consecutive dates."""
-    best = run = 0
-    prev: date | None = None
-    for d in sorted(set(days)):
-        run = run + 1 if prev is not None and d - prev == timedelta(days=1) else 1
-        best = max(best, run)
-        prev = d
-    return best
-
-
 @dataclass(frozen=True)
 class Aggregate:
     """Counts over a fact list. ``nonpromo_*`` / ``hour_hist`` / greetings exclude promo.
@@ -684,7 +673,6 @@ class Aggregate:
     voice_seconds: float = 0.0
     media_in_bursts: int = 0  # non-promo picture/video inside a burst
     active_days: int = 0
-    longest_streak_days: int = 0
     first: Fact | None = None  # first non-promo, non-welcome
     last: Fact | None = None  # last non-promo, non-welcome
 
@@ -737,7 +725,6 @@ def aggregate(facts: Iterable[Fact]) -> Aggregate:
         voice_seconds=round(seconds, 3),
         media_in_bursts=in_bursts,
         active_days=len(days),
-        longest_streak_days=longest_streak(days),
         first=first,
         last=last,
     )

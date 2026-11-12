@@ -65,8 +65,6 @@ export interface S03ClockData {
     peak_hour: number;
     /** A message of the peak hour, or null when none is free. */
     representative: RecapMessage | null;
-    /** Longest run of days with a message; only set when it is 7 or more. */
-    longest_streak: number | null;
     /** Present only when no hour stands out (fallback `flat`): the busiest part of the day. */
     band?: 'night' | 'noon' | 'morning';
 }
@@ -233,7 +231,7 @@ export interface RecapPayload {
 
 export type RecapTitleKey =
     | 'recap.titles.morning' | 'recap.titles.nickname' | 'recap.titles.longest' | 'recap.titles.voice'
-    | 'recap.titles.night' | 'recap.titles.photos' | 'recap.titles.steady' | 'recap.titles.first';
+    | 'recap.titles.night' | 'recap.titles.photos' | 'recap.titles.first';
 
 export interface RecapOverviewMember {
     member_path: string;

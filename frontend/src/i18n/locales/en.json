@@ -1002,8 +1002,6 @@
       "longestVoiceCondition": "Her longest voice message",
       "greetingPair": "The earliest good morning and the latest good night",
       "greetingPairCondition": "The earliest good morning and the latest good night",
-      "streak": "{{days, number}} days in a row",
-      "streakCondition": "When messages arrive {{days, number}} days in a row",
       "midnight": "The moment the date changed",
       "midnightCondition": "A message just after the date changed",
       "synchro": "Synchro",
@@ -1219,7 +1217,6 @@
       "voice": "The one who left you her voice most",
       "night": "The gentleness that stayed through the most nights",
       "photos": "The one who showed you the most views",
-      "steady": "The longest unbroken run of days",
       "first": "The one who's been with you longest"
     },
     "opening": {
@@ -1263,8 +1260,6 @@
       "titleNoon": "Her afternoons were your afternoons.",
       "peak": "From the hour with the most stars:",
       "flat": "Her words were there at every hour of the day.",
-      "streak": "Her words arrived {{count}} day in a row.",
-      "streak_other": "Her words arrived {{count}} days in a row.",
       "clockLabel": "A star clock of her day"
     },
     "s04": {

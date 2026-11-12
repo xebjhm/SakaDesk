@@ -984,8 +984,6 @@
       "longestVoiceCondition": "最長嘅一則語音",
       "greetingPair": "最早嘅早晨同最夜嘅早唞",
       "greetingPairCondition": "時間最早嘅早晨同最夜嘅早唞",
-      "streak": "連續 {{days, number}} 日",
-      "streakCondition": "連續 {{days, number}} 日收到訊息",
       "midnight": "日期轉換嘅一刻",
       "midnightCondition": "日期啱啱轉咗嗰陣收到嘅訊息",
       "synchro": "同步",
@@ -1191,7 +1189,6 @@
       "voice": "將聲音留俾你最多嘅人",
       "night": "陪你度過最多夜晚嘅溫柔",
       "photos": "俾你睇最多風景嘅人",
-      "steady": "連續最多日陪住你嘅人",
       "first": "陪你行得最耐嘅嗰個人"
     },
     "opening": {
@@ -1233,7 +1230,6 @@
       "titleNoon": "佢嘅下晝，亦係你嘅下晝。",
       "peak": "星星最密嘅時刻，佢嘅一句說話。",
       "flat": "無論邊個時刻，都有佢嘅說話。",
-      "streak": "連續{{count}}日，都收到佢嘅說話。",
       "clockLabel": "佢一日嘅星空時鐘"
     },
     "s04": {

@@ -43,7 +43,6 @@ export const clockData = (over: Partial<S03ClockData> = {}): S03ClockData => ({
     ],
     peak_hour: 22,
     representative: message(5, '%%%、今日もおつかれさま'),
-    longest_streak: 12,
     ...over,
 });
 

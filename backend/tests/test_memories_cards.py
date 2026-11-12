@@ -488,15 +488,10 @@ def test_greeting_pair_ties_go_to_the_earlier():
     assert card.message == key(1) and card.refs == {"pair": key(3)}
 
 
-def test_streak_threshold_date():
+def test_no_streak_cards():
     start = date(2024, 3, 1)
-    fs = daily(start, 3) + daily(start + timedelta(days=4), 8, first_id=100)
-    k = by_key(c.evaluate(inputs(fs)))
-    seven = k["record.streak.7"]
-    assert seven.earned and seven.date == start + timedelta(days=10)
-    assert seven.message == key(106)
-    assert k["record.streak.30"].progress == (8, 30)
-    assert k["record.streak.100"].progress == (8, 100)
+    k = by_key(c.evaluate(inputs(daily(start, 120))))
+    assert not any(key.startswith("record.streak.") for key in k)
 
 
 # --- moments ------------------------------------------------------------------------------------

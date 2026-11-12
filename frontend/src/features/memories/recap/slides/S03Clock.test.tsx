@@ -30,11 +30,8 @@ describe('S03Clock', () => {
         expect(screen.getByText('ゆき、今日もおつかれさま')).toHaveAttribute('data-voice', 'quote');
     });
 
-    it('shows the longest streak from 7 days only', () => {
-        const { unmount } = renderS03(clockData({ longest_streak: 12 }));
-        expect(screen.getByText('12日つづけて、彼女のことばが届いた。')).toBeInTheDocument();
-        unmount();
-        renderS03(clockData({ longest_streak: null }));
+    it('shows no streak line', () => {
+        renderS03(clockData());
         expect(screen.queryByText(/日つづけて/)).toBeNull();
     });
 
@@ -88,7 +85,7 @@ describe('S03Clock', () => {
     });
 
     it('never prints null or a zero without a message or a streak', () => {
-        renderS03(clockData({ representative: null, longest_streak: null, stars: [{ h: 0, m: 0, type: 'text' }], peak_hour: 0 }));
+        renderS03(clockData({ representative: null, stars: [{ h: 0, m: 0, type: 'text' }], peak_hour: 0 }));
         expect(document.body.textContent).not.toMatch(/null|undefined|NaN|0/);
     });
 });

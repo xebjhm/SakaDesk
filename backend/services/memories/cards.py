@@ -20,7 +20,7 @@ tie-break goes to the earlier fact or day. Filters use ``facts.select``.
 
 Welcome: the automatic greeting a room sends when the fan subscribes
 (``Fact.is_welcome``) is never a card's face or ref, on any shelf. Counts
-(messages, the busiest day's count, streak days, a change card's
+(messages, the busiest day's count, a change card's
 ``messages``) still include it; nickname counts do not (it is not her calling
 the fan's name). ``first.message`` is therefore her first self-written
 message.
@@ -76,7 +76,7 @@ SHELVES = (
 
 # Bump on any rule or payload change: the binder's cache hash includes it, so
 # a shipped rule change never keeps serving binders built by the old rules.
-CARDS_VERSION = 3
+CARDS_VERSION = 4
 
 FALLBACK_NEAREST = "nearest"
 FALLBACK_FIRST_AFTER = "first_after"
@@ -98,7 +98,6 @@ _MESSAGE_COUNTS = (100, 1000, 5000, 10000)
 _PICTURE_COUNTS = (100, 1000)
 _VOICE_HOUR_S = 3600
 _NICKNAME_COUNT = 100
-_STREAKS = (7, 30, 100)
 _LETTER_COUNTS = (1, 10, 50)
 _HIDDEN_RECORDS = 5  # longest, busiest day, nickname day, longest voice, pair
 _BIRTHDAY_RE = re.compile(r"^(?:\d{4}-)?(\d{2})-(\d{2})$")
@@ -584,36 +583,6 @@ def _max_day(days: Mapping[date, list[_Tagged]]) -> tuple[date, list[_Tagged]] |
     return best
 
 
-def _streak_cards(
-    days: Mapping[date, list[_Tagged]], face_days: Mapping[date, list[_Tagged]]
-) -> list[Card]:
-    """``record.streak.N``: earned on the first day a consecutive-day run reaches N.
-
-    ``days`` counts every message; the face comes from ``face_days`` (no welcome).
-    """
-    reached: dict[int, date] = {}
-    longest = run = 0
-    prev: date | None = None
-    for d in sorted(set(days)):
-        run = run + 1 if prev is not None and d - prev == timedelta(days=1) else 1
-        longest = max(longest, run)
-        for n in _STREAKS:
-            if run == n and n not in reached:
-                reached[n] = d
-        prev = d
-    out = []
-    for n in _STREAKS:
-        key = f"record.streak.{n}"
-        if n in reached:
-            day = reached[n]
-            face = _best_of(face_days.get(day, []))
-            message = _mk(face) if face is not None else None
-            out.append(Card(key, "records", True, date=day, message=message))
-        else:
-            out.append(Card(key, "records", False, progress=_progress(longest, n)))
-    return out
-
-
 def _record_cards(
     tagged: Sequence[_Tagged],
     faces: Sequence[_Tagged],
@@ -693,7 +662,6 @@ def _record_cards(
     else:
         hidden += 1
 
-    out += _streak_cards(days, face_days)
     return out, hidden
 
 
