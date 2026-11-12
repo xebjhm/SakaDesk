@@ -1090,8 +1090,12 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   `bg-memories-paper` postcard (`rounded-sm`, `shadow-memories-polaroid`) with a stamp (a
   `border-2 border-dotted border-memories-silhouette` box on `bg-memories-washi` holding the day's
   lucide glyph in `text-secondary`) and a round postmark (`rounded-pill border border-current
-  text-muted`, tilted `-rotate-12`: year, `M.D`, then the day's name on the shelf or the JST clock
-  on a back). Several years stack (at most three layers, the newest on top, resting at `rotate-1`
+  text-muted`, tilted `-rotate-12`: year and `M.D`, plus the JST clock on a back; the shelf's
+  day name sits in the caption under the stack, so nothing is cut inside the circle). On the front
+  the greeting (two lines at most), the postmark and the stamp share a `h-14` top zone that her
+  words never enter; her words clamp at three `text-small` lines (an ellipsis on a line boundary).
+  The stack and its caption fill the shelf tiles' `h-52`, so bottom edges line up. A dev-only
+  sample (a 3-year stack and its backs, `PostcardPreview`) sits on `?view=design`. Several years stack (at most three layers, the newest on top, resting at `rotate-1`
   / `-rotate-3` / `-rotate-6`); hovering or focusing the stack fans the layers out with
   `motion-safe:group-hover:` / `motion-safe:group-focus-visible:` rotate and translate steps on
   `duration-base ease-standard`, so under reduced motion nothing moves. One focusable button per
@@ -1130,16 +1134,23 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   header holds a 初見と今 `Pill` (pressed while the rows replace the month). Column heads 初見 / 今
   (serif, her avatar at the time, a `text-caption text-muted` caption), then one row per kind under
   a `border-subtle` rule: the kind label, her first message and a recent one as
-  `bg-memories-paper shadow-memories-polaroid` buttons (JST date and clock in `text-caption
+  `bg-memories-paper shadow-memories-polaroid` buttons (below `lg` the two sides stack, each with
+  its 初見 / 今 label, and the column heads hide) (JST date and clock in `text-caption
   text-muted`, the photo, the voice length or her words in three lines; the older photo wears
   `sepiaClass`), and between them an arrow over the time apart (「1 年 8 天」, `font-display
-  text-small text-secondary`, never 0; the voice row adds 「長了 N 秒」 in `text-caption`), under a `text-small text-secondary` subtitle with the whole span. A side opens her day (`MemberDayDialog`). No motion beyond the
+  text-small text-secondary`, never 0; the voice row adds 「長了 N 秒」 in `text-caption`), under a panel header with the serif title and, on the right (wrapping below when narrow), a
+  `text-small text-secondary` subtitle with the whole span. A side opens her day (`MemberDayDialog`). No motion beyond the
   shared lift on hover (`motion-reduce:` none). `ThenNowPair` is now only the recap's S08 pair (its
   stacked slide cards, the older one in full sepia, the shared keyword as a `<mark>`).
 - **歷年同一天** (`features/memories/day/YearLanes.tsx`, `yearLanesLayout.ts`): the day view's third mode
   `Pill`. A sticky `w-12` hour axis (`text-caption tabular-nums text-muted`; `z-30`, above the `z-20` year headers, its top cell sticky too so the corner stays fixed both ways) beside one `w-56` column
   per year (a sticky serif year over its date with the weekday and its message count), each a `bg-sunken` lane holding the
-  swimlanes' `LaneCard`s placed by JST time of day (`hourBands`, 96 px a quiet hour). Neighbouring
+  swimlanes' `LaneCard`s placed by JST time of day (`clockLayout`: a busy hour is at least 96 px
+  and grows to hold its cards; hours with no message in any year collapse into one 28 px row with
+  a dashed `border-subtle` rule and the range 「08:00–15:00」). Year columns are `min-w-56 flex-1`,
+  so few years fill the pane; the axis and the lane bodies start `mt-2` below the header so the
+  first hour label is not hidden, and the day view's scroller drops its side padding in this mode
+  so the opaque axis is flush with its left edge. Neighbouring
   years' matching kinds are joined by an `aria-hidden` SVG of dotted lines in `text-muted
   opacity-60` across the 40 px gutter; an hour quiet in this year but not in another is a
   `border-dashed border-strong` outline with 「這個時段沒有訊息」 in `text-caption text-muted` when
