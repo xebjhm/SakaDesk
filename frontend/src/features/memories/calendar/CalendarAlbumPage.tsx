@@ -190,7 +190,7 @@ export const CalendarAlbumPage: React.FC<CalendarAlbumPageProps> = ({ service, r
         body = months.status !== 'ready' ? (
             <MemoriesStatus query={months} view="calendar_months" />
         ) : (
-            <div className="min-h-0 flex-1 overflow-y-auto px-4 pb-4">
+            <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-4 pb-4">
                 <MonthYearPicker
                     years={pickerYears}
                     year={parsed.year}

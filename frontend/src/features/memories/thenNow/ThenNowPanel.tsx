@@ -126,7 +126,7 @@ export const ThenNowPanel: React.FC<ThenNowPanelProps> = ({ service, date, membe
                     {headerSlot && <div className="ml-auto flex items-center gap-2">{headerSlot}</div>}
                 </header>
             )}
-            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto px-4 py-3">{body}</div>
+            <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain px-4 py-3">{body}</div>
         </section>
     );
 };

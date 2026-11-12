@@ -240,7 +240,7 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
     }
 
     return (
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-4 py-3">
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain px-4 py-3">
             <header className="flex items-center gap-3">
                 <Avatar src={resizedAvatarUrl(view?.avatar_url, headerAvatar)} name={name} size="md" />
                 <h3 className="font-display text-heading text-primary">{formatMonth(t, 'memories.album.monthLabel', month, i18n.language)}</h3>

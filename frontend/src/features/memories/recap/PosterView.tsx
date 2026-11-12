@@ -250,14 +250,14 @@ export const PosterView: React.FC<PosterViewProps> = ({ recap, nickname, surface
                             {(favorites || letters) && (
                                 <div className="flex items-center gap-4 font-sans text-caption tabular-nums text-secondary">
                                     {favorites && (
-                                        <span data-testid="poster-favorites" className="flex items-center gap-1">
+                                        <span data-testid="poster-favorites" className="relative flex items-center gap-1">
                                             <Star aria-hidden="true" className="h-3 w-3 fill-current text-semantic-star" />
                                             <span className="sr-only">{t('recap.s10.bookLabel')}</span>
                                             {formatCount(favorites, i18n.language)}
                                         </span>
                                     )}
                                     {letters && (
-                                        <span data-testid="poster-letters" className="flex items-center gap-1">
+                                        <span data-testid="poster-letters" className="relative flex items-center gap-1">
                                             <Mail aria-hidden="true" className="h-3 w-3" />
                                             <span className="sr-only">{t('recap.s10.lettersLabel')}</span>
                                             {formatCount(letters, i18n.language)}

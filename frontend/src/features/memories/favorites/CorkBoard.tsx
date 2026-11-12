@@ -247,7 +247,7 @@ export const CorkBoard: React.FC<CorkBoardProps> = ({ items, onOpen }) => {
     const dateOf = useCallback((m: FavoriteItem) => dateFormat.format(new Date(m.ts)), [dateFormat]);
 
     return (
-        <div ref={scroller} data-testid="cork-board" className="min-h-0 flex-1 overflow-y-auto bg-memories-cork p-6">
+        <div ref={scroller} data-testid="cork-board" className="min-h-0 flex-1 overflow-y-auto overscroll-contain bg-memories-cork p-6">
             {chunks.map((chunk, i) => (
                 <Chunk
                     key={i}

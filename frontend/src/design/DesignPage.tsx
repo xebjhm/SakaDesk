@@ -499,7 +499,7 @@ export const DesignPage: React.FC = () => {
     );
 
     return (
-        <Canvas data-testid="design-page" className="min-h-screen p-6">
+        <Canvas data-testid="design-page" className="h-screen overflow-y-auto p-6">
             <Sheet className="mx-auto flex max-w-5xl flex-col gap-10 p-8">
                 <header className="flex flex-col gap-3">
                     <h1 className="text-heading font-semibold text-primary">{t('designPage.title')}</h1>

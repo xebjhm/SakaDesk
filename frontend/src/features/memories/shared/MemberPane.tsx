@@ -81,7 +81,7 @@ const LoadingRows: React.FC = () => {
     const label = t('loading.label');
     if (!shownNow) return <div role="status" aria-busy="true" aria-label={label} />;
     return (
-        <div role="status" aria-label={label} className="flex flex-col gap-1">
+        <div role="status" aria-label={label} className="relative flex flex-col gap-1">
             {Array.from({ length: SKELETON_ROWS }, (_, i) => (
                 <div key={i} data-testid="member-pane-skeleton-row" className="flex items-center gap-3 px-3 py-2">
                     <Skeleton shape="circle" className="h-8 w-8 shrink-0" />
@@ -108,7 +108,7 @@ export const MemberPane: React.FC<MemberPaneProps> = ({ items, selectedKey, onSe
     const { t } = useTranslation();
     const width = useAvatarWidth(AVATAR_PX);
     return (
-        <nav className={cn('flex min-h-0 flex-col gap-1 overflow-y-auto p-2', className)}>
+        <nav className={cn('flex min-h-0 flex-col gap-1 overflow-y-auto overscroll-contain p-2', className)}>
             {allLabel !== undefined && (
                 <button
                     type="button"

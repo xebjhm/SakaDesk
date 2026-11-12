@@ -29,6 +29,17 @@
     --color-error: #EF4444;
   }
 
+  /* The app shell never scrolls at the document level (N-R4-3): every page scrolls inside its
+     own containers. A stray absolutely positioned descendant (an sr-only label with no
+     positioned ancestor) once made the document taller than the window, and a wheel past the
+     end of an inner scroller then moved the whole shell up, leaving half the window grey. */
+  html,
+  body,
+  #root {
+    height: 100%;
+    overflow: hidden;
+  }
+
   body {
     @apply antialiased text-gray-900;
     /* Must match pywebview background_color in desktop.py (#F0F2F5)

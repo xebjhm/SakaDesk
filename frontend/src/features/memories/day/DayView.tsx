@@ -151,7 +151,7 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, hea
                 </div>
             )}
             <BusyContent busy={query.stale} inertWhileBusy className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col">
-                <div ref={setScroller} className="min-h-0 flex-1 overflow-auto px-4 pb-4">{body}</div>
+                <div ref={setScroller} className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 pb-4">{body}</div>
             </BusyContent>
         </section>
     );

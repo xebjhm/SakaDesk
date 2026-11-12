@@ -75,7 +75,7 @@ export const MemoriesHome: React.FC<MemoriesHomeProps> = ({ service, recap, onOp
             <h1 className="shrink-0 font-display text-heading text-primary">{t('memories.home.title')}</h1>
             <HubGatheringLine key={service} refreshing={hub.status === 'ready' && data?.refreshing === true} polling={hub.polling} capped={hub.pollCapped} />
             {/* The one scroll container: in a short pane the moment and every card scroll together. */}
-            <div data-testid="memories-hub-board" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-1">
+            <div data-testid="memories-hub-board" className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto overscroll-contain p-1">
                 {/* The wave-4 slots are mounted with or without a moment (the capsule stands alone). */}
                 <HubSlots service={service} go={go} sameTime={data?.same_time ?? null} capsule={data?.capsule ?? null}>
                     {/* While loading, the moment's place is reserved from mount (`min-h-48`: the

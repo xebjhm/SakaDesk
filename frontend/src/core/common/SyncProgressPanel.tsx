@@ -131,7 +131,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                     const isActive = progress.phase === step.phase || (step.phase === 'scanning' && progress.phase === 'discovering');
                     const isComplete = currentIndex > PHASE_ORDER.indexOf(step.phase);
                     return (
-                        <li key={step.phase} aria-current={isActive ? 'step' : undefined} className="flex flex-col items-center gap-1">
+                        <li key={step.phase} aria-current={isActive ? 'step' : undefined} className="relative flex flex-col items-center gap-1">
                             <span
                                 data-testid={`sync-step-dot-${step.phase}`}
                                 aria-hidden="true"

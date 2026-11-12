@@ -157,7 +157,7 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
                     <Pill selected={tab === 'timeline'} onClick={() => pickTab('timeline')}>{t('memories.memoir.tabTimeline')}</Pill>
                 </div>
                 {tab === 'binder' && (
-                    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto">
+                    <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
                         <BinderPane service={service} memberPath={memberPath} name={name} cardKey={route.cardKey} link={route} />
                     </div>
                 )}

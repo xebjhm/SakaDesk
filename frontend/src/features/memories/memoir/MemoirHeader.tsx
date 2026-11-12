@@ -83,7 +83,7 @@ export const MemoirHeaderPlaceholder: React.FC = () => {
     // The boxes hold the layout at once; they pulse only from the reveal delay (no flash on a fast load).
     const still = !useDelayedLoading(true) && 'animate-none';
     return (
-        <div data-testid="memoir-header-loading" role="status" aria-busy="true" aria-label={label} className="flex shrink-0 items-center gap-4 px-4 py-3">
+        <div data-testid="memoir-header-loading" role="status" aria-busy="true" aria-label={label} className="relative flex shrink-0 items-center gap-4 px-4 py-3">
             <Skeleton shape="circle" tone="paper" className={cn('h-14 w-14 shrink-0', still)} />
             <span aria-hidden="true" className="flex min-w-0 flex-1 flex-col gap-2">
                 <Skeleton shape="line" tone="paper" className={cn('h-6 w-40', still)} />

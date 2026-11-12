@@ -28,7 +28,7 @@ export const MonthTitleButton = React.forwardRef<HTMLButtonElement, MonthTitleBu
             disabled={disabled}
             onClick={onClick}
             className={cn(
-                'flex items-center gap-1 rounded-lg px-2 py-1 text-title font-semibold text-primary',
+                'relative flex items-center gap-1 rounded-lg px-2 py-1 text-title font-semibold text-primary',
                 'transition-colors duration-fast ease-standard hover:bg-sunken',
                 FOCUS_RING,
                 className,

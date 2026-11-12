@@ -108,7 +108,7 @@ export const CardTile: React.FC<CardTileProps> = ({ card, onOpen, large = false 
                 data-testid="card-tile"
                 data-earned="false"
                 data-card-key={card.key}
-                className={cn(size, 'flex shrink-0 flex-col justify-end gap-2 rounded-md border-2 border-dashed border-memories-silhouette p-3')}
+                className={cn(size, 'relative flex shrink-0 flex-col justify-end gap-2 rounded-md border-2 border-dashed border-memories-silhouette p-3')}
             >
                 <span className="sr-only">{t('memories.cards.notYet')}</span>
                 <p className="font-display text-small text-secondary">{copyText(copy.condition)}</p>
@@ -180,7 +180,7 @@ export const CardTile: React.FC<CardTileProps> = ({ card, onOpen, large = false 
 
     return (
         <>
-            <div data-testid="card-tile" data-earned="true" data-card-key={card.key} className={cn(size, 'shrink-0')}>
+            <div data-testid="card-tile" data-earned="true" data-card-key={card.key} className={cn(size, 'relative shrink-0')}>
                 {interactive ? (
                     <button
                         type="button"
