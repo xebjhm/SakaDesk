@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { axisLabel, clockMs, clockSpan, gapRuns, guidePairs, MATCH_WINDOW_MS, type LaneEntry } from './yearLanesLayout';
+import { axisLabel, clockLayout, clockMs, clockSpan, gapRuns, guidePairs, MATCH_WINDOW_MS, type LaneEntry } from './yearLanesLayout';
 
 const H = 60 * 60 * 1000;
 const M = 60 * 1000;
@@ -34,5 +34,29 @@ describe('yearLanes', () => {
         const lanes = [[e('a', 'ohayo', 7 * H), e('b', null, 12 * H)], [e('c', null, 7 * H + 5 * M), e('d', null, 9 * H), e('e', null, 10 * H)]];
         // axis 07:00-13:00 (6 bands): lane 0 is quiet at 09 and 10, lane 1 at 12; 08 and 11 are quiet in both
         expect(gapRuns(lanes, 7, 6)).toEqual([[[2, 3]], [[5, 5]]]);
+    });
+
+    it('collapses the hours no year speaks in into one short row, keeping minutes where messages are', () => {
+        const lanes = [
+            [e('a', 'ohayo', 7 * H + 10 * M), e('b', null, 23 * H + 30 * M)],
+            [e('c', 'ohayo', 7 * H + 25 * M), e('d', null, 7 * H + 50 * M)],
+        ];
+        const { startHour, hourCount } = clockSpan(lanes.flat().map((x) => x.clock));
+        const layout = clockLayout(lanes, { startHour, hourCount, pxPerHour: 96, quietPx: 28, cardHeight: 64, gap: 4 });
+        // 07 busy, 08-22 one collapsed row, 23 busy
+        expect(layout.bands.map((b) => [b.from, b.to, b.quiet, b.top, b.height])).toEqual([
+            [7, 7, false, 0, 136],
+            [8, 22, true, 136, 28],
+            [23, 23, false, 164, 96],
+        ]);
+        expect(layout.height).toBe(260); // was 17 h x 96 = 1632 px before the collapse
+        expect(layout.bandOf(12)).toBe(1);
+        // minute precision inside a busy hour: a lone 07:10 sits at its minute
+        expect(layout.tops.get('a')).toBeCloseTo(16, 0);
+        // a full hour packs its cards from the band top, each below the one before, never past the hour
+        expect(layout.tops.get('c')).toBe(0);
+        expect(layout.tops.get('d')).toBe(68);
+        // 23:30 would sit at 212, but the card must end inside its hour (260 - 68)
+        expect(layout.tops.get('b')).toBe(192);
     });
 });

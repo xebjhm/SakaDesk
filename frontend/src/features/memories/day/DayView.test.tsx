@@ -177,6 +177,8 @@ describe('DayView', () => {
         expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('September 14');
         expect(screen.getByRole('heading', { level: 2 })).not.toHaveTextContent('2024');
         expect(screen.queryByRole('switch')).toBeNull();
+        // no side padding in the scroller: the sticky axis sits flush with its left edge
+        expect(screen.getByTestId('day-years').parentElement).not.toHaveClass('px-4');
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'day_years', outcome: 'on' });
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_load', { target: 'day_years', outcome: 'ok', count: 2 });
 

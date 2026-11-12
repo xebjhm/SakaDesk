@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { Heart } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
+import { cn } from '../../../utils/classnames';
 import { Avatar, BusyContent, Pill, Switch } from '../../../design/primitives';
 import { holidayName } from '../../../utils/jpHolidays';
 import { getServicePrimaryColor } from '../../../data/services';
@@ -185,7 +186,9 @@ export const DayView: React.FC<DayViewProps> = ({ service, date, memberPath, sho
                 </div>
             )}
             <BusyContent busy={yearsMode ? years.stale : query.stale} inertWhileBusy className="flex min-h-0 flex-1 flex-col" contentClassName="flex min-h-0 flex-1 flex-col">
-                <div ref={setScroller} className="min-h-0 flex-1 overflow-auto overscroll-contain px-4 pb-4">{body}</div>
+                {/* 歷年同一天 has no side padding: its sticky axis must sit flush with the scroller's left
+                    edge, or the lanes would show through a strip beside it when scrolled sideways. */}
+                <div ref={setScroller} className={cn('min-h-0 flex-1 overflow-auto overscroll-contain pb-4', !yearsMode && 'px-4')}>{body}</div>
             </BusyContent>
         </section>
     );

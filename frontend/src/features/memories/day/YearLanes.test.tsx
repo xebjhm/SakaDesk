@@ -36,8 +36,11 @@ describe('YearLanes', () => {
         const hours = screen.getAllByTestId('day-years-hour').map((h) => h.textContent);
         expect(hours[0]).toBe('07:00');
         expect(hours[hours.length - 1]).toBe('24:00');
-        // fixed-width columns: many years scroll sideways instead of squeezing at 960 px
-        expect(lanes[0]).toHaveClass('w-56', 'shrink-0');
+        // columns stretch to fill the pane but keep a minimum: many years scroll sideways at 960 px
+        expect(lanes[0]).toHaveClass('min-w-56', 'flex-1');
+        // the silent stretches collapse into labelled rows
+        const quiet = within(lanes[0]).getAllByTestId('day-years-quiet').map((q) => q.textContent);
+        expect(quiet).toEqual(['08:00–15:00', '16:00–23:00']);
         expect(screen.getByTestId('day-years')).toHaveClass('w-max');
     });
 
