@@ -119,7 +119,9 @@ Subscription days use the archived earliest start (§3.1). Chips hide when their
 Every sentence containing `%%%` (one sentence each, split at `。！？\n`), rendered with the nickname underlined, newest first, filterable by year; each row shows date and her avatar at the time; click → the day's full context (film-strip view, §10). Members who never use `%%%` hide the chip.
 
 ### 5.3 卡冊 (photocard binder)
-Shelves of cards. Earned cards face up (photo or her words, Japanese original, with the date); unearned cards are dashed silhouettes with the condition and a progress bar. **Foil** = special. Repeating yearly cards stack ("×3"), opening to per-year cards. Clicking a card opens a large view with that day's messages and a jump to the chat.
+Shelves of cards. Earned cards face up (photo or her words, Japanese original, with the date); unearned cards are dashed silhouettes with the condition and a progress bar. **Foil** = special. Clicking a card opens a large view with that day's messages and a jump to the chat.
+
+**特別な日 as postmarked postcards (r4 A3).** Every earned 特別な日 card is a postcard she sent, postmarked with its year. Several years make a stack (the newest on top, at most three drawn, a caption with the count and the years) that fans out on hover or focus; under reduced motion it stays still. Opening it shows the postcard backs, one per year, newest first: her words on ruled lines, a stamp, a postmark with the JST date and time, and that day's best photo when the face is not itself one (`CardYear.photo`, 加入紀念日 `refs.photo`). The backs are one Tab stop; ↑ / ↓ (← / →, Home / End) move between years, and the picked year drives the day column and the jump. Themes: 元旦 is a 年賀状 (謹賀新年 in the calendar's holiday red), her birthday a birthday card (the foil band), 加入紀念日 and the subscription anniversary anniversary cards (a group-pastel band); Valentine's and Christmas plain cards with their own stamp. The 推 pink appears only as the ♥ beside her name for the fan's 推し.
 
 | Shelf | Cards (rule) |
 |---|---|
@@ -136,12 +138,12 @@ Shelves of cards. Earned cards face up (photo or her words, Japanese original, w
 Removed by the user: season cards, late-night (1–5h) card, calling-style change, letter-reply cards, card back "one year later".
 
 ### 5.4 時光軸 (timeline)
-A bottom rail of monthly message-volume bars with a lens (same interaction as the blogs TimelineRail: drag, wheel, ←/→ = older/newer). Above it, the selected month: her avatar at the time, that month's photos (one large hero, the best photo score, beside two rows of small tiles; stacked when narrow), representative messages (highest importance, a late message, a nickname message), and that month's milestones (from the card catalogue). The あの日と今日 toggle (§14.2) is available here.
+A bottom rail of monthly message-volume bars with a lens (same interaction as the blogs TimelineRail: drag, wheel, ←/→ = older/newer). Above it, the selected month: her avatar at the time, that month's photos (one large hero, the best photo score, beside two rows of small tiles; stacked when narrow), representative messages (highest importance, a late message, a nickname message), and that month's milestones (from the card catalogue). The month header's 初見と今 pill (§14.2) swaps the month for her first-and-recent rows.
 
 ## 6. On This Day
 
 - **Overview (B):** one column per year for the selected date, side by side; older years slightly sepia. With many years the strip **scrolls horizontally by mouse drag** (and wheel / arrows). Date navigation ‹ › and a date picker (any date).
-- **Detail (A):** clicking a column opens the 那一天 view (§7) for that year's date, with a year list on the left and a "⇆ side by side with this year" toggle (あの日と今日).
+- **Detail (A):** clicking a column opens the 那一天 view (§7) for that year's date, with a year list on the left; the years are compared through the day view's 歷年同一天 mode (§7).
 - Years without messages appear dimmed ("這天沒有訊息") in the list, not as empty columns.
 
 ## 7. 那一天 day view
@@ -149,6 +151,7 @@ A bottom rail of monthly message-volume bars with a lens (same interaction as th
 Shared by On This Day and the calendar.
 - **Default A — merged timeline:** every member's messages of that day in chronological order, chat-bubble style with member names and times; member filter chips; **"包含其他團體"** toggle mixes in other subscribed groups' messages of the same date.
 - **Switchable B — swimlanes:** one column per member, time running down with an hour ruler; cards positioned by time; click a card to expand. Shows "everyone at the same moment" (e.g. after a concert).
+- **Switchable C — 歷年同一天 (r4 B1):** the same calendar day in every year that has messages on it (one person on a member's page, else everyone in the active group; the welcome left out), one column per year, oldest on the left, each message placed by its JST time of day on one thin hour axis so mornings sit beside mornings. Matching kinds in neighbouring years (おはよう, photo, voice, おやすみ within 90 minutes) are joined by faint dotted guide lines; an hour that is quiet in one year while another year has messages shows a faint dashed gap. Older years' photos are aged with sepia. Fixed-width year columns scroll sideways when there are many years (usable at the 960×640 minimum window). The heading is the month-day alone; the member chips narrow every year; there is no cross-group switch. Labels: 依時間 / 依成員 / 歷年同一天 (zh-TW), 時系列 / メンバー別 / 歴年の同じ日 (ja).
 
 ## 8. Album
 
@@ -158,7 +161,7 @@ Left: **全員** + per-member counts. Right: a month-sectioned grid with filters
 - **Hover caption:** her text within ±3 min.
 - **Favourited photos pinned larger with washi tape.**
 - **Monthly colour ribbon** on the right (dominant colour of each month's photos; Pillow, cached) used as a draggable scrubber.
-- Older years slightly sepia (shared with あの日と今日).
+- Older years slightly sepia (shared with 初見と今 and 歷年同一天).
 - Clicking opens the existing media viewer (zoom, ←/→, jump to chat).
 
 ## 9. Year recap 「同じ坂道を歩いた一年」 (priority within the release)
@@ -230,7 +233,7 @@ The existing Japanese calendar (Sunday first, Sun/祝日 red, Sat blue, holiday 
 ## 14. Warm presentations
 
 1. **彼女の24時間** — a day stitched from different years: 5–7 slots in her active hours (from her histogram), each filled with a message sent at that time (±30 min) in some year, scored by slot greeting, photo, nickname, ★, promo down-ranked, years varied; a sky gradient from morning to night; 🎲 rebuilds. Lives on the member page (and as recap material).
-2. **あの日と今日** — the same date N years ago vs this year side by side (older side sepia, each with the avatar at the time); second mode **初見 vs 今** (subscription first week vs the latest week: photo / おはよう / voice). Available in On This Day, the timeline and the recap.
+2. **初見と今** (r4 B2) — in the memoir timeline, one row per kind (おはよう, photo, voice, おやすみ): her first one on the left, a recent one on the right (the best of the 30 days ending on her newest of that kind), and the time between them in the middle (「1 年 8 天」). A row appears only when both sides exist and are on different days; the welcome, promo and (for the greetings) Q&A posts never stand in. Each side opens her day at that message. Comparing a date across years is the day view's 歷年同一天 mode (§7); the recap keeps its own 去年の、同じ日 slide (S08).
 3. **同じ時刻** — a home line: "現在 21:03，2024 年的這個時刻她說了……", refreshed each minute from messages within ±2 min of the current time-of-day (oshi first).
 4. **時光膠囊** — the fan writes sticky notes on any card or day (local only); one year later the note resurfaces with her message of that day on Home and in On This Day.
 5. **被叫名字的瞬間** — §5.2.

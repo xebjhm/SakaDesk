@@ -968,6 +968,7 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
 | `bg-memories-cork` | `--ds-mem-cork` | The favourites cork board base. |
 | `bg-memories-washi` | `--ds-mem-washi` | Translucent washi tape pinning a polaroid. |
 | `bg-memories-foil` | `--ds-mem-foil` | The holographic sheen of a special card, built from the aurora stops (`aurora.stops`). |
+| `bg-memories-ruled` | `--ds-mem-ruled` | The ruled lines of a 特別な日 postcard's back: a paper-line hairline every 20 px, the `text-small` line height (pair it with `bg-local` in a scroller). |
 | `shadow-memories-polaroid` | `--ds-mem-shadow-polaroid` | A polaroid lying on a surface. |
 | `border-memories-silhouette` | `--ds-mem-silhouette` | The dashed outline of an unearned card (`border-dashed`), the neutral `border-strong` value. |
 | `sepia-memories-1/2/3` | `--ds-mem-sepia-1/2/3` | A photo aged by its year (see below). |
@@ -982,7 +983,7 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
 - **Sepia by age.** `sepiaClass(year)` (`features/memories/shared/sepia.ts`) gives a keepsake
   from this year no filter, last year `sepia-memories-1`, two years ago `sepia-memories-2` and
   three or more years ago `sepia-memories-3` (full sepia). Years are counted in JST. The year
-  recap's 去年の、同じ日 slide (S08, drawn by `ThenNowPair variant="slide"`) is not age-graded:
+  recap's 去年の、同じ日 slide (S08, drawn by `ThenNowPair`) is not age-graded:
   its older card always uses `sepia-memories-3`, the approved full-sepia look. Apply it to the photo or card, never to text
   you need to read at full contrast. `sepiaClass` returns literal class names from a lookup, so
   Tailwind sees them; never build a `sepia-memories-${n}` name at runtime.
@@ -1084,7 +1085,25 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   card (earned only) has a still `bg-memories-foil` sheen under its face and one `animate-shimmer`
   sweep over it (`motion-reduce:hidden`: under reduced motion only the still sheen stays). The
   graduation card's memorial foil never sweeps. The あなた shelf shows an envelope and the fan's
-  date, never her words, and does not open.
+  date, never her words, and opens the fan's own letter.
+- **特別な日 postcards** (`memoir/Postcard.tsx`, `postcard.ts`): an earned 特別な日 card is a
+  `bg-memories-paper` postcard (`rounded-sm`, `shadow-memories-polaroid`) with a stamp (a
+  `border-2 border-dotted border-memories-silhouette` box on `bg-memories-washi` holding the day's
+  lucide glyph in `text-secondary`) and a round postmark (`rounded-pill border border-current
+  text-muted`, tilted `-rotate-12`: year, `M.D`, then the day's name on the shelf or the JST clock
+  on a back). Several years stack (at most three layers, the newest on top, resting at `rotate-1`
+  / `-rotate-3` / `-rotate-6`); hovering or focusing the stack fans the layers out with
+  `motion-safe:group-hover:` / `motion-safe:group-focus-visible:` rotate and translate steps on
+  `duration-base ease-standard`, so under reduced motion nothing moves. One focusable button per
+  stack, named by the title and described by 「はがき N 枚 ・ years」. Themes come from fixed roles,
+  never the accent for decoration beyond pastel: 元旦's 謹賀新年 is `text-calendar-holiday`, the
+  birthday card carries a thin `bg-memories-foil` band, the anniversary cards (加入紀念日, the
+  subscription anniversary) a thin `bg-accent-subtle` band; the only pink is the ♥
+  (`fill-semantic-oshi text-semantic-oshi-solid`) beside her name for the fan's 推し. The card
+  detail shows the postcard backs newest first: her words on `bg-memories-ruled bg-local`, the stamp,
+  the postmark, the day's photo aged with `sepiaClass` and 「{{name}} より」; each back is an
+  `aria-pressed` button (the picked one wears `ring-accent-border`) in one roving Tab stop moved by
+  the arrow keys, Home and End, and leans by a still `±rotate-1`.
 - **The hub board** (`features/memories/MemoriesHome.tsx`, `home/`): a fixed viewport with a
   serif title over one board (the large On This Day card, then a grid of entry cards) that
   scrolls inside the pane when it is short, so every card stays reachable at the smallest window. The On This Day card is the hub's brand moment: an `Atmosphere`
@@ -1107,16 +1126,25 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
 - **The same-time line** (`home/SameTimeLine.tsx`): a quiet one-line button above the hub's On
   This Day card, `text-small text-secondary` with the JST clock in `text-muted` and her words in
   `text-primary`, truncated to one line; `hover:bg-sunken`, no group colour beyond the focus ring.
-- **あの日と今日** (`features/memories/thenNow/`): `ThenNowPair` is shared by On This Day, the memoir
-  timeline and the recap's S08. In a pane the two sides are neutral `bg-card shadow-card` cards side
-  by side (stacked when narrow), each with her avatar at the time, the serif year (or the first-week
-  date range under a `text-caption` label) and her items; the older side wears `sepiaClass(year)`.
-  Between them sits the pair's one number, 「{{count}}年」 in `font-display text-muted` (never 0), or
-  an arrow for 初見と今. A side names its person (`lang="ja"`) only when the two sides are different
-  people. The shared keyword is underlined like the nickname (`underline decoration-accent`, through
-  `MemoryText`'s `highlight`); the slide variant keeps the recap's `<mark>`. The ⇆ toggle is a `Pill`
-  (pressed while the comparison shows) in the host's header; the mode pills are `Pill`s. No motion
-  of its own.
+- **初見と今** (`features/memories/thenNow/FirstMeetPanel.tsx`): the memoir timeline's month
+  header holds a 初見と今 `Pill` (pressed while the rows replace the month). Column heads 初見 / 今
+  (serif, her avatar at the time, a `text-caption text-muted` caption), then one row per kind under
+  a `border-subtle` rule: the kind label, her first message and a recent one as
+  `bg-memories-paper shadow-memories-polaroid` buttons (JST date and clock in `text-caption
+  text-muted`, the photo, the voice length or her words in three lines; the older photo wears
+  `sepiaClass`), and between them an arrow over the time apart (「1 年 8 天」, `font-display
+  text-small text-secondary`, never 0). A side opens her day (`MemberDayDialog`). No motion beyond the
+  shared lift on hover (`motion-reduce:` none). `ThenNowPair` is now only the recap's S08 pair (its
+  stacked slide cards, the older one in full sepia, the shared keyword as a `<mark>`).
+- **歷年同一天** (`features/memories/day/YearLanes.tsx`, `yearLanes.ts`): the day view's third mode
+  `Pill`. A sticky `w-12` hour axis (`text-caption tabular-nums text-muted`) beside one `w-56` column
+  per year (a sticky serif year over its message count), each a `bg-sunken` lane holding the
+  swimlanes' `LaneCard`s placed by JST time of day (`hourBands`, 96 px a quiet hour). Neighbouring
+  years' matching kinds are joined by an `aria-hidden` SVG of dotted lines in `text-muted
+  opacity-60` across the 40 px gutter; an hour quiet in this year but not in another is a
+  `border-dashed border-strong` outline with 「這個時段沒有訊息」 in `text-caption text-muted` when
+  tall enough. An older year's stills wear `sepiaClass`; with several people each card shows her
+  small avatar. The columns keep their width and the day view's scroller scrolls sideways.
 - **彼女の24時間** (`features/memories/day24/`): the memoir's `day24` tab (reached from a header
   chip, neither tab pill selected). A serif title with her name `lang="ja"`, a `text-secondary`
   subtitle, and a narrow `bg-memories-sky` day line (morning at the top, night at the bottom, no
