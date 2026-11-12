@@ -50,6 +50,12 @@ RECAP_CHRISTMAS_MD = (12, 25)
 WELCOME_FIRST_N = 1
 WELCOME_WINDOW = timedelta(minutes=30)
 WELCOME_ANCHOR_DAYS = timedelta(days=2)
+# The welcome block's automatic follow-up line(s) (「%%%といっぱいお話ししたいんだ」,
+# sent ~15 min after the welcome): the next message in the room, a server id at
+# most this far from the previous flagged one, within WELCOME_WINDOW of the
+# welcome. Strictly consecutive (1): every follow-up in the archive is
+# welcome id + 1, while her own next message is hundreds of ids away.
+WELCOME_FOLLOW_ID_GAP = 1
 
 
 @dataclass(frozen=True)
@@ -90,6 +96,14 @@ def welcome_ids(msgs: Sequence[Msg], sub_start: date | None = None) -> set[int]:
     (the archive can begin before the subscription). Both conditions keep
     false positives low: she may thank for 登録 in her own words later on, and
     the opening can hold her own greeting without the phrase.
+
+    A welcome's automatic follow-up line is flagged too, without the phrase,
+    when it is the room's next message (a chain continues from the last
+    flagged one), a ``text``, its server id is at most
+    :data:`WELCOME_FOLLOW_ID_GAP` above the previous flagged id, and it was
+    sent within :data:`WELCOME_WINDOW` of the welcome. Server ids are one
+    sequence for every message, so a consecutive id means nothing (no fan
+    reply, no other message) came in between: it is the same burst.
     """
     anchors: set[int] = {0} if msgs else set()
     if sub_start is not None and msgs:
@@ -106,6 +120,20 @@ def welcome_ids(msgs: Sequence[Msg], sub_start: date | None = None) -> set[int]:
                 break
             if m.type == "text" and is_welcome_text(m.text):
                 out.add(m.id)
+    for k, m in enumerate(msgs):
+        if m.id not in out or (k > 0 and msgs[k - 1].id in out):
+            continue  # only start from the head of a flagged run
+        limit = m.ts + WELCOME_WINDOW
+        prev = m
+        for nxt in msgs[k + 1 :]:
+            if (
+                nxt.type != "text"
+                or not 0 < nxt.id - prev.id <= WELCOME_FOLLOW_ID_GAP
+                or nxt.ts > limit
+            ):
+                break
+            out.add(nxt.id)
+            prev = nxt
     return out
 
 

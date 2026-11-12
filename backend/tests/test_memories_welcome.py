@@ -380,3 +380,57 @@ async def test_name_moments_leave_out_the_welcome(svc):
     payload = await nm.nickname_moments(SERVICE, svc, summary, year=None)
     ids = [i["message"]["id"] for i in payload["items"]]
     assert 419388 not in ids and ids == [453054, 419672]
+
+
+# --- r4 follow-up: the welcome block's automatic follow-up lines -----------------
+
+
+def _msg(i, jst, text="", type_="text"):
+    local = datetime.strptime(jst, "%Y-%m-%d %H:%M").replace(tzinfo=JST)
+    return sel.Msg(i, local.astimezone(timezone.utc), type_, text)
+
+
+FOLLOW = "%%%〜！！\r\n\r\n%%%といっぱいお話ししたいんだ〜💭\r\n\r\nまたメッセージ送っちゃお〜😳"
+
+
+def test_follow_up_line_of_the_welcome_block_is_flagged():
+    msgs = [
+        _msg(
+            419379, "2025-11-01 00:05", "ご登録ありがとうございます！\r\n大野愛実だよ🦀"
+        ),
+        _msg(419380, "2025-11-01 00:20", FOLLOW),  # id +1, 15 min later
+        _msg(419705, "2025-11-01 10:35", "", "video"),
+        _msg(419708, "2025-11-01 10:36", "さっそく集まってくれた%%%におくるーどうがー"),
+    ]
+    assert sel.welcome_ids(msgs) == {419379, 419380}
+
+
+def test_follow_up_chain_stays_within_30_min_of_the_welcome():
+    msgs = [
+        _msg(10, "2025-11-01 00:05", "ご登録ありがとうございます！"),
+        _msg(11, "2025-11-01 00:15", "これからよろしくね"),
+        _msg(12, "2025-11-01 00:30", "またあとで連絡するね"),  # 25 min: still in
+        _msg(13, "2025-11-01 00:40", "今日はレッスン！"),  # 35 min: out
+    ]
+    assert sel.welcome_ids(msgs) == {10, 11, 12}
+
+
+@pytest.mark.parametrize(
+    "follow",
+    [
+        _msg(12, "2025-11-01 00:20", FOLLOW),  # id gap 2: something came between
+        _msg(11, "2025-11-01 00:36", FOLLOW),  # 31 min after the welcome
+        _msg(11, "2025-11-01 00:20", "", "picture"),  # not text
+    ],
+)
+def test_follow_up_needs_a_consecutive_id_the_window_and_text(follow):
+    welcome = _msg(10, "2025-11-01 00:05", "ご登録ありがとうございます！")
+    assert sel.welcome_ids([welcome, follow]) == {10}
+
+
+def test_no_follow_up_without_a_flagged_welcome():
+    msgs = [
+        _msg(10, "2025-11-01 00:05", "はじめまして！"),
+        _msg(11, "2025-11-01 00:20", FOLLOW),
+    ]
+    assert sel.welcome_ids(msgs) == set()
