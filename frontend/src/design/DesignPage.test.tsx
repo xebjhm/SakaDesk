@@ -24,6 +24,17 @@ describe('DesignPage', () => {
         }
     });
 
+    it('previews a 3-year postcard stack and its backs with sample data (dev only)', () => {
+        render(<DesignPage />);
+        expect(screen.getByRole('heading', { name: 'Memories postcards (sample data)' })).toBeInTheDocument();
+        const preview = screen.getByTestId('postcard-preview');
+        const layers = preview.querySelectorAll('[data-testid="postcard-layer"]');
+        expect([...layers].map((l) => l.getAttribute('data-year'))).toEqual(['2026', '2025', '2024']);
+        const backs = preview.querySelectorAll('[data-testid="postcard-back"]');
+        expect(backs).toHaveLength(3);
+        expect(backs[0]).toHaveAttribute('aria-pressed', 'true');
+    });
+
     it('shows the calendar weekend and holiday swatches and no Sunday decor swatch', () => {
         render(<DesignPage />);
         expect(screen.getByText('calendar.holiday')).toBeInTheDocument();

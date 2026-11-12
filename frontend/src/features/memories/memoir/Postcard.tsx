@@ -69,8 +69,12 @@ const Stamp: React.FC<{ theme: PostcardTheme }> = ({ theme }) => {
     );
 };
 
-/** The postmark: a round ink stamp with the year, the month-day and a last line (the day's name or the clock). */
-const Postmark: React.FC<{ year: number; day: string; last: string; className?: string }> = ({ year, day, last, className }) => (
+/**
+ * The postmark: a round ink stamp with the year, the month-day and, on a back, the JST clock (five
+ * characters fit the circle; the shelf's postmark has no third line, the day's name sits in the
+ * caption under the stack instead, so nothing is cut inside the circle).
+ */
+const Postmark: React.FC<{ year: number; day: string; last?: string; className?: string }> = ({ year, day, last, className }) => (
     <span
         data-testid="postcard-postmark"
         className={cn(
@@ -80,7 +84,7 @@ const Postmark: React.FC<{ year: number; day: string; last: string; className?: 
     >
         <span>{year}</span>
         <span className="font-display font-semibold">{postmarkDay(day)}</span>
-        <span className="max-w-full truncate px-1">{last}</span>
+        {last && <span className="max-w-full px-1">{last}</span>}
     </span>
 );
 
@@ -97,8 +101,8 @@ const From: React.FC<{ sender?: PostcardSender }> = ({ sender }) => {
 };
 
 /** The front of the newest postcard: the themed greeting, stamp and postmark, her words and who sent it. */
-const PostcardFront: React.FC<{ theme: PostcardTheme; postcard: PostcardYear; title: string; sender?: PostcardSender }> = ({
-    theme, postcard, title, sender,
+const PostcardFront: React.FC<{ theme: PostcardTheme; postcard: PostcardYear; sender?: PostcardSender }> = ({
+    theme, postcard, sender,
 }) => {
     const { t } = useTranslation();
     const look = THEME[theme];
@@ -107,11 +111,19 @@ const PostcardFront: React.FC<{ theme: PostcardTheme; postcard: PostcardYear; ti
     return (
         <>
             {look.band && <span data-testid="postcard-band" aria-hidden="true" className={cn('absolute inset-x-0 top-0 h-1.5 rounded-t-sm', look.band)} />}
-            <span className="absolute right-2 top-2.5"><Stamp theme={theme} /></span>
-            <Postmark year={postcard.year} day={postcard.date} last={title} className="absolute right-9 top-4" />
-            <span className="relative flex h-full flex-col gap-1 p-3 pt-3.5 text-left">
-                <span lang="ja" className={cn('pr-20 font-display text-body font-semibold', look.greetingTone)}>{t(look.greeting)}</span>
-                <span className="mt-4 flex min-h-0 flex-1 gap-2">
+            <span className="relative flex h-full flex-col p-3 pt-3.5 text-left">
+                {/* The top zone (h-14) holds the greeting, the postmark and the stamp side by side:
+                    her words start below it, so the postmark never covers them. */}
+                <span data-testid="postcard-head" className="flex h-14 shrink-0 items-start gap-1">
+                    <span lang="ja" className={cn('line-clamp-2 min-w-0 flex-1 font-display text-small font-semibold', look.greetingTone)}>
+                        {t(look.greeting)}
+                    </span>
+                    <Postmark year={postcard.year} day={postcard.date} className="shrink-0" />
+                    <Stamp theme={theme} />
+                </span>
+                {/* Three 20 px lines (text-small): the area is taller than the clamp, so the last line
+                    ends in an ellipsis on a line boundary, never cut through the glyphs. */}
+                <span data-testid="postcard-words" className="mt-1 flex min-h-0 flex-1 gap-2 overflow-hidden">
                     {face && !words && (face.type === 'picture' || face.type === 'video') && face.media_url && (
                         <MemoryThumb message={face} px={64} className={cn('h-12 w-16 shrink-0 rounded-xs', sepiaClass(postcard.year))} />
                     )}
@@ -131,7 +143,7 @@ const PostcardFront: React.FC<{ theme: PostcardTheme; postcard: PostcardYear; ti
 
 interface PostcardStackProps {
     card: BinderCard;
-    /** The card's title (元旦, 誕生日 …): the button's name and the front postmark's last line. */
+    /** The card's title (元旦, 誕生日 …): the button's name and the caption's first part. */
     title: string;
     sender?: PostcardSender;
     onOpen: (card: BinderCard) => void;
@@ -141,8 +153,9 @@ interface PostcardStackProps {
  * A 特別な日 card on the shelf (A3): each year is a postcard she sent, postmarked with that year.
  * Several years make a stack (at most {@link STACK_LAYERS} drawn, the newest on top) that fans out
  * while the stack is hovered or focused (`motion-safe:` only, so it stays still under reduced
- * motion). One focusable button named by the title, described by 「N 枚のはがき」 and the years;
- * a click opens the card's postcard backs.
+ * motion). The stack and its caption (the title, 「はがき N 枚」 and the years) fill the shelf
+ * tiles' `h-52`, so the bottom edges line up. One focusable button named by the title, described by
+ * the count and the years; a click opens the card's postcard backs.
  */
 export const PostcardStack: React.FC<PostcardStackProps> = ({ card, title, sender, onOpen }) => {
     const { t } = useTranslation();
@@ -154,14 +167,14 @@ export const PostcardStack: React.FC<PostcardStackProps> = ({ card, title, sende
     const layers = years.slice(-STACK_LAYERS).reverse();
     const fan = years.length > 1;
     return (
-        <div data-testid="card-tile" data-earned="true" data-card-key={card.key} data-postcard={theme} className="relative w-56 shrink-0">
+        <div data-testid="card-tile" data-earned="true" data-card-key={card.key} data-postcard={theme} className="relative flex h-52 w-56 shrink-0 flex-col">
             <button
                 type="button"
                 data-testid="postcard-stack"
                 aria-label={title}
                 aria-describedby={descId}
                 onClick={() => onOpen(card)}
-                className="group relative block h-40 w-full rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                className="group relative block min-h-0 w-full flex-1 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             >
                 {layers.map((postcard, i) => {
                     const back = i > 0;
@@ -179,21 +192,24 @@ export const PostcardStack: React.FC<PostcardStackProps> = ({ card, title, sende
                             )}
                         >
                             {back ? (
-                                <>
-                                    <span className="absolute right-2 top-2.5"><Stamp theme={theme} /></span>
-                                    <Postmark year={postcard.year} day={postcard.date} last={title} className="absolute right-9 top-4" />
-                                </>
+                                <span className="absolute right-3 top-3.5 flex items-start gap-1">
+                                    <Postmark year={postcard.year} day={postcard.date} />
+                                    <Stamp theme={theme} />
+                                </span>
                             ) : (
-                                <PostcardFront theme={theme} postcard={newest} title={title} sender={sender} />
+                                <PostcardFront theme={theme} postcard={newest} sender={sender} />
                             )}
                         </span>
                     );
                 })}
             </button>
-            <p id={descId} data-testid="postcard-stack-caption" className="mt-3 text-center text-caption tabular-nums text-muted">
-                {t('memories.postcard.stack', { count: years.length })}
-                {' ・ '}
-                {stackYears(years.map((y) => y.year))}
+            <p data-testid="postcard-stack-caption" className="mt-2 truncate text-center text-caption tabular-nums text-muted">
+                <span aria-hidden="true">{title} ・ </span>
+                <span id={descId}>
+                    {t('memories.postcard.stack', { count: years.length })}
+                    {' ・ '}
+                    {stackYears(years.map((y) => y.year))}
+                </span>
             </p>
         </div>
     );

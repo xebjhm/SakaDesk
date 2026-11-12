@@ -19,6 +19,7 @@ import {
 } from './primitives';
 import { useLoadingStages } from './loading';
 import { motion } from './tokens/motion';
+import { PostcardPreview } from '../features/memories/memoir/PostcardPreview';
 
 // Full class names so Tailwind's scanner generates them.
 const RADIUS_CLASS: Record<RadiusStep, string> = {
@@ -386,6 +387,10 @@ export const DesignPage: React.FC = () => {
                 </Section>
 
                 <LoadingSection />
+
+                <Section title={t('designPage.postcards')}>
+                    <PostcardPreview />
+                </Section>
 
                 <Section title={t('designPage.landing')}>
                     <div className="flex items-center gap-4">
