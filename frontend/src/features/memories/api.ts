@@ -263,9 +263,18 @@ export function fetchSameTime(service: string, signal: AbortSignal): Promise<Sam
     return getJson(url(service, '/same-time'), signal);
 }
 
-/** Her 24 hours; `seed` (🎲) rebuilds the day, else the JST date picks it. */
-export function fetchDay24(service: string, member: string, seed: number | undefined, signal: AbortSignal): Promise<Day24Payload> {
-    return getJson(url(service, '/memoir/day24', { member, seed }), signal);
+/**
+ * Her 24 hours; `seed` (🎲) rebuilds the day, else the JST date picks it. `recent` are the message
+ * ids shown in the last re-rolls: the backend ranks them last so 🎲 brings fresh slots.
+ */
+export function fetchDay24(
+    service: string,
+    member: string,
+    seed: number | undefined,
+    signal: AbortSignal,
+    recent: readonly number[] = [],
+): Promise<Day24Payload> {
+    return getJson(url(service, '/memoir/day24', { member, seed, recent: recent.length ? recent.join(',') : undefined }), signal);
 }
 
 /** あの日と今日 for a date, or null (hide the toggle). */

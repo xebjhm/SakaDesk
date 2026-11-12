@@ -807,21 +807,39 @@ def _parse_seed(raw: str | None) -> int | None:
     return int(raw)
 
 
+def _parse_recent(raw: str | None) -> frozenset[int]:
+    """Recently shown message ids: comma-separated, each 1-18 ASCII digits, at
+    most ``day24.RECENT_MAX``; anything else is 400."""
+    if raw is None:
+        return frozenset()
+    parts = raw.split(",")
+    if len(parts) > day24.RECENT_MAX or not all(SEED_RE.match(p) for p in parts):
+        logger.warning("memories.api.reject", reason="bad_recent")
+        raise HTTPException(status_code=400, detail="Invalid recent")
+    return frozenset(int(p) for p in parts)
+
+
 @router.get("/{service}/memoir/day24")
 async def memoir_day24_route(
-    service: str, member: str = Query(...), seed: str | None = Query(None)
+    service: str,
+    member: str = Query(...),
+    seed: str | None = Query(None),
+    recent: str | None = Query(None),
 ) -> dict:
     """彼女の24時間 of the person owning ``member`` (``day24.build_day24``).
 
     ``seed`` (1-18 digits, else 400) rebuilds the day (🎲); without it the
-    JST date picks the day. ``{"slots": []}`` when her day is too thin.
+    JST date picks the day. ``recent`` (comma-separated ids the client showed
+    in its last re-rolls, else 400) are avoided. ``{"slots": []}`` when her
+    day is too thin.
     """
     now = datetime.now(timezone.utc)
     service_data_dir = _service_dir(service)
     parsed = _parse_seed(seed)
+    shown = _parse_recent(recent)
     summary = await _person(service_data_dir, member, view="day24")
     return await day24.build_day24(
-        service, service_data_dir, summary, seed=parsed, now=now
+        service, service_data_dir, summary, seed=parsed, now=now, recent=shown
     )
 
 

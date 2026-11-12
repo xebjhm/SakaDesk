@@ -18,6 +18,8 @@ import type { Day24Full, Day24Payload, Day24Slot } from '../types';
 const PHOTO_PX = 96;
 /** Seeds stay positive 31-bit integers (the backend reads an int). */
 const SEED_RANGE = 2 ** 31 - 1;
+/** How many shown message ids 🎲 remembers (three days of up to 7 slots; the backend takes 64). */
+export const RECENT_MAX = 21;
 /** Stands in for her name in the translated title (a private-use character no copy contains). */
 const NAME_MARK = '';
 
@@ -85,7 +87,8 @@ const Slot: React.FC<{ slot: Day24Slot; memberPath: string; go: (next: MemoriesR
  * never chosen for the fan) and her words, a still or a voice (`LazyVoice` key `day24|<room>|<id>`);
  * a click opens that JST day (`{page: 'day', date, from: <this memoir day24 tab>}`, so back
  * returns here). 🎲 「ほかの一日をつくる」 refetches with a new
- * random seed (`memories_load` `day24`, as every load); the day on screen stays, dimmed and
+ * random seed and the ids shown in the last re-rolls (`recent`, at most `RECENT_MAX`, so the
+ * backend avoids them) (`memories_load` `day24`, as every load); the day on screen stays, dimmed and
  * `aria-busy`, until the next one arrives (a failure shows the retry in its place), so the header
  * and 🎲 keep their place and focus. A thin day (`{slots: []}`) shows the gentle
  * card instead, with no number, and logs `memories_skip` `day24_thin`. No animation.
@@ -93,10 +96,12 @@ const Slot: React.FC<{ slot: Day24Slot; memberPath: string; go: (next: MemoriesR
 export const Day24View: React.FC<Day24ViewProps> = ({ service, memberPath, name, go }) => {
     const { t } = useTranslation();
     const [seed, setSeed] = useState<number | undefined>(undefined);
+    // Ids shown in the last re-rolls (this member's tab only): sent with 🎲 so the next day is fresh.
+    const [recent, setRecent] = useState<number[]>([]);
     const query = useMemoriesQuery(
         'day24',
-        (signal) => fetchDay24(service, memberPath, seed, signal),
-        [service, memberPath, seed],
+        (signal) => fetchDay24(service, memberPath, seed, signal, recent),
+        [service, memberPath, seed, recent],
         { count: (d) => d.slots.length },
     );
     const data = query.data;
@@ -136,7 +141,10 @@ export const Day24View: React.FC<Day24ViewProps> = ({ service, memberPath, name,
                     title={t('memories.day24.reroll')}
                     icon={<Dices />}
                     variant="secondary"
-                    onClick={() => setSeed(nextSeed(view.seed))}
+                    onClick={() => {
+                        setRecent((prev) => [...prev, ...view.slots.map((s) => s.message.id)].slice(-RECENT_MAX));
+                        setSeed(nextSeed(view.seed));
+                    }}
                 />
             </header>
             {query.status === 'error' ? (

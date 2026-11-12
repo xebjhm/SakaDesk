@@ -50,6 +50,7 @@ describe('memories api', () => {
         ['fetchSameTime', () => api.fetchSameTime(S, signal()), '/same-time', {}],
         ['fetchDay24', () => api.fetchDay24(S, MEMBER_PATH, undefined, signal()), '/memoir/day24', { member: MEMBER_PATH }],
         ['fetchDay24 (seed)', () => api.fetchDay24(S, MEMBER_PATH, 42, signal()), '/memoir/day24', { member: MEMBER_PATH, seed: '42' }],
+        ['fetchDay24 (recent)', () => api.fetchDay24(S, MEMBER_PATH, 42, signal(), [3, 5]), '/memoir/day24', { member: MEMBER_PATH, seed: '42', recent: '3,5' }],
         ['fetchThenNowDay', () => api.fetchThenNowDay(S, { date: '2024-09-14', member: MEMBER_PATH }, signal()), '/then-now/day', { date: '2024-09-14', member: MEMBER_PATH }],
         ['fetchThenNowDay (all)', () => api.fetchThenNowDay(S, { date: '2024-09-14' }, signal()), '/then-now/day', { date: '2024-09-14' }],
         ['fetchThenNowFirstWeek', () => api.fetchThenNowFirstWeek(S, MEMBER_PATH, signal()), '/then-now/first-week', { member: MEMBER_PATH }],

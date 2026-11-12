@@ -224,12 +224,11 @@ async def test_years_vary_when_possible(svc):
     assert 20 in drawn
 
 
-def test_rank_weights_keep_order_after_the_penalty():
-    # Higher score, more weight; equal scores, equal weight; a penalised
-    # (negative) score still weighs less than a fresh one.
-    assert day24.rank_weights([0, -150, -150]) == [2, 1, 1]
-    assert day24.rank_weights([300, 200, 200, -70, -150]) == [4, 3, 3, 2, 1]
-    assert day24.rank_weights([5, 5]) == [1, 1]
+def test_position_weights_favour_the_better_candidates():
+    # Linear by rank after the seeded shuffle + score sort: the best weighs n.
+    assert day24.position_weights(3) == [3, 2, 1]
+    assert day24.position_weights(1) == [1]
+    assert day24.position_weights(0) == []
 
 
 @pytest.mark.asyncio
@@ -281,14 +280,28 @@ def test_score_rules():
     from backend.services.memories.lexicon import GREETING_BITS
 
     ohayo = GREETING_BITS["ohayo"]
-    assert day24.score(fact(), "hour", set()) == 0
-    assert day24.score(fact(greeting_mask=ohayo), "ohayo", set()) == 200
-    assert day24.score(fact(greeting_mask=ohayo), "hour", set()) == 0
-    assert day24.score(fact(type="picture", photo_score=255), "hour", set()) == 125
-    assert day24.score(fact(type="video", photo_score=None), "hour", set()) == 100
-    assert day24.score(fact(has_nickname=True), "hour", set()) == 80
-    assert day24.score(fact(favorited=True), "hour", set()) == 300
-    assert day24.score(fact(), "hour", {2024}) == -150
+    plain = fact(importance=None)
+    assert day24.score(plain, "hour", set()) == 0
+    assert (
+        day24.score(fact(importance=None, greeting_mask=ohayo), "ohayo", set()) == 200
+    )
+    assert day24.score(fact(importance=None, greeting_mask=ohayo), "hour", set()) == 0
+    assert (
+        day24.score(
+            fact(type="picture", photo_score=255, importance=None), "hour", set()
+        )
+        == 125
+    )
+    assert day24.score(fact(type="video", importance=None), "hour", set()) == 100
+    assert day24.score(fact(importance=None, has_nickname=True), "hour", set()) == 80
+    assert day24.score(fact(importance=None, favorited=True), "hour", set()) == 300
+    assert day24.score(plain, "hour", {2024}) == -150
+    # text quality: importance // 4, capped at 400 (so +100), never negative
+    assert day24.score(fact(importance=120), "hour", set()) == 30
+    assert day24.score(fact(importance=5000), "hour", set()) == 100
+    assert day24.score(fact(importance=-200), "hour", set()) == 0
+    # a recently shown message sinks below every fresh one
+    assert day24.score(plain, "hour", set(), frozenset({1})) == -400
 
 
 @pytest.mark.asyncio
@@ -357,3 +370,92 @@ async def test_late_slot_window_crosses_midnight_end_to_end(svc):
         assert 0 not in hours_of(got)[:-1]
         late.add(got["slots"][-1]["message"]["id"])
     assert late == {5, 6}
+
+
+# --- r4 §11: a wider pool, quality, and no repeats across re-rolls -------------------
+
+
+def rich_day(per_slot: int = 40) -> list[dict]:
+    """Five slots (8, 12, 15, 18, 22 h), ``per_slot`` messages each in 2025-26,
+    texts of varied length so the quality term spreads the scores."""
+    out = []
+    base = (8, 12, 15, 18, 22)
+    words = ("おはよう☀️", "お昼ごはん", "レッスン", "お疲れさま", "おやすみ🌙")
+    i = 1
+    for k in range(per_slot):
+        y, mo, d = (
+            (2025, 1 + k % 12, 1 + k % 28) if k % 2 else (2026, 1 + k % 10, 1 + k % 28)
+        )
+        for h, w in zip(base, words):
+            body = w + "、今日もありがとう" * (k % 5) + f"（{k}）"
+            out.append(msg(i, at(y, mo, d, h, k % 30), content=body))
+            i += 1
+    return out
+
+
+def ids_of(payload) -> list[int]:
+    return [s["message"]["id"] for s in payload["slots"]]
+
+
+@pytest.mark.asyncio
+async def test_ten_rerolls_give_eight_distinct_picks_per_slot(svc):
+    kane(svc, rich_day())
+    summary = await person(svc)
+    tagged = await day24.get_person_facts(svc, summary)
+
+    def run() -> list[list[int]]:
+        recent: list[int] = []
+        days = []
+        for seed in range(1, 11):
+            picks = day24._pick(tagged, seed, frozenset(recent))
+            ids = [p[2][1].id for p in picks]
+            days.append(ids)
+            recent = (recent + ids)[-day24.RECENT_MAX :]
+        return days
+
+    days = run()
+    assert run() == days  # deterministic under fixed seeds
+    for slot in range(len(days[0])):
+        assert len({d[slot] for d in days}) >= 8, slot
+
+
+@pytest.mark.asyncio
+async def test_plain_texts_no_longer_tie_on_the_oldest(svc):
+    # 12 plain texts in the 15 h window: the old pool always kept the 5 oldest.
+    msgs = full_day(years=(2025,))
+    msgs += [
+        msg(100 + k, at(2025, 4, 1 + k, 15, 10), content=f"レッスン終わった{k}")
+        for k in range(12)
+    ]
+    kane(svc, msgs)
+    drawn = {(await build(svc, seed=s))["slots"][2]["message"]["id"] for s in range(40)}
+    assert any(i >= 106 for i in drawn)  # newer than the five oldest
+
+
+@pytest.mark.asyncio
+async def test_recent_ids_are_avoided_and_sent_through_build(svc):
+    kane(svc, rich_day(per_slot=10))
+    first = await build(svc, seed=3)
+    summary = await person(svc)
+    with time_machine.travel(NOW, tick=False):
+        again = await day24.build_day24(
+            SERVICE,
+            svc,
+            summary,
+            seed=3,
+            now=datetime.now(timezone.utc),
+            recent=frozenset(ids_of(first)),
+        )
+    assert not set(ids_of(again)) & set(ids_of(first))
+
+
+@pytest.mark.asyncio
+async def test_welcome_messages_are_never_picked(svc):
+    msgs = full_day(years=(2025,))
+    # the subscription welcome at the room's opening, 08:05 (ohayo window)
+    msgs.insert(
+        0, msg(0, at(2024, 6, 1, 8, 5), content="ご登録ありがとうございます！おはよう☀️")
+    )
+    kane(svc, msgs)
+    for seed in range(15):
+        assert 0 not in ids_of(await build(svc, seed=seed))

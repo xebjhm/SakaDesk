@@ -691,6 +691,29 @@ def test_day24_route_with_seed(out):
     no_abs_paths(out, body)
 
 
+def test_day24_route_takes_recent_ids(out):
+    hours = (8, 12, 15, 18, 22)  # JST
+    rewrite_room(
+        out,
+        [
+            msg(
+                10 + k,
+                f"2025-03-0{k + 1}T{(h - 9) % 24:02d}:10:00Z",
+                content=f"言葉{k}",
+            )
+            for k, h in enumerate(hours)
+        ],
+    )
+    r = get(DAY24, member=MEMBER, seed="42", recent="10,11,999")
+    assert r.status_code == 200  # one candidate per slot: still shown, just ranked last
+    assert [s["message"]["id"] for s in r.json()["slots"]] == [10, 11, 12, 13, 14]
+
+
+@pytest.mark.parametrize("recent", ["a", "1,,2", "-1", ",".join(["1"] * 65), "1" * 19])
+def test_day24_bad_recent_is_400(out, recent):
+    assert get(DAY24, member=MEMBER, recent=recent).status_code == 400
+
+
 @pytest.mark.parametrize("seed", ["abc", "-1", "1.5", "", "1" * 19, "7\n"])
 def test_day24_bad_seed_is_400(out, seed):
     assert get(DAY24, member=MEMBER, seed=seed).status_code == 400

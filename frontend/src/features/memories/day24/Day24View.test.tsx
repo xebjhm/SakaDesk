@@ -13,7 +13,7 @@ import { fetchDay24 } from '../api';
 import { MEMBER_PATH, memoryMessage } from '../__fixtures__/memories';
 import type { MemoriesRoute } from '../MemoriesFeature';
 import type { Day24Full } from '../types';
-import { Day24View } from './Day24View';
+import { Day24View, RECENT_MAX } from './Day24View';
 
 beforeAll(async () => { await i18n.changeLanguage('ja'); });
 
@@ -72,6 +72,9 @@ describe('Day24View', () => {
         const seed = vi.mocked(fetchDay24).mock.calls[1]?.[2];
         expect(typeof seed).toBe('number');
         expect(seed).not.toBe(20001);
+        // the day on screen is remembered, so the backend avoids it
+        expect(vi.mocked(fetchDay24).mock.calls[0]?.[4]).toEqual([]);
+        expect(vi.mocked(fetchDay24).mock.calls[1]?.[4]).toEqual([1, 2, 3, 4, 5]);
         await waitFor(() => expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_load', expect.objectContaining({ target: 'day24', outcome: 'ok' })));
     });
 
@@ -120,5 +123,17 @@ describe('Day24View', () => {
         expect(screen.queryByTestId('day24-slot')).toBeNull();
         await userEvent.click(retry);
         expect(await screen.findAllByTestId('day24-slot')).toHaveLength(5);
+    });
+
+    it('remembers at most RECENT_MAX shown ids across re-rolls', async () => {
+        renderView();
+        await screen.findAllByTestId('day24-slot');
+        for (let n = 2; n <= 6; n += 1) {
+            await userEvent.click(screen.getByRole('button', { name: 'ほかの一日をつくる' }));
+            await waitFor(() => expect(vi.mocked(fetchDay24)).toHaveBeenCalledTimes(n));
+            await waitFor(() => expect(screen.getByTestId('day24-slots')).not.toHaveAttribute('aria-busy'));
+        }
+        const last = vi.mocked(fetchDay24).mock.calls[5]?.[4] ?? [];
+        expect(last).toHaveLength(RECENT_MAX);
     });
 });
