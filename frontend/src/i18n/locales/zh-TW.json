@@ -972,6 +972,8 @@
       "birthdayCondition": "她生日那天收到的訊息",
       "subAnniversary": "你的紀念日",
       "subAnniversaryCondition": "你的訂閱紀念日收到的訊息",
+      "joinDay": "加入紀念日",
+      "joinDayCondition": "你加入的那一天",
       "longest": "最長的一則訊息",
       "longestCondition": "寫得最長的一則訊息",
       "busiestDay": "最熱鬧的一天",

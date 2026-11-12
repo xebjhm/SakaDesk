@@ -44,7 +44,7 @@ def svc(tmp_path, monkeypatch):
 
 
 def test_recap_version_was_bumped_for_nfkc_keywords():
-    assert recap.RECAP_VERSION == "3"
+    assert recap.RECAP_VERSION >= "3"
 
 
 @pytest.mark.asyncio

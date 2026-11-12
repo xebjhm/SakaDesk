@@ -18,6 +18,21 @@ Promo: every 瞬間 (``moment.*``) card and the greeting pair exclude promo;
 the count (数字) cards and the 初めて cards count every message. Every
 tie-break goes to the earlier fact or day. Filters use ``facts.select``.
 
+Welcome: the automatic greeting a room sends when the fan subscribes
+(``Fact.is_welcome``) is never a card's face or ref, on any shelf. Counts
+(messages, the busiest day's count, streak days, a change card's
+``messages``) still include it; nickname counts do not (it is not her calling
+the fan's name). ``first.message`` is therefore her first self-written
+message.
+
+元旦 (``special.newyear``): per year, her messages on January 1 JST; the
+first one before 00:30 (``facts.is_new_year_midnight``, the recap S01 rule),
+else the best of that day. A year with no 1/1 message has no entry.
+
+加入紀念日 (``special.join_day``): the subscription start day. Its face is the
+best of her own (non-welcome) messages that day, or none (the label alone).
+Hidden without a known start; a silhouette while the start is in the future.
+
 A card whose condition is not met is either returned with ``earned=False``
 (a silhouette) or, for the cards the catalogue marks *hidden*, left out of the
 result and of :func:`progress_summary`. An unearned card's ``progress`` is
@@ -44,7 +59,7 @@ from dataclasses import dataclass, field
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
-from backend.services.memories.facts import Fact, select
+from backend.services.memories.facts import Fact, is_new_year_midnight, select
 from backend.services.memories.selection import JST
 
 SHELVES = (
@@ -61,7 +76,7 @@ SHELVES = (
 
 # Bump on any rule or payload change: the binder's cache hash includes it, so
 # a shipped rule change never keeps serving binders built by the old rules.
-CARDS_VERSION = 2
+CARDS_VERSION = 3
 
 FALLBACK_NEAREST = "nearest"
 FALLBACK_FIRST_AFTER = "first_after"
@@ -246,8 +261,8 @@ def _nearest(tagged: Sequence[_Tagged], day: date) -> _Tagged | None:
 def _select(tagged: Sequence[_Tagged], **filters: Any) -> list[_Tagged]:
     """:func:`facts.select` over tagged facts, keeping each fact's room.
 
-    Same filters and the same default: promo is excluded unless
-    ``include_promo=True``.
+    Same filters and the same defaults: promo is excluded unless
+    ``include_promo=True``, the welcome unless ``include_welcome=True``.
     """
     keep = {id(f) for f in select((t[1] for t in tagged), **filters)}
     return [t for t in tagged if id(t[1]) in keep]
@@ -305,12 +320,14 @@ def _first(
 # --- shelves ------------------------------------------------------------------------------
 
 
-def _first_cards(tagged: Sequence[_Tagged]) -> list[Card]:
-    out = [_first("first.message", "first", tagged)]
+def _first_cards(faces: Sequence[_Tagged]) -> list[Card]:
+    """``faces`` = every fact but the welcome, so ``first.message`` is her
+    first self-written message (promo included)."""
+    out = [_first("first.message", "first", faces)]
     for kind in ("picture", "video", "voice"):
-        items = _select(tagged, types={kind}, include_promo=True)
+        items = _select(faces, types={kind}, include_promo=True)
         out.append(_first(f"first.{kind}", "first", items))
-    nick = _select(tagged, nickname=True, include_promo=True)
+    nick = _select(faces, nickname=True, include_promo=True)
     out.append(_first("first.nickname", "first", nick, foil=True))
     return out
 
@@ -463,8 +480,14 @@ def _special_cards(
 
     newyear: list[_YearPick] = []
     for y in years:
-        face = next((t for t in by_year[y] if not t[1].is_promo), by_year[y][0])
-        newyear.append((y, face, None))
+        day_facts = days.get(date(y, 1, 1), [])
+        midnight = [
+            t for t in day_facts if not t[1].is_promo and is_new_year_midnight(t[1])
+        ]
+        if midnight:
+            newyear.append((y, midnight[0], None))
+        elif day_facts:
+            newyear.append((y, _best(day_facts), FALLBACK_BEST_OF_DAY))
 
     valentine: list[_YearPick] = []
     christmas: list[_YearPick] = []
@@ -500,8 +523,9 @@ def _special_cards(
 
     start = inp.subscription_start
     if start is None:
-        hidden += 1
+        hidden += 2  # join day + sub anniversary
     else:
+        out.append(_join_day_card(start, days, inp.today))
         subs: list[_YearPick] = []
         for y in years:
             if y < start.year + 1:
@@ -511,6 +535,33 @@ def _special_cards(
                 subs.append((y, best, None))
         out.append(_yearly("special.sub_anniversary", subs))
     return out, hidden
+
+
+def _join_day_card(
+    start: date, days: Mapping[date, list[_Tagged]], today: date
+) -> Card:
+    """加入紀念日: the subscription start day; face = the best of her own words
+    that day (``days`` holds no welcome), else none (the label alone)."""
+    if start > today:
+        return Card("special.join_day", "special", False)
+    face = _best_of(days.get(start, []))
+    return Card(
+        "special.join_day",
+        "special",
+        True,
+        date=start,
+        message=_mk(face) if face is not None else None,
+    )
+
+
+def _day_card(
+    key: str, shelf: str, day: date, face: _Tagged | None, detail: Mapping[str, int]
+) -> Card:
+    """An earned card about ``day`` whose face may be missing (a day of
+    welcome messages only)."""
+    if face is not None:
+        return _earned_at(key, shelf, face, detail=detail)
+    return Card(key, shelf, True, date=day, detail=detail)
 
 
 def _clock(f: Fact) -> tuple[int, int, int]:
@@ -533,8 +584,13 @@ def _max_day(days: Mapping[date, list[_Tagged]]) -> tuple[date, list[_Tagged]] |
     return best
 
 
-def _streak_cards(days: Mapping[date, list[_Tagged]]) -> list[Card]:
-    """``record.streak.N``: earned on the first day a consecutive-day run reaches N."""
+def _streak_cards(
+    days: Mapping[date, list[_Tagged]], face_days: Mapping[date, list[_Tagged]]
+) -> list[Card]:
+    """``record.streak.N``: earned on the first day a consecutive-day run reaches N.
+
+    ``days`` counts every message; the face comes from ``face_days`` (no welcome).
+    """
     reached: dict[int, date] = {}
     longest = run = 0
     prev: date | None = None
@@ -550,20 +606,25 @@ def _streak_cards(days: Mapping[date, list[_Tagged]]) -> list[Card]:
         key = f"record.streak.{n}"
         if n in reached:
             day = reached[n]
-            face = _best(days[day])
-            out.append(Card(key, "records", True, date=day, message=_mk(face)))
+            face = _best_of(face_days.get(day, []))
+            message = _mk(face) if face is not None else None
+            out.append(Card(key, "records", True, date=day, message=message))
         else:
             out.append(Card(key, "records", False, progress=_progress(longest, n)))
     return out
 
 
 def _record_cards(
-    tagged: Sequence[_Tagged], days: Mapping[date, list[_Tagged]]
+    tagged: Sequence[_Tagged],
+    faces: Sequence[_Tagged],
+    days: Mapping[date, list[_Tagged]],
+    face_days: Mapping[date, list[_Tagged]],
 ) -> tuple[list[Card], int]:
+    """Counts read ``tagged`` / ``days``; faces read ``faces`` / ``face_days``."""
     out: list[Card] = []
     hidden = 0
 
-    words = [t for t in tagged if _is_words(t[1])]
+    words = [t for t in faces if _is_words(t[1])]
     if words:
         longest = max(words, key=lambda t: t[1].chars)  # max keeps the first
         out.append(
@@ -576,19 +637,18 @@ def _record_cards(
 
     busiest = _max_day(days)
     if busiest is not None:
+        day, day_facts = busiest
+        face = _best_of(face_days.get(day, []))
         out.append(
-            _earned_at(
-                "record.busiest_day",
-                "records",
-                _best(busiest[1]),
-                detail={"count": len(busiest[1])},
+            _day_card(
+                "record.busiest_day", "records", day, face, {"count": len(day_facts)}
             )
         )
     else:
         hidden += 1
 
-    # the day counts every nickname fact (promo included); the face is the
-    # best of them, so non-promo words win over promo
+    # the day counts every nickname fact (promo included, the welcome not);
+    # the face is the best of them, so non-promo words win over promo
     nick_day = _max_day(_by_day(_select(tagged, nickname=True, include_promo=True)))
     if nick_day is not None:
         face = _best(nick_day[1])
@@ -619,8 +679,8 @@ def _record_cards(
     else:
         hidden += 1
 
-    ohayo = _select(tagged, greeting="ohayo", hours=range(4, 12))
-    oyasumi = _select(tagged, greeting="oyasumi")
+    ohayo = _select(faces, greeting="ohayo", hours=range(4, 12))
+    oyasumi = _select(faces, greeting="oyasumi")
     if ohayo and oyasumi:
         # ties: the earlier fact (min / max keep the first of equal keys)
         early = min(ohayo, key=lambda t: _clock(t[1]))
@@ -633,7 +693,7 @@ def _record_cards(
     else:
         hidden += 1
 
-    out += _streak_cards(days)
+    out += _streak_cards(days, face_days)
     return out, hidden
 
 
@@ -712,16 +772,23 @@ def _change_face(
     return later, (FALLBACK_FIRST_AFTER if later is not None else None)
 
 
-def _change_cards(tagged: Sequence[_Tagged], inp: CardInputs) -> list[Card]:
+def _change_cards(
+    tagged: Sequence[_Tagged], faces: Sequence[_Tagged], inp: CardInputs
+) -> list[Card]:
+    """``detail.messages`` counts ``tagged``; the face and refs read ``faces``."""
     changes = sorted(inp.avatar_changes, key=lambda ch: ch.changed_at)
     out = []
     used: Counter[str] = Counter()
     for i, ch in enumerate(changes):
         day = ch.changed_at.astimezone(JST).date()
         nxt = changes[i + 1] if i + 1 < len(changes) else None
-        before = [t for t in tagged if t[1].ts < ch.changed_at]
-        after = [t for t in tagged if t[1].ts >= ch.changed_at]
-        run = [t for t in after if nxt is None or t[1].ts < nxt.changed_at]
+        before = [t for t in faces if t[1].ts < ch.changed_at]
+        after = [t for t in faces if t[1].ts >= ch.changed_at]
+        run = [
+            t
+            for t in tagged
+            if t[1].ts >= ch.changed_at and (nxt is None or t[1].ts < nxt.changed_at)
+        ]
         face, fallback = _change_face(after, day)
         refs = {}
         if before:
@@ -765,23 +832,25 @@ def _graduation_cards(
 
 def evaluate_counted(inputs: CardInputs) -> tuple[list[Card], int]:
     """:func:`evaluate` plus the number of hidden cards (left out of the result)."""
-    tagged = list(inputs.facts)
+    tagged = list(inputs.facts)  # every fact: counts
+    faces = [t for t in tagged if not t[1].is_welcome]  # faces and refs
     days = _by_day(tagged)
-    anniv, h_anniv = _anniversary_cards(tagged, days, inputs)
+    face_days = _by_day(faces)
+    anniv, h_anniv = _anniversary_cards(faces, face_days, inputs)
     numbers, h_numbers = _number_cards(tagged)
-    special, h_special = _special_cards(tagged, days, inputs)
-    records, h_records = _record_cards(tagged, days)
+    special, h_special = _special_cards(faces, face_days, inputs)
+    records, h_records = _record_cards(tagged, faces, days, face_days)
     you, h_you = _you_cards(inputs.letters)
-    grad, h_grad = _graduation_cards(tagged, inputs.graduated)
+    grad, h_grad = _graduation_cards(faces, inputs.graduated)
     cards = [
-        *_first_cards(tagged),
+        *_first_cards(faces),
         *anniv,
         *numbers,
         *special,
         *records,
-        *_moment_cards(tagged),
+        *_moment_cards(faces),
         *you,
-        *_change_cards(tagged, inputs),
+        *_change_cards(tagged, faces, inputs),
         *grad,
     ]
     hidden = h_anniv + h_numbers + h_special + h_records + h_you + h_grad

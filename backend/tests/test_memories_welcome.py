@@ -1,4 +1,4 @@
-"""Subscription welcome messages (memories feedback r4 §6).
+"""Subscription welcome messages and the 元旦 rule (memories feedback r4 §1 + §6).
 
 When a fan subscribes, a member's room sends an automatic greeting
 (「%%%さん追加ありがとう御座います」). The index flags it (``is_welcome``) and
@@ -7,14 +7,20 @@ every selector that shows "her words" skips it; count cards still count it.
 
 from __future__ import annotations
 
+import json
 import sqlite3
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 
 import pytest
+import time_machine
 
 from backend.services import app_state
+from backend.services.memories import cards as c
 from backend.services.memories import facts as mf
+from backend.services.memories import hub
 from backend.services.memories import index as mi
+from backend.services.memories import nickname_moments as nm
+from backend.services.memories import recap
 from backend.services.memories import selection as sel
 from backend.services.memories.facts import Fact
 from backend.services.memories.selection import JST
@@ -213,3 +219,164 @@ def test_new_year_midnight_is_1_1_before_00_30_jst():
     assert mf.is_new_year_midnight(fact(1, "2026-01-01 00:29"))
     assert not mf.is_new_year_midnight(fact(2, "2026-01-01 00:30"))
     assert not mf.is_new_year_midnight(fact(3, "2025-11-01 00:04"))
+
+
+# --- cards ------------------------------------------------------------------------
+
+
+def tagged(fs):
+    return [(ROOM_REL, f) for f in sorted(fs, key=lambda f: (f.ts, f.id))]
+
+
+def evaluate(fs, start=date(2025, 11, 1)):
+    inp = c.CardInputs(
+        facts=tagged(fs),
+        today=date(2026, 11, 12),
+        subscription_start=start,
+        birthday=None,
+        graduated=False,
+        letters=(),
+        avatar_changes=(),
+    )
+    return {card.key: card for card in c.evaluate(inp)}
+
+
+def mk(i):
+    return c.MessageKey(ROOM_REL, i)
+
+
+CARD_FACTS = [
+    fact(1, "2025-11-01 00:04", welcome=True, nick=True),
+    fact(2, "2025-11-01 08:54", importance=5),
+    fact(3, "2025-11-02 09:00", nick=True),
+    fact(4, "2026-01-01 00:10", importance=1),
+    fact(5, "2026-01-01 12:00", importance=90),
+    fact(6, "2026-02-01 00:02"),
+]
+
+
+def test_welcome_block_gets_no_newyear_and_no_first_message():
+    k = evaluate(CARD_FACTS)
+    ny = k["special.newyear"]
+    # 2025 has no 1/1 message (the archive starts on 11/1): no entry
+    assert [(y.year, y.date, y.message) for y in ny.years] == [
+        (2026, date(2026, 1, 1), mk(4))  # 00:10 beats the higher-importance 12:00
+    ]
+    assert k["first.message"].message == mk(2)
+    assert k["first.nickname"].message == mk(3)
+    midnight = k["moment.midnight"]
+    assert midnight.message == mk(6) and midnight.detail == {"count": 1}
+    assert k["count.messages.100"].progress == (6, 100)  # counts keep it
+
+
+def test_newyear_without_midnight_takes_the_best_of_1_1():
+    fs = [
+        fact(1, "2026-01-01 09:00", importance=3),
+        fact(2, "2026-01-01 15:00", importance=30),
+        fact(3, "2027-01-02 00:05"),  # not 1/1: no 2027 entry
+    ]
+    ny = evaluate(fs)["special.newyear"]
+    assert [(y.year, y.message) for y in ny.years] == [(2026, mk(2))]
+
+
+def test_newyear_never_shows_a_welcome_on_1_1():
+    fs = [
+        fact(1, "2026-01-01 00:01", welcome=True),
+        fact(2, "2026-01-01 00:20"),
+    ]
+    assert evaluate(fs, start=date(2026, 1, 1))["special.newyear"].message == mk(2)
+    alone = evaluate(fs[:1], start=date(2026, 1, 1))["special.newyear"]
+    assert not alone.earned and alone.years == ()
+
+
+def test_join_day_card_shows_her_own_words_of_that_day():
+    card = evaluate(CARD_FACTS)["special.join_day"]
+    assert card.earned and card.shelf == "special"
+    assert card.date == date(2025, 11, 1)
+    assert card.message == mk(2)
+
+
+def test_join_day_with_only_the_welcome_is_the_label_alone():
+    card = evaluate(CARD_FACTS[:1] + CARD_FACTS[2:])["special.join_day"]
+    assert card.earned and card.date == date(2025, 11, 1)
+    assert card.message is None
+
+
+def test_join_day_is_hidden_without_a_subscription_start():
+    assert "special.join_day" not in evaluate(CARD_FACTS, start=None)
+
+
+def test_join_day_in_the_future_is_a_silhouette():
+    card = evaluate(CARD_FACTS, start=date(2027, 1, 1))["special.join_day"]
+    assert not card.earned and card.message is None
+
+
+def test_other_faces_skip_the_welcome():
+    fs = [
+        fact(1, "2025-11-01 00:04", welcome=True, nick=True),
+        fact(2, "2025-11-01 00:05", welcome=True, nick=True),
+    ]
+    k = evaluate(fs)
+    assert not k["first.message"].earned
+    assert not k["first.nickname"].earned
+    assert not k["moment.midnight"].earned
+    # the busiest / nickname day still count the day, with no welcome face
+    assert k["record.busiest_day"].detail == {"count": 2}
+    assert k["record.busiest_day"].message is None
+    assert k["count.messages.100"].progress == (2, 100)
+
+
+# --- recap ------------------------------------------------------------------------
+
+
+async def recap_slides(svc, rows, year, when):
+    arch.write_room(svc, *ROOM, rows)
+    arch.write_side_inputs(svc, sub_starts={"90": "2025-11-01"})
+    with time_machine.travel(when, tick=False):
+        summary = (await mi.list_members(svc))[0]
+        payload = await recap.build_member_recap(
+            SERVICE, svc, summary, year, now=datetime.now(timezone.utc)
+        )
+    return payload
+
+
+def _plain(start_id, n, month):
+    return [
+        m(start_id + k, f"2025-{month}-{1 + k:02d} 20:00", f"きょうの話{k}")
+        for k in range(n)
+    ]
+
+
+@pytest.mark.asyncio
+async def test_recap_join_year_opens_with_her_own_first_words(svc):
+    rows = [
+        ROWS[0],  # the welcome, 11/1 00:04 with %%%
+        m(419696, "2025-11-01 08:54", SECOND),
+        m(419800, "2025-11-02 07:01", REWARD),
+        *_plain(500, 25, 12),
+    ]
+    payload = await recap_slides(
+        svc, rows, 2025, datetime(2025, 12, 28, 12, 0, tzinfo=JST)
+    )
+    s = {slide["key"]: slide for slide in payload["slides"]}
+    assert s["s01_first"]["data"]["message"]["id"] == 419696
+    assert s["s02_name"]["data"]["count"] == 1  # the welcome's %%% is not counted
+    assert "419388" not in json.dumps(payload)  # no slide shows the welcome
+
+
+# --- hub and name moments ---------------------------------------------------------
+
+
+def test_hub_first_words_skip_the_welcome():
+    fs = tagged(CARD_FACTS)
+    assert hub._first_words(fs) == (ROOM_REL, CARD_FACTS[1])
+
+
+@pytest.mark.asyncio
+async def test_name_moments_leave_out_the_welcome(svc):
+    arch.write_room(svc, *ROOM, ROWS)
+    arch.write_side_inputs(svc, sub_starts={"90": "2025-11-01"})
+    summary = (await mi.list_members(svc))[0]
+    payload = await nm.nickname_moments(SERVICE, svc, summary, year=None)
+    ids = [i["message"]["id"] for i in payload["items"]]
+    assert 419388 not in ids and ids == [453054, 419672]

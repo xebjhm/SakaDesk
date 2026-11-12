@@ -38,6 +38,7 @@ const FIXED: Record<string, string> = {
     'special.valentine': 'valentine',
     'special.christmas': 'christmas',
     'special.birthday': 'birthday',
+    'special.join_day': 'joinDay',
     'special.sub_anniversary': 'subAnniversary',
     'record.longest': 'longest',
     'record.busiest_day': 'busiestDay',

@@ -237,7 +237,7 @@ async def test_month_milestones(svc):
         "foil": False,
     }
     assert keys["first.nickname"]["foil"] is True
-    assert keys["special.newyear"]["date"] == "2025-01-10"  # a stacked year
+    assert "special.newyear" not in keys  # 元旦 is 1/1 only, not her first of 2025
     march = await tl.timeline_month(SERVICE, svc, s, "2025-03", now=NOW)
     march_keys = [m["key"] for m in march["milestones"]]
     assert "first.picture" in march_keys and "first.message" not in march_keys

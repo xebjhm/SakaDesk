@@ -146,9 +146,9 @@ def test_empty_person_has_silhouettes_only_and_shelf_order():
 def test_counted_reports_hidden_cards():
     cards, hidden = c.evaluate_counted(inputs())
     assert cards == c.evaluate(inputs())
-    # 8 anniversary slots + birthday + sub_anniversary + 5 records + voice hour
-    # + nicknames + 3 letters + graduation
-    assert hidden == 8 + 2 + 5 + 2 + 3 + 1
+    # 8 anniversary slots + birthday + join day + sub_anniversary + 5 records
+    # + voice hour + nicknames + 3 letters + graduation
+    assert hidden == 8 + 3 + 5 + 2 + 3 + 1
 
 
 def test_progress_summary_excludes_hidden_and_earned_keys_diff():
@@ -165,13 +165,14 @@ def test_progress_summary_excludes_hidden_and_earned_keys_diff():
 
 def test_earned_keys_emit_one_key_per_stacked_year():
     before = [fact(1, "2025-05-01 10:00")]
-    after = before + [fact(2, "2026-05-01 10:01")]
+    after = before + [fact(2, "2026-05-01 10:01"), fact(3, "2027-01-01 00:15")]
     k_before = c.earned_keys(c.evaluate(inputs(before, birthday="05-01")))
     k_after = c.earned_keys(c.evaluate(inputs(after, birthday="05-01")))
     assert {"special.birthday", "special.birthday@2025"} <= k_before
     assert k_after - k_before == {
         "special.birthday@2026",
-        "special.newyear@2026",
+        "special.newyear",
+        "special.newyear@2027",
     }
 
 
@@ -331,16 +332,22 @@ def test_nickname_count():
 def test_newyear_yearly_stack():
     fs = [
         fact(1, "2024-01-01 00:03", promo=True, importance=None),
-        fact(2, "2024-01-01 09:00"),
-        fact(3, "2025-03-05 09:00", promo=True, importance=None),
+        fact(2, "2024-01-01 00:20", importance=1),
+        fact(3, "2024-01-01 09:00", importance=50),
+        fact(4, "2025-01-01 12:00", importance=5),
+        fact(5, "2025-01-01 18:00", importance=9),
+        fact(6, "2026-03-05 09:00"),  # the first of 2026, but not on 1/1
     ]
     card = by_key(c.evaluate(inputs(fs)))["special.newyear"]
     assert card.earned
     assert card.years == (
+        # promo never wins the midnight; 00:20 beats a higher-importance 09:00
         c.CardYear(2024, date(2024, 1, 1), key(2)),
-        c.CardYear(2025, date(2025, 3, 5), key(3)),
+        # no midnight message: the best of 1/1
+        c.CardYear(2025, date(2025, 1, 1), key(5), "best_of_day"),
     )
-    assert card.message == key(3) and card.date == date(2025, 3, 5)
+    assert card.message == key(5) and card.date == date(2025, 1, 1)
+    assert card.fallback == "best_of_day"
 
 
 def test_valentine_keyword_hit_beats_importance():

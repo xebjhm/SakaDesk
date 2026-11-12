@@ -24,8 +24,8 @@ one. ``rule`` tells the frontend which copy is true, so a ``week`` or
   year's month-day never counts, so the last days of December are not
   "near this date" on January 1.
 - ``first``: when the week has nothing either, the first non-promo message
-  of the first person in ``people.sort_people`` who has one. Because promo is
-  skipped it may not be her very first message, so the UI labels it "from the
+  (never the subscription welcome) of the first person in
+  ``people.sort_people`` who has one. Because promo is skipped it may not be her very first message, so the UI labels it "from the
   early days" (「はじめのころの一通」), never "the first message".
 
 The object is ``{"rule", "year", "years_ago", "date", "member_path",
@@ -348,11 +348,15 @@ def _pick_week(tagged: Sequence[_Tagged], oshi: set[str], today: date) -> _Pick 
 
 
 def _first_words(tagged: Sequence[tuple[str, Fact]]) -> tuple[str, Fact] | None:
-    return next(((room, f) for room, f in tagged if not f.is_promo), None)
+    return next(
+        ((room, f) for room, f in tagged if not f.is_promo and not f.is_welcome),
+        None,
+    )
 
 
 async def _pick_first(sdir: Path, ordered: Sequence[mi.MemberSummary]) -> _Pick | None:
-    """Rule ``first``: the first non-promo message of the first person with one."""
+    """Rule ``first``: the first non-promo, non-welcome message of the first
+    person with one."""
     for s in ordered:
         tagged = await get_person_facts(sdir, s)
         first = await asyncio.to_thread(_first_words, tagged)

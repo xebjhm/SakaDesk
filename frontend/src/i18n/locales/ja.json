@@ -972,6 +972,8 @@
       "birthdayCondition": "彼女のお誕生日に届いたメッセージ",
       "subAnniversary": "あなたの記念日",
       "subAnniversaryCondition": "あなたのメンバーシップ記念日に届いたメッセージ",
+      "joinDay": "加入記念日",
+      "joinDayCondition": "あなたがメンバーシップに加入した日",
       "longest": "いちばん長いメッセージ",
       "longestCondition": "いちばん長く綴られたメッセージ",
       "busiestDay": "いちばんにぎやかな日",

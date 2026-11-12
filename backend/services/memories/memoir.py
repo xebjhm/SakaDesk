@@ -24,7 +24,8 @@
   - ``subscription_days`` = ``(today_jst - start).days + 1`` from the archived
     earliest subscription start; ``None`` without a (parsable) start or when
     the start is after today;
-  - ``nickname_count`` = ``aggregate(facts).nickname_count`` (promo included);
+  - ``nickname_count`` = ``aggregate(facts).nickname_count`` (promo included,
+    the subscription welcome not);
     ``None`` at 0, which also hides the 被叫名字 entry;
   - ``voice_seconds`` = ``aggregate(facts).voice_seconds``; ``None`` at 0.
 

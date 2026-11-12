@@ -72,6 +72,8 @@ These rules are shared by the recap, album covers, 彼女の24時間, the gacha,
 - it contains 3+ time patterns (`\d{1,2}:\d{2}〜?`, schedules), or `【…】` headings with a date.
 A photo is promo when its paired text (±3 min) is promo. Promo items still count in totals but are never picked as "her words".
 
+**Subscription welcome** — when a fan subscribes, each room sends an automatic greeting (「ご登録ありがとうございます」, often with `%%%`). A text message is a welcome when it sits at an opening (the room's first message, or the first message on the subscription start day, plus anything within 30 min of it) AND contains 登録/追加 followed by ありがとう within one sentence. The index flags it (`is_welcome`); it counts in message totals but never as "her words": no importance, no nickname count, never a card face, recap pick, gacha pull, On This Day / 24h / 同じ時刻 / timeline pick or 被叫名字 entry. `first message` is her first self-written message.
+
 **Importance score** (for "the one sentence", "the longest heartfelt message", gacha weighting):
 `score = chars + 300·favourited + 80·has_nickname + 100·emotion_word + 150·special_date`
 - emotion words: `ありがとう|感謝|大好き|本当に|嬉しい|悔しい|涙|目標|夢|卒業|ライブ|ミーグリ|誕生日`;
@@ -122,7 +124,7 @@ Shelves of cards. Earned cards face up (photo or her words, Japanese original, w
 | 初めて | first message; first photo; first video; first voice; **first nickname** (foil); |
 | 記念日 | subscription **100日, 1年, 500日, 2年, 1000日, 3年, 4年, 5年, then yearly** — card face = her message that day (nearest one if none that day) |
 | 数字 | 100 / 1,000 / 5,000 / 10,000 (foil) messages; 100 / 1,000 photos; 1 h total voice; 100 nicknames |
-| 特別な日 (yearly stacks) | 元旦 (first message of the year); バレンタイン; クリスマス; **her birthday** (foil); your subscription anniversary day |
+| 特別な日 (yearly stacks) | 元旦 (her message on 1/1 JST, the first one before 00:30 preferred; a year with no 1/1 message has no entry); バレンタイン; クリスマス; **her birthday** (foil); 加入紀念日 (the subscription start day, single card: her own words that day, or the label alone); your subscription anniversary day |
 | 記録 (updates over time) | longest message; busiest day; most-nickname day; longest voice; **earliest おはよう vs latest おやすみ** (pair card); daily streak 7 / 30 / 100 days |
 | 瞬間 | **日付が変わった瞬間** (foil; a message at 00:00–00:05); **シンクロ** (rare; two messages at the same HH:MM:SS on different days); おやすみ first / 100th; 大好き first / 100th |
 | あなた | first letter you sent; 10 / 50 letters (the fan's own items only) |

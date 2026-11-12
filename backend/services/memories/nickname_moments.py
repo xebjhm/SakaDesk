@@ -1,7 +1,8 @@
 """被叫名字的瞬間: every sentence in which she wrote the fan's nickname (spec 5.2).
 
 :func:`nickname_moments` collects every fact with ``has_nickname`` (promo
-included, so the list matches the header's ``nickname_count`` chip), loads the
+included, the subscription welcome left out, so the list matches the header's
+``nickname_count`` chip: the welcome's ``%%%`` is not her calling you), loads the
 texts with ``people.attach_texts`` (one ``load_texts`` per room), splits each
 text with ``selection.raw_sentences`` (``lexicon.RAW_SENTENCE_SPLIT_RE``,
 original characters kept) and turns every sentence that contains the
@@ -48,7 +49,9 @@ def _candidate_refs(
     timeline: people.AvatarTimeline,
 ) -> tuple[list[Fact], list[dict]]:
     """Newest-first ``has_nickname`` facts and their message objects. Pure."""
-    candidates = [(room, f) for room, f in reversed(tagged) if f.has_nickname]
+    candidates = [
+        (room, f) for room, f in reversed(tagged) if f.has_nickname and not f.is_welcome
+    ]
     refs = [
         people.message_ref(service, sdir, room, f, avatar=timeline)
         for room, f in candidates

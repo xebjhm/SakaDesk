@@ -50,6 +50,8 @@ export const MEMORIES_CORE_KEYS: string[] = [
     'memories.cards.countMessagesCondition', 'memories.cards.countPicturesCondition', 'memories.cards.voiceHourCondition',
     'memories.cards.nicknames100Condition', 'memories.cards.newyearCondition', 'memories.cards.valentineCondition',
     'memories.cards.christmasCondition', 'memories.cards.birthdayCondition', 'memories.cards.subAnniversaryCondition',
+    // r4: the subscription start day (加入紀念日)
+    'memories.cards.joinDay', 'memories.cards.joinDayCondition',
     'memories.cards.longestCondition', 'memories.cards.busiestDayCondition', 'memories.cards.nicknameDayCondition',
     'memories.cards.longestVoiceCondition', 'memories.cards.greetingPairCondition', 'memories.cards.streakCondition',
     'memories.cards.midnightCondition', 'memories.cards.synchroCondition', 'memories.cards.oyasumiFirstCondition',
@@ -247,6 +249,7 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.christmasCondition')).toBe('クリスマスに届いたメッセージ');
         expect(lookup(ja, 'memories.cards.birthdayCondition')).toBe('彼女のお誕生日に届いたメッセージ');
         expect(lookup(ja, 'memories.cards.subAnniversaryCondition')).toBe('あなたのメンバーシップ記念日に届いたメッセージ');
+        expect(lookup(ja, 'memories.cards.joinDay')).toBe('加入記念日');
         expect(lookup(ja, 'memories.cards.longestCondition')).toBe('いちばん長く綴られたメッセージ');
         expect(lookup(ja, 'memories.cards.busiestDayCondition')).toBe('メッセージがいちばん多かった日');
         expect(lookup(ja, 'memories.cards.nicknameDayCondition')).toBe('名前をいちばん多く呼んでくれた日');

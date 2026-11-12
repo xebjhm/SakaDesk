@@ -102,7 +102,7 @@ describe('cardCopy', () => {
         // the walk really reached the catalogue (shelves, generic patterns, per-date avatar keys)
         expect(keys).toEqual(expect.arrayContaining([
             'first.message', 'first.voice', 'anniv.d1000', 'anniv.y12', 'count.messages.10000', 'count.voice_hour',
-            'special.sub_anniversary', 'record.greeting_pair', 'record.streak.100', 'moment.synchro', 'moment.daisuki.1',
+            'special.sub_anniversary', 'special.join_day', 'record.greeting_pair', 'record.streak.100', 'moment.synchro', 'moment.daisuki.1',
             'you.letter.10', 'change.avatar.2024-05-01.2', 'grad.last',
         ]));
         for (const key of keys) {

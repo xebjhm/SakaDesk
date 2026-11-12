@@ -12,6 +12,10 @@ Window and phase (all JST):
   ``christmas_open`` is true from Dec 25 00:00 of ``Y`` or in the final phase.
 - Tier by non-promo messages in ``W(Y)``: full >= 150, standard 30-149,
   short 10-29, none < 10 (no slides, no poster).
+- The subscription welcome (``Fact.is_welcome``) counts toward the tier and
+  the counts, but no slide ever picks it: ``_Ctx.nonpromo`` / ``_Ctx.words``
+  and every other pick pool leave it out, so the join year's S01 is her first
+  self-written message and S02 the first time she wrote the fan's name.
 
 A message is identified by ``(member_dir, id)``: ids are per room. Message
 objects in the payload carry ``member_path`` (the room's display-name path, as
@@ -93,7 +97,7 @@ from backend.services.memories.then_now import (
 logger = structlog.get_logger(__name__)
 
 # "3": S08 echo keywords match NFKC text (then_now.keywords_in).
-RECAP_VERSION = "3"
+RECAP_VERSION = "4"
 
 SLIDE_KEYS = (
     "s01_first",
@@ -368,11 +372,12 @@ class _Ctx:
         return self.texts.get(rel, f.id) if f.chars > 0 else ""
 
     def nonpromo(self) -> list[Item]:
-        return [i for i in self.window if not i[1].is_promo]
+        """Non-promo messages that can be picked (never the welcome)."""
+        return [i for i in self.window if not i[1].is_promo and not i[1].is_welcome]
 
     def words(self) -> list[Item]:
-        """Non-promo messages with their own text."""
-        return [i for i in self.window if not i[1].is_promo and i[1].chars > 0]
+        """Pickable messages (:meth:`nonpromo`) with their own text."""
+        return [i for i in self.nonpromo() if i[1].chars > 0]
 
     def free(self, item: Item) -> bool:
         return _key(item) not in self.used
@@ -462,13 +467,7 @@ def _s01_candidate(ctx: _Ctx) -> tuple[Item, str, bool, bool]:
     """
     msgs = ctx.nonpromo()
     joined = ctx.start > datetime(ctx.year, 1, 1, tzinfo=JST)
-    midnight = [
-        i
-        for i in msgs
-        if (i[1].jst_date.month, i[1].jst_date.day) == (1, 1)
-        and i[1].hour == 0
-        and i[1].minute < 30
-    ]
+    midnight = [i for i in msgs if mf.is_new_year_midnight(i[1])]
     new_year = bool(midnight) and not joined
     pick = midnight[0] if new_year else msgs[0]
     rule = "new_year_midnight" if new_year else "first"
@@ -827,7 +826,11 @@ def _photo_linked(items: Iterable[Item]) -> set[Key]:
 
 def _s08_echo(ctx: _Ctx) -> dict | None:
     slide = "s08_echo"
-    then_pool = [i for i in ctx.earlier if not i[1].is_promo and i[1].chars > 0]
+    then_pool = [
+        i
+        for i in ctx.earlier
+        if not i[1].is_promo and not i[1].is_welcome and i[1].chars > 0
+    ]
     now_pool = [i for i in ctx.words() if ctx.free(i)]
     if then_pool and now_pool:
         photos = _photo_linked((*ctx.earlier, *ctx.window))
@@ -891,6 +894,7 @@ def _s08_echo(ctx: _Ctx) -> dict | None:
             i
             for i in ctx.all_facts
             if not i[1].is_promo
+            and not i[1].is_welcome
             and i[1].chars > 0
             and begin <= i[1].jst_date <= week_end
             and i[1].ts <= ctx.end
@@ -1648,7 +1652,9 @@ def _member_stats(
     start, end = recap_window(year, now, summary.subscription_start)
     window = [i for i in tagged if start <= i[1].ts <= end]
     nonpromo = [i for i in window if not i[1].is_promo]
-    words = [i for i in nonpromo if i[1].chars > 0]
+    # her words: never the welcome (it still counts toward the tier)
+    own = [i for i in nonpromo if not i[1].is_welcome]
+    words = [i for i in own if i[1].chars > 0]
     sub = _parse_day(summary.subscription_start)
     metrics: dict[str, float | None] = {
         "morning": sum(1 for i in words if i[1].has_greeting("ohayo")),
@@ -1666,7 +1672,7 @@ def _member_stats(
         metrics=metrics,
         favorites=sum(1 for i in window if i[1].favorited),
         oyasumi=sum(1 for i in words if i[1].has_greeting("oyasumi")),
-        first=nonpromo[0] if nonpromo else None,
+        first=own[0] if own else None,
     )
 
 

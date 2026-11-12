@@ -990,6 +990,8 @@
       "birthdayCondition": "A message on her birthday",
       "subAnniversary": "Your anniversary",
       "subAnniversaryCondition": "A message on your membership anniversary",
+      "joinDay": "Join day",
+      "joinDayCondition": "The day you joined",
       "longest": "Her longest message",
       "longestCondition": "Her longest message",
       "busiestDay": "The liveliest day",
