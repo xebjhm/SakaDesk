@@ -12,6 +12,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 from urllib.parse import parse_qs, urlparse
 
 import pytest
+from structlog.testing import capture_logs
 
 import desktop
 from backend.services import api_auth
@@ -51,9 +52,10 @@ def test_saved_port_squatter_cannot_listen_after_us(tmp_path, monkeypatch):
     monkeypatch.setattr(desktop, "_get_port_file", lambda: tmp_path / ".port")
     port, sock = desktop.create_server_socket()
     try:
-        if port == saved:
-            with pytest.raises(OSError):
-                squatter.listen(1)
+        # SO_REUSEADDR on Linux lets us bind over a bound-but-not-listening socket.
+        assert port == saved
+        with pytest.raises(OSError):
+            squatter.listen(1)
     finally:
         sock.close()
         squatter.close()
@@ -88,3 +90,135 @@ def test_wait_for_server_accepts_only_the_real_proof():
     finally:
         real.shutdown()
         fake.shutdown()
+
+
+def _events(logs):
+    return [entry["event"] for entry in logs]
+
+
+def test_saved_port_socket_is_closed_when_listen_fails(tmp_path, monkeypatch):
+    """A socket whose listen() fails is closed; a fresh port is then allocated."""
+    probe = socket.socket()
+    probe.bind(("127.0.0.1", 0))
+    saved = probe.getsockname()[1]
+    probe.close()
+    (tmp_path / ".port").write_text(str(saved), encoding="utf-8")
+    monkeypatch.setattr(desktop, "_get_port_file", lambda: tmp_path / ".port")
+
+    real_socket = socket.socket
+    created: list = []
+    closed: list = []
+
+    class FlakySocket(real_socket):
+        def listen(self, *args):
+            if not failed:
+                failed.append(self)
+                raise OSError("listen failed")
+            return super().listen(*args)
+
+        def close(self):
+            closed.append(self)
+            super().close()
+
+    failed: list = []
+
+    def factory(*args, **kwargs):
+        sock = FlakySocket(*args, **kwargs)
+        created.append(sock)
+        return sock
+
+    monkeypatch.setattr(desktop.socket, "socket", factory)
+    with capture_logs() as logs:
+        port, sock = desktop.create_server_socket()
+    try:
+        assert len(failed) == 1
+        assert failed[0] in closed
+        assert sock is not failed[0]
+        assert sock.getsockopt(socket.SOL_SOCKET, socket.SO_ACCEPTCONN) == 1
+        assert "server_port_saved_unavailable" in _events(logs)
+        assert "server_port_allocated" in _events(logs)
+    finally:
+        sock.close()
+
+
+def test_unreadable_port_file_is_logged_and_a_port_allocated(tmp_path, monkeypatch):
+    (tmp_path / ".port").write_text("not-a-number", encoding="utf-8")
+    monkeypatch.setattr(desktop, "_get_port_file", lambda: tmp_path / ".port")
+    with capture_logs() as logs:
+        port, sock = desktop.create_server_socket()
+    sock.close()
+    events = _events(logs)
+    assert "server_port_saved_unreadable" in events
+    assert "server_port_allocated" in events
+
+
+def test_out_of_range_saved_port_is_logged(tmp_path, monkeypatch):
+    (tmp_path / ".port").write_text("80", encoding="utf-8")
+    monkeypatch.setattr(desktop, "_get_port_file", lambda: tmp_path / ".port")
+    with capture_logs() as logs:
+        _, sock = desktop.create_server_socket()
+    sock.close()
+    assert "server_port_saved_out_of_range" in _events(logs)
+
+
+def test_in_use_saved_port_is_logged(tmp_path, monkeypatch):
+    live = socket.socket()
+    live.bind(("127.0.0.1", 0))
+    live.listen(1)
+    (tmp_path / ".port").write_text(str(live.getsockname()[1]), encoding="utf-8")
+    monkeypatch.setattr(desktop, "_get_port_file", lambda: tmp_path / ".port")
+    try:
+        with capture_logs() as logs:
+            port, sock = desktop.create_server_socket()
+        sock.close()
+        assert port != live.getsockname()[1]
+        assert "server_port_saved_in_use" in _events(logs)
+    finally:
+        live.close()
+
+
+def test_http_error_answer_warns_once_without_leaking_secrets():
+    class NotFound(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 (http.server API)
+            self.send_response(404)
+            self.end_headers()
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), NotFound)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with capture_logs() as logs:
+            assert not desktop.wait_for_server(
+                "127.0.0.1", server.server_address[1], timeout=1
+            )
+    finally:
+        server.shutdown()
+    assert _events(logs).count("server_identity_mismatch") == 1
+    dumped = json.dumps(logs, default=str)
+    assert api_auth.LAUNCH_TOKEN not in dumped
+    assert "nonce" not in dumped
+
+
+@pytest.mark.parametrize("payload", [b"not json", b"[1, 2]"])
+def test_non_proof_bodies_warn_once(payload):
+    class Odd(BaseHTTPRequestHandler):
+        def do_GET(self):  # noqa: N802 (http.server API)
+            self.send_response(200)
+            self.end_headers()
+            self.wfile.write(payload)
+
+        def log_message(self, *args):
+            pass
+
+    server = HTTPServer(("127.0.0.1", 0), Odd)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        with capture_logs() as logs:
+            assert not desktop.wait_for_server(
+                "127.0.0.1", server.server_address[1], timeout=1
+            )
+    finally:
+        server.shutdown()
+    assert _events(logs).count("server_identity_mismatch") == 1

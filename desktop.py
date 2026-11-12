@@ -16,6 +16,7 @@ import time  # noqa: E402
 import json  # noqa: E402
 import hmac  # noqa: E402
 import secrets  # noqa: E402
+import urllib.error  # noqa: E402
 import urllib.request  # noqa: E402
 import ctypes  # noqa: E402
 import platform  # noqa: E402
@@ -910,9 +911,10 @@ def create_server_socket() -> tuple:
     def _port_is_active(port: int) -> bool:
         """Check if something is actually listening on the port.
 
-        SO_REUSEADDR on Windows allows bind() to succeed even when another
-        process is actively listening — so bind() alone can't tell us if
-        the port is truly free.  A TCP connect check catches this.
+        On Windows the listener uses SO_EXCLUSIVEADDRUSE (see _bind_option), so
+        bind() on a port a live listener holds fails anyway. The TCP connect check
+        still detects a previous SakaDesk instance that is still listening on the
+        saved port, so we move to a fresh port instead of failing the bind.
         """
         try:
             conn = socket.create_connection((HOST, port), timeout=0.5)
@@ -922,9 +924,9 @@ def create_server_socket() -> tuple:
             return False
 
     def _try_bind(port: int):
-        """Try to bind and listen on the given port."""
+        """Try to bind and listen on the given port; None (socket closed) on OSError."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             sock.setsockopt(socket.SOL_SOCKET, _bind_option(), 1)
             sock.bind((HOST, port))
             sock.listen(128)
@@ -937,27 +939,37 @@ def create_server_socket() -> tuple:
     if port_file.exists():
         try:
             saved = int(port_file.read_text(encoding="utf-8").strip())
-            if 1024 < saved < 65536:
-                # On Windows, SO_REUSEADDR lets bind() succeed even if an old
-                # process is still listening. Check with a connect() first.
-                if not _port_is_active(saved):
-                    sock = _try_bind(saved)
-                    if sock is not None:
-                        return saved, sock
-                logger.info("server_port_saved_unavailable")
         except (ValueError, OSError):
-            pass  # Corrupt file or port in use — allocate new one
+            logger.info("server_port_saved_unreadable")  # corrupt or unreadable file
+        else:
+            if not 1024 < saved < 65536:
+                logger.info("server_port_saved_out_of_range")
+            # A previous SakaDesk instance may still be listening on the saved
+            # port: connect first and move to a fresh port if so.
+            elif _port_is_active(saved):
+                logger.info("server_port_saved_in_use")
+            else:
+                sock = _try_bind(saved)
+                if sock is not None:
+                    return saved, sock
+                logger.info("server_port_saved_unavailable")
 
     # Allocate a new port and persist it
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, _bind_option(), 1)
-    sock.bind((HOST, 0))
-    sock.listen(128)
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, _bind_option(), 1)
+        sock.bind((HOST, 0))
+        sock.listen(128)
+    except OSError:
+        sock.close()
+        logger.error("server_port_allocate_failed")
+        raise  # startup cannot continue without a socket
     port = sock.getsockname()[1]
+    logger.info("server_port_allocated")
     try:
         port_file.write_text(str(port), encoding="utf-8")
     except OSError:
-        pass  # Non-fatal — app still works, just may not persist port
+        logger.warning("server_port_persist_failed")  # non-fatal
     return port, sock
 
 
@@ -970,6 +982,10 @@ def wait_for_server(
     HMAC(launch token, nonce): /health proves the ASGI app is loaded (no 404
     flash on second launch), and the proof proves the answering process is
     this backend and not a squatter on the port (security audit 2026-11-13).
+    Any answer that is not a valid proof (wrong or missing proof, non-JSON or
+    non-object body, HTTP error status) logs ``server_identity_mismatch`` once and
+    polling continues; connection refusals and timeouts retry silently. Returns
+    False when ``timeout`` elapses.
     """
     nonce = secrets.token_urlsafe(24)
     expected = api_auth.health_proof(nonce)
@@ -977,17 +993,23 @@ def wait_for_server(
     warned = False
     start = time.time()
     while time.time() - start < timeout:
+        answered = False  # something replied, but not with a valid proof
         try:
             with urllib.request.urlopen(url, timeout=1) as resp:
-                if resp.status == 200:
-                    body = json.loads(resp.read().decode("utf-8"))
+                answered = True
+                body = json.loads(resp.read().decode("utf-8"))
+                if resp.status == 200 and isinstance(body, dict):
                     if hmac.compare_digest(str(body.get("proof", "")), expected):
                         return True
-                    if not warned:
-                        logger.warning("server_identity_mismatch")
-                        warned = True
+        except urllib.error.HTTPError:
+            answered = True  # an HTTP error status is an answer, not "not up yet"
+        except ValueError:
+            answered = True  # non-JSON / undecodable body
         except Exception:
-            pass
+            answered = False  # refused / timeout: retry silently
+        if answered and not warned:
+            logger.warning("server_identity_mismatch")
+            warned = True
         time.sleep(0.1)
     return False
 
