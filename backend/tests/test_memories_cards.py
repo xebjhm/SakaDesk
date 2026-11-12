@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import dataclasses
 from datetime import date, datetime, timedelta, timezone
 
 import pytest
@@ -348,6 +349,46 @@ def test_newyear_yearly_stack():
     )
     assert card.message == key(5) and card.date == date(2025, 1, 1)
     assert card.fallback == "best_of_day"
+
+
+def _pic(i: int, when: str, score: int | None, *, promo: bool = False) -> Fact:
+    return dataclasses.replace(fact(i, when, "picture", promo=promo), photo_score=score)
+
+
+def test_postcard_photo_is_the_best_picture_of_each_year():
+    fs = [
+        fact(1, "2024-01-01 00:05"),
+        _pic(2, "2024-01-01 10:00", 50),
+        _pic(3, "2024-01-01 11:00", 90),
+        _pic(4, "2024-01-01 12:00", 999, promo=True),  # promo is never the photo
+        _pic(5, "2024-01-02 10:00", 999),  # another day
+        fact(6, "2025-01-01 09:00"),  # 2025: no picture that day
+        _pic(7, "2026-01-01 00:01", 10),  # the face is the picture itself
+    ]
+    card = by_key(c.evaluate(inputs(fs)))["special.newyear"]
+    assert [(y.year, y.message, y.photo) for y in card.years] == [
+        (2024, key(1), key(3)),
+        (2025, key(6), None),
+        (2026, key(7), None),
+    ]
+
+
+def test_postcard_photo_ties_go_to_the_earlier():
+    fs = [fact(1, "2024-01-01 00:05"), _pic(2, "2024-01-01 10:00", 5)]
+    fs.append(_pic(3, "2024-01-01 11:00", 5))
+    card = by_key(c.evaluate(inputs(fs)))["special.newyear"]
+    assert card.years[0].photo == key(2)
+
+
+def test_join_day_photo_in_refs_and_none_without_a_picture():
+    start = date(2024, 7, 24)
+    fs = [fact(1, "2024-07-24 12:00"), _pic(2, "2024-07-24 12:30", 1)]
+    card = by_key(c.evaluate(inputs(fs, subscription_start=start)))["special.join_day"]
+    assert card.message == key(1) and card.refs == {"photo": key(2)}
+    card = by_key(c.evaluate(inputs(fs[:1], subscription_start=start)))[
+        "special.join_day"
+    ]
+    assert card.refs == {}
 
 
 def test_valentine_keyword_hit_beats_importance():

@@ -33,6 +33,13 @@ else the best of that day. A year with no 1/1 message has no entry.
 best of her own (non-welcome) messages that day, or none (the label alone).
 Hidden without a known start; a silhouette while the start is in the future.
 
+Postcard photo (every 特別な日 card, drawn as a postmarked postcard): each
+stacked year carries ``CardYear.photo``, and 加入紀念日 ``refs["photo"]``:
+the best non-promo picture of the face's JST day (highest ``photo_score``,
+ties: the earlier), or ``None`` when the face is itself a picture or video
+(the face already is the photo) or the day has no picture. The welcome is
+never one (``days`` holds no welcome).
+
 A card whose condition is not met is either returned with ``earned=False``
 (a silhouette) or, for the cards the catalogue marks *hidden*, left out of the
 result and of :func:`progress_summary`. An unearned card's ``progress`` is
@@ -76,7 +83,7 @@ SHELVES = (
 
 # Bump on any rule or payload change: the binder's cache hash includes it, so
 # a shipped rule change never keeps serving binders built by the old rules.
-CARDS_VERSION = 7
+CARDS_VERSION = 8
 
 FALLBACK_NEAREST = "nearest"
 FALLBACK_FIRST_AFTER = "first_after"
@@ -138,6 +145,7 @@ class CardYear:
     date: date
     message: MessageKey
     fallback: str | None = None  # this year's face fallback, like Card.fallback
+    photo: MessageKey | None = None  # the postcard photo (module docstring)
 
 
 @dataclass(frozen=True)
@@ -417,16 +425,39 @@ def _number_cards(tagged: Sequence[_Tagged]) -> tuple[list[Card], int]:
     return out, hidden
 
 
+_PHOTO_FACE_TYPES = frozenset({"picture", "video"})
+
+
+def _postcard_photo(
+    face: _Tagged | None, days: Mapping[date, list[_Tagged]]
+) -> MessageKey | None:
+    """The postcard photo of ``face``'s day (see the module docstring)."""
+    if face is None or face[1].type in _PHOTO_FACE_TYPES:
+        return None
+    best: _Tagged | None = None
+    for t in days.get(face[1].jst_date, []):
+        f = t[1]
+        if f.type != "picture" or f.is_promo:
+            continue
+        if best is None or (f.photo_score or 0) > (best[1].photo_score or 0):
+            best = t
+    return _mk(best) if best is not None else None
+
+
 def _yearly(
     key: str,
     years: Sequence[tuple[int, _Tagged, str | None]],
+    days: Mapping[date, list[_Tagged]],
     *,
     foil: bool = False,
 ) -> Card:
     """A yearly stack from ``(year, face, fallback)``, oldest first."""
     if not years:
         return Card(key, "special", False, foil=foil)
-    stack = tuple(CardYear(y, t[1].jst_date, _mk(t), fb) for y, t, fb in years)
+    stack = tuple(
+        CardYear(y, t[1].jst_date, _mk(t), fb, _postcard_photo(t, days))
+        for y, t, fb in years
+    )
     _, newest, fallback = years[-1]
     return Card(
         key,
@@ -500,9 +531,9 @@ def _special_cards(
             christmas.append((y, *pick))
 
     out = [
-        _yearly("special.newyear", newyear),
-        _yearly("special.valentine", valentine),
-        _yearly("special.christmas", christmas),
+        _yearly("special.newyear", newyear, days),
+        _yearly("special.valentine", valentine, days),
+        _yearly("special.christmas", christmas, days),
     ]
     hidden = 0
 
@@ -518,7 +549,7 @@ def _special_cards(
                 stack.append((y, early[0], None))
             elif day_facts:
                 stack.append((y, _best(day_facts), FALLBACK_BEST_OF_DAY))
-        out.append(_yearly("special.birthday", stack, foil=True))
+        out.append(_yearly("special.birthday", stack, days, foil=True))
 
     start = inp.subscription_start
     if start is None:
@@ -532,7 +563,7 @@ def _special_cards(
             best = _best_of(days.get(anniversary_date(start, y - start.year), []))
             if best is not None:
                 subs.append((y, best, None))
-        out.append(_yearly("special.sub_anniversary", subs))
+        out.append(_yearly("special.sub_anniversary", subs, days))
     return out, hidden
 
 
@@ -540,16 +571,19 @@ def _join_day_card(
     start: date, days: Mapping[date, list[_Tagged]], today: date
 ) -> Card:
     """加入紀念日: the subscription start day; face = the best of her own words
-    that day (``days`` holds no welcome), else none (the label alone)."""
+    that day (``days`` holds no welcome), else none (the label alone); the
+    postcard photo in ``refs["photo"]``."""
     if start > today:
         return Card("special.join_day", "special", False)
     face = _best_of(days.get(start, []))
+    photo = _postcard_photo(face, days)
     return Card(
         "special.join_day",
         "special",
         True,
         date=start,
         message=_mk(face) if face is not None else None,
+        refs={"photo": photo} if photo is not None else {},
     )
 
 

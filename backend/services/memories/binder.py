@@ -431,7 +431,13 @@ def _payload(
                 else None
             ),
             "years": [
-                {"year": y.year, "date": y.date.isoformat(), "face": face(y.message)}
+                {
+                    "year": y.year,
+                    "date": y.date.isoformat(),
+                    "face": face(y.message),
+                    # the postcard photo of that day (never the face itself)
+                    "photo": face(y.photo),
+                }
                 for y in card.years
             ],
             "detail": dict(card.detail),
@@ -476,12 +482,12 @@ def _side_stats(sdir: Path, rooms: Sequence[str]) -> tuple[tuple[int, int], ...]
 
 
 def _message_refs(payload: dict) -> list[dict]:
-    """Every message object in the payload (faces, refs, yearly faces)."""
+    """Every message object in the payload (faces, refs, yearly faces and photos)."""
     out: list[dict] = []
     for shelf in payload["shelves"]:
         for card in shelf["cards"]:
             out.extend(r for r in (card["face"], *card["refs"].values()) if r)
-            out.extend(y["face"] for y in card["years"] if y["face"])
+            out.extend(r for y in card["years"] for r in (y["face"], y["photo"]) if r)
     return out
 
 

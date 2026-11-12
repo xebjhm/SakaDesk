@@ -150,7 +150,9 @@ async def test_christmas_keyword_hit_beats_higher_importance(svc):
     k = cards_of(await binder.build_binder(SERVICE, svc, s, now=NOW))
     xmas = k["special.christmas"]
     assert xmas["face"]["id"] == 2 and xmas["face"]["text"] == XMAS
-    assert xmas["years"] == [{"year": 2024, "date": "2024-12-24", "face": xmas["face"]}]
+    assert xmas["years"] == [
+        {"year": 2024, "date": "2024-12-24", "face": xmas["face"], "photo": None}
+    ]
     # no Valentine word on 02-14: best of the day instead
     assert k["special.valentine"]["face"]["id"] == 4
 
@@ -677,3 +679,35 @@ async def test_binder_payload_is_the_cached_text_free_binder(svc):
         if e["event"] == "memories_view_cache" and e["view"] == "binder"
     ]
     assert outcomes == ["miss", "hit"]  # one cache serves both
+
+
+@pytest.mark.asyncio
+async def test_postcard_photo_of_a_special_day_carries_its_caption(tmp_path):
+    """A3: each stacked year and 加入紀念日 carry that day's best photo (CJK caption)."""
+    mi.set_db_path(tmp_path / "idx.db")
+    sdir = tmp_path / "out" / SVC_NAME
+    pic = "messages\\40 松田 好花\\64 松田 好花\\picture\\{}.jpg"
+    write_room(
+        sdir,
+        "40 松田 好花",
+        "64 松田 好花",
+        [
+            msg(1, "2024-07-24T03:00:00Z", content=FIRST),
+            msg(2, "2024-07-24T03:01:00Z", "picture", media_file=pic.format(2)),
+            msg(3, "2024-12-24T11:00:00Z", content=XMAS),
+            msg(4, "2024-12-24T11:01:00Z", "picture", media_file=pic.format(4)),
+            msg(5, "2024-12-24T11:02:00Z", content="楽屋のおやつ🍪"),
+            msg(6, "2025-12-25T03:00:00Z", "picture", media_file=pic.format(6)),
+        ],
+    )
+    write_side_inputs(sdir, sub_starts={"40": "2024-07-24"})
+    (s,) = await mi.list_members(sdir)
+    k = cards_of(await binder.build_binder(SERVICE, sdir, s, now=NOW))
+    xmas = k["special.christmas"]
+    y2024, y2025 = xmas["years"]
+    assert y2024["face"]["id"] == 3 and y2024["photo"]["id"] == 4
+    assert y2024["photo"]["type"] == "picture" and y2024["photo"]["caption"]
+    # 2025: the face is the picture itself, so there is no separate photo
+    assert y2025["face"]["id"] == 6 and y2025["photo"] is None
+    join = k["special.join_day"]
+    assert join["face"]["id"] == 1 and join["refs"]["photo"]["id"] == 2
