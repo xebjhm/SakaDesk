@@ -78,7 +78,7 @@ def _lexicon_fingerprint() -> str:
 
 # Bump the leading number when the derivation rules change; the lexicon hash
 # is folded in automatically. Either change rebuilds every cached row.
-INDEX_VERSION = f"6-{_lexicon_fingerprint()}"
+INDEX_VERSION = f"7-{_lexicon_fingerprint()}"
 _LEADING_INT = re.compile(r"^\s*(\d+)")
 _SYNC_METADATA = "sync_metadata.json"
 
@@ -215,7 +215,11 @@ class MemberIndex:
     # Multi-label (a message counts for every class it contains); non-promo words.
     greeting_counts: dict[str, int] = field(default_factory=dict)
     birthday: str | None = None
-    subscription_start: str | None = None
+    subscription_start: str | None = None  # stored input (subscriptions.json)
+    # JST date (``YYYY-MM-DD``) of the room's earliest flagged welcome: the day
+    # the fan really joined. Wins over ``subscription_start`` for the room's
+    # special dates and for ``MemberSummary.subscription_start``.
+    welcome_date: str | None = None
     # 1:1 rooms only: the room's group is closed and no open 1:1 room holds the
     # same name. Always False for group chats (prefer a missed graduation).
     graduated: bool = False
@@ -557,8 +561,13 @@ def _derive(
     still include it: it is a message she sent.
     """
     birthday = _parse_date(idx.birthday)
-    sub_start = _parse_date(idx.subscription_start)
-    welcome = sel.welcome_ids(msgs, sub_start)
+    welcome = sel.welcome_ids(msgs, _parse_date(idx.subscription_start))
+    idx.welcome_date = next(
+        (sel.jst(m.ts).date().isoformat() for m in msgs if m.id in welcome), None
+    )
+    # the real first day: the welcome's date, else the stored start
+    start_raw = idx.welcome_date or idx.subscription_start
+    sub_start = _parse_date(start_raw)
     if welcome:
         logger.info("memory_index_welcome", member_id=idx.member_id, count=len(welcome))
     words = [m for m in msgs if m.text.strip()]
@@ -632,7 +641,7 @@ def _derive(
             continue
         if local.year not in specials:
             specials[local.year] = sel.special_dates(
-                local.year, idx.birthday, idx.subscription_start
+                local.year, idx.birthday, start_raw
             )
         importance[w.id] = sel.importance(
             w,
@@ -1028,7 +1037,10 @@ class MemberSummary:
     member_dirs: tuple[str, ...]  # POSIX, relative; oldest room (lowest gid) first
     member_ids: tuple[str, ...]
     group_ids: tuple[str, ...]
-    subscription_start: str | None  # earliest across her rooms
+    # The fan's first day: the earliest welcome date across her rooms
+    # (``MemberIndex.welcome_date``, read from the index cache), else the
+    # earliest stored start. ``None`` when neither is known.
+    subscription_start: str | None
     birthday: str | None
     graduated: bool  # every one of her rooms is graduated
 
@@ -1043,10 +1055,14 @@ def _list_members_sync(service_data_dir: Path) -> list[MemberSummary]:
                 continue
             raw = m.name.partition(" ")[2]
             by_name.setdefault(ident.name_norm, []).append((ident, raw))
+    welcomes = _cached_welcome_dates(str(service_data_dir))
     out: list[MemberSummary] = []
     for name_norm, rooms in by_name.items():
         rooms.sort(key=lambda r: (int(r[0].group_id or 0), r[0].member_dir))
-        starts = [r.subscription_start for r, _ in rooms if r.subscription_start]
+        joined = [welcomes[r.member_dir] for r, _ in rooms if r.member_dir in welcomes]
+        starts = joined or [
+            r.subscription_start for r, _ in rooms if r.subscription_start
+        ]
         out.append(
             MemberSummary(
                 name_norm=name_norm,
@@ -1065,11 +1081,33 @@ def _list_members_sync(service_data_dir: Path) -> list[MemberSummary]:
     return out
 
 
+def _cached_welcome_dates(service_dir: str) -> dict[str, str]:
+    """``{member_dir: welcome_date}`` from the stored index rows (any hash).
+
+    A room not indexed yet (or indexed before index version 7) has no entry,
+    so its person falls back to the stored subscription start until it is.
+    """
+    try:
+        # one small column per room: not a bulk row read, so no row_reads()
+        with contextlib.closing(_connect()) as c:
+            rows = c.execute(
+                "SELECT member_dir, json_extract(payload, '$.welcome_date') "
+                "FROM member_index WHERE service_dir=?",
+                (service_dir,),
+            ).fetchall()
+    except sqlite3.Error as e:
+        logger.warning("memory_welcome_dates_failed", error_type=type(e).__name__)
+        return {}
+    return {d: w for d, w in rows if isinstance(w, str) and w}
+
+
 async def list_members(service_data_dir: Path) -> list[MemberSummary]:
     """Person-level view keyed by ``name_norm`` over 1:1 rooms only.
 
-    Rooms of the same person are merged, with the earliest subscription start
-    across them. Reads folder names and side inputs only, never messages.
+    Rooms of the same person are merged. ``subscription_start`` is the
+    earliest welcome date across them (from the index cache), else the
+    earliest stored subscription start. Reads folder names, side inputs and
+    one cached column; never messages.
     """
     return await asyncio.to_thread(_list_members_sync, service_data_dir)
 

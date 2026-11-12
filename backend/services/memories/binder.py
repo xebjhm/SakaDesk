@@ -107,6 +107,11 @@ def reset_bad_start_log_for_tests() -> None:
 def subscription_start(summary: mi.MemberSummary) -> date | None:
     """The fan's start date; an unparsable one is treated as absent.
 
+    It is ``MemberSummary.subscription_start``: the day of her room's
+    subscription welcome when the index found one, else the stored start. Every
+    anniversary (cards, 加入紀念日, the hub countdown, the gacha, notifications)
+    reads it here, so they all agree on one first day.
+
     The ``bad_subscription_start`` breadcrumb is logged at most once per
     person per JST day, whichever view, card check or notification asks.
     """

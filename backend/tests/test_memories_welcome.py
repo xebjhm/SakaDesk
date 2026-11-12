@@ -434,3 +434,70 @@ def test_no_follow_up_without_a_flagged_welcome():
         _msg(11, "2025-11-01 00:20", FOLLOW),
     ]
     assert sel.welcome_ids(msgs) == set()
+
+
+# --- r4 follow-up: the real first day ---------------------------------------------
+
+LATE_STORED = "2026-08-29"  # subscriptions.json can hold a later re-start
+
+
+@pytest.mark.asyncio
+async def test_index_keeps_the_welcome_date(svc):
+    idx, facts = await room_facts(svc, ROWS, sub_start=LATE_STORED)
+    assert idx.welcome_date == "2025-11-01"
+    assert idx.subscription_start == LATE_STORED  # the stored input is kept
+
+
+@pytest.mark.asyncio
+async def test_special_dates_use_the_welcome_date(svc):
+    same = "今日もレッスンがんばったよ"
+    rows = [
+        ROWS[0],
+        m(500, "2026-08-29 12:00", same),  # the stored start's anniversary
+        m(501, "2026-11-01 12:00", same),  # the real first day's anniversary
+        m(502, "2026-10-01 12:00", same),  # an ordinary day
+    ]
+    _, facts = await room_facts(svc, rows, sub_start=LATE_STORED)
+    assert facts[501].importance == facts[502].importance + 150
+    assert facts[500].importance == facts[502].importance
+
+
+@pytest.mark.asyncio
+async def test_summary_start_is_the_welcome_date_once_indexed(svc):
+    from backend.services.memories import binder
+
+    d = arch.write_room(svc, *ROOM, ROWS)
+    arch.write_side_inputs(svc, sub_starts={"90": LATE_STORED})
+    before = (await mi.list_members(svc))[0]
+    assert before.subscription_start == LATE_STORED  # no index yet: stored
+    await mi.get_member_index(svc, d)
+    after = (await mi.list_members(svc))[0]
+    assert after.subscription_start == "2025-11-01"
+    assert binder.subscription_start(after) == date(2025, 11, 1)
+
+
+@pytest.mark.asyncio
+async def test_summary_start_falls_back_to_the_stored_start(svc):
+    rows = [m(1, "2025-11-01 09:00", "おはよう"), m(2, "2025-11-02 09:00", "またね")]
+    d = arch.write_room(svc, *ROOM, rows)
+    arch.write_side_inputs(svc, sub_starts={"90": LATE_STORED})
+    await mi.get_member_index(svc, d)
+    assert (await mi.list_members(svc))[0].subscription_start == LATE_STORED
+
+
+@pytest.mark.asyncio
+async def test_join_day_card_and_anniversaries_use_the_welcome_date(svc):
+    from backend.services.memories import binder
+
+    d = arch.write_room(svc, *ROOM, ROWS)
+    arch.write_side_inputs(svc, sub_starts={"90": LATE_STORED})
+    await mi.get_member_index(svc, d)
+    summary = (await mi.list_members(svc))[0]
+    now = datetime(2026, 11, 12, 12, 0, tzinfo=JST)
+    cards = {
+        card.key: card
+        for card in await binder.evaluate_person(SERVICE, svc, summary, now=now)
+    }
+    join = cards["special.join_day"]
+    assert join.date == date(2025, 11, 1) and join.message == mk(419672)
+    assert cards["anniv.y1"].earned and cards["anniv.y1"].date == date(2026, 11, 1)
