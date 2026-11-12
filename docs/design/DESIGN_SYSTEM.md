@@ -1093,7 +1093,9 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   text-muted`, tilted `-rotate-12`: year and `M.D`, plus the JST clock on a back; the shelf's
   day name sits in the caption under the stack, so nothing is cut inside the circle). On the front
   the greeting (two lines at most), the postmark and the stamp share a `h-14` top zone that her
-  words never enter; her words clamp at three `text-small` lines (an ellipsis on a line boundary).
+  words never enter; her words clamp at three `text-small` lines (an ellipsis on a line boundary),
+  in a plain block (never as a flex item, which WebView2 blockified to `flow-root`) and capped by
+  `max-h-small-3` (three `text-small` line heights). The caption stays above the fanned cards (`z-40`).
   The stack and its caption fill the shelf tiles' `h-52`, so bottom edges line up. A dev-only
   sample (a 3-year stack and its backs, `PostcardPreview`) sits on `?view=design`. Several years stack (at most three layers, the newest on top, resting at `rotate-1`
   / `-rotate-3` / `-rotate-6`); hovering or focusing the stack fans the layers out with

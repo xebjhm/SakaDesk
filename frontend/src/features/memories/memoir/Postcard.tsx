@@ -37,6 +37,9 @@ const THEME: Record<PostcardTheme, ThemeLook> = {
     christmas: { greeting: 'memories.postcard.greeting.christmas', Stamp: TreePine, greetingTone: 'text-primary', band: null },
 };
 
+/** Her words on a postcard front: three `text-small` lines, ellipsis, hard-capped at three lines. */
+export const POSTCARD_CLAMP = 'line-clamp-3 max-h-small-3 overflow-hidden text-small text-primary';
+
 const PAPER = 'rounded-sm border border-memories-paper bg-memories-paper shadow-memories-polaroid';
 
 /**
@@ -127,7 +130,14 @@ const PostcardFront: React.FC<{ theme: PostcardTheme; postcard: PostcardYear; se
                     {face && !words && (face.type === 'picture' || face.type === 'video') && face.media_url && (
                         <MemoryThumb message={face} px={64} className={cn('h-12 w-16 shrink-0 rounded-xs', sepiaClass(postcard.year))} />
                     )}
-                    {words && <MemoryText as="span" text={words} className="line-clamp-3 min-w-0 text-small text-primary" />}
+                    {/* The clamp sits in a plain block, not as a flex item: a flex item is blockified and
+                        WebView2 then computed `flow-root` instead of the `-webkit-box` line-clamp needs.
+                        `max-h-small-3` caps it at exactly three lines either way. */}
+                    {words && (
+                        <span data-testid="postcard-words-clamp" className="block min-w-0 flex-1">
+                            <MemoryText as="span" text={words} className={POSTCARD_CLAMP} />
+                        </span>
+                    )}
                     {face?.type === 'voice' && !words && (
                         <span className="flex items-center gap-1 text-small text-secondary">
                             <Mic aria-hidden="true" className="h-3.5 w-3.5" />
@@ -203,7 +213,7 @@ export const PostcardStack: React.FC<PostcardStackProps> = ({ card, title, sende
                     );
                 })}
             </button>
-            <p data-testid="postcard-stack-caption" className="mt-2 truncate text-center text-caption tabular-nums text-muted">
+            <p data-testid="postcard-stack-caption" className="relative z-40 mt-2 truncate text-center text-caption tabular-nums text-muted">
                 <span aria-hidden="true">{title} ・ </span>
                 <span id={descId}>
                     {t('memories.postcard.stack', { count: years.length })}

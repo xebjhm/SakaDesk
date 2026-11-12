@@ -139,6 +139,26 @@ describe('CardTile', () => {
         expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ key: 'special.newyear' }));
     });
 
+    it('clamps her words at three lines with no class that overrides the clamp', () => {
+        renderTile(cardOf('special.newyear'));
+        const words = screen.getAllByTestId('postcard-layer')[0].querySelector('[data-testid="memory-text"]')!;
+        expect(words).toHaveClass('line-clamp-3', 'max-h-small-3', 'overflow-hidden');
+        // line-clamp needs its own -webkit-box display: no display utility may sit beside it
+        const display = /^(block|inline|inline-block|flex|inline-flex|grid|flow-root|contents|table|hidden)$/;
+        expect([...words.classList].filter((c) => display.test(c))).toEqual([]);
+        // and it is not a flex item (a flex item is blockified, which broke the clamp in WebView2)
+        expect(words.parentElement).toHaveAttribute('data-testid', 'postcard-words-clamp');
+        expect(words.parentElement).toHaveClass('block');
+    });
+
+    it('keeps the caption above the fanned cards', () => {
+        renderTile(cardOf('special.newyear'));
+        expect(screen.getByTestId('postcard-stack-caption')).toHaveClass('relative', 'z-40');
+        for (const layer of screen.getAllByTestId('postcard-layer')) {
+            expect([...layer.classList].some((c) => /^z-(10|20|30)$/.test(c))).toBe(true);
+        }
+    });
+
     it('fans the stack on hover or focus only when motion is allowed', () => {
         renderTile(cardOf('special.newyear'));
         const layers = screen.getAllByTestId('postcard-layer');

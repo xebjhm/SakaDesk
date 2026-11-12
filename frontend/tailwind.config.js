@@ -6,6 +6,10 @@ export default {
     ],
     theme: {
         extend: {
+            maxHeight: {
+                // Three text-small lines: the fallback cap of a line-clamp-3 block (the 特別な日 postcard front).
+                'small-3': 'calc(var(--ds-font-small-leading) * 3)',
+            },
             brightness: { 94: '.94', 106: '1.06' },
             backdropBlur: { frost: '20px' },
             // The media tile's blur preview (a 16 px image blown up to the tile; DESIGN_SYSTEM "Media tile").
