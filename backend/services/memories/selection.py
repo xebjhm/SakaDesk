@@ -5,7 +5,8 @@ from __future__ import annotations
 import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date, datetime, timedelta
+from bisect import bisect_left
+from datetime import date, datetime, time, timedelta
 from zoneinfo import ZoneInfo
 
 import structlog
@@ -23,6 +24,7 @@ from backend.services.memories.lexicon import (
     SENTENCE_SPLIT_RE,
     TIME_RE,
     URL_RE,
+    WELCOME_RE,
 )
 
 logger = structlog.get_logger(__name__)
@@ -38,6 +40,16 @@ MEDIA_TYPES = frozenset({"picture", "video"})
 # ``recap/availability`` mirrors them.
 RECAP_OPEN_MD = (12, 1)
 RECAP_CHRISTMAS_MD = (12, 25)
+# Subscription welcome (see :func:`welcome_ids`): the opening = the first
+# ``WELCOME_FIRST_N`` messages from an anchor, or those within
+# ``WELCOME_WINDOW`` of it. The subscription-day anchor must fall within
+# ``WELCOME_ANCHOR_DAYS`` of the start day's 00:00 JST. In the archive the
+# welcome is always the anchor message itself (2025-11-01, 16 rooms: sent
+# 00:04-00:13 JST, 0-15 min before any companion message), so N stays 1: a
+# sparse room's 2nd or 3rd message can be days later and in her own words.
+WELCOME_FIRST_N = 1
+WELCOME_WINDOW = timedelta(minutes=30)
+WELCOME_ANCHOR_DAYS = timedelta(days=2)
 
 
 @dataclass(frozen=True)
@@ -59,6 +71,42 @@ def jst(ts: datetime) -> datetime:
     if ts.tzinfo is None or ts.utcoffset() is None:
         raise ValueError("jst() requires a timezone-aware datetime")
     return ts.astimezone(JST)
+
+
+def is_welcome_text(text: str) -> bool:
+    """The text reads like a subscription welcome (``lexicon.WELCOME_RE``)."""
+    return bool(WELCOME_RE.search(normalize(text)))
+
+
+def welcome_ids(msgs: Sequence[Msg], sub_start: date | None = None) -> set[int]:
+    """Ids of the automatic welcome messages a room sends at subscription.
+
+    ``msgs`` are sorted by ``(ts, id)``. A welcome is a ``text`` message that
+    matches :func:`is_welcome_text` AND sits at an opening: among the first
+    :data:`WELCOME_FIRST_N` messages from an anchor, or within
+    :data:`WELCOME_WINDOW` of the anchor. The anchors are the room's first
+    message and, when ``sub_start`` is known, the first message at or after
+    ``sub_start`` 00:00 JST if it falls within :data:`WELCOME_ANCHOR_DAYS`
+    (the archive can begin before the subscription). Both conditions keep
+    false positives low: she may thank for 登録 in her own words later on, and
+    the opening can hold her own greeting without the phrase.
+    """
+    anchors: set[int] = {0} if msgs else set()
+    if sub_start is not None and msgs:
+        begin = datetime.combine(sub_start, time(0), tzinfo=JST)
+        i = bisect_left([m.ts for m in msgs], begin)
+        if i < len(msgs) and msgs[i].ts < begin + WELCOME_ANCHOR_DAYS:
+            anchors.add(i)
+    out: set[int] = set()
+    for a in sorted(anchors):
+        limit = msgs[a].ts + WELCOME_WINDOW
+        for k in range(a, len(msgs)):
+            m = msgs[k]
+            if k - a >= WELCOME_FIRST_N and m.ts > limit:
+                break
+            if m.type == "text" and is_welcome_text(m.text):
+                out.add(m.id)
+    return out
 
 
 def is_promo(text: str) -> bool:

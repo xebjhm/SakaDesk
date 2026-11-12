@@ -69,6 +69,15 @@ CAPTION_BONUS_WORDS = (NICKNAME_TOKEN, "おはよ", "おやすみ", "好き")
 # because NFKC has not run. Used where her words are shown as written.
 RAW_SENTENCE_SPLIT_RE = re.compile(r"[。！？!?\n]+")
 
+# The automatic welcome a room sends when a fan subscribes:
+# 「ご登録ありがとうございます」「追加して下さりありがとう」「%%%さん追加ありがとう御座います」.
+# 登録 / 追加 then ありがとう (or 有難う) within one sentence: up to 16 characters
+# between them (「ご登録して頂き本当に本当にありがとう」), line breaks allowed
+# (「ご登録くださり\nありがとう」). Matched on NFKC text, so ！？ are !?. The phrase
+# alone is not enough: ``selection.welcome_ids`` also requires the opening
+# position, because she can thank for 登録 in her own words later on.
+WELCOME_RE = re.compile(r"(?:登録|追加)[^。!?]{0,16}?(?:ありがと|有難|有り難)")
+
 # Seasonal words for the Christmas and Valentine's Day moments.
 CHRISTMAS_RE = re.compile(r"クリスマス|メリクリ|🎄")
 VALENTINE_RE = re.compile(r"バレンタイン|チョコ")

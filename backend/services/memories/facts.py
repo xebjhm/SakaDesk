@@ -30,7 +30,8 @@ is_promo        INTEGER    0/1. Words: own text is promo. Media without text:
 has_nickname    INTEGER    0/1, own text contains ``%%%`` (promo included)
 greeting_mask   INTEGER    ``lexicon.GREETING_BITS`` of own text (promo included)
 chars           INTEGER    length of own text (0 for media without a caption)
-importance      INTEGER    non-promo messages with own text only, else NULL
+importance      INTEGER    non-promo, non-welcome messages with own text only,
+                           else NULL
 photo_score     INTEGER    non-promo picture/video only, else NULL
 burst_id        INTEGER    id of the burst's first item, else NULL
 caption_id      INTEGER    picture/video: own id when it has its own caption,
@@ -38,6 +39,10 @@ caption_id      INTEGER    picture/video: own id when it has its own caption,
 favorited       INTEGER    0/1, ``is_favorite`` from ``messages.json``
 media_file      TEXT       as written by pysaka (relative, may use ``\\``)
 duration_s      REAL       ``media_duration`` (voice / video), else NULL
+is_welcome      INTEGER    0/1, the automatic welcome a room sends when the fan
+                           subscribes (``selection.welcome_ids``). Never her
+                           words: ``select`` and ``aggregate.first``/``last``
+                           skip it unless asked; counts keep it.
 ==============  =========  ====================================================
 
 API (dates are JST calendar dates, inclusive; results sorted by ``(ts, id)``).
@@ -74,10 +79,11 @@ see ``index._ROW_READS``):
   -- the per-minute 同じ時刻 read: skips the freshness check of a room whose
   ``messages.json`` size + mtime are unchanged since its last check (within
   :data:`CLOCK_FRESH_TTL_S`), then reads every room over one connection.
-- Pure helpers on a fact list: ``select`` (types / promo / nickname / greeting
-  / favourited / hours / date range filters), ``on_date``, ``first_last``,
-  ``by_year``, ``aggregate`` -> :class:`Aggregate`, ``year_aggregates``,
-  ``bursts``, ``voice_durations``.
+- Pure helpers on a fact list: ``select`` (types / promo / welcome / nickname
+  / greeting / favourited / hours / date range filters), ``on_date``,
+  ``first_last``, ``by_year``, ``aggregate`` -> :class:`Aggregate`,
+  ``year_aggregates``, ``bursts``, ``voice_durations``,
+  ``is_new_year_midnight``.
 - ``get_person_facts(sdir, summary, start=None, end=None, *, types=None) ->
   [(member_dir, Fact)]`` -- the facts of all of a person's 1:1 rooms (``MemberSummary.member_dirs``) merged and
   sorted by ``(ts, id)``; each fact is tagged with its room's ``member_dir``
@@ -133,6 +139,7 @@ class Fact:
     favorited: bool
     media_file: str | None
     duration_s: float | None
+    is_welcome: bool = False
 
     @property
     def jst(self) -> datetime:
@@ -165,6 +172,7 @@ def _row_to_fact(row: tuple) -> Fact:
         fav,
         media,
         duration,
+        welcome,
     ) = row
     return Fact(
         id=mid,
@@ -186,6 +194,7 @@ def _row_to_fact(row: tuple) -> Fact:
         favorited=bool(fav),
         media_file=media,
         duration_s=duration,
+        is_welcome=bool(welcome),
     )
 
 
@@ -541,6 +550,7 @@ def select(
     *,
     types: Iterable[str] | None = None,
     include_promo: bool = False,
+    include_welcome: bool = False,
     nickname: bool | None = None,
     greeting: str | None = None,
     favorited: bool | None = None,
@@ -548,13 +558,19 @@ def select(
     start: date | None = None,
     end: date | None = None,
 ) -> list[Fact]:
-    """Filter a fact list. Promo is EXCLUDED unless ``include_promo``."""
+    """Filter a fact list.
+
+    Promo is EXCLUDED unless ``include_promo``; the subscription welcome is
+    EXCLUDED unless ``include_welcome`` (it is never her words).
+    """
     type_set = set(types) if types is not None else None
     hour_set = set(hours) if hours is not None else None
     bit = GREETING_BITS[greeting] if greeting is not None else 0
     out = []
     for f in facts:
         if f.is_promo and not include_promo:
+            continue
+        if f.is_welcome and not include_welcome:
             continue
         if type_set is not None and f.type not in type_set:
             continue
@@ -585,9 +601,26 @@ def first_last(
     types: Iterable[str] | None = None,
     include_promo: bool = False,
 ) -> tuple[Fact | None, Fact | None]:
-    """First and last fact after :func:`select` filtering (input must be sorted)."""
+    """First and last fact after :func:`select` filtering (input must be sorted).
+
+    The subscription welcome is never first or last.
+    """
     picked = select(facts, types=types, include_promo=include_promo)
     return (picked[0], picked[-1]) if picked else (None, None)
+
+
+# 元旦 midnight: 1/1 JST, 00:00 up to (not including) this minute.
+NEW_YEAR_MIDNIGHT_MINUTES = 30
+
+
+def is_new_year_midnight(f: Fact) -> bool:
+    """Sent on January 1 (JST) before 00:30: the 元旦 message of the recap's
+    S01 and the binder's ``special.newyear``."""
+    return (
+        (f.jst_date.month, f.jst_date.day) == (1, 1)
+        and f.hour == 0
+        and f.minute < NEW_YEAR_MIDNIGHT_MINUTES
+    )
 
 
 def by_year(facts: Iterable[Fact]) -> dict[int, list[Fact]]:
@@ -633,7 +666,12 @@ def longest_streak(days: Iterable[date]) -> int:
 
 @dataclass(frozen=True)
 class Aggregate:
-    """Counts over a fact list. ``nonpromo_*`` / ``hour_hist`` / greetings exclude promo."""
+    """Counts over a fact list. ``nonpromo_*`` / ``hour_hist`` / greetings exclude promo.
+
+    The subscription welcome counts as a message (``total``, ``counts``,
+    ``nonpromo_counts``, ``hour_hist``) but never as her words: it is left out
+    of ``nickname_count``, ``greeting_counts``, ``first`` and ``last``.
+    """
 
     total: int = 0
     counts: dict[str, int] = field(default_factory=dict)  # type -> all
@@ -647,8 +685,8 @@ class Aggregate:
     media_in_bursts: int = 0  # non-promo picture/video inside a burst
     active_days: int = 0
     longest_streak_days: int = 0
-    first: Fact | None = None  # first non-promo
-    last: Fact | None = None  # last non-promo
+    first: Fact | None = None  # first non-promo, non-welcome
+    last: Fact | None = None  # last non-promo, non-welcome
 
     @property
     def nonpromo_total(self) -> int:
@@ -670,7 +708,7 @@ def aggregate(facts: Iterable[Fact]) -> Aggregate:
         total += 1
         counts[f.type] += 1
         days.add(f.jst_date)
-        nick += f.has_nickname
+        nick += f.has_nickname and not f.is_welcome
         favs += f.favorited
         if f.type == "voice":
             voices += 1
@@ -679,9 +717,11 @@ def aggregate(facts: Iterable[Fact]) -> Aggregate:
             continue
         nonpromo[f.type] += 1
         hist[f.hour] += 1
-        greetings.update(classes_from_mask(f.greeting_mask))
         if f.burst_id is not None and f.type in ("picture", "video"):
             in_bursts += 1
+        if f.is_welcome:
+            continue
+        greetings.update(classes_from_mask(f.greeting_mask))
         if first is None:
             first = f
         last = f

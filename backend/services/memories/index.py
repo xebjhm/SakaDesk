@@ -78,7 +78,7 @@ def _lexicon_fingerprint() -> str:
 
 # Bump the leading number when the derivation rules change; the lexicon hash
 # is folded in automatically. Either change rebuilds every cached row.
-INDEX_VERSION = f"4-{_lexicon_fingerprint()}"
+INDEX_VERSION = f"5-{_lexicon_fingerprint()}"
 _LEADING_INT = re.compile(r"^\s*(\d+)")
 _SYNC_METADATA = "sync_metadata.json"
 
@@ -113,6 +113,7 @@ FACT_COLUMNS = (
     "favorited",
     "media_file",
     "duration_s",
+    "is_welcome",
 )
 
 _SCHEMA = """
@@ -127,6 +128,7 @@ CREATE TABLE IF NOT EXISTS message_facts (
     greeting_mask INTEGER NOT NULL, chars INTEGER NOT NULL,
     importance INTEGER, photo_score INTEGER, burst_id INTEGER, caption_id INTEGER,
     favorited INTEGER NOT NULL, media_file TEXT, duration_s REAL,
+    is_welcome INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(service_dir, member_dir, id)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS message_facts_by_clock
     ON message_facts(service_dir, member_dir, hour, minute);
@@ -139,6 +141,12 @@ CREATE INDEX IF NOT EXISTS message_facts_by_clock
 # needs no INDEX_VERSION bump: SQLite fills it from the existing rows once.
 # The older date / type indexes only cost space; older DBs still have them.
 _DROPPED_INDEXES = ("message_facts_by_date", "message_facts_by_type")
+
+# Columns added after the first release of ``message_facts``: ``(name, DDL)``.
+# A DB created before them gets them through ``ALTER TABLE`` on open; the
+# INDEX_VERSION bump that shipped with each one rebuilds every row, so the
+# DEFAULT only covers the moment before that rebuild.
+_ADDED_COLUMNS = (("is_welcome", "INTEGER NOT NULL DEFAULT 0"),)
 
 
 # One bulk row read of this DB at a time, process-wide. CPython's sqlite3
@@ -164,6 +172,11 @@ def _connect() -> sqlite3.Connection:
     conn.executescript(_SCHEMA)  # IF NOT EXISTS: cheap, survives a deleted DB
     for name in _DROPPED_INDEXES:
         conn.execute(f"DROP INDEX IF EXISTS {name}")
+    have = {row[1] for row in conn.execute("PRAGMA table_info(message_facts)")}
+    for name, ddl in _ADDED_COLUMNS:
+        if name not in have:
+            conn.execute(f"ALTER TABLE message_facts ADD COLUMN {name} {ddl}")
+            logger.info("memory_index_column_added", column=name)
     return conn
 
 
@@ -190,14 +203,15 @@ class MemberIndex:
     # profile_images history, oldest first: {"kind", "file", "first_seen"}.
     # The oldest entry per kind is when archiving began, not a change.
     avatar_changes: list[dict[str, Any]] = field(default_factory=list)
-    first_nickname_id: int | None = None  # includes promo texts
+    first_nickname_id: int | None = None  # includes promo texts, never the welcome
     counts_by_year: dict[int, dict[str, int]] = field(default_factory=dict)
     longest_streak_days: int = 0
     bursts: list[list[int]] = field(default_factory=list)
     # Per-message importance, photo score and caption link live in the
     # ``message_facts`` rows (``importance`` / ``photo_score`` / ``caption_id``).
     promo_ids: set[int] = field(default_factory=set)
-    nickname_count: int = 0  # all words, promo included (unlike greeting_counts)
+    # All words, promo included (unlike greeting_counts); never the welcome.
+    nickname_count: int = 0
     # Multi-label (a message counts for every class it contains); non-promo words.
     greeting_counts: dict[str, int] = field(default_factory=dict)
     birthday: str | None = None
@@ -536,11 +550,20 @@ def _derive(
     photo/video/voice messages that carry a caption. A media message's own
     text is its caption first (and decides whether it is promo); only media
     without text fall back to the nearest text within +-3 min.
+
+    The subscription welcome (``selection.welcome_ids``) is flagged
+    ``is_welcome``. It is never "her words": no importance, no nickname or
+    greeting count, never a photo's caption. Counts (per year, per type, the hour histogram)
+    still include it: it is a message she sent.
     """
     birthday = _parse_date(idx.birthday)
     sub_start = _parse_date(idx.subscription_start)
+    welcome = sel.welcome_ids(msgs, sub_start)
+    if welcome:
+        logger.info("memory_index_welcome", member_id=idx.member_id, count=len(welcome))
     words = [m for m in msgs if m.text.strip()]
-    texts = [m for m in words if m.type == "text"]  # pairing candidates
+    # pairing candidates (a welcome is never a photo's caption)
+    texts = [m for m in words if m.type == "text" and m.id not in welcome]
     media = [m for m in msgs if m.type in sel.MEDIA_TYPES]
     text_ts = [t.ts for t in texts]
 
@@ -589,7 +612,7 @@ def _derive(
     sentences = {w.id: sel.split_sentences(w.text) for w in words}
     by_year: dict[int, list[str]] = {}
     for w in words:
-        if w.id not in promo_words:
+        if w.id not in promo_words and w.id not in welcome:
             by_year.setdefault(sel.jst(w.ts).year, []).append(w.text)
     repeats = {y: sel.sentence_counts(ts) for y, ts in by_year.items()}
     specials: dict[int, set[date]] = {}
@@ -600,11 +623,12 @@ def _derive(
         local = sel.jst(w.ts)
         masks[w.id] = sel.greeting_mask(w.text)
         if sel.has_nickname(w.text):
-            nick_ids.add(w.id)
-            idx.nickname_count += 1
-            if idx.first_nickname_id is None:
-                idx.first_nickname_id = w.id
-        if w.id in promo_words:
+            nick_ids.add(w.id)  # the raw flag, kept for the welcome too
+            if w.id not in welcome:
+                idx.nickname_count += 1
+                if idx.first_nickname_id is None:
+                    idx.first_nickname_id = w.id
+        if w.id in promo_words or w.id in welcome:
             continue
         if local.year not in specials:
             specials[local.year] = sel.special_dates(
@@ -653,6 +677,7 @@ def _derive(
                 int(m.favorited),
                 media_file,
                 duration,
+                int(m.id in welcome),
             )
         )
     if msgs:
