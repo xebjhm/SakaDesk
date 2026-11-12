@@ -78,7 +78,7 @@ def _lexicon_fingerprint() -> str:
 
 # Bump the leading number when the derivation rules change; the lexicon hash
 # is folded in automatically. Either change rebuilds every cached row.
-INDEX_VERSION = f"7-{_lexicon_fingerprint()}"
+INDEX_VERSION = f"8-{_lexicon_fingerprint()}"
 _LEADING_INT = re.compile(r"^\s*(\d+)")
 _SYNC_METADATA = "sync_metadata.json"
 

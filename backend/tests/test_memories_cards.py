@@ -562,12 +562,14 @@ def test_oyasumi_and_daisuki_moments():
         fact(10 + i, f"2024-02-01 23:{i // 60:02d}:{i % 60:02d}", greet=("oyasumi",))
         for i in range(100)
     ]
-    fs.append(fact(500, "2024-03-01 10:00", greet=("daisuki",)))
+    fs.append(fact(500, "2024-03-01 10:00", greet=("daisuki",)))  # not to the fan
+    fs.append(fact(501, "2024-03-02 10:00", greet=("daisuki", "daisuki_you")))
     k = by_key(c.evaluate(inputs(fs)))
     assert k["moment.oyasumi.1"].message == key(10)  # promo skipped
     assert k["moment.oyasumi.100"].message == key(109)
-    assert k["moment.daisuki.1"].message == key(500)
-    assert k["moment.daisuki.100"].progress == (1, 100)
+    # the first 大好き said to the fan; the 100 count keeps every 大好き
+    assert k["moment.daisuki.1"].message == key(501)
+    assert k["moment.daisuki.100"].progress == (2, 100)
     k = by_key(c.evaluate(inputs()))
     assert not k["moment.daisuki.1"].earned and k["moment.daisuki.1"].progress is None
 

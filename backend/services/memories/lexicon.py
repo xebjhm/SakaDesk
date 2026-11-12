@@ -39,19 +39,38 @@ EMOTION_WORDS = (
 
 NICKNAME_TOKEN = "%%%"
 
+# 大好き and its elongated / mixed spellings (だあいすき, だーいすき, 大すき).
+DAISUKI_PATTERN = r"大好き|だいすき|だ[ぁあー〜~]+いすき|大すき"
+
 GREETING_RES = {
     "ohayo": re.compile(r"おはよ"),
     "oyasumi": re.compile(r"おやすみ"),
     # Bare 好き is too broad ("好きな食べ物"); only the explicit forms count.
-    "daisuki": re.compile(r"大好き|だいすき"),
+    "daisuki": re.compile(DAISUKI_PATTERN),
     "arigato": re.compile(r"ありがとう|ありがと|感謝"),
     "otsukare": re.compile(r"お疲れ|おつかれ"),
     "ohiru": re.compile(r"お昼|ランチ"),
 }
 
+# 大好き said to the fan (``selection.is_addressed_daisuki``): one sentence holds
+# 大好き (DAISUKI_PATTERN), an address to the fan, and no third-party object.
+# みんな / 皆 are not the fan. The fan's own name + さん (``%%%さん大好き``) is
+# still the fan, hence the lookbehind; お疲れ様 is not an honorific, and a comma
+# or the fan's name between the object and 大好き breaks the pattern.
+DAISUKI_ADDRESS_RE = re.compile(r"%%%|きみ|君|あなた")
+DAISUKI_THIRD_PARTY_RE = re.compile(
+    r"(?:(?<!%%%)(?:ちゃん|くん|さん|先輩|(?<!疲れ)様)|「[^」]+」)(?:の?こと)?(?:が|も|は)?"
+    r"[^。!?\n、,%]{0,4}?(?:" + DAISUKI_PATTERN + ")"
+)
+
+# Classes computed by a rule rather than one pattern (``selection.greeting_classes``).
+DERIVED_GREETINGS = ("daisuki_you",)
+
 # Bit per greeting class, for the multi-label ``greeting_mask`` (stored in the
 # index). Append new classes at the end so existing bits keep their meaning.
-GREETING_BITS = {name: 1 << i for i, name in enumerate(GREETING_RES)}
+GREETING_BITS = {
+    name: 1 << i for i, name in enumerate((*GREETING_RES, *DERIVED_GREETINGS))
+}
 
 # Sentence boundaries for the repeated-sentence penalty and sentence picks.
 # Matched on NFKC text, where ！？ become !?.

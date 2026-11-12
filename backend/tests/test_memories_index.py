@@ -265,7 +265,7 @@ async def test_greeting_counts_are_multi_label(tmp_path):
         ],
     )
     idx = await mi.get_member_index(tmp_path, d)
-    assert idx.greeting_counts == {"oyasumi": 1, "daisuki": 1}
+    assert idx.greeting_counts == {"oyasumi": 1, "daisuki": 1, "daisuki_you": 1}
 
 
 @pytest.mark.asyncio

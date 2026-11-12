@@ -1,3 +1,5 @@
+import pytest
+
 from datetime import date, datetime, timedelta, timezone
 
 from backend.services.memories.selection import (
@@ -246,11 +248,16 @@ def test_greeting_classes_multi_label_and_mask():
     )
 
     text = "おやすみ、%%%大好きだよ🌙"
-    assert greeting_classes(text) == {"oyasumi", "daisuki"}
+    assert greeting_classes(text) == {"oyasumi", "daisuki", "daisuki_you"}
     assert greeting_class(text) == "oyasumi"  # single label keeps lexicon order
     mask = greeting_mask(text)
-    assert mask == GREETING_BITS["oyasumi"] | GREETING_BITS["daisuki"]
-    assert classes_from_mask(mask) == {"oyasumi", "daisuki"}
+    want = (
+        GREETING_BITS["oyasumi"]
+        | GREETING_BITS["daisuki"]
+        | GREETING_BITS["daisuki_you"]
+    )
+    assert mask == want
+    assert classes_from_mask(mask) == {"oyasumi", "daisuki", "daisuki_you"}
     assert greeting_mask("今日は雨☔") == 0
     assert greeting_classes("ＯＫ、ありがとう！おはよう") == {"arigato", "ohayo"}
 
@@ -315,3 +322,46 @@ def test_repeated_counts_sentences_not_messages():
     assert not is_repeated([], counts)
     # A sentence repeated inside one message counts once.
     assert sentence_counts(["うん！うん！うん！"]) == {"うん": 1}
+
+
+# --- r4 §7: 大好き said to the fan ---------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "%%%大好きだよ",
+        "％％％のことが大好き！",  # full-width code (NFKC)
+        "%%%さん大好き♡",  # the fan's name + さん is still the fan
+        "きみが大好き",
+        "君のこと、だあいすき",  # elongated variant
+        "あなたがだーいすき〜",
+        "今日も楽しかった。\nきみのこと大すきだよ",  # the matching sentence counts
+        "今日も一日お疲れ様、%%%だいすきだよ",  # お疲れ様 is no third party
+    ],
+)
+def test_addressed_daisuki(text):
+    from backend.services.memories.selection import (
+        greeting_classes,
+        is_addressed_daisuki,
+    )
+
+    assert is_addressed_daisuki(text)
+    assert "daisuki" in greeting_classes(text)  # the broad class sees variants too
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "みんな大好き！",  # everyone, not the fan
+        "このアニメのキャラが大好き",  # no address
+        "%%%、今日はありがとう。ひなのちゃん大好き",  # address and 大好き in other sentences
+        "%%%聞いて！にぃたんのことが大好きなの",  # third party (Xちゃん/さんのこと…)
+        "きみも「推しの子」が大好きでしょ",  # a title in brackets is the object
+        "%%%ありがとう",  # no 大好き
+    ],
+)
+def test_not_addressed_daisuki(text):
+    from backend.services.memories.selection import is_addressed_daisuki
+
+    assert not is_addressed_daisuki(text)

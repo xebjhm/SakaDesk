@@ -60,7 +60,7 @@ async def test_fact_rows_schema(member):
     assert [f.id for f in facts] == [1, 2, 3, 4, 5, 6, 7, 8]
     f2 = by_id[2]
     assert f2.jst_date == date(2026, 1, 2) and (f2.hour, f2.minute) == (0, 5)
-    assert f2.has_nickname and f2.greetings == {"oyasumi", "daisuki"}
+    assert f2.has_nickname and f2.greetings == {"oyasumi", "daisuki", "daisuki_you"}
     assert f2.has_greeting("daisuki") and not f2.has_greeting("ohayo")
     assert f2.chars == len("%%%、おやすみ大好き") and f2.importance is not None
     assert f2.ts == datetime(2026, 1, 1, 15, 5, tzinfo=timezone.utc)
@@ -116,7 +116,12 @@ async def test_pure_helpers(member):
     assert agg.nonpromo_total == 6 and agg.nonpromo_counts["text"] == 1
     assert agg.hour_hist[0] == 1 and agg.hour_hist[21] == 5
     assert agg.nickname_count == 1 and agg.favorites == 1
-    assert agg.greeting_counts == {"oyasumi": 1, "daisuki": 1, "ohiru": 1}
+    assert agg.greeting_counts == {
+        "oyasumi": 1,
+        "daisuki": 1,
+        "daisuki_you": 1,
+        "ohiru": 1,
+    }
     assert agg.voice_count == 2 and agg.voice_seconds == 14.5
     assert agg.media_in_bursts == 3
     assert agg.active_days == 4  # JST 1/2..1/5

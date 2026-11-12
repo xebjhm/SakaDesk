@@ -76,7 +76,7 @@ SHELVES = (
 
 # Bump on any rule or payload change: the binder's cache hash includes it, so
 # a shipped rule change never keeps serving binders built by the old rules.
-CARDS_VERSION = 4
+CARDS_VERSION = 5
 
 FALLBACK_NEAREST = "nearest"
 FALLBACK_FIRST_AFTER = "first_after"
@@ -701,9 +701,12 @@ def _moment_cards(tagged: Sequence[_Tagged]) -> list[Card]:
     else:
         out = [Card("moment.midnight", "moments", False, foil=True)]
     out.append(_synchro(tagged))
-    for greeting in ("oyasumi", "daisuki"):
+    # 第一次說最喜歡 is the first 大好き said to the fan (``daisuki_you``); the
+    # 100th keeps counting every 大好き, so "100 times" stays literally true
+    for greeting, first_class in (("oyasumi", "oyasumi"), ("daisuki", "daisuki_you")):
         items = _select(tagged, greeting=greeting)
-        out.append(_first(f"moment.{greeting}.1", "moments", items))
+        firsts = _select(tagged, greeting=first_class)
+        out.append(_first(f"moment.{greeting}.1", "moments", firsts))
         out.append(_nth(f"moment.{greeting}.100", "moments", items, 100))
     return out
 

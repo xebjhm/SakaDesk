@@ -13,6 +13,8 @@ import structlog
 
 from backend.services.memories.lexicon import (
     CAPTION_BONUS_WORDS,
+    DAISUKI_ADDRESS_RE,
+    DAISUKI_THIRD_PARTY_RE,
     DATE_HEADING_RE,
     EMOTION_WORDS,
     GREETING_BITS,
@@ -164,9 +166,30 @@ def greeting_class(text: str) -> str | None:
 
 
 def greeting_classes(text: str) -> frozenset[str]:
-    """Every greeting class present in ``text`` (multi-label, for counting)."""
+    """Every greeting class present in ``text`` (multi-label, for counting).
+
+    Includes the derived ``daisuki_you`` (:func:`is_addressed_daisuki`).
+    """
     t = normalize(text)
-    return frozenset(name for name, p in GREETING_RES.items() if p.search(t))
+    found = {name for name, p in GREETING_RES.items() if p.search(t)}
+    if "daisuki" in found and is_addressed_daisuki(text):
+        found.add("daisuki_you")
+    return frozenset(found)
+
+
+def is_addressed_daisuki(text: str) -> bool:
+    """大好き said to the fan: one NFKC sentence (:func:`split_sentences`) holds
+    大好き or a variant, ``%%%`` / きみ / 君 / あなた (never みんな), and no
+    third-party object such as 「Xちゃん(のこと)が大好き」 or a 「title」."""
+    daisuki = GREETING_RES["daisuki"]
+    for s in split_sentences(text):
+        if (
+            daisuki.search(s)
+            and DAISUKI_ADDRESS_RE.search(s)
+            and not DAISUKI_THIRD_PARTY_RE.search(s)
+        ):
+            return True
+    return False
 
 
 def greeting_mask(text: str) -> int:
