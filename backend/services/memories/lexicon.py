@@ -97,6 +97,17 @@ RAW_SENTENCE_SPLIT_RE = re.compile(r"[。！？!?\n]+")
 # position, because she can thank for 登録 in her own words later on.
 WELCOME_RE = re.compile(r"(?:登録|追加)[^。!?]{0,16}?(?:ありがと|有難|有り難)")
 
+# Q&A posts (``selection.is_qa``), matched per line on NFKC text (Ｑ is Q, ？ is
+# ?). A question line: Q / Q. / Q: / Q) with no letter after it (「Q好きな色は？」,
+# 「Q. MBTIは？」, never 「QUEEN」), or a numbered line ending in ? (「1. 好きな色は？」).
+# A letter pair: a ✉ / 📩 / 💌 question line and a ➡ / → answer line.
+QA_LINE_RE = re.compile(r"^\s*Q(?![a-zA-Z])")
+QA_NUMBERED_RE = re.compile(r"^\s*(?:\d{1,2}|[①-⑳])\s*[.)、:]?\s*\S.*\?\s*$")
+QA_LETTER_RE = re.compile(r"^\s*(?:✉|📩|💌)")
+QA_ANSWER_RE = re.compile(r"^\s*(?:➡|→)")
+QA_MIN_LINES = 3
+QA_MIN_PAIRS = 2
+
 # Seasonal words for the Christmas and Valentine's Day moments.
 CHRISTMAS_RE = re.compile(r"クリスマス|メリクリ|🎄")
 VALENTINE_RE = re.compile(r"バレンタイン|チョコ")

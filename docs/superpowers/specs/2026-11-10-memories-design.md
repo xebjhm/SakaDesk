@@ -74,6 +74,8 @@ A photo is promo when its paired text (±3 min) is promo. Promo items still coun
 
 **Subscription welcome** — when a fan subscribes, each room sends an automatic greeting (「ご登録ありがとうございます」, often with `%%%`). A text message is a welcome when it sits at an opening (the room's first message, or the first message on the subscription start day, plus anything within 30 min of it) AND contains 登録/追加 followed by ありがとう within one sentence. Its automatic follow-up line(s) are flagged too: the room's next text message, server id = previous flagged id + 1, within 30 min of the welcome. The index flags it (`is_welcome`) and keeps its date as the fan's real first day, which every anniversary and special date uses; it counts in message totals but never as "her words": no importance, no nickname count, never a card face, recap pick, gacha pull, On This Day / 24h / 同じ時刻 / timeline pick or 被叫名字 entry. `first message` is her first self-written message.
 
+**Q&A posts** — a text with ≥3 question lines (`Q…`, `Q.`, `Ｑ`, or a numbered line ending in `?`), or ≥2 `✉` question lines with ≥2 `➡` answer lines, is flagged `is_qa`. It is never "her longest words": the longest-message card, recap S07, the recap `longest` title and the timeline's top slot skip it; everything else (counts, importance) keeps it.
+
 **Importance score** (for "the one sentence", "the longest heartfelt message", gacha weighting):
 `score = chars + 300·favourited + 80·has_nickname + 100·emotion_word + 150·special_date`
 - emotion words: `ありがとう|感謝|大好き|本当に|嬉しい|悔しい|涙|目標|夢|卒業|ライブ|ミーグリ|誕生日`;

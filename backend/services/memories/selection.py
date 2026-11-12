@@ -22,6 +22,12 @@ from backend.services.memories.lexicon import (
     NICKNAME_TOKEN,
     PROMO_WORDS_RE,
     PURE_GREETING_RE,
+    QA_ANSWER_RE,
+    QA_LETTER_RE,
+    QA_LINE_RE,
+    QA_MIN_LINES,
+    QA_MIN_PAIRS,
+    QA_NUMBERED_RE,
     RAW_SENTENCE_SPLIT_RE,
     SENTENCE_SPLIT_RE,
     TIME_RE,
@@ -137,6 +143,20 @@ def welcome_ids(msgs: Sequence[Msg], sub_start: date | None = None) -> set[int]:
             out.add(nxt.id)
             prev = nxt
     return out
+
+
+def is_qa(text: str) -> bool:
+    """A Q&A post: at least :data:`QA_MIN_LINES` question lines (``Q…`` or a
+    numbered question), or at least :data:`QA_MIN_PAIRS` ✉ question lines and
+    as many ➡ answer lines. Line-based on NFKC text (``lexicon.QA_*``)."""
+    lines = normalize(text).splitlines()
+    q = sum(1 for ln in lines if QA_LINE_RE.match(ln))
+    numbered = sum(1 for ln in lines if QA_NUMBERED_RE.match(ln))
+    if q >= QA_MIN_LINES or numbered >= QA_MIN_LINES:
+        return True
+    letters = sum(1 for ln in lines if QA_LETTER_RE.match(ln))
+    answers = sum(1 for ln in lines if QA_ANSWER_RE.match(ln))
+    return letters >= QA_MIN_PAIRS and answers >= QA_MIN_PAIRS
 
 
 def is_promo(text: str) -> bool:

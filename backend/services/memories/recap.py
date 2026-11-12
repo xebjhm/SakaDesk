@@ -97,7 +97,7 @@ from backend.services.memories.then_now import (
 logger = structlog.get_logger(__name__)
 
 # "3": S08 echo keywords match NFKC text (then_now.keywords_in).
-RECAP_VERSION = "5"
+RECAP_VERSION = "6"
 
 SLIDE_KEYS = (
     "s01_first",
@@ -781,6 +781,7 @@ def _s07_letter(ctx: _Ctx) -> dict | None:
         for i in ctx.words()
         if i[1].type == "text"
         and i[1].importance is not None
+        and not i[1].is_qa  # a Q&A post is not her heartfelt letter
         and i[1].chars >= LETTER_MIN_CHARS
         and ctx.free(i)
     ]
@@ -1647,7 +1648,7 @@ def _member_stats(
     metrics: dict[str, float | None] = {
         "morning": sum(1 for i in words if i[1].has_greeting("ohayo")),
         "nickname": sum(1 for i in words if i[1].has_nickname),
-        "longest": max((i[1].chars for i in words), default=0),
+        "longest": max((i[1].chars for i in words if not i[1].is_qa), default=0),
         "voice": sum(1 for i in nonpromo if i[1].type == "voice"),
         # distinct nights (the title says "the most nights"), not messages
         "night": len({i[1].jst_date for i in nonpromo if 21 <= i[1].hour <= 23}),

@@ -214,7 +214,7 @@ def _pick(
     ]
     slots: dict[str, _Tagged | None] = {}
     rules: dict[str, tuple[Callable[[Fact], bool], _Score]] = {
-        "top": (lambda f: True, _importance),
+        "top": (lambda f: not f.is_qa, _importance),  # a Q&A is long, not her one
         "nickname": (lambda f: f.has_nickname, _importance),
         "late": (lambda f: is_late(f.hour), _late),
     }

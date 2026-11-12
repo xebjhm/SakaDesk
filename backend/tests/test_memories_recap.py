@@ -1476,7 +1476,7 @@ async def test_broken_recap_cache_rows_are_rebuilt(full):
 async def test_recap_version_is_part_of_the_cache_key(full, monkeypatch):
     # Bumped for the recap wave's payload changes: rows cached by an earlier
     # dev build must not be served.
-    assert recap.RECAP_VERSION == "5"
+    assert recap.RECAP_VERSION == "6"
     monkeypatch.setattr(recap, "RECAP_VERSION", "1")
     await build(full, "金村美玖", PARTIAL)
     monkeypatch.undo()

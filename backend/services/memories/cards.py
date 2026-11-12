@@ -76,7 +76,7 @@ SHELVES = (
 
 # Bump on any rule or payload change: the binder's cache hash includes it, so
 # a shipped rule change never keeps serving binders built by the old rules.
-CARDS_VERSION = 5
+CARDS_VERSION = 6
 
 FALLBACK_NEAREST = "nearest"
 FALLBACK_FIRST_AFTER = "first_after"
@@ -593,7 +593,8 @@ def _record_cards(
     out: list[Card] = []
     hidden = 0
 
-    words = [t for t in faces if _is_words(t[1])]
+    # a Q&A post is long but not her heartfelt words
+    words = [t for t in faces if _is_words(t[1]) and not t[1].is_qa]
     if words:
         longest = max(words, key=lambda t: t[1].chars)  # max keeps the first
         out.append(

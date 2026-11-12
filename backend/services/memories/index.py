@@ -78,7 +78,7 @@ def _lexicon_fingerprint() -> str:
 
 # Bump the leading number when the derivation rules change; the lexicon hash
 # is folded in automatically. Either change rebuilds every cached row.
-INDEX_VERSION = f"8-{_lexicon_fingerprint()}"
+INDEX_VERSION = f"9-{_lexicon_fingerprint()}"
 _LEADING_INT = re.compile(r"^\s*(\d+)")
 _SYNC_METADATA = "sync_metadata.json"
 
@@ -114,6 +114,7 @@ FACT_COLUMNS = (
     "media_file",
     "duration_s",
     "is_welcome",
+    "is_qa",
 )
 
 _SCHEMA = """
@@ -129,6 +130,7 @@ CREATE TABLE IF NOT EXISTS message_facts (
     importance INTEGER, photo_score INTEGER, burst_id INTEGER, caption_id INTEGER,
     favorited INTEGER NOT NULL, media_file TEXT, duration_s REAL,
     is_welcome INTEGER NOT NULL DEFAULT 0,
+    is_qa INTEGER NOT NULL DEFAULT 0,
     PRIMARY KEY(service_dir, member_dir, id)) WITHOUT ROWID;
 CREATE INDEX IF NOT EXISTS message_facts_by_clock
     ON message_facts(service_dir, member_dir, hour, minute);
@@ -146,7 +148,10 @@ _DROPPED_INDEXES = ("message_facts_by_date", "message_facts_by_type")
 # A DB created before them gets them through ``ALTER TABLE`` on open; the
 # INDEX_VERSION bump that shipped with each one rebuilds every row, so the
 # DEFAULT only covers the moment before that rebuild.
-_ADDED_COLUMNS = (("is_welcome", "INTEGER NOT NULL DEFAULT 0"),)
+_ADDED_COLUMNS = (
+    ("is_welcome", "INTEGER NOT NULL DEFAULT 0"),
+    ("is_qa", "INTEGER NOT NULL DEFAULT 0"),
+)
 
 
 # One bulk row read of this DB at a time, process-wide. CPython's sqlite3
@@ -675,6 +680,7 @@ def _derive(
                 media_file,
                 duration,
                 int(m.id in welcome),
+                int(m.type == "text" and sel.is_qa(m.text)),
             )
         )
     if msgs:

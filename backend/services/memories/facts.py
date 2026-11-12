@@ -43,6 +43,9 @@ is_welcome      INTEGER    0/1, the automatic welcome a room sends when the fan
                            subscribes (``selection.welcome_ids``). Never her
                            words: ``select`` and ``aggregate.first``/``last``
                            skip it unless asked; counts keep it.
+is_qa           INTEGER    0/1, a text that is a Q&A post (``selection.is_qa``):
+                           never "her longest words" (record.longest, recap S07
+                           and the ``longest`` title, the timeline top slot)
 ==============  =========  ====================================================
 
 API (dates are JST calendar dates, inclusive; results sorted by ``(ts, id)``).
@@ -140,6 +143,7 @@ class Fact:
     media_file: str | None
     duration_s: float | None
     is_welcome: bool = False
+    is_qa: bool = False
 
     @property
     def jst(self) -> datetime:
@@ -173,6 +177,7 @@ def _row_to_fact(row: tuple) -> Fact:
         media,
         duration,
         welcome,
+        qa,
     ) = row
     return Fact(
         id=mid,
@@ -195,6 +200,7 @@ def _row_to_fact(row: tuple) -> Fact:
         media_file=media,
         duration_s=duration,
         is_welcome=bool(welcome),
+        is_qa=bool(qa),
     )
 
 
