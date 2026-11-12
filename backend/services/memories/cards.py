@@ -704,8 +704,9 @@ def _moment_cards(tagged: Sequence[_Tagged]) -> list[Card]:
     out.append(_synchro(tagged))
     # 第一次說最喜歡 is the first 大好き said to the fan (``daisuki_you``); the
     # 100th keeps counting every 大好き, so "100 times" stays literally true
-    for greeting, first_class in (("oyasumi", "oyasumi"), ("daisuki", "daisuki_you")):
+    for greeting in ("oyasumi", "daisuki"):
         items = _select(tagged, greeting=greeting)
+        first_class = "daisuki_you" if greeting == "daisuki" else greeting
         firsts = _select(tagged, greeting=first_class)
         out.append(_first(f"moment.{greeting}.1", "moments", firsts))
         out.append(_nth(f"moment.{greeting}.100", "moments", items, 100))
