@@ -133,7 +133,7 @@ describe('DayView', () => {
         expect(screen.getByTestId('day-lanes')).toBeInTheDocument();
         expect(screen.queryByTestId('day-merged')).toBeNull();
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'day_mode', outcome: 'on' });
-        await userEvent.click(screen.getByRole('button', { name: 'Timeline' }));
+        await userEvent.click(screen.getByRole('button', { name: 'In time order' }));
         expect(screen.getByTestId('day-merged')).toBeInTheDocument();
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'day_mode', outcome: 'off' });
     });

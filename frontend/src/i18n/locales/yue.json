@@ -855,8 +855,8 @@
     "day": {
       "count": "{{count}} 則訊息",
       "otherGroups": "包埋其他團體",
-      "modeMerged": "合流",
-      "modeLanes": "泳道",
+      "modeMerged": "按時間",
+      "modeLanes": "按成員",
       "expand": "展開"
     },
     "album": {

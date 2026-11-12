@@ -870,7 +870,7 @@
       "count": "{{count}} message",
       "count_other": "{{count}} messages",
       "otherGroups": "Include other groups",
-      "modeMerged": "Timeline",
+      "modeMerged": "In time order",
       "modeLanes": "By member",
       "expand": "Open"
     },

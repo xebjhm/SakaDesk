@@ -284,8 +284,8 @@ describe('memories core strings', () => {
         expect(lookup(zhTW, 'memories.onThisDay.title')).toBe('那年今日');
         expect(lookup(zhTW, 'memories.onThisDay.noMessages')).toBe('這天沒有訊息');
         expect(lookup(zhTW, 'memories.day.otherGroups')).toBe('包含其他團體');
-        expect(lookup(zhTW, 'memories.day.modeMerged')).toBe('合流');
-        expect(lookup(zhTW, 'memories.day.modeLanes')).toBe('泳道');
+        expect(lookup(zhTW, 'memories.day.modeMerged')).toBe('依時間');
+        expect(lookup(zhTW, 'memories.day.modeLanes')).toBe('依成員');
     });
 });
 

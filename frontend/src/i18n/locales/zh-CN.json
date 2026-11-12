@@ -855,8 +855,8 @@
     "day": {
       "count": "{{count}} 条消息",
       "otherGroups": "包含其他团体",
-      "modeMerged": "合流",
-      "modeLanes": "泳道",
+      "modeMerged": "按时间",
+      "modeLanes": "按成员",
       "expand": "展开"
     },
     "album": {
