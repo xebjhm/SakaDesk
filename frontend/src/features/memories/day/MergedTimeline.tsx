@@ -37,7 +37,8 @@ interface MergedTimelineProps {
     scrollParent?: HTMLElement | null;
     /**
      * One message to bring forward (a card's message, a 24h slot): its row is tinted
-     * (`bg-accent-subtle`, `data-focused`) and scrolled into the middle of the view. Only for an
+     * (`bg-accent-subtle`, `data-focused`) and centred in the nearest ancestor marked
+     * `data-focus-scroller` (that element's `scrollTop` only; nothing above it moves). Only for an
      * unwindowed list (no `scrollParent`), where every row is in the DOM.
      */
     focus?: { room: string; id: number } | null;
@@ -159,9 +160,15 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
     const focusId = focus?.id;
     useEffect(() => {
         if (focusId === undefined) return;
-        const row = rootRef.current?.querySelector<HTMLElement>('[data-focused="true"]');
-        // jsdom has no scrollIntoView
-        row?.scrollIntoView?.({ block: 'center' });
+        const root = rootRef.current;
+        const row = root?.querySelector<HTMLElement>('[data-focused="true"]');
+        // Only the column's own scroller (`data-focus-scroller`) moves: scrollIntoView would also
+        // scroll the dialog body and push the card face out of view. No scroller, no scroll.
+        const scroller = root?.closest<HTMLElement>('[data-focus-scroller]');
+        if (!row || !scroller) return;
+        const r = row.getBoundingClientRect();
+        const s = scroller.getBoundingClientRect();
+        scroller.scrollTop += r.top - s.top - (scroller.clientHeight - r.height) / 2;
     }, [focusRoom, focusId, messages]);
 
     return (

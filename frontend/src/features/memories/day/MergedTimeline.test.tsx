@@ -92,3 +92,42 @@ describe('MergedTimeline voices', () => {
         useVoicePlayback.getState().stop();
     });
 });
+
+describe('MergedTimeline focus', () => {
+    it('centres the focused row inside the scroller from its own rectangle', async () => {
+        const { messages } = dayPayload();
+        const rect = (top: number, height: number) => ({ top, height, bottom: top + height, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => ({}) });
+        const origRect = Element.prototype.getBoundingClientRect;
+        Element.prototype.getBoundingClientRect = function (this: Element) {
+            if ((this as HTMLElement).dataset.focusScroller !== undefined) return rect(100, 200) as DOMRect;
+            if ((this as HTMLElement).dataset.focused === 'true') return rect(700, 40) as DOMRect;
+            return origRect.call(this);
+        };
+        const origHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return (this as HTMLElement).dataset.focusScroller !== undefined ? 200 : 0; } });
+        onTestFinished(() => {
+            Element.prototype.getBoundingClientRect = origRect;
+            if (origHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', origHeight);
+        });
+        render(
+            <div data-testid="outer">
+                <div data-testid="column" data-focus-scroller="">
+                    <MergedTimeline messages={messages} people={peopleOf(messages)} service="hinatazaka46" focus={{ room: messages[1].room, id: messages[1].id }} />
+                </div>
+            </div>,
+        );
+        // row top 700 is 600 below the scroller top; centring a 40-px row in 200 px: 600 - 80 = 520
+        expect(screen.getByTestId('column').scrollTop).toBe(520);
+        expect(screen.getByTestId('outer').scrollTop).toBe(0); // the ancestors never move
+    });
+
+    it('does not scroll at all without a column scroller', () => {
+        const { messages } = dayPayload();
+        const spy = vi.fn();
+        const original = Element.prototype.scrollIntoView;
+        Element.prototype.scrollIntoView = spy;
+        onTestFinished(() => { Element.prototype.scrollIntoView = original; });
+        render(<MergedTimeline messages={messages} people={peopleOf(messages)} service="hinatazaka46" focus={{ room: messages[0].room, id: messages[0].id }} />);
+        expect(spy).not.toHaveBeenCalled();
+    });
+});

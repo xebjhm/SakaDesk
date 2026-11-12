@@ -105,6 +105,9 @@ describe('Day24View', () => {
         expect(rows[0]).toHaveAttribute('data-focused', 'true');
         expect(rows[1]).not.toHaveAttribute('data-focused');
         expect(within(dialog).getByTestId('day24-day-label')).toHaveTextContent('2022');
+        // the dialog scrolls only the day column (its own scroller), never its body
+        expect(within(dialog).getByTestId('day24-day-scroller')).toHaveAttribute('data-focus-scroller');
+        expect(within(dialog).getByTestId('modal-body')).toHaveClass('md:overflow-hidden');
     });
 
     it('closing the dialog returns to the same 24h day, with no refetch', async () => {

@@ -185,6 +185,9 @@ export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, nam
             closeLabel={t('common.close')}
             headerExtra={card.date ? <span className="text-small text-muted">{formatDayHeading(card.date, i18n.language)}</span> : undefined}
             className="max-w-4xl"
+            // from md the body does not scroll: the face column and the day column scroll on
+            // their own, so focusing the day's message never moves the card face
+            bodyClassName="md:flex md:flex-col md:overflow-hidden"
             footer={message ? (
                 <Button variant="secondary" size="sm" onClick={() => { jumpToChat(message, name, 'binder'); onClose(); }}>
                     <MessageCircle aria-hidden="true" className="h-4 w-4" />
@@ -192,8 +195,8 @@ export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, nam
                 </Button>
             ) : undefined}
         >
-            <div className="flex min-h-0 flex-col gap-6 md:flex-row">
-                <div className="flex shrink-0 flex-col items-center gap-4">
+            <div data-testid="card-detail-columns" className="flex min-h-0 flex-col gap-6 md:flex-1 md:flex-row">
+                <div className="flex shrink-0 flex-col items-center gap-4 md:min-h-0 md:overflow-y-auto">
                     {face}
                     {/* The fan's notes on this card (earned only: a silhouette has no date). */}
                     {card.earned && card.date && (

@@ -29,7 +29,8 @@ interface MemberDayColumnProps {
 
 /**
  * One member's messages of one JST day: `fetchDay` with `member`, drawn by the day view's
- * `MergedTimeline` with the `focus` message tinted and scrolled to. Loading, slow, error and
+ * `MergedTimeline` with the `focus` message tinted and scrolled to inside the column's own
+ * scroller (`data-focus-scroller`: bounded by its flex parent from `md`, `max-h-96` below). Loading, slow, error and
  * empty go through `MemoriesStatus` (`view="day"`, the loading-UX contract). Shared by the card
  * detail's day column and the 24h tab's member-day dialog, so both read the same way.
  */
@@ -47,13 +48,17 @@ export const MemberDayColumn: React.FC<MemberDayColumnProps> = ({ service, membe
     );
     const headingId = `${testId}-label`;
     return (
-        <section data-testid={testId} aria-labelledby={headingId} className="min-w-0 flex-1">
-            <h3 id={headingId} data-testid={headingId} className="mb-2 text-small text-muted">
+        <section data-testid={testId} aria-labelledby={headingId} className="flex min-h-0 min-w-0 flex-1 flex-col">
+            <h3 id={headingId} data-testid={headingId} className="mb-2 shrink-0 text-small text-muted">
                 {label}
             </h3>
-            {day.status === 'ready' && data
-                ? <MergedTimeline messages={data.messages} people={people} service={service} focus={focus} />
-                : day.status !== 'ready' && <MemoriesStatus query={day} view="day" />}
+            {/* The column is its own scroller at every width, so focusing a message never moves
+                the dialog body (and the card face with it). */}
+            <div data-testid={`${testId}-scroller`} data-focus-scroller="" className="max-h-96 min-h-0 flex-1 overflow-y-auto md:max-h-none">
+                {day.status === 'ready' && data
+                    ? <MergedTimeline messages={data.messages} people={people} service={service} focus={focus} />
+                    : day.status !== 'ready' && <MemoriesStatus query={day} view="day" />}
+            </div>
         </section>
     );
 };
@@ -87,6 +92,7 @@ export const MemberDayDialog: React.FC<MemberDayDialogProps> = ({ service, membe
             header="plain"
             closeLabel={t('common.close')}
             className="max-w-2xl"
+            bodyClassName="md:flex md:flex-col md:overflow-hidden"
             footer={(
                 <Button variant="secondary" size="sm" onClick={() => { jumpToChat(message, name, from); onClose(); }}>
                     <MessageCircle aria-hidden="true" className="h-4 w-4" />

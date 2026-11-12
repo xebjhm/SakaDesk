@@ -100,6 +100,24 @@ describe('CardDetail', () => {
         expect(onClose).toHaveBeenCalled();
     });
 
+    it('scrolls only the day column to its message, never the dialog body', async () => {
+        renderDetail(card({
+            key: 'first.message', date: '2024-07-24', face: face({ id: 2, ts: '2024-07-24T12:00:00Z', text: 'おやすみ' }),
+        }));
+        const dialog = await screen.findByRole('dialog');
+        const body = within(dialog).getByTestId('modal-body');
+        // from md the body does not scroll: the columns do
+        expect(body).toHaveClass('md:overflow-hidden', 'md:flex');
+        const scroller = within(dialog).getByTestId('card-detail-day-scroller');
+        expect(scroller).toHaveAttribute('data-focus-scroller');
+        expect(scroller).toHaveClass('overflow-y-auto', 'min-h-0');
+        const row = await within(scroller).findAllByTestId('day-merged-row');
+        expect(row[1]).toHaveAttribute('data-focused', 'true');
+        expect(body.scrollTop).toBe(0);
+        // the focused row lives inside the column scroller, which is inside the body
+        expect(scroller.contains(row[1])).toBe(true);
+    });
+
     it('a シンクロ pair is selectable too, by its dates', async () => {
         renderDetail(card({
             key: 'moment.synchro', date: '2024-07-24',
