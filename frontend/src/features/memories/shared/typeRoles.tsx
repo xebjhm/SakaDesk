@@ -1,5 +1,5 @@
 /**
- * Memories type roles shared by the year recap and the あの日と今日 slide pair. Her words are serif
+ * Memories type roles shared by the year recap and its S08 then-and-now pair (`ThenNowPair`). Her words are serif
  * display (`QUOTE_CLASS`, marked `lang="ja"` by the caller); the app's narration is the smaller
  * sans UI face (`Narration`), so it is never mistaken for her words. `data-voice` names the role
  * for tests and the share canvas.

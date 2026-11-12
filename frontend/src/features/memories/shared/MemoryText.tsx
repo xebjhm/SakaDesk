@@ -9,7 +9,7 @@ import { useNickname } from './useNickname';
 const PLACEHOLDER_SPLIT = /(%%%|％％％)/;
 const PLACEHOLDER = /^(?:%%%|％％％)$/;
 
-/** The nickname and highlight underline (the names view, あの日と今日's shared keyword). */
+/** The nickname and highlight underline (the names view; `highlight` in its underline tone). */
 const UNDERLINE = 'underline decoration-accent underline-offset-4';
 /** The year recap's keyword mark (S08's approved look). */
 const MARK = 'rounded-xs bg-mark-exact px-0.5 text-primary';
@@ -22,7 +22,7 @@ interface MemoryTextProps {
     /** Underline each replaced nickname (the names view). */
     underlineNickname?: boolean;
     /**
-     * A word to mark wherever she wrote it (あの日と今日's shared keyword), matched on the NFKC
+     * A word to mark wherever she wrote it (the recap S08's shared keyword), matched on the NFKC
      * form ({@link nfkcMatches}) with her raw characters marked. Only her own words are searched:
      * a match inside (or across) the replaced nickname is never marked. Blank marks nothing.
      */

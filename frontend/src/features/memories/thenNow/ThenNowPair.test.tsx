@@ -14,7 +14,6 @@ beforeEach(() => {
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 const side = (year: number, over: Partial<ThenNowSideView> = {}): ThenNowSideView => ({
-    year,
     items: [memoryMessage({ id: year, ts: `${year}-07-30T12:00:00Z`, text: `${year}年も花火🎆` })],
     ...over,
 });

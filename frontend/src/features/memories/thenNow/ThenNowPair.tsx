@@ -19,15 +19,9 @@ export interface ThenNowItem {
     text: string | null;
     caption: string | null;
     media_url: string | null;
-    room?: string;
-    service?: string;
-    media_file?: string | null;
-    duration_s?: number | null;
 }
 
 export interface ThenNowSideView {
-    /** The side's real JST year, when known (the slide does not print it). */
-    year: number | null;
     /** A caption over the side (the recap's label). */
     label?: string | null;
     /** The side's message (the slide shows the first). */

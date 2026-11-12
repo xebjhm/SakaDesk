@@ -9,11 +9,11 @@ import { heldReveal } from './style';
 
 /** A recap message as one pair side: its label (if any) over the message alone. */
 const side = (message: RecapMessage | null, label: string | null): ThenNowSideView | null =>
-    (message ? { year: null, label, items: [message] } : null);
+    (message ? { label, items: [message] } : null);
 
 /**
- * Slide 8, 去年の、同じ日: an earlier message beside one of this year, drawn by the shared
- * あの日と今日 pair (`ThenNowPair`): the older card in the approved full sepia,
+ * Slide 8, 去年の、同じ日: an earlier message beside one of this year, drawn by the recap's
+ * then-and-now pair (`ThenNowPair`): the older card in the approved full sepia,
  * the shared keyword lit in both (only in her words, never inside the fan's nickname). "The same
  * day" only when they share the JST day; otherwise "then and now". `first_week`: the fan's first
  * subscription week beside now (初見 vs 今), or the first week on record when the subscription

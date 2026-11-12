@@ -1133,12 +1133,12 @@ neutral materials. Their values live in `design/tokens/memories.ts` and are writ
   `bg-memories-paper shadow-memories-polaroid` buttons (JST date and clock in `text-caption
   text-muted`, the photo, the voice length or her words in three lines; the older photo wears
   `sepiaClass`), and between them an arrow over the time apart (「1 年 8 天」, `font-display
-  text-small text-secondary`, never 0). A side opens her day (`MemberDayDialog`). No motion beyond the
+  text-small text-secondary`, never 0; the voice row adds 「長了 N 秒」 in `text-caption`), under a `text-small text-secondary` subtitle with the whole span. A side opens her day (`MemberDayDialog`). No motion beyond the
   shared lift on hover (`motion-reduce:` none). `ThenNowPair` is now only the recap's S08 pair (its
   stacked slide cards, the older one in full sepia, the shared keyword as a `<mark>`).
 - **歷年同一天** (`features/memories/day/YearLanes.tsx`, `yearLanesLayout.ts`): the day view's third mode
-  `Pill`. A sticky `w-12` hour axis (`text-caption tabular-nums text-muted`) beside one `w-56` column
-  per year (a sticky serif year over its message count), each a `bg-sunken` lane holding the
+  `Pill`. A sticky `w-12` hour axis (`text-caption tabular-nums text-muted`; `z-30`, above the `z-20` year headers, its top cell sticky too so the corner stays fixed both ways) beside one `w-56` column
+  per year (a sticky serif year over its date with the weekday and its message count), each a `bg-sunken` lane holding the
   swimlanes' `LaneCard`s placed by JST time of day (`hourBands`, 96 px a quiet hour). Neighbouring
   years' matching kinds are joined by an `aria-hidden` SVG of dotted lines in `text-muted
   opacity-60` across the 40 px gutter; an hour quiet in this year but not in another is a

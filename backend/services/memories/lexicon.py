@@ -113,7 +113,7 @@ CHRISTMAS_RE = re.compile(r"クリスマス|メリクリ|🎄")
 VALENTINE_RE = re.compile(r"バレンタイン|チョコ")
 
 # Seasonal / event words that pair a past message with a present one (the
-# recap's S08 echo and あの日と今日's ``shared_keyword``). Order matters: the
+# recap's S08 echo, ``shared_keyword``). Order matters: the
 # first shared entry wins.
 ECHO_KEYWORDS = (
     "桜",
