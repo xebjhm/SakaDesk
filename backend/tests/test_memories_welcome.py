@@ -501,3 +501,24 @@ async def test_join_day_card_and_anniversaries_use_the_welcome_date(svc):
     join = cards["special.join_day"]
     assert join.date == date(2025, 11, 1) and join.message == mk(419672)
     assert cards["anniv.y1"].earned and cards["anniv.y1"].date == date(2026, 11, 1)
+
+
+# --- r4 Windows check: a welcome later on the subscription day (D-R4-1) ----------
+
+
+def test_welcome_any_time_on_the_subscription_start_day():
+    # The archive starts the day before; on the start day her own messages come
+    # first and the welcome arrives hours later, with a consecutive follow-up.
+    msgs = [
+        _msg(100, "2024-10-22 20:00", "明日はライブ！"),
+        _msg(110, "2024-10-23 08:00", "おはよう☀️"),
+        _msg(111, "2024-10-23 09:30", "今日もがんばる"),
+        _msg(5000, "2024-10-23 15:12", "ご登録ありがとうございます！山下葉留花です"),
+        _msg(5001, "2024-10-23 15:25", FOLLOW),
+        _msg(130, "2024-10-24 10:00", "ご登録ありがとうございます！の日から一日"),
+    ]
+    got = sel.welcome_ids(msgs, date(2024, 10, 23))
+    # the start-day phrase matches are welcomes; the next day's is her own words
+    assert got == {5000, 5001}
+    # without the stored start nothing on 10/23 is an opening
+    assert sel.welcome_ids(msgs) == set()

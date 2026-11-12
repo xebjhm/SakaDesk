@@ -101,7 +101,10 @@ def welcome_ids(msgs: Sequence[Msg], sub_start: date | None = None) -> set[int]:
     :data:`WELCOME_WINDOW` of the anchor. The anchors are the room's first
     message and, when ``sub_start`` is known, the first message at or after
     ``sub_start`` 00:00 JST if it falls within :data:`WELCOME_ANCHOR_DAYS`
-    (the archive can begin before the subscription). Both conditions keep
+    (the archive can begin before the subscription). On the stored
+    subscription start day itself (JST), a matching ``text`` is a welcome at
+    any time of day: the welcome can arrive hours after her first messages
+    that day. Both conditions keep
     false positives low: she may thank for 登録 in her own words later on, and
     the opening can hold her own greeting without the phrase.
 
@@ -120,6 +123,16 @@ def welcome_ids(msgs: Sequence[Msg], sub_start: date | None = None) -> set[int]:
         if i < len(msgs) and msgs[i].ts < begin + WELCOME_ANCHOR_DAYS:
             anchors.add(i)
     out: set[int] = set()
+    if sub_start is not None:
+        # The subscription start day itself: the welcome can come hours after
+        # her first messages that day (an archive that began the day before).
+        out.update(
+            m.id
+            for m in msgs
+            if m.type == "text"
+            and jst(m.ts).date() == sub_start
+            and is_welcome_text(m.text)
+        )
     for a in sorted(anchors):
         limit = msgs[a].ts + WELCOME_WINDOW
         for k in range(a, len(msgs)):
