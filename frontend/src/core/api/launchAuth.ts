@@ -26,18 +26,31 @@ export function sessionStorageOrNull(): Storage | null {
     }
 }
 
-/** The launch token from the URL fragment (then stripped) or from this window's storage. */
-export function takeLaunchToken(loc: LocationLike, storage: Storage | null, history: HistoryLike): string | null {
-    const params = new URLSearchParams(loc.hash.replace(/^#/, ''))
-    const fromHash = params.get('t')
+/**
+ * The launch token from the URL fragment (then stripped, other fragment segments kept
+ * verbatim) or from this window's storage. `onStoreFailed` is called (no arguments, so it
+ * can never see the token) when the fragment token could not be written to storage: the
+ * token is still returned for this load, but a reload of the window would have none.
+ */
+export function takeLaunchToken(
+    loc: LocationLike,
+    storage: Storage | null,
+    history: HistoryLike,
+    onStoreFailed?: () => void,
+): string | null {
+    const rawHash = loc.hash.replace(/^#/, '')
+    const fromHash = new URLSearchParams(rawHash).get('t')
     if (fromHash !== null && TOKEN_RE.test(fromHash)) {
         try {
             storage?.setItem(STORAGE_KEY, fromHash)
         } catch {
             // Storage unavailable: the header still works for this load.
+            onStoreFailed?.()
         }
-        params.delete('t')
-        const rest = params.toString()
+        const rest = rawHash
+            .split('&')
+            .filter((segment) => !segment.startsWith('t='))
+            .join('&')
         history.replaceState(history.state, '', `${loc.pathname}${loc.search}${rest ? `#${rest}` : ''}`)
         return fromHash
     }
@@ -59,7 +72,13 @@ function requestUrl(input: RequestInfo | URL): string {
 export function installApiAuth(token: string, win: WindowLike = window): void {
     const original = win.fetch.bind(win)
     win.fetch = (input: RequestInfo | URL, init?: RequestInit): Promise<Response> => {
-        const url = new URL(requestUrl(input), win.location.href)
+        let url: URL
+        try {
+            url = new URL(requestUrl(input), win.location.href)
+        } catch {
+            // Unparseable: let the native fetch produce its normal rejected promise.
+            return original(input, init)
+        }
         if (url.origin !== new URL(win.location.href).origin || !url.pathname.startsWith('/api/')) {
             return original(input, init)
         }

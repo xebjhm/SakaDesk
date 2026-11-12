@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { bootstrapApiCookie, installApiAuth, takeLaunchToken, TOKEN_HEADER } from './launchAuth'
+import { bootstrapApiCookie, installApiAuth, sessionStorageOrNull, takeLaunchToken, TOKEN_HEADER } from './launchAuth'
 
 const TOKEN = 'Abc_def-0123456789xyzABCDEFGHIJ'
 
@@ -51,6 +51,62 @@ describe('takeLaunchToken', () => {
     })
 })
 
+describe('takeLaunchToken edge cases', () => {
+    const KEY = 'sakadesk.launchToken'
+    const OTHER = 'Zyx_wvu-9876543210zyxZYXWVUTSRQ'
+
+    it('overwrites a previously stored token with a fresh fragment token', () => {
+        const storage = memoryStorage()
+        storage.setItem(KEY, OTHER)
+        const history = { state: null, replaceState: vi.fn() }
+        expect(takeLaunchToken({ hash: `#t=${TOKEN}`, pathname: '/', search: '' }, storage, history)).toBe(TOKEN)
+        expect(storage.getItem(KEY)).toBe(TOKEN)
+    })
+
+    it('falls back to the stored token when the fragment token is malformed (and leaves the URL alone)', () => {
+        const storage = memoryStorage()
+        storage.setItem(KEY, TOKEN)
+        const history = { state: null, replaceState: vi.fn() }
+        expect(takeLaunchToken({ hash: '#t=bad token', pathname: '/', search: '' }, storage, history)).toBe(TOKEN)
+        expect(history.replaceState).not.toHaveBeenCalled()
+    })
+
+    it('calls onStoreFailed when setItem throws and still returns the token', () => {
+        const storage = memoryStorage()
+        storage.setItem = () => { throw new Error('quota') }
+        const history = { state: null, replaceState: vi.fn() }
+        const onStoreFailed = vi.fn()
+        expect(takeLaunchToken({ hash: `#t=${TOKEN}`, pathname: '/', search: '' }, storage, history, onStoreFailed)).toBe(TOKEN)
+        expect(onStoreFailed).toHaveBeenCalledTimes(1)
+    })
+
+    it('does not call onStoreFailed when storing succeeds', () => {
+        const history = { state: null, replaceState: vi.fn() }
+        const onStoreFailed = vi.fn()
+        takeLaunchToken({ hash: `#t=${TOKEN}`, pathname: '/', search: '' }, memoryStorage(), history, onStoreFailed)
+        expect(onStoreFailed).not.toHaveBeenCalled()
+    })
+
+    it('preserves a non key=value fragment segment when stripping the token', () => {
+        const history = { state: null, replaceState: vi.fn() }
+        takeLaunchToken({ hash: `#/route&t=${TOKEN}`, pathname: '/', search: '' }, memoryStorage(), history)
+        expect(history.replaceState).toHaveBeenCalledWith(null, '', '/#/route')
+    })
+})
+
+describe('sessionStorageOrNull', () => {
+    it('returns null when reading window.sessionStorage throws', () => {
+        const spy = vi.spyOn(window, 'sessionStorage', 'get').mockImplementation(() => {
+            throw new DOMException('denied', 'SecurityError')
+        })
+        try {
+            expect(sessionStorageOrNull()).toBeNull()
+        } finally {
+            spy.mockRestore()
+        }
+    })
+})
+
 describe('installApiAuth', () => {
     function fakeWindow() {
         const seen: { url: string; headers: Headers }[] = []
@@ -81,6 +137,44 @@ describe('installApiAuth', () => {
         expect(seen[0].headers.get(TOKEN_HEADER)).toBe(TOKEN)
         expect(seen[1].headers.get(TOKEN_HEADER)).toBe(TOKEN)
         expect(seen[1].headers.get('X-Keep')).toBe('1')
+    })
+
+    it('does not match /apix/ or the bare /api path, but resolves relative api/x', async () => {
+        const { win, seen } = fakeWindow()
+        installApiAuth(TOKEN, win)
+        await win.fetch('/apix/foo')
+        await win.fetch('/api')
+        await win.fetch('api/x')
+        expect(seen[0].headers.get(TOKEN_HEADER)).toBeNull()
+        expect(seen[1].headers.get(TOKEN_HEADER)).toBeNull()
+        expect(seen[2].headers.get(TOKEN_HEADER)).toBe(TOKEN)
+    })
+
+    it('keeps method and body alongside the added header', async () => {
+        const calls: RequestInit[] = []
+        const win = {
+            location: new URL('http://127.0.0.1:8765/') as unknown as Location,
+            fetch: vi.fn(async (_input: RequestInfo | URL, init?: RequestInit) => {
+                calls.push(init ?? {})
+                return new Response('{}')
+            }) as unknown as typeof fetch,
+        }
+        installApiAuth(TOKEN, win)
+        await win.fetch('/api/x', { method: 'POST', body: '{"a":1}' })
+        expect(calls[0].method).toBe('POST')
+        expect(calls[0].body).toBe('{"a":1}')
+        expect(new Headers(calls[0].headers).get(TOKEN_HEADER)).toBe(TOKEN)
+    })
+
+    it('does not throw synchronously for an unparseable URL; the native promise decides', async () => {
+        const win = {
+            location: new URL('http://127.0.0.1:8765/') as unknown as Location,
+            fetch: vi.fn(() => Promise.reject(new TypeError('bad'))) as unknown as typeof fetch,
+        }
+        installApiAuth(TOKEN, win)
+        let promise: Promise<Response> | undefined
+        expect(() => { promise = win.fetch('http://[') }).not.toThrow()
+        await expect(promise).rejects.toThrow('bad')
     })
 
     it('never sends the token elsewhere', async () => {

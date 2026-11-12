@@ -14,20 +14,26 @@ import { isTimelineProbeView } from '../features/messages/timeline/probeRoute'
 import { applyStaticTokens } from '../design/applyTokens'
 import { installLanguageFonts } from '../design/fonts'
 
-// Design tokens must exist before the first paint of any entry point.
-applyStaticTokens()
-installLanguageFonts()
-
-// Launch auth before any request: the token header and the media cookie must exist
-// before the first fetch or <img> (security audit 2026-11-13). Without a token (Vite dev
-// server, e2e) the dev proxy / Playwright adds the header instead.
-const launchToken = takeLaunchToken(window.location, sessionStorageOrNull(), window.history)
+// Launch auth before any request (including clientLog from the font/token setup below):
+// the token header and the media cookie must exist before the first fetch or <img>
+// (security audit 2026-11-13). Without a token (Vite dev server, e2e) the request is
+// expected to carry the header from the dev proxy / Playwright config.
+let launchTokenStoreFailed = false
+const launchToken = takeLaunchToken(window.location, sessionStorageOrNull(), window.history, () => {
+    launchTokenStoreFailed = true
+})
 if (launchToken) installApiAuth(launchToken)
+// After installApiAuth so this log request carries the header. Codes only, never the token.
+if (launchTokenStoreFailed) clientLog('app_load_failed', { error_type: 'launch_token_store' })
 const apiReady: Promise<void> = launchToken
     ? bootstrapApiCookie().then((ok) => {
           if (!ok) clientLog('app_load_failed', { error_type: 'api_bootstrap' })
       })
     : Promise.resolve()
+
+// Design tokens must exist before the first paint of any entry point.
+applyStaticTokens()
+installLanguageFonts()
 
 const root = ReactDOM.createRoot(document.getElementById('root')!)
 
