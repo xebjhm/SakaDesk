@@ -128,6 +128,18 @@ describe('Timeline', () => {
         expect(hero).toHaveAccessibleName('2024/12/3');
         const grid = within(strip).getByTestId('timeline-photo-grid');
         expect(grid).toHaveClass('grid-rows-2', 'grid-flow-col');
+        // jsdom has no layout: lock the intent. Side by side the hero has an explicit square
+        // size equal to two tile rows plus the row gap (never w-auto, which drew it 0 px wide).
+        const units = (el: HTMLElement, re: RegExp) => Number(re.exec(el.className)?.[1] ?? NaN);
+        const heroW = units(hero, /(?:^|\s)sm:w-(\d+)(?:\s|$)/);
+        const heroH = units(hero, /(?:^|\s)sm:h-(\d+)(?:\s|$)/);
+        const tile = within(grid).getAllByRole('button')[0];
+        const tileH = units(tile, /(?:^|\s)h-(\d+)(?:\s|$)/);
+        const rowGap = units(grid, /(?:^|\s)gap-y-(\d+)(?:\s|$)/);
+        expect(heroW).toBeGreaterThan(0);
+        expect(heroW).toBe(heroH);
+        expect(heroH).toBe(2 * tileH + rowGap);
+        expect(hero.className).not.toMatch(/sm:w-auto/);
         expect(within(grid).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['2024/12/1', '2024/12/2']);
         // the hero opens the viewer at its own place in time order
         await userEvent.click(hero);

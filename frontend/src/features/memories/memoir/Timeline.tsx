@@ -30,8 +30,12 @@ const HEADER_AVATAR_PX = 40;
 /** A month held this long on the rail is fetched; quicker steps (a drag, a wheel run) are not. */
 const FETCH_DELAY_MS = 150;
 const PHOTO_PX = 96;
-/** The hero tile spans the two rows of small tiles (2 × 96 px + the gap). */
-const HERO_PX = 200;
+/**
+ * The hero tile spans the two rows of small tiles: 2 × 96 px (`h-24`) + the 16 px row gap
+ * (`gap-y-4`) = 208 px (`sm:w-52 sm:h-52`). An explicit size: `w-auto` with a stretched height and
+ * `aspect-square` computed to 0 px wide.
+ */
+const HERO_PX = 208;
 const SLOT_PX = 160;
 
 type Slot = keyof TimelineMonthPayload['messages'];
@@ -191,21 +195,21 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
                         const open = (p: MemoryMessage) => setViewer({ month, index: viewerIndexOf(viewerItems.viewable, p) });
                         const label = (p: MemoryMessage) => formatCardDate(formatJstDate(p.ts), i18n.language);
                         return (
-                            <div data-testid="timeline-photos" className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                            <div data-testid="timeline-photos" className="flex flex-col gap-2 sm:flex-row sm:items-start">
                                 {hero && (
                                     <button
                                         type="button"
                                         data-testid="timeline-hero"
                                         aria-label={label(hero)}
                                         onClick={() => open(hero)}
-                                        className="relative block aspect-square w-full max-w-xs shrink-0 overflow-hidden rounded-md bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:w-auto sm:max-w-none sm:self-stretch"
+                                        className="relative block aspect-square w-full max-w-xs shrink-0 overflow-hidden rounded-md bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:aspect-auto sm:h-52 sm:w-52 sm:max-w-none"
                                     >
                                         <MemoryThumb message={hero} px={HERO_PX} large className="h-full w-full" />
                                         {hero.type === 'video' && <Play aria-hidden="true" className="absolute left-2 top-2 h-4 w-4 fill-current text-inverse drop-shadow-sm" />}
                                     </button>
                                 )}
                                 {rest.length > 0 && (
-                                    <ul data-testid="timeline-photo-grid" className="grid min-w-0 auto-cols-max grid-flow-col grid-rows-2 gap-2 overflow-x-auto pb-1">
+                                    <ul data-testid="timeline-photo-grid" className="grid min-w-0 auto-cols-max grid-flow-col grid-rows-2 gap-x-2 gap-y-4 overflow-x-auto pb-1">
                                         {rest.map((p) => (
                                             <li key={`${p.room}|${p.id}`}>
                                                 <button
