@@ -14,6 +14,8 @@ import socket  # noqa: E402
 import traceback  # noqa: E402
 import time  # noqa: E402
 import json  # noqa: E402
+import hmac  # noqa: E402
+import secrets  # noqa: E402
 import urllib.request  # noqa: E402
 import ctypes  # noqa: E402
 import platform  # noqa: E402
@@ -24,6 +26,7 @@ from typing import Any, Callable  # noqa: E402
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app  # noqa: E402
 from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
+from backend.services import api_auth  # noqa: E402
 from backend.services import window_geometry  # noqa: E402
 from backend.services import desktop_bridge  # noqa: E402
 from backend.services import session_alert  # noqa: E402
@@ -858,8 +861,29 @@ def _get_port_file():
     return get_app_data_dir() / ".port"
 
 
+def _bind_option() -> int:
+    """Socket option for the backend listener.
+
+    Windows: SO_EXCLUSIVEADDRUSE, so no other socket — including one of another
+    Windows account — can bind SakaDesk's address and answer the window in its
+    place (security audit 2026-11-13). Elsewhere SO_REUSEADDR: Linux and macOS
+    never let a second socket take over an active listener.
+    """
+    return getattr(socket, "SO_EXCLUSIVEADDRUSE", socket.SO_REUSEADDR)
+
+
+def _app_url(port: int, query: str = "") -> str:
+    """URL of a SakaDesk window, with the launch token in the fragment.
+
+    The fragment never reaches the server, the logs or a command line. The page
+    moves it into sessionStorage and strips it on load
+    (frontend/src/core/api/launchAuth.ts). Never log this URL.
+    """
+    return f"http://{HOST}:{port}/{query}#t={api_auth.LAUNCH_TOKEN}"
+
+
 def create_server_socket() -> tuple:
-    """Create a bound server socket, reusing the saved port when it's free.
+    """Create a bound, listening server socket, reusing the saved port when it's free.
 
     Persistent app state now lives in the backend SQLite app-state store, so a
     port change no longer loses anything (the store is read at startup regardless
@@ -870,15 +894,16 @@ def create_server_socket() -> tuple:
     can read it. Without the reuse the app would take a fresh port (a fresh, empty
     origin) and the migration would find nothing to carry over.
 
-    SO_REUSEADDR lets it rebind a port still in TCP TIME_WAIT after a quick
-    close-reopen. A fast reopen while the prior instance still holds the port
-    (`_port_is_active`) still shifts to a new port, but that is now harmless.
+    On Windows the socket is bound with SO_EXCLUSIVEADDRUSE (see _bind_option), so
+    a port still in TIME_WAIT after a quick close-reopen shifts to a new port; that
+    is harmless now that state lives in the backend store.
 
     TODO(next release): once upgraders have migrated, drop this reuse entirely and
     bind an ephemeral port (this was briefly done, then reverted for the migration
     window above).
 
-    Returns (port, socket) — bound but NOT listening; uvicorn calls listen().
+    Returns (port, socket) — bound AND listening, so no other socket can win the
+    address between bind and uvicorn's start.
     """
     port_file = _get_port_file()
 
@@ -897,11 +922,12 @@ def create_server_socket() -> tuple:
             return False
 
     def _try_bind(port: int):
-        """Try to bind a SO_REUSEADDR socket to the given port."""
+        """Try to bind and listen on the given port."""
         try:
             sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.setsockopt(socket.SOL_SOCKET, _bind_option(), 1)
             sock.bind((HOST, port))
+            sock.listen(128)
             return sock
         except OSError:
             sock.close()
@@ -918,13 +944,15 @@ def create_server_socket() -> tuple:
                     sock = _try_bind(saved)
                     if sock is not None:
                         return saved, sock
+                logger.info("server_port_saved_unavailable")
         except (ValueError, OSError):
             pass  # Corrupt file or port in use — allocate new one
 
     # Allocate a new port and persist it
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    sock.setsockopt(socket.SOL_SOCKET, _bind_option(), 1)
     sock.bind((HOST, 0))
+    sock.listen(128)
     port = sock.getsockname()[1]
     try:
         port_file.write_text(str(port), encoding="utf-8")
@@ -936,20 +964,28 @@ def create_server_socket() -> tuple:
 def wait_for_server(
     host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOUT
 ) -> bool:
-    """Wait for the server to respond to HTTP requests.
+    """Wait until SakaDesk's own backend answers on the port.
 
-    Uses the /health endpoint instead of raw TCP connect — this ensures
-    the ASGI app is fully loaded and can serve routes, not just that the
-    socket is listening. Prevents the 404 flash on second launch where
-    WebView2 restores its cached session before uvicorn is ready.
+    Polls /health with a fresh nonce and accepts only a response carrying
+    HMAC(launch token, nonce): /health proves the ASGI app is loaded (no 404
+    flash on second launch), and the proof proves the answering process is
+    this backend and not a squatter on the port (security audit 2026-11-13).
     """
-    url = f"http://{host}:{port}/health"
+    nonce = secrets.token_urlsafe(24)
+    expected = api_auth.health_proof(nonce)
+    url = f"http://{host}:{port}/health?nonce={nonce}"
+    warned = False
     start = time.time()
     while time.time() - start < timeout:
         try:
-            resp = urllib.request.urlopen(url, timeout=1)
-            if resp.status == 200:
-                return True
+            with urllib.request.urlopen(url, timeout=1) as resp:
+                if resp.status == 200:
+                    body = json.loads(resp.read().decode("utf-8"))
+                    if hmac.compare_digest(str(body.get("proof", "")), expected):
+                        return True
+                    if not warned:
+                        logger.warning("server_identity_mismatch")
+                        warned = True
         except Exception:
             pass
         time.sleep(0.1)
@@ -969,11 +1005,10 @@ def build_server_config(asgi_app: Callable[..., Any]) -> uvicorn.Config:
 
 
 def start_server(sock: socket.socket) -> None:
-    """Start uvicorn with a pre-bound SO_REUSEADDR socket.
+    """Start uvicorn with a pre-bound, listening socket.
 
-    By passing our own socket, we bypass asyncio's default socket creation
-    which uses SO_EXCLUSIVEADDRUSE on Windows — that flag rejects ports
-    in TIME_WAIT state and would force a new port on quick restarts.
+    By passing our own pre-bound, already-listening socket (see
+    create_server_socket), uvicorn serves on exactly the address we claimed.
     """
     global _uvicorn_server
     config = build_server_config(app)
@@ -1042,7 +1077,7 @@ def _main_window_kwargs(geom: dict, port: int, background: bool) -> dict[str, An
     logger.info("window_min_size", width=min_size[0], height=min_size[1])
     return {
         "title": "SakaDesk",
-        "url": f"http://{HOST}:{port}",
+        "url": _app_url(port),
         "width": geom["width"],
         "height": geom["height"],
         "x": geom.get("x"),
@@ -1230,7 +1265,7 @@ def main() -> None:
         if platform.system() == "Windows":
             popup = CallPopupWindow(
                 main_window=window,
-                url=f"http://{HOST}:{port}/?view=call-popup",
+                url=_app_url(port, "?view=call-popup"),
                 is_quitting=lambda: _quitting,
             )
             desktop_bridge.set_call_popup_host(popup)

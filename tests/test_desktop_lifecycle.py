@@ -128,4 +128,6 @@ class TestMainWindowKwargs:
         assert kwargs["min_size"] == (960, 640)
         assert kwargs["width"] == 2100 and kwargs["x"] == 10
         assert kwargs["resizable"] is True and kwargs["hidden"] is False
-        assert kwargs["url"].endswith(":8000")
+        assert (
+            kwargs["url"] == f"http://127.0.0.1:8000/#t={desktop.api_auth.LAUNCH_TOKEN}"
+        )
