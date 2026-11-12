@@ -1,6 +1,7 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Virtuoso } from 'react-virtuoso';
 import { useTranslation } from '../../../i18n';
+import { cn } from '../../../utils/classnames';
 import { maskedNickname } from '../shared/nicknameMask';
 import { MessageBubble } from '../../messages/components/MessageBubble';
 import { replaceNickname } from '../../messages/utils/nickname';
@@ -34,6 +35,12 @@ interface MergedTimelineProps {
      * even a busy one cheap, at the cost of DOM only).
      */
     scrollParent?: HTMLElement | null;
+    /**
+     * One message to bring forward (a card's message, a 24h slot): its row is tinted
+     * (`bg-accent-subtle`, `data-focused`) and scrolled into the middle of the view. Only for an
+     * unwindowed list (no `scrollParent`), where every row is in the DOM.
+     */
+    focus?: { room: string; id: number } | null;
 }
 
 /** Same sender within this long continues a run (the chat's rule). */
@@ -66,7 +73,7 @@ const Indented: React.FC<{ children: React.ReactNode }> = ({ children }) => (
  * over the day's media, whose source link opens her chat at that message. Bubble voices join the
  * Memories voice coordinator (`useBubbleVoices`), so only one voice plays.
  */
-export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people, service, scrollParent }) => {
+export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people, service, scrollParent, focus }) => {
     const { t } = useTranslation();
     const ownNickname = useNickname();
     const nickname = ownNickname ?? maskedNickname(t);
@@ -103,8 +110,13 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
         chat.content = m.text ? replaceNickname(m.text, nickname) : null;
         const mediaIndex = mediaIndexOf.get(m) ?? -1;
         const caption = contextCaption(m, shown);
+        const focused = Boolean(focus && focus.room === m.room && focus.id === m.id);
         return (
-            <div data-testid="day-merged-row">
+            <div
+                data-testid="day-merged-row"
+                data-focused={focused ? 'true' : undefined}
+                className={cn(focused && 'rounded-md bg-accent-subtle')}
+            >
                 <MessageBubble
                     message={chat}
                     member_name={person?.name ?? ''}
@@ -143,6 +155,14 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
         );
     };
     const windowed = Boolean(scrollParent) && messages.length > WINDOW_FROM;
+    const focusRoom = focus?.room;
+    const focusId = focus?.id;
+    useEffect(() => {
+        if (focusId === undefined) return;
+        const row = rootRef.current?.querySelector<HTMLElement>('[data-focused="true"]');
+        // jsdom has no scrollIntoView
+        row?.scrollIntoView?.({ block: 'center' });
+    }, [focusRoom, focusId, messages]);
 
     return (
         <div ref={rootRef} data-testid="day-merged" className="flex flex-col pb-4">

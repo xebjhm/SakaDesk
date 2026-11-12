@@ -1018,7 +1018,9 @@
       "oldAvatar": "之前嘅頭像",
       "newAvatar": "新嘅頭像",
       "dayOf": "{{date}} 嘅訊息",
-      "nearestDay": "最近嗰日嘅訊息（{{date}}）"
+      "nearestDay": "最近嗰日嘅訊息（{{date}}）",
+      "earliestOhayo": "最早嘅早晨",
+      "latestOyasumi": "最夜嘅早唞"
     },
     "names": {
       "title": "被叫名嘅瞬間",

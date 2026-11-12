@@ -70,6 +70,49 @@ describe('CardDetail', () => {
         expect(onClose).toHaveBeenCalled();
     });
 
+    it('lets either message of a pair card drive the day and the jump (keyboard too)', async () => {
+        const onClose = renderDetail(card({
+            key: 'record.greeting_pair', date: '2024-07-24',
+            face: face({ id: 1, ts: '2024-07-24T03:00:00Z', text: 'おはよう！早起き' }),
+            refs: { pair: face({ id: 6, ts: '2024-12-01T18:30:00Z', text: 'おやすみ、遅くなっちゃった' }) },
+        }));
+        const pair = await screen.findByTestId('card-detail-pair');
+        const early = within(pair).getByRole('button', { name: /いちばん早いおはよう/ });
+        const late = within(pair).getByRole('button', { name: /いちばん遅いおやすみ/ });
+        expect(early).toHaveAttribute('aria-pressed', 'true');
+        expect(late).toHaveAttribute('aria-pressed', 'false');
+        expect(vi.mocked(fetchDay).mock.calls[0]?.[1]).toEqual({ date: '2024-07-24', member: MEMBER_PATH });
+        // the first message is the default and is highlighted in the day
+        const row = await screen.findByTestId('day-merged');
+        await waitFor(() => expect(within(row).getAllByTestId('day-merged-row')[0]).toHaveAttribute('data-focused', 'true'));
+
+        late.focus();
+        await userEvent.keyboard('{Enter}');
+        expect(late).toHaveAttribute('aria-pressed', 'true');
+        expect(early).toHaveAttribute('aria-pressed', 'false');
+        // 18:30Z is 03:30 JST on the next day
+        await waitFor(() => expect(vi.mocked(fetchDay).mock.lastCall?.[1]).toEqual({ date: '2024-12-02', member: MEMBER_PATH }));
+        expect(screen.getByTestId('card-detail-day-label')).toHaveTextContent('2024');
+        expect(screen.getByTestId('card-detail-day-label')).toHaveTextContent('12');
+
+        await userEvent.click(screen.getByRole('button', { name: /トークで見る/ }));
+        expect(vi.mocked(openChat)).toHaveBeenCalledWith(expect.objectContaining({ message_id: 6 }));
+        expect(onClose).toHaveBeenCalled();
+    });
+
+    it('a シンクロ pair is selectable too, by its dates', async () => {
+        renderDetail(card({
+            key: 'moment.synchro', date: '2024-07-24',
+            face: face({ id: 1, ts: '2024-07-24T03:00:00Z', text: '同じ時刻' }),
+            refs: { pair: face({ id: 9, ts: '2025-02-01T03:00:00Z', text: 'また同じ時刻' }) },
+        }));
+        const pair = await screen.findByTestId('card-detail-pair');
+        const buttons = within(pair).getAllByRole('button');
+        expect(buttons.map((b) => b.getAttribute('aria-pressed'))).toEqual(['true', 'false']);
+        await userEvent.click(buttons[1]);
+        await waitFor(() => expect(vi.mocked(fetchDay).mock.lastCall?.[1]).toEqual({ date: '2025-02-01', member: MEMBER_PATH }));
+    });
+
     it('shows both messages of a pair card', async () => {
         renderDetail(card({
             key: 'record.greeting_pair', date: '2024-07-24',

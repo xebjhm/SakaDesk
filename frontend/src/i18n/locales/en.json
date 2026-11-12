@@ -1037,7 +1037,9 @@
       "oldAvatar": "Previous photo",
       "newAvatar": "New photo",
       "dayOf": "Messages of {{date}}",
-      "nearestDay": "Messages from the nearest day ({{date}})"
+      "nearestDay": "Messages from the nearest day ({{date}})",
+      "earliestOhayo": "Earliest good morning",
+      "latestOyasumi": "Latest good night"
     },
     "names": {
       "title": "Moments she called your name",

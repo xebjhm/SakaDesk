@@ -1018,7 +1018,9 @@
       "oldAvatar": "之前的头像",
       "newAvatar": "新的头像",
       "dayOf": "{{date}} 的消息",
-      "nearestDay": "最接近那天的消息（{{date}}）"
+      "nearestDay": "最接近那天的消息（{{date}}）",
+      "earliestOhayo": "最早的早安",
+      "latestOyasumi": "最晚的晚安"
     },
     "names": {
       "title": "被叫名字的瞬间",

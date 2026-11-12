@@ -1018,7 +1018,9 @@
       "oldAvatar": "前の写真",
       "newAvatar": "新しい写真",
       "dayOf": "{{date}} のメッセージ",
-      "nearestDay": "いちばん近い日のメッセージ（{{date}}）"
+      "nearestDay": "いちばん近い日のメッセージ（{{date}}）",
+      "earliestOhayo": "いちばん早いおはよう",
+      "latestOyasumi": "いちばん遅いおやすみ"
     },
     "names": {
       "title": "名前を呼ばれた瞬間",

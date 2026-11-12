@@ -1,19 +1,16 @@
-import React, { useMemo } from 'react';
+import React, { useState } from 'react';
 import { MessageCircle } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { Avatar, Button, Modal } from '../../../design/primitives';
 import { resizedAvatarUrl } from '../../messages/mediaUrl';
 import { useAvatarWidth } from '../../messages/hooks/useAvatarWidth';
-import { fetchDay } from '../api';
 import { CapsuleStrip } from '../capsule/CapsuleStrip';
 import { formatDayHeading } from '../day/format';
-import { MergedTimeline } from '../day/MergedTimeline';
-import { dayPeople, type DayPerson } from '../day/people';
+import { MemberDayColumn } from '../day/MemberDay';
 import { formatJstClock, formatJstDate } from '../shared/jst';
 import { jumpToChat } from '../shared/jumpToChat';
-import { MemoriesStatus } from '../shared/memoriesStatus';
 import { MemoryText } from '../shared/MemoryText';
-import { useMemoriesQuery } from '../shared/useMemoriesQuery';
+import { cn } from '../../../utils/classnames';
 import type { BinderCard, MemoryMessage } from '../types';
 import { cardCopy } from './cardCopy';
 import { CardTile } from './CardTile';
@@ -24,29 +21,68 @@ const AVATAR_PX = 80;
 /** Her words of a message (a photo's paired words), or null. */
 const wordsOf = (m: MemoryMessage) => (m.type === 'text' ? m.text : (m.caption ?? m.text));
 
-/** One of her messages on paper with its JST date and time. */
-const PaperMessage: React.FC<{ message: MemoryMessage; label?: string }> = ({ message, label }) => {
+const PAPER = 'rounded-md border border-memories-paper bg-memories-paper p-3 shadow-memories-polaroid';
+
+/** The paper's content: an optional label, the JST date and time, her words. */
+const PaperBody: React.FC<{ message: MemoryMessage; label?: string }> = ({ message, label }) => {
     const { i18n } = useTranslation();
     const words = wordsOf(message);
     return (
-        <div className="rounded-md border border-memories-paper bg-memories-paper p-3 shadow-memories-polaroid">
-            {label && <p className="mb-1 text-caption text-muted">{label}</p>}
-            <p className="text-caption tabular-nums text-muted">
+        <>
+            {label && <span className="mb-1 block text-caption text-muted">{label}</span>}
+            <span className="block text-caption tabular-nums text-muted">
                 {formatCardDate(formatJstDate(message.ts), i18n.language)} {formatJstClock(message.ts)}
-            </p>
-            {words && <MemoryText text={words} className="mt-1 max-h-48 overflow-y-auto text-body text-primary" />}
-        </div>
+            </span>
+            {words && <MemoryText as="span" text={words} className="mt-1 block max-h-48 overflow-y-auto text-body text-primary" />}
+        </>
     );
 };
 
-/** A pair card (the earliest おはよう and latest おやすみ, シンクロ): both messages. */
-const PairFace: React.FC<{ card: BinderCard; title: string }> = ({ card, title }) => (
-    <div data-testid="card-detail-pair" className="flex w-72 flex-col gap-3">
-        <p className="font-display text-title text-primary">{title}</p>
-        {card.face && <PaperMessage message={card.face} />}
-        {card.refs.pair && <PaperMessage message={card.refs.pair} />}
-    </div>
+/** One of her messages on paper with its JST date and time. */
+const PaperMessage: React.FC<{ message: MemoryMessage; label?: string }> = ({ message, label }) => (
+    <div className={PAPER}><PaperBody message={message} label={label} /></div>
 );
+
+type PairSide = 'face' | 'pair';
+
+/**
+ * A pair card (the earliest おはよう and latest おやすみ, シンクロ): both messages as pressable papers
+ * (`aria-pressed`); the selected one (`ring-accent-border`, state) drives the day column and the
+ * jump. The greeting pair labels them 「いちばん早いおはよう」 / 「いちばん遅いおやすみ」; シンクロ's
+ * papers are told apart by their dates.
+ */
+const PairFace: React.FC<{ card: BinderCard; title: string; selected: PairSide; onSelect: (side: PairSide) => void }> = ({
+    card, title, selected, onSelect,
+}) => {
+    const { t } = useTranslation();
+    const greeting = card.key === 'record.greeting_pair';
+    const sides: Array<[PairSide, MemoryMessage | null | undefined, string | undefined]> = [
+        ['face', card.face, greeting ? t('memories.cardDetail.earliestOhayo') : undefined],
+        ['pair', card.refs.pair, greeting ? t('memories.cardDetail.latestOyasumi') : undefined],
+    ];
+    return (
+        <div data-testid="card-detail-pair" className="flex w-72 flex-col gap-3">
+            <p className="font-display text-title text-primary">{title}</p>
+            {sides.map(([side, message, label]) => message && (
+                <button
+                    key={side}
+                    type="button"
+                    aria-pressed={selected === side}
+                    onClick={() => onSelect(side)}
+                    className={cn(
+                        PAPER,
+                        'block w-full text-left',
+                        'transition-shadow duration-fast ease-standard motion-reduce:transition-none',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                        selected === side && 'ring-2 ring-accent-border',
+                    )}
+                >
+                    <PaperBody message={message} label={label} />
+                </button>
+            ))}
+        </div>
+    );
+};
 
 /** An avatar change: the old and new icon, her days with the new one, the last and first messages. */
 const ChangeSection: React.FC<{ card: BinderCard }> = ({ card }) => {
@@ -108,7 +144,9 @@ export interface CardDetailProps {
  *   (an anniversary's `nearest` message, a change's `first_after`): the column is labelled with
  *   the real date, and an anniversary's other-day message as 「いちばん近い日のメッセージ」.
  * - A card without a message has no day column and no jump.
- * - Pair cards show both messages.
+ * - Pair cards show both messages as pressable papers; the selected one (the first by default)
+ *   drives the day column and the jump, and is tinted and scrolled to in the day.
+ * - The day column is `MemberDayColumn` (shared with the 24h tab's member-day dialog).
  * - Avatar changes show the old and new icon, 「この写真と、N 日」 and the last message with the
  *   old icon and the first with the new, instead of the large card (the message count is not
  *   shown: one number).
@@ -118,26 +156,16 @@ export interface CardDetailProps {
 export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, name, card, onClose }) => {
     const { t, i18n } = useTranslation();
     const copyText = useCopy();
-    const message = card.face;
+    const [side, setSide] = useState<PairSide>('face');
+    const message = side === 'pair' && card.refs.pair ? card.refs.pair : card.face;
     const messageDay = message ? formatJstDate(message.ts) : null;
-    const day = useMemoriesQuery(
-        'day',
-        (signal) => (messageDay ? fetchDay(service, { date: messageDay, member: memberPath }, signal) : Promise.resolve(null)),
-        [service, memberPath, messageDay],
-        { count: (d) => d?.messages.length ?? 0 },
-    );
-    const data = day.data;
-    const people = useMemo(
-        () => new Map<string, DayPerson>((data ? dayPeople(data.members, data.messages) : []).map((p) => [p.key, p])),
-        [data],
-    );
     const copy = cardCopy(card.key);
     const title = copy ? copyText(copy.title) : '';
     const isChangeCard = card.key.startsWith('change.avatar.');
 
     let face: React.ReactNode;
     if (card.key === 'grad.last') face = <GraduationFace card={card} />;
-    else if (card.refs.pair) face = <PairFace card={card} title={title} />;
+    else if (card.refs.pair) face = <PairFace card={card} title={title} selected={side} onSelect={setSide} />;
     else if (isChangeCard) face = <ChangeSection card={card} />;
     else face = <CardTile card={card} large />;
 
@@ -174,15 +202,15 @@ export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, nam
                         </div>
                     )}
                 </div>
-                {dayLabel && (
-                    <section data-testid="card-detail-day" aria-labelledby="card-detail-day-label" className="min-w-0 flex-1">
-                        <h3 id="card-detail-day-label" data-testid="card-detail-day-label" className="mb-2 text-small text-muted">
-                            {dayLabel}
-                        </h3>
-                        {day.status === 'ready' && data
-                            ? <MergedTimeline messages={data.messages} people={people} service={service} />
-                            : day.status !== 'ready' && <MemoriesStatus query={day} view="day" />}
-                    </section>
+                {dayLabel && messageDay && message && (
+                    <MemberDayColumn
+                        service={service}
+                        memberPath={memberPath}
+                        date={messageDay}
+                        label={dayLabel}
+                        focus={{ room: message.room, id: message.id }}
+                        testId="card-detail-day"
+                    />
                 )}
             </div>
         </Modal>
