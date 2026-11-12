@@ -143,20 +143,35 @@ def _position_is_usable(
     )
 
 
-def default_geometry(scale: Optional[float] = None) -> dict:
+_SCREEN_UNSET_MIN: Any = object()
+
+
+def default_geometry(
+    scale: Optional[float] = None, work: Any = _SCREEN_UNSET_MIN
+) -> dict:
     """First-open window size in DEVICE pixels: ``BASE_LOGICAL`` x the monitor DPI
     scale, so the window looks the same relative to the (DPI-scaled) UI at any
     scale (100% -> 1200x800, 175% -> 2100x1400, ...). ``scale`` defaults to the
-    live primary-monitor scale."""
+    live primary-monitor scale.
+
+    N-R4-4: when the primary monitor's usable area is known (``work``, device
+    px; default the live ``primary_work_size()``, ``None`` = unknown), the size
+    is capped to it and the window is centred on it with an explicit ``x``/``y``.
+    Without a position pywebview starts the form centre-screen, and on that path
+    WinForms grew the 2100 x 1400 request to 3657 x 2402 at 175 % (taller than
+    the 2160 px screen); with a position it takes the same path as restored
+    geometry, which round-trips verbatim.
+    """
     if scale is None:
         scale = dpi_scale()
-    return {
-        "width": round(BASE_LOGICAL["width"] * scale),
-        "height": round(BASE_LOGICAL["height"] * scale),
-    }
-
-
-_SCREEN_UNSET_MIN: Any = object()
+    w = round(BASE_LOGICAL["width"] * scale)
+    h = round(BASE_LOGICAL["height"] * scale)
+    if work is _SCREEN_UNSET_MIN:
+        work = primary_work_size()
+    if work is None:
+        return {"width": w, "height": h}
+    w, h = min(w, work[0]), min(h, work[1])
+    return {"width": w, "height": h, "x": (work[0] - w) // 2, "y": (work[1] - h) // 2}
 
 
 def primary_work_size() -> Optional[tuple[int, int]]:
