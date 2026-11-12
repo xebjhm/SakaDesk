@@ -11,7 +11,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import pytest
 from fastapi.testclient import TestClient
+from structlog.testing import capture_logs
 
 from backend import main as backend_main
 from backend.main import app
@@ -136,11 +138,84 @@ def test_health_ignores_a_malformed_nonce():
 
 
 def test_security_headers_on_every_response():
-    for resp in (app_client.get("/health"), app_client.get(_JSON_GET, headers=TOKEN)):
-        assert resp.headers["x-frame-options"] == "DENY"
-        assert "frame-ancestors 'none'" in resp.headers["content-security-policy"]
+    responses = (
+        app_client.get("/health"),  # 200
+        app_client.get(_JSON_GET, headers=TOKEN),  # 200
+        client.get("/health", headers={"Host": "evil.example.com"}),  # 400
+        # fresh client: app_client's jar may hold the bootstrap cookie
+        TestClient(app, base_url="http://127.0.0.1:8765").get(_JSON_GET),  # 401
+        app_client.get(  # 403
+            _JSON_GET, headers={**TOKEN, "Origin": "http://localhost:9999"}
+        ),
+    )
+    assert [r.status_code for r in responses] == [200, 200, 400, 401, 403]
+    for resp in responses:
+        assert resp.headers["x-frame-options"] == "SAMEORIGIN"
+        assert "frame-ancestors 'self'" in resp.headers["content-security-policy"]
         assert resp.headers["x-content-type-options"] == "nosniff"
         assert resp.headers["cross-origin-resource-policy"] == "same-origin"
+
+
+def test_guard_rechecks_the_test_client_flag_per_request(monkeypatch):
+    """The Host: testserver exemption needs SAKADESK_TEST_CLIENT at request time."""
+    assert client.get(_JSON_GET).status_code == 200
+    monkeypatch.delenv("SAKADESK_TEST_CLIENT")
+    assert client.get(_JSON_GET).status_code == 401
+
+
+_COOKIE = {api_auth.TOKEN_COOKIE: api_auth.LAUNCH_TOKEN}
+
+
+@pytest.mark.parametrize(
+    ("fetch_site", "status"),
+    [
+        ("same-site", 401),
+        ("cross-site", 401),
+        ("same-origin", 200),
+        ("none", 200),
+        (None, 200),
+    ],
+)
+def test_cookie_auth_honours_sec_fetch_site(fetch_site, status):
+    cookie_client = TestClient(app, base_url="http://127.0.0.1:8765", cookies=_COOKIE)
+    headers = {"Sec-Fetch-Site": fetch_site} if fetch_site else {}
+    assert cookie_client.get(_JSON_GET, headers=headers).status_code == status
+
+
+def test_header_auth_ignores_sec_fetch_site():
+    resp = app_client.get(_JSON_GET, headers={**TOKEN, "Sec-Fetch-Site": "cross-site"})
+    assert resp.status_code == 200
+
+
+def test_fetch_site_rejection_is_logged():
+    cookie_client = TestClient(app, base_url="http://127.0.0.1:8765", cookies=_COOKIE)
+    with capture_logs() as logs:
+        cookie_client.get(_JSON_GET, headers={"Sec-Fetch-Site": "same-site"})
+    assert any(
+        e["event"] == "api_request_rejected" and e["reason"] == "fetch_site"
+        for e in logs
+    )
+
+
+def test_bad_host_rejection_is_logged_without_the_host():
+    with capture_logs() as logs:
+        resp = client.get("/health", headers={"Host": "evil.example.com"})
+    assert resp.status_code == 400
+    events = [e for e in logs if e["event"] == "api_request_rejected"]
+    assert events and events[0]["reason"] == "host"
+    assert "evil.example.com" not in repr(logs)
+
+
+def test_health_rejected_nonce_is_logged():
+    with capture_logs() as logs:
+        body = app_client.get("/health?nonce=bad nonce").json()
+    assert body == {"status": "ok"}
+    assert any(e["event"] == "health_nonce_rejected" for e in logs)
+
+
+def test_health_rejects_a_nonce_with_trailing_newline():
+    body = app_client.get("/health?nonce=abcdefghijklmnop%0A").json()
+    assert "proof" not in body
 
 
 def test_docs_are_disabled_when_frozen():

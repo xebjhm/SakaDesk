@@ -55,6 +55,7 @@ def test_valid_nonce_shape():
     assert not api_auth.valid_nonce("short")
     assert not api_auth.valid_nonce("A" * 65)
     assert not api_auth.valid_nonce("bad nonce with spaces!!")
+    assert not api_auth.valid_nonce("A" * 16 + "\n")
 
 
 def test_test_client_mode_follows_env(monkeypatch):

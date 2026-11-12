@@ -50,7 +50,9 @@ from fastapi import FastAPI, Request  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
+from starlette.datastructures import Headers  # noqa: E402
 from starlette.middleware.trustedhost import TrustedHostMiddleware  # noqa: E402
+from starlette.types import Receive, Scope, Send  # noqa: E402
 from backend.api import (  # noqa: E402
     auth,
     account,
@@ -458,7 +460,9 @@ async def api_guard(request: Request, call_next):
        origin (CSRF, other loopback ports, ``Origin: null``).
     2. Every request must carry the per-launch token: the X-SakaDesk-Token
        header, or for GET/HEAD the HttpOnly cookie set by
-       /api/session/bootstrap. Processes and pages without it get 401.
+       /api/session/bootstrap. Processes and pages without it get 401. A
+       cookie-authorised request whose Sec-Fetch-Site is neither same-origin
+       nor none (an absent header is allowed) is also refused.
     Under pytest only (SAKADESK_TEST_CLIENT=1), TestClient's Host: testserver
     skips step 2.
     """
@@ -478,6 +482,20 @@ async def api_guard(request: Request, call_next):
             token = request.headers.get(api_auth.TOKEN_HEADER, "")
             if not token and request.method in ("GET", "HEAD"):
                 token = request.cookies.get(api_auth.TOKEN_COOKIE, "")
+                fetch_site = request.headers.get("sec-fetch-site")
+                if (
+                    token
+                    and fetch_site is not None
+                    and fetch_site not in ("same-origin", "none")
+                ):
+                    logger.info(
+                        "api_request_rejected",
+                        reason="fetch_site",
+                        method=request.method,
+                    )
+                    return JSONResponse(
+                        status_code=401, content={"detail": "Unauthorized"}
+                    )
             if not api_auth.token_ok(token):
                 logger.info(
                     "api_request_rejected", reason="token", method=request.method
@@ -492,7 +510,20 @@ async def api_guard(request: Request, call_next):
 _ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
 if api_auth.test_client_mode():
     _ALLOWED_HOSTS.append("testserver")
-app.add_middleware(TrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
+
+
+class _LoggingTrustedHostMiddleware(TrustedHostMiddleware):
+    """TrustedHostMiddleware that leaves a breadcrumb (code only, never the Host)."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        if scope["type"] in ("http", "websocket") and not self.allow_any:
+            host = Headers(scope=scope).get("host", "").split(":")[0]
+            if host not in self.allowed_hosts:
+                logger.info("api_request_rejected", reason="host")
+        await super().__call__(scope, receive, send)
+
+
+app.add_middleware(_LoggingTrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
 
 # API JSON must never enter the browser HTTP cache (cache-lock stalls on polls).
 app.add_middleware(ApiNoStoreMiddleware)
@@ -534,8 +565,10 @@ app.include_router(memories.router)
 async def health(nonce: str | None = None):
     """Liveness for desktop.py. With a nonce, also proves this is SakaDesk's
     backend: only the process holding the launch token can compute the proof."""
-    if nonce is not None and api_auth.valid_nonce(nonce):
-        return {"status": "ok", "proof": api_auth.health_proof(nonce)}
+    if nonce is not None:
+        if api_auth.valid_nonce(nonce):
+            return {"status": "ok", "proof": api_auth.health_proof(nonce)}
+        logger.info("health_nonce_rejected")
     return {"status": "ok"}
 
 

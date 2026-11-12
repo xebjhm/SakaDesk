@@ -27,7 +27,7 @@ TOKEN_HEADER = "x-sakadesk-token"
 TOKEN_COOKIE = "sakadesk_t"
 
 _MIN_ENV_TOKEN_LEN = 16
-_NONCE_RE = re.compile(r"^[A-Za-z0-9_-]{16,64}$")
+_NONCE_RE = re.compile(r"[A-Za-z0-9_-]{16,64}")
 
 
 def _initial_token() -> str:
@@ -53,7 +53,7 @@ def token_ok(value: str | None) -> bool:
 
 def valid_nonce(nonce: str) -> bool:
     """A readiness-probe nonce: 16-64 URL-safe characters."""
-    return bool(_NONCE_RE.match(nonce))
+    return bool(_NONCE_RE.fullmatch(nonce))
 
 
 def health_proof(nonce: str) -> str:

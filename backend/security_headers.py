@@ -1,7 +1,9 @@
-"""Framing, sniffing and embedding defaults on every response (security audit 2026-11-13).
+"""Framing, sniffing and embedding defaults on every response the app produces
+(security audit 2026-11-13; a 500 from Starlette's outermost error middleware bypasses it).
 
-- ``X-Frame-Options: DENY`` + ``Content-Security-Policy: frame-ancestors 'none'``:
-  no other site may frame SakaDesk's UI (clickjacking).
+- ``X-Frame-Options: SAMEORIGIN`` + ``Content-Security-Policy: frame-ancestors 'self'``:
+  no other origin (including other localhost ports) may frame SakaDesk's UI
+  (clickjacking); the app's own same-origin download iframe still works.
 - ``X-Content-Type-Options: nosniff``: a file is never sniffed into a more
   active type than the one it was served as.
 - ``Cross-Origin-Resource-Policy: same-origin``: other sites cannot embed
@@ -15,8 +17,8 @@ from __future__ import annotations
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 _DEFAULTS: tuple[tuple[bytes, bytes], ...] = (
-    (b"x-frame-options", b"DENY"),
-    (b"content-security-policy", b"frame-ancestors 'none'"),
+    (b"x-frame-options", b"SAMEORIGIN"),
+    (b"content-security-policy", b"frame-ancestors 'self'"),
     (b"x-content-type-options", b"nosniff"),
     (b"cross-origin-resource-policy", b"same-origin"),
 )
