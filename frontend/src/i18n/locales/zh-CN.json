@@ -1157,7 +1157,11 @@
       "elapsedYears": "{{count}} 年",
       "elapsedDays": "{{count}} 天",
       "elapsedJoin": "{{years}} {{days}}",
-      "openSide": "打开 {{date}} 那一天"
+      "openSide": "打开 {{date}} 那一天",
+      "voiceLonger": "长了 {{count}} 秒",
+      "voiceShorter": "短了 {{count}} 秒",
+      "spanYears": "从最初到现在・相隔约 {{count}} 年",
+      "spanMonths": "从最初到现在・相隔约 {{count}} 个月"
     },
     "day24": {
       "tab": "她的24小时",

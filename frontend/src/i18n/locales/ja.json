@@ -1157,7 +1157,11 @@
       "elapsedYears": "{{count}}年",
       "elapsedDays": "{{count}}日",
       "elapsedJoin": "{{years}}{{days}}",
-      "openSide": "{{date}} の一日をひらく"
+      "openSide": "{{date}} の一日をひらく",
+      "voiceLonger": "{{count}} 秒長く",
+      "voiceShorter": "{{count}} 秒短く",
+      "spanYears": "はじめてから今まで・約{{count}}年",
+      "spanMonths": "はじめてから今まで・約{{count}}か月"
     },
     "day24": {
       "tab": "彼女の24時間",

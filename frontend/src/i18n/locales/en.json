@@ -1185,7 +1185,13 @@
       "elapsedDays": "{{count}} day",
       "elapsedDays_other": "{{count}} days",
       "elapsedJoin": "{{years}}, {{days}}",
-      "openSide": "Open the day of {{date}}"
+      "openSide": "Open the day of {{date}}",
+      "voiceLonger": "{{count}} s longer",
+      "voiceShorter": "{{count}} s shorter",
+      "spanYears": "From the very first to now · about {{count}} year",
+      "spanYears_other": "From the very first to now · about {{count}} years",
+      "spanMonths": "From the very first to now · about {{count}} month",
+      "spanMonths_other": "From the very first to now · about {{count}} months"
     },
     "day24": {
       "tab": "Her 24 hours",

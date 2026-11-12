@@ -18,7 +18,7 @@ import { MEMBER_PATH } from '../__fixtures__/memories';
 import { dayPayload } from '../day/__fixtures__';
 import { NicknameProvider } from '../shared/useNickname';
 import { FirstMeetPanel } from './FirstMeetPanel';
-import { formatElapsed } from './firstMeet';
+import { formatElapsed, spanLine, voiceDelta } from './firstMeet';
 import { firstMeet } from './__fixtures__';
 
 beforeAll(async () => { await i18n.changeLanguage('zh-TW'); });
@@ -61,6 +61,23 @@ describe('FirstMeetPanel (初見と今)', () => {
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_load', { target: 'then_now', outcome: 'ok', count: 2 });
     });
 
+    it('says the whole span under the panel and how much longer her voice got', async () => {
+        const base = firstMeet();
+        vi.mocked(fetchFirstMeet).mockResolvedValue(firstMeet({
+            rows: [...base.rows, {
+                kind: 'voice',
+                then: { ...base.rows[0].then, id: 31, type: 'voice', text: null, duration_s: 9 },
+                now: { ...base.rows[0].now, id: 32, type: 'voice', text: null, duration_s: 42 },
+                elapsed: { years: 1, days: 4 },
+            }],
+        }));
+        renderPanel();
+        expect(await screen.findByTestId('first-meet-span')).toHaveTextContent('從最初到現在・相隔約 1 年');
+        const voice = screen.getAllByTestId('first-meet-row').find((r) => r.getAttribute('data-kind') === 'voice')!;
+        expect(within(voice).getByTestId('first-meet-voice-delta')).toHaveTextContent('長了 33 秒');
+        expect(screen.getAllByTestId('first-meet-voice-delta')).toHaveLength(1);
+    });
+
     it('ages only the older photo', async () => {
         renderPanel();
         const [, photo] = await screen.findAllByTestId('first-meet-row');
@@ -96,5 +113,21 @@ describe('FirstMeetPanel (初見と今)', () => {
         expect(formatElapsed(t, { years: 2, days: 0 })).toBe('2 years');
         expect(formatElapsed(t, { years: 0, days: 1 })).toBe('1 day');
         expect(formatElapsed(i18n.getFixedT('ja'), { years: 1, days: 8 })).toBe('1年8日');
+    });
+
+    it('words the voice change and the span, never a 0', () => {
+        const t = i18n.getFixedT('en');
+        const row = firstMeet().rows[0];
+        const voice = (a: number | null, b: number | null) => ({
+            ...row, kind: 'voice' as const, then: { ...row.then, duration_s: a }, now: { ...row.now, duration_s: b },
+        });
+        expect(voiceDelta(t, voice(42, 30))).toBe('12 s shorter');
+        expect(voiceDelta(t, voice(10, 10.2))).toBeNull();
+        expect(voiceDelta(t, voice(null, 10))).toBeNull();
+        expect(voiceDelta(t, row)).toBeNull();
+        expect(spanLine(t, firstMeet().rows)).toBe('From the very first to now · about 1 year');
+        const short = [{ ...row, then: { ...row.then, ts: '2026-11-01T00:00:00Z' }, now: { ...row.now, ts: '2026-11-03T00:00:00Z' } }];
+        expect(spanLine(t, short)).toBe('From the very first to now · about 1 month');
+        expect(spanLine(i18n.getFixedT('ja'), firstMeet().rows)).toBe('はじめてから今まで・約1年');
     });
 });

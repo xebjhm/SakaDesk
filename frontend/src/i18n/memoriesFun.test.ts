@@ -49,6 +49,8 @@ export const MEMORIES_FUN_KEYS: string[] = [
     'memories.thenNow.title', 'memories.thenNow.then', 'memories.thenNow.now', 'memories.thenNow.thenCaption',
     'memories.thenNow.nowCaption', 'memories.thenNow.rowOyasumi', 'memories.thenNow.elapsedYears',
     'memories.thenNow.elapsedDays', 'memories.thenNow.elapsedJoin', 'memories.thenNow.openSide',
+    'memories.thenNow.voiceLonger', 'memories.thenNow.voiceShorter', 'memories.thenNow.spanYears',
+    'memories.thenNow.spanMonths',
     'memories.day24.tab', 'memories.day24.title', 'memories.day24.fromYears', 'memories.day24.fromOneYear',
     'memories.day24.reroll', 'memories.day24.thin', 'memories.day24.year',
 ];
@@ -65,7 +67,8 @@ export const MEMORIES_FUN_EN_PLURALS: string[] = [
     // F12
     'memories.capsule.yearsAgo', 'memories.capsule.limit',
     // F13
-    'memories.thenNow.elapsedYears', 'memories.thenNow.elapsedDays', 'memories.day24.fromYears',
+    'memories.thenNow.elapsedYears', 'memories.thenNow.elapsedDays', 'memories.thenNow.spanYears',
+    'memories.thenNow.spanMonths', 'memories.day24.fromYears',
 ];
 
 /** Recursive dotted lookup (any depth). */

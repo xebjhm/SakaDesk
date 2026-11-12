@@ -15,7 +15,7 @@ import { MemoryThumb } from '../shared/MemoryThumb';
 import { sepiaClass } from '../shared/sepia';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
 import type { FirstMeetKind, FirstMeetPayload, MemoryMessage } from '../types';
-import { formatElapsed } from './firstMeet';
+import { formatElapsed, spanLine, voiceDelta } from './firstMeet';
 
 const AVATAR_PX = 24;
 const PHOTO_PX = 96;
@@ -82,8 +82,10 @@ const Head: React.FC<{ label: string; caption: string; avatarUrl: string | null;
 
 const Rows: React.FC<{ data: FirstMeetPayload; name: string; onOpen: (m: MemoryMessage) => void }> = ({ data, name, onOpen }) => {
     const { t } = useTranslation();
+    const span = spanLine(t, data.rows);
     return (
         <div className="flex flex-col">
+            {span && <p data-testid="first-meet-span" className="pb-3 text-small text-secondary">{span}</p>}
             <div className="flex items-end gap-3 pb-2">
                 <span className="w-20 shrink-0" />
                 <Head label={t('memories.thenNow.then')} caption={t('memories.thenNow.thenCaption')} avatarUrl={data.avatar_then} name={name} />
@@ -105,6 +107,7 @@ const Rows: React.FC<{ data: FirstMeetPayload; name: string; onOpen: (m: MemoryM
                     <div data-testid="first-meet-gap" className="flex w-24 shrink-0 flex-col items-center gap-1 text-center text-muted">
                         <ArrowRight aria-hidden="true" className="h-4 w-4" />
                         <span className="font-display text-small tabular-nums text-secondary">{formatElapsed(t, row.elapsed)}</span>
+                        {voiceDelta(t, row) && <span data-testid="first-meet-voice-delta" className="text-caption tabular-nums">{voiceDelta(t, row)}</span>}
                     </div>
                     <Side message={row.now} which="now" onOpen={() => onOpen(row.now)} />
                 </section>
@@ -124,7 +127,8 @@ interface FirstMeetPanelProps {
 /**
  * 初見と今 (B2) in the memoir timeline: one row per kind (おはよう, photo, voice, おやすみ) with her
  * first one on the left, a recent one on the right and the time between them in the middle
- * (「1 年 8 天」). A row exists only when both sides do (the backend leaves the others out). Each
+ * (「1 年 8 天」; the voice row adds how much longer or shorter she spoke, 「長了 33 秒」), under a
+ * subtitle with the whole span (「從最初到現在・相隔約 1 年」). A row exists only when both sides do (the backend leaves the others out). Each
  * side is a paper card (the older photo aged with `sepiaClass`); a click opens her day at that
  * message (`MemberDayDialog`, jump logged from `timeline`), and closing it leaves the panel as it
  * was. Loading, slow, error and timeout go through `MemoriesStatus` (`then_now`); without a row a

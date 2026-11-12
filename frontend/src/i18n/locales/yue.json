@@ -1157,7 +1157,11 @@
       "elapsedYears": "{{count}} 年",
       "elapsedDays": "{{count}} 日",
       "elapsedJoin": "{{years}} {{days}}",
-      "openSide": "打開 {{date}} 嗰日"
+      "openSide": "打開 {{date}} 嗰日",
+      "voiceLonger": "長咗 {{count}} 秒",
+      "voiceShorter": "短咗 {{count}} 秒",
+      "spanYears": "由最初到而家・相隔大約 {{count}} 年",
+      "spanMonths": "由最初到而家・相隔大約 {{count}} 個月"
     },
     "day24": {
       "tab": "佢嘅24小時",
