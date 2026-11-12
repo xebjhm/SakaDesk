@@ -6,6 +6,7 @@ import '../index.css'
 import '../i18n'
 
 import { clientLog } from '../utils/clientLog'
+import { bootstrapApiCookie, installApiAuth, sessionStorageOrNull, takeLaunchToken } from '../core/api/launchAuth'
 import { installCallPopupBridge } from '../features/callPopup/callPopupBridge'
 import { isCallPopupView } from './callPopupRoute'
 import { isDesignView } from '../design/designRoute'
@@ -16,6 +17,17 @@ import { installLanguageFonts } from '../design/fonts'
 // Design tokens must exist before the first paint of any entry point.
 applyStaticTokens()
 installLanguageFonts()
+
+// Launch auth before any request: the token header and the media cookie must exist
+// before the first fetch or <img> (security audit 2026-11-13). Without a token (Vite dev
+// server, e2e) the dev proxy / Playwright adds the header instead.
+const launchToken = takeLaunchToken(window.location, sessionStorageOrNull(), window.history)
+if (launchToken) installApiAuth(launchToken)
+const apiReady: Promise<void> = launchToken
+    ? bootstrapApiCookie().then((ok) => {
+          if (!ok) clientLog('app_load_failed', { error_type: 'api_bootstrap' })
+      })
+    : Promise.resolve()
 
 const root = ReactDOM.createRoot(document.getElementById('root')!)
 
@@ -41,10 +53,10 @@ if (import.meta.env.DEV && isDesignView(window.location.search)) {
     // The host evaluates `window.__sakadeskCallPopup.start(...)` right after the page's `loaded`
     // event, which can precede the chunk below: publish the (queueing) global synchronously.
     installCallPopupBridge()
-    Promise.all([
+    apiReady.then(() => Promise.all([
         import('../core/common/ErrorBoundary'),
         import('../features/callPopup'),
-    ]).then(([{ ErrorBoundary }, { CallPopupApp }]) => {
+    ])).then(([{ ErrorBoundary }, { CallPopupApp }]) => {
         // The bottom-right call popup: no auth, no App shell, no sync, no ui-state reporter.
         root.render(
             <React.StrictMode>
@@ -55,11 +67,11 @@ if (import.meta.env.DEV && isDesignView(window.location.search)) {
         )
     }).catch(() => clientLog('call_popup_error', { error_type: 'load_failed' }))
 } else {
-    Promise.all([
+    apiReady.then(() => Promise.all([
         import('./App'),
         import('../core/common/ErrorBoundary'),
         import('./context/AuthContext'),
-    ]).then(([{ default: App }, { ErrorBoundary }, { AuthProvider }]) => {
+    ])).then(([{ default: App }, { ErrorBoundary }, { AuthProvider }]) => {
         root.render(
             <React.StrictMode>
                 <AuthProvider>
