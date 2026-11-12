@@ -3,7 +3,9 @@
 ## Quick Start
 
 ```bash
-# Backend
+# Backend (the API requires a per-launch token; use one value for both processes,
+# dev.sh / dev.ps1 do this for you)
+export SAKADESK_API_TOKEN=$(uv run python -c "import secrets; print(secrets.token_urlsafe(32))")
 cd /path/to/SakaDesk
 uv sync
 uv run uvicorn backend.main:app --port 8000 --reload
@@ -14,7 +16,7 @@ npm install
 npm run dev
 ```
 
-Open http://localhost:5173 (frontend dev server proxies to backend).
+Open http://localhost:5173 (frontend dev server proxies to backend). The dev server listens on this machine only.
 
 ---
 
@@ -86,7 +88,10 @@ For testing the complete flow with real authentication:
 
 **Step 1: Start backend in normal mode**
 
+The local API requires a per-launch token, so export one first:
+
 ```bash
+export SAKADESK_API_TOKEN=$(uv run python -c "import secrets; print(secrets.token_urlsafe(32))")
 cd /path/to/SakaDesk
 uv run uvicorn backend.main:app --port 8000 --reload
 ```

@@ -86,6 +86,13 @@ uv run python desktop.py
 
 **Option B: Separate backend and frontend (for development)**
 
+The local API requires a per-launch token. Use one value for both processes
+(`dev.sh` / `dev.ps1` do this for you):
+
+```bash
+export SAKADESK_API_TOKEN=$(uv run python -c "import secrets; print(secrets.token_urlsafe(32))")
+```
+
 Terminal 1 - Backend:
 ```bash
 uv run uvicorn backend.main:app --port 8000 --reload --reload-exclude "output/*" --reload-exclude "auth_data/*" --timeout-keep-alive 600
@@ -97,7 +104,7 @@ cd frontend
 npm run dev
 ```
 
-Then open http://localhost:5173 in your browser.
+Then open http://localhost:5173 in your browser. The dev server listens on this machine only.
 
 ### 3. Run tests
 

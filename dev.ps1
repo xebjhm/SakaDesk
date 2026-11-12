@@ -54,6 +54,21 @@ $BackendPidF  = Join-Path $LogDir 'backend.pid'
 $FrontendPidF = Join-Path $LogDir 'frontend.pid'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
+# One per-launch API token shared by the backend and the Vite proxy
+# (security audit 2026-11-13). Kept in a git-ignored file so restarting only
+# one side keeps them in sync.
+$TokenFile = Join-Path $ScriptDir '.dev-api-token'
+function Initialize-ApiToken {
+    if ($env:SAKADESK_API_TOKEN) { return }
+    if (-not (Test-Path $TokenFile) -or -not ((Get-Content $TokenFile -Raw) -as [string]).Trim()) {
+        $bytes = New-Object byte[] 32
+        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+        $tok = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+        Set-Content -Path $TokenFile -Value $tok -NoNewline -Encoding ascii
+    }
+    $env:SAKADESK_API_TOKEN = (Get-Content $TokenFile -Raw).Trim()
+}
+
 # --- helpers ---------------------------------------------------------------
 
 function Invoke-Kill([int]$ProcId) {
@@ -107,6 +122,7 @@ function Stop-Tree([string]$PidFile, [int]$Port, [string]$Name) {
 }
 
 function Start-Backend {
+    Initialize-ApiToken
     Write-Host "Starting backend on port $BackendPort..."
     # cmd /c merges stdout+stderr into one log; taskkill /T later kills uv+uvicorn children.
     # --timeout-keep-alive must match KEEP_ALIVE_TIMEOUT_S in desktop.py (outlast the
@@ -132,6 +148,7 @@ function Start-Backend {
 }
 
 function Start-Frontend {
+    Initialize-ApiToken
     Write-Host "Starting frontend on port $FrontendPort..."
     $cmd = "npm run dev -- --port $FrontendPort --strictPort > `"$FrontendLog`" 2>&1"
     $p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', $cmd `

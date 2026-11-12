@@ -8,6 +8,20 @@ FRONTEND_PORT=5173
 BACKEND_LOG="/tmp/sakadesk-backend.log"
 FRONTEND_LOG="/tmp/sakadesk-frontend.log"
 
+# One per-launch API token shared by the backend and the Vite proxy
+# (security audit 2026-11-13). Kept in a git-ignored file so restarting only
+# one side keeps them in sync.
+TOKEN_FILE="$SCRIPT_DIR/.dev-api-token"
+ensure_api_token() {
+    if [ -z "${SAKADESK_API_TOKEN:-}" ]; then
+        if [ ! -s "$TOKEN_FILE" ]; then
+            (umask 077 && uv run python -c "import secrets; print(secrets.token_urlsafe(32))" > "$TOKEN_FILE")
+        fi
+        SAKADESK_API_TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+    fi
+    export SAKADESK_API_TOKEN
+}
+
 # Cross-platform port helpers (lsof works on macOS and Linux; fuser is Linux-only)
 kill_port() {
     local pids
@@ -20,6 +34,7 @@ port_in_use() {
 }
 
 start_backend() {
+    ensure_api_token
     echo "Starting backend on port $BACKEND_PORT..."
     cd "$SCRIPT_DIR"
     # Keep-alive must match KEEP_ALIVE_TIMEOUT_S in desktop.py (outlast the
@@ -36,6 +51,7 @@ start_backend() {
 }
 
 start_frontend() {
+    ensure_api_token
     echo "Starting frontend on port $FRONTEND_PORT..."
     cd "$SCRIPT_DIR/frontend"
     nohup npm run dev -- --port $FRONTEND_PORT --strictPort > "$FRONTEND_LOG" 2>&1 &

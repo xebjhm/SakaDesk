@@ -1,5 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
 
+// The backend requires the per-launch token (security audit 2026-11-13): pin one for
+// the test server and send it on every request the page makes.
+const E2E_API_TOKEN = process.env.SAKADESK_API_TOKEN ?? 'e2e-local-api-token-0001'
+
 export default defineConfig({
   testDir: './e2e',
   // e2e/probe runs against the Vite dev server: see playwright.probe.config.ts.
@@ -13,6 +17,7 @@ export default defineConfig({
   use: {
     // Base URL for the backend (runs on port 8000)
     baseURL: 'http://localhost:8000',
+    extraHTTPHeaders: { 'X-SakaDesk-Token': E2E_API_TOKEN },
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -30,9 +35,9 @@ export default defineConfig({
     command: process.platform === 'win32'
       ? 'cd .. && uv run uvicorn backend.main:app --port 8000 --timeout-keep-alive 600'
       : 'cd .. && SAKADESK_TEST_MODE=true uv run uvicorn backend.main:app --port 8000 --timeout-keep-alive 600',
-    url: 'http://localhost:8000/api/auth/status',
+    url: 'http://localhost:8000/health',
     reuseExistingServer: !process.env.CI,
     timeout: 30000,
-    env: { SAKADESK_TEST_MODE: 'true' },
+    env: { SAKADESK_TEST_MODE: 'true', SAKADESK_API_TOKEN: E2E_API_TOKEN },
   },
 })
