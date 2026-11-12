@@ -11,7 +11,7 @@ import type { BinderCard, MemoryMessage } from '../types';
 import { cardCopy } from './cardCopy';
 import { formatCardDate, useCopy, yearCard } from './binderModel';
 
-/** The あなた shelf: the fan's own letters, never shown with her words (spec 1.5). */
+/** The あなた shelf: the fan's own letters, never shown with her words (spec 1.5); a click opens the letter itself. */
 const isYouCard = (card: BinderCard) => card.key.startsWith('you.');
 /** The graduation card's foil is a memorial: it stays still. */
 const isMemorial = (card: BinderCard) => card.key === 'grad.last';
@@ -174,7 +174,8 @@ export const CardTile: React.FC<CardTileProps> = ({ card, onOpen, large = false 
     const face = cn(
         'relative flex h-full w-full flex-col overflow-hidden rounded-md border border-memories-paper bg-memories-paper p-3 text-left shadow-memories-polaroid',
     );
-    const interactive = !you && !large && onOpen !== undefined;
+    // a あなた card opens the fan's own letter (never her words); it needs the letter's address
+    const interactive = !large && onOpen !== undefined && (!you || card.letter !== null);
     const described = [date && `${descId}-date`, stackLabel && `${descId}-stack`].filter(Boolean).join(' ') || undefined;
 
     return (

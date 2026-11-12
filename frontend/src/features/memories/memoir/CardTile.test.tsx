@@ -131,9 +131,9 @@ describe('CardTile', () => {
         }));
     });
 
-    it('shows the あなた shelf as an envelope and a date, never her words', () => {
-        renderTile(card({
-            key: 'you.letter.1', date: '2024-08-01', letter: { date: '2024-08-01' },
+    it('shows the あなた shelf as an envelope and a date, never her words; a click opens the letter', async () => {
+        const onOpen = renderTile(card({
+            key: 'you.letter.1', date: '2024-08-01', letter: { date: '2024-08-01', member_path: 'p', id: 7 },
             // even a stray face must never be shown next to the fan's letter
             face: face({ text: 'ひみつ' }),
         }));
@@ -143,7 +143,8 @@ describe('CardTile', () => {
         expect(tile).toHaveTextContent('2024/8/1');
         expect(screen.queryByTestId('memory-text')).toBeNull();
         expect(tile).not.toHaveTextContent('ひみつ');
-        expect(within(tile).queryByRole('button')).toBeNull();
+        await userEvent.click(within(tile).getByRole('button', { name: 'はじめて送った手紙' }));
+        expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ key: 'you.letter.1', letter: expect.objectContaining({ id: 7 }) }));
     });
 
     it('shows the new avatar on a change card', () => {

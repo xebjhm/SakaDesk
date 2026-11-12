@@ -79,7 +79,7 @@ export function binderPayload(): BinderPayload {
             },
             {
                 key: 'you',
-                cards: [card({ key: 'you.letter.1', date: '2024-08-01', letter: { date: '2024-08-01' } })],
+                cards: [card({ key: 'you.letter.1', date: '2024-08-01', letter: { date: '2024-08-01', member_path: MEMBER_PATH, id: 1 } })],
             },
             {
                 key: 'change',

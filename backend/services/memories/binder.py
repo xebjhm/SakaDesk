@@ -435,8 +435,14 @@ def _payload(
                 for y in card.years
             ],
             "detail": dict(card.detail),
+            # the fan's own letter: its date, and where to read it
+            # (``/api/chat/letters_local`` path + letter id); never her words
             "letter": (
-                {"date": card.date.isoformat()}
+                {
+                    "date": card.date.isoformat(),
+                    "member_path": people.chat_path(sdir, card.letter[0]),
+                    "id": card.letter[1],
+                }
                 if card.letter is not None and card.date is not None
                 else None
             ),

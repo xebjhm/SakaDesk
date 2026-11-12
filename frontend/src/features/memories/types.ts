@@ -331,8 +331,11 @@ export interface BinderCard {
     years: BinderCardYear[];
     /** Card-specific numbers / codes (`chars`, `count`, `seconds`, `days`, `messages`, `old_url`, `new_url`). */
     detail: Record<string, number | string>;
-    /** The fan's own letter date (あなた shelf only); never paired with her messages. */
-    letter: { date: string } | null;
+    /**
+     * The fan's own letter (あなた shelf only), never paired with her messages: its date, and
+     * where to read it (`member_path` for `/api/chat/letters_local`, the letter `id`).
+     */
+    letter: { date: string; member_path: string; id: number } | null;
 }
 
 export interface BinderShelf {

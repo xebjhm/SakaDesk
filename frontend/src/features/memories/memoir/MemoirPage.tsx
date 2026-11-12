@@ -15,6 +15,7 @@ import type { BinderCard, MemoirMember } from '../types';
 import { Day24View } from '../day24/Day24View';
 import { Binder } from './Binder';
 import { CardDetail } from './CardDetail';
+import { SentLetter } from './SentLetter';
 import { MemoirHeader, MemoirHeaderPlaceholder } from './MemoirHeader';
 import { NameMoments } from './NameMoments';
 import { Timeline } from './Timeline';
@@ -84,7 +85,8 @@ const BinderPane: React.FC<{ service: string; memberPath: string; name: string; 
     return (
         <>
             <Binder binder={binder.data} onOpen={(c) => { if (c.date) setOpen({ path: memberPath, card: c }); }} />
-            {card && <CardDetail service={service} memberPath={memberPath} name={name} card={card} onClose={() => setOpen(null)} />}
+            {card?.letter && <SentLetter service={service} name={name} letter={card.letter} onClose={() => setOpen(null)} />}
+            {card && !card.letter && <CardDetail service={service} memberPath={memberPath} name={name} card={card} onClose={() => setOpen(null)} />}
         </>
     );
 };

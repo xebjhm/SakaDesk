@@ -76,7 +76,7 @@ SHELVES = (
 
 # Bump on any rule or payload change: the binder's cache hash includes it, so
 # a shipped rule change never keeps serving binders built by the old rules.
-CARDS_VERSION = 6
+CARDS_VERSION = 7
 
 FALLBACK_NEAREST = "nearest"
 FALLBACK_FIRST_AFTER = "first_after"

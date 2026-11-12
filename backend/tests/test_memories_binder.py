@@ -134,7 +134,12 @@ async def test_two_rooms_give_one_binder(svc):
 async def test_letters_count_only_from_her_rooms(svc):
     s = await matsuda(svc)
     k = cards_of(await binder.build_binder(SERVICE, svc, s, now=NOW))
-    assert k["you.letter.1"]["letter"] == {"date": "2024-08-01"}
+    # the letter's own date, and where to read it (letters_local path + id)
+    assert k["you.letter.1"]["letter"] == {
+        "date": "2024-08-01",
+        "member_path": f"{SVC_NAME}/{OLD_ROOM}",
+        "id": 1,
+    }
     assert k["you.letter.1"]["face"] is None and k["you.letter.1"]["refs"] == {}
     assert k["you.letter.10"]["progress"] == {"current": 2, "target": 10}
 
