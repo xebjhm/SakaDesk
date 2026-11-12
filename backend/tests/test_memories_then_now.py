@@ -480,3 +480,106 @@ async def test_first_week_without_messages_is_none(svc):
     with capture_logs() as logs:
         assert await first_week(svc) is None
     assert event(logs)["reason"] == "no_start"
+
+
+# --- then_now_first_meet (初見と今, same-kind rows) ---------------------------------------
+
+
+async def first_meet(sdir, room=KANE):
+    summary = await person_of(sdir, room)
+    return await then_now.then_now_first_meet(SERVICE, sdir, summary)
+
+
+WELCOME = "%%%さん、ご登録ありがとうございます！これからよろしくね"
+QA = "Q.好きな食べ物は？\nA.いちご\nQ.趣味は？\nA.散歩\nQ.朝は何時に起きる？おはようの時間\nA.7時"
+
+
+@pytest.mark.asyncio
+async def test_first_meet_pairs_her_first_with_a_recent_one_per_kind(svc):
+    kane(
+        svc,
+        [
+            msg(
+                1, at(2025, 11, 1, 0, 4), content=WELCOME
+            ),  # the welcome opens the room
+            msg(2, at(2025, 11, 2, 7, 40), content="はじめてのおはよう、緊張する…！"),
+            media(KANE, "picture", 3, at(2025, 11, 3, 18, 22)),
+            media(KANE, "voice", 4, at(2025, 11, 5, 22, 1)),
+            msg(5, at(2025, 11, 2, 23, 55), content="おやすみなさい。また明日"),
+            # recent: within the 30 days ending on the newest of each kind
+            msg(10, at(2026, 10, 1, 7, 0), content="おはよう" + "あ" * 200),  # too old
+            msg(11, at(2026, 11, 8, 7, 5), content="おはよ〜 今日も一日がんばろうね☀️"),
+            msg(12, at(2026, 11, 10, 7, 5), content="おはよう"),
+            media(KANE, "picture", 13, at(2026, 11, 8, 15, 10)),
+            media(KANE, "voice", 14, at(2026, 11, 7, 21, 0)),
+            media(KANE, "voice", 15, at(2026, 11, 9, 21, 40)),
+            msg(16, at(2026, 11, 10, 23, 30), content="今日もありがとう、おやすみ〜🌙"),
+        ],
+        avatars=KANE_AVATARS,
+    )
+    with capture_logs() as logs:
+        got = await first_meet(svc)
+    assert got["mode"] == "first_meet"
+    assert [r["kind"] for r in got["rows"]] == ["ohayo", "photo", "voice", "oyasumi"]
+    pairs = {r["kind"]: (r["then"]["id"], r["now"]["id"]) for r in got["rows"]}
+    # the welcome never stands as her first; the newest voice wins; words by importance
+    assert pairs["ohayo"] == (2, 11)  # 10 is outside the window, 12 a bare greeting
+    assert pairs["photo"] == (3, 13)
+    assert pairs["voice"] == (4, 15)
+    assert pairs["oyasumi"] == (5, 16)
+    ohayo = got["rows"][0]
+    assert ohayo["then"]["text"] == "はじめてのおはよう、緊張する…！"
+    assert got["rows"][1]["elapsed"] == {"years": 1, "days": 5}
+    assert got["rows"][3]["elapsed"] == {"years": 1, "days": 8}
+    assert got["avatar_then"].endswith("b.jpg")
+    ev = event(logs)
+    assert ev["mode"] == "first_meet" and ev["rows"] == 4 and ev["skipped"] == []
+
+
+@pytest.mark.asyncio
+async def test_first_meet_skips_promo_qa_and_one_sided_kinds(svc):
+    kane(
+        svc,
+        [
+            msg(1, at(2025, 3, 1, 8), content=PROMO + "おはよう"),
+            msg(2, at(2025, 3, 2, 8), content=QA),
+            msg(3, at(2025, 3, 3, 8), content="おはよう🌸"),
+            msg(4, at(2026, 3, 3, 8), content="おはようございます"),
+            media(KANE, "voice", 5, at(2025, 3, 3, 22)),  # one voice only
+            msg(6, at(2025, 3, 3, 23), content="おやすみ"),  # same day only: no row
+        ],
+    )
+    with capture_logs() as logs:
+        got = await first_meet(svc)
+    assert [(r["kind"], r["then"]["id"], r["now"]["id"]) for r in got["rows"]] == [
+        ("ohayo", 3, 4)
+    ]
+    assert got["rows"][0]["elapsed"] == {"years": 1, "days": 0}
+    assert event(logs)["skipped"] == ["photo", "voice", "oyasumi"]
+
+
+@pytest.mark.asyncio
+async def test_first_meet_without_rows_is_none(svc):
+    kane(svc, [msg(1, at(2025, 3, 2), content="はじめまして")])
+    with capture_logs() as logs:
+        assert await first_meet(svc) is None
+    assert event(logs)["reason"] == "no_rows"
+
+
+def test_elapsed_counts_whole_years_then_days():
+    assert then_now.elapsed(date(2025, 11, 2), date(2026, 11, 10)) == {
+        "years": 1,
+        "days": 8,
+    }
+    assert then_now.elapsed(date(2025, 11, 2), date(2026, 11, 1)) == {
+        "years": 0,
+        "days": 364,
+    }
+    assert then_now.elapsed(date(2024, 2, 29), date(2025, 2, 28)) == {
+        "years": 1,
+        "days": 0,
+    }
+    assert then_now.elapsed(date(2025, 3, 1), date(2025, 3, 4)) == {
+        "years": 0,
+        "days": 3,
+    }

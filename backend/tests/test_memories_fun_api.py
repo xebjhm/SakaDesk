@@ -789,3 +789,36 @@ def test_then_now_first_week_errors(out):
     assert get(f"{THEN_NOW}/first-week").status_code == 422
     url = "/api/memories/nope/then-now/first-week"
     assert get(url, member=MEMBER).status_code == 400
+
+
+def test_then_now_first_meet_route(out):
+    rewrite_room(
+        out,
+        [
+            voice(1, "2024-07-24T13:00:00Z", 12.5),
+            voice(5, "2026-11-08T13:00:00Z", 3.0),
+        ],
+    )
+    r = get(f"{THEN_NOW}/first-meet", member=MEMBER)
+    assert r.status_code == 200
+    body = r.json()
+    assert body["mode"] == "first_meet"
+    assert [(x["kind"], x["then"]["id"], x["now"]["id"]) for x in body["rows"]] == [
+        ("voice", 1, 5)
+    ]
+    assert body["rows"][0]["elapsed"] == {"years": 2, "days": 107}
+    no_abs_paths(out, body)
+
+
+def test_then_now_first_meet_may_be_null(out):
+    rewrite_room(out, [voice(1, "2024-07-24T13:00:00Z", 12.5)])  # one side only
+    r = get(f"{THEN_NOW}/first-meet", member=MEMBER)
+    assert r.status_code == 200 and r.json() is None
+
+
+def test_then_now_first_meet_errors(out):
+    gone = f"{SVC_NAME}/messages/99 誰/99 誰"
+    assert get(f"{THEN_NOW}/first-meet", member=gone).status_code == 404
+    assert get(f"{THEN_NOW}/first-meet").status_code == 422
+    url = "/api/memories/nope/then-now/first-meet"
+    assert get(url, member=MEMBER).status_code == 400

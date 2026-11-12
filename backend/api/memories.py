@@ -905,6 +905,17 @@ async def then_now_first_week_route(
     )
 
 
+@router.get("/{service}/then-now/first-meet")
+async def then_now_first_meet_route(
+    service: str, member: str = Query(...)
+) -> dict | None:
+    """初見と今 of the person owning ``member`` as same-kind rows
+    (``then_now.then_now_first_meet``), or ``null`` when no row has both sides."""
+    service_data_dir = _service_dir(service)
+    summary = await _person(service_data_dir, member, view="then_now")
+    return await then_now.then_now_first_meet(service, service_data_dir, summary)
+
+
 @router.get("/{service}/hub")
 async def hub_route(service: str) -> dict:
     """The Memories hub board (``hub.build_hub``): moment, counts, countdown."""
