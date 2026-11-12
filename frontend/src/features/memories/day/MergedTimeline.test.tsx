@@ -8,7 +8,7 @@ import { server } from '../../../__tests__/mocks/server';
 
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
-import { MergedTimeline, WINDOW_FROM } from './MergedTimeline';
+import { FOCUS_HOLD_MS, MergedTimeline, WINDOW_FROM } from './MergedTimeline';
 import { dayPeople } from './people';
 import { dayMessage, dayPayload, MIKU, NAO } from './__fixtures__';
 import type { DayMessage } from '../types';
@@ -129,5 +129,74 @@ describe('MergedTimeline focus', () => {
         onTestFinished(() => { Element.prototype.scrollIntoView = original; });
         render(<MergedTimeline messages={messages} people={peopleOf(messages)} service="hinatazaka46" focus={{ room: messages[0].room, id: messages[0].id }} />);
         expect(spy).not.toHaveBeenCalled();
+    });
+
+    it('keeps the focused row anchored while the content above it grows, until the user scrolls', () => {
+        const { messages } = dayPayload();
+        let rowTop = 700;
+        const rect = (top: number, height: number) => ({ top, height, bottom: top + height, left: 0, right: 0, width: 0, x: 0, y: top, toJSON: () => ({}) });
+        const origRect = Element.prototype.getBoundingClientRect;
+        Element.prototype.getBoundingClientRect = function (this: Element) {
+            if ((this as HTMLElement).dataset.focusScroller !== undefined) return rect(100, 200) as DOMRect;
+            if ((this as HTMLElement).dataset.focused === 'true') return rect(rowTop, 40) as DOMRect;
+            return origRect.call(this);
+        };
+        const origHeight = Object.getOwnPropertyDescriptor(HTMLElement.prototype, 'clientHeight');
+        Object.defineProperty(HTMLElement.prototype, 'clientHeight', { configurable: true, get() { return (this as HTMLElement).dataset.focusScroller !== undefined ? 200 : 0; } });
+        const observers: Array<() => void> = [];
+        const OrigRO = globalThis.ResizeObserver;
+        globalThis.ResizeObserver = class {
+            cb: () => void;
+            constructor(cb: () => void) { this.cb = cb; observers.push(cb); }
+            observe() {}
+            unobserve() {}
+            disconnect() { const k = observers.indexOf(this.cb); if (k >= 0) observers.splice(k, 1); }
+        } as unknown as typeof ResizeObserver;
+        onTestFinished(() => {
+            Element.prototype.getBoundingClientRect = origRect;
+            if (origHeight) Object.defineProperty(HTMLElement.prototype, 'clientHeight', origHeight);
+            globalThis.ResizeObserver = OrigRO;
+        });
+        render(
+            <div data-testid="column" data-focus-scroller="">
+                <MergedTimeline messages={messages} people={peopleOf(messages)} service="hinatazaka46" focus={{ room: messages[1].room, id: messages[1].id }} />
+            </div>,
+        );
+        const column = screen.getByTestId('column');
+        expect(column.scrollTop).toBe(520);
+        // a picture above loads: the row moves 100 px down; the column follows
+        rowTop = 800;
+        observers.forEach((fire) => fire());
+        expect(column.scrollTop).toBe(520 + 620);
+        // the user takes over: no more anchoring
+        column.dispatchEvent(new WheelEvent('wheel', { bubbles: true }));
+        rowTop = 900;
+        observers.forEach((fire) => fire());
+        expect(column.scrollTop).toBe(1140);
+    });
+
+    it('stops anchoring after FOCUS_HOLD_MS even without user input', () => {
+        vi.useFakeTimers();
+        onTestFinished(() => { vi.useRealTimers(); });
+        const { messages } = dayPayload();
+        let fired = 0;
+        const OrigRO = globalThis.ResizeObserver;
+        let disconnected = false;
+        globalThis.ResizeObserver = class {
+            constructor(public cb: () => void) {}
+            observe() { fired += 1; }
+            unobserve() {}
+            disconnect() { disconnected = true; }
+        } as unknown as typeof ResizeObserver;
+        onTestFinished(() => { globalThis.ResizeObserver = OrigRO; });
+        render(
+            <div data-focus-scroller="">
+                <MergedTimeline messages={messages} people={peopleOf(messages)} service="hinatazaka46" focus={{ room: messages[0].room, id: messages[0].id }} />
+            </div>,
+        );
+        expect(fired).toBe(1);
+        expect(disconnected).toBe(false);
+        vi.advanceTimersByTime(FOCUS_HOLD_MS);
+        expect(disconnected).toBe(true);
     });
 });

@@ -38,7 +38,9 @@ interface MergedTimelineProps {
     /**
      * One message to bring forward (a card's message, a 24h slot): its row is tinted
      * (`bg-accent-subtle`, `data-focused`) and centred in the nearest ancestor marked
-     * `data-focus-scroller` (that element's `scrollTop` only; nothing above it moves). Only for an
+     * `data-focus-scroller` (that element's `scrollTop` only; nothing above it moves), and kept
+     * centred while the list's height changes (late media) until the user scrolls (wheel, touch,
+     * key, pointer) or `FOCUS_HOLD_MS` passes. Only for an
      * unwindowed list (no `scrollParent`), where every row is in the DOM.
      */
     focus?: { room: string; id: number } | null;
@@ -47,6 +49,8 @@ interface MergedTimelineProps {
 /** Same sender within this long continues a run (the chat's rule). */
 const RUN_GAP_MS = 5 * 60 * 1000;
 const AVATAR_PX = 40;
+/** How long the focused row stays anchored while media above it loads (unless the user scrolls). */
+export const FOCUS_HOLD_MS = 3000;
 /** Above this many messages the list is windowed (a cross-group concert day runs to hundreds). */
 export const WINDOW_FROM = 60;
 /**
@@ -161,14 +165,33 @@ export const MergedTimeline: React.FC<MergedTimelineProps> = ({ messages, people
     useEffect(() => {
         if (focusId === undefined) return;
         const root = rootRef.current;
-        const row = root?.querySelector<HTMLElement>('[data-focused="true"]');
         // Only the column's own scroller (`data-focus-scroller`) moves: scrollIntoView would also
         // scroll the dialog body and push the card face out of view. No scroller, no scroll.
         const scroller = root?.closest<HTMLElement>('[data-focus-scroller]');
-        if (!row || !scroller) return;
-        const r = row.getBoundingClientRect();
-        const s = scroller.getBoundingClientRect();
-        scroller.scrollTop += r.top - s.top - (scroller.clientHeight - r.height) / 2;
+        if (!root || !scroller) return;
+        const centre = () => {
+            const row = root.querySelector<HTMLElement>('[data-focused="true"]');
+            if (!row) return;
+            const r = row.getBoundingClientRect();
+            const s = scroller.getBoundingClientRect();
+            scroller.scrollTop += r.top - s.top - (scroller.clientHeight - r.height) / 2;
+        };
+        centre();
+        // Media above the row can load after this scroll and push it down: keep it anchored while
+        // the list's height changes, until the user scrolls or FOCUS_HOLD_MS passes.
+        if (typeof ResizeObserver === 'undefined') return;
+        const observer = new ResizeObserver(() => centre());
+        observer.observe(root);
+        const userEvents = ['wheel', 'touchstart', 'keydown', 'pointerdown'] as const;
+        const handle: { timer?: ReturnType<typeof setTimeout> } = {};
+        const release = () => {
+            observer.disconnect();
+            userEvents.forEach((e) => scroller.removeEventListener(e, release));
+            clearTimeout(handle.timer);
+        };
+        userEvents.forEach((e) => scroller.addEventListener(e, release, { passive: true }));
+        handle.timer = setTimeout(release, FOCUS_HOLD_MS);
+        return release;
     }, [focusRoom, focusId, messages]);
 
     return (
