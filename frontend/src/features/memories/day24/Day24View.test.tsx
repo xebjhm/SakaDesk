@@ -6,12 +6,12 @@ import i18n from '../../../i18n';
 vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
-    return { ...real, fetchDay24: vi.fn() };
+    return { ...real, fetchDay24: vi.fn(), fetchDay: vi.fn() };
 });
 import { clientLog } from '../../../utils/clientLog';
-import { fetchDay24 } from '../api';
+import { fetchDay, fetchDay24 } from '../api';
+import { dayMessage, dayPayload, MIKU } from '../day/__fixtures__';
 import { MEMBER_PATH, memoryMessage } from '../__fixtures__/memories';
-import type { MemoriesRoute } from '../MemoriesFeature';
 import type { Day24Full } from '../types';
 import { Day24View, RECENT_MAX } from './Day24View';
 
@@ -33,14 +33,12 @@ function day(over: Partial<Day24Full> = {}): Day24Full {
     };
 }
 
-let go: ReturnType<typeof vi.fn<(next: MemoriesRoute) => void>>;
 beforeEach(() => {
-    go = vi.fn<(next: MemoriesRoute) => void>();
     vi.mocked(clientLog).mockClear();
     vi.mocked(fetchDay24).mockReset().mockResolvedValue(day());
 });
 
-const renderView = () => render(<Day24View service="hinatazaka46" memberPath={MEMBER_PATH} name="金村 美玖" go={go} />);
+const renderView = () => render(<Day24View service="hinatazaka46" memberPath={MEMBER_PATH} name="金村 美玖" />);
 
 describe('Day24View', () => {
     it('titles her day and draws the slots in order with their JST time and year', async () => {
@@ -87,12 +85,47 @@ describe('Day24View', () => {
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_skip', { target: 'day24', reason: 'day24_thin' });
     });
 
-    it('a slot opens that JST day, with back leading to her 24h tab', async () => {
+    it('a slot opens a dialog with only her messages of that JST day, the slot message focused', async () => {
+        vi.mocked(fetchDay).mockResolvedValue(dayPayload({
+            date: '2022-05-02',
+            members: [MIKU],
+            messages: [
+                dayMessage(MIKU, { id: 1, ts: '2022-05-01T22:30:00Z', text: 'おはよう☀️' }),
+                dayMessage(MIKU, { id: 7, ts: '2022-05-02T03:00:00Z', text: 'お昼だよ' }),
+            ],
+        }));
         renderView();
         const slots = await screen.findAllByTestId('day24-slot');
-        await userEvent.click(within(slots[0]).getByRole('button'));
-        // 22:30Z on 2022-05-01 is 07:30 JST on 2022-05-02.
-        expect(go).toHaveBeenCalledWith({ page: 'day', date: '2022-05-02', from: { page: 'memoir', memberPath: MEMBER_PATH, tab: 'day24' } });
+        await userEvent.click(within(slots[0]).getByRole('button', { name: /おはよう/ }));
+        const dialog = await screen.findByRole('dialog');
+        // 22:30Z on 2022-05-01 is 07:30 JST on 2022-05-02; only her messages (member=)
+        expect(vi.mocked(fetchDay).mock.calls[0]?.[1]).toEqual({ date: '2022-05-02', member: MEMBER_PATH });
+        const rows = await within(dialog).findAllByTestId('day-merged-row');
+        expect(rows).toHaveLength(2);
+        expect(rows[0]).toHaveAttribute('data-focused', 'true');
+        expect(rows[1]).not.toHaveAttribute('data-focused');
+        expect(within(dialog).getByTestId('day24-day-label')).toHaveTextContent('2022');
+    });
+
+    it('closing the dialog returns to the same 24h day, with no refetch', async () => {
+        vi.mocked(fetchDay).mockResolvedValue(dayPayload({ members: [MIKU], messages: [] }));
+        renderView();
+        const slots = await screen.findAllByTestId('day24-slot');
+        await userEvent.click(within(slots[2]).getByRole('button'));
+        const dialog = await screen.findByRole('dialog');
+        await userEvent.click(within(dialog).getByRole('button', { name: '閉じる' }));
+        await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+        expect(screen.getAllByTestId('day24-slot')).toHaveLength(5);
+        expect(vi.mocked(fetchDay24)).toHaveBeenCalledTimes(1);
+    });
+
+    it('the dialog shows the loading contract while her day loads, then a retry on failure', async () => {
+        vi.mocked(fetchDay).mockRejectedValueOnce(new Error('boom'));
+        renderView();
+        const slots = await screen.findAllByTestId('day24-slot');
+        await userEvent.click(within(slots[3]).getByRole('button'));
+        const dialog = await screen.findByRole('dialog');
+        expect(await within(dialog).findByRole('button', { name: 'もう一度' })).toBeInTheDocument();
     });
 
     it('🎲 keeps the view and the focus while the next day loads', async () => {

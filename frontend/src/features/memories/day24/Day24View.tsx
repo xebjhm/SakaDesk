@@ -3,17 +3,17 @@ import { Dices, Play, Sunrise } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
 import { EmptyState, IconButton } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
-import type { MemoriesRoute } from '../MemoriesFeature';
 import { fetchDay24 } from '../api';
+import { MemberDayDialog } from '../day/MemberDay';
 import { logMemoriesSkip } from '../memoriesLog';
-import { formatJstClock, formatJstDate, jstNow } from '../shared/jst';
+import { formatJstClock, jstNow } from '../shared/jst';
 import { LazyVoice } from '../shared/LazyVoice';
 import { MemoriesStatus } from '../shared/memoriesStatus';
 import { memoryMediaSrc } from '../shared/mediaSrc';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
-import type { Day24Full, Day24Payload, Day24Slot } from '../types';
+import type { Day24Full, Day24Payload, Day24Slot, MemoryMessage } from '../types';
 
 const PHOTO_PX = 96;
 /** Seeds stay positive 31-bit integers (the backend reads an int). */
@@ -29,7 +29,6 @@ interface Day24ViewProps {
     memberPath: string;
     /** Her display name (the title). */
     name: string;
-    go: (next: MemoriesRoute) => void;
 }
 
 const isFull = (d: Day24Payload): d is Day24Full => d.slots.length > 0;
@@ -41,18 +40,17 @@ function nextSeed(current: number | undefined): number {
     return seed;
 }
 
-/** One slot on the day line: its JST time and year (metadata), her message; click opens that day (back returns here). */
-const Slot: React.FC<{ slot: Day24Slot; memberPath: string; go: (next: MemoriesRoute) => void }> = ({ slot, memberPath, go }) => {
+/** One slot on the day line: its JST time and year (metadata), her message; click opens her day in a dialog. */
+const Slot: React.FC<{ slot: Day24Slot; onOpen: (m: MemoryMessage) => void }> = ({ slot, onOpen }) => {
     const { t } = useTranslation();
     const m = slot.message;
     const words = m.type === 'text' ? m.text : (m.caption ?? m.text);
     const src = m.type === 'voice' ? memoryMediaSrc(m) : null;
-    const date = formatJstDate(m.ts);
     return (
         <li data-testid="day24-slot" className="flex min-w-0 flex-col gap-2 rounded-md bg-card p-3 shadow-card">
             <button
                 type="button"
-                onClick={() => go({ page: 'day', date, from: { page: 'memoir', memberPath, tab: 'day24' } })}
+                onClick={() => onOpen(m)}
                 className={cn(
                     'flex min-w-0 items-start gap-3 rounded-sm text-left',
                     'transition-colors duration-fast ease-standard hover:bg-sunken motion-reduce:transition-none',
@@ -85,16 +83,18 @@ const Slot: React.FC<{ slot: Day24Slot; memberPath: string; go: (next: MemoriesR
  * vertical day line on the `bg-memories-sky` gradient (morning at the top, night at the bottom,
  * no text on it) beside 5–7 slots. Each slot shows the message's real JST time and year (metadata,
  * never chosen for the fan) and her words, a still or a voice (`LazyVoice` key `day24|<room>|<id>`);
- * a click opens that JST day (`{page: 'day', date, from: <this memoir day24 tab>}`, so back
- * returns here). 🎲 「ほかの一日をつくる」 refetches with a new
+ * a click opens `MemberDayDialog` over the tab: only her messages of that JST day, the clicked one
+ * tinted and scrolled to (the card detail's day column). Closing it leaves the tab as it was (same
+ * day, same 🎲 state, no navigation). 🎲 「ほかの一日をつくる」 refetches with a new
  * random seed and the ids shown in the last re-rolls (`recent`, at most `RECENT_MAX`, so the
  * backend avoids them) (`memories_load` `day24`, as every load); the day on screen stays, dimmed and
  * `aria-busy`, until the next one arrives (a failure shows the retry in its place), so the header
  * and 🎲 keep their place and focus. A thin day (`{slots: []}`) shows the gentle
  * card instead, with no number, and logs `memories_skip` `day24_thin`. No animation.
  */
-export const Day24View: React.FC<Day24ViewProps> = ({ service, memberPath, name, go }) => {
+export const Day24View: React.FC<Day24ViewProps> = ({ service, memberPath, name }) => {
     const { t } = useTranslation();
+    const [opened, setOpened] = useState<MemoryMessage | null>(null);
     const [seed, setSeed] = useState<number | undefined>(undefined);
     // Ids shown in the last re-rolls (this member's tab only): sent with 🎲 so the next day is fresh.
     const [recent, setRecent] = useState<number[]>([]);
@@ -160,9 +160,19 @@ export const Day24View: React.FC<Day24ViewProps> = ({ service, memberPath, name,
                 >
                     <span data-testid="day24-sky" aria-hidden="true" className="w-1.5 shrink-0 rounded-pill bg-memories-sky" />
                     <ol className="flex min-w-0 flex-1 flex-col gap-3">
-                        {view.slots.map((slot) => <Slot key={`${slot.message.room}|${slot.message.id}`} slot={slot} memberPath={memberPath} go={go} />)}
+                        {view.slots.map((slot) => <Slot key={`${slot.message.room}|${slot.message.id}`} slot={slot} onOpen={setOpened} />)}
                     </ol>
                 </div>
+            )}
+            {opened && (
+                <MemberDayDialog
+                    service={service}
+                    memberPath={memberPath}
+                    name={name}
+                    message={opened}
+                    from="day24"
+                    onClose={() => setOpened(null)}
+                />
             )}
         </div>
     );

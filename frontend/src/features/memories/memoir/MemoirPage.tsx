@@ -160,7 +160,7 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
                     </div>
                 )}
                 {tab === 'timeline' && <Timeline key={memberPath} service={service} memberPath={memberPath} name={name} />}
-                {tab === 'day24' && <Day24View key={memberPath} service={service} memberPath={memberPath} name={name} go={go} />}
+                {tab === 'day24' && <Day24View key={memberPath} service={service} memberPath={memberPath} name={name} />}
                 {tab === 'names' && (
                     <NameMoments
                         key={memberPath}
