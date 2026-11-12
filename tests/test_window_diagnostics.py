@@ -1,4 +1,4 @@
-"""window_diagnostics: numeric size breadcrumbs and the MinimumSize guard (N-R4-1)."""
+"""window_diagnostics: numeric size breadcrumbs that log and never act (N-R4-1/2)."""
 
 from __future__ import annotations
 
@@ -39,15 +39,8 @@ class FakeForm:
         )
 
 
-def size(w, h):
-    return SimpleNamespace(Width=w, Height=h)
-
-
 def diag(form, **kw):
-    # 960 x 640 logical, no screen cap: the intended device minimum is x scale
-    return wd.WindowDiagnostics(
-        form, make_size=size, min_logical=lambda scale: (960, 640), **kw
-    )
+    return wd.WindowDiagnostics(form, **kw)
 
 
 def test_snapshot_logs_numbers_only():
@@ -62,48 +55,10 @@ def test_snapshot_logs_numbers_only():
     assert all(v is None or isinstance(v, (int, str)) for v in e.values())
 
 
-def test_intended_minimum_is_logical_times_dpi():
-    assert diag(FakeForm(dpi=168)).intended_min() == (1680, 1120)
-    assert diag(FakeForm(dpi=96)).intended_min() == (960, 640)
-    assert diag(FakeForm(dpi=0)).intended_min() is None
-
-
-def test_inflated_minimum_height_is_reapplied():
-    form = FakeForm(min_size=(1680, 2188))
-    with capture_logs() as logs:
-        assert diag(form).reapply_min("state_normal") is True
-    assert (form.MinimumSize.Width, form.MinimumSize.Height) == (1680, 1120)
-    (e,) = [x for x in logs if x["event"] == "window_min_size_reapplied"]
-    assert (e["old_w"], e["old_h"], e["new_w"], e["new_h"]) == (1680, 2188, 1680, 1120)
-    assert e["phase"] == "state_normal" and e["dpi"] == 168
-
-
-def test_a_correct_minimum_is_left_alone():
-    form = FakeForm(min_size=(1681, 1119))  # within the tolerance
-    with capture_logs() as logs:
-        assert diag(form).reapply_min("shown") is False
-    assert not logs and form.MinimumSize.Height == 1119
-
-
-def test_reapply_failure_logs_and_never_raises():
-    form = FakeForm(min_size=(1680, 2188))
-
-    def broken(w, h):
-        raise RuntimeError("cross-thread")
-
-    d = wd.WindowDiagnostics(form, make_size=broken, min_logical=lambda s: (960, 640))
-    with capture_logs() as logs:
-        assert d.reapply_min("dpi_changed") is False
-    assert logs[-1] == {
-        "event": "window_geometry_failed",
-        "log_level": "warning",
-        "phase": "reapply_dpi_changed",
-        "error_type": "RuntimeError",
-    }
-
-
-def test_attach_logs_and_reacts_to_state_dpi_and_throttled_resize_end():
-    form = FakeForm()
+def test_attach_logs_state_dpi_and_throttled_resize_end_and_never_acts():
+    # N-R4-2: the form reports DeviceDpi 96 on a 175 % screen; the correct
+    # 1662 x 1072 minimum must never be touched.
+    form = FakeForm(dpi=96, min_size=(1662, 1072))
     now = [100.0]
     d = diag(form, clock=lambda: now[0])
     with capture_logs() as logs:
@@ -113,8 +68,7 @@ def test_attach_logs_and_reacts_to_state_dpi_and_throttled_resize_end():
         form.WindowState = 2
         form.Resize.fire()  # maximized
         form.WindowState = 0
-        form.MinimumSize = size(1680, 2188)  # inflated on the transition
-        form.Resize.fire()  # restored: logged and repaired
+        form.Resize.fire()  # restored
         form.ResizeEnd.fire()
         now[0] += 0.5
         form.ResizeEnd.fire()  # throttled
@@ -131,9 +85,9 @@ def test_attach_logs_and_reacts_to_state_dpi_and_throttled_resize_end():
         "resize_end",
         "dpi_changed",
     ]
-    fixed = [e for e in logs if e["event"] == "window_min_size_reapplied"]
-    assert [e["phase"] for e in fixed] == ["state_normal"]
-    assert form.MinimumSize.Height == 1120
+    assert {e["event"] for e in logs} == {"window_geometry"}
+    assert (form.MinimumSize.Width, form.MinimumSize.Height) == (1662, 1072)
+    assert not hasattr(wd.WindowDiagnostics, "reapply_min")
 
 
 def test_attach_without_events_logs_and_returns_false():
@@ -145,8 +99,9 @@ def test_attach_without_events_logs_and_returns_false():
     )
 
 
-def test_attach_window_diagnostics_without_native_or_dotnet():
+def test_attach_window_diagnostics_without_native_and_with_a_form():
     with capture_logs() as logs:
         assert wd.attach_window_diagnostics(SimpleNamespace(native=None)) is False
-        assert wd.attach_window_diagnostics(SimpleNamespace(native=FakeForm())) is False
-    assert [e["error_type"] for e in logs] == ["no_native", "ModuleNotFoundError"]
+        assert wd.attach_window_diagnostics(SimpleNamespace(native=FakeForm())) is True
+    assert logs[0]["error_type"] == "no_native"
+    assert logs[1]["event"] == "window_geometry" and logs[1]["phase"] == "created"

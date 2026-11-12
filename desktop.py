@@ -1185,8 +1185,8 @@ def main() -> None:
         window.events.loaded += _title_bar
 
         # N-R4-1: numeric breadcrumbs of the form's size state (window_geometry
-        # phase=...) and the MinimumSize guard (window_min_size_reapplied).
-        # The form exists at before_show; never raises.
+        # phase=...). Log only: nothing changes the window. The form exists at
+        # before_show; never raises.
         if platform.system() == "Windows":
             window.events.before_show += lambda: attach_window_diagnostics(window)
 
