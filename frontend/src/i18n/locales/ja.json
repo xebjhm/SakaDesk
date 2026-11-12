@@ -857,7 +857,9 @@
       "otherGroups": "ほかのグループも含める",
       "modeMerged": "時系列",
       "modeLanes": "メンバー別",
-      "expand": "ひらく"
+      "expand": "ひらく",
+      "modeYears": "歴年の同じ日",
+      "yearsGap": "この時間はメッセージなし"
     },
     "album": {
       "title": "アルバム",

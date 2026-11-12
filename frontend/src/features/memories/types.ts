@@ -188,6 +188,36 @@ export interface DayPayload {
     other_services: string[];
 }
 
+/** The kind 歷年同一天 joins across years (`day_view.message_kind`). */
+export type DayYearsKind = 'ohayo' | 'oyasumi' | 'photo' | 'voice';
+
+/** A 歷年同一天 message: a day-view message with its {@link DayYearsKind}, or null. */
+export interface DayYearsMessage extends DayMessage {
+    kind: DayYearsKind | null;
+}
+
+export interface DayYearsYear {
+    year: number;
+    /** `YYYY-MM-DD`. */
+    date: string;
+    /** Sorted by time; promo included; the subscription welcome left out. */
+    messages: DayYearsMessage[];
+}
+
+/** `GET /day/years`: one month-day in every year with messages, oldest first. */
+export interface DayYearsPayload {
+    /** `MM-DD`. */
+    month_day: string;
+    members: DayMember[];
+    years: DayYearsYear[];
+}
+
+export interface DayYearsQuery {
+    /** `MM-DD`. */
+    monthDay: string;
+    member?: string;
+}
+
 export interface DayQuery {
     /** `YYYY-MM-DD`. */
     date: string;

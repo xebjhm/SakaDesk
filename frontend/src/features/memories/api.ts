@@ -22,7 +22,7 @@
 import type {
     AlbumColorsPayload, AlbumCoverBody, AlbumMembersPayload, AlbumMonthPayload, AlbumMonthsPayload, AlbumQuery,
     BinderPayload, CalendarMonthPayload, CalendarMonthsPayload, CapsuleCreateBody, CapsuleNote, CapsuleNotesPayload,
-    CapsuleQuery, CapsuleResurfacePayload, Day24Payload, DayPayload, DayQuery, FavoritesPayload, GachaPullPayload,
+    CapsuleQuery, CapsuleResurfacePayload, Day24Payload, DayPayload, DayQuery, DayYearsPayload, DayYearsQuery, FavoritesPayload, GachaPullPayload,
     GachaStatePayload, HubPayload, MemoirHeaderPayload, MemoirMembersPayload, NameMomentsPayload, OnThisDayPayload,
     RadioCassettesPayload, RadioMembersPayload, RadioProgramPayload, RadioProgramQuery, SameTimeMoment,
     ThenNowDayPayload, ThenNowDayQuery, ThenNowFirstWeekPayload, TimelineMonthPayload, TimelineMonthsPayload,
@@ -132,6 +132,11 @@ export function fetchDay(service: string, query: DayQuery, signal: AbortSignal):
     return getJson(url(service, '/day', {
         date: query.date, member: query.member, others: query.others ? true : undefined,
     }), signal);
+}
+
+/** 歷年同一天: the same month-day in every year with messages (one person, or everyone). */
+export function fetchDayYears(service: string, query: DayYearsQuery, signal: AbortSignal): Promise<DayYearsPayload> {
+    return getJson(url(service, '/day/years', { month_day: query.monthDay, member: query.member }), signal);
 }
 
 export function fetchAlbumMembers(service: string, signal: AbortSignal): Promise<AlbumMembersPayload> {

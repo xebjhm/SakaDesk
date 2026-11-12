@@ -872,7 +872,9 @@
       "otherGroups": "Include other groups",
       "modeMerged": "In time order",
       "modeLanes": "By member",
-      "expand": "Open"
+      "expand": "Open",
+      "modeYears": "Same day, every year",
+      "yearsGap": "Nothing at this hour"
     },
     "album": {
       "title": "Album",

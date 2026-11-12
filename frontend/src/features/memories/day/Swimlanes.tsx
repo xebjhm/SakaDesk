@@ -47,11 +47,21 @@ interface LaneCardProps {
     onToggle: () => void;
     /** The day's text messages in view (`shownTexts`): a caption already shown as its own card is not repeated. */
     shown: ReadonlySet<string>;
+    /** Extra classes of the collapsed card's still (歷年同一天 ages an older year's photo). */
+    thumbClassName?: string;
+    /** A lane holding several people's messages (歷年同一天 for everyone) shows her small avatar on each card. */
+    showAvatar?: boolean;
 }
 
-const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, onToggle, shown }) => {
+/**
+ * One time-placed card of a lane (shared by the swimlanes and 歷年同一天): the JST clock and her
+ * words, still or media icon; a click expands it with her full words, a read-only bubble for media
+ * and the jump to her chat.
+ */
+export const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, onToggle, shown, thumbClassName, showAvatar = false }) => {
     const { t } = useTranslation();
     const nickname = useNickname();
+    const avatarWidth = useAvatarWidth(AVATAR_PX);
     const words = m.text ?? contextCaption(m, shown);
     const Icon = m.type === 'text' ? null : MEDIA_ICON[m.type];
     const hasThumb = (m.type === 'picture' || m.type === 'video') && Boolean(m.media_url);
@@ -71,10 +81,15 @@ const LaneCard: React.FC<LaneCardProps> = ({ message: m, person, top, expanded, 
                 onClick={onToggle}
                 className="flex w-full items-start gap-2 p-2 text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
             >
-                <span className="shrink-0 text-caption tabular-nums text-muted">{formatJstClock(m.ts)}</span>
+                <span className="flex shrink-0 flex-col items-center gap-1">
+                    <span className="text-caption tabular-nums text-muted">{formatJstClock(m.ts)}</span>
+                    {showAvatar && (
+                        <Avatar src={resizedAvatarUrl(person.avatarUrl, avatarWidth)} name={person.name} size="sm" className="h-5 w-5 text-caption" />
+                    )}
+                </span>
                 {!expanded && (
                     hasThumb ? (
-                        <MemoryThumb message={m} px={64} className="h-11 w-16 rounded-sm" />
+                        <MemoryThumb message={m} px={64} className={cn('h-11 w-16 rounded-sm', thumbClassName)} />
                     ) : words ? (
                         <MemoryText as="span" text={words} className="line-clamp-2 min-w-0 text-small text-primary" />
                     ) : Icon ? (

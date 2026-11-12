@@ -17,6 +17,8 @@ export const MEMORIES_CORE_KEYS: string[] = [
     'memories.onThisDay.more', 'memories.onThisDay.noMessages', 'memories.onThisDay.empty', 'memories.onThisDay.pickDate',
     'memories.onThisDay.prevDay', 'memories.onThisDay.nextDay', 'memories.onThisDay.olderYear', 'memories.onThisDay.newerYear',
     'memories.day.count', 'memories.day.otherGroups', 'memories.day.modeMerged', 'memories.day.modeLanes', 'memories.day.expand',
+    // r4 B1: 歷年同一天
+    'memories.day.modeYears', 'memories.day.yearsGap',
     // C9: the album
     'memories.album.filterAll', 'memories.album.filterPhotos', 'memories.album.filterVideos', 'memories.album.filterFavorites',
     'memories.album.burst', 'memories.album.monthLabel', 'memories.album.ribbonLabel', 'memories.album.ribbon', 'memories.album.empty',
@@ -166,6 +168,8 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.day.otherGroups')).toBe('ほかのグループも含める');
         expect(lookup(ja, 'memories.day.modeMerged')).toBe('時系列');
         expect(lookup(ja, 'memories.day.modeLanes')).toBe('メンバー別');
+        expect(lookup(ja, 'memories.day.modeYears')).toBe('歴年の同じ日');
+        expect(lookup(en, 'memories.day.modeYears')).toBe('Same day, every year');
         expect(lookup(ja, 'memories.day.expand')).toBe('ひらく');
         expect(lookup(ja, 'memories.album.title')).toBe('アルバム');
         expect(lookup(ja, 'memories.album.filterAll')).toBe('すべて');
@@ -292,6 +296,7 @@ describe('memories core strings', () => {
         expect(lookup(zhTW, 'memories.day.otherGroups')).toBe('包含其他團體');
         expect(lookup(zhTW, 'memories.day.modeMerged')).toBe('依時間');
         expect(lookup(zhTW, 'memories.day.modeLanes')).toBe('依成員');
+        expect(lookup(zhTW, 'memories.day.modeYears')).toBe('歷年同一天');
     });
 });
 

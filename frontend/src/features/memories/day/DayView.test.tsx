@@ -9,15 +9,15 @@ vi.mock('../../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 vi.mock('../../../shell/openChat', () => ({ openChat: vi.fn() }));
 vi.mock('../api', async (importOriginal) => {
     const real = await importOriginal<typeof import('../api')>();
-    return { ...real, fetchDay: vi.fn(), fetchCapsule: vi.fn() };
+    return { ...real, fetchDay: vi.fn(), fetchDayYears: vi.fn(), fetchCapsule: vi.fn() };
 });
 import { clientLog } from '../../../utils/clientLog';
 import { openChat } from '../../../shell/openChat';
-import { fetchCapsule, fetchDay } from '../api';
+import { fetchCapsule, fetchDay, fetchDayYears } from '../api';
 import { DayView } from './DayView';
 import { useAppStore } from '../../../store/appStore';
 import { NicknameProvider } from '../shared/useNickname';
-import { dayMessage, dayPayload, HIKARU, MIKU, NAO } from './__fixtures__';
+import { dayMessage, dayPayload, dayYearsPayload, HIKARU, MIKU, NAO } from './__fixtures__';
 
 beforeAll(async () => { await i18n.changeLanguage('en'); });
 // MessageBubble asks for cached translations and transcripts of what it shows (and saves a translation).
@@ -33,6 +33,7 @@ beforeEach(() => {
     vi.mocked(openChat).mockClear();
     vi.mocked(fetchCapsule).mockReset().mockResolvedValue({ notes: [] });
     vi.mocked(fetchDay).mockReset();
+    vi.mocked(fetchDayYears).mockReset().mockResolvedValue(dayYearsPayload());
     vi.mocked(fetchDay).mockImplementation(async (_service, query) => (
         query.others
             ? dayPayload({
@@ -162,9 +163,49 @@ describe('DayView', () => {
         expect(document.body.textContent).not.toMatch(/\b0 messages\b/);
     });
 
-    it('renders the header slot', async () => {
-        renderDay({ headerSlot: <span>slot</span> });
-        expect(await screen.findByText('slot')).toBeInTheDocument();
+    it('switches to 歷年同一天: the same month-day in every year, without the cross-group switch', async () => {
+        renderDay();
+        await screen.findByTestId('day-merged');
+        expect(fetchDayYears).not.toHaveBeenCalled();
+        const pill = screen.getByRole('button', { name: 'Same day, every year' });
+        await userEvent.click(pill);
+        expect(pill).toHaveAttribute('aria-pressed', 'true');
+        expect(vi.mocked(fetchDayYears)).toHaveBeenCalledWith('hinatazaka46', { monthDay: '09-14', member: undefined }, expect.anything());
+        const lanes = await screen.findAllByTestId('day-years-lane');
+        expect(lanes.map((l) => l.getAttribute('data-year'))).toEqual(['2024', '2025']);
+        // the heading is the month-day alone; no cross-group switch (it reads the active group)
+        expect(screen.getByRole('heading', { level: 2 })).toHaveTextContent('September 14');
+        expect(screen.getByRole('heading', { level: 2 })).not.toHaveTextContent('2024');
+        expect(screen.queryByRole('switch')).toBeNull();
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'day_years', outcome: 'on' });
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_load', { target: 'day_years', outcome: 'ok', count: 2 });
+
+        // a chip narrows every year to her; a year without her leaves the lanes
+        const chip = (name: RegExp) => screen.getAllByRole('button', { name }).find((b) => b.hasAttribute('aria-pressed'))!;
+        await userEvent.click(chip(/金村 美玖/));
+        expect(screen.getAllByTestId('day-years-lane')).toHaveLength(2);
+        await userEvent.click(chip(/小坂 菜緒/));
+        expect(screen.getAllByTestId('day-years-lane').map((l) => l.getAttribute('data-year'))).toEqual(['2024']);
+
+        await userEvent.click(screen.getByRole('button', { name: 'By member' }));
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_toggle', { target: 'day_years', outcome: 'off' });
+        expect(await screen.findByTestId('day-lanes')).toBeInTheDocument();
+        expect(screen.getByRole('switch')).toBeInTheDocument();
+    });
+
+    it('asks 歷年同一天 for one person when a member is given', async () => {
+        renderDay({ memberPath: MIKU.member_path });
+        await screen.findByTestId('day-merged');
+        await userEvent.click(screen.getByRole('button', { name: 'Same day, every year' }));
+        expect(vi.mocked(fetchDayYears)).toHaveBeenCalledWith('hinatazaka46', { monthDay: '09-14', member: MIKU.member_path }, expect.anything());
+    });
+
+    it('shows the gentle copy when no year has this month-day', async () => {
+        vi.mocked(fetchDayYears).mockResolvedValue(dayYearsPayload({ members: [], years: [] }));
+        renderDay();
+        await screen.findByTestId('day-merged');
+        await userEvent.click(screen.getByRole('button', { name: 'Same day, every year' }));
+        expect(await screen.findByText(i18n.t('memories.onThisDay.empty'))).toBeInTheDocument();
     });
 
     it('holds the capsule strip of the day under the header', async () => {

@@ -41,7 +41,8 @@
     "then_now",
     "album_pregen",
     "album_prefetch",
-    "letters"
+    "letters",
+    "day_years"
   ],
   "memories_load.outcome": [
     "ok",
@@ -78,7 +79,8 @@
     "then_now",
     "album_pregen",
     "album_prefetch",
-    "letters"
+    "letters",
+    "day_years"
   ],
   "memories_toggle.target": [
     "other_services",
@@ -94,7 +96,8 @@
     "then_now",
     "then_now_mode",
     "calendar_member",
-    "album_cover"
+    "album_cover",
+    "day_years"
   ],
   "memories_toggle.outcome": [
     "on",
@@ -147,7 +150,8 @@
     "then_now",
     "album_pregen",
     "album_prefetch",
-    "letters"
+    "letters",
+    "day_years"
   ],
   "memories_skip.reason": [
     "focus_missing",

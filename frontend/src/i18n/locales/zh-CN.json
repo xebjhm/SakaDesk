@@ -857,7 +857,9 @@
       "otherGroups": "包含其他团体",
       "modeMerged": "按时间",
       "modeLanes": "按成员",
-      "expand": "展开"
+      "expand": "展开",
+      "modeYears": "历年同一天",
+      "yearsGap": "这个时段没有消息"
     },
     "album": {
       "title": "相册",

@@ -86,6 +86,9 @@ describe('memoriesLog codes', () => {
         expect(MEMORIES_TOGGLES).toEqual(expect.arrayContaining([
             'radio_program', 'cassette', 'sleep_timer', 'then_now', 'then_now_mode', 'calendar_member', 'album_cover',
         ]));
+        // r4 B1: the day view's 歷年同一天 mode
+        expect(MEMORIES_VIEWS).toContain('day_years');
+        expect(MEMORIES_TOGGLES).toContain('day_years');
         expect(NOTIFY_OPEN_MEMORIES_PAGES.map((p) => MEMORIES_PAGE_CODES[p])).toEqual(['on_this_day', 'memoir', 'recap']);
         expect(NOTIFY_OPEN_MEMORIES_REASONS).toEqual(['malformed', 'unknown_service', 'onboarding']);
         expect(MEMORIES_SKIP_REASONS).toContain('card_missing');
