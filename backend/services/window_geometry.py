@@ -218,6 +218,7 @@ def parse_saved_geometry(
     default: Optional[dict] = None,
     *,
     screen: Any = _SCREEN_UNSET,
+    work: Any = _SCREEN_UNSET_MIN,
 ) -> dict:
     """Normalize a stored ``window`` dict into ``create_window()`` device-pixel
     coordinates, used verbatim (no scale conversion).
@@ -232,6 +233,12 @@ def parse_saved_geometry(
     would restore fully off-screen and appear not to launch. ``screen`` defaults
     to the live ``virtual_screen_bounds()``; tests may inject a ``VirtualScreen``
     or ``None`` (``None`` = bounds unknown, keep the position).
+
+    N-R4-1: the size is capped to the primary monitor's usable area (``work``,
+    device px; default the live ``primary_work_size()``, ``None`` = unknown, no
+    cap). ``window.width/height`` read at close are the MAXIMIZED bounds when the
+    window closes maximized (e.g. 3868 x 2188 on a 3840 x 2160 screen at 175 %),
+    and restoring that as a normal window put its bottom edge off the screen.
     """
     fallback = default if default is not None else default_geometry()
     if not data:
@@ -244,6 +251,11 @@ def parse_saved_geometry(
 
     if not (_MIN_W <= w <= _MAX_W and _MIN_H <= h <= _MAX_H):
         return dict(fallback)
+
+    if work is _SCREEN_UNSET_MIN:
+        work = primary_work_size()
+    if work is not None:
+        w, h = min(w, work[0]), min(h, work[1])
 
     result: dict[str, int] = {"width": w, "height": h}
     if screen is _SCREEN_UNSET:

@@ -126,3 +126,36 @@ class TestMinWindowSize:
         monkeypatch.setattr(wg.platform, "system", lambda: "Linux")
         assert wg.primary_work_size() is None
         assert wg.min_window_size(scale=1.0) == (960, 640)
+
+
+class TestOversizedSavedGeometry:
+    """N-R4-1: a size saved while maximized (3868 x 2188 on a 3840 x 2160
+    screen at 175 %) must not restore as a normal window taller than the screen."""
+
+    def test_saved_size_is_capped_to_the_usable_area(self):
+        out = wg.parse_saved_geometry(
+            {"width": 3868, "height": 2188, "x": 452, "y": 98},
+            default={"width": 2100, "height": 1400},
+            screen=None,
+            work=(3840, 2056),
+        )
+        assert out["width"] == 3840 and out["height"] == 2056
+        assert (out["x"], out["y"]) == (452, 98)
+
+    def test_a_size_that_fits_is_kept(self):
+        out = wg.parse_saved_geometry(
+            {"width": 2659, "height": 1705},
+            default={"width": 2100, "height": 1400},
+            screen=None,
+            work=(3840, 2056),
+        )
+        assert out == {"width": 2659, "height": 1705}
+
+    def test_unknown_work_area_keeps_the_size(self):
+        out = wg.parse_saved_geometry(
+            {"width": 3868, "height": 2188},
+            default={"width": 2100, "height": 1400},
+            screen=None,
+            work=None,
+        )
+        assert out == {"width": 3868, "height": 2188}
