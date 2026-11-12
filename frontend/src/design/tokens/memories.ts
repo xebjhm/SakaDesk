@@ -25,6 +25,11 @@ export const memories = {
     /** Letter and polaroid white: a warm paper, never pure white, and its hairline edge. */
     paper: '#fffdf8',
     paperLine: 'rgba(120, 96, 64, 0.14)',
+    /**
+     * The ruled lines of a postcard's back (the 特別な日 postcards): a hairline in the paper's
+     * line colour every 20 px, the `text-small` line height, so her words sit on the lines.
+     */
+    ruled: 'repeating-linear-gradient(180deg, transparent 0, transparent 19px, rgba(120, 96, 64, 0.14) 19px, rgba(120, 96, 64, 0.14) 20px)',
     /** The favourites cork board base: a warm cork, lit from the top left. */
     cork: 'linear-gradient(135deg, #d8b98f 0%, #c9a274 55%, #bf9666 100%)',
     /** Translucent washi tape that pins a polaroid. */

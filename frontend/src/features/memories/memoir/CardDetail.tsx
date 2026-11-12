@@ -15,6 +15,8 @@ import type { BinderCard, MemoryMessage } from '../types';
 import { cardCopy } from './cardCopy';
 import { CardTile } from './CardTile';
 import { formatCardDate, useCopy } from './binderModel';
+import { isPostcardCard, postcardYears } from './postcard';
+import { PostcardRack } from './Postcard';
 
 const AVATAR_PX = 80;
 
@@ -125,8 +127,10 @@ export interface CardDetailProps {
     service: string;
     /** Her chat path (any of her rooms): the day shows her messages only. */
     memberPath: string;
-    /** Her display name, for the chat the jump opens. */
+    /** Her display name, for the chat the jump opens (and the postcards' sender). */
     name: string;
+    /** Whether she is the fan's 推し: the postcards' ♥. */
+    oshi?: boolean;
     /**
      * An earned card (or one year of a stack). Its `date` is the unlock date, shown in the header;
      * the day column shows the JST day of its message (`face`), which can be another day.
@@ -151,20 +155,31 @@ export interface CardDetailProps {
  *   old icon and the first with the new, instead of the large card (the message count is not
  *   shown: one number).
  * - Graduation shows 「最後のメッセージ」, her words and 「ずっと、ここに。」, without a shimmer.
+ * - A 特別な日 card shows its postcard backs, one per year, newest first (`PostcardRack`); the
+ *   selected year (the newest by default; ↑ / ↓ move between years) drives the header date, the
+ *   day column and the jump. A year without her words (加入紀念日's label alone) falls back to
+ *   that day's photo, else it has no day column.
  * - An earned card with a date carries the fan's 時光膠囊 notes on it (`CapsuleStrip`, card anchor).
  */
-export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, name, card, onClose }) => {
+export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, name, oshi = false, card, onClose }) => {
     const { t, i18n } = useTranslation();
     const copyText = useCopy();
     const [side, setSide] = useState<PairSide>('face');
-    const message = side === 'pair' && card.refs.pair ? card.refs.pair : card.face;
+    const postcards = card.earned && isPostcardCard(card) ? postcardYears(card) : [];
+    const [pickedYear, setPickedYear] = useState<number | null>(null);
+    const postcard = postcards.find((p) => p.year === pickedYear) ?? postcards[postcards.length - 1];
+    let message = side === 'pair' && card.refs.pair ? card.refs.pair : card.face;
+    if (postcard) message = postcard.face ?? postcard.photo;
+    const headerDate = postcard ? postcard.date : card.date;
     const messageDay = message ? formatJstDate(message.ts) : null;
     const copy = cardCopy(card.key);
     const title = copy ? copyText(copy.title) : '';
     const isChangeCard = card.key.startsWith('change.avatar.');
 
     let face: React.ReactNode;
-    if (card.key === 'grad.last') face = <GraduationFace card={card} />;
+    if (postcard) {
+        face = <PostcardRack card={card} sender={{ name, oshi }} selected={postcard.year} onSelect={setPickedYear} />;
+    } else if (card.key === 'grad.last') face = <GraduationFace card={card} />;
     else if (card.refs.pair) face = <PairFace card={card} title={title} selected={side} onSelect={setSide} />;
     else if (isChangeCard) face = <ChangeSection card={card} />;
     else face = <CardTile card={card} large />;
@@ -183,7 +198,7 @@ export const CardDetail: React.FC<CardDetailProps> = ({ service, memberPath, nam
             title={title}
             header="plain"
             closeLabel={t('common.close')}
-            headerExtra={card.date ? <span className="text-small text-muted">{formatDayHeading(card.date, i18n.language)}</span> : undefined}
+            headerExtra={headerDate ? <span className="text-small text-muted">{formatDayHeading(headerDate, i18n.language)}</span> : undefined}
             className="max-w-4xl"
             // from md the body does not scroll: the face column and the day column scroll on
             // their own, so focusing the day's message never moves the card face

@@ -22,6 +22,12 @@ describe('memories keepsake tokens', () => {
         expect(memories.foil.startsWith('linear-gradient(')).toBe(true);
     });
 
+    it('rules a postcard back every 20 px in the paper line colour', () => {
+        expect(memories.ruled).toContain(memories.paperLine);
+        expect(memories.ruled).toContain('20px');
+        expect(staticTokenVars()['--ds-mem-ruled']).toBe(memories.ruled);
+    });
+
     it('dashes the silhouette in the neutral border-strong value', () => {
         expect(memories.silhouette).toBe(color.border.strong);
     });
@@ -54,6 +60,7 @@ describe('memories keepsake utilities (tailwind.config.js)', () => {
         ['backgroundColor', 'memories-washi', '--ds-mem-washi'],
         ['backgroundImage', 'memories-cork', '--ds-mem-cork'],
         ['backgroundImage', 'memories-foil', '--ds-mem-foil'],
+        ['backgroundImage', 'memories-ruled', '--ds-mem-ruled'],
         ['boxShadow', 'memories-polaroid', '--ds-mem-shadow-polaroid'],
         ['borderColor', 'memories-silhouette', '--ds-mem-silhouette'],
         ['borderColor', 'memories-paper', '--ds-mem-paper-line'],

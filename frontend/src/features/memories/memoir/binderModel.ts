@@ -1,6 +1,6 @@
 /** Pure helpers of the memoir and its binder (kept out of the component files for fast refresh). */
 import { useTranslation } from '../../../i18n';
-import type { BinderCard, BinderShelfKey } from '../types';
+import type { BinderShelfKey } from '../types';
 import type { CopyRef } from './cardCopy';
 
 /** Shelf order (`cards.SHELVES`): the payload already follows it; this keeps it if it ever does not. */
@@ -14,11 +14,6 @@ export function formatCardDate(day: string, lang: string): string {
     if (!m) return day;
     const date = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])));
     return new Intl.DateTimeFormat(lang, { year: 'numeric', month: 'numeric', day: 'numeric', timeZone: 'UTC' }).format(date);
-}
-
-/** The binder's card for one year of a stack: that year's date and face, no stack of its own. */
-export function yearCard(card: BinderCard, year: BinderCard['years'][number]): BinderCard {
-    return { ...card, date: year.date, face: year.face, years: [] };
 }
 
 /** Renders a copy reference. */

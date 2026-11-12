@@ -110,25 +110,68 @@ describe('CardTile', () => {
         expect(screen.queryByTestId('card-foil-shimmer')).toBeNull();
     });
 
-    it('fans a yearly stack out into its year tiles', async () => {
-        const onOpen = renderTile(cardOf('special.newyear'));
-        const stack = screen.getByRole('button', { name: '元旦' });
-        expect(stack).toHaveTextContent('×3');
-        expect(stack).toHaveAccessibleDescription(/×3/);
-        expect(stack).toHaveAttribute('aria-expanded', 'false');
+    it('draws a special day as a postmarked postcard stack that opens the card', async () => {
+        const onOpen = vi.fn();
+        render(
+            <NicknameProvider nickname="みーぱん">
+                <CardTile card={cardOf('special.newyear')} onOpen={onOpen} sender={{ name: '金村 美玖', oshi: true }} />
+            </NicknameProvider>,
+        );
+        const tile = screen.getByTestId('card-tile');
+        expect(tile).toHaveAttribute('data-postcard', 'newyear');
+        // no 「×N」 fold any more: one focusable stack named by the title, described by the count and years
+        expect(screen.queryByText('×3')).toBeNull();
+        const stack = within(tile).getByRole('button', { name: '元旦' });
+        expect(stack).toHaveAccessibleDescription('はがき 3 枚 ・ 2024・2025・2026');
+        expect(stack).not.toHaveAttribute('aria-expanded');
+        // the newest year on top, each layer postmarked with its year
+        const layers = within(stack).getAllByTestId('postcard-layer');
+        expect(layers.map((l) => l.getAttribute('data-year'))).toEqual(['2026', '2025', '2024']);
+        expect(within(layers[0]).getByTestId('postcard-postmark')).toHaveTextContent('2026');
+        expect(within(layers[0]).getByTestId('postcard-postmark')).toHaveTextContent('1.1');
+        expect(within(layers[0]).getByTestId('memory-text')).toHaveTextContent('あけおめ！');
+        expect(layers[0]).toHaveTextContent('謹賀新年');
+        expect(layers[0]).toHaveTextContent('金村 美玖 より');
+        // the oshi pink only for the ♥
+        expect(within(layers[0]).getByTestId('postcard-oshi')).toHaveClass('text-semantic-oshi-solid');
+        expect(within(layers[1]).queryByTestId('memory-text')).toBeNull();
         await userEvent.click(stack);
-        expect(stack).toHaveAttribute('aria-expanded', 'true');
-        const years = screen.getAllByTestId('card-year');
-        expect(years).toHaveLength(3);
-        // the open stack's top no longer repeats the newest year
-        expect(stack).not.toHaveTextContent('あけおめ！');
-        expect(screen.getAllByText('あけおめ！')).toHaveLength(1);
-        expect(years[0]).toHaveTextContent('2024のあけおめ');
-        expect(years[0]).toHaveTextContent('2024/1/1');
-        await userEvent.click(within(years[1]).getByRole('button'));
-        expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({
-            key: 'special.newyear', date: '2025-01-01', face: expect.objectContaining({ id: 20 }), years: [],
-        }));
+        expect(onOpen).toHaveBeenCalledWith(expect.objectContaining({ key: 'special.newyear' }));
+    });
+
+    it('fans the stack on hover or focus only when motion is allowed', () => {
+        renderTile(cardOf('special.newyear'));
+        const layers = screen.getAllByTestId('postcard-layer');
+        for (const layer of layers) {
+            expect(layer).toHaveClass('motion-reduce:transition-none');
+            const fan = [...layer.classList].filter((c) => c.includes('group-hover') || c.includes('group-focus-visible'));
+            expect(fan.length).toBeGreaterThan(0);
+            // every fan class is gated on motion-safe: under reduced motion the layers stay still
+            expect(fan.every((c) => c.startsWith('motion-safe:'))).toBe(true);
+        }
+    });
+
+    it('draws a single year as one postcard that does not fan', () => {
+        renderTile(card({ key: 'special.join_day', date: '2024-07-24', face: face({ text: 'ありがとう🌸' }) }));
+        const layers = screen.getAllByTestId('postcard-layer');
+        expect(layers).toHaveLength(1);
+        expect([...layers[0].classList].some((c) => c.includes('group-hover'))).toBe(false);
+        expect(screen.getByTestId('card-tile')).toHaveAttribute('data-postcard', 'anniversary');
+        expect(screen.getByTestId('postcard-band')).toHaveClass('bg-accent-subtle');
+        expect(screen.getByRole('button', { name: '加入記念日' })).toHaveAccessibleDescription('はがき 1 枚 ・ 2024');
+    });
+
+    it('themes the birthday as a birthday card with the foil band', () => {
+        renderTile(card({ key: 'special.birthday', foil: true, date: '2025-02-28', face: face({ text: 'ありがとう' }) }));
+        expect(screen.getByTestId('card-tile')).toHaveAttribute('data-postcard', 'birthday');
+        expect(screen.getByTestId('postcard-band')).toHaveClass('bg-memories-foil');
+        expect(screen.getByTestId('card-tile')).toHaveTextContent('お誕生日おめでとう');
+    });
+
+    it('leaves an unearned special day a silhouette', () => {
+        renderTile(card({ key: 'special.birthday', earned: false, date: null }));
+        expect(screen.queryByTestId('postcard-stack')).toBeNull();
+        expect(screen.getByTestId('card-tile')).toHaveAttribute('data-earned', 'false');
     });
 
     it('shows the あなた shelf as an envelope and a date, never her words; a click opens the letter', async () => {

@@ -70,9 +70,15 @@ export function binderPayload(): BinderPayload {
                     card({
                         key: 'special.newyear', date: '2026-01-01', face: face({ id: 30, text: 'あけおめ！' }),
                         years: [
-                            { year: 2024, date: '2024-01-01', face: face({ id: 10, text: '2024のあけおめ' }) },
-                            { year: 2025, date: '2025-01-01', face: face({ id: 20, text: '2025のあけおめ' }) },
-                            { year: 2026, date: '2026-01-01', face: face({ id: 30, text: 'あけおめ！' }) },
+                            { year: 2024, date: '2024-01-01', face: face({ id: 10, text: '2024のあけおめ' }), photo: null },
+                            {
+                                year: 2025, date: '2025-01-01', face: face({ id: 20, text: '2025のあけおめ', ts: '2024-12-31T15:12:00Z' }),
+                                photo: face({
+                                    id: 21, type: 'picture', text: null, media_url: '/api/content/media/hinatazaka46/ny.jpg',
+                                    media_file: 'messages/ny.jpg',
+                                }),
+                            },
+                            { year: 2026, date: '2026-01-01', face: face({ id: 30, text: 'あけおめ！', ts: '2025-12-31T15:03:00Z' }), photo: null },
                         ],
                     }),
                 ],

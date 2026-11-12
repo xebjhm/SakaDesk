@@ -1005,7 +1005,6 @@
       "avatarDays": "この写真と、{{days, number}} 日",
       "lastMessage": "最後の一通",
       "lastMessageCondition": "卒業までの、最後の一通",
-      "stack": "×{{count, number}}",
       "notYet": "まだ"
     },
     "cardDetail": {
@@ -1165,6 +1164,19 @@
       "reroll": "ほかの一日をつくる",
       "thin": "もう少しメッセージが届いたら、ここに一日ができます。",
       "year": "{{year}}年"
+    },
+    "postcard": {
+      "greeting": {
+        "newyear": "謹賀新年",
+        "birthday": "お誕生日おめでとう",
+        "anniversary": "記念日",
+        "valentine": "ハッピーバレンタイン",
+        "christmas": "メリークリスマス"
+      },
+      "from": "{{name}} より",
+      "stack": "はがき {{count, number}} 枚",
+      "year": "{{year}} 年のはがき",
+      "rack": "毎年のはがき"
     }
   },
   "recap": {

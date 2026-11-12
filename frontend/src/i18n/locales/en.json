@@ -1024,7 +1024,6 @@
       "avatarDays": "With this photo, {{days, number}} days",
       "lastMessage": "Her last message",
       "lastMessageCondition": "Her last message before graduating",
-      "stack": "×{{count, number}}",
       "notYet": "Not yet"
     },
     "cardDetail": {
@@ -1193,6 +1192,19 @@
       "reroll": "Make another day",
       "thin": "Once a few more messages arrive, a day will take shape here.",
       "year": "{{year}}"
+    },
+    "postcard": {
+      "greeting": {
+        "newyear": "Happy New Year",
+        "birthday": "Happy Birthday",
+        "anniversary": "A day to remember",
+        "valentine": "Happy Valentine's",
+        "christmas": "Merry Christmas"
+      },
+      "from": "From {{name}}",
+      "stack": "{{count, number}} postcards",
+      "year": "The {{year}} postcard",
+      "rack": "Her postcards, one for each year"
     }
   },
   "recap": {

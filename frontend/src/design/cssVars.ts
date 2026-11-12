@@ -67,6 +67,7 @@ export function staticTokenVars(): Record<string, string> {
     vars['--ds-mem-paper-line'] = memories.paperLine;
     vars['--ds-mem-cork'] = memories.cork;
     vars['--ds-mem-washi'] = memories.washi;
+    vars['--ds-mem-ruled'] = memories.ruled;
     vars['--ds-mem-foil'] = memories.foil;
     vars['--ds-mem-shadow-polaroid'] = memories.shadow.polaroid;
     vars['--ds-mem-silhouette'] = memories.silhouette;

@@ -61,6 +61,8 @@ export default {
                 // Memories keepsake surfaces (tokens/memories.ts): the cork board and the special-card foil.
                 'memories-cork': 'var(--ds-mem-cork)',
                 'memories-foil': 'var(--ds-mem-foil)',
+                // The ruled lines of a 特別な日 postcard's back (20 px, the text-small line height).
+                'memories-ruled': 'var(--ds-mem-ruled)',
                 // Memories fun wave (semantic): the SR rarity sheen, the radio night and the 24h sky.
                 'memories-rarity-sr': 'var(--ds-mem-rarity-sr)',
                 'memories-night': 'var(--ds-mem-night)',

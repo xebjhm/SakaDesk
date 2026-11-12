@@ -57,8 +57,8 @@ const Trailing: React.FC<{ member: MemoirMember }> = ({ member }) => {
  * A key that is not an earned card of hers logs `memories_skip` `card_missing` (again on a repeat
  * click) and shows the binder.
  */
-const BinderPane: React.FC<{ service: string; memberPath: string; name: string; cardKey?: string; link: object }> = ({
-    service, memberPath, name, cardKey, link,
+const BinderPane: React.FC<{ service: string; memberPath: string; name: string; oshi: boolean; cardKey?: string; link: object }> = ({
+    service, memberPath, name, oshi, cardKey, link,
 }) => {
     // A deep link refetches even when her binder is already loaded: a card earned since then
     // (e.g. an anniversary across midnight) must be found. A re-render keeps the same link object.
@@ -84,9 +84,15 @@ const BinderPane: React.FC<{ service: string; memberPath: string; name: string; 
     }
     return (
         <>
-            <Binder binder={binder.data} onOpen={(c) => { if (c.date) setOpen({ path: memberPath, card: c }); }} />
+            <Binder
+                binder={binder.data}
+                sender={{ name, oshi }}
+                onOpen={(c) => { if (c.date) setOpen({ path: memberPath, card: c }); }}
+            />
             {card?.letter && <SentLetter service={service} name={name} letter={card.letter} onClose={() => setOpen(null)} />}
-            {card && !card.letter && <CardDetail service={service} memberPath={memberPath} name={name} card={card} onClose={() => setOpen(null)} />}
+            {card && !card.letter && (
+                <CardDetail service={service} memberPath={memberPath} name={name} oshi={oshi} card={card} onClose={() => setOpen(null)} />
+            )}
         </>
     );
 };
@@ -158,7 +164,14 @@ export const MemoirPage: React.FC<MemoirPageProps> = ({ service, route, go }) =>
                 </div>
                 {tab === 'binder' && (
                     <div className="flex min-h-0 flex-1 flex-col overflow-y-auto overscroll-contain">
-                        <BinderPane service={service} memberPath={memberPath} name={name} cardKey={route.cardKey} link={route} />
+                        <BinderPane
+                            service={service}
+                            memberPath={memberPath}
+                            name={name}
+                            oshi={selected?.oshi ?? false}
+                            cardKey={route.cardKey}
+                            link={route}
+                        />
                     </div>
                 )}
                 {tab === 'timeline' && <Timeline key={memberPath} service={service} memberPath={memberPath} name={name} />}

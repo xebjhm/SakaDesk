@@ -4,6 +4,7 @@ import { logMemoriesSkip } from '../memoriesLog';
 import type { BinderCard, BinderPayload, BinderShelfKey } from '../types';
 import { cardCopy } from './cardCopy';
 import { CardTile } from './CardTile';
+import type { PostcardSender } from './Postcard';
 import { SHELVES } from './binderModel';
 
 // Literal keys, so the i18n scanner and readers see every one of them.
@@ -22,15 +23,17 @@ const SHELF_COPY: Record<BinderShelfKey, { title: string; subtitle: string }> = 
 interface BinderProps {
     binder: BinderPayload;
     onOpen: (card: BinderCard) => void;
+    /** Who sent the 特別な日 postcards (her name, and the ♥ when she is the fan's 推し). */
+    sender?: PostcardSender;
 }
 
 /**
  * The 卡冊 binder (spec 5.3): one shelf per payload shelf in {@link SHELVES} order, each with its
  * serif Japanese title (`lang="ja"`, Japanese in every language) and a subtitle, then a wrapping
- * row of {@link CardTile}s. Cards whose key this build has no copy for are left out and counted
+ * row of {@link CardTile}s (the 特別な日 shelf's earned cards are postcard stacks). Cards whose key this build has no copy for are left out and counted
  * in one `memories_skip` `unknown_card` per binder.
  */
-export const Binder: React.FC<BinderProps> = ({ binder, onOpen }) => {
+export const Binder: React.FC<BinderProps> = ({ binder, onOpen, sender }) => {
     const { t } = useTranslation();
     const { shelves, unknown } = useMemo(() => {
         let skipped = 0;
@@ -62,7 +65,7 @@ export const Binder: React.FC<BinderProps> = ({ binder, onOpen }) => {
                         <p data-testid="binder-shelf-subtitle" className="text-small text-muted">{t(SHELF_COPY[shelf.key].subtitle)}</p>
                     </div>
                     <div className="flex flex-wrap gap-4">
-                        {shelf.cards.map((card) => <CardTile key={card.key} card={card} onOpen={onOpen} />)}
+                        {shelf.cards.map((card) => <CardTile key={card.key} card={card} onOpen={onOpen} sender={sender} />)}
                     </div>
                 </section>
             ))}

@@ -191,6 +191,64 @@ describe('CardDetail', () => {
     });
 });
 
+describe('CardDetail postcards (特別な日)', () => {
+    const newyear = () => binderPayload().shelves.find((sh) => sh.key === 'special')!.cards[0];
+
+    it('shows every year as a postcard back, newest first, with the stamp, postmark and photo', async () => {
+        renderDetail(newyear());
+        const rack = await screen.findByTestId('postcard-rack');
+        const backs = within(rack).getAllByTestId('postcard-back');
+        expect(backs.map((b) => b.getAttribute('data-year'))).toEqual(['2026', '2025', '2024']);
+        // the newest is selected and drives the day and the header
+        expect(backs[0]).toHaveAttribute('aria-pressed', 'true');
+        expect(backs[0]).toHaveAccessibleName('2026 年のはがき');
+        expect(within(backs[0]).getByTestId('postcard-postmark')).toHaveTextContent('2026');
+        expect(within(backs[0]).getByTestId('postcard-postmark')).toHaveTextContent('1.1');
+        // 15:03Z is 00:03 JST
+        expect(within(backs[0]).getByTestId('postcard-postmark')).toHaveTextContent('00:03');
+        expect(within(backs[0]).getByTestId('postcard-stamp')).toBeInTheDocument();
+        expect(within(backs[0]).getByTestId('memory-text')).toHaveClass('bg-memories-ruled');
+        expect(backs[0]).toHaveTextContent('金村 美玖 より');
+        // the photo of that day sits on the 2025 back, aged by its year
+        expect(within(backs[1]).getByTestId('memory-thumb')).toBeInTheDocument();
+        expect(within(backs[0]).queryByTestId('memory-thumb')).toBeNull();
+        await waitFor(() => expect(vi.mocked(fetchDay).mock.lastCall?.[1]).toEqual({ date: '2026-01-01', member: MEMBER_PATH }));
+    });
+
+    it('moves between years with the arrow keys, one Tab stop', async () => {
+        const onClose = renderDetail(newyear());
+        const rack = await screen.findByTestId('postcard-rack');
+        const backs = within(rack).getAllByTestId('postcard-back');
+        expect(backs.map((b) => b.tabIndex)).toEqual([0, -1, -1]);
+        backs[0].focus();
+        await userEvent.keyboard('{ArrowDown}');
+        expect(backs[1]).toHaveFocus();
+        expect(backs[1]).toHaveAttribute('aria-pressed', 'true');
+        expect(backs.map((b) => b.tabIndex)).toEqual([-1, 0, -1]);
+        await waitFor(() => expect(vi.mocked(fetchDay).mock.lastCall?.[1]).toEqual({ date: '2025-01-01', member: MEMBER_PATH }));
+        await userEvent.keyboard('{End}');
+        expect(backs[2]).toHaveFocus();
+        await userEvent.keyboard('{ArrowUp}');
+        expect(backs[1]).toHaveFocus();
+        await userEvent.keyboard('{Home}');
+        expect(backs[0]).toHaveFocus();
+        await userEvent.keyboard('{ArrowRight}');
+        await userEvent.click(screen.getByRole('button', { name: /トークで見る/ }));
+        expect(vi.mocked(openChat)).toHaveBeenCalledWith(expect.objectContaining({ message_id: 20 }));
+        expect(onClose).toHaveBeenCalled();
+    });
+
+    it('shows the ♥ on the backs only for her 推し', async () => {
+        render(
+            <NicknameProvider nickname="みーぱん">
+                <CardDetail service="hinatazaka46" memberPath={MEMBER_PATH} name="金村 美玖" oshi card={newyear()} onClose={vi.fn()} />
+            </NicknameProvider>,
+        );
+        const rack = await screen.findByTestId('postcard-rack');
+        expect(within(rack).getAllByTestId('postcard-oshi')).toHaveLength(3);
+    });
+});
+
 describe('CardDetail capsule', () => {
     it('holds a capsule strip anchored on the earned card', async () => {
         renderDetail(card({ key: 'anniv.y1', date: '2024-09-14' }));

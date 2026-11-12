@@ -312,6 +312,8 @@ export interface BinderCardYear {
     /** JST date `YYYY-MM-DD`. */
     date: string;
     face: MemoryMessage | null;
+    /** The postcard photo: that day's best picture when the face is not itself one, else null. */
+    photo: MemoryMessage | null;
 }
 
 export interface BinderCard {
@@ -323,7 +325,7 @@ export interface BinderCard {
     /** Unlock date (JST `YYYY-MM-DD`), or null. */
     date: string | null;
     face: MemoryMessage | null;
-    /** Named extra messages (`pair`, `old_last`, `new_first`); missing ones are left out. */
+    /** Named extra messages (`pair`, `old_last`, `new_first`, 加入紀念日's postcard `photo`); missing ones are left out. */
     refs: Partial<Record<string, MemoryMessage>>;
     /** Null for an earned card and instead of a current value of 0. */
     progress: { current: number; target: number } | null;

@@ -41,7 +41,7 @@ export const MEMORIES_CORE_KEYS: string[] = [
     'memories.cards.greetingPair', 'memories.cards.midnight', 'memories.cards.synchro',
     'memories.cards.oyasumiFirst', 'memories.cards.oyasumi100', 'memories.cards.daisukiFirst', 'memories.cards.daisuki100',
     'memories.cards.letterFirst', 'memories.cards.letters', 'memories.cards.avatarChange', 'memories.cards.avatarDays',
-    'memories.cards.lastMessage', 'memories.cards.stack', 'memories.cards.notYet', 'memories.cardDetail.lastMessage',
+    'memories.cards.lastMessage', 'memories.cards.notYet', 'memories.cardDetail.lastMessage',
     'memories.cardDetail.forever', 'memories.cardDetail.oldLast', 'memories.cardDetail.newFirst',
     'memories.cardDetail.oldAvatar', 'memories.cardDetail.newAvatar',
     // C11 fix wave 1: a condition for every card, the detail's day label
@@ -52,6 +52,10 @@ export const MEMORIES_CORE_KEYS: string[] = [
     'memories.cards.christmasCondition', 'memories.cards.birthdayCondition', 'memories.cards.subAnniversaryCondition',
     // r4: the subscription start day (加入紀念日)
     'memories.cards.joinDay', 'memories.cards.joinDayCondition',
+    // r4 A3: the 特別な日 postcards
+    'memories.postcard.greeting.newyear', 'memories.postcard.greeting.birthday', 'memories.postcard.greeting.anniversary',
+    'memories.postcard.greeting.valentine', 'memories.postcard.greeting.christmas', 'memories.postcard.from',
+    'memories.postcard.stack', 'memories.postcard.year', 'memories.postcard.rack',
     'memories.cards.longestCondition', 'memories.cards.busiestDayCondition', 'memories.cards.nicknameDayCondition',
     'memories.cards.longestVoiceCondition', 'memories.cards.greetingPairCondition',
     'memories.cards.midnightCondition', 'memories.cards.synchroCondition', 'memories.cards.oyasumiFirstCondition',
@@ -232,7 +236,8 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.avatarChange')).toBe('新しい写真');
         expect(lookup(ja, 'memories.cards.avatarDays')).toBe('この写真と、{{days, number}} 日');
         expect(lookup(ja, 'memories.cards.lastMessage')).toBe('最後の一通');
-        expect(lookup(ja, 'memories.cards.stack')).toBe('×{{count, number}}');
+        expect(lookup(ja, 'memories.postcard.greeting.newyear')).toBe('謹賀新年');
+        expect(lookup(ja, 'memories.postcard.stack')).toBe('はがき {{count, number}} 枚');
         expect(lookup(ja, 'memories.cards.notYet')).toBe('まだ');
         expect(lookup(ja, 'memories.cardDetail.lastMessage')).toBe('最後のメッセージ');
         expect(lookup(ja, 'memories.cardDetail.forever')).toBe('ずっと、ここに。');

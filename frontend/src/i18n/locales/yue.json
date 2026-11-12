@@ -1005,7 +1005,6 @@
       "avatarDays": "同呢個頭像一齊 {{days, number}} 日",
       "lastMessage": "最後一則",
       "lastMessageCondition": "畢業前嘅最後一則",
-      "stack": "×{{count, number}}",
       "notYet": "仲未"
     },
     "cardDetail": {
@@ -1165,6 +1164,19 @@
       "reroll": "砌過另一日",
       "thin": "再多收到啲訊息，呢度就會砌出佢嘅一日。",
       "year": "{{year}} 年"
+    },
+    "postcard": {
+      "greeting": {
+        "newyear": "恭賀新年",
+        "birthday": "生日快樂",
+        "anniversary": "紀念日",
+        "valentine": "情人節快樂",
+        "christmas": "聖誕快樂"
+      },
+      "from": "來自 {{name}}",
+      "stack": "{{count, number}} 張明信片",
+      "year": "{{year}} 年嘅明信片",
+      "rack": "佢每年寄嚟嘅明信片"
     }
   },
   "recap": {
