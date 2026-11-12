@@ -50,7 +50,7 @@ export const RadioPage: React.FC<RadioPageProps> = ({ service, route, go }) => {
         name: m.name,
         avatarUrl: m.avatar_url,
         oshi: m.oshi,
-        trailing: formatVoiceLength(t, m.seconds) ?? undefined,
+        trailing: formatVoiceLength(t, m.seconds, { total: true }) ?? undefined,
     })), [people, t]);
     const memberName = people?.find((m) => m.member_path === member)?.name ?? null;
 
@@ -83,7 +83,7 @@ export const RadioPage: React.FC<RadioPageProps> = ({ service, route, go }) => {
                     selectedKey={member ?? null}
                     onSelect={pickMember}
                     allLabel={t('memories.radio.all')}
-                    allTrailing={formatVoiceLength(t, list.data?.total_seconds) ?? undefined}
+                    allTrailing={formatVoiceLength(t, list.data?.total_seconds, { total: true }) ?? undefined}
                     // Skeleton rows while the list loads; its error (and Retry) is the body's, shown once.
                     status={list.status === 'loading' ? 'loading' : 'ready'}
                 />

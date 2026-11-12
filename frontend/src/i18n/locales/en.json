@@ -903,9 +903,9 @@
       "chipDays": "Day {{days, number}} of membership",
       "chipNames": "Called your name {{count, number}} time",
       "chipNames_other": "Called your name {{count, number}} times",
-      "chipVoice": "Voice {{h}} h {{m}} min",
-      "chipVoiceMinutes": "Voice {{m}} min",
-      "chipVoiceHours": "Voice {{h}} h"
+      "chipVoice": "Voice total {{h}} h {{m}} min",
+      "chipVoiceMinutes": "Voice total {{m}} min",
+      "chipVoiceHours": "Voice total {{h}} h"
     },
     "favorites": {
       "title": "Favorites",
@@ -976,8 +976,8 @@
       "countMessagesCondition": "When message no. {{count, number}} arrives",
       "countPictures": "Photo no. {{count, number}}",
       "countPicturesCondition": "When photo no. {{count, number}} arrives",
-      "voiceHour": "An hour of her voice",
-      "voiceHourCondition": "When her voice messages add up to an hour",
+      "voiceHour": "1 hour of voice in total",
+      "voiceHourCondition": "When her voice messages add up to 1 hour in total",
       "nicknames100": "Your name, the 100th time",
       "nicknames100Condition": "When she has called your name 100 times",
       "newyear": "New Year's Day",
@@ -1098,6 +1098,10 @@
       "lengthHoursOnly": "{{hours}} h",
       "lengthMinutes": "{{count}} min",
       "lengthUnder": "Under 1 min",
+      "totalHours": "Voice total {{hours}} h {{minutes}} min",
+      "totalHoursOnly": "Voice total {{hours}} h",
+      "totalMinutes": "Voice total {{count}} min",
+      "totalUnder": "Voice total under 1 min",
       "trackCount_other": "{{count, number}} voices",
       "sleepMinutes_other": "Stop in {{count}} minutes"
     },

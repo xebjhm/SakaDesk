@@ -20,7 +20,7 @@ describe('MemoirHeader', () => {
         // her current avatar, decorative next to her visible name
         expect(container.querySelector('img')).toHaveAttribute('src', expect.stringContaining('icon.jpg'));
         const chips = screen.getAllByTestId('memoir-chip');
-        expect(chips.map((c) => c.textContent)).toEqual(['メンバーシップ 842 日', '名前を呼んでくれた 57 回', '声 3時間25分']);
+        expect(chips.map((c) => c.textContent)).toEqual(['メンバーシップ 842 日', '名前を呼んでくれた 57 回', 'ボイス合計 3時間25分']);
         await userEvent.click(screen.getByRole('button', { name: '名前を呼んでくれた 57 回' }));
         expect(onNames).toHaveBeenCalled();
     });

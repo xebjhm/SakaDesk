@@ -885,9 +885,9 @@
       "progress": "{{earned, number}} / {{total, number}} 張",
       "chipDays": "訂閱 {{days, number}} 天",
       "chipNames": "她叫了你 {{count, number}} 次",
-      "chipVoice": "語音 {{h}} 小時 {{m}} 分",
-      "chipVoiceMinutes": "語音 {{m}} 分",
-      "chipVoiceHours": "語音 {{h}} 小時"
+      "chipVoice": "語音共 {{h}} 小時 {{m}} 分",
+      "chipVoiceMinutes": "語音共 {{m}} 分",
+      "chipVoiceHours": "語音共 {{h}} 小時"
     },
     "favorites": {
       "title": "我的最愛",
@@ -958,8 +958,8 @@
       "countMessagesCondition": "收到第 {{count, number}} 則時",
       "countPictures": "第 {{count, number}} 張照片",
       "countPicturesCondition": "收到第 {{count, number}} 張照片時",
-      "voiceHour": "一小時的聲音",
-      "voiceHourCondition": "語音累積滿一小時",
+      "voiceHour": "語音累計 1 小時",
+      "voiceHourCondition": "語音累計滿 1 小時",
       "nicknames100": "第 100 次的名字",
       "nicknames100Condition": "她叫你名字滿 100 次",
       "newyear": "元旦",
@@ -1077,7 +1077,11 @@
       "lengthHours": "{{hours}} 小時 {{minutes}} 分",
       "lengthHoursOnly": "{{hours}} 小時",
       "lengthMinutes": "{{count}} 分鐘",
-      "lengthUnder": "不到 1 分鐘"
+      "lengthUnder": "不到 1 分鐘",
+      "totalHours": "語音共 {{hours}} 小時 {{minutes}} 分",
+      "totalHoursOnly": "語音共 {{hours}} 小時",
+      "totalMinutes": "語音共 {{count}} 分鐘",
+      "totalUnder": "語音共不到 1 分鐘"
     },
     "gacha": {
       "title": "回憶扭蛋",

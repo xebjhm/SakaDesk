@@ -15,6 +15,11 @@ describe('radioFormat', () => {
         expect(formatVoiceLength(t, 40)).toBe('1分未満');
         expect(formatVoiceLength(t, 0)).toBeNull();
         expect(formatVoiceLength(t, null)).toBeNull();
+        // a list row names what it counts
+        expect(formatVoiceLength(t, 3600 + 60, { total: true })).toBe('ボイス合計 1時間1分');
+        expect(formatVoiceLength(t, 2 * 3600, { total: true })).toBe('ボイス合計 2時間');
+        expect(formatVoiceLength(t, 42 * 60, { total: true })).toBe('ボイス合計 42分');
+        expect(formatVoiceLength(t, 40, { total: true })).toBe('ボイス合計 1分未満');
     });
 
     it('has a title and a subtitle for every program', () => {

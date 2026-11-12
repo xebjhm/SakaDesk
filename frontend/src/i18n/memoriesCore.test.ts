@@ -184,9 +184,12 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.memoir.progress')).toBe('{{earned, number}} / {{total, number}} 枚');
         expect(lookup(ja, 'memories.memoir.chipDays')).toBe('メンバーシップ {{days, number}} 日');
         expect(lookup(ja, 'memories.memoir.chipNames')).toBe('名前を呼んでくれた {{count, number}} 回');
-        expect(lookup(ja, 'memories.memoir.chipVoice')).toBe('声 {{h}}時間{{m}}分');
-        expect(lookup(ja, 'memories.memoir.chipVoiceMinutes')).toBe('声 {{m}}分');
-        expect(lookup(ja, 'memories.memoir.chipVoiceHours')).toBe('声 {{h}}時間');
+        expect(lookup(ja, 'memories.memoir.chipVoice')).toBe('ボイス合計 {{h}}時間{{m}}分');
+        expect(lookup(ja, 'memories.memoir.chipVoiceMinutes')).toBe('ボイス合計 {{m}}分');
+        expect(lookup(ja, 'memories.memoir.chipVoiceHours')).toBe('ボイス合計 {{h}}時間');
+        expect(lookup(ja, 'memories.cards.voiceHour')).toBe('ボイス累計 1 時間');
+        expect(lookup(zhTW, 'memories.cards.voiceHour')).toBe('語音累計 1 小時');
+        expect(lookup(zhTW, 'memories.memoir.chipVoice')).toBe('語音共 {{h}} 小時 {{m}} 分');
         expect(lookup(ja, 'memories.shelves.first.title')).toBe('初めて');
         expect(lookup(ja, 'memories.shelves.anniversary.title')).toBe('記念日');
         expect(lookup(ja, 'memories.shelves.numbers.title')).toBe('数字');
@@ -206,7 +209,7 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.annivYears')).toBe('{{years, number}}年目の記念日');
         expect(lookup(ja, 'memories.cards.countMessages')).toBe('{{count, number}}通目');
         expect(lookup(ja, 'memories.cards.countPictures')).toBe('{{count, number}}枚目の写真');
-        expect(lookup(ja, 'memories.cards.voiceHour')).toBe('声を、1時間');
+        expect(lookup(ja, 'memories.cards.voiceHour')).toBe('ボイス累計 1 時間');
         expect(lookup(ja, 'memories.cards.nicknames100')).toBe('100回目の名前');
         expect(lookup(ja, 'memories.cards.newyear')).toBe('元旦');
         expect(lookup(ja, 'memories.cards.valentine')).toBe('バレンタイン');
@@ -242,7 +245,7 @@ describe('memories core strings', () => {
         expect(lookup(ja, 'memories.cards.annivYearsCondition')).toBe('メンバーシップ {{years, number}} 年目の記念日に');
         expect(lookup(ja, 'memories.cards.countMessagesCondition')).toBe('{{count, number}}通目が届いたら');
         expect(lookup(ja, 'memories.cards.countPicturesCondition')).toBe('{{count, number}}枚目の写真が届いたら');
-        expect(lookup(ja, 'memories.cards.voiceHourCondition')).toBe('ボイスがあわせて1時間になったら');
+        expect(lookup(ja, 'memories.cards.voiceHourCondition')).toBe('ボイスが累計1時間になったら');
         expect(lookup(ja, 'memories.cards.nicknames100Condition')).toBe('名前を呼んでくれたのが100回になったら');
         expect(lookup(ja, 'memories.cards.newyearCondition')).toBe('新しい年の、最初の一通');
         expect(lookup(ja, 'memories.cards.valentineCondition')).toBe('バレンタインに届いたメッセージ');

@@ -885,9 +885,9 @@
       "progress": "{{earned, number}} / {{total, number}} 枚",
       "chipDays": "メンバーシップ {{days, number}} 日",
       "chipNames": "名前を呼んでくれた {{count, number}} 回",
-      "chipVoice": "声 {{h}}時間{{m}}分",
-      "chipVoiceMinutes": "声 {{m}}分",
-      "chipVoiceHours": "声 {{h}}時間"
+      "chipVoice": "ボイス合計 {{h}}時間{{m}}分",
+      "chipVoiceMinutes": "ボイス合計 {{m}}分",
+      "chipVoiceHours": "ボイス合計 {{h}}時間"
     },
     "favorites": {
       "title": "お気に入り",
@@ -958,8 +958,8 @@
       "countMessagesCondition": "{{count, number}}通目が届いたら",
       "countPictures": "{{count, number}}枚目の写真",
       "countPicturesCondition": "{{count, number}}枚目の写真が届いたら",
-      "voiceHour": "声を、1時間",
-      "voiceHourCondition": "ボイスがあわせて1時間になったら",
+      "voiceHour": "ボイス累計 1 時間",
+      "voiceHourCondition": "ボイスが累計1時間になったら",
       "nicknames100": "100回目の名前",
       "nicknames100Condition": "名前を呼んでくれたのが100回になったら",
       "newyear": "元旦",
@@ -1077,7 +1077,11 @@
       "lengthHours": "{{hours}}時間{{minutes}}分",
       "lengthHoursOnly": "{{hours}}時間",
       "lengthMinutes": "{{count}}分",
-      "lengthUnder": "1分未満"
+      "lengthUnder": "1分未満",
+      "totalHours": "ボイス合計 {{hours}}時間{{minutes}}分",
+      "totalHoursOnly": "ボイス合計 {{hours}}時間",
+      "totalMinutes": "ボイス合計 {{count}}分",
+      "totalUnder": "ボイス合計 1分未満"
     },
     "gacha": {
       "title": "思い出ガチャ",
