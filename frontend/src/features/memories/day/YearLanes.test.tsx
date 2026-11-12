@@ -41,6 +41,16 @@ describe('YearLanes', () => {
         expect(screen.getByTestId('day-years')).toHaveClass('w-max');
     });
 
+    it('heads each year with its date and weekday, and keeps the axis corner above the headers', () => {
+        renderLanes();
+        const [l2024, l2025] = screen.getAllByTestId('day-years-lane');
+        // 2024-09-14 was a Saturday, 2025-09-14 a Sunday
+        expect(within(l2024).getByTestId('day-years-meta')).toHaveTextContent(/9\/14.*週六.*2 則訊息/);
+        expect(within(l2025).getByTestId('day-years-meta')).toHaveTextContent(/9\/14.*週日/);
+        expect(screen.getByTestId('day-years-axis')).toHaveClass('sticky', 'left-0', 'z-30');
+        expect(screen.getByTestId('day-years-corner')).toHaveClass('sticky', 'top-0', 'bg-sheet');
+    });
+
     it('places the same time of day at the same height in every year', () => {
         renderLanes();
         const [l2024, l2025] = screen.getAllByTestId('day-years-lane');

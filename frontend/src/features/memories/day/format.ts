@@ -19,3 +19,10 @@ export function formatMonthDayLabel(monthDay: string, lang: string): string {
     if (!date) return monthDay;
     return new Intl.DateTimeFormat(lang, { month: 'long', day: 'numeric', timeZone: 'UTC' }).format(date);
 }
+
+/** A short day with its weekday in the UI language ("11/1(土)" / "Sat, 11/1"), or the raw string. */
+export function formatShortDayWeekday(day: string, lang: string): string {
+    const date = utcDay(day);
+    if (!date) return day;
+    return new Intl.DateTimeFormat(lang, { month: 'numeric', day: 'numeric', weekday: 'short', timeZone: 'UTC' }).format(date);
+}

@@ -7,6 +7,7 @@ import { useBubbleVoices } from '../shared/useBubbleVoices';
 import type { DayMember, DayYearsYear } from '../types';
 import { hourBands } from './laneLayout';
 import { dayPeople, type DayPerson } from './people';
+import { formatShortDayWeekday } from './format';
 import { LaneCard } from './Swimlanes';
 import { axisLabel, clockMs, clockSpan, gapRuns, guidePairs, type LaneEntry } from './yearLanesLayout';
 
@@ -40,7 +41,8 @@ const msgKey = (m: { service: string; room: string; id: number }) => `${m.servic
 
 /**
  * 歷年同一天 (B1): the same calendar day in every year, one column per year (oldest on the
- * left), each message placed by its JST time of day on one thin hour axis, so 07:10 in one year
+ * left, each headed by its year, its date with the weekday (which changes from year to year) and
+ * its count), each message placed by its JST time of day on one thin hour axis, so 07:10 in one year
  * sits beside 07:25 in the next. A busy hour grows to hold its cards (`hourBands`, shared with the
  * swimlanes). Matching kinds in neighbouring years (おはよう, photo, video, voice, おやすみ within
  * 90 minutes, `MATCH_WINDOW_MS`) are joined by faint dotted guide lines; an hour that is quiet in a year
@@ -51,7 +53,7 @@ const msgKey = (m: { service: string; room: string; id: number }) => `${m.servic
  * (the axis stays sticky on the left).
  */
 export const YearLanes: React.FC<YearLanesProps> = ({ members, years }) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const [expanded, setExpanded] = useState<string | null>(null);
     const rootRef = useRef<HTMLDivElement>(null);
     useBubbleVoices(rootRef, 'lanes');
@@ -90,8 +92,10 @@ export const YearLanes: React.FC<YearLanesProps> = ({ members, years }) => {
 
     return (
         <div ref={rootRef} data-testid="day-years" className="relative flex w-max min-w-full">
-            <div aria-hidden="true" className="sticky left-0 z-20 w-12 shrink-0 bg-sheet">
-                <div className="h-16" />
+            {/* Above the sticky year headers (z-20) when the lanes scroll sideways under it; its
+                top cell sticks to the top too, so the corner stays fixed both ways. */}
+            <div aria-hidden="true" data-testid="day-years-axis" className="sticky left-0 z-30 w-12 shrink-0 bg-sheet">
+                <div data-testid="day-years-corner" className="sticky top-0 z-10 h-16 bg-sheet" />
                 <div className="relative" style={{ height }}>
                     {layout.edges.map((edge, i) => (
                         <span
@@ -109,7 +113,9 @@ export const YearLanes: React.FC<YearLanesProps> = ({ members, years }) => {
                 <section key={y.year} data-testid="day-years-lane" data-year={y.year} aria-labelledby={`day-years-${y.year}`} className="w-56 shrink-0 px-4">
                     <header className="sticky top-0 z-20 flex h-16 flex-col items-center justify-center bg-sheet">
                         <h3 id={`day-years-${y.year}`} className="font-display text-title tabular-nums text-primary">{y.year}</h3>
-                        <span className="text-caption tabular-nums text-muted">{t('memories.day.count', { count: y.messages.length })}</span>
+                        <span data-testid="day-years-meta" className="text-caption tabular-nums text-muted">
+                            {formatShortDayWeekday(y.date, i18n.language)} ・ {t('memories.day.count', { count: y.messages.length })}
+                        </span>
                     </header>
                     <div className="relative rounded-md bg-sunken" style={{ height }}>
                         {gaps[li].map(([from, to]) => {
