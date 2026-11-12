@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from structlog.testing import capture_logs
 
 from backend.main import app
-from backend.services import media_range
+from backend.services import api_auth, media_range
 from backend.services.media_range import (
     MEDIA_RANGE_CAP,
     ByteRange,
@@ -578,7 +578,11 @@ async def test_disconnect_through_real_app_stops_reading(tmp_path):
         http_version="1.1",
         root_path="",
     )
-    scope["headers"] = [*scope["headers"], (b"host", b"127.0.0.1:8000")]
+    scope["headers"] = [
+        *scope["headers"],
+        (b"host", b"127.0.0.1:8000"),
+        (api_auth.TOKEN_HEADER.encode(), api_auth.LAUNCH_TOKEN.encode()),
+    ]
 
     with (
         patch("backend.api.content._resolve_media_path", return_value=video),

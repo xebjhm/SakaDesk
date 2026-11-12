@@ -19,6 +19,11 @@ os.environ.setdefault("SAKADESK_DATA_DIR", tempfile.mkdtemp(prefix="sakadesk-tes
 # variable with monkeypatch.delenv (see tests/test_auto_sync_scheduler.py).
 os.environ.setdefault("SAKADESK_DISABLE_AUTO_SYNC", "1")
 
+# TestClient always sends Host: testserver and no launch token. This flag (and
+# only this flag) makes the API guard accept that host without a token; the
+# packaged app never sets it (backend/services/api_auth.py, audit 2026-11-13).
+os.environ.setdefault("SAKADESK_TEST_CLIENT", "1")
+
 
 import pytest  # noqa: E402
 

@@ -47,7 +47,6 @@ from urllib.parse import urlparse  # noqa: E402
 
 import structlog  # noqa: E402
 from fastapi import FastAPI, Request  # noqa: E402
-from fastapi.middleware.cors import CORSMiddleware  # noqa: E402
 from fastapi.responses import JSONResponse  # noqa: E402
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 from fastapi.responses import FileResponse  # noqa: E402
@@ -77,8 +76,11 @@ from backend.api import (  # noqa: E402
     memories,
     archive,
     media,
+    session,
 )
 from backend.api_no_store import ApiNoStoreMiddleware  # noqa: E402
+from backend.security_headers import SecurityHeadersMiddleware  # noqa: E402
+from backend.services import api_auth  # noqa: E402
 from backend.services import app_state  # noqa: E402
 from backend.services.data_lock import DataDirLock  # noqa: E402
 from backend.services.platform import get_app_data_dir  # noqa: E402
@@ -403,7 +405,25 @@ async def _deferred_blog_backup():
         logger.warning(f"Blog backup auto-resume failed (non-fatal): {e}")
 
 
-app = FastAPI(title="SakaDesk", lifespan=lifespan)
+def _docs_urls(frozen: bool) -> dict[str, str | None]:
+    """FastAPI's /docs, /redoc and /openapi.json only in source runs.
+
+    The docs pages load floating-version CDN scripts into the app's privileged
+    origin, and the schema maps every route (security audit 2026-11-13).
+    """
+    if frozen:
+        return {"docs_url": None, "redoc_url": None, "openapi_url": None}
+    return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
+
+
+_docs = _docs_urls(frozen=bool(getattr(sys, "frozen", False)))
+app = FastAPI(
+    title="SakaDesk",
+    lifespan=lifespan,
+    docs_url=_docs["docs_url"],
+    redoc_url=_docs["redoc_url"],
+    openapi_url=_docs["openapi_url"],
+)
 
 # Coded AI errors → {"detail", "code"} so the UI can localize the message.
 from backend.api.errors import (  # noqa: E402
@@ -413,76 +433,76 @@ from backend.api.errors import (  # noqa: E402
 
 app.add_exception_handler(CodedHTTPException, coded_http_exception_handler)
 
-# CORS configuration
-# In production, frontend is served from same origin (no CORS needed).
-# These origins are for development mode when Vite runs on a separate port.
-ALLOWED_ORIGINS = [
-    "http://localhost:5173",  # Vite dev server default
-    "http://127.0.0.1:5173",
-    "http://localhost:3000",  # Common alternative
-    "http://127.0.0.1:3000",
-    "http://localhost:8080",
-    "http://127.0.0.1:8080",
-]
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
-    allow_credentials=True,
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
-    allow_headers=["*"],
-)
+def _is_own_origin(origin: str, host: str) -> bool:
+    """True only when Origin is exactly ``http(s)://<this request's Host>``.
 
-
-def _is_loopback_origin(origin: str) -> bool:
-    """True if an Origin header value points at this app's own loopback host.
-
-    The app is served from http://127.0.0.1:<port> / http://localhost:<port>
-    (randomized port), so we compare only the host — any loopback port is ours.
-    Non-http(s) schemes and unparseable values are rejected.
+    TrustedHostMiddleware has already limited Host to loopback names, so an
+    exact match means the page came from this server. A page on any other
+    loopback port does not match (security audit 2026-11-13).
     """
     try:
         parsed = urlparse(origin)
-    except Exception:
+    except ValueError:
         return False
-    if parsed.scheme not in ("http", "https"):
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
         return False
-    return parsed.hostname in ("127.0.0.1", "localhost")
+    return parsed.netloc.lower() == host.lower()
 
 
 @app.middleware("http")
-async def block_cross_origin_api(request: Request, call_next):
-    """CSRF / DNS-rebinding defense for the local API (SEC-2).
+async def api_guard(request: Request, call_next):
+    """Who may call /api (SEC-2 + security audit 2026-11-13).
 
-    For /api/* requests, reject (403) any request that carries an Origin header
-    whose scheme://host is not one of the app's own loopback origins. Browsers
-    always attach Origin on cross-site POST/DELETE and on fetch(), so this blocks
-    the CSRF vector without requiring the same-origin frontend to send anything
-    new. Requests with NO Origin (native/webview/CLI, most same-origin GETs) are
-    allowed. CORS preflight (OPTIONS) is never blocked here.
+    1. A request that carries an Origin must come from this server's own
+       origin (CSRF, other loopback ports, ``Origin: null``).
+    2. Every request must carry the per-launch token: the X-SakaDesk-Token
+       header, or for GET/HEAD the HttpOnly cookie set by
+       /api/session/bootstrap. Processes and pages without it get 401.
+    Under pytest only (SAKADESK_TEST_CLIENT=1), TestClient's Host: testserver
+    skips step 2.
     """
-    if request.method != "OPTIONS" and request.url.path.startswith("/api/"):
+    path = request.scope.get("path", "")
+    if path.startswith("/api/"):
+        host = request.headers.get("host", "")
         origin = request.headers.get("origin")
-        if origin and not _is_loopback_origin(origin):
+        if origin is not None and not _is_own_origin(origin, host):
+            logger.info("api_request_rejected", reason="origin", method=request.method)
             return JSONResponse(
-                status_code=403,
-                content={"detail": "Cross-origin request rejected"},
+                status_code=403, content={"detail": "Cross-origin request rejected"}
             )
+        is_test_client = (
+            api_auth.test_client_mode() and host.split(":", 1)[0] == "testserver"
+        )
+        if not is_test_client:
+            token = request.headers.get(api_auth.TOKEN_HEADER, "")
+            if not token and request.method in ("GET", "HEAD"):
+                token = request.cookies.get(api_auth.TOKEN_COOKIE, "")
+            if not api_auth.token_ok(token):
+                logger.info(
+                    "api_request_rejected", reason="token", method=request.method
+                )
+                return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
     return await call_next(request)
 
 
-# Restrict the accepted Host header to loopback (defeats DNS rebinding) plus the
-# TestClient's "testserver" host. Bare hostnames are matched; ports are ignored
-# by TrustedHostMiddleware, so the randomized loopback port is covered.
-app.add_middleware(
-    TrustedHostMiddleware,
-    allowed_hosts=["127.0.0.1", "localhost", "testserver"],
-)
+# Restrict Host to loopback names (defeats DNS rebinding). TestClient's
+# "testserver" is accepted only under pytest (SAKADESK_TEST_CLIENT=1): the
+# single-label name could otherwise be rebound (security audit 2026-11-13).
+_ALLOWED_HOSTS = ["127.0.0.1", "localhost"]
+if api_auth.test_client_mode():
+    _ALLOWED_HOSTS.append("testserver")
+app.add_middleware(TrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
 
 # API JSON must never enter the browser HTTP cache (cache-lock stalls on polls).
 app.add_middleware(ApiNoStoreMiddleware)
 
+# Outermost: framing / sniffing / embedding headers on every response,
+# including the 400/401/403 answers of the guards above.
+app.add_middleware(SecurityHeadersMiddleware)
+
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
+app.include_router(session.router)
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
 app.include_router(content.router, prefix="/api/content", tags=["content"])
 app.include_router(media.router, prefix="/api/media", tags=["media"])
@@ -511,7 +531,11 @@ app.include_router(memories.router)
 
 
 @app.get("/health")
-async def health():
+async def health(nonce: str | None = None):
+    """Liveness for desktop.py. With a nonce, also proves this is SakaDesk's
+    backend: only the process holding the launch token can compute the proof."""
+    if nonce is not None and api_auth.valid_nonce(nonce):
+        return {"status": "ok", "proof": api_auth.health_proof(nonce)}
     return {"status": "ok"}
 
 
