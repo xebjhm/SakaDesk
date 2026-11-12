@@ -266,6 +266,16 @@ async def on_this_day_route(
     return await on_this_day.on_this_day(service, service_data_dir, month_day, now=now)
 
 
+def _parse_month_day(raw: str) -> str:
+    """An ``MM-DD`` month-day (``on_this_day.parse_month_day``); 400 otherwise."""
+    try:
+        on_this_day.parse_month_day(raw)
+    except ValueError:
+        logger.warning("memories.api.reject", reason="bad_date")
+        raise HTTPException(status_code=400, detail="Invalid date") from None
+    return raw
+
+
 def _parse_day(raw: str) -> date:
     """A ``YYYY-MM-DD`` date; 400 for any other format or an impossible date."""
     try:
@@ -326,6 +336,24 @@ async def day_route(
         member=summary,
         include_other_services=others,
         now=now,
+    )
+
+
+@router.get("/{service}/day/years")
+async def day_years_route(
+    service: str,
+    month_day: str = Query(...),
+    member: str | None = Query(None),
+) -> dict:
+    """歷年同一天: ``month_day`` (``MM-DD``, else 400) in every year with
+    messages (``day_view.day_years``); ``member`` (chat path of any of her
+    rooms) limits it to one person."""
+    now = datetime.now(timezone.utc)
+    service_data_dir = _service_dir(service)
+    md = _parse_month_day(month_day)
+    summary = await _optional_person(service_data_dir, member, "day_years")
+    return await day_view.day_years(
+        service, service_data_dir, md, member=summary, now=now
     )
 
 

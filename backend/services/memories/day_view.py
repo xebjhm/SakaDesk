@@ -33,6 +33,27 @@ The film strip calls this with ``member`` and centres on its message id.
 Logs (ids, codes and counts only): ``memories_day`` (``members``, ``count``,
 ``others`` = other services were read, ``services`` = services with
 messages in the payload).
+
+**Same day, every year** (歷年同一天) -- :func:`day_years` returns
+``{"month_day", "members", "years": [{"year", "date", "messages"}]}``:
+
+- the same calendar day ``month_day`` (``MM-DD``) in every year that has
+  messages on it (oldest first), up to today (JST): one person (``member``)
+  or everyone of the active service; never other services;
+- ``messages`` per year are the day view's message objects (texts attached,
+  ``person_key``, sorted by ``(ts, id, room)``), promo included (the real
+  chat), each with ``kind`` for the UI's guide lines: ``ohayo`` / ``oyasumi``
+  (a text with that greeting; both: ``ohayo`` before 12:00 JST, else
+  ``oyasumi``), ``photo`` (a picture or video), ``voice``, else ``None``;
+- the subscription welcome (``Fact.is_welcome``) is left out: it is the
+  room's automatic greeting, not her day;
+- ``members`` are the people with a message on any of those days, oshi
+  first, as in the day view (``avatar_url`` = her avatar at her first
+  message on this month-day).
+
+Not cached (the payload carries her words). Logs ``memories_day_years``
+(``years``, ``members``, ``count``, ``welcome`` = welcome messages left
+out).
 """
 
 from __future__ import annotations
@@ -47,6 +68,7 @@ from backend.services import service_utils
 from backend.services.memories import index as mi
 from backend.services.memories import people
 from backend.services.memories.facts import Fact
+from backend.services.memories.selection import JST
 
 logger = structlog.get_logger(__name__)
 
@@ -182,4 +204,69 @@ async def day_view(
     }
 
 
-__all__ = ["day_person_key", "day_view"]
+def message_kind(fact: Fact) -> str | None:
+    """The kind the 歷年同一天 guide lines match on (see the module docstring)."""
+    if fact.type in people.MEDIA_TYPES:
+        return "photo"
+    if fact.type == "voice":
+        return "voice"
+    if fact.type != "text":
+        return None
+    ohayo, oyasumi = fact.has_greeting("ohayo"), fact.has_greeting("oyasumi")
+    if ohayo and oyasumi:
+        return "ohayo" if fact.hour < 12 else "oyasumi"
+    if ohayo:
+        return "ohayo"
+    return "oyasumi" if oyasumi else None
+
+
+def _group_years(kept: list[_Tagged], refs: list[dict]) -> list[dict]:
+    """One entry per year with messages, oldest first. Pure."""
+    years: dict[int, dict] = {}
+    for (_, _, fact), ref in zip(kept, refs, strict=True):
+        ref["kind"] = message_kind(fact)
+        entry = years.setdefault(
+            fact.jst_date.year,
+            {
+                "year": fact.jst_date.year,
+                "date": fact.jst_date.isoformat(),
+                "messages": [],
+            },
+        )
+        entry["messages"].append(ref)
+    return [years[y] for y in sorted(years)]
+
+
+async def day_years(
+    service: str,
+    sdir: Path,
+    month_day: str,
+    *,
+    member: mi.MemberSummary | None,
+    now: datetime,
+) -> dict:
+    """The same calendar day across every year (see the module docstring)."""
+    today = now.astimezone(JST).date()
+    summaries = [member] if member is not None else await mi.list_members(sdir)
+    tagged = await people.service_facts_on(sdir, summaries, month_day=month_day)
+    kept = [t for t in tagged if not t[2].is_welcome and t[2].jst_date <= today]
+    welcome = sum(1 for t in tagged if t[2].is_welcome)
+    posted = {people.person_key(t[0]): t[0] for t in kept}
+    oshi = await people.oshi_rooms(service, posted.values())
+    avatars = await people.avatar_timelines_for(sdir, posted)
+    members, refs = await asyncio.to_thread(
+        _compose, service, sdir, kept, oshi, avatars
+    )
+    await people.attach_texts(sdir, refs)
+    years = await asyncio.to_thread(_group_years, kept, refs)
+    logger.info(
+        "memories_day_years",
+        years=len(years),
+        members=len(members),
+        count=len(refs),
+        welcome=welcome,
+    )
+    return {"month_day": month_day, "members": members, "years": years}
+
+
+__all__ = ["day_person_key", "day_view", "day_years", "message_kind"]
