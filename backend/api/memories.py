@@ -871,40 +871,6 @@ async def memoir_day24_route(
     )
 
 
-@router.get("/{service}/then-now/day")
-async def then_now_day_route(
-    service: str,
-    day_q: str = Query(..., alias="date"),
-    member: str | None = Query(None),
-) -> dict | None:
-    """あの日と今日 for ``date`` (``YYYY-MM-DD``; ``then_now.then_now_day``).
-
-    ``member`` (chat path of any of her rooms) pins the person. ``null`` when
-    there is no later year to pair with (the toggle is hidden).
-    """
-    now = datetime.now(timezone.utc)
-    service_data_dir = _service_dir(service)
-    day = _parse_day(day_q)
-    summary = await _optional_person(service_data_dir, member, "then_now")
-    return await then_now.then_now_day(
-        service, service_data_dir, day, member=summary, now=now
-    )
-
-
-@router.get("/{service}/then-now/first-week")
-async def then_now_first_week_route(
-    service: str, member: str = Query(...)
-) -> dict | None:
-    """初見 vs 今 of the person owning ``member`` (``then_now.then_now_first_week``),
-    or ``null`` when the weeks overlap or no row has both sides."""
-    now = datetime.now(timezone.utc)
-    service_data_dir = _service_dir(service)
-    summary = await _person(service_data_dir, member, view="then_now")
-    return await then_now.then_now_first_week(
-        service, service_data_dir, summary, now=now
-    )
-
-
 @router.get("/{service}/then-now/first-meet")
 async def then_now_first_meet_route(
     service: str, member: str = Query(...)
