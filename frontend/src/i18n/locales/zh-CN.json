@@ -770,7 +770,8 @@
     "sampleDisabledReason": "请先选择团体",
     "displaySample": "留住每一条消息",
     "loading": "加载状态",
-    "playWait": "模拟等待"
+    "playWait": "模拟等待",
+    "postcards": "回忆明信片（示例数据）"
   },
   "letters": {
     "openImage": "打开信件",
@@ -1146,7 +1147,7 @@
     "thenNow": {
       "rowPhoto": "照片",
       "rowOhayo": "早安",
-      "rowVoice": "声音",
+      "rowVoice": "语音",
       "none": "第一次和最近的消息，还凑不成一对。",
       "title": "初见与现在",
       "then": "初见",

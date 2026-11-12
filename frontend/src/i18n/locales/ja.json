@@ -770,7 +770,8 @@
     "sampleDisabledReason": "先にグループを選んでください",
     "displaySample": "すべてのメッセージを残す",
     "loading": "読み込み表示",
-    "playWait": "待ち時間を再生"
+    "playWait": "待ち時間を再生",
+    "postcards": "思い出のはがき（サンプルデータ）"
   },
   "letters": {
     "openImage": "レターを開く",
@@ -1146,7 +1147,7 @@
     "thenNow": {
       "rowPhoto": "写真",
       "rowOhayo": "おはよう",
-      "rowVoice": "声",
+      "rowVoice": "ボイス",
       "none": "はじめてと最近は、まだ一組になりません。",
       "title": "初見と今",
       "then": "初見",
@@ -1158,8 +1159,8 @@
       "elapsedDays": "{{count}}日",
       "elapsedJoin": "{{years}}{{days}}",
       "openSide": "{{date}} の一日をひらく",
-      "voiceLonger": "{{count}} 秒長く",
-      "voiceShorter": "{{count}} 秒短く",
+      "voiceLonger": "{{count}}秒長く",
+      "voiceShorter": "{{count}}秒短く",
       "spanYears": "はじめてから今まで・約{{count}}年",
       "spanMonths": "はじめてから今まで・約{{count}}か月"
     },

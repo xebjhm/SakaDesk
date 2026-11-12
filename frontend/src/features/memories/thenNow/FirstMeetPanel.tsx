@@ -32,6 +32,7 @@ const wordsOf = (m: MemoryMessage) => (m.type === 'text' ? m.text : (m.caption ?
 
 /** One side of a row: a paper card with the JST date and time, the photo, voice or words; a click opens her day at it. */
 const Side: React.FC<{ message: MemoryMessage; which: 'then' | 'now'; onOpen: () => void }> = ({ message: m, which, onOpen }) => {
+    // Below lg the two sides stack, so each names its column (初見 / 今) itself.
     const { t, i18n } = useTranslation();
     const date = formatCardDate(formatJstDate(m.ts), i18n.language);
     const words = wordsOf(m);
@@ -55,8 +56,13 @@ const Side: React.FC<{ message: MemoryMessage; which: 'then' | 'now'; onOpen: ()
                     {m.type === 'video' && <Play aria-hidden="true" className="absolute left-1 top-1 h-3.5 w-3.5 fill-current text-inverse drop-shadow-sm" />}
                 </span>
             )}
-            <span className="flex min-w-0 flex-col gap-1">
-                <span className="text-caption tabular-nums text-muted">{date} {formatJstClock(m.ts)}</span>
+            <span className="flex min-w-0 flex-1 flex-col gap-1">
+                <span className="text-caption tabular-nums text-muted">
+                    <span data-testid="first-meet-side-label" className="mr-2 font-semibold text-secondary lg:hidden">
+                        {t(which === 'then' ? 'memories.thenNow.then' : 'memories.thenNow.now')}
+                    </span>
+                    {date} {formatJstClock(m.ts)}
+                </span>
                 {m.type === 'voice' && (
                     <span className="flex items-center gap-1 text-small text-secondary">
                         <Mic aria-hidden="true" className="h-3.5 w-3.5" />
@@ -85,8 +91,13 @@ const Rows: React.FC<{ data: FirstMeetPayload; name: string; onOpen: (m: MemoryM
     const span = spanLine(t, data.rows);
     return (
         <div className="flex flex-col">
-            {span && <p data-testid="first-meet-span" className="pb-3 text-small text-secondary">{span}</p>}
-            <div className="flex items-end gap-3 pb-2">
+            {/* The panel's header: the title, and the span on the right (wrapping below when narrow). */}
+            <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1 pb-3">
+                <h4 className="font-display text-title text-primary">{t('memories.thenNow.title')}</h4>
+                {span && <p data-testid="first-meet-span" className="ml-auto text-small text-secondary">{span}</p>}
+            </header>
+            {/* Column heads only while the sides sit side by side (lg and up). */}
+            <div data-testid="first-meet-heads" className="hidden items-end gap-3 pb-2 lg:flex">
                 <span className="w-20 shrink-0" />
                 <Head label={t('memories.thenNow.then')} caption={t('memories.thenNow.thenCaption')} avatarUrl={data.avatar_then} name={name} />
                 <span className="w-24 shrink-0" />
@@ -98,14 +109,17 @@ const Rows: React.FC<{ data: FirstMeetPayload; name: string; onOpen: (m: MemoryM
                     data-testid="first-meet-row"
                     data-kind={row.kind}
                     aria-labelledby={`first-meet-${row.kind}`}
-                    className="flex items-center gap-3 border-t border-subtle py-3"
+                    className="flex flex-col gap-2 border-t border-subtle py-3 lg:flex-row lg:items-center lg:gap-3"
                 >
-                    <h4 id={`first-meet-${row.kind}`} className="w-20 shrink-0 text-small font-semibold text-primary">
+                    <h5 id={`first-meet-${row.kind}`} className="shrink-0 text-small font-semibold text-primary lg:w-20">
                         {t(ROW_LABEL[row.kind])}
-                    </h4>
+                    </h5>
                     <Side message={row.then} which="then" onOpen={() => onOpen(row.then)} />
-                    <div data-testid="first-meet-gap" className="flex w-24 shrink-0 flex-col items-center gap-1 text-center text-muted">
-                        <ArrowRight aria-hidden="true" className="h-4 w-4" />
+                    <div
+                        data-testid="first-meet-gap"
+                        className="flex shrink-0 items-center justify-center gap-2 text-center text-muted lg:w-24 lg:flex-col lg:gap-1"
+                    >
+                        <ArrowRight aria-hidden="true" className="h-4 w-4 rotate-90 lg:rotate-0" />
                         <span className="font-display text-small tabular-nums text-secondary">{formatElapsed(t, row.elapsed)}</span>
                         {voiceDelta(t, row) && <span data-testid="first-meet-voice-delta" className="text-caption tabular-nums">{voiceDelta(t, row)}</span>}
                     </div>
@@ -127,7 +141,7 @@ interface FirstMeetPanelProps {
 /**
  * 初見と今 (B2) in the memoir timeline: one row per kind (おはよう, photo, voice, おやすみ) with her
  * first one on the left, a recent one on the right and the time between them in the middle
- * (「1 年 8 天」; the voice row adds how much longer or shorter she spoke, 「長了 33 秒」), under a
+ * (「1 年 8 天」; below `lg` the two sides stack, each naming its column; the voice row adds how much longer or shorter she spoke, 「長了 33 秒」), under a
  * subtitle with the whole span (「從最初到現在・相隔約 1 年」). A row exists only when both sides do (the backend leaves the others out). Each
  * side is a paper card (the older photo aged with `sepiaClass`); a click opens her day at that
  * message (`MemberDayDialog`, jump logged from `timeline`), and closing it leaves the panel as it

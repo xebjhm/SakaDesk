@@ -770,7 +770,8 @@
     "sampleDisabledReason": "請先選擇團體",
     "displaySample": "留住每一則訊息",
     "loading": "載入狀態",
-    "playWait": "模擬等候"
+    "playWait": "模擬等候",
+    "postcards": "回憶明信片（範例資料）"
   },
   "letters": {
     "openImage": "開啟信件",
@@ -1146,7 +1147,7 @@
     "thenNow": {
       "rowPhoto": "照片",
       "rowOhayo": "早安",
-      "rowVoice": "聲音",
+      "rowVoice": "語音",
       "none": "第一次和最近的訊息，還湊不成一對。",
       "title": "初見與現在",
       "then": "初見",

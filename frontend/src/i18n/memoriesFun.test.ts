@@ -131,7 +131,7 @@ describe('memories fun strings', () => {
             'memories.thenNow.elapsedDays': '{{count}}日',
             'memories.thenNow.rowPhoto': '写真',
             'memories.thenNow.rowOhayo': 'おはよう',
-            'memories.thenNow.rowVoice': '声',
+            'memories.thenNow.rowVoice': 'ボイス',
             'memories.day24.tab': '彼女の24時間',
             'memories.day24.title': '{{name}}の一日',
             'memories.day24.fromYears': '{{count}}年分のメッセージから',

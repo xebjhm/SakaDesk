@@ -770,7 +770,8 @@
     "sampleDisabledReason": "請先揀團體",
     "displaySample": "留住每一則訊息",
     "loading": "載入狀態",
-    "playWait": "模擬等候"
+    "playWait": "模擬等候",
+    "postcards": "回憶明信片（示範資料）"
   },
   "letters": {
     "openImage": "打開信",
@@ -1146,7 +1147,7 @@
     "thenNow": {
       "rowPhoto": "相片",
       "rowOhayo": "早晨",
-      "rowVoice": "聲",
+      "rowVoice": "語音",
       "none": "第一次同最近嘅訊息，仲未夾成一對。",
       "title": "初見同而家",
       "then": "初見",

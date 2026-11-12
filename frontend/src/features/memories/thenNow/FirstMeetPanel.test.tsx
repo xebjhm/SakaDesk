@@ -56,8 +56,9 @@ describe('FirstMeetPanel (初見と今)', () => {
         expect(then).toHaveTextContent('07:40');
         expect(within(rows[0]).getByTestId('first-meet-gap')).toHaveTextContent('1 年 8 天');
         expect(within(rows[1]).getByTestId('first-meet-gap')).toHaveTextContent('5 天');
-        expect(screen.getByText('初見')).toBeInTheDocument();
-        expect(screen.getByText('現在')).toBeInTheDocument();
+        const heads = screen.getByTestId('first-meet-heads');
+        expect(within(heads).getByText('初見')).toBeInTheDocument();
+        expect(within(heads).getByText('現在')).toBeInTheDocument();
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_load', { target: 'then_now', outcome: 'ok', count: 2 });
     });
 
@@ -75,7 +76,22 @@ describe('FirstMeetPanel (初見と今)', () => {
         expect(await screen.findByTestId('first-meet-span')).toHaveTextContent('從最初到現在・相隔約 1 年');
         const voice = screen.getAllByTestId('first-meet-row').find((r) => r.getAttribute('data-kind') === 'voice')!;
         expect(within(voice).getByTestId('first-meet-voice-delta')).toHaveTextContent('長了 33 秒');
+        // the rest of the zh-TW UI calls a voice 語音
+        expect(within(voice).getByRole('heading', { name: '語音' })).toBeInTheDocument();
+        // the span sits in the panel header beside the title, pushed to the right
+        const header = screen.getByRole('heading', { name: '初見與現在' }).closest('header')!;
+        expect(within(header).getByTestId('first-meet-span')).toHaveClass('ml-auto');
         expect(screen.getAllByTestId('first-meet-voice-delta')).toHaveLength(1);
+    });
+
+    it('stacks the two sides under lg, each naming its column, and shows the heads only side by side', async () => {
+        renderPanel();
+        const [row] = await screen.findAllByTestId('first-meet-row');
+        expect(row).toHaveClass('flex-col', 'lg:flex-row');
+        expect(screen.getByTestId('first-meet-heads')).toHaveClass('hidden', 'lg:flex');
+        const labels = within(row).getAllByTestId('first-meet-side-label');
+        expect(labels.map((l) => l.textContent)).toEqual(['初見', '現在']);
+        expect(labels[0]).toHaveClass('lg:hidden');
     });
 
     it('ages only the older photo', async () => {
@@ -122,6 +138,7 @@ describe('FirstMeetPanel (初見と今)', () => {
             ...row, kind: 'voice' as const, then: { ...row.then, duration_s: a }, now: { ...row.now, duration_s: b },
         });
         expect(voiceDelta(t, voice(42, 30))).toBe('12 s shorter');
+        expect(voiceDelta(i18n.getFixedT('ja'), voice(42, 28))).toBe('14秒短く');
         expect(voiceDelta(t, voice(10, 10.2))).toBeNull();
         expect(voiceDelta(t, voice(null, 10))).toBeNull();
         expect(voiceDelta(t, row)).toBeNull();

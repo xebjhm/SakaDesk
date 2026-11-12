@@ -772,7 +772,8 @@
     "sampleDisabledReason": "Choose a group first",
     "displaySample": "Keep every message",
     "loading": "Loading states",
-    "playWait": "Play a wait"
+    "playWait": "Play a wait",
+    "postcards": "Memories postcards (sample data)"
   },
   "letters": {
     "openImage": "Open letter",
