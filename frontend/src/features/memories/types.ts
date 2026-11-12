@@ -387,8 +387,10 @@ export interface TimelineMonthPayload {
     month: string;
     count: number;
     avatar_url: string | null;
-    /** Up to twelve photos, time order. */
+    /** Up to thirteen photos, time order. */
     photos: MemoryMessage[];
+    /** Index in `photos` of the month's most representative one (best photo score, ★ first), or null. */
+    hero: number | null;
     messages: {
         top: MemoryMessage | null;
         late: MemoryMessage | null;

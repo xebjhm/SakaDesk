@@ -12,6 +12,9 @@
   - ``avatar_url``: her avatar at the middle of the month, clamped to ``now``;
   - ``photos``: up to :data:`PHOTO_CAP` non-promo pictures / videos with the
     highest ``photo_score`` (ties: the earlier), shown in time order;
+  - ``hero``: the index in ``photos`` of the month's most representative one,
+    the highest ``photo_score`` (a ★ adds 500; ties: the earlier), or ``None``
+    without photos. The UI draws it large beside two rows of the others;
   - ``messages``: three words slots (*words* = non-promo with an importance;
     photos already shown, and their paired caption messages, are left out),
     filled in the order top -> nickname
@@ -68,10 +71,10 @@ VIEW = "timeline"
 VIEW_MONTHS = "timeline_months"
 VIEW_MONTH = "timeline_month"
 # Bump on any rule or payload change of the month view (its cache hash has it).
-TIMELINE_VERSION = 3
+TIMELINE_VERSION = 4
 # Bump on any rule or payload change of the rail (its cache hash has it).
 TIMELINE_MONTHS_VERSION = 1
-PHOTO_CAP = 12
+PHOTO_CAP = 13  # one hero + two rows of six small tiles
 MONTH_RE = re.compile(r"^\d{4}-(0[1-9]|1[0-2])\Z")
 SLOTS = ("top", "nickname", "late")  # fill order
 
@@ -241,6 +244,14 @@ def _compose(
     """The text-free month payload. Blocking (runs in a worker)."""
     person = _member_id(summary)
     photos, slots = _pick(month_facts)
+    hero = (
+        min(
+            range(len(photos)),
+            key=lambda i: (-(photos[i][1].photo_score or 0), *_order(photos[i])),
+        )
+        if photos
+        else None
+    )
 
     def ref(t: _Tagged) -> dict:
         return people.message_ref(service, sdir, t[0], t[1], avatar=timeline)
@@ -273,6 +284,7 @@ def _compose(
         "count": len(month_facts),
         "avatar_url": timeline.at(min(mid, now)),
         "photos": [ref(t) for t in photos],
+        "hero": hero,
         "messages": {
             slot: (ref(t) if (t := slots[slot]) is not None else None)
             for slot in ("top", "late", "nickname")

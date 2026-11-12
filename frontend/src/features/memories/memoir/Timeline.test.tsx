@@ -39,6 +39,7 @@ function monthPayload(month: string, over: Partial<TimelineMonthPayload> = {}): 
             id: 100 + n, type: 'picture', text: null, ts: `2024-12-0${n}T03:00:00Z`,
             media_url: `/api/content/media/p${n}.jpg`, media_file: `messages/x/picture/${n}.jpg`,
         })),
+        hero: 0,
         messages: {
             top: memoryMessage({ id: 7, text: 'ずっと%%%に伝えたかったこと' }),
             late: memoryMessage({ id: 8, ts: '2024-12-05T15:30:00Z', text: 'おやすみ🌙' }),
@@ -117,6 +118,30 @@ describe('Timeline', () => {
         expect(vi.mocked(clientLog)).toHaveBeenCalledWith('memories_jump', { target: 'timeline', has_target: true });
     });
 
+    it('draws the month\'s hero photo large beside two rows of the others', async () => {
+        vi.mocked(fetchTimelineMonth).mockImplementation(async (_s, _m, month) => monthPayload(month, { hero: 2 }));
+        renderTimeline();
+        const strip = await screen.findByTestId('timeline-photos');
+        // stacked at narrow widths, side by side from sm
+        expect(strip).toHaveClass('flex-col', 'sm:flex-row');
+        const hero = within(strip).getByTestId('timeline-hero');
+        expect(hero).toHaveAccessibleName('2024/12/3');
+        const grid = within(strip).getByTestId('timeline-photo-grid');
+        expect(grid).toHaveClass('grid-rows-2', 'grid-flow-col');
+        expect(within(grid).getAllByRole('button').map((b) => b.getAttribute('aria-label'))).toEqual(['2024/12/1', '2024/12/2']);
+        // the hero opens the viewer at its own place in time order
+        await userEvent.click(hero);
+        expect(within(await screen.findByRole('dialog')).getByText('3 / 3')).toBeInTheDocument();
+    });
+
+    it('without a hero every photo sits in the two-row grid', async () => {
+        vi.mocked(fetchTimelineMonth).mockImplementation(async (_s, _m, month) => monthPayload(month, { hero: null }));
+        renderTimeline();
+        const strip = await screen.findByTestId('timeline-photos');
+        expect(within(strip).queryByTestId('timeline-hero')).toBeNull();
+        expect(within(within(strip).getByTestId('timeline-photo-grid')).getAllByRole('button')).toHaveLength(3);
+    });
+
     it('fetches the month picked on the rail and drops a month left quickly', async () => {
         renderTimeline();
         await screen.findByRole('heading', { name: '2024年12月' });
@@ -144,7 +169,7 @@ describe('Timeline', () => {
 
     it('never shows a 0 for an empty month', async () => {
         vi.mocked(fetchTimelineMonth).mockImplementation(async (_s, _m, month) => monthPayload(month, {
-            count: 0, photos: [], messages: { top: null, late: null, nickname: null }, milestones: [],
+            count: 0, photos: [], hero: null, messages: { top: null, late: null, nickname: null }, milestones: [],
         }));
         renderTimeline();
         await screen.findByRole('heading', { name: '2024年12月' });

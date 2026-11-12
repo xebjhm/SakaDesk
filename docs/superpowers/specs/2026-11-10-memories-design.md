@@ -136,7 +136,7 @@ Shelves of cards. Earned cards face up (photo or her words, Japanese original, w
 Removed by the user: season cards, late-night (1–5h) card, calling-style change, letter-reply cards, card back "one year later".
 
 ### 5.4 時光軸 (timeline)
-A bottom rail of monthly message-volume bars with a lens (same interaction as the blogs TimelineRail: drag, wheel, ←/→ = older/newer). Above it, the selected month: her avatar at the time, that month's photos, representative messages (highest importance, a late message, a nickname message), and that month's milestones (from the card catalogue). The あの日と今日 toggle (§14.2) is available here.
+A bottom rail of monthly message-volume bars with a lens (same interaction as the blogs TimelineRail: drag, wheel, ←/→ = older/newer). Above it, the selected month: her avatar at the time, that month's photos (one large hero, the best photo score, beside two rows of small tiles; stacked when narrow), representative messages (highest importance, a late message, a nickname message), and that month's milestones (from the card catalogue). The あの日と今日 toggle (§14.2) is available here.
 
 ## 6. On This Day
 

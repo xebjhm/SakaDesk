@@ -173,11 +173,13 @@ async def test_month_slots_photos_and_avatar(svc):
     assert slots["nickname"]["id"] == 11 and slots["nickname"]["text"] == "%%%またね"
     assert slots["late"]["id"] == 13  # 01:30 counts as 25:30, later than 23:00
     assert slots["late"]["text"] == "眠れないなあ"
-    # photo cap: the two favourites plus the ten earliest, in time order
+    # photo cap: the two favourites plus the eleven earliest, in time order
     ids = [p["id"] for p in m["photos"]]
-    assert len(ids) == 12
-    assert ids == [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31]
+    assert len(ids) == tl.PHOTO_CAP == 13
+    assert ids == [20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32]
     assert {25, 30} <= set(ids) and ids == sorted(ids)
+    # the hero: the best photo_score (a favourite; ties: the earlier)
+    assert m["photos"][m["hero"]]["id"] == 25
     assert m["photos"][0]["media_file"] == f"{ROOM}/picture/20.jpg"
     assert m["photos"][0]["avatar_url"].endswith("/a.jpg")  # 03-10 < 03-12
     assert m["avatar_url"].endswith("/b.jpg")  # mid-month (03-16) avatar

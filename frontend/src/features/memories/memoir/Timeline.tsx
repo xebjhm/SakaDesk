@@ -30,6 +30,8 @@ const HEADER_AVATAR_PX = 40;
 /** A month held this long on the rail is fetched; quicker steps (a drag, a wheel run) are not. */
 const FETCH_DELAY_MS = 150;
 const PHOTO_PX = 96;
+/** The hero tile spans the two rows of small tiles (2 × 96 px + the gap). */
+const HERO_PX = 200;
 const SLOT_PX = 160;
 
 type Slot = keyof TimelineMonthPayload['messages'];
@@ -130,7 +132,9 @@ function anchorDate(view: TimelineMonthPayload): string | undefined {
 
 /**
  * The selected month: her avatar then, the serif month label and the month's one number (never 0),
- * then up to twelve photos (the media viewer, jump logged as `timeline`), the labelled word slots
+ * then up to thirteen photos: the month's hero (`hero`, the best photo score) large beside two rows
+ * of small tiles, stacked above them at narrow widths (each opens the media viewer, jump logged as
+ * `timeline`), the labelled word slots
  * (empty ones left out) and the milestones. A month change aborts the fetch in flight; until the
  * new month arrives the last loaded one of hers stays (`keepPrevious`, `BusyContent`: `aria-busy`,
  * dimmed after the reveal delay, inert: its photos would open the viewer at the new month's
@@ -180,23 +184,46 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
                     aria-busy={stale ? 'true' : undefined}
                     className="flex flex-col gap-4"
                 >
-                    {viewerItems.viewable.length > 0 && (
-                        <ul data-testid="timeline-photos" className="flex gap-2 overflow-x-auto pb-1">
-                            {viewerItems.viewable.map((p) => (
-                                <li key={`${p.room}|${p.id}`} className="shrink-0">
+                    {viewerItems.viewable.length > 0 && (() => {
+                        const heroMsg = view.hero !== null ? view.photos[view.hero] : undefined;
+                        const hero = heroMsg && viewerItems.viewable.includes(heroMsg) ? heroMsg : undefined;
+                        const rest = viewerItems.viewable.filter((p) => p !== hero);
+                        const open = (p: MemoryMessage) => setViewer({ month, index: viewerIndexOf(viewerItems.viewable, p) });
+                        const label = (p: MemoryMessage) => formatCardDate(formatJstDate(p.ts), i18n.language);
+                        return (
+                            <div data-testid="timeline-photos" className="flex flex-col gap-2 sm:flex-row sm:items-stretch">
+                                {hero && (
                                     <button
                                         type="button"
-                                        aria-label={formatCardDate(formatJstDate(p.ts), i18n.language)}
-                                        onClick={() => setViewer({ month, index: viewerIndexOf(viewerItems.viewable, p) })}
-                                        className="relative block h-24 w-24 overflow-hidden rounded-sm bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                        data-testid="timeline-hero"
+                                        aria-label={label(hero)}
+                                        onClick={() => open(hero)}
+                                        className="relative block aspect-square w-full max-w-xs shrink-0 overflow-hidden rounded-md bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent sm:w-auto sm:max-w-none sm:self-stretch"
                                     >
-                                        <MemoryThumb message={p} px={PHOTO_PX} className="h-full w-full" />
-                                        {p.type === 'video' && <Play aria-hidden="true" className="absolute left-1 top-1 h-3.5 w-3.5 fill-current text-inverse drop-shadow-sm" />}
+                                        <MemoryThumb message={hero} px={HERO_PX} large className="h-full w-full" />
+                                        {hero.type === 'video' && <Play aria-hidden="true" className="absolute left-2 top-2 h-4 w-4 fill-current text-inverse drop-shadow-sm" />}
                                     </button>
-                                </li>
-                            ))}
-                        </ul>
-                    )}
+                                )}
+                                {rest.length > 0 && (
+                                    <ul data-testid="timeline-photo-grid" className="grid min-w-0 auto-cols-max grid-flow-col grid-rows-2 gap-2 overflow-x-auto pb-1">
+                                        {rest.map((p) => (
+                                            <li key={`${p.room}|${p.id}`}>
+                                                <button
+                                                    type="button"
+                                                    aria-label={label(p)}
+                                                    onClick={() => open(p)}
+                                                    className="relative block h-24 w-24 overflow-hidden rounded-sm bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                                                >
+                                                    <MemoryThumb message={p} px={PHOTO_PX} className="h-full w-full" />
+                                                    {p.type === 'video' && <Play aria-hidden="true" className="absolute left-1 top-1 h-3.5 w-3.5 fill-current text-inverse drop-shadow-sm" />}
+                                                </button>
+                                            </li>
+                                        ))}
+                                    </ul>
+                                )}
+                            </div>
+                        );
+                    })()}
                     {slots.length > 0 && (
                         <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
                             {slots.map(({ slot, label, m }) => <SlotCard key={slot} slot={slot} label={label} message={m} name={name} />)}

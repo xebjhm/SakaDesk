@@ -50,7 +50,7 @@ beforeEach(() => {
     vi.mocked(fetchDay24).mockReset().mockResolvedValue({ slots: [] });
     vi.mocked(fetchTimelineMonths).mockReset().mockResolvedValue({ months: [{ month: '2024-09', count: 3 }] });
     vi.mocked(fetchTimelineMonth).mockReset().mockResolvedValue({
-        month: '2024-09', count: 3, avatar_url: null, photos: [],
+        month: '2024-09', count: 3, avatar_url: null, photos: [], hero: null,
         messages: { top: null, late: null, nickname: null }, milestones: [],
     });
 });
