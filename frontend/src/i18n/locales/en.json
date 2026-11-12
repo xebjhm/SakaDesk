@@ -1170,20 +1170,22 @@
       "thisYear": "On {{date}} at {{time}}, {{name}} wrote"
     },
     "thenNow": {
-      "toggle": "Set beside another year",
-      "back": "Back to the usual view",
-      "modeDay": "That day and today",
-      "modeDayYears": "{{then}} ⇆ {{now}}",
-      "modeFirstWeek": "First week and now",
-      "gap": "{{count}} year",
-      "gap_other": "{{count}} years",
-      "firstWeek": "The first week",
-      "latestWeek": "This week",
-      "year": "{{year}}",
       "rowPhoto": "Photo",
       "rowOhayo": "Good morning",
       "rowVoice": "Voice",
-      "none": "Nothing to set side by side yet."
+      "none": "Her firsts and her latest don't make a pair yet.",
+      "title": "Then and now",
+      "then": "First",
+      "now": "Now",
+      "thenCaption": "the very first",
+      "nowCaption": "lately",
+      "rowOyasumi": "Good night",
+      "elapsedYears": "{{count}} year",
+      "elapsedYears_other": "{{count}} years",
+      "elapsedDays": "{{count}} day",
+      "elapsedDays_other": "{{count}} days",
+      "elapsedJoin": "{{years}}, {{days}}",
+      "openSide": "Open the day of {{date}}"
     },
     "day24": {
       "tab": "Her 24 hours",

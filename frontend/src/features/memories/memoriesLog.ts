@@ -44,7 +44,7 @@ export function logMemoriesPage(page: MemoriesPage): void {
  * its member list, a program's tracks and the cassette shelf; `gacha` the gacha state;
  * `calendar` one calendar month, `calendar_months` the month picker; `capsule` an anchor's notes,
  * `capsule_due` the notes resurfacing on a date; `same_time` the 同じ時刻 line; `day24` her 24
- * hours; `then_now` あの日と今日 (day mode and 初見 vs 今); `album_pregen` the album's read of the
+ * hours; `then_now` 初見と今 (the timeline's first-and-recent rows); `album_pregen` the album's read of the
  * thumbnail pre-generation status (media pipeline: `ok` once per activation, or `error`);
  * `album_prefetch` the album's newest-month prefetch beside its months list (`albumPrefetch.ts`);
  * `letters` the fan's own sent letters, read to open one from the あなた shelf (`SentLetter`);
@@ -88,16 +88,15 @@ export function logMemoriesJump(target: MemoriesView, hasTarget: boolean): void 
  * favourite or a name moment (`on` = opened, `off` = closed).
  * Fun wave: `radio_program` a radio program was picked (`kind` = its {@link RadioProgram} code);
  * `cassette` a cassette year (`on` = loaded, `off` = ejected); `sleep_timer` the sleep timer
- * (`on` = set, `off` = cancelled); `then_now` the ⇆ toggle (`on` = あの日と今日 shown); `then_now_mode`
- * day / 初見 vs 今 (`on` = first week); `day_years` the day view's 歷年同一天 mode (`on` = shown,
+ * (`on` = set, `off` = cancelled); `then_now` the timeline's 初見と今 pill (`on` = the rows shown);
+ * `day_years` the day view's 歷年同一天 mode (`on` = shown,
  * `off` = back to the merged or lanes mode); `calendar_member` the calendar's member filter (`on` = one
  * person); `album_cover` 「この月の表紙にする」 (`on` = set, `off` = cleared; a failed write is `off`
  * with a `reason`).
  */
 export const MEMORIES_TOGGLES = [
     'other_services', 'day_mode', 'member_filter', 'lane_card', 'album_filter', 'album_burst', 'film_strip',
-    'radio_program', 'cassette', 'sleep_timer', 'then_now', 'then_now_mode', 'calendar_member', 'album_cover',
-    'day_years',
+    'radio_program', 'cassette', 'sleep_timer', 'then_now', 'calendar_member', 'album_cover', 'day_years',
 ] as const;
 export type MemoriesToggle = (typeof MEMORIES_TOGGLES)[number];
 

@@ -1144,19 +1144,20 @@
       "thisYear": "{{date}} {{time}}、{{name}}は"
     },
     "thenNow": {
-      "toggle": "ほかの年とならべる",
-      "back": "もとの表示へ",
-      "modeDay": "あの日と今日",
-      "modeDayYears": "{{then}}年 ⇆ {{now}}年",
-      "modeFirstWeek": "初見と今",
-      "gap": "{{count}}年",
-      "firstWeek": "はじめの一週間",
-      "latestWeek": "この一週間",
-      "year": "{{year}}年",
       "rowPhoto": "写真",
       "rowOhayo": "おはよう",
       "rowVoice": "声",
-      "none": "ならべられる日は、まだありません。"
+      "none": "はじめてと最近は、まだ一組になりません。",
+      "title": "初見と今",
+      "then": "初見",
+      "now": "今",
+      "thenCaption": "はじめての",
+      "nowCaption": "最近の",
+      "rowOyasumi": "おやすみ",
+      "elapsedYears": "{{count}}年",
+      "elapsedDays": "{{count}}日",
+      "elapsedJoin": "{{years}}{{days}}",
+      "openSide": "{{date}} の一日をひらく"
     },
     "day24": {
       "tab": "彼女の24時間",

@@ -13,7 +13,7 @@ const side = (message: RecapMessage | null, label: string | null): ThenNowSideVi
 
 /**
  * Slide 8, 去年の、同じ日: an earlier message beside one of this year, drawn by the shared
- * あの日と今日 pair (`ThenNowPair variant="slide"`): the older card in the approved full sepia,
+ * あの日と今日 pair (`ThenNowPair`): the older card in the approved full sepia,
  * the shared keyword lit in both (only in her words, never inside the fan's nickname). "The same
  * day" only when they share the JST day; otherwise "then and now". `first_week`: the fan's first
  * subscription week beside now (初見 vs 今), or the first week on record when the subscription
@@ -28,7 +28,6 @@ export const S08Echo: React.FC<SlideProps<S08EchoData>> = ({ data, recap, nickna
         <div className="flex h-full flex-col items-center justify-center gap-4 px-8 text-center">
             <Headline>{t(copy.title.key, copy.title.params)}</Headline>
             <ThenNowPair
-                variant="slide"
                 then={side(data.then, copy.thenLabel ? t(copy.thenLabel.key, copy.thenLabel.params) : null)}
                 now={side(data.now, copy.nowLabel ? t(copy.nowLabel.key, copy.nowLabel.params) : null)}
                 sharedKeyword={keyword}

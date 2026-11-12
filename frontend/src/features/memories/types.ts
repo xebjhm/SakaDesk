@@ -675,48 +675,25 @@ export interface Day24Thin {
 
 export type Day24Payload = Day24Full | Day24Thin;
 
-// --- fun wave: あの日と今日 (then_now.py) ---------------------------------------------------------
+// --- fun wave: 初見と今 (then_now.py) ------------------------------------------------------------
 
-export interface ThenNowSide {
-    /** The side's real JST year and date. */
-    year: number;
-    date: string;
-    member_path: string;
-    name: string;
-    avatar_url: string | null;
-    /** Up to three: best photo / video, best words, first voice. */
-    items: MemoryMessage[];
-}
+/** The kinds 初見と今 pairs, in row order. */
+export type FirstMeetKind = 'ohayo' | 'photo' | 'voice' | 'oyasumi';
 
-/** `GET /then-now/day`: null when there is no later year to pair with (hide the toggle). */
-export interface ThenNowDayPayload {
-    mode: 'day';
-    then: ThenNowSide;
-    now: ThenNowSide;
-    shared_keyword: string | null;
-}
-
-export interface ThenNowDayQuery {
-    /** `YYYY-MM-DD`. */
-    date: string;
-    member?: string;
-}
-
-export type ThenNowRowKind = 'photo' | 'ohayo' | 'voice';
-
-export interface ThenNowRow {
-    kind: ThenNowRowKind;
+export interface FirstMeetRow {
+    kind: FirstMeetKind;
+    /** Her first message of the kind. */
     then: MemoryMessage;
+    /** A recent one: the best of the 30 days ending on her newest of the kind. */
     now: MemoryMessage;
+    /** Calendar time between the two JST dates: whole years, then days (never both 0). */
+    elapsed: { years: number; days: number };
 }
 
-/** `GET /then-now/first-week`: null when the weeks overlap or no row has both sides. */
-export interface ThenNowFirstWeekPayload {
-    mode: 'first_week';
-    /** JST `[first, last]` dates. */
-    then_range: [string, string];
-    now_range: [string, string];
-    rows: ThenNowRow[];
+/** `GET /then-now/first-meet`: null when no kind has both sides. */
+export interface FirstMeetPayload {
+    mode: 'first_meet';
+    rows: FirstMeetRow[];
     avatar_then: string | null;
     avatar_now: string | null;
 }

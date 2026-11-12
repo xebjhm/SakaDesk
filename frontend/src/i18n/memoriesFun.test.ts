@@ -44,9 +44,11 @@ export const MEMORIES_FUN_KEYS: string[] = [
     'memories.capsule.deleteFailed', 'memories.capsule.local',
     'memories.sameTime.now', 'memories.sameTime.pastYear', 'memories.sameTime.thisYear',
     // F13: あの日と今日 and 彼女の24時間
-    'memories.thenNow.toggle', 'memories.thenNow.back', 'memories.thenNow.modeDay', 'memories.thenNow.modeFirstWeek',
-    'memories.thenNow.gap', 'memories.thenNow.firstWeek', 'memories.thenNow.latestWeek', 'memories.thenNow.year',
     'memories.thenNow.rowPhoto', 'memories.thenNow.rowOhayo', 'memories.thenNow.rowVoice', 'memories.thenNow.none',
+    // r4 B2: 初見と今 as same-kind rows
+    'memories.thenNow.title', 'memories.thenNow.then', 'memories.thenNow.now', 'memories.thenNow.thenCaption',
+    'memories.thenNow.nowCaption', 'memories.thenNow.rowOyasumi', 'memories.thenNow.elapsedYears',
+    'memories.thenNow.elapsedDays', 'memories.thenNow.elapsedJoin', 'memories.thenNow.openSide',
     'memories.day24.tab', 'memories.day24.title', 'memories.day24.fromYears', 'memories.day24.fromOneYear',
     'memories.day24.reroll', 'memories.day24.thin', 'memories.day24.year',
 ];
@@ -63,7 +65,7 @@ export const MEMORIES_FUN_EN_PLURALS: string[] = [
     // F12
     'memories.capsule.yearsAgo', 'memories.capsule.limit',
     // F13
-    'memories.thenNow.gap', 'memories.day24.fromYears',
+    'memories.thenNow.elapsedYears', 'memories.thenNow.elapsedDays', 'memories.day24.fromYears',
 ];
 
 /** Recursive dotted lookup (any depth). */
@@ -121,13 +123,9 @@ describe('memories fun strings', () => {
             'memories.home.countGacha': '今日はあと {{count, number}} 回',
             'memories.home.countDays': '{{count, number}} 日分',
             'memories.home.gachaTomorrow': 'また明日',
-            'memories.thenNow.toggle': 'ほかの年とならべる',
-            'memories.thenNow.back': 'もとの表示へ',
-            'memories.thenNow.modeDay': 'あの日と今日',
-            'memories.thenNow.modeFirstWeek': '初見と今',
-            'memories.thenNow.gap': '{{count}}年',
-            'memories.thenNow.firstWeek': 'はじめの一週間',
-            'memories.thenNow.latestWeek': 'この一週間',
+            'memories.thenNow.title': '初見と今',
+            'memories.thenNow.elapsedYears': '{{count}}年',
+            'memories.thenNow.elapsedDays': '{{count}}日',
             'memories.thenNow.rowPhoto': '写真',
             'memories.thenNow.rowOhayo': 'おはよう',
             'memories.thenNow.rowVoice': '声',

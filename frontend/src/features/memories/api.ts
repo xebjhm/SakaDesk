@@ -22,10 +22,11 @@
 import type {
     AlbumColorsPayload, AlbumCoverBody, AlbumMembersPayload, AlbumMonthPayload, AlbumMonthsPayload, AlbumQuery,
     BinderPayload, CalendarMonthPayload, CalendarMonthsPayload, CapsuleCreateBody, CapsuleNote, CapsuleNotesPayload,
-    CapsuleQuery, CapsuleResurfacePayload, Day24Payload, DayPayload, DayQuery, DayYearsPayload, DayYearsQuery, FavoritesPayload, GachaPullPayload,
+    CapsuleQuery, CapsuleResurfacePayload, Day24Payload, DayPayload, DayQuery, DayYearsPayload, DayYearsQuery, FavoritesPayload,
+    FirstMeetPayload, GachaPullPayload,
     GachaStatePayload, HubPayload, MemoirHeaderPayload, MemoirMembersPayload, NameMomentsPayload, OnThisDayPayload,
     RadioCassettesPayload, RadioMembersPayload, RadioProgramPayload, RadioProgramQuery, SameTimeMoment,
-    ThenNowDayPayload, ThenNowDayQuery, ThenNowFirstWeekPayload, TimelineMonthPayload, TimelineMonthsPayload,
+    TimelineMonthPayload, TimelineMonthsPayload,
 } from './types';
 
 /** A server reason code (`detail`), kept only when it is a snake_case code, never free text. */
@@ -282,12 +283,7 @@ export function fetchDay24(
     return getJson(url(service, '/memoir/day24', { member, seed, recent: recent.length ? recent.join(',') : undefined }), signal);
 }
 
-/** あの日と今日 for a date, or null (hide the toggle). */
-export function fetchThenNowDay(service: string, query: ThenNowDayQuery, signal: AbortSignal): Promise<ThenNowDayPayload | null> {
-    return getJson(url(service, '/then-now/day', { date: query.date, member: query.member }), signal);
-}
-
-/** 初見 vs 今, or null when the weeks overlap or no row has both sides. */
-export function fetchThenNowFirstWeek(service: string, member: string, signal: AbortSignal): Promise<ThenNowFirstWeekPayload | null> {
-    return getJson(url(service, '/then-now/first-week', { member }), signal);
+/** 初見と今 as same-kind rows, or null when no kind has both sides. */
+export function fetchFirstMeet(service: string, member: string, signal: AbortSignal): Promise<FirstMeetPayload | null> {
+    return getJson(url(service, '/then-now/first-meet', { member }), signal);
 }

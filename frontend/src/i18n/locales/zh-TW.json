@@ -1144,19 +1144,20 @@
       "thisYear": "{{date}} {{time}}，{{name}}說"
     },
     "thenNow": {
-      "toggle": "和其他年份並排",
-      "back": "回到原本的畫面",
-      "modeDay": "那一天與今天",
-      "modeDayYears": "{{then}} 年 ⇆ {{now}} 年",
-      "modeFirstWeek": "初見與現在",
-      "gap": "{{count}} 年",
-      "firstWeek": "最初的一週",
-      "latestWeek": "這一週",
-      "year": "{{year}} 年",
       "rowPhoto": "照片",
       "rowOhayo": "早安",
       "rowVoice": "聲音",
-      "none": "還沒有可以並排的日子。"
+      "none": "第一次和最近的訊息，還湊不成一對。",
+      "title": "初見與現在",
+      "then": "初見",
+      "now": "現在",
+      "thenCaption": "第一次",
+      "nowCaption": "最近",
+      "rowOyasumi": "晚安",
+      "elapsedYears": "{{count}} 年",
+      "elapsedDays": "{{count}} 天",
+      "elapsedJoin": "{{years}} {{days}}",
+      "openSide": "打開 {{date}} 那一天"
     },
     "day24": {
       "tab": "她的24小時",

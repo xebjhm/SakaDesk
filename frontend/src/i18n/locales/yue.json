@@ -1144,19 +1144,20 @@
       "thisYear": "{{date}} {{time}}，{{name}}講"
     },
     "thenNow": {
-      "toggle": "同其他年份並排",
-      "back": "返去原本嘅畫面",
-      "modeDay": "嗰一日同今日",
-      "modeDayYears": "{{then}} 年 ⇆ {{now}} 年",
-      "modeFirstWeek": "初見同而家",
-      "gap": "{{count}} 年",
-      "firstWeek": "最初嗰個禮拜",
-      "latestWeek": "呢個禮拜",
-      "year": "{{year}} 年",
       "rowPhoto": "相片",
       "rowOhayo": "早晨",
       "rowVoice": "聲",
-      "none": "仲未有可以並排嘅日子。"
+      "none": "第一次同最近嘅訊息，仲未夾成一對。",
+      "title": "初見同而家",
+      "then": "初見",
+      "now": "而家",
+      "thenCaption": "第一次",
+      "nowCaption": "最近",
+      "rowOyasumi": "早唞",
+      "elapsedYears": "{{count}} 年",
+      "elapsedDays": "{{count}} 日",
+      "elapsedJoin": "{{years}} {{days}}",
+      "openSide": "打開 {{date}} 嗰日"
     },
     "day24": {
       "tab": "佢嘅24小時",

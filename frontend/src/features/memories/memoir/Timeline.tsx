@@ -1,13 +1,13 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { CalendarDays, Play } from 'lucide-react';
 import { useTranslation } from '../../../i18n';
-import { Avatar, BusyContent, Button, Card, EmptyState } from '../../../design/primitives';
+import { Avatar, BusyContent, Button, Card, EmptyState, Pill } from '../../../design/primitives';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import { cn } from '../../../utils/classnames';
 import { fetchTimelineMonth, fetchTimelineMonths } from '../api';
 import { albumViewerItems, formatMonth, viewerIndexOf } from '../album/albumViewer';
-import { logMemoriesSkip } from '../memoriesLog';
-import { formatJstDate, jstNow } from '../shared/jst';
+import { logMemoriesSkip, logMemoriesToggle } from '../memoriesLog';
+import { formatJstDate } from '../shared/jst';
 import { jumpToChat } from '../shared/jumpToChat';
 import { LazyVoice } from '../shared/LazyVoice';
 import { MemoriesStatus } from '../shared/memoriesStatus';
@@ -15,8 +15,7 @@ import { memoryMediaSrc } from '../shared/mediaSrc';
 import { MemoryText } from '../shared/MemoryText';
 import { MemoryThumb } from '../shared/MemoryThumb';
 import { useMemoriesQuery } from '../shared/useMemoriesQuery';
-import { ThenNowPanel } from '../thenNow/ThenNowPanel';
-import { ThenNowToggle } from '../thenNow/ThenNowToggle';
+import { FirstMeetPanel } from '../thenNow/FirstMeetPanel';
 import type { MemoryMessage, TimelineMilestone, TimelineMonthPayload } from '../types';
 import { formatCardDate, useCopy } from './binderModel';
 import { cardCopy } from './cardCopy';
@@ -112,26 +111,10 @@ interface MonthViewProps {
     month: string;
     /** The month to fetch (the selection once it has settled). */
     fetchMonth: string;
-    /** Header controls of the host (the ⇆ あの日と今日 toggle). */
+    /** Header controls of the host (the 初見と今 pill). */
     headerSlot?: React.ReactNode;
-    /** Show あの日と今日 (`ThenNowPanel`) instead of the month's photos, words and milestones. */
+    /** Show 初見と今 (`FirstMeetPanel`) instead of the month's photos, words and milestones. */
     thenNow?: boolean;
-}
-
-/** `YYYY-MM` of the current JST month. */
-function currentJstMonth(): string {
-    const { year, month } = jstNow();
-    return `${year}-${String(month).padStart(2, '0')}`;
-}
-
-/**
- * The month's あの日と今日 anchor: the JST date of its top message, else of its first photo.
- * None for the current month (its "now" is not a later year yet), so only 初見と今 can show.
- */
-function anchorDate(view: TimelineMonthPayload): string | undefined {
-    if (view.month === currentJstMonth()) return undefined;
-    const source = view.messages.top ?? view.photos[0];
-    return source ? formatJstDate(source.ts) || undefined : undefined;
 }
 
 /**
@@ -143,8 +126,7 @@ function anchorDate(view: TimelineMonthPayload): string | undefined {
  * new month arrives the last loaded one of hers stays (`keepPrevious`, `BusyContent`: `aria-busy`,
  * dimmed after the reveal delay, inert: its photos would open the viewer at the new month's
  * index; its number is not shown under the new month's label). The header holds the host's `headerSlot`; with `thenNow` the body
- * is `ThenNowPanel` instead: the day mode for the month's anchor date ({@link anchorDate}) and
- * 初見と今 for her.
+ * is `FirstMeetPanel` instead: her first and a recent message of each kind, side by side.
  */
 const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month, fetchMonth, headerSlot, thenNow = false }) => {
     const { t, i18n } = useTranslation();
@@ -171,9 +153,7 @@ const MonthView: React.FC<MonthViewProps> = ({ service, memberPath, name, month,
 
     let body: React.ReactNode;
     if (thenNow) {
-        body = data
-            ? <ThenNowPanel key={data.month} service={service} date={anchorDate(data)} member={memberPath} />
-            : <MemoriesStatus query={failed ? query : { ...query, status: 'loading' }} view="timeline_month" />;
+        body = <FirstMeetPanel service={service} memberPath={memberPath} name={name} />;
     } else if (!view) {
         body = <MemoriesStatus query={failed ? query : { ...query, status: 'loading' }} view="timeline_month" />;
     } else {
@@ -275,7 +255,8 @@ interface TimelineProps {
  * at her newest month. The rail answers at once; the month is fetched once the selection holds
  * for {@link FETCH_DELAY_MS} (the first one at once), and a newer selection aborts the old fetch.
  * Without any month a gentle `EmptyState` (no number) replaces the tab. The month header carries
- * the ⇆ あの日と今日 toggle (`ThenNowToggle`); it resets when another month is picked.
+ * the 初見と今 pill (pressed while `FirstMeetPanel` replaces the month; `memories_toggle`
+ * `then_now`); it resets when another month is picked.
  */
 export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name }) => {
     const { t, i18n } = useTranslation();
@@ -329,7 +310,17 @@ export const Timeline: React.FC<TimelineProps> = ({ service, memberPath, name })
                         month={month}
                         fetchMonth={fetchMonth}
                         thenNow={thenNow}
-                        headerSlot={<ThenNowToggle on={thenNow} available onChange={setThenNow} />}
+                        headerSlot={(
+                            <Pill
+                                selected={thenNow}
+                                onClick={() => {
+                                    logMemoriesToggle('then_now', !thenNow);
+                                    setThenNow(!thenNow);
+                                }}
+                            >
+                                {t('memories.thenNow.title')}
+                            </Pill>
+                        )}
                     />
                 )
                 : <MemoriesStatus query={{ status: 'loading', failure: null, retry: months.retry }} view="timeline_month" />}

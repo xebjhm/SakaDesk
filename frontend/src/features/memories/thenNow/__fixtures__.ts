@@ -1,39 +1,28 @@
-import { MEMBER_PATH, memoryMessage } from '../__fixtures__/memories';
-import type { ThenNowDayPayload, ThenNowFirstWeekPayload } from '../types';
+import { memoryMessage } from '../__fixtures__/memories';
+import type { FirstMeetPayload } from '../types';
 
-/** A day-mode pair: 2024-09-14 beside 2026-09-14, the same person, 花火 shared. */
-export function thenNowDay(over: Partial<ThenNowDayPayload> = {}): ThenNowDayPayload {
+/** 初見と今 with an おはよう row (1 year 8 days) and a photo row (5 days). */
+export function firstMeet(over: Partial<FirstMeetPayload> = {}): FirstMeetPayload {
     return {
-        mode: 'day',
-        then: {
-            year: 2024, date: '2024-09-14', member_path: MEMBER_PATH, name: '金村 美玖', avatar_url: null,
-            items: [memoryMessage({ id: 1, ts: '2024-09-14T12:00:00Z', text: '花火きれい🎆' })],
-        },
-        now: {
-            year: 2026, date: '2026-09-14', member_path: MEMBER_PATH, name: '金村 美玖', avatar_url: null,
-            items: [memoryMessage({ id: 2, ts: '2026-09-14T12:00:00Z', text: '今年も花火！' })],
-        },
-        shared_keyword: '花火',
-        ...over,
-    };
-}
-
-/** 初見 vs 今 with a photo row and an おはよう row. */
-export function thenNowFirstWeek(over: Partial<ThenNowFirstWeekPayload> = {}): ThenNowFirstWeekPayload {
-    return {
-        mode: 'first_week',
-        then_range: ['2023-03-01', '2023-03-07'],
-        now_range: ['2026-11-04', '2026-11-10'],
+        mode: 'first_meet',
         rows: [
             {
-                kind: 'photo',
-                then: memoryMessage({ id: 11, type: 'picture', text: null, ts: '2023-03-02T03:00:00Z', media_url: '/api/content/media/hinatazaka46/a.jpg' }),
-                now: memoryMessage({ id: 12, type: 'picture', text: null, ts: '2026-11-05T03:00:00Z', media_url: '/api/content/media/hinatazaka46/b.jpg' }),
+                kind: 'ohayo',
+                then: memoryMessage({ id: 13, ts: '2025-11-01T22:40:00Z', text: 'はじめてのおはよう、緊張する…！' }),
+                now: memoryMessage({ id: 14, ts: '2026-11-09T22:05:00Z', text: 'おはよ〜 今日も一日がんばろうね☀️' }),
+                elapsed: { years: 1, days: 8 },
             },
             {
-                kind: 'ohayo',
-                then: memoryMessage({ id: 13, ts: '2023-03-01T22:00:00Z', text: 'おはようございます' }),
-                now: memoryMessage({ id: 14, ts: '2026-11-09T22:00:00Z', text: 'おはよう☀️' }),
+                kind: 'photo',
+                then: memoryMessage({
+                    id: 11, type: 'picture', text: null, caption: '初めて送る写真！', ts: '2025-11-03T09:22:00Z',
+                    media_url: '/api/content/media/hinatazaka46/a.jpg', media_file: 'messages/a.jpg',
+                }),
+                now: memoryMessage({
+                    id: 12, type: 'picture', text: null, ts: '2025-11-08T06:10:00Z',
+                    media_url: '/api/content/media/hinatazaka46/b.jpg', media_file: 'messages/b.jpg',
+                }),
+                elapsed: { years: 0, days: 5 },
             },
         ],
         avatar_then: null,

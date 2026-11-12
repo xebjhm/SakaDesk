@@ -84,8 +84,10 @@ describe('memoriesLog codes', () => {
             'capsule', 'capsule_due', 'same_time', 'day24', 'then_now',
         ]));
         expect(MEMORIES_TOGGLES).toEqual(expect.arrayContaining([
-            'radio_program', 'cassette', 'sleep_timer', 'then_now', 'then_now_mode', 'calendar_member', 'album_cover',
+            'radio_program', 'cassette', 'sleep_timer', 'then_now', 'calendar_member', 'album_cover',
         ]));
+        // r4: the あの日と今日 day / first-week mode pills are gone
+        expect(MEMORIES_TOGGLES).not.toContain('then_now_mode');
         // r4 B1: the day view's 歷年同一天 mode
         expect(MEMORIES_VIEWS).toContain('day_years');
         expect(MEMORIES_TOGGLES).toContain('day_years');
