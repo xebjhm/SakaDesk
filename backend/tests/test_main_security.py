@@ -104,7 +104,8 @@ def test_cookie_authorizes_get_but_never_a_mutation():
 
 
 def test_bootstrap_sets_an_httponly_strict_cookie():
-    resp = app_client.post("/api/session/bootstrap", headers=TOKEN)
+    fresh = TestClient(app, base_url="http://127.0.0.1:8765")
+    resp = fresh.post("/api/session/bootstrap", headers=TOKEN)
     assert resp.status_code == 200
     cookie = resp.headers["set-cookie"]
     assert cookie.startswith(f"{api_auth.TOKEN_COOKIE}={api_auth.LAUNCH_TOKEN}")
