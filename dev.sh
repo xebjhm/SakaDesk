@@ -8,18 +8,47 @@ FRONTEND_PORT=5173
 BACKEND_LOG="/tmp/sakadesk-backend.log"
 FRONTEND_LOG="/tmp/sakadesk-frontend.log"
 
-# One per-launch API token shared by the backend and the Vite proxy
-# (security audit 2026-11-13). Kept in a git-ignored file so restarting only
-# one side keeps them in sync.
+# One per-launch API token for the backend (security audit 2026-11-13). The
+# browser gets it only through the app URL's #t= fragment, which this script
+# prints to the terminal (never to a log file). Kept in a git-ignored file so
+# restarting one side keeps the URL valid. The rule matches the page's
+# (frontend/src/core/api/launchAuth.ts): 16-128 of A-Z a-z 0-9 _ -.
 TOKEN_FILE="$SCRIPT_DIR/.dev-api-token"
+token_is_valid() {
+    [[ "$1" =~ ^[A-Za-z0-9_-]{16,128}$ ]]
+}
 ensure_api_token() {
-    if [ -z "${SAKADESK_API_TOKEN:-}" ]; then
-        if [ ! -s "$TOKEN_FILE" ]; then
-            (umask 077 && uv run python -c "import secrets; print(secrets.token_urlsafe(32))" > "$TOKEN_FILE")
+    if [ -n "${SAKADESK_API_TOKEN:-}" ]; then
+        if ! token_is_valid "$SAKADESK_API_TOKEN"; then
+            echo "ERROR: SAKADESK_API_TOKEN must be 16-128 characters of A-Z, a-z, 0-9, _ or -." >&2
+            echo "       Unset it to use the generated .dev-api-token instead." >&2
+            return 1
         fi
-        SAKADESK_API_TOKEN="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+    else
+        local token=""
+        [ -f "$TOKEN_FILE" ] && token="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+        if ! token_is_valid "$token"; then
+            rm -f "$TOKEN_FILE"
+            if ! (umask 077 && uv run python -c "import secrets; print(secrets.token_urlsafe(32))" > "$TOKEN_FILE"); then
+                rm -f "$TOKEN_FILE"
+                echo "ERROR: could not generate the dev API token (.dev-api-token)." >&2
+                return 1
+            fi
+            token="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+            if ! token_is_valid "$token"; then
+                rm -f "$TOKEN_FILE"
+                echo "ERROR: the generated dev API token (.dev-api-token) is invalid." >&2
+                return 1
+            fi
+        fi
+        SAKADESK_API_TOKEN="$token"
     fi
     export SAKADESK_API_TOKEN
+}
+
+# The dev app URL. It carries the token: print it to the terminal only.
+app_url() {
+    echo "http://127.0.0.1:$FRONTEND_PORT/#t=$SAKADESK_API_TOKEN"
 }
 
 # Cross-platform port helpers (lsof works on macOS and Linux; fuser is Linux-only)
@@ -34,7 +63,7 @@ port_in_use() {
 }
 
 start_backend() {
-    ensure_api_token
+    ensure_api_token || return 1
     echo "Starting backend on port $BACKEND_PORT..."
     cd "$SCRIPT_DIR"
     # Keep-alive must match KEEP_ALIVE_TIMEOUT_S in desktop.py (outlast the
@@ -43,7 +72,7 @@ start_backend() {
         --timeout-keep-alive 600 > "$BACKEND_LOG" 2>&1 &
     echo $! > /tmp/sakadesk-backend.pid
     sleep 2
-    if curl -s "http://localhost:$BACKEND_PORT/health" > /dev/null 2>&1; then
+    if curl -s "http://127.0.0.1:$BACKEND_PORT/health" > /dev/null 2>&1; then
         echo "Backend started successfully"
     else
         echo "Backend starting... (check $BACKEND_LOG for details)"
@@ -51,13 +80,24 @@ start_backend() {
 }
 
 start_frontend() {
-    ensure_api_token
+    ensure_api_token || return 1
     echo "Starting frontend on port $FRONTEND_PORT..."
     cd "$SCRIPT_DIR/frontend"
+    # Vite binds 127.0.0.1 (vite.config.ts) and never reads the token.
     nohup npm run dev -- --port $FRONTEND_PORT --strictPort > "$FRONTEND_LOG" 2>&1 &
     echo $! > /tmp/sakadesk-frontend.pid
     sleep 3
-    echo "Frontend started on http://localhost:$FRONTEND_PORT"
+    if curl -s "http://127.0.0.1:$FRONTEND_PORT/" > /dev/null 2>&1; then
+        echo "Frontend started on http://127.0.0.1:$FRONTEND_PORT"
+    else
+        echo "Frontend starting... (check $FRONTEND_LOG for details)"
+    fi
+}
+
+# Terminal only (not redirected): the URL carries this run's API token.
+show_app_url() {
+    echo "Open SakaDesk: $(app_url)"
+    echo "(A tab opened without #t= gets 401 from the API: reopen it with this URL.)"
 }
 
 stop_backend() {
@@ -95,31 +135,27 @@ status() {
 }
 
 case "${1:-start}" in
-    start)
+    start|restart)
+        # Validate the token before stopping anything that is running.
+        ensure_api_token || exit 1
         stop_backend
         stop_frontend
         sleep 1
-        start_backend
-        start_frontend
+        start_backend || exit 1
+        start_frontend || exit 1
         echo ""
-        echo "=== Dev servers started ==="
-        echo "Frontend: http://localhost:$FRONTEND_PORT"
-        echo "Backend:  http://localhost:$BACKEND_PORT"
+        if [ "$1" = "restart" ]; then
+            echo "=== Dev servers restarted ==="
+        else
+            echo "=== Dev servers started ==="
+        fi
+        echo "Frontend: http://127.0.0.1:$FRONTEND_PORT"
+        echo "Backend:  http://127.0.0.1:$BACKEND_PORT"
+        show_app_url
         ;;
     stop)
         stop_backend
         stop_frontend
-        ;;
-    restart)
-        stop_backend
-        stop_frontend
-        sleep 1
-        start_backend
-        start_frontend
-        echo ""
-        echo "=== Dev servers restarted ==="
-        echo "Frontend: http://localhost:$FRONTEND_PORT"
-        echo "Backend:  http://localhost:$BACKEND_PORT"
         ;;
     status)
         status

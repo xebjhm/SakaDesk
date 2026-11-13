@@ -14,40 +14,30 @@ if (!versionMatch) {
 }
 const APP_VERSION = versionMatch[1]
 
-// Per-launch API token shared with the backend (dev.sh / dev.ps1 export it for both).
-const API_TOKEN = process.env.SAKADESK_API_TOKEN
-
 // https://vitejs.dev/config/
-export default defineConfig(({ command }) => {
-    if (command === 'serve' && !API_TOKEN) {
-        console.warn(
-            '[sakadesk] SAKADESK_API_TOKEN is not set: /api requests through the dev proxy will get 401. ' +
-            'Start with dev.sh / dev.ps1, or export the same value for the backend and Vite.',
-        )
-    }
-    return {
-        plugins: [react()],
-        define: {
-            __APP_VERSION__: JSON.stringify(APP_VERSION),
+export default defineConfig({
+    plugins: [react()],
+    define: {
+        __APP_VERSION__: JSON.stringify(APP_VERSION),
+    },
+    resolve: {
+        alias: {
+            "@": path.resolve(__dirname, "./src"),
         },
-        resolve: {
-            alias: {
-                "@": path.resolve(__dirname, "./src"),
+    },
+    server: {
+        // Loopback only: the proxied API is for this machine (security audit 2026-11-13).
+        // 127.0.0.1 rather than localhost: Node on Windows resolves localhost to ::1 alone,
+        // which the dev scripts' probes and the http://127.0.0.1 app URL would not reach.
+        host: '127.0.0.1',
+        proxy: {
+            '/api': {
+                target: 'http://127.0.0.1:8000',
+                // Host is not rewritten: the backend must see the browser's own Host, so it still
+                // rejects non-loopback hosts and its exact-Origin check sees Origin == Host.
+                // The proxy adds no credentials: the page authenticates itself with the #t= token
+                // in the URL that dev.sh / dev.ps1 open, exactly like SakaDesk's own windows.
             },
         },
-        server: {
-            // Vite's default host (localhost): the proxied API is for this machine only
-            // (security audit 2026-11-13).
-            proxy: {
-                '/api': {
-                    target: 'http://127.0.0.1:8000',
-                    // Host is not rewritten: the backend must see the browser's own Host, so it still
-                    // rejects non-loopback hosts and its exact-Origin check sees Origin == Host.
-                    // The proxy adds the per-launch token that dev.sh / dev.ps1 share with the
-                    // backend; the page itself never holds it.
-                    headers: API_TOKEN ? { 'X-SakaDesk-Token': API_TOKEN } : undefined,
-                },
-            },
-        },
-    }
+    },
 })

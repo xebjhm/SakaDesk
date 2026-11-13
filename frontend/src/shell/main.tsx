@@ -16,8 +16,9 @@ import { installLanguageFonts } from '../design/fonts'
 
 // Launch auth before any request (including clientLog from the font/token setup below):
 // the token header and the media cookie must exist before the first fetch or <img>
-// (security audit 2026-11-13). Without a token (Vite dev server, e2e) the request is
-// expected to carry the header from the dev proxy / Playwright config.
+// (security audit 2026-11-13). SakaDesk's windows and the Vite dev server page (opened by
+// dev.sh / dev.ps1) both arrive with #t=<token>. Without one, /api answers 401; only the
+// general Playwright suite gets through, because it adds the header itself.
 let launchTokenStoreFailed = false
 const launchToken = takeLaunchToken(window.location, sessionStorageOrNull(), window.history, () => {
     launchTokenStoreFailed = true

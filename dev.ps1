@@ -4,9 +4,13 @@
 
 .DESCRIPTION
     Starts, stops, and monitors the two dev servers as hidden background processes:
-      - Backend : FastAPI via uvicorn on http://localhost:8000 (--reload, watches
+      - Backend : FastAPI via uvicorn on http://127.0.0.1:8000 (--reload, watches
                   backend/ and the editable sibling ..\pysaka\src)
-      - Frontend: Vite dev server on http://localhost:5173
+      - Frontend: Vite dev server on http://127.0.0.1:5173
+
+    Once the frontend answers, 'start' / 'restart' open the app in the default
+    browser at http://127.0.0.1:5173/#t=<token>: the local API requires that
+    per-run token (see .dev-api-token), and a tab opened without it gets 401.
 
     Unlike dev.sh (lsof / nohup / /tmp — Linux only) this uses Get-NetTCPConnection
     for port ownership and taskkill /T to tear down the whole process tree
@@ -54,19 +58,31 @@ $BackendPidF  = Join-Path $LogDir 'backend.pid'
 $FrontendPidF = Join-Path $LogDir 'frontend.pid'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
-# One per-launch API token shared by the backend and the Vite proxy
-# (security audit 2026-11-13). Kept in a git-ignored file so restarting only
-# one side keeps them in sync.
+# One per-launch API token for the backend (security audit 2026-11-13). The
+# browser gets it only through the app URL's #t= fragment, which Start-Frontend
+# opens (never written to a log file). Kept in a git-ignored file so restarting
+# one side keeps the URL valid. The rule matches the page's
+# (frontend/src/core/api/launchAuth.ts): 16-128 of A-Z a-z 0-9 _ -.
 $TokenFile = Join-Path $ScriptDir '.dev-api-token'
+$TokenPattern = '^[A-Za-z0-9_-]{16,128}$'
 function Initialize-ApiToken {
-    if ($env:SAKADESK_API_TOKEN) { return }
-    if (-not (Test-Path $TokenFile) -or -not ((Get-Content $TokenFile -Raw) -as [string]).Trim()) {
+    if ($env:SAKADESK_API_TOKEN) {
+        if ($env:SAKADESK_API_TOKEN -cnotmatch $TokenPattern) {
+            Write-Host "ERROR: SAKADESK_API_TOKEN must be 16-128 characters of A-Z, a-z, 0-9, _ or -."
+            Write-Host "       Unset it to use the generated .dev-api-token instead."
+            exit 1
+        }
+        return
+    }
+    $tok = ''
+    if (Test-Path $TokenFile) { $tok = "$(Get-Content $TokenFile -Raw)".Trim() }
+    if ($tok -cnotmatch $TokenPattern) {
         $bytes = New-Object byte[] 32
         [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
         $tok = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
         Set-Content -Path $TokenFile -Value $tok -NoNewline -Encoding ascii
     }
-    $env:SAKADESK_API_TOKEN = (Get-Content $TokenFile -Raw).Trim()
+    $env:SAKADESK_API_TOKEN = $tok
 }
 
 # --- helpers ---------------------------------------------------------------
@@ -150,6 +166,7 @@ function Start-Backend {
 function Start-Frontend {
     Initialize-ApiToken
     Write-Host "Starting frontend on port $FrontendPort..."
+    # Vite binds 127.0.0.1 (vite.config.ts) and never reads the token.
     $cmd = "npm run dev -- --port $FrontendPort --strictPort > `"$FrontendLog`" 2>&1"
     $p = Start-Process -FilePath 'cmd.exe' -ArgumentList '/c', $cmd `
             -WorkingDirectory $FrontendDir -WindowStyle Hidden -PassThru
@@ -159,7 +176,13 @@ function Start-Frontend {
     for ($i = 0; $i -lt 12; $i++) {
         Start-Sleep -Milliseconds 800
         if (Test-HttpOk "http://127.0.0.1:$FrontendPort") {
-            Write-Host "  Frontend serving on http://localhost:$FrontendPort"
+            Write-Host "  Frontend serving on http://127.0.0.1:$FrontendPort"
+            # The URL carries this run's API token: hand it to the browser only,
+            # never to Write-Host or a log file.
+            $AppUrl = "http://127.0.0.1:$FrontendPort/#t=$($env:SAKADESK_API_TOKEN)"
+            Start-Process $AppUrl
+            Write-Host "  Opened SakaDesk in your browser (a tab opened without the token gets 401;"
+            Write-Host "  run '.\dev.ps1 start' again to reopen it)."
             return
         }
         # If the launcher already exited, vite bailed — surface the reason from the log.
@@ -184,10 +207,10 @@ function Show-Status {
     Write-Host "=== SakaDesk Dev Server Status ==="
     # Use real HTTP responses so a ghost/relay port never reads as RUNNING.
     if (Test-HttpOk "http://127.0.0.1:$BackendPort/health") {
-        Write-Host "Backend:  RUNNING on http://localhost:$BackendPort"
+        Write-Host "Backend:  RUNNING on http://127.0.0.1:$BackendPort"
     } else { Write-Host "Backend:  STOPPED" }
     if (Test-HttpOk "http://127.0.0.1:$FrontendPort") {
-        Write-Host "Frontend: RUNNING on http://localhost:$FrontendPort"
+        Write-Host "Frontend: RUNNING on http://127.0.0.1:$FrontendPort"
     } else { Write-Host "Frontend: STOPPED" }
     Write-Host ""
     Write-Host "Logs:"
@@ -206,6 +229,7 @@ function Show-Status {
 
 switch ($Action) {
     'start' {
+        Initialize-ApiToken  # validate before stopping anything that is running
         Stop-Tree $BackendPidF  $BackendPort  'Backend'
         Stop-Tree $FrontendPidF $FrontendPort 'Frontend'
         Start-Sleep -Seconds 1
@@ -213,14 +237,15 @@ switch ($Action) {
         Start-Frontend
         Write-Host ""
         Write-Host "=== Dev servers started ==="
-        Write-Host "Frontend: http://localhost:$FrontendPort"
-        Write-Host "Backend:  http://localhost:$BackendPort"
+        Write-Host "Frontend: http://127.0.0.1:$FrontendPort"
+        Write-Host "Backend:  http://127.0.0.1:$BackendPort"
     }
     'stop' {
         Stop-Tree $BackendPidF  $BackendPort  'Backend'
         Stop-Tree $FrontendPidF $FrontendPort 'Frontend'
     }
     'restart' {
+        Initialize-ApiToken  # validate before stopping anything that is running
         Stop-Tree $BackendPidF  $BackendPort  'Backend'
         Stop-Tree $FrontendPidF $FrontendPort 'Frontend'
         Start-Sleep -Seconds 1
