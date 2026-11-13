@@ -1300,17 +1300,18 @@ contrast also get a darker scrollbar thumb (`prefers-contrast: more`).
 
 ### The guard (ratchet)
 
-`frontend/src/design/guard.test.ts` counts hard-coded style values per file:
-hex colours, `rgb()`/`hsl()`, arbitrary radius / shadow / text / spacing
-values, and the D1 group role utilities superseded by `*-accent-*`
-(`bg-group-accent`, `bg-group-badge`, `bg-group-subtle`, `text-group-strong`,
-`border-group-subtle`, `ring-group`, `accent-group`, `shadow-group-glow`; the
-official layer is not counted) and Tailwind's `rounded-2xl` / `rounded-3xl`. Width, height and position arbitrary values are
-allowed. Comments are ignored, but string contents are still scanned (hex
-colours live in strings). Named palette classes (e.g. `bg-gray-100`,
-`bg-black/40`) are counted by the drift ratchet below. Token files (`design/tokens/`), `config/colors/`,
-`config/serviceThemes.ts`, tests and `.d.ts` files are not scanned. The test
-compares the counts with `guard-baseline.json`:
+`frontend/src/design/guard.test.ts` counts hard-coded style values per file: hex
+colours, `rgb()`/`hsl()`, arbitrary radius / shadow / text / spacing values, and
+the D1 group role utilities superseded by `*-accent-*` (`bg-group-accent`,
+`bg-group-badge`, `bg-group-subtle`, `text-group-strong`, `border-group-subtle`,
+`ring-group`, `accent-group`, `shadow-group-glow`; the official layer is not
+counted) and Tailwind's `rounded-2xl` / `rounded-3xl`. Width, height and
+position arbitrary values are allowed. Comments are ignored, but string contents
+are still scanned (hex colours live in strings). Named palette classes (e.g.
+`bg-gray-100`, `bg-black/40`) are counted by the drift ratchet below. Token
+files (`design/tokens/`), `config/colors/`, `config/serviceThemes.ts`, tests and
+`.d.ts` files are not scanned. The test compares the counts with
+`guard-baseline.json`:
 
 - A new file must have 0.
 - An existing file may not go up.
@@ -1350,18 +1351,22 @@ hand-built spinner fails the build.
 
 #### The drift ratchet
 
-The same test file runs a third ratchet (`countDriftViolations`, `isDriftScanned`) over what the
-first one does not count: named palette classes (`bg-gray-100`, `text-white`, `bg-black/40`),
-`z-40` / `z-50` / `z-[…]`, Tailwind's default font sizes (`text-xs` … `text-9xl`), arbitrary
-`leading` / `tracking` / `duration` / `delay` / `ease` / colour-utility / `blur` values, and hex /
-`rgb()` / `hsl()` literals in every CSS file under `src` and in `tailwind.config.js`. CSS system
-colours (`CanvasText`, `Highlight`, …), `transparent`, `currentColor` and `inherit` are keywords and
-are not counted. It compares with `drift-guard-baseline.json` under the same rules (new files 0,
-counts only go down, no `design/` entries); the test also pins that no file created by the
-UI-health plans F, G and H is in it. The entries left are deliberate or pre-token: the call
-screen's own stylesheet (accepted glass look), the body colour that must match the native window
-and the scrollbar fallbacks, the media players' viewer chrome, the blog rail's 3 px track and its
-tooltip layer, and the postcard caption's local stacking. To rewrite it, from `frontend/`:
+The same test file runs a third ratchet (`countDriftViolations`,
+`isDriftScanned`) over what the first one does not count: named palette classes
+(`bg-gray-100`, `text-white`, `bg-black/40`), `z-40` / `z-50` / `z-[…]`,
+Tailwind's default font sizes (`text-xs` … `text-9xl`), arbitrary `leading` /
+`tracking` / `duration` / `delay` / `ease` / colour-utility / `blur` values, and
+hex / `rgb()` / `hsl()` literals in every CSS file under `src` and in
+`tailwind.config.js`. CSS system colours (`CanvasText`, `Highlight`, …),
+`transparent`, `currentColor` and `inherit` are keywords and are not counted. It
+compares with `drift-guard-baseline.json` under the same rules (new files 0,
+counts only go down, no `design/` entries); the test also pins that no file
+created by the UI-health plans F, G and H is in it. The entries left are
+deliberate or pre-token: the call screen's own stylesheet (accepted glass look),
+the body colour that must match the native window and the scrollbar fallbacks,
+the media players' viewer chrome, the blog rail's 3 px track and its tooltip
+layer, and the postcard caption's local stacking. To rewrite it, from
+`frontend/`:
 
     UPDATE_DRIFT_BASELINE=1 npx vitest run src/design/guard.test.ts
 
