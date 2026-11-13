@@ -239,8 +239,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
     // Filter messages by media type
     // Closed (it stays mounted in ConversationMenu): nothing to list, so no filter and no sort on
-    // every change of the room (UI health P-B3).
-    const source = isOpen ? messages : NO_MESSAGES;
+    // every change of the room (UI health P-B3). The viewer is a sibling dialog that outlives the
+    // gallery's own `isOpen`, so while it is open the items stay (its arrows and counter use them).
+    const source = isOpen || selectedMedia ? messages : NO_MESSAGES;
     const mediaItems = useMemo(() => {
         const photos = source.filter(m => m.type === 'picture' && m.media_file);
         const videos = source.filter(m => m.type === 'video' && m.media_file);
