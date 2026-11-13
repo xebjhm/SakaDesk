@@ -1962,6 +1962,11 @@ class SyncService:
             "repaired": 0,
             "failed": 0,
             "still_missing": 0,
+            # Missing items dropped by the service-folder containment filter
+            # (``_contained_media``): counted in ``checked`` but never in
+            # missing, repaired, failed and still_missing, because nothing is done
+            # about them.
+            "rejected": 0,
             # Media-type messages with no recorded/downloadable media source
             # (e.g. media removed on the server). Reported so completeness is
             # never overclaimed as "all present" while these exist.
@@ -2054,9 +2059,13 @@ class SyncService:
                                 )
                         # A stored media_file can name a path outside the
                         # service folder (security audit 2026-11-13).
-                        missing = await asyncio.to_thread(
-                            self._contained_media, scan["missing"], phase="verify"
-                        )
+                        missing = scan["missing"]
+                        if missing:
+                            contained = await asyncio.to_thread(
+                                self._contained_media, missing, phase="verify"
+                            )
+                            totals["rejected"] += len(missing) - len(contained)
+                            missing = contained
                         if missing:
                             totals["missing"] += len(missing)
                             gaps_by_group[gid].append((member_dir, missing))
