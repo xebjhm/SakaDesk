@@ -38,6 +38,9 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
     const setServiceOrder = useAppStore((s) => s.setServiceOrder);
     const [showAddModal, setShowAddModal] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ serviceId: string; x: number; y: number } | null>(null);
+    // The button the menu was opened from; the menu hands focus back to it when it closes (the
+    // buttons are keyed by service, so after a move it is still the moved group's button).
+    const menuTriggerRef = useRef<HTMLElement | null>(null);
     const { isServiceDisconnected } = useAuth();
 
     // Drag-and-drop state
@@ -50,6 +53,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
 
     const handleContextMenu = (e: React.MouseEvent, serviceId: string) => {
         e.preventDefault();
+        menuTriggerRef.current = e.currentTarget as HTMLElement;
         // A keyboard-opened menu (Shift+F10, the Menu key) can have no pointer position: open it at the button.
         const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
         const fromKeyboard = e.clientX === 0 && e.clientY === 0;
@@ -217,7 +221,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
             {contextMenu && (() => {
                 const at = services.indexOf(contextMenu.serviceId);
                 return (
-                    <Menu aria-label={t('common.moreOptions')} onClose={() => setContextMenu(null)} point={{ x: contextMenu.x, y: contextMenu.y }} estimatedSize={{ width: 176, height: 136 }}>
+                    <Menu aria-label={t('common.moreOptions')} returnFocusRef={menuTriggerRef} onClose={() => setContextMenu(null)} point={{ x: contextMenu.x, y: contextMenu.y }} estimatedSize={{ width: 176, height: 136 }}>
                         {at > 0 && <MenuItem onClick={() => { moveService(at, at - 1, 'move_up'); setContextMenu(null); }}>{t('serviceRail.moveUp')}</MenuItem>}
                         {at >= 0 && at < services.length - 1 && <MenuItem onClick={() => { moveService(at, at + 1, 'move_down'); setContextMenu(null); }}>{t('serviceRail.moveDown')}</MenuItem>}
                         <MenuItem destructive onClick={handleRemoveService}>{t('common.removeService')}</MenuItem>

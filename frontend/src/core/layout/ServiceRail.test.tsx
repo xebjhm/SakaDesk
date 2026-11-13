@@ -127,4 +127,25 @@ describe('ServiceRail reorder from the menu (UI health A-K6)', () => {
         expect(screen.queryByRole('menuitem', { name: /Move/ })).toBeNull();
         expect(screen.getByRole('menu')).toHaveFocus();
     });
+
+    it('returns focus to the moved group button after a keyboard move', async () => {
+        useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'], serviceOrder: order });
+        renderRail();
+        const moved = screen.getAllByRole('button', { name: /46/ })[0];
+        fireEvent.contextMenu(moved);
+        await userEvent.keyboard('{Enter}'); // Move down, the first item
+        expect(useAppStore.getState().serviceOrder.slice(0, 2)).toEqual(['sakurazaka46', 'hinatazaka46']);
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(moved).toHaveFocus();
+    });
+
+    it('returns focus to the group button on Escape', async () => {
+        renderRail();
+        const trigger = screen.getAllByRole('button', { name: /46/ })[1];
+        fireEvent.contextMenu(trigger);
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+        await userEvent.keyboard('{Escape}');
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(trigger).toHaveFocus();
+    });
 });
