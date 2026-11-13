@@ -151,8 +151,16 @@ describe('buildBlogFragment image loading hints (UI health P-C2)', () => {
             'https://example.com',
             'http://127.0.0.1:8000',
         );
-        const srcs = Array.from(fragment.querySelectorAll('img')).map((i) => i.getAttribute('src'));
+        const imgs = Array.from(fragment.querySelectorAll('img'));
+        const srcs = imgs.map((i) => i.getAttribute('src'));
         expect(srcs.join('')).not.toContain('127.0.0.1');
         expect(srcs).toContain('https://example.com/b.jpg');
+        // The picture whose src was dropped does not count as the first: the surviving one loads at
+        // once (its own loading="eager" is not on the allow-list, so it is stripped, not copied).
+        const survivor = imgs.find((i) => i.getAttribute('src') === 'https://example.com/b.jpg')!;
+        expect(survivor.getAttribute('loading')).toBeNull();
+        expect(survivor.getAttribute('decoding')).toBe('async');
+        const dropped = imgs.find((i) => !i.getAttribute('src'));
+        expect(dropped?.getAttribute('loading') ?? null).toBeNull();
     });
 });

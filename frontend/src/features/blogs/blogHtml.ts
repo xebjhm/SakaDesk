@@ -159,10 +159,14 @@ export function buildBlogFragment(
     // Loading hints (UI health P-C2), set after sanitising and URL resolution so they never pass
     // through the allow-list: the first picture (usually in view) loads at once, the rest when
     // scrolled near, so pictures above a search highlight do not push it away while loading;
-    // every picture decodes off the main thread.
-    fragment.querySelectorAll('img').forEach((img, i) => {
+    // every picture decodes off the main thread. Only a picture that kept its src counts as the first:
+    // one whose src was dropped loads nothing and must not make the first real picture lazy.
+    let kept = 0;
+    fragment.querySelectorAll('img').forEach((img) => {
         img.setAttribute('decoding', 'async');
-        if (i > 0) img.setAttribute('loading', 'lazy');
+        if (!img.getAttribute('src')) return;
+        if (kept > 0) img.setAttribute('loading', 'lazy');
+        kept += 1;
     });
     highlightTextNodes(fragment, terms.reading, READING_MARK_CLASS);
     highlightTextNodes(fragment, terms.exact, EXACT_MARK_CLASS);
