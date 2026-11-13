@@ -210,3 +210,15 @@ class TestBlogImageRoute:
         assert resp.headers["content-type"] == "application/octet-stream"
         assert resp.headers["content-disposition"].startswith("attachment")
         assert "photo.jpg" in resp.headers["content-disposition"]
+
+
+def test_media_type_refused_is_throttled():
+    """B-T1: each opaque request logged one line; a page could flood debug.log."""
+    from backend.services import passive_media as pm
+
+    pm._refusal_logs.reset()
+    with capture_logs() as logs:
+        for _ in range(pm._refusal_logs.limit + 5):
+            pm.passive_media("x.html", route="media")
+    refused = [e for e in logs if e["event"] == "media_type_refused"]
+    assert len(refused) == pm._refusal_logs.limit

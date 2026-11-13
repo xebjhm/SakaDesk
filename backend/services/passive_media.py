@@ -11,7 +11,7 @@ such a file takes its type and headers from :func:`passive_media`:
   with that exact type;
 - anything else is served as ``application/octet-stream`` with
   ``Content-Disposition: attachment`` and logs ``media_type_refused`` with the
-  route code (never the name or path);
+  route code (throttled; never the name or path);
 - both carry ``X-Content-Type-Options: nosniff`` and ``SANDBOX_CSP``
   (``backend/security_headers.py``): opened as a page, the file runs no script
   and loads nothing.
@@ -29,8 +29,12 @@ from pathlib import PurePath, PurePosixPath
 import structlog
 
 from backend.security_headers import SANDBOX_CSP
+from backend.services.log_throttle import LogThrottle
 
 logger = structlog.get_logger(__name__)
+
+_refusal_logs = LogThrottle()
+"""``media_type_refused`` per request through the shared limit (20 per minute, then one summary)."""
 
 INLINE_MEDIA_TYPES: dict[str, str] = {
     ".jpg": "image/jpeg",
@@ -68,7 +72,7 @@ def passive_media(name: str, *, route: str) -> PassiveMedia:
     media_type = INLINE_MEDIA_TYPES.get(PurePath(name).suffix.lower())
     if media_type is not None:
         return PassiveMedia(media_type, True, headers)
-    logger.info("media_type_refused", route=route)
+    _refusal_logs.log(logger.info, "media_type_refused", route=route)
     return PassiveMedia(
         OPAQUE_TYPE, False, {**headers, "content-disposition": "attachment"}
     )

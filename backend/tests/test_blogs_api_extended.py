@@ -733,11 +733,40 @@ class TestProxyBlogImage:
             chunks=[one_mb] * 11,  # 11 MB > 10 MB cap
             headers={"content-type": "image/jpeg"},
         )
-        response = client.get(
-            "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/img.jpg"
-        )
+        with capture_logs() as logs:
+            response = client.get(
+                "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/img.jpg"
+            )
         assert response.status_code == 502
         assert "too large" in response.json()["detail"].lower()
+        assert {
+            "event": "proxy_image_rejected",
+            "reason": "too_large",
+            "status": 502,
+            "log_level": "info",
+        } in logs
+
+    @patch("httpx.AsyncClient")
+    def test_proxy_image_rejects_a_declared_oversized_body(self, mock_httpx_cls):
+        _make_proxy_stream_client(
+            mock_httpx_cls,
+            chunks=[b"x"],
+            headers={
+                "content-type": "image/jpeg",
+                "content-length": str(11 * 1024 * 1024),
+            },
+        )
+        with capture_logs() as logs:
+            response = client.get(
+                "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/img.jpg"
+            )
+        assert response.status_code == 502
+        assert {
+            "event": "proxy_image_rejected",
+            "reason": "too_large",
+            "status": 502,
+            "log_level": "info",
+        } in logs
 
     @patch("httpx.AsyncClient")
     def test_proxy_image_redirect_is_502(self, mock_httpx_cls):
@@ -751,11 +780,18 @@ class TestProxyBlogImage:
         # Mark the mocked upstream response as a redirect.
         inst.stream.return_value.__aenter__.return_value.is_redirect = True
 
-        response = client.get(
-            "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/img.jpg"
-        )
+        with capture_logs() as logs:
+            response = client.get(
+                "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/img.jpg"
+            )
         assert response.status_code == 502
         assert "redirect" in response.json()["detail"].lower()
+        assert {
+            "event": "proxy_image_rejected",
+            "reason": "redirect",
+            "status": 502,
+            "log_level": "info",
+        } in logs
 
 
 class TestServeBlogImage:
