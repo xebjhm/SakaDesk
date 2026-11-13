@@ -321,6 +321,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // openChat (a toast, a search result, a Memories jump) shows Messages and selects another room in
     // the same step: the saved conversation of the service is then not the room on screen, and the
     // show edge leaves the room as last shown alone (that room's own render loads and opens it).
+    // Invariant: the saved conversation equals the room on screen unless a navigation is pending (every
+    // writer of `selectedGroupDir` goes through the store).
     const opensAnotherRoom = useCallback(() => {
         const saved = activeService ? getSelectedConversation(activeService) : null;
         return saved?.path !== selectedGroupDir;
@@ -391,7 +393,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             restoreOnShowRef.current = false;
             restoreSavedConversation(activeService);
         } else if (selectedGroupDir && opensAnotherRoom()) {
-            clientLog('chat_load', { outcome: 'skipped', reason: 'shown_by_navigation' });
+            clientLog('chat_load', { outcome: 'skipped', reason: 'shown_with_other_room' });
         } else if (selectedGroupDir) {
             fetchMessages(selectedGroupDir, isGroupChat);
         }

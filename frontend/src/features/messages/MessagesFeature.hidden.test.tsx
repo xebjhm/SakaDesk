@@ -115,6 +115,9 @@ describe('MessagesFeature hidden behind another feature (UI health #11)', () => 
         expect(roomFetches).toBe(1);
         rerender(view(true, 1));
         await waitFor(() => expect(roomFetches).toBe(2));
+        // Settled: the show edge fetched once, not twice.
+        await new Promise((r) => setTimeout(r, 50));
+        expect(roomFetches).toBe(2);
     });
 
     it('stops reporting the chat as viewed while hidden', async () => {
@@ -144,6 +147,8 @@ describe('MessagesFeature hidden behind another feature (UI health #11)', () => 
         expect(letterFetches).toBe(before);
         rerender(view(true, 1));
         await waitFor(() => expect(letterFetches).toBe(before + 1));
+        await new Promise((r) => setTimeout(r, 50));
+        expect(letterFetches).toBe(before + 1);
     });
 
     it('evaluates no milestone while hidden', async () => {
@@ -196,7 +201,7 @@ describe('MessagesFeature hidden behind another feature (UI health #11)', () => 
         expect(readSyncGroups).toEqual([34, 35]);
         // Only the opened room is asked for: no refresh of the room as last shown.
         expect(roomPaths.slice(fetchedBefore)).toEqual([SECOND_ROOM]);
-        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('chat_load', { outcome: 'skipped', reason: 'shown_by_navigation' });
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('chat_load', { outcome: 'skipped', reason: 'shown_with_other_room' });
     });
 
     it('opens the room again on return from another group\'s Blogs (read sync and refresh, as the remount did)', async () => {

@@ -26,6 +26,12 @@ describe('KeepMounted', () => {
         expect(box).toHaveAttribute('inert');
         expect(box.style.contentVisibility).toBe('hidden');
         expect(node).toHaveTextContent('hidden');
+
+        rerender(<KeepMounted active><Probe /></KeepMounted>);
+        expect(screen.getByTestId('kept-feature')).not.toHaveAttribute('inert');
+        expect(screen.getByTestId('kept-feature').style.contentVisibility).toBe('');
+        expect(screen.getByTestId('probe')).toBe(node);
+        expect(node).toHaveTextContent('active');
     });
 
     it('pauses a voice or video still playing inside it when it is hidden (as the unmount did)', () => {
