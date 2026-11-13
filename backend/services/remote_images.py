@@ -5,7 +5,9 @@ Blog HTML and member JSON choose the image URLs. A fetch needs ``https`` on
 :data:`MAX_REDIRECTS`) is checked the same way before it is requested; the
 body is at most :data:`MAX_REMOTE_IMAGE_BYTES`, checked against
 ``Content-Length`` first and then counted while streaming. The proxy route
-(``backend/api/blogs.py``) uses the same host set and cap. Network errors
+(``backend/api/blogs.py``) applies the same :func:`upgrade_official_url` and
+:func:`url_refusal` to its URL and uses the same size cap, but follows no
+redirect. Network errors
 (``aiohttp.ClientError``, ``TimeoutError``) propagate to the caller.
 """
 
@@ -76,7 +78,7 @@ def url_refusal(url: object) -> str | None:
     return None
 
 
-def _upgraded(url: object) -> object:
+def upgrade_official_url(url: object) -> object:
     """``url`` with ``http://`` turned into ``https://`` on an official host.
 
     Older posts embed cleartext links to the official sites, which all serve
@@ -107,7 +109,7 @@ async def fetch_official_image(
     An ``http://`` link to an official host is fetched over https (redirect
     targets are not upgraded); every request uses :data:`FETCH_TIMEOUT`.
     """
-    current = _upgraded(url)
+    current = upgrade_official_url(url)
     for _hop in range(MAX_REDIRECTS + 1):
         reason = url_refusal(current)
         if reason is not None:

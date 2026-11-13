@@ -27,7 +27,11 @@ from backend.services.blog_service import (
     gallery_images,
     get_blog_backup_manager,
 )
-from backend.services.remote_images import MAX_REMOTE_IMAGE_BYTES, OFFICIAL_IMAGE_HOSTS
+from backend.services.remote_images import (
+    MAX_REMOTE_IMAGE_BYTES,
+    upgrade_official_url,
+    url_refusal,
+)
 from backend.services.service_utils import validate_service
 from backend.services.safe_paths import UnsafePath, blog_date
 
@@ -598,8 +602,8 @@ async def sync_blog_metadata(service: str = Query(...)):
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
-# The proxy and the blog backup accept the same hosts and size.
-_PROXY_ALLOWED_HOSTS = OFFICIAL_IMAGE_HOSTS
+# The proxy and the blog backup apply the same URL rules (upgrade_official_url,
+# url_refusal) and the same size cap.
 _PROXY_MAX_IMAGE_BYTES = MAX_REMOTE_IMAGE_BYTES
 
 
@@ -622,10 +626,14 @@ async def proxy_blog_image(
 ):
     """Fetch an official blog image the page cannot fetch itself (the CDNs send no CORS).
 
-    Only ``https`` URLs on ``_PROXY_ALLOWED_HOSTS``, with no port or port 443,
-    are fetched (403 otherwise; a malformed URL or port is 400), without
-    following redirects (a 3xx answers 502, so
-    the allowlist and scheme hold for the final URL too). The upstream must
+    The URL goes through the blog backup's rules: an ``http://`` link to an
+    official host is upgraded to ``https`` (``upgrade_official_url``), then
+    only ``https`` on an official host with no port or port 443 is fetched
+    (``url_refusal``: 403 otherwise; a malformed URL or port is 400). Redirects
+    are not followed (a 3xx answers 502), unlike the backup, which re-checks
+    each hop: the proxy's client has no such check, and official image URLs
+    are served directly, so the allowlist and scheme hold for the final URL
+    too. The upstream must
     answer a type in ``_PROXY_IMAGE_TYPES`` (502 otherwise) of at most
     ``_PROXY_MAX_IMAGE_BYTES`` (502); a network or HTTP error is 502 with a
     fixed message. The image is returned with that exact type and
@@ -636,22 +644,20 @@ async def proxy_blog_image(
     ``content_type``,
     ``too_large``, ``upstream`` with ``error_type``) and ``status``.
     """
-    from urllib.parse import quote, urlparse
+    from urllib.parse import quote
 
     import httpx
     from starlette.responses import Response
 
-    try:
-        parsed = urlparse(url)
-        host = parsed.hostname
-        port = parsed.port  # raises ValueError on a bad port
-    except ValueError:
-        raise _proxy_reject(400, "invalid_url", "Invalid URL") from None
-    if parsed.scheme != "https":
+    url = str(upgrade_official_url(url))
+    refusal = url_refusal(url)
+    if refusal == "invalid_url":
+        raise _proxy_reject(400, "invalid_url", "Invalid URL")
+    if refusal == "scheme":
         raise _proxy_reject(403, "scheme", "Only https image URLs can be proxied")
-    if host not in _PROXY_ALLOWED_HOSTS:
+    if refusal == "host":
         raise _proxy_reject(403, "host", "Domain not allowed for proxy")
-    if port not in (None, 443):
+    if refusal == "port":
         raise _proxy_reject(403, "port", "Only the default https port can be proxied")
 
     try:

@@ -581,20 +581,39 @@ class TestProxyBlogImage:
             "attachment; filename*=UTF-8''evil.jpg"
         )
 
-    def test_proxy_image_refuses_cleartext_http(self):
-        """Audit 2026-11-13: an on-path attacker could answer a cleartext fetch."""
+    @patch("httpx.AsyncClient")
+    def test_proxy_image_upgrades_an_official_http_link(self, mock_httpx_cls):
+        """Old posts link the official CDN over http: the same upgrade as the
+        blog backup applies, and the request goes out over https only."""
+        inst = _make_proxy_stream_client(
+            mock_httpx_cls, chunks=[b"\xff\xd8"], headers={"content-type": "image/jpeg"}
+        )
+        response = client.get(
+            "/api/blogs/proxy-image?url=http://cdn.hinatazaka46.com/a.jpg"
+        )
+        assert response.status_code == 200
+        assert inst.stream.call_args.args[:2] == (
+            "GET",
+            "https://cdn.hinatazaka46.com/a.jpg",
+        )
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "http://evil.com/a.jpg",  # not an official host: never upgraded
+            "http://cdn.hinatazaka46.com:8080/a.jpg",  # other port
+            "http://user:pw@cdn.hinatazaka46.com/a.jpg",  # credentials
+            "ftp://cdn.hinatazaka46.com/a.jpg",
+        ],
+    )
+    def test_proxy_image_refuses_what_the_backup_would_refuse(self, url):
         with patch("httpx.AsyncClient") as mock_httpx_cls, capture_logs() as logs:
-            response = client.get(
-                "/api/blogs/proxy-image?url=http://cdn.hinatazaka46.com/a.jpg"
-            )
+            response = client.get("/api/blogs/proxy-image", params={"url": url})
         assert response.status_code == 403
         mock_httpx_cls.assert_not_called()
-        assert {
-            "event": "proxy_image_rejected",
-            "reason": "scheme",
-            "status": 403,
-            "log_level": "info",
-        } in logs
+        assert [e["status"] for e in logs if e["event"] == "proxy_image_rejected"] == [
+            403
+        ]
 
     def test_proxy_image_refuses_other_ports(self):
         """An allowed host on a port other than 443 is not fetched."""
