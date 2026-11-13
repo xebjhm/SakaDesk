@@ -17,6 +17,7 @@ import { cn } from '../../utils/classnames';
 import { ContentSheet } from '../../core/layout/ContentSheet';
 import { selectIsSyncing, useSyncProgressStore } from '../../shell/syncProgressStore';
 import { useTranslation, Trans } from '../../i18n';
+import { useFeatureActive } from '../../design/featureActive';
 import { Avatar, EmptyState, IconButton, StatusBlock } from '../../design/primitives';
 import { logWait, settleDelay, useDelayedLoading } from '../../design/loading';
 import { groupTokens } from '../../design/tokens';
@@ -160,6 +161,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     onSyncNow,
 }) => {
     const { t } = useTranslation();
+    // False while Messages is kept mounted behind another feature (ContentArea, Decision 7 of plan F).
+    const featureActive = useFeatureActive();
     // A boolean slice: progress ticks re-render only SyncStatusPill, not this component.
     const isSyncing = useSyncProgressStore(selectIsSyncing);
 
@@ -294,6 +297,25 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const targetMessageId = useAppStore(s => s.targetMessageId);
     const setTargetMessageId = useAppStore(s => s.setTargetMessageId);
 
+    // Restores the saved room of `service`, or clears the selection. Used by the group-switch effect
+    // and by the hidden → shown edge (a group switch made from Blogs or Memories restores on show).
+    const restoreSavedConversation = useCallback((service: string | null) => {
+        const saved = service ? getSelectedConversation(service) : null;
+        if (saved) {
+            console.debug('[MessagesFeature] service switch → restoring', { service, isGroupChat: saved.isGroupChat });
+            setSelectedGroupDir(saved.path);
+            setSelectedName(saved.name);
+            setIsGroupChat(saved.isGroupChat);
+            setBackgroundSettings(loadBackgroundSettings(saved.path));
+        } else {
+            setSelectedGroupDir(undefined);
+            setSelectedName(undefined);
+            setIsGroupChat(false);
+        }
+    }, [getSelectedConversation]);
+    // Set by a group switch made while hidden: the show edge restores the new group's room.
+    const restoreOnShowRef = useRef(false);
+
     // Save current selection and restore previous selection when service changes
     useEffect(() => {
         // Save current conversation for the previous service before switching
@@ -312,29 +334,21 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         setMessagesService(null);
         showDir(null);
 
-        // Restore previous selection for the new service (if any)
-        if (activeService) {
-            const savedConversation = getSelectedConversation(activeService);
-            if (savedConversation) {
-                console.debug('[MessagesFeature] service switch → restoring', { service: activeService, isGroupChat: savedConversation.isGroupChat });
-                setSelectedGroupDir(savedConversation.path);
-                setSelectedName(savedConversation.name);
-                setIsGroupChat(savedConversation.isGroupChat);
-                setBackgroundSettings(loadBackgroundSettings(savedConversation.path));
-            } else {
-                setSelectedGroupDir(undefined);
-                setSelectedName(undefined);
-                setIsGroupChat(false);
-            }
+        if (featureActive) {
+            restoreSavedConversation(activeService);
         } else {
+            // Hidden: no room is opened behind another feature (no fetch, no read sync, no extras).
             setSelectedGroupDir(undefined);
             setSelectedName(undefined);
             setIsGroupChat(false);
+            restoreOnShowRef.current = true;
+            clientLog('chat_load', { outcome: 'deferred', reason: 'hidden_restore' });
         }
 
         // Update ref for next switch
         previousServiceRef.current = activeService;
-    }, [activeService, getSelectedConversation, setSelectedConversation, showDir]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- featureActive is read, not a trigger: the show edge below handles it
+    }, [activeService, getSelectedConversation, setSelectedConversation, showDir, restoreSavedConversation]);
     // Note: selectedGroupDir, selectedName, isGroupChat intentionally excluded to avoid infinite loops
 
     // Refresh messages when sync completes
@@ -344,10 +358,32 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // because fetchMessages updates state that these values depend on.
     useEffect(() => {
         if (syncVersion > 0 && selectedGroupDir) {
+            // Hidden: the show effect below refreshes the room when Messages comes back.
+            if (!featureActive) {
+                clientLog('chat_load', { outcome: 'deferred', reason: 'hidden' });
+                return;
+            }
             fetchMessages(selectedGroupDir, isGroupChat);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
     }, [syncVersion]);
+
+    // Shown again after another feature: restore the room of a group switch made while hidden (the
+    // selection effect then loads it), else one background refresh (a 304 when nothing changed). It
+    // also lets the incoming call evaluate, as the remount did before Messages was kept mounted.
+    const wasActiveRef = useRef(featureActive);
+    useEffect(() => {
+        const was = wasActiveRef.current;
+        wasActiveRef.current = featureActive;
+        if (was || !featureActive) return;
+        if (restoreOnShowRef.current) {
+            restoreOnShowRef.current = false;
+            restoreSavedConversation(activeService);
+        } else if (selectedGroupDir) {
+            fetchMessages(selectedGroupDir, isGroupChat);
+        }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on the hidden → shown edge only
+    }, [featureActive]);
 
     // === FETCH MESSAGES (Load All) ===
     // limit=0 loads the whole room in one request. One AbortController per fetch: a newer fetch
@@ -527,9 +563,16 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             // The ref mirror for fetchMessages (the state was set while rendering, above): a cached
             // room is on screen, so its fetch is a background refresh.
             if (messagesCacheRef.current.has(selectedGroupDir)) showDir(selectedGroupDir);
-            fetchMessages(selectedGroupDir, isGroupChat);
+            if (featureActive) {
+                fetchMessages(selectedGroupDir, isGroupChat);
+            } else {
+                // Hidden (a selection made by a search or a restore behind another feature): the
+                // show effect refreshes it.
+                clientLog('chat_load', { outcome: 'deferred', reason: 'hidden_select' });
+            }
             setIsSidebarOpen(false);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps -- fetchMessages is a per-render closure; featureActive is handled by the show effect
     }, [selectedGroupDir, isGroupChat, showDir]);
 
     // Opt-in "sync read to phone": opening a room clears its unread on the official
@@ -543,16 +586,27 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // didn't just open). We compare the previous (room, flag) to tell a real
     // room-open / initial settings load apart from a pure toggle. undefined flag means
     // settings haven't loaded yet; false means explicitly off.
-    const syncReadPrevRef = useRef<{ dir: string | undefined; on: boolean | undefined }>({
+    const syncReadPrevRef = useRef<{ dir: string | undefined; on: boolean | undefined; active: boolean }>({
         dir: undefined,
         on: undefined,
+        active: featureActive,
     });
     useEffect(() => {
         const on = appSettings?.sync_read_to_phone;
         const prev = syncReadPrevRef.current;
-        syncReadPrevRef.current = { dir: selectedGroupDir, on };
+        if (!featureActive) {
+            // Hidden: nothing is opened behind another feature. The room as last shown is kept, so
+            // the show edge decides.
+            if (selectedGroupDir && on && (selectedGroupDir !== prev.dir || prev.on === undefined)) {
+                clientLog('chat_load', { outcome: 'deferred', reason: 'hidden_read_sync' });
+            }
+            syncReadPrevRef.current = { ...prev, active: false };
+            return;
+        }
+        syncReadPrevRef.current = { dir: selectedGroupDir, on, active: true };
         if (!selectedGroupDir || !on) return;
-        const roomOpened = selectedGroupDir !== prev.dir;
+        // Shown again after another feature counts as opening the room.
+        const roomOpened = selectedGroupDir !== prev.dir || !prev.active;
         const settingsJustLoaded = prev.on === undefined; // null → loaded transition
         if (!roomOpened && !settingsJustLoaded) return; // pure setting toggle → ignore
         const parsedOpen = parseReadStatePath(selectedGroupDir);
@@ -565,7 +619,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ service: parsedOpen.service, group_id: parsedOpen.groupId }),
         }).catch(() => {});
-    }, [selectedGroupDir, appSettings?.sync_read_to_phone]);
+    }, [selectedGroupDir, appSettings?.sync_read_to_phone, featureActive]);
 
     // Unread navigation state logic
     const isUnread = useCallback((msgId: number) => {
@@ -579,7 +633,18 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // room whose path is in the active service's folder (never the stale pair of a group switch).
     // Group chats have no letters and no streak. The streak (one official request per room per
     // local day) is shared by the header and the profile popup.
-    const roomExtras = useRoomExtras(activeService, selectedGroupDir, isGroupChat, syncVersion);
+    // While hidden the extras keep the arguments of the room as last shown, so a finished sync or a
+    // group switch made from another feature asks nothing (no letters, profile or once-a-day streak
+    // request) and the shown room keeps its letters (no skeleton, no lost scroll position).
+    const liveExtrasArgs = useMemo(
+        () => ({ service: activeService, dir: selectedGroupDir, isGroupChat, syncVersion }),
+        [activeService, selectedGroupDir, isGroupChat, syncVersion],
+    );
+    const [extrasArgs, setExtrasArgs] = useState(liveExtrasArgs);
+    // Updated while rendering (the "adjust state on a prop change" pattern), so the render that shows
+    // Messages again already asks for the current room.
+    if (featureActive && extrasArgs !== liveExtrasArgs) setExtrasArgs(liveExtrasArgs);
+    const roomExtras = useRoomExtras(extrasArgs.service, extrasArgs.dir, extrasArgs.isGroupChat, extrasArgs.syncVersion);
     const { streak, retryStreak } = roomExtras;
     // The one loading derivation: the timeline (skeleton, failure) and the gallery's list state.
     const chatLoad = deriveChatLoad({
@@ -607,8 +672,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         && roomExtras.lettersReady && !showWait,
     );
     // Milestone cards (spec §9, decision D10): member chats only; counts only once loaded for this room.
+    // None while hidden: the room's open ends, as the unmount did; the show edge opens it again.
     const milestone = useMilestone({
-        roomKey: selectedGroupDir && messagesService && !isGroupChat ? `${messagesService}|${selectedGroupDir}` : null,
+        roomKey: featureActive && selectedGroupDir && messagesService && !isGroupChat ? `${messagesService}|${selectedGroupDir}` : null,
         totalMessages: selectedGroupDir && messagesForDir === selectedGroupDir ? totalMessages : null,
         streakDays: streak.status === 'ready' ? streak.days : null,
     });
@@ -810,8 +876,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         messages,
         member: callMember,
         name: formatName(callMember?.name || selectedName || ''),
-        // undefined until settings load → no ring; a loaded value without the field defaults on
-        enabled: appSettings ? (appSettings.incoming_call_enabled ?? true) : undefined,
+        // Hidden: off (a ringing call ends, as when the feature unmounted); undefined until settings
+        // load → no ring; a loaded value without the field defaults on.
+        enabled: !featureActive ? false : appSettings ? (appSettings.incoming_call_enabled ?? true) : undefined,
         isUnread,
         freshFetch,
         revealMessage,
@@ -819,7 +886,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         logContext: selectedGroupDir ? parseReadStatePath(selectedGroupDir) : null,
         isCallElsewhere,
     });
-    useUiStateReporter(selectedGroupDir);
+    // Hidden: no chat is reported as viewed, so its notifications come through.
+    useUiStateReporter(featureActive ? selectedGroupDir : undefined);
     const callActive = incomingCall.phase !== 'idle';
     // The unread arrows float over the list only: never over the room's wait, skeleton or failure
     // (N4: at 960×640 the down arrow sat over the loading skeleton), nor over a call.
@@ -904,6 +972,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     isSyncing={isSyncing}
                     readStateVersion={readStateVersion}
                     onSyncNow={onSyncNow}
+                    paused={!featureActive}
                 />
             </div>
 

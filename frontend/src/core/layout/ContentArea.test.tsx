@@ -56,4 +56,24 @@ describe('ContentArea', () => {
         expect(screen.getByText('News')).toBeInTheDocument();
         expect(screen.getByText('Coming soon')).toBeInTheDocument();
     });
+
+    it('keeps messages mounted (hidden) after switching to blogs, and shows the same node again', () => {
+        useAppStore.setState({ activeFeatures: { hinatazaka46: 'messages' } });
+        const { rerender } = render(<ContentArea service="hinatazaka46" messagesContent={<div data-testid="messages" />} />);
+        const node = screen.getByTestId('messages');
+        useAppStore.setState({ activeFeatures: { hinatazaka46: 'blogs' } });
+        rerender(<ContentArea service="hinatazaka46" messagesContent={<div data-testid="messages" />} />);
+        expect(screen.getByText('blogs')).toBeInTheDocument();
+        expect(screen.getByTestId('messages')).toBe(node);
+        expect(node.closest('[data-testid="kept-feature"]')).toHaveAttribute('inert');
+        useAppStore.setState({ activeFeatures: { hinatazaka46: 'messages' } });
+        rerender(<ContentArea service="hinatazaka46" messagesContent={<div data-testid="messages" />} />);
+        expect(screen.getByTestId('messages')).toBe(node);
+        expect(node.closest('[data-testid="kept-feature"]')).not.toHaveAttribute('inert');
+    });
+
+    it('does not mount messages before its first visit', () => {
+        show('blogs');
+        expect(screen.queryByTestId('messages')).toBeNull();
+    });
 });

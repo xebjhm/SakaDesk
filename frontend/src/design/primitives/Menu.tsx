@@ -5,6 +5,7 @@ import { clientLog } from '../../utils/clientLog';
 import { Z_INDEX } from '../../constants/zIndex';
 import { clampToViewport } from './menuPosition';
 import { isTopMenu, popMenu, pushMenu } from './menuStack';
+import { useFeatureActive } from '../featureActive';
 
 const ITEMS = '[role="menuitem"]:not([disabled]), [role="menuitemradio"]:not([disabled])';
 
@@ -26,8 +27,8 @@ export interface MenuProps {
     children: React.ReactNode;
 }
 
-/** Level-2 popover menu (docs/design/DESIGN_SYSTEM.md, "Menus"). */
-export const Menu: React.FC<MenuProps> = ({
+/** The open menu; `Menu` renders it while its feature shows. */
+const OpenMenu: React.FC<MenuProps> = ({
     'aria-label': ariaLabel, onClose, point, estimatedSize = { width: 200, height: 48 }, layer = 'dropdown',
     returnFocusRef, ignoreRefs, className, style, children,
 }) => {
@@ -120,6 +121,9 @@ export const Menu: React.FC<MenuProps> = ({
     );
     return point ? createPortal(menu, document.body) : menu;
 };
+
+/** Level-2 popover menu (docs/design/DESIGN_SYSTEM.md, "Menus"); nothing while its feature is hidden (as `Modal`). */
+export const Menu: React.FC<MenuProps> = (props) => (useFeatureActive() ? <OpenMenu {...props} /> : null);
 
 export interface MenuItemProps extends Omit<React.ButtonHTMLAttributes<HTMLButtonElement>, 'role'> {
     icon?: React.ReactNode;

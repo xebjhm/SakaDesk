@@ -658,6 +658,9 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
   error states are `StatusBlock` (`variant="dialog"`; spinner `text-accent`; the error tile is
   `bg-semantic-danger-icon`, the empty state `EmptyState`; `retryVariant` is
   `secondary` by default and `primary` for the gradient retry the blog dialogs use).
+- **Hidden feature:** Inside a feature kept mounted behind another one (`useFeatureActive()` false,
+  `design/featureActive.ts`), `Modal` and `Menu` render nothing; their open state is kept, so
+  they come back with the feature.
 
 ### Loading and waiting
 
@@ -892,6 +895,10 @@ menu stops its keys from bubbling to a dialog around its trigger (the viewer's a
 
 A text field's suggestion list is not a `Menu` (focus must stay in the field): give it the
 same surface classes and `role="listbox"`.
+
+Inside a feature kept mounted behind another one (`useFeatureActive()` false,
+`design/featureActive.ts`), `Modal` and `Menu` render nothing; their open state is kept, so they
+come back with the feature.
 
 ### Cross-group markers
 

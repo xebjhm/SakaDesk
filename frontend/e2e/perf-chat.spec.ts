@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test'
-import { buildBigRoom, pinBigRoom, COUNT, TZ, type FixtureMessage } from './fixtures/bigRoom'
+import { buildBigRoom, pinBigRoom, topVisibleMessageId, COUNT, TZ, type FixtureMessage } from './fixtures/bigRoom'
+import { pinBlogs } from './fixtures/blogs'
 
 // Rendering-performance contracts that need a real browser (UI health plan F).
 
@@ -97,5 +98,28 @@ test.describe('chat performance contracts', () => {
     await page.waitForTimeout(500)
     const afterwards = (await longTasks(page)).filter((t) => t.start >= after304)
     test.info().annotations.push({ type: 'longest-task-after-304-ms', description: String(Math.round(Math.max(0, ...afterwards.map((t) => t.duration)))) })
+  })
+
+  test('switching to Blogs and back keeps the chat where it was without reloading it', async ({ page }) => {
+    // Blog routes, then the big room again on top (later routes win), opening on Talk.
+    await pinBlogs(page)
+    await pinBigRoom(page, { messages })
+    const seen = await serveWithEtags(page, messages)
+    await page.goto('/')
+    await page.getByText('Big Room', { exact: true }).click()
+    await expect(page.locator(`#msg-${COUNT}`)).toBeVisible({ timeout: 10000 })
+    await page.locator('[data-virtuoso-scroller]').evaluate((el) => { el.scrollTop -= 1500 })
+    await page.waitForTimeout(400)
+    const before = await topVisibleMessageId(page)
+
+    await page.getByRole('button', { name: 'Blogs', exact: true }).click()
+    await expect(page.getByRole('heading', { name: 'Latest Blogs' })).toBeVisible()
+    await expect(page.locator('[data-testid="kept-feature"][data-active="false"]')).toHaveCount(1)
+
+    await page.getByRole('button', { name: 'Messages', exact: true }).click()
+    await expect.poll(() => seen.filter((s) => s.room === 'big').length).toBe(2)
+    expect(seen.filter((s) => s.room === 'big')[1].status).toBe(304)
+    await expect(page.getByTestId('chat-skeleton')).toHaveCount(0)
+    expect(await topVisibleMessageId(page)).toBe(before)
   })
 })

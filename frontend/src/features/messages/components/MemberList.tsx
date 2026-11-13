@@ -44,6 +44,8 @@ interface SidebarProps {
     isSyncing?: boolean;
     readStateVersion?: number; // Increments when read state changes, triggers sidebar refresh
     onSyncNow?: () => void; // Manual sync trigger
+    /** Kept mounted behind another feature: no polling until shown again. */
+    paused?: boolean;
 }
 
 function formatRelativeTime(isoTime: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
@@ -74,7 +76,7 @@ const SectionHeading: React.FC<{ children: React.ReactNode }> = ({ children }) =
 /** `/api/content/groups`: legacy array, or object with groups + last_sync. */
 type GroupsResponse = GroupInfo[] | { groups: GroupInfo[]; last_sync?: Record<string, string> };
 
-const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow }) => {
+const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow, paused }) => {
     const { t } = useTranslation();
     const [groups, setGroups] = useState<GroupInfo[]>([]);
     // Resized variant matched to the screen: 64 CSS px × device pixel ratio, rounded up to an allowed width.
@@ -264,6 +266,7 @@ const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGr
         trigger => { void loadGroups(trigger === 'immediate'); },
         UI_CONSTANTS.polling.sidebarMs,
         [activeService],
+        { enabled: !paused },
     );
 
     // Refresh when a sync ends. Only a true -> false transition counts: mount is
