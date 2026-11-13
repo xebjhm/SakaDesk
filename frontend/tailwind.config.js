@@ -447,6 +447,8 @@ export default {
                 '.justify-safe-center': { justifyContent: 'safe center' },
                 '.items-safe-center': { alignItems: 'safe center' },
                 '.scrollbar-stable': { scrollbarGutter: 'stable' },
+                // Japanese titles break between phrases, not mid-word (Chromium's auto-phrase, UI health C-Y5).
+                '.phrase-break': { wordBreak: 'auto-phrase' },
             });
         },
     ],

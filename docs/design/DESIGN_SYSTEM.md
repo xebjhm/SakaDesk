@@ -433,6 +433,10 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   `text-heading` 20/28, `text-display` 32/40 (brand moments only),
   `text-reading` 16/28 (long-form reading, blog posts only).
 - Use Tailwind's `tabular-nums` for stats, times and counters.
+- Headings that wrap use `text-balance` (EmptyState, landing); long prose
+  `text-pretty` (blog bodies); Japanese titles `phrase-break`
+  (`word-break: auto-phrase`, blog reader and feed cards). Never on `*`: both
+  have a layout cost.
 
 ## 9. Buttons and states
 

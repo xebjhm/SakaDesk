@@ -487,7 +487,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 {runStart && (
                     <div className="mb-1 flex items-center gap-2">
                         <span lang="ja" className="text-small font-semibold text-accent-strong">{member_name}</span>
-                        <time className="text-caption text-muted" dateTime={message.timestamp}>{time}</time>
+                        <time className="text-caption tabular-nums text-muted" dateTime={message.timestamp}>{time}</time>
                         {favoriteStar}
                     </div>
                 )}
@@ -637,7 +637,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {translateButton}
                         {!runStart && (
                             <time
-                                className="text-caption text-muted opacity-0 transition-opacity duration-fast ease-standard group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100"
+                                className="text-caption tabular-nums text-muted opacity-0 transition-opacity duration-fast ease-standard group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100"
                                 dateTime={message.timestamp}
                             >
                                 {time}

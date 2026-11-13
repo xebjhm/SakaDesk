@@ -1091,7 +1091,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         ) : null}
                     </div>
                     {displayUnreadCount > 0 && (
-                        <ChatHeaderPill light={isLightHeader} className="font-semibold">
+                        <ChatHeaderPill light={isLightHeader} className="font-semibold tabular-nums">
                             {t('messageList.unread', { count: displayUnreadCount })}
                         </ChatHeaderPill>
                     )}

@@ -352,7 +352,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                         {!loading && !error && content && (
                             <article className="mx-auto w-full max-w-2xl px-8 pb-24 pt-6">
                                 <header className="mb-8 flex flex-col gap-2">
-                                    <h1 lang="ja" className="font-reading text-heading font-semibold text-primary">{content.meta.title}</h1>
+                                    <h1 lang="ja" className="phrase-break text-balance font-reading text-heading font-semibold text-primary">{content.meta.title}</h1>
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-muted">
                                         <button
                                             type="button"

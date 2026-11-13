@@ -15,7 +15,7 @@ export const Badge: React.FC<BadgeProps> = ({ count, className }) => {
         <span
             className={cn(
                 'inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-accent px-1.5',
-                'text-caption font-semibold text-inverse shadow-accent-unread',
+                'text-caption font-semibold tabular-nums text-inverse shadow-accent-unread',
                 className,
             )}
         >

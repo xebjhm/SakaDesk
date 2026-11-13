@@ -36,7 +36,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
         Test User
       </span>
       <time
-        class="text-caption text-muted"
+        class="text-caption tabular-nums text-muted"
         datetime="2024-01-15T10:30:00Z"
       >
         10:30
@@ -117,7 +117,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
         Test User
       </span>
       <time
-        class="text-caption text-muted"
+        class="text-caption tabular-nums text-muted"
         datetime="2024-01-15T10:30:00Z"
       >
         10:30
@@ -179,7 +179,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
         Test User
       </span>
       <time
-        class="text-caption text-muted"
+        class="text-caption tabular-nums text-muted"
         datetime="2024-01-15T10:30:00Z"
       >
         10:30
