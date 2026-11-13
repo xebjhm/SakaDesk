@@ -5,8 +5,8 @@ Every archive containment check trusts ``output_dir`` as its base, so whoever
 sets it decides which files the archive routes may read. ``POST /api/settings``
 therefore takes a new value only when the user chose it in the native folder
 picker the backend runs (:func:`grant`, then :func:`take_grant` when it is
-saved; a pick is used once and expires after ``GRANT_LIFETIME_SECONDS``) or it is the default folder, and only if :func:`check_output_dir`
-passes. Reasons (log, API and UI codes):
+saved; a pick is used once and expires after ``GRANT_LIFETIME_SECONDS``)
+or it is the default folder, and only if :func:`check_output_dir` passes. Reasons (log, API and UI codes):
 
 Lexical, before any filesystem call (so a network path is never opened):
 

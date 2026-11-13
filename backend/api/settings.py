@@ -524,7 +524,8 @@ async def select_folder():
     ``{"path": None}`` when the user cancelled, or ``{"path": None, "error":
     <code>}``: ``busy`` (a dialog is already open), ``unavailable`` (no
     tkinter), ``timeout`` (no answer within 5 minutes; that dialog keeps the
-    picker busy until it is closed), ``failed`` (the dialog could not open),
+    picker busy until it is closed), ``cooldown`` (asked again within 2 s of
+    a cancel), ``failed`` (the dialog could not open),
     or a rule's reason (``network``, ``root``, ``profile``...). Every outcome
     logs ``output_dir_picker`` with ``outcome`` (and ``reason`` or
     ``error_type``); never a path.

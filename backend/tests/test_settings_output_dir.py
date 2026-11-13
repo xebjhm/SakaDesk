@@ -214,7 +214,7 @@ def test_a_dialog_failure_gives_a_code_not_the_error_text(settings_file, monkeyp
 
 
 def test_a_thread_that_cannot_start_releases_the_picker(settings_file, monkeypatch):
-    def no_thread(title):
+    def no_thread(title, initialdir=None):
         raise RuntimeError("can't start new thread")
 
     monkeypatch.setattr(settings_api, "_start_picker", no_thread)
@@ -434,7 +434,20 @@ def test_a_pick_does_not_start_a_cooldown(settings_file, tmp_path, monkeypatch):
     assert _pick(monkeypatch, str(chosen)) == {"path": str(chosen)}
 
 
-def test_simultaneous_posts_use_one_grant_once(settings_file, tmp_path, monkeypatch):
+@pytest.fixture
+def fresh_settings_lock(monkeypatch):
+    """A lock of this test's own: asyncio.run() in a concurrency test would
+    otherwise tie the module-level settings lock to a loop that then closes."""
+    import asyncio
+
+    from backend.services import settings_store
+
+    monkeypatch.setattr(settings_store, "_lock", asyncio.Lock())
+
+
+def test_simultaneous_posts_use_one_grant_once(
+    settings_file, tmp_path, monkeypatch, fresh_settings_lock
+):
     import asyncio
     import time
 
@@ -473,7 +486,7 @@ def test_simultaneous_posts_use_one_grant_once(settings_file, tmp_path, monkeypa
 
 
 def test_a_posted_old_value_cannot_undo_a_picker_save(
-    settings_file, tmp_path, monkeypatch
+    settings_file, tmp_path, monkeypatch, fresh_settings_lock
 ):
     import asyncio
 
