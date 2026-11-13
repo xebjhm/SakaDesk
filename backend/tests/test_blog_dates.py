@@ -8,7 +8,7 @@ raised TypeError for the whole group, and the index was never saved again.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -154,9 +154,12 @@ async def test_a_stored_null_no_longer_breaks_the_incremental_sync():
             },
         }
     }
-    scraper = _scraper({"1": [], "2": [_entry("b10", JST_POST)]})
-    index = await _sync(legacy, scraper)
+    scraper = _scraper({"1": [_entry("b1", JST_POST)], "2": [_entry("b10", JST_POST)]})
+    with capture_logs() as logs:
+        index = await _sync(legacy, scraper)
     assert [b["id"] for b in index["members"]["2"]["blogs"]] == ["b9", "b10"]
+    assert [b["id"] for b in index["members"]["1"]["blogs"]] == ["b0", "b1"]
+    assert not [e for e in logs if e["event"] == "blog_member_sync_failed"]
 
 
 @pytest.mark.asyncio
@@ -275,3 +278,381 @@ def test_the_image_route_refuses_a_file_name_with_a_trailing_newline():
         "/api/blogs/image?service=hinatazaka46&blog_id=good&filename=img_0.jpg%0A"
     )
     assert resp.status_code == 400
+
+
+# --- Task 2: the incremental cursor ----------------------------------------
+
+from backend.services.blog_service import (  # noqa: E402
+    _incremental_cursor,
+    _merge_blog_index,
+)
+
+NOW = datetime(2026, 11, 13, 0, 0, tzinfo=timezone.utc)
+
+
+def test_the_cursor_ignores_future_and_unparseable_rows():
+    rows = [
+        {"published_at": "2099-01-24T16:03:00+09:00"},
+        {"published_at": None},
+        {"published_at": "2026-11-10T08:00:00+09:00"},
+        {"published_at": "2026-11-13T20:00:00+00:00"},  # within the one-day skew
+        "junk",
+    ]
+    cursor, ignored = _incremental_cursor(rows, NOW)
+    assert cursor == datetime(2026, 11, 13, 20, tzinfo=timezone.utc)
+    assert ignored == 3
+
+
+def test_no_usable_row_means_no_cursor():
+    assert _incremental_cursor([{"published_at": "2099-01-01T00:00:00Z"}], NOW) == (
+        None,
+        1,
+    )
+    assert _incremental_cursor([], NOW) == (None, 0)
+
+
+@pytest.mark.asyncio
+async def test_a_future_dated_row_does_not_stop_new_posts():
+    stored = {
+        "members": {
+            "1": {
+                "name": "name 1",
+                "blogs": [
+                    {
+                        "id": "b-future",
+                        "title": "t",
+                        "published_at": "2099-01-24T16:03:00+09:00",
+                        "url": "u",
+                        "thumbnail": None,
+                    },
+                    {
+                        "id": "b-old",
+                        "title": "t",
+                        "published_at": "2026-10-01T00:00:00+09:00",
+                        "url": "u",
+                        "thumbnail": None,
+                    },
+                ],
+            }
+        }
+    }
+    seen = {}
+    scraper = _scraper({"1": [_entry("b-new", JST_POST)]})
+    original = scraper.get_blogs_metadata
+
+    async def spy(member_id, since_date=None, max_pages=None, member_name=None):
+        seen["since"] = since_date
+        async for entry in original(member_id, since_date, max_pages, member_name):
+            yield entry
+
+    scraper.get_blogs_metadata = spy
+    with capture_logs() as logs:
+        index = await _sync(stored, scraper)
+    assert seen["since"] == datetime.fromisoformat("2026-10-01T00:00:00+09:00")
+    assert [b["id"] for b in index["members"]["1"]["blogs"]][-1] == "b-new"
+    assert {
+        "event": "blog_cursor_rows_ignored",
+        "service": "hinatazaka46",
+        "count": 1,
+        "log_level": "info",
+    } in logs
+
+
+# --- Task 2: posts skipped for an unknown date are retried -------------------
+
+
+def _row(blog_id, published_at):
+    return {
+        "id": blog_id,
+        "title": "t",
+        "published_at": published_at,
+        "url": "u",
+        "thumbnail": None,
+    }
+
+
+def _by_id_detail(table):
+    async def detail(blog_id):
+        return table.get(blog_id, (None, None, None))
+
+    return detail
+
+
+@pytest.mark.asyncio
+async def test_a_skipped_post_is_retried_after_a_newer_post_moved_the_cursor():
+    stored = {
+        "members": {
+            "1": {"name": "name 1", "blogs": [_row("b9", "2026-10-01T00:00:00+09:00")]}
+        }
+    }
+    scraper = _scraper({"1": [_entry("b-skip", None), _entry("b-new", JST_POST)]})
+    first = await _sync(stored, scraper)
+    member = first["members"]["1"]
+    assert [b["id"] for b in member["blogs"]] == ["b9", "b-new"]
+    assert [p["id"] for p in member["pending_dates"]] == ["b-skip"]
+
+    later = _scraper({"1": []})  # the list no longer reaches b-skip
+    later.get_blog_detail_metadata = AsyncMock(
+        side_effect=_by_id_detail({"b-skip": (None, JST_POST, "dated")})
+    )
+    with capture_logs() as logs:
+        second = await _sync(first, later)
+    member = second["members"]["1"]
+    assert [b["id"] for b in member["blogs"]] == ["b9", "b-new", "b-skip"]
+    assert member["blogs"][-1]["published_at"] == JST_POST.isoformat()
+    assert member["blogs"][-1]["title"] == "dated"
+    assert member["pending_dates"] == []
+    assert "b-skip" not in repr(logs)
+
+
+@pytest.mark.asyncio
+async def test_a_still_undated_pending_post_counts_an_attempt():
+    stored = {
+        "members": {
+            "1": {"name": "name 1", "blogs": [_row("b9", "2026-10-01T00:00:00+09:00")]}
+        }
+    }
+    scraper = _scraper({"1": [_entry("b-skip", None)]})
+    first = await _sync(stored, scraper)
+    assert first["members"]["1"]["pending_dates"][0]["attempts"] == 0
+    second = await _sync(first, _scraper({"1": []}))
+    assert second["members"]["1"]["pending_dates"][0]["attempts"] == 1
+
+
+def _pending(blog_id, attempts=0, age_days=0):
+    seen = datetime.now(timezone.utc) - timedelta(days=age_days)
+    return {
+        "id": blog_id,
+        "first_seen": seen.isoformat(),
+        "attempts": attempts,
+        "title": "t",
+        "url": "u",
+        "thumbnail": None,
+    }
+
+
+def _with_pending(pending):
+    return {
+        "members": {
+            "1": {
+                "name": "name 1",
+                "blogs": [_row("b9", "2026-10-01T00:00:00+09:00")],
+                "pending_dates": pending,
+            }
+        }
+    }
+
+
+@pytest.mark.asyncio
+async def test_pending_retries_are_bounded_and_rotate():
+    scraper = _scraper({"1": []})
+    index = await _sync(_with_pending([_pending(f"p{i}") for i in range(25)]), scraper)
+    assert scraper.get_blog_detail_metadata.await_count == 10
+    pending = index["members"]["1"]["pending_dates"]
+    assert [p["id"] for p in pending][:15] == [f"p{i}" for i in range(10, 25)]
+    assert [p["attempts"] for p in pending] == [0] * 15 + [1] * 10
+
+
+@pytest.mark.asyncio
+async def test_pending_entries_expire_by_attempts_and_age():
+    scraper = _scraper({"1": []})
+    pending = [
+        _pending("tired", attempts=4),
+        _pending("old", age_days=31),
+        _pending("ok"),
+    ]
+    with capture_logs() as logs:
+        index = await _sync(_with_pending(pending), scraper)
+    assert [p["id"] for p in index["members"]["1"]["pending_dates"]] == ["ok"]
+    dropped = {
+        e["reason"]: e["count"] for e in logs if e["event"] == "blog_pending_dropped"
+    }
+    assert dropped == {"attempts": 1, "expired": 1}
+    assert "tired" not in repr(logs) and "old" not in repr(logs)
+
+
+@pytest.mark.asyncio
+async def test_pending_list_is_capped_and_unsafe_ids_dropped():
+    entries = [_entry(f"s{i}", None) for i in range(60)]
+    scraper = _scraper({"1": entries})
+    with capture_logs() as logs:
+        index = await _sync(_with_pending([_pending("../evil")]), scraper)
+    pending = index["members"]["1"]["pending_dates"]
+    assert len(pending) == 50
+    assert "../evil" not in [p["id"] for p in pending]
+    assert pending[-1]["id"] == "s59"  # the oldest were dropped
+    dropped = {
+        e["reason"]: e["count"] for e in logs if e["event"] == "blog_pending_dropped"
+    }
+    assert dropped == {"invalid": 1, "cap": 10}
+
+
+def test_merge_keeps_pending_dates_and_drops_stored_ids():
+    current = {"members": {"1": {"blogs": [], "pending_dates": [_pending("p1")]}}}
+    incoming = {"members": {"1": {"blogs": [_row("p2", "2026-11-01T00:00:00Z")]}}}
+    merged = _merge_blog_index(current, incoming)
+    assert [p["id"] for p in merged["members"]["1"]["pending_dates"]] == ["p1"]
+    incoming = {"members": {"1": {"blogs": [_row("p1", "2026-11-01T00:00:00Z")]}}}
+    merged = _merge_blog_index(current, incoming)
+    assert merged["members"]["1"]["pending_dates"] == []
+
+
+@pytest.mark.asyncio
+async def test_readers_ignore_pending_dates(legacy_svc):
+    member = LEGACY_INDEX["members"]["1"]
+    member["pending_dates"] = [_pending("p1")]
+    try:
+        listing = await legacy_svc.get_blog_list("hinatazaka46", "1")
+        stats = await legacy_svc.get_cache_stats("hinatazaka46")
+    finally:
+        del member["pending_dates"]
+    assert [b["id"] for b in listing["blogs"]] == ["good", "notitle", "../x"]
+    assert stats["total_blogs"] == 3
+
+
+# --- Task 2: failed members are counted --------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_failed_members_are_counted_once():
+    scraper = _scraper({"1": RuntimeError("x"), "2": [_entry("b2", JST_POST)]})
+    progress = []
+
+    async def on_progress(text):
+        progress.append(text)
+
+    svc = BlogService()
+    saved = {}
+
+    async def fake_save(service, idx, *, merge=True):
+        saved["index"] = idx
+
+    with (
+        capture_logs() as logs,
+        patch.object(
+            svc, "load_blog_index", new_callable=AsyncMock, return_value={"members": {}}
+        ),
+        patch.object(svc, "save_blog_index", new=fake_save),
+        patch("backend.services.blog_service.get_scraper", return_value=scraper),
+    ):
+        result = await svc.sync_blog_metadata("hinatazaka46", on_progress)
+    assert {
+        "event": "blog_sync_members_failed",
+        "service": "hinatazaka46",
+        "count": 1,
+        "log_level": "warning",
+    } in logs
+    assert result["last_sync"] is not None and "sync_failed" not in result
+    assert saved["index"] is result
+    assert sorted(p.split("(")[1] for p in progress) == ["1/2)", "2/2)"]
+
+
+@pytest.mark.asyncio
+async def test_when_every_member_fails_last_sync_is_not_stamped():
+    scraper = _scraper({"1": RuntimeError("x"), "2": ValueError("y")})
+    svc = BlogService()
+    save = AsyncMock()
+    with (
+        capture_logs() as logs,
+        patch.object(
+            svc,
+            "load_blog_index",
+            new_callable=AsyncMock,
+            return_value={"members": {}, "last_sync": None},
+        ),
+        patch.object(svc, "save_blog_index", new=save),
+        patch("backend.services.blog_service.get_scraper", return_value=scraper),
+    ):
+        result = await svc.sync_blog_metadata("hinatazaka46")
+    assert result["sync_failed"] is True
+    assert result.get("last_sync") is None
+    save.assert_not_awaited()
+    assert any(
+        e["event"] == "blog_sync_members_failed" and e["count"] == 2 for e in logs
+    )
+
+
+@pytest.mark.asyncio
+async def test_the_sync_route_reports_a_failed_sync():
+    with patch(
+        "backend.api.blogs.blog_service.sync_blog_metadata",
+        new=AsyncMock(return_value={"members": {}, "sync_failed": True}),
+    ):
+        response = client.post("/api/blogs/sync?service=hinatazaka46")
+    assert response.status_code == 502
+
+
+@pytest.mark.asyncio
+async def test_a_failed_sync_stops_the_full_backup_before_stage_two():
+    svc = BlogService()
+    with (
+        patch.object(
+            svc,
+            "sync_blog_metadata",
+            new=AsyncMock(return_value={"members": {}, "sync_failed": True}),
+        ),
+        patch.object(svc, "download_blog_content", new=AsyncMock()) as stage2,
+    ):
+        result = await svc.sync_full_backup("hinatazaka46")
+    assert result == {"sync_failed": True}
+    stage2.assert_not_awaited()
+
+
+# --- Task 2: cancelling the whole sync ----------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_a_cancel_event_skips_the_index_save():
+    import threading
+
+    cancel = threading.Event()
+    scraper = _scraper({"1": [_entry("b1", JST_POST)]})
+    original = scraper.get_blogs_metadata
+
+    async def metadata(*args, **kwargs):
+        cancel.set()
+        async for entry in original(*args, **kwargs):
+            yield entry
+
+    scraper.get_blogs_metadata = metadata
+    svc = BlogService()
+    save = AsyncMock()
+    with (
+        patch.object(
+            svc, "load_blog_index", new_callable=AsyncMock, return_value={"members": {}}
+        ),
+        patch.object(svc, "save_blog_index", new=save),
+        patch("backend.services.blog_service.get_scraper", return_value=scraper),
+    ):
+        await svc.sync_blog_metadata("hinatazaka46", cancel_event=cancel)
+    save.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_cancelling_the_task_propagates_and_skips_the_save():
+    import asyncio
+
+    started = asyncio.Event()
+    scraper = _scraper({"1": []})
+
+    async def hang(*args, **kwargs):
+        started.set()
+        await asyncio.sleep(60)
+        yield  # pragma: no cover
+
+    scraper.get_blogs_metadata = hang
+    svc = BlogService()
+    save = AsyncMock()
+    with (
+        patch.object(
+            svc, "load_blog_index", new_callable=AsyncMock, return_value={"members": {}}
+        ),
+        patch.object(svc, "save_blog_index", new=save),
+        patch("backend.services.blog_service.get_scraper", return_value=scraper),
+    ):
+        task = asyncio.create_task(svc.sync_blog_metadata("hinatazaka46"))
+        await started.wait()
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+    save.assert_not_awaited()

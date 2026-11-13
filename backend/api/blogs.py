@@ -563,11 +563,14 @@ async def sync_blog_metadata(service: str = Query(...)):
         service: Service name (e.g., 'sakurazaka46').
 
     Returns:
-        Stats about the sync operation.
+        Stats about the sync operation. Answers 502 when every member's sync
+        failed (nothing was scanned, ``last_sync`` is not stamped).
     """
     try:
         validate_service(service)
         index = await blog_service.sync_blog_metadata(service)
+        if index.get("sync_failed"):
+            raise HTTPException(status_code=502, detail="Blog sync failed")
 
         # Calculate stats
         total_blogs = sum(
@@ -581,6 +584,8 @@ async def sync_blog_metadata(service: str = Query(...)):
             "total_blogs": total_blogs,
             "last_sync": index.get("last_sync"),
         }
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:

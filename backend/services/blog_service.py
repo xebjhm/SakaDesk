@@ -19,7 +19,7 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, cast
 from urllib.parse import urlsplit
@@ -204,6 +204,92 @@ def _thumbnail(value: object) -> Optional[str]:
     return value if isinstance(value, str) and value else None
 
 
+CURSOR_SKEW = timedelta(days=1)
+"""How far past now a stored date may lie and still move the incremental cursor."""
+
+
+def _incremental_cursor(rows: object, now: datetime) -> tuple[Optional[datetime], int]:
+    """The incremental cursor of a member's stored rows, and how many were ignored.
+
+    The newest :func:`_parse_published` date that is not later than
+    ``now + CURSOR_SKEW`` (security audit 2026-11-13: one future-dated post
+    made pysaka stop at the first real entry forever). ``None`` when no row
+    qualifies; pagination then runs to the incremental page cap.
+    """
+    items = rows if isinstance(rows, list) else []
+    limit = now + CURSOR_SKEW
+    dates = [
+        d
+        for b in items
+        if isinstance(b, dict)
+        and (d := _parse_published(b.get("published_at"))) is not None
+        and d <= limit
+    ]
+    return (max(dates) if dates else None), len(items) - len(dates)
+
+
+PENDING_DATES_MAX = 50
+"""Most posts a member keeps waiting for a date (the oldest are dropped first)."""
+
+PENDING_RETRIES_PER_SYNC = 10
+"""Most pending posts whose detail page is fetched again per member and sync."""
+
+PENDING_MAX_ATTEMPTS = 5
+"""Detail fetches a pending post gets before it is given up."""
+
+PENDING_MAX_AGE = timedelta(days=30)
+"""How long a post may wait for a date before it is given up."""
+
+
+def _clean_pending(raw: object, now: datetime) -> tuple[list[dict], dict[str, int]]:
+    """A member's ``pending_dates`` list as usable entries, and the drop counts.
+
+    A post skipped for an unknown date is older than the cursor once a newer
+    post is stored, so the list pages never yield it again; its id is kept
+    here (``id``, ``first_seen``, ``attempts`` and the list page's ``title``,
+    ``url``, ``thumbnail``) and its detail page is asked again on later syncs.
+    Entries whose id is not ``safe_paths.is_safe_id`` or whose ``first_seen``
+    does not parse count as ``invalid`` (a repeated id is merged silently);
+    entries older than ``PENDING_MAX_AGE`` count as ``expired``.
+    """
+    if not isinstance(raw, list):
+        return [], {}
+    kept: list[dict] = []
+    seen: set[str] = set()
+    dropped: dict[str, int] = {}
+    for item in raw:
+        first_seen = (
+            _parse_published(item.get("first_seen")) if isinstance(item, dict) else None
+        )
+        if (
+            not isinstance(item, dict)
+            or not is_safe_id(item.get("id"))
+            or first_seen is None
+        ):
+            dropped["invalid"] = dropped.get("invalid", 0) + 1
+            continue
+        if item["id"] in seen:
+            continue
+        seen.add(item["id"])
+        if now - first_seen > PENDING_MAX_AGE:
+            dropped["expired"] = dropped.get("expired", 0) + 1
+            continue
+        attempts = item.get("attempts")
+        kept.append(
+            {
+                "id": item["id"],
+                "first_seen": item["first_seen"],
+                "attempts": attempts
+                if isinstance(attempts, int) and not isinstance(attempts, bool)
+                else 0,
+                "title": _text(item.get("title")),
+                "url": _text(item.get("url")),
+                "thumbnail": _thumbnail(item.get("thumbnail")),
+            }
+        )
+    return kept, dropped
+
+
 _row_skip_logs = LogThrottle(limit=5, window_s=3600.0)
 """Budget for ``blog_rows_skipped``: the readers run on every Blogs-view poll."""
 
@@ -352,6 +438,13 @@ def _merge_blog_index(current: dict, incoming: dict) -> dict:
             else:
                 by_id[blog["id"]] = blog
         out_m["blogs"] = list(by_id.values())
+
+        # A post that got its date (stored in either snapshot) stops waiting.
+        pending = out_m.get("pending_dates")
+        if isinstance(pending, list):
+            out_m["pending_dates"] = [
+                p for p in pending if not (isinstance(p, dict) and p.get("id") in by_id)
+            ]
 
         # blogs_removed sticks if either writer set it.
         if cur_m.get("blogs_removed") or inc_m.get("blogs_removed"):
@@ -810,15 +903,25 @@ class BlogService:
             # Blog entries whose id cannot name a folder (security audit 2026-11-13).
             rejected_blogs = 0
             skipped_dates = 0
+            pending_resolved = 0
+            pending_dropped: dict[str, int] = {}
 
             async def sync_member(member_id: str, member_name: str):
-                nonlocal completed, rejected_blogs, skipped_dates
+                nonlocal completed
                 if cancel_event and cancel_event.is_set():
                     return
                 if progress_callback:
                     await progress_callback(
                         f"Scanning {member_name} ({completed + 1}/{total})"
                     )
+                try:
+                    await _sync_one(member_id, member_name)
+                finally:
+                    # A failed member still counts as processed (progress total).
+                    completed += 1
+
+            async def _sync_one(member_id: str, member_name: str):
+                nonlocal rejected_blogs, skipped_dates, pending_resolved
 
                 if member_id not in index["members"]:
                     index["members"][member_id] = {"name": member_name, "blogs": []}
@@ -833,17 +936,70 @@ class BlogService:
                 # isinstance check when appending blogs). A local import inside the
                 # `if` branch made `datetime` a function-local for the whole scope,
                 # so a first sync (branch skipped) hit an unbound local.
-                from datetime import datetime
+                from datetime import datetime, timezone
 
                 # For incremental sync, use since_date to stop early when hitting old blogs
                 # This avoids paginating through entire history just to find no new posts
                 since_date = None
                 if not is_first_sync and index["members"][member_id]["blogs"]:
-                    # Find the newest blog date for this member
-                    newest_date_str = max(
-                        b["published_at"] for b in index["members"][member_id]["blogs"]
+                    since_date, ignored = _incremental_cursor(
+                        index["members"][member_id]["blogs"],
+                        datetime.now(timezone.utc),
                     )
-                    since_date = datetime.fromisoformat(newest_date_str)
+                    if ignored:
+                        logger.info(
+                            "blog_cursor_rows_ignored", service=service, count=ignored
+                        )
+
+                # Posts skipped earlier for an unknown date: ask their detail
+                # page again (they are older than the cursor by now).
+                now = datetime.now(timezone.utc)
+                member_row = index["members"][member_id]
+                pending, dropped = _clean_pending(member_row.get("pending_dates"), now)
+                pending = [p for p in pending if p["id"] not in existing_ids]
+                batch = pending[:PENDING_RETRIES_PER_SYNC]
+                if cancel_event and cancel_event.is_set():
+                    batch = []
+                waiting = pending[len(batch) :]
+
+                async def retry_pending(item: dict):
+                    try:
+                        (
+                            thumb,
+                            detail_date,
+                            detail_title,
+                        ) = await scraper.get_blog_detail_metadata(item["id"])
+                    except Exception:
+                        return item, None, None, None
+                    return item, thumb, detail_date, detail_title
+
+                retried = await asyncio.gather(*[retry_pending(p) for p in batch])
+                for item, thumb, detail_date, detail_title in retried:
+                    if isinstance(detail_date, datetime):
+                        stored_date: Optional[str] = detail_date.isoformat()
+                    elif isinstance(detail_date, str) and _parse_published(detail_date):
+                        stored_date = detail_date
+                    else:
+                        stored_date = None
+                    if stored_date is not None:
+                        index["members"][member_id]["blogs"].append(
+                            {
+                                "id": item["id"],
+                                "title": _text(detail_title) or item["title"],
+                                "published_at": stored_date,
+                                "url": item["url"],
+                                "thumbnail": _thumbnail(thumb) or item["thumbnail"],
+                            }
+                        )
+                        existing_ids.add(item["id"])
+                        pending_resolved += 1
+                        continue
+                    item["attempts"] += 1
+                    if item["attempts"] >= PENDING_MAX_ATTEMPTS:
+                        dropped["attempts"] = dropped.get("attempts", 0) + 1
+                    else:
+                        waiting.append(item)
+                pending = waiting
 
                 # Use fast metadata method - parses list pages only
                 # Pass member_name to filter out "featured" blogs from other members
@@ -918,6 +1074,17 @@ class BlogService:
                         # Never persist an unknown date: every reader and the
                         # cursor need one (security audit 2026-11-13).
                         skipped_dates += 1
+                        if blog_data["id"] not in {p["id"] for p in pending}:
+                            pending.append(
+                                {
+                                    "id": blog_data["id"],
+                                    "first_seen": now.isoformat(),
+                                    "attempts": 0,
+                                    "title": _text(blog_data["title"]),
+                                    "url": _text(blog_data["url"]),
+                                    "thumbnail": _thumbnail(blog_data["thumbnail"]),
+                                }
+                            )
                         continue
                     index["members"][member_id]["blogs"].append(
                         {
@@ -929,7 +1096,13 @@ class BlogService:
                         }
                     )
 
-                completed += 1
+                if len(pending) > PENDING_DATES_MAX:
+                    dropped["cap"] = len(pending) - PENDING_DATES_MAX
+                    pending = pending[-PENDING_DATES_MAX:]
+                if pending or "pending_dates" in member_row:
+                    member_row["pending_dates"] = pending
+                for reason, count in dropped.items():
+                    pending_dropped[reason] = pending_dropped.get(reason, 0) + count
 
             # Run all member syncs concurrently with semaphore limit
             # One member's failure must not abort the others or the index save.
@@ -940,13 +1113,27 @@ class BlogService:
                 ],
                 return_exceptions=True,
             )
+            failed_members = 0
             for result in results:
                 if isinstance(result, BaseException):
+                    failed_members += 1
                     logger.warning(
                         "blog_member_sync_failed",
                         service=service,
                         error_type=type(result).__name__,
                     )
+            if failed_members:
+                logger.warning(
+                    "blog_sync_members_failed", service=service, count=failed_members
+                )
+            for reason, count in pending_dropped.items():
+                logger.warning(
+                    "blog_pending_dropped", service=service, reason=reason, count=count
+                )
+            if pending_resolved:
+                logger.info(
+                    "blog_pending_resolved", service=service, count=pending_resolved
+                )
             if skipped_dates:
                 logger.warning(
                     "blog_entry_skipped",
@@ -968,6 +1155,12 @@ class BlogService:
             logger.info(
                 "Blog metadata sync cancelled; skipping index save", service=service
             )
+            return index
+
+        if members and failed_members == len(members):
+            # Nothing was scanned: leave last_sync and the stored index alone
+            # and flag the failure for the caller.
+            index["sync_failed"] = True
             return index
 
         from datetime import datetime, timezone
@@ -1350,9 +1543,12 @@ class BlogService:
         # Stage 1: Metadata sync
         if progress_callback:
             await progress_callback("Stage 1: Syncing blog metadata...")
-        await self.sync_blog_metadata(
+        stage1 = await self.sync_blog_metadata(
             service, progress_callback, cancel_event=cancel_event
         )
+        if isinstance(stage1, dict) and stage1.get("sync_failed"):
+            logger.warning("blog_backup_aborted", service=service, reason="sync_failed")
+            return {"sync_failed": True}
         logger.info(
             "blog_stage1_complete",
             service=service,
