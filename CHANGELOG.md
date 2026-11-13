@@ -57,8 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the bottom-right call card are see-through again instead of showing a solid
   red patch, on every display scale.
 - **Blogs stopped updating for a whole group** when an official post had an
-  unreadable or future date; such posts are now skipped and other posts keep
-  arriving, and an archive that already stopped recovers on the next sync.
+  unreadable or future date. A post with an unreadable date now waits until it
+  has one, a future date no longer holds back new posts, and an archive that
+  already stopped recovers on the next sync.
 - **Search indexing could stall for minutes** on a blog post with unusual
   markup; it now finishes quickly.
 - **An archive saved at the top of a drive showed no messages**; it loads
@@ -100,9 +101,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Toast and call-popup clicks no longer need script evaluation**, so the app's
   content security policy now refuses all evaluated code. A page that slipped
   past the other defences can no longer turn text into running script.
-- **Bug reports and the diagnostics panel hide your Windows user folder in
-  every form**, including the escaped paths that appear in error messages, and
-  hide translation API keys.
+- **Bug reports and the diagnostics panel hide your Windows user folder**,
+  including the escaped paths that appear in error messages, and hide
+  translation API keys.
 - **Blog backups download pictures only from the official sites** over a
   secure connection and refuse oversized files, so a tampered blog post cannot
   make SakaDesk contact other machines on your network.
