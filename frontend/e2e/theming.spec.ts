@@ -24,4 +24,27 @@ test.describe('theming', () => {
     const fits = await text.evaluate((el) => el.scrollWidth <= el.clientWidth + 1)
     expect(fits).toBe(true)
   })
+
+  test('in forced colours a switch shows on and off, and the selected group is outlined', async ({ page }) => {
+    await page.route((url) => url.pathname === '/api/settings', (route) => route.fulfill({ json: {
+      output_dir: '/fixture/out', auto_sync_enabled: true, sync_interval_minutes: 15, is_configured: true,
+      incoming_call_enabled: true, notifications_enabled: false,
+    } }))
+    await pinBigRoom(page, { messages })
+    await page.emulateMedia({ forcedColors: 'active' })
+    await page.goto('/')
+    await expect(page.getByText('Big Room', { exact: true })).toBeVisible({ timeout: 10000 })
+
+    const group = page.locator('nav [aria-current="page"]').first()
+    expect(await group.evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid')
+
+    await page.getByTitle('Settings', { exact: true }).click()
+    await page.getByText('Settings', { exact: true }).last().click()
+    const on = page.locator('[role="switch"][aria-checked="true"]').first()
+    const off = page.locator('[role="switch"][aria-checked="false"]').first()
+    await expect(on).toBeVisible()
+    const bg = (l: typeof on) => l.evaluate((el) => getComputedStyle(el).backgroundColor)
+    expect(await bg(on)).not.toBe(await bg(off))
+    expect(await off.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe('solid')
+  })
 })

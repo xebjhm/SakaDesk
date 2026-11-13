@@ -1255,6 +1255,19 @@ leaves Escape and Tab pressed inside it to the call (`useDialog`), and focus the
 Because the layer does not track the call, a lifted call that goes away with focus inside it
 hands focus back to the top-most dialog itself (breadcrumb `call_layer`, `phase` `focus`).
 
+### High Contrast (forced colours)
+
+Windows High Contrast replaces colours with system colours and drops shadows and gradients. One
+`@media (forced-colors: active)` block in `frontend/src/index.css` redraws what would vanish:
+surface edges (`shadow-sheet`/`card`/`pill`, dialogs except the full-screen dark viewer, menus,
+list boxes) get an inset 1 px `CanvasText` outline; the `Switch` gets a `ButtonText` border and
+thumb and a `Highlight` track when on (the only `forced-color-adjust: none`); anything selected
+through ARIA (`aria-pressed`, `aria-current`, `aria-selected`, checked `menuitemradio`) gets a
+2 px `Highlight` outline. **So a selected or current state must always carry its ARIA
+attribute**, not only a tint or a ring. Focus rings keep working because Tailwind's
+`outline-none` is a transparent outline, which forced colours paint. Users who ask for more
+contrast also get a darker scrollbar thumb (`prefers-contrast: more`).
+
 ### Adding or changing a token
 
 1. Edit the right file in `frontend/src/design/tokens/`.
