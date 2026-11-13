@@ -238,7 +238,7 @@ async def transcribe(request: TranscribeRequest):
             message_id=request.message_id,
             error_type=type(e).__name__,
         )
-        raise CodedHTTPException(500, "unknown", f"Transcription failed: {e}")
+        raise CodedHTTPException(500, "unknown", "Transcription failed")
 
 
 @router.get("/status")

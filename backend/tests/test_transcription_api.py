@@ -328,6 +328,51 @@ class TestTranscribePost:
         assert "secret-voice" not in repr(logs)
         assert any(e["event"] == "transcription_media_missing" for e in logs)
 
+    def test_an_unexpected_failure_answers_a_fixed_500_without_its_message(
+        self, tmp_path, monkeypatch
+    ):
+        """An OSError message can hold a path; the 500 must not echo it."""
+        member_rel = _setup_voice_member(tmp_path)
+        monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
+
+        async def _ok(*a, **k):
+            return ("こんにちは", [])
+
+        with (
+            patch.object(transcription_api.storage, "load", return_value=None),
+            patch.object(
+                transcription_api.storage,
+                "save",
+                side_effect=OSError("C:/Users/x/secret"),
+            ),
+            patch.object(transcription_api, "_get_gemini_api_key", return_value="k"),
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(
+                    return_value={
+                        "translation_provider": "gemini",
+                        "translation_model": "gemini-3.1-flash-lite",
+                    }
+                ),
+            ),
+            patch.object(
+                transcription_api.GeminiTranscriptionProvider, "transcribe", new=_ok
+            ),
+            capture_logs() as logs,
+        ):
+            resp = client.post(
+                "/api/transcription/transcribe",
+                json={
+                    "message_id": 500,
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "force": True,
+                },
+            )
+        assert resp.status_code == 500
+        assert "secret" not in resp.text
+        assert "C:/Users" not in repr(logs)
+
 
 client = TestClient(app)
 
