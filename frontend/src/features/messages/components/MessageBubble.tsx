@@ -569,7 +569,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {/* Text */}
                         {message.content && (
                             <div lang="ja" className={cn(
-                                'whitespace-pre-wrap text-body text-primary',
+                                'whitespace-pre-wrap break-words text-body text-primary',
                                 message.type === 'voice' && 'p-3 pt-2',
                             )}>
                                 <LinkifiedText text={message.content} />

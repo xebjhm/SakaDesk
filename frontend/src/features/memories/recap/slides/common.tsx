@@ -37,7 +37,7 @@ interface TextProps {
 }
 
 export const Quote: React.FC<TextProps> = ({ children, className, style }) => (
-    <p lang="ja" data-voice="quote" className={cn(QUOTE_CLASS, 'whitespace-pre-line text-primary', className)} style={style}>
+    <p lang="ja" data-voice="quote" className={cn(QUOTE_CLASS, 'whitespace-pre-line break-words text-primary', className)} style={style}>
         {children}
     </p>
 );

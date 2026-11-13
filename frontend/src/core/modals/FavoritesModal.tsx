@@ -218,7 +218,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                 </div>
                 <div className="pl-12">
                     {message.type === 'text' && (
-                        <p lang="ja" className="whitespace-pre-wrap text-body text-primary">{message.content}</p>
+                        <p lang="ja" className="whitespace-pre-wrap break-words text-body text-primary">{message.content}</p>
                     )}
                     {message.type === 'picture' && mediaUrl && (
                         <button

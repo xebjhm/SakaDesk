@@ -69,7 +69,7 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
                 </div>
                 {expanded && (
                     <div
-                        className="text-[13px] leading-relaxed whitespace-pre-wrap mt-0.5"
+                        className="text-[13px] leading-relaxed whitespace-pre-wrap break-words mt-0.5"
                         style={{ color: '#6b7280' }}
                     >
                         {translation}
@@ -95,7 +95,7 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
             </div>
             {expanded && (
                 <div
-                    className="text-[14px] leading-relaxed whitespace-pre-wrap mt-0.5"
+                    className="text-[14px] leading-relaxed whitespace-pre-wrap break-words mt-0.5"
                     style={{
                         color: '#555',
                         fontStyle: 'italic',

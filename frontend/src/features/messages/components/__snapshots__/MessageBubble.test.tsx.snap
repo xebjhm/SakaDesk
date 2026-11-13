@@ -68,7 +68,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
           </button>
         </div>
         <div
-          class="whitespace-pre-wrap text-body text-primary"
+          class="whitespace-pre-wrap break-words text-body text-primary"
           lang="ja"
         >
           <span>
@@ -130,7 +130,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
         class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
       >
         <div
-          class="whitespace-pre-wrap text-body text-primary"
+          class="whitespace-pre-wrap break-words text-body text-primary"
           lang="ja"
         >
           <span>
@@ -217,7 +217,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
         inert=""
       >
         <div
-          class="whitespace-pre-wrap text-body text-primary"
+          class="whitespace-pre-wrap break-words text-body text-primary"
           lang="ja"
         >
           <span>
