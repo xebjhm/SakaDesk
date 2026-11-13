@@ -20,6 +20,7 @@ import { useTranslation, Trans } from '../../i18n';
 import { useFeatureActive } from '../../design/featureActive';
 import { useInert } from '../../hooks/useInert';
 import { tabbables } from '../../design/dialog/tabbables';
+import { logDialog } from '../../design/dialog/dialogLog';
 import { openDialogCount } from '../../design/dialog/dialogStack';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { Avatar, EmptyState, IconButton, StatusBlock } from '../../design/primitives';
@@ -219,7 +220,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
             if (openDialogCount() > 0) return;
             e.preventDefault();
-            clientLog('dialog', { surface: 'sidebar', phase: 'close', reason: 'escape' });
+            logDialog('sidebar', 'close', 'escape');
             setIsSidebarOpen(false);
         };
         document.addEventListener('keydown', onKey);
@@ -1029,6 +1030,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         <div className="flex h-full w-full overflow-hidden">
             {/* Member sidebar on the canvas (level 0), next to the feature rail. Below md it slides in over the chat. */}
             <div ref={sidebarRef} tabIndex={-1} className={cn(
+                // Focus lands here when the overlay has nothing tabbable: the keyboard ring, none for the mouse.
+                'outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
                 'fixed inset-y-0 left-0 z-30 transform transition-transform duration-base ease-standard',
                 'max-md:bg-group-canvas md:relative md:translate-x-0',
                 isSidebarOpen ? 'translate-x-0' : '-translate-x-full',

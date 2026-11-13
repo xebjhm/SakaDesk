@@ -1222,6 +1222,14 @@ everything, e.g. the settings error toast, which waits for open dialogs to close
 `z-[…]`, `z-40` or `z-50` classes; `z-10` / `z-20` stay for stacking inside one frame (sticky
 headers, viewer chrome).
 
+**Announcements.** A transient message that is not an alert (a clipboard toast, the incoming
+call's text) is announced through `LiveRegion`: an always-mounted, visually hidden
+`role="status"` whose text changes; the visible toast is `aria-hidden` so it is not read twice.
+`LiveRegion` is portaled to `<body>`: while a dialog is open `#root` and the lower dialogs are
+inert, and inert content is not announced, so a region left in `#root` would be silent. Errors
+that need a decision stay `role="alert"` (the settings error toast). `SettingRow` links its
+control to the row's description and error (`aria-describedby`, `aria-invalid` on an error).
+
 **The incoming call.** A call that starts with no dialog open is drawn inside the chat
 frame (its `z-30` is local to the chat area). A call that starts while a dialog is open is
 **lifted**: portaled over the chat area's rectangle at `interleavedZIndex(order)`

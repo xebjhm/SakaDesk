@@ -15,7 +15,7 @@ import { useJustBecame } from '../../hooks/useJustBecame';
 import { SubtitleOverlay } from './SubtitleOverlay';
 import { TranscriptPanel } from './TranscriptPanel';
 import { TranscribeButton } from './TranscribeButton';
-import { Button, Spinner, Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
+import { Button, LiveRegion, Spinner, Menu, MenuItem, MenuLabel, MenuSeparator } from '../../design/primitives';
 
 const VOLUME_STORAGE_KEY = 'sakadesk_video_amp';
 
@@ -636,10 +636,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             {/* Menu portal */}
             {/* Clipboard toast (inline fullscreen only) */}
             {clipboardToast && (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-sm z-50">
+                <div aria-hidden="true" className="absolute top-4 left-1/2 -translate-x-1/2 px-4 py-2 bg-black/80 text-white text-sm rounded-sm z-50">
                     {clipboardToast}
                 </div>
             )}
+            {goldenFingerActive && !effectiveViewerMode && <LiveRegion message={clipboardToast ?? ''} />}
 
             {showMenu && createPortal(
                 <Menu

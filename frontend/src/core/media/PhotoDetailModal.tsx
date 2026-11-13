@@ -5,7 +5,7 @@ import { useTranslation } from '../../i18n';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { timeNeighbours, type ListOrder } from '../../utils/timeOrder';
-import { Modal, IconButton, Button } from '../../design/primitives';
+import { Modal, IconButton, Button, LiveRegion } from '../../design/primitives';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
@@ -229,8 +229,9 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 <div className="absolute bottom-6 left-1/2 max-w-[60vw] -translate-x-1/2 truncate text-small text-viewer-muted">{item.sourceLabel}</div>
             )}
 
+            <LiveRegion message={toastMessage ?? ''} />
             {toastMessage && (
-                <div role="status" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer animate-reveal motion-reduce:animate-none">
+                <div aria-hidden="true" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer animate-reveal motion-reduce:animate-none">
                     {toastMessage}
                 </div>
             )}

@@ -25,3 +25,4 @@ export {
     StatusBlock,
     type StatusBlockProps, type StatusBlockVariant, type StatusBlockLoadingProps, type StatusBlockEmptyProps, type StatusBlockProblemProps,
 } from './StatusBlock';
+export { LiveRegion } from './LiveRegion';

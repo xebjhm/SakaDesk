@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 
 interface SettingRowProps {
     label: React.ReactNode;
@@ -7,7 +7,7 @@ interface SettingRowProps {
     description?: React.ReactNode;
     /** Id for the description, so a field under the row can name it in `aria-describedby`. */
     descriptionId?: string;
-    /** Control on the right of the label (a Switch, a Button). */
+    /** Control on the right of the label (a Switch, a Button). It is described by the row's description and error unless it names its own `aria-describedby`; with an error it is `aria-invalid`. */
     control?: React.ReactNode;
     /** Content under the label (radio groups, fields). */
     children?: React.ReactNode;
@@ -18,14 +18,27 @@ interface SettingRowProps {
 }
 
 /** One setting: label + description, a control on the right, optional content below. */
-export const SettingRow: React.FC<SettingRowProps> = ({ label, labelId, description, descriptionId, control, children, error, errorId }) => (
-    <section className="flex flex-col gap-2">
-        <div className="flex items-center justify-between gap-4">
-            <h3 id={labelId} className="flex items-center gap-2 text-body font-semibold text-primary">{label}</h3>
-            {control}
-        </div>
-        {description && <p id={descriptionId} className="max-w-md text-small text-muted">{description}</p>}
-        {children}
-        {error && <p id={errorId} role="status" className="text-small text-status-danger">{error}</p>}
-    </section>
-);
+export const SettingRow: React.FC<SettingRowProps> = ({ label, labelId, description, descriptionId, control, children, error, errorId }) => {
+    const autoId = useId();
+    const descId = description ? (descriptionId ?? `${autoId}-desc`) : undefined;
+    const errId = error ? (errorId ?? `${autoId}-err`) : undefined;
+    const describedBy = [descId, errId].filter(Boolean).join(' ') || undefined;
+    // The control reads the row's description and error (UI health A-S6), unless it names its own.
+    const linkedControl = React.isValidElement<{ 'aria-describedby'?: string; 'aria-invalid'?: boolean }>(control) && (describedBy || error)
+        ? React.cloneElement(control, {
+            ...(describedBy && !control.props['aria-describedby'] ? { 'aria-describedby': describedBy } : {}),
+            ...(error && control.props['aria-invalid'] === undefined ? { 'aria-invalid': true } : {}),
+        })
+        : control;
+    return (
+        <section className="flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-4">
+                <h3 id={labelId} className="flex items-center gap-2 text-body font-semibold text-primary">{label}</h3>
+                {linkedControl}
+            </div>
+            {description && <p id={descId} className="max-w-md text-small text-muted">{description}</p>}
+            {children}
+            {error && <p id={errId} role="status" className="text-small text-status-danger">{error}</p>}
+        </section>
+    );
+};
