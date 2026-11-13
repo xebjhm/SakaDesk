@@ -31,7 +31,7 @@ MAX_SEGMENT_CHARS = 255
 _SAFE_ID = re.compile(r"[A-Za-z0-9_-]{1,64}")
 _FORBIDDEN_CHARS = frozenset('<>:"/\\|?*')
 _DEVICE_NAMES = frozenset(
-    {"CON", "PRN", "AUX", "NUL"}
+    {"CON", "PRN", "AUX", "NUL", "CONIN$", "CONOUT$"}
     | {f"{port}{n}" for port in ("COM", "LPT") for n in "0123456789¹²³"}
 )
 
@@ -103,7 +103,9 @@ def is_within(base: Path, path: Path) -> bool:
     ``path`` must start with ``base`` (``PurePath.relative_to``, which does not
     fold ``..``) and the rest must be ``archive_urls.is_plain_relative`` with no
     empty, ``.`` or ``..`` segment, splitting on both ``/`` and ``\\`` so a
-    Windows separator inside a name counts on every platform.
+    Windows separator inside a name counts on every platform. It is an escape
+    backstop, not a name validator: device names or trailing dots inside
+    ``path`` are left to :func:`plain_segment` where the path is built.
     """
     try:
         rest = path.relative_to(base).as_posix()

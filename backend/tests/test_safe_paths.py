@@ -8,7 +8,7 @@ ids from the official sites and APIs became folder and file names unchecked, so
 
 from __future__ import annotations
 
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 import pytest
 
@@ -154,3 +154,26 @@ def test_is_within_accepts_paths_inside(path):
 )
 def test_is_within_refuses_paths_that_leave(path):
     assert is_within(BASE, path) is False
+
+
+@pytest.mark.parametrize("name", ["CONIN$", "conout$", "CONIN$.txt"])
+def test_console_device_names_are_not_plain(name):
+    assert plain_segment(name) is False
+
+
+@pytest.mark.parametrize(
+    ("base", "path", "inside"),
+    [
+        (r"C:\Out", r"C:\Out\乃木坂46\a.jpg", True),
+        (r"C:\Out", r"c:\out\乃木坂46\a.jpg", True),
+        (r"C:\Out", r"C:Out\a.jpg", False),
+        (r"C:\Out", r"\\?\C:\Out\a.jpg", False),
+        (r"C:\Out", r"\\srv\share\Out\a.jpg", False),
+        (r"C:\Out", r"C:\Out\a.jpg:stream", False),
+        (r"C:\Out", r"C:\Out\..\a.jpg", False),
+        (r"C:\Out", r"D:\Out\a.jpg", False),
+    ],
+)
+def test_is_within_on_windows_paths(base, path, inside):
+    """Production runs on Windows; pin the drive, UNC, \\\\?\\ and case rules."""
+    assert is_within(PureWindowsPath(base), PureWindowsPath(path)) is inside
