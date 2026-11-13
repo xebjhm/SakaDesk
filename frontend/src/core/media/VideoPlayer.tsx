@@ -140,6 +140,11 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
     // Breadcrumbs for the keyboard decisions below are logged once per player, not per tick or key.
     const loggedHeldRef = useRef(false);
     const loggedSpaceRef = useRef(false);
+    // True while the focused control got focus from the keyboard. `:focus-visible` no longer matches
+    // once a blur event fires, so the blur handler below reads this instead.
+    const keyboardFocusedRef = useRef(false);
+    // The portaled menu is outside the container; mirrors `showMenu` for the timer callback.
+    const showMenuRef = useRef(false);
 
     const [isPlaying, setIsPlaying] = useState(false);
     const [showSubtitles, setShowSubtitles] = useState(true);
@@ -255,7 +260,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
         controlsTimeoutRef.current = setTimeout(() => {
             const el = document.activeElement;
-            const keyboardFocusInside = !!el && !!containerRef.current?.contains(el) && el.matches(':focus-visible');
+            const inPlayer = !!el && (!!containerRef.current?.contains(el) || (showMenuRef.current && !!el.closest('[role="menu"]')));
+            const keyboardFocusInside = inPlayer && el.matches(':focus-visible');
             if (isPlaying && keyboardFocusInside && !loggedHeldRef.current) {
                 loggedHeldRef.current = true;
                 clientLog('media_playback', { surface: 'video', phase: 'controls', outcome: 'held_by_focus' });
@@ -266,13 +272,18 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
 
     // Keyboard focus moving onto a control shows the controls and restarts the timer; a click does not.
     const handleFocusCapture = useCallback((e: React.FocusEvent) => {
-        if (e.target instanceof Element && e.target.matches(':focus-visible')) resetControlsTimeout();
+        keyboardFocusedRef.current = e.target instanceof Element && e.target.matches(':focus-visible');
+        if (keyboardFocusedRef.current) resetControlsTimeout();
     }, [resetControlsTimeout]);
 
-    // Focus leaving the player while the timer was held: arm the hide timer again.
+    // Keyboard focus leaving the player while the timer was held: arm the hide timer again. A mouse
+    // user's blur does nothing, so clicking away never flashes the controls back.
     const handleBlurCapture = useCallback((e: React.FocusEvent) => {
         const next = e.relatedTarget;
-        if (isPlaying && !(next instanceof Node && containerRef.current?.contains(next))) resetControlsTimeout();
+        if (next instanceof Node && containerRef.current?.contains(next)) return;
+        const wasKeyboard = keyboardFocusedRef.current;
+        keyboardFocusedRef.current = false;
+        if (isPlaying && wasKeyboard) resetControlsTimeout();
     }, [isPlaying, resetControlsTimeout]);
 
     useEffect(() => {
@@ -319,6 +330,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             container.requestFullscreen();
         }
     }, []);
+
+    useEffect(() => { showMenuRef.current = showMenu; }, [showMenu]);
 
     const handleMenuToggle = useCallback((e: React.MouseEvent) => {
         e.stopPropagation();
@@ -616,7 +629,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     {effectiveSegments && (isFullscreen || effectiveViewerMode) && (
                         <button
                             onClick={() => setShowSubtitles(s => !s)}
-                            className={cn("text-xs px-1.5 py-0.5 rounded transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-0", showSubtitles ? "bg-white/20 text-white" : "text-white/40")}
+                            className={cn("text-xs px-1.5 py-0.5 transition-colors", BAR_FOCUS_RING, showSubtitles ? "bg-white/20 text-white" : "text-white/40")}
                             title={t('transcription.cc')}
                             aria-label={t('transcription.cc')}
                             aria-pressed={showSubtitles}

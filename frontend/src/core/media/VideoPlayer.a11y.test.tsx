@@ -104,6 +104,32 @@ describe('VideoPlayer accessible controls (UI health #7)', () => {
             expect(bar()).toHaveClass('opacity-0');
         });
 
+        it('do not flash back when a mouse user clicks away from a control', () => {
+            mockFocusVisible(false);
+            const { mute, bar } = start();
+            act(() => mute.focus());
+            fireEvent.mouseMove(mute);
+            act(() => { vi.advanceTimersByTime(900); });
+            expect(bar()).toHaveClass('opacity-0');
+            act(() => mute.blur());
+            expect(bar()).toHaveClass('opacity-0');
+            act(() => { vi.advanceTimersByTime(900); });
+            expect(bar()).toHaveClass('opacity-0');
+        });
+
+        it('stay while keyboard focus is inside the open, portaled more-options menu', () => {
+            mockFocusVisible(true);
+            const { bar } = start();
+            const more = screen.getByRole('button', { name: 'More options' });
+            act(() => more.focus());
+            fireEvent.click(more);
+            const menu = screen.getByRole('menu');
+            act(() => { (menu.querySelector('[role^="menuitem"]') as HTMLElement).focus(); });
+            expect(menu.contains(document.activeElement)).toBe(true);
+            act(() => { vi.advanceTimersByTime(900); });
+            expect(bar()).toHaveClass('opacity-100');
+        });
+
         it('leaves Space to a focused button in viewer mode but toggles play elsewhere', () => {
             const play = vi.fn(() => Promise.resolve());
             window.HTMLMediaElement.prototype.play = play as never;
