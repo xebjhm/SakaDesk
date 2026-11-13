@@ -63,7 +63,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   shown, so with transcription off a video no longer shows subtitles from an
   earlier transcript.
 - **Blogs open faster.** In a long list the blog cards appear sooner, and a
-  blog's pictures after the first ones load as you scroll.
+  blog's pictures after the first one load as you scroll.
 - **SakaDesk starts with less to load.** Memories now loads the first time you
   open it, and the conversation list checks for changes less often.
 
