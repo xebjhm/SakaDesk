@@ -110,6 +110,7 @@ ClientEvent = Literal[
     "ui_wait",
     "media_grid",
     "media_poster",
+    "external_link",
 ]
 
 ALLOWED_FIELDS = frozenset(

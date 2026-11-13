@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { BlogReader, type BlogReaderProps } from './BlogReader';
@@ -16,6 +16,15 @@ vi.mock('../../../data/memberData', () => ({
     getMemberByBlogId: () => null,
     getMemberPenlightHex: () => ['#5bbee4', '#f2a0c0'],
 }));
+
+// The photo viewer is out of scope here: a stand-in shows which photo it opened.
+vi.mock('../../../core/media/PhotoDetailModal', async () => {
+    const { createElement } = await import('react');
+    return {
+        MediaViewerModal: ({ currentIndex }: { currentIndex: number }) =>
+            createElement('div', { 'data-testid': 'photo-viewer' }, String(currentIndex)),
+    };
+});
 
 const CONTENT = {
     meta: { id: '142', member_name: '春野 ひなた', title: '春の日記 42 🌸', published_at: '2026-11-03T09:00:00Z', url: '' },
@@ -177,5 +186,54 @@ describe('BlogReader search highlight', () => {
         const marks = (selector: string) => Array.from(container.querySelectorAll(selector)).map((m) => m.textContent);
         expect(marks('mark.search-highlight:not(.reading)')).toEqual(['春']);
         expect(marks('mark.search-highlight.reading')).toEqual(['もっと']);
+    });
+});
+
+describe('BlogReader links', () => {
+    let open: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+        open = vi.spyOn(window, 'open').mockReturnValue(null);
+        vi.mocked(clientLog).mockClear();
+    });
+    afterEach(() => open.mockRestore());
+
+    const LINKS = {
+        ...CONTENT,
+        content: {
+            html: '<p><a href="https://example.com/more">web</a> <a href="mailto:a@example.com">mail</a> '
+                + '<a href="/api/blogs/image?service=hinatazaka46&amp;blog_id=1&amp;filename=img_0.jpg">local</a> '
+                + '<a href="https://example.com/photo"><img src="/api/blogs/image?service=hinatazaka46&amp;blog_id=142&amp;filename=img_0.jpg" alt="photo"></a></p>',
+        },
+    };
+
+    it('opens a web link in the browser and never navigates the window', () => {
+        render(<BlogReader {...props({ content: LINKS })} />);
+        expect(fireEvent.click(screen.getByRole('link', { name: 'web' }))).toBe(false);
+        expect(open).toHaveBeenCalledWith('https://example.com/more', '_blank', 'noopener,noreferrer');
+        expect(clientLog).toHaveBeenCalledWith('external_link', { surface: 'blog_post', outcome: 'opened' });
+    });
+
+    it('does nothing for a link that is not a web page', () => {
+        // The sanitizer has already dropped the href of a mailto: or app-relative link, so the
+        // anchor is inert; a click must still never navigate the window.
+        render(<BlogReader {...props({ content: LINKS })} />);
+        expect(fireEvent.click(screen.getByText('mail'))).toBe(false);
+        expect(fireEvent.click(screen.getByText('local'))).toBe(false);
+        expect(open).not.toHaveBeenCalled();
+        expect(clientLog).toHaveBeenCalledWith('external_link', { surface: 'blog_post', outcome: 'blocked', reason: 'invalid' });
+    });
+
+    it('opens the photo viewer for a linked image instead of the link', () => {
+        render(<BlogReader {...props({ content: LINKS })} />);
+        expect(fireEvent.click(screen.getByAltText('photo'))).toBe(false);
+        expect(open).not.toHaveBeenCalled();
+        expect(screen.getByTestId('photo-viewer')).toHaveTextContent('0');
+    });
+
+    it('opens a middle-clicked web link in the browser', () => {
+        render(<BlogReader {...props({ content: LINKS })} />);
+        const event = new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 });
+        expect(fireEvent(screen.getByRole('link', { name: 'web' }), event)).toBe(false);
+        expect(open).toHaveBeenCalledTimes(1);
     });
 });

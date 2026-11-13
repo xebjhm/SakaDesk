@@ -41,7 +41,7 @@ export type ClientLogEvent =
     | 'recap_load' | 'recap_play'
     | 'recap_poster' | 'recap_share' | 'recap_opening'
     | 'ui_wait'
-    | 'media_grid' | 'media_poster';
+    | 'media_grid' | 'media_poster' | 'external_link';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'

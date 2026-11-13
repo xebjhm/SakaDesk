@@ -20,6 +20,7 @@ import { groupTokens } from '../../../design/tokens';
 import { serviceGroupId } from '../../../config/serviceGroup';
 import { Avatar, SKELETON_PULSE, Spinner } from '../../../design/primitives';
 import { useDelayedLoading } from '../../../design/loading';
+import { openExternal } from '../../../utils/openExternal';
 
 interface MessageBubbleProps {
     message: Message;
@@ -152,7 +153,7 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
     );
 };
 
-// Component to render text with clickable URLs
+// Component to render text with clickable URLs; a click opens the browser (openExternal).
 const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
     const parts = text.split(URL_REGEX);
 
@@ -169,7 +170,17 @@ const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="break-all text-accent-strong hover:underline"
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openExternal(part, 'message');
+                            }}
+                            onAuxClick={(e) => {
+                                if (e.button !== 1) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openExternal(part, 'message');
+                            }}
                         >
                             {part}
                         </a>

@@ -1346,3 +1346,30 @@ def test_media_breadcrumbs_reject_text_and_unknown_keys(event, fields):
         r = client.post("/api/client-log", json={"event": event, "fields": fields})
     assert r.status_code == 422
     assert _client_events(logs) == []
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"surface": "blog_post", "outcome": "opened"},
+        {"surface": "message", "outcome": "blocked", "reason": "scheme"},
+        {"surface": "blog_post", "outcome": "blocked", "reason": "same_origin"},
+    ],
+)
+def test_external_link_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log", json={"event": "external_link", "fields": fields}
+        )
+    assert res.status_code == 204
+    entry = _client_events(logs)[0]
+    assert entry["event"] == "external_link"
+    assert entry["log_level"] == "info"
+
+
+def test_external_link_breadcrumb_rejects_a_url():
+    res = client.post(
+        "/api/client-log",
+        json={"event": "external_link", "fields": {"surface": "https://evil.example"}},
+    )
+    assert res.status_code == 422

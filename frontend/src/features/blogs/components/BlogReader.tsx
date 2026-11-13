@@ -24,6 +24,7 @@ import { readCachedTranslation } from '../../../core/persistence/translationLoad
 import { formatBlogDate } from '../../../utils/dateFormatters';
 import { resolveWash } from '../memberWash';
 import { clientLog } from '../../../utils/clientLog';
+import { openExternal } from '../../../utils/openExternal';
 
 export interface BlogReaderProps {
     content: BlogContentResponse | null;
@@ -233,25 +234,19 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         }
     }, [searchQuery, matchedTerms, content, reducedMotion]);
 
-    // Intercept clicks on blog images to open in photo viewer
+    // Clicks inside the post. An image opens the photo viewer. A link never navigates the app
+    // window: a web link opens in the browser (openExternal), anything else does nothing.
     useEffect(() => {
         const container = blogContentRef.current;
         if (!container || !content) return;
 
-        const handleImgClick = (e: Event) => {
-            const target = e.target as HTMLElement;
-            if (target.tagName !== 'IMG') return;
-
-            const imgSrc = (target as HTMLImageElement).src;
+        const openPhotoViewer = (img: HTMLImageElement) => {
+            const imgSrc = img.src;
             if (!imgSrc) return;
-
-            // Collect all image srcs from the blog content
-            const allImgs = Array.from(container.querySelectorAll('img'));
-            const items: MediaViewerItem[] = allImgs
-                .map(img => img.src)
+            const items: MediaViewerItem[] = Array.from(container.querySelectorAll('img'))
+                .map(el => el.src)
                 .filter(Boolean)
                 .map(src => ({ src, type: 'picture' as const, timestamp: blog.published_at }));
-
             const clickedIdx = items.findIndex(item => item.src === imgSrc);
             if (clickedIdx !== -1) {
                 setBlogPhotoItems(items);
@@ -259,8 +254,37 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
             }
         };
 
-        container.addEventListener('click', handleImgClick);
-        return () => container.removeEventListener('click', handleImgClick);
+        const postLink = (target: EventTarget | null): HTMLAnchorElement | null => {
+            const anchor = target instanceof Element ? target.closest('a') : null;
+            return anchor && container.contains(anchor) ? anchor : null;
+        };
+
+        const handleClick = (e: MouseEvent) => {
+            const link = postLink(e.target);
+            if (link) e.preventDefault();
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'IMG') {
+                openPhotoViewer(target as HTMLImageElement);
+                return;
+            }
+            if (link) openExternal(link.getAttribute('href'), 'blog_post');
+        };
+
+        // A middle click would open the link in a new window.
+        const handleAuxClick = (e: MouseEvent) => {
+            if (e.button !== 1) return;
+            const link = postLink(e.target);
+            if (!link) return;
+            e.preventDefault();
+            openExternal(link.getAttribute('href'), 'blog_post');
+        };
+
+        container.addEventListener('click', handleClick);
+        container.addEventListener('auxclick', handleAuxClick);
+        return () => {
+            container.removeEventListener('click', handleClick);
+            container.removeEventListener('auxclick', handleAuxClick);
+        };
     }, [content, blog.published_at]);
 
     // Inject translations into the blog DOM (immersive, per paragraph) while expanded.
