@@ -150,3 +150,24 @@ def client():
     backend/tests/ directly.
     """
     return TestClient(app)
+
+
+@pytest.fixture
+def session_image_fetch(monkeypatch):
+    """Drive blog image downloads through a mocked aiohttp session.
+
+    ``remote_images.fetch_official_image`` checks hosts, redirects and the body
+    cap (``test_remote_images.py``). Tests of the callers' own logic (file
+    names, result slots, the semaphore) use this stand-in, which reads
+    ``session.get(url)`` the way the code did before the host policy.
+    """
+    from backend.services import blog_service, remote_images
+
+    async def fetch(session, url, *, max_bytes=remote_images.MAX_REMOTE_IMAGE_BYTES):
+        async with session.get(url) as resp:
+            if resp.status != 200:
+                raise remote_images.RemoteImageRefused("status", status=resp.status)
+            headers = resp.headers if isinstance(resp.headers, dict) else {}
+            return await resp.read(), headers.get("Content-Type", "")
+
+    monkeypatch.setattr(blog_service, "fetch_official_image", fetch)

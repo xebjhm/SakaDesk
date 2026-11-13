@@ -23,6 +23,7 @@ from backend.services.blog_service import (
     gallery_images,
     get_blog_backup_manager,
 )
+from backend.services.remote_images import MAX_REMOTE_IMAGE_BYTES, OFFICIAL_IMAGE_HOSTS
 from backend.services.service_utils import validate_service
 from backend.services.safe_paths import UnsafePath, blog_date
 
@@ -593,23 +594,9 @@ async def sync_blog_metadata(service: str = Query(...)):
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
-# Allowed domains for the image proxy (official blog hosts and CDNs)
-_PROXY_ALLOWED_HOSTS = {
-    "cdn.hinatazaka46.com",
-    "www.hinatazaka46.com",
-    "hinatazaka46.com",
-    "cdn.sakurazaka46.com",
-    "www.sakurazaka46.com",
-    "sakurazaka46.com",
-    "cdn.nogizaka46.com",
-    "www.nogizaka46.com",
-    "nogizaka46.com",
-    "img.nogizaka46.com",
-}
-
-# Cap the proxied image size to avoid unbounded memory use (10 MB is generous
-# for a blog image; official assets are well under this).
-_PROXY_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+# The proxy and the blog backup accept the same hosts and size.
+_PROXY_ALLOWED_HOSTS = OFFICIAL_IMAGE_HOSTS
+_PROXY_MAX_IMAGE_BYTES = MAX_REMOTE_IMAGE_BYTES
 
 
 _PROXY_IMAGE_TYPES = frozenset(

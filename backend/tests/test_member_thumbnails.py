@@ -23,6 +23,8 @@ from backend.main import app
 from backend.security_headers import SANDBOX_CSP
 from backend.services.blog_service import BlogService, _thumbnail_ext
 
+pytestmark = pytest.mark.usefixtures("session_image_fetch")
+
 client = TestClient(app)
 
 ESCAPE_MEMBER = "../../../../escape_target/v3thumb"

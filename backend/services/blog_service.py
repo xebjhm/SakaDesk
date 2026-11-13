@@ -39,6 +39,7 @@ from pysaka.blog import (
 from backend.services.log_throttle import LogThrottle
 from backend.services.passive_media import INLINE_MEDIA_TYPES
 from backend.services.path_resolver import get_output_dir
+from backend.services.remote_images import RemoteImageRefused, fetch_official_image
 from backend.services.safe_paths import (
     UnsafePath,
     blog_date,
@@ -292,6 +293,9 @@ def _clean_pending(raw: object, now: datetime) -> tuple[list[dict], dict[str, in
 
 _row_skip_logs = LogThrottle(limit=5, window_s=3600.0)
 """Budget for ``blog_rows_skipped``: the readers run on every Blogs-view poll."""
+
+_image_refusal_logs = LogThrottle(limit=20, window_s=60.0)
+"""Budget for ``blog_image_refused``: one blog can hold dozens of off-list images."""
 
 
 def _readable_blogs(service: str, where: str, blogs: object) -> list[dict]:
@@ -690,6 +694,9 @@ class BlogService:
         atomically inside ``thumbnails_dir``. A non-200 answer logs
         ``thumbnail_download_failed`` (``status``), any other failure
         ``thumbnail_download_error`` (``error_type``); never an id or a URL.
+        The fetch goes through ``remote_images.fetch_official_image`` (official
+        https hosts, checked redirects, 10 MiB cap); a refusal logs
+        ``thumbnail_download_refused`` (``reason``).
         """
         if not is_safe_id(member_id):
             logger.warning("member_thumbnail_rejected", reason="member_id")
@@ -698,19 +705,19 @@ class BlogService:
             logger.warning("member_thumbnail_rejected", reason="url")
             return None
         try:
-            async with session.get(thumbnail_url) as resp:
-                if resp.status != 200:
-                    logger.warning("thumbnail_download_failed", status=resp.status)
-                    return None
-                ext = _thumbnail_ext(
-                    resp.headers.get("Content-Type", ""), thumbnail_url
-                )
-                content = await resp.read()
+            content, content_type = await fetch_official_image(session, thumbnail_url)
+            ext = _thumbnail_ext(content_type, thumbnail_url)
             local_filename = f"{member_id}{ext}"
             await self._atomic_write(
                 join_within(thumbnails_dir, local_filename), content
             )
             return local_filename
+        except RemoteImageRefused as e:
+            if e.reason == "status":
+                logger.warning("thumbnail_download_failed", status=e.status)
+            else:
+                logger.warning("thumbnail_download_refused", reason=e.reason)
+            return None
         except Exception as e:
             logger.warning("thumbnail_download_error", error_type=type(e).__name__)
             return None
@@ -1474,6 +1481,10 @@ class BlogService:
                        is only called after acquiring the semaphore, so
                        the aiohttp timeout clock does not start while
                        waiting.  None for unbounded (single-blog fetches).
+
+        Fetches go through ``remote_images.fetch_official_image``; an off-list
+        or oversized image is not archived (``blog_image_refused``,
+        ``reason``) and the reader keeps its remote URL.
         """
         results: list[dict] = [None] * len(image_urls)  # type: ignore
 
@@ -1482,25 +1493,26 @@ class BlogService:
             local_path = images_dir / local_name
 
             async def _fetch_image():
-                async with session.get(img_url) as resp:
-                    if resp.status == 200:
-                        content = await resp.read()
-                        await self._atomic_write(local_path, content)
-                        results[idx] = {
-                            "original_url": img_url,
-                            "local_path": f"./images/{local_name}",
-                        }
+                try:
+                    content, _content_type = await fetch_official_image(
+                        session, img_url
+                    )
+                except RemoteImageRefused as e:
+                    if e.reason == "status":
+                        logger.debug("blog_image_download_failed", status=e.status)
                     else:
-                        logger.debug(
-                            "Image download non-200", url=img_url, status=resp.status
+                        _image_refusal_logs.log(
+                            logger.info, "blog_image_refused", reason=e.reason
                         )
-                        # Mirror the exception path: never leave a None slot in
-                        # the results array (None serialized into blog.json would
-                        # break _rewrite_local_images' img.get() calls).
-                        results[idx] = {
-                            "original_url": img_url,
-                            "local_path": None,
-                        }
+                    # Never leave a None slot: blog.json would break
+                    # _rewrite_local_images' img.get() calls.
+                    results[idx] = {"original_url": img_url, "local_path": None}
+                    return
+                await self._atomic_write(local_path, content)
+                results[idx] = {
+                    "original_url": img_url,
+                    "local_path": f"./images/{local_name}",
+                }
 
             try:
                 if semaphore:
@@ -1509,12 +1521,7 @@ class BlogService:
                 else:
                     await _fetch_image()
             except Exception as e:
-                logger.warning(
-                    "Failed to download image",
-                    url=img_url,
-                    error_type=type(e).__name__,
-                    error=str(e) or "(no message)",
-                )
+                logger.warning("blog_image_download_error", error_type=type(e).__name__)
                 results[idx] = {"original_url": img_url, "local_path": None}
 
         await asyncio.gather(

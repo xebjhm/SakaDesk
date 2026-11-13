@@ -633,6 +633,7 @@ class TestBuildDownloadQueue:
 # ---------------------------------------------------------------------------
 
 
+@pytest.mark.usefixtures("session_image_fetch")
 class TestDownloadImages:
     """Mock HTTP to test image download success, failure, non-200, semaphore."""
 
