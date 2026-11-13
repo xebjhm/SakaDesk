@@ -878,7 +878,11 @@ export function useSync({
     }, []);
 
     // Non-blocking: queue every service as one backend sequence and follow each
-    // service's progress (queued, then running) without the dialog.
+    // service's progress (queued, then running) without the dialog. A service that is
+    // already polling or starting (e.g. App's own startSync right after a login) is left
+    // out: a second start would hit the official API twice on a single-session token.
+    // The queued services count as starting until their pollers attach, so a startSync
+    // that lands meanwhile is skipped too.
     const startAllInBackground = useCallback(async (services: string[]) => {
         if (services.length === 0) return;
         if (activeSequenceRef.current) {
@@ -886,19 +890,30 @@ export function useSync({
             clientLog('sync_start_skipped', { reason: 'sequence' });
             return;
         }
-        const sequenceId = await postStartAll(services, false);
-        if (sequenceId === null) {
-            // Say so per service (a manual Sync now retries; no automatic retry,
-            // which could loop while the backend keeps refusing).
-            const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
-            setSyncProgressByService(prev => {
-                const next = { ...prev };
-                services.forEach(s => { next[s] = errorProgress; });
-                return next;
-            });
-            return;
+        const fresh = services.filter(s => !isPollingRef.current[s] && !startingRef.current[s]);
+        if (fresh.length < services.length) {
+            clientLog('sync_start_skipped', { reason: 'starting', count: services.length - fresh.length });
         }
-        services.forEach(service => { void pollSyncProgress(service, false); });
+        if (fresh.length === 0) return;
+        fresh.forEach(s => { startingRef.current[s] = true; });
+        try {
+            const sequenceId = await postStartAll(fresh, false);
+            if (sequenceId === null) {
+                // Say so per service (a manual Sync now retries; no automatic retry,
+                // which could loop while the backend keeps refusing).
+                const errorProgress: SyncProgress = { state: 'error', detail: i18n.t('sync.failedToStart') };
+                setSyncProgressByService(prev => {
+                    const next = { ...prev };
+                    fresh.forEach(s => { next[s] = errorProgress; });
+                    return next;
+                });
+                return;
+            }
+            // pollSyncProgress marks isPollingRef synchronously, before its first await.
+            fresh.forEach(service => { void pollSyncProgress(service, false); });
+        } finally {
+            fresh.forEach(s => { startingRef.current[s] = false; });
+        }
     }, [postStartAll, pollSyncProgress]);
 
     const runSequentialSync = useCallback(async (services: string[]): Promise<SequentialSyncOutcome> => {

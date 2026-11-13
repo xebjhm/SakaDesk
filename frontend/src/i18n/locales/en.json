@@ -168,7 +168,7 @@
       "not_picked": "Choose the folder with Browse again.",
       "unavailable": "The folder picker isn't available. Reinstall SakaDesk and try again.",
       "timeout": "No folder was chosen within 5 minutes. Close the folder picker and click Browse again.",
-      "busy": "A folder picker is already open. Choose a folder there or close it first.",
+      "busy": "A folder picker is already open. Close it, then click Browse again.",
       "cooldown": "Wait a moment, then click Browse again.",
       "failed": "The folder picker couldn't open. Try again."
     },

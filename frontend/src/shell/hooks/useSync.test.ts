@@ -857,4 +857,45 @@ describe('useSync', () => {
             expect(clientLog).toHaveBeenCalledWith('sync_start_all_failed', { reason: 'http_503' })
         })
     })
+
+    describe('one start per service (Plan C ledger C-T10)', () => {
+        const reply = (body: unknown, status = 200) => ({ ok: status < 400, status, json: async () => body })
+        const urls = () => vi.mocked(fetch).mock.calls.map(([url]) => String(url))
+
+        it('a start already in flight for a new login is not queued again by the start-up sync', async () => {
+            let answerStart: (v: unknown) => void = () => {}
+            vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input)
+                if (url.includes('/api/sync/start?')) return new Promise(resolve => { answerStart = resolve })
+                if (url.includes('/api/settings/fresh')) return reply({ is_fresh: false })
+                if (url.includes('/api/sync/queue')) return reply({ running: null, queued: [], sequence: null })
+                if (url.includes('/api/sync/start-all')) return reply({ sequence_id: 's', results: {} })
+                return reply({ state: 'running', phase: 'syncing', completed: 0, total: 1 })
+            }))
+            const { result, rerender } = renderHook((props: typeof defaultOptions) => useSync(props), {
+                initialProps: { ...defaultOptions, connectedServices: [] as string[] },
+            })
+            act(() => { void result.current.startSync(false, 'hinatazaka46') })
+            rerender({ ...defaultOptions, connectedServices: ['hinatazaka46'] })
+            await waitFor(() => expect(clientLog).toHaveBeenCalledWith('sync_start_skipped', { reason: 'starting', count: 1 }))
+            expect(urls().filter(u => u.includes('/api/sync/start-all'))).toHaveLength(0)
+            await act(async () => { answerStart(reply({})) })
+        })
+
+        it('a start-all in flight makes a later startSync for the same service a no-op', async () => {
+            let answerAll: (v: unknown) => void = () => {}
+            vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input)
+                if (url.includes('/api/sync/start-all')) return new Promise(resolve => { answerAll = resolve })
+                if (url.includes('/api/sync/queue')) return reply({ running: null, queued: [], sequence: null })
+                return reply({ state: 'running', phase: 'syncing', completed: 0, total: 1 })
+            }))
+            const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
+            act(() => { void result.current.startSyncAllServices(false) })
+            await act(async () => { await result.current.startSync(false, 'hinatazaka46') })
+            expect(urls().some(u => u.includes('/api/sync/start?'))).toBe(false)
+            expect(clientLog).toHaveBeenCalledWith('sync_start_skipped', { reason: 'starting' })
+            await act(async () => { answerAll(reply({ sequence_id: 's', results: {} })) })
+        })
+    })
 })

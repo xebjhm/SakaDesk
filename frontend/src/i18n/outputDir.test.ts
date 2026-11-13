@@ -25,4 +25,19 @@ describe('output folder strings (security audit 2026-11-13)', () => {
         expect(en.setup.folderRequired).toBe('Choose a folder first');
         expect(en.setup.outputFolderHint).toBe('Your messages and photos are saved here. Click Browse to choose another folder.');
     });
+
+    it.each([
+        ['en', en, 'Browse'],
+        ['ja', ja, '参照'],
+        ['zh-TW', zhTW, '瀏覽'],
+        ['zh-CN', zhCN, '浏览'],
+        ['yue', yue, '瀏覽'],
+    ] as const)('%s "picker already open" text asks to close it and click Browse again', (_code, locale, browse) => {
+        const errors = (locale as unknown as { settings: { outputDirError: Record<string, string> } }).settings.outputDirError;
+        expect(errors.busy).toContain(browse);
+    });
+
+    it('English busy wording', () => {
+        expect(en.settings.outputDirError.busy).toBe('A folder picker is already open. Close it, then click Browse again.');
+    });
 });
