@@ -11,7 +11,7 @@ import { useBlogTranslationVisibility, useInlineBlogTranslations } from '../hook
 import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
 import { BlogBody } from './BlogBody';
-import { buildBlogFragment, highlightKey, normalizeBlogUrls, parseHighlightKey } from '../blogHtml';
+import { buildBlogFragment, highlightKey, parseHighlightKey } from '../blogHtml';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { useAppStore } from '../../../store/appStore';
@@ -207,14 +207,15 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         if (memberBlogs[index]) onNavigate(memberBlogs[index]);
     };
 
-    // The post body: URLs normalized, sanitized into a DOM fragment and search terms marked on
-    // its text nodes (blogHtml.ts). It is never edited or re-parsed as an HTML string. Reading
+    // The post body: sanitized into a DOM fragment whose URLs are resolved against the blog host
+    // (loopback and app URLs dropped) with search terms marked on its text nodes (blogHtml.ts).
+    // It is never serialized, edited or re-parsed as an HTML string. Reading
     // matches get the reading mark (fill + dashed underline), exact matches the exact mark.
     const baseUrl = getServiceBlogBaseUrl(serviceId);
     const postHtml = content?.content.html ?? '';
     const termsKey = highlightKey(searchQuery, matchedTerms, readingTerms);
     const postFragment = useMemo(
-        () => (postHtml ? buildBlogFragment(normalizeBlogUrls(postHtml, baseUrl), parseHighlightKey(termsKey)) : null),
+        () => (postHtml ? buildBlogFragment(postHtml, parseHighlightKey(termsKey), baseUrl) : null),
         [postHtml, baseUrl, termsKey],
     );
 

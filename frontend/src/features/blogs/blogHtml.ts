@@ -3,8 +3,9 @@
  * Blog post HTML → a sanitized DOM fragment with search highlights.
  *
  * Remote member-authored HTML is sanitized by DOMPurify straight into a DocumentFragment
- * (RETURN_DOM_FRAGMENT), and search terms are marked by splitting its text nodes, so the post
- * is never edited or re-parsed as an HTML string. (A regex over DOMPurify's serialized output
+ * (RETURN_DOM_FRAGMENT). Its URLs are then resolved on that DOM and search terms are marked by
+ * splitting its text nodes, so the post is never serialized, edited or re-parsed as an HTML
+ * string. (A regex over DOMPurify's serialized output
  * once treated attribute text as text: on a runtime that leaves '<' and '>' raw in attribute
  * values, a highlight inside an alt closed the attribute and the rest became live markup;
  * security audit 2026-11-13.) The fragment belongs to DOMPurify's inert document, so nothing
@@ -22,27 +23,64 @@ export const BLOG_ALLOWED_ATTR: string[] = ['href', 'src', 'alt', 'class', 'targ
 export const EXACT_MARK_CLASS = 'search-snippet search-highlight';
 export const READING_MARK_CLASS = 'search-snippet search-highlight reading';
 
-/** The one local URL a post may keep: an image cached by a blog backup (`GET /api/blogs/image`). */
-const LOCAL_IMAGE_PREFIX = '/api/blogs/image?';
+/** The one local endpoint a post may reach: an image cached by a blog backup (`GET /api/blogs/image`). */
+const LOCAL_IMAGE_PATH = '/api/blogs/image';
+
+/** A base no real URL can resolve against: relative values that land on it had no base to use. */
+const NO_BASE = 'https://no-base.invalid/';
+
+function isLoopbackHost(rawHost: string): boolean {
+    const host = rawHost.toLowerCase().replace(/\.+$/, '');
+    return (
+        host === 'localhost' || host.endsWith('.localhost') || host === '0.0.0.0'
+        || /^127\.\d+\.\d+\.\d+$/.test(host)
+        || host === '[::1]' || host === '[::]' || host.startsWith('[::ffff:')
+    );
+}
 
 /**
- * Makes the post's relative URLs absolute on the official blog host (`baseUrl`). Only cached
- * blog images stay local: any other root-relative URL, `/api/...` included, points at the blog
- * host, so a post can never make the app request its own API. Without a base URL the HTML is
- * returned unchanged.
+ * The URL a post's `src`/`href` may keep, or null to drop it. Values resolve against the post's
+ * blog base URL (an unresolvable relative value when there is none). Kept: the cached-image
+ * endpoint as a relative app URL, `data:` images (img src only), and absolute http(s) URLs off
+ * the app origin and off loopback.
  */
-export function normalizeBlogUrls(html: string, baseUrl: string): string {
-    if (!baseUrl) return html;
-    return html.replace(
-        /(src|href)=(["'])([^"']+)\2/g,
-        (match: string, attr: string, quote: string, url: string) => {
-            if (url.startsWith('//')) return `${attr}=${quote}https:${url}${quote}`;
-            if (url.startsWith(LOCAL_IMAGE_PREFIX)) return match;
-            if (url.startsWith('/')) return `${attr}=${quote}${baseUrl}${url}${quote}`;
-            if (!url.startsWith('http')) return `${attr}=${quote}${baseUrl}/${url}${quote}`;
-            return match;
-        },
-    );
+function resolvePostUrl(
+    raw: string, base: string, appOrigin: string, isImgSrc: boolean,
+): string | null {
+    try {
+        const local = new URL(raw, appOrigin);
+        if (local.origin === appOrigin && local.pathname === LOCAL_IMAGE_PATH) {
+            return `${LOCAL_IMAGE_PATH}${local.search}`;
+        }
+        if (isImgSrc && /^data:image\//i.test(raw.trim())) return raw;
+        // 'http:/x' and 'http:x' carry a scheme but no authority: browsers resolve them against the
+        // current document (the app), so they are dropped rather than guessed at.
+        if (/^\s*https?:(?![/\\]{2})/i.test(raw)) return null;
+        const url = new URL(raw, base || NO_BASE);
+        if (url.protocol !== 'http:' && url.protocol !== 'https:') return null;
+        if (!base && url.origin === new URL(NO_BASE).origin) return null;
+        if (isLoopbackHost(url.hostname) || url.origin === appOrigin) return null;
+        return url.href;
+    } catch {
+        return null;
+    }
+}
+
+/**
+ * Rewrites (or removes) every `src`/`href` of the sanitized `root` with {@link resolvePostUrl},
+ * so a post can never make the app request its own API or any other loopback port.
+ */
+export function resolveBlogUrls(root: ParentNode, baseUrl: string, appOrigin: string): void {
+    const base = baseUrl ? `${baseUrl.replace(/\/+$/, '')}/` : '';
+    for (const el of Array.from(root.querySelectorAll('[src],[href]'))) {
+        for (const attr of ['src', 'href']) {
+            const raw = el.getAttribute(attr);
+            if (raw === null) continue;
+            const resolved = resolvePostUrl(raw, base, appOrigin, attr === 'src' && el.localName === 'img');
+            if (resolved === null) el.removeAttribute(attr);
+            else el.setAttribute(attr, resolved);
+        }
+    }
 }
 
 export interface HighlightTerms {
@@ -108,13 +146,19 @@ export function highlightTextNodes(root: Node, terms: string[], className: strin
     }
 }
 
-/** The sanitized post with the terms marked (reading marks first; exact marks win where both apply). */
-export function buildBlogFragment(html: string, terms: HighlightTerms): DocumentFragment {
+/**
+ * The sanitized post with its URLs resolved against `baseUrl` (see {@link resolveBlogUrls}) and
+ * the terms marked (reading marks first; exact marks win where both apply).
+ */
+export function buildBlogFragment(
+    html: string, terms: HighlightTerms, baseUrl = '', appOrigin: string = window.location.origin,
+): DocumentFragment {
     const fragment = DOMPurify.sanitize(html, {
         ALLOWED_TAGS: BLOG_ALLOWED_TAGS,
         ALLOWED_ATTR: BLOG_ALLOWED_ATTR,
         RETURN_DOM_FRAGMENT: true,
     });
+    resolveBlogUrls(fragment, baseUrl, appOrigin);
     highlightTextNodes(fragment, terms.reading, READING_MARK_CLASS);
     highlightTextNodes(fragment, terms.exact, EXACT_MARK_CLASS);
     return fragment;

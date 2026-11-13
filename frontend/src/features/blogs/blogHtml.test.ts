@@ -1,11 +1,10 @@
 import { describe, it, expect } from 'vitest';
 import {
-    buildBlogFragment, highlightKey, highlightTextNodes, normalizeBlogUrls, parseHighlightKey,
+    buildBlogFragment, highlightKey, highlightTextNodes, parseHighlightKey,
     splitHighlightTerms, EXACT_MARK_CLASS, READING_MARK_CLASS,
 } from './blogHtml';
 
 const NONE = { exact: [] as string[], reading: [] as string[] };
-const BASE = 'https://www.hinatazaka46.com';
 
 function serialize(fragment: DocumentFragment): string {
     const box = document.createElement('div');
@@ -13,30 +12,71 @@ function serialize(fragment: DocumentFragment): string {
     return box.innerHTML;
 }
 
-describe('normalizeBlogUrls', () => {
-    it('keeps cached blog images local', () => {
-        const html = '<img src="/api/blogs/image?service=hinatazaka46&amp;blog_id=1&amp;filename=img_0.jpg">';
-        expect(normalizeBlogUrls(html, BASE)).toBe(html);
+const APP = 'http://127.0.0.1:8000';
+const POST_BASE = 'https://blog.example.com/m/1/';
+
+/** The first element's attribute after sanitizing `<tag attr="value">`; null when removed. */
+function urlOf(tag: 'img' | 'a', value: string, base: string = POST_BASE): string | null {
+    const attr = tag === 'img' ? 'src' : 'href';
+    const el = buildBlogFragment(`<${tag} ${attr}="${value}">x</${tag}>`, NONE, base, APP).querySelector(tag)!;
+    return el.getAttribute(attr);
+}
+
+describe('post URLs', () => {
+    it('removes the attribute for loopback and app URLs', () => {
+        for (const tag of ['img', 'a'] as const) {
+            for (const value of [
+                'HTTP://127.0.0.1:8000/api/settings', '//127.0.0.1:1234/api/x', 'http://localhost:9999/x',
+                'http://[::1]/x', 'http://0.0.0.0/x', 'http://127.1.2.3:80/x', 'http://[::ffff:127.0.0.1]/x',
+                'http://2130706433/x', 'http://localhost./x', 'http:/api/settings', 'http:api/x',
+                'javascript:alert(1)', 'ftp://example.com/x', 'file:///etc/passwd',
+            ]) {
+                expect(urlOf(tag, value)).toBeNull();
+            }
+        }
     });
-    it('points every other root-relative URL, /api/ included, at the blog host', () => {
-        expect(normalizeBlogUrls('<a href="/api/settings">x</a>', BASE)).toBe(`<a href="${BASE}/api/settings">x</a>`);
-        expect(normalizeBlogUrls('<img src="/api/content/media/x.html">', BASE)).toBe(`<img src="${BASE}/api/content/media/x.html">`);
-        expect(normalizeBlogUrls('<a href="/s/official/diary/1">x</a>', BASE)).toBe(`<a href="${BASE}/s/official/diary/1">x</a>`);
+    it('keeps no path to the app origin from base-relative lookalikes', () => {
+        for (const value of ['http/../api/settings', 'https/../api/session/bootstrap', '/api/settings', '/api/content/media/x']) {
+            const resolved = urlOf('img', value);
+            expect(resolved).not.toBeNull();
+            expect(new URL(resolved!).origin).toBe('https://blog.example.com');
+        }
     });
-    it('completes protocol-relative and relative URLs and keeps absolute ones', () => {
-        expect(normalizeBlogUrls('<img src="//cdn.hinatazaka46.com/a.jpg">', BASE)).toBe('<img src="https://cdn.hinatazaka46.com/a.jpg">');
-        expect(normalizeBlogUrls("<img src='a.jpg'>", BASE)).toBe(`<img src='${BASE}/a.jpg'>`);
-        expect(normalizeBlogUrls('<a href="https://example.com/x">x</a>', BASE)).toBe('<a href="https://example.com/x">x</a>');
+    it('keeps cached blog images as relative app URLs', () => {
+        expect(urlOf('img', '/api/blogs/image?service=hinatazaka46&amp;blog_id=1&amp;filename=img_0.jpg'))
+            .toBe('/api/blogs/image?service=hinatazaka46&blog_id=1&filename=img_0.jpg');
+        expect(urlOf('img', 'http://127.0.0.1:8000/api/blogs/image?x=1')).toBe('/api/blogs/image?x=1');
     });
-    it('leaves the HTML alone without a base URL', () => {
-        expect(normalizeBlogUrls('<a href="/x">x</a>', '')).toBe('<a href="/x">x</a>');
+    it('keeps absolute off-origin URLs and resolves relative ones on the blog base', () => {
+        expect(urlOf('img', 'https://cdn.example.com/a.jpg')).toBe('https://cdn.example.com/a.jpg');
+        expect(urlOf('a', 'https://example.com/x')).toBe('https://example.com/x');
+        expect(urlOf('img', 'img/a.jpg')).toBe('https://blog.example.com/m/1/img/a.jpg');
+        expect(urlOf('img', '//cdn.example.com/a.jpg')).toBe('https://cdn.example.com/a.jpg');
+        expect(urlOf('a', '/s/official/diary/1')).toBe('https://blog.example.com/s/official/diary/1');
+    });
+    it('treats a base without a trailing slash as a directory', () => {
+        expect(urlOf('img', 'a.jpg', 'https://www.hinatazaka46.com')).toBe('https://www.hinatazaka46.com/a.jpg');
+    });
+    it('fails closed without a base: relative values are dropped, absolute ones kept', () => {
+        expect(urlOf('img', '//x.example/a.jpg', '')).toBe('https://x.example/a.jpg');
+        expect(urlOf('img', 'http/../api/x', '')).toBeNull();
+        expect(urlOf('img', 'a.jpg', '')).toBeNull();
+        expect(urlOf('img', '/api/settings', '')).toBeNull();
+        expect(urlOf('img', 'http:/api/x', '')).toBeNull();
+        expect(urlOf('img', 'https://cdn.example.com/a.jpg', '')).toBe('https://cdn.example.com/a.jpg');
+        expect(urlOf('img', '/api/blogs/image?a=1', '')).toBe('/api/blogs/image?a=1');
+    });
+    it('keeps data images on img src only', () => {
+        const data = 'data:image/png;base64,iVBORw0KGgo=';
+        expect(urlOf('img', data)).toBe(data);
+        expect(urlOf('a', data)).toBeNull();
     });
 });
 
 describe('buildBlogFragment', () => {
     it('drops scripts and event handlers', () => {
-        const fragment = buildBlogFragment('<p onclick="x()">hi<script>x()</script><img src="a.jpg" onerror="x()"></p>', NONE);
-        expect(serialize(fragment)).toBe('<p>hi<img src="a.jpg"></p>');
+        const fragment = buildBlogFragment('<p onclick="x()">hi<script>x()</script><img src="a.jpg" onerror="x()"></p>', NONE, POST_BASE, APP);
+        expect(serialize(fragment)).toBe('<p>hi<img src="https://blog.example.com/m/1/a.jpg"></p>');
     });
     it('marks terms only in text, never in attribute values', () => {
         const fragment = buildBlogFragment('<p>桜 <img alt="桜&quot;&gt;&lt;b&gt;" src="a.jpg"></p>', { exact: ['桜'], reading: [] });
