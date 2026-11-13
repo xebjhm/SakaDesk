@@ -64,6 +64,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   earlier transcript.
 - **Blogs open faster.** In a long list the blog cards appear sooner, and a
   blog's pictures after the first one load as you scroll.
+  The blog feed's background also uses less graphics power.
 - **SakaDesk starts with less to load.** Memories now loads the first time you
   open it, and the conversation list checks for changes less often.
 - **More things work without a mouse.** A "Skip to content" link appears when
