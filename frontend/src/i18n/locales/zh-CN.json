@@ -410,7 +410,8 @@
       "voice": "显示未读语音"
     },
     "openPhoto": "打开照片",
-    "timeline": "消息"
+    "timeline": "消息",
+    "favorite": "收藏"
   },
   "calendar": {
     "loadFailed": "无法载入日期",
@@ -499,7 +500,9 @@
     "label": "群组",
     "sessionExpiredRelogin": "会话已过期 - 点击重新登录",
     "addService": "添加服务",
-    "serviceDisconnected": "{{name}}，会话已过期 - 点击重新登录"
+    "serviceDisconnected": "{{name}}，会话已过期 - 点击重新登录",
+    "moveUp": "上移",
+    "moveDown": "下移"
   },
   "search": {
     "memberCount": "{{count}} 位成员",

@@ -21,6 +21,8 @@ const KEYS: readonly string[] = [
     'messageList.openPhoto', 'media.older', 'media.newer', 'media.noOlder', 'media.noNewer',
     // Task 9
     'a11y.skipToContent', 'messageList.timeline', 'serviceRail.serviceDisconnected',
+    // Task 11
+    'messageList.favorite', 'serviceRail.moveUp', 'serviceRail.moveDown',
 ];
 
 const lookup = (data: unknown, dotted: string): unknown =>

@@ -399,6 +399,21 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const favoriteStar = starred && (
         <Star className="h-3.5 w-3.5 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
     );
+    // Keyboard path to the star (UI health A-K4): a toggle in the trailing column, shown and clickable
+    // only while keyboard focus is in this row (mouse users keep the context menu, see nothing new and
+    // cannot hit it by accident). It calls the same handler as the context menu. Not on a sheltered
+    // (inert) or keepsake bubble.
+    const starToggle = !readOnly && !isUnread && onToggleFavorite && (
+        <button
+            type="button"
+            aria-pressed={starred}
+            aria-label={t('messageList.favorite')}
+            onClick={handleToggleFavorite}
+            className="pointer-events-none flex h-6 w-6 items-center justify-center rounded-sm text-secondary opacity-0 transition-opacity duration-fast ease-standard focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-has-[:focus-visible]/row:pointer-events-auto group-has-[:focus-visible]/row:opacity-100"
+        >
+            <Star aria-hidden="true" className={cn('h-3.5 w-3.5', starred && 'fill-current text-semantic-star')} />
+        </button>
+    );
     const translateButton = translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
         <div className={cn(
             'transition-opacity duration-fast ease-standard',
@@ -606,13 +621,14 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                     so it reserves no flow width (the bubble never reflows when the translate button unmounts): the one translate
                     icon; later bubbles of a run also get the star and the time (on hover). A run
                     start keeps star and time in its header. */}
-                {(translateButton || !runStart) && (
+                {(translateButton || !runStart || starToggle) && (
                     <div data-testid="message-trailing" className="absolute bottom-0 left-full ml-3 flex flex-col items-start justify-end gap-1 whitespace-nowrap pb-1">
+                        {starToggle}
                         {!runStart && favoriteStar}
                         {translateButton}
                         {!runStart && (
                             <time
-                                className="text-caption text-muted opacity-0 transition-opacity duration-fast ease-standard group-hover/row:opacity-100"
+                                className="text-caption text-muted opacity-0 transition-opacity duration-fast ease-standard group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100"
                                 dateTime={message.timestamp}
                             >
                                 {time}

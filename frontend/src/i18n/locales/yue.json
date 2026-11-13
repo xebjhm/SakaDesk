@@ -410,7 +410,8 @@
       "voice": "顯示未讀語音"
     },
     "openPhoto": "打開相",
-    "timeline": "訊息"
+    "timeline": "訊息",
+    "favorite": "收藏"
   },
   "calendar": {
     "loadFailed": "載入唔到日期",
@@ -499,7 +500,9 @@
     "label": "群組",
     "sessionExpiredRelogin": "Session 過咗期 - Click 呢度重新登入",
     "addService": "加服務",
-    "serviceDisconnected": "{{name}}，Session 過咗期 - Click 呢度重新登入"
+    "serviceDisconnected": "{{name}}，Session 過咗期 - Click 呢度重新登入",
+    "moveUp": "移上",
+    "moveDown": "移落"
   },
   "search": {
     "memberCount": "{{count}} 位成員",

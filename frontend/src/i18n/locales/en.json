@@ -410,7 +410,8 @@
       "voice": "Show unread voice message"
     },
     "openPhoto": "Open photo",
-    "timeline": "Messages"
+    "timeline": "Messages",
+    "favorite": "Favorite"
   },
   "calendar": {
     "loadFailed": "Could not load the dates",
@@ -500,7 +501,9 @@
     "label": "Groups",
     "sessionExpiredRelogin": "Session expired - click to re-login",
     "addService": "Add Service",
-    "serviceDisconnected": "{{name}}, session expired - click to re-login"
+    "serviceDisconnected": "{{name}}, session expired - click to re-login",
+    "moveUp": "Move up",
+    "moveDown": "Move down"
   },
   "search": {
     "memberCount": "{{count}} member",

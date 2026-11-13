@@ -410,7 +410,8 @@
       "voice": "未読のボイスを表示"
     },
     "openPhoto": "写真を開く",
-    "timeline": "メッセージ"
+    "timeline": "メッセージ",
+    "favorite": "お気に入り"
   },
   "calendar": {
     "loadFailed": "日付を読み込めませんでした",
@@ -499,7 +500,9 @@
     "label": "グループ",
     "sessionExpiredRelogin": "セッション切れ - クリックして再ログイン",
     "addService": "サービスを追加",
-    "serviceDisconnected": "{{name}}、セッション切れ - クリックして再ログイン"
+    "serviceDisconnected": "{{name}}、セッション切れ - クリックして再ログイン",
+    "moveUp": "上へ移動",
+    "moveDown": "下へ移動"
   },
   "search": {
     "memberCount": "{{count}}人のメンバー",
