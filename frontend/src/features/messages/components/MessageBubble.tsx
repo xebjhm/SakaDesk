@@ -581,6 +581,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             <InlineTranslation
                                 translation={translation}
                                 variant="message"
+                                lang={translationTargetLanguage}
                                 onRerun={retriggerTranslation}
                                 defaultExpanded={translationJustCompleted}
                                 messageId={message.id}

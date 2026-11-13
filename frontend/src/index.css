@@ -53,20 +53,42 @@
 }
 
 @layer base {
-  /* Japanese content keeps Japanese glyphs whatever the UI language (spec §6). Scoped to marked
-     content, not <html>, so the UI's own stacks and the serif/display utilities keep working. */
-  /* Literal copies of fontFamily.sansJp / .reading in design/tokens/type.ts (CSS cannot import them): keep in sync. */
+  /* Content in a language other than the UI keeps its own glyphs: Japanese content (spec §6) and
+     translations (UI health #10). Scoped to marked content, not <html>, so the UI's own stacks and
+     the serif/display utilities keep working. The stacks are written once on :root by
+     design/fonts.ts (writeLanguageStacks, from fontStacks): no copies here. */
   [lang="ja"]:not(html) {
-    --ds-font-family-sans: "Noto Sans JP Variable", system-ui, -apple-system, sans-serif;
-    --ds-font-family-serif: "Noto Serif JP Variable", "Yu Mincho", "Hiragino Mincho ProN", serif;
+    --ds-font-family-sans: var(--ds-font-sans-ja);
+    --ds-font-family-serif: var(--ds-font-serif-ja);
     font-family: var(--ds-font-family-sans);
   }
-  /* The rule above (0,1,1) outranks .font-reading / .font-display (0,1,0) on the same element, so the
-     marked blog titles would fall back to sans: restore their faces with a higher specificity (0,2,1). */
-  [lang="ja"]:not(html).font-reading {
+  [lang="zh-TW"]:not(html) {
+    --ds-font-family-sans: var(--ds-font-sans-zh-tw);
+    --ds-font-family-serif: var(--ds-font-serif-zh-tw);
+    font-family: var(--ds-font-family-sans);
+  }
+  [lang="zh-CN"]:not(html) {
+    --ds-font-family-sans: var(--ds-font-sans-zh-cn);
+    --ds-font-family-serif: var(--ds-font-serif-zh-cn);
+    font-family: var(--ds-font-family-sans);
+  }
+  [lang="yue"]:not(html) {
+    --ds-font-family-sans: var(--ds-font-sans-yue);
+    --ds-font-family-serif: var(--ds-font-serif-yue);
+    font-family: var(--ds-font-family-sans);
+  }
+  [lang="en"]:not(html) {
+    --ds-font-family-sans: var(--ds-font-sans-en);
+    --ds-font-family-serif: var(--ds-font-serif-en);
+    font-family: var(--ds-font-family-sans);
+  }
+  /* The rules above (0,1,1) outrank .font-reading / .font-display (0,1,0) on the same element, so a
+     marked title (a Japanese blog title, the DesignPage language samples, a translated heading) would
+     fall back to sans: restore their faces with a higher specificity (0,2,1), for every language. */
+  :is([lang="ja"], [lang="zh-TW"], [lang="zh-CN"], [lang="yue"], [lang="en"]):not(html).font-reading {
     font-family: var(--ds-font-family-reading);
   }
-  [lang="ja"]:not(html).font-display {
+  :is([lang="ja"], [lang="zh-TW"], [lang="zh-CN"], [lang="yue"], [lang="en"]):not(html).font-display {
     font-family: var(--ds-font-family-serif);
   }
 }

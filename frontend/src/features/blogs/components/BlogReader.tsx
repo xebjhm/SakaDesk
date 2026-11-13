@@ -24,6 +24,7 @@ import { readCachedTranslation } from '../../../core/persistence/translationLoad
 import { formatBlogDate } from '../../../utils/dateFormatters';
 import { resolveWash } from '../memberWash';
 import { clientLog } from '../../../utils/clientLog';
+import { loadLanguageFaces } from '../../../design/fonts';
 import { openExternal } from '../../../utils/openExternal';
 
 export interface BlogReaderProps {
@@ -288,7 +289,12 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     }, [content, blog.published_at]);
 
     // Inject translations into the blog DOM (immersive, per paragraph) while expanded.
-    useInlineBlogTranslations(blogContentRef, blogTranslations, translationsExpanded);
+    useInlineBlogTranslations(blogContentRef, blogTranslations, translationsExpanded, translationTargetLanguage);
+
+    // The translation language's own faces (a Chinese translation in Noto Sans TC, not JP glyphs).
+    useEffect(() => {
+        if (translationsExpanded) loadLanguageFaces(translationTargetLanguage);
+    }, [translationsExpanded, translationTargetLanguage]);
 
     // Reset translations when blog changes
     useEffect(() => {

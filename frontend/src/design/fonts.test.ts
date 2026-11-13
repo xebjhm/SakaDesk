@@ -3,7 +3,7 @@ import { describe, it, expect, vi, beforeEach, type Mock } from 'vitest';
 vi.mock('../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 import i18n from '../i18n';
-import { applyLanguageFonts, faceLoaders, fontStacks, installLanguageFonts, type FaceLoaders } from './fonts';
+import { applyLanguageFonts, faceLoaders, fontStacks, installLanguageFonts, isCjkLanguage, langStackVar, loadLanguageFaces, writeLanguageStacks, type FaceLoaders } from './fonts';
 import { typeScale } from './tokens';
 import { clientLog } from '../utils/clientLog';
 
@@ -94,5 +94,36 @@ describe('language-aware fonts', () => {
             onSpy.mockRestore();
             await i18n.changeLanguage(original);
         }
+    });
+});
+
+describe('per-language stacks as variables (UI health #10)', () => {
+    it('writes every language stack once on the root', () => {
+        writeLanguageStacks(document);
+        const style = document.documentElement.style;
+        expect(style.getPropertyValue('--ds-font-sans-zh-tw')).toBe(fontStacks['zh-TW'].sans);
+        expect(style.getPropertyValue('--ds-font-serif-yue')).toBe(fontStacks.yue.serif);
+        expect(style.getPropertyValue('--ds-font-sans-ja')).toBe(fontStacks.ja.sans);
+        expect(langStackVar('zh-CN', 'sans')).toBe('--ds-font-sans-zh-cn');
+    });
+
+    it("loads a translation language's faces on request, once per loader call, and ignores unknown codes", () => {
+        const loader = vi.fn(() => Promise.resolve());
+        const loaders = { ja: null, 'zh-TW': loader, yue: null, 'zh-CN': null, en: null };
+        loadLanguageFaces('zh-TW', loaders);
+        loadLanguageFaces('xx', loaders);
+        expect(loader).toHaveBeenCalledTimes(1);
+    });
+
+    it('logs a breadcrumb when a requested face fails to load', async () => {
+        const loaders = { ja: null, 'zh-TW': () => Promise.reject(new Error('x')), yue: null, 'zh-CN': null, en: null };
+        loadLanguageFaces('zh-TW', loaders);
+        await vi.waitFor(() => expect(clientLog).toHaveBeenCalledWith('design_fonts_fallback', { target: 'zh_tw' }));
+    });
+
+    it('knows which languages are CJK', () => {
+        expect(['ja', 'zh-TW', 'zh-CN', 'yue', 'ko'].every(isCjkLanguage)).toBe(true);
+        expect(isCjkLanguage('en')).toBe(false);
+        expect(isCjkLanguage(null)).toBe(false);
     });
 });

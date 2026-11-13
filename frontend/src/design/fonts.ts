@@ -1,14 +1,16 @@
 /**
  * Language-aware font stacks (spec §6). The UI language picks the glyph set
  * (JP / TC / HK / SC / Latin); Japanese content keeps JP glyphs through
- * `[lang="ja"]` content rules in index.css.
+ * `[lang="..."]` content rules in index.css (their stacks are CSS variables written by
+ * `writeLanguageStacks`).
  *
  * Every face is self-hosted: the @fontsource-variable packages are bundled by Vite into
  * /assets in `unicode-range` slices (a page fetches only the slices its text uses), so text
  * never waits on a third-party host and the Content-Security-Policy allows fonts only from
  * the app (security audit 2026-11-13; UI health report: render-blocking Google Fonts). The
  * Japanese faces load with every entry point, since Japanese content is everywhere; another
- * language's faces are their own stylesheet chunk, requested when that language is applied.
+ * language's faces are their own stylesheet chunk, requested when that language is applied or a
+ * translation in it is shown (loadLanguageFaces).
  */
 import '@fontsource-variable/noto-sans-jp';
 import '@fontsource-variable/noto-serif-jp';
@@ -47,6 +49,40 @@ function knownLanguage(lang: string): SupportedLanguage | null {
     return Object.prototype.hasOwnProperty.call(fontStacks, lang) ? (lang as SupportedLanguage) : null;
 }
 
+/** The CSS variable holding one language's stack (`--ds-font-sans-zh-tw`, ...): `[lang]` content rules read it. */
+export function langStackVar(lang: SupportedLanguage, face: 'sans' | 'serif'): string {
+    return `--ds-font-${face}-${lang.toLowerCase()}`;
+}
+
+/**
+ * Writes every language's stacks on the root once (UI health #10), so the `[lang="..."]` content
+ * rules in index.css switch to them without copying the stacks (one source: `fontStacks`).
+ */
+export function writeLanguageStacks(doc: Document = document): void {
+    const root = doc.documentElement;
+    for (const lang of Object.keys(fontStacks) as SupportedLanguage[]) {
+        root.style.setProperty(langStackVar(lang, 'sans'), fontStacks[lang].sans);
+        root.style.setProperty(langStackVar(lang, 'serif'), fontStacks[lang].serif);
+    }
+}
+
+/**
+ * Requests a language's own faces for content shown in it (a translation), whatever the UI language.
+ * The dynamic imports are cached by the module system, so repeated calls are free; an unknown code
+ * does nothing. Logs `design_fonts_fallback` when the faces fail to load.
+ */
+export function loadLanguageFaces(lang: string, loaders: FaceLoaders = faceLoaders): void {
+    const known = knownLanguage(lang);
+    if (!known) return;
+    const target = known.toLowerCase().replace(/-/g, '_');
+    loaders[known]?.().catch(() => clientLog('design_fonts_fallback', { target }));
+}
+
+/** Chinese, Cantonese, Japanese and Korean: drawn upright (an italic ideograph is a fake slant). */
+export function isCjkLanguage(lang: string | null | undefined): boolean {
+    return !!lang && /^(zh|yue|ja|ko)\b/i.test(lang);
+}
+
 /**
  * Applies `lang`'s stacks to the root font variables and requests its faces; an unknown
  * language gets the English stacks and faces. Logs `design_fonts_applied`, and
@@ -68,6 +104,7 @@ export function applyLanguageFonts(lang: string, doc: Document = document, loade
 
 /** Applies the current language now and on every change. Call once per entry point. */
 export function installLanguageFonts(loaders: FaceLoaders = faceLoaders): void {
+    writeLanguageStacks(document);
     applyLanguageFonts(i18n.language, document, loaders);
     i18n.on('languageChanged', (lng: string) => applyLanguageFonts(lng, document, loaders));
 }

@@ -1,11 +1,15 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { ChevronRight, ChevronDown, RefreshCw } from 'lucide-react';
 import { useTranslation } from '../../i18n';
 import { useCollapseOnOutOfView } from '../../features/messages/hooks/useMessageVisibility';
+import { isCjkLanguage, loadLanguageFaces } from '../../design/fonts';
+import { cn } from '../../utils/classnames';
 
 interface InlineTranslationProps {
     translation: string;
     variant: 'message' | 'blog';
+    /** The translation's language (the target language setting): its glyphs, and upright when CJK. */
+    lang?: string;
     defaultExpanded?: boolean;
     /** Called when user clicks the rerun button to re-translate */
     onRerun?: () => void;
@@ -19,13 +23,16 @@ interface InlineTranslationProps {
 /**
  * Collapsible inline translation display.
  *
- * Uses different styles per variant:
- * - 'message': Style G — small muted gray, minimal. Light touch inside bubble.
- * - 'blog': Style F2 — italic + subtle left line. Scannable at scale.
+ * - 'message': small muted text under a dashed hairline, a light touch inside the bubble.
+ * - 'blog': a left line like the injected blog translation lines, italic only for non-CJK text.
+ *
+ * Colours are tokens (UI health #12: the toggle was 2.6:1, the re-run icon 1.5:1); the text carries
+ * its own `lang` (UI health #10) and that language's faces load when it opens.
  */
 export const InlineTranslation: React.FC<InlineTranslationProps> = ({
     translation,
     variant,
+    lang,
     defaultExpanded = false,
     onRerun,
     messageId,
@@ -37,41 +44,46 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
     const collapse = useCallback(() => setExpanded(false), []);
     useCollapseOnOutOfView(messageId, expanded, collapse);
 
+    useEffect(() => {
+        if (expanded && lang) loadLanguageFaces(lang);
+    }, [expanded, lang]);
+
     if (!translation) return null;
 
     const Chevron = expanded ? ChevronDown : ChevronRight;
+    const upright = isCjkLanguage(lang);
 
-    const rerunButton = onRerun && (
-        <button
-            onClick={(e) => { e.stopPropagation(); onRerun(); }}
-            className="p-0.5 rounded hover:opacity-70 transition-opacity text-slate-300"
-            type="button"
-            title={t('translation.rerun')}
-        >
-            <RefreshCw className="w-3 h-3" />
-        </button>
+    const header = (
+        <div className="flex items-center gap-0.5">
+            <button
+                onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
+                aria-expanded={expanded}
+                className="flex items-center gap-0.5 rounded-xs py-0.5 text-caption text-muted focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                type="button"
+            >
+                <Chevron aria-hidden="true" className="h-3 w-3" />
+                {t('translation.translate')}
+            </button>
+            {onRerun && (
+                <button
+                    onClick={(e) => { e.stopPropagation(); onRerun(); }}
+                    className="rounded-xs p-0.5 text-muted transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                    type="button"
+                    title={t('translation.rerun')}
+                    aria-label={t('translation.rerun')}
+                >
+                    <RefreshCw aria-hidden="true" className="h-3 w-3" />
+                </button>
+            )}
+        </div>
     );
 
     if (variant === 'message') {
-        // Style G: small muted gray, minimal
         return (
-            <div className="mt-2 pt-1.5" style={{ borderTop: '1px dashed #e2e8f0' }}>
-                <div className="flex items-center gap-0.5">
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
-                        className="flex items-center gap-0.5 text-xs py-0.5 text-slate-400"
-                        type="button"
-                    >
-                        <Chevron className="w-3 h-3" />
-                        {t('translation.translate')}
-                    </button>
-                    {rerunButton}
-                </div>
+            <div className="mt-2 border-t border-dashed border-subtle pt-1.5">
+                {header}
                 {expanded && (
-                    <div
-                        className="text-[13px] leading-relaxed whitespace-pre-wrap break-words mt-0.5"
-                        style={{ color: '#6b7280' }}
-                    >
+                    <div lang={lang} className="mt-0.5 whitespace-pre-wrap break-words text-small leading-relaxed text-muted">
                         {translation}
                     </div>
                 )}
@@ -79,29 +91,13 @@ export const InlineTranslation: React.FC<InlineTranslationProps> = ({
         );
     }
 
-    // Style F2: italic + subtle left line
     return (
-        <div className="mt-1 mb-3">
-            <div className="flex items-center gap-0.5">
-                <button
-                    onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
-                    className="flex items-center gap-0.5 text-xs py-0.5 text-slate-400"
-                    type="button"
-                >
-                    <Chevron className="w-3 h-3" />
-                    {t('translation.translate')}
-                </button>
-                {rerunButton}
-            </div>
+        <div className="mb-3 mt-1">
+            {header}
             {expanded && (
                 <div
-                    className="text-[14px] leading-relaxed whitespace-pre-wrap break-words mt-0.5"
-                    style={{
-                        color: '#555',
-                        fontStyle: 'italic',
-                        paddingLeft: 12,
-                        borderLeft: '1.5px solid #d1d5db',
-                    }}
+                    lang={lang}
+                    className={cn('mt-0.5 whitespace-pre-wrap break-words border-l-2 border-strong pl-3 text-body leading-relaxed text-secondary', !upright && 'italic')}
                 >
                     {translation}
                 </div>

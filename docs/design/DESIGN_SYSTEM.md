@@ -411,6 +411,14 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   Companion rules `[lang="ja"]:not(html).font-reading` and `.font-display` keep
   the serif reading and display faces on marked titles (the base rule would
   otherwise win on the same element and render them sans).
+  The same content rule exists for `zh-TW`, `zh-CN`, `yue` and `en`
+  (translations shown in their own glyphs), and the companion rules apply to
+  all five languages. The stacks come from the CSS variables
+  `--ds-font-sans-<lang>` / `--ds-font-serif-<lang>` that `writeLanguageStacks`
+  (`design/fonts.ts`) writes from `fontStacks`; index.css never copies a stack.
+  A translation's faces load when it is shown (`loadLanguageFaces`).
+  Translations are upright in CJK (`isCjkLanguage`); English blog translations
+  stay italic.
   Marked so far: message text, member names (member list, chat header,
   bubbles, profile card, call screen), letter text and voice transcripts. Blog
   content (post titles, bodies, member names on cards, in the reader, in the member
