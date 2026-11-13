@@ -14,6 +14,8 @@ is safe here.
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import call
 
@@ -137,6 +139,14 @@ class TestMainWindowKwargs:
 
 
 class TestNavigationGuardInstall:
+    def test_main_installs_the_guard_before_the_gui_loop_starts(self):
+        source = (Path(desktop.__file__).resolve()).read_text(encoding="utf-8")
+        body = source[source.index("\ndef main(") :]
+        install_at = body.index("        _install_navigation_guard(")
+        start = re.search(r"^ +webview\.start\($", body, re.MULTILINE)
+        assert start is not None
+        assert install_at < start.start()
+
     def test_skipped_off_windows(self):
         calls: list[dict] = []
         with capture_logs() as logs:

@@ -5,7 +5,10 @@ desktop.py/main-window/unrestricted-navigation-from-blog-links)."""
 from __future__ import annotations
 
 import re
+import sys
+import types
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 from structlog.testing import capture_logs
@@ -79,8 +82,22 @@ class TestDecide:
             (f"{APP}/?view=call-popup#t=secret", ng.NavAction.ALLOW, "app_origin"),
             ("https://www.hinatazaka46.com/s/x", ng.NavAction.EXTERNAL, "external_web"),
             ("http://example.com", ng.NavAction.EXTERNAL, "external_web"),
-            ("http://127.0.0.1:9999/", ng.NavAction.EXTERNAL, "external_web"),
-            (f"https://{HOST}:{PORT}/", ng.NavAction.EXTERNAL, "external_web"),
+            ("http://127.0.0.1:9999/", ng.NavAction.BLOCK, "loopback"),
+            ("http://localhost:8765/", ng.NavAction.BLOCK, "loopback"),
+            ("http://LOCALHOST./", ng.NavAction.BLOCK, "loopback"),
+            ("http://app.localhost/", ng.NavAction.BLOCK, "loopback"),
+            ("http://127.1.2.3/", ng.NavAction.BLOCK, "loopback"),
+            ("http://[::1]:8765/", ng.NavAction.BLOCK, "loopback"),
+            ("http://[::ffff:127.0.0.1]/", ng.NavAction.BLOCK, "loopback"),
+            ("http://0.0.0.0:8765/", ng.NavAction.BLOCK, "loopback"),
+            ("https://127.0.0.1:8765/", ng.NavAction.BLOCK, "loopback"),
+            ("http://localhost.example.com/", ng.NavAction.EXTERNAL, "external_web"),
+            ('https://example.com/a"b', ng.NavAction.BLOCK, "unsafe_chars"),
+            ("https://example.com/<x>", ng.NavAction.BLOCK, "unsafe_chars"),
+            ("https://example.com/a^b", ng.NavAction.BLOCK, "unsafe_chars"),
+            ("https://example.com/a`b", ng.NavAction.BLOCK, "unsafe_chars"),
+            ("https://example.com/a%22b%20c", ng.NavAction.EXTERNAL, "external_web"),
+            ("https://example.com/a\tb", ng.NavAction.BLOCK, "invalid"),
             ("ms-settings:", ng.NavAction.BLOCK, "scheme"),
             ("file:///C:/Windows/", ng.NavAction.BLOCK, "scheme"),
             ("javascript:alert(1)", ng.NavAction.BLOCK, "scheme"),
@@ -118,7 +135,7 @@ class TestNavigationStarting:
         assert {
             "event": "navigation_refused",
             "reason": "external_web",
-            "opened_externally": True,
+            "external_requested": True,
             "log_level": "info",
         } in logs
 
@@ -133,7 +150,7 @@ class TestNavigationStarting:
         assert {
             "event": "navigation_refused",
             "reason": "scheme",
-            "opened_externally": False,
+            "external_requested": False,
             "log_level": "info",
         } in logs
 
@@ -183,7 +200,7 @@ class TestNewWindowRequested:
         assert {
             "event": "new_window_refused",
             "reason": reason,
-            "opened_externally": False,
+            "external_requested": False,
             "log_level": "info",
         } in logs
 
@@ -232,17 +249,16 @@ class TestInstall:
                 "installed": True,
                 "pywebview": "6.1",
                 "validated": False,
-                "log_level": "info",
+                "log_level": "warning",
             }
         ]
 
-    def test_the_build_pins_the_validated_pywebview(self):
-        workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text(
-            encoding="utf-8"
-        )
-        pinned = re.search(r"pywebview==([0-9.]+)", workflow)
-        assert pinned is not None
-        assert pinned.group(1) == ng.VALIDATED_PYWEBVIEW
+    @pytest.mark.parametrize("relative", [".github/workflows/build.yml", "build.ps1"])
+    def test_the_build_pins_the_validated_pywebview(self, relative):
+        text = (ROOT / relative).read_text(encoding="utf-8")
+        pinned = re.findall(r"pywebview==([0-9.]+)", text)
+        assert pinned, relative
+        assert set(pinned) == {ng.VALIDATED_PYWEBVIEW}
 
 
 class TestOpenExternal:
@@ -255,6 +271,29 @@ class TestOpenExternal:
         assert calls == []
         spawned[0]()
         assert calls == ["https://example.com/"]
+
+    def test_the_success_is_logged_from_the_launch_not_before(self):
+        spawned: list = []
+        with capture_logs() as logs:
+            assert ng.open_external(
+                "https://example.com/", opener=lambda u: True, spawn=spawned.append
+            )
+            assert logs == []
+            spawned[0]()
+        assert logs == [{"event": "external_opened", "log_level": "info"}]
+
+    def test_a_browser_that_declines_is_logged(self):
+        with capture_logs() as logs:
+            assert ng.open_external(
+                "https://example.com/", opener=lambda u: False, spawn=lambda w: w()
+            )
+        assert logs == [
+            {
+                "event": "external_open_failed",
+                "reason": "browser_refused",
+                "log_level": "warning",
+            }
+        ]
 
     def test_other_urls_are_refused(self):
         calls: list[str] = []
@@ -271,6 +310,12 @@ class TestOpenExternal:
             }
         ]
 
+    @pytest.mark.parametrize("url", ['https://e.com/"&calc', "https://e.com/<x>"])
+    def test_shell_metacharacters_are_refused(self, url):
+        calls: list[str] = []
+        assert not ng.open_external(url, opener=calls.append, spawn=lambda w: w())
+        assert calls == []
+
     def test_an_opener_failure_is_logged_not_raised(self):
         def fail(_url: str) -> None:
             raise OSError("no browser")
@@ -286,3 +331,44 @@ class TestOpenExternal:
                 "log_level": "warning",
             }
         ]
+
+
+class TestLoadEdgeChrome:
+    """pywebview 5.3.2 rebinds ``webview.guilib`` to None at import, so the
+    backend must be reached through ``from webview.guilib import initialize``."""
+
+    @staticmethod
+    def _fake_pywebview(monkeypatch, *, is_chromium, calls, edge):
+        webview = types.ModuleType("webview")
+        webview.__path__ = []
+        webview.guilib = None
+        guilib = types.ModuleType("webview.guilib")
+        guilib.initialize = lambda *a: calls.append(a)
+        platforms = types.ModuleType("webview.platforms")
+        platforms.__path__ = []
+        winforms = types.ModuleType("webview.platforms.winforms")
+        winforms.is_chromium = is_chromium
+        winforms.Chromium = SimpleNamespace(EdgeChrome=edge)
+        platforms.winforms = winforms
+        for name, mod in {
+            "webview": webview,
+            "webview.guilib": guilib,
+            "webview.platforms": platforms,
+            "webview.platforms.winforms": winforms,
+        }.items():
+            monkeypatch.setitem(sys.modules, name, mod)
+
+    def test_returns_the_edge_class_after_initializing(self, monkeypatch):
+        calls: list = []
+        cls = _backend_class()
+        self._fake_pywebview(monkeypatch, is_chromium=True, calls=calls, edge=cls)
+        assert ng._load_edgechrome() is cls
+        assert len(calls) == 1
+
+    def test_another_renderer_returns_none(self, monkeypatch):
+        calls: list = []
+        self._fake_pywebview(
+            monkeypatch, is_chromium=False, calls=calls, edge=_backend_class()
+        )
+        assert ng._load_edgechrome() is None
+        assert len(calls) == 1
