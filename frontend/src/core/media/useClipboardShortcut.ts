@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
+import { useFeatureActive } from '../../design/featureActive';
 import { copyImageToClipboard, copyVideoToClipboard } from '../../utils/clipboard';
 
 /**
@@ -10,13 +11,16 @@ import { copyImageToClipboard, copyVideoToClipboard } from '../../utils/clipboar
  * Uses window.addEventListener so the shortcut works regardless of which
  * child element has focus (e.g., VideoPlayer controls, VoicePlayer buttons).
  *
- * Only active when goldenFingerActive is true and a media item is provided.
+ * Only active when goldenFingerActive is true and a media item is provided, and while the
+ * feature that owns the viewer is shown (a kept-mounted Messages hidden behind Blogs or Memories
+ * must not copy its hidden picture on Ctrl+C).
  */
 export function useClipboardShortcut(
     mediaSrc: string | undefined,
     mediaType: 'picture' | 'video' | 'voice' | undefined,
 ) {
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
+    const featureActive = useFeatureActive();
     const { t } = useTranslation();
 
     const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -37,7 +41,7 @@ export function useClipboardShortcut(
 
     // Window-level Ctrl+C listener
     useEffect(() => {
-        if (!goldenFingerActive || !mediaSrc || !mediaType) return;
+        if (!featureActive || !goldenFingerActive || !mediaSrc || !mediaType) return;
 
         const handleKeyDown = (e: KeyboardEvent) => {
             if (e.ctrlKey && e.key === 'c') {
@@ -65,7 +69,7 @@ export function useClipboardShortcut(
 
         window.addEventListener('keydown', handleKeyDown);
         return () => window.removeEventListener('keydown', handleKeyDown);
-    }, [goldenFingerActive, mediaSrc, mediaType, showToast, t]);
+    }, [featureActive, goldenFingerActive, mediaSrc, mediaType, showToast, t]);
 
     return { toastMessage };
 }

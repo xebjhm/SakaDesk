@@ -16,6 +16,7 @@ import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
+import { useFeatureActive } from '../../design/featureActive';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 import { useTranscription } from '../../hooks/useTranscription';
@@ -189,6 +190,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
     const [activeTab, setActiveTab] = useState<MediaTab>('photos');
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+    // False while this gallery's feature is hidden (kept mounted): no key capture, no polling.
+    const featureActive = useFeatureActive();
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
     // Closing detail/voice state must happen BEFORE bubbling up — the
@@ -386,10 +389,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }, [selectedMedia, currentTabItems, detailIsPhoto, step]);
 
     useEffect(() => {
-        if (!selectedMedia) return;
+        if (!selectedMedia || !featureActive) return;
         document.addEventListener('keydown', handleDetailKeyDown);
         return () => document.removeEventListener('keydown', handleDetailKeyDown);
-    }, [selectedMedia, handleDetailKeyDown]);
+    }, [selectedMedia, featureActive, handleDetailKeyDown]);
 
     // Detail view for selected media
     const renderDetailView = () => {
@@ -655,7 +658,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     // The list's first load (L1 timing: shown after `reveal`, slow / very-slow copy, held at least
     // `minVisible`) and its failure; pre-generation progress while the photos / videos grid is open.
     const listLoading = useHeldLoading(isOpen && listStatus === 'loading');
-    const pregen = usePregenProgress(isOpen && activeTab !== 'voice' && listStatus === 'ready', serviceId);
+    const pregen = usePregenProgress(isOpen && featureActive && activeTab !== 'voice' && listStatus === 'ready', serviceId);
 
     // Render content based on active tab
     const renderContent = () => {
