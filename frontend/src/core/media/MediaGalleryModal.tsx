@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useRef, useCallback, useEffect, memo } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect, useId, memo } from 'react';
 import { Image as ImageIcon, Film, Volume2, Calendar, VolumeX, Download, X, ZoomIn, ZoomOut, Shrink } from 'lucide-react';
 import { cn, formatDateTime, formatDuration, formatDownloadFilename } from '../../utils/classnames';
 import { timeNeighbours, sortNewestFirst } from '../../utils/timeOrder';
@@ -191,6 +191,8 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const { t } = useTranslation();
 
     const [activeTab, setActiveTab] = useState<MediaTab>('photos');
+    const tabsId = useId();
+    const tabRefs = useRef<Partial<Record<MediaTab, HTMLButtonElement | null>>>({});
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
     // False while this gallery's feature is hidden (kept mounted): no key capture, no polling.
     const featureActive = useFeatureActive();
@@ -527,17 +529,36 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         setActiveTab(tab);
     };
 
+    // Arrows, Home and End move between the tabs and select them (UI health A-D5; the tabs pattern).
+    const onTabsKeyDown = (e: React.KeyboardEvent) => {
+        const ids = MEDIA_TABS.map((tab) => tab.id);
+        const at = ids.indexOf(activeTab);
+        const next = e.key === 'ArrowRight' ? (at + 1) % ids.length
+            : e.key === 'ArrowLeft' ? (at - 1 + ids.length) % ids.length
+            : e.key === 'Home' ? 0
+            : e.key === 'End' ? ids.length - 1
+            : -1;
+        if (next === -1) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectTab(ids[next]);
+        tabRefs.current[ids[next]]?.focus();
+    };
+
     // Render icon-only tabs (like official app) - in the Modal toolbar slot (outside the scroller)
     const renderTabs = () => (
-        <div role="tablist" aria-label={t('media.typeTabs')} className="flex">
+        <div role="tablist" aria-label={t('media.typeTabs')} className="flex" onKeyDown={onTabsKeyDown}>
             {MEDIA_TABS.map((tab) => {
                 const selected = activeTab === tab.id;
                 return (
                     <button
                         key={tab.id}
                         type="button"
+                        ref={(el) => { tabRefs.current[tab.id] = el; }}
+                        id={`${tabsId}-${tab.id}`}
                         role="tab"
                         aria-selected={selected}
+                        tabIndex={selected ? 0 : -1}
                         aria-label={t(tab.labelKey)}
                         onClick={() => selectTab(tab.id)}
                         className={cn(
@@ -728,7 +749,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     </>
                 }
             >
-                {renderContent()}
+                <div role="tabpanel" aria-labelledby={`${tabsId}-${activeTab}`}>
+                    {renderContent()}
+                </div>
             </Modal>
 
             {renderDetailView()}
