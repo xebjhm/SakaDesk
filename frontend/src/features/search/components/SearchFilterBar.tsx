@@ -195,19 +195,17 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
             onFocus={() => setShowDropdown(true)}
             placeholder={selectedFilters.length === 0 ? t('search.filterByMember') : ''}
             aria-label={t('search.filterByMember')}
-            className="w-full bg-transparent py-1 text-small text-primary outline-none placeholder:text-muted"
+            className="w-full rounded-sm bg-transparent py-1 text-small text-primary outline-none focus-visible:ring-2 focus-visible:ring-accent placeholder:text-muted"
           />
 
           {showDropdown && filteredItems.length > 0 && (
-            <div role="listbox" className="absolute left-0 top-full mt-1 flex max-h-72 w-64 flex-col overflow-y-auto rounded-card bg-card p-1 shadow-card" style={{ zIndex: Z_INDEX.POPOVER }}>
+            <div role="group" aria-label={t('search.filterByMember')} className="absolute left-0 top-full mt-1 flex max-h-72 w-64 flex-col overflow-y-auto rounded-card bg-card p-1 shadow-card" style={{ zIndex: Z_INDEX.POPOVER }}>
               {filteredItems.map((item) => (
                 <button
                   key={`${item.type}-${item.id}`}
                   type="button"
-                  role="option"
-                  aria-selected={false}
                   onClick={() => handleSelectItem(item)}
-                  className="flex w-full items-center gap-2 rounded-pill px-3 py-2 text-left text-small transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none"
+                  className="flex w-full items-center gap-2 rounded-pill px-3 py-2 text-left text-small transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
                 >
                   <span aria-hidden="true" className="h-2 w-2 shrink-0 rounded-pill bg-group-marker" style={groupMarkerStyle(item.color)} />
                   <span lang="ja" className="truncate font-semibold text-primary">{item.label}</span>

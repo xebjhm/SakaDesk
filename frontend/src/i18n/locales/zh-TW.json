@@ -531,7 +531,8 @@
     "blogBackupInProgress": "Blog 備份進行中 — 搜尋結果可能不完整。",
     "enableFullBackup": "啟用完整備份",
     "official": "官方",
-    "buildingHint": "搜尋索引仍在建立中，結果可能不完整。"
+    "buildingHint": "搜尋索引仍在建立中，結果可能不完整。",
+    "resultsLabel": "搜尋結果"
   },
   "media": {
     "title": "媒體",

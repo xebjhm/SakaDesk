@@ -41,7 +41,7 @@ describe('SearchFilterBar', () => {
         })));
         renderBar();
         fireEvent.focus(screen.getByRole('textbox', { name: i18n.t('search.filterByMember') }));
-        const member = await screen.findByRole('option', { name: /山下 瞳月/ });
+        const member = await screen.findByRole('button', { name: /山下 瞳月/ });
         const sub = member.querySelectorAll('span')[2];
         expect(sub).toHaveAttribute('lang', 'ja');
         expect(screen.getByText('3 members')).not.toHaveAttribute('lang');

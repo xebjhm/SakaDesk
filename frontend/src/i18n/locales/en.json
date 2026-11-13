@@ -533,7 +533,8 @@
     "blogBackupInProgress": "Blog backup in progress — search results may be incomplete.",
     "enableFullBackup": "Enable full backup",
     "official": "Official",
-    "buildingHint": "Search index is still being generated. Results may be incomplete."
+    "buildingHint": "Search index is still being generated. Results may be incomplete.",
+    "resultsLabel": "Search results"
   },
   "media": {
     "title": "Media",

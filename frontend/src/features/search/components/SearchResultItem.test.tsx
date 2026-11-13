@@ -24,7 +24,7 @@ describe('SearchResultItem snippet', () => {
                 result={RESULT}
                 isSelected={false}
                 onSelect={vi.fn()}
-                onMouseEnter={vi.fn()}
+                index={0} optionId="o-0" onHover={vi.fn()}
                 userNickname="<img src=x onerror=alert(1)>"
             />,
         );

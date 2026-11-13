@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { MessageSquare, FileText, Volume2, Video } from 'lucide-react';
 import { cn } from '../../../utils/classnames';
@@ -12,7 +12,11 @@ interface SearchResultItemProps {
   result: SearchResult;
   isSelected: boolean;
   onSelect: (result: SearchResult) => void;
-  onMouseEnter: () => void;
+  index: number;
+  /** DOM id of the option (the field's aria-activedescendant). */
+  optionId: string;
+  /** Pointer over the row: highlights it (stable: the list passes setSelectedIndex). */
+  onHover: (index: number) => void;
   userNickname?: string;
 }
 
@@ -42,11 +46,13 @@ function getMessageIcon(type: string) {
   }
 }
 
-export const SearchResultItem: React.FC<SearchResultItemProps> = ({
+const SearchResultItemComponent: React.FC<SearchResultItemProps> = ({
   result,
   isSelected,
   onSelect,
-  onMouseEnter,
+  index,
+  optionId,
+  onHover,
   userNickname,
 }) => {
 
@@ -58,6 +64,13 @@ export const SearchResultItem: React.FC<SearchResultItemProps> = ({
   const processedSnippet = userNickname && snippet
     ? fillNickname(snippet, userNickname)
     : snippet;
+  // Sanitized once per snippet, not on every hover (UI health P-B4).
+  const snippetHtml = useMemo(
+    () => (processedSnippet
+      ? DOMPurify.sanitize(processedSnippet.replace(/\r?\n/g, ' '), { ALLOWED_TAGS: ['mark'], ALLOWED_ATTR: ['class'] })
+      : null),
+    [processedSnippet],
+  );
   const rawContent = result.result_type === 'message' ? result.content : null;
   const processedContent = userNickname && rawContent
     ? rawContent.replace(placeholderRegex, userNickname)
@@ -91,12 +104,15 @@ export const SearchResultItem: React.FC<SearchResultItemProps> = ({
 
   return (
     <div
+      id={optionId}
+      role="option"
+      aria-selected={isSelected}
       className={cn(
         'flex w-full cursor-pointer items-start gap-3 rounded-card px-3 py-2 text-left transition-colors duration-fast ease-standard',
         isSelected ? 'bg-accent-subtle' : 'hover:bg-sunken'
       )}
       onClick={() => onSelect(result)}
-      onMouseEnter={onMouseEnter}
+      onMouseEnter={() => onHover(index)}
     >
       <span aria-hidden="true" className="mt-2 h-1.5 w-1.5 shrink-0 rounded-pill bg-group-marker" style={groupMarkerStyle(getServicePrimaryColor(result.service))} />
 
@@ -119,7 +135,7 @@ export const SearchResultItem: React.FC<SearchResultItemProps> = ({
             <p
               lang="ja"
               className="search-snippet mt-1 line-clamp-2 text-small text-secondary [&_mark]:rounded-tail [&_mark]:bg-mark-exact [&_mark]:px-1 [&_mark]:text-inherit [&_mark.reading]:border-b-2 [&_mark.reading]:border-dashed [&_mark.reading]:border-mark-underline [&_mark.reading]:bg-mark-reading"
-              dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(processedSnippet.replace(/\r?\n/g, ' '), { ALLOWED_TAGS: ['mark'], ALLOWED_ATTR: ['class'] }) }}
+              dangerouslySetInnerHTML={{ __html: snippetHtml ?? '' }}
             />
           ) : (
             <p lang="ja" className="mt-1 line-clamp-2 text-small text-secondary">{displayContent}</p>
@@ -137,3 +153,5 @@ export const SearchResultItem: React.FC<SearchResultItemProps> = ({
     </div>
   );
 };
+
+export const SearchResultItem = React.memo(SearchResultItemComponent);

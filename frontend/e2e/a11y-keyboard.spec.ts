@@ -26,4 +26,24 @@ test.describe('keyboard access', () => {
     // Focus moves into the revealed row, not to the body.
     await expect.poll(() => page.evaluate(() => document.activeElement?.closest('[id^="msg-"]')?.id)).toBe(`msg-${COUNT}`)
   })
+
+  test('Tab leaves the search field for the filters and Enter on the filter button opens them', async ({ page }) => {
+    await pinBigRoom(page, { messages })
+    await page.route((url) => url.pathname === '/api/search', (route) => route.fulfill({ json: {
+      query: 'Message', normalized_query: 'Message', total_count: 1, has_more: false,
+      results: [{ result_type: 'message', message_id: 7, content: 'Message 7', snippet: '<mark>Message</mark> 7', service: 'hinatazaka46',
+        group_id: 1, group_name: 'Big Room', member_id: 1, member_name: 'Big Room', timestamp: '2022-01-02T03:00:00Z', type: 'text', is_group_chat: false }],
+    } }))
+    await page.goto('/')
+    await expect(page.getByText('Big Room', { exact: true })).toBeVisible() // the app is up: Ctrl+K is bound
+    await page.keyboard.press('Control+k')
+    const input = page.getByRole('combobox')
+    await input.fill('Message')
+    await expect(page.getByRole('option')).toHaveCount(1)
+    await expect(input).toHaveAttribute('aria-activedescendant', /.+/)
+    await page.keyboard.press('Tab')
+    await expect(page.getByRole('button', { name: 'Filters' })).toBeFocused()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('textbox', { name: /Filter by member/ })).toBeVisible()
+  })
 })
