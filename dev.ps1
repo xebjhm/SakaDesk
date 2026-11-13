@@ -90,11 +90,15 @@ function Initialize-ApiToken {
     icacls $TokenFile /inheritance:r /grant:r "${who}:F" | Out-Null
     if ($LASTEXITCODE -ne 0) {
         Remove-Item $TokenFile -Force -ErrorAction SilentlyContinue
-        Write-Error "Could not restrict .dev-api-token to the current user (icacls exit $LASTEXITCODE); no token file was kept."
+        Write-Host "ERROR: could not restrict .dev-api-token to the current user (icacls exit $LASTEXITCODE); no token file was kept."
         exit 1
     }
     Set-Content -Path $TokenFile -Value $tok -NoNewline -Encoding ascii
     $env:SAKADESK_API_TOKEN = $tok
+    # Cleared again when the script ends (see the dispatcher): run as .\dev.ps1 the
+    # script shares the session's environment, and a leftover value would look like
+    # a user override on the next start, so the token would never rotate.
+    $script:TokenGenerated = $true
 }
 
 # --- helpers ---------------------------------------------------------------
@@ -239,6 +243,8 @@ function Show-Status {
 
 # --- dispatch --------------------------------------------------------------
 
+$script:TokenGenerated = $false
+try {
 switch ($Action) {
     'start' {
         Initialize-ApiToken  # this launch's token, drawn before anything is stopped
@@ -273,4 +279,9 @@ switch ($Action) {
         if (-not $existing.Count) { Write-Host "No logs yet. Run '.\dev.ps1 start' first."; break }
         Get-Content $existing -Tail 20 -Wait
     }
+}
+} finally {
+    # A token this run generated must not outlive it in the session (see Initialize-ApiToken);
+    # the backend it started already inherited it. A user-exported token is left alone.
+    if ($script:TokenGenerated) { Remove-Item Env:SAKADESK_API_TOKEN -ErrorAction SilentlyContinue }
 }

@@ -85,3 +85,12 @@ def test_e2e_sends_the_api_token():
     spec = _read("frontend", "e2e", "launch-auth.spec.ts")
     assert "from './apiToken'" in spec
     assert "extraHTTPHeaders: {}" in spec
+
+
+def test_dev_ps1_does_not_leave_its_token_in_the_session():
+    """Run as .\\dev.ps1 the script shares the session's env; a leftover token
+    would be taken for a user override and never rotate."""
+    text = (ROOT / "dev.ps1").read_text(encoding="utf-8")
+    assert "$script:TokenGenerated = $true" in text
+    finally_block = text[text.rindex("} finally {") :]
+    assert "Remove-Item Env:SAKADESK_API_TOKEN" in finally_block

@@ -140,6 +140,8 @@ case "${1:-start}" in
     start|restart)
         # Draw this launch's token (or validate the exported one) before
         # stopping anything that is running; the backend restarts with it.
+        # Rewriting the file first is harmless: a running backend keeps the
+        # token it was started with until it is stopped below.
         ensure_api_token || exit 1
         stop_backend
         stop_frontend
