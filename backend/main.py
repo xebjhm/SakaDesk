@@ -258,9 +258,7 @@ async def lifespan(app: FastAPI):
 
     # Retain via the tracked-task registry so it isn't garbage-collected mid-flight
     # and is drained on shutdown (SD-BE-API-11).
-    track_background_task(
-        asyncio.to_thread(warm_key_status_cache), name="warm_key_status_cache"
-    )
+    track_background_task(warm_key_status_cache(), name="warm_key_status_cache")
 
     # Background auto-sync (one task per service). Started last so everything it
     # relies on exists; skipped under pytest / E2E test mode (see

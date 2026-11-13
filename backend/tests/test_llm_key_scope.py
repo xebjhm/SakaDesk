@@ -483,3 +483,38 @@ def test_config_adopts_a_key_stored_before_its_provider_was_recorded(settings):
     translation_api._load_key_status()  # warm-up: no provider known
     settings["translation_provider"] = "gemini"
     assert client.get("/api/translation/config").json()["has_api_key"] is True
+
+
+@pytest.mark.asyncio
+async def test_the_startup_warm_up_adopts_a_legacy_key_for_the_saved_provider(
+    settings,
+):
+    """The warm-up reads the saved provider, so a key stored before its provider
+    was recorded is bound and cached at startup, not re-read on the first open."""
+    translation_api.get_token_manager().store.save(
+        translation_api._API_KEY_CREDENTIAL_GROUP, {"api_key": GEMINI_KEY}
+    )
+    settings["translation_provider"] = "gemini"
+    translation_api._invalidate_key_status_cache()
+    await translation_api.warm_key_status_cache()
+    assert translation_api._key_status_cache is not None
+    assert translation_api._key_status_cache[2] == "gemini"
+
+
+@pytest.mark.asyncio
+async def test_the_startup_warm_up_without_a_saved_provider_caches_nothing(settings):
+    translation_api.get_token_manager().store.save(
+        translation_api._API_KEY_CREDENTIAL_GROUP, {"api_key": GEMINI_KEY}
+    )
+    translation_api._invalidate_key_status_cache()
+    await translation_api.warm_key_status_cache()
+    assert translation_api._key_status_cache is None
+
+
+@pytest.mark.asyncio
+async def test_a_failing_warm_up_never_raises(monkeypatch):
+    async def boom():
+        raise OSError("settings unreadable")
+
+    monkeypatch.setattr(translation_api, "load_config", boom)
+    await translation_api.warm_key_status_cache()

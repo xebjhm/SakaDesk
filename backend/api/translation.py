@@ -188,8 +188,8 @@ def _load_key_status(
     (:func:`_stored_key_provider`, which also adopts a key stored before its
     provider was recorded), so the settings never show a key the app would
     refuse to use. The state is read through an in-memory cache over the slow
-    OS keyring read; a key with no recorded provider is not cached (the startup
-    warm-up has no provider to adopt it with). Safe to run in a worker thread.
+    OS keyring read; a key with no recorded provider is not cached (it is adopted once a saved
+    provider is known, as the startup warm-up does). Safe to run in a worker thread.
     """
     global _key_status_cache
     cached = _key_status_cache
@@ -210,11 +210,18 @@ def _invalidate_key_status_cache() -> None:
     _key_status_cache = None
 
 
-def warm_key_status_cache() -> None:
+async def warm_key_status_cache() -> None:
     """Prime the key-status cache (called at startup) so the first Settings -> AI
-    open is instant instead of paying the keyring read then."""
+    open is instant instead of paying the keyring read then.
+
+    Reads the provider saved in settings and warms with it, so a key stored
+    before its provider was recorded is adopted and cached; without a saved
+    provider such a key is left uncached. The keyring read runs in a worker
+    thread. A failure is logged at debug level and swallowed.
+    """
     try:
-        _load_key_status()
+        config = await load_config()
+        await asyncio.to_thread(_load_key_status, config.get("translation_provider"))
     except Exception:
         logger.debug("translation.key_status_warm_failed", exc_info=True)
 
