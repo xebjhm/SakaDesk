@@ -137,6 +137,14 @@ class TestMainWindowKwargs:
             kwargs["url"] == f"http://127.0.0.1:8000/#t={desktop.api_auth.LAUNCH_TOKEN}"
         )
 
+    def test_text_select_true_so_pywebview_injects_no_style(self):
+        """The app CSP (style-src 'self') refuses pywebview's injected
+        ``body{user-select:none}`` <style>; the app's own CSS carries that rule."""
+        kwargs = desktop._main_window_kwargs(
+            {"width": 1280, "height": 800}, 8000, False
+        )
+        assert kwargs["text_select"] is True
+
 
 class TestNavigationGuardInstall:
     def test_main_installs_the_guard_before_the_gui_loop_starts(self):

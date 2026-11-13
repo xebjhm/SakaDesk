@@ -318,6 +318,9 @@ export async function renderToCanvas(node: HTMLElement, opts: RenderOptions = {}
         budget.abort();
     }
     const shown = node.getBoundingClientRect().width || node.offsetWidth;
+    // CSP dependency: html-to-image must always get a non-empty `fontEmbedCSS` (EXPORT_FIT_CSS at the
+    // least). Without it the library adds a <base> (refused by `base-uri 'none'`) and fetches
+    // stylesheets through `connect-src`.
     const canvas = await toCanvas(node, {
         pixelRatio: shown > 0 ? width / shown : 1,
         fontEmbedCSS: fontEmbedCSS ? `${fontEmbedCSS}\n${EXPORT_FIT_CSS}` : EXPORT_FIT_CSS,

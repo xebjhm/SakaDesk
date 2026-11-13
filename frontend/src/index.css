@@ -45,6 +45,10 @@
     /* Must match pywebview background_color in desktop.py (#F0F2F5)
        to prevent color mismatch at Windows 11 rounded corners */
     background-color: #F0F2F5;
+    /* Desktop-app feel: pywebview used to inject this rule as an inline <style>, which the app CSP
+       (style-src 'self') refuses, so the windows are created with text_select=True and it lives here. */
+    user-select: none;
+    cursor: default;
   }
 }
 

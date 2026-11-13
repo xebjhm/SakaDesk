@@ -199,6 +199,9 @@ def test_ensure_creates_once_with_exact_arguments_then_reuses():
             resizable=False,
             frameless=True,
             easy_drag=False,
+            # The app CSP refuses pywebview's injected <style>; the page's own
+            # CSS keeps text unselectable.
+            text_select=True,
             focus=False,
             on_top=True,
             hidden=True,

@@ -1140,6 +1140,9 @@ def _main_window_kwargs(geom: dict, port: int, background: bool) -> dict[str, An
         "min_size": min_size,
         "background_color": "#F0F2F5",
         "hidden": background,
+        # pywebview's default (False) injects an inline <style> the app CSP
+        # (style-src 'self') refuses; index.css sets body user-select/cursor.
+        "text_select": True,
     }
 
 
