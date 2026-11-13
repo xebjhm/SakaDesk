@@ -654,6 +654,7 @@ def test_gallery_persisted_listing_holds_no_path_or_title(gallery_archive):
         json.dumps({"v": 2, "blogs": {}}),
         json.dumps({"v": 1, "blogs": []}),
         json.dumps({"v": 1, "blogs": {"20260205_b2": [1, [[0, "../x.jpg"]]]}}),
+        json.dumps({"v": 1, "blogs": {"20260205_b2": [1, [[0, "img_0.html"]]]}}),
         json.dumps({"v": 1, "blogs": {"20260205_b2": "bad"}}),
     ],
 )
@@ -1117,3 +1118,44 @@ def test_a_failed_folder_touch_is_logged_and_never_raises(tmp_path):
     (ev,) = [e for e in logs if e["event"] == "blog_folder_touch_failed"]
     assert ev["error_type"] == "FileNotFoundError"
     assert str(tmp_path) not in str(ev)
+
+
+def test_the_gallery_lists_only_picture_files(gallery_archive):
+    """Plan B follow-up (security audit 2026-11-13): a stored img_N.html/.svg is never a tile."""
+    b2 = gallery_archive / "日向坂46" / "blogs" / MEMBER / "20260205_b2"
+    (b2 / "images" / "img_2.html").write_bytes(b"<script>x</script>")
+    (b2 / "images" / "img_3.svg").write_bytes(b"<svg/>")
+    _img(b2, "img_4.PNG")
+    _blog_json(
+        b2,
+        [
+            {"original_url": "https://y/0.jpg", "local_path": "./images/img_0.jpg"},
+            {"original_url": "https://y/1.jpg", "local_path": "./images/img_1.jpg"},
+            {"original_url": "https://y/2.html", "local_path": "./images/img_2.html"},
+            {"original_url": "https://y/3.svg", "local_path": "./images/img_3.svg"},
+            {"original_url": "https://y/4.png", "local_path": "./images/img_4.PNG"},
+        ],
+    )
+    names = [
+        i["src"].rsplit("filename=", 1)[1] for i in _gallery() if i["blog_id"] == "b2"
+    ]
+    assert names == ["img_0.jpg", "img_1.jpg", "img_4.PNG"]
+
+
+@pytest.mark.parametrize(
+    "url,ext,reason",
+    [
+        ("https://x/a.JPEG", ".jpeg", None),
+        ("https://x/a.avif", ".jpg", "not_image"),
+        ("https://x/a", ".jpg", "no_suffix"),
+        ("http://[::1/a.png", ".jpg", "no_suffix"),
+    ],
+)
+def test_blog_image_ext_edge_cases(url, ext, reason):
+    """Plan B ledger B-T2: upper case, a non-picture suffix and an unparsable URL."""
+    from backend.services.blog_service import _blog_image_ext
+
+    with capture_logs() as logs:
+        assert _blog_image_ext(url) == ext
+    defaulted = [e for e in logs if e["event"] == "blog_image_ext_defaulted"]
+    assert [e["reason"] for e in defaulted] == ([reason] if reason else [])

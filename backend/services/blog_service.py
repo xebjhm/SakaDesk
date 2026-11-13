@@ -1859,8 +1859,18 @@ class BlogBackupManager:
 GALLERY_MEMO_MAX = 32
 """Cached member listings kept at most (oldest dropped first). Whole-service listings are never memoised."""
 
-_GALLERY_IMAGE_NAME = re.compile(r"^img_\d+\.\w+$")
-"""A cached blog image's file name (the same rule as ``GET /api/blogs/image``)."""
+_GALLERY_IMAGE_NAME = re.compile(
+    r"^img_[0-9]+(?:"
+    + "|".join(re.escape(ext) for ext in sorted(_BLOG_IMAGE_EXTS))
+    + r")$",
+    re.IGNORECASE,
+)
+"""A cached blog image the photo gallery lists: ``img_<n>`` plus a picture extension
+(``_BLOG_IMAGE_EXTS``, any case). ``GET /api/blogs/image`` accepts any
+``img_<n>.<ext>`` and serves a file without a picture extension only as an
+attachment (``passive_media``); the gallery leaves such files out (security
+audit 2026-11-13). A persisted listing row with another name is malformed, so
+the blog is read again."""
 
 GallerySignature = tuple[str, int, int, int]
 """``(base, index mtime_ns, cached blog.json count, gallery version)``: unchanged means the listing is unchanged."""
@@ -2097,8 +2107,9 @@ def gallery_local_images(
     """Read each cached blog's ``blog.json``; its images whose file exists, and the skip count.
 
     An unreadable ``blog.json`` is skipped (``blog_gallery_skip``, codes
-    only). A file name must match the ``/api/blogs/image`` rule, so a hostile
-    ``local_path`` never leaves the blog's ``images`` folder. Blocking.
+    only). A file name must be a picture name (``_GALLERY_IMAGE_NAME``), so a
+    hostile ``local_path`` never leaves the blog's ``images`` folder and a
+    stored non-picture is never listed. Blocking.
     """
     found: list[LocalImage] = []
     skipped = 0
@@ -2115,7 +2126,7 @@ def _blog_images(service: str, folder: Path) -> Optional[list[list]]:
     """``[[image_index, name]]`` of one cached blog's images whose file exists. Blocking.
 
     ``None`` when its ``blog.json`` is unreadable (``blog_gallery_skip``,
-    codes only). A file name must match the ``/api/blogs/image`` rule.
+    codes only). A file name must be a picture name (``_GALLERY_IMAGE_NAME``).
     """
     try:
         content = _read_blog_json(folder / "blog.json")
