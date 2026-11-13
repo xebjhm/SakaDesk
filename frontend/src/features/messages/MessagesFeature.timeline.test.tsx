@@ -46,8 +46,7 @@ function serve() {
     );
 }
 
-// `syncProgress` is interim: Task 3 removes the prop from MessagesFeature.
-const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };
+const props = { appSettings: null, syncVersion: 0 };
 const star = () => document.querySelector('.text-semantic-star');
 
 async function toggleFromMenu() {

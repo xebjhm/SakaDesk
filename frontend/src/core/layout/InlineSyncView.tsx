@@ -10,6 +10,7 @@ import { cn } from '../../utils/classnames';
 import { getSyncPhaseName, getSyncUnitLabel } from '../../utils/syncFormatters';
 import { SyncProgressPanel } from '../common/SyncProgressPanel';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
+import { useSyncProgressStore } from '../../shell/syncProgressStore';
 
 interface InlineSyncViewProps {
     service: string;
@@ -61,4 +62,10 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
             </Card>
         </div>
     );
+};
+
+/** The inline first-sync card fed from the progress store (re-renders on each tick, nothing around it does). */
+export const LiveInlineSyncView: React.FC<{ service: string }> = ({ service }) => {
+    const syncProgress = useSyncProgressStore((s) => s.byService[service]);
+    return syncProgress ? <InlineSyncView service={service} syncProgress={syncProgress} /> : null;
 };

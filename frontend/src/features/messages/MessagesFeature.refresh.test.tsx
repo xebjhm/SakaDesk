@@ -52,7 +52,7 @@ function serve() {
     );
 }
 
-const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };
+const props = { appSettings: null, syncVersion: 0 };
 
 describe('MessagesFeature: conditional room refresh (UI health #1)', () => {
     beforeAll(async () => { await i18n.changeLanguage('en'); });

@@ -14,14 +14,15 @@ import { useAppStore } from '../../store/appStore';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
 import { cn } from '../../utils/classnames';
 import { ContentSheet } from '../../core/layout/ContentSheet';
-import { getSyncDetail } from '../../utils/syncFormatters';
+import { selectIsSyncing, useSyncProgressStore } from '../../shell/syncProgressStore';
 import { useTranslation, Trans } from '../../i18n';
-import { Avatar, EmptyState, IconButton, Spinner, StatusBlock } from '../../design/primitives';
+import { Avatar, EmptyState, IconButton, StatusBlock } from '../../design/primitives';
 import { logWait, settleDelay, useDelayedLoading } from '../../design/loading';
 import { groupTokens } from '../../design/tokens';
 import { serviceGroupId } from '../../config/serviceGroup';
 import { FadeOnChange } from '../../core/layout/FadeOnChange';
 import { ChatHeaderPill } from './components/ChatHeaderPill';
+import { SyncStatusPill } from './components/SyncStatusPill';
 import { getServiceDisplayName } from '../../data/services';
 import { parseReadStatePath } from './readStatePath';
 import { persisted } from '../../core/persistence/persisted';
@@ -148,18 +149,18 @@ const CHAT_AVATAR_CSS_PX = 40;
 
 interface MessagesFeatureProps {
     appSettings: AppSettings | null;
-    syncProgress: SyncProgress;
     syncVersion: number; // Increments when sync completes - triggers refresh
     onSyncNow?: () => void; // Manual sync trigger
 }
 
 export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     appSettings,
-    syncProgress,
     syncVersion,
     onSyncNow,
 }) => {
     const { t } = useTranslation();
+    // A boolean slice: progress ticks re-render only SyncStatusPill, not this component.
+    const isSyncing = useSyncProgressStore(selectIsSyncing);
 
     // Get active service and conversation persistence from Zustand store
     const { activeService, setSelectedConversation, getSelectedConversation } = useAppStore();
@@ -889,7 +890,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     onSelectGroup={handleSelectGroup}
                     selectedGroupDir={selectedGroupDir}
                     activeService={activeService || undefined}
-                    isSyncing={syncProgress.state === 'running'}
+                    isSyncing={isSyncing}
                     readStateVersion={readStateVersion}
                     onSyncNow={onSyncNow}
                 />
@@ -939,12 +940,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             {t('messageList.unread', { count: displayUnreadCount })}
                         </ChatHeaderPill>
                     )}
-                    {syncProgress.state === 'running' && (
-                        <ChatHeaderPill light={isLightHeader} tone="status">
-                            <Spinner size="sm" tone="current" decorative className="h-3 w-3" />
-                            <span>{getSyncDetail(syncProgress, t, t('sync.syncing'))}</span>
-                        </ChatHeaderPill>
-                    )}
+                    <SyncStatusPill light={isLightHeader} />
                     {selectedGroupDir && (
                         <ConversationMenu
                             conversationPath={selectedGroupDir}

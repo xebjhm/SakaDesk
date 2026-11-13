@@ -10,8 +10,9 @@ import { getSyncPhaseName, getSyncUnitLabel, isSyncActive } from '../../utils/sy
 import { SyncProgressPanel } from '../../core/common/SyncProgressPanel';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 import type { SequentialSyncInfo } from '../hooks/useSync';
+import { useSyncProgressStore } from '../syncProgressStore';
 
-interface SyncModalProps {
+export interface SyncModalProps {
     syncProgress: SyncProgress;
     sequentialSyncInfo?: SequentialSyncInfo | null;
     onClose?: () => void;
@@ -156,4 +157,10 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
             </div>
         </Modal>
     );
+};
+
+/** The sync dialog fed from the progress store: it, not App, re-renders on each tick. */
+export const LiveSyncModal: React.FC<Omit<SyncModalProps, 'syncProgress'>> = (props) => {
+    const syncProgress = useSyncProgressStore((s) => s.active);
+    return <SyncModal {...props} syncProgress={syncProgress} />;
 };

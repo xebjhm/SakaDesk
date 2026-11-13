@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useSync } from './useSync'
 import { clientLog } from '../../utils/clientLog'
+import { resetSyncProgressStore, useSyncProgressStore } from '../syncProgressStore'
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }))
 
@@ -34,6 +35,7 @@ describe('useSync', () => {
     }
 
     beforeEach(() => {
+        resetSyncProgressStore()
         vi.clearAllMocks()
         vi.stubGlobal('fetch', vi.fn())
     })
@@ -46,7 +48,7 @@ describe('useSync', () => {
 
         const { result } = renderHook(() => useSync(defaultOptions))
 
-        expect(result.current.syncProgress.state).toBe('idle')
+        expect(useSyncProgressStore.getState().active.state).toBe('idle')
         expect(result.current.showSyncModal).toBe(false)
         expect(result.current.syncVersion).toBe(0)
         expect(result.current.sessionExpiredService).toBeNull()
@@ -58,9 +60,9 @@ describe('useSync', () => {
             json: () => Promise.resolve({ is_fresh: false }),
         }))
 
-        const { result } = renderHook(() => useSync(defaultOptions))
+        renderHook(() => useSync(defaultOptions))
 
-        expect(result.current.syncProgressByService).toEqual({})
+        expect(useSyncProgressStore.getState().byService).toEqual({})
     })
 
     it('should provide clearSessionExpired callback', () => {
@@ -179,7 +181,7 @@ describe('useSync', () => {
 
         // Wait for initial load
         await waitFor(() => {
-            expect(result.current.syncProgress).toBeDefined()
+            expect(useSyncProgressStore.getState().active).toBeDefined()
         })
 
         // Trigger a manual sync
@@ -188,7 +190,7 @@ describe('useSync', () => {
         })
 
         // Should update progress state
-        expect(result.current.syncProgress.state).not.toBe('error')
+        expect(useSyncProgressStore.getState().active.state).not.toBe('error')
     })
 
     // SD-CONTRACT-11: an invalid-service 400 must surface as an error, not be
@@ -210,14 +212,14 @@ describe('useSync', () => {
         }))
 
         const { result } = renderHook(() => useSync(defaultOptions))
-        await waitFor(() => expect(result.current.syncProgress).toBeDefined())
+        await waitFor(() => expect(useSyncProgressStore.getState().active).toBeDefined())
 
         await act(async () => {
             await result.current.startSync(false, 'bogus')
         })
 
-        expect(result.current.syncProgressByService['bogus']?.state).toBe('error')
-        expect(result.current.syncProgressByService['bogus']?.detail).toContain('Invalid service')
+        expect(useSyncProgressStore.getState().byService['bogus']?.state).toBe('error')
+        expect(useSyncProgressStore.getState().byService['bogus']?.detail).toContain('Invalid service')
     })
 
     it('treats a genuine "already running" 400 as a poll, not an error', async () => {
@@ -235,14 +237,14 @@ describe('useSync', () => {
         }))
 
         const { result } = renderHook(() => useSync(defaultOptions))
-        await waitFor(() => expect(result.current.syncProgress).toBeDefined())
+        await waitFor(() => expect(useSyncProgressStore.getState().active).toBeDefined())
 
         await act(async () => {
             await result.current.startSync(false, 'sakurazaka46')
         })
 
         // Not an error — it polled the existing run rather than reporting failure.
-        expect(result.current.syncProgressByService['sakurazaka46']?.state).not.toBe('error')
+        expect(useSyncProgressStore.getState().byService['sakurazaka46']?.state).not.toBe('error')
     })
 
     // C2: the backend AutoSyncScheduler owns periodic syncs; the frontend only
@@ -291,7 +293,7 @@ describe('useSync', () => {
         const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
         expect(result.current.isPolling('hinatazaka46')).toBe(false)
         await act(async () => { result.current.followSync('hinatazaka46') })
-        await waitFor(() => expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('idle'))
+        await waitFor(() => expect(useSyncProgressStore.getState().byService['hinatazaka46']?.state).toBe('idle'))
         expect(result.current.isPolling('hinatazaka46')).toBe(false)
     })
 
@@ -369,7 +371,7 @@ describe('useSync', () => {
             expect(result.current.isPolling('hinatazaka46')).toBe(true)
             fetchMock.mockResolvedValueOnce(completeBody as unknown as Response)
             await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('complete')
+            expect(useSyncProgressStore.getState().byService.hinatazaka46?.state).toBe('complete')
             expect(result.current.lastHandledRunId('hinatazaka46')).toBe(5)
             expect(clientLog).not.toHaveBeenCalledWith('poll_gave_up', expect.anything())
         })
@@ -382,17 +384,17 @@ describe('useSync', () => {
             const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
             await act(async () => { result.current.followSync('hinatazaka46') })
             await act(async () => { await vi.advanceTimersByTimeAsync(0) })
-            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('running')
+            expect(useSyncProgressStore.getState().byService.hinatazaka46?.state).toBe('running')
             // Then the backend stops answering: 6 timed-out reads (> MAX_PROGRESS_RETRIES).
             fetchMock.mockImplementation(hanging().getMockImplementation()!)
             await act(async () => { await vi.advanceTimersByTimeAsync(1000 + 6 * 5000) })
             expect(clientLog).toHaveBeenCalledWith('poll_retry', { key: 'sync_progress_hinatazaka46', count: 3 })
             expect(clientLog).not.toHaveBeenCalledWith('poll_gave_up', expect.anything())
             expect(result.current.isPolling('hinatazaka46')).toBe(true)
-            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('running')
+            expect(useSyncProgressStore.getState().byService.hinatazaka46?.state).toBe('running')
             fetchMock.mockResolvedValue(completeBody as unknown as Response)
             await act(async () => { await vi.advanceTimersByTimeAsync(5000) })
-            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('complete')
+            expect(useSyncProgressStore.getState().byService.hinatazaka46?.state).toBe('complete')
             expect(result.current.isPolling('hinatazaka46')).toBe(false)
         })
 
@@ -408,7 +410,7 @@ describe('useSync', () => {
             expect(clientLog).toHaveBeenCalledWith('poll_retry', { key: 'sync_progress_hinatazaka46', count: 3 })
             expect(clientLog).toHaveBeenCalledWith('poll_gave_up', { key: 'sync_progress_hinatazaka46', count: 3 })
             expect(result.current.isPolling('hinatazaka46')).toBe(false)
-            expect(result.current.syncProgressByService.hinatazaka46?.state).toBe('error')
+            expect(useSyncProgressStore.getState().byService.hinatazaka46?.state).toBe('error')
             await act(async () => { await vi.advanceTimersByTimeAsync(20000) })
             expect(fetchMock).toHaveBeenCalledTimes(4)
         })
@@ -470,7 +472,7 @@ describe('useSync', () => {
 
             // Watcher-style follow (non-blocking) attaches the poller first.
             await act(async () => { result.current.followSync('hinatazaka46') })
-            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('running')
+            expect(useSyncProgressStore.getState().byService['hinatazaka46']?.state).toBe('running')
 
             // POST resolves afterwards: its blocking poll request must upgrade the live poller.
             await act(async () => {
@@ -481,7 +483,7 @@ describe('useSync', () => {
 
             progress.state = 'idle'
             await act(async () => { await vi.advanceTimersByTimeAsync(1000) })
-            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('idle')
+            expect(useSyncProgressStore.getState().byService['hinatazaka46']?.state).toBe('idle')
             expect(result.current.showSyncModal).toBe(false)
             expect(result.current.isPolling('hinatazaka46')).toBe(false)
         })
@@ -519,12 +521,12 @@ describe('useSync', () => {
                 resolvePost({ ok: false, status: 500, json: () => Promise.resolve({ detail: 'boom' }) })
                 await first
             })
-            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('error')
+            expect(useSyncProgressStore.getState().byService['hinatazaka46']?.state).toBe('error')
 
             // A later non-blocking follow must not act as the failed start's modal owner.
             progress.state = 'idle'
             await act(async () => { result.current.followSync('hinatazaka46') })
-            await waitFor(() => expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('idle'))
+            await waitFor(() => expect(useSyncProgressStore.getState().byService['hinatazaka46']?.state).toBe('idle'))
             expect(result.current.showSyncModal).toBe(true)
         })
 
@@ -579,7 +581,7 @@ describe('useSync', () => {
         const { result } = renderHook(() => useSync(defaultOptions))
 
         await waitFor(() => {
-            expect(result.current.syncProgress).toBeDefined()
+            expect(useSyncProgressStore.getState().active).toBeDefined()
         })
 
         await act(async () => {
@@ -669,7 +671,7 @@ describe('useSync', () => {
             await waitFor(() => expect(result.current.sequentialSyncInfo?.currentService).toBe('nogizaka46'))
             act(() => backend.advance('complete'))
             await waitFor(() => expect(result.current.sequentialSyncInfo?.currentService).toBe('sakurazaka46'))
-            await waitFor(() => expect(result.current.syncProgressByService['sakurazaka46']?.phase).toBe('syncing'))
+            await waitFor(() => expect(useSyncProgressStore.getState().byService['sakurazaka46']?.phase).toBe('syncing'))
 
             // The dialog's Cancel button calls cancelSync() with no service.
             let outcome: unknown
@@ -680,7 +682,7 @@ describe('useSync', () => {
             // The counts come from the last queue read (the backend logs the same).
             expect(outcome).toEqual({ completed: 1, failed: 2, cancelled: true })
             expect(urls().filter(u => u.includes('/api/sync/cancel'))).toEqual(['/api/sync/cancel?sequence=seq1'])
-            expect(result.current.syncProgressByService['sakurazaka46']?.state).toBe('error')
+            expect(useSyncProgressStore.getState().byService['sakurazaka46']?.state).toBe('error')
             expect(result.current.sequentialSyncInfo).toBeNull()
             expect(result.current.showSyncModal).toBe(false)
             expect(clientLog).toHaveBeenCalledWith('sync_sequence', { outcome: 'cancelled', count: 1 })
@@ -735,8 +737,8 @@ describe('useSync', () => {
             })
             const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
             await act(async () => { result.current.followSync('yodel') })
-            await waitFor(() => expect(result.current.syncProgressByService['yodel']?.state).toBe('queued'))
-            expect(result.current.syncProgressByService['yodel']?.queue_position).toBe(1)
+            await waitFor(() => expect(useSyncProgressStore.getState().byService['yodel']?.state).toBe('queued'))
+            expect(useSyncProgressStore.getState().byService['yodel']?.queue_position).toBe(1)
             expect(result.current.isPolling('yodel')).toBe(true)
         })
 
@@ -780,9 +782,9 @@ describe('useSync', () => {
             }))
             const { result } = renderHook(() => useSync({ ...defaultOptions, isAuthenticated: false }))
             await act(async () => { await result.current.verifyAndFix('hinatazaka46') })
-            await waitFor(() => expect(result.current.syncProgressByService['hinatazaka46']?.result).toBeTruthy(), { timeout: 8000 })
+            await waitFor(() => expect(useSyncProgressStore.getState().byService['hinatazaka46']?.result).toBeTruthy(), { timeout: 8000 })
             // The sync's completion did not end it; the verify findings are shown.
-            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('complete')
+            expect(useSyncProgressStore.getState().byService['hinatazaka46']?.state).toBe('complete')
             expect(result.current.showSyncModal).toBe(true)
         }, 15000)
 
@@ -804,7 +806,7 @@ describe('useSync', () => {
             await act(async () => { outcome = await result.current.startSequentialSync(['yodel']) })
             expect(outcome).toEqual({ completed: 0, failed: 1, cancelled: false, lost: true })
             expect(clientLog).toHaveBeenCalledWith('sync_sequence', { outcome: 'lost', count: 0 })
-            expect(result.current.syncProgress.state).toBe('error')
+            expect(useSyncProgressStore.getState().active.state).toBe('error')
         })
 
         it.each([
@@ -882,9 +884,9 @@ describe('useSync', () => {
                 if (url.includes('/api/sync/queue')) return reply({ sequence: null })
                 return reply({ is_fresh: false })
             }))
-            const { result } = renderHook(() => useSync({ ...defaultOptions, connectedServices: ['hinatazaka46', 'yodel'] }))
-            await waitFor(() => expect(result.current.syncProgressByService['yodel']?.state).toBe('error'))
-            expect(result.current.syncProgressByService['hinatazaka46']?.state).toBe('error')
+            renderHook(() => useSync({ ...defaultOptions, connectedServices: ['hinatazaka46', 'yodel'] }))
+            await waitFor(() => expect(useSyncProgressStore.getState().byService['yodel']?.state).toBe('error'))
+            expect(useSyncProgressStore.getState().byService['hinatazaka46']?.state).toBe('error')
             expect(clientLog).toHaveBeenCalledWith('sync_start_all_failed', { reason: 'http_503' })
         })
     })

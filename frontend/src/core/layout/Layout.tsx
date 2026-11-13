@@ -6,7 +6,6 @@ import { ContentArea } from './ContentArea';
 import { Canvas } from '../../design/primitives';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
-import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 interface LayoutProps {
     messagesContent: React.ReactNode;
@@ -15,7 +14,6 @@ interface LayoutProps {
     onReportIssue: () => void;
     onOpenAbout: () => void;
     onOpenSearch: () => void;
-    syncProgressByService?: Record<string, SyncProgress>;
     initialSyncServices?: Record<string, true>;
     blogBackupEnabled?: boolean;
     /** The fan's nickname per service (`%%%` in her messages). */
@@ -34,7 +32,6 @@ export const Layout: React.FC<LayoutProps> = ({
     onReportIssue,
     onOpenAbout,
     onOpenSearch,
-    syncProgressByService,
     initialSyncServices,
     blogBackupEnabled,
     userNicknames,
@@ -72,7 +69,6 @@ export const Layout: React.FC<LayoutProps> = ({
                     <ContentArea
                         service={activeService}
                         messagesContent={messagesContent}
-                        syncProgress={syncProgressByService?.[activeService]}
                         isInitialSyncing={!!initialSyncServices?.[activeService]}
                         blogBackupEnabled={blogBackupEnabled}
                         userNickname={userNicknames?.[activeService]}

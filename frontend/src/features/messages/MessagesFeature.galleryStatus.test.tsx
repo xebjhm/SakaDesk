@@ -21,7 +21,7 @@ import { MessagesFeature } from './MessagesFeature';
 const SERVICE = 'hinatazaka46';
 const ROOM = '日向坂46/messages/34 金村 美玖/58 金村 美玖';
 const member = { id: '58', name: '金村 美玖', path: ROOM, thumbnail_local: null, thumbnail: null, portrait: null, phone_image: null };
-const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };
+const props = { appSettings: null, syncVersion: 0 };
 
 let listReply: () => Promise<Response> | Response;
 let listCalls = 0;

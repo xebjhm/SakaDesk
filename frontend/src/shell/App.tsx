@@ -28,7 +28,7 @@ import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { useBackendSyncWatcher } from './hooks/useBackendSyncWatcher'
 import { useSettings } from './hooks/useSettings'
-import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, EntryBackdrop, FirstSyncToast } from './components'
+import { LiveSyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, EntryBackdrop, FirstSyncToast } from './components'
 import { BrandScope } from '../design/brandScope'
 import { celebrateFirstSync } from './firstSyncCelebration'
 
@@ -75,8 +75,6 @@ function App() {
 
     // Sync hook - now syncs ALL connected services independently
     const {
-        syncProgress,
-        syncProgressByService,
         showSyncModal,
         setShowSyncModal,
         syncVersion,
@@ -407,7 +405,7 @@ function App() {
                 {/* First launch (login carousel, setup, first sync) and blocking syncs: the brand orbs behind the dialogs (spec §9). The layout is hidden meanwhile. */}
                 {(isOnboarding || showSyncModal) && <EntryBackdrop />}
                 {/* Sync Modal — pass sequentialSyncInfo for multi-service progress */}
-                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} onCancel={() => cancelSync()} />}
+                {showSyncModal && <LiveSyncModal sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} onCancel={() => cancelSync()} />}
 
                 {/* Login Carousel (first-launch only) — shown BEFORE SetupWizard */}
                 {loginCarouselService && (
@@ -568,14 +566,12 @@ function App() {
                         onReportIssue={() => setShowReportModal(true)}
                         onOpenAbout={() => setShowAboutModal(true)}
                         onOpenSearch={openSearch}
-                        syncProgressByService={syncProgressByService}
                         initialSyncServices={initialSyncServices}
                         blogBackupEnabled={appSettings?.blogs_full_backup}
                         userNicknames={appSettings?.user_nicknames}
                         messagesContent={
                             <MessagesFeature
                                 appSettings={appSettings}
-                                syncProgress={syncProgress}
                                 syncVersion={syncVersion}
                                 onSyncNow={() => startSync(false)}
                             />

@@ -32,7 +32,7 @@ function serve() {
     );
 }
 
-const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };
+const props = { appSettings: null, syncVersion: 0 };
 
 /** The bubble's yellow ★ (shown only for a favourite). */
 const star = () => document.querySelector('.text-semantic-star');

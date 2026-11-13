@@ -3,17 +3,16 @@ import React from 'react';
 import { useAppStore, type FeatureId } from '../../store/appStore';
 import { BlogsFeature } from '../../features/blogs';
 import { MemoriesFeature } from '../../features/memories';
-import { InlineSyncView } from './InlineSyncView';
+import { LiveInlineSyncView } from './InlineSyncView';
 import { ContentSheet } from './ContentSheet';
 import { FadeOnChange } from './FadeOnChange';
 import { useTranslation } from '../../i18n';
-import type { SyncProgress } from '../../features/messages/MessagesFeature';
+import { useSyncProgressStore } from '../../shell/syncProgressStore';
 import { isSyncActive } from '../../utils/syncFormatters';
 
 interface ContentAreaProps {
     service: string;
     messagesContent: React.ReactNode;
-    syncProgress?: SyncProgress;
     isInitialSyncing?: boolean;
     blogBackupEnabled?: boolean;
     /** The fan's nickname for this service. */
@@ -40,18 +39,19 @@ const ComingSoon: React.FC<{ feature: FeatureId }> = ({ feature }) => {
 export const ContentArea: React.FC<ContentAreaProps> = ({
     service,
     messagesContent,
-    syncProgress,
     isInitialSyncing,
     blogBackupEnabled,
     userNickname,
 }) => {
     const { getActiveFeature } = useAppStore();
     const activeFeature = getActiveFeature(service);
+    // A boolean slice: a progress tick re-renders the inline card only, never the feature beside it.
+    const initialSyncActive = useSyncProgressStore((s) => isSyncActive(s.byService[service]));
 
     let content: React.ReactNode;
     // A queued first sync (another service is syncing) shows its card too.
-    if (isInitialSyncing && isSyncActive(syncProgress)) {
-        content = <ContentSheet><InlineSyncView service={service} syncProgress={syncProgress} /></ContentSheet>;
+    if (isInitialSyncing && initialSyncActive) {
+        content = <ContentSheet><LiveInlineSyncView service={service} /></ContentSheet>;
     } else if (activeFeature === 'blogs') {
         content = <ContentSheet><BlogsFeature blogBackupEnabled={blogBackupEnabled} /></ContentSheet>;
     } else if (activeFeature === 'memories') {
