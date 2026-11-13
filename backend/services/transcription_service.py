@@ -16,6 +16,7 @@ from dataclasses import dataclass, field, asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Literal, Optional, cast
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -95,6 +96,29 @@ class TranscriptionResult:
     )
 
 
+_GEMINI_HOST = "generativelanguage.googleapis.com"
+
+
+def _is_gemini_url(url: object) -> bool:
+    """True for an ``https`` URL on the Gemini API host and default port.
+
+    Every request that carries ``x-goog-api-key`` must go there (security
+    audit 2026-11-13).
+    """
+    if not isinstance(url, str):
+        return False
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return False
+    return (
+        parts.scheme == "https"
+        and parts.hostname == _GEMINI_HOST
+        and port in (None, 443)
+    )
+
+
 class GeminiTranscriptionProvider:
     """Gemini-based transcription with timestamps via multimodal audio input.
 
@@ -152,7 +176,13 @@ class GeminiTranscriptionProvider:
         ``file_uri`` is the resource URL Gemini returned (e.g.
         ``https://.../v1beta/files/abc-123``); DELETE it directly. Never raises —
         this is privacy/quota cleanup, not part of the transcription result.
+        Only a URL on the Gemini API host is deleted (:func:`_is_gemini_url`);
+        any other value logs ``transcription.files_api_delete_skipped``
+        (``reason=foreign_url``) and sends nothing.
         """
+        if not _is_gemini_url(file_uri):
+            logger.info("transcription.files_api_delete_skipped", reason="foreign_url")
+            return
         try:
             del_resp = await client.delete(
                 file_uri, headers={"x-goog-api-key": self._api_key}
@@ -163,7 +193,9 @@ class GeminiTranscriptionProvider:
                     status=del_resp.status_code,
                 )
         except Exception as e:  # noqa: BLE001 - cleanup must never fail the call
-            logger.debug("transcription.files_api_delete_failed", error=str(e))
+            logger.debug(
+                "transcription.files_api_delete_failed", error_type=type(e).__name__
+            )
 
     async def transcribe(
         self,

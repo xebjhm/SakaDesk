@@ -324,6 +324,10 @@ class TestTestConnectionCodes:
         fake = AsyncMock()
         fake.check_connection = AsyncMock(return_value=status)
         with (
+            patch(
+                "backend.api.translation.load_config",
+                new=AsyncMock(return_value={"translation_provider": "gemini"}),
+            ),
             patch("backend.api.translation._load_api_key", return_value="k"),
             patch("backend.api.translation._instantiate_provider", return_value=fake),
         ):
@@ -340,6 +344,10 @@ class TestTestConnectionCodes:
         fake = AsyncMock()
         fake.check_connection = AsyncMock(return_value="ok")
         with (
+            patch(
+                "backend.api.translation.load_config",
+                new=AsyncMock(return_value={"translation_provider": "gemini"}),
+            ),
             patch("backend.api.translation._load_api_key", return_value="k"),
             patch("backend.api.translation._instantiate_provider", return_value=fake),
         ):

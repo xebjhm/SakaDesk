@@ -388,8 +388,25 @@ async def clear_api_key():
 
 @router.post("/test-connection")
 async def test_connection(request: TestConnectionRequest):
-    """Test if the API key is valid by pinging the provider."""
-    api_key = request.api_key or _load_api_key()
+    """Test if the API key is valid by pinging the provider.
+
+    A Gemini ``model`` must be one of ``GEMINI_MODELS`` (400 ``invalid_model``):
+    it becomes part of the Google URL path. Without an ``api_key`` in the
+    request the stored key is used only when ``provider`` is the saved
+    provider, the one the key was saved for; otherwise the answer is
+    ``no_key`` and nothing is sent (security audit 2026-11-13). Refusals log
+    ``translation_test_refused`` (``reason`` ``model`` or ``provider_mismatch``).
+    """
+    if request.provider == "gemini" and request.model not in _valid_model_ids():
+        logger.info("translation_test_refused", reason="model")
+        raise CodedHTTPException(400, "invalid_model", "Unknown model.")
+    api_key = request.api_key
+    if not api_key:
+        config = await load_config()
+        if config.get("translation_provider") == request.provider:
+            api_key = _load_api_key()
+        else:
+            logger.info("translation_test_refused", reason="provider_mismatch")
     if not api_key:
         return {
             "ok": False,
@@ -558,8 +575,12 @@ async def translate(request: TranslateRequest):
         try:
             translated_map: dict[str, str] = json.loads(cleaned)
         except json.JSONDecodeError as e:
+            # Model output is a translation of private paid content: length only.
             logger.error(
-                "Failed to parse blog translation JSON", error=str(e), raw=raw[:200]
+                "translation_parse_failed",
+                kind="blog",
+                error_type=type(e).__name__,
+                length=len(raw),
             )
             raise CodedHTTPException(
                 502,
@@ -659,9 +680,10 @@ async def translate_batch(request: TranslateBatchRequest):
         translations: dict[str, str] = json.loads(cleaned)
     except json.JSONDecodeError as e:
         logger.error(
-            "Failed to parse batch translation JSON",
-            error=str(e),
-            raw=raw_response[:200],
+            "translation_parse_failed",
+            kind="batch",
+            error_type=type(e).__name__,
+            length=len(raw_response),
         )
         raise CodedHTTPException(
             502, "bad_response", "Provider returned invalid JSON for batch translation"
