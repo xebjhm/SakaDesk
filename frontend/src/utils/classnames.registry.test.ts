@@ -7,6 +7,13 @@ const config = readFileSync(resolve(__dirname, '../../tailwind.config.js'), 'utf
 
 /** Keys of one `theme.extend` section of tailwind.config.js (`name:` or `'name':` at the section's indent + 4). */
 function keysOf(section: string): string[] {
+    const keys = parseKeys(section);
+    // describe.each over an empty list silently runs zero cases: fail loudly if the parser finds nothing.
+    expect(keys.length, `keys parsed from the ${section} section`).toBeGreaterThan(0);
+    return keys;
+}
+
+function parseKeys(section: string): string[] {
     const start = config.indexOf(`            ${section}: {`);
     expect(start, `${section} section in tailwind.config.js`).toBeGreaterThan(-1);
     const lineEnd = config.indexOf('\n', start);
@@ -39,6 +46,8 @@ describe('tailwind-merge registry (UI health H-T8)', () => {
         ['fontFamily', 'font-family', 'font'],
         ['sepia', 'sepia', 'sepia'],
         ['maxHeight', 'max-h', 'max-h'],
+        ['blur', 'blur', 'blur'],
+        ['backdropBlur', 'backdrop-blur', 'backdrop-blur'],
     ] as const)('registers every %s key', (section, group, prefix) => {
         const keys = keysOf(section);
         expect(keys.length).toBeGreaterThan(0);
