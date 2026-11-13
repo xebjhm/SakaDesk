@@ -271,11 +271,16 @@ const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGr
 
     // Refresh when a sync ends. Only a true -> false transition counts: mount is
     // already covered by the polling hook's immediate load, and a second request
-    // would start a concurrent cold scan on the backend.
+    // would start a concurrent cold scan on the backend. Paused, the load waits:
+    // resuming the poll loads at once.
     const wasSyncing = useRef(isSyncing);
     useEffect(() => {
         if (wasSyncing.current === true && isSyncing === false) {
-            void loadGroups(true);
+            if (paused) {
+                clientLog('sidebar_load', { ...(activeService ? { service: activeService } : {}), outcome: 'deferred', reason: 'hidden' });
+            } else {
+                void loadGroups(true);
+            }
         }
         wasSyncing.current = isSyncing;
     }, [isSyncing]);
