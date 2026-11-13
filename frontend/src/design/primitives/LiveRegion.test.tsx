@@ -105,6 +105,14 @@ describe('LiveRegion host', () => {
         expect(screen.getByRole('status')).toBeEmptyDOMElement();
     });
 
+    it('cancels its set and clear timers when it unmounts mid-window', () => {
+        const { unmount } = render(<LiveRegionHost />);
+        act(() => announce('mid-window'));
+        expect(vi.getTimerCount()).toBeGreaterThan(0);
+        unmount();
+        expect(vi.getTimerCount()).toBe(0);
+    });
+
     it('removes its region on unmount', () => {
         const { unmount } = render(<LiveRegionHost />);
         unmount();

@@ -48,6 +48,16 @@ describe('Menu', () => {
         expect(screen.getByRole('menuitem', { name: '二' })).toHaveFocus();
     });
 
+    it('opens on the first item when every item has a disabled reason', () => {
+        render(
+            <Menu aria-label="m" onClose={vi.fn()}>
+                <MenuItem disabledReason="理由">一</MenuItem>
+                <MenuItem disabledReason="理由">二</MenuItem>
+            </Menu>,
+        );
+        expect(screen.getByRole('menuitem', { name: '一' })).toHaveFocus();
+    });
+
     it('never opens on a destructive item, even when it comes first', async () => {
         const onRemove = vi.fn();
         const { unmount } = render(
