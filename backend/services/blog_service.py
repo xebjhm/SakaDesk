@@ -39,7 +39,12 @@ from pysaka.blog import (
 from backend.services.log_throttle import LogThrottle
 from backend.services.passive_media import INLINE_MEDIA_TYPES
 from backend.services.path_resolver import get_output_dir
-from backend.services.remote_images import RemoteImageRefused, fetch_official_image
+from backend.services.remote_images import (
+    RemoteImageRefused,
+    fetch_official_image,
+    upgrade_official_url,
+    url_refusal,
+)
 from backend.services.safe_paths import (
     UnsafePath,
     blog_date,
@@ -823,6 +828,16 @@ class BlogService:
             thumbnails_dir.mkdir(parents=True, exist_ok=True)
 
             result_members: list[dict] = []
+            # Members whose thumbnail could be fetched at all: one with no URL,
+            # an unsafe id or an off-list host never downloads, so it must not
+            # count as a failure that keeps the cache from being hashed.
+            fetchable: set[str] = {
+                m.id
+                for m in fresh_members
+                if is_safe_id(m.id)
+                and isinstance(m.thumbnail_url, str)
+                and url_refusal(upgrade_official_url(m.thumbnail_url)) is None
+            }
 
             async def download_and_add(member: MemberInfo):
                 thumbnail_filename = await self._download_member_thumbnail(
@@ -844,7 +859,11 @@ class BlogService:
             # Sort by ID for consistency
             result_members.sort(key=lambda m: m["id"])
 
-            failed = sum(1 for m in result_members if m["thumbnail"] is None)
+            failed = sum(
+                1
+                for m in result_members
+                if m["thumbnail"] is None and m["id"] in fetchable
+            )
             # The hash says "these thumbnails are on disk": only a complete
             # download may store it, else the next call retries (audit 2026-11-13).
             new_cache = {

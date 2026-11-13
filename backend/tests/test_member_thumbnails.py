@@ -315,3 +315,51 @@ async def test_a_complete_download_is_cached_by_hash(tmp_path):
         await svc.get_members_with_thumbnails("nogizaka46")
         await svc.get_members_with_thumbnails("nogizaka46")
     assert download.await_count == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "member",
+    [
+        SimpleNamespace(id="2", name="b", thumbnail_url=""),
+        SimpleNamespace(id="2", name="b", thumbnail_url=None),
+        SimpleNamespace(
+            id="../2", name="b", thumbnail_url="https://img.nogizaka46.com/2.jpg"
+        ),
+        SimpleNamespace(
+            id="2", name="b", thumbnail_url="https://elsewhere.example/2.jpg"
+        ),
+    ],
+)
+async def test_a_member_with_nothing_to_fetch_does_not_block_the_cache(
+    tmp_path, member
+):
+    """No URL, an unsafe id or an off-list host never downloads: not a failure to retry."""
+    svc = BlogService()
+    listed = [
+        SimpleNamespace(
+            id="1", name="a", thumbnail_url="https://img.nogizaka46.com/1.jpg"
+        ),
+        member,
+    ]
+    scraper = MagicMock()
+    scraper.get_members_with_thumbnails = AsyncMock(return_value=listed)
+    download = AsyncMock(
+        side_effect=lambda _s, mid, _u, _d: "1.jpg" if mid == "1" else None
+    )
+    with (
+        patch("backend.services.blog_service.get_scraper", return_value=scraper),
+        patch.object(
+            svc, "get_member_thumbnails_path", return_value=tmp_path / "thumbs"
+        ),
+        patch.object(
+            svc, "get_members_cache_path", return_value=tmp_path / "members.json"
+        ),
+        patch.object(svc, "_download_member_thumbnail", download),
+    ):
+        await svc.get_members_with_thumbnails("nogizaka46")
+        first = download.await_count
+        await svc.get_members_with_thumbnails("nogizaka46")
+    cache = json.loads((tmp_path / "members.json").read_text(encoding="utf-8"))
+    assert cache["hash"] is not None
+    assert download.await_count == first  # the second call was a cache hit
