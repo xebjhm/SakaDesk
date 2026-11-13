@@ -713,8 +713,8 @@ class TestResolveMediaPath:
                 _resolve_media_path("hinatazaka46/nonexistent.jpg")
         assert exc.value.status_code == 404
 
-    def test_unknown_service_passes_through(self, tmp_path):
-        """Unknown service prefix should not be translated and still raise 404 if missing."""
+    def test_unknown_service_is_404(self, tmp_path):
+        """A path without a known service folder is never read (security audit 2026-11-13)."""
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):
             with pytest.raises(HTTPException) as exc:
                 _resolve_media_path("unknown_service/file.jpg")

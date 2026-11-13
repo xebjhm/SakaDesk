@@ -862,16 +862,45 @@ def _compute_unread_counts(
 
 
 def _resolve_media_path(file_path: str) -> Path:
-    """Resolve a media file path, translating service ID to display name.
+    """Resolve a media-route path ``<service>/<rest>`` to its archive file.
 
-    Raises HTTPException 400 for control characters, 403 outside the output
-    dir and 404 if the resolved path does not exist. A path whose first
-    segment is not a known service id is read relative to the output dir.
+    ``<service>`` is a service id (any case; mapped by
+    ``archive_urls.media_disk_path``) or its display-name folder
+    (``日向坂46``). The file must resolve (symlinks followed) inside the
+    output dir and strictly inside that service's folder (security audit
+    2026-11-13: the output dir is a folder the user picked, so only
+    SakaDesk's own service folders in it are served). Raises 400 for control
+    characters; 403 for a path that is not ``archive_urls.is_plain_relative``
+    (checked before anything is resolved) or that leaves the service folder
+    (``path_traversal_blocked``, ``reason=outside_service_folder``); 404 when
+    there is no known service folder (``media_request_rejected``,
+    ``reason=no_service_folder``) or the file does not exist.
     """
-    output_dir = get_output_dir()
+    if any(c in file_path for c in ("\x00", "\n", "\r")):
+        raise HTTPException(status_code=400, detail="Invalid path characters")
+    if not is_plain_relative(file_path):
+        logger.warning("path_rooted_blocked")
+        raise HTTPException(status_code=403, detail="Access denied")
     # The translation is shared with archive_urls.media_route_path (POST /api/media/meta).
-    disk_path, _service = media_disk_path(file_path)
+    disk_path, service = media_disk_path(file_path)
+    if service is None:
+        # The display-name form (``日向坂46/...``) names the same folder.
+        first, _, tail = file_path.partition("/")
+        service = get_service_identifier(first) if tail else None
+    display_name, _, rest = disk_path.partition("/")
+    if service is None or not rest:
+        logger.info("media_request_rejected", reason="no_service_folder")
+        raise HTTPException(status_code=404, detail="File not found")
+    output_dir = get_output_dir()
     safe_path = validate_path_within_dir(output_dir, disk_path)
+    try:
+        folder = (output_dir / display_name).resolve()
+        inside = safe_path.is_relative_to(folder) and safe_path != folder
+    except (OSError, RuntimeError):
+        inside = False
+    if not inside:
+        logger.warning("path_traversal_blocked", reason="outside_service_folder")
+        raise HTTPException(status_code=403, detail="Access denied")
     if not safe_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     return safe_path
