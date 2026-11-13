@@ -10,6 +10,7 @@ any ``backend`` module resolves ``get_app_data_dir()`` / caches
 
 import os
 import tempfile
+from pathlib import Path
 
 os.environ.setdefault("SAKADESK_DATA_DIR", tempfile.mkdtemp(prefix="sakadesk-tests-"))
 
@@ -28,7 +29,19 @@ os.environ.setdefault("SAKADESK_TEST_CLIENT", "1")
 import keyring  # noqa: E402
 import keyring.backend  # noqa: E402
 import keyring.errors  # noqa: E402
+import keyring.util.platform_  # noqa: E402
 import pytest  # noqa: E402
+
+# Where the developer's real file keyring lives. Read once, at import, before
+# any fixture repoints the environment; the isolation tests compare against it
+# instead of guessing from the home folder (pytest's temp dir may sit under it).
+_REAL_KEYRING_DATA_ROOT = Path(keyring.util.platform_.data_root())
+
+
+@pytest.fixture(scope="session")
+def real_keyring_data_root() -> Path:
+    """The real ``keyring.util.platform_.data_root()``, captured at conftest import."""
+    return _REAL_KEYRING_DATA_ROOT
 
 
 class _InMemoryKeyring(keyring.backend.KeyringBackend):

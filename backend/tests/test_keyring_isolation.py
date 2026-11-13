@@ -40,15 +40,22 @@ class _RealPlaintext(keyrings.alt.file_base.Keyring):
         return password_encrypted
 
 
-def test_keyring_file_locations_point_into_the_test_tmp_dir(tmp_path):
-    """Even an unpatched constructor could only write under the tmp dir."""
-    root = platform_.data_root()
-    assert Path.home() not in root.parents
-    assert root != Path.home() / ".local/share/python_keyring"
+def _outside(path: Path, real_root: Path) -> bool:
+    """``path`` is neither the real keyring folder nor inside it."""
+    return path != real_root and real_root not in path.parents
+
+
+def test_keyring_file_locations_point_into_the_test_tmp_dir(real_keyring_data_root):
+    """Even an unpatched constructor could only write away from the real folder.
+
+    Compared with the real ``data_root()`` captured before any patching, not with
+    the home folder: pytest's temp dir may itself live under it (local Windows).
+    """
+    assert _outside(platform_.data_root(), real_keyring_data_root)
     for var in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "LOCALAPPDATA", "APPDATA"):
         value = os.environ.get(var)
         assert value is not None
-        assert Path.home() not in Path(value).parents
+        assert _outside(Path(value), real_keyring_data_root)
 
 
 def test_the_plaintext_constructor_is_not_the_real_class():
@@ -57,10 +64,13 @@ def test_the_plaintext_constructor_is_not_the_real_class():
     )
 
 
-def test_clear_api_key_and_logout_leave_a_seeded_file_entry_alone():
+def test_clear_api_key_and_logout_leave_a_seeded_file_entry_alone(
+    real_keyring_data_root,
+):
     real = _RealPlaintext()
     path = Path(real.file_path)
-    assert Path.home() not in path.parents, "would touch the real keyring"
+    assert path != real_keyring_data_root / "keyring_pass.cfg"
+    assert _outside(path, real_keyring_data_root), "would touch the real keyring"
     seeded = [
         (_service_for(_API_KEY_CREDENTIAL_GROUP), _ENTRY_USERNAME),
         (SERVICE_NAME, _API_KEY_CREDENTIAL_GROUP),
