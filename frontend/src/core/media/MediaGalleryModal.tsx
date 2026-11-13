@@ -17,7 +17,7 @@ import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { useFeatureActive } from '../../design/featureActive';
-import { clientLog } from '../../utils/clientLog';
+import { leavesKeysToControl } from './keyGuard';
 import { StepButtons } from './StepButtons';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
@@ -359,18 +359,12 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }, [activeTab, mediaItems]);
 
     // Keyboard navigation for detail view
-    // Logged once per gallery: a range, tab list or menu kept the arrow keys.
+    // Logged once per gallery (by leavesKeysToControl): a range, tab list or menu kept the arrow keys.
     const loggedKeysRef = useRef(false);
     const handleDetailKeyDown = useCallback((e: KeyboardEvent) => {
         if (!selectedMedia) return;
         // Keys typed in a range (video seek / volume), a tab list or a menu belong to that control.
-        if (e.target instanceof Element && e.target.closest('input[type="range"], [role="slider"], [role="tablist"], [role="menu"]')) {
-            if (!loggedKeysRef.current) {
-                loggedKeysRef.current = true;
-                clientLog('media_playback', { surface: 'viewer', phase: 'keys', outcome: 'left_to_control' });
-            }
-            return;
-        }
+        if (leavesKeysToControl(e.target, loggedKeysRef)) return;
 
         const currentIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
         if (currentIdx === -1) return;

@@ -10,7 +10,7 @@ import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { PhotoPlayer } from './PhotoPlayer';
-import { clientLog } from '../../utils/clientLog';
+import { leavesKeysToControl } from './keyGuard';
 import { StepButtons } from './StepButtons';
 import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 
@@ -97,17 +97,11 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         downloadMedia(item.src, formatDownloadFilename(item.src, item.timestamp));
     }, [item]);
 
-    // Logged once per viewer: a range, tab list or menu kept the arrow keys.
+    // Logged once per viewer (by leavesKeysToControl): a range, tab list or menu kept the arrow keys.
     const loggedKeysRef = useRef(false);
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
         // Keys typed in a range (video seek / volume), a tab list or a menu belong to that control.
-        if (e.target instanceof Element && e.target.closest('input[type="range"], [role="slider"], [role="tablist"], [role="menu"]')) {
-            if (!loggedKeysRef.current) {
-                loggedKeysRef.current = true;
-                clientLog('media_playback', { surface: 'viewer', phase: 'keys', outcome: 'left_to_control' });
-            }
-            return;
-        }
+        if (leavesKeysToControl(e.target, loggedKeysRef)) return;
         switch (e.key) {
             case 'ArrowLeft':
                 e.preventDefault();
