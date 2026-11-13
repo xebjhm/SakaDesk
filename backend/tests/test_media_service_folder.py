@@ -31,6 +31,12 @@ def out(tmp_path: Path):
     (root / "乃木坂46").mkdir()
     (root / "乃木坂46" / "x.jpg").write_bytes(b"\xff\xd8\xff\xe0")
     (root / "loose.jpg").write_bytes(b"DUMMY-LOOSE")
+    # Files the old service-less fallback (a path read relative to the output
+    # dir) would have served: they make test_no_service_folder_is_404 fail on it.
+    (root / "messages").mkdir()
+    (root / "messages" / "a.jpg").write_bytes(b"DUMMY-LOOSE")
+    (root / "unknown46").mkdir()
+    (root / "unknown46" / "a.jpg").write_bytes(b"DUMMY-LOOSE")
     (root / ".ssh").mkdir()
     (root / ".ssh" / "id_dummy").write_bytes(b"DUMMY-PRIVATE-KEY-0001")
     (root / "settings.json").write_text("{}", encoding="utf-8")
