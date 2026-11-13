@@ -954,7 +954,19 @@ export function useSync({
     const startSequentialSync = useCallback((services: string[]): Promise<SequentialSyncOutcome> => {
         if (services.length === 0) return Promise.resolve({ completed: 0, failed: 0, cancelled: false });
         if (activeSequenceRef.current) return activeSequenceRef.current;
-        const run = runSequentialSync(services).finally(() => { activeSequenceRef.current = null; });
+        // Same rule as startAllInBackground: a service already polling or starting (App's own
+        // startSync right after a login) is left out; a second start would hit the official API
+        // twice on a single-session token.
+        const fresh = services.filter(s => !isPollingRef.current[s] && !startingRef.current[s]);
+        if (fresh.length < services.length) {
+            clientLog('sync_start_skipped', { reason: 'starting', count: services.length - fresh.length });
+        }
+        if (fresh.length === 0) return Promise.resolve({ completed: 0, failed: 0, cancelled: false });
+        fresh.forEach(s => { startingRef.current[s] = true; });
+        const run = runSequentialSync(fresh).finally(() => {
+            fresh.forEach(s => { startingRef.current[s] = false; });
+            activeSequenceRef.current = null;
+        });
         activeSequenceRef.current = run;
         return run;
     }, [runSequentialSync]);

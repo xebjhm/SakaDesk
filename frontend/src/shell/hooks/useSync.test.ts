@@ -686,6 +686,37 @@ describe('useSync', () => {
             expect(clientLog).toHaveBeenCalledWith('sync_sequence', { outcome: 'cancelled', count: 1 })
         })
 
+        it('leaves out a service that is already polling, like the non-blocking start-all', async () => {
+            const backend = fakeBackend(['sakurazaka46'])
+            const { result } = renderHook(() => useSync(unconfigured))
+            await act(async () => { result.current.followSync('hinatazaka46') })
+            expect(result.current.isPolling('hinatazaka46')).toBe(true)
+
+            let pending: Promise<unknown> = Promise.resolve()
+            act(() => { pending = result.current.startSequentialSync(['hinatazaka46', 'sakurazaka46']) })
+            await waitFor(() => expect(result.current.sequentialSyncInfo?.currentService).toBe('sakurazaka46'))
+            expect(backend.startAllBodies).toEqual([{ services: ['sakurazaka46'], blocking: true }])
+            expect(clientLog).toHaveBeenCalledWith('sync_start_skipped', { reason: 'starting', count: 1 })
+            expect(result.current.isPolling('sakurazaka46')).toBe(true)
+
+            act(() => backend.advance('complete'))
+            await act(async () => { await pending })
+            // The start guard is released once the sequence is over.
+            expect(result.current.sequentialSyncInfo).toBeNull()
+        })
+
+        it('starts nothing when every service is already starting', async () => {
+            const backend = fakeBackend(['hinatazaka46'])
+            const { result } = renderHook(() => useSync(unconfigured))
+            await act(async () => { result.current.followSync('hinatazaka46') })
+
+            let outcome: unknown
+            await act(async () => { outcome = await result.current.startSequentialSync(['hinatazaka46']) })
+            expect(outcome).toEqual({ completed: 0, failed: 0, cancelled: false })
+            expect(backend.startAllBodies).toEqual([])
+            expect(clientLog).toHaveBeenCalledWith('sync_start_skipped', { reason: 'starting', count: 1 })
+        })
+
         it('a refused start-all settles as all failed', async () => {
             fakeBackend(['yodel'], { startAllStatus: 503 })
             const { result } = renderHook(() => useSync(unconfigured))

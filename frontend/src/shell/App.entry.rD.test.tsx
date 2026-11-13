@@ -102,7 +102,13 @@ describe('cancelling the first-launch sync (R-d)', () => {
                 return HttpResponse.json({ status: 'started' });
             }),
             http.get('*/api/sync/queue', () => HttpResponse.json({ running: null, queued: [], sequence: seq })),
-            http.get('*/api/sync/progress', () => HttpResponse.json({ state: 'running', phase: 'messages', phase_name: 'Messages', completed: 5, total: 20 })),
+            // Idle until the sequence is started: a service that already reports running before
+            // the wizard finishes is being synced by someone else, and is (rightly) not started again.
+            http.get('*/api/sync/progress', () => HttpResponse.json(
+                startAll.length === 0
+                    ? { state: 'idle' }
+                    : { state: 'running', phase: 'messages', phase_name: 'Messages', completed: 5, total: 20 },
+            )),
             http.post('*/api/sync/cancel', ({ request }) => {
                 cancels.push(new URL(request.url).search);
                 seq.state = 'cancelled';
