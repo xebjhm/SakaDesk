@@ -140,7 +140,7 @@ class TestIsLoopbackHost:
         [
             "localhost", "a.localhost", "127.0.0.1", "127.255.255.254",
             "0.0.0.0", "2130706433", "127.1", "127.0.1", "0x7f.0.0.1",
-            "0x7f000001", "017700000001", "0177.0.0.1", "0", "0x0", "0x",
+            "0x7f000001", "017700000001", "0177.0.0.1", "0", "00", "0x0", "0x", "0x.0x.0x.0x",
             "127.0.0.1.", "::1", "::", "0:0:0:0:0:0:0:1", "0:0:0:0:0:0:0:0",
             "::ffff:127.0.0.1", "::ffff:7f00:1", "::127.0.0.1", "::bad:",
         ],
@@ -159,6 +159,59 @@ class TestIsLoopbackHost:
     )  # fmt: skip
     def test_not_loopback(self, host):
         assert not ng.is_loopback_host(host)
+
+
+MALFORMED_HOSTS = [
+    "0x-1", "0-1", "0x+7f", "0x7_f.0.0.1", "0x0x7f.0.0.1", "١٢٧.0.0.1",
+    "+1", "-1", "1_0", "0_7", "0b1", "0o7", "0x1g", "08.0.0.1",
+]  # fmt: skip
+
+
+class TestMalformedHosts:
+    @pytest.mark.parametrize("host", MALFORMED_HOSTS)
+    def test_not_loopback_and_no_crash(self, host):
+        assert not ng.is_loopback_host(host)
+
+    @pytest.mark.parametrize("host", MALFORMED_HOSTS)
+    def test_decide_returns(self, host):
+        d = ng.decide(f"http://{host}/", host=HOST, port=PORT)
+        assert d.action in (ng.NavAction.EXTERNAL, ng.NavAction.BLOCK)
+
+    def test_navigation_handler_fails_closed(self, monkeypatch):
+        backend = _installed_backend([])
+        monkeypatch.setattr(ng, "decide", _boom)
+        args = FakeNavArgs("https://example.com/secret")
+        with capture_logs() as logs:
+            backend.on_navigation_start(None, args)
+        assert args.Cancel is True
+        assert {
+            "event": "navigation_refused",
+            "reason": "decide_failed",
+            "error_type": "RuntimeError",
+            "log_level": "warning",
+        } in logs
+        assert "secret" not in repr(logs)
+
+    def test_new_window_handler_fails_closed(self, monkeypatch):
+        opened: list[str] = []
+        backend = _installed_backend(opened)
+        monkeypatch.setattr(ng, "decide", _boom)
+        args = FakeNewWindowArgs("https://example.com/secret")
+        with capture_logs() as logs:
+            backend.on_new_window_request(None, args)
+        assert args.handled is True
+        assert opened == []
+        assert {
+            "event": "new_window_refused",
+            "reason": "decide_failed",
+            "error_type": "RuntimeError",
+            "log_level": "warning",
+        } in logs
+        assert "secret" not in repr(logs)
+
+
+def _boom(*_a, **_k):
+    raise RuntimeError("boom")
 
 
 class TestNavigationStarting:

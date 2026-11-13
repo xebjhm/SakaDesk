@@ -99,19 +99,29 @@ class NavDecision:
     reason: str
 
 
+_HEX_DIGITS = frozenset("0123456789abcdefABCDEF")
+_OCTAL_DIGITS = frozenset("01234567")
+_DEC_DIGITS = frozenset("0123456789")
+
+
 def _ipv4_number(part: str) -> int | None:
     """One dotted part of an IPv4 host as the URL standard reads it (``0x`` hex,
-    leading-``0`` octal, else decimal); ``None`` when it is none of those."""
+    leading-``0`` octal, else decimal); ``None`` when it is none of those.
+
+    Digits are checked per radix, ASCII only, before ``int()`` (which would
+    also take signs, underscores and Unicode digits). ``0x`` alone is 0.
+    """
     if not part:
         return None
-    try:
-        if part[:2] in ("0x", "0X"):
-            return int(part[2:] or "0", 16)
-        if len(part) > 1 and part[0] == "0":
-            return int(part[1:], 8)
-        return int(part, 10) if part.isdecimal() else None
-    except ValueError:
+    if part[:2] in ("0x", "0X"):
+        digits, radix, allowed = part[2:], 16, _HEX_DIGITS
+    elif len(part) > 1 and part[0] == "0":
+        digits, radix, allowed = part[1:], 8, _OCTAL_DIGITS
+    else:
+        digits, radix, allowed = part, 10, _DEC_DIGITS
+    if not set(digits) <= allowed:
         return None
+    return int(digits or "0", radix)
 
 
 def _ipv4_address(host: str) -> ipaddress.IPv4Address | None:
@@ -195,12 +205,20 @@ def decide(url: str, *, host: str, port: int) -> NavDecision:
     The app origin is ``http://<host>:<port>``; on it, a path (percent-decoded,
     case-folded) equal to or under ``/api``, ``/docs``, ``/redoc`` or
     ``/openapi.json`` is blocked with reason ``app_api``. Any other loopback URL
-    is blocked with reason ``loopback``.
+    is blocked with reason ``loopback``. An unexpected error while reading the
+    URL gives a block with reason ``decide_failed`` instead of raising.
     """
     problem = _web_url_problem(url)
     if problem is not None:
         return NavDecision(NavAction.BLOCK, problem)
-    parts = urlsplit(url)
+    try:
+        parts = urlsplit(url)
+        return _decide_parsed(parts, host=host, port=port)
+    except Exception:
+        return NavDecision(NavAction.BLOCK, "decide_failed")
+
+
+def _decide_parsed(parts: Any, *, host: str, port: int) -> NavDecision:
     if parts.scheme.lower() == "http" and parts.hostname == host and parts.port == port:
         path = unquote(parts.path).lower()
         if any(path == p or path.startswith(f"{p}/") for p in _APP_BACKEND_PATHS):
@@ -272,7 +290,16 @@ def make_handlers(
                 "navigation_refused", reason="unreadable", error_type=type(e).__name__
             )
             return
-        decision = decide(url, host=host, port=port)
+        try:
+            decision = decide(url, host=host, port=port)
+        except Exception as e:
+            args.Cancel = True
+            logger.warning(
+                "navigation_refused",
+                reason="decide_failed",
+                error_type=type(e).__name__,
+            )
+            return
         if decision.action is NavAction.ALLOW:
             logger.debug("navigation_allowed")
             return
@@ -291,7 +318,15 @@ def make_handlers(
                 "new_window_refused", reason="unreadable", error_type=type(e).__name__
             )
             return
-        decision = decide(url, host=host, port=port)
+        try:
+            decision = decide(url, host=host, port=port)
+        except Exception as e:
+            logger.warning(
+                "new_window_refused",
+                reason="decide_failed",
+                error_type=type(e).__name__,
+            )
+            return
         requested = decision.action is NavAction.EXTERNAL and open_url(url)
         logger.info(
             "new_window_refused", reason=decision.reason, external_requested=requested
