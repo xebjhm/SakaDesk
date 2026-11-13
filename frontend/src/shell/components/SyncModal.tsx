@@ -53,7 +53,7 @@ const SyncServiceChip: React.FC<{ serviceId: string; label: string }> = ({ servi
  * group as a marker (decision D5). Not dismissible; Done or Cancel (D2d decisions 4, 6, 9-11, 17, 19).
  */
 export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo, onClose, onCancel }) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const isComplete = syncProgress.phase === 'complete';
     const title = isComplete
         ? t('sync.complete')
@@ -61,7 +61,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
     const subtitle = isComplete
         ? t('sync.syncComplete')
         : syncProgress.total
-            ? `${syncProgress.total.toLocaleString()} ${getSyncUnitLabel(syncProgress, t)}`
+            ? `${syncProgress.total.toLocaleString(i18n.language)} ${getSyncUnitLabel(syncProgress, t)}`
             : t('sync.pleaseWait');
     const serviceName = sequentialSyncInfo
         ? getServiceById(sequentialSyncInfo.currentService)?.displayName ?? sequentialSyncInfo.currentService

@@ -23,7 +23,7 @@ interface InlineSyncViewProps {
  * shared panel, whose bar is that group's title gradient (`e4e4118`).
  */
 export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncProgress }) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const groupId = serviceIdToGroupId(service);
     const isLight = groupTokens[groupId].official.headerStyle === 'light';
     const isComplete = syncProgress.phase === 'complete';
@@ -33,7 +33,7 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
     const subtitle = isComplete
         ? t('sync.syncComplete')
         : syncProgress.total
-            ? `${syncProgress.total.toLocaleString()} ${getSyncUnitLabel(syncProgress, t)}`
+            ? `${syncProgress.total.toLocaleString(i18n.language)} ${getSyncUnitLabel(syncProgress, t)}`
             : t('sync.pleaseWait');
 
     return (
