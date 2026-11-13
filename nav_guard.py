@@ -25,7 +25,7 @@ its scheme, to ``webbrowser.open``. This module gives both one policy
 
 Each refusal logs ``navigation_refused`` or ``new_window_refused`` with a
 ``reason`` code (``external_web``, ``app_origin``, ``scheme``, ``invalid``,
-``unsafe_chars``, ``loopback``, ``unreadable``) and ``external_requested``
+``loopback``, ``unreadable``) and ``external_requested``
 (whether a browser launch was queued; the launch itself logs ``external_opened``
 or ``external_open_failed`` from its thread); an allowed navigation logs
 ``navigation_allowed`` at debug. URLs are never logged: the app's own URL
@@ -70,9 +70,10 @@ MAX_URL_LENGTH = 8192
 
 _WEB_SCHEMES = frozenset({"http", "https"})
 
-_SHELL_UNSAFE = frozenset('"<>^`')
-"""Characters refused in a URL handed to the browser: Windows ShellExecute can
-misread them. WebView2 percent-encodes them in the URLs it reports."""
+_SHELL_ESCAPES = {c: f"%{ord(c):02X}" for c in '"<>^`'}
+"""Characters Windows ShellExecute can misread, percent-encoded before a URL is
+handed to the browser (equivalent for HTTP). The URL standard leaves ``^`` and,
+in a query, a backtick unencoded, so real links can carry them."""
 
 
 class NavAction(Enum):
@@ -110,8 +111,7 @@ def _web_url_problem(url: str) -> str | None:
     """``None`` for an absolute http(s) URL with a host, else the refusal reason code.
 
     Reasons: ``invalid`` (empty, too long, whitespace or control characters,
-    bad port, no host), ``scheme`` (not http/https), ``unsafe_chars``
-    (``" < > ^`` or a backtick).
+    bad port, no host), ``scheme`` (not http/https).
     """
     if (
         not url
@@ -128,8 +128,6 @@ def _web_url_problem(url: str) -> str | None:
         return "scheme"
     if not parts.hostname:
         return "invalid"
-    if any(c in _SHELL_UNSAFE for c in url):
-        return "unsafe_chars"
     return None
 
 
@@ -162,7 +160,8 @@ def open_external(
 ) -> bool:
     """Queue a default-browser launch of ``url``; True when the launch was queued.
 
-    Only an absolute http(s) URL is opened (re-checked here, whoever calls);
+    Only an absolute http(s) URL is opened (re-checked here, whoever calls),
+    with ``" < > ^`` and backticks percent-encoded for ShellExecute;
     anything else logs ``external_open_refused`` with a ``reason`` and returns
     False. The opener runs off the GUI thread, which logs the outcome:
     ``external_opened`` when it returns truthy, ``external_open_failed`` with
@@ -175,9 +174,11 @@ def open_external(
         logger.warning("external_open_refused", reason=problem)
         return False
 
+    shell_safe = "".join(_SHELL_ESCAPES.get(c, c) for c in url)
+
     def work() -> None:
         try:
-            launched = opener(url)
+            launched = opener(shell_safe)
         except Exception as e:
             logger.warning("external_open_failed", error_type=type(e).__name__)
             return

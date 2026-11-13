@@ -92,10 +92,14 @@ class TestDecide:
             ("http://0.0.0.0:8765/", ng.NavAction.BLOCK, "loopback"),
             ("https://127.0.0.1:8765/", ng.NavAction.BLOCK, "loopback"),
             ("http://localhost.example.com/", ng.NavAction.EXTERNAL, "external_web"),
-            ('https://example.com/a"b', ng.NavAction.BLOCK, "unsafe_chars"),
-            ("https://example.com/<x>", ng.NavAction.BLOCK, "unsafe_chars"),
-            ("https://example.com/a^b", ng.NavAction.BLOCK, "unsafe_chars"),
-            ("https://example.com/a`b", ng.NavAction.BLOCK, "unsafe_chars"),
+            ('https://example.com/a"b', ng.NavAction.EXTERNAL, "external_web"),
+            ("https://example.com/<x>", ng.NavAction.EXTERNAL, "external_web"),
+            (
+                "https://finance.example.com/quote/^N225",
+                ng.NavAction.EXTERNAL,
+                "external_web",
+            ),
+            ("https://example.com/?q=a`b", ng.NavAction.EXTERNAL, "external_web"),
             ("https://example.com/a%22b%20c", ng.NavAction.EXTERNAL, "external_web"),
             ("https://example.com/a\tb", ng.NavAction.BLOCK, "invalid"),
             ("ms-settings:", ng.NavAction.BLOCK, "scheme"),
@@ -272,6 +276,16 @@ class TestOpenExternal:
         spawned[0]()
         assert calls == ["https://example.com/"]
 
+    def test_shell_sensitive_characters_reach_the_browser_percent_encoded(self):
+        """ShellExecute can misread these; percent-encoding is equivalent for HTTP."""
+        calls: list[str] = []
+        assert ng.open_external(
+            'https://example.com/quote/^N225?q=a`b"<c>',
+            opener=calls.append,
+            spawn=lambda w: w(),
+        )
+        assert calls == ["https://example.com/quote/%5EN225?q=a%60b%22%3Cc%3E"]
+
     def test_the_success_is_logged_from_the_launch_not_before(self):
         spawned: list = []
         with capture_logs() as logs:
@@ -310,11 +324,17 @@ class TestOpenExternal:
             }
         ]
 
-    @pytest.mark.parametrize("url", ['https://e.com/"&calc', "https://e.com/<x>"])
-    def test_shell_metacharacters_are_refused(self, url):
+    @pytest.mark.parametrize(
+        ("url", "handed"),
+        [
+            ('https://e.com/"&calc', "https://e.com/%22&calc"),
+            ("https://e.com/<x>", "https://e.com/%3Cx%3E"),
+        ],
+    )
+    def test_shell_metacharacters_never_reach_the_shell_raw(self, url, handed):
         calls: list[str] = []
-        assert not ng.open_external(url, opener=calls.append, spawn=lambda w: w())
-        assert calls == []
+        assert ng.open_external(url, opener=calls.append, spawn=lambda w: w())
+        assert calls == [handed]
 
     def test_an_opener_failure_is_logged_not_raised(self):
         def fail(_url: str) -> None:
