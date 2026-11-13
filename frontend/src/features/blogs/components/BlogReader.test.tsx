@@ -222,15 +222,14 @@ describe('BlogReader links', () => {
         expect(clientLog).toHaveBeenCalledWith('external_link', { surface: 'blog_post', outcome: 'blocked', reason: 'invalid' });
     });
 
-    it('treats a link to the local image endpoint as a relative link on the official site', () => {
-        // Only <img src> may keep the app-relative cached-image URL; on a link it resolves against
-        // the blog base like any relative href and opens in the browser, never in the window.
+    it('leaves a link to the local image endpoint inert', () => {
+        // Only <img src> may keep the app-relative cached-image URL; an anchor to it has no href
+        // (it would resolve to a 404 on the official site), so a click opens nothing and never
+        // navigates the window.
         render(<BlogReader {...props({ content: LINKS })} />);
+        expect(screen.getByText('local')).not.toHaveAttribute('href');
         expect(fireEvent.click(screen.getByText('local'))).toBe(false);
-        expect(open).toHaveBeenCalledWith(
-            'https://www.hinatazaka46.com/api/blogs/image?service=hinatazaka46&blog_id=1&filename=img_0.jpg',
-            '_blank', 'noopener,noreferrer',
-        );
+        expect(open).not.toHaveBeenCalled();
     });
 
     it('opens the photo viewer for a linked image instead of the link', () => {

@@ -50,8 +50,11 @@ describe('post URLs', () => {
     it('does not keep the cached-image endpoint on a link', () => {
         expect(urlOf('a', 'http://127.0.0.1:8000/api/blogs/image?x=1')).toBeNull();
         expect(urlOf('a', '/api/blogs/image?a=1', '')).toBeNull();
-        // With a base it is an ordinary relative link on the official site, never an app URL.
-        expect(urlOf('a', '/api/blogs/image?a=1')).toBe('https://blog.example.com/api/blogs/image?a=1');
+        // Even with a base it is dropped (inert), not resolved to a 404 on the official site.
+        expect(urlOf('a', '/api/blogs/image?a=1')).toBeNull();
+        expect(urlOf('a', '/api/blogs/image')).toBeNull();
+        // Other relative links still resolve on the blog base.
+        expect(urlOf('a', '/api/blogs/other')).toBe('https://blog.example.com/api/blogs/other');
     });
     it('keeps absolute off-origin URLs and resolves relative ones on the blog base', () => {
         expect(urlOf('img', 'https://cdn.example.com/a.jpg')).toBe('https://cdn.example.com/a.jpg');
