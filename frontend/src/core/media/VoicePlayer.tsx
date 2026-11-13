@@ -335,14 +335,20 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         if (e.defaultPrevented) return;
         const el = e.target instanceof HTMLElement ? e.target : null;
         if (el?.closest('[role="menu"], input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
-        if (!viewerMode && el?.tagName === 'BUTTON') return;
+        // Space on a focused button keeps that button's action; logged once per player.
+        const leaveSpaceToButton = (): void => {
+            if (loggedSpaceRef.current) return;
+            loggedSpaceRef.current = true;
+            clientLog('media_playback', { surface: 'voice', phase: 'shortcut', outcome: 'space_left_to_button' });
+        };
+        if (!viewerMode && el?.tagName === 'BUTTON') {
+            if (e.key === ' ') leaveSpaceToButton();
+            return;
+        }
         switch (e.key) {
             case ' ':
                 if (el?.closest('button')) {
-                    if (!loggedSpaceRef.current) {
-                        loggedSpaceRef.current = true;
-                        clientLog('media_playback', { surface: 'voice', phase: 'shortcut', outcome: 'space_left_to_button' });
-                    }
+                    leaveSpaceToButton();
                     return;
                 }
                 e.preventDefault();
@@ -793,7 +799,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                             onClick={handleMuteToggle}
                             className="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
                             title={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
-                                aria-label={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
+                            aria-label={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
                             type="button"
                         >
                             {isMuted ? (

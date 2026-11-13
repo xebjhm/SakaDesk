@@ -73,6 +73,50 @@ describe('VoicePlayer accessible controls (UI health #7)', () => {
         expect(screen.getByRole('button', { name: /^Mute/ })).toBeInTheDocument();
     });
 
+    it('logs an inline Space on a button once, but not other keys', () => {
+        const { container } = render(<VoicePlayer src={SRC} />);
+        const mute = within(container).getByRole('button', { name: /Mute/ });
+        fireEvent.keyDown(mute, { key: 'm' });
+        expect(vi.mocked(clientLog)).not.toHaveBeenCalledWith('media_playback', expect.objectContaining({ outcome: 'space_left_to_button' }));
+        fireEvent.keyDown(mute, { key: ' ' });
+        fireEvent.keyDown(mute, { key: ' ' });
+        const skipped = vi.mocked(clientLog).mock.calls.filter(c => c[1]?.outcome === 'space_left_to_button');
+        expect(skipped).toEqual([['media_playback', { surface: 'voice', phase: 'shortcut', outcome: 'space_left_to_button' }]]);
+    });
+
+    it('viewer mode ignores a key typed in the portaled more-options menu', () => {
+        render(<VoicePlayer src={SRC} variant="premium" viewerMode />);
+        fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+        const item = screen.getByRole('menu').querySelector('[role^="menuitem"]') as HTMLElement;
+        // The menu is portaled to <body>, so the window handler sees its keys; they stay the menu's.
+        fireEvent.keyDown(item, { key: 'm' });
+        expect(screen.getByRole('button', { name: /^Mute/ })).toBeInTheDocument();
+        fireEvent.keyDown(document.body, { key: 'm' });
+        expect(screen.getByRole('button', { name: /^Unmute/ })).toBeInTheDocument();
+    });
+
+    it('closes an open menu when the volume slider gets keyboard focus', () => {
+        mockFocusVisible(true);
+        render(<VoicePlayer src={SRC} />);
+        fireEvent.click(screen.getByRole('button', { name: 'More options' }));
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+        act(() => screen.getByRole('slider', { name: 'Volume' }).focus());
+        expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('viewer mode handles M on the window and drops the listener on unmount', () => {
+        const added = vi.spyOn(window, 'addEventListener');
+        const removed = vi.spyOn(window, 'removeEventListener');
+        const { unmount } = render(<VoicePlayer src={SRC} variant="premium" viewerMode />);
+        expect(screen.getByRole('button', { name: /^Mute/ })).toBeInTheDocument();
+        fireEvent.keyDown(window, { key: 'm' });
+        expect(screen.getByRole('button', { name: /^Unmute/ })).toBeInTheDocument();
+        const keydown = added.mock.calls.find(([type]) => type === 'keydown');
+        expect(keydown).toBeDefined();
+        unmount();
+        expect(removed).toHaveBeenCalledWith('keydown', keydown![1]);
+    });
+
     it('releases the slider 300 ms after keyboard focus leaves', () => {
         vi.useFakeTimers();
         try {
