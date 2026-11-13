@@ -6,6 +6,7 @@ import type { ServiceDefinition } from '../../data/services';
 import { useGroupMarker } from '../../design/useGroupMarker';
 import { SERVICE_FEATURES, FEATURE_DEFINITIONS } from '../../config/features';
 import { useAppStore } from '../../store/appStore';
+import { useShallow } from 'zustand/react/shallow';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
 
@@ -19,7 +20,13 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
     onClose,
 }) => {
     const { t } = useTranslation();
-    const { addSelectedService, setActiveService, setActiveFeature, getServiceOrder, setFreshlyAddedService } = useAppStore();
+    const { addSelectedService, setActiveService, setActiveFeature, getServiceOrder, setFreshlyAddedService } = useAppStore(useShallow((s) => ({
+        addSelectedService: s.addSelectedService,
+        setActiveService: s.setActiveService,
+        setActiveFeature: s.setActiveFeature,
+        getServiceOrder: s.getServiceOrder,
+        setFreshlyAddedService: s.setFreshlyAddedService,
+    })));
 
     // Filter out already selected services, sorted by global order
     const availableServices = getOrderedServiceDefs(getServiceOrder()).filter(

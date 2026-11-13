@@ -29,7 +29,12 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
     onOpenSearch,
 }) => {
     const { t } = useTranslation();
-    const { activeService, setActiveService, removeSelectedService, getServiceOrder, setServiceOrder } = useAppStore();
+    const activeService = useAppStore((s) => s.activeService);
+    const setActiveService = useAppStore((s) => s.setActiveService);
+    const removeSelectedService = useAppStore((s) => s.removeSelectedService);
+    // Read at drop time (an event handler), so the function itself is selected.
+    const getServiceOrder = useAppStore((s) => s.getServiceOrder);
+    const setServiceOrder = useAppStore((s) => s.setServiceOrder);
     const [showAddModal, setShowAddModal] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ serviceId: string; x: number; y: number } | null>(null);
     const { isServiceDisconnected } = useAuth();

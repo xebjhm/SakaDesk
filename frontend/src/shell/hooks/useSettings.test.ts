@@ -11,7 +11,7 @@ const { mockSelectedServices } = vi.hoisted(() => ({
 
 vi.mock('../../store/appStore', () => {
     const mockUseAppStore = Object.assign(
-        () => ({
+        (select: (s: unknown) => unknown) => select({
             activeService: null,
             selectedServices: mockSelectedServices.value,
         }),

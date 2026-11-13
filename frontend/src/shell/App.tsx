@@ -8,6 +8,7 @@ import { DiagnosticsModal, ReportIssueModal, AboutModal } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
 import { MessagesFeature } from '../features/messages'
 import { useAppStore } from '../store/appStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { FeatureId } from '../store/appStore'
 import { serviceIdToGroupId } from '../config/colors'
 import { applyGroupTokens } from '../design/applyTokens'
@@ -41,7 +42,14 @@ function App() {
         setSelectedServices,
         setActiveFeature,
         setFreshlyAddedService,
-    } = useAppStore();
+    } = useAppStore(useShallow((s) => ({
+        activeService: s.activeService,
+        setActiveService: s.setActiveService,
+        selectedServices: s.selectedServices,
+        setSelectedServices: s.setSelectedServices,
+        setActiveFeature: s.setActiveFeature,
+        setFreshlyAddedService: s.setFreshlyAddedService,
+    })));
 
     // Auth hook
     const {
@@ -177,6 +185,7 @@ function App() {
     const [crashError, setCrashError] = useState<string | undefined>();
     const [showAboutModal, setShowAboutModal] = useState(false);
     const [showFirstSyncToast, setShowFirstSyncToast] = useState(false);
+    const syncNow = useCallback(() => startSync(false), [startSync]);
     const hideFirstSyncToast = useCallback(() => setShowFirstSyncToast(false), []);
 
     // Search modal
@@ -573,7 +582,7 @@ function App() {
                             <MessagesFeature
                                 appSettings={appSettings}
                                 syncVersion={syncVersion}
-                                onSyncNow={() => startSync(false)}
+                                onSyncNow={syncNow}
                             />
                         }
                     />

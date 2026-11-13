@@ -221,7 +221,7 @@ export function useSync({
     onSyncComplete,
     markServiceDisconnected,
 }: UseSyncOptions): UseSyncReturn {
-    const { activeService } = useAppStore();
+    const activeService = useAppStore((s) => s.activeService);
 
     // Sync progress lives in syncProgressStore (UI health #2): writing it re-renders only the views
     // that subscribe, never App.

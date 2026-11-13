@@ -43,8 +43,7 @@ export const ContentArea: React.FC<ContentAreaProps> = ({
     blogBackupEnabled,
     userNickname,
 }) => {
-    const { getActiveFeature } = useAppStore();
-    const activeFeature = getActiveFeature(service);
+    const activeFeature = useAppStore((s) => s.getActiveFeature(service));
     // A boolean slice: a progress tick re-renders the inline card only, never the feature beside it.
     const initialSyncActive = useSyncProgressStore((s) => isSyncActive(s.byService[service]));
 

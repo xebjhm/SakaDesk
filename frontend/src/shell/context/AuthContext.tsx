@@ -69,7 +69,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  * - Session expiry detection
  */
 export function AuthProvider({ children }: { children: ReactNode }) {
-    const { setActiveService } = useAppStore();
+    const setActiveService = useAppStore((s) => s.setActiveService);
 
     const [isAuthenticated, setIsAuthenticated] = useState<boolean | null>(null);
     const [authCheckComplete, setAuthCheckComplete] = useState(false);

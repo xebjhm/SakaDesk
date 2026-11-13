@@ -11,6 +11,7 @@ import { Menu, MessageCircle, ChevronUp, ChevronDown, CloudOff } from 'lucide-re
 import type { GroupedVirtuosoHandle } from 'react-virtuoso';
 import { CalendarModal } from '../../core/modals/CalendarModal';
 import { useAppStore } from '../../store/appStore';
+import { useShallow } from 'zustand/react/shallow';
 import { formatName, DEFAULT_BACKGROUND, loadBackgroundSettings } from '../../utils';
 import { cn } from '../../utils/classnames';
 import { ContentSheet } from '../../core/layout/ContentSheet';
@@ -163,7 +164,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const isSyncing = useSyncProgressStore(selectIsSyncing);
 
     // Get active service and conversation persistence from Zustand store
-    const { activeService, setSelectedConversation, getSelectedConversation } = useAppStore();
+    const { activeService, setSelectedConversation, getSelectedConversation } = useAppStore(useShallow((s) => ({
+        activeService: s.activeService,
+        setSelectedConversation: s.setSelectedConversation,
+        getSelectedConversation: s.getSelectedConversation,
+    })));
 
     // Chat state
     const [selectedGroupDir, setSelectedGroupDir] = useState<string | undefined>();
@@ -703,7 +708,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // === HELPERS ===
 
-    const handleSelectGroup = (groupDir: string, groupChat: boolean, displayName: string) => {
+    const handleSelectGroup = useCallback((groupDir: string, groupChat: boolean, displayName: string) => {
         if (selectedGroupDir !== groupDir) {
             setSelectedGroupDir(groupDir);
             setIsGroupChat(groupChat);
@@ -721,7 +726,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                 });
             }
         }
-    };
+    }, [selectedGroupDir, activeService, setSelectedConversation]);
 
     // Chat avatars (message runs, letters, header; the viewer's voice player reuses the sender's)
     // are drawn at 36-40 CSS px: request the resized variant matched to the screen. The profile
@@ -770,6 +775,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const jumpToLetter = useCallback((id: number) => {
         void jumpTo({ kind: 'letter', id });
     }, [jumpTo]);
+
+    // Stable props for the memoised list and sidebar.
+    const openRevealConfirm = useCallback(() => setShowRevealConfirm(true), []);
+    const openMemberProfile = useCallback(() => setShowMemberProfile(true), []);
+    const clearTargetMessage = useCallback(() => setTargetMessageId(null), [setTargetMessageId]);
+    const milestoneFooter = useMemo(() => (milestone ? <MilestoneFooter milestone={milestone} /> : undefined), [milestone]);
 
     // The letter viewer opened from a timeline letter (walks the timeline's letters chronologically);
     // cleared on a room switch. Its jump, like the Sent letters dialog's, focuses the timeline after.
@@ -1049,24 +1060,24 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             getSenderInfo={getSenderInfo}
                             isUnread={isUnread}
                             onReveal={revealMessage}
-                            onLongPress={() => setShowRevealConfirm(true)}
+                            onLongPress={openRevealConfirm}
                             onRangeChanged={updateUnreadNavState}
                             virtuosoRef={virtuosoRef}
                             scrollerRef={setChatScroller}
                             userNickname={userNickname}
                             onToggleFavorite={handleToggleFavorite}
                             favoriteOverrides={favoriteOverrides}
-                            onAvatarClick={() => setShowMemberProfile(true)}
+                            onAvatarClick={openMemberProfile}
                             onMediaClick={handleMediaClick}
                             service={messagesService}
                             targetMessageId={targetMessageId}
-                            onTargetMessageConsumed={() => setTargetMessageId(null)}
+                            onTargetMessageConsumed={clearTargetMessage}
                             onJumpToMessage={jumpToTargetMessage}
                             highlightedRowKey={highlightedRowKey}
                             getMemberPath={getMemberPath}
                             onOpenCalendar={openCalendar}
                             renderLetter={renderLetter}
-                            footer={milestone ? <MilestoneFooter milestone={milestone} /> : undefined}
+                            footer={milestoneFooter}
                         />
                     )}
                     <CallOverlay

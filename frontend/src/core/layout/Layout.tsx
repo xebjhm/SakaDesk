@@ -5,6 +5,7 @@ import { FeatureRail } from './FeatureRail';
 import { ContentArea } from './ContentArea';
 import { Canvas } from '../../design/primitives';
 import { useAppStore } from '../../store/appStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from '../../i18n';
 
 interface LayoutProps {
@@ -37,10 +38,13 @@ export const Layout: React.FC<LayoutProps> = ({
     userNicknames,
 }) => {
     const { t } = useTranslation();
-    const { activeService, setActiveService, selectedServices, getServiceOrder } = useAppStore();
+    const activeService = useAppStore((s) => s.activeService);
+    const setActiveService = useAppStore((s) => s.setActiveService);
+    const selectedServices = useAppStore((s) => s.selectedServices);
+    // getServiceOrder() builds a new array when services are missing from the stored order: compare by content.
+    const serviceOrder = useAppStore(useShallow((s) => s.getServiceOrder()));
 
     // Sort selected services by global display order
-    const serviceOrder = getServiceOrder();
     const services = [...selectedServices].sort(
         (a, b) => serviceOrder.indexOf(a) - serviceOrder.indexOf(b)
     );

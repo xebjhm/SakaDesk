@@ -74,7 +74,7 @@ const SectionHeading: React.FC<{ children: React.ReactNode }> = ({ children }) =
 /** `/api/content/groups`: legacy array, or object with groups + last_sync. */
 type GroupsResponse = GroupInfo[] | { groups: GroupInfo[]; last_sync?: Record<string, string> };
 
-export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow }) => {
+const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow }) => {
     const { t } = useTranslation();
     const [groups, setGroups] = useState<GroupInfo[]>([]);
     // Resized variant matched to the screen: 64 CSS px × device pixel ratio, rounded up to an allowed width.
@@ -492,3 +492,6 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         </div>
     );
 };
+
+/** Memoised: its parent re-renders for chat state the sidebar does not show. */
+export const MemberList = React.memo(MemberListComponent);

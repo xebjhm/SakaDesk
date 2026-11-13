@@ -13,7 +13,7 @@ const { mockRemoveInitialSyncService } = vi.hoisted(() => ({
 }))
 vi.mock('../../store/appStore', () => {
     const mockUseAppStore = Object.assign(
-        () => ({ activeService: 'hinatazaka46' }),
+        (select: (s: unknown) => unknown) => select({ activeService: 'hinatazaka46' }),
         { getState: () => ({ removeInitialSyncService: mockRemoveInitialSyncService }) },
     )
     return { useAppStore: mockUseAppStore }

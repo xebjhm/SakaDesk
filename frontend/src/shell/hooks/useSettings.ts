@@ -83,7 +83,7 @@ export interface UseSettingsReturn {
 }
 
 export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn {
-    const { selectedServices } = useAppStore();
+    const selectedServices = useAppStore((s) => s.selectedServices);
 
     const [appSettings, setAppSettings] = useState<AppSettings | null>(null);
     const [allServiceSettings, setAllServiceSettings] = useState<Record<string, ServiceSettings>>({});
