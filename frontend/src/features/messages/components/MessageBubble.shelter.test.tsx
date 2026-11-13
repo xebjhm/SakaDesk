@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
@@ -40,5 +41,30 @@ describe('MessageBubble unread shelter (UI health #3)', () => {
         expect(screen.getByText('こんにちは').closest('[inert]')).not.toBeNull();
         rerender(<MessageBubble message={msg()} member_name="n" service="hinatazaka46" isUnread={false} onReveal={vi.fn()} />);
         expect(screen.getByText('こんにちは').closest('[inert]')).toBeNull();
+    });
+
+    it('moves focus to the revealed bubble after a keyboard reveal, never to the body', async () => {
+        const Harness = () => {
+            const [unread, setUnread] = useState(true);
+            return <MessageBubble message={msg()} member_name="n" service="hinatazaka46" isUnread={unread} onReveal={() => setUnread(false)} />;
+        };
+        render(<Harness />);
+        screen.getByRole('button', { name: 'Show unread message' }).focus();
+        await userEvent.keyboard('{Enter}');
+        const content = screen.getByText('こんにちは').closest('[tabindex="-1"]');
+        expect(content).not.toBeNull();
+        expect(document.activeElement).toBe(content);
+        expect(document.activeElement).not.toBe(document.body);
+    });
+
+    it('leaves focus alone after a mouse reveal', async () => {
+        const Harness = () => {
+            const [unread, setUnread] = useState(true);
+            return <MessageBubble message={msg()} member_name="n" service="hinatazaka46" isUnread={unread} onReveal={() => setUnread(false)} />;
+        };
+        render(<Harness />);
+        await userEvent.click(screen.getByRole('button', { name: 'Show unread message' }));
+        expect(screen.queryByRole('button', { name: 'Show unread message' })).toBeNull();
+        expect(screen.getByText('こんにちは').closest('[tabindex="-1"]')).not.toBe(document.activeElement);
     });
 });

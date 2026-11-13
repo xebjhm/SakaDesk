@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import type { Message } from '../../../types';
 import { cn } from '../../../utils/classnames';
 import { VoicePlayer } from '../../../core/media/VoicePlayer';
@@ -93,7 +93,8 @@ interface ShelterOverlayProps {
     corners: string;
     /** Translated name, by kind ("Show unread photo"). */
     label: string;
-    onReveal: () => void;
+    /** `viaKeyboard`: the click came from Enter or Space (a click event with `detail` 0). */
+    onReveal: (viaKeyboard: boolean) => void;
     /** Long-press (reveal all) start / end. */
     onPressStart: () => void;
     onPressEnd: () => void;
@@ -120,7 +121,7 @@ const ShelterOverlay: React.FC<ShelterOverlayProps> = ({ type, service, corners,
             )}
             onClick={(e) => {
                 e.stopPropagation();
-                onReveal();
+                onReveal(e.detail === 0);
             }}
             onMouseDown={onPressStart}
             onMouseUp={onPressEnd}
@@ -379,10 +380,21 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         }
     }, []);
 
-    const reveal = useCallback(() => onReveal?.(), [onReveal]);
+    // A keyboard reveal unmounts the focused shelter button; focus then moves to the revealed bubble
+    // (a mouse reveal never takes focus).
+    const focusAfterReveal = useRef(false);
+    const reveal = useCallback((viaKeyboard: boolean) => {
+        focusAfterReveal.current = viaKeyboard;
+        onReveal?.();
+    }, [onReveal]);
     // The hidden bubble's own controls and text leave the Tab order and the accessibility tree.
     const contentRef = useRef<HTMLDivElement>(null);
     useInert(contentRef, isUnread);
+    useLayoutEffect(() => {
+        if (isUnread || !focusAfterReveal.current) return;
+        focusAfterReveal.current = false;
+        contentRef.current?.focus({ preventScroll: true });
+    }, [isUnread]);
 
     const favoriteStar = starred && (
         <Star className="h-3.5 w-3.5 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
@@ -471,7 +483,10 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                     <div
                         ref={contentRef}
+                        // Programmatic focus target after a keyboard reveal; not a Tab stop.
+                        tabIndex={-1}
                         className={cn(
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
                             'border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard',
                             bubbleCorners,
                             // The footer carries the bottom radius so bubble and footer read as one shape

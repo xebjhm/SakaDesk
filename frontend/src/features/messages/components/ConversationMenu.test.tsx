@@ -95,13 +95,17 @@ describe('ConversationMenu reveal all (UI health #3)', () => {
         expect(item.querySelector('svg')).not.toHaveClass('text-accent');
         await userEvent.click(item);
         expect(onRevealAll).toHaveBeenCalledTimes(1);
+        expect(screen.queryByRole('menu')).toBeNull();
     });
 
     it('keeps the item focusable with a reason when nothing is unread', async () => {
         const onRevealAll = open(0);
         const item = screen.getByRole('menuitem', { name: /Reveal all unread/ });
         expect(item).toHaveAttribute('aria-disabled', 'true');
+        expect(item).toHaveAttribute('title', 'Nothing is unread in this chat');
+        expect(item).toHaveAccessibleDescription('Nothing is unread in this chat');
         await userEvent.click(item);
         expect(onRevealAll).not.toHaveBeenCalled();
+        expect(screen.getByRole('menu')).toBeInTheDocument();
     });
 });

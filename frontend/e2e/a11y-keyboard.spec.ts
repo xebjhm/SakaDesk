@@ -23,5 +23,7 @@ test.describe('keyboard access', () => {
     await page.keyboard.press('Enter')
     await expect(page.getByRole('button', { name: 'Show unread message' })).toHaveCount(0)
     await expect(page.locator(`#msg-${COUNT}`)).toContainText(`Message ${COUNT}`)
+    // Focus moves into the revealed row, not to the body.
+    await expect.poll(() => page.evaluate(() => document.activeElement?.closest('[id^="msg-"]')?.id)).toBe(`msg-${COUNT}`)
   })
 })

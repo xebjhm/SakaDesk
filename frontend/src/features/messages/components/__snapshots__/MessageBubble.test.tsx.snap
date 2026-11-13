@@ -46,7 +46,8 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
       class="relative"
     >
       <div
-        class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
+        class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
+        tabindex="-1"
       >
         <div
           class="relative rounded-sm overflow-hidden mb-2 flex items-center justify-center bg-sunken animate-pulse motion-reduce:animate-none"
@@ -121,7 +122,8 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
       class="relative"
     >
       <div
-        class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
+        class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
+        tabindex="-1"
       >
         <div
           class="whitespace-pre-wrap text-body text-primary"
@@ -207,8 +209,9 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
         </svg>
       </button>
       <div
-        class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3 pointer-events-none opacity-0"
+        class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3 pointer-events-none opacity-0"
         inert=""
+        tabindex="-1"
       >
         <div
           class="whitespace-pre-wrap text-body text-primary"
