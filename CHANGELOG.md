@@ -85,8 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   skipped. Member photos are saved and shown only as pictures.
 - **Only you can change where SakaDesk keeps your archive.** The output folder
   can now only be chosen with Browse, in Windows' own folder picker, and
-  SakaDesk only opens files inside the group folders it creates there, so
-  another program or a web page can no longer point it at your other files.
+  SakaDesk only opens files inside the group folders it creates there, so a
+  web page or hostile content can no longer point it at your other files.
   Network locations, whole drives, system folders and your user folder itself
   are refused (a mapped drive letter works), and the folder you already use
   keeps working.
