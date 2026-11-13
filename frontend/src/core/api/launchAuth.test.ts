@@ -49,6 +49,21 @@ describe('takeLaunchToken', () => {
         const history = { state: null, replaceState: vi.fn() }
         expect(takeLaunchToken({ hash: `#t=${TOKEN}`, pathname: '/', search: '' }, null, history)).toBe(TOKEN)
     })
+
+    it('strips a percent-encoded t key too (the token must not stay in the URL)', () => {
+        const history = { state: null, replaceState: vi.fn() }
+        expect(takeLaunchToken({ hash: `#%74=${TOKEN}`, pathname: '/', search: '' }, memoryStorage(), history)).toBe(TOKEN)
+        expect(history.replaceState).toHaveBeenCalledWith(null, '', '/')
+        const again = { state: null, replaceState: vi.fn() }
+        takeLaunchToken({ hash: `#x=1&%74=${TOKEN}&t=${TOKEN}`, pathname: '/', search: '' }, memoryStorage(), again)
+        expect(again.replaceState).toHaveBeenCalledWith(null, '', '/#x=1')
+    })
+
+    it('keeps a segment whose key only looks like t', () => {
+        const history = { state: null, replaceState: vi.fn() }
+        takeLaunchToken({ hash: `#t=${TOKEN}&tt=1&%E0=2`, pathname: '/', search: '' }, memoryStorage(), history)
+        expect(history.replaceState).toHaveBeenCalledWith(null, '', '/#tt=1&%E0=2')
+    })
 })
 
 describe('takeLaunchToken edge cases', () => {

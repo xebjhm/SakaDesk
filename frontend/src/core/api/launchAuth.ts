@@ -26,6 +26,16 @@ export function sessionStorageOrNull(): Storage | null {
     }
 }
 
+/** True for a fragment segment whose key decodes to `t` (`t=…`, `%74=…`), as URLSearchParams reads it. */
+function isTokenSegment(segment: string): boolean {
+    const key = segment.split('=', 1)[0]
+    try {
+        return decodeURIComponent(key.replace(/\+/g, ' ')) === 't'
+    } catch {
+        return false
+    }
+}
+
 /**
  * The launch token from the URL fragment (then stripped, other fragment segments kept
  * verbatim) or from this window's storage. `onStoreFailed` is called (no arguments, so it
@@ -49,7 +59,7 @@ export function takeLaunchToken(
         }
         const rest = rawHash
             .split('&')
-            .filter((segment) => !segment.startsWith('t='))
+            .filter((segment) => !isTokenSegment(segment))
             .join('&')
         history.replaceState(history.state, '', `${loc.pathname}${loc.search}${rest ? `#${rest}` : ''}`)
         return fromHash

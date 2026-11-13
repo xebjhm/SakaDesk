@@ -42,7 +42,8 @@ export type ClientLogEvent =
     | 'recap_poster' | 'recap_share' | 'recap_opening'
     | 'ui_wait'
     | 'media_grid' | 'media_poster' | 'external_link' | 'csp_violation'
-    | 'output_folder_pick_failed' | 'output_folder_pick_ignored' | 'setup_save_failed';
+    | 'output_folder_pick_failed' | 'output_folder_pick_ignored' | 'setup_save_failed'
+    | 'download_refused';
 
 export type ClientLogFieldKey =
     | 'service' | 'group_id' | 'member_id' | 'message_id' | 'reason'
