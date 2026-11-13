@@ -182,6 +182,8 @@ test.describe('timeline scroll', () => {
     await page.getByTitle('More options').click()
     await page.getByText('Sent Letters', { exact: true }).click()
     await page.getByRole('dialog').getByRole('button', { name: /2023/ }).click()
+    // A card opens the letter viewer; its footer date button jumps to the letter in the chat.
+    await page.getByRole('button', { name: /Show letter sent .*2023/ }).click()
     await expect.poll(() => isRowInViewport(page, 'letter-100'), { timeout: 1000, intervals: [50] }).toBe(true)
     await expect(page.locator('#letter-100')).toHaveClass(/animate-landing/)
   })
