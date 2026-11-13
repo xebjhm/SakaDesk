@@ -67,6 +67,26 @@ def test_a_name_never_cuts_into_a_longer_name():
     )
 
 
+@pytest.mark.parametrize("end", [".", "!", "?", "|", "。", "、", "！", "…", "`"])
+def test_a_path_followed_by_punctuation_is_still_redacted(end):
+    """A sentence or list may end right after a path; nothing of it may leak."""
+    home = rf"Permission denied: C:\Users\alice{end} next"
+    assert "alice" not in _redact_path(home, "alice", home="")
+    out = report._redact_output_dir(rf"cannot open D:\SakaData{end}", r"D:\SakaData")
+    assert "SakaData" not in out
+
+
+@pytest.mark.parametrize("cont", ["nata", "_x", "-old", "2", "日本"])
+def test_a_name_character_after_a_path_keeps_it_one_name(cont):
+    assert _redact_path(f"/home/hina{cont}/x", "hina", home="") == (
+        f"/home/hina{cont}/x"
+    )
+    assert (
+        report._redact_output_dir(rf"D:\SakaData{cont}\x", r"D:\SakaData")
+        == rf"D:\SakaData{cont}\x"
+    )
+
+
 @pytest.mark.parametrize("root", ["C:\\", "/", "", "C:"])
 def test_a_bare_root_is_never_a_pattern(root):
     assert report._path_regex(root) is None

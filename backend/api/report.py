@@ -76,9 +76,10 @@ def _get_username() -> str:
 # or a "/". The bound keeps every match attempt short, so a long run of
 # backslashes costs linear time instead of quadratic.
 _SEP = r"(?:\\{1,8}|/)"
-# A match ends where its last part ends: a separator, a quote, whitespace,
-# punctuation or the end of the text, so "hina" never cuts into "hinata".
-_END = r"(?=[\\/'\"\s,;:)\]}>]|$)"
+# A match ends where its last part ends: anywhere the next character cannot
+# continue a name (any punctuation, including CJK, a separator, whitespace or
+# the end of the text), so "hina" never cuts into "hinata" or "hina_2".
+_END = r"(?![\w-])"
 
 
 def _path_regex(path_text: str) -> Optional[str]:
