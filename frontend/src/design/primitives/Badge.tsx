@@ -13,14 +13,15 @@ export const Badge: React.FC<BadgeProps> = ({ count, className }) => {
     if (count <= 0) return null;
     return (
         <span
-            aria-label={t('common.unreadCount', { count })}
             className={cn(
                 'inline-flex h-5 min-w-5 items-center justify-center rounded-pill bg-accent px-1.5',
                 'text-caption font-semibold text-inverse shadow-accent-unread',
                 className,
             )}
         >
-            {count > 99 ? '99+' : count}
+            {/* A plain span cannot carry a name: the count is read from visually hidden text (UI health A-S2). */}
+            <span aria-hidden="true">{count > 99 ? '99+' : count}</span>
+            <span className="sr-only">{t('common.unreadCount', { count })}</span>
         </span>
     );
 };

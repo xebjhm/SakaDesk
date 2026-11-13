@@ -34,6 +34,17 @@ describe('useTimelineKeyNav', () => {
         expect(jumpTo).toHaveBeenCalledWith({ kind: 'bottom' });
     });
 
+    it('leaves Home and End to a range or a field', () => {
+        const jumpTo = vi.fn();
+        const { result } = renderHook(() => useTimelineKeyNav(jumpTo, false));
+        const slider = document.createElement('input');
+        slider.type = 'range';
+        const preventDefault = vi.fn();
+        result.current({ key: 'Home', repeat: false, target: slider, preventDefault, stopPropagation: vi.fn() } as unknown as React.KeyboardEvent);
+        expect(jumpTo).not.toHaveBeenCalled();
+        expect(preventDefault).not.toHaveBeenCalled();
+    });
+
     it('leaves PageUp/PageDown alone when no call is active', () => {
         const { handle, jumpTo } = setup(false);
         const e = key('PageUp');

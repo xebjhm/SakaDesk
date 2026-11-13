@@ -15,6 +15,8 @@ export function useTimelineKeyNav(
     callActive: boolean,
 ) {
     return useCallback((e: React.KeyboardEvent) => {
+        // Keys typed into a control inside a bubble (a seek or volume range, a field, a menu) are its own.
+        if (e.target instanceof Element && e.target.closest('input, textarea, select, [role="slider"], [role="menu"], [role="listbox"], [contenteditable="true"]')) return;
         if (callActive) {
             if (SCROLL_KEYS.has(e.key)) e.preventDefault();
             return;

@@ -409,7 +409,8 @@
       "video": "顯示未讀片",
       "voice": "顯示未讀語音"
     },
-    "openPhoto": "打開相"
+    "openPhoto": "打開相",
+    "timeline": "訊息"
   },
   "calendar": {
     "loadFailed": "載入唔到日期",
@@ -497,7 +498,8 @@
   "serviceRail": {
     "label": "群組",
     "sessionExpiredRelogin": "Session 過咗期 - Click 呢度重新登入",
-    "addService": "加服務"
+    "addService": "加服務",
+    "serviceDisconnected": "{{name}}，Session 過咗期 - Click 呢度重新登入"
   },
   "search": {
     "memberCount": "{{count}} 位成員",
@@ -1459,5 +1461,8 @@
       "stubsLabel": "特別嘅日子",
       "footer": "SakaDesk"
     }
+  },
+  "a11y": {
+    "skipToContent": "跳去內容"
   }
 }

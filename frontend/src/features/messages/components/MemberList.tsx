@@ -390,6 +390,7 @@ const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGr
                     <button
                         key={group.id}
                         type="button"
+                        aria-current={isSelected ? 'true' : undefined}
                         onClick={() => onSelectGroup(info.path, info.isGroupChat, info.displayName)}
                         onContextMenu={info.isGroupChat ? undefined : (e) => {
                             e.preventDefault();

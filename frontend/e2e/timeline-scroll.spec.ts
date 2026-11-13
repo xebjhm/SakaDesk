@@ -51,7 +51,7 @@ test.describe('timeline scroll', () => {
     const dialog = await openCalendarAt(page, 'January 2022')
     const expected = firstIdOnDate(messages.current, '2022-01-15')
     const t0 = Date.now()
-    await dialog.getByRole('button', { name: '15', exact: true }).click()
+    await dialog.locator('button[data-day="15"]:not([data-outside])').click()
     await expect.poll(() => topVisibleMessageId(page), { timeout: 1000, intervals: [50] }).toBe(expected)
     expect(Date.now() - t0).toBeLessThan(1000)
     await expect(page.locator(`#msg-${expected}`)).toHaveClass(/animate-landing/)
@@ -78,7 +78,7 @@ test.describe('timeline scroll', () => {
       new URL(req.url()).searchParams.get('path') === `sakadesk_scroll_${ROOM_DIR}` &&
       String((req.postDataJSON() as { value?: unknown } | null)?.value) === String(expected),
     )
-    await dialog.getByRole('button', { name: '15', exact: true }).click()
+    await dialog.locator('button[data-day="15"]:not([data-outside])').click()
     await expect.poll(() => topVisibleMessageId(page), { timeout: 2000 }).toBe(expected)
     await saved
     await page.getByText('Other Room', { exact: true }).click()
@@ -139,7 +139,7 @@ test.describe('timeline scroll', () => {
   test('a date jump puts that day\'s date pill at the top', async ({ page }) => {
     await openBigRoom(page)
     const dialog = await openCalendarAt(page, 'January 2022')
-    await dialog.getByRole('button', { name: '15', exact: true }).click()
+    await dialog.locator('button[data-day="15"]:not([data-outside])').click()
     await expect(page.locator('[data-testid="virtuoso-top-item-list"] time')).toHaveAttribute('datetime', '2022-01-15', { timeout: 1000 })
   })
 
@@ -155,7 +155,7 @@ test.describe('timeline scroll', () => {
     await openBigRoom(page)
     const dialog = await openCalendarAt(page, 'January 2022')
     const id = firstIdOnDate(messages.current, '2022-01-15')
-    await dialog.getByRole('button', { name: '15', exact: true }).click()
+    await dialog.locator('button[data-day="15"]:not([data-outside])').click()
     await expect.poll(() => topVisibleMessageId(page), { timeout: 2000 }).toBe(id)
     // Slide that row 30 px up behind the band, then hit-test the band beside the pill.
     const hit = await page.evaluate((rowId) => {
@@ -172,7 +172,7 @@ test.describe('timeline scroll', () => {
     await openBigRoom(page)
     const dialog = await openCalendarAt(page, 'February 2022')
     // The grid also shows the dimmed 10 March; the in-month day comes first.
-    await dialog.getByRole('button', { name: '10', exact: true }).first().click()
+    await dialog.locator('button[data-day="10"]:not([data-outside])').first().click()
     await expect(page.locator('#letter-9001')).toBeAttached({ timeout: 2000 })
     await expect(page.locator('#letter-9001 img').first()).toHaveAttribute('src', /letters\/9001\.jpg$/)
   })

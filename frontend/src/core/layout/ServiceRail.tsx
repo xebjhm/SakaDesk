@@ -155,7 +155,9 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                 onContextMenu={(e) => handleContextMenu(e, service)}
                                 className="group relative flex items-center justify-center rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                                 title={getServiceDisplayName(service)}
-                                aria-label={getServiceDisplayName(service)}
+                                aria-label={isServiceDisconnected(service)
+                                    ? t('serviceRail.serviceDisconnected', { name: getServiceDisplayName(service) })
+                                    : getServiceDisplayName(service)}
                                 aria-current={isActive ? 'page' : undefined}
                             >
                                 {/* Service Icon Container */}
@@ -190,6 +192,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                 {/* Disconnected Warning Badge */}
                                 {isServiceDisconnected(service) && (
                                     <div
+                                        aria-hidden="true"
                                         className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-pill border-2 border-surface bg-status-attention"
                                         title={t('serviceRail.sessionExpiredRelogin')}
                                     >

@@ -409,7 +409,8 @@
       "video": "显示未读视频",
       "voice": "显示未读语音"
     },
-    "openPhoto": "打开照片"
+    "openPhoto": "打开照片",
+    "timeline": "消息"
   },
   "calendar": {
     "loadFailed": "无法载入日期",
@@ -497,7 +498,8 @@
   "serviceRail": {
     "label": "群组",
     "sessionExpiredRelogin": "会话已过期 - 点击重新登录",
-    "addService": "添加服务"
+    "addService": "添加服务",
+    "serviceDisconnected": "{{name}}，会话已过期 - 点击重新登录"
   },
   "search": {
     "memberCount": "{{count}} 位成员",
@@ -1459,5 +1461,8 @@
       "stubsLabel": "特别的日子",
       "footer": "SakaDesk"
     }
+  },
+  "a11y": {
+    "skipToContent": "跳到内容"
   }
 }

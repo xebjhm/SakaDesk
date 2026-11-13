@@ -409,7 +409,8 @@
       "video": "未読の動画を表示",
       "voice": "未読のボイスを表示"
     },
-    "openPhoto": "写真を開く"
+    "openPhoto": "写真を開く",
+    "timeline": "メッセージ"
   },
   "calendar": {
     "loadFailed": "日付を読み込めませんでした",
@@ -497,7 +498,8 @@
   "serviceRail": {
     "label": "グループ",
     "sessionExpiredRelogin": "セッション切れ - クリックして再ログイン",
-    "addService": "サービスを追加"
+    "addService": "サービスを追加",
+    "serviceDisconnected": "{{name}}、セッション切れ - クリックして再ログイン"
   },
   "search": {
     "memberCount": "{{count}}人のメンバー",
@@ -1459,5 +1461,8 @@
       "stubsLabel": "特別な日",
       "footer": "SakaDesk"
     }
+  },
+  "a11y": {
+    "skipToContent": "コンテンツへスキップ"
   }
 }

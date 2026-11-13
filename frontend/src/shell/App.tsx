@@ -31,6 +31,7 @@ import { LiveSyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, Entry
 import { BrandScope } from '../design/brandScope'
 import { setupFolderErrorKey } from './outputFolder'
 import { celebrateFirstSync } from './firstSyncCelebration'
+import { SkipLink } from './components/SkipLink'
 
 function App() {
     const { t } = useTranslation()
@@ -408,6 +409,7 @@ function App() {
 
     return (
         <div className="flex h-screen flex-col overflow-hidden bg-window font-sans">
+            {!isOnboarding && !showSyncModal && <SkipLink targetId="sd-main" />}
 
             <div className="flex flex-1 overflow-hidden">
                 {/* First launch (login carousel, setup, first sync) and blocking syncs: the brand orbs behind the dialogs (spec §9). The layout is hidden meanwhile. */}

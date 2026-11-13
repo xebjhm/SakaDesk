@@ -105,7 +105,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
         initialMonth,
     } = props;
 
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
 
     // Use translated title as default
     const modalTitle = title || t('calendar.title');
@@ -341,7 +341,9 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                         today ? 'font-semibold border-2 border-accent' : 'border-2 border-transparent',
                                     )}
                                 >
-                                    <span>{date.getDate()}</span>
+                                    <span aria-hidden="true">{date.getDate()}</span>
+                                    {/* The full date names the day (UI health A-S3); the holiday follows. */}
+                                    <span className="sr-only">{date.toLocaleDateString(i18n.language, { dateStyle: 'full' })}</span>
                                     {holiday && <span className="sr-only">, <span lang="ja">{holiday}</span></span>}
                                     {hasMessages && <span aria-hidden="true" className="absolute bottom-1 h-1.5 w-1.5 rounded-pill bg-accent" />}
                                     {(holiday || countText) && (

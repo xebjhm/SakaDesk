@@ -409,7 +409,8 @@
       "video": "Show unread video",
       "voice": "Show unread voice message"
     },
-    "openPhoto": "Open photo"
+    "openPhoto": "Open photo",
+    "timeline": "Messages"
   },
   "calendar": {
     "loadFailed": "Could not load the dates",
@@ -498,7 +499,8 @@
   "serviceRail": {
     "label": "Groups",
     "sessionExpiredRelogin": "Session expired - click to re-login",
-    "addService": "Add Service"
+    "addService": "Add Service",
+    "serviceDisconnected": "{{name}}, session expired - click to re-login"
   },
   "search": {
     "memberCount": "{{count}} member",
@@ -1508,5 +1510,8 @@
       "stubsLabel": "Special days",
       "footer": "SakaDesk"
     }
+  },
+  "a11y": {
+    "skipToContent": "Skip to content"
   }
 }

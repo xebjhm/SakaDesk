@@ -1124,6 +1124,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     ref={timelineRef}
                     data-testid="chat-timeline"
                     className="flex-1 overflow-hidden relative isolate"
+                    role="region"
+                    aria-label={t('messageList.timeline')}
                     tabIndex={0}
                     onKeyDown={handleKeyDown}
                 >

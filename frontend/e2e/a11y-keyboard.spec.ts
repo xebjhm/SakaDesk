@@ -91,4 +91,21 @@ test.describe('keyboard access', () => {
     await expect(sidebar).toHaveAttribute('inert', '')
     await expect(toggle).toBeFocused()
   })
+
+  test('the skip link is the first Tab stop and lands in main; names are exposed', async ({ page }) => {
+    await pinBigRoom(page, { messages })
+    await page.goto('/')
+    await expect(page.getByText('Big Room', { exact: true })).toBeVisible()
+    // Tab before any click: a click moves Chromium's sequential-focus start to the clicked node.
+    await page.keyboard.press('Tab')
+    const skip = page.getByRole('button', { name: 'Skip to content' })
+    await expect(skip).toBeFocused()
+    await expect(skip).toBeVisible()
+    await page.keyboard.press('Enter')
+    await expect(page.getByRole('main')).toBeFocused()
+    await page.getByText('Big Room', { exact: true }).click()
+    await expect(page.getByRole('region', { name: 'Messages' })).toBeVisible()
+    // By aria-current, not by exact name: a row with unread messages is named "N unread Big Room".
+    await expect(page.locator('button[aria-current="true"]')).toContainText('Big Room')
+  })
 })
