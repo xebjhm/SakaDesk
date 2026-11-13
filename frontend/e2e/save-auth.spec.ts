@@ -3,10 +3,11 @@ import { test, expect } from '@playwright/test'
 /**
  * Helper script to save authenticated state for E2E tests.
  *
- * Usage:
- * 1. Start backend normally: uv run uvicorn backend.main:app --port 8000
- * 2. Login via browser at http://localhost:8000
- * 3. Run: npx playwright test e2e/save-auth.spec.ts --headed
+ * Usage (see docs/DEVELOPMENT.md, "Real Auth"):
+ * 1. Start backend normally with a token pinned:
+ *    SAKADESK_API_TOKEN=$(cat .dev-api-token) uv run uvicorn backend.main:app --port 8000
+ * 2. Login via browser at http://localhost:8000/#t=<that token>
+ * 3. Run with the same SAKADESK_API_TOKEN exported: npx playwright test e2e/save-auth.spec.ts --headed
  * 4. Auth state saved to .auth/user.json
  * 5. Use in tests: PLAYWRIGHT_AUTH_FILE=.auth/user.json npm run test:e2e
  */

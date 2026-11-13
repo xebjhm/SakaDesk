@@ -10,7 +10,7 @@ use it. **Read it before you add or change any UI.**
   `frontend/src/config/colors/` and `frontend/src/config/serviceThemes.ts`;
   those are not design tokens and are not scanned by the guard.
 - Primitives live in `frontend/src/design/primitives/`.
-- See everything live at `http://localhost:5173/?view=design` (dev server
+- See everything live at `http://127.0.0.1:5173/?view=design` (dev server
   only; `npm run dev` in `frontend/`). The page has a **context switcher**
   (brand, or one of the groups), contrast labels, the brand ink and aurora,
   every colour role, the expression tiers and every primitive state.
