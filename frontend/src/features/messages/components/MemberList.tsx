@@ -6,6 +6,7 @@ import { formatName, getShortName } from '../../../utils';
 import { UI_CONSTANTS } from '../../../config/uiConstants';
 import { Avatar, Badge, Button, EmptyState, IconButton, Spinner } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
+import { useFeatureActive } from '../../../design/featureActive';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
@@ -59,6 +60,27 @@ function formatRelativeTime(isoTime: string, t: (key: string, opts?: Record<stri
     const days = Math.floor(hours / 24);
     return t('time.daysAgo', { count: days });
 }
+
+/** The label is worded in whole minutes, so it needs a fresh reading once a minute. */
+const LAST_SYNCED_TICK_MS = 60_000;
+
+/**
+ * "Last synced … ago". It re-renders itself every `LAST_SYNCED_TICK_MS` (the member list is memoised
+ * and an unchanged server answer sets no state, so nothing else would advance it). It sits still
+ * while its feature is hidden and reads afresh when shown again.
+ */
+const LastSyncedLabel: React.FC<{ isoTime: string }> = ({ isoTime }) => {
+    const { t } = useTranslation();
+    const active = useFeatureActive();
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        if (!active) return undefined;
+        setTick((n) => n + 1);
+        const timer = setInterval(() => setTick((n) => n + 1), LAST_SYNCED_TICK_MS);
+        return () => clearInterval(timer);
+    }, [active]);
+    return <>{t('sync.lastSynced', { time: formatRelativeTime(isoTime, t) })}</>;
+};
 
 /** Drawn size of a member tile avatar (h-16 w-16), in CSS px. */
 const AVATAR_CSS_PX = 64;
@@ -482,7 +504,7 @@ const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGr
                         <>
                             <span className={onSyncNow ? undefined : 'pr-2'}>
                                 {activeService && lastSyncMap[activeService]
-                                    ? t('sync.lastSynced', { time: formatRelativeTime(lastSyncMap[activeService], t) })
+                                    ? <LastSyncedLabel isoTime={lastSyncMap[activeService]} />
                                     : t('sync.notSynced')}
                             </span>
                             {onSyncNow && (
