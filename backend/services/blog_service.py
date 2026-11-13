@@ -38,7 +38,12 @@ from pysaka.blog import (
 
 from backend.services.passive_media import INLINE_MEDIA_TYPES
 from backend.services.path_resolver import get_output_dir
-from backend.services.safe_paths import plain_segment
+from backend.services.safe_paths import (
+    UnsafePath,
+    is_safe_id,
+    join_within,
+    plain_segment,
+)
 from backend.services.service_utils import (
     get_service_display_name,
     get_service_enum,
@@ -51,12 +56,56 @@ logger = structlog.get_logger(__name__)
 def _blog_folder(base: Path, member_name: str, blog_id: str, date: str) -> Path:
     """Folder of one cached blog under a service's blogs ``base``.
 
+    ``base / <member name> / <date>_<blog id>``: the member name with
+    surrounding whitespace stripped (Windows cannot create a folder ending in a
+    space) and ``/`` replaced by ``_``, as archives have always been laid out.
+    Raises ``safe_paths.UnsafePath`` (security audit 2026-11-13) with reason
+    ``blog_id`` when ``blog_id`` is not ``safe_paths.is_safe_id``, or
+    ``segment`` when either folder name is not a ``safe_paths.plain_segment``:
+    such a value comes from a hostile or broken index and would leave the
+    blogs folder. Callers that loop over the index skip and count it.
+
     Loops over many blogs resolve ``base`` once and call this per blog:
     ``get_blogs_base_path`` reads settings.json from disk on every call.
     """
-    # Sanitize: strip trailing whitespace that Windows cannot mkdir
-    safe_name = member_name.strip().replace("/", "_")
-    return base / safe_name / f"{date}_{blog_id}"
+    if not is_safe_id(blog_id):
+        raise UnsafePath("blog_id")
+    safe_name = (
+        member_name.strip().replace("/", "_") if isinstance(member_name, str) else ""
+    )
+    return join_within(base, safe_name, f"{date}_{blog_id}")
+
+
+def _safe_blog_members(service: str, members: object) -> dict[str, str]:
+    """The scraped ``{member id: name}`` entries that can name archive folders.
+
+    The id must be ``safe_paths.is_safe_id`` and the name a ``str`` whose
+    folder form (stripped, ``/`` → ``_``, as :func:`_blog_folder` builds it) is
+    a ``safe_paths.plain_segment``. Others are dropped with one
+    ``blog_remote_rejected`` (``kind=member``, ``count``); a value that is not a
+    mapping logs ``reason=not_mapping``. Never an id or a name is logged
+    (security audit 2026-11-13).
+    """
+    if not isinstance(members, dict):
+        logger.warning(
+            "blog_remote_rejected", service=service, kind="member", reason="not_mapping"
+        )
+        return {}
+    safe = {
+        mid: name
+        for mid, name in members.items()
+        if is_safe_id(mid)
+        and isinstance(name, str)
+        and plain_segment(name.strip().replace("/", "_"))
+    }
+    if len(safe) != len(members):
+        logger.warning(
+            "blog_remote_rejected",
+            service=service,
+            kind="member",
+            count=len(members) - len(safe),
+        )
+    return safe
 
 
 # Groups that have blog support. Yodel does not have blogs.
@@ -274,7 +323,7 @@ class BlogService:
     def get_blog_cache_path(
         self, service: str, member_name: str, blog_id: str, date: str
     ) -> Path:
-        """Get path to cached blog content."""
+        """Get path to cached blog content (raises ``UnsafePath``: see ``_blog_folder``)."""
         return _blog_folder(
             self.get_blogs_base_path(service), member_name, blog_id, date
         )
@@ -636,12 +685,14 @@ class BlogService:
         connector = aiohttp.TCPConnector(limit=10)
         async with aiohttp.ClientSession(connector=connector) as session:
             scraper = get_scraper(group, session)
-            members = await scraper.get_members()
+            members = _safe_blog_members(service, await scraper.get_members())
             completed = 0
             total = len(members)
+            # Blog entries whose id cannot name a folder (security audit 2026-11-13).
+            rejected_blogs = 0
 
             async def sync_member(member_id: str, member_name: str):
-                nonlocal completed
+                nonlocal completed, rejected_blogs
                 if cancel_event and cancel_event.is_set():
                     return
                 if progress_callback:
@@ -682,6 +733,9 @@ class BlogService:
                     max_pages=max_pages,
                     member_name=member_name,
                 ):
+                    if not is_safe_id(entry.id):
+                        rejected_blogs += 1
+                        continue
                     if entry.id not in existing_ids:
                         blog_data = {
                             "id": entry.id,
@@ -747,6 +801,13 @@ class BlogService:
                     for member_id, member_name in members.items()
                 ]
             )
+            if rejected_blogs:
+                logger.warning(
+                    "blog_remote_rejected",
+                    service=service,
+                    kind="blog",
+                    count=rejected_blogs,
+                )
 
         # SD-BE-SVC-05: a cancelled run must not write its stale snapshot back —
         # doing so after a newer run's save can roll the index backwards.
@@ -783,6 +844,7 @@ class BlogService:
         queue: list[BlogDownloadItem] = []
         # Resolved once: it reads settings.json, too slow to repeat per blog.
         base = self.get_blogs_base_path(service)
+        rejected = 0
 
         for member_id, member_data in index.get("members", {}).items():
             # Skip members whose blogs are all removed (e.g., graduated)
@@ -798,7 +860,11 @@ class BlogService:
 
                 blog_id = blog["id"]
                 date = blog["published_at"][:10].replace("-", "")
-                cache_path = _blog_folder(base, member_name, blog_id, date)
+                try:
+                    cache_path = _blog_folder(base, member_name, blog_id, date)
+                except UnsafePath:
+                    rejected += 1
+                    continue
 
                 # Skip if already fully cached (validated non-empty, not partial)
                 if skip_cached and self._is_blog_cached(cache_path):
@@ -817,6 +883,13 @@ class BlogService:
                     )
                 )
 
+        if rejected:
+            logger.warning(
+                "blog_path_rejected",
+                service=service,
+                where="download_queue",
+                count=rejected,
+            )
         return queue
 
     async def download_blog_content(
@@ -1223,10 +1296,20 @@ class BlogService:
 
         def _mark_cached() -> None:
             # One existence check per blog: in a worker thread, off the event loop.
+            rejected = 0
             for blog in blogs:
                 date = blog["published_at"][:10].replace("-", "")
-                folder = _blog_folder(base, member_name, blog["id"], date)
+                try:
+                    folder = _blog_folder(base, member_name, blog["id"], date)
+                except UnsafePath:
+                    blog["cached"] = False
+                    rejected += 1
+                    continue
                 blog["cached"] = (folder / "blog.json").exists()
+            if rejected:
+                logger.warning(
+                    "blog_path_rejected", service=service, where="list", count=rejected
+                )
 
         await asyncio.to_thread(_mark_cached)
 
@@ -1306,7 +1389,14 @@ class BlogService:
 
         # Check cache
         date = blog_meta["published_at"][:10].replace("-", "")
-        cache_path = self.get_blog_cache_path(service, member_name, blog_id, date)
+        try:
+            cache_path = self.get_blog_cache_path(service, member_name, blog_id, date)
+        except UnsafePath as e:
+            # Before any fetch or write (security audit 2026-11-13).
+            logger.warning(
+                "blog_path_rejected", service=service, where="content", reason=e.reason
+            )
+            raise
         cache_file = cache_path / "blog.json"
 
         if cache_file.exists():
@@ -1406,6 +1496,7 @@ class BlogService:
             # Thousands of synchronous existence checks: in a worker thread so
             # the event loop keeps serving media and polls meanwhile.
             count = 0
+            rejected = 0
             for member_data in index.get("members", {}).values():
                 if member_data.get("blogs_removed"):
                     continue
@@ -1414,9 +1505,17 @@ class BlogService:
                     if blog.get("removed"):
                         continue
                     date = blog["published_at"][:10].replace("-", "")
-                    folder = _blog_folder(base, member_name, blog["id"], date)
+                    try:
+                        folder = _blog_folder(base, member_name, blog["id"], date)
+                    except UnsafePath:
+                        rejected += 1
+                        continue
                     if (folder / "blog.json").exists():
                         count += 1
+            if rejected:
+                logger.warning(
+                    "blog_path_rejected", service=service, where="stats", count=rejected
+                )
             return count
 
         cached_count = await asyncio.to_thread(_count_cached)
@@ -1860,7 +1959,8 @@ def gallery_index(
     The blogs base is ``output_dir`` (default: the configured output dir,
     resolved once here) / the service folder / ``blogs``. Keeps ``member_id``
     only (every member when ``None``). Members and blogs whose folder name is
-    not a plain path segment, or whose entry is malformed, are left out.
+    not a plain path segment or whose blog id is not a safe id (the rules
+    ``_blog_folder`` writes by), or whose entry is malformed, are left out.
     Blocking.
     """
     root = output_dir if output_dir is not None else get_output_dir()
@@ -1901,7 +2001,7 @@ def gallery_index(
             b
             for b in blogs
             if isinstance(b, dict)
-            and isinstance(b.get("id"), str)
+            and is_safe_id(b.get("id"))
             and isinstance(b.get("published_at"), str)
             and plain_segment(f"{b['published_at'][:10].replace('-', '')}_{b['id']}")
         ]

@@ -23,6 +23,7 @@ from backend.services.blog_service import (
     get_blog_backup_manager,
 )
 from backend.services.service_utils import validate_service
+from backend.services.safe_paths import UnsafePath
 
 logger = structlog.get_logger(__name__)
 
@@ -772,7 +773,16 @@ async def serve_blog_image(
         raise HTTPException(status_code=404, detail="Blog not found")
 
     date = blog_meta["published_at"][:10].replace("-", "")
-    cache_path = blog_service.get_blog_cache_path(service, member_name, blog_id, date)
+    try:
+        cache_path = blog_service.get_blog_cache_path(
+            service, member_name, blog_id, date
+        )
+    except UnsafePath as e:
+        # A hostile or broken index entry (security audit 2026-11-13).
+        logger.warning(
+            "blog_path_rejected", service=service, where="image", reason=e.reason
+        )
+        raise HTTPException(status_code=404, detail="Blog not found")
     image_path = cache_path / "images" / filename
 
     if not image_path.exists():
