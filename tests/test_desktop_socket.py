@@ -42,12 +42,21 @@ def test_create_server_socket_returns_a_listening_socket(tmp_path, monkeypatch):
         sock.close()
 
 
-def test_saved_port_squatter_cannot_listen_after_us(tmp_path, monkeypatch):
-    """A bound-but-not-listening squatter on the saved port loses the race."""
+def _bound_squatter() -> tuple[socket.socket, int]:
+    """A socket bound (SO_REUSEADDR) but not listening on a free loopback port."""
     squatter = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     squatter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     squatter.bind(("127.0.0.1", 0))
-    saved = squatter.getsockname()[1]
+    return squatter, squatter.getsockname()[1]
+
+
+@pytest.mark.skipif(
+    hasattr(socket, "SO_EXCLUSIVEADDRUSE"),
+    reason="Windows refuses the exclusive bind; see the Windows variant below",
+)
+def test_saved_port_squatter_cannot_listen_after_us(tmp_path, monkeypatch):
+    """A bound-but-not-listening squatter on the saved port loses the race."""
+    squatter, saved = _bound_squatter()
     (tmp_path / ".port").write_text(str(saved), encoding="utf-8")
     monkeypatch.setattr(desktop, "_get_port_file", lambda: tmp_path / ".port")
     port, sock = desktop.create_server_socket()
@@ -58,6 +67,27 @@ def test_saved_port_squatter_cannot_listen_after_us(tmp_path, monkeypatch):
             squatter.listen(1)
     finally:
         sock.close()
+        squatter.close()
+
+
+@pytest.mark.skipif(
+    not hasattr(socket, "SO_EXCLUSIVEADDRUSE"), reason="Windows-only socket option"
+)
+def test_saved_port_squatter_moves_us_to_a_fresh_port_on_windows(tmp_path, monkeypatch):
+    """SO_EXCLUSIVEADDRUSE refuses a port another socket holds: take a fresh one."""
+    squatter, saved = _bound_squatter()
+    (tmp_path / ".port").write_text(str(saved), encoding="utf-8")
+    monkeypatch.setattr(desktop, "_get_port_file", lambda: tmp_path / ".port")
+    try:
+        with capture_logs() as logs:
+            port, sock = desktop.create_server_socket()
+        try:
+            assert port != saved
+            assert "server_port_saved_unavailable" in _events(logs)
+            assert (tmp_path / ".port").read_text(encoding="utf-8") == str(port)
+        finally:
+            sock.close()
+    finally:
         squatter.close()
 
 
