@@ -230,7 +230,7 @@ class AuthService:
             logger.error(
                 "Failed to check auth status",
                 service=service,
-                error=str(e),
+                error_type=type(e).__name__,
                 exc_info=True,
             )
 
@@ -726,7 +726,11 @@ class AuthService:
             self._invalidate_session_cache(group.value)
             logger.info("Credentials saved to TokenManager", service=service)
         except Exception as e:
-            logger.error("Failed to save credentials", service=service, error=str(e))
+            logger.error(
+                "Failed to save credentials",
+                service=service,
+                error_type=type(e).__name__,
+            )
             raise
 
     def _delete_session(self, service: str, group: Group) -> None:
@@ -739,7 +743,11 @@ class AuthService:
             self._invalidate_session_cache(group.value)
             logger.info("Credentials cleared from TokenManager", service=service)
         except Exception as e:
-            logger.error("Failed to clear credentials", service=service, error=str(e))
+            logger.error(
+                "Failed to clear credentials",
+                service=service,
+                error_type=type(e).__name__,
+            )
 
     async def logout(self, service: str):
         """
@@ -964,7 +972,9 @@ class AuthService:
             token_data = tm.load_session(group.value)
             return cast(Dict[Any, Any], token_data or {})
         except Exception as e:
-            logger.error("Failed to load config", service=service, error=str(e))
+            logger.error(
+                "Failed to load config", service=service, error_type=type(e).__name__
+            )
             return {}
 
     async def check_geo_availability(self, service: str) -> dict:
