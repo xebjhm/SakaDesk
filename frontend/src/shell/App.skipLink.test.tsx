@@ -51,4 +51,11 @@ describe('App skip link gating', () => {
     await screen.findByText(i18n.t('setup.welcome'))
     expect(screen.queryByRole('button', SKIP)).toBeNull()
   })
+
+  it('is not offered on the landing screen, where no service is active', async () => {
+    useAppStore.setState({ selectedServices: [], activeService: null })
+    render(<AuthProvider><App /></AuthProvider>)
+    await vi.waitFor(() => expect(document.getElementById('sd-main')).toBeNull())
+    expect(screen.queryByRole('button', SKIP)).toBeNull()
+  })
 })

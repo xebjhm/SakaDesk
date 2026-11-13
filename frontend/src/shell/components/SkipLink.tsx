@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React from 'react';
 import { useTranslation } from '../../i18n';
 import { Z_INDEX } from '../../constants/zIndex';
 import { brandScopeStyle } from '../../design/brandScope';
@@ -6,21 +6,13 @@ import { brandScopeStyle } from '../../design/brandScope';
 /**
  * The one skip link (UI health A-S5): the first Tab stop, visible only while it has keyboard focus,
  * moving focus past the group and feature rails to the content (`<main id={targetId}>`). A button,
- * not an in-page `#` link, so the URL fragment (the launch token's place) is never touched. The link
- * exists only while the target does (the landing screen with no active service has no main), so
- * it never offers a jump that does nothing.
+ * not an in-page `#` link, so the URL fragment (the launch token's place) is never touched. The
+ * caller renders it only while the target exists (the layout is up and a service is active: the
+ * landing screen, onboarding and the sync modal have no main), so it never offers a jump that does
+ * nothing.
  */
 export const SkipLink: React.FC<{ targetId: string }> = ({ targetId }) => {
     const { t } = useTranslation();
-    const [present, setPresent] = useState(() => document.getElementById(targetId) !== null);
-    useEffect(() => {
-        const sync = () => setPresent(document.getElementById(targetId) !== null);
-        sync();
-        const observer = new MutationObserver(sync);
-        observer.observe(document.body, { childList: true, subtree: true });
-        return () => observer.disconnect();
-    }, [targetId]);
-    if (!present) return null;
     return (
         <button
             type="button"

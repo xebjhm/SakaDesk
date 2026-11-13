@@ -409,7 +409,8 @@ function App() {
 
     return (
         <div className="flex h-screen flex-col overflow-hidden bg-window font-sans">
-            {!isOnboarding && !showSyncModal && <SkipLink targetId="sd-main" />}
+            {/* The layout (and with it <main id="sd-main">) renders only when none of these hold back. */}
+            {!isOnboarding && !showSyncModal && activeService && <SkipLink targetId="sd-main" />}
 
             <div className="flex flex-1 overflow-hidden">
                 {/* First launch (login carousel, setup, first sync) and blocking syncs: the brand orbs behind the dialogs (spec §9). The layout is hidden meanwhile. */}
