@@ -25,7 +25,6 @@ import asyncio
 import hashlib
 import json
 import structlog
-import os
 from typing import Optional, List, Dict, Any
 
 from backend.services.platform import (
@@ -98,18 +97,11 @@ def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
     base_resolved = base_dir.resolve()
     target_path = (base_dir / user_path).resolve()
 
-    try:
-        common = os.path.commonpath([str(base_resolved), str(target_path)])
-        if common != str(base_resolved):
-            logger.warning("path_traversal_blocked")
-            raise HTTPException(status_code=403, detail="Access denied")
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    if (
-        not str(target_path).startswith(str(base_resolved) + os.sep)
-        and target_path != base_resolved
-    ):
+    # Path.is_relative_to compares parts (case-insensitively on Windows), so a
+    # drive root such as "D:\\" or "/" works as a base; str(base) + os.sep
+    # doubled its separator and refused every path (audit 2026-11-13 follow-up).
+    if not target_path.is_relative_to(base_resolved):
+        logger.warning("path_traversal_blocked")
         raise HTTPException(status_code=403, detail="Access denied")
 
     return target_path

@@ -724,3 +724,26 @@ def test_apply_nickname_or_mask() -> None:
     assert apply_nickname_or_mask("%%%", "", mask) == mask
     assert apply_nickname_or_mask("", "ひな", mask) == ""
     assert apply_nickname_or_mask("%%%", r"\1\g<0>", mask) == r"\1\g<0>"
+
+
+@pytest.mark.parametrize(
+    "member_dir",
+    ["../../../../x", "58 ok/../../..", "C:"],
+)
+def test_an_escaping_member_dir_is_skipped_not_targeted(
+    tmp_path: Path, member_dir: str
+) -> None:
+    """report-hardening #80 (audit 2026-11-13): '..' reached the toast target path."""
+    c = chat(tmp_path, member_dir=member_dir)
+    plans, skips = run([c], tmp_path)
+    assert plans == []
+    assert [s.reason for s in skips] == ["bad_path"]
+
+
+def test_a_chat_outside_the_service_folder_but_under_the_root_is_skipped(
+    tmp_path: Path,
+) -> None:
+    c = chat(tmp_path)
+    c.member_dir = tmp_path / "櫻坂46" / "messages" / "1 a" / "2 b"
+    plans, skips = run([c], tmp_path)
+    assert plans == [] and [s.reason for s in skips] == ["bad_path"]

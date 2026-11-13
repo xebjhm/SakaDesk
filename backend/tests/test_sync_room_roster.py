@@ -64,7 +64,7 @@ def _manager(*, scanned: bool, complete: bool = True, extra=EXTRA, sync_counts=N
                     "group_name": g["name"],
                     "member_id": member["id"],
                     "member_name": member["name"],
-                    "member_dir": Path("m"),
+                    "member_dir": Path("out") / "日向坂46" / "messages" / "1 g" / "2 m",
                     "phone_image": None,
                     "initial_sync": m.get_last_ts(g["id"], member["id"]) is None,
                 },
