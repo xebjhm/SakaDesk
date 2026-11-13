@@ -64,3 +64,17 @@ def _isolate_sync_coordinator():
     sync_coordinator._coordinator = None
     yield
     sync_coordinator._coordinator = None
+
+
+@pytest.fixture(autouse=True)
+def _reset_reject_log_throttle():
+    """A fresh reject-log budget per test (security audit 2026-11-13).
+
+    The API guard's reject logs are rate limited per minute across the whole
+    process; without a reset, earlier tests' 401s would use up the budget and
+    hide the breadcrumbs later tests assert on. Imported lazily (see above).
+    """
+    from backend.services import log_throttle
+
+    log_throttle.reject_logs.reset()
+    yield

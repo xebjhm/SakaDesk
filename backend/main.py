@@ -82,7 +82,7 @@ from backend.api import (  # noqa: E402
 )
 from backend.api_no_store import ApiNoStoreMiddleware  # noqa: E402
 from backend.security_headers import SecurityHeadersMiddleware  # noqa: E402
-from backend.services import api_auth  # noqa: E402
+from backend.services import api_auth, log_throttle  # noqa: E402
 from backend.services import app_state  # noqa: E402
 from backend.services.data_lock import DataDirLock  # noqa: E402
 from backend.services.platform import get_app_data_dir  # noqa: E402
@@ -466,14 +466,20 @@ async def api_guard(request: Request, call_next):
        A cookie-authorised request whose Sec-Fetch-Site is neither
        same-origin nor none (an absent header is allowed) is also refused.
     Under pytest only (SAKADESK_TEST_CLIENT=1), TestClient's Host: testserver
-    skips step 2.
+    skips step 2. Reject logs go through ``log_throttle.reject_logs`` so an
+    unauthenticated caller cannot flood debug.log.
     """
     path = request.scope.get("path", "")
     if path.startswith("/api/"):
         host = request.headers.get("host", "")
         origin = request.headers.get("origin")
         if origin is not None and not _is_own_origin(origin, host):
-            logger.info("api_request_rejected", reason="origin", method=request.method)
+            log_throttle.reject_logs.log(
+                logger.info,
+                "api_request_rejected",
+                reason="origin",
+                method=request.method,
+            )
             return JSONResponse(
                 status_code=403, content={"detail": "Cross-origin request rejected"}
             )
@@ -492,7 +498,8 @@ async def api_guard(request: Request, call_next):
                     and fetch_site is not None
                     and fetch_site not in ("same-origin", "none")
                 ):
-                    logger.info(
+                    log_throttle.reject_logs.log(
+                        logger.info,
                         "api_request_rejected",
                         reason="fetch_site",
                         method=request.method,
@@ -504,8 +511,11 @@ async def api_guard(request: Request, call_next):
             else:
                 authorized = False
             if not authorized:
-                logger.info(
-                    "api_request_rejected", reason="token", method=request.method
+                log_throttle.reject_logs.log(
+                    logger.info,
+                    "api_request_rejected",
+                    reason="token",
+                    method=request.method,
                 )
                 return JSONResponse(status_code=401, content={"detail": "Unauthorized"})
     return await call_next(request)
@@ -520,13 +530,18 @@ if api_auth.test_client_mode():
 
 
 class _LoggingTrustedHostMiddleware(TrustedHostMiddleware):
-    """TrustedHostMiddleware that leaves a breadcrumb (code only, never the Host)."""
+    """TrustedHostMiddleware that leaves a breadcrumb (code only, never the Host).
+
+    The breadcrumb shares the guard's rate-limited ``api_request_rejected`` budget.
+    """
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] in ("http", "websocket") and not self.allow_any:
             host = Headers(scope=scope).get("host", "").split(":")[0]
             if host not in self.allowed_hosts:
-                logger.info("api_request_rejected", reason="host")
+                log_throttle.reject_logs.log(
+                    logger.info, "api_request_rejected", reason="host"
+                )
         await super().__call__(scope, receive, send)
 
 
@@ -575,7 +590,7 @@ async def health(nonce: str | None = None):
     if nonce is not None:
         if api_auth.valid_nonce(nonce):
             return {"status": "ok", "proof": api_auth.health_proof(nonce)}
-        logger.info("health_nonce_rejected")
+        log_throttle.reject_logs.log(logger.info, "health_nonce_rejected")
     return {"status": "ok"}
 
 

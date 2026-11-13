@@ -17,7 +17,7 @@ from structlog.testing import capture_logs
 
 from backend import main as backend_main
 from backend.main import app
-from backend.services import api_auth
+from backend.services import api_auth, log_throttle
 
 client = TestClient(app)
 
@@ -227,6 +227,69 @@ def test_health_rejected_nonce_is_logged():
         body = app_client.get("/health?nonce=bad nonce").json()
     assert body == {"status": "ok"}
     assert any(e["event"] == "health_nonce_rejected" for e in logs)
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@pytest.fixture
+def tight_reject_logs(monkeypatch):
+    """A 2-lines-per-minute reject throttle on a fake clock."""
+    clock = _Clock()
+    monkeypatch.setattr(
+        log_throttle, "reject_logs", log_throttle.LogThrottle(limit=2, clock=clock)
+    )
+    return clock
+
+
+def _throttled_events(logs):
+    names = ("api_request_rejected", "health_nonce_rejected", "log_throttled")
+    return [e for e in logs if e["event"] in names]
+
+
+def test_token_rejections_are_rate_limited(tight_reject_logs):
+    """A local caller cannot flood debug.log with 401 lines."""
+    fresh = TestClient(app, base_url="http://127.0.0.1:8765")
+    with capture_logs() as logs:
+        for _ in range(5):
+            assert fresh.get(_JSON_GET).status_code == 401
+    assert [e["event"] for e in _throttled_events(logs)] == ["api_request_rejected"] * 2
+    tight_reject_logs.now += 60.0
+    with capture_logs() as logs:
+        fresh.get(_JSON_GET)
+    events = _throttled_events(logs)
+    assert events[0]["event"] == "log_throttled"
+    assert events[0]["event_name"] == "api_request_rejected"
+    assert events[0]["suppressed"] == 3
+    assert events[1]["event"] == "api_request_rejected"
+
+
+def test_origin_fetch_site_and_host_rejections_share_one_budget(tight_reject_logs):
+    cookie_client = TestClient(app, base_url="http://127.0.0.1:8765", cookies=_COOKIE)
+    with capture_logs() as logs:
+        app_client.get(_JSON_GET, headers={**TOKEN, "Origin": "http://evil.example"})
+        cookie_client.get(_JSON_GET, headers={"Sec-Fetch-Site": "cross-site"})
+        assert (
+            client.get("/health", headers={"Host": "evil.example"}).status_code == 400
+        )
+    assert [e.get("reason") for e in _throttled_events(logs)] == [
+        "origin",
+        "fetch_site",
+    ]
+
+
+def test_health_nonce_rejections_are_rate_limited(tight_reject_logs):
+    with capture_logs() as logs:
+        for _ in range(4):
+            app_client.get("/health?nonce=bad nonce")
+    assert [e["event"] for e in _throttled_events(logs)] == [
+        "health_nonce_rejected"
+    ] * 2
 
 
 def test_health_rejects_a_nonce_with_trailing_newline():
