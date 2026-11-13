@@ -21,7 +21,9 @@ async def test_get_provider_defaults_model_when_none(monkeypatch):
         return {"translation_provider": "gemini", "translation_model": None}
 
     monkeypatch.setattr(translation, "load_config", fake_load_config)
-    monkeypatch.setattr(translation, "_load_api_key", lambda: "fake-key")
+    monkeypatch.setattr(
+        translation, "_load_api_key_for", lambda provider, saved: "fake-key"
+    )
 
     provider = await translation._get_provider_from_config()
 

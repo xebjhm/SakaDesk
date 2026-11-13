@@ -25,7 +25,61 @@ os.environ.setdefault("SAKADESK_DISABLE_AUTO_SYNC", "1")
 os.environ.setdefault("SAKADESK_TEST_CLIENT", "1")
 
 
+import keyring  # noqa: E402
+import keyring.backend  # noqa: E402
+import keyring.errors  # noqa: E402
 import pytest  # noqa: E402
+
+
+class _InMemoryKeyring(keyring.backend.KeyringBackend):
+    """Dict-backed keyring so the suite NEVER touches the OS credential store.
+
+    The suite once ran against the real Windows Credential Manager: two
+    unmocked /api/translation/configure tests overwrote and then deleted the
+    developer's real ``pysaka:llm_provider_api_key`` entry on every run. Only
+    the storage is fake; pysaka's real KeyringStore/TokenManager code stays in
+    play on top of it.
+    """
+
+    priority = 1  # type: ignore[assignment]
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._store: dict[tuple[str, str], str] = {}
+
+    def get_password(self, service: str, username: str) -> str | None:
+        return self._store.get((service, username))
+
+    def set_password(self, service: str, username: str, password: str) -> None:
+        self._store[(service, username)] = password
+
+    def delete_password(self, service: str, username: str) -> None:
+        try:
+            del self._store[(service, username)]
+        except KeyError:
+            raise keyring.errors.PasswordDeleteError(
+                f"no credential for {service}/{username}"
+            ) from None
+
+
+@pytest.fixture(autouse=True)
+def _isolate_keyring():
+    """A fresh in-memory keyring per test; the real one is restored after.
+
+    Also drops the AI key-status cache (a module-level read-through cache over
+    the keyring) so no test sees another test's key. Imported lazily (see
+    below).
+    """
+    original = keyring.get_keyring()
+    keyring.set_keyring(_InMemoryKeyring())
+    try:
+        from backend.api import translation
+
+        translation._invalidate_key_status_cache()
+        yield
+        translation._invalidate_key_status_cache()
+    finally:
+        keyring.set_keyring(original)
 
 
 @pytest.fixture(autouse=True)
