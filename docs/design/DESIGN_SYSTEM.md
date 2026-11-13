@@ -408,9 +408,10 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   (`frontend/src/index.css`) switches the font variables to the Japanese
   families for any element marked `lang="ja"`, whatever the UI language. It is
   scoped to marked content, not `<html>`, so the UI's stacks keep working.
-  Companion rules `[lang="ja"]:not(html).font-reading` and `.font-display` keep
-  the serif reading and display faces on marked titles (the base rule would
-  otherwise win on the same element and render them sans).
+  Companion rules (`:is([lang="ja"], [lang="zh-TW"], [lang="zh-CN"],
+  [lang="yue"], [lang="en"]):not(html)` followed by `.font-reading` or
+  `.font-display`) keep the serif reading and display faces on marked titles
+  (the base rule would otherwise win on the same element and render them sans).
   The same content rule exists for `zh-TW`, `zh-CN`, `yue` and `en`
   (translations shown in their own glyphs), and the companion rules apply to
   all five languages. The stacks come from the CSS variables
@@ -1275,13 +1276,18 @@ hands focus back to the top-most dialog itself (breadcrumb `call_layer`, `phase`
 Windows High Contrast replaces colours with system colours and drops shadows and gradients. One
 `@media (forced-colors: active)` block in `frontend/src/index.css` redraws what would vanish:
 surface edges (`shadow-sheet`/`card`/`pill`, dialogs except the full-screen dark viewer, menus,
-list boxes) get an inset 1 px `CanvasText` outline; the `Switch` gets a `ButtonText` border and
-thumb and a `Highlight` track when on (the only `forced-color-adjust: none`); anything selected
+list boxes) get an inset 1 px `CanvasText` outline; the `Switch` gets an inset 1 px `ButtonText`
+outline (not a border: a border would shrink the padding box and move the thumb), a `ButtonText`
+thumb and a `Highlight` track when on (the only `forced-color-adjust: none`), and its own
+`:focus-visible` rule (2 px `Highlight`, offset 2 px; `ButtonText` when on). Anything selected
 through ARIA (`aria-pressed`, `aria-current`, `aria-selected`, checked `menuitemradio`) gets a
-2 px `Highlight` outline. **So a selected or current state must always carry its ARIA
-attribute**, not only a tint or a ring. Focus rings keep working because Tailwind's
-`outline-none` is a transparent outline, which forced colours paint. Users who ask for more
-contrast also get a darker scrollbar thumb (`prefers-contrast: more`).
+2 px `Highlight` outline inside its edge (offset -2 px). **So a selected or current state must
+always carry its ARIA attribute**, not only a tint or a ring. Keyboard focus keeps working
+because Tailwind's `outline-none` is a transparent outline: forced colours discard that colour
+and draw `Highlight`, 2 px outside the edge. The geometry tells the states apart: selected is
+inside, focused is outside, and a selected item that has focus gets a 4 px double ring outside
+the edge. Users who ask for more contrast also get a darker scrollbar thumb
+(`prefers-contrast: more`).
 
 ### Adding or changing a token
 
@@ -1364,8 +1370,11 @@ counts only go down, no `design/` entries); the test also pins that no file
 created by the UI-health plans F, G and H is in it. The entries left are
 deliberate or pre-token: the call screen's own stylesheet (accepted glass look),
 the body colour that must match the native window and the scrollbar fallbacks,
-the media players' viewer chrome, the blog rail's 3 px track and its tooltip
-layer, and the postcard caption's local stacking. To rewrite it, from
+the media players' viewer chrome and the transcribe button, the translate
+button and the safe-image fallback's pre-token default text sizes, the dynamic
+background's 100 px blur, the blog rail's 3 px track and its tooltip layer, and
+the postcard caption's local stacking. The file `drift-guard-baseline.json` is
+the exact list. To rewrite it, from
 `frontend/`:
 
     UPDATE_DRIFT_BASELINE=1 npx vitest run src/design/guard.test.ts
@@ -1385,7 +1394,10 @@ moved onto the system (its `FILES` list; add a file when you restyle it). Each f
 ### Dark mode
 
 Not built yet. Token names are roles so a dark value set can be added
-later without renaming anything.
+later without renaming anything. Until then `color-scheme: light` is pinned
+in two places, `<meta name="color-scheme">` in `frontend/index.html` and on
+`:root` in `frontend/src/index.css`, so native controls and scrollbars stay
+light under a dark OS theme; a dark mode must change both.
 
 ## 12. Accepted deviations
 
