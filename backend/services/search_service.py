@@ -213,11 +213,20 @@ def _normalize_with_readings_standalone(kakasi_inst: Any, text: str) -> str:
 
 
 def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
+    """:func:`_build_full_index_process_stats` returning only the message count."""
+    return _build_full_index_process_stats(db_path_str, output_dir_str)[0]
+
+
+def _build_full_index_process_stats(
+    db_path_str: str, output_dir_str: str
+) -> tuple[int, int]:
     """Full message + blog index build. Runs in a **separate process** so
     pykakasi CPU work cannot hold the main process's GIL.
 
     Opens its own SQLite connection (WAL mode) and pykakasi instance.
-    Returns the number of messages indexed.
+    Returns ``(messages indexed, blog index entries refused)``. The refused
+    count is for the parent to log: a spawned worker has no structlog setup,
+    so anything it logs is lost.
     """
     import pykakasi
 
@@ -226,7 +235,7 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
     output_dir = Path(output_dir_str)
 
     if not output_dir.exists():
-        return 0
+        return 0, 0
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
@@ -342,7 +351,7 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
         batch.clear()
 
     # Blog index
-    blog_count = _build_blog_index_process(conn, kakasi, output_dir)
+    blog_count, blogs_refused = _build_blog_index_process(conn, kakasi, output_dir)
 
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
@@ -359,15 +368,19 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
     )
     conn.commit()
     conn.close()
-    return count
+    return count, blogs_refused
 
 
 def _build_blog_index_process(
     conn: sqlite3.Connection,
     kakasi_inst: Any,
     output_dir: Path,
-) -> int:
-    """Blog index build inside the worker process (called by _build_full_index_process)."""
+) -> tuple[int, int]:
+    """Blog index build inside the worker process (called by _build_full_index_process_stats).
+
+    Returns ``(blogs indexed, index entries refused as unsafe folder names)``;
+    it logs nothing about the refusals (the parent does).
+    """
     refused = 0
     count = 0
     batch: list[Tuple[Any, ...]] = []
@@ -467,9 +480,6 @@ def _build_blog_index_process(
                     count += len(batch)
                     batch.clear()
 
-    if refused:
-        logger.warning("search_blog_path_refused", count=refused)
-
     if batch:
         conn.executemany(
             "INSERT OR REPLACE INTO search_blogs "
@@ -481,13 +491,26 @@ def _build_blog_index_process(
         conn.commit()
         count += len(batch)
 
-    return count
+    return count, refused
 
 
 def _index_blogs_for_service_process(
     db_path_str: str, output_dir_str: str, service: str
 ) -> int:
-    """Incremental blog index for one service. Runs in a separate process."""
+    """:func:`_index_blogs_for_service_process_stats` returning only the indexed count."""
+    return _index_blogs_for_service_process_stats(db_path_str, output_dir_str, service)[
+        0
+    ]
+
+
+def _index_blogs_for_service_process_stats(
+    db_path_str: str, output_dir_str: str, service: str
+) -> tuple[int, int]:
+    """Incremental blog index for one service. Runs in a separate process.
+
+    Returns ``(blogs indexed, index entries refused as unsafe folder names)``;
+    the parent logs the refusals (a spawned worker has no structlog setup).
+    """
     import pykakasi
 
     kakasi = pykakasi.kakasi()
@@ -495,7 +518,7 @@ def _index_blogs_for_service_process(
     output_dir = Path(output_dir_str)
 
     if not output_dir.exists():
-        return 0
+        return 0, 0
 
     # Find the service display directory
     service_dir = None
@@ -508,18 +531,18 @@ def _index_blogs_for_service_process(
             except Exception:
                 continue
     if not service_dir:
-        return 0
+        return 0, 0
 
     blogs_dir = service_dir / "blogs"
     index_path = blogs_dir / "index.json"
     if not blogs_dir.is_dir() or not index_path.exists():
-        return 0
+        return 0, 0
 
     try:
         with open(index_path, "r", encoding="utf-8") as f:
             index_data = json.load(f)
     except Exception:
-        return 0
+        return 0, 0
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
@@ -620,9 +643,6 @@ def _index_blogs_for_service_process(
                 total += len(batch)
                 batch.clear()
 
-    if refused:
-        logger.warning("search_blog_path_refused", count=refused)
-
     if batch:
         conn.executemany(
             "INSERT OR REPLACE INTO search_blogs "
@@ -635,7 +655,7 @@ def _index_blogs_for_service_process(
         total += len(batch)
 
     conn.close()
-    return total
+    return total, refused
 
 
 def _index_members_process(
@@ -3066,12 +3086,14 @@ class SearchService:
             loop = asyncio.get_running_loop()
             output_dir = get_output_dir()
             try:
-                count = await loop.run_in_executor(
+                count, refused = await loop.run_in_executor(
                     self._build_executor,
-                    _build_full_index_process,
+                    _build_full_index_process_stats,
                     str(self._db_path),
                     str(output_dir),
                 )
+                if refused:
+                    logger.warning("search_blog_path_refused", count=refused)
                 logger.info("Full search index built (process)", count=count)
                 return count
             except Exception as e:
@@ -3129,13 +3151,15 @@ class SearchService:
         """Incremental blog index in a separate **process** (own GIL)."""
         loop = asyncio.get_running_loop()
         output_dir = get_output_dir()
-        count = await loop.run_in_executor(
+        count, refused = await loop.run_in_executor(
             self._build_executor,
-            _index_blogs_for_service_process,
+            _index_blogs_for_service_process_stats,
             str(self._db_path),
             str(output_dir),
             service,
         )
+        if refused:
+            logger.warning("search_blog_path_refused", count=refused)
         logger.info("Blog index updated (process)", service=service, new_blogs=count)
         return count
 

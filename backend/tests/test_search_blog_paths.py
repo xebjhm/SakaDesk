@@ -11,8 +11,10 @@ name, id or path.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import sqlite3
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -21,8 +23,8 @@ from structlog.testing import capture_logs
 
 from backend.services.search_service import (
     SearchService,
-    _build_full_index_process,
-    _index_blogs_for_service_process,
+    _build_full_index_process_stats,
+    _index_blogs_for_service_process_stats,
 )
 
 _DISPLAY = "日向坂46"
@@ -126,15 +128,30 @@ def _assert_refused_only_counts(logs, count: int) -> None:
         assert forbidden not in rendered
 
 
-def _run_build_full_process(out: Path, db: Path) -> None:
-    with patch.dict("sys.modules", {"pykakasi": _mock_pykakasi()}):
-        _build_full_index_process(str(db), str(out))
+def _run_build_full_process(out: Path, db: Path, service: SearchService) -> None:
+    # The parent logs the refused count; a thread pool stands in for the process pool.
+    service._build_executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        with (
+            patch.dict("sys.modules", {"pykakasi": _mock_pykakasi()}),
+            patch("backend.services.search_service.get_output_dir", return_value=out),
+        ):
+            asyncio.run(service.build_full_index())
+    finally:
+        service._build_executor.shutdown()
 
 
-def _run_service_process(out: Path, db: Path) -> None:
+def _run_service_process(out: Path, db: Path, service: SearchService) -> None:
     db.parent.mkdir(parents=True, exist_ok=True)
-    with patch.dict("sys.modules", {"pykakasi": _mock_pykakasi()}):
-        _index_blogs_for_service_process(str(db), str(out), _SERVICE_ID)
+    service._build_executor = ThreadPoolExecutor(max_workers=1)
+    try:
+        with (
+            patch.dict("sys.modules", {"pykakasi": _mock_pykakasi()}),
+            patch("backend.services.search_service.get_output_dir", return_value=out),
+        ):
+            asyncio.run(service.index_blogs_for_service(_SERVICE_ID))
+    finally:
+        service._build_executor.shutdown()
 
 
 def _run_build_sync(out: Path, db: Path, service: SearchService) -> None:
@@ -148,8 +165,8 @@ def _run_service_sync(out: Path, db: Path, service: SearchService) -> None:
 
 
 _RUNNERS = {
-    "build_full_process": lambda out, db, svc: _run_build_full_process(out, db),
-    "service_process": lambda out, db, svc: _run_service_process(out, db),
+    "build_full_process": _run_build_full_process,
+    "service_process": _run_service_process,
     "build_sync": _run_build_sync,
     "service_sync": _run_service_sync,
 }
@@ -185,4 +202,22 @@ def test_real_member_name_forms_are_still_indexed(runner, name, tmp_path, servic
     ids, content = _indexed(db)
     assert ids == {"b1"}
     assert "本文です" in content
+    assert not _refused(logs)
+
+
+def test_the_workers_return_the_refused_count_and_log_nothing(
+    hostile_archive, tmp_path
+):
+    """A spawned worker has no structlog setup, so it hands the count to the parent."""
+    db = tmp_path / "search" / "search_index.db"
+    db.parent.mkdir(parents=True)
+    with (
+        capture_logs() as logs,
+        patch.dict("sys.modules", {"pykakasi": _mock_pykakasi()}),
+    ):
+        _, full_refused = _build_full_index_process_stats(str(db), str(hostile_archive))
+        _, service_refused = _index_blogs_for_service_process_stats(
+            str(db), str(hostile_archive), _SERVICE_ID
+        )
+    assert (full_refused, service_refused) == (2, 2)
     assert not _refused(logs)
