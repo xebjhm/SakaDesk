@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import i18n from '../../i18n';
@@ -15,6 +15,7 @@ describe('TranscriptPanel readable and operable (UI health #12)', () => {
         // jsdom has no Element.scrollTo; the panel centres the active line with it.
         Element.prototype.scrollTo = vi.fn() as unknown as typeof Element.prototype.scrollTo;
     });
+    afterAll(() => { delete (Element.prototype as { scrollTo?: unknown }).scrollTo; });
 
     it('makes each line a button that seeks, marking the current one', async () => {
         const onSeek = vi.fn();

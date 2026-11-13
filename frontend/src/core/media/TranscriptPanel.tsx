@@ -102,12 +102,14 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
 
     const isLight = variant === 'light';
 
-    // Text colours from tokens: >= 4.5:1 on the dark viewer (`light`) and on light surfaces (`dark`).
-    // The toggle is neutral (a disclosure control); the accent stays only on the light-surface
-    // active line (its tint and time: current state).
+    // Text colours from tokens. On light surfaces (`dark`) every role is text-secondary or darker,
+    // which TranscriptPanel.contrast.test.tsx measures at >= 4.5:1 on white, sunken, elevated and the
+    // group tints (text-muted falls below that on the tints). The toggle is neutral (a disclosure
+    // control); the group colour stays only on the active line: its tint and its time, the latter in
+    // the contrast-safe accent-tonal step (the 800 text step). The dark viewer (`light`) uses the viewer text tokens.
     const tone = isLight
         ? { meta: 'text-viewer-muted', line: 'text-viewer-muted', active: 'text-viewer', activeTime: 'text-viewer-muted', activeBg: 'bg-viewer-control' }
-        : { meta: 'text-muted', line: 'text-secondary', active: 'text-primary', activeTime: '', activeBg: '' };
+        : { meta: 'text-secondary', line: 'text-secondary', active: 'text-primary', activeTime: 'text-accent-tonal', activeBg: '' };
 
     const formatTimestamp = (seconds: number) => {
         const m = Math.floor(seconds / 60);
@@ -204,7 +206,6 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                             >
                                 <span
                                     className={cn('mr-1.5 tabular-nums', isActive ? tone.activeTime : tone.meta)}
-                                    style={isActive && !isLight ? { color: accentColor } : undefined}
                                 >
                                     {formatTimestamp(seg.start)}
                                 </span>
