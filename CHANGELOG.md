@@ -48,6 +48,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Google when it starts, so text looks right straight away even offline,
   behind a proxy or where Google is blocked. The installer is larger as a
   result.
+- **Chats reopen and refresh faster.** Coming back to a chat, or finishing a
+  sync that brought nothing new, no longer reloads the whole conversation, and
+  starring a message no longer redraws the chat.
+- **The window stays smooth while syncing.** It no longer redraws everything
+  every second during a sync; only the progress itself updates.
+- **Talk is where you left it.** Switching to Blogs or Memories and back keeps
+  the open chat, its scroll position and the member list, instead of loading
+  them again.
+- **Chat photos load lighter.** Photos in a chat are shown from smaller copies
+  wherever they look the same on your screen, and the viewer still opens the
+  full photo. Voice and video messages only look up their text when it can be
+  shown.
+- **SakaDesk starts with less to load.** Memories now loads the first time you
+  open it, and the conversation list checks for changes less often.
 
 ### Fixed
 - **Bug reports hide your nickname for every group.** Previously the
