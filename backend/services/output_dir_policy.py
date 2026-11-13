@@ -18,8 +18,11 @@ Then on the normalised path and on its resolved form (links followed):
 
 - ``root``: it resolves to a root;
 - ``profile``: the user's home folder, or a folder above it (``C:\\Users``);
-- ``app_data``: SakaDesk's own data folder, a folder inside it, or a folder
-  above it;
+- ``app_data``: a folder SakaDesk or pysaka owns, a folder inside it, or a
+  folder above it: SakaDesk's data folder (``%LOCALAPPDATA%\\SakaDesk``), the
+  per-user install folder (``%LOCALAPPDATA%\\Programs\\SakaDesk``, which the
+  uninstaller empties) and pysaka's sign-in folder (``%APPDATA%\\pysaka``,
+  deleted on uninstall);
 - ``system``: the Windows folder, Program Files, Program Files (x86) or
   ProgramData, or a folder inside one;
 - ``not_writable``: the folder cannot be created or a file written in it.
@@ -106,10 +109,35 @@ def _forms(path: Path) -> set[Path]:
     return forms
 
 
+def _app_owned_dirs() -> list[Path]:
+    """The folders the app and its installer own, in comparison form.
+
+    SakaDesk's data folder, the per-user install folder
+    (``%LOCALAPPDATA%\\Programs\\SakaDesk``: ``setup.iss`` installs there with
+    ``PrivilegesRequired=lowest``) and pysaka's sign-in folder
+    (``%APPDATA%\\pysaka``, which pysaka derives from the home folder). The
+    environment variables and the home-based forms are both listed.
+    """
+    app = get_app_data_dir()
+    local = {app.parent}
+    roaming = {_home() / "AppData" / "Roaming"}
+    for name, bases in (("LOCALAPPDATA", local), ("APPDATA", roaming)):
+        value = os.environ.get(name)
+        if value:
+            bases.add(Path(value))
+    owned = [app]
+    owned += [base / "Programs" / "SakaDesk" for base in local]
+    owned += [base / "pysaka" for base in roaming]
+    forms: list[Path] = []
+    for folder in owned:
+        forms.extend(_forms(folder))
+    return forms
+
+
 def _protected(candidates: set[Path]) -> str | None:
     """The reason the folder whose forms are ``candidates`` may not be the root, or None."""
     homes = _forms(_home())
-    apps = _forms(get_app_data_dir())
+    apps = _app_owned_dirs()
     systems: set[Path] = set()
     for name in _SYSTEM_DIR_VARS:
         value = os.environ.get(name)
