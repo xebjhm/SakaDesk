@@ -39,6 +39,18 @@ describe('forced colours (UI health #6)', () => {
         expect(block).toMatch(/\[role="switch"\]\s*\{[^}]*outline: 1px solid ButtonText;[^}]*outline-offset: -1px/);
     });
 
+    it('draws selection inside the edge, so it differs from the outside focus ring', () => {
+        const rule = block.match(/\[aria-pressed="true"\],[^{]*\{([^}]*)\}/)?.[1] ?? '';
+        expect(rule).toContain('outline: 2px solid Highlight;');
+        expect(rule).toContain('outline-offset: -2px;');
+    });
+
+    it('draws a selected item that also has keyboard focus as a double ring, distinct from both', () => {
+        const rule = block.match(/:is\(\s*\[aria-pressed="true"\][^{]*\):focus-visible:focus-visible\s*\{([^}]*)\}/)?.[1] ?? '';
+        expect(rule).toContain('outline: 4px double Highlight;');
+        expect(rule).toContain('outline-offset: 2px;');
+    });
+
     it('uses system colours only, and opts out of forcing only for the switch', () => {
         expect(block).not.toMatch(/#[0-9a-fA-F]{3,8}\b|rgba?\(/);
         expect(block.match(/forced-color-adjust: none/g)?.length).toBe(2);

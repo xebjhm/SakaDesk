@@ -149,8 +149,10 @@
 
   /* Switch: on and off were two background colours. The track gets an inset outline (a border would
      shrink the padding box and push the absolutely placed thumb off centre) and the thumb a colour;
-     on is the Highlight track. forced-color-adjust is off only here: it carries the state. This
-     unlayered outline beats Tailwind's transparent focus outline, so keyboard focus is redrawn below. */
+     on is the Highlight track. forced-color-adjust is off only here: it carries the state. Tailwind's
+     focus variants come later in this file and win on cascade order; forced colours drop their
+     transparent outline colour and draw Highlight, and on the checked switch (colours forced off) the
+     focus rules below keep the ring visible. */
   [role="switch"] {
     outline: 1px solid ButtonText;
     outline-offset: -1px;
@@ -178,7 +180,10 @@
   /* Selection shown only by a tint or a shadow ring: pills, rail items, the group rail, conversations,
      tabs, search options, checked menu radios, the active sync step. Every aria-current token that
      means "this one" is listed (page, true, step, location, date, time); aria-current="false" is not.
-     After the surface rule, so it wins on selected surfaces. */
+     After the surface rule, so it wins on selected surfaces.
+     Geometry tells the states apart: keyboard focus is Tailwind's outline, which forced colours redraw
+     in Highlight, 2px outside the edge; selection is the same colour inside the edge (offset -2px); a
+     selected item that has focus gets both, a 4px double ring outside the edge. */
   [aria-pressed="true"],
   [aria-current="page"],
   [aria-current="true"],
@@ -189,6 +194,21 @@
   [aria-selected="true"],
   [role="menuitemradio"][aria-checked="true"] {
     outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  /* Doubled :focus-visible: specificity above the focus utility, which comes later in the file. */
+  :is(
+    [aria-pressed="true"],
+    [aria-current="page"],
+    [aria-current="true"],
+    [aria-current="step"],
+    [aria-current="location"],
+    [aria-current="date"],
+    [aria-current="time"],
+    [aria-selected="true"],
+    [role="menuitemradio"][aria-checked="true"]
+  ):focus-visible:focus-visible {
+    outline: 4px double Highlight;
     outline-offset: 2px;
   }
 

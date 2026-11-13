@@ -93,4 +93,33 @@ test.describe('theming', () => {
     expect(probe['p-nostep']).not.toMatch(/^solid/)
     expect(probe['p-dark-dialog']).not.toMatch(/^solid/)
   })
+
+  test('in forced colours selected, focused and selected+focused items draw three distinct rings', async ({ page }) => {
+    await pinBigRoom(page, { messages })
+    await page.emulateMedia({ forcedColors: 'active' })
+    await page.goto('/')
+    await expect(page.getByText('Big Room', { exact: true })).toBeVisible({ timeout: 10000 })
+    // Same classes as the app's pills: Tailwind's focus utility, plus a selection attribute.
+    await page.evaluate(() => {
+      const host = document.createElement('div')
+      host.innerHTML = `
+        <button id="r-sel" aria-pressed="true" class="focus-visible:outline-none">x</button>
+        <button id="r-focus" aria-pressed="false" class="focus-visible:outline-none">x</button>
+        <button id="r-both" aria-pressed="true" class="focus-visible:outline-none">x</button>`
+      document.body.appendChild(host)
+    })
+    const ring = (id: string) => page.locator(`#${id}`).evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return `${cs.outlineStyle} ${cs.outlineWidth} ${cs.outlineOffset}`
+    })
+    const selected = await ring('r-sel')
+    await page.keyboard.press('Tab') // keyboard modality, so .focus() matches :focus-visible
+    await page.locator('#r-focus').focus()
+    const focused = await ring('r-focus')
+    await page.locator('#r-both').focus()
+    const both = await ring('r-both')
+    expect(selected).toBe('solid 2px -2px')
+    expect(focused).toBe('solid 2px 2px')
+    expect(both).toBe('double 4px 2px')
+  })
 })
