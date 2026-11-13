@@ -20,29 +20,6 @@ export default {
                 display: 'var(--ds-font-family-serif)',
                 reading: 'var(--ds-font-family-reading)',
             },
-            colors: {
-                // Theme-aware colors (change when service switches)
-                'theme-primary': 'var(--color-primary)',
-                'theme-secondary': 'var(--color-secondary)',
-                'theme-accent': 'var(--color-accent)',
-                // Surfaces
-                'surface-base': 'var(--color-surface-base)',
-                'surface-elevated': 'var(--color-surface-elevated)',
-                'surface-sunken': 'var(--color-surface-sunken)',
-                // Text
-                'text-primary': 'var(--color-text-primary)',
-                'text-secondary': 'var(--color-text-secondary)',
-                'text-muted': 'var(--color-text-muted)',
-                'text-inverse': 'var(--color-text-inverse)',
-                // Feedback
-                'feedback-success': 'var(--color-success)',
-                'feedback-warning': 'var(--color-warning)',
-                'feedback-error': 'var(--color-error)',
-                // Legacy (keep for backwards compatibility)
-                'brand-purple-start': '#9181c4',
-                'brand-purple-end': '#a8c4e8',
-                'brand-blue': '#6da0d4',
-            },
             backgroundImage: {
                 'accent-gradient': 'var(--ds-accent-gradient)',
                 'accent-wash': 'var(--ds-accent-wash)',
@@ -72,9 +49,6 @@ export default {
                 'memories-night': 'var(--ds-mem-night)',
                 'memories-sky': 'var(--ds-mem-sky)',
                 'accent-lens': 'radial-gradient(ellipse 100% 30% at 50% var(--ds-rail-lens-y), color-mix(in srgb, var(--ds-accent-strong) 8%, transparent) 0%, transparent 70%)',
-                // Theme-aware gradients
-                'theme-gradient': 'linear-gradient(to right, var(--color-gradient-from), var(--color-gradient-to))',
-                'theme-gradient-vertical': 'linear-gradient(to bottom, var(--color-gradient-from), var(--color-gradient-to))',
                 // Design system (docs/design/DESIGN_SYSTEM.md)
                 'group-canvas': 'var(--ds-group-canvas)',
                 'group-title': 'linear-gradient(to right, var(--ds-group-title-from), var(--ds-group-title-via), var(--ds-group-title-to))',
