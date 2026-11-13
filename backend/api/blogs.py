@@ -14,7 +14,8 @@ from typing import List, Optional
 import structlog
 
 from backend.services import avatar_resize
-from backend.services.passive_media import passive_media
+from backend.security_headers import SANDBOX_CSP
+from backend.services.passive_media import INLINE_MEDIA_TYPES, passive_media
 from backend.services.blog_service import (
     BlogService,
     blog_backup_enabled,
@@ -619,76 +620,109 @@ _PROXY_ALLOWED_HOSTS = {
 _PROXY_MAX_IMAGE_BYTES = 10 * 1024 * 1024
 
 
+_PROXY_IMAGE_TYPES = frozenset(
+    t for t in INLINE_MEDIA_TYPES.values() if t.startswith("image/")
+)
+"""Upstream types the proxy passes on (jpeg, png, gif, webp); else 502 (no HTML, SVG, XML)."""
+
+
+def _proxy_reject(status: int, reason: str, detail: str) -> HTTPException:
+    """Log ``proxy_image_rejected`` (a reason code, never the URL); build the error."""
+    logger.info("proxy_image_rejected", reason=reason, status=status)
+    return HTTPException(status_code=status, detail=detail)
+
+
 @router.get("/proxy-image")
 async def proxy_blog_image(
     url: str = Query(...),
     download: Optional[str] = Query(None),
 ):
-    """Proxy download for external blog images to bypass browser CORS restrictions.
+    """Fetch an official blog image the page cannot fetch itself (the CDNs send no CORS).
 
-    Only allows fetching from known official blog domains for security.
-    Pass ``download=filename`` to force a download (Content-Disposition: attachment).
+    Only ``https`` URLs on ``_PROXY_ALLOWED_HOSTS`` are fetched (403 otherwise;
+    a malformed URL is 400), without following redirects (a 3xx answers 502, so
+    the allowlist and scheme hold for the final URL too). The upstream must
+    answer a type in ``_PROXY_IMAGE_TYPES`` (502 otherwise) of at most
+    ``_PROXY_MAX_IMAGE_BYTES`` (502); a network or HTTP error is 502 with a
+    fixed message. The image is returned with that exact type and
+    ``X-Content-Type-Options: nosniff``; inline answers also carry
+    ``SANDBOX_CSP``, and ``download=filename`` answers an attachment with that
+    name instead. Every refusal logs ``proxy_image_rejected`` with ``reason``
+    (``invalid_url``, ``scheme``, ``host``, ``redirect``, ``content_type``,
+    ``too_large``, ``upstream`` with ``error_type``) and ``status``.
     """
-    from urllib.parse import urlparse
-    import httpx
+    from urllib.parse import quote, urlparse
 
-    parsed = urlparse(url)
-    if parsed.hostname not in _PROXY_ALLOWED_HOSTS:
-        raise HTTPException(status_code=403, detail="Domain not allowed for proxy")
+    import httpx
+    from starlette.responses import Response
+
+    try:
+        parsed = urlparse(url)
+        host = parsed.hostname
+    except ValueError:
+        raise _proxy_reject(400, "invalid_url", "Invalid URL") from None
+    if parsed.scheme != "https":
+        raise _proxy_reject(403, "scheme", "Only https image URLs can be proxied")
+    if host not in _PROXY_ALLOWED_HOSTS:
+        raise _proxy_reject(403, "host", "Domain not allowed for proxy")
 
     try:
         # follow_redirects=False: an allowlisted host that open-redirects must not
         # be able to steer this server-side fetch to an internal address (SSRF).
         async with httpx.AsyncClient(follow_redirects=False) as client:
             async with client.stream("GET", url, timeout=30.0) as resp:
-                # SD-BE-API-15: raise_for_status() only fires on 4xx/5xx. With
-                # redirects disabled (correct, for SSRF), a 3xx from an
-                # allowlisted host would otherwise stream through as a "success"
-                # with an empty redirect body and the redirect's content-type —
-                # a silently broken image. Treat any redirect as an upstream
-                # error the caller can see.
+                # SD-BE-API-15: raise_for_status() only fires on 4xx/5xx; with
+                # redirects disabled a 3xx would stream through as a broken image.
                 if resp.is_redirect:
-                    raise HTTPException(
-                        status_code=502, detail="Upstream image redirected"
-                    )
+                    raise _proxy_reject(502, "redirect", "Upstream image redirected")
                 resp.raise_for_status()
 
-                content_type = resp.headers.get(
-                    "content-type", "application/octet-stream"
+                content_type = (
+                    resp.headers.get("content-type", "")
+                    .split(";", 1)[0]
+                    .strip()
+                    .lower()
                 )
+                if content_type not in _PROXY_IMAGE_TYPES:
+                    raise _proxy_reject(502, "content_type", "Upstream is not an image")
 
                 # Reject oversized responses up front when the server declares a
                 # length; otherwise cap while streaming below.
                 declared_len = resp.headers.get("content-length")
                 if declared_len is not None:
                     try:
-                        if int(declared_len) > _PROXY_MAX_IMAGE_BYTES:
-                            raise HTTPException(
-                                status_code=502, detail="Image too large"
-                            )
+                        too_large = int(declared_len) > _PROXY_MAX_IMAGE_BYTES
                     except ValueError:
-                        pass
+                        too_large = False
+                    if too_large:
+                        raise _proxy_reject(502, "too_large", "Image too large")
 
                 chunks: list[bytes] = []
                 total = 0
                 async for chunk in resp.aiter_bytes():
                     total += len(chunk)
                     if total > _PROXY_MAX_IMAGE_BYTES:
-                        raise HTTPException(status_code=502, detail="Image too large")
+                        raise _proxy_reject(502, "too_large", "Image too large")
                     chunks.append(chunk)
                 content = b"".join(chunks)
-
-        from starlette.responses import Response
-
-        headers = {}
-        if download:
-            from urllib.parse import quote
-
-            safe_name = quote(download, safe="")
-            headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{safe_name}"
-        return Response(content=content, media_type=content_type, headers=headers)
+    except httpx.InvalidURL:
+        raise _proxy_reject(400, "invalid_url", "Invalid URL") from None
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch image: {e}")
+        logger.info(
+            "proxy_image_rejected",
+            reason="upstream",
+            status=502,
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(status_code=502, detail="Failed to fetch image") from None
+
+    headers = {"X-Content-Type-Options": "nosniff"}
+    if download:
+        safe_name = quote(download, safe="")
+        headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{safe_name}"
+    else:
+        headers["Content-Security-Policy"] = SANDBOX_CSP
+    return Response(content=content, media_type=content_type, headers=headers)
 
 
 @router.get("/image")

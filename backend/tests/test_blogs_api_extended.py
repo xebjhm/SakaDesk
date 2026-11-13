@@ -3,9 +3,13 @@
 import io
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import httpx
+import pytest
 from fastapi.testclient import TestClient
+from structlog.testing import capture_logs
 
 from backend.main import app
+from backend.security_headers import SANDBOX_CSP
 
 client = TestClient(app)
 
@@ -536,13 +540,121 @@ class TestProxyBlogImage:
         _make_proxy_stream_client(
             mock_httpx_cls,
             chunks=[b"\xff\xd8\xff\xe0"],
-            headers={"content-type": "image/jpeg"},
+            headers={"content-type": "image/JPEG; charset=binary"},
         )
         response = client.get(
             "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/img.jpg"
         )
         assert response.status_code == 200
         assert response.content == b"\xff\xd8\xff\xe0"
+        assert response.headers["content-type"] == "image/jpeg"
+        assert response.headers["x-content-type-options"] == "nosniff"
+        assert response.headers["content-security-policy"] == SANDBOX_CSP
+        assert "content-disposition" not in response.headers
+
+    @patch("httpx.AsyncClient")
+    def test_proxy_image_download_is_an_attachment(self, mock_httpx_cls):
+        _make_proxy_stream_client(
+            mock_httpx_cls, chunks=[b"\x89PNG"], headers={"content-type": "image/png"}
+        )
+        response = client.get(
+            "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/a.png&download=写真.png"
+        )
+        assert response.status_code == 200
+        assert response.headers["content-type"] == "image/png"
+        assert response.headers["content-disposition"] == (
+            "attachment; filename*=UTF-8''%E5%86%99%E7%9C%9F.png"
+        )
+
+    def test_proxy_image_refuses_cleartext_http(self):
+        """Audit 2026-11-13: an on-path attacker could answer a cleartext fetch."""
+        with patch("httpx.AsyncClient") as mock_httpx_cls, capture_logs() as logs:
+            response = client.get(
+                "/api/blogs/proxy-image?url=http://cdn.hinatazaka46.com/a.jpg"
+            )
+        assert response.status_code == 403
+        mock_httpx_cls.assert_not_called()
+        assert {
+            "event": "proxy_image_rejected",
+            "reason": "scheme",
+            "status": 403,
+            "log_level": "info",
+        } in logs
+
+    def test_proxy_image_forbidden_domain_is_logged(self):
+        with capture_logs() as logs:
+            response = client.get("/api/blogs/proxy-image?url=https://evil.com/a.jpg")
+        assert response.status_code == 403
+        assert [e["reason"] for e in logs if e["event"] == "proxy_image_rejected"] == [
+            "host"
+        ]
+
+    def test_proxy_image_malformed_url_is_400(self):
+        response = client.get("/api/blogs/proxy-image?url=https://[::1")
+        assert response.status_code == 400
+
+    def test_proxy_image_httpx_invalid_url_is_400(self):
+        with patch("httpx.AsyncClient") as mock_httpx_cls:
+            inst = _make_proxy_stream_client(
+                mock_httpx_cls, chunks=[b""], headers={"content-type": "image/jpeg"}
+            )
+            inst.stream.side_effect = httpx.InvalidURL("bad")
+            response = client.get(
+                "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/a.jpg"
+            )
+        assert response.status_code == 400
+
+    @pytest.mark.parametrize(
+        "content_type",
+        [
+            "text/html; charset=utf-8",
+            "image/svg+xml",
+            "application/xml",
+            "",
+            "image/x-icon",
+        ],
+    )
+    def test_proxy_image_refuses_non_image_types(self, content_type):
+        """Audit 2026-11-13: an upstream HTML/SVG answer must never reach the app origin."""
+        with patch("httpx.AsyncClient") as mock_httpx_cls, capture_logs() as logs:
+            _make_proxy_stream_client(
+                mock_httpx_cls,
+                chunks=[b"<script>fetch('/api/settings')</script>"],
+                headers={"content-type": content_type},
+            )
+            response = client.get(
+                "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/a.jpg"
+            )
+        assert response.status_code == 502
+        assert b"<script>" not in response.content
+        assert {
+            "event": "proxy_image_rejected",
+            "reason": "content_type",
+            "status": 502,
+            "log_level": "info",
+        } in logs
+
+    def test_proxy_image_upstream_error_hides_the_exception_text(self):
+        with patch("httpx.AsyncClient") as mock_httpx_cls, capture_logs() as logs:
+            inst = _make_proxy_stream_client(
+                mock_httpx_cls, chunks=[b""], headers={"content-type": "image/jpeg"}
+            )
+            inst.stream.side_effect = httpx.ConnectError(
+                "boom https://cdn.hinatazaka46.com"
+            )
+            response = client.get(
+                "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/a.jpg"
+            )
+        assert response.status_code == 502
+        assert response.json()["detail"] == "Failed to fetch image"
+        assert {
+            "event": "proxy_image_rejected",
+            "reason": "upstream",
+            "status": 502,
+            "error_type": "ConnectError",
+            "log_level": "info",
+        } in logs
+        assert "cdn.hinatazaka46.com" not in repr(logs)
 
     @patch("httpx.AsyncClient")
     def test_proxy_image_disables_redirects(self, mock_httpx_cls):
