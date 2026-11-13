@@ -70,6 +70,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   you press Tab, the photo viewer has older and newer buttons, groups can be
   moved up or down from their menu, and messages can be starred from the
   keyboard.
+- **Tidier text.** Message times and unread counts line up, headings and
+  Japanese blog titles break at more natural places, and Settings no longer
+  shifts sideways when you switch tabs.
 
 ### Fixed
 - **Bug reports hide your nickname for every group.** Previously the
@@ -115,6 +118,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   field instead of in a separate message.
 - **Voice transcripts are easier to read** and each line can be chosen with the
   keyboard to jump to that moment.
+- **Long laughs and dashes no longer get cut off.** A message, memory or letter
+  with a long unbroken run such as "wwwww" or "〜〜〜" now wraps inside its
+  bubble instead of running past the edge.
+- **Windows High Contrast now shows what is on and what is selected.**
+  Switches, the selected group, conversation, tab or filter, the current sync
+  step and the edges of dialogs and cards stay visible with every contrast
+  theme.
+- **Translations look like the language they are in.** Chinese and Cantonese
+  translations now use Chinese characters' own shapes instead of Japanese ones,
+  are no longer slanted, and their controls are easier to read.
+- **The error screen is now in your language** and matches the rest of the app.
 
 ### Security
 - **Other programs and web pages can no longer use SakaDesk's local
