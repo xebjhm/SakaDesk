@@ -375,7 +375,9 @@
     "media": "媒體",
     "background": "背景",
     "sentLetters": "寄咗嘅信",
-    "sentLettersGroupChat": "群組傾偈冇寄出嘅信"
+    "sentLettersGroupChat": "群組傾偈冇寄出嘅信",
+    "revealAll": "顯示晒所有未讀",
+    "revealAllNone": "呢個對話冇未讀訊息"
   },
   "messageList": {
     "noMessages": "冇訊息",
@@ -400,7 +402,13 @@
     "noContent": "(冇內容)",
     "attachment": "附件",
     "openCalendar": "跳去某一日",
-    "openConversations": "顯示對話列表"
+    "openConversations": "顯示對話列表",
+    "revealUnread": {
+      "text": "顯示未讀訊息",
+      "picture": "顯示未讀相",
+      "video": "顯示未讀片",
+      "voice": "顯示未讀語音"
+    }
   },
   "calendar": {
     "loadFailed": "載入唔到日期",

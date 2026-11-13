@@ -15,6 +15,7 @@ import { TranslateButton } from '../../../core/common/TranslateButton';
 import { InlineTranslation } from '../../../core/common/InlineTranslation';
 import { useAppStore } from '../../../store/appStore';
 import { useJustBecame } from '../../../hooks/useJustBecame';
+import { useInert } from '../../../hooks/useInert';
 import { buildMediaUrl, CHAT_MEDIA_MAX_HEIGHT, CHAT_MEDIA_MAX_WIDTH, MEDIA_API_BASE, thumbnailUrl, type ThumbWidth } from '../mediaUrl';
 import { groupTokens } from '../../../design/tokens';
 import { serviceGroupId } from '../../../config/serviceGroup';
@@ -84,6 +85,53 @@ const SHELTER_CLASSES: Record<ShelterKind, { classic: string; light: string }> =
 };
 const shelterKind = (type: string): ShelterKind =>
     type === 'picture' || type === 'video' || type === 'voice' ? type : 'text';
+
+interface ShelterOverlayProps {
+    type: string;
+    service?: string;
+    /** The bubble's corner classes (the shelter covers the bubble exactly). */
+    corners: string;
+    /** Translated name, by kind ("Show unread photo"). */
+    label: string;
+    onReveal: () => void;
+    /** Long-press (reveal all) start / end. */
+    onPressStart: () => void;
+    onPressEnd: () => void;
+}
+
+/**
+ * The official unread shelter over a hidden bubble. A native button, so Enter and Space reveal it
+ * too (UI health #3); declared at module level, so a bubble re-render never remounts it.
+ */
+const ShelterOverlay: React.FC<ShelterOverlayProps> = ({ type, service, corners, label, onReveal, onPressStart, onPressEnd }) => {
+    const kind = shelterKind(type);
+    const Icon = SHELTER_ICONS[kind];
+    const look = groupTokens[serviceGroupId(service ?? null)].official.shelterStyle;
+    return (
+        <button
+            type="button"
+            data-testid="unread-shelter"
+            aria-label={label}
+            className={cn(
+                'absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
+                corners,
+                SHELTER_CLASSES[kind][look],
+            )}
+            onClick={(e) => {
+                e.stopPropagation();
+                onReveal();
+            }}
+            onMouseDown={onPressStart}
+            onMouseUp={onPressEnd}
+            onMouseLeave={onPressEnd}
+            onTouchStart={onPressStart}
+            onTouchEnd={onPressEnd}
+        >
+            <Icon aria-hidden="true" className="h-8 w-8" />
+        </button>
+    );
+};
 
 // URL regex pattern for detecting links in text
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g;
@@ -331,30 +379,10 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         }
     }, []);
 
-    const ShelterOverlay = () => {
-        const Icon = SHELTER_ICONS[message.type] || MessageSquare;
-        const look = groupTokens[serviceGroupId(service ?? null)].official.shelterStyle;
-        return (
-            <div
-                data-testid="unread-shelter"
-                className={cn(
-                    'absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors',
-                    bubbleCorners,
-                    SHELTER_CLASSES[shelterKind(message.type)][look],
-                )}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onReveal?.();
-                }}
-                onMouseDown={handleTouchStart}
-                onMouseUp={handleTouchEnd}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-            >
-                <Icon className="h-8 w-8" />
-            </div>
-        );
-    };
+    const reveal = useCallback(() => onReveal?.(), [onReveal]);
+    // The hidden bubble's own controls and text leave the Tab order and the accessibility tree.
+    const contentRef = useRef<HTMLDivElement>(null);
+    useInert(contentRef, isUnread);
 
     const favoriteStar = starred && (
         <Star className="h-3.5 w-3.5 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
@@ -429,9 +457,20 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                 {/* Bubble Container */}
                 <div className="relative">
-                    {isUnread && <ShelterOverlay />}
+                    {isUnread && (
+                        <ShelterOverlay
+                            type={message.type}
+                            service={service}
+                            corners={bubbleCorners}
+                            label={t(`messageList.revealUnread.${shelterKind(message.type)}`)}
+                            onReveal={reveal}
+                            onPressStart={handleTouchStart}
+                            onPressEnd={handleTouchEnd}
+                        />
+                    )}
 
                     <div
+                        ref={contentRef}
                         className={cn(
                             'border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard',
                             bubbleCorners,

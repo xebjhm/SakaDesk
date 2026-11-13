@@ -182,11 +182,14 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
     <div
       class="relative"
     >
-      <div
-        class="absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors rounded-card rounded-tl-tail bg-group-shelter-text text-inverse"
+      <button
+        aria-label="Show unread message"
+        class="absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface rounded-card rounded-tl-tail bg-group-shelter-text text-inverse"
         data-testid="unread-shelter"
+        type="button"
       >
         <svg
+          aria-hidden="true"
           class="h-8 w-8"
           fill="none"
           height="24"
@@ -202,9 +205,10 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
             d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
           />
         </svg>
-      </div>
+      </button>
       <div
         class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3 pointer-events-none opacity-0"
+        inert=""
       >
         <div
           class="whitespace-pre-wrap text-body text-primary"

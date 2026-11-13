@@ -375,7 +375,9 @@
     "media": "媒體",
     "background": "背景",
     "sentLetters": "已傳送的信件",
-    "sentLettersGroupChat": "群組聊天沒有已傳送的信件"
+    "sentLettersGroupChat": "群組聊天沒有已傳送的信件",
+    "revealAll": "顯示全部未讀",
+    "revealAllNone": "此對話沒有未讀訊息"
   },
   "messageList": {
     "noMessages": "沒有訊息",
@@ -400,7 +402,13 @@
     "noContent": "(無內容)",
     "attachment": "附件",
     "openCalendar": "跳至日期",
-    "openConversations": "顯示對話列表"
+    "openConversations": "顯示對話列表",
+    "revealUnread": {
+      "text": "顯示未讀訊息",
+      "picture": "顯示未讀照片",
+      "video": "顯示未讀影片",
+      "voice": "顯示未讀語音"
+    }
   },
   "calendar": {
     "loadFailed": "無法載入日期",

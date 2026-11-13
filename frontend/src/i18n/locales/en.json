@@ -375,7 +375,9 @@
     "media": "Media",
     "background": "Background",
     "sentLetters": "Sent Letters",
-    "sentLettersGroupChat": "Group chats have no sent letters"
+    "sentLettersGroupChat": "Group chats have no sent letters",
+    "revealAll": "Reveal all unread",
+    "revealAllNone": "Nothing is unread in this chat"
   },
   "messageList": {
     "noMessages": "No messages",
@@ -400,7 +402,13 @@
     "noContent": "(No content)",
     "attachment": "Attachment",
     "openCalendar": "Jump to a date",
-    "openConversations": "Show conversations"
+    "openConversations": "Show conversations",
+    "revealUnread": {
+      "text": "Show unread message",
+      "picture": "Show unread photo",
+      "video": "Show unread video",
+      "voice": "Show unread voice message"
+    }
   },
   "calendar": {
     "loadFailed": "Could not load the dates",

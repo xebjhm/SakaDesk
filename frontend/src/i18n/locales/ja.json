@@ -375,7 +375,9 @@
     "media": "メディア",
     "background": "背景設定",
     "sentLetters": "送信したレター",
-    "sentLettersGroupChat": "グループトークにはレターがありません"
+    "sentLettersGroupChat": "グループトークにはレターがありません",
+    "revealAll": "未読をすべて表示",
+    "revealAllNone": "このトークに未読はありません"
   },
   "messageList": {
     "noMessages": "メッセージがありません",
@@ -400,7 +402,13 @@
     "noContent": "(内容なし)",
     "attachment": "添付ファイル",
     "openCalendar": "日付を選んで移動",
-    "openConversations": "トーク一覧を表示"
+    "openConversations": "トーク一覧を表示",
+    "revealUnread": {
+      "text": "未読のメッセージを表示",
+      "picture": "未読の写真を表示",
+      "video": "未読の動画を表示",
+      "voice": "未読のボイスを表示"
+    }
   },
   "calendar": {
     "loadFailed": "日付を読み込めませんでした",

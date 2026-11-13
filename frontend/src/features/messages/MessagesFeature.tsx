@@ -1057,6 +1057,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             onOpenCalendar={openCalendar}
                             onBackgroundChange={setBackgroundSettings}
                             light={isLightHeader}
+                            unreadCount={displayUnreadCount}
+                            onRevealAll={openRevealConfirm}
                         />
                     )}
                 </header>
