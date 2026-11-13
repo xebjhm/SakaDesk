@@ -66,19 +66,31 @@ export function writeLanguageStacks(doc: Document = document): void {
     }
 }
 
+/** Languages whose `loadLanguageFaces` failure was already logged this session. */
+const loggedFaceFallbacks = new Set<string>();
+
 /**
  * Requests a language's own faces for content shown in it (a translation), whatever the UI language.
  * The dynamic imports are cached by the module system, so repeated calls are free; an unknown code
- * does nothing. Logs `design_fonts_fallback` when the faces fail to load.
+ * does nothing. Logs `design_fonts_fallback` when the faces fail to load, once per language per
+ * session (a cached rejected import would otherwise log again on every re-expand).
  */
 export function loadLanguageFaces(lang: string, loaders: FaceLoaders = faceLoaders): void {
     const known = knownLanguage(lang);
     if (!known) return;
     const target = known.toLowerCase().replace(/-/g, '_');
-    loaders[known]?.().catch(() => clientLog('design_fonts_fallback', { target }));
+    loaders[known]?.().catch(() => {
+        if (loggedFaceFallbacks.has(target)) return;
+        loggedFaceFallbacks.add(target);
+        clientLog('design_fonts_fallback', { target });
+    });
 }
 
-/** Chinese, Cantonese, Japanese and Korean: drawn upright (an italic ideograph is a fake slant). */
+/**
+ * Chinese, Cantonese, Japanese and Korean: drawn upright (an italic ideograph is a fake slant).
+ * `ko` has no font stack of its own (the UI is not translated to it) but a translation target may
+ * be Korean, and Hangul is upright too, so it is kept here.
+ */
 export function isCjkLanguage(lang: string | null | undefined): boolean {
     return !!lang && /^(zh|yue|ja|ko)\b/i.test(lang);
 }

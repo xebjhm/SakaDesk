@@ -107,7 +107,7 @@ describe('per-language stacks as variables (UI health #10)', () => {
         expect(langStackVar('zh-CN', 'sans')).toBe('--ds-font-sans-zh-cn');
     });
 
-    it("loads a translation language's faces on request, once per loader call, and ignores unknown codes", () => {
+    it("loads a translation language's faces on request and ignores unknown codes", () => {
         const loader = vi.fn(() => Promise.resolve());
         const loaders = { ja: null, 'zh-TW': loader, yue: null, 'zh-CN': null, en: null };
         loadLanguageFaces('zh-TW', loaders);
@@ -119,6 +119,17 @@ describe('per-language stacks as variables (UI health #10)', () => {
         const loaders = { ja: null, 'zh-TW': () => Promise.reject(new Error('x')), yue: null, 'zh-CN': null, en: null };
         loadLanguageFaces('zh-TW', loaders);
         await vi.waitFor(() => expect(clientLog).toHaveBeenCalledWith('design_fonts_fallback', { target: 'zh_tw' }));
+    });
+
+    it('logs a failed translation-language load once per language per session', async () => {
+        const reject = vi.fn(() => Promise.reject(new Error('x')));
+        const loaders = { ja: null, 'zh-TW': null, yue: reject, 'zh-CN': null, en: null };
+        loadLanguageFaces('yue', loaders);
+        await vi.waitFor(() => expect(clientLog).toHaveBeenCalledWith('design_fonts_fallback', { target: 'yue' }));
+        loadLanguageFaces('yue', loaders);
+        await vi.waitFor(() => expect(reject).toHaveBeenCalledTimes(2));
+        await Promise.resolve();
+        expect(vi.mocked(clientLog).mock.calls.filter(([e, v]) => e === 'design_fonts_fallback' && (v as { target: string }).target === 'yue')).toHaveLength(1);
     });
 
     it('knows which languages are CJK', () => {
