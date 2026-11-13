@@ -5,6 +5,10 @@ multiprocessing.freeze_support()
 import webview  # noqa: E402
 
 webview.settings["ALLOW_DOWNLOADS"] = True
+# New-window requests open in the browser, never in a SakaDesk window. nav_guard
+# replaces pywebview's handler (and filters schemes); this keeps that behaviour
+# should the guard not install.
+webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
 import asyncio  # noqa: E402
 import threading  # noqa: E402
 import uvicorn  # noqa: E402
@@ -45,6 +49,7 @@ from tray import TrayController  # noqa: E402
 from call_popup_window import CallPopupWindow  # noqa: E402
 from window_chrome import make_title_bar_handler  # noqa: E402
 from window_diagnostics import attach_window_diagnostics  # noqa: E402
+import nav_guard  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
 # Setup logging
@@ -888,6 +893,26 @@ def _app_url(port: int, query: str = "") -> str:
     return f"http://{HOST}:{port}/{query}#t={api_auth.LAUNCH_TOKEN}"
 
 
+def _install_navigation_guard(
+    port: int,
+    *,
+    is_windows: bool | None = None,
+    install: Callable[..., bool] = nav_guard.install,
+) -> bool:
+    """Keep the main window and the call popup on the app origin (``nav_guard``).
+
+    Windows only (pywebview's EdgeChromium backend); call before
+    ``webview.start()``. Elsewhere logs ``nav_guard`` with ``installed=False``
+    and ``reason="platform"``. Returns whether the guard is in place.
+    """
+    if is_windows is None:
+        is_windows = platform.system() == "Windows"
+    if not is_windows:
+        logger.info("nav_guard", installed=False, reason="platform")
+        return False
+    return install(host=HOST, port=port)
+
+
 def create_server_socket() -> tuple:
     """Create a bound, listening server socket, reusing the saved port when it's free.
 
@@ -1352,6 +1377,9 @@ def main() -> None:
             # A hidden window with no tray icon could never be reopened.
             logger.warning("background_start_without_tray")
             window.show()
+
+        # Both windows stay on the app origin; other web links open in the browser.
+        _install_navigation_guard(port)
 
         # Start native GUI loop
         # private_mode=False: persist localStorage (ToS, read states, language)

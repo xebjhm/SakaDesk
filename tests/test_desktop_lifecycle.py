@@ -15,6 +15,9 @@ from __future__ import annotations
 
 import json
 from types import SimpleNamespace
+from unittest.mock import call
+
+from structlog.testing import capture_logs
 
 import desktop
 
@@ -130,4 +133,36 @@ class TestMainWindowKwargs:
         assert kwargs["resizable"] is True and kwargs["hidden"] is False
         assert (
             kwargs["url"] == f"http://127.0.0.1:8000/#t={desktop.api_auth.LAUNCH_TOKEN}"
+        )
+
+
+class TestNavigationGuardInstall:
+    def test_skipped_off_windows(self):
+        calls: list[dict] = []
+        with capture_logs() as logs:
+            assert (
+                desktop._install_navigation_guard(
+                    8765, is_windows=False, install=lambda **kw: calls.append(kw)
+                )
+                is False
+            )
+        assert calls == []
+        assert {
+            "event": "nav_guard",
+            "installed": False,
+            "reason": "platform",
+            "log_level": "info",
+        } in logs
+
+    def test_installs_with_the_app_origin_on_windows(self):
+        calls: list[dict] = []
+        assert desktop._install_navigation_guard(
+            8765, is_windows=True, install=lambda **kw: calls.append(kw) is None
+        )
+        assert calls == [{"host": "127.0.0.1", "port": 8765}]
+
+    def test_new_window_links_open_in_the_browser_explicitly(self):
+        assert (
+            call("OPEN_EXTERNAL_LINKS_IN_BROWSER", True)
+            in desktop.webview.settings.__setitem__.call_args_list
         )
