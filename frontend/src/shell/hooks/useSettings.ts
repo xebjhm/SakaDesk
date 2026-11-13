@@ -32,6 +32,7 @@ import { useAppStore } from '../../store/appStore';
 import { SERVICE_FEATURES } from '../../config/features';
 import { forgetListSnapshots } from '../../features/messages/listSnapshotStore';
 import { pickOutputFolder, saveErrorKey } from '../outputFolder';
+import { clientLog } from '../../utils/clientLog';
 
 /** Per-service settings for sync and blog backup. */
 export interface ServiceSettings {
@@ -51,13 +52,11 @@ export interface UseSettingsReturn {
     allServiceSettings: Record<string, ServiceSettings>;
     /** List of connected service IDs */
     connectedServices: string[];
-    /** The folder the read-only output folder field shows: the saved one, or the one just picked with Browse */
+    /** The folder the read-only output folder field shows: the saved one, or the one just picked with Browse (the field returns to the saved one when Settings opens or closes) */
     outputDirInput: string;
-    /** Show another folder in the field (a pick from Browse) */
-    setOutputDirInput: (dir: string) => void;
     /** i18n key of the last failed save's message (translated at display time), or null */
     settingsErrorKey: string | null;
-    /** i18n key of the last folder-picker failure (`settings.outputDirError.*`, shown under the field), or null */
+    /** i18n key of the newest output-folder problem (`settings.outputDirError.*`: a failed pick or a refused save), shown by the field, or null */
     folderErrorKey: string | null;
     /** Dismiss the save error */
     clearSettingsError: () => void;
@@ -77,7 +76,7 @@ export interface UseSettingsReturn {
     saveSettings: (updates: Partial<AppSettings>) => Promise<boolean>;
     /** Save per-service settings to backend */
     saveServiceSettings: (service: string, updates: Partial<ServiceSettings>) => Promise<void>;
-    /** Open the native folder picker; a chosen folder fills the field, a failure sets `folderErrorKey` */
+    /** Open the native folder picker; a chosen folder fills the field, a failure sets `folderErrorKey`. A result that arrives after the Settings dialog opened or closed, or after the folder was saved, is dropped. */
     handleSelectFolder: () => Promise<void>;
     /** Open settings modal */
     openSettingsModal: () => void;
@@ -93,6 +92,11 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
     const [outputDirInput, setOutputDirInput] = useState('');
     const [settingsErrorKey, setSettingsErrorKey] = useState<string | null>(null);
     const [folderErrorKey, setFolderErrorKey] = useState<string | null>(null);
+    // Bumped whenever a picker result in flight stops mattering (Settings opened or closed,
+    // the folder is being saved): handleSelectFolder drops a result from an older epoch.
+    const pickEpochRef = useRef(0);
+    const appSettingsRef = useRef(appSettings);
+    appSettingsRef.current = appSettings;
     const clearSettingsError = useCallback(() => setSettingsErrorKey(null), []);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -113,6 +117,12 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
     const saveSettings = useCallback(async (updates: Partial<AppSettings>): Promise<boolean> => {
         // A new save replaces the last error: a success leaves none.
         setSettingsErrorKey(null);
+        const savesFolder = 'output_dir' in updates;
+        if (savesFolder) {
+            // The newest word on the folder wins: no older picker error, no pick still open.
+            pickEpochRef.current += 1;
+            setFolderErrorKey(null);
+        }
         try {
             const res = await fetch('/api/settings', {
                 method: 'POST',
@@ -121,7 +131,10 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
             });
             if (!res.ok) {
                 // A refused output folder names its reason; anything else is the generic message.
-                setSettingsErrorKey(await saveErrorKey(res));
+                const key = await saveErrorKey(res);
+                setSettingsErrorKey(key);
+                // The reason also shows by the field (the toast sits outside the dialog).
+                if (savesFolder && key.startsWith('settings.outputDirError.')) setFolderErrorKey(key);
                 return false;
             }
             const data = await res.json();
@@ -173,10 +186,23 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
     }, []);
 
     const handleSelectFolder = useCallback(async () => {
+        const epoch = pickEpochRef.current;
         const { path, errorKey } = await pickOutputFolder();
+        if (epoch !== pickEpochRef.current) {
+            clientLog('output_folder_pick_ignored', { reason: 'superseded' });
+            return;
+        }
         setFolderErrorKey(errorKey);
         if (path) setOutputDirInput(path);
     }, []);
+
+    // Settings opens or closes: a picked but unsaved folder must not linger (its grant
+    // expires anyway), so the field shows the saved folder again and a pick in flight is dropped.
+    useEffect(() => {
+        pickEpochRef.current += 1;
+        setOutputDirInput(appSettingsRef.current?.output_dir ?? '');
+        setFolderErrorKey(null);
+    }, [showSettingsModal]);
 
     const openSettingsModal = useCallback(() => {
         setShowSettingsModal(true);
@@ -216,7 +242,6 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
         allServiceSettings,
         connectedServices: selectedServices,
         outputDirInput,
-        setOutputDirInput,
         settingsErrorKey,
         clearSettingsError,
         folderErrorKey,

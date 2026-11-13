@@ -18,7 +18,7 @@ interface SetupWizardProps {
 /**
  * First-launch output folder: a brand dialog (spec §4), not dismissible, one primary (D2d
  * decisions 4, 17, 18). A form never disables its submit (spec §8): Start validates on click,
- * says what is missing and focuses the field. The folder is chosen with Browse only, in the
+ * says what is missing and focuses Browse (the field is read-only). The folder is chosen with Browse only, in the
  * native picker the backend runs (security audit 2026-11-13), so the field shows it read-only
  * and a refused pick says why inside this dialog.
  */
@@ -36,7 +36,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
     const hintId = useId();
     const errorId = useId();
     const folderErrorId = useId();
-    const inputRef = useRef<HTMLInputElement>(null);
+    const browseRef = useRef<HTMLButtonElement>(null);
     const [triedEmpty, setTriedEmpty] = useState(false);
     // A folder chosen with Browse clears the message without another click.
     const missing = triedEmpty && !isValid;
@@ -48,7 +48,8 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
         if (!isValid) {
             setTriedEmpty(true);
             clientLog('entry_validation', { surface: 'setup', reason: 'missing_folder' });
-            inputRef.current?.focus();
+            // The field is read-only: the control that fixes the problem is Browse.
+            browseRef.current?.focus();
             return;
         }
         onComplete();
@@ -79,7 +80,6 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
                 </label>
                 <div className="flex gap-2">
                     <Input
-                        ref={inputRef}
                         id={inputId}
                         value={outputDirInput}
                         readOnly
@@ -88,7 +88,7 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
                         aria-describedby={describedBy}
                         className="flex-1"
                     />
-                    <Button variant="secondary" onClick={onSelectFolder}>{t('common.browse')}</Button>
+                    <Button ref={browseRef} variant="secondary" onClick={onSelectFolder}>{t('common.browse')}</Button>
                 </div>
                 <p id={hintId} className="text-caption text-muted">{t('setup.outputFolderHint')}</p>
                 {missing && (

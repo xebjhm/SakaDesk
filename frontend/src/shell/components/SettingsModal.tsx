@@ -19,12 +19,15 @@ import { useUpgradeStore } from '../../core/upgrade/upgradeStore';
 import { UpdateActions } from '../../core/upgrade/UpdateActions';
 import { isJstSlot, jstSlotToLocal } from '../../features/memories/shared/jst';
 import { pregenLabelKey, pregenProgress } from '../../core/media/grid/galleryStatus';
-import { pickOutputFolder } from '../outputFolder';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
+    /** The folder the read-only field shows: the saved one, or one just picked with Browse. */
     outputDirInput: string;
-    setOutputDirInput: (dir: string) => void;
+    /** Open the native folder picker (the only way to choose the output folder). */
+    onSelectFolder: () => void;
+    /** i18n key of the newest output-folder problem (a failed pick or a refused save), or null. */
+    folderErrorKey?: string | null;
     onSaveSettings: (updates: Partial<AppSettings>) => Promise<boolean>;
     onClose: () => void;
     activeService: string;
@@ -131,7 +134,8 @@ const GroupChip: React.FC<{ serviceId: string }> = ({ serviceId }) => (
 export const SettingsModal: React.FC<SettingsModalProps> = ({
     appSettings,
     outputDirInput,
-    setOutputDirInput,
+    onSelectFolder,
+    folderErrorKey = null,
     onSaveSettings,
     onClose,
     activeService,
@@ -198,13 +202,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
     };
     const rowError = (row: SaveRow): string | undefined => (failedRow === row ? t('settings.saveFailed') : undefined);
 
-    // The output folder comes only from the native picker (security audit 2026-11-13);
-    // a refused or failed pick says why on the row.
-    const [folderErrorKey, setFolderErrorKey] = useState<string | null>(null);
-    const browseOutputFolder = async () => {
-        const { path, errorKey } = await pickOutputFolder();
-        setFolderErrorKey(errorKey);
-        if (path) setOutputDirInput(path);
+    // The output folder comes only from the native picker (security audit 2026-11-13). The row
+    // shows the newest problem: the specific reason from the hook (a failed pick or a refused
+    // save), else the generic message of a failed save. A new pick drops the old generic one.
+    const outputFolderDescId = useId();
+    const outputFolderErrorId = useId();
+    const outputFolderError = folderErrorKey ? t(folderErrorKey) : rowError('outputDir');
+    const browseOutputFolder = () => {
+        if (failedRowRef.current === 'outputDir') {
+            failedRowRef.current = null;
+            setFailedRow(null);
+        }
+        onSelectFolder();
     };
 
     const formatBytes = (bytes: number): string => {
@@ -486,13 +495,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
 
                     <SettingRow
                         label={t('settings.outputFolder')}
-                        error={rowError('outputDir') ?? (folderErrorKey ? t(folderErrorKey) : undefined)}
+                        description={t('settings.outputFolderDesc')}
+                        descriptionId={outputFolderDescId}
+                        error={outputFolderError}
+                        errorId={outputFolderErrorId}
                     >
                         <div className="flex gap-2">
                             <Input
                                 aria-label={t('settings.outputFolder')}
                                 value={outputDirInput}
                                 readOnly
+                                aria-invalid={outputFolderError ? true : undefined}
+                                aria-describedby={outputFolderError ? `${outputFolderDescId} ${outputFolderErrorId}` : outputFolderDescId}
                                 className="flex-1"
                             />
                             <Button variant="secondary" onClick={browseOutputFolder}>

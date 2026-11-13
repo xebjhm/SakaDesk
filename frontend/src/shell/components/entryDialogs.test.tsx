@@ -427,7 +427,7 @@ describe('setup (R-d)', () => {
         expect(checkbox.closest('label')).toHaveClass('bg-elevated');
     });
 
-    it('validates on click: says what is missing, focuses the field and logs it', async () => {
+    it('validates on click: says what is missing, focuses Browse and logs it', async () => {
         const onComplete = vi.fn();
         const { rerender } = render(<SetupWizard {...props} onComplete={onComplete} isValid={false} />);
         const start = screen.getByRole('button', { name: 'Start Using SakaDesk' });
@@ -437,7 +437,7 @@ describe('setup (R-d)', () => {
         expect(onComplete).not.toHaveBeenCalled();
         expect(screen.getByRole('alert')).toHaveTextContent(i18n.t('setup.folderRequired'));
         const field = screen.getByLabelText('Output Folder Path');
-        expect(field).toHaveFocus();
+        expect(screen.getByRole('button', { name: 'Browse' })).toHaveFocus();
         expect(field).toHaveAttribute('aria-invalid', 'true');
         expect(clientLog).toHaveBeenCalledWith('entry_validation', { surface: 'setup', reason: 'missing_folder' });
         rerender(<SetupWizard {...props} outputDirInput="C:\\データ" onComplete={onComplete} isValid />);

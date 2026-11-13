@@ -1,3 +1,5 @@
+import { clientLog, breadcrumbCode } from '../utils/clientLog';
+
 /**
  * The output (archive) folder is chosen only in the native folder picker the backend runs
  * (`POST /api/settings/select-folder`, security audit 2026-11-13): a page cannot name a
@@ -31,14 +33,18 @@ export interface FolderPick {
 export async function pickOutputFolder(): Promise<FolderPick> {
     try {
         const res = await fetch('/api/settings/select-folder', { method: 'POST' });
-        if (!res.ok) return { path: null, errorKey: outputDirErrorKey('failed') };
+        if (!res.ok) {
+            clientLog('output_folder_pick_failed', { reason: `http_${res.status}` });
+            return { path: null, errorKey: outputDirErrorKey('failed') };
+        }
         const body = (await res.json()) as { path?: unknown; error?: unknown } | null;
         if (typeof body?.path === 'string' && body.path) return { path: body.path, errorKey: null };
         if (body?.error !== undefined && body?.error !== null) {
             return { path: null, errorKey: outputDirErrorKey(body.error) };
         }
         return { path: null, errorKey: null };
-    } catch {
+    } catch (error) {
+        clientLog('output_folder_pick_failed', { error_type: breadcrumbCode(error) });
         return { path: null, errorKey: outputDirErrorKey('failed') };
     }
 }

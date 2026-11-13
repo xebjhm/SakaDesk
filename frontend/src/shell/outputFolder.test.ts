@@ -1,9 +1,11 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
+import { clientLog } from '../utils/clientLog';
 import { OUTPUT_DIR_ERROR_CODES, outputDirErrorKey, pickOutputFolder, saveErrorKey } from './outputFolder';
 
-afterEach(() => { vi.unstubAllGlobals(); });
+vi.mock('../utils/clientLog', async (orig) => ({ ...(await orig<typeof import('../utils/clientLog')>()), clientLog: vi.fn() }));
+afterEach(() => { vi.unstubAllGlobals(); vi.mocked(clientLog).mockClear(); });
 
-const reply = (ok: boolean, body: unknown) => vi.fn().mockResolvedValue({ ok, json: async () => body });
+const reply = (ok: boolean, body: unknown) => vi.fn().mockResolvedValue({ ok, status: ok ? 200 : 500, json: async () => body });
 
 describe('outputDirErrorKey', () => {
     it.each(OUTPUT_DIR_ERROR_CODES)('maps %s to its string', (code) => {
@@ -36,8 +38,10 @@ describe('pickOutputFolder', () => {
     it('a failed request or a network error is the generic failure', async () => {
         vi.stubGlobal('fetch', reply(false, { detail: 'nope' }));
         await expect(pickOutputFolder()).resolves.toEqual({ path: null, errorKey: 'settings.outputDirError.failed' });
+        expect(clientLog).toHaveBeenLastCalledWith('output_folder_pick_failed', { reason: 'http_500' });
         vi.stubGlobal('fetch', vi.fn().mockRejectedValue(new TypeError('offline')));
         await expect(pickOutputFolder()).resolves.toEqual({ path: null, errorKey: 'settings.outputDirError.failed' });
+        expect(clientLog).toHaveBeenLastCalledWith('output_folder_pick_failed', { error_type: 'typeerror' });
     });
 });
 

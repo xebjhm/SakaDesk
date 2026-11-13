@@ -112,6 +112,9 @@ ClientEvent = Literal[
     "media_poster",
     "external_link",
     "csp_violation",
+    "output_folder_pick_failed",
+    "output_folder_pick_ignored",
+    "setup_save_failed",
 ]
 
 ALLOWED_FIELDS = frozenset(

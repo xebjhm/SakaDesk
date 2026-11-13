@@ -408,4 +408,119 @@ describe('useSettings – output folder picker (security audit 2026-11-13)', () 
         expect(ok).toBe(false)
         expect(result.current.settingsErrorKey).toBe('settings.outputDirError.not_picked')
     })
+
+    const refused = (reason: string) => ({
+        ok: false,
+        json: () => Promise.resolve({ detail: { code: 'output_dir_rejected', reason } }),
+    })
+
+    /** fetch whose picker waits for `release()` and whose POST /api/settings answers `postReply`. */
+    function deferredPicker(postReply?: unknown) {
+        const { impl } = buildFetch()
+        let release: (v: unknown) => void = () => {}
+        vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+            if (input === '/api/settings/select-folder') {
+                return new Promise((resolve) => {
+                    release = (body) => resolve({ ok: true, json: () => Promise.resolve(body) })
+                })
+            }
+            if ((init?.method ?? 'GET').toUpperCase() === 'POST' && input === '/api/settings' && postReply) {
+                return Promise.resolve(postReply)
+            }
+            return impl(input, init)
+        }))
+        return { release: (body: unknown) => release(body) }
+    }
+
+    it('a refused output folder on save also shows its reason by the field', async () => {
+        const { impl } = buildFetch()
+        vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) =>
+            (init?.method ?? 'GET').toUpperCase() === 'POST' && input === '/api/settings'
+                ? Promise.resolve(refused('not_picked'))
+                : impl(input, init)))
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        await act(async () => { await result.current.saveSettings({ output_dir: 'D:\\typed' }) })
+        expect(result.current.folderErrorKey).toBe('settings.outputDirError.not_picked')
+    })
+
+    it('a save of something else leaves the folder message alone', async () => {
+        withPicker({ path: null, error: 'busy' })
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        await act(async () => { await result.current.handleSelectFolder() })
+        await act(async () => { await result.current.saveSettings({ blogs_full_backup: true }) })
+        expect(result.current.folderErrorKey).toBe('settings.outputDirError.busy')
+    })
+
+    it('the newest word wins: a save of the folder drops an older picker error, a success leaves none', async () => {
+        withPicker({ path: null, error: 'busy' })
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        await act(async () => { await result.current.handleSelectFolder() })
+        expect(result.current.folderErrorKey).toBe('settings.outputDirError.busy')
+        await act(async () => { await result.current.saveSettings({ output_dir: '/tmp/test' }) })
+        expect(result.current.folderErrorKey).toBeNull()
+    })
+
+    it('a generic failed save replaces an older picker error', async () => {
+        const { impl } = buildFetch()
+        let pick = true
+        vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+            if (input === '/api/settings/select-folder') {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve({ path: null, error: 'busy' }) })
+            }
+            if (!pick && (init?.method ?? 'GET').toUpperCase() === 'POST' && input === '/api/settings') {
+                return Promise.resolve({ ok: false, json: () => Promise.resolve({ detail: 'x' }) })
+            }
+            return impl(input, init)
+        }))
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        await act(async () => { await result.current.handleSelectFolder() })
+        pick = false
+        await act(async () => { await result.current.saveSettings({ output_dir: '/x' }) })
+        expect(result.current.folderErrorKey).toBeNull()
+        expect(result.current.settingsErrorKey).toBe('settings.saveFailed')
+    })
+
+    it('opening or closing Settings drops a picked but unsaved folder', async () => {
+        withPicker({ path: 'D:\\データ' })
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        await act(async () => { result.current.openSettingsModal() })
+        await act(async () => { await result.current.handleSelectFolder() })
+        expect(result.current.outputDirInput).toBe('D:\\データ')
+        act(() => { result.current.setShowSettingsModal(false) })
+        expect(result.current.outputDirInput).toBe('/tmp/test')
+
+        await act(async () => { await result.current.handleSelectFolder() })
+        expect(result.current.outputDirInput).toBe('D:\\データ')
+        await act(async () => { result.current.openSettingsModal() })
+        expect(result.current.outputDirInput).toBe('/tmp/test')
+    })
+
+    it('a picker result that arrives after Settings closed is ignored', async () => {
+        const picker = deferredPicker()
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        await act(async () => { result.current.openSettingsModal() })
+        let pending: Promise<void> = Promise.resolve()
+        act(() => { pending = result.current.handleSelectFolder() })
+        act(() => { result.current.setShowSettingsModal(false) })
+        await act(async () => { picker.release({ path: 'D:\\late' }); await pending })
+        expect(result.current.outputDirInput).toBe('/tmp/test')
+        expect(result.current.folderErrorKey).toBeNull()
+    })
+
+    it('a picker result that arrives after the folder save started is ignored', async () => {
+        const picker = deferredPicker()
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        let pending: Promise<void> = Promise.resolve()
+        act(() => { pending = result.current.handleSelectFolder() })
+        await act(async () => { await result.current.saveSettings({ output_dir: '/tmp/test' }) })
+        await act(async () => { picker.release({ path: null, error: 'busy' }); await pending })
+        expect(result.current.folderErrorKey).toBeNull()
+    })
 })

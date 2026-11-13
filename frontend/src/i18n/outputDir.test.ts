@@ -21,7 +21,7 @@ describe('output folder strings (security audit 2026-11-13)', () => {
     });
 
     it('English wording', () => {
-        expect(en.settings.outputDirError.not_picked).toBe('Choose the folder with Browse.');
+        expect(en.settings.outputDirError.not_picked).toBe('Choose the folder with Browse again.');
         expect(en.setup.folderRequired).toBe('Choose a folder first');
         expect(en.setup.outputFolderHint).toBe('Your messages and photos are saved here. Click Browse to choose another folder.');
     });

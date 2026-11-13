@@ -59,7 +59,6 @@ function App() {
         appSettings,
         setAppSettings,
         outputDirInput,
-        setOutputDirInput,
         settingsErrorKey,
         clearSettingsError,
         showSettingsModal,
@@ -372,7 +371,10 @@ function App() {
             const success = await saveSettings({
                 output_dir: outputDirInput.trim(),
             });
-            if (success) {
+            if (!success) {
+                // The wizard stays; the reason shows in it and in the toast.
+                clientLog('setup_save_failed', { reason: 'save_refused' });
+            } else {
                 setShowSetupWizard(false);
                 // Sequential sync: one service at a time with blocking modal
                 const servicesToSync = connectedServices.length > 0
@@ -487,7 +489,8 @@ function App() {
                     <SettingsModal
                         appSettings={appSettings}
                         outputDirInput={outputDirInput}
-                        setOutputDirInput={setOutputDirInput}
+                        onSelectFolder={handleSelectFolder}
+                        folderErrorKey={folderErrorKey}
                         onSaveSettings={saveSettings}
                         onClose={() => setShowSettingsModal(false)}
                         activeService={activeService ?? ''}
