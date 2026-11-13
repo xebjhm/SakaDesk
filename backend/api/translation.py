@@ -188,8 +188,9 @@ def _load_key_status(
     (:func:`_stored_key_provider`, which also adopts a key stored before its
     provider was recorded), so the settings never show a key the app would
     refuse to use. The state is read through an in-memory cache over the slow
-    OS keyring read; a key with no recorded provider is not cached (it is adopted once a saved
-    provider is known, as the startup warm-up does). Safe to run in a worker thread.
+    OS keyring read; a key with no recorded provider is not cached (it is
+    adopted once a saved provider is known, as the startup warm-up does).
+    Safe to run in a worker thread.
     """
     global _key_status_cache
     cached = _key_status_cache
