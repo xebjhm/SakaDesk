@@ -1,13 +1,13 @@
 """Extended tests for settings API — covers global GET/POST, fresh-install check,
-folder picker, init-service endpoint, and blog backup toggle.
+init-service endpoint, and blog backup toggle (the folder picker and output_dir
+binding are in test_settings_output_dir.py).
 
 Existing test_settings.py covers per-service GET/POST and invalid-service.
 This file covers the remaining untested routes and branches.
 """
 
-import asyncio
 import contextlib
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 
@@ -137,24 +137,28 @@ class TestGetSettings:
 class TestUpdateSettings:
     """Tests for POST /api/settings (global settings update)."""
 
-    def test_update_output_dir_marks_configured(self):
-        """Setting output_dir also sets is_configured to True."""
+    def test_update_output_dir_marks_configured(self, tmp_path):
+        """Saving a picked output_dir also sets is_configured to True."""
+        from backend.services import output_dir_policy
+
         cfg = _default_config(is_configured=False)
+        picked = tmp_path / "new-output"
+        output_dir_policy.grant(str(picked))
 
         async def _update(updater_fn):
             updater_fn(cfg)
             return cfg
 
-        with _patch_store(load_return=cfg, update_side_effect=_update):
-            response = client.post(
-                "/api/settings",
-                json={
-                    "output_dir": "/new/output",
-                },
-            )
+        try:
+            with _patch_store(load_return=cfg, update_side_effect=_update):
+                response = client.post(
+                    "/api/settings", json={"output_dir": str(picked)}
+                )
+        finally:
+            output_dir_policy.clear_grants_for_tests()
         assert response.status_code == 200
         data = response.json()
-        assert data["output_dir"] == "/new/output"
+        assert data["output_dir"] == str(picked)
         assert data["is_configured"] is True
 
     def test_update_auto_sync(self):
@@ -306,27 +310,34 @@ class TestUpdateSettings:
         assert response.status_code == 200
         assert response.json()["auto_download_updates"] is True
 
-    def test_update_multiple_fields(self):
-        """Update several fields at once."""
+    def test_update_multiple_fields(self, tmp_path):
+        """Update several fields at once (output_dir from the folder picker)."""
+        from backend.services import output_dir_policy
+
         cfg = _default_config()
+        picked = tmp_path / "multi-update"
+        output_dir_policy.grant(str(picked))
 
         async def _update(updater_fn):
             updater_fn(cfg)
             return cfg
 
-        with _patch_store(load_return=cfg, update_side_effect=_update):
-            response = client.post(
-                "/api/settings",
-                json={
-                    "output_dir": "/multi/update",
-                    "auto_sync_enabled": False,
-                    "sync_interval_minutes": 60,
-                    "blogs_full_backup": True,
-                },
-            )
+        try:
+            with _patch_store(load_return=cfg, update_side_effect=_update):
+                response = client.post(
+                    "/api/settings",
+                    json={
+                        "output_dir": str(picked),
+                        "auto_sync_enabled": False,
+                        "sync_interval_minutes": 60,
+                        "blogs_full_backup": True,
+                    },
+                )
+        finally:
+            output_dir_policy.clear_grants_for_tests()
         assert response.status_code == 200
         data = response.json()
-        assert data["output_dir"] == "/multi/update"
+        assert data["output_dir"] == str(picked)
         assert data["auto_sync_enabled"] is False
         assert data["sync_interval_minutes"] == 60
         assert data["blogs_full_backup"] is True
@@ -441,107 +452,6 @@ class TestFreshInstallCheck:
             response = client.get("/api/settings/fresh")
         assert response.status_code == 200
         assert response.json()["output_dir"] == str(tmp_path)
-
-
-# ===========================================================================
-# POST /api/settings/select-folder
-# ===========================================================================
-
-
-class TestSelectFolder:
-    """Tests for POST /api/settings/select-folder."""
-
-    @pytest.fixture(autouse=True)
-    def _stub_tkinter(self):
-        """Stub the tkinter modules the endpoint imports so its import
-        succeeds on platforms without _tkinter (e.g. macOS dev). The dialog
-        itself never runs here because asyncio is mocked. The
-        tkinter-missing test overrides sys.modules['tkinter'] = None itself."""
-        with patch.dict(
-            "sys.modules",
-            {"tkinter": MagicMock(), "tkinter.filedialog": MagicMock()},
-        ):
-            yield
-
-    def test_returns_selected_path(self):
-        """Returns the path chosen by the user."""
-
-        async def fake_wait_for(coro, *, timeout=None):
-            return "/selected/folder"
-
-        with (
-            patch.object(asyncio, "wait_for", new=fake_wait_for),
-            patch.object(asyncio, "get_event_loop") as mock_get_loop,
-        ):
-            mock_loop = MagicMock()
-            mock_get_loop.return_value = mock_loop
-            response = client.post("/api/settings/select-folder")
-
-        assert response.status_code == 200
-        assert response.json()["path"] == "/selected/folder"
-
-    def test_returns_none_when_tkinter_missing(self):
-        """Returns path=None with error when tkinter is not available."""
-        with patch.dict("sys.modules", {"tkinter": None}):
-            response = client.post("/api/settings/select-folder")
-        assert response.status_code == 200
-        data = response.json()
-        assert "path" in data
-
-    def test_returns_none_when_user_cancels(self):
-        """Returns path=None when user cancels the dialog."""
-
-        async def fake_wait_for(coro, *, timeout=None):
-            return None
-
-        with (
-            patch.object(asyncio, "wait_for", new=fake_wait_for),
-            patch.object(asyncio, "get_event_loop") as mock_get_loop,
-        ):
-            mock_loop = MagicMock()
-            mock_get_loop.return_value = mock_loop
-            response = client.post("/api/settings/select-folder")
-
-        assert response.status_code == 200
-        assert response.json()["path"] is None
-
-    def test_returns_error_on_timeout(self):
-        """Returns path=None with error message on timeout."""
-
-        async def fake_wait_for(coro, *, timeout=None):
-            raise asyncio.TimeoutError()
-
-        with (
-            patch.object(asyncio, "wait_for", new=fake_wait_for),
-            patch.object(asyncio, "get_event_loop") as mock_get_loop,
-        ):
-            mock_loop = MagicMock()
-            mock_get_loop.return_value = mock_loop
-            response = client.post("/api/settings/select-folder")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["path"] is None
-        assert "timed out" in data.get("error", "").lower()
-
-    def test_returns_error_on_executor_exception(self):
-        """Returns path=None with error on executor failure."""
-
-        async def fake_wait_for(coro, *, timeout=None):
-            raise RuntimeError("executor crashed")
-
-        with (
-            patch.object(asyncio, "wait_for", new=fake_wait_for),
-            patch.object(asyncio, "get_event_loop") as mock_get_loop,
-        ):
-            mock_loop = MagicMock()
-            mock_get_loop.return_value = mock_loop
-            response = client.post("/api/settings/select-folder")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert data["path"] is None
-        assert "error" in data
 
 
 # ===========================================================================

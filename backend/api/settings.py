@@ -7,6 +7,7 @@ Uses platform-appropriate paths for Windows deployment.
 import asyncio
 import json
 import sys
+import threading
 import structlog
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
@@ -20,7 +21,8 @@ from backend.services.platform import (
 from backend.services.service_utils import (
     validate_service,
 )
-from backend.services import autostart, desktop_bridge
+from backend.services import autostart, desktop_bridge, output_dir_policy
+from backend.services.i18n import get_strings, resolve_ui_language
 from backend.services.memories import notify_scheduler
 from backend.services.auto_sync_scheduler import wake_scheduler
 from backend.services.call_popup import get_call_popup_controller
@@ -195,7 +197,7 @@ def _settings_response(config: dict[str, Any]) -> SettingsResponse:
     return SettingsResponse(
         # The saved text exactly (POST compares against it), else the default.
         output_dir=saved
-        if isinstance(saved, str) and saved
+        if isinstance(saved, str) and saved.strip()
         else get_default_output_dir(),
         auto_sync_enabled=config["auto_sync_enabled"],
         sync_interval_minutes=config["sync_interval_minutes"],
@@ -254,9 +256,68 @@ async def get_settings():
     return _settings_response(config)
 
 
+def _output_dir_refused(reason: str, source: str) -> HTTPException:
+    """Log a refused ``output_dir`` (codes only) and build its 400."""
+    logger.warning("output_dir_rejected", reason=reason, source=source)
+    return HTTPException(
+        status_code=400, detail={"code": "output_dir_rejected", "reason": reason}
+    )
+
+
+async def _accept_output_dir(raw: str) -> str:
+    """The value to save for a requested ``output_dir``, or raise HTTP 400 (security audit 2026-11-13).
+
+    - The saved value itself (``output_dir_policy.same_dir``): kept exactly as
+      saved, with no check, so an archive in use keeps working whatever its
+      form.
+    - The default folder, or a folder the folder picker returned in this
+      process (``POST /api/settings/select-folder``; each pick is used once):
+      saved in the form ``output_dir_policy.check_output_dir`` returns, if it
+      passes.
+    - Anything else is refused with ``not_picked``: a page cannot name a
+      folder, only the user can, in the native picker.
+
+    Logs ``output_dir_accepted`` (``source``) or ``output_dir_rejected``
+    (``reason``, ``source``); never the path.
+    """
+    config = await _store_load()
+    current = config.get("output_dir")
+    if (
+        isinstance(current, str)
+        and current
+        and output_dir_policy.same_dir(raw, current)
+    ):
+        logger.info("output_dir_accepted", source="current")
+        return current
+    if output_dir_policy.same_dir(raw, get_default_output_dir()):
+        source = "default"
+    elif output_dir_policy.has_grant(raw):
+        source = "picker"
+    else:
+        raise _output_dir_refused("not_picked", "api")
+    try:
+        value = await asyncio.to_thread(output_dir_policy.check_output_dir, raw)
+    except output_dir_policy.OutputDirRejected as e:
+        raise _output_dir_refused(e.reason, source) from None
+    if source == "picker":
+        output_dir_policy.take_grant(raw)
+    logger.info("output_dir_accepted", source=source)
+    return value
+
+
 @router.post("", response_model=SettingsResponse)
 async def update_settings(update: SettingsUpdate):
-    """Update settings."""
+    """Update settings.
+
+    ``output_dir`` (the archive root every containment check trusts) is
+    accepted only as :func:`_accept_output_dir` allows; a refused value
+    answers 400 ``{"detail": {"code": "output_dir_rejected", "reason": ...}}``
+    and nothing in the request is saved.
+    """
+    new_output_dir: Optional[str] = None
+    if update.output_dir is not None:
+        # Before anything is written: a refused folder fails the whole request.
+        new_output_dir = await _accept_output_dir(update.output_dir)
     autostart_change: Optional[bool] = None
     call_popup_change: Optional[bool] = None
     schedule_changed = False
@@ -268,8 +329,8 @@ async def update_settings(update: SettingsUpdate):
         before = tuple(config.get(key) for key in _SCHEDULE_KEYS)
         notify_before = tuple(config.get(key) for key in _MEMORIES_NOTIFY_KEYS)
         notifications_before = config.get("notifications_enabled")
-        if update.output_dir is not None:
-            config["output_dir"] = update.output_dir
+        if new_output_dir is not None:
+            config["output_dir"] = new_output_dir
             config["is_configured"] = True
         if update.auto_sync_enabled is not None:
             config["auto_sync_enabled"] = update.auto_sync_enabled
@@ -355,49 +416,126 @@ async def check_fresh_install():
     return FreshCheckResponse(is_fresh=is_fresh, output_dir=str(output_path))
 
 
-@router.post("/select-folder")
-async def select_folder():
-    """Open a native folder picker dialog."""
+class _PickerUnavailable(Exception):
+    """This build has no tkinter, so no native folder picker."""
+
+
+def _ask_directory(title: str) -> Optional[str]:
+    """Show the native folder dialog above other windows; the chosen folder or None. Blocking.
+
+    Raises :class:`_PickerUnavailable` when tkinter is missing.
+    """
     try:
         import tkinter as tk
         from tkinter import filedialog
-    except ImportError as e:
-        logger.warning(f"Tkinter not available: {e}")
-        return {"path": None, "error": "Folder picker not available (tkinter missing)"}
-
-    def open_dialog() -> Optional[str]:
-        """Open a tkinter folder dialog. Runs in an executor thread."""
-        try:
-            root = tk.Tk()
-            root.withdraw()  # Hide the main window
-            root.attributes("-topmost", True)  # Bring to front
-
-            folder = filedialog.askdirectory(title="Select Output Folder")
-            root.destroy()
-            return folder if folder else None
-        except Exception as e:
-            logger.error(f"Dialog error: {e}")
-            return None
-
-    # Timeout after 5 minutes (user should have selected a folder by then)
-    DIALOG_TIMEOUT_SECONDS = 300
-
+    except ImportError:
+        raise _PickerUnavailable() from None
+    root = tk.Tk()
     try:
-        loop = asyncio.get_event_loop()
-        result = await asyncio.wait_for(
-            loop.run_in_executor(None, open_dialog),
-            timeout=DIALOG_TIMEOUT_SECONDS,
-        )
-    except asyncio.TimeoutError:
-        logger.warning("Folder dialog timed out after 5 minutes")
-        return {"path": None, "error": "Dialog timed out"}
-    except Exception as e:
-        logger.error(f"Executor error: {e}")
-        return {"path": None, "error": str(e)}
+        root.withdraw()  # no empty Tk window, only the dialog
+        root.attributes("-topmost", True)
+        folder = filedialog.askdirectory(title=title, mustexist=True)
+    finally:
+        root.destroy()
+    return folder or None
 
-    if result:
-        return {"path": result}
-    return {"path": None}
+
+_PICKER_TIMEOUT_SECONDS = 300.0
+"""How long one request waits for the dialog (it may stay open longer: see :func:`_start_picker`)."""
+
+_picker_lock = threading.Lock()
+"""Held while a folder dialog is open, from the request that opens it until the dialog closes."""
+
+
+def _start_picker(title: str) -> "asyncio.Future[Optional[str]]":
+    """Run :func:`_ask_directory` on a daemon thread; a future for its result.
+
+    The caller holds :data:`_picker_lock`; the thread releases it when the
+    dialog closes, also after the request stopped waiting, so a second dialog
+    never opens over a forgotten one. A daemon thread never delays the app's
+    exit.
+    """
+    loop = asyncio.get_running_loop()
+    future: "asyncio.Future[Optional[str]]" = loop.create_future()
+
+    def settle(result: Optional[str], error: Optional[Exception]) -> None:
+        if future.done():
+            return
+        if error is not None:
+            future.set_exception(error)
+        else:
+            future.set_result(result)
+
+    def worker() -> None:
+        result: Optional[str] = None
+        error: Optional[Exception] = None
+        try:
+            result = _ask_directory(title)
+        except Exception as e:  # noqa: BLE001 - handed to the request
+            error = e
+        finally:
+            _picker_lock.release()
+        try:
+            loop.call_soon_threadsafe(settle, result, error)
+        except RuntimeError:
+            pass  # the request's loop is gone (it timed out, or the app is exiting)
+
+    threading.Thread(target=worker, name="folder-picker", daemon=True).start()
+    return future
+
+
+@router.post("/select-folder")
+async def select_folder():
+    """Open the native folder picker; a folder it returns may then be saved as ``output_dir``.
+
+    The chosen folder is checked (``output_dir_policy.check_output_dir``) and,
+    if it passes, remembered as picked (``output_dir_policy.grant``): one later
+    ``POST /api/settings`` may save it (security audit 2026-11-13). The dialog
+    title follows the UI language (``backend/i18n/<lang>/folder_picker.json``).
+
+    Answers ``{"path": <folder>}`` (the normalised form to save),
+    ``{"path": None}`` when the user cancelled, or ``{"path": None, "error":
+    <code>}``: ``busy`` (a dialog is already open), ``unavailable`` (no
+    tkinter), ``timeout`` (no answer within 5 minutes; that dialog keeps the
+    picker busy until it is closed), ``failed`` (the dialog could not open),
+    or a rule's reason (``network``, ``root``, ``profile``...). Every outcome
+    logs ``output_dir_picker`` with ``outcome`` (and ``reason`` or
+    ``error_type``); never a path.
+    """
+    config = await _store_load()
+    lang = await asyncio.to_thread(resolve_ui_language, config)
+    title = get_strings("folder_picker", lang)["title"]
+    if not _picker_lock.acquire(blocking=False):
+        logger.info("output_dir_picker", outcome="busy")
+        return {"path": None, "error": "busy"}
+    try:
+        pending = _start_picker(title)
+    except Exception as e:  # noqa: BLE001 - the thread never started
+        _picker_lock.release()
+        logger.error("output_dir_picker", outcome="failed", error_type=type(e).__name__)
+        return {"path": None, "error": "failed"}
+    try:
+        chosen = await asyncio.wait_for(pending, timeout=_PICKER_TIMEOUT_SECONDS)
+    except asyncio.TimeoutError:
+        logger.warning("output_dir_picker", outcome="timeout")
+        return {"path": None, "error": "timeout"}
+    except _PickerUnavailable:
+        logger.warning("output_dir_picker", outcome="unavailable")
+        return {"path": None, "error": "unavailable"}
+    except Exception as e:  # noqa: BLE001 - one code, never the error text
+        logger.error("output_dir_picker", outcome="failed", error_type=type(e).__name__)
+        return {"path": None, "error": "failed"}
+    if not chosen:
+        logger.info("output_dir_picker", outcome="cancelled")
+        return {"path": None}
+    try:
+        value = await asyncio.to_thread(output_dir_policy.check_output_dir, chosen)
+    except output_dir_policy.OutputDirRejected as e:
+        logger.warning("output_dir_picker", outcome="rejected", reason=e.reason)
+        return {"path": None, "error": e.reason}
+    output_dir_policy.grant(value)
+    logger.info("output_dir_picker", outcome="picked")
+    return {"path": value}
 
 
 def _service_settings_response(stored: dict) -> "ServiceSettings":

@@ -2,8 +2,11 @@
 backend/api/settings.py:output-dir-unvalidated-archive-trust-root).
 
 Every archive containment check trusts ``output_dir`` as its base, so whoever
-sets it decides which files the archive routes may read. A new value must pass
-:func:`check_output_dir`. Reasons (log, API and UI codes):
+sets it decides which files the archive routes may read. ``POST /api/settings``
+therefore takes a new value only when the user chose it in the native folder
+picker the backend runs (:func:`grant`, then :func:`take_grant` when it is
+saved) or it is the default folder, and only if :func:`check_output_dir`
+passes. Reasons (log, API and UI codes):
 
 Lexical, before any filesystem call (so a network path is never opened):
 
@@ -38,12 +41,18 @@ from __future__ import annotations
 import ntpath
 import os
 import tempfile
+import threading
 from pathlib import Path, PureWindowsPath
 
 from backend.services.platform import get_app_data_dir
 
 MAX_OUTPUT_DIR_CHARS = 1024
+MAX_GRANTS = 8
 _SYSTEM_DIR_VARS = ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData")
+
+# Folders the native picker returned in this process (comparison form), oldest first.
+_grants: list[str] = []
+_grants_lock = threading.Lock()
 
 
 class OutputDirRejected(ValueError):
@@ -191,3 +200,35 @@ def check_output_dir(raw: object) -> str:
     if not _writable(normal):
         raise OutputDirRejected("not_writable")
     return str(normal)
+
+
+def grant(value: str) -> None:
+    """Remember a folder the native picker returned; only the newest ``MAX_GRANTS`` are kept."""
+    key = _key(value)
+    with _grants_lock:
+        if key in _grants:
+            _grants.remove(key)
+        _grants.append(key)
+        del _grants[:-MAX_GRANTS]
+
+
+def has_grant(value: str) -> bool:
+    """True when the picker returned ``value`` (as :func:`same_dir` compares) and it is unused."""
+    with _grants_lock:
+        return _key(value) in _grants
+
+
+def take_grant(value: str) -> bool:
+    """Use up the pick of ``value``; True if there was one."""
+    key = _key(value)
+    with _grants_lock:
+        if key in _grants:
+            _grants.remove(key)
+            return True
+    return False
+
+
+def clear_grants_for_tests() -> None:
+    """Test-only: forget every pick."""
+    with _grants_lock:
+        _grants.clear()
