@@ -44,7 +44,11 @@ from urllib.parse import unquote
 import structlog
 
 from backend.services import profile_images_service
-from backend.services.archive_urls import is_plain_relative
+from backend.services.archive_urls import (
+    ArchiveReadError,
+    is_plain_relative,
+    resolve_within,
+)
 from backend.services.memories import cards as cards_mod
 from backend.services.memories import index as mi
 from backend.services.memories import people
@@ -173,10 +177,8 @@ def _avatar_digest(sdir: Path, room: str, url: str) -> str | None:
     if not (_plain_parts(room) and _plain_parts(rel)):
         return None
     base = sdir / room / profile_images_service.DIR_NAME
-    path = base / rel
     try:
-        if not path.resolve().is_relative_to(base.resolve()):
-            return None
+        path = resolve_within(base, base / rel)
         st = path.stat()
         key = (str(path), st.st_size, st.st_mtime_ns)
         with _digest_lock:
@@ -185,7 +187,7 @@ def _avatar_digest(sdir: Path, room: str, url: str) -> str | None:
                 _digest_cache.move_to_end(key)
                 return hit
         data = path.read_bytes()
-    except OSError:
+    except (OSError, ArchiveReadError):
         return None
     digest = hashlib.sha256(data).hexdigest()
     with _digest_lock:

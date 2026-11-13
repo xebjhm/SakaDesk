@@ -361,6 +361,19 @@ def test_avatar_digest_handles_foreign_and_missing_files(tmp_path):
     assert binder._avatar_digest(tmp_path, "r", url) is None
 
 
+def test_avatar_digest_refuses_a_symlink_out_of_the_icon_folder(tmp_path):
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"secret")
+    folder = tmp_path / "r" / "profile_images" / "thumbnail"
+    folder.mkdir(parents=True)
+    try:
+        (folder / "link.png").symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    url = "/api/content/media/x/r/profile_images/thumbnail/link.png"
+    assert binder._avatar_digest(tmp_path, "r", url) is None
+
+
 def test_avatar_digest_is_memoised_per_file_stat(tmp_path, monkeypatch):
     path = tmp_path / "r" / "profile_images" / "thumbnail" / "a.jpg"
     path.parent.mkdir(parents=True)
