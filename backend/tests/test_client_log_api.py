@@ -1373,3 +1373,24 @@ def test_external_link_breadcrumb_rejects_a_url():
         json={"event": "external_link", "fields": {"surface": "https://evil.example"}},
     )
     assert res.status_code == 422
+
+
+def test_csp_violation_breadcrumb_is_a_warning():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "csp_violation", "fields": {"target": "img_src"}},
+        )
+    assert res.status_code == 204
+    entry = _client_events(logs)[0]
+    assert entry["event"] == "csp_violation"
+    assert entry["log_level"] == "warning"
+    assert entry["target"] == "img_src"
+
+
+def test_csp_violation_breadcrumb_rejects_a_url():
+    res = client.post(
+        "/api/client-log",
+        json={"event": "csp_violation", "fields": {"target": "https://evil.example/x"}},
+    )
+    assert res.status_code == 422

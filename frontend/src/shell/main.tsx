@@ -7,6 +7,7 @@ import '../i18n'
 
 import { clientLog } from '../utils/clientLog'
 import { bootstrapApiCookie, installApiAuth, sessionStorageOrNull, takeLaunchToken } from '../core/api/launchAuth'
+import { installCspViolationLog } from '../core/security/cspViolations'
 import { installCallPopupBridge } from '../features/callPopup/callPopupBridge'
 import { isCallPopupView } from './callPopupRoute'
 import { isDesignView } from '../design/designRoute'
@@ -31,6 +32,10 @@ const apiReady: Promise<void> = launchToken
           if (!ok) clientLog('app_load_failed', { error_type: 'api_bootstrap' })
       })
     : Promise.resolve()
+
+// Content-Security-Policy refusals become breadcrumbs. After installApiAuth, so the log request
+// carries the token header (any earlier request would 401).
+installCspViolationLog()
 
 // Design tokens must exist before the first paint of any entry point.
 applyStaticTokens()

@@ -82,7 +82,7 @@ from backend.api import (  # noqa: E402
     session,
 )
 from backend.api_no_store import ApiNoStoreMiddleware  # noqa: E402
-from backend.security_headers import SecurityHeadersMiddleware  # noqa: E402
+from backend.security_headers import DOCS_CSP, SecurityHeadersMiddleware  # noqa: E402
 from backend.services import api_auth, log_throttle  # noqa: E402
 from backend.services import app_state  # noqa: E402
 from backend.services.data_lock import DataDirLock  # noqa: E402
@@ -419,6 +419,18 @@ def _docs_urls(frozen: bool) -> dict[str, str | None]:
     return {"docs_url": "/docs", "redoc_url": "/redoc", "openapi_url": "/openapi.json"}
 
 
+def _docs_csp_overrides(docs: dict[str, str | None]) -> dict[str, str]:
+    """CSP overrides for the docs pages ``docs`` enables (none when frozen).
+
+    FastAPI's /docs and /redoc load CDN scripts with inline setup, which
+    ``APP_CSP`` refuses; in source runs those pages keep only ``DOCS_CSP``.
+    """
+    paths = [p for p in (docs["docs_url"], docs["redoc_url"]) if p]
+    if docs["docs_url"]:
+        paths.append(f"{docs['docs_url']}/oauth2-redirect")
+    return {path: DOCS_CSP for path in paths}
+
+
 _docs = _docs_urls(frozen=bool(getattr(sys, "frozen", False)))
 app = FastAPI(
     title="SakaDesk",
@@ -551,9 +563,9 @@ app.add_middleware(_LoggingTrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
 # API JSON must never enter the browser HTTP cache (cache-lock stalls on polls).
 app.add_middleware(ApiNoStoreMiddleware)
 
-# Outermost: framing / sniffing / embedding headers on every response,
+# Outermost: CSP, framing, sniffing and embedding headers on every response,
 # including the 400/401/403 answers of the guards above.
-app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(SecurityHeadersMiddleware, csp_overrides=_docs_csp_overrides(_docs))
 
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(session.router)

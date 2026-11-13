@@ -111,6 +111,7 @@ ClientEvent = Literal[
     "media_grid",
     "media_poster",
     "external_link",
+    "csp_violation",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -160,6 +161,7 @@ ALLOWED_FIELDS = frozenset(
 )
 WARNING_EVENTS = frozenset(
     {
+        "csp_violation",
         "call_error",
         "app_load_failed",
         "design_tokens_fallback",
