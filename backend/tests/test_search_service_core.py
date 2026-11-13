@@ -642,6 +642,7 @@ class TestSearchSync:
         ):
             service._build_full_index_sync()
         self.svc = service
+        self.output_dir = output_dir
 
     def test_a_quote_cannot_add_an_fts_operator(self):
         """report-hardening #48 (audit 2026-11-13): '"OR"' joined two phrases."""
@@ -708,6 +709,26 @@ class TestSearchSync:
             "こんにちは", None, None, None, 50, 0, content_type="messages", conn=conn
         )
         assert single["total_count"] >= 1
+        # Words are ANDed: the shared fixture has one message with only each
+        # word, so neither of those matches; one with both must.
+        both_dir = self.output_dir / _SERVICE_DISPLAY / "messages"
+        both_dir = both_dir / "1 テストグループ" / "400 両方"
+        both_dir.mkdir(parents=True)
+        _write_messages_json(
+            both_dir / "messages.json",
+            [
+                {
+                    "id": 40,
+                    "content": "こんにちは、ライブ会場からです",
+                    "timestamp": "2026-01-03T10:00:00+09:00",
+                }
+            ],
+        )
+        with patch(
+            "backend.services.search_service.get_output_dir",
+            return_value=self.output_dir,
+        ):
+            self.svc._build_full_index_sync()
         multi = self.svc._search_sync(
             "こんにちは ライブ",
             None,
@@ -718,7 +739,8 @@ class TestSearchSync:
             content_type="messages",
             conn=conn,
         )
-        assert multi["total_count"] >= 0
+        assert multi["total_count"] == 1
+        assert [r["message_id"] for r in multi["results"]] == [40]
         short = self.svc._search_sync(
             "こん", None, None, None, 50, 0, content_type="messages", conn=conn
         )
