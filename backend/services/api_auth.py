@@ -14,7 +14,9 @@ made to produce the cookie value or any other keyed value.
 ``SAKADESK_API_TOKEN`` pins the value for development (dev.sh / dev.ps1 put it
 in the dev page's ``#t=`` URL) and e2e runs; a pin shorter than 16 characters is
 ignored. ``SAKADESK_TEST_CLIENT=1`` (set only by the root conftest) lets pytest's
-TestClient, which always sends ``Host: testserver``, through the guard.
+TestClient, which always sends ``Host: testserver``, through the guard. A
+packaged (frozen) build honours neither variable: it always draws a random
+token and never runs in test-client mode.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ import hmac
 import os
 import re
 import secrets
+import sys
 
 import structlog
 
@@ -36,18 +39,38 @@ _MIN_ENV_TOKEN_LEN = 16
 _NONCE_RE = re.compile(r"[A-Za-z0-9_-]{16,64}")
 
 
+def _frozen() -> bool:
+    """True in the packaged app (PyInstaller sets ``sys.frozen``)."""
+    return bool(getattr(sys, "frozen", False))
+
+
 def _initial_token() -> str:
-    """The env pin when it is long enough, otherwise 256 random bits."""
+    """The env pin in a source run when it is long enough, else 256 random bits.
+
+    An ignored pin logs ``api_token_env_ignored`` with ``reason="frozen"``
+    (packaged app) or ``reason="too_short"``; the value is never logged.
+    """
     pinned = os.environ.get("SAKADESK_API_TOKEN", "")
-    if len(pinned) >= _MIN_ENV_TOKEN_LEN:
+    if pinned and _frozen():
+        logger.warning("api_token_env_ignored", reason="frozen")
+    elif len(pinned) >= _MIN_ENV_TOKEN_LEN:
         logger.info("api_token_source", source="env")
         return pinned
-    if pinned:
+    elif pinned:
         logger.warning("api_token_env_ignored", reason="too_short")
     return secrets.token_urlsafe(32)
 
 
 LAUNCH_TOKEN: str = _initial_token()
+
+
+def _note_ignored_test_client_env() -> None:
+    """Leave one breadcrumb when a packaged app finds SAKADESK_TEST_CLIENT set."""
+    if _frozen() and os.environ.get("SAKADESK_TEST_CLIENT"):
+        logger.warning("test_client_env_ignored", reason="frozen")
+
+
+_note_ignored_test_client_env()
 
 
 def _keyed(message: bytes) -> str:
@@ -98,5 +121,8 @@ def health_proof(nonce: str) -> str:
 
 
 def test_client_mode() -> bool:
-    """True only under pytest (root conftest sets SAKADESK_TEST_CLIENT=1)."""
-    return os.environ.get("SAKADESK_TEST_CLIENT") == "1"
+    """True only under pytest (root conftest sets SAKADESK_TEST_CLIENT=1).
+
+    Always False in the packaged app, whatever the environment says.
+    """
+    return not _frozen() and os.environ.get("SAKADESK_TEST_CLIENT") == "1"
