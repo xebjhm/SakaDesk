@@ -582,7 +582,11 @@
     "older": "較舊",
     "newer": "較新",
     "noOlder": "呢個係最舊嘅",
-    "noNewer": "呢個係最新嘅"
+    "noNewer": "呢個係最新嘅",
+    "previousPhoto": "上一張相",
+    "nextPhoto": "下一張相",
+    "firstPhoto": "呢張係第一張相",
+    "lastPhoto": "呢張係最後一張相"
   },
   "sentLetters": {
     "title": "寄咗嘅信",

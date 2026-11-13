@@ -380,4 +380,20 @@ describe('MediaViewerModal players are keyed by source', () => {
         rerender(<MediaViewerModal mediaItems={videos} currentIndex={1} onClose={vi.fn()} onNavigate={vi.fn()} />);
         expect(screen.queryByRole('alert')).toBeNull();
     });
+
+    it('shows no step buttons for a single item', () => {
+        render(<MediaViewerModal mediaItems={items.slice(0, 1)} currentIndex={0} onClose={vi.fn()} onNavigate={vi.fn()} />);
+        expect(screen.queryByRole('button', { name: 'Older' })).toBeNull();
+        expect(screen.queryByRole('button', { name: 'Newer' })).toBeNull();
+    });
+
+    it('names the step buttons older / newer by default and previous / next photo in a reading sequence', () => {
+        const { unmount } = render(<MediaViewerModal mediaItems={items} currentIndex={0} onClose={vi.fn()} onNavigate={vi.fn()} />);
+        expect(screen.getByRole('button', { name: 'Older' })).toBeInTheDocument();
+        unmount();
+        render(<MediaViewerModal mediaItems={items} currentIndex={0} onClose={vi.fn()} onNavigate={vi.fn()} sequence="reading" />);
+        expect(screen.getByRole('button', { name: 'Previous photo' })).toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Next photo' })).toBeInTheDocument();
+        expect(screen.queryByRole('button', { name: 'Older' })).toBeNull();
+    });
 });

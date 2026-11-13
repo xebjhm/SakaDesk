@@ -584,7 +584,11 @@
     "older": "Older",
     "newer": "Newer",
     "noOlder": "This is the oldest one",
-    "noNewer": "This is the newest one"
+    "noNewer": "This is the newest one",
+    "previousPhoto": "Previous photo",
+    "nextPhoto": "Next photo",
+    "firstPhoto": "This is the first photo",
+    "lastPhoto": "This is the last photo"
   },
   "sentLetters": {
     "title": "Sent Letters",

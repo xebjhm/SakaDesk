@@ -46,6 +46,11 @@ interface MediaViewerModalProps {
     headerSlot?: React.ReactNode;
     /** How `mediaItems` is sorted (default `oldest_first`); ← / → always step older / newer and the counter counts the oldest as 1. */
     order?: ListOrder;
+    /**
+     * `time` (default): the items are a timeline, the step buttons say older / newer. `reading`: the
+     * images of one post in reading order (not a timeline), the buttons say previous / next photo.
+     */
+    sequence?: 'time' | 'reading';
 }
 
 /**
@@ -68,6 +73,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     onNavigate,
     headerSlot,
     order = 'oldest_first',
+    sequence = 'time',
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
@@ -141,12 +147,16 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
             onKeyDown={handleKeyDown}
         >
             <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={onClose} />
-            <StepButtons
-                hasOlder={older !== null}
-                hasNewer={newer !== null}
-                onOlder={() => { if (older !== null) onNavigate(older); }}
-                onNewer={() => { if (newer !== null) onNavigate(newer); }}
-            />
+            {/* A single item has nothing to step to (the gallery hides them too). */}
+            {mediaItems.length > 1 && (
+                <StepButtons
+                    hasOlder={older !== null}
+                    hasNewer={newer !== null}
+                    onOlder={() => { if (older !== null) onNavigate(older); }}
+                    onNewer={() => { if (newer !== null) onNavigate(newer); }}
+                    sequence={sequence}
+                />
+            )}
 
             {isPicture && (
                 // aria-disabled (not disabled) at the limits, so a focused button keeps focus and ← / → keep working.

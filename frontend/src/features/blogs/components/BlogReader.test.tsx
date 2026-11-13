@@ -21,8 +21,8 @@ vi.mock('../../../data/memberData', () => ({
 vi.mock('../../../core/media/PhotoDetailModal', async () => {
     const { createElement } = await import('react');
     return {
-        MediaViewerModal: ({ currentIndex }: { currentIndex: number }) =>
-            createElement('div', { 'data-testid': 'photo-viewer' }, String(currentIndex)),
+        MediaViewerModal: ({ currentIndex, sequence }: { currentIndex: number; sequence?: string }) =>
+            createElement('div', { 'data-testid': 'photo-viewer', 'data-sequence': sequence }, String(currentIndex)),
     };
 });
 
@@ -237,6 +237,8 @@ describe('BlogReader links', () => {
         expect(fireEvent.click(screen.getByAltText('photo'))).toBe(false);
         expect(open).not.toHaveBeenCalled();
         expect(screen.getByTestId('photo-viewer')).toHaveTextContent('0');
+        // The photos of one post are in reading order, not a timeline.
+        expect(screen.getByTestId('photo-viewer')).toHaveAttribute('data-sequence', 'reading');
     });
 
     it('opens a middle-clicked web link in the browser', () => {

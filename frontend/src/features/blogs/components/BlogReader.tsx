@@ -414,6 +414,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                     currentIndex={blogPhotoIndex}
                     onClose={() => setBlogPhotoIndex(null)}
                     onNavigate={setBlogPhotoIndex}
+                    sequence="reading"
                 />
             )}
         </div>

@@ -582,7 +582,11 @@
     "older": "古い方へ",
     "newer": "新しい方へ",
     "noOlder": "これが一番古いものです",
-    "noNewer": "これが一番新しいものです"
+    "noNewer": "これが一番新しいものです",
+    "previousPhoto": "前の写真",
+    "nextPhoto": "次の写真",
+    "firstPhoto": "これが最初の写真です",
+    "lastPhoto": "これが最後の写真です"
   },
   "sentLetters": {
     "title": "送信したレター",

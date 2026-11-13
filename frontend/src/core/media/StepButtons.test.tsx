@@ -20,4 +20,12 @@ describe('StepButtons', () => {
         await userEvent.click(newer);
         expect(onNewer).not.toHaveBeenCalled();
     });
+
+    it('says previous / next photo, with first / last reasons, in a reading sequence', async () => {
+        render(<StepButtons hasOlder={false} hasNewer onOlder={vi.fn()} onNewer={vi.fn()} sequence="reading" />);
+        expect(screen.queryByRole('button', { name: 'Older' })).toBeNull();
+        const previous = screen.getByRole('button', { name: 'Previous photo' });
+        expect(previous).toHaveAttribute('title', 'This is the first photo');
+        expect(screen.getByRole('button', { name: 'Next photo' })).not.toHaveAttribute('aria-disabled');
+    });
 });

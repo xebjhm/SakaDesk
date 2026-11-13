@@ -582,7 +582,11 @@
     "older": "較早",
     "newer": "較新",
     "noOlder": "這是最早的一則",
-    "noNewer": "這是最新的一則"
+    "noNewer": "這是最新的一則",
+    "previousPhoto": "上一張照片",
+    "nextPhoto": "下一張照片",
+    "firstPhoto": "這是第一張照片",
+    "lastPhoto": "這是最後一張照片"
   },
   "sentLetters": {
     "title": "已傳送的信件",
