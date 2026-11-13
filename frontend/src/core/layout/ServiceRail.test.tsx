@@ -1,6 +1,6 @@
 import userEvent from '@testing-library/user-event';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { useAppStore } from '../../store/appStore';
 import { ServiceRail } from './ServiceRail';
 import { clientLog } from '../../utils/clientLog';
@@ -128,15 +128,20 @@ describe('ServiceRail reorder from the menu (UI health A-K6)', () => {
         expect(screen.getByRole('menu')).toHaveFocus();
     });
 
-    it('returns focus to the moved group button after a keyboard move', async () => {
+    it('returns focus to the moved group button once the reorder has committed (Move down)', async () => {
         useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'], serviceOrder: order });
-        renderRail();
+        // Like Layout: the rail's list comes from the store, so a move reorders the buttons' rows.
+        const Harness = () => {
+            const serviceOrder = useAppStore((st) => st.serviceOrder);
+            const services = ['hinatazaka46', 'sakurazaka46'].sort((x, y) => serviceOrder.indexOf(x) - serviceOrder.indexOf(y));
+            return <ServiceRail services={services} onAddService={vi.fn()} onOpenSettings={vi.fn()} onReportIssue={vi.fn()} onOpenAbout={vi.fn()} onOpenSearch={vi.fn()} />;
+        };
+        render(<Harness />);
         const moved = screen.getAllByRole('button', { name: /46/ })[0];
         fireEvent.contextMenu(moved);
         await userEvent.keyboard('{Enter}'); // Move down, the first item
-        expect(useAppStore.getState().serviceOrder.slice(0, 2)).toEqual(['sakurazaka46', 'hinatazaka46']);
-        expect(screen.queryByRole('menu')).toBeNull();
-        expect(moved).toHaveFocus();
+        expect(screen.getAllByRole('button', { name: /46/ })[1]).toBe(moved); // the rows did reorder
+        await waitFor(() => expect(moved).toHaveFocus());
     });
 
     it('returns focus to the group button on Escape', async () => {

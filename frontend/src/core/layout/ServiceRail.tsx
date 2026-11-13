@@ -41,6 +41,19 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
     // The button the menu was opened from; the menu hands focus back to it when it closes (the
     // buttons are keyed by service, so after a move it is still the moved group's button).
     const menuTriggerRef = useRef<HTMLElement | null>(null);
+    const navRef = useRef<HTMLElement>(null);
+    // A move reorders the trigger's own row on Move down, and moving a focused element blurs it in
+    // Chromium: focus goes to the moved group's button once the reorder has been committed.
+    const focusAfterMove = (serviceId: string) => {
+        requestAnimationFrame(() => {
+            const button = navRef.current?.querySelector<HTMLElement>(`[data-service="${serviceId}"]`);
+            if (!button) {
+                clientLog('rail_reorder', { target: 'focus', outcome: 'blocked' });
+                return;
+            }
+            button.focus({ preventScroll: true });
+        });
+    };
     const { isServiceDisconnected } = useAuth();
 
     // Drag-and-drop state
@@ -131,6 +144,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
 
     return (
         <nav
+            ref={navRef}
             aria-label={t('serviceRail.label')}
             className="flex h-full w-16 shrink-0 flex-col items-center bg-elevated py-3"
             onClick={() => setContextMenu(null)}
@@ -158,6 +172,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                             )}
 
                             <button
+                                data-service={service}
                                 onClick={() => setActiveService(service)}
                                 onContextMenu={(e) => handleContextMenu(e, service)}
                                 className="group relative flex items-center justify-center rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
@@ -222,8 +237,8 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                 const at = services.indexOf(contextMenu.serviceId);
                 return (
                     <Menu aria-label={t('common.moreOptions')} returnFocusRef={menuTriggerRef} onClose={() => setContextMenu(null)} point={{ x: contextMenu.x, y: contextMenu.y }} estimatedSize={{ width: 176, height: 136 }}>
-                        {at > 0 && <MenuItem onClick={() => { moveService(at, at - 1, 'move_up'); setContextMenu(null); }}>{t('serviceRail.moveUp')}</MenuItem>}
-                        {at >= 0 && at < services.length - 1 && <MenuItem onClick={() => { moveService(at, at + 1, 'move_down'); setContextMenu(null); }}>{t('serviceRail.moveDown')}</MenuItem>}
+                        {at > 0 && <MenuItem onClick={() => { moveService(at, at - 1, 'move_up'); setContextMenu(null); focusAfterMove(contextMenu.serviceId); }}>{t('serviceRail.moveUp')}</MenuItem>}
+                        {at >= 0 && at < services.length - 1 && <MenuItem onClick={() => { moveService(at, at + 1, 'move_down'); setContextMenu(null); focusAfterMove(contextMenu.serviceId); }}>{t('serviceRail.moveDown')}</MenuItem>}
                         <MenuItem destructive onClick={handleRemoveService}>{t('common.removeService')}</MenuItem>
                     </Menu>
                 );
