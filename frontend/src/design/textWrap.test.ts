@@ -13,17 +13,43 @@ function sources(dir: string): string[] {
     });
 }
 
+/** True when a source line keeps whitespace (class or inline style) without a way to break a long run. */
+export function keepsWhitespaceWithoutBreak(line: string): boolean {
+    if (/^\s*(\/\/|\*|\/\*)/.test(line)) return false; // comments describe, they do not style
+    const classPre = /whitespace-pre(-wrap|-line)?(?![\w-])/.test(line);
+    const stylePre = /whiteSpace\s*:\s*['"`](pre-wrap|pre-line|pre)['"`]/.test(line);
+    if (classPre && !/break-(words|all)/.test(line)) return true;
+    return stylePre && !/overflowWrap|wordBreak/.test(line);
+}
+
 describe('pre-wrapped text can break long runs (UI health #4)', () => {
-    it('every whitespace-pre-wrap / pre-line class list also has break-words or break-all', () => {
+    it('every whitespace-pre / pre-wrap / pre-line class list or style also has a way to break long runs', () => {
         const offenders: string[] = [];
         for (const file of sources(SRC)) {
             readFileSync(file, 'utf-8').split('\n').forEach((line, i) => {
-                if (/^\s*(\/\/|\*|\/\*)/.test(line)) return; // comments describe, they do not style
-                if (/whitespace-pre-(wrap|line)/.test(line) && !/break-(words|all)/.test(line)) {
+                if (keepsWhitespaceWithoutBreak(line)) {
                     offenders.push(`${path.relative(SRC, file).split(path.sep).join('/')}:${i + 1}`);
                 }
             });
         }
         expect(offenders).toEqual([]);
+    });
+});
+
+describe('the pre-wrap scan itself', () => {
+    it.each([
+        ['<p className="whitespace-pre text-body">', true],
+        ['<p className="whitespace-pre-wrap text-body">', true],
+        ['<p className="whitespace-pre-line text-body">', true],
+        ["<p style={{ whiteSpace: 'pre-wrap' }}>", true],
+        ["<p style={{ whiteSpace: 'pre' }}>", true],
+        ["<p style={{ whiteSpace: 'pre-line', overflowWrap: 'anywhere' }}>", false],
+        ['<p className="whitespace-pre-wrap break-words">', false],
+        ['<p className="whitespace-pre break-all">', false],
+        ['<p className="whitespace-pre-wrapper">', false],
+        ['<p className="whitespace-nowrap">', false],
+        ['// whitespace-pre-wrap is described here', false],
+    ])('%s -> offender: %s', (line, offends) => {
+        expect(keepsWhitespaceWithoutBreak(line)).toBe(offends);
     });
 });
