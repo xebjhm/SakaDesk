@@ -9,12 +9,16 @@ import { FeatureActiveContext } from '../../design/featureActive';
 import { clientLog } from '../../utils/clientLog';
 import { useMilestone } from './milestones';
 import { MessagesFeature } from './MessagesFeature';
+import { ContentArea } from '../../core/layout/ContentArea';
+import { openChat } from '../../shell/openChat';
 
 vi.mock('react-virtuoso', async () => (await import('../../__tests__/virtuosoMock')).virtuosoMock);
 vi.mock('./milestones', async (importOriginal) => {
     const actual = await importOriginal<typeof import('./milestones')>();
     return { ...actual, useMilestone: vi.fn(actual.useMilestone) };
 });
+vi.mock('../blogs', () => ({ BlogsFeature: () => <div>blogs</div> }));
+vi.mock('../memories', () => ({ MemoriesFeature: () => <div>memories</div> }));
 vi.mock('../../utils/clientLog', async (importOriginal) => ({
     ...(await importOriginal<typeof import('../../utils/clientLog')>()),
     clientLog: vi.fn(),
@@ -24,18 +28,24 @@ const SERVICE = 'hinatazaka46';
 const ROOM = '日向坂46/messages/34 金村 美玖/58 金村 美玖';
 const OTHER = 'sakurazaka46';
 const OTHER_ROOM = '櫻坂46/messages/40 森田 ひかる/60 森田 ひかる';
+const SECOND_ROOM = '日向坂46/messages/35 小坂 菜緒/59 小坂 菜緒';
 const member = { id: '58', name: '金村 美玖', path: ROOM, thumbnail_local: null, thumbnail: null, portrait: null, phone_image: null };
 let archived = false;
 let roomFetches = 0;
+/** The `path` of every room fetch, in order. */
+let roomPaths: string[] = [];
 let letterFetches = 0;
 let readSyncs: string[] = [];
+/** Group ids of the read syncs, in order (the room ids of ROOM / SECOND_ROOM are 34 / 35). */
+let readSyncGroups: number[] = [];
 let uiStates: { group_id: string | null }[] = [];
 
 function serve() {
     server.use(
         http.get('/api/content/groups', () => HttpResponse.json({ groups: [], last_sync: {} })),
-        http.get('/api/content/messages_by_path', () => {
+        http.get('/api/content/messages_by_path', ({ request }) => {
             roomFetches += 1;
+            roomPaths.push(new URL(request.url).searchParams.get('path') ?? '');
             return HttpResponse.json({
                 member,
                 messages: [{ id: 1, timestamp: '2024-01-15T09:00:00Z', type: 'text', content: 'こんにちは', is_favorite: archived, media_file: null, width: null, height: null }],
@@ -48,7 +58,9 @@ function serve() {
             return new HttpResponse(null, { status: 204 });
         }),
         http.post('/api/chat/mark-room-read-remote', async ({ request }) => {
-            readSyncs.push((await request.json() as { service: string }).service);
+            const body = await request.json() as { service: string; group_id: number };
+            readSyncs.push(body.service);
+            readSyncGroups.push(body.group_id);
             return HttpResponse.json({ ok: true });
         }),
         http.get('/api/chat/letters_local', () => {
@@ -79,8 +91,10 @@ describe('MessagesFeature hidden behind another feature (UI health #11)', () => 
     beforeEach(() => {
         archived = false;
         roomFetches = 0;
+        roomPaths = [];
         letterFetches = 0;
         readSyncs = [];
+        readSyncGroups = [];
         uiStates = [];
         vi.mocked(clientLog).mockClear();
         vi.mocked(useMilestone).mockClear();
@@ -164,6 +178,43 @@ describe('MessagesFeature hidden behind another feature (UI health #11)', () => 
         rerender(view(true, 0, READ_SYNC_ON));
         await waitFor(() => expect(readSyncs).toEqual([SERVICE, OTHER]));
         await waitFor(() => expect(roomFetches).toBe(fetchesBefore + 1));
+    });
+
+    it('read-syncs only the chat a toast or a Memories jump opens from another feature', async () => {
+        useAppStore.setState({ activeFeatures: { [SERVICE]: 'messages' } });
+        render(<ContentArea service={SERVICE} messagesContent={<MessagesFeature appSettings={READ_SYNC_ON} syncVersion={0} />} />);
+        await screen.findByText('こんにちは');
+        await waitFor(() => expect(readSyncGroups).toEqual([34]));
+        act(() => { useAppStore.getState().setActiveFeature(SERVICE, 'blogs'); });
+        expect(screen.getByText('blogs')).toBeInTheDocument();
+
+        // openChat shows Messages and selects the other room in one batch (one render).
+        const fetchedBefore = roomPaths.length;
+        act(() => { openChat({ service: SERVICE, path: SECOND_ROOM, name: '小坂 菜緒', is_group_chat: false }); });
+        await waitFor(() => expect(readSyncGroups).toEqual([34, 35]));
+        await new Promise((r) => setTimeout(r, 50));
+        expect(readSyncGroups).toEqual([34, 35]);
+        // Only the opened room is asked for: no refresh of the room as last shown.
+        expect(roomPaths.slice(fetchedBefore)).toEqual([SECOND_ROOM]);
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('chat_load', { outcome: 'skipped', reason: 'shown_by_navigation' });
+    });
+
+    it('opens the room again on return from another group\'s Blogs (read sync and refresh, as the remount did)', async () => {
+        useAppStore.setState({ activeFeatures: { [SERVICE]: 'messages', [OTHER]: 'blogs' } });
+        // As Layout: the content area follows the active group in the same render.
+        const Area = () => (
+            <ContentArea service={useAppStore((st) => st.activeService) ?? SERVICE} messagesContent={<MessagesFeature appSettings={READ_SYNC_ON} syncVersion={0} />} />
+        );
+        render(<Area />);
+        await screen.findByText('こんにちは');
+        await waitFor(() => expect(readSyncGroups).toEqual([34]));
+        act(() => { useAppStore.setState({ activeService: OTHER }); });
+        expect(screen.getByText('blogs')).toBeInTheDocument();
+        const fetchedBefore = roomPaths.length;
+
+        act(() => { useAppStore.setState({ activeService: SERVICE }); });
+        await waitFor(() => expect(readSyncGroups).toEqual([34, 34]));
+        await waitFor(() => expect(roomPaths.slice(fetchedBefore)).toEqual([ROOM]));
     });
 
     it('does not show its dialogs while hidden, and brings an open one back with Talk', async () => {

@@ -315,6 +315,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, [getSelectedConversation]);
     // Set by a group switch made while hidden: the show edge restores the new group's room.
     const restoreOnShowRef = useRef(false);
+    // openChat (a toast, a search result, a Memories jump) shows Messages and selects another room in
+    // the same step: the saved conversation of the service is then not the room on screen, and the
+    // show edge leaves the room as last shown alone (that room's own render loads and opens it).
+    const opensAnotherRoom = useCallback(() => {
+        const saved = activeService ? getSelectedConversation(activeService) : null;
+        return saved?.path !== selectedGroupDir;
+    }, [activeService, getSelectedConversation, selectedGroupDir]);
 
     // Save current selection and restore previous selection when service changes
     useEffect(() => {
@@ -369,8 +376,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, [syncVersion]);
 
     // Shown again after another feature: restore the room of a group switch made while hidden (the
-    // selection effect then loads it), else one background refresh (a 304 when nothing changed). It
-    // also lets the incoming call evaluate, as the remount did before Messages was kept mounted.
+    // selection effect then loads it), else one background refresh (a 304 when nothing changed),
+    // unless openChat is opening another room in this same step. It also lets the incoming call
+    // evaluate, as the remount did before Messages was kept mounted.
     const wasActiveRef = useRef(featureActive);
     useEffect(() => {
         const was = wasActiveRef.current;
@@ -379,6 +387,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         if (restoreOnShowRef.current) {
             restoreOnShowRef.current = false;
             restoreSavedConversation(activeService);
+        } else if (selectedGroupDir && opensAnotherRoom()) {
+            clientLog('chat_load', { outcome: 'skipped', reason: 'shown_by_navigation' });
         } else if (selectedGroupDir) {
             fetchMessages(selectedGroupDir, isGroupChat);
         }
@@ -605,6 +615,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
         syncReadPrevRef.current = { dir: selectedGroupDir, on, active: true };
         if (!selectedGroupDir || !on) return;
+        // Shown together with another room (openChat): the room as last shown is not opened (the show
+        // effect logs it); the next render, with that room, counts as opening it.
+        if (!prev.active && opensAnotherRoom()) return;
         // Shown again after another feature counts as opening the room.
         const roomOpened = selectedGroupDir !== prev.dir || !prev.active;
         const settingsJustLoaded = prev.on === undefined; // null → loaded transition
@@ -619,7 +632,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ service: parsedOpen.service, group_id: parsedOpen.groupId }),
         }).catch(() => {});
-    }, [selectedGroupDir, appSettings?.sync_read_to_phone, featureActive]);
+    }, [selectedGroupDir, appSettings?.sync_read_to_phone, featureActive, opensAnotherRoom]);
 
     // Unread navigation state logic
     const isUnread = useCallback((msgId: number) => {
