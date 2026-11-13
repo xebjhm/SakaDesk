@@ -3,6 +3,7 @@ Path resolver for multi-service content API.
 Converts API parameters to disk paths, decoupling API from disk structure.
 """
 
+import hashlib
 import json
 import threading
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any, cast
 
 import structlog
 
+from backend.services.output_dir_policy import lexical_problem
 from backend.services.service_utils import get_service_display_name, validate_service
 
 logger = structlog.get_logger(__name__)
@@ -30,8 +32,42 @@ def _read_settings(settings_path: Path) -> Any:
         return json.load(f)
 
 
+# Digests of saved values already logged as unusual (never the values).
+_noted_values: set[str] = set()
+
+
+def output_dir_value(value: object, default: Path) -> Path:
+    """The archive root for a saved ``output_dir`` value: ``Path(value)``, or ``default`` when unset.
+
+    ``None``, a non-string or an empty string means unset (an empty value used
+    to become the process's working directory for the sync writer). A saved
+    value is used as saved, even one that would not be accepted as a new value
+    today, so an archive in use keeps working (security audit 2026-11-13);
+    if it fails ``output_dir_policy.lexical_problem`` (relative, a root, a
+    network or device path) that reason is logged once per distinct value per
+    process as ``output_dir_saved_unusual``, never the value. No filesystem call.
+    """
+    if not isinstance(value, str) or not value:
+        return default
+    problem = lexical_problem(value)
+    if problem is not None:
+        digest = hashlib.sha256(value.encode("utf-8", "surrogatepass")).hexdigest()
+        with _last_good_lock:
+            first = digest not in _noted_values
+            _noted_values.add(digest)
+        if first:
+            logger.warning("output_dir_saved_unusual", reason=problem)
+    return Path(value)
+
+
+def reset_output_dir_notes_for_tests() -> None:
+    """Test-only: forget which unusual saved values were already logged."""
+    with _last_good_lock:
+        _noted_values.clear()
+
+
 def output_dir_from_settings(settings_path: Path, default: Path) -> Path:
-    """The ``output_dir`` in ``settings_path``, else ``default``. Blocking; never raises.
+    """The ``output_dir`` in ``settings_path`` (:func:`output_dir_value`), else ``default``. Blocking; never raises.
 
     A file that exists but cannot be read or parsed gives the last value read
     from it (else ``default``) and logs ``output_dir_settings_unreadable``
@@ -53,14 +89,10 @@ def output_dir_from_settings(settings_path: Path, default: Path) -> Path:
             fallback="last_good" if last is not None else "default",
         )
         return last if last is not None else default
-    path_str = settings.get("output_dir") if isinstance(settings, dict) else None
-    if not path_str:
-        # The last value read is now the default: a later transient failure
-        # must not bring back a custom dir the user cleared.
-        with _last_good_lock:
-            _last_good[key] = default
-        return default
-    out = Path(path_str)
+    raw = settings.get("output_dir") if isinstance(settings, dict) else None
+    # An unset value records the default as the last value read: a later
+    # transient failure must not bring back a custom dir the user cleared.
+    out = output_dir_value(raw, default)
     with _last_good_lock:
         _last_good[key] = out
     return out

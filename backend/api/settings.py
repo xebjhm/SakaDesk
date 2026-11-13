@@ -25,6 +25,7 @@ from backend.services.memories import notify_scheduler
 from backend.services.auto_sync_scheduler import wake_scheduler
 from backend.services.call_popup import get_call_popup_controller
 from backend.services.notification_service import set_notifications_enabled
+from backend.services.path_resolver import output_dir_value
 from backend.services.settings_store import (
     MEMORIES_NOTIFY_TIME_DEFAULT,
     resolve_memories_notify_time,
@@ -190,8 +191,12 @@ _MEMORIES_NOTIFY_KEYS = (
 
 def _settings_response(config: dict[str, Any]) -> SettingsResponse:
     """Build the response from a loaded config (defaults already merged)."""
+    saved = config.get("output_dir")
     return SettingsResponse(
-        output_dir=config.get("output_dir", get_default_output_dir()),
+        # The saved text exactly (POST compares against it), else the default.
+        output_dir=saved
+        if isinstance(saved, str) and saved
+        else get_default_output_dir(),
         auto_sync_enabled=config["auto_sync_enabled"],
         sync_interval_minutes=config["sync_interval_minutes"],
         adaptive_sync_enabled=config["adaptive_sync_enabled"],
@@ -333,8 +338,9 @@ async def update_settings(update: SettingsUpdate):
 async def check_fresh_install():
     """Check if output folder is empty (fresh install)."""
     config = await _store_load()
-    output_dir = config.get("output_dir", get_default_output_dir())
-    output_path = Path(output_dir)
+    output_path = output_dir_value(
+        config.get("output_dir"), Path(get_default_output_dir())
+    )
 
     # Fresh if: doesn't exist, is empty, or only has sync_metadata.json
     is_fresh = True
@@ -346,7 +352,7 @@ async def check_fresh_install():
         ]
         is_fresh = len(data_contents) == 0
 
-    return FreshCheckResponse(is_fresh=is_fresh, output_dir=output_dir)
+    return FreshCheckResponse(is_fresh=is_fresh, output_dir=str(output_path))
 
 
 @router.post("/select-folder")

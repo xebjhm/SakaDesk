@@ -38,6 +38,7 @@ from backend.services.platform import (
     get_default_output_dir,
 )
 from backend.services.new_message_collector import NewMessageCollector
+from backend.services.path_resolver import output_dir_value
 from backend.services.nickname import nickname_for
 from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
@@ -204,9 +205,14 @@ class SyncService:
         return get_service_enum(self._service)
 
     def _resolve_service_paths(self, app_settings: dict) -> None:
-        """Set output_dir / service_data_dir / metadata_file for this service."""
-        self.output_dir = Path(
-            app_settings.get("output_dir", str(get_default_output_dir()))
+        """Set output_dir / service_data_dir / metadata_file for this service.
+
+        An unset or empty ``output_dir`` means the default folder
+        (``path_resolver.output_dir_value``), never the process's working
+        directory (security audit 2026-11-13).
+        """
+        self.output_dir = output_dir_value(
+            app_settings.get("output_dir"), get_default_output_dir()
         )
         service_display = get_service_display_name(self._service)
         self.service_data_dir = self.output_dir / service_display
@@ -281,12 +287,9 @@ class SyncService:
         return await load_config()
 
     async def get_output_dir(self):
-        """Resolve the effective output directory."""
+        """Resolve the effective output directory (``path_resolver.output_dir_value``)."""
         settings = await self.load_app_settings()
-        path_str = settings.get("output_dir")
-        if path_str:
-            return Path(path_str)
-        return get_default_output_dir()
+        return output_dir_value(settings.get("output_dir"), get_default_output_dir())
 
     async def load_metadata(self):
         """Load sync metadata for quick checks (per-service location)."""
