@@ -38,8 +38,17 @@ const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syn
 const star = () => document.querySelector('.text-semantic-star');
 
 async function toggleFromMenu() {
-    fireEvent.contextMenu(await screen.findByText('こんにちは'));
-    await userEvent.click(await screen.findByRole('menuitem', { name: /favorites/ }));
+    // The bubble can be replaced right after it first appears (first render, then the
+    // data load), and a contextmenu on the replaced node opens nothing: retry on the
+    // current node until the menu shows.
+    await screen.findByText('こんにちは');
+    await waitFor(() => {
+        if (!screen.queryByRole('menuitem', { name: /favorites/ })) {
+            fireEvent.contextMenu(screen.getByText('こんにちは'));
+        }
+        expect(screen.getByRole('menuitem', { name: /favorites/ })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole('menuitem', { name: /favorites/ }));
 }
 
 /** A promise the test settles by hand. */
@@ -72,7 +81,7 @@ describe("MessagesFeature's favourite toggle (through /api/favorites)", () => {
         await toggleFromMenu();
         expect(star()).not.toBeNull();
         await act(async () => { answer.resolve(HttpResponse.json({ success: true, message_id: 1, is_favorite: true })); });
-        expect(seen).toEqual([`1 ${SERVICE}`]);
+        await waitFor(() => expect(seen).toEqual([`1 ${SERVICE}`]));
         expect(star()).not.toBeNull();
     });
 
