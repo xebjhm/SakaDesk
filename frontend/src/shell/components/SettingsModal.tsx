@@ -19,6 +19,7 @@ import { useUpgradeStore } from '../../core/upgrade/upgradeStore';
 import { UpdateActions } from '../../core/upgrade/UpdateActions';
 import { isJstSlot, jstSlotToLocal } from '../../features/memories/shared/jst';
 import { pregenLabelKey, pregenProgress } from '../../core/media/grid/galleryStatus';
+import { pickOutputFolder } from '../outputFolder';
 
 interface SettingsModalProps {
     appSettings: AppSettings;
@@ -196,6 +197,15 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         return ok;
     };
     const rowError = (row: SaveRow): string | undefined => (failedRow === row ? t('settings.saveFailed') : undefined);
+
+    // The output folder comes only from the native picker (security audit 2026-11-13);
+    // a refused or failed pick says why on the row.
+    const [folderErrorKey, setFolderErrorKey] = useState<string | null>(null);
+    const browseOutputFolder = async () => {
+        const { path, errorKey } = await pickOutputFolder();
+        setFolderErrorKey(errorKey);
+        if (path) setOutputDirInput(path);
+    };
 
     const formatBytes = (bytes: number): string => {
         if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -474,14 +484,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </Select>
                     </SettingRow>
 
-                    <SettingRow label={t('settings.outputFolder')} error={rowError('outputDir')}>
+                    <SettingRow
+                        label={t('settings.outputFolder')}
+                        error={rowError('outputDir') ?? (folderErrorKey ? t(folderErrorKey) : undefined)}
+                    >
                         <div className="flex gap-2">
                             <Input
                                 aria-label={t('settings.outputFolder')}
                                 value={outputDirInput}
-                                onChange={(e) => setOutputDirInput(e.target.value)}
+                                readOnly
                                 className="flex-1"
                             />
+                            <Button variant="secondary" onClick={browseOutputFolder}>
+                                {t('common.browse')}
+                            </Button>
                             <Button variant="primary" onClick={() => save('outputDir', { output_dir: outputDirInput })}>
                                 {t('common.save')}
                             </Button>

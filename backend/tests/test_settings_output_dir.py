@@ -270,7 +270,7 @@ def test_the_dialog_title_follows_the_ui_language(settings_file, monkeypatch):
         lambda title, initialdir=None: seen.append(title),
     )
     client.post("/api/settings/select-folder")
-    assert seen == ["SakaDesk のデータ保存先フォルダを選択"]
+    assert seen == ["SakaDesk の保存先フォルダを選択"]
 
 
 @pytest.mark.parametrize("lang", SUPPORTED)

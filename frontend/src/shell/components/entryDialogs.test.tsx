@@ -84,7 +84,7 @@ describe('ToS (R-d)', () => {
 describe('setup (D2d)', () => {
     it('ties the folder field to its label and names the dialog by its h2', () => {
         render(
-            <SetupWizard outputDirInput="" setOutputDirInput={vi.fn()} setupBlogFullBackup={false}
+            <SetupWizard outputDirInput="" setupBlogFullBackup={false}
                 setSetupBlogFullBackup={vi.fn()} onSelectFolder={vi.fn()} onComplete={vi.fn()} isValid={false} />,
         );
         expect(screen.getByLabelText('Output Folder Path')).toHaveAttribute('placeholder', i18n.t('setup.outputFolderPlaceholder'));
@@ -416,7 +416,7 @@ describe('one login per app (D2d review)', () => {
 });
 
 describe('setup (R-d)', () => {
-    const props = { outputDirInput: '', setOutputDirInput: vi.fn(), setupBlogFullBackup: false, setSetupBlogFullBackup: vi.fn(), onSelectFolder: vi.fn(), onComplete: vi.fn() };
+    const props = { outputDirInput: '', setupBlogFullBackup: false, setSetupBlogFullBackup: vi.fn(), onSelectFolder: vi.fn(), onComplete: vi.fn() };
 
     it('is a brand dialog with the folder icon, the ink checkbox and the e4e4118 near-white option box (pending decision D1)', () => {
         render(<SetupWizard {...props} isValid={false} />);

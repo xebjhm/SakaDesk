@@ -43,7 +43,9 @@ test('first launch: terms, groups, login, folder, first sync, then the app', asy
 
   const setup = page.getByRole('dialog', { name: 'Welcome to SakaDesk' })
   await expect(setup).toBeVisible({ timeout: 10000 })
-  await setup.getByPlaceholder('C:\\Users\\YourName\\SakaDesk-data').fill('C:\\SakaDesk-データ')
+  await expect(setup.getByLabel('Output Folder Path')).toHaveAttribute('readonly', '')
+  await setup.getByRole('button', { name: 'Browse' }).click()
+  await expect(setup.getByLabel('Output Folder Path')).toHaveValue('C:\\SakaDesk-データ')
   await setup.getByRole('button', { name: 'Start Using SakaDesk' }).click()
   await expect.poll(() => state.settingsSaves).toContainEqual({ output_dir: 'C:\\SakaDesk-データ' })
 

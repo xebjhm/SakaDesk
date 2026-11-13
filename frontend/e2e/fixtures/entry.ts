@@ -32,6 +32,8 @@ export interface EntryState {
   settingsSaves: Record<string, unknown>[]
   /** Status POST /api/settings answers (500 shows the App error toast). */
   settingsSaveStatus: number
+  /** The folder POST /api/settings/select-folder returns (the native picker is never opened in e2e). */
+  pickedFolder: string
   /** /api/sync/progress per service (idle when missing); tests change it to move a sync on. */
   progress: Record<string, Record<string, unknown>>
   /** Services a sync was started for (POST /api/sync/start), in order. */
@@ -72,6 +74,7 @@ export async function pinEntry(page: Page, opts: EntryOptions = {}): Promise<Ent
     },
     settingsSaves: [],
     settingsSaveStatus: 200,
+    pickedFolder: 'C:\\SakaDesk-データ',
     progress: {},
     syncStarts: [],
     prefsPosts: [],
@@ -134,6 +137,9 @@ export async function pinEntry(page: Page, opts: EntryOptions = {}): Promise<Ent
   })
   await page.route((url) => url.pathname.startsWith('/api/settings/service/'), (route) => route.fulfill({ json: {} }))
   await page.route((url) => url.pathname === '/api/settings/fresh', (route) => route.fulfill({ json: { is_fresh: false } }))
+  await page.route((url) => url.pathname === '/api/settings/select-folder', (route) =>
+    route.fulfill({ json: { path: state.pickedFolder } }),
+  )
 
   await page.route('**/api/sync/start*', (route) => {
     state.syncStarts.push(new URL(route.request().url()).searchParams.get('service') ?? '')

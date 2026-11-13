@@ -5,19 +5,19 @@
  * - Loading/saving app settings (output directory, etc.)
  * - Loading/saving per-service settings (sync options, blog backup)
  * - Setup wizard flow for first-time configuration
- * - Folder selection dialog integration
+ * - The native folder picker, the only way to choose the output folder
+ *   (security audit 2026-11-13: the backend refuses a folder it did not pick)
  *
  * @example
  * ```tsx
  * function SettingsPanel() {
- *   const { appSettings, saveSettings, showSettingsModal } = useSettings(isAuthenticated);
+ *   const { outputDirInput, handleSelectFolder, saveSettings } = useSettings(isAuthenticated);
  *
  *   return (
  *     <div>
- *       <p>Output: {appSettings?.output_dir}</p>
- *       <button onClick={() => saveSettings({ output_dir: '/new/path' })}>
- *         Change Output
- *       </button>
+ *       <p>Output: {outputDirInput}</p>
+ *       <button onClick={handleSelectFolder}>Browse</button>
+ *       <button onClick={() => saveSettings({ output_dir: outputDirInput })}>Save</button>
  *     </div>
  *   );
  * }
@@ -31,6 +31,7 @@ import type { AppSettings } from '../../features/messages/MessagesFeature';
 import { useAppStore } from '../../store/appStore';
 import { SERVICE_FEATURES } from '../../config/features';
 import { forgetListSnapshots } from '../../features/messages/listSnapshotStore';
+import { pickOutputFolder, saveErrorKey } from '../outputFolder';
 
 /** Per-service settings for sync and blog backup. */
 export interface ServiceSettings {
@@ -50,12 +51,14 @@ export interface UseSettingsReturn {
     allServiceSettings: Record<string, ServiceSettings>;
     /** List of connected service IDs */
     connectedServices: string[];
-    /** Current value of output directory input field */
+    /** The folder the read-only output folder field shows: the saved one, or the one just picked with Browse */
     outputDirInput: string;
-    /** Update output directory input */
+    /** Show another folder in the field (a pick from Browse) */
     setOutputDirInput: (dir: string) => void;
     /** i18n key of the last failed save's message (translated at display time), or null */
     settingsErrorKey: string | null;
+    /** i18n key of the last folder-picker failure (`settings.outputDirError.*`, shown under the field), or null */
+    folderErrorKey: string | null;
     /** Dismiss the save error */
     clearSettingsError: () => void;
     /** Whether settings modal is visible */
@@ -74,7 +77,7 @@ export interface UseSettingsReturn {
     saveSettings: (updates: Partial<AppSettings>) => Promise<boolean>;
     /** Save per-service settings to backend */
     saveServiceSettings: (service: string, updates: Partial<ServiceSettings>) => Promise<void>;
-    /** Open native folder picker dialog */
+    /** Open the native folder picker; a chosen folder fills the field, a failure sets `folderErrorKey` */
     handleSelectFolder: () => Promise<void>;
     /** Open settings modal */
     openSettingsModal: () => void;
@@ -89,6 +92,7 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
     allServiceSettingsRef.current = allServiceSettings;
     const [outputDirInput, setOutputDirInput] = useState('');
     const [settingsErrorKey, setSettingsErrorKey] = useState<string | null>(null);
+    const [folderErrorKey, setFolderErrorKey] = useState<string | null>(null);
     const clearSettingsError = useCallback(() => setSettingsErrorKey(null), []);
     const [showSettingsModal, setShowSettingsModal] = useState(false);
     const [showSetupWizard, setShowSetupWizard] = useState(false);
@@ -115,7 +119,11 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(updates)
             });
-            if (!res.ok) throw new Error("Failed to save");
+            if (!res.ok) {
+                // A refused output folder names its reason; anything else is the generic message.
+                setSettingsErrorKey(await saveErrorKey(res));
+                return false;
+            }
             const data = await res.json();
             // Another archive: the chat's list snapshots show rooms of the old one (W3).
             if ('output_dir' in updates) forgetListSnapshots();
@@ -165,17 +173,9 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
     }, []);
 
     const handleSelectFolder = useCallback(async () => {
-        try {
-            const res = await fetch('/api/settings/select-folder', { method: 'POST' });
-            const data = await res.json();
-            if (data.path) {
-                setOutputDirInput(data.path);
-            } else if (data.error) {
-                console.warn("Folder picker unavailable:", data.error);
-            }
-        } catch (e) {
-            console.error(e);
-        }
+        const { path, errorKey } = await pickOutputFolder();
+        setFolderErrorKey(errorKey);
+        if (path) setOutputDirInput(path);
     }, []);
 
     const openSettingsModal = useCallback(() => {
@@ -219,6 +219,7 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
         setOutputDirInput,
         settingsErrorKey,
         clearSettingsError,
+        folderErrorKey,
         showSettingsModal,
         setShowSettingsModal,
         showSetupWizard,

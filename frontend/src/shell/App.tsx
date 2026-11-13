@@ -70,6 +70,7 @@ function App() {
         setSetupBlogFullBackup,
         saveSettings,
         handleSelectFolder,
+        folderErrorKey,
         openSettingsModal,
     } = useSettings(isAuthenticated);
 
@@ -424,12 +425,12 @@ function App() {
                 {showSetupWizard && !loginCarousel && (
                     <SetupWizard
                         outputDirInput={outputDirInput}
-                        setOutputDirInput={setOutputDirInput}
                         setupBlogFullBackup={setupBlogFullBackup}
                         setSetupBlogFullBackup={setSetupBlogFullBackup}
                         onSelectFolder={handleSelectFolder}
                         onComplete={handleSetupComplete}
                         isValid={!!outputDirInput.trim()}
+                        folderErrorKey={folderErrorKey}
                     />
                 )}
 

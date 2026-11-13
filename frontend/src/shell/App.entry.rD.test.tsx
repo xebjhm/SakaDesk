@@ -92,6 +92,7 @@ describe('cancelling the first-launch sync (R-d)', () => {
                     adaptive_sync_enabled: false, blogs_full_backup: !!body.blogs_full_backup, is_configured: true,
                 });
             }),
+            http.post('*/api/settings/select-folder', () => HttpResponse.json({ path: 'C:\\SakaDesk-データ' })),
             http.post('*/api/sync/start-all', async ({ request }) => {
                 startAll.push(await request.json());
                 return HttpResponse.json({ sequence_id: seq.id, results: {} });
@@ -112,7 +113,8 @@ describe('cancelling the first-launch sync (R-d)', () => {
         const user = userEvent.setup();
         const { unmount } = render(<AuthProvider><App /></AuthProvider>);
 
-        await user.type(await screen.findByPlaceholderText('C:\\Users\\YourName\\SakaDesk-data'), 'C:\\SakaDesk-データ');
+        await user.click(await screen.findByRole('button', { name: 'Browse' }));
+        await waitFor(() => expect(screen.getByLabelText('Output Folder Path')).toHaveValue('C:\\SakaDesk-データ'));
         await user.click(screen.getByRole('checkbox'));
         await user.click(screen.getByRole('button', { name: 'Start Using SakaDesk' }));
         await user.click(await screen.findByRole('button', { name: 'Cancel' }, { timeout: 5000 }));

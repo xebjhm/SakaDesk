@@ -6,35 +6,43 @@ import { clientLog } from '../../utils/clientLog';
 
 interface SetupWizardProps {
     outputDirInput: string;
-    setOutputDirInput: (dir: string) => void;
     setupBlogFullBackup: boolean;
     setSetupBlogFullBackup: (enabled: boolean) => void;
     onSelectFolder: () => void;
     onComplete: () => void;
     isValid: boolean;
+    /** i18n key of the last folder-picker failure (`settings.outputDirError.*`), shown under the field; null when none. */
+    folderErrorKey?: string | null;
 }
 
 /**
  * First-launch output folder: a brand dialog (spec §4), not dismissible, one primary (D2d
  * decisions 4, 17, 18). A form never disables its submit (spec §8): Start validates on click,
- * says what is missing and focuses the field.
+ * says what is missing and focuses the field. The folder is chosen with Browse only, in the
+ * native picker the backend runs (security audit 2026-11-13), so the field shows it read-only
+ * and a refused pick says why inside this dialog.
  */
 export const SetupWizard: React.FC<SetupWizardProps> = ({
     outputDirInput,
-    setOutputDirInput,
     setupBlogFullBackup,
     setSetupBlogFullBackup,
     onSelectFolder,
     onComplete,
     isValid,
+    folderErrorKey = null,
 }) => {
     const { t } = useTranslation();
     const inputId = useId();
+    const hintId = useId();
     const errorId = useId();
+    const folderErrorId = useId();
     const inputRef = useRef<HTMLInputElement>(null);
     const [triedEmpty, setTriedEmpty] = useState(false);
-    // A folder chosen with Browse (or typed) clears the message without another click.
+    // A folder chosen with Browse clears the message without another click.
     const missing = triedEmpty && !isValid;
+    const describedBy = [hintId, missing ? errorId : null, folderErrorKey ? folderErrorId : null]
+        .filter(Boolean)
+        .join(' ');
 
     const handleStart = () => {
         if (!isValid) {
@@ -74,17 +82,20 @@ export const SetupWizard: React.FC<SetupWizardProps> = ({
                         ref={inputRef}
                         id={inputId}
                         value={outputDirInput}
-                        onChange={(e) => setOutputDirInput(e.target.value)}
+                        readOnly
                         placeholder={t('setup.outputFolderPlaceholder')}
-                        aria-invalid={missing || undefined}
-                        aria-describedby={missing ? errorId : undefined}
+                        aria-invalid={missing || !!folderErrorKey || undefined}
+                        aria-describedby={describedBy}
                         className="flex-1"
                     />
                     <Button variant="secondary" onClick={onSelectFolder}>{t('common.browse')}</Button>
                 </div>
-                <p className="text-caption text-muted">{t('setup.outputFolderHint')}</p>
+                <p id={hintId} className="text-caption text-muted">{t('setup.outputFolderHint')}</p>
                 {missing && (
                     <p id={errorId} role="alert" className="text-caption text-status-danger">{t('setup.folderRequired')}</p>
+                )}
+                {folderErrorKey && (
+                    <p id={folderErrorId} role="alert" className="text-caption text-status-danger">{t(folderErrorKey)}</p>
                 )}
             </div>
 

@@ -359,3 +359,53 @@ describe('useSettings – list snapshots (W3)', () => {
         expect(getListSnapshot('room')).toBeNull()
     })
 })
+
+describe('useSettings – output folder picker (security audit 2026-11-13)', () => {
+    beforeEach(() => {
+        vi.clearAllMocks()
+        mockSelectedServices.value = ['hinatazaka46']
+    })
+
+    function withPicker(reply: Record<string, unknown>) {
+        const { impl } = buildFetch()
+        vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+            if (input === '/api/settings/select-folder') {
+                return Promise.resolve({ ok: true, json: () => Promise.resolve(reply) })
+            }
+            return impl(input, init)
+        }))
+    }
+
+    it('Browse puts the picked folder in the field and clears an earlier picker error', async () => {
+        withPicker({ path: null, error: 'busy' })
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        await act(async () => { await result.current.handleSelectFolder() })
+        expect(result.current.folderErrorKey).toBe('settings.outputDirError.busy')
+        expect(result.current.outputDirInput).toBe('/tmp/test')
+
+        withPicker({ path: 'D:\\データ' })
+        await act(async () => { await result.current.handleSelectFolder() })
+        expect(result.current.outputDirInput).toBe('D:\\データ')
+        expect(result.current.folderErrorKey).toBeNull()
+    })
+
+    it('a refused output folder on save shows its reason', async () => {
+        const { impl } = buildFetch()
+        vi.stubGlobal('fetch', vi.fn((input: string | URL | Request, init?: RequestInit) => {
+            if ((init?.method ?? 'GET').toUpperCase() === 'POST' && input === '/api/settings') {
+                return Promise.resolve({
+                    ok: false,
+                    json: () => Promise.resolve({ detail: { code: 'output_dir_rejected', reason: 'not_picked' } }),
+                })
+            }
+            return impl(input, init)
+        }))
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        let ok = true
+        await act(async () => { ok = await result.current.saveSettings({ output_dir: 'D:\\typed' }) })
+        expect(ok).toBe(false)
+        expect(result.current.settingsErrorKey).toBe('settings.outputDirError.not_picked')
+    })
+})

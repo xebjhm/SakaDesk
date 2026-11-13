@@ -1,0 +1,28 @@
+import { describe, it, expect } from 'vitest';
+import en from './locales/en.json';
+import ja from './locales/ja.json';
+import zhCN from './locales/zh-CN.json';
+import zhTW from './locales/zh-TW.json';
+import yue from './locales/yue.json';
+import { OUTPUT_DIR_ERROR_CODES } from '../shell/outputFolder';
+
+const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
+
+describe('output folder strings (security audit 2026-11-13)', () => {
+    it.each(Object.entries(locales))('%s has a message for every output folder reason', (_code, locale) => {
+        const errors = (locale as unknown as { settings: { outputDirError: Record<string, string> } }).settings.outputDirError;
+        expect(Object.keys(errors).sort()).toEqual([...OUTPUT_DIR_ERROR_CODES].sort());
+        for (const value of Object.values(errors)) expect(value.trim()).not.toBe('');
+    });
+
+    it.each(Object.entries(locales))('%s no longer asks to type or paste a path', (_code, locale) => {
+        const setup = (locale as unknown as { setup: Record<string, string> }).setup;
+        expect(setup.outputFolderHint).not.toMatch(/copy|コピー|複製|复制/i);
+    });
+
+    it('English wording', () => {
+        expect(en.settings.outputDirError.not_picked).toBe('Choose the folder with Browse.');
+        expect(en.setup.folderRequired).toBe('Choose a folder first');
+        expect(en.setup.outputFolderHint).toBe('Your messages and photos are saved here. Click Browse to choose another folder.');
+    });
+});

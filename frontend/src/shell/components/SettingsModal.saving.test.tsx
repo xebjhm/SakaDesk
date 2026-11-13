@@ -64,13 +64,26 @@ describe('general tab saving', () => {
         await act(async () => { await i18n.changeLanguage('en'); });
     });
 
-    it('output folder: typing updates the input, Save posts output_dir', () => {
+    it('output folder: the field is read-only, Browse fills it from the picker, Save posts output_dir', async () => {
+        fetchMock.mockImplementation(async (url: string) => (url === '/api/settings/select-folder'
+            ? { ok: true, json: async () => ({ path: 'D:\\データ' }) }
+            : { ok: false, json: async () => ({}) }));
         const { onSaveSettings, setOutputDirInput } = renderModal();
-        const input = screen.getByDisplayValue('/out');
-        fireEvent.change(input, { target: { value: '/new' } });
-        expect(setOutputDirInput).toHaveBeenCalledWith('/new');
+        expect(screen.getByDisplayValue('/out')).toHaveAttribute('readonly');
+        fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+        await waitFor(() => expect(setOutputDirInput).toHaveBeenCalledWith('D:\\データ'));
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         expect(onSaveSettings).toHaveBeenCalledWith({ output_dir: '/out' });
+    });
+
+    it('output folder: a refused pick says why on the row', async () => {
+        fetchMock.mockImplementation(async (url: string) => (url === '/api/settings/select-folder'
+            ? { ok: true, json: async () => ({ path: null, error: 'network' }) }
+            : { ok: false, json: async () => ({}) }));
+        const { setOutputDirInput } = renderModal();
+        fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+        expect(await screen.findByText(i18n.t('settings.outputDirError.network'))).toBeInTheDocument();
+        expect(setOutputDirInput).not.toHaveBeenCalled();
     });
 });
 
