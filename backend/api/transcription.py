@@ -144,6 +144,12 @@ async def transcribe(request: TranscribeRequest):
 
         config = await load_config()
         provider = config.get("translation_provider")
+        # Checked before the key load: a key is bound to its provider, so for a
+        # non-Gemini provider the load answers None and would hide this reason.
+        if provider and provider != "gemini":
+            raise CodedHTTPException(
+                400, "wrong_provider", "Transcription requires the Gemini provider."
+            )
         api_key = await asyncio.to_thread(_get_gemini_api_key, provider)
 
         # Extract member/group context from member_path
@@ -167,11 +173,6 @@ async def transcribe(request: TranscribeRequest):
 
         # Provider and model come from settings (shared with translation)
         from backend.api.translation import DEFAULT_GEMINI_MODEL, _valid_model_ids
-
-        if provider and provider != "gemini":
-            raise CodedHTTPException(
-                400, "wrong_provider", "Transcription requires the Gemini provider."
-            )
 
         model = config.get("translation_model")
         if not model or model not in _valid_model_ids():

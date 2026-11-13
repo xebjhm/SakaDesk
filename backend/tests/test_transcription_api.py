@@ -212,6 +212,36 @@ class TestTranscribePost:
         assert resp.status_code == 400
         assert "api key" in resp.json()["detail"].lower()
 
+    def test_a_non_gemini_provider_is_wrong_provider_not_no_key(
+        self, tmp_path, monkeypatch
+    ):
+        """The key is bound to its provider, so it loads as None for another one;
+        the answer must still name the provider, not a missing key."""
+        member_rel = _setup_voice_member(tmp_path)
+        monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
+        with (
+            patch.object(transcription_api.storage, "load", return_value=None),
+            patch.object(
+                transcription_api, "_get_gemini_api_key", return_value=None
+            ) as load_key,
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(return_value={"translation_provider": "openai"}),
+            ),
+        ):
+            resp = client.post(
+                "/api/transcription/transcribe",
+                json={
+                    "message_id": 500,
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "force": True,
+                },
+            )
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "wrong_provider"
+        load_key.assert_not_called()
+
     def test_rate_limit_maps_to_429(self, tmp_path, monkeypatch):
         member_rel = _setup_voice_member(tmp_path)
         monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
