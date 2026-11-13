@@ -9,7 +9,7 @@ describe('Button', () => {
         render(<Button>保存</Button>);
         const b = screen.getByRole('button', { name: '保存' });
         expect(b).toHaveAttribute('type', 'button');
-        expect(b).toHaveClass('bg-pill', 'h-10', 'rounded-md');
+        expect(b).toHaveClass('bg-pill', 'min-h-10', 'whitespace-nowrap', 'rounded-md');
     });
 
     it('primary uses the accent gradient; ghost and secondary do not', () => {

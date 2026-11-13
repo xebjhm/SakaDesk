@@ -24,6 +24,8 @@ const twMerge = extendTailwindMerge<'mask-image'>({
             ease: [{ ease: ['standard', 'spring'] }],
             'mask-image': [{ mask: ['fade-y'] }],
             transition: [{ transition: ['caption'] }],
+            'justify-content': [{ justify: ['safe-center'] }],
+            'align-items': [{ items: ['safe-center'] }],
         },
     },
 })

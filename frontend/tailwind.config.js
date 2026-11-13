@@ -439,5 +439,15 @@ export default {
                 '.size-em': { width: '1em', height: '1em' },
             });
         },
+        // Safe centring for scrollers (UI health C-L1): centred while the content fits, start-aligned
+        // when it overflows, so its first part is never pushed out of reach. And a stable gutter for
+        // a scroller whose content changes height under the user (Settings' tabs, C-L5).
+        ({ addUtilities }) => {
+            addUtilities({
+                '.justify-safe-center': { justifyContent: 'safe center' },
+                '.items-safe-center': { alignItems: 'safe center' },
+                '.scrollbar-stable': { scrollbarGutter: 'stable' },
+            });
+        },
     ],
 }

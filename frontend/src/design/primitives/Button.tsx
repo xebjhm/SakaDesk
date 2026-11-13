@@ -55,9 +55,11 @@ const ICON_VARIANT: Record<IconButtonVariant, string> = {
 const FLOATING: ReadonlySet<IconButtonVariant> = new Set<IconButtonVariant>(['overlay', 'accent']);
 const SHAPE: Record<IconButtonShape, string> = { rounded: 'rounded-md', circle: 'rounded-full' };
 
+// min-h, not h, and no wrapping (UI health C-L4): a CJK label can no longer shrink to one character
+// per line inside a fixed-height button; single-line labels look exactly as before.
 const SIZE: Record<ButtonSize, string> = {
-    sm: 'h-8 px-3 text-small',
-    md: 'h-10 px-5 text-body',
+    sm: 'min-h-8 px-3 text-small whitespace-nowrap',
+    md: 'min-h-10 px-5 text-body whitespace-nowrap',
 };
 
 const ICON_SIZE: Record<ButtonSize, string> = {

@@ -477,7 +477,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                 ))}
             </nav>
-            <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pb-6 pt-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto scrollbar-stable px-6 pb-6 pt-2">
                 {activeTab === 'general' && (<>
                     <SettingRow label={t('settings.language')} description={t('settings.languageDesc')}>
                         <Select

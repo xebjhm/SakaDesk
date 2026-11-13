@@ -448,6 +448,8 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 | `danger` | `bg-status-danger`, white text | a destructive confirm; takes the place of the primary |
 | `overlay` | `bg-viewer-control` | controls on the dark viewer |
 
+Buttons have a minimum height (`min-h-8` / `min-h-10`) and never wrap their label.
+
 `IconButton` (an `aria-label` is required) has `secondary`, `ghost`, `overlay`,
 `accent` (a floating action, e.g. the chat's unread arrows) and `soft` (the
 accent on its subtle tint, filled on hover: the group rail's actions). `shape`
@@ -583,6 +585,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Scale | Utilities |
 |---|---|
 | Spacing | Tailwind default scale (`p-4` = 16px), multiples of 4px only |
+| Layout helpers | `justify-safe-center`, `items-safe-center` (centre inside a scroller without clipping its start), `scrollbar-stable` (a scroller whose content height changes under the user) |
 | Group-only roles | `bg-group-canvas`, `bg-group-title`, `bg-group-title-bar`, `text-group-title`, `border-group-bubble`, `decoration-group`, `ring-group-logo`, `animate-landing` |
 
 ### Which primitive when
