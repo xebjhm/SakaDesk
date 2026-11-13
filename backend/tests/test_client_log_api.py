@@ -334,6 +334,8 @@ def test_notify_open_memories_accepts_delivered_and_refusals():
         ("output_folder_pick_ignored", {"reason": "superseded"}, "info"),
         ("setup_save_failed", {"reason": "save_refused"}, "info"),
         ("download_refused", {"reason": "not_app_url"}, "info"),
+        ("rail_reorder", {"target": "move_down", "outcome": "moved"}, "info"),
+        ("rail_reorder", {"target": "move_up", "outcome": "blocked"}, "info"),
         ("archive_stats_load", {"outcome": "ok"}, "info"),
         ("archive_stats_load", {"outcome": "failed"}, "info"),
         ("celebration", {"target": "first_sync", "outcome": "shown"}, "info"),

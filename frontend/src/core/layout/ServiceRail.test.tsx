@@ -3,6 +3,9 @@ import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import { useAppStore } from '../../store/appStore';
 import { ServiceRail } from './ServiceRail';
+import { clientLog } from '../../utils/clientLog';
+
+vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 vi.mock('../../shell/hooks/useAuth', () => ({ useAuth: () => ({ isServiceDisconnected: () => false }) }));
 vi.mock('../common/SettingsMenu', () => ({ SettingsMenu: () => null }));
@@ -10,9 +13,9 @@ vi.mock('./UpgradeIcon', () => ({ UpgradeIcon: () => null }));
 vi.mock('./AddServiceModal', () => ({ AddServiceModal: () => null }));
 
 const cb = { add: vi.fn(), settings: vi.fn(), search: vi.fn() };
-const renderRail = () => render(
+const renderRail = (services = ['hinatazaka46', 'sakurazaka46']) => render(
     <ServiceRail
-        services={['hinatazaka46', 'sakurazaka46']}
+        services={services}
         onAddService={cb.add}
         onOpenSettings={vi.fn()}
         onReportIssue={vi.fn()}
@@ -71,5 +74,57 @@ describe('ServiceRail', () => {
         renderRail();
         fireEvent.contextMenu(screen.getAllByRole('button', { name: /46/ })[0]);
         expect(await screen.findByText('Remove Service')).toBeInTheDocument();
+    });
+});
+
+describe('ServiceRail reorder from the menu (UI health A-K6)', () => {
+    const order = ['hinatazaka46', 'sakurazaka46', 'nogizaka46', 'yodel'];
+
+    it('moves a group down from its context menu and logs it', async () => {
+        useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'], serviceOrder: order });
+        renderRail();
+        fireEvent.contextMenu(screen.getAllByRole('button', { name: /46/ })[0]);
+        expect(screen.queryByRole('menuitem', { name: 'Move up' })).toBeNull(); // already first
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Move down' }));
+        expect(useAppStore.getState().serviceOrder.slice(0, 2)).toEqual(['sakurazaka46', 'hinatazaka46']);
+        expect(clientLog).toHaveBeenCalledWith('rail_reorder', { target: 'move_down', outcome: 'moved' });
+    });
+
+    it('moves a group up, and offers no Move down at the bottom', async () => {
+        useAppStore.setState({ selectedServices: ['hinatazaka46', 'sakurazaka46'], serviceOrder: order });
+        renderRail();
+        fireEvent.contextMenu(screen.getAllByRole('button', { name: /46/ })[1]);
+        expect(screen.queryByRole('menuitem', { name: 'Move down' })).toBeNull();
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Move up' }));
+        expect(useAppStore.getState().serviceOrder.slice(0, 2)).toEqual(['sakurazaka46', 'hinatazaka46']);
+    });
+
+    it('opens the menu at the button when the event has no pointer position', () => {
+        // Chromium's keyboard contextmenu (Shift+F10, the Menu key) usually carries the element's
+        // coordinates, so this (0, 0) path rarely runs there; it is pinned here so it stays correct.
+        renderRail();
+        const button = screen.getAllByRole('button', { name: /46/ })[1];
+        vi.spyOn(button, 'getBoundingClientRect').mockReturnValue(
+            { left: 8, right: 72, top: 140, bottom: 196, width: 64, height: 56, x: 8, y: 140, toJSON: () => ({}) } as DOMRect,
+        );
+        fireEvent.contextMenu(button, { clientX: 0, clientY: 0 });
+        const menu = screen.getByRole('menu');
+        expect(menu.style.left).toBe('72px');
+        expect(menu.style.top).toBe('140px');
+        expect(screen.getByRole('menuitem', { name: 'Move up' })).toBeInTheDocument();
+    });
+
+    it('opens on the first move item, never on Remove Service (Task 7)', () => {
+        renderRail();
+        fireEvent.contextMenu(screen.getAllByRole('button', { name: /46/ })[0]);
+        expect(screen.getByRole('menuitem', { name: 'Move down' })).toHaveFocus();
+        expect(screen.getByRole('menuitem', { name: 'Remove Service' })).toHaveAttribute('data-destructive');
+    });
+
+    it('with one group the menu has only Remove Service and opens on its container', () => {
+        renderRail(['hinatazaka46']);
+        fireEvent.contextMenu(screen.getAllByRole('button', { name: /46/ })[0]);
+        expect(screen.queryByRole('menuitem', { name: /Move/ })).toBeNull();
+        expect(screen.getByRole('menu')).toHaveFocus();
     });
 });

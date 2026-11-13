@@ -117,6 +117,7 @@ ClientEvent = Literal[
     "output_folder_pick_ignored",
     "setup_save_failed",
     "download_refused",
+    "rail_reorder",
 ]
 
 ALLOWED_FIELDS = frozenset(
