@@ -42,6 +42,7 @@ configure_logging(
 
 # === NOW SAFE TO IMPORT OTHER MODULES ===
 import asyncio  # noqa: E402
+import mimetypes  # noqa: E402
 from contextlib import asynccontextmanager  # noqa: E402
 from urllib.parse import urlparse  # noqa: E402
 
@@ -592,6 +593,27 @@ async def health(nonce: str | None = None):
             return {"status": "ok", "proof": api_auth.health_proof(nonce)}
         log_throttle.reject_logs.log(logger.info, "health_nonce_rejected")
     return {"status": "ok"}
+
+
+# Exact types for the SPA's own files. On Windows ``mimetypes`` lets the registry
+# override its defaults (some setups map .js to text/plain); with nosniff a script
+# or stylesheet served with another type is refused and the window stays blank.
+_STATIC_TYPES = {
+    ".js": "text/javascript",
+    ".mjs": "text/javascript",
+    ".css": "text/css",
+    ".html": "text/html",
+    ".png": "image/png",
+}
+
+
+def _pin_static_types() -> None:
+    """Register ``_STATIC_TYPES`` with ``mimetypes`` (``add_type`` reads the registry first)."""
+    for ext, media_type in _STATIC_TYPES.items():
+        mimetypes.add_type(media_type, ext)
+
+
+_pin_static_types()
 
 
 # Serve Frontend (Production Mode)

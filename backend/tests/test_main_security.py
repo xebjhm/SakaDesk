@@ -347,3 +347,15 @@ def test_testserver_host_rejected_outside_pytest(tmp_path):
         timeout=120,
     )
     assert out.stdout.strip().splitlines()[-1] == "400", out.stderr[-2000:]
+
+
+def test_spa_files_keep_their_types_whatever_the_registry_says():
+    """Windows lets the registry remap .js/.css; with nosniff that blanks the window."""
+    import mimetypes
+
+    mimetypes.add_type("text/plain", ".js")  # what some Windows registries say
+    mimetypes.add_type("text/plain", ".css")
+    backend_main._pin_static_types()
+    assert mimetypes.guess_type("index-abc.js")[0] == "text/javascript"
+    assert mimetypes.guess_type("index-abc.css")[0] == "text/css"
+    assert mimetypes.guess_type("logo-192.png")[0] == "image/png"
