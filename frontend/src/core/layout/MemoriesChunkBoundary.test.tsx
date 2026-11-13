@@ -14,7 +14,7 @@ class Outer extends Component<{ children: ReactNode }, { crashed: boolean }> {
 }
 
 describe('MemoriesChunkBoundary (plan F Task 9)', () => {
-    afterEach(() => vi.restoreAllMocks());
+    afterEach(() => { vi.restoreAllMocks(); vi.mocked(clientLog).mockClear(); });
 
     it('shows an error with Retry when the chunk fails, and renders Memories after Retry', async () => {
         vi.spyOn(console, 'error').mockImplementation(() => {});
@@ -36,8 +36,31 @@ describe('MemoriesChunkBoundary (plan F Task 9)', () => {
         await userEvent.click(screen.getByRole('button', { name: '再試行' }));
         expect(onRetry).toHaveBeenCalledTimes(1);
         expect(screen.getByText('思い出')).toBeInTheDocument();
-        expect(clientLog).toHaveBeenCalledWith('app_load_failed', { target: 'memories_chunk', outcome: 'shown' });
-        expect(clientLog).toHaveBeenCalledWith('app_load_failed', { target: 'memories_chunk', outcome: 'retry' });
+        // The boundary logs only the user's action; the failure itself is logged where the import rejects.
+        expect(vi.mocked(clientLog).mock.calls).toEqual([['app_load_failed', { target: 'memories_chunk', outcome: 'retry' }]]);
+    });
+
+    it('reloads the page when the chunk fails again after a Retry', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        vi.mocked(clientLog).mockClear();
+        const Child = () => { throw new MemoriesChunkError(new TypeError('still failing')); };
+        const onRetry = vi.fn();
+        const onReload = vi.fn();
+        render(
+            <Outer>
+                <MemoriesChunkBoundary title="t" retryLabel="Retry" onRetry={onRetry} onReload={onReload}>
+                    <Child />
+                </MemoriesChunkBoundary>
+            </Outer>,
+        );
+        await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        expect(onRetry).toHaveBeenCalledTimes(1);
+        expect(onReload).not.toHaveBeenCalled();
+        // Failed again: the same button now reloads instead of retrying the cached import.
+        await userEvent.click(screen.getByRole('button', { name: 'Retry' }));
+        expect(onRetry).toHaveBeenCalledTimes(1);
+        expect(onReload).toHaveBeenCalledTimes(1);
+        expect(vi.mocked(clientLog).mock.calls.map(([, f]) => f?.outcome)).toEqual(['retry', 'reload']);
     });
 
     it('leaves any other error to the root boundary', () => {

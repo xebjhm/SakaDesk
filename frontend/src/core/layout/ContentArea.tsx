@@ -18,7 +18,8 @@ const loadMemories = () =>
     import('../../features/memories/MemoriesFeature')
         .then((m) => ({ default: m.MemoriesFeature }))
         .catch((err: unknown) => {
-            clientLog('app_load_failed', { target: 'memories_chunk' });
+            // The one breadcrumb per failed load (the boundary logs only the user's retry or reload).
+            clientLog('app_load_failed', { target: 'memories_chunk', outcome: 'failed' });
             throw new MemoriesChunkError(err);
         });
 const InitialMemories = lazy(loadMemories);

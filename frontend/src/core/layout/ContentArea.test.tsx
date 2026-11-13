@@ -20,9 +20,13 @@ const show = (feature: FeatureId) => {
 describe('ContentArea', () => {
     beforeEach(() => resetSyncProgressStore());
 
-    // First test to open Memories: the lazy component keeps its module once loaded, so only this one sees the fallback.
+    // A fresh module registry gives a fresh lazy component, so this does not depend on test order.
     it('shows the pane loading state while Memories loads, then Memories', async () => {
-        show('memories');
+        vi.resetModules();
+        const { ContentArea: Fresh } = await import('./ContentArea');
+        const { useAppStore: freshStore } = await import('../../store/appStore');
+        freshStore.setState({ activeFeatures: { hinatazaka46: 'memories' } });
+        render(<Fresh service="hinatazaka46" messagesContent={<div />} />);
         expect(screen.getByRole('status')).toBeInTheDocument(); // the Suspense fallback (StatusBlock)
         expect(await screen.findByText('memories')).toBeInTheDocument();
     });
