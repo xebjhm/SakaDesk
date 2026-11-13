@@ -8,8 +8,9 @@ from unittest.mock import patch
 
 import pytest
 from fastapi.testclient import TestClient
-from PIL import Image
+from PIL import Image, PngImagePlugin
 from PIL.JpegImagePlugin import JpegImageFile
+from structlog.testing import capture_logs
 
 from backend.main import app
 from backend.services import avatar_resize
@@ -108,13 +109,12 @@ class TestResizedAvatar:
     def test_non_image_falls_back_to_the_original(self, tmp_path):
         src = tmp_path / "broken.jpg"
         src.write_bytes(b"not an image")
-        with patch.object(avatar_resize.logger, "warning") as warn:
+        with patch.object(avatar_resize.logger, "info") as info:
             assert avatar_resize.resized_avatar(src, 192, tmp_path / "cache") == src
-        warn.assert_called_once()
-        event, fields = warn.call_args.args[0], warn.call_args.kwargs
-        assert event == "avatar_resize_failed"
-        assert fields["width"] == 192
-        assert fields["error"] == "UnidentifiedImageError"
+        info.assert_called_once()
+        event, fields = info.call_args.args[0], info.call_args.kwargs
+        assert event == "avatar_resize_skipped"
+        assert fields == {"reason": "not_picture", "width": 192}
         # No paths or names in the breadcrumb.
         assert "broken" not in repr(fields)
 
@@ -174,6 +174,40 @@ class TestResizedAvatar:
         with patch.object(Image.Image, "draft") as draft:
             avatar_resize.resized_avatar(src, 192, tmp_path / "cache")
         draft.assert_not_called()
+
+    def test_an_ico_is_served_unchanged_and_never_decoded(self, tmp_path):
+        """avatar-resize.resized-avatar:Image.open-without-formats-allowlist (audit 2026-11-13).
+
+        Pillow's ICO plugin decodes the embedded PNG inside Image.open, before
+        the MAX_SOURCE_PIXELS check could see its size.
+        """
+        src = tmp_path / "group_thumbnail.ico"
+        Image.new("RGB", (256, 256), (1, 2, 3)).save(
+            src, format="ICO", sizes=[(256, 256)]
+        )
+        with (
+            patch.object(PngImagePlugin.PngImageFile, "load") as load,
+            capture_logs() as logs,
+        ):
+            assert avatar_resize.resized_avatar(src, 64, tmp_path / "cache") == src
+        load.assert_not_called()
+        assert not (tmp_path / "cache").exists()
+        assert {
+            "event": "avatar_resize_skipped",
+            "reason": "not_picture",
+            "width": 64,
+            "log_level": "info",
+        } in logs
+
+    def test_a_bmp_is_served_unchanged(self, tmp_path):
+        src = tmp_path / "a.jpg"  # the suffix does not matter: Pillow sniffs the bytes
+        Image.new("RGB", (400, 400), (9, 9, 9)).save(src, format="BMP")
+        assert avatar_resize.resized_avatar(src, 64, tmp_path / "cache") == src
+
+    def test_a_jpeg_with_another_suffix_is_still_resized(self, tmp_path):
+        src = _jpeg(tmp_path / "a.ico", (400, 400))
+        out = avatar_resize.resized_avatar(src, 64, tmp_path / "cache")
+        assert out.suffix == ".webp"
 
     def test_replace_blocked_by_a_reader_serves_the_existing_variant(self, tmp_path):
         src = _jpeg(tmp_path / "a.jpg", (1000, 1000))

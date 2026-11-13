@@ -15,8 +15,10 @@ Variants live under ``<app data dir>/cache/avatars/`` and are named by a hash
 of the source's resolved path, its mtime and the width, so a re-archived image
 gets a fresh variant and an unchanged one is resized only once. A source whose
 short side is not larger than the width is served unchanged (never upscaled),
-as is one above ``MAX_SOURCE_PIXELS`` (not worth decoding for a thumbnail);
-JPEGs are decoded at a reduced scale (``draft``) before the Lanczos pass. Any
+as is one above ``MAX_SOURCE_PIXELS`` (not worth decoding for a thumbnail).
+Only the photo pipeline's picture formats (``photo_thumb.picture_formats()``)
+are decoded; any other format is served unchanged
+(``avatar_resize_skipped reason=not_picture``). JPEGs are decoded at a reduced scale (``draft``) before the Lanczos pass. Any
 Pillow or file failure (including a source that vanished) falls back to the
 original file.
 
@@ -38,6 +40,7 @@ from pathlib import Path
 import structlog
 from PIL import Image, ImageOps
 
+from backend.services.photo_thumb import picture_formats
 from backend.services.platform import get_app_data_dir
 
 logger = structlog.get_logger(__name__)
@@ -94,8 +97,8 @@ def resized_avatar(
     That is the cached square WebP variant under ``root`` (default
     ``cache_dir()``; made now if missing), or ``source`` itself when its
     short side is not larger than ``width``, it has more than
-    ``MAX_SOURCE_PIXELS`` pixels, it cannot be stat-ed (e.g. it vanished), or
-    Pillow cannot read or write it (a structured warning is logged for the
+    ``MAX_SOURCE_PIXELS`` pixels, it is not a picture format, it cannot be
+    stat-ed (e.g. it vanished), or Pillow cannot read or write it (a structured warning is logged for the
     last three; no path is included). If another reader holds the variant
     open when it is moved into place (``PermissionError`` on Windows) and it
     already exists, the existing variant is served.
@@ -129,7 +132,11 @@ def resized_avatar(
 
     tmp_name: str | None = None
     try:
-        with Image.open(source) as opened:
+        # Only the picture decoders: their header size is what gets decoded, so
+        # the MAX_SOURCE_PIXELS check below runs before any pixel; ICO/ICNS
+        # (which decode inside Image.open), EPS and WMF/EMF are never reached
+        # (security audit 2026-11-13).
+        with Image.open(source, formats=picture_formats()) as opened:
             if min(opened.size) <= width:
                 logger.debug(
                     "avatar_resize_skipped", reason="source_small", width=width
@@ -166,6 +173,9 @@ def resized_avatar(
             logger.debug("avatar_resize_replace_raced", width=width)
             return target
         tmp_name = None
+    except Image.UnidentifiedImageError:
+        logger.info("avatar_resize_skipped", reason="not_picture", width=width)
+        return source
     except Exception as e:  # any Pillow / file error: serve the original
         logger.warning(
             "avatar_resize_failed",
