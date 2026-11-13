@@ -8,11 +8,13 @@ FRONTEND_PORT=5173
 BACKEND_LOG="/tmp/sakadesk-backend.log"
 FRONTEND_LOG="/tmp/sakadesk-frontend.log"
 
-# One per-launch API token for the backend (security audit 2026-11-13). The
-# browser gets it only through the app URL's #t= fragment, which this script
-# prints to the terminal (never to a log file). Kept in a git-ignored file so
-# restarting one side keeps the URL valid. The rule matches the page's
-# (frontend/src/core/api/launchAuth.ts): 16-128 of A-Z a-z 0-9 _ -.
+# One API token per launch (security audit 2026-11-13). 'start' and 'restart'
+# draw a fresh token every time (ensure_api_token) and overwrite the git-ignored
+# .dev-api-token (mode 600), so an old URL in the browser history stops working.
+# An exported SAKADESK_API_TOKEN is used instead, unchanged (manual override).
+# The browser gets the token only through the app URL's #t= fragment, which this
+# script prints to the terminal (never to a log file). The rule matches the
+# page's (frontend/src/core/api/launchAuth.ts): 16-128 of A-Z a-z 0-9 _ -.
 TOKEN_FILE="$SCRIPT_DIR/.dev-api-token"
 token_is_valid() {
     [[ "$1" =~ ^[A-Za-z0-9_-]{16,128}$ ]]
@@ -26,20 +28,17 @@ ensure_api_token() {
         fi
     else
         local token=""
-        [ -f "$TOKEN_FILE" ] && token="$(tr -d '[:space:]' < "$TOKEN_FILE")"
+        rm -f "$TOKEN_FILE"
+        if ! (umask 077 && uv run python -c "import secrets; print(secrets.token_urlsafe(32))" > "$TOKEN_FILE"); then
+            rm -f "$TOKEN_FILE"
+            echo "ERROR: could not generate the dev API token (.dev-api-token)." >&2
+            return 1
+        fi
+        token="$(tr -d '[:space:]' < "$TOKEN_FILE")"
         if ! token_is_valid "$token"; then
             rm -f "$TOKEN_FILE"
-            if ! (umask 077 && uv run python -c "import secrets; print(secrets.token_urlsafe(32))" > "$TOKEN_FILE"); then
-                rm -f "$TOKEN_FILE"
-                echo "ERROR: could not generate the dev API token (.dev-api-token)." >&2
-                return 1
-            fi
-            token="$(tr -d '[:space:]' < "$TOKEN_FILE")"
-            if ! token_is_valid "$token"; then
-                rm -f "$TOKEN_FILE"
-                echo "ERROR: the generated dev API token (.dev-api-token) is invalid." >&2
-                return 1
-            fi
+            echo "ERROR: the generated dev API token (.dev-api-token) is invalid." >&2
+            return 1
         fi
         SAKADESK_API_TOKEN="$token"
     fi
@@ -62,8 +61,12 @@ port_in_use() {
     lsof -ti "tcp:$1" >/dev/null 2>&1
 }
 
+# Needs SAKADESK_API_TOKEN from ensure_api_token (called once per start/restart).
 start_backend() {
-    ensure_api_token || return 1
+    if [ -z "${SAKADESK_API_TOKEN:-}" ]; then
+        echo "ERROR: no API token prepared for the backend." >&2
+        return 1
+    fi
     echo "Starting backend on port $BACKEND_PORT..."
     cd "$SCRIPT_DIR"
     # Keep-alive must match KEEP_ALIVE_TIMEOUT_S in desktop.py (outlast the
@@ -80,7 +83,6 @@ start_backend() {
 }
 
 start_frontend() {
-    ensure_api_token || return 1
     echo "Starting frontend on port $FRONTEND_PORT..."
     cd "$SCRIPT_DIR/frontend"
     # Vite binds 127.0.0.1 (vite.config.ts) and never reads the token.
@@ -97,7 +99,7 @@ start_frontend() {
 # Terminal only (not redirected): the URL carries this run's API token.
 show_app_url() {
     echo "Open SakaDesk: $(app_url)"
-    echo "(A tab opened without #t= gets 401 from the API: reopen it with this URL.)"
+    echo "(The backend has a new token: reopen the app tab with this URL; an old tab gets 401 on changes.)"
 }
 
 stop_backend() {
@@ -136,7 +138,8 @@ status() {
 
 case "${1:-start}" in
     start|restart)
-        # Validate the token before stopping anything that is running.
+        # Draw this launch's token (or validate the exported one) before
+        # stopping anything that is running; the backend restarts with it.
         ensure_api_token || exit 1
         stop_backend
         stop_frontend

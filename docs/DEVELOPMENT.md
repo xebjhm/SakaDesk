@@ -8,9 +8,13 @@ Vite dev server. Once the frontend answers, `dev.sh` prints the app URL and
 
 The local API requires a per-launch token (`X-SakaDesk-Token`), and the dev
 server's `/api` proxy does not add it: the page authenticates itself with the
-`#t=` token in its URL, like SakaDesk's own windows. By hand, generate the
-token once into the git-ignored `.dev-api-token` (the file the scripts use)
-and read it in each terminal that needs it:
+`#t=` token in its URL, like SakaDesk's own windows. The scripts draw a new
+token on every `start` / `restart` and overwrite the git-ignored
+`.dev-api-token` (readable by you only; `dev.ps1` locks it with `icacls`), so
+after a restart reopen the app tab with the new URL: an older tab keeps the
+old token and its changes get 401. An exported `SAKADESK_API_TOKEN` is used as
+given instead. By hand, generate a new token into `.dev-api-token` each time
+you start the backend and read it in each terminal that needs it:
 
 ```bash
 cd /path/to/SakaDesk
@@ -100,6 +104,16 @@ npm run test:e2e:headed
 
 Test mode (`SAKADESK_TEST_MODE=true`) bypasses real OAuth and returns fixture data.
 
+Stop the dev servers (`./dev.sh stop` / `.\dev.ps1 stop`) before running e2e.
+Playwright reuses whatever already answers on port 8000 (`reuseExistingServer`
+when `CI` is unset); a dev backend runs with the dev token, so Playwright's
+own token (`e2e-local-api-token-0001`) makes every test answer 401. To keep a
+backend running on port 8000, export its token for Playwright instead:
+`export SAKADESK_API_TOKEN=$(cat .dev-api-token)` (PowerShell:
+`$env:SAKADESK_API_TOKEN = (Get-Content .dev-api-token -Raw).Trim()`) in the
+terminal that runs `npm run test:e2e`; `e2e/apiToken.ts` reads that variable.
+A reused dev backend is not in test mode, so stop it for Option 1 anyway.
+
 The Playwright config pins the test server's `SAKADESK_API_TOKEN`
 (`e2e/apiToken.ts`) and sends it as the `X-SakaDesk-Token` header from every
 page. `e2e/launch-auth.spec.ts` turns that header off and checks the real
@@ -113,8 +127,9 @@ For testing the complete flow with real authentication:
 **Step 1: Start backend in normal mode**
 
 The local API requires a per-launch token. Use the one in `.dev-api-token`
-(see Quick Start for how to create it); the backend serves `frontend/dist`, so
-build the frontend first:
+(see Quick Start for how to create it; `dev.sh` / `dev.ps1` write a new one on
+every start, so stop them first, see Option 1); the backend serves
+`frontend/dist`, so build the frontend first:
 
 ```bash
 cd /path/to/SakaDesk
@@ -128,8 +143,9 @@ uv run uvicorn backend.main:app --port 8000 --reload
 Open `http://localhost:8000/#t=<token>` in a browser, with the value of
 `SAKADESK_API_TOKEN` / `.dev-api-token` as `<token>`
 (`echo "http://localhost:8000/#t=$(cat .dev-api-token)"` prints it), and
-complete the login flow. This saves your session. Without `#t=` every `/api`
-call answers 401.
+complete the login flow. This saves your session. A tab opened without `#t=`
+has no token: its changes answer 401, and its reads only work while an earlier
+tab's cookie is still valid.
 
 **Step 3: Save auth state for Playwright**
 
@@ -146,7 +162,11 @@ This saves your authenticated session to `frontend/.auth/user.json`.
 
 **Step 4: Run E2E tests with real auth**
 
+The Step 1 backend on port 8000 is the one Playwright reuses, so a fresh
+terminal needs its token again (otherwise every test answers 401):
+
 ```bash
+export SAKADESK_API_TOKEN=$(cat .dev-api-token)
 # Set env var to use saved auth state
 PLAYWRIGHT_AUTH_FILE=.auth/user.json npm run test:e2e
 ```
@@ -272,8 +292,10 @@ This opens Playwright Inspector for step-by-step debugging.
   prints / `dev.ps1` opens (`http://127.0.0.1:5173/#t=` plus the contents of
   `.dev-api-token`)
 - The backend runs with a different `SAKADESK_API_TOKEN` than the URL's
-  token: restart both with `dev.sh` / `dev.ps1`, or export the value from
-  `.dev-api-token` before starting the backend
+  token (for example the backend was restarted, so this tab holds the old
+  one): reopen the tab with the new URL, or restart both with
+  `dev.sh` / `dev.ps1`, or export the value from `.dev-api-token` before
+  starting the backend
 
 ### Snapshot test failures
 - Review the diff: is the change intentional?

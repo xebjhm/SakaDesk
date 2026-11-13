@@ -90,10 +90,16 @@ uv run python desktop.py
 the frontend is up, `dev.sh` prints the app URL and `dev.ps1` opens it in your
 browser: `http://127.0.0.1:5173/#t=<token>`.
 
+The scripts draw a new token on every `start` / `restart` and overwrite the
+git-ignored `.dev-api-token` (readable by you only), so an old URL in your
+browser history stops working. After a restart, reopen the app tab with the
+new URL: an older tab keeps the old token and its changes get 401. An
+exported `SAKADESK_API_TOKEN` is used as given instead of a new one.
+
 By hand: the local API requires a per-launch token, and the dev server does
 not add it. The page must be opened with the token in the URL fragment, like
-SakaDesk's own windows. Generate it once into the git-ignored
-`.dev-api-token` file (the file `dev.sh` / `dev.ps1` use too):
+SakaDesk's own windows. Generate a new one into `.dev-api-token` each time you
+start the backend (the file `dev.sh` / `dev.ps1` use too):
 
 ```bash
 (umask 077 && uv run python -c "import secrets; print(secrets.token_urlsafe(32))" > .dev-api-token)

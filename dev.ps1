@@ -8,9 +8,11 @@
                   backend/ and the editable sibling ..\pysaka\src)
       - Frontend: Vite dev server on http://127.0.0.1:5173
 
-    Once the frontend answers, 'start' / 'restart' open the app in the default
-    browser at http://127.0.0.1:5173/#t=<token>: the local API requires that
-    per-run token (see .dev-api-token), and a tab opened without it gets 401.
+    'start' / 'restart' draw a fresh API token on every run (written to the
+    git-ignored .dev-api-token, readable by the current user only) unless
+    SAKADESK_API_TOKEN is already set. Once the frontend answers, they open the
+    app in the default browser at http://127.0.0.1:5173/#t=<token>: the local
+    API requires that token, so an older tab must be reopened via the new URL.
 
     Unlike dev.sh (lsof / nohup / /tmp — Linux only) this uses Get-NetTCPConnection
     for port ownership and taskkill /T to tear down the whole process tree
@@ -58,10 +60,13 @@ $BackendPidF  = Join-Path $LogDir 'backend.pid'
 $FrontendPidF = Join-Path $LogDir 'frontend.pid'
 New-Item -ItemType Directory -Force -Path $LogDir | Out-Null
 
-# One per-launch API token for the backend (security audit 2026-11-13). The
-# browser gets it only through the app URL's #t= fragment, which Start-Frontend
-# opens (never written to a log file). Kept in a git-ignored file so restarting
-# one side keeps the URL valid. The rule matches the page's
+# One API token per launch (security audit 2026-11-13). 'start' and 'restart'
+# draw a fresh token every time (Initialize-ApiToken) and overwrite the
+# git-ignored .dev-api-token, locked to the current user, so an old URL in the
+# browser history stops working. A SAKADESK_API_TOKEN already set in the
+# environment is used instead, unchanged (manual override). The browser gets the
+# token only through the app URL's #t= fragment, which Start-Frontend opens
+# (never written to a log file). The rule matches the page's
 # (frontend/src/core/api/launchAuth.ts): 16-128 of A-Z a-z 0-9 _ -.
 $TokenFile = Join-Path $ScriptDir '.dev-api-token'
 $TokenPattern = '^[A-Za-z0-9_-]{16,128}$'
@@ -74,14 +79,21 @@ function Initialize-ApiToken {
         }
         return
     }
-    $tok = ''
-    if (Test-Path $TokenFile) { $tok = "$(Get-Content $TokenFile -Raw)".Trim() }
-    if ($tok -cnotmatch $TokenPattern) {
-        $bytes = New-Object byte[] 32
-        [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
-        $tok = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
-        Set-Content -Path $TokenFile -Value $tok -NoNewline -Encoding ascii
+    $bytes = New-Object byte[] 32
+    [System.Security.Cryptography.RandomNumberGenerator]::Create().GetBytes($bytes)
+    $tok = [Convert]::ToBase64String($bytes).TrimEnd('=').Replace('+', '-').Replace('/', '_')
+    # Create the file empty, lock it to the current user, then write the token,
+    # so it is never readable through an inherited ACL (e.g. a checkout under C:\D\).
+    if (Test-Path $TokenFile) { Remove-Item $TokenFile -Force }
+    New-Item -ItemType File -Path $TokenFile | Out-Null
+    $who = [System.Security.Principal.WindowsIdentity]::GetCurrent().Name
+    icacls $TokenFile /inheritance:r /grant:r "${who}:F" | Out-Null
+    if ($LASTEXITCODE -ne 0) {
+        Remove-Item $TokenFile -Force -ErrorAction SilentlyContinue
+        Write-Error "Could not restrict .dev-api-token to the current user (icacls exit $LASTEXITCODE); no token file was kept."
+        exit 1
     }
+    Set-Content -Path $TokenFile -Value $tok -NoNewline -Encoding ascii
     $env:SAKADESK_API_TOKEN = $tok
 }
 
@@ -137,8 +149,9 @@ function Stop-Tree([string]$PidFile, [int]$Port, [string]$Name) {
     Write-Host "  $Name stopped."
 }
 
+# Needs $env:SAKADESK_API_TOKEN from Initialize-ApiToken (called once per start/restart).
 function Start-Backend {
-    Initialize-ApiToken
+    if (-not $env:SAKADESK_API_TOKEN) { Write-Error "No API token prepared for the backend."; exit 1 }
     Write-Host "Starting backend on port $BackendPort..."
     # cmd /c merges stdout+stderr into one log; taskkill /T later kills uv+uvicorn children.
     # --timeout-keep-alive must match KEEP_ALIVE_TIMEOUT_S in desktop.py (outlast the
@@ -164,7 +177,6 @@ function Start-Backend {
 }
 
 function Start-Frontend {
-    Initialize-ApiToken
     Write-Host "Starting frontend on port $FrontendPort..."
     # Vite binds 127.0.0.1 (vite.config.ts) and never reads the token.
     $cmd = "npm run dev -- --port $FrontendPort --strictPort > `"$FrontendLog`" 2>&1"
@@ -181,8 +193,8 @@ function Start-Frontend {
             # never to Write-Host or a log file.
             $AppUrl = "http://127.0.0.1:$FrontendPort/#t=$($env:SAKADESK_API_TOKEN)"
             Start-Process $AppUrl
-            Write-Host "  Opened SakaDesk in your browser (a tab opened without the token gets 401;"
-            Write-Host "  run '.\dev.ps1 start' again to reopen it)."
+            Write-Host "  Opened SakaDesk in your browser with this run's new token (close any older"
+            Write-Host "  tab: it gets 401 on changes)."
             return
         }
         # If the launcher already exited, vite bailed — surface the reason from the log.
@@ -229,7 +241,7 @@ function Show-Status {
 
 switch ($Action) {
     'start' {
-        Initialize-ApiToken  # validate before stopping anything that is running
+        Initialize-ApiToken  # this launch's token, drawn before anything is stopped
         Stop-Tree $BackendPidF  $BackendPort  'Backend'
         Stop-Tree $FrontendPidF $FrontendPort 'Frontend'
         Start-Sleep -Seconds 1
@@ -245,7 +257,7 @@ switch ($Action) {
         Stop-Tree $FrontendPidF $FrontendPort 'Frontend'
     }
     'restart' {
-        Initialize-ApiToken  # validate before stopping anything that is running
+        Initialize-ApiToken  # this launch's token, drawn before anything is stopped
         Stop-Tree $BackendPidF  $BackendPort  'Backend'
         Stop-Tree $FrontendPidF $FrontendPort 'Frontend'
         Start-Sleep -Seconds 1

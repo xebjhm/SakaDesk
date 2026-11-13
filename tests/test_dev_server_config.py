@@ -46,6 +46,26 @@ def test_dev_scripts_open_the_app_with_the_token_in_the_fragment():
     assert "Start-Process $AppUrl" in ps1
 
 
+def test_dev_ps1_locks_the_token_file_to_the_current_user():
+    ps1 = _read("dev.ps1")
+    assert "icacls $TokenFile /inheritance:r /grant:r" in ps1
+    assert "$LASTEXITCODE -ne 0" in ps1
+    # The ACL goes on the empty file, before the token is written into it.
+    assert ps1.index("icacls $TokenFile") < ps1.index("Set-Content -Path $TokenFile")
+
+
+def test_dev_scripts_draw_a_new_token_per_launch():
+    sh = _read("dev.sh")
+    ps1 = _read("dev.ps1")
+    # No reuse of an existing token file: it is always removed and rewritten.
+    assert 'rm -f "$TOKEN_FILE"\n        if ! (umask 077' in sh
+    assert "Get-Content $TokenFile" not in ps1
+    assert "Remove-Item $TokenFile -Force" in ps1
+    # Drawn once per start/restart, not again by each server starter.
+    assert sh.count("ensure_api_token ||") == 1
+    assert ps1.count("Initialize-ApiToken  #") == 2
+
+
 def test_dev_scripts_probe_the_frontend_on_ipv4_loopback():
     assert "http://127.0.0.1:$FRONTEND_PORT/" in _read("dev.sh")
     assert 'Test-HttpOk "http://127.0.0.1:$FrontendPort"' in _read("dev.ps1")
