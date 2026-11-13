@@ -72,9 +72,9 @@ def _blog_folder(base: Path, member_name: str, blog_id: str, date: str) -> Path:
     space) and ``/`` replaced by ``_``, as archives have always been laid out.
     Raises ``safe_paths.UnsafePath`` (security audit 2026-11-13) with reason
     ``blog_id`` when ``blog_id`` is not ``safe_paths.is_safe_id``, ``date`` when
-    ``date`` is not ``safe_paths.is_blog_date`` (8 digits), or ``segment`` when either folder name is not a ``safe_paths.plain_segment``:
-    such a value comes from a hostile or broken index and would leave the
-    blogs folder. Callers that loop over the index skip and count it.
+    ``date`` is not ``safe_paths.is_blog_date`` (8 digits), or ``segment`` when
+    either folder name is not a ``safe_paths.plain_segment``: such a value comes
+    from a hostile or broken index and would leave the blogs folder. Callers that loop over the index skip and count it.
 
     Loops over many blogs resolve ``base`` once and call this per blog:
     ``get_blogs_base_path`` reads settings.json from disk on every call.
@@ -86,8 +86,8 @@ def _safe_blog_members(service: str, members: object) -> dict[str, str]:
     """The scraped ``{member id: name}`` entries that can name archive folders.
 
     The id must be ``safe_paths.is_safe_id`` and the name a ``str`` whose
-    folder form (``safe_paths.member_folder_name``, as :func:`_blog_folder` builds it) is
-    a ``safe_paths.plain_segment``. Others are dropped with one
+    folder form (``safe_paths.member_folder_name``, as :func:`_blog_folder` builds it)
+    is a ``safe_paths.plain_segment``. Others are dropped with one
     ``blog_remote_rejected`` (``kind=member``, ``count``); a value that is not a
     mapping logs ``reason=not_mapping``. Never an id or a name is logged
     (security audit 2026-11-13).

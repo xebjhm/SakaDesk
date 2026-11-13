@@ -61,7 +61,7 @@ def test_no_unrelated_tk_distribution_dependency():
 
 
 def test_ci_builds_through_the_dist_gate_once():
-    """The dist allowlist lives in build_windows.verify_frontend_dist (tested above);
+    """The dist allowlist lives in build_windows.verify_frontend_dist (tested below);
     the CI build runs that script, and no second copy of the rule exists in CI."""
     workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text(
         encoding="utf-8"

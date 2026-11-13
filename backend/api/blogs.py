@@ -181,7 +181,8 @@ class _HTMLSanitizer(HTMLParser):
 
 
 MAX_BLOG_HTML_CHARS = 2 * 1024 * 1024
-"""Characters of one blog's HTML that are sanitized and returned (as the search index cap)."""
+"""Cap on the characters of one blog's HTML taken as input: the sanitizer and the
+response only ever see this many (the same cap as the search index)."""
 
 
 def _sanitize_blog_html(html: str) -> str:
