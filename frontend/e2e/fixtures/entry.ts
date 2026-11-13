@@ -196,7 +196,10 @@ export async function pinEntry(page: Page, opts: EntryOptions = {}): Promise<Ent
   await page.route('**/api/sync/cancel*', (route) => route.fulfill({ json: { status: 'cancelled' } }))
   await page.route('**/api/sync/progress*', (route) => {
     const service = new URL(route.request().url()).searchParams.get('service') ?? ''
-    return route.fulfill({ json: state.progress[service] ?? { state: 'idle' } })
+    // Like the backend, a service no sync was started for is idle: the app follows a sync that is
+    // already running instead of starting one, so a progress set up front must not show before the start.
+    const started = state.syncStarts.includes(service)
+    return route.fulfill({ json: (started && state.progress[service]) || { state: 'idle' } })
   })
   await page.route('**/api/profile**', (route) => route.fulfill({ json: {} }))
   return state
