@@ -5,8 +5,9 @@ Unless the route already set its own value, every response gets:
 
 - ``Content-Security-Policy: APP_CSP`` — the SPA's policy. Scripts only from
   the app (no inline script, no inline event handler, no ``javascript:``
-  URL; ``'unsafe-eval'`` because pywebview 5.3.2 runs every host→page call,
-  such as a toast click, through ``eval``), styles and connections only from
+  URL, no ``eval``: host→page calls such as a toast click run through
+  ``host_js`` in pywebview's raw mode, which the page's CSP does not
+  govern), styles and connections only from
   the app, fonts from the app or inlined ``data:`` slices, images also from
   ``data:``, ``blob:`` and ``https:`` (remote blog images and thumbnails),
   media and frames only from the app, no plugins, no ``<base>``, forms only to
@@ -19,6 +20,10 @@ Unless the route already set its own value, every response gets:
   active type than the one it was served as.
 - ``Cross-Origin-Resource-Policy: same-origin``: other sites cannot embed
   archive media as <img>/<video> and observe load/error.
+- ``Referrer-Policy: strict-origin-when-cross-origin``: the browser default,
+  sent explicitly. Not ``no-referrer`` / ``same-origin`` for the app pages:
+  with ``no-referrer`` the browser sends ``Origin: null`` on the app's own
+  fetch POSTs, which ``api_guard`` refuses.
 
 ``csp_overrides`` maps exact request paths to another policy: in source runs
 FastAPI's /docs and /redoc pages (CDN scripts with inline setup) get
@@ -34,7 +39,7 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 APP_CSP = "; ".join(
     (
         "default-src 'self'",
-        "script-src 'self' 'unsafe-eval'",
+        "script-src 'self'",
         "style-src 'self'",
         "img-src 'self' data: blob: https:",
         "media-src 'self'",
@@ -61,6 +66,7 @@ _DEFAULTS: tuple[tuple[bytes, bytes], ...] = (
     (b"x-frame-options", b"SAMEORIGIN"),
     (b"x-content-type-options", b"nosniff"),
     (b"cross-origin-resource-policy", b"same-origin"),
+    (b"referrer-policy", b"strict-origin-when-cross-origin"),
 )
 
 

@@ -21,6 +21,7 @@ Raw mode has two traps in 5.3.2 that this module handles:
 from __future__ import annotations
 
 import json
+import re
 from typing import Any, Protocol
 from urllib.parse import quote
 
@@ -28,6 +29,7 @@ SCRIPT_HEAD = "(function(){try{return JSON.stringify({v:("
 SCRIPT_TAIL = (
     ")})}catch(e){return JSON.stringify({e:String((e&&e.name)||'Error')})}})()"
 )
+_ERROR_NAME = re.compile(r"[A-Za-z]{1,32}")
 _FORBIDDEN = ('"', "\\", "\n", "\r")
 
 
@@ -65,6 +67,19 @@ def script(expression: str) -> str:
     if any(ch in expression for ch in _FORBIDDEN):
         raise ValueError("host_script_forbidden_char")
     return SCRIPT_HEAD + expression + SCRIPT_TAIL
+
+
+def error_fields(exc: BaseException) -> dict[str, str]:
+    """Log fields for a failed host call: ``js_error`` when ``exc`` is a page error.
+
+    The page chooses the error's name, so only a plain name (1 to 32 ASCII
+    letters) is kept; anything else is reported as ``other``. Any other
+    exception gives no fields.
+    """
+    if not isinstance(exc, HostScriptError):
+        return {}
+    ok = _ERROR_NAME.fullmatch(exc.name) is not None
+    return {"js_error": exc.name if ok else "other"}
 
 
 def run(window: _Window, expression: str) -> Any:

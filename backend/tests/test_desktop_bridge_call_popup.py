@@ -99,6 +99,34 @@ def test_raising_host_logs_op_and_type_only():
     assert e["op"] == "start" and e["error_type"] == "RuntimeError"
 
 
+def test_page_error_name_is_logged_as_js_error():
+    import host_js
+
+    class PageError(Host):
+        def start(self, call_id):
+            raise host_js.HostScriptError("RangeError")
+
+    db.set_call_popup_host(PageError())
+    with capture_logs() as logs:
+        assert asyncio.run(db.call_popup_start(1)) is False
+    (e,) = [e for e in logs if e["event"] == "call_popup_bridge_failed"]
+    assert e["js_error"] == "RangeError"
+
+
+def test_hostile_page_error_name_is_logged_as_other():
+    import host_js
+
+    class PageError(Host):
+        def start(self, call_id):
+            raise host_js.HostScriptError("x y 金")
+
+    db.set_call_popup_host(PageError())
+    with capture_logs() as logs:
+        asyncio.run(db.call_popup_start(1))
+    (e,) = [e for e in logs if e["event"] == "call_popup_bridge_failed"]
+    assert e["js_error"] == "other"
+
+
 def test_raising_deliver_heard_returns_error():
     db.set_call_popup_host(Host(raise_on="deliver_heard"))
     assert (

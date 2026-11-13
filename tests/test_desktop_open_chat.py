@@ -499,3 +499,47 @@ def test_memories_handler_tolerates_a_non_dict_route():
     (failed,) = _mem(logs)
     assert failed["target"] == "unknown"
     assert failed["reason"] == "refused"
+
+
+class _ThrowingPage(_FakeWindow):
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        self._name = name
+
+    def evaluate_js(self, script, callback=None, raw=False):
+        self._record("evaluate_js", script, raw)
+        return {"e": self._name}
+
+
+def _handlers():
+    return [
+        (desktop.make_open_chat_handler, (TARGET,), "notify_open_chat_failed"),
+        (
+            desktop.make_open_login_handler,
+            ("hinatazaka46",),
+            "notify_open_login_failed",
+        ),
+        (
+            desktop.make_open_memories_handler,
+            ("hinatazaka46", OTD_ROUTE),
+            "notify_open_memories_failed",
+        ),
+    ]
+
+
+def test_page_error_name_is_logged_as_js_error():
+    for build, args, event in _handlers():
+        with capture_logs() as logs:
+            build(_ThrowingPage("TypeError"), lambda _h: None)(*args)
+        (failed,) = [e for e in logs if e["event"] == event]
+        assert failed["error_type"] == "HostScriptError"
+        assert failed["js_error"] == "TypeError"
+
+
+def test_hostile_page_error_name_is_logged_as_other():
+    for build, args, event in _handlers():
+        with capture_logs() as logs:
+            build(_ThrowingPage("金村 secret\n"), lambda _h: None)(*args)
+        (failed,) = [e for e in logs if e["event"] == event]
+        assert failed["js_error"] == "other"
+        assert "金村" not in repr(failed)

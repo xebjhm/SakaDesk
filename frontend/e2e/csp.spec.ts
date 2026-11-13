@@ -1,3 +1,5 @@
+import { readdirSync, readFileSync } from 'node:fs'
+import { fileURLToPath } from 'node:url'
 import { test, expect, type Page } from '@playwright/test'
 import { buildBigRoom, pinBigRoom, COUNT, ROOM_DIR, TZ } from './fixtures/bigRoom'
 import { pinBlogs } from './fixtures/blogs'
@@ -34,6 +36,7 @@ test('the app loads and opens a chat with no Content-Security-Policy violation',
   expect(policy).toContain("script-src 'self'")
   expect(policy).toContain("frame-ancestors 'self'")
   expect(policy).not.toContain('unsafe-inline')
+  expect(policy).not.toContain('unsafe-eval')
 
   await page.getByText('Big Room', { exact: true }).click()
   await expect(page.locator(`#msg-${COUNT}`)).toBeVisible({ timeout: 10000 })
@@ -112,4 +115,28 @@ test('the call popup rings a reserved call with no Content-Security-Policy viola
   await expect(page.locator('.sd-call-ring')).toBeVisible({ timeout: 10000 })
 
   expect(await violations()).toEqual([])
+})
+
+test('the app page refuses eval, so host calls must not need it', async ({ page }) => {
+  await pinBigRoom(page, { messages: { current: buildBigRoom(10) } })
+  // The probe must run as the page's own (same-origin) script: code Playwright evaluates
+  // through CDP may call eval even under this CSP (Runtime.evaluate allows it by default).
+  await page.route('**/__eval_probe.js', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/javascript',
+    body: "window.__evalOutcome = (function () { try { return String(eval('1 + 1')) } catch (e) { return e.name } })()",
+  }))
+  await page.goto('/')
+  await expect(page.getByText('Big Room', { exact: true })).toBeVisible({ timeout: 10000 })
+  await page.addScriptTag({ url: '/__eval_probe.js' })
+  const outcome = await page.evaluate(() => (window as unknown as { __evalOutcome?: string }).__evalOutcome)
+  expect(outcome).toBe('EvalError')
+})
+
+test('the built bundle never compiles strings as code', () => {
+  const dir = fileURLToPath(new URL('../dist/assets/', import.meta.url))
+  const offenders = readdirSync(dir)
+    .filter((name) => name.endsWith('.js'))
+    .filter((name) => /\bnew Function\s*\(|(?<![\w$.])eval\s*\(/.test(readFileSync(`${dir}${name}`, 'utf8')))
+  expect(offenders).toEqual([])
 })

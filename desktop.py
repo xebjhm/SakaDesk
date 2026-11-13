@@ -250,7 +250,8 @@ def make_open_chat_handler(window, focus_fn):
     when one is given. The script returns whether that function existed: it
     logs ``notify_open_chat`` (service, is_group_chat, has_target,
     ``delivered=True``) or ``notify_open_chat_failed`` with
-    ``reason=not_ready`` (frontend not mounted yet) or ``error_type``.
+    ``reason=not_ready`` (frontend not mounted yet) or ``error_type`` (plus
+    ``js_error``, the page error's name or ``other``, when the page script threw).
     It never raises. Names and paths are never logged. The payload reaches the
     page percent-encoded (``host_js.js_value``), so no value can break out of
     the script, and the call needs no ``eval`` (``host_js``).
@@ -288,6 +289,7 @@ def make_open_chat_handler(window, focus_fn):
                 "notify_open_chat_failed",
                 service=getattr(target, "service", None),
                 error_type=type(e).__name__,
+                **host_js.error_fields(e),
             )
 
     return handler
@@ -301,7 +303,8 @@ def make_open_login_handler(window, focus_fn):
     login dialog via ``window.__sakadeskOpenLogin(service)``, which returns
     whether it did. Logs ``notify_open_login`` (``service``, ``delivered=True``)
     or ``notify_open_login_failed`` with ``reason=not_ready`` (frontend not
-    mounted, or an unknown service) or ``error_type``. It never raises. The
+    mounted, or an unknown service) or ``error_type`` (plus ``js_error`` when the
+    page script threw). It never raises. The
     payload reaches the page percent-encoded (``host_js.js_value``), so no value
     can break out of the script, and the call needs no ``eval`` (``host_js``).
     """
@@ -327,6 +330,7 @@ def make_open_login_handler(window, focus_fn):
                 "notify_open_login_failed",
                 service=service,
                 error_type=type(e).__name__,
+                **host_js.error_fields(e),
             )
 
     return handler
@@ -356,8 +360,9 @@ def make_open_memories_handler(window, focus_fn):
     ``delivered=True``) or ``notify_open_memories_failed`` with
     ``reason=refused`` (the frontend answered false: a malformed link, an
     unknown group or onboarding; its own breadcrumb has the exact code),
-    ``reason=not_ready`` (the bridge is not mounted yet) or ``error_type``.
-    Never logs the route; never raises.
+    ``reason=not_ready`` (the bridge is not mounted yet) or ``error_type``
+    (plus ``js_error`` when the page script threw). Never logs the route;
+    never raises.
     """
 
     def handler(service: str, route: dict) -> None:
@@ -391,6 +396,7 @@ def make_open_memories_handler(window, focus_fn):
                 service=service,
                 target=target,
                 error_type=type(e).__name__,
+                **host_js.error_fields(e),
             )
 
     return handler

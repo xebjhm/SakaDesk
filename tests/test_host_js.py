@@ -171,3 +171,129 @@ def test_js_value_survives_a_lone_surrogate():
 
     expr = host_js.js_value({"name": "a\ud800b"})
     assert '"' not in expr and "\\" not in expr and "\n" not in expr
+
+
+# ---- the six production scripts, run in Node under a no-eval sandbox ----------
+
+BRIDGES = [
+    "__sakadeskOpenChat",
+    "__sakadeskOpenLogin",
+    "__sakadeskOpenMemories",
+    "__sakadeskCallPopup",
+    "__sakadeskMarkVoiceHeard",
+]
+PAGE_RUNNER = r"""
+const fs = require('fs');
+const vm = require('vm');
+const source = fs.readFileSync(process.argv[2], 'utf8');
+const mode = process.argv[3];
+const names = JSON.parse(process.argv[4]);
+const win = {};
+if (mode !== 'missing') {
+  for (const n of names) {
+    const fn = mode === 'throws'
+      ? () => { throw new TypeError('boom'); }
+      : () => true;
+    win[n] = n === '__sakadeskCallPopup' ? { start: fn, cancel: fn } : fn;
+  }
+}
+const context = vm.createContext({ window: win }, { codeGeneration: { strings: false, wasm: false } });
+process.stdout.write(JSON.stringify(vm.runInContext(source, context)));
+"""
+
+
+class _Recorder:
+    """A window whose evaluate_js records the script and answers like a page."""
+
+    def __init__(self):
+        self.scripts: list[str] = []
+        self.native = type("N", (), {"Handle": 1})()
+
+    def show(self):
+        pass
+
+    def evaluate_js(self, script, callback=None, raw=False):
+        self.scripts.append(script)
+        return {"v": True}
+
+
+def _production_scripts() -> dict[str, str]:
+    import desktop
+    from backend.services.desktop_bridge import HeardTarget
+    from backend.services.notification_planner import ChatTarget
+    from test_call_popup_window import FakeWindow, make
+
+    out: dict[str, str] = {}
+    for name, build, args in (
+        (
+            "open_chat",
+            desktop.make_open_chat_handler,
+            (ChatTarget("hinatazaka46", 'p"\\', "n", False), 5),
+        ),
+        ("open_login", desktop.make_open_login_handler, ('s"\\',)),
+        (
+            "open_memories",
+            desktop.make_open_memories_handler,
+            ("s", {"page": "memoir", "x": 'q"\\\n'}),
+        ),
+    ):
+        win = _Recorder()
+        build(win, lambda _h: None)(*args)
+        (out[name],) = win.scripts
+    popup, main = FakeWindow(), FakeWindow()
+    w, _, _ = make([popup], main=main)
+    assert w.start(7) is True
+    w.cancel(7)
+    w.deliver_heard(HeardTarget("hinatazaka46", 'p"\\金', 3))
+    out["call_start"], out["call_cancel"] = popup.js
+    (out["voice_heard"],) = main.js
+    return out
+
+
+@pytest.mark.parametrize(
+    "name",
+    [
+        "open_chat",
+        "open_login",
+        "open_memories",
+        "call_start",
+        "call_cancel",
+        "voice_heard",
+    ],
+)
+@pytest.mark.parametrize("mode", ["missing", "true", "throws"])
+def test_every_production_script_runs_under_a_no_eval_page(node, tmp_path, name, mode):
+    script = _production_scripts()[name]
+    (tmp_path / "script.js").write_text(script, encoding="utf-8")
+    (tmp_path / "runner.js").write_text(PAGE_RUNNER, encoding="utf-8")
+    out = subprocess.run(
+        [
+            node,
+            str(tmp_path / "runner.js"),
+            str(tmp_path / "script.js"),
+            mode,
+            json.dumps(BRIDGES),
+        ],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        timeout=30,
+        check=True,
+    )
+    result = json.loads(json.loads(out.stdout))
+    if mode == "throws":
+        assert result == {"e": "TypeError"}
+    else:
+        # A missing bridge may complete with no value at all ({}), never with an error.
+        assert "e" not in result
+
+
+def test_error_fields_keep_only_a_plain_error_name():
+    assert host_js.error_fields(host_js.HostScriptError("TypeError")) == {
+        "js_error": "TypeError"
+    }
+    for hostile in ["", "a" * 33, "Type Error", "T\u00e9", "x:金村", "a.b"]:
+        assert host_js.error_fields(host_js.HostScriptError(hostile)) == {
+            "js_error": "other"
+        }
+    assert host_js.error_fields(RuntimeError("x")) == {}

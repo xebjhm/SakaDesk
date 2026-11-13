@@ -49,7 +49,7 @@ class TestAppPolicy:
         d = _directives(APP_CSP)
         assert d == {
             "default-src": ["'self'"],
-            "script-src": ["'self'", "'unsafe-eval'"],
+            "script-src": ["'self'"],
             "style-src": ["'self'"],
             "img-src": ["'self'", "data:", "blob:", "https:"],
             "media-src": ["'self'"],
@@ -67,7 +67,17 @@ class TestAppPolicy:
         assert "https://" not in APP_CSP and "http://" not in APP_CSP
 
 
+class TestNoEval:
+    def test_no_eval(self):
+        """Host->page calls run through host_js raw mode (audit 2026-11-13, Plan D)."""
+        assert "unsafe-eval" not in APP_CSP
+
+
 class TestMiddleware:
+    def test_referrer_policy(self):
+        resp = _client().get("/plain")
+        assert resp.headers["referrer-policy"] == "strict-origin-when-cross-origin"
+
     def test_every_response_gets_the_app_policy_once(self):
         resp = _client().get("/plain")
         assert resp.headers.get_list("content-security-policy") == [APP_CSP]
