@@ -976,12 +976,19 @@ class BlogService:
                             detail_date,
                             detail_title,
                         ) = await scraper.get_blog_detail_metadata(item["id"])
-                    except Exception:
-                        return item, None, None, None
-                    return item, thumb, detail_date, detail_title
+                    except Exception as e:
+                        # No answer from the detail page: this says nothing
+                        # about the date, so it is not one of the attempts.
+                        logger.info(
+                            "blog_pending_retry_failed",
+                            service=service,
+                            error_type=type(e).__name__,
+                        )
+                        return item, False, None, None, None
+                    return item, True, thumb, detail_date, detail_title
 
                 retried = await asyncio.gather(*[retry_pending(p) for p in batch])
-                for item, thumb, detail_date, detail_title in retried:
+                for item, answered, thumb, detail_date, detail_title in retried:
                     if isinstance(detail_date, datetime):
                         stored_date: Optional[str] = detail_date.isoformat()
                     elif isinstance(detail_date, str) and _parse_published(detail_date):
@@ -1000,6 +1007,9 @@ class BlogService:
                         )
                         existing_ids.add(item["id"])
                         pending_resolved += 1
+                        continue
+                    if not answered:
+                        waiting.append(item)
                         continue
                     item["attempts"] += 1
                     if item["attempts"] >= PENDING_MAX_ATTEMPTS:

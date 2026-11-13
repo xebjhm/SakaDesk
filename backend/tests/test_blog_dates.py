@@ -454,6 +454,31 @@ async def test_pending_retries_are_bounded_and_rotate():
 
 
 @pytest.mark.asyncio
+async def test_a_failed_pending_retry_leaves_a_breadcrumb_and_costs_no_attempt():
+    """A network error says nothing about the post's date, so it is not one of
+    the five tries; the log names the error class only (no URL, no text)."""
+    scraper = _scraper({"1": []})
+    scraper.get_blog_detail_metadata = AsyncMock(
+        side_effect=ConnectionError("https://example.invalid/secret-path")
+    )
+    with capture_logs() as logs:
+        index = await _sync(_with_pending([_pending("p1", attempts=2)]), scraper)
+    pending = index["members"]["1"]["pending_dates"]
+    assert [(p["id"], p["attempts"]) for p in pending] == [("p1", 2)]
+    failed = [e for e in logs if e["event"] == "blog_pending_retry_failed"]
+    assert len(failed) == 1
+    assert failed[0]["error_type"] == "ConnectionError"
+    assert "secret-path" not in repr(logs) and "p1" not in repr(failed)
+
+
+@pytest.mark.asyncio
+async def test_an_answered_but_undated_pending_retry_still_counts():
+    scraper = _scraper({"1": []})
+    index = await _sync(_with_pending([_pending("p1", attempts=2)]), scraper)
+    assert index["members"]["1"]["pending_dates"][0]["attempts"] == 3
+
+
+@pytest.mark.asyncio
 async def test_pending_entries_expire_by_attempts_and_age():
     scraper = _scraper({"1": []})
     pending = [
