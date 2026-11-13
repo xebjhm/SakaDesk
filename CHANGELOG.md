@@ -44,6 +44,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Memories, sign-in and settings show a clear loading state instead of a
   blank or frozen screen. Long waits explain what is happening and offer
   Cancel or Retry.
+- **Fonts now come with the app.** SakaDesk no longer downloads its fonts from
+  Google when it starts, so text looks right straight away even offline,
+  behind a proxy or where Google is blocked. The installer is larger as a
+  result.
 
 ### Fixed
 - **Bug reports hide your nickname for every group.** Previously the
@@ -63,6 +67,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Installers no longer include a leftover sample of real messages.** A file
   with copies of a member's paid messages had been bundled with every version
   since the first release; it has been removed.
+- **Blog posts and saved files can no longer take over SakaDesk.** A file
+  saved from a blog post now only ever opens as a picture, video, voice clip
+  or plain download, and blog images fetched for saving or copying must be
+  real images from the official sites over a secure connection.
+- **Links in blog posts and messages open in your browser.** A link can no
+  longer replace SakaDesk's window with another site, and links to anything
+  other than a web page are ignored. Search highlighting in a blog post can
+  no longer turn the post's text into part of the page.
+- **SakaDesk only runs the code it ships with.** The app now tells its window
+  to refuse scripts, styles and fonts from anywhere else, as a second line of
+  defence if hostile content ever slips through.
 
 ## [0.4.2] - 2026-11-10
 
