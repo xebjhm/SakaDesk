@@ -1,7 +1,10 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { KeepMounted } from './KeepMounted';
 import { useFeatureActive } from '../../design/featureActive';
+import { clientLog } from '../../utils/clientLog';
+
+vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
 
 const Probe = () => <span data-testid="probe">{useFeatureActive() ? 'active' : 'hidden'}</span>;
 
@@ -23,5 +26,20 @@ describe('KeepMounted', () => {
         expect(box).toHaveAttribute('inert');
         expect(box.style.contentVisibility).toBe('hidden');
         expect(node).toHaveTextContent('hidden');
+    });
+
+    it('pauses a voice or video still playing inside it when it is hidden (as the unmount did)', () => {
+        const pause = vi.spyOn(HTMLMediaElement.prototype, 'pause').mockImplementation(() => {});
+        const media = <><audio data-testid="playing" /><video data-testid="idle" /></>;
+        const { rerender } = render(<KeepMounted active>{media}</KeepMounted>);
+        const playing = screen.getByTestId('playing') as HTMLAudioElement;
+        Object.defineProperty(playing, 'paused', { value: false, configurable: true });
+        rerender(<KeepMounted active={false}>{media}</KeepMounted>);
+        expect(pause).toHaveBeenCalledTimes(1);
+        expect(pause.mock.contexts[0]).toBe(playing);
+        expect(clientLog).toHaveBeenCalledWith('media_playback', { outcome: 'paused', reason: 'feature_hidden', count: 1 });
+        rerender(<KeepMounted active>{media}</KeepMounted>);
+        expect(pause).toHaveBeenCalledTimes(1);
+        pause.mockRestore();
     });
 });
