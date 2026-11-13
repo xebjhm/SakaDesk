@@ -11,11 +11,16 @@ import { useMilestone } from './milestones';
 import { MessagesFeature } from './MessagesFeature';
 import { ContentArea } from '../../core/layout/ContentArea';
 import { openChat } from '../../shell/openChat';
+import { useIncomingCall } from '../incomingCall/useIncomingCall';
 
 vi.mock('react-virtuoso', async () => (await import('../../__tests__/virtuosoMock')).virtuosoMock);
 vi.mock('./milestones', async (importOriginal) => {
     const actual = await importOriginal<typeof import('./milestones')>();
     return { ...actual, useMilestone: vi.fn(actual.useMilestone) };
+});
+vi.mock('../incomingCall/useIncomingCall', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('../incomingCall/useIncomingCall')>();
+    return { ...actual, useIncomingCall: vi.fn(actual.useIncomingCall) };
 });
 vi.mock('../blogs', () => ({ BlogsFeature: () => <div>blogs</div> }));
 vi.mock('../memories', () => ({ MemoriesFeature: () => <div>memories</div> }));
@@ -84,6 +89,10 @@ const lastMilestoneRoom = () => {
     const calls = vi.mocked(useMilestone).mock.calls;
     return calls[calls.length - 1]?.[0].roomKey;
 };
+const lastCallEnabled = () => {
+    const calls = vi.mocked(useIncomingCall).mock.calls;
+    return calls[calls.length - 1]?.[0].enabled;
+};
 const star = () => document.querySelector('.text-semantic-star');
 
 describe('MessagesFeature hidden behind another feature (UI health #11)', () => {
@@ -98,6 +107,7 @@ describe('MessagesFeature hidden behind another feature (UI health #11)', () => 
         uiStates = [];
         vi.mocked(clientLog).mockClear();
         vi.mocked(useMilestone).mockClear();
+        vi.mocked(useIncomingCall).mockClear();
         useAppStore.setState({
             activeService: SERVICE,
             selectedConversations: { [SERVICE]: { path: ROOM, name: '金村 美玖', isGroupChat: false } },
@@ -149,6 +159,17 @@ describe('MessagesFeature hidden behind another feature (UI health #11)', () => 
         await waitFor(() => expect(letterFetches).toBe(before + 1));
         await new Promise((r) => setTimeout(r, 50));
         expect(letterFetches).toBe(before + 1);
+    });
+
+    it('keeps the incoming call off while hidden, and re-evaluates it from the settings when shown (Decision 7)', async () => {
+        const settings = { incoming_call_enabled: true } as never;
+        const { rerender } = render(view(true, 0, settings));
+        await screen.findByText('こんにちは');
+        expect(lastCallEnabled()).toBe(true);
+        rerender(view(false, 0, settings));
+        expect(lastCallEnabled()).toBe(false);
+        rerender(view(true, 0, settings));
+        expect(lastCallEnabled()).toBe(true);
     });
 
     it('evaluates no milestone while hidden', async () => {
