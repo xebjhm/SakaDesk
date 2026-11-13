@@ -139,6 +139,8 @@ interface MessageCacheEntry {
     totalMessages: number;
     maxMessageId: number;
     service: string;
+    /** The response's ETag: the next fetch of this room asks with `If-None-Match`. */
+    etag: string | null;
 }
 
 /** Drawn size of the chat avatars (message runs, letters, header: Avatar `md`), in CSS px. */
@@ -328,7 +330,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // because fetchMessages updates state that these values depend on.
     useEffect(() => {
         if (syncVersion > 0 && selectedGroupDir) {
-            fetchMessages(selectedGroupDir, isGroupChat, readState.lastReadId);
+            fetchMessages(selectedGroupDir, isGroupChat);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
     }, [syncVersion]);
@@ -340,7 +342,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // screen (a background refresh) is kept as it is, and the failure only leaves a breadcrumb.
     // While the room is not on screen yet (the skeleton may show), the result is held through
     // `settleDelay`, so a shown skeleton stays at least minVisible.
-    const fetchMessages = async (path: string, groupChat: boolean, lastReadId: number = 0) => {
+    // A cached room is asked with its ETag (`If-None-Match`). The author-set header also makes the
+    // webview skip its HTTP cache, so an unchanged room answers 304 here and nothing is parsed or
+    // set again (UI health #1); without it the browser revalidated on its own and handed us the
+    // whole cached body. No `last_read_id`: unread is counted here, and the read position must not
+    // change the room's ETag.
+    const fetchMessages = async (path: string, groupChat: boolean) => {
         const thisId = ++fetchIdRef.current;
         fetchAbortRef.current?.abort();
         const controller = new AbortController();
@@ -371,11 +378,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         };
         setLoadFailure(null);
         let httpStatus: number | undefined;
+        const knownEtag = messagesCacheRef.current.get(path)?.etag ?? null;
         try {
-            const params = new URLSearchParams({
-                limit: '0',
-                last_read_id: String(lastReadId),
-            });
+            const params = new URLSearchParams({ limit: '0' });
             // Add service parameter if available
             if (activeService) {
                 params.set('service', activeService);
@@ -383,18 +388,44 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             const url = groupChat
                 ? `/api/content/group_messages/${encodeURIComponent(path)}?${params}`
                 : `/api/content/messages_by_path?path=${encodeURIComponent(path)}&${params}`;
-            const res = await fetch(url, { signal: controller.signal });
+            const res = await fetch(url, {
+                signal: controller.signal,
+                headers: knownEtag ? { 'If-None-Match': knownEtag } : undefined,
+            });
             if (!isCurrent()) return; // stale — a newer fetch superseded this one
+            if (res.status === 304) {
+                const cached = messagesCacheRef.current.get(path);
+                if (!cached) {
+                    // Evicted while the request ran: nothing to keep. Treated as a failed load.
+                    httpStatus = 304;
+                    throw new Error('room not modified but no longer cached');
+                }
+                if (!(await settle())) return; // stale
+                if (shownDirRef.current !== path) {
+                    setMembersMap(cached.membersMap);
+                    setMessages(cached.messages);
+                    setTotalMessages(cached.totalMessages);
+                    setMaxMessageId(cached.maxMessageId);
+                    setMessagesService(cached.service);
+                    showDir(path);
+                }
+                setCacheEntry(path, cached); // most recently used
+                // The room is confirmed current: the incoming-call hook evaluates on it, as on a 200.
+                setFreshFetch(prev => ({ seq: (prev?.seq ?? 0) + 1, dir: path }));
+                clientLog('chat_load', { outcome: 'not_modified' });
+                return;
+            }
             if (!res.ok) {
                 httpStatus = res.status;
                 throw new Error('room list request failed');
             }
+            const etag = res.headers.get('ETag');
             let entry: MessageCacheEntry;
             if (groupChat) {
                 const data = await res.json() as GroupMessagesResponse;
                 const map: Record<string, MemberInfo> = {};
                 for (const m of data.members) map[m.id] = m;
-                entry = { messages: data.messages || [], membersMap: map, totalMessages: data.total_messages || 0, maxMessageId: data.max_message_id || 0, service: activeService! };
+                entry = { messages: data.messages || [], membersMap: map, totalMessages: data.total_messages || 0, maxMessageId: data.max_message_id || 0, service: activeService!, etag };
             } else {
                 const data = await res.json();
                 const memberInfo = data.member as MemberInfo;
@@ -404,6 +435,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     totalMessages: data.total_count || 0,
                     maxMessageId: data.max_message_id || 0,
                     service: activeService!,
+                    etag,
                 };
             }
             if (!(await settle())) return; // stale
@@ -444,7 +476,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Retry after a failed room load (the timeline's failure state and the media gallery).
     const retryMessages = () => {
-        if (selectedGroupDir) fetchMessages(selectedGroupDir, isGroupChat, readState.lastReadId);
+        if (selectedGroupDir) fetchMessages(selectedGroupDir, isGroupChat);
     };
 
     // === CHAT SELECTION ===
@@ -475,7 +507,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             // The ref mirror for fetchMessages (the state was set while rendering, above): a cached
             // room is on screen, so its fetch is a background refresh.
             if (messagesCacheRef.current.has(selectedGroupDir)) showDir(selectedGroupDir);
-            fetchMessages(selectedGroupDir, isGroupChat, loadReadState(selectedGroupDir).lastReadId);
+            fetchMessages(selectedGroupDir, isGroupChat);
             setIsSidebarOpen(false);
         }
     }, [selectedGroupDir, isGroupChat, showDir]);

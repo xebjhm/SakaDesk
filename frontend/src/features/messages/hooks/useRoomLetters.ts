@@ -70,9 +70,14 @@ export function useRoomLetters(
         }, waitMs);
         const stopWaiting = () => { if (timer !== null) clearTimeout(timer); };
         fetchLocalLetters(service, memberPath, controller.signal)
-            .then((letters) => {
+            .then((fetched) => {
                 if (controller.signal.aborted) return;
                 stopWaiting();
+                // An unchanged answer keeps the array already held, so the timeline built from it is
+                // not rebuilt (and the list not re-rendered) by every sync (UI health #1).
+                const held = loadedRef.current?.key === roomKey ? loadedRef.current.letters : lettersCache.get(roomKey);
+                const same = held !== undefined && JSON.stringify(held) === JSON.stringify(fetched);
+                const letters = same ? held : fetched;
                 lettersCache.set(roomKey, letters);
                 if (timedOut) {
                     // The room already renders without letters: keep them for the next visit.
