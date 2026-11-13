@@ -31,9 +31,10 @@ its scheme, to ``webbrowser.open``. This module gives both one policy
 
 Each refusal logs ``navigation_refused`` or ``new_window_refused`` with a
 ``reason`` code (``external_web``, ``app_origin``, ``app_api``, ``scheme``,
-``invalid``, ``loopback``, ``unreadable``) and ``external_requested``
-(whether a browser launch was queued; the launch itself logs ``external_opened``
-or ``external_open_failed`` from its thread); an allowed navigation logs
+``invalid``, ``loopback``, ``unreadable``, ``decide_failed``) and either
+``external_requested`` (whether a browser launch was queued; the launch itself logs ``external_opened``
+or ``external_open_failed`` from its thread) or, for ``unreadable`` and
+``decide_failed``, ``error_type``; an allowed navigation logs
 ``navigation_allowed`` at debug. URLs are never logged: the app's own URL
 carries the launch token in its fragment.
 
@@ -109,7 +110,9 @@ def _ipv4_number(part: str) -> int | None:
     leading-``0`` octal, else decimal); ``None`` when it is none of those.
 
     Digits are checked per radix, ASCII only, before ``int()`` (which would
-    also take signs, underscores and Unicode digits). ``0x`` alone is 0.
+    also take signs, underscores and Unicode digits). ``0x`` alone is 0. More
+    than 11 significant digits cannot fit in 32 bits in any radix, so such a
+    part is ``None`` too (and ``int()`` never sees a huge decimal string).
     """
     if not part:
         return None
@@ -121,7 +124,10 @@ def _ipv4_number(part: str) -> int | None:
         digits, radix, allowed = part, 10, _DEC_DIGITS
     if not set(digits) <= allowed:
         return None
-    return int(digits or "0", radix)
+    significant = digits.lstrip("0")
+    if len(significant) > 11:
+        return None
+    return int(significant or "0", radix)
 
 
 def _ipv4_address(host: str) -> ipaddress.IPv4Address | None:

@@ -487,3 +487,9 @@ class TestLoadEdgeChrome:
         )
         assert ng._load_edgechrome() is None
         assert len(calls) == 1
+
+
+def test_a_huge_numeric_host_is_not_loopback_and_does_not_raise():
+    """int() refuses decimal strings over 4300 digits; the parser must not get there."""
+    assert ng.is_loopback_host("1" * 5000) is False
+    assert ng.is_loopback_host("0x" + "0" * 5000 + "7f.0.0.1") is True
