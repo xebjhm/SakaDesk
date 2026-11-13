@@ -12,12 +12,13 @@ from __future__ import annotations
 
 import json
 from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 from structlog.testing import capture_logs
 
-from backend.services.sync_service import SyncService
+from backend.services.sync_service import SyncService, _int_id_rows
+from backend.services.safe_paths import is_within
 from backend.tests.test_sync_service_core import (
     _make_message,
     _mock_sync_manager,
@@ -147,10 +148,20 @@ async def test_queue_items_outside_the_service_folder_are_never_downloaded(tmp_p
         return 1
 
     m = _manager(sync_member=AsyncMock(side_effect=sync_member))
+    progress = MagicMock()
     with capture_logs() as logs:
         await _run_start_sync(
-            SyncService(), tmp_path, groups=[GROUP], members=[MEMBER], mock_manager=m
+            SyncService(),
+            tmp_path,
+            groups=[GROUP],
+            members=[MEMBER],
+            mock_manager=m,
+            progress_mock=progress,
         )
+    (downloading,) = [
+        c for c in progress.start_phase.call_args_list if c.args[0] == "downloading"
+    ]
+    assert downloading.args[3] == 2  # total counts only the contained items
     downloaded = [i for c in m.process_media_queue.await_args_list for i in c.args[1]]
     assert downloaded == [good, letter]
     (event,) = _events(logs, "media_item_rejected")
@@ -228,3 +239,45 @@ async def test_verify_never_recreates_a_file_outside_the_service_folder(
     assert (event["phase"], event["count"]) == ("verify", 1)
     (rejected,) = _events(logs, "remote_id_rejected", kind="message")
     assert rejected["count"] == 1
+
+
+@pytest.mark.parametrize("rows", [{"id": 1}, "x", 7])
+async def test_int_id_rows_treats_a_non_list_as_empty_and_logs_it(rows):
+    with capture_logs() as logs:
+        assert _int_id_rows(rows, kind="group", service="svc") == []
+    (event,) = _events(logs, "remote_id_rejected")
+    assert (event["kind"], event["reason"]) == ("group", "not_list")
+
+
+async def test_int_id_rows_treats_none_as_empty_silently():
+    with capture_logs() as logs:
+        assert _int_id_rows(None, kind="group", service="svc") == []
+    assert logs == []
+
+
+async def test_int_id_rows_logs_the_type_of_a_non_dict_row():
+    with capture_logs() as logs:
+        assert _int_id_rows(
+            [{"id": 1}, "str-row", None], kind="member", service="s"
+        ) == [{"id": 1}]
+    (event,) = _events(logs, "remote_id_rejected")
+    assert (event["count"], event["id_types"]) == (2, ["NoneType", "str"])
+
+
+async def test_contained_media_skips_non_dict_items_and_checks_each_member_dir_once(
+    tmp_path,
+):
+    svc = SyncService()
+    svc.service_data_dir = tmp_path / "svc"
+    base = svc.service_data_dir / "m"
+    good = [{"path": base / f"{i}.jpg", "member_dir": base} for i in range(3)]
+    items = ["not-a-dict", None, *good]
+    with (
+        patch("backend.services.sync_service.is_within", wraps=is_within) as spy,
+        capture_logs() as logs,
+    ):
+        assert svc._contained_media(items, phase="sync") == good
+    # 3 path checks + one shared member_dir check
+    assert spy.call_count == 4
+    (event,) = _events(logs, "media_item_rejected")
+    assert event["count"] == 2

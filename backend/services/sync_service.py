@@ -138,8 +138,10 @@ def _int_id_rows(rows: Any, *, kind: str, service: str) -> list[dict[str, Any]]:
     ``<id>.<ext>`` files), so a row whose id is anything else (``"../x"``,
     ``1.0``, ``True``, missing) is dropped before pysaka sees it. Drops log
     one ``remote_id_rejected`` with ``service``, ``kind``, ``count`` and the
-    dropped ids' type names, never a value. ``rows`` that is not a list counts
-    as empty (``None`` silently, anything else with ``reason=not_list``).
+    type names (of the ``id`` for a dict row, of the row itself for a non-dict
+    row), never a value. ``rows`` that is not a list counts as empty
+    (``None`` silently, anything else logs ``remote_id_rejected`` with
+    ``reason=not_list``).
     """
     if not isinstance(rows, list):
         if rows is not None:
@@ -221,9 +223,12 @@ class SyncService:
         ``path`` and, when present, its ``member_dir`` pass
         ``safe_paths.is_within(self.service_data_dir, ...)``; the rest are
         dropped with one ``media_item_rejected`` (``phase``, ``count``), never
-        a path. Lexical only: no filesystem call, cheap for a whole queue.
+        a path. Lexical only (no filesystem call), but each ``is_within`` costs
+        tens of microseconds, so each distinct ``member_dir`` is checked once
+        per call and async callers run the whole filter in a worker thread.
         """
         keep: list[dict[str, Any]] = []
+        dir_ok: dict[Path, bool] = {}
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -233,11 +238,14 @@ class SyncService:
                 self.service_data_dir, Path(path)
             ):
                 continue
-            if member_dir is not None and (
-                not isinstance(member_dir, (str, Path))
-                or not is_within(self.service_data_dir, Path(member_dir))
-            ):
-                continue
+            if member_dir is not None:
+                if not isinstance(member_dir, (str, Path)):
+                    continue
+                md = Path(member_dir)
+                if md not in dir_ok:
+                    dir_ok[md] = is_within(self.service_data_dir, md)
+                if not dir_ok[md]:
+                    continue
             keep.append(item)
         if len(keep) != len(items):
             logger.warning(
@@ -1294,7 +1302,9 @@ class SyncService:
                 phase3_t0 = time.monotonic()
                 # Every item must stay inside this service's folder: pysaka
                 # built its path from remote ids (security audit 2026-11-13).
-                media_queue[:] = self._contained_media(media_queue, phase="sync")
+                media_queue[:] = await asyncio.to_thread(
+                    self._contained_media, media_queue, phase="sync"
+                )
                 media_count = len(media_queue)
                 progress.start_phase(
                     "downloading", "Downloading Media", 3, media_count, "files"
@@ -2041,7 +2051,9 @@ class SyncService:
                                 )
                         # A stored media_file can name a path outside the
                         # service folder (security audit 2026-11-13).
-                        missing = self._contained_media(scan["missing"], phase="verify")
+                        missing = await asyncio.to_thread(
+                            self._contained_media, scan["missing"], phase="verify"
+                        )
                         if missing:
                             totals["missing"] += len(missing)
                             gaps_by_group[gid].append((member_dir, missing))
