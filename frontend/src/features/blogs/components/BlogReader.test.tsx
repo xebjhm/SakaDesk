@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { BlogReader, type BlogReaderProps } from './BlogReader';
@@ -135,5 +135,47 @@ describe('BlogReader translate with a failing cache read', () => {
         fireEvent.click(screen.getByRole('button', { name: /translate/i }));
         await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/translation/translate', expect.anything()));
         expect(clientLog).toHaveBeenCalledWith('translation_batch_failed', { count: 1, error_type: 'typeerror', caller: 'blog' });
+    });
+});
+
+describe('BlogReader search highlight', () => {
+    const realScrollIntoView = Element.prototype.scrollIntoView;
+    beforeAll(() => { Element.prototype.scrollIntoView = vi.fn(); });
+    afterAll(() => { Element.prototype.scrollIntoView = realScrollIntoView; });
+
+    // The check-1 payload of audit lead post-sanitize-search-highlight-markup-injection: the
+    // server sanitizer keeps an <img> alt as escaped text that looks like markup.
+    const HOSTILE = {
+        ...CONTENT,
+        content: {
+            html: '<p>今日は桜を見に行きました。<img src="/api/blogs/image?service=hinatazaka46&amp;blog_id=142&amp;filename=img_0.jpg" alt="&gt;XSSTERM&lt;img src=x onerror=globalThis.__xss=1&gt;"/></p>',
+        },
+    };
+
+    it('never turns attribute text into markup', () => {
+        const { container } = render(
+            <BlogReader {...props({ content: HOSTILE, searchQuery: '桜', matchedTerms: ['桜', 'XSSTERM'] })} />,
+        );
+        expect(container.querySelector('[onerror]')).toBeNull();
+        const imgs = container.querySelectorAll('article img');
+        expect(imgs).toHaveLength(1);
+        expect(imgs[0].getAttribute('alt')).toBe('>XSSTERM<img src=x onerror=globalThis.__xss=1>');
+        expect(Array.from(container.querySelectorAll('mark')).map((m) => m.textContent)).toEqual(['桜']);
+    });
+
+    it('keeps a forged mark in the post as text', () => {
+        const forged = { ...CONTENT, content: { html: '<p>&lt;mark&gt;XSSTERM&lt;/mark&gt; 春</p>' } };
+        const { container } = render(<BlogReader {...props({ content: forged })} />);
+        expect(container.querySelector('mark')).toBeNull();
+        expect(container.querySelector('article p')!.textContent).toBe('<mark>XSSTERM</mark> 春');
+    });
+
+    it('marks exact and reading matches with their classes', () => {
+        const { container } = render(
+            <BlogReader {...props({ searchQuery: '春', matchedTerms: ['春', 'もっと'], readingTerms: ['もっと'] })} />,
+        );
+        const marks = (selector: string) => Array.from(container.querySelectorAll(selector)).map((m) => m.textContent);
+        expect(marks('mark.search-highlight:not(.reading)')).toEqual(['春']);
+        expect(marks('mark.search-highlight.reading')).toEqual(['もっと']);
     });
 });

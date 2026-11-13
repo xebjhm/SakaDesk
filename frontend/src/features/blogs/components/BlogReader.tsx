@@ -1,8 +1,7 @@
 // frontend/src/features/blogs/components/BlogReader.tsx
 // Blog reader: breadcrumb, the post at a readable width, older/newer pills and the timeline rail.
 
-import React, { useEffect, useState, useRef } from 'react';
-import DOMPurify from 'dompurify';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { AlertCircle, ChevronLeft } from 'lucide-react';
 import type { BlogMember, BlogMeta, BlogContentResponse } from '../../../types';
@@ -11,7 +10,8 @@ import { getServiceBlogBaseUrl } from '../../../data/services';
 import { useBlogTranslationVisibility, useInlineBlogTranslations } from '../hooks';
 import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
-import { BLOG_PROSE } from './blogProse';
+import { BlogBody } from './BlogBody';
+import { buildBlogFragment, highlightKey, normalizeBlogUrls, parseHighlightKey } from '../blogHtml';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { useAppStore } from '../../../store/appStore';
@@ -207,69 +207,16 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         if (memberBlogs[index]) onNavigate(memberBlogs[index]);
     };
 
-    // Normalize relative URLs in HTML content to absolute URLs
-    // Skip /api/ URLs — those are local backend endpoints (e.g., cached blog images)
-    const normalizeHtmlUrls = (html: string, baseUrl: string): string => {
-        if (!baseUrl) return html;
-        return html.replace(
-            /(src|href)=(["'])([^"']+)\2/g,
-            (match, attr, quote, url) => {
-                if (!url) return match;
-                if (url.startsWith('//')) return `${attr}=${quote}https:${url}${quote}`;
-                if (url.startsWith('/api/')) return match;
-                if (url.startsWith('/')) return `${attr}=${quote}${baseUrl}${url}${quote}`;
-                if (!url.startsWith('http')) return `${attr}=${quote}${baseUrl}/${url}${quote}`;
-                return match;
-            }
-        );
-    };
-
-    // Sanitize HTML content using DOMPurify (XSS protection)
-    // DOMPurify is a well-established sanitization library that removes malicious content
-    // First normalize URLs to handle cached content with relative URLs
+    // The post body: URLs normalized, sanitized into a DOM fragment and search terms marked on
+    // its text nodes (blogHtml.ts). It is never edited or re-parsed as an HTML string. Reading
+    // matches get the reading mark (fill + dashed underline), exact matches the exact mark.
     const baseUrl = getServiceBlogBaseUrl(serviceId);
-    const normalizedHtml = content ? normalizeHtmlUrls(content.content.html, baseUrl) : '';
-    const sanitizedHtml = normalizedHtml
-        ? DOMPurify.sanitize(normalizedHtml, {
-            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'a', 'img', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li'],
-            ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'target', 'rel'],
-        })
-        : '';
-
-    // Highlight search query matches in blog content.
-    // Uses both the raw searchQuery and matchedTerms extracted from snippet
-    // <mark> tags. This handles reading-based matches where the query is
-    // hiragana (e.g., "かわいい") but the blog text is kanji (e.g., "可愛い").
-    // Reading-based matches get the reading mark (fill + dashed underline), exact matches the exact mark (BLOG_PROSE).
-    let processedHtml = sanitizedHtml;
-    if ((searchQuery || matchedTerms?.length) && processedHtml) {
-        const allTerms = new Set<string>();
-        const readingSet = new Set(readingTerms || []);
-        if (searchQuery) allTerms.add(searchQuery);
-        matchedTerms?.forEach(t => allTerms.add(t));
-
-        // Split into exact and reading term lists
-        const exactTermsList = [...allTerms].filter(t => !readingSet.has(t));
-        const readTermsList = [...allTerms].filter(t => readingSet.has(t));
-
-        // Helper to escape regex special chars
-        const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-        // Apply reading highlights first then exact highlights
-        // Applying exact last means if a term appears in both, exact style wins
-        for (const [terms, cssClass] of [
-            [readTermsList, 'search-snippet search-highlight reading'],
-            [exactTermsList, 'search-snippet search-highlight'],
-        ] as [string[], string][]) {
-            if (terms.length === 0) continue;
-            const escaped = terms.map(escapeRegex);
-            escaped.sort((a, b) => b.length - a.length);
-            const regex = new RegExp(`(${escaped.join('|')})`, 'gi');
-            processedHtml = processedHtml.replace(/>([^<]+)</g, (_match, text) => {
-                return '>' + (text as string).replace(regex, `<mark class="${cssClass}">$1</mark>`) + '<';
-            });
-        }
-    }
+    const postHtml = content?.content.html ?? '';
+    const termsKey = highlightKey(searchQuery, matchedTerms, readingTerms);
+    const postFragment = useMemo(
+        () => (postHtml ? buildBlogFragment(normalizeBlogUrls(postHtml, baseUrl), parseHighlightKey(termsKey)) : null),
+        [postHtml, baseUrl, termsKey],
+    );
 
     // Scroll to the first search highlight after content renders (instant with reduced motion)
     useEffect(() => {
@@ -407,13 +354,8 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                     </div>
                                 </header>
 
-                                {/* Sanitized with DOMPurify, then search highlights injected */}
-                                <div
-                                    ref={blogContentRef}
-                                    lang="ja"
-                                    className={BLOG_PROSE}
-                                    dangerouslySetInnerHTML={{ __html: processedHtml }}
-                                />
+                                {/* Sanitized DOM fragment with its search marks (blogHtml.ts) */}
+                                <BlogBody fragment={postFragment} containerRef={blogContentRef} />
                             </article>
                         )}
                     </div>
