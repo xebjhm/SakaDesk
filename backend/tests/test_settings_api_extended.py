@@ -12,6 +12,7 @@ from unittest.mock import AsyncMock, patch
 import pytest
 
 from fastapi.testclient import TestClient
+from structlog.testing import capture_logs
 
 from backend.main import app
 
@@ -575,3 +576,47 @@ class TestSchedulerWake:
     )
     def test_unchanged_or_unrelated_settings_do_not_wake(self, body):
         self._post(body).assert_not_called()
+
+
+class TestSettingsBounds:
+    """report-hardening #54/#56 (audit 2026-11-13)."""
+
+    @pytest.mark.parametrize("minutes", [0, 1441, 10**30])
+    def test_an_interval_outside_one_minute_to_a_day_is_refused(self, minutes):
+        with capture_logs() as logs:
+            resp = client.post("/api/settings", json={"sync_interval_minutes": minutes})
+        assert resp.status_code == 422
+        assert {
+            "event": "settings_rejected",
+            "field": "sync_interval_minutes",
+            "reason": "range",
+            "log_level": "info",
+        } in logs
+
+    @pytest.mark.parametrize(
+        "oshi",
+        [
+            {f"s{i}": [] for i in range(9)},
+            {"hinatazaka46": [f"m{i}" for i in range(101)]},
+            {"hinatazaka46": ["あ" * 65]},
+            {"k" * 65: []},
+        ],
+    )
+    def test_oversized_oshi_lists_are_refused(self, oshi):
+        with capture_logs() as logs:
+            resp = client.post("/api/settings", json={"oshi_members": oshi})
+        assert resp.status_code == 422
+        assert any(
+            e["event"] == "settings_rejected" and e["field"] == "oshi_members"
+            for e in logs
+        )
+        assert "あああ" not in repr(logs)
+
+    def test_a_normal_oshi_list_is_accepted_by_the_model(self):
+        from backend.api.settings import SettingsUpdate
+
+        update = SettingsUpdate(
+            oshi_members={"hinatazaka46": ["金村美玖", "小坂菜緒"]},
+            sync_interval_minutes=1440,
+        )
+        assert update.sync_interval_minutes == 1440

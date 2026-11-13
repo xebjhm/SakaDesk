@@ -12,7 +12,7 @@ import time
 import structlog
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Any, Optional
 
 from backend.services.platform import (
@@ -40,6 +40,12 @@ from backend.services.settings_store import (
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+MAX_SYNC_INTERVAL_MINUTES = 1440
+"""A day; a larger value only made the scheduler skip every launch (report-hardening #54)."""
+MAX_OSHI_SERVICES = 8
+MAX_OSHI_PER_SERVICE = 100
+MAX_OSHI_TEXT_CHARS = 64
 
 # Get settings file path from platform utilities
 SETTINGS_FILE = get_settings_path()
@@ -139,8 +145,9 @@ class SettingsUpdate(BaseModel):
     # SD-BE-API-22: reject a zero/negative interval. A non-positive value was
     # accepted, persisted, and echoed by /api/sync/next_interval, driving the
     # auto-sync scheduler into an immediate-retry loop against the official API
-    # (rate-limit / account-flag risk).
-    sync_interval_minutes: Optional[int] = Field(default=None, ge=1)
+    # (rate-limit / account-flag risk). A value over a day is refused too
+    # (audit 2026-11-13).
+    sync_interval_minutes: Optional[int] = None
     adaptive_sync_enabled: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
     notifications_hide_content: Optional[bool] = None
@@ -162,6 +169,34 @@ class SettingsUpdate(BaseModel):
     memories_notify_time: Optional[str] = Field(
         default=None, pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$"
     )
+
+    @field_validator("sync_interval_minutes")
+    @classmethod
+    def _interval_in_range(cls, value: Optional[int]) -> Optional[int]:
+        if value is not None and not 1 <= value <= MAX_SYNC_INTERVAL_MINUTES:
+            logger.info(
+                "settings_rejected", field="sync_interval_minutes", reason="range"
+            )
+            raise ValueError("sync_interval_minutes must be between 1 and 1440")
+        return value
+
+    @field_validator("oshi_members")
+    @classmethod
+    def _oshi_bounded(
+        cls, value: Optional[dict[str, list[str]]]
+    ) -> Optional[dict[str, list[str]]]:
+        if value is None:
+            return value
+        too_large = len(value) > MAX_OSHI_SERVICES or any(
+            len(key) > MAX_OSHI_TEXT_CHARS
+            or len(names) > MAX_OSHI_PER_SERVICE
+            or any(len(name) > MAX_OSHI_TEXT_CHARS for name in names)
+            for key, names in value.items()
+        )
+        if too_large:
+            logger.info("settings_rejected", field="oshi_members", reason="too_large")
+            raise ValueError("oshi_members is too large")
+        return value
 
 
 class FreshCheckResponse(BaseModel):
