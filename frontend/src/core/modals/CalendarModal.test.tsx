@@ -195,7 +195,8 @@ describe('CalendarModal component', () => {
       )
 
       // The indicator is delayed by the 200 ms reveal (no flash on fast loads).
-      await waitFor(() => expect(document.querySelector('.animate-spin')).toBeInTheDocument())
+      // A cold, loaded worker can take longer than the default 1 s to render and arm the reveal.
+      await waitFor(() => expect(document.querySelector('.animate-spin')).toBeInTheDocument(), { timeout: 3000 })
     })
 
     it('should show error state on API failure', async () => {
