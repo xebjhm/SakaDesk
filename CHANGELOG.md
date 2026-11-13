@@ -57,7 +57,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Other programs and web pages can no longer use SakaDesk's local
   connection.** SakaDesk now answers only its own windows. Other apps, other
   Windows accounts on the same PC and web pages open in your browser can no
-  longer read your archive, change settings or remove your sign-in through it.
+  longer read your archive, change settings or remove your sign-in through it,
+  and their refused attempts no longer crowd out the log that bug reports
+  include.
 - **Installers no longer include a leftover sample of real messages.** A file
   with copies of a member's paid messages had been bundled with every version
   since the first release; it has been removed.
