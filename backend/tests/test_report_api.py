@@ -502,3 +502,60 @@ class TestHelperFunctions:
             with patch.dict("os.environ", {"USER": "envuser"}):
                 result = _get_username()
         assert result == "envuser"
+
+
+class TestReportTextAndContextRoom:
+    def test_long_error_message_keeps_most_of_its_text(self):
+        from backend.api.report import MAX_GITHUB_URL_LENGTH, _build_github_url
+
+        message = "x" * 6000
+        diag = {"system": {"os": "Linux"}, "context": {"error_message": message}}
+        url = _build_github_url("other", "", "", diag)
+        assert len(url) <= MAX_GITHUB_URL_LENGTH
+        from urllib.parse import parse_qs, urlsplit
+
+        body = parse_qs(urlsplit(url).query)["body"][0]
+        assert body.count("x") > 4000
+
+    def test_clipboard_diagnostics_carry_the_full_user_text(self):
+        from unittest.mock import patch as _patch
+
+        long_text = "word " * 3000
+        with (
+            _patch("backend.api.report._get_nicknames", return_value=[]),
+            _patch("backend.api.report._get_username", return_value="testuser"),
+            _patch("backend.api.report._get_smart_logs", return_value={}),
+            _patch("backend.api.report._get_sync_state", return_value={}),
+            _patch("backend.api.report._get_token_expiry", return_value={}),
+        ):
+            response = client.post(
+                "/api/report",
+                params={
+                    "what_doing": long_text,
+                    "what_wrong": "C:\\Users\\testuser\\x",
+                },
+                json={"category": "login"},
+            )
+        data = response.json()
+        assert data["diagnostics"]["report_text"]["what_doing"] == long_text
+        assert "testuser" not in data["diagnostics"]["report_text"]["what_wrong"]
+        assert "report_text" not in data["github_url"]
+
+    def test_text_is_withheld_when_nicknames_are_unreadable(self):
+        from unittest.mock import patch as _patch
+
+        with (
+            _patch("backend.api.report._get_nicknames", return_value=None),
+            _patch("backend.api.report._get_username", return_value="testuser"),
+            _patch("backend.api.report._get_sync_state", return_value={}),
+            _patch("backend.api.report._get_token_expiry", return_value={}),
+        ):
+            response = client.post(
+                "/api/report",
+                params={"what_doing": "a", "what_wrong": "b"},
+                json={"category": "login"},
+            )
+        assert response.json()["diagnostics"]["report_text"] == {
+            "what_doing": None,
+            "what_wrong": None,
+        }

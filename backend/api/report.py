@@ -394,9 +394,14 @@ WITHHELD_LOGS = {"errors": [], "recent": [], "withheld": "nicknames_unavailable"
 def _withhold_free_text(diagnostics: dict) -> None:
     """Fail closed when the nicknames are unknown: drop the logs and free text.
 
-    Log lines and the error message are where a nickname would appear; with
-    no nickname list they cannot be redacted, so they are not sent at all.
+    Log lines, the error message and the user's own report text are where a
+    nickname would appear; with no nickname list they cannot be redacted, so
+    they are not sent at all.
     """
+    report_text = diagnostics.get("report_text")
+    if isinstance(report_text, dict):
+        for key in report_text:
+            report_text[key] = None
     diagnostics["logs"] = dict(WITHHELD_LOGS)
     context = diagnostics.get("context")
     if isinstance(context, dict):
@@ -410,6 +415,10 @@ MAX_GITHUB_URL_LENGTH = 8000
 """Longest ``github_url`` returned. The desktop shell refuses a URL over 8192
 characters (``nav_guard.MAX_URL_LENGTH``), which would silently drop the report
 page, so the percent-encoded URL is kept below that with some margin."""
+
+_URL_EXCLUDED_KEYS = ("logs", "report_text")
+"""Top-level diagnostics keys left out of the URL body: the logs and the
+user's full text (the URL carries that text itself, possibly cut)."""
 
 _TRUNCATION_MARK = "\u2026"
 _URL_TEXT_KEYS = ("error_message", "current_screen")
@@ -437,7 +446,7 @@ def _render_github_url(
     title = f"[Bug] {category_labels.get(category, 'Other')}: {what_wrong[:50]}"
 
     # Compact diagnostics — exclude logs to keep URL short
-    compact_diag = {k: v for k, v in diagnostics.items() if k != "logs"}
+    compact_diag = {k: v for k, v in diagnostics.items() if k not in _URL_EXCLUDED_KEYS}
     diag_json = json.dumps(compact_diag, indent=2)
 
     body = f"""## Bug Report
@@ -481,14 +490,18 @@ def _build_github_url(
     ``MAX_GITHUB_URL_LENGTH`` characters.
 
     Only includes compact system info in the URL to avoid GitHub's URL length limit.
-    Logs are excluded — they're too large for URL encoding. When the percent-encoded
+    The ``logs`` and ``report_text`` diagnostics are excluded — they're too large
+    for URL encoding. When the percent-encoded
     URL is still too long (CJK text encodes to 9 characters per character), the
     user-written text is cut, all of it to the same length, found by bisection:
     ``what_doing``, ``what_wrong`` and the ``context`` fields ``error_message`` and
     ``current_screen``, each cut text ending in an ellipsis. The full text stays in
-    the diagnostics (clipboard copy). A cut logs ``report_url_truncated`` with the
-    URL length before and after and the characters kept per field, never the text.
-    If the fixed part alone is over the limit the URL is returned as it is.
+    the ``report_text`` diagnostics (clipboard copy, scrubbed like the rest of the
+    diagnostics). A cut logs ``report_url_truncated`` with the URL length before
+    and after and the characters kept per field, never the text.
+    If the fixed part alone is over the limit, every cut text is reduced to the
+    ellipsis alone (the URL is then returned over the limit) and the cut is
+    logged as above with ``kept_chars`` 0.
     """
     url = _render_github_url(category, what_doing, what_wrong, diagnostics)
     if len(url) <= MAX_GITHUB_URL_LENGTH:
@@ -509,7 +522,13 @@ def _build_github_url(
             category, _clip(what_doing, keep), _clip(what_wrong, keep), trimmed
         )
 
-    low, high = 0, max(len(what_doing), len(what_wrong), 1)
+    context = diagnostics.get("context")
+    context_lengths = [
+        len(v)
+        for k, v in (context.items() if isinstance(context, dict) else ())
+        if k in _URL_TEXT_KEYS and isinstance(v, str)
+    ]
+    low, high = 0, max(len(what_doing), len(what_wrong), *context_lengths, 1)
     if len(render(0)) > MAX_GITHUB_URL_LENGTH:
         low = high = 0
     while low < high:
@@ -580,6 +599,9 @@ def _generate_report(
             "current_screen": context.current_screen,
             "error_message": context.error_message,
         }
+
+    # The user's full text, for the clipboard copy (the URL may cut it)
+    diagnostics["report_text"] = {"what_doing": what_doing, "what_wrong": what_wrong}
 
     # Smart logs
     log_path = get_logs_dir() / "debug.log"
