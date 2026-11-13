@@ -1,4 +1,5 @@
 import React, { useId } from 'react';
+import { Switch } from '../../design/primitives';
 
 interface SettingRowProps {
     label: React.ReactNode;
@@ -24,10 +25,14 @@ export const SettingRow: React.FC<SettingRowProps> = ({ label, labelId, descript
     const errId = error ? (errorId ?? `${autoId}-err`) : undefined;
     const describedBy = [descId, errId].filter(Boolean).join(' ') || undefined;
     // The control reads the row's description and error (UI health A-S6), unless it names its own.
+    // aria-invalid is for fields and switches, not a plain button.
+    const fieldLike = React.isValidElement<{ role?: string }>(control)
+        && (control.type === 'input' || control.type === 'select' || control.type === 'textarea'
+            || control.props.role === 'switch' || control.props.role === 'checkbox' || control.type === Switch);
     const linkedControl = React.isValidElement<{ 'aria-describedby'?: string; 'aria-invalid'?: boolean }>(control) && (describedBy || error)
         ? React.cloneElement(control, {
             ...(describedBy && !control.props['aria-describedby'] ? { 'aria-describedby': describedBy } : {}),
-            ...(error && control.props['aria-invalid'] === undefined ? { 'aria-invalid': true } : {}),
+            ...(error && fieldLike && control.props['aria-invalid'] === undefined ? { 'aria-invalid': true } : {}),
         })
         : control;
     return (

@@ -12,6 +12,7 @@ import { installCallPopupBridge } from '../features/callPopup/callPopupBridge'
 import { isCallPopupView } from './callPopupRoute'
 import { isDesignView } from '../design/designRoute'
 import { isTimelineProbeView } from '../features/messages/timeline/probeRoute'
+import { LiveRegionHost } from '../design/primitives'
 import { applyStaticTokens } from '../design/applyTokens'
 import { installLanguageFonts } from '../design/fonts'
 
@@ -89,6 +90,7 @@ if (import.meta.env.DEV && isDesignView(window.location.search)) {
                 <AuthProvider>
                     <ErrorBoundary>
                         <App />
+                        <LiveRegionHost />
                     </ErrorBoundary>
                 </AuthProvider>
             </React.StrictMode>,

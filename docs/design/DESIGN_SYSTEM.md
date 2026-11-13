@@ -1223,12 +1223,20 @@ everything, e.g. the settings error toast, which waits for open dialogs to close
 headers, viewer chrome).
 
 **Announcements.** A transient message that is not an alert (a clipboard toast, the incoming
-call's text) is announced through `LiveRegion`: an always-mounted, visually hidden
-`role="status"` whose text changes; the visible toast is `aria-hidden` so it is not read twice.
-`LiveRegion` is portaled to `<body>`: while a dialog is open `#root` and the lower dialogs are
-inert, and inert content is not announced, so a region left in `#root` would be silent. Errors
-that need a decision stay `role="alert"` (the settings error toast). `SettingRow` links its
-control to the row's description and error (`aria-describedby`, `aria-invalid` on an error).
+call's text) is announced through the one announcer: `LiveRegionHost`, an always-mounted,
+visually hidden polite `role="status"` mounted once beside `App` (`shell/main.tsx`). Components
+call `announce(message)` or render `<LiveRegion message>` (a client that announces when its
+message changes to a non-empty text); the visible toast is `aria-hidden` so it is not read
+twice. Where the region lives follows the dialog stack: while a dialog is open `#root` and the
+lower dialogs are inert and an `aria-modal` dialog hides everything outside it from assistive
+tech, so the region is portaled into the top dialog's frame and moves when the top dialog
+changes; with none open it is in `<body>`. An identical message announces again (the text is
+cleared, then set a moment later). A message stays announceable for 3 s: if the region moves in
+that window the text is set again in its new place, after it the message is stale and is not
+replayed. Errors that need a decision stay `role="alert"` (the settings error toast).
+`SettingRow` links its control to the row's description and error (`aria-describedby`;
+`aria-invalid` on an error, for fields and switches only, not a plain button). Real screen-reader
+behaviour (NVDA / Narrator on WebView2) has to be checked by hand on Windows.
 
 **The incoming call.** A call that starts with no dialog open is drawn inside the chat
 frame (its `z-30` is local to the chat area). A call that starts while a dialog is open is

@@ -15,7 +15,7 @@ describe('SettingRow descriptions (UI health A-S6)', () => {
         );
         const failed = screen.getByRole('button', { name: '切替' });
         expect(failed).toHaveAccessibleDescription('新着メッセージを知らせます 🔔 保存できませんでした');
-        expect(failed).toHaveAttribute('aria-invalid', 'true');
+        expect(failed).not.toHaveAttribute('aria-invalid');
     });
 
     it('keeps a description the control names itself', () => {
@@ -26,5 +26,18 @@ describe('SettingRow descriptions (UI health A-S6)', () => {
             </>,
         );
         expect(screen.getByRole('button', { name: '切替' })).toHaveAccessibleDescription('自分の説明');
+    });
+
+    it('marks a field-like control invalid, but not a plain button', () => {
+        const { rerender } = render(
+            <SettingRow label="通知" error="保存できませんでした" control={<button type="button" role="switch" aria-checked="false">切替</button>} />,
+        );
+        expect(screen.getByRole('switch')).toHaveAttribute('aria-invalid', 'true');
+        rerender(<SettingRow label="名前" error="保存できませんでした" control={<input aria-label="名前" />} />);
+        expect(screen.getByRole('textbox')).toHaveAttribute('aria-invalid', 'true');
+        rerender(<SettingRow label="更新" error="保存できませんでした" control={<button type="button">確認</button>} />);
+        const plain = screen.getByRole('button', { name: '確認' });
+        expect(plain).not.toHaveAttribute('aria-invalid');
+        expect(plain).toHaveAccessibleDescription('保存できませんでした');
     });
 });

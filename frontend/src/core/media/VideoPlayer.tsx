@@ -640,7 +640,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     {clipboardToast}
                 </div>
             )}
-            {goldenFingerActive && !effectiveViewerMode && <LiveRegion message={clipboardToast ?? ''} />}
+            <LiveRegion message={clipboardToast ?? ''} />
 
             {showMenu && createPortal(
                 <Menu
