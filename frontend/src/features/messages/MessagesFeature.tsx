@@ -249,9 +249,12 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const openCalendar = useCallback(() => setCalendarOpen(true), []);
 
     // Compute unread count from messages and readState (single source of truth)
-    const displayUnreadCount = useMemo(() => {
-        return messages.filter(m => m.id > readState.lastReadId && !readState.revealedIds.includes(m.id)).length;
-    }, [messages, readState.lastReadId, readState.revealedIds]);
+    // Revealed ids as a Set: unread checks run per message and per bubble.
+    const revealedSet = useMemo(() => new Set(readState.revealedIds), [readState.revealedIds]);
+    const displayUnreadCount = useMemo(
+        () => messages.filter(m => m.id > readState.lastReadId && !revealedSet.has(m.id)).length,
+        [messages, readState.lastReadId, revealedSet],
+    );
 
     // Scroll ref
     const virtuosoRef = useRef<GroupedVirtuosoHandle>(null);
@@ -636,8 +639,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Unread navigation state logic
     const isUnread = useCallback((msgId: number) => {
-        return msgId > readState.lastReadId && !readState.revealedIds.includes(msgId);
-    }, [readState.lastReadId, readState.revealedIds]);
+        return msgId > readState.lastReadId && !revealedSet.has(msgId);
+    }, [readState.lastReadId, revealedSet]);
 
     // One timeline for the list, the jumps, the restore and the unread arrows.
     const userNickname = messagesService ? appSettings?.user_nicknames?.[messagesService] : undefined;

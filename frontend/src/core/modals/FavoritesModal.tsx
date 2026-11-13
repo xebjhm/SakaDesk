@@ -10,6 +10,9 @@ import { Modal, Card, Avatar, IconButton, StatusBlock } from '../../design/primi
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { clientLog } from '../../utils/clientLog';
+import { sortNewestFirst } from '../../utils/timeOrder';
+
+const NO_MESSAGES: Message[] = [];
 
 interface FavoritesModalProps extends BaseModalProps {
     messages: Message[];
@@ -154,12 +157,10 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
 
-    // Filter only favorite messages, sorted by timestamp (newest first)
-    const favoriteMessages = useMemo(() => {
-        return messages
-            .filter(m => m.is_favorite)
-            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    }, [messages]);
+    // Closed (it stays mounted in ConversationMenu): nothing to list, so no filter and no sort on
+    // every change of the room (UI health P-B3).
+    const source = isOpen ? messages : NO_MESSAGES;
+    const favoriteMessages = useMemo(() => sortNewestFirst(source.filter(m => m.is_favorite)), [source]);
 
     const getMediaUrl = (mediaFile: string) => {
         // media_file is relative to service dir (e.g., "messages/62 石森 璃花/.../picture/123.jpg")

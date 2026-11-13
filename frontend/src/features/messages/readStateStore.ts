@@ -171,40 +171,23 @@ persisted.onConversationsReady(flushPendingReadStates);
 /**
  * Reveal one message. Pure: returns `prev` itself when the id is already
  * revealed. `messageIds` are the ids of the loaded chat, used to consolidate
- * contiguous revealed ids into `lastReadId`.
+ * contiguous revealed ids into `lastReadId`: it advances through the longest run
+ * of revealed ids just above it. One sort and one pass (UI health P-B2; the
+ * previous version was O(U²·R) on a room with many unread messages).
  */
 export function applyReveal(prev: ReadState, msgId: number, messageIds: number[]): ReadState {
     if (prev.revealedIds.includes(msgId)) return prev;
-
-    // Add the new revealed ID
-    const newRevealedIds = [...prev.revealedIds, msgId];
-
-    // Consolidate: If all messages from lastReadId+1 up to some point are now revealed,
-    // advance lastReadId and remove those IDs from revealedIds.
-    const unreadMsgIds = messageIds
-        .filter(id => id > prev.lastReadId)
-        .sort((a, b) => a - b);
-
-    let newLastReadId = prev.lastReadId;
-
-    for (const id of unreadMsgIds) {
-        if (newRevealedIds.includes(id)) {
-            const allPreviousRead = unreadMsgIds
-                .filter(uid => uid <= id && uid > newLastReadId)
-                .every(uid => newRevealedIds.includes(uid));
-
-            if (allPreviousRead) {
-                newLastReadId = id;
-            }
-        }
+    const revealed = new Set(prev.revealedIds);
+    revealed.add(msgId);
+    const unread = messageIds.filter(id => id > prev.lastReadId).sort((a, b) => a - b);
+    let lastReadId = prev.lastReadId;
+    for (const id of unread) {
+        if (!revealed.has(id)) break;
+        lastReadId = id;
     }
-
-    // Remove IDs that are now covered by newLastReadId
-    const consolidatedRevealedIds = newRevealedIds.filter(id => id > newLastReadId);
-
     return {
-        lastReadId: newLastReadId,
-        revealedIds: consolidatedRevealedIds,
+        lastReadId,
+        revealedIds: [...revealed].filter(id => id > lastReadId),
         readCount: (prev.readCount || 0) + 1,
     };
 }

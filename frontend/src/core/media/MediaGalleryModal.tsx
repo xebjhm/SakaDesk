@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useRef, useCallback, useEffect, memo } from 'react';
 import { Image as ImageIcon, Film, Volume2, Calendar, VolumeX, Download, X, ZoomIn, ZoomOut, Shrink } from 'lucide-react';
 import { cn, formatDateTime, formatDuration, formatDownloadFilename } from '../../utils/classnames';
-import { timeNeighbours } from '../../utils/timeOrder';
+import { timeNeighbours, sortNewestFirst } from '../../utils/timeOrder';
 import { downloadMedia } from '../../utils/download';
 import type { Message } from '../../types';
 import { VoicePlayer } from './VoicePlayer';
@@ -19,6 +19,8 @@ import { useTranslation } from '../../i18n';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 import { useTranscription } from '../../hooks/useTranscription';
+
+const NO_MESSAGES: Message[] = [];
 
 interface MediaGalleryModalProps extends BaseModalProps {
     messages: Message[];
@@ -236,12 +238,15 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const { view, dragging, step, reset, stageHandlers } = useZoomPan(zoomStageRef, detailIsPhoto, selectedMedia?.id);
 
     // Filter messages by media type
+    // Closed (it stays mounted in ConversationMenu): nothing to list, so no filter and no sort on
+    // every change of the room (UI health P-B3).
+    const source = isOpen ? messages : NO_MESSAGES;
     const mediaItems = useMemo(() => {
-        const photos = messages.filter(m => m.type === 'picture' && m.media_file);
-        const videos = messages.filter(m => m.type === 'video' && m.media_file);
-        const voice = messages.filter(m => m.type === 'voice' && m.media_file);
+        const photos = source.filter(m => m.type === 'picture' && m.media_file);
+        const videos = source.filter(m => m.type === 'video' && m.media_file);
+        const voice = source.filter(m => m.type === 'voice' && m.media_file);
         return { photos, videos, voice };
-    }, [messages]);
+    }, [source]);
 
     // Group items by month (for all tabs)
     const groupedItems = useMemo(() => {
@@ -250,9 +255,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                       mediaItems.voice;
 
         // Sort by timestamp descending
-        const sorted = [...items].sort((a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
+        const sorted = sortNewestFirst(items);
 
         // Group by year-month
         const groups: Map<string, Message[]> = new Map();
@@ -344,9 +347,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         const items = activeTab === 'photos' ? mediaItems.photos :
                       activeTab === 'videos' ? mediaItems.videos :
                       mediaItems.voice;
-        return [...items].sort((a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
+        return sortNewestFirst(items);
     }, [activeTab, mediaItems]);
 
     // Keyboard navigation for detail view
