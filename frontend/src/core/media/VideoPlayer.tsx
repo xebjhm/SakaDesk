@@ -240,14 +240,23 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
         return () => document.removeEventListener('fullscreenchange', handleFullscreenChange);
     }, [effectiveViewerMode]);
 
-    // Auto-hide controls shortly after mouse stops moving
+    // Auto-hide controls shortly after the mouse stops moving, but never while keyboard focus is in
+    // the player (a focused control must stay visible; UI health #7). Mouse focus does not hold them:
+    // Chromium focuses a clicked button, and `:focus-visible` tells the two apart.
     const resetControlsTimeout = useCallback(() => {
         setShowControls(true);
         if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
         controlsTimeoutRef.current = setTimeout(() => {
-            if (isPlaying) setShowControls(false);
+            const el = document.activeElement;
+            const keyboardFocusInside = !!el && !!containerRef.current?.contains(el) && el.matches(':focus-visible');
+            if (isPlaying && !keyboardFocusInside) setShowControls(false);
         }, 800);
     }, [isPlaying]);
+
+    // Keyboard focus moving onto a control shows the controls and restarts the timer; a click does not.
+    const handleFocusCapture = useCallback((e: React.FocusEvent) => {
+        if (e.target instanceof Element && e.target.matches(':focus-visible')) resetControlsTimeout();
+    }, [resetControlsTimeout]);
 
     useEffect(() => {
         if (!isPlaying) {
@@ -342,6 +351,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             if (el?.closest('[role="menu"], input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
             switch (e.key) {
                 case ' ':
+                    if (el?.closest('button')) return; // the focused button's own action
                     e.preventDefault();
                     togglePlay();
                     break;
@@ -426,6 +436,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             ref={containerRef}
             className={cn("relative group bg-black flex items-center justify-center", className)}
             onMouseMove={resetControlsTimeout}
+            onFocusCapture={handleFocusCapture}
             onClick={(e) => {
                 // Click on the video area (not controls) toggles play
                 if ((e.target as HTMLElement).tagName === 'VIDEO') {
@@ -458,11 +469,13 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
             {/* Big center play button when paused */}
             {!isPlaying && playbackStatus !== 'error' && (
                 <button
+                    type="button"
                     onClick={togglePlay}
+                    aria-label={t('media.play')}
                     className="absolute inset-0 flex items-center justify-center bg-black/20"
                 >
                     <div className="w-16 h-16 rounded-full bg-white/30 backdrop-blur-sm flex items-center justify-center hover:bg-white/40 transition-colors">
-                        <Play className="w-8 h-8 text-white fill-current ml-1" />
+                        <Play aria-hidden="true" className="w-8 h-8 text-white fill-current ml-1" />
                     </div>
                 </button>
             )}
@@ -501,7 +514,7 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 onClick={e => e.stopPropagation()}
             >
                 {/* Progress bar */}
-                <div className="relative h-1 mb-2 group/seek">
+                <div className="relative h-1 mb-2 group/seek rounded-full ring-offset-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent">
                     <div className="absolute inset-0 bg-white/30 rounded-full" />
                     <div
                         className="absolute inset-y-0 left-0 bg-white rounded-full"
@@ -514,6 +527,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                         step={0.1}
                         value={currentTime}
                         onChange={handleSeek}
+                        aria-label={t('media.seek')}
+                        aria-valuetext={t('media.timeOf', { current: formatTime(currentTime), total: formatTime(duration) })}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
                 </div>
@@ -521,8 +536,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                 {/* Controls row */}
                 <div className="flex items-center gap-2">
                     {/* Play/Pause */}
-                    <button onClick={togglePlay} className="text-white hover:text-white/80 p-1" type="button">
-                        {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current ml-0.5" />}
+                    <button onClick={togglePlay} className="text-white hover:text-white/80 p-1" type="button" aria-label={isPlaying ? t('media.pause') : t('media.play')}>
+                        {isPlaying ? <Pause aria-hidden="true" className="w-5 h-5 fill-current" /> : <Play aria-hidden="true" className="w-5 h-5 fill-current ml-0.5" />}
                     </button>
 
                     {/* Time display */}
@@ -536,12 +551,12 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     {/* Volume / No Audio indicator */}
                     {noAudio ? (
                         <div className="p-1 text-white/30" title={t('videoPlayer.noAudio')}>
-                            <VolumeX className="w-4 h-4" />
+                            <VolumeX aria-hidden="true" className="w-4 h-4" />
                         </div>
                     ) : (
                         <div className="flex items-center gap-1 group/vol">
-                            <button onClick={toggleMute} className="text-white hover:text-white/80 p-1" type="button">
-                                {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+                            <button onClick={toggleMute} className="text-white hover:text-white/80 p-1" type="button" aria-label={isMuted || volume === 0 ? t('media.unmute') : t('media.mute')}>
+                                {isMuted || volume === 0 ? <VolumeX aria-hidden="true" className="w-4 h-4" /> : <Volume2 aria-hidden="true" className="w-4 h-4" />}
                             </button>
                             <input
                                 type="range"
@@ -550,6 +565,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                                 step={0.01}
                                 value={volume}
                                 onChange={handleVolumeChange}
+                                aria-label={t('media.volume')}
+                                aria-valuetext={t('media.volumeValue', { percent: Math.round(volume * 100) })}
                                 className="w-16 h-1 rounded-full appearance-none cursor-pointer"
                                 style={{
                                     background: `linear-gradient(to right, white ${volume * 100}%, rgba(255,255,255,0.3) ${volume * 100}%)`,
@@ -577,6 +594,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                             onClick={() => setShowSubtitles(s => !s)}
                             className={cn("text-xs px-1.5 py-0.5 rounded transition-colors", showSubtitles ? "bg-white/20 text-white" : "text-white/40")}
                             title={t('transcription.cc')}
+                            aria-label={t('transcription.cc')}
+                            aria-pressed={showSubtitles}
                             type="button"
                         >
                             CC
@@ -584,8 +603,8 @@ export const VideoPlayer: React.FC<VideoPlayerProps> = ({
                     )}
 
                     {/* Fullscreen */}
-                    <button onClick={toggleFullscreen} className="text-white/80 hover:text-white p-1" type="button">
-                        {isFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+                    <button onClick={toggleFullscreen} className="text-white/80 hover:text-white p-1" type="button" aria-label={isFullscreen ? t('media.exitFullscreen') : t('media.fullscreen')}>
+                        {isFullscreen ? <Minimize aria-hidden="true" className="w-4 h-4" /> : <Maximize aria-hidden="true" className="w-4 h-4" />}
                     </button>
                 </div>
             </div>

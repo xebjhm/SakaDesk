@@ -562,7 +562,17 @@
       "openVideo": "打开 {{date}} 的视频",
       "retryPhoto": "重新加载 {{date}} 的照片"
     },
-    "photoLoading": "正在加载照片…"
+    "photoLoading": "正在加载照片…",
+    "play": "播放",
+    "pause": "暂停",
+    "mute": "静音",
+    "unmute": "取消静音",
+    "seek": "播放位置",
+    "volume": "音量",
+    "timeOf": "{{current}} / {{total}}",
+    "volumeValue": "{{percent}}%",
+    "fullscreen": "全屏",
+    "exitFullscreen": "退出全屏"
   },
   "sentLetters": {
     "title": "已发送的信件",

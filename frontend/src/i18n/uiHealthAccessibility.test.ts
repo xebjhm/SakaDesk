@@ -14,6 +14,9 @@ const KEYS: readonly string[] = [
     'messageList.revealUnread.voice', 'conversationMenu.revealAll', 'conversationMenu.revealAllNone',
     // Task 2
     'search.resultsLabel',
+    // Task 3
+    'media.play', 'media.pause', 'media.mute', 'media.unmute', 'media.seek', 'media.volume',
+    'media.timeOf', 'media.volumeValue', 'media.fullscreen', 'media.exitFullscreen',
 ];
 
 const lookup = (data: unknown, dotted: string): unknown =>

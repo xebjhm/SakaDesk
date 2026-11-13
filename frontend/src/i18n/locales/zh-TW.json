@@ -562,7 +562,17 @@
       "openVideo": "開啟 {{date}} 的影片",
       "retryPhoto": "重新載入 {{date}} 的照片"
     },
-    "photoLoading": "正在載入照片…"
+    "photoLoading": "正在載入照片…",
+    "play": "播放",
+    "pause": "暫停",
+    "mute": "靜音",
+    "unmute": "取消靜音",
+    "seek": "播放位置",
+    "volume": "音量",
+    "timeOf": "{{current}} / {{total}}",
+    "volumeValue": "{{percent}}%",
+    "fullscreen": "全螢幕",
+    "exitFullscreen": "結束全螢幕"
   },
   "sentLetters": {
     "title": "已傳送的信件",

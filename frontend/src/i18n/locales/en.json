@@ -564,7 +564,17 @@
       "openVideo": "Open video from {{date}}",
       "retryPhoto": "Retry loading photo from {{date}}"
     },
-    "photoLoading": "Loading photo…"
+    "photoLoading": "Loading photo…",
+    "play": "Play",
+    "pause": "Pause",
+    "mute": "Mute",
+    "unmute": "Unmute",
+    "seek": "Playback position",
+    "volume": "Volume",
+    "timeOf": "{{current}} of {{total}}",
+    "volumeValue": "{{percent}}%",
+    "fullscreen": "Full screen",
+    "exitFullscreen": "Exit full screen"
   },
   "sentLetters": {
     "title": "Sent Letters",

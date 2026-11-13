@@ -562,7 +562,17 @@
       "openVideo": "{{date}} の動画を開く",
       "retryPhoto": "{{date}} の写真を再読み込み"
     },
-    "photoLoading": "写真を読み込み中…"
+    "photoLoading": "写真を読み込み中…",
+    "play": "再生",
+    "pause": "一時停止",
+    "mute": "ミュート",
+    "unmute": "ミュート解除",
+    "seek": "再生位置",
+    "volume": "音量",
+    "timeOf": "{{total}} 中 {{current}}",
+    "volumeValue": "{{percent}}%",
+    "fullscreen": "全画面表示",
+    "exitFullscreen": "全画面表示を終了"
   },
   "sentLetters": {
     "title": "送信したレター",
