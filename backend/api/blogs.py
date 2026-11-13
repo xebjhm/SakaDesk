@@ -16,7 +16,11 @@ import structlog
 from backend.services import avatar_resize
 from backend.services import blog_service as blog_service_module
 from backend.security_headers import SANDBOX_CSP
-from backend.services.passive_media import INLINE_MEDIA_TYPES, passive_media
+from backend.services.passive_media import (
+    INLINE_MEDIA_TYPES,
+    download_name,
+    passive_media,
+)
 from backend.services.blog_service import (
     BlogService,
     blog_backup_enabled,
@@ -771,7 +775,7 @@ async def serve_blog_image(
     if download:
         return FileResponse(
             image_path,
-            filename=download,
+            filename=download_name(download, image_path.name),
             media_type="application/octet-stream",
         )
     passive = passive_media(image_path.name, route="blog_image")

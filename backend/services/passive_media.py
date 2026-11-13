@@ -22,8 +22,9 @@ the registry, which other software can change.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
-from pathlib import PurePath
+from pathlib import PurePath, PurePosixPath
 
 import structlog
 
@@ -71,3 +72,25 @@ def passive_media(name: str, *, route: str) -> PassiveMedia:
     return PassiveMedia(
         OPAQUE_TYPE, False, {**headers, "content-disposition": "attachment"}
     )
+
+
+_CONTROL_CHARS = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def download_name(requested: str | None, served_name: str) -> str:
+    """The name a download is saved under (security audit 2026-11-13).
+
+    The client's ``requested`` name (the UI sends a dated one) reduced to its
+    last path part, without control characters, surrounding spaces or
+    trailing dots, and always ending in the served file's extension (lower
+    case): a page cannot turn a picture into ``evil.exe`` or aim the save
+    dialog at another folder. ``served_name`` when nothing usable is left.
+    """
+    ext = PurePosixPath(served_name).suffix.lower()
+    name = _CONTROL_CHARS.sub("", requested or "")
+    name = re.split(r"[\\/]", name)[-1].strip().rstrip(". ")
+    if not name:
+        return served_name
+    if PurePosixPath(name).suffix.lower() != ext:
+        name = PurePosixPath(name).stem + ext
+    return name or served_name

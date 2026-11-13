@@ -66,7 +66,11 @@ from backend.services.archive_urls import (
     resolve_in_service_folder,
 )
 from backend.services.media_range import MediaFileResponse
-from backend.services.passive_media import passive_media
+from backend.services.passive_media import (
+    INLINE_MEDIA_TYPES,
+    download_name,
+    passive_media,
+)
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
@@ -1276,12 +1280,14 @@ async def download_media(file_path: str, filename: Optional[str] = None):
 
     Args:
         filename: Custom download filename (e.g. with timestamp prefix).
-                  Defaults to the file's actual name on disk.
+                  Defaults to the file's actual name on disk. It is reduced by
+                  ``passive_media.download_name`` (last path part, the served
+                  file's extension).
     """
     safe_path = _resolve_media_path(file_path)
     return FileResponse(
         safe_path,
-        filename=filename or safe_path.name,
+        filename=download_name(filename, safe_path.name),
         media_type="application/octet-stream",
     )
 
@@ -1297,7 +1303,8 @@ async def copy_to_clipboard(request: ClipboardRequest):
     Resolves the media URL to a local file path and places it on the
     clipboard using CF_HDROP format so it can be pasted into other apps.
 
-    Returns 501 on non-Windows platforms.
+    Returns 501 on non-Windows platforms and 400 for a file that is not a
+    picture, video or voice file.
     """
     if not is_windows():
         raise HTTPException(
@@ -1314,6 +1321,11 @@ async def copy_to_clipboard(request: ClipboardRequest):
 
     file_path_str = unquote(request.media_url[len(prefix) :])
     safe_path = _resolve_media_path(file_path_str)
+    # Only pictures, videos and voice files: the clipboard hands the file to
+    # other programs (security audit 2026-11-13).
+    if safe_path.suffix.lower() not in INLINE_MEDIA_TYPES:
+        logger.info("clipboard_refused", reason="not_media")
+        raise HTTPException(status_code=400, detail="Not a media file")
 
     try:
         copy_file_to_clipboard(safe_path)
