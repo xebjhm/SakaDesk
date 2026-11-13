@@ -20,7 +20,7 @@ import { Button, LiveRegion, Spinner, Menu, MenuItem, MenuLabel, MenuSeparator }
 const VOLUME_STORAGE_KEY = 'sakadesk_video_amp';
 
 /** Keyboard focus ring for the bar's controls (DESIGN_SYSTEM §9); no offset on the dark bar. */
-const BAR_FOCUS_RING = 'rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-0';
+const BAR_FOCUS_RING = 'rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-0';
 
 interface VideoPlayerProps {
     src: string;

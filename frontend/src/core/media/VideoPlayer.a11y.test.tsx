@@ -40,6 +40,14 @@ describe('VideoPlayer accessible controls (UI health #7)', () => {
         const buttons = names.flatMap(n => screen.getAllByRole('button', { name: n }));
         expect(buttons.length).toBeGreaterThanOrEqual(6);
         for (const b of buttons) expect(b, b.getAttribute('aria-label') ?? '').toHaveClass('focus-visible:ring-2', 'focus-visible:ring-accent');
+        // The bar buttons' ring follows the design system's radius scale (a bare `rounded` is not one
+        // of its steps); the centre Play button is not a bar button.
+        const bar = buttons.filter(b => b.classList.contains('ring-offset-0'));
+        expect(bar.length).toBeGreaterThanOrEqual(5);
+        for (const b of bar) {
+            expect(b.classList, b.getAttribute('aria-label') ?? '').toContain('rounded-xs');
+            expect(b.classList, b.getAttribute('aria-label') ?? '').not.toContain('rounded');
+        }
     });
 
     describe('controls while playing', () => {
