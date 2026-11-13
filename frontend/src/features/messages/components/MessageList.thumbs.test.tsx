@@ -28,4 +28,11 @@ describe('MessageList chat thumbnails (UI health #8)', () => {
         expect(thumbs.has(2)).toBe(true);
         expect(thumbs.get(2)).toBeUndefined();
     });
+
+    it('at a device pixel ratio of 2 the thumbnail no longer covers the box, so the original is used', () => {
+        Object.defineProperty(window, 'devicePixelRatio', { value: 2, configurable: true });
+        renderList({ timeline: buildTimeline([pic(1, 'p/1.jpg')], []) });
+        expect(thumbs.has(1)).toBe(true);
+        expect(thumbs.get(1)).toBeUndefined();
+    });
 });

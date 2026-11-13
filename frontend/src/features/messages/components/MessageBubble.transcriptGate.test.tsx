@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeAll, beforeEach } from 'vitest';
-import { render } from '@testing-library/react';
+import { render, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../../__tests__/mocks/server';
 import i18n from '../../../i18n';
@@ -47,7 +47,6 @@ describe('MessageBubble transcript lookups (UI health P-C3)', () => {
     it('asks once for a revealed bubble with transcription on', async () => {
         useAppStore.setState({ transcriptionEnabled: true });
         render(bubble(false));
-        await new Promise((r) => setTimeout(r, 30));
-        expect(lookups).toBe(1);
+        await waitFor(() => expect(lookups).toBe(1));
     });
 });
