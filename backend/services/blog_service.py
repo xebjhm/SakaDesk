@@ -42,6 +42,7 @@ from backend.services.safe_paths import (
     UnsafePath,
     blog_folder,
     is_safe_id,
+    join_within,
     member_folder_name,
     plain_segment,
 )
@@ -198,6 +199,52 @@ def _blog_image_ext(img_url: str) -> str:
         return suffix
     logger.info(
         "blog_image_ext_defaulted", reason="not_image" if suffix else "no_suffix"
+    )
+    return ".jpg"
+
+
+_THUMBNAIL_EXT_BY_TYPE = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/pjpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
+"""Content-Type → the extension a member thumbnail is saved under (``get_member_thumbnail_path`` looks for exactly these)."""
+
+_THUMBNAIL_EXT_BY_SUFFIX = {
+    ".jpg": ".jpg",
+    ".jpeg": ".jpg",
+    ".png": ".png",
+    ".webp": ".webp",
+}
+"""A picture suffix of the thumbnail URL → the extension it is saved under."""
+
+
+def _thumbnail_ext(content_type: str, url: str) -> str:
+    """The extension a downloaded member thumbnail is saved under (security audit 2026-11-13).
+
+    From the response's ``Content-Type`` (``_THUMBNAIL_EXT_BY_TYPE``), else
+    the URL path's suffix when it is a picture one (lower case), else ``.jpg``
+    with ``member_thumbnail_ext_defaulted`` (``reason`` ``not_image`` or
+    ``no_suffix``; never the URL). The remote side never chooses any other
+    extension, so a thumbnail is only ever served as a picture; bytes that
+    are not one simply fail to show.
+    """
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    ext = _THUMBNAIL_EXT_BY_TYPE.get(media_type)
+    if ext is not None:
+        return ext
+    try:
+        suffix = PurePosixPath(urlsplit(url).path).suffix.lower()
+    except ValueError:
+        suffix = ""
+    ext = _THUMBNAIL_EXT_BY_SUFFIX.get(suffix)
+    if ext is not None:
+        return ext
+    logger.info(
+        "member_thumbnail_ext_defaulted",
+        reason="not_image" if suffix else "no_suffix",
     )
     return ".jpg"
 
@@ -472,45 +519,39 @@ class BlogService:
         thumbnail_url: str,
         thumbnails_dir: Path,
     ) -> Optional[str]:
-        """Download a single member thumbnail and return local filename."""
+        """Download one member thumbnail; the local file name, or None.
+
+        ``member_id`` names the file, so it must be ``safe_paths.is_safe_id``
+        and ``thumbnail_url`` a non-empty string; otherwise nothing is fetched
+        and ``member_thumbnail_rejected`` (``reason`` ``member_id`` or ``url``)
+        is logged (security audit 2026-11-13). The file is
+        ``<member_id><ext>`` with ``ext`` from :func:`_thumbnail_ext`, written
+        atomically inside ``thumbnails_dir``. A non-200 answer logs
+        ``thumbnail_download_failed`` (``status``), any other failure
+        ``thumbnail_download_error`` (``error_type``); never an id or a URL.
+        """
+        if not is_safe_id(member_id):
+            logger.warning("member_thumbnail_rejected", reason="member_id")
+            return None
+        if not isinstance(thumbnail_url, str) or not thumbnail_url:
+            logger.warning("member_thumbnail_rejected", reason="url")
+            return None
         try:
             async with session.get(thumbnail_url) as resp:
                 if resp.status != 200:
-                    logger.warning(
-                        "thumbnail_download_failed",
-                        member_id=member_id,
-                        status=resp.status,
-                    )
+                    logger.warning("thumbnail_download_failed", status=resp.status)
                     return None
-
-                # Determine extension from URL or content-type
-                content_type = resp.headers.get("Content-Type", "")
-                if "jpeg" in content_type or "jpg" in content_type:
-                    ext = ".jpg"
-                elif "png" in content_type:
-                    ext = ".png"
-                elif "webp" in content_type:
-                    ext = ".webp"
-                else:
-                    # Try from URL
-                    url_path = thumbnail_url.split("?")[0]
-                    ext = Path(url_path).suffix or ".jpg"
-
-                local_filename = f"{member_id}{ext}"
-                local_path = thumbnails_dir / local_filename
-
+                ext = _thumbnail_ext(
+                    resp.headers.get("Content-Type", ""), thumbnail_url
+                )
                 content = await resp.read()
-                async with aiofiles.open(local_path, "wb") as f:
-                    await f.write(content)
-
-                return local_filename
-
-        except Exception as e:
-            logger.warning(
-                "thumbnail_download_error",
-                member_id=member_id,
-                error=str(e),
+            local_filename = f"{member_id}{ext}"
+            await self._atomic_write(
+                join_within(thumbnails_dir, local_filename), content
             )
+            return local_filename
+        except Exception as e:
+            logger.warning("thumbnail_download_error", error_type=type(e).__name__)
             return None
 
     async def get_members_with_thumbnails(self, service: str) -> List[Dict[Any, Any]]:
@@ -546,7 +587,21 @@ class BlogService:
             # get_members_with_thumbnails is implemented on every concrete scraper
             # but not declared on the BaseBlogScraper return type of get_scraper;
             # cast so mypy accepts the call (present at runtime for all groups).
-            fresh_members = await cast(Any, scraper).get_members_with_thumbnails()
+            listed = await cast(Any, scraper).get_members_with_thumbnails() or []
+            # The member id names the thumbnail file (security audit 2026-11-13).
+            fresh_members = [
+                m
+                for m in listed
+                if is_safe_id(getattr(m, "id", None))
+                and isinstance(getattr(m, "name", None), str)
+            ]
+            if len(fresh_members) != len(listed):
+                logger.warning(
+                    "member_thumbnail_rejected",
+                    service=service,
+                    reason="member_id",
+                    count=len(listed) - len(fresh_members),
+                )
 
             if not fresh_members:
                 logger.warning("no_members_fetched", service=service)
@@ -620,25 +675,25 @@ class BlogService:
             return result_members
 
     def get_member_thumbnail_path(self, service: str, member_id: str) -> Optional[Path]:
-        """Get path to a member's cached thumbnail image.
+        """Path to a member's cached thumbnail image, or None.
 
-        Args:
-            service: Service name.
-            member_id: Member ID.
-
-        Returns:
-            Path to the thumbnail file, or None if not found.
+        ``member_id`` comes from the request path: anything that is not
+        ``safe_paths.is_safe_id`` (a separator, ``:``, ``..``, a device name)
+        logs ``member_thumbnail_rejected`` (``reason=member_id``) and returns
+        None before any filesystem call (security audit 2026-11-13). Looks for
+        ``<member_id>.jpg``, ``.png`` then ``.webp`` in the service's
+        ``member_thumbnails`` folder.
         """
+        if not is_safe_id(member_id):
+            logger.warning("member_thumbnail_rejected", reason="member_id")
+            return None
         thumbnails_dir = self.get_member_thumbnails_path(service)
         if not thumbnails_dir.exists():
             return None
-
-        # Check for common extensions
-        for ext in [".jpg", ".png", ".webp"]:
-            path = thumbnails_dir / f"{member_id}{ext}"
+        for ext in (".jpg", ".png", ".webp"):
+            path = join_within(thumbnails_dir, f"{member_id}{ext}")
             if path.exists():
                 return path
-
         return None
 
     # =========================================================================

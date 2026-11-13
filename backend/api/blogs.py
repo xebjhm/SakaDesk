@@ -330,14 +330,17 @@ async def get_member_thumbnail(
 
     Args:
         service: Service name (e.g., 'hinatazaka46').
-        member_id: Member ID.
+        member_id: Member ID; anything that is not ``safe_paths.is_safe_id``
+            answers 404 before any filesystem call (security audit 2026-11-13).
         w: Optional width; one of ``avatar_resize.ALLOWED_WIDTHS`` (400
             otherwise). Serves a cached square WebP downscaled to ``w`` px,
             cropped from the top (portrait photos keep the head).
 
     Returns:
-        The thumbnail image file. Resized or not, it carries the same
-        ``Cache-Control`` (``_THUMBNAIL_CACHE_CONTROL``).
+        The thumbnail file, typed and headed by ``passive_media`` (route
+        ``member_thumbnail``: a picture inline with ``nosniff`` and the
+        sandbox CSP). Resized or not, it carries the same ``Cache-Control``
+        (``_THUMBNAIL_CACHE_CONTROL``).
     """
     try:
         validate_service(service)
@@ -349,6 +352,7 @@ async def get_member_thumbnail(
         if not thumbnail_path or not thumbnail_path.exists():
             raise HTTPException(status_code=404, detail="Thumbnail not found")
 
+        served = thumbnail_path
         if w is not None:
             served = await asyncio.to_thread(
                 avatar_resize.resized_avatar,
@@ -357,27 +361,11 @@ async def get_member_thumbnail(
                 None,
                 avatar_resize.TOP,
             )
-            if served != thumbnail_path:
-                return FileResponse(
-                    served,
-                    media_type="image/webp",
-                    headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL},
-                )
-
-        # Determine media type from extension
-        ext = thumbnail_path.suffix.lower()
-        media_types = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".webp": "image/webp",
-        }
-        media_type = media_types.get(ext, "image/jpeg")
-
+        passive = passive_media(served.name, route="member_thumbnail")
         return FileResponse(
-            thumbnail_path,
-            media_type=media_type,
-            headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL},
+            served,
+            media_type=passive.media_type,
+            headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL, **passive.headers},
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -385,10 +373,7 @@ async def get_member_thumbnail(
         raise
     except Exception as e:
         logger.error(
-            "Failed to serve member thumbnail",
-            service=service,
-            member_id=member_id,
-            error=str(e),
+            "member_thumbnail_failed", service=service, error_type=type(e).__name__
         )
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
