@@ -64,6 +64,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   markup; it now finishes quickly.
 - **An archive saved at the top of a drive showed no messages**; it loads
   again.
+- **Signing out could be undone** by a sign-in renewal that was still running in
+  the background; signing out now waits for it, and also discards any poster or
+  animation that was still waiting to be saved.
+- **Searching for quotation marks or percent signs found unrelated messages**;
+  such characters are now searched exactly as typed.
+- **Member photos in the blog member picker stayed missing** after a failed
+  download; they are downloaded again the next time the picker opens.
+- **Opening a very long blog post no longer makes the rest of the app wait**
+  while the post is prepared for reading.
+- **Verify & fix media no longer says all media is present** when it skipped
+  files whose saved location is outside a group's folder; it now says how many
+  it skipped.
 
 ### Security
 - **Other programs and web pages can no longer use SakaDesk's local
@@ -111,6 +123,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   speech-to-text clean-up step can no longer send it anywhere else.
 - **Downloads keep a safe file name**, and copying to the clipboard works only
   for photos, videos and voice messages.
+- **The installer no longer contains developer test files or a debugging build
+  of the launcher**, and the app's security protections also apply to its
+  internal error pages.
 
 ## [0.4.2] - 2026-11-10
 
