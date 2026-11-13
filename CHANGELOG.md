@@ -78,6 +78,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **SakaDesk only runs the code it ships with.** The app now tells its window
   to refuse scripts, styles and fonts from anywhere else, as a second line of
   defence if hostile content ever slips through.
+- **Data from the official sites can no longer place files outside your
+  archive.** Member and post codes from the blog sites and ids from the
+  message service are now checked before SakaDesk uses them in folder or file
+  names, and anything that would lead outside your SakaDesk folder is
+  skipped. Member photos are saved and shown only as pictures.
+- **Only you can change where SakaDesk keeps your archive.** The output folder
+  can now only be chosen with Browse, in Windows' own folder picker, and
+  SakaDesk only opens files inside the group folders it creates there, so
+  another program or a web page can no longer point it at your other files.
+  Network locations, whole drives, system folders and your user folder itself
+  are refused (a mapped drive letter works), and the folder you already use
+  keeps working.
 
 ## [0.4.2] - 2026-11-10
 
