@@ -749,3 +749,12 @@ def test_strip_html_keeps_its_output_for_normal_html():
 def test_strip_html_caps_the_indexed_text():
     html = "あ" * (_ss.MAX_INDEX_HTML_CHARS + 10)
     assert len(_ss._strip_html(html)) == _ss.MAX_INDEX_HTML_CHARS
+
+
+def test_fts_phrase_doubles_quotes():
+    assert _ss._fts_phrase('a"b') == '"a""b"'
+    assert _ss._fts_phrase("桜") == '"桜"'
+
+
+def test_like_contains_escapes_wildcards():
+    assert _ss._like_contains("100%_\\") == "%100\\%\\_\\\\%"

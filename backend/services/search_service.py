@@ -62,6 +62,21 @@ def _strip_html(html: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
 
 
+def _fts_phrase(text: str) -> str:
+    """``text`` as one FTS5 string: a ``"`` inside is doubled, so it can never close
+    the string or add an operator (report-hardening #48, audit 2026-11-13)."""
+    return '"' + text.replace('"', '""') + '"'
+
+
+def _like_contains(text: str) -> str:
+    """A LIKE pattern matching ``text`` anywhere, with ``\\``, ``%`` and ``_`` literal.
+
+    Use it with ``LIKE ? ESCAPE '\\'`` (report-hardening #49, audit 2026-11-13).
+    """
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
+
+
 _ALIASES_PATH = Path(__file__).parent.parent / "data" / "search_aliases.json"
 
 _SCHEMA_SQL = """
@@ -1387,15 +1402,13 @@ class SearchService:
         all_params: list[Any] = []
 
         if len(normalized_query) >= 3:
-            # FTS5 MATCH — escape double quotes to prevent syntax injection
-            safe_query = query.lower().replace('"', '""')
-            safe_normalized = normalized_query.replace('"', '""')
+            # FTS5 MATCH — every term is one escaped phrase string
             if exact_only:
-                match_expr = f'{{title content}}: "{safe_query}"'
+                match_expr = f"{{title content}}: {_fts_phrase(query.lower())}"
             else:
                 match_expr = (
-                    f"{{title title_normalized content content_normalized}}: "
-                    f'"{safe_normalized}"'
+                    "{title title_normalized content content_normalized}: "
+                    + _fts_phrase(normalized_query)
                 )
             data_sql = (
                 "SELECT b.blog_id, b.title, b.title_normalized, b.content, "
@@ -1412,19 +1425,23 @@ class SearchService:
             # LIKE fallback
             like_clauses: list[str] = []
             if exact_only:
-                like_clauses.append("(b.title LIKE ? OR b.content LIKE ?)")
-                all_params.extend([f"%{query}%", f"%{query}%"])
+                like_clauses.append(
+                    "(b.title LIKE ? ESCAPE '\\' OR b.content LIKE ? ESCAPE '\\')"
+                )
+                all_params.extend([_like_contains(query), _like_contains(query)])
             else:
                 like_clauses.append(
-                    "(b.title LIKE ? OR b.title_normalized LIKE ? "
-                    "OR b.content LIKE ? OR b.content_normalized LIKE ?)"
+                    "(b.title LIKE ? ESCAPE '\\' "
+                    "OR b.title_normalized LIKE ? ESCAPE '\\' "
+                    "OR b.content LIKE ? ESCAPE '\\' "
+                    "OR b.content_normalized LIKE ? ESCAPE '\\')"
                 )
                 all_params.extend(
                     [
-                        f"%{query}%",
-                        f"%{normalized_query}%",
-                        f"%{query}%",
-                        f"%{normalized_query}%",
+                        _like_contains(query),
+                        _like_contains(normalized_query),
+                        _like_contains(query),
+                        _like_contains(normalized_query),
                     ]
                 )
             all_params.extend(filter_params)
@@ -1811,16 +1828,16 @@ class SearchService:
                         # text, NOT Levenshtein fuzzy search. Skips
                         # pronunciation/reading-based matching via
                         # pykakasi-normalized kana column.
-                        match_parts.append(f'{{content}}: "{w.lower()}"')
+                        match_parts.append(f"{{content}}: {_fts_phrase(w.lower())}")
                     elif _is_romaji(w) and len(w) >= 3:
                         # Search both English content and reading
                         match_parts.append(
-                            f'({{content}}: "{w.lower()}" OR '
-                            f'{{content content_normalized}}: "{norm_w}")'
+                            f"({{content}}: {_fts_phrase(w.lower())} OR "
+                            f"{{content content_normalized}}: {_fts_phrase(norm_w)})"
                         )
                     else:
                         match_parts.append(
-                            f'{{content content_normalized}}: "{norm_w}"'
+                            f"{{content content_normalized}}: {_fts_phrase(norm_w)}"
                         )
                 match_expr = " AND ".join(match_parts)
                 data_sql = (
@@ -1841,13 +1858,14 @@ class SearchService:
                 for w in words:
                     norm_w = self._normalize_query(w)
                     if exact_only:
-                        like_clauses.append("m.content LIKE ?")
-                        all_params.append(f"%{w}%")
+                        like_clauses.append("m.content LIKE ? ESCAPE '\\'")
+                        all_params.append(_like_contains(w))
                     else:
                         like_clauses.append(
-                            "(m.content LIKE ? OR m.content_normalized LIKE ?)"
+                            "(m.content LIKE ? ESCAPE '\\' "
+                            "OR m.content_normalized LIKE ? ESCAPE '\\')"
                         )
-                        all_params.extend([f"%{w}%", f"%{norm_w}%"])
+                        all_params.extend([_like_contains(w), _like_contains(norm_w)])
                 all_params.extend(filter_params)
                 data_sql = (
                     "SELECT m.message_id, m.content, m.content_normalized, "
@@ -1870,11 +1888,13 @@ class SearchService:
                         # text, NOT Levenshtein fuzzy search. Skips
                         # pronunciation/reading-based matching via
                         # pykakasi-normalized kana column.
-                        match_expr = f'{{content}}: "{term.lower()}"'
+                        match_expr = f"{{content}}: {_fts_phrase(term.lower())}"
                     else:
                         # Reading match (match_type=1) when romaji, exact (0) otherwise
                         mt = 1 if is_term_romaji else 0
-                        match_expr = f'{{content content_normalized}}: "{norm}"'
+                        match_expr = (
+                            f"{{content content_normalized}}: {_fts_phrase(norm)}"
+                        )
 
                     sq_mt = 0 if exact_only else (1 if is_term_romaji else 0)
                     sq = (
@@ -1891,7 +1911,7 @@ class SearchService:
 
                     # Romaji: also search English text (skip in exact_only mode -- already covered above)
                     if not exact_only and is_term_romaji and len(term) >= 3:
-                        en_match = f'{{content}}: "{term.lower()}"'
+                        en_match = f"{{content}}: {_fts_phrase(term.lower())}"
                         sq_en = (
                             "SELECT m.message_id, m.content, m.content_normalized, "
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
@@ -1910,19 +1930,20 @@ class SearchService:
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
                             "m.timestamp, m.type, 0 as match_type "
                             f"FROM search_messages m {unread_join_sql} "
-                            f"WHERE m.content LIKE ? {filter_sql}"
+                            f"WHERE m.content LIKE ? ESCAPE '\\' {filter_sql}"
                         )
-                        all_params.append(f"%{term}%")
+                        all_params.append(_like_contains(term))
                     else:
                         sq = (
                             "SELECT m.message_id, m.content, m.content_normalized, "
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
                             "m.timestamp, m.type, 0 as match_type "
                             f"FROM search_messages m {unread_join_sql} "
-                            f"WHERE (m.content LIKE ? OR m.content_normalized LIKE ?) {filter_sql}"
+                            "WHERE (m.content LIKE ? ESCAPE '\\' "
+                            f"OR m.content_normalized LIKE ? ESCAPE '\\') {filter_sql}"
                         )
-                        all_params.append(f"%{term}%")
-                        all_params.append(f"%{norm}%")
+                        all_params.append(_like_contains(term))
+                        all_params.append(_like_contains(norm))
                     all_params.extend(filter_params)
                     sub_queries.append(sq)
 

@@ -643,6 +643,87 @@ class TestSearchSync:
             service._build_full_index_sync()
         self.svc = service
 
+    def test_a_quote_cannot_add_an_fts_operator(self):
+        """report-hardening #48 (audit 2026-11-13): '"OR"' joined two phrases."""
+        conn = self.svc._get_read_conn()
+        result = self.svc._search_sync(
+            'こんにちは"OR"ライブ',
+            None,
+            None,
+            None,
+            50,
+            0,
+            content_type="messages",
+            conn=conn,
+        )
+        assert result["total_count"] == 0
+
+    @pytest.mark.parametrize("query", ["%", "_", "%%"])
+    def test_wildcards_match_only_themselves(self, query):
+        """report-hardening #49: '%' matched every message through LIKE."""
+        conn = self.svc._get_read_conn()
+        for content_type in ("messages", "blogs"):
+            result = self.svc._search_sync(
+                query, None, None, None, 50, 0, content_type=content_type, conn=conn
+            )
+            assert result["total_count"] == 0
+
+    @pytest.mark.parametrize(
+        "query",
+        [
+            '"',
+            "*",
+            "\\",
+            "NEAR",
+            "OR",
+            "-",
+            "AND",
+            "こんにちは OR ライブ",
+            "こん* にち*",
+            "こんにちは -ライブ",
+            "😀",
+            '"こんにちは',
+            "NEAR( OR )",
+        ],
+    )
+    def test_operator_and_odd_tokens_never_raise(self, query):
+        conn = self.svc._get_read_conn()
+        for exact_only in (False, True):
+            result = self.svc._search_sync(
+                query,
+                None,
+                None,
+                None,
+                50,
+                0,
+                content_type="all",
+                exact_only=exact_only,
+                conn=conn,
+            )
+            assert result["total_count"] >= 0
+
+    def test_cjk_and_multi_word_search_still_match(self):
+        conn = self.svc._get_read_conn()
+        single = self.svc._search_sync(
+            "こんにちは", None, None, None, 50, 0, content_type="messages", conn=conn
+        )
+        assert single["total_count"] >= 1
+        multi = self.svc._search_sync(
+            "こんにちは ライブ",
+            None,
+            None,
+            None,
+            50,
+            0,
+            content_type="messages",
+            conn=conn,
+        )
+        assert multi["total_count"] >= 0
+        short = self.svc._search_sync(
+            "こん", None, None, None, 50, 0, content_type="messages", conn=conn
+        )
+        assert short["total_count"] >= 1
+
     def test_search_finds_exact_match(self):
         conn = self.svc._get_read_conn()
         result = self.svc._search_sync(
