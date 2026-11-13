@@ -164,11 +164,13 @@ def _delete_api_key() -> None:
     _invalidate_key_status_cache()
 
 
-# In-memory cache of the keyring-derived key status (has_key, masked) so GET
-# /config doesn't pay the slow OS keyring (WCM) read on every AI-tab open. It is
-# populated on first read (and warmed at startup) and invalidated whenever the key
-# is saved or cleared. ``None`` means "not cached yet".
-_key_status_cache: Optional[tuple[bool, Optional[str]]] = None
+# In-memory cache of the keyring-derived key state (has_key, masked, bound
+# provider) so GET /config doesn't pay the slow OS keyring (WCM) read on every
+# AI-tab open. It is populated on first read (and warmed at startup) and
+# invalidated whenever the key is saved or cleared. ``None`` means "not cached
+# yet". A key whose provider is not recorded yet is never cached (see
+# :func:`_load_key_status`).
+_key_status_cache: Optional[tuple[bool, Optional[str], Optional[str]]] = None
 
 
 def _mask_api_key(api_key: Optional[str]) -> Optional[str]:
@@ -177,14 +179,30 @@ def _mask_api_key(api_key: Optional[str]) -> Optional[str]:
     return f"{api_key[:4]}...{api_key[-2:]}" if len(api_key) > 8 else "****"
 
 
-def _load_key_status() -> tuple[bool, Optional[str]]:
-    """``(has_api_key, masked)`` with a read-through in-memory cache over the slow
-    OS keyring read. Safe to run in a worker thread."""
+def _load_key_status(
+    saved_provider: Optional[str] = None,
+) -> tuple[bool, Optional[str]]:
+    """``(has_api_key, masked)`` for the provider currently saved in settings.
+
+    A key counts as saved only when it is bound to ``saved_provider``
+    (:func:`_stored_key_provider`, which also adopts a key stored before its
+    provider was recorded), so the settings never show a key the app would
+    refuse to use. The state is read through an in-memory cache over the slow
+    OS keyring read; a key with no recorded provider is not cached (the startup
+    warm-up has no provider to adopt it with). Safe to run in a worker thread.
+    """
     global _key_status_cache
-    if _key_status_cache is None:
+    cached = _key_status_cache
+    if cached is None:
         api_key = _load_api_key()
-        _key_status_cache = (api_key is not None, _mask_api_key(api_key))
-    return _key_status_cache
+        bound = _stored_key_provider(saved_provider)
+        cached = (api_key is not None, _mask_api_key(api_key), bound)
+        if bound != "":
+            _key_status_cache = cached
+    has_key, masked, bound = cached
+    if not has_key or bound != saved_provider:
+        return False, None
+    return True, masked
 
 
 def _invalidate_key_status_cache() -> None:
@@ -358,7 +376,9 @@ async def get_config():
     # Key status comes from a read-through cache over the OS keyring read, which
     # can take hundreds of ms on Windows (WCM). Offloaded to a thread so the cold
     # (uncached) read never stalls the event loop; warm reads return instantly.
-    has_key, masked_key = await asyncio.to_thread(_load_key_status)
+    has_key, masked_key = await asyncio.to_thread(
+        _load_key_status, config.get("translation_provider")
+    )
     return {
         "provider": config.get("translation_provider"),
         "model": stored_model,

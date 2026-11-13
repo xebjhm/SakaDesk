@@ -458,3 +458,28 @@ def test_a_failing_provider_exception_text_reaches_neither_logs_nor_response():
         resp = client.post("/api/translation/translate", json=body)
     assert PRIVATE not in repr(logs) + resp.text
     assert any(e.get("error_type") == "RuntimeError" for e in logs)
+
+
+def test_config_reports_the_key_only_for_the_provider_it_is_bound_to(settings):
+    translation_api._save_api_key(GEMINI_KEY, "gemini")
+    settings["translation_provider"] = "gemini"
+    body = client.get("/api/translation/config").json()
+    assert body["has_api_key"] is True
+    assert body["api_key_masked"] is not None
+
+    settings["translation_provider"] = "openai"  # settings drifted from the key
+    body = client.get("/api/translation/config").json()
+    assert body["has_api_key"] is False
+    assert body["api_key_masked"] is None
+
+
+def test_config_adopts_a_key_stored_before_its_provider_was_recorded(settings):
+    """The status cache is filled by the startup warm-up, which does not know
+    the provider; a not-yet-bound key must still show once settings name one."""
+    translation_api.get_token_manager().store.save(
+        translation_api._API_KEY_CREDENTIAL_GROUP, {"api_key": GEMINI_KEY}
+    )
+    translation_api._invalidate_key_status_cache()
+    translation_api._load_key_status()  # warm-up: no provider known
+    settings["translation_provider"] = "gemini"
+    assert client.get("/api/translation/config").json()["has_api_key"] is True
