@@ -12,6 +12,7 @@ folder. The route served a hard-coded type map without the sandbox CSP.
 
 from __future__ import annotations
 
+import json
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -228,3 +229,89 @@ def test_the_thumbnail_route_refuses_ids_that_name_other_paths(member_id):
     assert [e["reason"] for e in logs if e["event"] == "member_thumbnail_rejected"] == [
         "member_id"
     ]
+
+
+from backend.services import blog_service as _bs  # noqa: E402
+
+
+def test_one_thumbnail_extension_list():
+    """C-T3: the writer's and the reader's extension lists must agree."""
+    assert set(_bs._THUMBNAIL_EXT_BY_TYPE.values()) == set(_bs._THUMBNAIL_EXTS)
+    assert set(_bs._THUMBNAIL_EXT_BY_SUFFIX.values()) == set(_bs._THUMBNAIL_EXTS)
+
+
+@pytest.mark.asyncio
+async def test_writing_a_thumbnail_removes_its_other_extensions(tmp_path):
+    (tmp_path / "55401.jpg").write_bytes(b"old")
+    (tmp_path / "55401.webp").write_bytes(b"old")
+    (tmp_path / "99.jpg").write_bytes(b"other member")
+    name = await BlogService()._download_member_thumbnail(
+        _session(content_type="image/png", body=b"\x89PNG"),
+        "55401",
+        "https://img.nogizaka46.com/a",
+        tmp_path,
+    )
+    assert name == "55401.png"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["55401.png", "99.jpg"]
+
+
+@pytest.mark.asyncio
+async def test_a_failed_thumbnail_leaves_the_cache_unhashed_so_it_is_retried(tmp_path):
+    svc = BlogService()
+    listed = [
+        SimpleNamespace(
+            id="1", name="a", thumbnail_url="https://img.nogizaka46.com/1.jpg"
+        ),
+        SimpleNamespace(
+            id="2", name="b", thumbnail_url="https://img.nogizaka46.com/2.jpg"
+        ),
+    ]
+    scraper = MagicMock()
+    scraper.get_members_with_thumbnails = AsyncMock(return_value=listed)
+    download = AsyncMock(
+        side_effect=lambda _s, mid, _u, _d: "1.jpg" if mid == "1" else None
+    )
+    with (
+        patch("backend.services.blog_service.get_scraper", return_value=scraper),
+        patch.object(
+            svc, "get_member_thumbnails_path", return_value=tmp_path / "thumbs"
+        ),
+        patch.object(
+            svc, "get_members_cache_path", return_value=tmp_path / "members.json"
+        ),
+        patch.object(svc, "_download_member_thumbnail", download),
+        capture_logs() as logs,
+    ):
+        await svc.get_members_with_thumbnails("nogizaka46")
+        cache = json.loads((tmp_path / "members.json").read_text(encoding="utf-8"))
+        assert cache["hash"] is None
+        await svc.get_members_with_thumbnails("nogizaka46")
+    assert download.await_count == 4  # the second call downloaded again
+    incomplete = [e for e in logs if e["event"] == "members_thumbnails_incomplete"]
+    assert incomplete and (incomplete[0]["failed"], incomplete[0]["count"]) == (1, 2)
+
+
+@pytest.mark.asyncio
+async def test_a_complete_download_is_cached_by_hash(tmp_path):
+    svc = BlogService()
+    listed = [
+        SimpleNamespace(
+            id="1", name="a", thumbnail_url="https://img.nogizaka46.com/1.jpg"
+        )
+    ]
+    scraper = MagicMock()
+    scraper.get_members_with_thumbnails = AsyncMock(return_value=listed)
+    download = AsyncMock(return_value="1.jpg")
+    with (
+        patch("backend.services.blog_service.get_scraper", return_value=scraper),
+        patch.object(
+            svc, "get_member_thumbnails_path", return_value=tmp_path / "thumbs"
+        ),
+        patch.object(
+            svc, "get_members_cache_path", return_value=tmp_path / "members.json"
+        ),
+        patch.object(svc, "_download_member_thumbnail", download),
+    ):
+        await svc.get_members_with_thumbnails("nogizaka46")
+        await svc.get_members_with_thumbnails("nogizaka46")
+    assert download.await_count == 1

@@ -361,6 +361,9 @@ def _blog_image_ext(img_url: str) -> str:
     return ".jpg"
 
 
+_THUMBNAIL_EXTS: tuple[str, ...] = (".jpg", ".png", ".webp")
+"""The extensions a member thumbnail is saved under, in the order the reader looks."""
+
 _THUMBNAIL_EXT_BY_TYPE = {
     "image/jpeg": ".jpg",
     "image/jpg": ".jpg",
@@ -673,9 +676,9 @@ class BlogService:
     async def _save_members_cache(self, service: str, cache: dict):
         """Save members cache to disk."""
         cache_path = self.get_members_cache_path(service)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(cache_path, "w", encoding="utf-8") as f:
-            await f.write(json.dumps(cache, ensure_ascii=False, indent=2))
+        await self._atomic_write(
+            cache_path, json.dumps(cache, ensure_ascii=False, indent=2)
+        )
 
     async def _download_member_thumbnail(
         self,
@@ -711,6 +714,19 @@ class BlogService:
             await self._atomic_write(
                 join_within(thumbnails_dir, local_filename), content
             )
+            # A thumbnail saved earlier under another extension would win in
+            # get_member_thumbnail_path; only the new file may remain.
+            for other in _THUMBNAIL_EXTS:
+                if other != ext:
+                    try:
+                        join_within(thumbnails_dir, f"{member_id}{other}").unlink(
+                            missing_ok=True
+                        )
+                    except OSError as e:
+                        logger.warning(
+                            "member_thumbnail_sibling_unlink_failed",
+                            error_type=type(e).__name__,
+                        )
             return local_filename
         except RemoteImageRefused as e:
             if e.reason == "status":
@@ -727,7 +743,8 @@ class BlogService:
 
         Uses content hash caching: fetches member data from official site,
         compares hash with cached data, and re-downloads thumbnails only
-        if data has changed. Images are cached locally.
+        if data has changed or the last download was incomplete. Images are
+        cached locally.
 
         Args:
             service: Service name.
@@ -827,12 +844,21 @@ class BlogService:
             # Sort by ID for consistency
             result_members.sort(key=lambda m: m["id"])
 
-            # Save cache
+            failed = sum(1 for m in result_members if m["thumbnail"] is None)
+            # The hash says "these thumbnails are on disk": only a complete
+            # download may store it, else the next call retries (audit 2026-11-13).
             new_cache = {
-                "hash": fresh_hash,
+                "hash": None if failed else fresh_hash,
                 "members": result_members,
             }
             await self._save_members_cache(service, new_cache)
+            if failed:
+                logger.warning(
+                    "members_thumbnails_incomplete",
+                    service=service,
+                    failed=failed,
+                    count=len(result_members),
+                )
 
             logger.info(
                 "members_thumbnails_cached",
@@ -858,7 +884,7 @@ class BlogService:
         thumbnails_dir = self.get_member_thumbnails_path(service)
         if not thumbnails_dir.exists():
             return None
-        for ext in (".jpg", ".png", ".webp"):
+        for ext in _THUMBNAIL_EXTS:
             path = join_within(thumbnails_dir, f"{member_id}{ext}")
             if path.exists():
                 return path
