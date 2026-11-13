@@ -604,6 +604,7 @@ _STATIC_TYPES = {
     ".css": "text/css",
     ".html": "text/html",
     ".png": "image/png",
+    ".woff2": "font/woff2",
 }
 
 

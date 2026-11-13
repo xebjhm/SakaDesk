@@ -359,3 +359,4 @@ def test_spa_files_keep_their_types_whatever_the_registry_says():
     assert mimetypes.guess_type("index-abc.js")[0] == "text/javascript"
     assert mimetypes.guess_type("index-abc.css")[0] == "text/css"
     assert mimetypes.guess_type("logo-192.png")[0] == "image/png"
+    assert mimetypes.guess_type("noto-sans-jp-0-wght-normal.woff2")[0] == "font/woff2"

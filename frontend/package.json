@@ -16,6 +16,16 @@
         "test:e2e:headed": "playwright test --headed"
     },
     "dependencies": {
+        "@fontsource-variable/noto-sans": "5.3.0",
+        "@fontsource-variable/noto-sans-hk": "5.3.1",
+        "@fontsource-variable/noto-sans-jp": "5.3.1",
+        "@fontsource-variable/noto-sans-sc": "5.3.1",
+        "@fontsource-variable/noto-sans-tc": "5.3.1",
+        "@fontsource-variable/noto-serif": "5.3.0",
+        "@fontsource-variable/noto-serif-hk": "5.3.1",
+        "@fontsource-variable/noto-serif-jp": "5.3.1",
+        "@fontsource-variable/noto-serif-sc": "5.3.1",
+        "@fontsource-variable/noto-serif-tc": "5.3.1",
         "@holiday-jp/holiday_jp": "2.5.2",
         "clsx": "^2.1.0",
         "dompurify": "^3.3.1",

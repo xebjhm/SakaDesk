@@ -388,17 +388,20 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   (`Narration`: `font-sans text-small`, so it never reads as her words). The year poster (`recap/PosterView.tsx`) keeps the same roles; its polaroid caption uses `font-display` (there is no handwritten face in the stack). The share export (`recap/share/ShareRenderer.ts`) draws on a canvas with the same roles: the UI language's display serif for headings and numbers, the Japanese serif (`fontFamily.reading`) for her words, the sans for narration; it loads them with `document.fonts.load` (with a timeout, else system fonts) and reads every colour from the token CSS variables. The multi-member opening (`recap/Opening.tsx`, slides in `recap/slides/OpeningSlides.tsx`) plays through the same story player with the same roles: a serif `Headline`, member names as `lang="ja"` sans, role titles as neutral `bg-expressive-soft` chips, sans `Narration`; its stars are one equal size in `text-primary` (never the yellow favourite star, never sized by message volume), laid out by `starGrid` in a size-container grid whose star and caption sizes are container units, so every member fits the stage at any roster size (names truncate, stars never clip). The container-unit sizing needs CSS that has no token, so it lives in named `tailwind.config.js` utilities rather than arbitrary values: `recap-star-grid` (the size container: `--star-cols` x `--star-rows` equal cells, at most 5.5rem a row), `recap-star-size` (the star, `--star-size`) and `recap-star-label` (the captions, `--star-label` at line height 1.2, `STAR_LINE_HEIGHT`); the slide sets the four variables from `starGrid`. `size-em` sizes an inline icon (the oshi heart) to one text height. `font-reading` is the Japanese serif for blog titles
   only; post bodies stay in the sans.
 - **Per UI language** (`design/fonts.ts`, `fontStacks`): the UI language picks
-  the glyph set, and only that language's family is loaded from Google Fonts
-  (`unicode-range` slicing). `installLanguageFonts()` runs once in
-  `shell/main.tsx` and again on every language change.
+  the glyph set. Every face is self-hosted from the `@fontsource-variable/*`
+  packages (bundled into `/assets` in `unicode-range` slices; no font host).
+  The Japanese faces load with every entry point; another language's faces are
+  their own stylesheet chunk, requested when that language is applied
+  (`faceLoaders`). `installLanguageFonts()` runs once in `shell/main.tsx` and
+  again on every language change.
 
   | UI language | Sans | Serif |
   |---|---|---|
-  | `ja` | Noto Sans JP | Noto Serif JP |
-  | `zh-TW` | Noto Sans TC | Noto Serif TC |
-  | `yue` | Noto Sans HK | Noto Serif HK |
-  | `zh-CN` | Noto Sans SC | Noto Serif SC |
-  | `en` | Noto Sans | Noto Serif |
+  | `ja` | Noto Sans JP Variable | Noto Serif JP Variable |
+  | `zh-TW` | Noto Sans TC Variable | Noto Serif TC Variable |
+  | `yue` | Noto Sans HK Variable | Noto Serif HK Variable |
+  | `zh-CN` | Noto Sans SC Variable | Noto Serif SC Variable |
+  | `en` | Noto Sans Variable | Noto Serif Variable |
 
   Every stack falls back to the Japanese stack.
 - **Japanese content rule:** `[lang="ja"]:not(html)` in `@layer base`
@@ -415,7 +418,7 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   in favourites and the media gallery (lists and their viewer captions), letter text, search results
   (member, room, blog title, snippet) and filter chips, and group names shown as data
   (add service, the settings marker chip). Entry screens mark the ToS article quotes, group names on the landing cards and the sync chip, and member names in the sync's unresolved list. UI chrome is never marked.
-- `index.html` still loads Noto Sans JP and Noto Serif JP statically, because
+- `design/fonts.ts` imports Noto Sans JP and Noto Serif JP statically, because
   Japanese content always needs them.
 - **Sizes** (`text-*`, size / line height): `text-caption` 11/16,
   `text-small` 13/20, `text-body` 14/22, `text-title` 16/24,

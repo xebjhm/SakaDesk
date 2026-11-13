@@ -276,6 +276,7 @@ curl -H "X-SakaDesk-Token: $SAKADESK_API_TOKEN" http://127.0.0.1:8000/api/settin
 - **react-virtuoso** - Virtual scrolling
 - **lucide-react** - Icon set
 - **dompurify** - HTML sanitization
+- **@fontsource-variable/noto-*** - Self-hosted Noto fonts (SIL Open Font License 1.1)
 - **clsx** + **tailwind-merge** - Class name utilities
 
 ## License

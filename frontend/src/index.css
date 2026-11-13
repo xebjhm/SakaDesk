@@ -53,8 +53,8 @@
      content, not <html>, so the UI's own stacks and the serif/display utilities keep working. */
   /* Literal copies of fontFamily.sansJp / .reading in design/tokens/type.ts (CSS cannot import them): keep in sync. */
   [lang="ja"]:not(html) {
-    --ds-font-family-sans: "Noto Sans JP", system-ui, -apple-system, sans-serif;
-    --ds-font-family-serif: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif;
+    --ds-font-family-sans: "Noto Sans JP Variable", system-ui, -apple-system, sans-serif;
+    --ds-font-family-serif: "Noto Serif JP Variable", "Yu Mincho", "Hiragino Mincho ProN", serif;
     font-family: var(--ds-font-family-sans);
   }
   /* The rule above (0,1,1) outranks .font-reading / .font-display (0,1,0) on the same element, so the
