@@ -17,6 +17,8 @@ const KEYS: readonly string[] = [
     // Task 3
     'media.play', 'media.pause', 'media.mute', 'media.unmute', 'media.seek', 'media.volume',
     'media.timeOf', 'media.volumeValue', 'media.fullscreen', 'media.exitFullscreen',
+    // Task 8
+    'messageList.openPhoto', 'media.older', 'media.newer', 'media.noOlder', 'media.noNewer',
 ];
 
 const lookup = (data: unknown, dotted: string): unknown =>

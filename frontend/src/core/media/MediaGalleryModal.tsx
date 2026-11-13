@@ -17,6 +17,8 @@ import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { useFeatureActive } from '../../design/featureActive';
+import { clientLog } from '../../utils/clientLog';
+import { StepButtons } from './StepButtons';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 import { useTranscription } from '../../hooks/useTranscription';
@@ -355,8 +357,18 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }, [activeTab, mediaItems]);
 
     // Keyboard navigation for detail view
+    // Logged once per gallery: a range, tab list or menu kept the arrow keys.
+    const loggedKeysRef = useRef(false);
     const handleDetailKeyDown = useCallback((e: KeyboardEvent) => {
         if (!selectedMedia) return;
+        // Keys typed in a range (video seek / volume), a tab list or a menu belong to that control.
+        if (e.target instanceof Element && e.target.closest('input[type="range"], [role="slider"], [role="tablist"], [role="menu"]')) {
+            if (!loggedKeysRef.current) {
+                loggedKeysRef.current = true;
+                clientLog('media_playback', { surface: 'viewer', phase: 'keys', outcome: 'left_to_control' });
+            }
+            return;
+        }
 
         const currentIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
         if (currentIdx === -1) return;
@@ -400,10 +412,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
         const mediaUrl = selectedMedia.media_file ? getMediaUrl(selectedMedia.media_file) : null;
         const detailIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
+        const { older, newer } = timeNeighbours(detailIdx, currentTabItems.length, 'newest_first');
 
         return (
             <Modal isOpen onClose={() => setSelectedMedia(null)} tone="viewer" layout="bare" aria-label={t('common.mediaViewer')} logId="media_viewer">
                 <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={() => setSelectedMedia(null)} />
+                {currentTabItems.length > 1 && (
+                    <StepButtons
+                        hasOlder={older !== null}
+                        hasNewer={newer !== null}
+                        onOlder={() => { if (older !== null) setSelectedMedia(currentTabItems[older]); }}
+                        onNewer={() => { if (newer !== null) setSelectedMedia(currentTabItems[newer]); }}
+                    />
+                )}
                 {detailIsPhoto && (
                     // aria-disabled (not disabled) at the limits, so a focused button keeps focus and ← / → keep working.
                     <div className="absolute left-4 top-4 z-10 flex gap-2">

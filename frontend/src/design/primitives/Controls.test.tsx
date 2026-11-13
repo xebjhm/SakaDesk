@@ -48,6 +48,19 @@ describe('IconButton', () => {
         expect(onClick).toHaveBeenCalledOnce();
     });
 
+    it('blocks with a reason like Button: focusable, described, click swallowed (DESIGN_SYSTEM §9)', async () => {
+        const onClick = vi.fn();
+        render(<IconButton aria-label="次へ" icon={<X />} disabledReason="これが最後です 🌸" onClick={onClick} />);
+        const button = screen.getByRole('button', { name: '次へ' });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        expect(button).not.toBeDisabled();
+        expect(button).toHaveAttribute('title', 'これが最後です 🌸');
+        expect(button).toHaveAccessibleDescription('これが最後です 🌸');
+        expect(button.className).toContain('aria-disabled:opacity-40');
+        await userEvent.click(button);
+        expect(onClick).not.toHaveBeenCalled();
+    });
+
     it('requires aria-label at the type level', () => {
         // @ts-expect-error aria-label is required
         const el = <IconButton icon={<X />} />;

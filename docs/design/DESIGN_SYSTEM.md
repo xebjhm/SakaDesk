@@ -444,7 +444,8 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 `accent` (a floating action, e.g. the chat's unread arrows) and `soft` (the
 accent on its subtle tint, filled on hover: the group rail's actions). `shape`
 is `circle` for floating buttons (`overlay` and `accent` by default) and
-`rounded` (12 px) for inline ones. Sizes: `sm` (`h-8`) and `md` (`h-10`).
+`rounded` (12 px) for inline ones. Sizes: `sm` (`h-8`) and `md` (`h-10`). It takes `disabledReason` like `Button`
+(focusable, 40 %, the reason as title and description).
 
 | State | Rule |
 |---|---|

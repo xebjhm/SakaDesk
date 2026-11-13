@@ -43,6 +43,8 @@ interface PhotoPlayerProps {
      * caller shows the pending state meanwhile); without it the image paints as it arrives.
      */
     onLoad?: () => void;
+    /** Bubble with `onClick`: the button's name ("Open photo"). Default: `alt`. */
+    actionLabel?: string;
 }
 
 /**
@@ -76,6 +78,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
     onError,
     fallbackSrc,
     onLoad,
+    actionLabel,
 }) => {
     const [hasError, setHasError] = useState(false);
     // The `src` that failed while a `fallbackSrc` was given: the image then shows the fallback.
@@ -134,23 +137,33 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
 
     // bubble (default for in-chat thumbnails)
     if (hasError) return fallback(cn('w-full h-full', className));
-    return (
+    const image = (
         <img
             ref={imgRef}
             src={shownSrc}
             alt={alt}
             loading={effectiveLoading}
             decoding="async"
-            onClick={onClick}
             onError={fail}
             onLoad={() => markLoaded(shownSrc)}
             className={cn(
                 'w-full h-full object-contain',
                 onLoad && 'transition-opacity duration-base ease-standard motion-reduce:transition-none',
                 onLoad && (loadedSrc === shownSrc ? 'opacity-100' : 'opacity-0'),
-                onClick && 'cursor-pointer',
                 className,
             )}
         />
+    );
+    if (!onClick) return image;
+    // A picture that opens the viewer is a button, so the keyboard opens it too (UI health A-K3).
+    return (
+        <button
+            type="button"
+            onClick={onClick}
+            aria-label={actionLabel ?? alt}
+            className="block h-full w-full cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+        >
+            {image}
+        </button>
     );
 };

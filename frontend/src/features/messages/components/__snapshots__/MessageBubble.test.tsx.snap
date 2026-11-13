@@ -54,13 +54,19 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
           data-testid="bubble-media-box"
           style="width: 320px; height: 240px;"
         >
-          <img
-            alt="Attachment"
-            class="w-full h-full object-contain transition-opacity duration-base ease-standard motion-reduce:transition-none opacity-0 cursor-pointer"
-            decoding="async"
-            loading="eager"
-            src="/api/content/media/%E6%97%A5%E5%90%91%E5%9D%8246/path/to/photo.jpg"
-          />
+          <button
+            aria-label="Open photo"
+            class="block h-full w-full cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+            type="button"
+          >
+            <img
+              alt="Attachment"
+              class="w-full h-full object-contain transition-opacity duration-base ease-standard motion-reduce:transition-none opacity-0"
+              decoding="async"
+              loading="eager"
+              src="/api/content/media/%E6%97%A5%E5%90%91%E5%9D%8246/path/to/photo.jpg"
+            />
+          </button>
         </div>
         <div
           class="whitespace-pre-wrap text-body text-primary"

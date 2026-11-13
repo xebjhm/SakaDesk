@@ -10,6 +10,8 @@ import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { PhotoPlayer } from './PhotoPlayer';
+import { clientLog } from '../../utils/clientLog';
+import { StepButtons } from './StepButtons';
 import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 
 /** A single media item in the viewer. */
@@ -95,7 +97,17 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         downloadMedia(item.src, formatDownloadFilename(item.src, item.timestamp));
     }, [item]);
 
+    // Logged once per viewer: a range, tab list or menu kept the arrow keys.
+    const loggedKeysRef = useRef(false);
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+        // Keys typed in a range (video seek / volume), a tab list or a menu belong to that control.
+        if (e.target instanceof Element && e.target.closest('input[type="range"], [role="slider"], [role="tablist"], [role="menu"]')) {
+            if (!loggedKeysRef.current) {
+                loggedKeysRef.current = true;
+                clientLog('media_playback', { surface: 'viewer', phase: 'keys', outcome: 'left_to_control' });
+            }
+            return;
+        }
         switch (e.key) {
             case 'ArrowLeft':
                 e.preventDefault();
@@ -135,6 +147,12 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
             onKeyDown={handleKeyDown}
         >
             <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={onClose} />
+            <StepButtons
+                hasOlder={older !== null}
+                hasNewer={newer !== null}
+                onOlder={() => { if (older !== null) onNavigate(older); }}
+                onNewer={() => { if (newer !== null) onNavigate(newer); }}
+            />
 
             {isPicture && (
                 // aria-disabled (not disabled) at the limits, so a focused button keeps focus and ← / → keep working.

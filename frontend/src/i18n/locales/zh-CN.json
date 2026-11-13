@@ -408,7 +408,8 @@
       "picture": "显示未读照片",
       "video": "显示未读视频",
       "voice": "显示未读语音"
-    }
+    },
+    "openPhoto": "打开照片"
   },
   "calendar": {
     "loadFailed": "无法载入日期",
@@ -572,7 +573,11 @@
     "timeOf": "{{current}} / {{total}}",
     "volumeValue": "{{percent}}%",
     "fullscreen": "全屏",
-    "exitFullscreen": "退出全屏"
+    "exitFullscreen": "退出全屏",
+    "older": "较早",
+    "newer": "较新",
+    "noOlder": "这是最早的一条",
+    "noNewer": "这是最新的一条"
   },
   "sentLetters": {
     "title": "已发送的信件",

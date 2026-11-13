@@ -408,7 +408,8 @@
       "picture": "Show unread photo",
       "video": "Show unread video",
       "voice": "Show unread voice message"
-    }
+    },
+    "openPhoto": "Open photo"
   },
   "calendar": {
     "loadFailed": "Could not load the dates",
@@ -574,7 +575,11 @@
     "timeOf": "{{current}} of {{total}}",
     "volumeValue": "{{percent}}%",
     "fullscreen": "Full screen",
-    "exitFullscreen": "Exit full screen"
+    "exitFullscreen": "Exit full screen",
+    "older": "Older",
+    "newer": "Newer",
+    "noOlder": "This is the oldest one",
+    "noNewer": "This is the newest one"
   },
   "sentLetters": {
     "title": "Sent Letters",

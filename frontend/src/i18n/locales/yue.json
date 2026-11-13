@@ -408,7 +408,8 @@
       "picture": "顯示未讀相",
       "video": "顯示未讀片",
       "voice": "顯示未讀語音"
-    }
+    },
+    "openPhoto": "打開相"
   },
   "calendar": {
     "loadFailed": "載入唔到日期",
@@ -572,7 +573,11 @@
     "timeOf": "{{current}} / {{total}}",
     "volumeValue": "{{percent}}%",
     "fullscreen": "全螢幕",
-    "exitFullscreen": "離開全螢幕"
+    "exitFullscreen": "離開全螢幕",
+    "older": "較舊",
+    "newer": "較新",
+    "noOlder": "呢個係最舊嘅",
+    "noNewer": "呢個係最新嘅"
   },
   "sentLetters": {
     "title": "寄咗嘅信",

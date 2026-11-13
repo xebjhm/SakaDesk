@@ -505,6 +505,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                                     fallbackSrc={pictureThumb ? mediaUrl : undefined}
                                     loading={mediaLoading}
                                     alt={t('messageList.attachment')}
+                                    actionLabel={t('messageList.openPhoto')}
                                     onClick={() => onMediaClick?.(mediaUrl, 'picture', message.timestamp)}
                                     onLoad={settlePhoto}
                                     onError={settlePhoto}

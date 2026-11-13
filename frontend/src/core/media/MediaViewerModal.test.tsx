@@ -42,6 +42,23 @@ describe('MediaViewerModal', () => {
         expect(onClose).toHaveBeenCalledTimes(1);
     });
 
+    it('Older / Newer buttons step, dimmed at the ends; arrows typed in a slider are left to it', async () => {
+        const onNavigate = vi.fn();
+        render(<MediaViewerModal mediaItems={items} currentIndex={0} onClose={vi.fn()} onNavigate={onNavigate} />);
+        const older = screen.getByRole('button', { name: 'Older' });
+        expect(older).toHaveAttribute('aria-disabled', 'true');
+        await userEvent.click(older);
+        expect(onNavigate).not.toHaveBeenCalled();
+        await userEvent.click(screen.getByRole('button', { name: 'Newer' }));
+        expect(onNavigate).toHaveBeenCalledWith(1);
+        onNavigate.mockClear();
+        const slider = document.createElement('div');
+        slider.setAttribute('role', 'slider');
+        screen.getByRole('dialog').appendChild(slider);
+        fireEvent.keyDown(slider, { key: 'ArrowRight' });
+        expect(onNavigate).not.toHaveBeenCalled();
+    });
+
     it('the source link jumps', async () => {
         render(<MediaViewerModal mediaItems={items} currentIndex={0} onClose={vi.fn()} onNavigate={vi.fn()} />);
         await userEvent.click(screen.getByRole('button', { name: '春の日記 🌸' }));

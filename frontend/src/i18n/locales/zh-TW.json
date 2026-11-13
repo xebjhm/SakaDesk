@@ -408,7 +408,8 @@
       "picture": "顯示未讀照片",
       "video": "顯示未讀影片",
       "voice": "顯示未讀語音"
-    }
+    },
+    "openPhoto": "開啟照片"
   },
   "calendar": {
     "loadFailed": "無法載入日期",
@@ -572,7 +573,11 @@
     "timeOf": "{{current}} / {{total}}",
     "volumeValue": "{{percent}}%",
     "fullscreen": "全螢幕",
-    "exitFullscreen": "結束全螢幕"
+    "exitFullscreen": "結束全螢幕",
+    "older": "較早",
+    "newer": "較新",
+    "noOlder": "這是最早的一則",
+    "noNewer": "這是最新的一則"
   },
   "sentLetters": {
     "title": "已傳送的信件",

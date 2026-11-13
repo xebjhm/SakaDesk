@@ -408,7 +408,8 @@
       "picture": "未読の写真を表示",
       "video": "未読の動画を表示",
       "voice": "未読のボイスを表示"
-    }
+    },
+    "openPhoto": "写真を開く"
   },
   "calendar": {
     "loadFailed": "日付を読み込めませんでした",
@@ -572,7 +573,11 @@
     "timeOf": "{{total}} 中 {{current}}",
     "volumeValue": "{{percent}}%",
     "fullscreen": "全画面表示",
-    "exitFullscreen": "全画面表示を終了"
+    "exitFullscreen": "全画面表示を終了",
+    "older": "古い方へ",
+    "newer": "新しい方へ",
+    "noOlder": "これが一番古いものです",
+    "noNewer": "これが一番新しいものです"
   },
   "sentLetters": {
     "title": "送信したレター",
