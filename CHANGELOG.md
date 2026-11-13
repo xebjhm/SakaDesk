@@ -104,14 +104,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Screen readers can now use the media players.** Play, mute, full screen and
   the position and volume sliders are named, the controls stay visible while
   you use them from the keyboard, and photos in a chat open with Enter.
-- **Keyboard focus stays inside an open dialog.** The app behind a dialog can no
-  longer be reached with Tab or a screen reader, and menus now open on their
+- **Screen readers stay inside an open dialog.** The app behind a dialog is no
+  longer read out or clickable while it is open, and menus now open on their
   first item with a visible focus ring. A settings error now waits until the
-  dialog closes instead of appearing behind it.
+  dialog closes instead of appearing over it.
 - **Screen readers now hear short messages.** "Copied" and incoming calls are
   announced, even while a photo viewer or another dialog is open.
-- **Setup no longer fails silently.** If saving the archive folder fails for
-  any reason, the setup screen now says so under the folder field.
+- **Setup shows a failed save next to the folder field.** If saving the archive
+  folder fails for any reason, the setup screen now says so under the folder
+  field instead of in a separate message.
 - **Voice transcripts are easier to read** and each line can be chosen with the
   keyboard to jump to that moment.
 

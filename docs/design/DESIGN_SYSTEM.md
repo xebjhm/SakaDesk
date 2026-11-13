@@ -1218,6 +1218,8 @@ visible counter counts the oldest item as 1. Buttons that step carry older / new
 
 The rule is for time-ordered items only. Images inside one blog post are not a timeline: the blog
 reader's photo viewer keeps the post's reading order (← / ‹ the image above, → / › the one below).
+Its step buttons say previous photo / next photo (`MediaViewerModal` `sequence="reading"`), and the
+buttons are not drawn when a viewer holds a single item.
 
 ### Layering
 
