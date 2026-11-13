@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
+from structlog.testing import capture_logs
 
 from backend.main import app
 
@@ -342,6 +343,49 @@ class TestBuildGithubUrl:
         url = _build_github_url("playback", "playing", "no audio", {})
         assert "Playback" in url
         assert "no+audio" in url or "no%20audio" in url
+
+
+class TestGithubUrlLimit:
+    """The URL stays under the desktop shell's 8192-character limit."""
+
+    def test_long_cjk_text_is_trimmed_to_a_valid_url(self):
+        from urllib.parse import parse_qs, urlsplit
+
+        from backend.api.report import MAX_GITHUB_URL_LENGTH, _build_github_url
+
+        text = "日本語のバグ報告" * 200  # 1600 chars, ~14 KB once encoded
+        diag = {"system": {"os": "Linux"}, "context": {"error_message": text}}
+        with capture_logs() as logs:
+            url = _build_github_url("other", text, text, diag)
+
+        assert MAX_GITHUB_URL_LENGTH < 8192
+        assert len(url) <= MAX_GITHUB_URL_LENGTH
+        parts = urlsplit(url)
+        assert (parts.scheme, parts.netloc, parts.path) == (
+            "https",
+            "github.com",
+            "/xebjhm/SakaDesk/issues/new",
+        )
+        query = parse_qs(parts.query, strict_parsing=True)
+        assert set(query) == {"title", "body"}
+        assert query["title"][0].startswith("[Bug] Other: 日本語")
+        body = query["body"][0]
+        assert "\u2026" in body
+        assert "PASTE_HERE" in body
+        assert body.count("日本語のバグ報告") > 1  # still carries useful text
+        events = [e for e in logs if e["event"] == "report_url_truncated"]
+        assert len(events) == 1
+        assert text not in str(events)
+        assert events[0]["length_before"] > MAX_GITHUB_URL_LENGTH
+        assert events[0]["length_after"] == len(url)
+
+    def test_short_report_is_untouched_and_not_logged(self):
+        from backend.api.report import _build_github_url
+
+        with capture_logs() as logs:
+            url = _build_github_url("other", "doing", "wrong", {})
+        assert "\u2026" not in url and "%E2%80%A6" not in url
+        assert not [e for e in logs if e["event"] == "report_url_truncated"]
 
 
 class TestHelperFunctions:

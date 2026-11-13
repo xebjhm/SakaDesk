@@ -406,14 +406,27 @@ def _withhold_free_text(diagnostics: dict) -> None:
     logger.warning("report_logs_withheld", reason="nicknames_unavailable")
 
 
-def _build_github_url(
+MAX_GITHUB_URL_LENGTH = 8000
+"""Longest ``github_url`` returned. The desktop shell refuses a URL over 8192
+characters (``nav_guard.MAX_URL_LENGTH``), which would silently drop the report
+page, so the percent-encoded URL is kept below that with some margin."""
+
+_TRUNCATION_MARK = "\u2026"
+_URL_TEXT_KEYS = ("error_message", "current_screen")
+"""Free-text keys of ``diagnostics["context"]`` that are also trimmed when the URL is too long."""
+
+
+def _clip(text: Any, limit: int) -> Any:
+    """``text`` cut to ``limit`` characters plus an ellipsis; other values and short text as is."""
+    if isinstance(text, str) and len(text) > limit:
+        return text[:limit] + _TRUNCATION_MARK
+    return text
+
+
+def _render_github_url(
     category: str, what_doing: str, what_wrong: str, diagnostics: dict
 ) -> str:
-    """Build GitHub issue URL with pre-filled content.
-
-    Only includes compact system info in the URL to avoid GitHub's URL length limit.
-    Logs are excluded — they're too large for URL encoding.
-    """
+    """The untrimmed GitHub new-issue URL (see :func:`_build_github_url`)."""
     category_labels = {
         "sync_data": "Sync / Data",
         "playback": "Playback",
@@ -459,6 +472,60 @@ PASTE_HERE
 
     params = urlencode({"title": title, "body": body}, quote_via=quote)
     return f"https://github.com/xebjhm/SakaDesk/issues/new?{params}"
+
+
+def _build_github_url(
+    category: str, what_doing: str, what_wrong: str, diagnostics: dict
+) -> str:
+    """Build GitHub issue URL with pre-filled content, at most
+    ``MAX_GITHUB_URL_LENGTH`` characters.
+
+    Only includes compact system info in the URL to avoid GitHub's URL length limit.
+    Logs are excluded — they're too large for URL encoding. When the percent-encoded
+    URL is still too long (CJK text encodes to 9 characters per character), the
+    user-written text is cut, all of it to the same length, found by bisection:
+    ``what_doing``, ``what_wrong`` and the ``context`` fields ``error_message`` and
+    ``current_screen``, each cut text ending in an ellipsis. The full text stays in
+    the diagnostics (clipboard copy). A cut logs ``report_url_truncated`` with the
+    URL length before and after and the characters kept per field, never the text.
+    If the fixed part alone is over the limit the URL is returned as it is.
+    """
+    url = _render_github_url(category, what_doing, what_wrong, diagnostics)
+    if len(url) <= MAX_GITHUB_URL_LENGTH:
+        return url
+
+    def render(keep: int) -> str:
+        context = diagnostics.get("context")
+        trimmed = diagnostics
+        if isinstance(context, dict):
+            trimmed = {
+                **diagnostics,
+                "context": {
+                    k: _clip(v, keep) if k in _URL_TEXT_KEYS else v
+                    for k, v in context.items()
+                },
+            }
+        return _render_github_url(
+            category, _clip(what_doing, keep), _clip(what_wrong, keep), trimmed
+        )
+
+    low, high = 0, max(len(what_doing), len(what_wrong), 1)
+    if len(render(0)) > MAX_GITHUB_URL_LENGTH:
+        low = high = 0
+    while low < high:
+        mid = (low + high + 1) // 2
+        if len(render(mid)) <= MAX_GITHUB_URL_LENGTH:
+            low = mid
+        else:
+            high = mid - 1
+    trimmed_url = render(low)
+    logger.info(
+        "report_url_truncated",
+        length_before=len(url),
+        length_after=len(trimmed_url),
+        kept_chars=low,
+    )
+    return trimmed_url
 
 
 @router.post("", response_model=ReportResponse)

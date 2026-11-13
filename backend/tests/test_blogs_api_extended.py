@@ -581,6 +581,28 @@ class TestProxyBlogImage:
             "log_level": "info",
         } in logs
 
+    def test_proxy_image_refuses_other_ports(self):
+        """An allowed host on a port other than 443 is not fetched."""
+        for port in ("8443", "80", "0"):
+            with patch("httpx.AsyncClient") as mock_httpx_cls, capture_logs() as logs:
+                response = client.get(
+                    f"/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com:{port}/a.jpg"
+                )
+            assert response.status_code == 403
+            mock_httpx_cls.assert_not_called()
+            assert {
+                "event": "proxy_image_rejected",
+                "reason": "port",
+                "status": 403,
+                "log_level": "info",
+            } in logs
+
+    def test_proxy_image_bad_port_is_400(self):
+        response = client.get(
+            "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com:99999/a.jpg"
+        )
+        assert response.status_code == 400
+
     def test_proxy_image_forbidden_domain_is_logged(self):
         with capture_logs() as logs:
             response = client.get("/api/blogs/proxy-image?url=https://evil.com/a.jpg")

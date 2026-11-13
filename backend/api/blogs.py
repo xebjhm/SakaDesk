@@ -639,8 +639,9 @@ async def proxy_blog_image(
 ):
     """Fetch an official blog image the page cannot fetch itself (the CDNs send no CORS).
 
-    Only ``https`` URLs on ``_PROXY_ALLOWED_HOSTS`` are fetched (403 otherwise;
-    a malformed URL is 400), without following redirects (a 3xx answers 502, so
+    Only ``https`` URLs on ``_PROXY_ALLOWED_HOSTS``, with no port or port 443,
+    are fetched (403 otherwise; a malformed URL or port is 400), without
+    following redirects (a 3xx answers 502, so
     the allowlist and scheme hold for the final URL too). The upstream must
     answer a type in ``_PROXY_IMAGE_TYPES`` (502 otherwise) of at most
     ``_PROXY_MAX_IMAGE_BYTES`` (502); a network or HTTP error is 502 with a
@@ -648,7 +649,8 @@ async def proxy_blog_image(
     ``X-Content-Type-Options: nosniff``; inline answers also carry
     ``SANDBOX_CSP``, and ``download=filename`` answers an attachment with that
     name instead. Every refusal logs ``proxy_image_rejected`` with ``reason``
-    (``invalid_url``, ``scheme``, ``host``, ``redirect``, ``content_type``,
+    (``invalid_url``, ``scheme``, ``host``, ``port``, ``redirect``,
+    ``content_type``,
     ``too_large``, ``upstream`` with ``error_type``) and ``status``.
     """
     from urllib.parse import quote, urlparse
@@ -659,12 +661,15 @@ async def proxy_blog_image(
     try:
         parsed = urlparse(url)
         host = parsed.hostname
+        port = parsed.port  # raises ValueError on a bad port
     except ValueError:
         raise _proxy_reject(400, "invalid_url", "Invalid URL") from None
     if parsed.scheme != "https":
         raise _proxy_reject(403, "scheme", "Only https image URLs can be proxied")
     if host not in _PROXY_ALLOWED_HOSTS:
         raise _proxy_reject(403, "host", "Domain not allowed for proxy")
+    if port not in (None, 443):
+        raise _proxy_reject(403, "port", "Only the default https port can be proxied")
 
     try:
         # follow_redirects=False: an allowlisted host that open-redirects must not
