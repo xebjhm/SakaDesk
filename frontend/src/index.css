@@ -146,10 +146,17 @@
     outline-offset: -1px;
   }
 
-  /* Switch: on and off were two background colours. The track gets a border and the thumb a
-     colour; on is the Highlight track. forced-color-adjust is off only here: it carries the state. */
+  /* Switch: on and off were two background colours. The track gets an inset outline (a border would
+     shrink the padding box and push the absolutely placed thumb off centre) and the thumb a colour;
+     on is the Highlight track. forced-color-adjust is off only here: it carries the state. This
+     unlayered outline beats Tailwind's transparent focus outline, so keyboard focus is redrawn below. */
   [role="switch"] {
-    border: 1px solid ButtonText;
+    outline: 1px solid ButtonText;
+    outline-offset: -1px;
+  }
+  [role="switch"]:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
   }
   [role="switch"] > span {
     forced-color-adjust: none;
@@ -158,17 +165,26 @@
   [role="switch"][aria-checked="true"] {
     forced-color-adjust: none;
     background-color: Highlight;
-    border-color: Highlight;
+    outline-color: Highlight;
+  }
+  [role="switch"][aria-checked="true"]:focus-visible {
+    outline-color: ButtonText;
   }
   [role="switch"][aria-checked="true"] > span {
     background-color: HighlightText;
   }
 
   /* Selection shown only by a tint or a shadow ring: pills, rail items, the group rail, conversations,
-     tabs, search options, checked menu radios. After the surface rule, so it wins on selected surfaces. */
+     tabs, search options, checked menu radios, the active sync step. Every aria-current token that
+     means "this one" is listed (page, true, step, location, date, time); aria-current="false" is not.
+     After the surface rule, so it wins on selected surfaces. */
   [aria-pressed="true"],
   [aria-current="page"],
   [aria-current="true"],
+  [aria-current="step"],
+  [aria-current="location"],
+  [aria-current="date"],
+  [aria-current="time"],
   [aria-selected="true"],
   [role="menuitemradio"][aria-checked="true"] {
     outline: 2px solid Highlight;

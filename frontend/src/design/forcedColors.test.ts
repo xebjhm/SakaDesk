@@ -19,6 +19,10 @@ describe('forced colours (UI health #6)', () => {
         '[aria-pressed="true"]',
         '[aria-current="page"]',
         '[aria-current="true"]',
+        '[aria-current="step"]',
+        '[aria-current="location"]',
+        '[aria-current="date"]',
+        '[aria-current="time"]',
         '[aria-selected="true"]',
         '.shadow-card',
         '[role="dialog"]:not([data-surface="dark"] *)',
@@ -28,6 +32,11 @@ describe('forced colours (UI health #6)', () => {
         '.sd-call-overlay ::-webkit-scrollbar-thumb:hover',
     ])('styles %s', (selector) => {
         expect(block).toContain(selector);
+    });
+
+    it('draws the switch edge as an inset outline, not a border, so the thumb stays centred', () => {
+        expect(block).not.toMatch(/\[role="switch"\]\s*\{[^}]*\bborder\b/);
+        expect(block).toMatch(/\[role="switch"\]\s*\{[^}]*outline: 1px solid ButtonText;[^}]*outline-offset: -1px/);
     });
 
     it('uses system colours only, and opts out of forcing only for the switch', () => {

@@ -43,8 +43,54 @@ test.describe('theming', () => {
     const on = page.locator('[role="switch"][aria-checked="true"]').first()
     const off = page.locator('[role="switch"][aria-checked="false"]').first()
     await expect(on).toBeVisible()
-    const bg = (l: typeof on) => l.evaluate((el) => getComputedStyle(el).backgroundColor)
-    expect(await bg(on)).not.toBe(await bg(off))
-    expect(await off.evaluate((el) => getComputedStyle(el).borderTopStyle)).toBe('solid')
+    // Outlines exist only under the forced-colours rules (normal mode draws none), and on/off differ.
+    const edge = (l: typeof on) => l.evaluate((el) => {
+      const cs = getComputedStyle(el)
+      return { style: cs.outlineStyle, colour: cs.outlineColor, offset: cs.outlineOffset }
+    })
+    const onEdge = await edge(on)
+    const offEdge = await edge(off)
+    expect(onEdge.style).toBe('solid')
+    expect(offEdge.style).toBe('solid')
+    expect(onEdge.offset).toBe('-1px')
+    expect(onEdge.colour).not.toBe(offEdge.colour)
+    // The thumb stays centred: no border shrinks the padding box (5 px top and bottom of a 24 px track).
+    expect(await off.evaluate((el) => getComputedStyle(el).borderTopWidth)).toBe('0px')
+  })
+
+  test('in forced colours every selected state and surface edge is outlined, but not the dark viewer', async ({ page }) => {
+    await pinBigRoom(page, { messages })
+    await page.emulateMedia({ forcedColors: 'active' })
+    await page.goto('/')
+    await expect(page.getByText('Big Room', { exact: true })).toBeVisible({ timeout: 10000 })
+    const probe = await page.evaluate(() => {
+      const host = document.createElement('div')
+      host.innerHTML = `
+        <button id="p-pressed" aria-pressed="true">x</button>
+        <button id="p-unpressed" aria-pressed="false">x</button>
+        <div id="p-tab" role="tab" aria-selected="true">x</div>
+        <ol><li id="p-step" aria-current="step">x</li><li id="p-nostep" aria-current="false">x</li></ol>
+        <div id="p-radio" role="menuitemradio" aria-checked="true">x</div>
+        <div id="p-dialog" role="dialog">x</div>
+        <div data-surface="dark"><div id="p-dark-dialog" role="dialog">x</div></div>`
+      document.body.appendChild(host)
+      const read = (id: string) => {
+        const cs = getComputedStyle(host.querySelector(`#${id}`) as Element)
+        return `${cs.outlineStyle} ${cs.outlineWidth}`
+      }
+      const out = Object.fromEntries(
+        ['p-pressed', 'p-unpressed', 'p-tab', 'p-step', 'p-nostep', 'p-radio', 'p-dialog', 'p-dark-dialog'].map((id) => [id, read(id)]),
+      )
+      host.remove()
+      return out
+    })
+    expect(probe['p-pressed']).toBe('solid 2px')
+    expect(probe['p-tab']).toBe('solid 2px')
+    expect(probe['p-step']).toBe('solid 2px')
+    expect(probe['p-radio']).toBe('solid 2px')
+    expect(probe['p-dialog']).toBe('solid 1px')
+    expect(probe['p-unpressed']).not.toMatch(/^solid/)
+    expect(probe['p-nostep']).not.toMatch(/^solid/)
+    expect(probe['p-dark-dialog']).not.toMatch(/^solid/)
   })
 })
