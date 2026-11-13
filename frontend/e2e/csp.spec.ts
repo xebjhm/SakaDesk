@@ -137,6 +137,6 @@ test('the built bundle never compiles strings as code', () => {
   const dir = fileURLToPath(new URL('../dist/assets/', import.meta.url))
   const offenders = readdirSync(dir)
     .filter((name) => name.endsWith('.js'))
-    .filter((name) => /\bnew Function\s*\(|(?<![\w$.])eval\s*\(/.test(readFileSync(`${dir}${name}`, 'utf8')))
+    .filter((name) => /\bFunction\s*\(|(?<![\w$.])eval\b/.test(readFileSync(`${dir}${name}`, 'utf8')))
   expect(offenders).toEqual([])
 })
