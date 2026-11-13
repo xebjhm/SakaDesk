@@ -304,8 +304,11 @@ def test_thread_start_failure_frees_the_slot_and_logs(tracker, settings):
     assert tracker.snapshot(str(settings)).state == "ready"
 
 
-@pytest.mark.parametrize("bad_value", [123, ["a"], {"x": 1}, ""])
-def test_non_string_output_dir_is_normalised_away(tracker, tmp_path, bad_value):
+@pytest.mark.parametrize("bad_value", [123, ["a"], {"x": 1}, "", "   "])
+def test_unusable_output_dir_means_the_default_folder(tracker, tmp_path, bad_value):
+    """Sync writes to the default folder for these values, so diagnostics reads it."""
+    default = tmp_path / "default"
+    (default / "日向坂46").mkdir(parents=True)
     settings_path = tmp_path / "settings.json"
     settings_path.write_text(
         json.dumps({"is_configured": True, "output_dir": bad_value}), encoding="utf-8"
@@ -313,21 +316,23 @@ def test_non_string_output_dir_is_normalised_away(tracker, tmp_path, bad_value):
     with (
         capture_logs() as logs,
         patch("backend.api.diagnostics.get_settings_path", return_value=settings_path),
+        patch("backend.api.diagnostics.get_default_output_dir", return_value=default),
         patch("backend.api.diagnostics.get_logs_dir", return_value=tmp_path / "logs"),
         patch(
             "backend.api.diagnostics.get_token_manager",
             return_value=MagicMock(load_session=MagicMock(return_value=None)),
         ),
-        patch.object(diagnostics, "_walk_disk_usage") as walker,
+        patch.object(diagnostics, "_walk_disk_usage", wraps=_REAL_WALK) as walker,
     ):
         summary = client.get("/api/diagnostics")
         polled = client.get("/api/diagnostics/disk-usage")
         assert tracker.wait_idle(5)
     assert summary.status_code == 200
-    assert summary.json()["disk_usage"]["state"] == "ready"
-    assert summary.json()["config_state"]["output_dir_configured"] is True
-    assert polled.json()["state"] == "ready"
-    walker.assert_not_called()
+    body = summary.json()
+    assert [s["display_name"] for s in body["sync_state"]["services"]] == ["日向坂46"]
+    assert body["config_state"]["output_dir_configured"] is True
+    assert polled.status_code == 200
+    assert {call.args[0] for call in walker.call_args_list} == {default}
     assert not [e for e in logs if e["event"] == "diagnostics_disk_usage_failed"]
 
 

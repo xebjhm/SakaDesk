@@ -12,14 +12,19 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from collections.abc import Sequence
-from typing import Any, Optional, Union, cast
+from typing import Any, Optional, Union
 from urllib.parse import urlencode, quote
 
 import structlog
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.services.platform import get_logs_dir, get_settings_path
+from backend.services.path_resolver import output_dir_value
+from backend.services.platform import (
+    get_default_output_dir,
+    get_logs_dir,
+    get_settings_path,
+)
 from backend.services.settings_store import read_settings_file
 from pysaka.credentials import get_token_manager
 from pysaka import Group, get_jwt_remaining_seconds
@@ -214,11 +219,19 @@ def _redact_diagnostics(
 
 
 def _get_output_dir() -> Optional[str]:
-    """Read the configured sync output dir (for redaction of custom data paths)."""
+    """Read the configured sync output dir (for redaction of custom data paths).
+
+    The saved text as is. When the saved value is unset, empty, blank or not a
+    string, sync uses the default folder, so that folder's path is returned:
+    logs name it and must be redacted too. None when settings cannot be read.
+    """
     try:
         data = read_settings_file(get_settings_path())
         if isinstance(data, dict):
-            return cast(Optional[str], data.get("output_dir"))
+            raw = data.get("output_dir")
+            if isinstance(raw, str) and raw.strip():
+                return raw
+            return str(get_default_output_dir())
     except Exception as e:
         # Do NOT fail silently: if the output dir can't be read, custom-data-dir
         # redaction is skipped and a path outside C:\Users could reach the public
@@ -327,34 +340,36 @@ def _get_sync_state() -> dict:
     try:
         settings = read_settings_file(get_settings_path())
         if isinstance(settings, dict):
-            output_dir = settings.get("output_dir")
-            if output_dir:
-                # Check per-service metadata files
-                latest_sync = None
-                last_error = None
-                output_path = Path(output_dir)
+            # The resolver sync uses: an empty saved value is the default folder
+            output_dir = output_dir_value(
+                settings.get("output_dir"), get_default_output_dir()
+            )
+            # Check per-service metadata files
+            latest_sync = None
+            last_error = None
+            output_path = Path(output_dir)
 
-                for service_dir in output_path.iterdir():
-                    if not service_dir.is_dir():
-                        continue
-                    metadata_path = service_dir / "sync_metadata.json"
-                    if metadata_path.exists():
-                        try:
-                            with open(metadata_path, "r", encoding="utf-8") as mf:
-                                metadata = json.load(mf)
-                                utc_sync = metadata.get("last_sync")
-                                if utc_sync:
-                                    if latest_sync is None or utc_sync > latest_sync:
-                                        latest_sync = utc_sync
-                                if metadata.get("last_error"):
-                                    last_error = metadata.get("last_error")
-                        except Exception:
-                            pass
+            for service_dir in output_path.iterdir():
+                if not service_dir.is_dir():
+                    continue
+                metadata_path = service_dir / "sync_metadata.json"
+                if metadata_path.exists():
+                    try:
+                        with open(metadata_path, "r", encoding="utf-8") as mf:
+                            metadata = json.load(mf)
+                            utc_sync = metadata.get("last_sync")
+                            if utc_sync:
+                                if latest_sync is None or utc_sync > latest_sync:
+                                    latest_sync = utc_sync
+                            if metadata.get("last_error"):
+                                last_error = metadata.get("last_error")
+                    except Exception:
+                        pass
 
-                return {
-                    "last_sync": latest_sync,
-                    "last_error": last_error,
-                }
+            return {
+                "last_sync": latest_sync,
+                "last_error": last_error,
+            }
     except Exception:
         pass
     return {"last_sync": None, "last_error": None}

@@ -5,6 +5,7 @@ report-hardening: an empty output_dir became the process cwd for the sync writer
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
@@ -58,8 +59,6 @@ def _fresh_notes():
         ("C:\\", "root"),
         ("C:/", "root"),
         ("D:\\..", "root"),
-        ("/", "root"),
-        ("/tmp/..", "root"),
         ("C:SakaDesk", "relative"),
         ("SakaDesk", "relative"),
         ("./out", "relative"),
@@ -67,6 +66,13 @@ def _fresh_notes():
 )
 def test_lexical_problems(raw, reason):
     assert policy.lexical_problem(raw) == reason
+
+
+@pytest.mark.skipif(os.name == "nt", reason="a lone slash is not absolute on Windows")
+@pytest.mark.parametrize("raw", ["/", "/tmp/.."])
+def test_posix_roots(raw):
+    # Windows has its own roots: the "C:\\" cases above.
+    assert policy.lexical_problem(raw) == "root"
 
 
 def test_an_absolute_folder_has_no_lexical_problem(tmp_path):
@@ -89,6 +95,10 @@ def test_a_good_folder_is_created_and_normalised(sandbox):
         (lambda s: s["app"], "app_data"),
         (lambda s: s["app"] / "logs", "app_data"),
         (lambda s: s["app"].parent, "app_data"),
+        (lambda s: s["app"].parent / "Programs" / "SakaDesk", "app_data"),
+        (lambda s: s["app"].parent / "Programs", "app_data"),
+        (lambda s: s["home"] / "AppData" / "Roaming" / "pysaka", "app_data"),
+        (lambda s: s["home"] / "AppData" / "Roaming" / "pysaka" / "auth", "app_data"),
         (lambda s: s["windows"], "system"),
         (lambda s: s["windows"] / "Temp" / "x", "system"),
     ],
@@ -157,6 +167,36 @@ def test_an_unusual_saved_value_is_kept_and_logged_once_without_the_value():
     events = [e for e in logs if e["event"] == "output_dir_saved_unusual"]
     assert [e["reason"] for e in events] == ["network"]
     assert "nas" not in str(logs)
+
+
+@pytest.mark.parametrize("value", ["", "   ", "\t\n", 5, ["a"], {"x": 1}])
+def test_an_empty_or_non_string_saved_value_is_the_default_and_logged_once(value):
+    default = Path("/d")
+    with capture_logs() as logs:
+        for _ in range(3):
+            assert path_resolver.output_dir_value(value, default) == default
+    events = [e for e in logs if e["event"] == "output_dir_defaulted"]
+    expected = "not_string" if not isinstance(value, str) else "empty"
+    assert [e["reason"] for e in events] == [expected]
+    assert str(value) not in str(logs) or str(value).strip() == ""
+
+
+def test_a_missing_or_null_saved_value_is_the_default_without_a_note():
+    with capture_logs() as logs:
+        assert path_resolver.output_dir_value(None, Path("/d")) == Path("/d")
+    assert not [e for e in logs if e["event"].startswith("output_dir_")]
+
+
+def test_the_empty_and_the_non_string_notes_are_separate_once_only_entries():
+    with capture_logs() as logs:
+        path_resolver.output_dir_value("", Path("/d"))
+        path_resolver.output_dir_value(5, Path("/d"))
+        path_resolver.output_dir_value(" ", Path("/d"))
+        path_resolver.output_dir_value(7, Path("/d"))
+    assert [e["reason"] for e in logs if e["event"] == "output_dir_defaulted"] == [
+        "empty",
+        "not_string",
+    ]
 
 
 def test_a_settings_file_with_an_empty_output_dir_gives_the_default(tmp_path):

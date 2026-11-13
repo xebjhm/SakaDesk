@@ -2,6 +2,7 @@
 
 import json
 from unittest.mock import MagicMock, patch
+import pytest
 
 from fastapi.testclient import TestClient
 from structlog.testing import capture_logs
@@ -469,6 +470,28 @@ class TestHelperFunctions:
         with patch("backend.api.report.get_settings_path", return_value=settings_path):
             result = _get_sync_state()
         assert result["last_sync"] == "2025-01-01T00:00:00Z"
+
+    @pytest.mark.parametrize("saved", ["", "   ", 5])
+    def test_get_sync_state_reads_the_default_folder_for_an_unusable_value(
+        self, tmp_path, saved
+    ):
+        """Sync writes to the default folder for these values, so the report reads it."""
+        from backend.api.report import _get_sync_state
+
+        default = tmp_path / "default"
+        (default / "hinatazaka46").mkdir(parents=True)
+        (default / "hinatazaka46" / "sync_metadata.json").write_text(
+            json.dumps({"last_sync": "2025-02-02T00:00:00Z", "last_error": "boom"}),
+            encoding="utf-8",
+        )
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text(json.dumps({"output_dir": saved}), encoding="utf-8")
+        with (
+            patch("backend.api.report.get_settings_path", return_value=settings_path),
+            patch("backend.api.report.get_default_output_dir", return_value=default),
+        ):
+            result = _get_sync_state()
+        assert result == {"last_sync": "2025-02-02T00:00:00Z", "last_error": "boom"}
 
     def test_get_nickname_from_settings(self, tmp_path):
         """Reads nickname from settings file."""

@@ -1,3 +1,5 @@
+import pytest
+
 from backend.api.report import _redact_path, _redact_nickname
 
 
@@ -518,3 +520,28 @@ def test_an_unreadable_output_dir_logs_the_error_type_not_its_text(tmp_path):
     assert ev["error_type"] == "OSError"
     assert "error" not in ev
     assert secret not in str(ev)
+
+
+@pytest.mark.parametrize("saved", ["", "   ", 5])
+def test_redaction_covers_the_default_folder_for_an_unusable_value(tmp_path, saved):
+    """Sync logs the default folder when the saved value is empty; redact that."""
+    import json
+    from unittest.mock import patch
+
+    from backend.api import report
+    from backend.services import settings_store
+
+    settings_store._last_good_files.clear()
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"output_dir": saved}), encoding="utf-8")
+    default = tmp_path / "default-archive"
+    with (
+        patch("backend.api.report.get_settings_path", return_value=path),
+        patch("backend.api.report.get_default_output_dir", return_value=default),
+    ):
+        got = report._get_output_dir()
+    settings_store._last_good_files.clear()
+    assert got == str(default)
+    assert report._redact_output_dir(f"failed in {default}/x", got) == (
+        "failed in [REDACTED_DIR]/x"
+    )
