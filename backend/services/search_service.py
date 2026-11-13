@@ -8,7 +8,7 @@ import time
 import unicodedata
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
-from html import unescape
+from html import escape as _html_escape, unescape
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -972,11 +972,32 @@ class SearchService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _mark_spans(text: str, spans: Iterable[Tuple[int, int, str]]) -> str:
+        """``text`` HTML-escaped, with each ``(start, length, cls)`` span in ``<mark>``.
+
+        Snippets are rendered as HTML (``SearchResultItem``) and archived text is
+        remote content: a ``<`` in it must stay text, and only these marks may be
+        markup (security audit 2026-11-13). Spans apply in start order; an empty
+        span, one outside ``text`` or one overlapping an earlier span is skipped.
+        """
+        out: List[str] = []
+        pos = 0
+        for start, length, cls in sorted(spans, key=lambda s: s[0]):
+            if length <= 0 or start < pos or start + length > len(text):
+                continue
+            cls_attr = f' class="{cls}"' if cls else ""
+            out.append(_html_escape(text[pos:start], quote=False))
+            matched = _html_escape(text[start : start + length], quote=False)
+            out.append(f"<mark{cls_attr}>{matched}</mark>")
+            pos = start + length
+        out.append(_html_escape(text[pos:], quote=False))
+        return "".join(out)
+
+    @staticmethod
     def _build_snippet(
         content: str, idx: int, match_len: int, max_len: int, mark_cls: str = ""
     ) -> str:
-        """Build a snippet with context around a match at *idx*."""
-        cls_attr = f' class="{mark_cls}"' if mark_cls else ""
+        """Build an escaped snippet with context around a match at *idx* (``_mark_spans``)."""
         ctx = max_len - match_len
         start = max(0, idx - ctx // 2)
         end = min(len(content), idx + match_len + ctx // 2)
@@ -984,10 +1005,10 @@ class SearchService:
         prefix = "..." if start > 0 else ""
         suffix = "..." if end < len(content) else ""
 
-        before = content[start:idx]
-        matched = content[idx : idx + match_len]
-        after = content[idx + match_len : end]
-        return f"{prefix}{before}<mark{cls_attr}>{matched}</mark>{after}{suffix}"
+        snippet = SearchService._mark_spans(
+            content[start:end], [(idx - start, match_len, mark_cls)]
+        )
+        return f"{prefix}{snippet}{suffix}"
 
     def _make_multi_word_snippet(
         self,
@@ -1033,7 +1054,9 @@ class SearchService:
                         continue
 
         if not matches:
-            return content[:max_len] + ("..." if len(content) > max_len else "")
+            return _html_escape(content[:max_len], quote=False) + (
+                "..." if len(content) > max_len else ""
+            )
 
         matches.sort(key=lambda m: m[0])
 
@@ -1046,20 +1069,13 @@ class SearchService:
         prefix = "..." if start > 0 else ""
         suffix = "..." if end < len(content) else ""
 
-        # Build snippet with all highlights (apply in reverse to preserve positions)
-        snippet = content[start:end]
-        rel_matches = []
-        for idx, length, cls in matches:
-            rel_idx = idx - start
-            if 0 <= rel_idx and rel_idx + length <= len(snippet):
-                rel_matches.append((rel_idx, length, cls))
-
-        rel_matches.sort(key=lambda m: m[0], reverse=True)
-        for rel_idx, length, cls in rel_matches:
-            cls_attr = f' class="{cls}"' if cls else ""
-            matched = snippet[rel_idx : rel_idx + length]
-            snippet = f"{snippet[:rel_idx]}<mark{cls_attr}>{matched}</mark>{snippet[rel_idx + length :]}"
-
+        # Build the escaped snippet with every highlight that fits the window.
+        rel_matches = [
+            (idx - start, length, cls)
+            for idx, length, cls in matches
+            if 0 <= idx - start and idx - start + length <= end - start
+        ]
+        snippet = self._mark_spans(content[start:end], rel_matches)
         return f"{prefix}{snippet}{suffix}"
 
     def _map_reading_to_original(
@@ -1173,7 +1189,9 @@ class SearchService:
                     )
 
         # 4. No match found — show beginning of content
-        return content[:max_len] + ("..." if len(content) > max_len else "")
+        return _html_escape(content[:max_len], quote=False) + (
+            "..." if len(content) > max_len else ""
+        )
 
     # ------------------------------------------------------------------
     # Blog snippet generation
@@ -1208,8 +1226,7 @@ class SearchService:
                 max_len=max_len,
                 is_romaji=is_romaji,
             )
-            # _make_snippet returns highlighted text with <mark> if found;
-            # if it fell through to the "no match" fallback it won't have <mark>.
+            # _make_snippet escapes the text, so "<mark" appears only when it marked a match.
             if "<mark" in snippet:
                 return snippet
 
@@ -1219,19 +1236,13 @@ class SearchService:
             lower_query = query.lower()
             idx = lower_title.find(lower_query)
             if idx != -1:
-                matched = title[idx : idx + len(query)]
-                before = title[:idx]
-                after = title[idx + len(query) :]
-                return f"{before}<mark>{matched}</mark>{after}"
+                return self._mark_spans(title, [(idx, len(query), "")])
             # Normalized match in title
             if normalized_query and normalized_query != lower_query:
                 idx = lower_title.find(normalized_query)
                 if idx != -1:
-                    matched = title[idx : idx + len(normalized_query)]
-                    before = title[:idx]
-                    after = title[idx + len(normalized_query) :]
-                    cls = ' class="reading"' if is_romaji else ""
-                    return f"{before}<mark{cls}>{matched}</mark>{after}"
+                    cls = "reading" if is_romaji else ""
+                    return self._mark_spans(title, [(idx, len(normalized_query), cls)])
             # Reading match in title_normalized
             if title_normalized and normalized_query:
                 idx = title_normalized.find(normalized_query)
@@ -1241,15 +1252,16 @@ class SearchService:
                     )
                     if mapping:
                         orig_idx, orig_len = mapping
-                        matched = title[orig_idx : orig_idx + orig_len]
-                        before = title[:orig_idx]
-                        after = title[orig_idx + orig_len :]
-                        return f'{before}<mark class="reading">{matched}</mark>{after}'
+                        return self._mark_spans(
+                            title, [(orig_idx, orig_len, "reading")]
+                        )
 
         # 3. Fallback: first max_len chars of content
         if content:
-            return content[:max_len] + ("..." if len(content) > max_len else "")
-        return title or ""
+            return _html_escape(content[:max_len], quote=False) + (
+                "..." if len(content) > max_len else ""
+            )
+        return _html_escape(title or "", quote=False)
 
     # ------------------------------------------------------------------
     # Blog search (sync, runs in executor)

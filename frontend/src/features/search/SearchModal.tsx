@@ -17,6 +17,7 @@ import { getServiceDisplayName } from '../../data/services';
 import { SearchInput } from './components/SearchInput';
 import { SearchFilterBar } from './components/SearchFilterBar';
 import { SearchResultList } from './components/SearchResultList';
+import { snippetMarks } from './snippetHtml';
 import type { SearchResult, SearchResponse, FilterChip, DateRangePreset, ContentTypeFilter } from './types';
 
 export interface SearchModalHandle {
@@ -278,29 +279,17 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
 
       // Blog search result → navigate to BlogReader
       if (result.result_type === 'blog') {
-        // Extract actual matched text from snippet <mark> tags.
-        // For reading-based matches (e.g., query "かわいい" matching "可愛い"),
-        // the <mark> tags contain the original text which BlogReader needs
-        // to highlight and scroll to the correct position.
-        const matchedTerms: string[] = [];
-        const readingTerms: string[] = [];
-        if (result.snippet) {
-          const markRegex = /<mark([^>]*)>([^<]+)<\/mark>/g;
-          let m;
-          while ((m = markRegex.exec(result.snippet)) !== null) {
-            matchedTerms.push(m[2]);
-            if (m[1].includes('reading')) {
-              readingTerms.push(m[2]);
-            }
-          }
-        }
+        // The marks' texts, read from the parsed snippet (snippetHtml.ts). For reading-based
+        // matches (e.g., query "かわいい" matching "可愛い") the marks hold the original text,
+        // which BlogReader highlights and scrolls to.
+        const { matched, reading } = snippetMarks(result.snippet ?? '');
         setTargetBlog({
           blogId: result.blog_id,
           service: result.service,
           memberId: result.member_id,
           searchQuery: query,
-          matchedTerms: [...new Set(matchedTerms)],
-          readingTerms: [...new Set(readingTerms)],
+          matchedTerms: [...new Set(matched)],
+          readingTerms: [...new Set(reading)],
         });
         setActiveFeature(result.service, 'blogs');
         if (activeService !== result.service) {
