@@ -43,6 +43,9 @@ describe('InlineTranslation (UI health #10, #12)', () => {
         expect(container.innerHTML).not.toMatch(/#[0-9a-f]{3,6}\b|slate-|style="[^"]*color/i);
     });
 
+    // The message bubble's `bg-card` is the only surface that hosts the muted translation text.
+    // Moving it onto a tinted or sunken surface would fail `text-muted` here; extend this table
+    // (and re-check the contrast) when that happens.
     it('translation text and toggle reach 4.5:1 on the card and sheet surfaces', () => {
         for (const fg of [color.text.muted, color.text.secondary]) {
             for (const bg of [color.surface.card, color.surface.sheet]) {
