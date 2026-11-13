@@ -15,7 +15,7 @@ import { TranslateButton } from '../../../core/common/TranslateButton';
 import { InlineTranslation } from '../../../core/common/InlineTranslation';
 import { useAppStore } from '../../../store/appStore';
 import { useJustBecame } from '../../../hooks/useJustBecame';
-import { buildMediaUrl, MEDIA_API_BASE, thumbnailUrl, type ThumbWidth } from '../mediaUrl';
+import { buildMediaUrl, CHAT_MEDIA_MAX_HEIGHT, CHAT_MEDIA_MAX_WIDTH, MEDIA_API_BASE, thumbnailUrl, type ThumbWidth } from '../mediaUrl';
 import { groupTokens } from '../../../design/tokens';
 import { serviceGroupId } from '../../../config/serviceGroup';
 import { Avatar, SKELETON_PULSE, Spinner } from '../../../design/primitives';
@@ -88,8 +88,8 @@ const shelterKind = (type: string): ShelterKind =>
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g;
 
 // Media container constraints
-const MAX_MEDIA_WIDTH = 320;
-const MAX_MEDIA_HEIGHT = 500;
+const MAX_MEDIA_WIDTH = CHAT_MEDIA_MAX_WIDTH;
+const MAX_MEDIA_HEIGHT = CHAT_MEDIA_MAX_HEIGHT;
 const DEFAULT_MEDIA_HEIGHT = 200;
 
 interface MediaContainerProps {
@@ -270,6 +270,9 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
     // Transcription — only active for voice and non-muted video messages
     const isTranscribable = message.type === 'voice' || (message.type === 'video' && !message.is_muted);
+    const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
+    // Only a transcript that can show is asked for (UI health P-C3): transcription on, bubble revealed.
+    const lookupTranscript = isTranscribable && transcriptionEnabled && !isUnread;
     const {
         transcription,
         state: transcriptionState,
@@ -277,14 +280,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         retrigger: retriggerTranscription,
         error: transcriptionError,
     } = useTranscription(
-        isTranscribable ? service : undefined,
-        isTranscribable ? message.id : undefined,
-        isTranscribable ? memberPath : undefined,
+        lookupTranscript ? service : undefined,
+        lookupTranscript ? message.id : undefined,
+        lookupTranscript ? memberPath : undefined,
     );
 
     // Feature toggles
     const translationEnabled = useAppStore(s => s.translationEnabled);
-    const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
     const hasTranscriptFooter = transcriptionEnabled && isTranscribable && !isUnread;
 
     // Translation — active for messages with text content

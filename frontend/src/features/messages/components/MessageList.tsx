@@ -7,6 +7,8 @@ import { MessageBubble } from './MessageBubble';
 import { notifyVisibleMessages } from '../hooks/useMessageVisibility';
 import { cn } from '../../../utils/classnames';
 import { useTranslation } from '../../../i18n';
+import { useDevicePixelRatio } from '../../../hooks/useDevicePixelRatio';
+import { chatPictureThumbWidth } from '../mediaUrl';
 import { DatePill } from '../../../design/primitives';
 import { fromLocalDateStr } from '../../../utils/dateFormatters';
 import { rowKeyOf, type RowKey, type Timeline, type TimelineItem } from '../timeline/buildTimeline';
@@ -221,6 +223,8 @@ const MessageListComponent: React.FC<ChatListProps> = ({
         return fn;
     };
 
+    const dpr = useDevicePixelRatio();
+
     const renderItem = (item: TimelineItem) => {
         const rowKey = rowKeyOf(item);
         const rowClass = cn('isolate rounded-card px-4 pb-1', highlightedRowKey === rowKey && 'animate-landing');
@@ -242,6 +246,7 @@ const MessageListComponent: React.FC<ChatListProps> = ({
                     isFavorite={favoriteOverrides?.get(msg.id) ?? msg.is_favorite}
                     onAvatarClick={avatarClickFor(msg, onAvatarClick)}
                     onMediaClick={onMediaClick}
+                    mediaThumbWidth={msg.type === 'picture' ? chatPictureThumbWidth(msg.width, msg.height, msg.media_file, dpr) : undefined}
                     service={service}
                     memberPath={getMemberPath?.(msg)}
                     userNickname={userNickname}

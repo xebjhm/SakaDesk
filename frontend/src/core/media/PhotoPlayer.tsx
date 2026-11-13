@@ -140,6 +140,7 @@ export const PhotoPlayer: React.FC<PhotoPlayerProps> = ({
             src={shownSrc}
             alt={alt}
             loading={effectiveLoading}
+            decoding="async"
             onClick={onClick}
             onError={fail}
             onLoad={() => markLoaded(shownSrc)}
