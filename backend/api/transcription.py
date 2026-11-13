@@ -224,11 +224,15 @@ async def transcribe(request: TranscribeRequest):
 
     except HTTPException:
         raise  # Re-raise specific HTTP errors (incl. CodedHTTPException) as-is
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        # The message may hold a media path: a fixed answer, a code in the log.
+        logger.info("transcription_media_missing", message_id=request.message_id)
+        raise HTTPException(status_code=404, detail="Not found") from None
     except Exception as e:
         logger.error(
-            "Transcription failed", message_id=request.message_id, error=str(e)
+            "Transcription failed",
+            message_id=request.message_id,
+            error_type=type(e).__name__,
         )
         raise CodedHTTPException(500, "unknown", f"Transcription failed: {e}")
 
