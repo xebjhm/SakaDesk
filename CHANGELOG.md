@@ -66,6 +66,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   blog's pictures after the first one load as you scroll.
 - **SakaDesk starts with less to load.** Memories now loads the first time you
   open it, and the conversation list checks for changes less often.
+- **More things work without a mouse.** A "Skip to content" link appears when
+  you press Tab, the photo viewer has older and newer buttons, groups can be
+  moved up or down from their menu, and messages can be starred from the
+  keyboard.
 
 ### Fixed
 - **Bug reports hide your nickname for every group.** Previously the
@@ -91,6 +95,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Verify & fix media no longer says all media is present** when it skipped
   files whose saved location is outside a group's folder; it now says how many
   it skipped.
+- **Unread messages could not be revealed with the keyboard.** The unread cover
+  is now a button you can reach with Tab and open with Enter or Space, and
+  "Reveal all unread" is in the chat's ⋯ menu.
+- **The search box no longer traps Tab and Enter.** You can now reach the
+  filters and "Load more" with the keyboard, and the arrow keys no longer move
+  the selection while you pick a Japanese or Chinese candidate.
+- **Screen readers can now use the media players.** Play, mute, full screen and
+  the position and volume sliders are named, the controls stay visible while
+  you use them from the keyboard, and photos in a chat open with Enter.
+- **Keyboard focus stays inside an open dialog.** The app behind a dialog can no
+  longer be reached with Tab or a screen reader, and menus now open on their
+  first item with a visible focus ring. A settings error now waits until the
+  dialog closes instead of appearing behind it.
+- **Screen readers now hear short messages.** "Copied" and incoming calls are
+  announced, even while a photo viewer or another dialog is open.
+- **Setup no longer fails silently.** If saving the archive folder fails for
+  any reason, the setup screen now says so under the folder field.
+- **Voice transcripts are easier to read** and each line can be chosen with the
+  keyboard to jump to that moment.
 
 ### Security
 - **Other programs and web pages can no longer use SakaDesk's local
