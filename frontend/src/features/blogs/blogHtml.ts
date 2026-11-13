@@ -156,6 +156,14 @@ export function buildBlogFragment(
         RETURN_DOM_FRAGMENT: true,
     });
     resolveBlogUrls(fragment, baseUrl, appOrigin);
+    // Loading hints (UI health P-C2), set after sanitising and URL resolution so they never pass
+    // through the allow-list: the first picture (usually in view) loads at once, the rest when
+    // scrolled near, so pictures above a search highlight do not push it away while loading;
+    // every picture decodes off the main thread.
+    fragment.querySelectorAll('img').forEach((img, i) => {
+        img.setAttribute('decoding', 'async');
+        if (i > 0) img.setAttribute('loading', 'lazy');
+    });
     highlightTextNodes(fragment, terms.reading, READING_MARK_CLASS);
     highlightTextNodes(fragment, terms.exact, EXACT_MARK_CLASS);
     return fragment;

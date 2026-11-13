@@ -21,6 +21,7 @@ import { serviceGroupId } from '../../../config/serviceGroup';
 import { Avatar, SKELETON_PULSE, Spinner } from '../../../design/primitives';
 import { useDelayedLoading } from '../../../design/loading';
 import { openExternal } from '../../../utils/openExternal';
+import { dateTimeFormat } from '../../../utils/intlCache';
 
 interface MessageBubbleProps {
     message: Message;
@@ -63,7 +64,7 @@ interface MessageBubbleProps {
 function clockLabel(date: Date, timeZone: string | undefined): string {
     if (!timeZone) return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
     if (Number.isNaN(date.getTime())) return '';
-    return new Intl.DateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(date);
+    return dateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(date);
 }
 
 const SHELTER_ICONS = {

@@ -7,6 +7,7 @@ import { cn, formatMonthYear, formatShortDate } from '../../../utils/classnames'
 import { Modal, Card, Button, StatusBlock } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
 import { clientLog } from '../../../utils/clientLog';
+import { staggerDelay } from './stagger';
 
 interface MemberTimelineModalProps {
     isOpen: boolean;
@@ -121,7 +122,7 @@ export const MemberTimelineModal: React.FC<MemberTimelineModalProps> = ({
                             blogs={group.blogs}
                             defaultExpanded={expandedMonths.has(`${group.year}-${group.month}`)}
                             onSelectBlog={onSelectBlog}
-                            animationDelay={index * 50}
+                            animationDelay={staggerDelay(index)}
                         />
                     ))}
                 </div>

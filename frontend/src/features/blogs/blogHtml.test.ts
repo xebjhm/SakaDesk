@@ -85,7 +85,7 @@ describe('post URLs', () => {
 describe('buildBlogFragment', () => {
     it('drops scripts and event handlers', () => {
         const fragment = buildBlogFragment('<p onclick="x()">hi<script>x()</script><img src="a.jpg" onerror="x()"></p>', NONE, POST_BASE, APP);
-        expect(serialize(fragment)).toBe('<p>hi<img src="https://blog.example.com/m/1/a.jpg"></p>');
+        expect(serialize(fragment)).toBe('<p>hi<img src="https://blog.example.com/m/1/a.jpg" decoding="async"></p>');
     });
     it('marks terms only in text, never in attribute values', () => {
         const fragment = buildBlogFragment('<p>桜 <img alt="桜&quot;&gt;&lt;b&gt;" src="a.jpg"></p>', { exact: ['桜'], reading: [] });
@@ -128,5 +128,31 @@ describe('highlight terms', () => {
         p.textContent = '春';
         highlightTextNodes(p, [], EXACT_MARK_CLASS);
         expect(p.innerHTML).toBe('春');
+    });
+});
+
+describe('buildBlogFragment image loading hints (UI health P-C2)', () => {
+    it('loads the first picture at once and the rest lazily, all decoded off the main thread', () => {
+        const fragment = buildBlogFragment(
+            '<p><img src="https://example.com/a.jpg"><img src="https://example.com/b.jpg"><img src="https://example.com/c.jpg"></p>',
+            { exact: [], reading: [] },
+            'https://example.com',
+            'http://127.0.0.1:8000',
+        );
+        const imgs = Array.from(fragment.querySelectorAll('img'));
+        expect(imgs.map((i) => i.getAttribute('loading'))).toEqual([null, 'lazy', 'lazy']);
+        expect(imgs.every((i) => i.getAttribute('decoding') === 'async')).toBe(true);
+    });
+
+    it('still drops a hostile src, and hints only what the sanitizer kept', () => {
+        const fragment = buildBlogFragment(
+            '<p><img src="http://127.0.0.1:8000/api/messages"><img src="https://example.com/b.jpg" loading="eager"></p>',
+            { exact: [], reading: [] },
+            'https://example.com',
+            'http://127.0.0.1:8000',
+        );
+        const srcs = Array.from(fragment.querySelectorAll('img')).map((i) => i.getAttribute('src'));
+        expect(srcs.join('')).not.toContain('127.0.0.1');
+        expect(srcs).toContain('https://example.com/b.jpg');
     });
 });

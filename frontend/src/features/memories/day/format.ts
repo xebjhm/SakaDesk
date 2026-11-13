@@ -1,3 +1,5 @@
+import { dateTimeFormat } from '../../../utils/intlCache';
+
 /** `YYYY-MM-DD` as a calendar date (UTC midnight, so the day never shifts), or null. */
 function utcDay(day: string): Date | null {
     const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(day);
@@ -8,7 +10,7 @@ function utcDay(day: string): Date | null {
 export function formatDayHeading(day: string, lang: string): string {
     const date = utcDay(day);
     if (!date) return day;
-    return new Intl.DateTimeFormat(lang, {
+    return dateTimeFormat(lang, {
         year: 'numeric', month: 'long', day: 'numeric', weekday: 'short', timeZone: 'UTC',
     }).format(date);
 }
@@ -17,12 +19,12 @@ export function formatDayHeading(day: string, lang: string): string {
 export function formatMonthDayLabel(monthDay: string, lang: string): string {
     const date = utcDay(`2000-${monthDay}`);
     if (!date) return monthDay;
-    return new Intl.DateTimeFormat(lang, { month: 'long', day: 'numeric', timeZone: 'UTC' }).format(date);
+    return dateTimeFormat(lang, { month: 'long', day: 'numeric', timeZone: 'UTC' }).format(date);
 }
 
 /** A short day with its weekday in the UI language ("11/1(土)" / "Sat, 11/1"), or the raw string. */
 export function formatShortDayWeekday(day: string, lang: string): string {
     const date = utcDay(day);
     if (!date) return day;
-    return new Intl.DateTimeFormat(lang, { month: 'numeric', day: 'numeric', weekday: 'short', timeZone: 'UTC' }).format(date);
+    return dateTimeFormat(lang, { month: 'numeric', day: 'numeric', weekday: 'short', timeZone: 'UTC' }).format(date);
 }
