@@ -63,15 +63,37 @@ class _InMemoryKeyring(keyring.backend.KeyringBackend):
 
 
 @pytest.fixture(autouse=True)
-def _isolate_keyring():
-    """A fresh in-memory keyring per test; the real one is restored after.
+def _isolate_keyring(monkeypatch, tmp_path_factory):
+    """A fresh in-memory keyring per test; nothing can reach the real one.
 
-    Also drops the AI key-status cache (a module-level read-through cache over
-    the keyring) so no test sees another test's key. Imported lazily (see
-    below).
+    Three layers keep the developer's credentials out of reach:
+
+    1. ``keyring.set_keyring`` installs an in-memory backend, so ordinary
+       ``keyring.get_password`` / ``set_password`` calls never leave the process.
+    2. pysaka's ``KeyringStore.delete`` also builds
+       ``keyrings.alt.file.PlaintextKeyring()`` itself and deletes from it,
+       bypassing the backend above. ``PlaintextKeyring`` and
+       ``EncryptedKeyring`` in ``keyrings.alt.file`` are therefore replaced by
+       factories that return this test's in-memory store.
+    3. ``XDG_DATA_HOME``, ``XDG_CONFIG_HOME``, ``LOCALAPPDATA`` and
+       ``APPDATA`` point into a per-test temp folder, so even a file keyring
+       constructed some other way could only write there.
+
+    The previous backend is restored afterwards. Also drops the AI key-status
+    cache (a module-level read-through cache over the keyring) so no test sees
+    another test's key. Imported lazily (see below).
     """
+    import keyrings.alt.file
+
+    fake_home = tmp_path_factory.mktemp("keyring_home")
+    for var in ("XDG_DATA_HOME", "XDG_CONFIG_HOME", "LOCALAPPDATA", "APPDATA"):
+        monkeypatch.setenv(var, str(fake_home))
+
     original = keyring.get_keyring()
-    keyring.set_keyring(_InMemoryKeyring())
+    store = _InMemoryKeyring()
+    keyring.set_keyring(store)
+    monkeypatch.setattr(keyrings.alt.file, "PlaintextKeyring", lambda: store)
+    monkeypatch.setattr(keyrings.alt.file, "EncryptedKeyring", lambda: store)
     try:
         from backend.api import translation
 
