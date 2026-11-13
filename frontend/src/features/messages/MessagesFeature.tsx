@@ -52,6 +52,8 @@ import { LetterRow } from './components/LetterRow';
 import { letterAvatars, type Letter } from './letters';
 import { setFavorite } from '../../utils/favoriteApi';
 import { clientLog } from '../../utils/clientLog';
+import { EMPTY_FAVORITES, applyFavoriteOverrides, pruneFavoriteOverrides, setFavoriteIn, withFavorite } from './favoriteOverrides';
+import { storeRoom } from './roomCache';
 import { ChatSkeleton } from './components/ChatSkeleton';
 import { CHAT_LOAD_TIMEOUT_MS, deriveChatLoad, type ChatLoadFailure } from './chatLoadState';
 
@@ -130,8 +132,6 @@ export interface AppSettings {
     translation_target_language?: string | null;
 }
 
-const MAX_CACHED_CHATS = 20;
-
 
 interface MessageCacheEntry {
     messages: GroupMessage[];
@@ -181,8 +181,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         setMessagesForDir(dir);
     }, []);
 
-    // In-memory message cache: revisited chats render instantly from cache while a background refresh runs.
-    // LRU eviction keeps at most MAX_CACHED_CHATS entries to bound memory (~300KB × N).
+    // In-memory message cache: revisited chats render instantly from cache while a background refresh
+    // runs (conditional, see fetchMessages). Bounded by roomCache.ts: 20 rooms and 60 000 messages in
+    // all, least recently used first.
     const messagesCacheRef = useRef<Map<string, MessageCacheEntry>>(new Map());
 
     // Monotonic fetch counter: each fetchMessages call increments this. When the response
@@ -199,12 +200,14 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     }, []);
 
     const setCacheEntry = useCallback((key: string, entry: MessageCacheEntry) => {
+        storeRoom(messagesCacheRef.current, key, entry);
+    }, []);
+
+    // A saved ★ in the cached copy, so a later visit renders it (Map.set keeps the LRU position).
+    const patchCachedFavorite = useCallback((room: string, id: number, starred: boolean) => {
         const cache = messagesCacheRef.current;
-        cache.delete(key); // Move to end (Map preserves insertion order)
-        cache.set(key, entry);
-        if (cache.size > MAX_CACHED_CHATS) {
-            cache.delete(cache.keys().next().value!); // Evict oldest
-        }
+        const entry = cache.get(room);
+        if (entry) cache.set(room, { ...entry, messages: setFavoriteIn(entry.messages, id, starred) });
     }, []);
 
     // Message count tracking
@@ -212,6 +215,11 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
 
     // Unread state
     const [readState, setReadState] = useState<ReadState>({ lastReadId: 0, readCount: 0, revealedIds: [] });
+    // ★ changes of the open room since its last fresh load (favoriteOverrides.ts): the primary store
+    // for an unsaved ★; the bubble and the dialogs read it, never a copy.
+    const [favoriteOverrides, setFavoriteOverrides] = useState<ReadonlyMap<number, boolean>>(EMPTY_FAVORITES);
+    // The room the overrides belong to, read after an await (a failed save must not touch another room).
+    const overridesRoomRef = useRef<string | undefined>(undefined);
     // Bumped after each successful fetch; the incoming-call hook evaluates on it
     // (never on the cached render, which may be stale).
     const [freshFetch, setFreshFetch] = useState<{ seq: number; dir: string } | null>(null);
@@ -441,6 +449,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             if (!(await settle())) return; // stale
             setMembersMap(entry.membersMap);
             setMessages(entry.messages);
+            setFavoriteOverrides(prev => pruneFavoriteOverrides(prev, entry.messages));
             setTotalMessages(entry.totalMessages);
             setMaxMessageId(entry.maxMessageId);
             setMessagesService(activeService);
@@ -488,6 +497,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const [appliedDir, setAppliedDir] = useState<string | undefined>(selectedGroupDir);
     if (appliedDir !== selectedGroupDir) {
         setAppliedDir(selectedGroupDir);
+        setFavoriteOverrides(EMPTY_FAVORITES);
         if (selectedGroupDir) {
             setReadState(loadReadState(selectedGroupDir));
             const cached = messagesCacheRef.current.get(selectedGroupDir);
@@ -501,6 +511,10 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             }
         }
     }
+
+    useLayoutEffect(() => {
+        overridesRoomRef.current = selectedGroupDir;
+    }, [selectedGroupDir]);
 
     useEffect(() => {
         if (selectedGroupDir) {
@@ -592,6 +606,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         totalMessages: selectedGroupDir && messagesForDir === selectedGroupDir ? totalMessages : null,
         streakDays: streak.status === 'ready' ? streak.days : null,
     });
+    // What the ConversationMenu dialogs list (favourites, media): the stars as the user sees them.
+    const menuMessages = useMemo(() => applyFavoriteOverrides(displayMessages, favoriteOverrides), [displayMessages, favoriteOverrides]);
     const timeline = useMemo(() => buildTimeline(displayMessages, roomExtras.letters), [displayMessages, roomExtras.letters]);
     const letterAvatar = useMemo(
         () => letterAvatars(roomExtras.letters, roomExtras.profile?.avatars ?? []),
@@ -835,30 +851,31 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         if (idx !== -1) setMediaViewerIndex(idx);
     }, [mediaItems]);
 
-    // Toggle favorite status (optimistic update + API call)
+    // Toggle favorite status: optimistic in `favoriteOverrides` (no timeline rebuild), then the API.
     const handleToggleFavorite = useCallback(async (messageId: number, currentState: boolean) => {
         if (!activeService) {
             console.error('No active service for favorite toggle');
             return;
         }
-
-        // Optimistically update UI
-        setMessages(msgs => msgs.map(m =>
-            m.id === messageId ? { ...m, is_favorite: !currentState } : m
-        ));
+        const room = overridesRoomRef.current;
+        setFavoriteOverrides(prev => withFavorite(prev, messageId, !currentState));
 
         // setFavorite resolves false on an HTTP error, a network failure or a
         // 200 with {success: false} (SD-CONTRACT-01), so a favourite that was
         // never saved never keeps its optimistic star.
         const saved = await setFavorite(activeService, messageId, !currentState);
         if (!saved) {
-            // Revert on failure
-            setMessages(msgs => msgs.map(m =>
-                m.id === messageId ? { ...m, is_favorite: currentState } : m
-            ));
+            // Revert on failure (unless the user already left that room: its overrides are gone).
+            if (overridesRoomRef.current === room) {
+                setFavoriteOverrides(prev => withFavorite(prev, messageId, currentState));
+            }
+            // Breadcrumb: ids and a code only.
+            clientLog('chat_load', { outcome: 'favorite_save_failed', message_id: messageId });
             console.error('Failed to toggle favorite');
+            return;
         }
-    }, [activeService]);
+        if (room) patchCachedFavorite(room, messageId, !currentState);
+    }, [activeService, patchCachedFavorite]);
 
     return (
         <div className="flex h-full w-full overflow-hidden">
@@ -932,7 +949,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         <ConversationMenu
                             conversationPath={selectedGroupDir}
                             isGroupChat={isGroupChat}
-                            messages={displayMessages}
+                            messages={menuMessages}
                             messagesStatus={chatLoad.listStatus}
                             onRetryMessages={retryMessages}
                             memberName={selectedName || ''}
@@ -1042,6 +1059,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             scrollerRef={setChatScroller}
                             userNickname={userNickname}
                             onToggleFavorite={handleToggleFavorite}
+                            favoriteOverrides={favoriteOverrides}
                             onAvatarClick={() => setShowMemberProfile(true)}
                             onMediaClick={handleMediaClick}
                             service={messagesService}

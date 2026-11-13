@@ -135,3 +135,23 @@ describe('buildTimeline', () => {
         expect(first.kind === 'message' && first.message.content).toBe('你好こんにちは😀');
     });
 });
+
+describe('buildTimeline day keys', () => {
+    it('groups by the same local day as toLocalDateStr for every message', () => {
+        // Hourly for 40 days across a month end, plus an invalid timestamp at the end.
+        const start = Date.UTC(2024, 2, 20, 0, 0, 0);
+        const msgs = Array.from({ length: 40 * 24 }, (_, i) => ({
+            id: i + 1, timestamp: new Date(start + i * 3600_000).toISOString(),
+            type: 'text' as const, content: 'x', is_favorite: false, member_id: '1',
+        }));
+        msgs.push({ id: 999999, timestamp: 'not a date', type: 'text', content: 'x', is_favorite: false, member_id: '1' });
+        const tl = buildTimeline(msgs, []);
+        const expected: string[] = [];
+        for (const msg of msgs) {
+            const day = toLocalDateStr(msg.timestamp);
+            if (expected[expected.length - 1] !== day) expected.push(day);
+        }
+        expect(tl.groupDates).toEqual(expected);
+        expect(tl.groupCounts.reduce((a, b) => a + b, 0)).toBe(msgs.length);
+    });
+});

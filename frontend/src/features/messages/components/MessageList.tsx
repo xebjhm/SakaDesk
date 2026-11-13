@@ -47,6 +47,8 @@ interface ChatListProps {
     userNickname?: string;
     /** Callback to toggle favorite status of a message */
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
+    /** ★ changes of the open room not yet in `timeline` (MessagesFeature's favoriteOverrides). */
+    favoriteOverrides?: ReadonlyMap<number, boolean>;
     /** Callback when avatar is clicked (for member profile popup) */
     onAvatarClick?: () => void;
     /** Active service ID for media URL construction */
@@ -114,6 +116,7 @@ export const MessageList: React.FC<ChatListProps> = ({
     scrollerRef,
     userNickname,
     onToggleFavorite,
+    favoriteOverrides,
     onAvatarClick,
     service,
     targetMessageId,
@@ -215,6 +218,7 @@ export const MessageList: React.FC<ChatListProps> = ({
                     onReveal={() => onReveal(msg.id)}
                     onLongPress={onLongPress}
                     onToggleFavorite={onToggleFavorite}
+                    isFavorite={favoriteOverrides?.get(msg.id) ?? msg.is_favorite}
                     onAvatarClick={avatarClickFor(msg, onAvatarClick)}
                     onMediaClick={onMediaClick}
                     service={service}

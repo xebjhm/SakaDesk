@@ -31,6 +31,8 @@ interface MessageBubbleProps {
     onReveal?: () => void;
     onLongPress?: () => void;
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
+    /** The ★ as the user sees it (an unsaved or just-saved toggle); default `message.is_favorite`. */
+    isFavorite?: boolean;
     onAvatarClick?: () => void;
     onMediaClick?: (mediaUrl: string, type: string, timestamp?: string) => void;
     service?: string;
@@ -201,6 +203,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     onReveal,
     onLongPress,
     onToggleFavorite,
+    isFavorite,
     onAvatarClick,
     onMediaClick,
     service,
@@ -213,6 +216,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     mediaThumbWidth,
 }) => {
     const { t } = useTranslation();
+    const starred = isFavorite ?? message.is_favorite;
     const time = clockLabel(new Date(message.timestamp), timeZone);
     // Card radius; the first bubble of a run keeps a small top-left corner.
     const bubbleCorners = cn('rounded-card', runStart && 'rounded-tl-tail');
@@ -246,9 +250,9 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
     const handleToggleFavorite = useCallback(() => {
         if (onToggleFavorite) {
-            onToggleFavorite(message.id, message.is_favorite);
+            onToggleFavorite(message.id, starred);
         }
-    }, [onToggleFavorite, message.id, message.is_favorite]);
+    }, [onToggleFavorite, message.id, starred]);
 
     // Encode path segments for special chars (spaces, CJK characters)
     // media_file is relative to service dir (e.g., "messages/62 石森 璃花/.../voice/346492.m4a")
@@ -349,7 +353,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         );
     };
 
-    const favoriteStar = message.is_favorite && (
+    const favoriteStar = starred && (
         <Star className="h-3.5 w-3.5 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
     );
     const translateButton = translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
@@ -380,7 +384,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 <MessageContextMenu
                     x={contextMenu.x}
                     y={contextMenu.y}
-                    isFavorite={message.is_favorite}
+                    isFavorite={starred}
                     onToggleFavorite={handleToggleFavorite}
                     onClose={() => setContextMenu(null)}
                 />

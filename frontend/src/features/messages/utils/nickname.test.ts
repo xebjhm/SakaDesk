@@ -33,10 +33,12 @@ describe('replaceNickname', () => {
 
 describe('nickname coverage in the chat screen', () => {
     // 0.4.1: Favorites showed raw %%% because MessagesFeature handed the raw
-    // list to ConversationMenu. Children that show message text get displayMessages.
+    // list to ConversationMenu. Children that show message text get displayMessages (the menu gets it
+    // with the ★ overrides applied: menuMessages, derived from displayMessages).
     it('MessagesFeature never passes the raw message list to a child', () => {
         const src = readFileSync(path.resolve(process.cwd(), 'src/features/messages/MessagesFeature.tsx'), 'utf-8');
         expect(src).not.toMatch(/messages=\{messages\}/);
-        expect(src).toMatch(/messages=\{displayMessages\}/);
+        expect(src).toMatch(/messages=\{menuMessages\}/);
+        expect(src).toMatch(/applyFavoriteOverrides\(displayMessages,/);
     });
 });
