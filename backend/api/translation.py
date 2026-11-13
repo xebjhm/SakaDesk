@@ -99,10 +99,14 @@ class TranslateBatchRequest(BaseModel):
 _API_KEY_CREDENTIAL_GROUP = "llm_provider_api_key"
 
 
-def _save_api_key(api_key: str) -> None:
-    """Store translation API key in the OS credential manager (WCM/keyring)."""
+def _save_api_key(api_key: str, provider: Optional[str]) -> None:
+    """Store the API key and the provider it belongs to in the credential manager.
+
+    The ``provider`` is saved next to the key so the key is only ever used for
+    that provider (:func:`_load_api_key_for`).
+    """
     tm = get_token_manager()
-    tm.store.save(_API_KEY_CREDENTIAL_GROUP, {"api_key": api_key})
+    tm.store.save(_API_KEY_CREDENTIAL_GROUP, {"api_key": api_key, "provider": provider})
     _invalidate_key_status_cache()
 
 
@@ -113,6 +117,44 @@ def _load_api_key() -> Optional[str]:
     if data:
         return cast(Optional[str], data.get("api_key"))
     return None
+
+
+def _stored_key_provider(saved_provider: Optional[str]) -> Optional[str]:
+    """Provider the stored key belongs to, or ``None`` if no key is stored.
+
+    A key stored before the provider was recorded belongs to ``saved_provider``
+    (the provider currently saved in settings); that is recorded on this first
+    read. Without a saved provider an unrecorded key stays unbound and the
+    result is ``""``, which equals no real provider name.
+    """
+    tm = get_token_manager()
+    data = tm.store.load(_API_KEY_CREDENTIAL_GROUP)
+    if not data or not data.get("api_key"):
+        return None
+    recorded = data.get("provider")
+    if recorded:
+        return cast(str, recorded)
+    if not saved_provider:
+        logger.info("llm_key_unbound", reason="no_saved_provider")
+        return ""
+    tm.store.save(_API_KEY_CREDENTIAL_GROUP, {**data, "provider": saved_provider})
+    logger.info("llm_key_bound", provider=saved_provider)
+    return saved_provider
+
+
+def _load_api_key_for(
+    provider: Optional[str], saved_provider: Optional[str]
+) -> Optional[str]:
+    """The stored API key, only if it was saved for ``provider``.
+
+    ``saved_provider`` is the provider currently saved in settings; it adopts a
+    key stored before the provider was recorded (:func:`_stored_key_provider`).
+    A key saved for another provider is never returned, so it can never be sent
+    to the wrong host.
+    """
+    if not provider or _stored_key_provider(saved_provider) != provider:
+        return None
+    return _load_api_key()
 
 
 def _delete_api_key() -> None:
@@ -220,7 +262,7 @@ async def _get_provider_from_config() -> TranslationProvider:
     # missing one).
     if provider_name == "gemini" and (not model or model not in _valid_model_ids()):
         model = DEFAULT_GEMINI_MODEL
-    api_key = _load_api_key()
+    api_key = _load_api_key_for(provider_name, provider_name)
 
     if not provider_name:
         raise CodedHTTPException(
@@ -350,7 +392,10 @@ async def configure(request: ConfigureRequest):
     """
     provided = request.model_fields_set
 
+    seen: dict[str, Optional[str]] = {}
+
     def _update(config: dict) -> None:
+        seen["before"] = config.get("translation_provider")
         if "provider" in provided:
             config["translation_provider"] = request.provider
         if "model" in provided:
@@ -359,16 +404,22 @@ async def configure(request: ConfigureRequest):
             config["translation_target_language"] = request.target_language
         # Remove api_key from settings.json if it was stored there previously
         config.pop("translation_api_key", None)
+        seen["after"] = config.get("translation_provider")
 
     await update_config(_update)
 
-    # Store API key securely in keyring
+    # Store API key securely in keyring, bound to the provider it is for.
     if request.api_key:
-        _save_api_key(request.api_key)
-    elif "provider" in provided and request.provider is None:
-        # Explicitly clearing the provider — also clear the API key. (An omitted
-        # provider no longer triggers deletion.)
-        _delete_api_key()
+        _save_api_key(request.api_key, seen.get("after"))
+    elif "provider" in provided:
+        # A key is only valid for the provider it was saved for: clear it when
+        # the provider is cleared or changed without a new key. (An omitted
+        # provider leaves it alone.)
+        if request.provider is None or (
+            _stored_key_provider(seen.get("before")) not in (None, request.provider)
+        ):
+            _delete_api_key()
+            logger.info("llm_key_cleared", reason="provider_changed")
 
     logger.info("Translation provider configured", provider=request.provider)
     return {"ok": True}
@@ -404,7 +455,9 @@ async def test_connection(request: TestConnectionRequest):
     if not api_key:
         config = await load_config()
         if config.get("translation_provider") == request.provider:
-            api_key = _load_api_key()
+            api_key = _load_api_key_for(
+                request.provider, config.get("translation_provider")
+            )
         else:
             logger.info("translation_test_refused", reason="provider_mismatch")
     if not api_key:
@@ -565,7 +618,7 @@ async def translate(request: TranslateRequest):
         try:
             raw = await provider.translate(prompt, system_instruction)
         except Exception as e:
-            logger.error("Blog full translation failed", error=str(e))
+            logger.error("Blog full translation failed", error_type=type(e).__name__)
             raise _provider_http_error(e) from e
 
         # Parse the JSON map (paragraph index -> translation) and re-align to the
@@ -671,7 +724,7 @@ async def translate_batch(request: TranslateBatchRequest):
     try:
         raw_response = await provider.translate(prompt, system_instruction)
     except Exception as e:
-        logger.error("Batch translation failed", error=str(e))
+        logger.error("Batch translation failed", error_type=type(e).__name__)
         raise _provider_http_error(e) from e
 
     # Parse JSON from LLM response (strip markdown fences if present)

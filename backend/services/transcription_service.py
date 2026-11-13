@@ -20,7 +20,11 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from backend.services.ai_errors import EmptyOutputError, SafetyBlockedError
+from backend.services.ai_errors import (
+    EmptyOutputError,
+    ProviderError,
+    SafetyBlockedError,
+)
 from backend.services.service_utils import atomic_write_json
 
 logger = structlog.get_logger(__name__)
@@ -153,6 +157,10 @@ class GeminiTranscriptionProvider:
         )
         init_resp.raise_for_status()
         upload_url = init_resp.headers["X-Goog-Upload-URL"]
+        if not _is_gemini_url(upload_url):
+            # The audio and the Files API session must stay on the Gemini host.
+            logger.info("transcription.files_api_upload_refused", reason="foreign_url")
+            raise ProviderError("Upload URL refused.")
 
         # Step 2: Upload bytes
         upload_resp = await client.post(
@@ -167,7 +175,7 @@ class GeminiTranscriptionProvider:
         upload_resp.raise_for_status()
         file_info = upload_resp.json()
         file_uri = cast(str, file_info["file"]["uri"])
-        logger.info("Audio uploaded via Files API", uri=file_uri, size=len(audio_bytes))
+        logger.info("Audio uploaded via Files API", size=len(audio_bytes))
         return file_uri
 
     async def _delete_file(self, file_uri: str, client: httpx.AsyncClient) -> None:
@@ -312,7 +320,6 @@ class GeminiTranscriptionProvider:
                         "transcription.gemini_http_error",
                         model=self._model,
                         status=resp.status_code,
-                        body=resp.text[:300],
                     )
                 resp.raise_for_status()
                 data = resp.json()

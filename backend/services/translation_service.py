@@ -182,15 +182,14 @@ class GeminiProvider(TranslationProvider):
                 headers={"x-goog-api-key": self._api_key},
                 json=payload,
             )
-            # Log the failing status + a body snippet (never the api key/headers)
-            # so a bad model (404), rejected key (401/403), or quota (429) is
-            # diagnosable instead of silently raising.
+            # Log the failing status only (never the api key/headers or the
+            # response body) so a bad model (404), rejected key (401/403), or
+            # quota (429) is diagnosable instead of silently raising.
             if resp.status_code != 200:
                 logger.error(
                     "translation.gemini_http_error",
                     model=self._model,
                     status=resp.status_code,
-                    body=resp.text[:300],
                 )
             resp.raise_for_status()
             data = resp.json()
@@ -264,7 +263,6 @@ class OpenAIProvider(TranslationProvider):
                     "translation.openai_http_error",
                     model=self._model,
                     status=resp.status_code,
-                    body=resp.text[:300],
                 )
             resp.raise_for_status()
             data = resp.json()

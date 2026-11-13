@@ -189,7 +189,7 @@ class TestProviderModelRepair:
                 }
             ),
         ):
-            with patch("backend.api.translation._load_api_key", return_value="k"):
+            with patch("backend.api.translation._load_api_key_for", return_value="k"):
                 provider = await translation_api._get_provider_from_config()
 
         # The configured OpenAI model must be preserved, not overwritten with the
@@ -210,7 +210,7 @@ class TestProviderModelRepair:
                 }
             ),
         ):
-            with patch("backend.api.translation._load_api_key", return_value="k"):
+            with patch("backend.api.translation._load_api_key_for", return_value="k"):
                 provider = await translation_api._get_provider_from_config()
 
         assert isinstance(provider, translation_api.GeminiProvider)
@@ -328,7 +328,7 @@ class TestTestConnectionCodes:
                 "backend.api.translation.load_config",
                 new=AsyncMock(return_value={"translation_provider": "gemini"}),
             ),
-            patch("backend.api.translation._load_api_key", return_value="k"),
+            patch("backend.api.translation._load_api_key_for", return_value="k"),
             patch("backend.api.translation._instantiate_provider", return_value=fake),
         ):
             resp = client.post(
@@ -348,7 +348,7 @@ class TestTestConnectionCodes:
                 "backend.api.translation.load_config",
                 new=AsyncMock(return_value={"translation_provider": "gemini"}),
             ),
-            patch("backend.api.translation._load_api_key", return_value="k"),
+            patch("backend.api.translation._load_api_key_for", return_value="k"),
             patch("backend.api.translation._instantiate_provider", return_value=fake),
         ):
             resp = client.post(
@@ -420,7 +420,7 @@ def test_translation_routes_registered():
             },
         )
     assert response.status_code == 200
-    mock_save.assert_called_once_with("test-key")
+    mock_save.assert_called_once_with("test-key", "gemini")
 
 
 class TestConfigurePatchSemantics:

@@ -32,15 +32,16 @@ logger = structlog.get_logger(__name__)
 storage = TranscriptionStorage()
 
 
-def _get_gemini_api_key() -> str | None:
-    """Load LLM API key from keyring (shared with translation)."""
-    from pysaka.credentials import get_token_manager
+def _get_gemini_api_key(saved_provider: str | None) -> str | None:
+    """Load the LLM API key (shared with translation) only if it is a Gemini key.
 
-    tm = get_token_manager()
-    data = tm.store.load("llm_provider_api_key")
-    if data:
-        return cast(Optional[str], data.get("api_key"))
-    return None
+    ``saved_provider`` is the provider saved in settings; it adopts a key stored
+    before its provider was recorded. A key saved for another provider is never
+    returned.
+    """
+    from backend.api.translation import _load_api_key_for
+
+    return _load_api_key_for("gemini", saved_provider)
 
 
 class TranscribeRequest(BaseModel):
@@ -139,7 +140,11 @@ async def transcribe(request: TranscribeRequest):
         return {"ok": True, "transcription": _result_to_dict(result)}
 
     try:
-        api_key = _get_gemini_api_key()
+        from backend.services.settings_store import load_config
+
+        config = await load_config()
+        provider = config.get("translation_provider")
+        api_key = await asyncio.to_thread(_get_gemini_api_key, provider)
 
         # Extract member/group context from member_path
         # e.g., "日向坂46/messages/85 片山 紗希/137 片山 紗希"
@@ -160,12 +165,8 @@ async def transcribe(request: TranscribeRequest):
                 400, "no_api_key", "No API key configured for transcription."
             )
 
-        # Read provider and model from settings (shared with translation)
-        from backend.services.settings_store import load_config
+        # Provider and model come from settings (shared with translation)
         from backend.api.translation import DEFAULT_GEMINI_MODEL, _valid_model_ids
-
-        config = await load_config()
-        provider = config.get("translation_provider")
 
         if provider and provider != "gemini":
             raise CodedHTTPException(
@@ -185,7 +186,7 @@ async def transcribe(request: TranscribeRequest):
         except Exception as e:
             # Maps httpx transport errors AND typed provider errors (safety block,
             # empty output) to a coded HTTPException the UI can localize.
-            logger.warning("Transcription provider error", error=str(e))
+            logger.warning("Transcription provider error", error_type=type(e).__name__)
             raise ai_provider_error(e)
 
         duration = segments[-1].end if segments else 0.0
