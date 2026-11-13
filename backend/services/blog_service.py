@@ -20,8 +20,9 @@ import time
 from collections import OrderedDict
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, cast
+from urllib.parse import urlsplit
 
 import aiofiles
 import aiohttp
@@ -35,6 +36,7 @@ from pysaka.blog import (
     get_scraper,
 )
 
+from backend.services.passive_media import INLINE_MEDIA_TYPES
 from backend.services.path_resolver import get_output_dir
 from backend.services.service_utils import (
     get_service_display_name,
@@ -120,6 +122,38 @@ def _newer_stamp(a: Optional[str], b: Optional[str]) -> Optional[str]:
     if b is None:
         return a
     return a if a >= b else b
+
+
+_BLOG_IMAGE_EXTS = frozenset(
+    ext
+    for ext, media_type in INLINE_MEDIA_TYPES.items()
+    if media_type.startswith("image/")
+)
+"""Extensions a downloaded blog image keeps; any other URL suffix is stored as ``.jpg``.
+
+Derived from ``INLINE_MEDIA_TYPES`` (the picture entries), so the set is not duplicated."""
+
+
+def _blog_image_ext(img_url: str) -> str:
+    """The file extension of a downloaded blog image (security audit 2026-11-13).
+
+    Remote blog HTML chooses the image URL and the archive serves files by
+    extension, so only a picture extension (``_BLOG_IMAGE_EXTS``, compared in
+    lower case on the URL path) is kept. Anything else (``.html``, ``.svg``,
+    none) becomes ``.jpg`` and logs ``blog_image_ext_defaulted`` with
+    ``reason`` ``not_image`` or ``no_suffix`` (never the URL). The bytes are
+    stored unchanged: a body that is not a picture then simply fails to show.
+    """
+    try:
+        suffix = PurePosixPath(urlsplit(img_url).path).suffix.lower()
+    except ValueError:
+        suffix = ""
+    if suffix in _BLOG_IMAGE_EXTS:
+        return suffix
+    logger.info(
+        "blog_image_ext_defaulted", reason="not_image" if suffix else "no_suffix"
+    )
+    return ".jpg"
 
 
 def _merge_blog_index(current: dict, incoming: dict) -> dict:
@@ -1010,6 +1044,8 @@ class BlogService:
     ) -> list[dict]:
         """Download images concurrently with bounded concurrency.
 
+        Each file is named ``img_<n>`` plus ``_blog_image_ext`` of its URL.
+
         Args:
             semaphore: Limits total in-flight image downloads across all
                        blogs in a batch.  When provided, ``session.get``
@@ -1020,11 +1056,7 @@ class BlogService:
         results: list[dict] = [None] * len(image_urls)  # type: ignore
 
         async def download_image(idx: int, img_url: str):
-            ext = Path(img_url).suffix or ".jpg"
-            # Clean extension (remove query params)
-            if "?" in ext:
-                ext = ext.split("?")[0]
-            local_name = f"img_{idx}{ext}"
+            local_name = f"img_{idx}{_blog_image_ext(img_url)}"
             local_path = images_dir / local_name
 
             async def _fetch_image():

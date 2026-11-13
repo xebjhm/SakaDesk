@@ -9,6 +9,7 @@ import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from structlog.testing import capture_logs
 
 from backend.services.blog_service import (
     BLOG_SUPPORTED_GROUPS,
@@ -819,6 +820,51 @@ class TestDownloadImages:
         }
         rewritten = svc._rewrite_local_images(content, tmp_path, "hinatazaka46", "b1")
         assert rewritten["images"][0]["local_path"] is None
+
+    @staticmethod
+    def _ok_session():
+        mock_resp = AsyncMock()
+        mock_resp.status = 200
+        mock_resp.read = AsyncMock(return_value=b"bytes")
+        mock_resp.__aenter__ = AsyncMock(return_value=mock_resp)
+        mock_resp.__aexit__ = AsyncMock(return_value=False)
+        mock_session = MagicMock()
+        mock_session.get = MagicMock(return_value=mock_resp)
+        return mock_session
+
+    @pytest.mark.asyncio
+    @pytest.mark.parametrize(
+        "url,reason",
+        [
+            ("https://cdn.example.com/evil.html", "not_image"),
+            ("https://cdn.example.com/pic.svg", "not_image"),
+            ("https://cdn.example.com/a.xhtml?x=1", "not_image"),
+            ("https://cdn.example.com/files/photo", "no_suffix"),
+        ],
+    )
+    async def test_non_picture_suffix_is_stored_as_jpg(
+        self, svc, tmp_path, url, reason
+    ):
+        """Audit 2026-11-13: remote blog HTML must not choose an active extension."""
+        images_dir = tmp_path / "images"
+        with capture_logs() as logs:
+            results = await svc._download_images(self._ok_session(), [url], images_dir)
+        assert results[0]["local_path"] == "./images/img_0.jpg"
+        assert (images_dir / "img_0.jpg").exists()
+        assert {
+            "event": "blog_image_ext_defaulted",
+            "reason": reason,
+            "log_level": "info",
+        } in logs
+        assert url not in repr(logs)
+
+    @pytest.mark.asyncio
+    async def test_picture_suffix_is_kept_in_lower_case(self, svc, tmp_path):
+        images_dir = tmp_path / "images"
+        results = await svc._download_images(
+            self._ok_session(), ["https://cdn.example.com/A.PNG?w=800"], images_dir
+        )
+        assert results[0]["local_path"] == "./images/img_0.png"
 
 
 # ---------------------------------------------------------------------------
