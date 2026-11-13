@@ -10,6 +10,7 @@ import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
 import { clientLog } from '../../../utils/clientLog';
+import { shallowEqualRecord } from '../../../utils/shallowEqualRecord';
 import { pollJson, pollLogKey, SIDEBAR_POLL_TIMEOUT_MS, useUnmountSignal } from '../../../utils/pollJson';
 import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
 import { resizedAvatarUrl } from '../mediaUrl';
@@ -44,7 +45,7 @@ interface SidebarProps {
     isSyncing?: boolean;
     readStateVersion?: number; // Increments when read state changes, triggers sidebar refresh
     onSyncNow?: () => void; // Manual sync trigger
-    /** Kept mounted behind another feature: no polling until shown again. */
+    /** Kept mounted behind another feature: no polling and no sync-end load until shown again (it then loads at once). */
     paused?: boolean;
 }
 
@@ -131,6 +132,8 @@ const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGr
     // Last logged sidebar_load failure (service:status:outcome); cleared on success.
     const lastFailureLog = useRef<string | null>(null);
     groupsRef.current = groups;
+    // An unchanged answer is logged once per streak (sidebar_load outcome=unchanged), not every tick.
+    const unchangedLogged = useRef(false);
     const serviceKey = (base: string, service: string | undefined) => `${base}_${service ?? 'all'}`;
 
     /**
@@ -158,10 +161,20 @@ const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGr
             const data = result.data;
             // Support both old format (array) and new format (object with groups + last_sync)
             const groupList = Array.isArray(data) ? data : data.groups;
-            setGroups(groupList);
+            // An unchanged list sets no state: no re-sort and no re-render on each tick (UI health P-F1).
+            if (JSON.stringify(groupList) !== JSON.stringify(groupsRef.current)) {
+                setGroups(groupList);
+                unchangedLogged.current = false;
+            } else if (!unchangedLogged.current) {
+                unchangedLogged.current = true;
+                clientLog('sidebar_load', { ...(service ? { service } : {}), outcome: 'unchanged' });
+            }
             setLoadError(false);
             lastFailureLog.current = null;
-            if (!Array.isArray(data) && data.last_sync) setLastSyncMap(data.last_sync);
+            if (!Array.isArray(data) && data.last_sync) {
+                const lastSync = data.last_sync;
+                setLastSyncMap(prev => (shallowEqualRecord(prev, lastSync) ? prev : lastSync));
+            }
             checkUnread(groupList, replace);
         } else if (result.status === 'rejected' || result.status === 'failed') {
             // pollJson logged the failure itself; this records what the user sees.
@@ -254,7 +267,7 @@ const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGr
                 backendCounts,
             );
 
-            setUnreadCounts(counts);
+            setUnreadCounts(prev => (shallowEqualRecord(prev, counts) ? prev : counts));
         } catch (err) {
             console.error('Failed to fetch unread counts:', err);
             // Keep the last known counts: they were correct one poll ago, while

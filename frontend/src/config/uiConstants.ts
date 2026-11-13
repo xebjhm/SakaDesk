@@ -12,7 +12,7 @@ export const UI_CONSTANTS = {
     debounceMs: 300,
   },
   polling: {
-    sidebarMs: 2000,
+    sidebarMs: 10000, // Content changes only with a sync; a sync end, a reveal and a room switch refresh at once.
     syncCheckMs: 5000,
   },
   contextMenu: {
