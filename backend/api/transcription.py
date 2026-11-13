@@ -22,7 +22,7 @@ from backend.services.transcription_service import (
     GeminiTranscriptionProvider,
 )
 from pysaka.media import get_audio_metadata
-from backend.api.content import get_output_dir, validate_path_within_dir
+from backend.api.content import get_output_dir, resolve_service_path_or_http
 from backend.api.errors import CodedHTTPException, ai_provider_error
 from backend.services.service_utils import validate_service, get_service_display_name
 
@@ -64,7 +64,7 @@ async def transcribe(request: TranscribeRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     output_dir = get_output_dir()
-    member_dir = validate_path_within_dir(output_dir, request.member_path)
+    member_dir = resolve_service_path_or_http(output_dir, request.member_path)
 
     if not member_dir.is_dir():
         raise HTTPException(status_code=404, detail="Member directory not found")
@@ -100,12 +100,14 @@ async def transcribe(request: TranscribeRequest):
         raise HTTPException(status_code=400, detail="Message has no media file")
 
     # Resolve media path — media_file is relative to the service directory
-    # (e.g., "messages/34 金村 美玖/.../voice/123.m4a") but validate_path_within_dir
-    # expects paths relative to output_dir. Extract the service dir name from
-    # member_path (e.g., "日向坂46/messages/34 金村 美玖/58 金村 美玖").
+    # (e.g., "messages/34 金村 美玖/.../voice/123.m4a") but the resolver expects
+    # paths that start with the service folder. Use the first segment of
+    # member_path (e.g., "日向坂46/messages/34 金村 美玖/58 金村 美玖"), which
+    # the member_dir check above already proved is a service folder. The file
+    # must stay inside that folder before it is sent to the AI provider.
     service_dir_name = request.member_path.split("/")[0]
     media_path_from_output = f"{service_dir_name}/{media_file}"
-    media_path = validate_path_within_dir(output_dir, media_path_from_output)
+    media_path = resolve_service_path_or_http(output_dir, media_path_from_output)
     if not media_path.exists():
         raise HTTPException(status_code=404, detail="Media file not found on disk")
 
@@ -258,7 +260,7 @@ async def get_cached(service: str, message_id: int, member_path: Optional[str] =
 
     # Fast path: caller knows the member directory — load directly, no scan.
     if member_path:
-        member_dir = validate_path_within_dir(output_dir, member_path)
+        member_dir = resolve_service_path_or_http(output_dir, member_path)
         if member_dir.is_dir():
             result = await asyncio.to_thread(storage.load, member_dir, message_id)
             if result:

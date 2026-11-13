@@ -14,7 +14,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
 from backend.services.nickname import PLACEHOLDER_RE as _PLACEHOLDER_RE
-from backend.api.content import get_output_dir, validate_path_within_dir
+from backend.api.content import get_output_dir, resolve_service_path_or_http
 from backend.api.errors import CodedHTTPException, ai_provider_error
 from backend.services.settings_store import load_config, update_config
 from backend.services.service_utils import validate_service, get_service_display_name
@@ -437,7 +437,7 @@ async def translate(request: TranslateRequest):
             )
 
         output_dir = get_output_dir()
-        member_dir = validate_path_within_dir(output_dir, request.member_path)
+        member_dir = resolve_service_path_or_http(output_dir, request.member_path)
 
         if not member_dir.is_dir():
             raise HTTPException(status_code=404, detail="Member directory not found")
@@ -600,7 +600,7 @@ async def translate_batch(request: TranslateBatchRequest):
     provider = await _get_provider_from_config()
 
     output_dir = get_output_dir()
-    member_dir = validate_path_within_dir(output_dir, request.member_path)
+    member_dir = resolve_service_path_or_http(output_dir, request.member_path)
 
     if not member_dir.is_dir():
         raise HTTPException(status_code=404, detail="Member directory not found")

@@ -255,10 +255,10 @@ class TestMessagesByPath:
             {"id": i, "timestamp": f"2025-01-15T{10 + i}:00:00Z", "type": "text"}
             for i in range(1, 6)
         ]
-        member_dir = tmp_path / "svc" / "messages" / "34 Group" / "58 Member"
+        member_dir = tmp_path / "日向坂46" / "messages" / "34 Group" / "58 Member"
         _make_messages_json(member_dir, msgs)
 
-        rel_path = "svc/messages/34 Group/58 Member"
+        rel_path = "日向坂46/messages/34 Group/58 Member"
         with patch("backend.api.content.is_test_mode", return_value=False):
             with patch("backend.api.content.get_output_dir", return_value=tmp_path):
                 response = client.get(
@@ -274,10 +274,10 @@ class TestMessagesByPath:
         msgs = [
             {"id": i, "timestamp": f"2025-01-15T{10 + i}:00:00Z"} for i in range(1, 4)
         ]
-        member_dir = tmp_path / "svc" / "messages" / "34 G" / "58 M"
+        member_dir = tmp_path / "日向坂46" / "messages" / "34 G" / "58 M"
         _make_messages_json(member_dir, msgs)
 
-        rel_path = "svc/messages/34 G/58 M"
+        rel_path = "日向坂46/messages/34 G/58 M"
         with patch("backend.api.content.is_test_mode", return_value=False):
             with patch("backend.api.content.get_output_dir", return_value=tmp_path):
                 response = client.get(
@@ -289,14 +289,14 @@ class TestMessagesByPath:
 
     def test_internal_error_returns_500(self, tmp_path):
         """If messages.json exists but is corrupt, expect 500."""
-        member_dir = tmp_path / "svc" / "messages" / "34 G" / "58 M"
+        member_dir = tmp_path / "日向坂46" / "messages" / "34 G" / "58 M"
         member_dir.mkdir(parents=True)
         (member_dir / "messages.json").write_text("NOT JSON", encoding="utf-8")
 
         with patch("backend.api.content.is_test_mode", return_value=False):
             with patch("backend.api.content.get_output_dir", return_value=tmp_path):
                 response = client.get(
-                    "/api/content/messages_by_path?path=svc/messages/34 G/58 M"
+                    "/api/content/messages_by_path?path=日向坂46/messages/34 G/58 M"
                 )
         assert response.status_code == 500
 
@@ -315,7 +315,7 @@ class TestGroupMessages:
         assert response.status_code in (403, 404)
 
     def test_merges_messages_from_multiple_members(self, tmp_path):
-        group_dir = tmp_path / "svc" / "messages" / "43 GroupChat"
+        group_dir = tmp_path / "日向坂46" / "messages" / "43 GroupChat"
         _make_messages_json(
             group_dir / "58 MemberA",
             [{"id": 1, "timestamp": "2025-01-15T10:00:00Z"}],
@@ -330,7 +330,7 @@ class TestGroupMessages:
         with patch("backend.api.content.is_test_mode", return_value=False):
             with patch("backend.api.content.get_output_dir", return_value=tmp_path):
                 response = client.get(
-                    "/api/content/group_messages/svc/messages/43 GroupChat"
+                    "/api/content/group_messages/日向坂46/messages/43 GroupChat"
                 )
 
         assert response.status_code == 200
@@ -341,7 +341,7 @@ class TestGroupMessages:
         assert data["messages"][0]["id"] == 1
 
     def test_unread_count_with_last_read_id(self, tmp_path):
-        group_dir = tmp_path / "svc" / "messages" / "43 G"
+        group_dir = tmp_path / "日向坂46" / "messages" / "43 G"
         _make_messages_json(
             group_dir / "58 M",
             [
@@ -353,7 +353,7 @@ class TestGroupMessages:
         with patch("backend.api.content.is_test_mode", return_value=False):
             with patch("backend.api.content.get_output_dir", return_value=tmp_path):
                 response = client.get(
-                    "/api/content/group_messages/svc/messages/43 G?last_read_id=2"
+                    "/api/content/group_messages/日向坂46/messages/43 G?last_read_id=2"
                 )
 
         data = response.json()
@@ -377,56 +377,56 @@ class TestUnreadCounts:
 
     def test_individual_member_unread(self, tmp_path):
         msgs = [{"id": i, "timestamp": f"2025-01-{i}T00:00:00Z"} for i in range(1, 5)]
-        member_dir = tmp_path / "svc" / "58 M"
+        member_dir = tmp_path / "日向坂46" / "58 M"
         _make_messages_json(member_dir, msgs)
 
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):
             response = client.post(
                 "/api/content/unread_counts",
-                json={"svc/58 M": {"lastReadId": 2, "revealedIds": []}},
+                json={"日向坂46/58 M": {"lastReadId": 2, "revealedIds": []}},
             )
         data = response.json()
-        assert data["svc/58 M"] == 2  # ids 3, 4 unread
+        assert data["日向坂46/58 M"] == 2  # ids 3, 4 unread
 
     def test_legacy_format_int_state(self, tmp_path):
         msgs = [{"id": i} for i in range(1, 4)]
-        member_dir = tmp_path / "svc" / "58 M"
+        member_dir = tmp_path / "日向坂46" / "58 M"
         _make_messages_json(member_dir, msgs)
 
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):
             response = client.post(
                 "/api/content/unread_counts",
-                json={"svc/58 M": 1},
+                json={"日向坂46/58 M": 1},
             )
         data = response.json()
-        assert data["svc/58 M"] == 2  # ids 2, 3
+        assert data["日向坂46/58 M"] == 2  # ids 2, 3
 
     def test_revealed_ids_reduce_unread(self, tmp_path):
         msgs = [{"id": i} for i in range(1, 5)]
-        member_dir = tmp_path / "svc" / "58 M"
+        member_dir = tmp_path / "日向坂46" / "58 M"
         _make_messages_json(member_dir, msgs)
 
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):
             response = client.post(
                 "/api/content/unread_counts",
-                json={"svc/58 M": {"lastReadId": 1, "revealedIds": [3]}},
+                json={"日向坂46/58 M": {"lastReadId": 1, "revealedIds": [3]}},
             )
         data = response.json()
         # ids 2,3,4 > lastReadId, but 3 is revealed => 2 unread (ids 2, 4)
-        assert data["svc/58 M"] == 2
+        assert data["日向坂46/58 M"] == 2
 
     def test_group_chat_path_unread(self, tmp_path):
-        group_dir = tmp_path / "group"
+        group_dir = tmp_path / "日向坂46" / "group"
         _make_messages_json(group_dir / "58 A", [{"id": 1}, {"id": 5}])
         _make_messages_json(group_dir / "59 B", [{"id": 2}, {"id": 6}])
 
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):
             response = client.post(
                 "/api/content/unread_counts",
-                json={"group": {"lastReadId": 3, "revealedIds": []}},
+                json={"日向坂46/group": {"lastReadId": 3, "revealedIds": []}},
             )
         data = response.json()
-        assert data["group"] == 2  # ids 5, 6
+        assert data["日向坂46/group"] == 2  # ids 5, 6
 
     def test_path_traversal_returns_zero(self, tmp_path):
         with patch("backend.api.content.get_output_dir", return_value=tmp_path):

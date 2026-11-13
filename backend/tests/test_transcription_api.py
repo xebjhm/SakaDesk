@@ -286,7 +286,7 @@ def test_get_cached_returns_404_when_not_found():
 def test_get_cached_with_member_path_loads_directly(tmp_path, monkeypatch):
     """member_path fast path loads the transcript without scanning member dirs."""
     monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
-    member_path = "hinatazaka46/messages/1 group/2 member"
+    member_path = "日向坂46/messages/1 group/2 member"
     _save_transcript(tmp_path / member_path, 4242)
 
     response = client.get(
@@ -303,7 +303,7 @@ def test_get_cached_with_member_path_loads_directly(tmp_path, monkeypatch):
 def test_get_cached_with_member_path_returns_404_when_absent(tmp_path, monkeypatch):
     """member_path fast path returns 404 (no fallback scan) when not cached there."""
     monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
-    member_path = "hinatazaka46/messages/1 group/2 member"
+    member_path = "日向坂46/messages/1 group/2 member"
     (tmp_path / member_path).mkdir(parents=True)
 
     response = client.get(

@@ -62,8 +62,9 @@ from backend.services import (
 from backend.services.archive_urls import (
     ArchiveReadError,
     archive_file_ok,
+    ServicePathError,
     is_plain_relative,
-    media_disk_path,
+    resolve_in_service_folder,
 )
 from backend.services.media_range import MediaFileResponse
 from backend.services.passive_media import passive_media
@@ -553,7 +554,7 @@ async def get_messages_by_path(
         return get_test_messages_response(path, last_read_id)
 
     output_dir = get_output_dir()
-    safe_path = validate_path_within_dir(output_dir, path)
+    safe_path = resolve_service_path_or_http(output_dir, path)
     logger.debug("Loading messages", path=path, limit=limit, last_read_id=last_read_id)
 
     msg_file = safe_path / "messages.json"
@@ -715,7 +716,7 @@ async def get_group_messages(
     ``If-None-Match`` gets ``304`` without the files being parsed.
     """
     output_dir = get_output_dir()
-    safe_path = validate_path_within_dir(output_dir, group_path)
+    safe_path = resolve_service_path_or_http(output_dir, group_path)
 
     if not safe_path.is_dir():
         raise HTTPException(status_code=404, detail="Group not found")
@@ -746,7 +747,7 @@ async def get_profile_images(path: str):
     """Archived list icon / chat icon / call-screen images of one member, newest
     first per kind; falls back to the remote URLs before pysaka archived them."""
     output_dir = get_output_dir()
-    member_dir = validate_path_within_dir(output_dir, path)
+    member_dir = resolve_service_path_or_http(output_dir, path)
     msg_file = member_dir / "messages.json"
     if not msg_file.exists():
         raise HTTPException(status_code=404, detail="No messages found")
@@ -822,7 +823,7 @@ def _compute_unread_counts(
                 last_read_id = int(state) if state else 0
                 revealed_ids = set()
 
-            safe_path = validate_path_within_dir(output_dir, path)
+            safe_path = resolve_service_path_or_http(output_dir, path)
 
             # Check if it's a group chat (has subdirectories with messages.json)
             # or individual member (has messages.json directly)
@@ -861,46 +862,48 @@ def _compute_unread_counts(
     return result
 
 
+def resolve_service_path_or_http(output_dir: Path, client_path: str) -> Path:
+    """Resolve a client path inside a service folder, or raise the HTTP error.
+
+    Wraps ``archive_urls.resolve_in_service_folder``: the first segment must be a
+    service id (any case) or its display-name folder and the resolved path
+    (symlinks followed) must lie strictly inside that service's folder in
+    ``output_dir``. Raises 400 for control characters; 403 for a path that is
+    not ``archive_urls.is_plain_relative`` (``path_rooted_blocked``), that
+    leaves the service folder (``path_traversal_blocked``,
+    ``reason=outside_service_folder``) or cannot be resolved
+    (``path_traversal_blocked``, ``reason=unresolvable``); 404 when there is no
+    known service folder (``media_request_rejected``,
+    ``reason=no_service_folder``). Logs reason codes only. Blocking (it
+    resolves). Whether the file exists is not checked.
+    """
+    try:
+        return resolve_in_service_folder(output_dir, client_path)
+    except ServicePathError as e:
+        if e.reason == "not_plain":
+            logger.warning("path_rooted_blocked")
+        elif e.reason == "no_service_folder":
+            logger.info("media_request_rejected", reason=e.reason)
+        elif e.reason != "invalid_chars":
+            logger.warning("path_traversal_blocked", reason=e.reason)
+        detail = {
+            400: "Invalid path characters",
+            403: "Access denied",
+            404: "File not found",
+        }[e.status_code]
+        raise HTTPException(status_code=e.status_code, detail=detail) from None
+
+
 def _resolve_media_path(file_path: str) -> Path:
     """Resolve a media-route path ``<service>/<rest>`` to its archive file.
 
-    ``<service>`` is a service id (any case; mapped by
-    ``archive_urls.media_disk_path``) or its display-name folder
-    (``日向坂46``). The file must resolve (symlinks followed) inside the
-    output dir and strictly inside that service's folder (security audit
-    2026-11-13: the output dir is a folder the user picked, so only
-    SakaDesk's own service folders in it are served). Raises 400 for control
-    characters; 403 for a path that is not ``archive_urls.is_plain_relative``
-    (checked before anything is resolved) or that leaves the service folder
-    (``path_traversal_blocked``, ``reason=outside_service_folder``); 404 when
-    there is no known service folder (``media_request_rejected``,
-    ``reason=no_service_folder``) or the file does not exist.
+    ``<service>`` is a service id (any case) or its display-name folder
+    (``日向坂46``). The path goes through :func:`resolve_service_path_or_http`
+    (security audit 2026-11-13: the output dir is a folder the user picked, so
+    only SakaDesk's own service folders in it are served), which raises 400,
+    403 or 404 as described there; a missing file is a 404 too.
     """
-    if any(c in file_path for c in ("\x00", "\n", "\r")):
-        raise HTTPException(status_code=400, detail="Invalid path characters")
-    if not is_plain_relative(file_path):
-        logger.warning("path_rooted_blocked")
-        raise HTTPException(status_code=403, detail="Access denied")
-    # The translation is shared with archive_urls.media_route_path (POST /api/media/meta).
-    disk_path, service = media_disk_path(file_path)
-    if service is None:
-        # The display-name form (``日向坂46/...``) names the same folder.
-        first, _, tail = file_path.partition("/")
-        service = get_service_identifier(first) if tail else None
-    display_name, _, rest = disk_path.partition("/")
-    if service is None or not rest:
-        logger.info("media_request_rejected", reason="no_service_folder")
-        raise HTTPException(status_code=404, detail="File not found")
-    output_dir = get_output_dir()
-    safe_path = validate_path_within_dir(output_dir, disk_path)
-    try:
-        folder = (output_dir / display_name).resolve()
-        inside = safe_path.is_relative_to(folder) and safe_path != folder
-    except (OSError, RuntimeError):
-        inside = False
-    if not inside:
-        logger.warning("path_traversal_blocked", reason="outside_service_folder")
-        raise HTTPException(status_code=403, detail="Access denied")
+    safe_path = resolve_service_path_or_http(get_output_dir(), file_path)
     if not safe_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     return safe_path
@@ -910,10 +913,13 @@ def _resolve_media_path(file_path: str) -> Path:
 async def get_media(file_path: str):
     """Serve media files.
 
-    Path format: {service_id}/{rest} where service_id is romaji (e.g., 'sakurazaka46')
-    and rest is the relative path from the service directory (e.g., 'messages/.../voice/123.m4a').
+    Path format: {service}/{rest} where service is the romaji service id (any
+    case, e.g., 'sakurazaka46') or the display-name folder (e.g., '櫻坂46') and
+    rest is the relative path from the service directory (e.g.,
+    'messages/.../voice/123.m4a').
 
-    The service_id is translated to the display name (e.g., '櫻坂46') for disk lookup.
+    The service id is translated to the display name for disk lookup; the file
+    must lie inside that service folder (:func:`resolve_service_path_or_http`).
 
     Range requests get bounded ``206`` bodies (at most
     ``media_range.MEDIA_RANGE_CAP`` bytes) and reading stops when the client
@@ -970,8 +976,8 @@ async def get_thumb(
     """Serve an archived picture (or a video's poster) downscaled to fit ``w`` px (WebP).
 
     ``file_path`` is the same as for ``/media/{file_path}`` and is validated
-    the same way (403 outside the output dir), then must be a regular file
-    inside it (``archive_file_ok``). ``w`` must be one of
+    the same way (403 outside the service folder), then must be a regular
+    file inside the output dir (``archive_file_ok``). ``w`` must be one of
     ``photo_thumb.ALLOWED_WIDTHS`` (400 otherwise). A video is served from
     its cached poster frame (``backend.services.video_poster``; ``v`` is the
     video's version); this route never makes a poster. A missing file, a
@@ -1028,7 +1034,7 @@ async def get_thumb(
 def _thumb_source(file_path: str) -> tuple[Path, str]:
     """``(validated archive file, its cache key from photo_thumb.archive_rel)``. Blocking.
 
-    403 outside the output dir, 404 when it is not a regular archive file.
+    403 outside the service folder, 404 when it is not a regular archive file.
     """
     safe_path = _resolve_media_path(file_path)
     output_dir = get_output_dir()
