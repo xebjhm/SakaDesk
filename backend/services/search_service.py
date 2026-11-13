@@ -45,9 +45,19 @@ def _configure_connection(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA recursive_triggers=ON")
 
 
+_TAG_RE = re.compile(r"<[^<>]+>")
+"""A tag. ``[^<>]`` cannot run past the next ``<``, so a run of unclosed ``<``
+costs linear time (the old ``<[^>]+>`` was quadratic; security audit 2026-11-13)."""
+
+MAX_INDEX_HTML_CHARS = 2 * 1024 * 1024
+"""Characters of one blog's HTML that are indexed (about 25 times the longest real post).
+
+Silent: this runs in the search build process, which has no logger."""
+
+
 def _strip_html(html: str) -> str:
-    """Strip HTML tags, decode entities, collapse whitespace."""
-    text = re.sub(r"<[^>]+>", " ", html)
+    """Strip HTML tags, decode entities, collapse whitespace (linear, capped input)."""
+    text = _TAG_RE.sub(" ", html[:MAX_INDEX_HTML_CHARS])
     text = unescape(text)
     return re.sub(r"\s+", " ", text).strip()
 

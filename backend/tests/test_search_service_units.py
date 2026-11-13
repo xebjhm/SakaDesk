@@ -7,11 +7,13 @@ pykakasi, or a full SearchService with live DB connections.
 import asyncio
 import json
 import sqlite3
+import time as _time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.services import search_service as _ss
 from backend.services import shutdown_state
 import backend.services.search_service as search_service_module
 from backend.services.search_service import (
@@ -729,3 +731,21 @@ class TestSnippetEscaping:
     def test_blog_content_fallback_is_escaped(self, tmp_path):
         svc = SearchService(tmp_path / "t.db")
         assert svc._make_blog_snippet(title="t", content="a<b", query="zzz") == "a&lt;b"
+
+
+def test_strip_html_is_linear_on_unclosed_tags():
+    """search-service.strip-html:quadratic-unclosed-tag-regex (audit 2026-11-13)."""
+    start = _time.monotonic()
+    out = _ss._strip_html("<" * 200_000)
+    assert _time.monotonic() - start < 1.0
+    assert out == "<" * 200_000
+
+
+def test_strip_html_keeps_its_output_for_normal_html():
+    html = '<p>春の<b>日記</b> &amp; 🌸</p><img src="x.jpg"><br/>終わり'
+    assert _ss._strip_html(html) == "春の 日記 & 🌸 終わり"
+
+
+def test_strip_html_caps_the_indexed_text():
+    html = "あ" * (_ss.MAX_INDEX_HTML_CHARS + 10)
+    assert len(_ss._strip_html(html)) == _ss.MAX_INDEX_HTML_CHARS
