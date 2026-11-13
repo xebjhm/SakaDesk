@@ -41,7 +41,13 @@ const OpenMenu: React.FC<MenuProps> = ({
     useEffect(() => {
         const menu = ref.current;
         const me = pushMenu();
-        menu?.focus({ preventScroll: true });
+        // Opening focuses the first enabled item (the menu pattern): an item with a disabled reason is
+        // skipped unless every item has one, and a destructive item is never the opening focus (Enter
+        // right after a right-click must not remove anything). With no other item the menu takes focus.
+        const safe = Array.from(menu?.querySelectorAll<HTMLElement>(ITEMS) ?? []).filter((el) => !el.hasAttribute('data-destructive'));
+        const first = safe.find((el) => el.getAttribute('aria-disabled') !== 'true') ?? safe[0];
+        if (!first) clientLog('menu_open_focus', { target: 'menu', outcome: 'container' });
+        (first ?? menu)?.focus({ preventScroll: true });
         const onDown = (e: MouseEvent) => {
             const target = e.target as Node;
             if (menu?.contains(target)) return;
@@ -151,6 +157,7 @@ export const MenuItem = React.forwardRef<HTMLButtonElement, MenuItemProps>(
                 {...rest}
                 ref={ref}
                 type={type}
+                data-destructive={destructive || undefined}
                 role={radio ? 'menuitemradio' : 'menuitem'}
                 aria-checked={radio ? selected : undefined}
                 aria-disabled={reason !== undefined ? true : undefined}
@@ -159,7 +166,8 @@ export const MenuItem = React.forwardRef<HTMLButtonElement, MenuItemProps>(
                 tabIndex={-1}
                 className={cn(
                     'flex w-full items-center gap-2 rounded-sm px-3 py-2 text-left text-small',
-                    'transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none',
+                    // Keyboard focus: the section 9 accent ring, inset (the item fills the menu); hover keeps the grey.
+                    'transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
                     'disabled:pointer-events-none disabled:opacity-40',
                     'aria-disabled:cursor-not-allowed aria-disabled:opacity-40 aria-disabled:hover:bg-transparent',
                     destructive ? 'text-status-danger' : selected ? 'font-semibold text-accent-strong' : 'text-primary',

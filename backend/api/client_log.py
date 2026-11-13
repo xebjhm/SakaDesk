@@ -58,6 +58,7 @@ ClientEvent = Literal[
     "call_layer",
     "sync_start_skipped",
     "menu_item_blocked",
+    "menu_open_focus",
     "blog_fallback",
     "group_marker_fallback",
     "entry_validation",

@@ -878,7 +878,12 @@ pre-D2 panel's values; use them for developer tooling only.
 ### Menus
 
 `Menu` (`design/primitives/Menu.tsx`) is a level-2 popover (`bg-card rounded-card shadow-card`)
-with `role="menu"` and an `aria-label`. Its parts:
+with `role="menu"` and an `aria-label`. Opening focuses the first enabled item that is not
+destructive (an item with a `disabledReason` is skipped unless all have one; a `destructive`
+item, marked `data-destructive`, is never the opening focus, so Enter right after a right-click
+cannot remove anything); when no such item exists the menu itself takes focus and logs
+`menu_open_focus` (`outcome` `container`). Items show the 2 px accent ring, inset, on keyboard
+focus only; mouse hover keeps `bg-sunken`. Its parts:
 
 - `MenuItem`: a `rounded-sm` row with an optional icon; `radio` + `selected` for one-of
   options (`menuitemradio`), `destructive` for a danger action. `disabledReason` keeps the

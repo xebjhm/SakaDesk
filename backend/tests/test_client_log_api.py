@@ -311,6 +311,7 @@ def test_notify_open_memories_accepts_delivered_and_refusals():
         ("avatar_fallback", {"surface": "member_select"}, "info"),
         ("display_density_change", {"dppx_pct": 175}, "info"),
         ("menu_item_blocked", {"target": "sent_letters"}, "info"),
+        ("menu_open_focus", {"target": "menu", "outcome": "container"}, "info"),
         ("blog_fallback", {"target": "card_thumb", "reason": "image_error"}, "info"),
         (
             "blog_fallback",

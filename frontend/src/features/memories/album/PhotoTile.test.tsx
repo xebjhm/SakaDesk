@@ -20,7 +20,7 @@ describe('PhotoTile context menu', () => {
         renderTile({ item, onSetCover });
         fireEvent.contextMenu(screen.getByTestId('album-tile-1'), { clientX: 10, clientY: 20 });
         const menu = screen.getByRole('menu', { name: 'おはよう' });
-        expect(menu).toHaveFocus();
+        expect(within(menu).getByRole('menuitem', { name: 'Make this the month cover' })).toHaveFocus();
         await userEvent.click(screen.getByRole('menuitem', { name: 'Make this the month cover' }));
         expect(onSetCover).toHaveBeenCalledWith(item);
         expect(screen.queryByRole('menu')).toBeNull();
