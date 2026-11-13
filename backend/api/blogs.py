@@ -14,6 +14,7 @@ from typing import List, Optional
 import structlog
 
 from backend.services import avatar_resize
+from backend.services.passive_media import passive_media
 from backend.services.blog_service import (
     BlogService,
     blog_backup_enabled,
@@ -699,7 +700,10 @@ async def serve_blog_image(
 ):
     """Serve a locally cached blog image from disk.
 
-    Used when full blog backup has downloaded images locally.
+    Used when full blog backup has downloaded images locally. Inline answers
+    take type and headers from ``passive_media`` (route ``blog_image``): a
+    cached file that is not a picture is an attachment. ``download=name``
+    always answers a ``application/octet-stream`` attachment with that name.
     """
     import re
 
@@ -735,23 +739,15 @@ async def serve_blog_image(
     if not image_path.exists():
         raise HTTPException(status_code=404, detail="Image not found")
 
-    ext = image_path.suffix.lower()
-    media_types = {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".webp": "image/webp",
-        ".gif": "image/gif",
-    }
-    headers = {"Cache-Control": "public, max-age=604800"}
     if download:
         return FileResponse(
             image_path,
             filename=download,
             media_type="application/octet-stream",
         )
+    passive = passive_media(image_path.name, route="blog_image")
     return FileResponse(
         image_path,
-        media_type=media_types.get(ext, "application/octet-stream"),
-        headers=headers,
+        media_type=passive.media_type,
+        headers={"Cache-Control": "public, max-age=604800", **passive.headers},
     )

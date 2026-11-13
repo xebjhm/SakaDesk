@@ -298,7 +298,9 @@ class TestMediaRoute:
             resp = client.get("/api/content/avatar/svc/a.png?w=64")
         assert resp.status_code == 200
         assert resp.content == b"\x89PNG"
-        file_response.assert_called_once_with(src)
+        file_response.assert_called_once()
+        assert file_response.call_args.args == (src,)
+        assert file_response.call_args.kwargs["media_type"] == "image/png"
         media_response.assert_not_called()
 
     # -- If-Range (RFC 9110 §13.1.5) ---------------------------------------

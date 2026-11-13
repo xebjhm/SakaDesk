@@ -67,6 +67,7 @@ from backend.services.archive_urls import (
     media_disk_path,
 )
 from backend.services.media_range import MediaFileResponse
+from backend.services.passive_media import passive_media
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
@@ -906,16 +907,17 @@ async def get_avatar(file_path: str, w: int = Query(...)):
     ``file_path`` is the same as for ``/media/{file_path}`` and is validated
     the same way. ``w`` must be one of ``avatar_resize.ALLOWED_WIDTHS``
     (400 otherwise). The variant is cached on disk; a source that is not
-    larger than ``w``, or one Pillow cannot read, is served unchanged.
+    larger than ``w``, or one Pillow cannot read, is served unchanged. Type and
+    headers come from ``passive_media`` (route ``avatar``), so an unchanged
+    source that is not a picture is an attachment, never an inline page.
     """
     if w not in avatar_resize.ALLOWED_WIDTHS:
         logger.info("avatar_request_rejected", reason="width", width=w)
         raise HTTPException(status_code=400, detail="Unsupported width")
     safe_path = _resolve_media_path(file_path)
     served = await asyncio.to_thread(avatar_resize.resized_avatar, safe_path, w)
-    if served == safe_path:
-        return FileResponse(safe_path)
-    return FileResponse(served, media_type="image/webp")
+    passive = passive_media(served.name, route="avatar")
+    return FileResponse(served, media_type=passive.media_type, headers=passive.headers)
 
 
 _THUMB_CACHE_CONTROL = "private, max-age=86400"

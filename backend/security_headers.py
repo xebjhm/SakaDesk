@@ -9,12 +9,17 @@
 - ``Cross-Origin-Resource-Policy: same-origin``: other sites cannot embed
   archive media as <img>/<video> and observe load/error.
 
-Headers a route already set (for example a stricter CSP) are kept.
+Headers a route already set are kept. Routes that stream archive or remote
+files set ``SANDBOX_CSP`` themselves (``backend/services/passive_media.py``).
 """
 
 from __future__ import annotations
 
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
+
+SANDBOX_CSP = "default-src 'none'; sandbox; frame-ancestors 'self'"
+"""CSP of a file from the archive or a remote host: opened as a page it runs no
+script, loads nothing and has an opaque origin; only the app may frame it."""
 
 _DEFAULTS: tuple[tuple[bytes, bytes], ...] = (
     (b"x-frame-options", b"SAMEORIGIN"),
