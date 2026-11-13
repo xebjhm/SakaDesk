@@ -1471,5 +1471,11 @@
   },
   "a11y": {
     "skipToContent": "跳至內容"
+  },
+  "errorBoundary": {
+    "title": "發生問題",
+    "body": "SakaDesk 發生未預期的錯誤。您的資料安全無虞，只是畫面無法顯示。",
+    "retry": "再試一次",
+    "report": "回報問題"
   }
 }

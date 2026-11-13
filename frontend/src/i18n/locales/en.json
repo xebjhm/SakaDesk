@@ -1520,5 +1520,11 @@
   },
   "a11y": {
     "skipToContent": "Skip to content"
+  },
+  "errorBoundary": {
+    "title": "Something went wrong",
+    "body": "SakaDesk ran into an unexpected error. Your data is safe: only the screen failed to draw.",
+    "retry": "Try again",
+    "report": "Report issue"
   }
 }

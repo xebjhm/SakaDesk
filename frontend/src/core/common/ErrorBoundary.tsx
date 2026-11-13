@@ -1,5 +1,9 @@
 import { Component, ErrorInfo, ReactNode } from 'react';
 import { AlertTriangle, RefreshCw, Bug } from 'lucide-react';
+import i18n from '../../i18n';
+import { Button } from '../../design/primitives';
+import { brandScopeStyle } from '../../design/brandScope';
+import { breadcrumbCode, clientLog } from '../../utils/clientLog';
 
 interface Props {
     children: ReactNode;
@@ -25,6 +29,8 @@ export class ErrorBoundary extends Component<Props, State> {
     componentDidCatch(error: Error, errorInfo: ErrorInfo) {
         this.setState({ errorInfo });
         console.error('ErrorBoundary caught an error:', error, errorInfo);
+        // The class name only (no message, no stack): a crash must be findable in debug.log.
+        clientLog('app_load_failed', { target: 'render', error_type: breadcrumbCode(error) });
     }
 
     handleRetry = () => {
@@ -42,52 +48,47 @@ export class ErrorBoundary extends Component<Props, State> {
     render() {
         if (this.state.hasError) {
             const { error, errorInfo } = this.state;
+            // Translate through the i18n instance directly: this screen renders after a crash, so it
+            // cannot rely on a provider. An unresolved key falls back to English, never throws.
+            const t = i18n.t.bind(i18n);
 
             return (
-                <div className="h-screen overflow-y-auto bg-gray-100 flex items-center justify-center p-4">
-                    <div className="bg-white rounded-xl shadow-xl max-w-md w-full overflow-hidden">
-                        {/* Header */}
-                        <div className="bg-red-500 px-6 py-4">
-                            <div className="flex items-center gap-3">
-                                <AlertTriangle className="w-6 h-6 text-white" />
-                                <h1 className="text-xl font-bold text-white">Something went wrong</h1>
-                            </div>
+                <div style={brandScopeStyle()} className="flex h-screen items-safe-center justify-center overflow-y-auto bg-window p-4">
+                    <div role="alert" className="w-full max-w-md overflow-hidden rounded-xl bg-sheet shadow-sheet">
+                        {/* Plain header with the error-state tile (as StatusBlock kind="error"): the solid
+                            danger step is only for destructive buttons (DESIGN_SYSTEM "Semantic colours"). */}
+                        <div className="flex items-center gap-3 px-6 pt-6">
+                            <span aria-hidden="true" className="flex shrink-0 rounded-card bg-semantic-danger-icon p-3 text-semantic-danger">
+                                <AlertTriangle className="h-6 w-6" />
+                            </span>
+                            <h1 className="min-w-0 break-words text-heading font-bold text-primary">{t('errorBoundary.title')}</h1>
                         </div>
 
-                        {/* Content */}
-                        <div className="p-6 space-y-4">
-                            <p className="text-gray-600">
-                                The app encountered an unexpected error. Your data is safe - this is just a display issue.
-                            </p>
+                        <div className="flex flex-col gap-4 px-6 pb-6 pt-4">
+                            <p className="text-body text-secondary">{t('errorBoundary.body')}</p>
 
-                            {/* Error Details */}
                             {error && (
-                                <div className="bg-gray-50 rounded-lg p-4 font-mono text-xs text-gray-700 overflow-auto max-h-32">
-                                    <p className="font-semibold text-red-600">{error.name}: {error.message}</p>
+                                <div className="max-h-32 overflow-auto rounded-lg bg-sunken p-4 font-mono text-caption text-secondary">
+                                    <p className="break-words font-semibold text-status-danger">{error.name}: {error.message}</p>
                                     {errorInfo?.componentStack && (
-                                        <p className="mt-2 text-gray-500 whitespace-pre-wrap break-words">
+                                        <p className="mt-2 whitespace-pre-wrap break-words text-muted">
                                             {errorInfo.componentStack.split('\n').slice(0, 5).join('\n')}
                                         </p>
                                     )}
                                 </div>
                             )}
 
-                            {/* Actions */}
-                            <div className="flex gap-3 pt-2">
-                                <button
-                                    onClick={this.handleRetry}
-                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg font-medium transition-colors"
-                                >
-                                    <RefreshCw className="w-4 h-4" />
-                                    Try Again
-                                </button>
-                                <button
-                                    onClick={this.handleReport}
-                                    className="flex-1 flex items-center justify-center gap-2 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-medium transition-colors shadow-lg shadow-blue-500/20"
-                                >
-                                    <Bug className="w-4 h-4" />
-                                    Report Issue
-                                </button>
+                            {/* Wraps: a button keeps its whole label (Button is whitespace-nowrap), so on a
+                                narrow card the two stack instead of one overflowing. */}
+                            <div className="flex flex-wrap gap-3 pt-2">
+                                <Button variant="secondary" className="min-w-fit flex-1" onClick={this.handleRetry}>
+                                    <RefreshCw aria-hidden="true" className="h-4 w-4" />
+                                    {t('errorBoundary.retry')}
+                                </Button>
+                                <Button variant="primary" className="min-w-fit flex-1" onClick={this.handleReport}>
+                                    <Bug aria-hidden="true" className="h-4 w-4" />
+                                    {t('errorBoundary.report')}
+                                </Button>
                             </div>
                         </div>
                     </div>

@@ -9,6 +9,7 @@ import path from 'node:path';
  */
 const FILES = [
     'modals/CalendarModal.tsx',
+    'common/ErrorBoundary.tsx',
     'modals/BackgroundModal.tsx',
     'modals/FavoritesModal.tsx',
     'modals/SentLettersModal.tsx',
