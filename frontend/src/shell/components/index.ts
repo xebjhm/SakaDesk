@@ -5,3 +5,4 @@ export { LoginModal } from './LoginModal';
 export { TosDialog } from './TosDialog';
 export { EntryBackdrop } from './EntryBackdrop';
 export { FirstSyncToast } from './FirstSyncToast';
+export { SettingsErrorToast } from './SettingsErrorToast';

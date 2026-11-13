@@ -51,4 +51,17 @@ describe('App setup: a refused output folder', () => {
     expect(reasons.some((el) => dialog.contains(el))).toBe(true)
     expect(clientLog).toHaveBeenCalledWith('setup_save_failed', { reason: 'save_refused' })
   })
+
+  it('shows a generic save failure by the folder field too (the toast waits for the dialog)', async () => {
+    server.use(http.post('*/api/settings', () => new HttpResponse(null, { status: 500 })))
+    const user = userEvent.setup()
+    render(<AuthProvider><App /></AuthProvider>)
+    await user.click(await screen.findByRole('button', { name: 'Browse' }))
+    await screen.findByDisplayValue('C:\\SakaDesk-データ')
+    await user.click(screen.getByRole('button', { name: 'Start Using SakaDesk' }))
+
+    const dialog = await screen.findByRole('dialog', { name: i18n.t('setup.welcome') })
+    const reasons = await screen.findAllByText(i18n.t('settings.saveFailed'))
+    expect(reasons.some((el) => dialog.contains(el))).toBe(true)
+  })
 })

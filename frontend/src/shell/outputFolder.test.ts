@@ -1,6 +1,6 @@
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { clientLog } from '../utils/clientLog';
-import { OUTPUT_DIR_ERROR_CODES, outputDirErrorKey, pickOutputFolder, saveErrorKey } from './outputFolder';
+import { OUTPUT_DIR_ERROR_CODES, outputDirErrorKey, pickOutputFolder, saveErrorKey, setupFolderErrorKey } from './outputFolder';
 
 vi.mock('../utils/clientLog', async (orig) => ({ ...(await orig<typeof import('../utils/clientLog')>()), clientLog: vi.fn() }));
 afterEach(() => { vi.unstubAllGlobals(); vi.mocked(clientLog).mockClear(); });
@@ -56,3 +56,12 @@ describe('saveErrorKey', () => {
         await expect(saveErrorKey({ json: async () => { throw new SyntaxError('not json'); } })).resolves.toBe('settings.saveFailed');
     });
 });
+
+describe('setupFolderErrorKey', () => {
+    it("prefers the folder's own key, falls back to the generic save failure, never to another reason", () => {
+    expect(setupFolderErrorKey('settings.outputDirError.root', 'settings.saveFailed')).toBe('settings.outputDirError.root')
+    expect(setupFolderErrorKey(null, 'settings.saveFailed')).toBe('settings.saveFailed')
+    expect(setupFolderErrorKey(null, 'settings.somethingElse')).toBeNull()
+    expect(setupFolderErrorKey(null, null)).toBeNull()
+  })
+})

@@ -1218,8 +1218,9 @@ reader's photo viewer keeps the post's reading order (← / ‹ the image above,
 `Z_INDEX` (`frontend/src/constants/zIndex.ts`) is the only source of layering for
 overlays: `DROPDOWN` 50 (menus anchored in the frame), `DIALOG` 100 plus `DIALOG_STEP` 10 per
 stacked dialog, `POPOVER` 1000 (portaled menus, above any dialog) and `TOAST` 1100 (above
-everything, e.g. the settings error toast, which waits for open dialogs to close). No `z-[…]`, `z-40` or `z-50` classes; `z-10` /
-`z-20` stay for stacking inside one frame (sticky headers, viewer chrome).
+everything, e.g. the settings error toast, which waits for open dialogs to close). No
+`z-[…]`, `z-40` or `z-50` classes; `z-10` / `z-20` stay for stacking inside one frame (sticky
+headers, viewer chrome).
 
 **The incoming call.** A call that starts with no dialog open is drawn inside the chat
 frame (its `z-30` is local to the chat area). A call that starts while a dialog is open is

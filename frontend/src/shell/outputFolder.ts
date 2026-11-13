@@ -66,3 +66,12 @@ export async function saveErrorKey(res: { json: () => Promise<unknown> }): Promi
     }
     return 'settings.saveFailed';
 }
+
+/**
+ * The error Setup shows by its folder field: the folder's own, else a generic save failure (Setup
+ * saves only the folder). Never another reason: an output-folder refusal already arrives as the
+ * folder's own key.
+ */
+export function setupFolderErrorKey(folderErrorKey: string | null, settingsErrorKey: string | null): string | null {
+    return folderErrorKey ?? (settingsErrorKey === 'settings.saveFailed' ? settingsErrorKey : null);
+}

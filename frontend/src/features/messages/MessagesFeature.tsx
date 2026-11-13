@@ -19,6 +19,8 @@ import { selectIsSyncing, useSyncProgressStore } from '../../shell/syncProgressS
 import { useTranslation, Trans } from '../../i18n';
 import { useFeatureActive } from '../../design/featureActive';
 import { useInert } from '../../hooks/useInert';
+import { tabbables } from '../../design/dialog/tabbables';
+import { openDialogCount } from '../../design/dialog/dialogStack';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { Avatar, EmptyState, IconButton, StatusBlock } from '../../design/primitives';
 import { logWait, settleDelay, useDelayedLoading } from '../../design/loading';
@@ -186,11 +188,43 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
     // Below md (a narrow window or a zoomed page) the member list slides over the chat: closed, it is
     // off-screen and must not take focus; open, the chat behind its scrim must not (UI health A-D6).
-    const narrow = useMediaQuery('(max-width: 767.98px)');
+    const narrow = useMediaQuery('(width < 768px)');
     const sidebarRef = useRef<HTMLDivElement>(null);
     const chatRef = useRef<HTMLDivElement>(null);
     useInert(sidebarRef, narrow && !isSidebarOpen);
     useInert(chatRef, narrow && isSidebarOpen);
+    const sidebarToggleRef = useRef<HTMLButtonElement>(null);
+    const sidebarOverlay = narrow && isSidebarOpen;
+    // The overlay is a keyboard trap-free popover: focus moves in on open and back to its toggle on
+    // close (the chat behind it is inert, so the toggle cannot keep focus). Layout effect: it runs
+    // after the inert flags above are applied.
+    const sidebarWasOverlayRef = useRef(false);
+    useLayoutEffect(() => {
+        const was = sidebarWasOverlayRef.current;
+        sidebarWasOverlayRef.current = sidebarOverlay;
+        if (sidebarOverlay && !was) {
+            const first = sidebarRef.current ? tabbables(sidebarRef.current)[0] : undefined;
+            (first ?? sidebarRef.current)?.focus({ preventScroll: true });
+        } else if (!sidebarOverlay && was) {
+            const active = document.activeElement;
+            if (!active || active === document.body || sidebarRef.current?.contains(active)) {
+                sidebarToggleRef.current?.focus({ preventScroll: true });
+            }
+        }
+    }, [sidebarOverlay]);
+    // Escape closes the overlay (not while a dialog is open, nor in an IME, nor when already handled).
+    useEffect(() => {
+        if (!sidebarOverlay) return;
+        const onKey = (e: KeyboardEvent) => {
+            if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
+            if (openDialogCount() > 0) return;
+            e.preventDefault();
+            clientLog('dialog', { surface: 'sidebar', phase: 'close', reason: 'escape' });
+            setIsSidebarOpen(false);
+        };
+        document.addEventListener('keydown', onKey);
+        return () => document.removeEventListener('keydown', onKey);
+    }, [sidebarOverlay]);
     const [messagesForDir, setMessagesForDir] = useState<string | null>(null); // Which dir current messages belong to (state, for render gating)
     // Mirror of messagesForDir for fetchMessages: is the room already on screen when its fetch starts?
     const shownDirRef = useRef<string | null>(null);
@@ -802,6 +836,8 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // === HELPERS ===
 
     const handleSelectGroup = useCallback((groupDir: string, groupChat: boolean, displayName: string) => {
+        // Choosing a conversation, the current one too, closes the narrow overlay.
+        setIsSidebarOpen(false);
         if (selectedGroupDir !== groupDir) {
             setSelectedGroupDir(groupDir);
             setIsGroupChat(groupChat);
@@ -992,7 +1028,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     return (
         <div className="flex h-full w-full overflow-hidden">
             {/* Member sidebar on the canvas (level 0), next to the feature rail. Below md it slides in over the chat. */}
-            <div ref={sidebarRef} className={cn(
+            <div ref={sidebarRef} tabIndex={-1} className={cn(
                 'fixed inset-y-0 left-0 z-30 transform transition-transform duration-base ease-standard',
                 'max-md:bg-group-canvas md:relative md:translate-x-0',
                 isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
@@ -1026,6 +1062,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     )}
                 >
                     <IconButton
+                        ref={sidebarToggleRef}
                         className="text-current md:hidden"
                         aria-label={t('messageList.openConversations')}
                         icon={<Menu />}

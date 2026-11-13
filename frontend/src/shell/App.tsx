@@ -1,8 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
-import { AlertCircle, X } from 'lucide-react'
-import { Button, IconButton, Spinner } from '../design/primitives'
+import { Spinner } from '../design/primitives'
 import { useTranslation } from '../i18n'
 import { DiagnosticsModal, ReportIssueModal, AboutModal } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
@@ -13,8 +12,6 @@ import type { FeatureId } from '../store/appStore'
 import { serviceIdToGroupId } from '../config/colors'
 import { applyGroupTokens } from '../design/applyTokens'
 import type { GroupId } from '../design/tokens'
-import { Z_INDEX } from '../constants/zIndex'
-import { useAnyDialogOpen } from '../design/dialog/useAnyDialogOpen'
 import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
@@ -30,8 +27,9 @@ import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { useBackendSyncWatcher } from './hooks/useBackendSyncWatcher'
 import { useSettings } from './hooks/useSettings'
-import { LiveSyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, EntryBackdrop, FirstSyncToast } from './components'
+import { LiveSyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, EntryBackdrop, FirstSyncToast, SettingsErrorToast } from './components'
 import { BrandScope } from '../design/brandScope'
+import { setupFolderErrorKey } from './outputFolder'
 import { celebrateFirstSync } from './firstSyncCelebration'
 
 function App() {
@@ -63,8 +61,6 @@ function App() {
         checkAuth,
     } = useAuth();
 
-    const anyDialogOpen = useAnyDialogOpen()
-
     // Settings hook
     const {
         appSettings,
@@ -83,13 +79,6 @@ function App() {
         folderErrorKey,
         openSettingsModal,
     } = useSettings(isAuthenticated);
-
-    // The settings error toast waits while a dialog is open (it sits in #root, inert then): one
-    // breadcrumb per deferral, not per render.
-    const toastDeferred = settingsErrorKey !== null && anyDialogOpen
-    useEffect(() => {
-        if (toastDeferred) clientLog('dialog', { target: 'settings_error_toast', outcome: 'suppressed' })
-    }, [toastDeferred])
 
     // Sync hook - now syncs ALL connected services independently
     const {
@@ -389,7 +378,7 @@ function App() {
                 output_dir: outputDirInput.trim(),
             });
             if (!success) {
-                // The wizard stays; the reason shows in it and in the toast.
+                // The wizard stays; the reason shows by its folder field (the toast waits for the dialogs to close).
                 clientLog('setup_save_failed', { reason: 'save_refused' });
             } else {
                 setShowSetupWizard(false);
@@ -449,7 +438,7 @@ function App() {
                         onSelectFolder={handleSelectFolder}
                         onComplete={handleSetupComplete}
                         isValid={!!outputDirInput.trim()}
-                        folderErrorKey={folderErrorKey}
+                        folderErrorKey={setupFolderErrorKey(folderErrorKey, settingsErrorKey)}
                     />
                 )}
 
@@ -474,31 +463,11 @@ function App() {
                     crashError={crashError}
                 />
 
-                {/* ERROR TOAST: a status card on the toast layer. It lives in #root, which is inert while a dialog is open, so it waits for the dialogs to close (Settings and Setup show the failure inline). */}
-                {settingsErrorKey && !anyDialogOpen && (
-                    <div
-                        data-testid="settings-error-toast"
-                        role="alert"
-                        style={{ zIndex: Z_INDEX.TOAST }}
-                        className="fixed bottom-4 right-4 flex max-w-sm items-center gap-3 rounded-card bg-card p-4 shadow-card animate-reveal motion-reduce:animate-none"
-                    >
-                        <AlertCircle aria-hidden="true" className="h-5 w-5 shrink-0 text-status-danger" />
-                        <div className="min-w-0 flex-1">
-                            <p className="text-small font-semibold text-primary">{t('common.error')}</p>
-                            <p className="text-caption text-secondary">{t(settingsErrorKey)}</p>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => setShowDiagnostics(true)}>
-                            {t('common.debug')}
-                        </Button>
-                        <IconButton
-                            size="sm"
-                            variant="ghost"
-                            aria-label={t('common.close')}
-                            icon={<X />}
-                            onClick={clearSettingsError}
-                        />
-                    </div>
-                )}
+                <SettingsErrorToast
+                    errorKey={settingsErrorKey}
+                    onDebug={() => setShowDiagnostics(true)}
+                    onClose={clearSettingsError}
+                />
                 {showFirstSyncToast && <FirstSyncToast onDone={hideFirstSyncToast} />}
 
                 {/* Settings Modal */}

@@ -31,7 +31,7 @@ describe('#root inert composes with the dialog layer and KeepMounted', () => {
     // The harness's own div is the #root under test; Modal portals into <body> outside it.
     const mount = () => render(<StrictMode><Harness /></StrictMode>);
 
-    it('releases #root when the last dialog closes, keeping a hidden feature inert', () => {
+    it('releases #root when the last dialog closes (the shown feature is not inert)', () => {
         mount();
         const root = document.getElementById('root') as HTMLElement;
         const kept = document.querySelector('[data-testid="kept-feature"]') as HTMLElement;
