@@ -41,6 +41,7 @@ from backend.services.app_identity import (  # noqa: E402
 )
 from backend.services import settings_store  # noqa: E402
 from backend.services import autostart  # noqa: E402
+import host_js  # noqa: E402
 from backend.services.i18n import get_strings, resolve_ui_language  # noqa: E402
 from backend.services.notification_planner import UiState  # noqa: E402
 from backend.services.tray_tooltip import refresh_tray_tooltip  # noqa: E402
@@ -250,7 +251,9 @@ def make_open_chat_handler(window, focus_fn):
     logs ``notify_open_chat`` (service, is_group_chat, has_target,
     ``delivered=True``) or ``notify_open_chat_failed`` with
     ``reason=not_ready`` (frontend not mounted yet) or ``error_type``.
-    It never raises. Names and paths are never logged.
+    It never raises. Names and paths are never logged. The payload reaches the
+    page percent-encoded (``host_js.js_value``), so no value can break out of
+    the script, and the call needs no ``eval`` (``host_js``).
     """
 
     def handler(target, message_id: int | None = None) -> None:
@@ -260,11 +263,11 @@ def make_open_chat_handler(window, focus_fn):
             fields = asdict(target)
             if message_id is not None:
                 fields["message_id"] = message_id
-            payload = json.dumps(fields, ensure_ascii=False)
-            delivered = window.evaluate_js(
+            delivered = host_js.run(
+                window,
                 "window.__sakadeskOpenChat ? (window.__sakadeskOpenChat("
-                + payload
-                + "), true) : false"
+                + host_js.js_value(fields)
+                + "), true) : false",
             )
             if delivered is True:
                 logger.info(
@@ -298,17 +301,20 @@ def make_open_login_handler(window, focus_fn):
     login dialog via ``window.__sakadeskOpenLogin(service)``, which returns
     whether it did. Logs ``notify_open_login`` (``service``, ``delivered=True``)
     or ``notify_open_login_failed`` with ``reason=not_ready`` (frontend not
-    mounted, or an unknown service) or ``error_type``. It never raises.
+    mounted, or an unknown service) or ``error_type``. It never raises. The
+    payload reaches the page percent-encoded (``host_js.js_value``), so no value
+    can break out of the script, and the call needs no ``eval`` (``host_js``).
     """
 
     def handler(service: str) -> None:
         try:
             window.show()
             focus_fn(_native_hwnd(window))
-            delivered = window.evaluate_js(
+            delivered = host_js.run(
+                window,
                 "window.__sakadeskOpenLogin ? window.__sakadeskOpenLogin("
-                + json.dumps(service)
-                + ") === true : false"
+                + host_js.js_value(service)
+                + ") === true : false",
             )
             if delivered is True:
                 logger.info("notify_open_login", service=service, delivered=True)
@@ -343,8 +349,9 @@ def make_open_memories_handler(window, focus_fn):
     Like :func:`make_open_login_handler`: shows the window (never
     ``restore()``), calls ``focus_fn(hwnd)``, then asks the frontend to open
     Memories via ``window.__sakadeskOpenMemories({"service", "route"})``,
-    which returns whether it navigated. The payload is JSON-encoded, so a
-    member path can never break out of the script. Logs
+    which returns whether it navigated. The payload reaches the page
+    percent-encoded (``host_js.js_value``), so no value can break out of the
+    script, and the call needs no ``eval`` (``host_js``). Logs
     ``notify_open_memories`` (``service``, ``target`` = page code,
     ``delivered=True``) or ``notify_open_memories_failed`` with
     ``reason=refused`` (the frontend answered false: a malformed link, an
@@ -358,16 +365,11 @@ def make_open_memories_handler(window, focus_fn):
         try:
             window.show()
             focus_fn(_native_hwnd(window))
-            payload = json.dumps(
-                {"service": service, "route": route}, ensure_ascii=False
-            )
-            # json.dumps leaves "</" alone; escape it so the payload can never
-            # close a <script> element wherever the string ends up.
-            payload = payload.replace("</", "<\\/")
-            delivered = window.evaluate_js(
+            delivered = host_js.run(
+                window,
                 "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
-                + payload
-                + ") === true : null"
+                + host_js.js_value({"service": service, "route": route})
+                + ") === true : null",
             )
             if delivered is True:
                 logger.info(

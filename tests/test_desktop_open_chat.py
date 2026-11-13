@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import types
 
 from structlog.testing import capture_logs
 
 import desktop
 from backend.services.notification_planner import ChatTarget
+from hostjs_page import shape, values
 
 TARGET = ChatTarget(
     service="hinatazaka46",
@@ -16,8 +16,9 @@ TARGET = ChatTarget(
     name="金村 美玖",
     is_group_chat=False,
 )
-PREFIX = "window.__sakadeskOpenChat ? (window.__sakadeskOpenChat("
-SUFFIX = "), true) : false"
+CHAT_SHAPE = (
+    "window.__sakadeskOpenChat ? (window.__sakadeskOpenChat(<value>), true) : false"
+)
 
 
 class _FakeWindow:
@@ -43,14 +44,17 @@ class _FakeWindow:
     def show(self) -> None:
         self._record("show")
 
-    def evaluate_js(self, script: str) -> object:
-        self._record("evaluate_js", script)
-        return self._js_result
+    def evaluate_js(
+        self, script: str, callback: object = None, raw: bool = False
+    ) -> object:
+        self._record("evaluate_js", script, raw)
+        return {"v": self._js_result}
 
 
 def _payload(script: str) -> dict:
-    assert script.startswith(PREFIX) and script.endswith(SUFFIX)
-    return json.loads(script[len(PREFIX) : -len(SUFFIX)])
+    assert shape(script) == CHAT_SHAPE
+    (payload,) = values(script)
+    return payload
 
 
 def test_handler_shows_focuses_then_evaluates_js_without_restore():
@@ -71,8 +75,7 @@ def test_handler_shows_focuses_then_evaluates_js_without_restore():
         "name": TARGET.name,
         "is_group_chat": False,
     }
-    # ensure_ascii=False: CJK is sent verbatim, not \u-escaped.
-    assert "金村" in script and "\\u" not in script
+    assert window.calls[1][1][1] is True  # raw mode: no eval in the page
 
     (event,) = [e for e in logs if e["event"] == "notify_open_chat"]
     assert event["service"] == "hinatazaka46"
@@ -330,7 +333,9 @@ def test_focus_is_a_noop_off_windows(monkeypatch):
     desktop._focus_existing_window()
 
 
-LOGIN_SCRIPT = 'window.__sakadeskOpenLogin ? window.__sakadeskOpenLogin("sakurazaka46") === true : false'
+LOGIN_SHAPE = (
+    "window.__sakadeskOpenLogin ? window.__sakadeskOpenLogin(<value>) === true : false"
+)
 
 
 def test_login_handler_shows_focuses_and_asks_the_frontend():
@@ -340,7 +345,12 @@ def test_login_handler_shows_focuses_and_asks_the_frontend():
     with capture_logs() as logs:
         handler("sakurazaka46")
     assert [c[0] for c in window.calls] == ["show", "evaluate_js"]
-    assert window.calls[1][1] == (LOGIN_SCRIPT,)
+    script, raw = window.calls[1][1]
+    assert (
+        raw is True
+        and shape(script) == LOGIN_SHAPE
+        and values(script) == ["sakurazaka46"]
+    )
     assert len(focused) == 1
     assert {
         "event": "notify_open_login",
@@ -378,15 +388,12 @@ def test_login_handler_never_raises_and_logs_only_the_error_type():
 def test_login_handler_quotes_a_hostile_service_id_safely():
     window = _FakeWindow()
     desktop.make_open_login_handler(window, lambda _h: None)('x");alert(1);("')
-    assert json.dumps('x");alert(1);("') in window.calls[1][1][0]
+    assert values(window.calls[1][1][0]) == ['x");alert(1);("']
+    assert '"' not in window.calls[1][1][0]
 
 
 OTD_ROUTE = {"page": "onThisDay", "monthDay": "11-10", "year": 2023}
-OTD_SCRIPT = (
-    "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
-    '{"service": "hinatazaka46", "route": {"page": "onThisDay", '
-    '"monthDay": "11-10", "year": 2023}}) === true : null'
-)
+OTD_SHAPE = "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories(<value>) === true : null"
 
 
 def _mem(logs: list[dict]) -> list[dict]:
@@ -400,7 +407,12 @@ def test_memories_handler_shows_focuses_and_asks_the_frontend():
     with capture_logs() as logs:
         handler("hinatazaka46", OTD_ROUTE)
     assert [c[0] for c in window.calls] == ["show", "evaluate_js"]
-    assert window.calls[1][1] == (OTD_SCRIPT,)
+    script, raw = window.calls[1][1]
+    assert (
+        raw is True
+        and shape(script) == OTD_SHAPE
+        and values(script) == [{"service": "hinatazaka46", "route": OTD_ROUTE}]
+    )
     assert len(focused) == 1
     assert _mem(logs) == [
         {
@@ -422,13 +434,8 @@ def test_memories_handler_escapes_a_hostile_member_path():
             "hinatazaka46", route
         )
     script = window.calls[1][1][0]
-    prefix = "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
-    suffix = ") === true : null"
-    assert script.startswith(prefix) and script.endswith(suffix)
-    payload = json.loads(script[len(prefix) : -len(suffix)])
-    assert payload == {"service": "hinatazaka46", "route": route}
-    assert '\\");alert' in script  # the quote stays inside the JSON string
-    assert "</script>" not in script
+    assert values(script) == [{"service": "hinatazaka46", "route": route}]
+    assert '"' not in script and "</script>" not in script
     assert _mem(logs)[0]["target"] == "memoir"
     assert "日向坂" not in repr(logs) and "alert" not in repr(logs)
 

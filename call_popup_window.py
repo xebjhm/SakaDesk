@@ -42,7 +42,6 @@ from __future__ import annotations
 
 import contextlib
 import ctypes
-import json
 import threading
 import time
 from collections.abc import Callable
@@ -51,6 +50,7 @@ from typing import Any
 
 import structlog
 
+import host_js
 from backend.services.desktop_bridge import HeardTarget
 
 logger = structlog.get_logger(__name__)
@@ -90,6 +90,7 @@ DWMWA_WINDOW_CORNER_PREFERENCE = 33
 DWMWCP_DONOTROUND = 1
 LOGPIXELSX = 88
 
+# Page expressions for host_js.run (eval-free raw mode; security audit 2026-11-13).
 _START_JS = "window.__sakadeskCallPopup ? (window.__sakadeskCallPopup.start({call_id}), true) : false"
 _CANCEL_JS = (
     "window.__sakadeskCallPopup && window.__sakadeskCallPopup.cancel({call_id})"
@@ -503,7 +504,7 @@ class CallPopupWindow:
                 )
                 return False
             self._call_id = call_id
-            return window.evaluate_js(_START_JS.format(call_id=int(call_id))) is True
+            return host_js.run(window, _START_JS.format(call_id=int(call_id))) is True
 
     def _stale_locked(self, call_id: int) -> bool:
         """True when a newer call owns the window (expects ``_op_lock``)."""
@@ -627,7 +628,7 @@ class CallPopupWindow:
             if window is None:
                 return
             try:
-                window.evaluate_js(_CANCEL_JS.format(call_id=int(call_id)))
+                host_js.run(window, _CANCEL_JS.format(call_id=int(call_id)))
             finally:
                 window.hide()
 
@@ -636,11 +637,11 @@ class CallPopupWindow:
 
         ``"delivered"`` when its bridge returned ``true``; ``"not_ready"``
         otherwise (``null``: the bridge is not installed yet, or the main
-        window's conversation cache has not loaded). A JS error raises, and the
-        bridge reports it as ``"error"``.
+        window's conversation cache has not loaded). A JS error raises
+        (``host_js.HostScriptError``), and the bridge reports it as ``"error"``.
         """
-        payload = json.dumps(asdict(target), ensure_ascii=False)
-        result = self._main_window.evaluate_js(_HEARD_JS.format(payload=payload))
+        payload = host_js.js_value(asdict(target))
+        result = host_js.run(self._main_window, _HEARD_JS.format(payload=payload))
         return "delivered" if result is True else "not_ready"
 
     # -- lifecycle
