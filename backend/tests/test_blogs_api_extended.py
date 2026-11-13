@@ -788,3 +788,48 @@ class TestServeBlogImage:
             "/api/blogs/image?service=hinatazaka46&blog_id=missing&filename=img_1.jpg"
         )
         assert response.status_code == 404
+
+
+class TestBlogContentSanitizeOffLoop:
+    """report-hardening #52 (audit 2026-11-13): a large blog blocked every request while it parsed."""
+
+    def test_sanitizes_in_a_thread_and_caps_the_html(self):
+        from backend.api import blogs as blogs_api
+
+        big = "<p>" + "あ" * (blogs_api.MAX_BLOG_HTML_CHARS + 50) + "</p>"
+        content = {
+            "meta": {
+                "id": "b1",
+                "member_name": "m",
+                "title": "t",
+                "published_at": "2026-11-01T00:00:00+09:00",
+                "url": "u",
+            },
+            "content": {"html": big},
+            "images": [],
+        }
+        calls = []
+        real_to_thread = blogs_api.asyncio.to_thread
+
+        async def spy(fn, *args):
+            calls.append(fn)
+            return await real_to_thread(fn, *args)
+
+        with (
+            patch.object(
+                blogs_api.blog_service,
+                "get_blog_content",
+                new=AsyncMock(return_value=content),
+            ),
+            patch.object(blogs_api.asyncio, "to_thread", new=spy),
+            capture_logs() as logs,
+        ):
+            resp = client.get("/api/blogs/content?service=hinatazaka46&blog_id=b1")
+        assert resp.status_code == 200
+        assert blogs_api._sanitize_blog_html in calls
+        assert len(resp.json()["content"]["html"]) <= blogs_api.MAX_BLOG_HTML_CHARS
+        assert {
+            "event": "blog_html_truncated",
+            "service": "hinatazaka46",
+            "log_level": "info",
+        } in logs

@@ -180,6 +180,10 @@ class _HTMLSanitizer(HTMLParser):
         return "".join(self._out)
 
 
+MAX_BLOG_HTML_CHARS = 2 * 1024 * 1024
+"""Characters of one blog's HTML that are sanitized and returned (as the search index cap)."""
+
+
 def _sanitize_blog_html(html: str) -> str:
     """Return a sanitized copy of member-authored blog HTML (SD-BE-SEC-01)."""
     if not html:
@@ -453,7 +457,13 @@ async def get_blog_content(service: str = Query(...), blog_id: str = Query(...))
         # leaves the backend (defense-in-depth behind the frontend DOMPurify).
         content = result.get("content")
         if isinstance(content, dict) and isinstance(content.get("html"), str):
-            content["html"] = _sanitize_blog_html(content["html"])
+            html = content["html"]
+            if len(html) > MAX_BLOG_HTML_CHARS:
+                logger.info("blog_html_truncated", service=service)
+                html = html[:MAX_BLOG_HTML_CHARS]
+            # html.parser work: in a worker thread, so a large post does not
+            # block every other request (report-hardening #52).
+            content["html"] = await asyncio.to_thread(_sanitize_blog_html, html)
         return result
     except ValueError as e:
         raise HTTPException(
