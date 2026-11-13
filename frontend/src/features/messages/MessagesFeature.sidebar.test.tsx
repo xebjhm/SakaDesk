@@ -7,6 +7,7 @@ import i18n from '../../i18n';
 import { useAppStore } from '../../store/appStore';
 import { clientLog } from '../../utils/clientLog';
 import { MessagesFeature } from './MessagesFeature';
+import { FeatureActiveContext } from '../../design/featureActive';
 import { popDialog, pushDialog, resetDialogStack } from '../../design/dialog/dialogStack';
 
 vi.mock('react-virtuoso', async () => (await import('../../__tests__/virtuosoMock')).virtuosoMock);
@@ -117,5 +118,22 @@ describe('MessagesFeature narrow member sidebar, keyboard (UI health A-D6)', () 
     it('is a programmatic focus target only as the narrow overlay', async () => {
         await openSidebar();
         expect(sidebar()).toHaveAttribute('tabindex', '-1');
+    });
+
+    it('does not claim Escape while Messages is hidden', async () => {
+        const user = userEvent.setup();
+        const view = (active: boolean) => (
+            <FeatureActiveContext.Provider value={active}>
+                <MessagesFeature appSettings={null} syncVersion={0} />
+            </FeatureActiveContext.Provider>
+        );
+        const { rerender } = render(view(true));
+        await user.click(toggle());
+        rerender(view(false));
+        vi.mocked(clientLog).mockClear();
+        const event = new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true });
+        document.body.dispatchEvent(event);
+        expect(event.defaultPrevented).toBe(false);
+        expect(clientLog).not.toHaveBeenCalledWith('dialog', expect.objectContaining({ surface: 'sidebar' }));
     });
 });

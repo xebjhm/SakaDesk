@@ -214,8 +214,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         }
     }, [sidebarOverlay]);
     // Escape closes the overlay (not while a dialog is open, nor in an IME, nor when already handled).
+    // Not attached while Messages is hidden: a kept-mounted feature must not claim keys elsewhere.
     useEffect(() => {
-        if (!sidebarOverlay) return;
+        if (!sidebarOverlay || !featureActive) return;
         const onKey = (e: KeyboardEvent) => {
             if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || e.keyCode === 229) return;
             if (openDialogCount() > 0) return;
@@ -225,7 +226,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
         };
         document.addEventListener('keydown', onKey);
         return () => document.removeEventListener('keydown', onKey);
-    }, [sidebarOverlay]);
+    }, [sidebarOverlay, featureActive]);
     const [messagesForDir, setMessagesForDir] = useState<string | null>(null); // Which dir current messages belong to (state, for render gating)
     // Mirror of messagesForDir for fetchMessages: is the room already on screen when its fetch starts?
     const shownDirRef = useRef<string | null>(null);
