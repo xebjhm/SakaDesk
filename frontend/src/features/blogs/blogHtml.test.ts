@@ -27,7 +27,7 @@ describe('post URLs', () => {
         for (const tag of ['img', 'a'] as const) {
             for (const value of [
                 'HTTP://127.0.0.1:8000/api/settings', '//127.0.0.1:1234/api/x', 'http://localhost:9999/x',
-                'http://[::1]/x', 'http://0.0.0.0/x', 'http://127.1.2.3:80/x', 'http://[::ffff:127.0.0.1]/x',
+                'http://[::1]/x', 'http://0.0.0.0/x', 'http://127.1.2.3:80/x', 'http://[::ffff:127.0.0.1]/x', 'http://[::127.0.0.1]/x',
                 'http://2130706433/x', 'http://localhost./x', 'http:/api/settings', 'http:api/x',
                 'javascript:alert(1)', 'ftp://example.com/x', 'file:///etc/passwd',
             ]) {

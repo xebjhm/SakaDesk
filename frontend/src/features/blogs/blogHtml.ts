@@ -34,7 +34,9 @@ function isLoopbackHost(rawHost: string): boolean {
     return (
         host === 'localhost' || host.endsWith('.localhost') || host === '0.0.0.0'
         || /^127\.\d+\.\d+\.\d+$/.test(host)
-        || host === '[::1]' || host === '[::]' || host.startsWith('[::ffff:')
+        // Every IPv6 literal starting with '::' is special (loopback, unspecified, IPv4-mapped or
+        // IPv4-compatible such as [::7f00:1]); no public address does.
+        || host.startsWith('[::')
     );
 }
 
@@ -68,7 +70,9 @@ function resolvePostUrl(
 
 /**
  * Rewrites (or removes) every `src`/`href` of the sanitized `root` with {@link resolvePostUrl},
- * so a post can never make the app request its own API or any other loopback port.
+ * so no post URL points at the app origin (other than the cached-image endpoint) or at a loopback
+ * address or `localhost` name. Names that reach loopback only through DNS are left to the
+ * backend's Host allowlist.
  */
 export function resolveBlogUrls(root: ParentNode, baseUrl: string, appOrigin: string): void {
     const base = baseUrl ? `${baseUrl.replace(/\/+$/, '')}/` : '';

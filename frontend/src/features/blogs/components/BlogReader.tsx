@@ -208,7 +208,8 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
     };
 
     // The post body: sanitized into a DOM fragment whose URLs are resolved against the blog host
-    // (loopback and app URLs dropped) with search terms marked on its text nodes (blogHtml.ts).
+    // (loopback and app URLs dropped, except the cached-image endpoint) with search terms marked
+    // on its text nodes (blogHtml.ts).
     // It is never serialized, edited or re-parsed as an HTML string. Reading
     // matches get the reading mark (fill + dashed underline), exact matches the exact mark.
     const baseUrl = getServiceBlogBaseUrl(serviceId);
