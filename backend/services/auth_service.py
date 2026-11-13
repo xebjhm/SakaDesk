@@ -729,16 +729,8 @@ class AuthService:
             logger.error("Failed to save credentials", service=service, error=str(e))
             raise
 
-    async def logout(self, service: str):
-        """
-        Clear credentials for a specific service and forget its needs-login mark.
-
-        Args:
-            service: The service to log out of (e.g., 'hinatazaka46').
-        """
-        validate_service(service)
-        group = self._get_group(service)
-
+    def _delete_session(self, service: str, group: Group) -> None:
+        """Delete the stored session and its cached status. Never raises."""
         try:
             tm = get_token_manager()
             tm.delete_session(group.value)
@@ -748,8 +740,38 @@ class AuthService:
             logger.info("Credentials cleared from TokenManager", service=service)
         except Exception as e:
             logger.error("Failed to clear credentials", service=service, error=str(e))
+
+    async def logout(self, service: str):
+        """
+        Clear credentials for a specific service and forget its needs-login mark.
+
+        Holds the service's ``refresh_gate`` while deleting, so a renewal that
+        already holds it (and saves inside it) finishes first and its session
+        is then deleted. If the gate stays busy past ``GATE_WAIT_SECONDS`` the
+        session is deleted anyway (``logout_gate_timeout``). Pending memories
+        exports are dropped too (``logout_exports_cleared``, ``count``): they
+        hold the previous session's content (security audit 2026-11-13).
+
+        Args:
+            service: The service to log out of (e.g., 'hinatazaka46').
+        """
+        validate_service(service)
+        group = self._get_group(service)
+
+        try:
+            async with refresh_gate.hold(group.value):
+                self._delete_session(service, group)
+        except TimeoutError:
+            logger.warning("logout_gate_timeout", service=service)
+            self._delete_session(service, group)
         # A logged-out service must not keep reporting session_expired.
         await session_alert.clear(service)
+
+        from backend.services.memories import exports
+
+        held = len(exports.store)
+        exports.store.clear()
+        logger.info("logout_exports_cleared", count=held)
 
     def _get_token_remaining_seconds(self, token: str) -> float:
         """Get seconds remaining until token expires. Uses shared pysaka utility."""
