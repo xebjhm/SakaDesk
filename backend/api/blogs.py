@@ -14,6 +14,7 @@ from typing import List, Optional
 import structlog
 
 from backend.services import avatar_resize
+from backend.services import blog_service as blog_service_module
 from backend.security_headers import SANDBOX_CSP
 from backend.services.passive_media import INLINE_MEDIA_TYPES, passive_media
 from backend.services.blog_service import (
@@ -738,7 +739,7 @@ async def serve_blog_image(
         raise HTTPException(status_code=400, detail=str(e))
 
     # Validate filename to prevent path traversal
-    if not re.match(r"^img_\d+\.\w+$", filename):
+    if not re.fullmatch(r"img_\d+\.\w+", filename):
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     # Resolve the blog's cache directory via service
@@ -746,7 +747,9 @@ async def serve_blog_image(
     blog_meta = None
     member_name = None
     for _mid, member_data in index.get("members", {}).items():
-        for blog in member_data.get("blogs", []):
+        for blog in blog_service_module._readable_blogs(
+            service, "image", member_data.get("blogs", [])
+        ):
             if blog["id"] == blog_id:
                 blog_meta = blog
                 member_name = member_data.get("name", "")

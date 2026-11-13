@@ -36,6 +36,7 @@ from pysaka.blog import (
     get_scraper,
 )
 
+from backend.services.log_throttle import LogThrottle
 from backend.services.passive_media import INLINE_MEDIA_TYPES
 from backend.services.path_resolver import get_output_dir
 from backend.services.safe_paths import (
@@ -171,6 +172,71 @@ def _newer_stamp(a: Optional[str], b: Optional[str]) -> Optional[str]:
     if b is None:
         return a
     return a if a >= b else b
+
+
+def _parse_published(value: object) -> Optional[datetime]:
+    """A stored ``published_at`` as an aware datetime (naive = UTC).
+
+    ``None`` when ``value`` is not a ``str`` or does not parse as ISO 8601
+    (pysaka yields ``None`` for a date it cannot read, PY-MGR-04).
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _published_key(value: object) -> datetime:
+    """Sort key for a row :func:`_readable_blogs` returned (always parses)."""
+    return _parse_published(value) or datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _text(value: object) -> str:
+    """``value`` when it is a ``str``, else ``""`` (a title or URL the scraper left out)."""
+    return value if isinstance(value, str) else ""
+
+
+def _thumbnail(value: object) -> Optional[str]:
+    """``value`` when it is a non-empty ``str``, else ``None``."""
+    return value if isinstance(value, str) and value else None
+
+
+_row_skip_logs = LogThrottle(limit=5, window_s=3600.0)
+"""Budget for ``blog_rows_skipped``: the readers run on every Blogs-view poll."""
+
+
+def _readable_blogs(service: str, where: str, blogs: object) -> list[dict]:
+    """The index rows a reader can use (security audit 2026-11-13).
+
+    A row is a ``dict`` with a ``str`` id and a ``published_at`` that
+    :func:`_parse_published` reads. Rows written before the fix may hold
+    ``published_at: null``; they are left out of every list, count and
+    download queue, so one bad row cannot break a whole group. (An unsafe id
+    is still refused where a folder is built: ``_blog_folder``.) Logs
+    ``blog_rows_skipped`` (``service``, ``where``, ``count``) through a
+    throttle.
+    """
+    if not isinstance(blogs, list):
+        return []
+    rows = [
+        b
+        for b in blogs
+        if isinstance(b, dict)
+        and isinstance(b.get("id"), str)
+        and _parse_published(b.get("published_at")) is not None
+    ]
+    if len(rows) != len(blogs):
+        _row_skip_logs.log(
+            logger.warning,
+            "blog_rows_skipped",
+            service=service,
+            where=where,
+            count=len(blogs) - len(rows),
+        )
+    return rows
 
 
 _BLOG_IMAGE_EXTS = frozenset(
@@ -743,9 +809,10 @@ class BlogService:
             total = len(members)
             # Blog entries whose id cannot name a folder (security audit 2026-11-13).
             rejected_blogs = 0
+            skipped_dates = 0
 
             async def sync_member(member_id: str, member_name: str):
-                nonlocal completed, rejected_blogs
+                nonlocal completed, rejected_blogs, skipped_dates
                 if cancel_event and cancel_event.is_set():
                     return
                 if progress_callback:
@@ -756,7 +823,11 @@ class BlogService:
                 if member_id not in index["members"]:
                     index["members"][member_id] = {"name": member_name, "blogs": []}
 
-                existing_ids = {b["id"] for b in index["members"][member_id]["blogs"]}
+                existing_ids = {
+                    b.get("id")
+                    for b in index["members"][member_id]["blogs"]
+                    if isinstance(b, dict)
+                }
 
                 # Bind datetime unconditionally: it is also used below (the
                 # isinstance check when appending blogs). A local import inside the
@@ -801,7 +872,13 @@ class BlogService:
                         # Sakurazaka list pages have incomplete data (no time,
                         # no thumbnails, possibly truncated titles), so the
                         # detail page is the single source of truth.
-                        if not blog_data["thumbnail"]:
+                        # The detail page also supplies a date the list page
+                        # could not give (security audit 2026-11-13).
+                        unknown_date = (
+                            not isinstance(blog_data["published_at"], datetime)
+                            and _parse_published(blog_data["published_at"]) is None
+                        )
+                        if not blog_data["thumbnail"] or unknown_date:
                             needs_detail.append((len(new_entries) - 1, blog_data))
 
                 # Batch detail fetches for entries missing thumbnails
@@ -833,27 +910,50 @@ class BlogService:
 
                 for blog_data in new_entries:
                     pub_at = blog_data["published_at"]
+                    if isinstance(pub_at, datetime):
+                        stored = pub_at.isoformat()
+                    elif isinstance(pub_at, str) and _parse_published(pub_at):
+                        stored = pub_at
+                    else:
+                        # Never persist an unknown date: every reader and the
+                        # cursor need one (security audit 2026-11-13).
+                        skipped_dates += 1
+                        continue
                     index["members"][member_id]["blogs"].append(
                         {
                             "id": blog_data["id"],
-                            "title": blog_data["title"],
-                            "published_at": pub_at.isoformat()
-                            if isinstance(pub_at, datetime)
-                            else pub_at,
-                            "url": blog_data["url"],
-                            "thumbnail": blog_data["thumbnail"],
+                            "title": _text(blog_data["title"]),
+                            "published_at": stored,
+                            "url": _text(blog_data["url"]),
+                            "thumbnail": _thumbnail(blog_data["thumbnail"]),
                         }
                     )
 
                 completed += 1
 
             # Run all member syncs concurrently with semaphore limit
-            await asyncio.gather(
+            # One member's failure must not abort the others or the index save.
+            results = await asyncio.gather(
                 *[
                     sync_member(member_id, member_name)
                     for member_id, member_name in members.items()
-                ]
+                ],
+                return_exceptions=True,
             )
+            for result in results:
+                if isinstance(result, BaseException):
+                    logger.warning(
+                        "blog_member_sync_failed",
+                        service=service,
+                        error_type=type(result).__name__,
+                    )
+            if skipped_dates:
+                logger.warning(
+                    "blog_entry_skipped",
+                    service=service,
+                    reason="unparsed_date",
+                    count=skipped_dates,
+                )
             if rejected_blogs:
                 logger.warning(
                     "blog_remote_rejected",
@@ -906,7 +1006,9 @@ class BlogService:
 
             member_name = member_data.get("name", "")
 
-            for blog in member_data.get("blogs", []):
+            for blog in _readable_blogs(
+                service, "download_queue", member_data.get("blogs", [])
+            ):
                 # Skip individually removed blogs
                 if blog.get("removed"):
                     continue
@@ -928,9 +1030,9 @@ class BlogService:
                         blog_id=blog_id,
                         member_id=member_id,
                         member_name=member_name,
-                        title=blog["title"],
+                        title=_text(blog.get("title")),
                         published_at=blog["published_at"],
-                        url=blog["url"],
+                        url=_text(blog.get("url")),
                         cache_path=cache_path,
                         service=service,
                     )
@@ -1312,7 +1414,9 @@ class BlogService:
                 continue
 
             member_name = member_data.get("name", "")
-            for blog in member_data.get("blogs", []):
+            for blog in _readable_blogs(
+                service, "recent", member_data.get("blogs", [])
+            ):
                 blog_id = blog["id"]
                 # Skip individually removed blogs
                 if blog.get("removed"):
@@ -1325,17 +1429,17 @@ class BlogService:
                 all_posts.append(
                     {
                         "id": blog_id,
-                        "title": blog["title"],
+                        "title": _text(blog.get("title")),
                         "published_at": blog["published_at"],
-                        "url": blog["url"],
-                        "thumbnail": blog.get("thumbnail"),
+                        "url": _text(blog.get("url")),
+                        "thumbnail": _thumbnail(blog.get("thumbnail")),
                         "member_id": member_id,
                         "member_name": member_name,
                     }
                 )
 
         # Sort by date descending, take limit
-        all_posts.sort(key=lambda x: x["published_at"], reverse=True)
+        all_posts.sort(key=lambda x: _published_key(x["published_at"]), reverse=True)
         return all_posts[:limit]
 
     async def get_blog_list(self, service: str, member_id: str) -> dict:
@@ -1343,33 +1447,45 @@ class BlogService:
         index = await self.load_blog_index(service)
         member_data = index.get("members", {}).get(member_id, {})
 
-        blogs = member_data.get("blogs", [])
+        blogs = _readable_blogs(service, "list", member_data.get("blogs", []))
         base = self.get_blogs_base_path(service)
         member_name = member_data.get("name", "")
 
-        def _mark_cached() -> None:
+        def _with_cached() -> list[dict]:
             # One existence check per blog: in a worker thread, off the event loop.
+            out: list[dict] = []
             rejected = 0
             for blog in blogs:
-                date = blog_date(blog["published_at"])
                 try:
-                    folder = _blog_folder(base, member_name, blog["id"], date)
+                    folder = _blog_folder(
+                        base, member_name, blog["id"], blog_date(blog["published_at"])
+                    )
+                    cached = (folder / "blog.json").exists()
                 except UnsafePath:
-                    blog["cached"] = False
+                    cached = False
                     rejected += 1
-                    continue
-                blog["cached"] = (folder / "blog.json").exists()
+                out.append(
+                    {
+                        **blog,
+                        "title": _text(blog.get("title")),
+                        "url": _text(blog.get("url")),
+                        "thumbnail": _thumbnail(blog.get("thumbnail")),
+                        "cached": cached,
+                    }
+                )
             if rejected:
                 logger.warning(
                     "blog_path_rejected", service=service, where="list", count=rejected
                 )
+            return out
 
-        await asyncio.to_thread(_mark_cached)
-
+        listed = await asyncio.to_thread(_with_cached)
         return {
             "member_id": member_id,
             "member_name": member_data.get("name", ""),
-            "blogs": sorted(blogs, key=lambda b: b["published_at"], reverse=True),
+            "blogs": sorted(
+                listed, key=lambda b: _published_key(b["published_at"]), reverse=True
+            ),
         }
 
     def _rewrite_local_images(
@@ -1428,7 +1544,9 @@ class BlogService:
         found_member_id = None
 
         for mid, member_data in index.get("members", {}).items():
-            for blog in member_data.get("blogs", []):
+            for blog in _readable_blogs(
+                service, "content", member_data.get("blogs", [])
+            ):
                 if blog["id"] == blog_id:
                     blog_meta = blog
                     member_name = member_data.get("name", "")
@@ -1462,9 +1580,9 @@ class BlogService:
             blog_id=blog_meta["id"],
             member_id=found_member_id or "",
             member_name=member_name,
-            title=blog_meta["title"],
+            title=_text(blog_meta.get("title")),
             published_at=blog_meta["published_at"],
-            url=blog_meta["url"],
+            url=_text(blog_meta.get("url")),
             cache_path=cache_path,
             service=service,
         )
@@ -1533,10 +1651,16 @@ class BlogService:
         """
         index = await self.load_blog_index(service)
 
+        members = index.get("members", {})
+        readable = {
+            mid: _readable_blogs(service, "stats", m.get("blogs", []))
+            for mid, m in members.items()
+        }
+
         total_blogs = 0
         removed_count = 0
-        for m in index.get("members", {}).values():
-            blogs = m.get("blogs", [])
+        for mid, m in members.items():
+            blogs = readable[mid]
             total_blogs += len(blogs)
             if m.get("blogs_removed"):
                 removed_count += len(blogs)
@@ -1550,11 +1674,11 @@ class BlogService:
             # the event loop keeps serving media and polls meanwhile.
             count = 0
             rejected = 0
-            for member_data in index.get("members", {}).values():
+            for mid, member_data in members.items():
                 if member_data.get("blogs_removed"):
                     continue
                 member_name = member_data.get("name", "")
-                for blog in member_data.get("blogs", []):
+                for blog in readable[mid]:
                     if blog.get("removed"):
                         continue
                     date = blog_date(blog["published_at"])
