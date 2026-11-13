@@ -40,7 +40,6 @@ from backend.services.path_resolver import (
     resolve_service_path,
     resolve_talk_room_path,
     resolve_messages_file,
-    resolve_media_path,
 )
 from backend.services.chat_kind import (  # noqa: F401  (GROUP_CHAT_IDS re-exported)
     GROUP_CHAT_IDS,
@@ -1238,41 +1237,6 @@ async def get_talk_room_messages_param(
         "members": list(members_map.values()),
         "messages": all_messages,
     }
-
-
-@router.get("/media_file")
-async def get_media_param(
-    service: str = Query(...),
-    talk_room_id: int = Query(...),
-    member_id: int = Query(...),
-    type: str = Query(..., description="Media type: picture, video, voice"),
-    file: str = Query(..., description="Filename"),
-):
-    """Serve media files (param-based)."""
-    # Validate media type
-    ALLOWED_MEDIA_TYPES = {"picture", "video", "voice"}
-    if type not in ALLOWED_MEDIA_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid media type: {type}. Allowed: {', '.join(ALLOWED_MEDIA_TYPES)}",
-        )
-
-    # Validate filename (no path traversal)
-    if "/" in file or "\\" in file or ".." in file or "\x00" in file:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-
-    try:
-        validate_service(service)
-        media_path = resolve_media_path(service, talk_room_id, member_id, type, file)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-    if not media_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    return FileResponse(media_path)
 
 
 @router.get("/download/{file_path:path}")

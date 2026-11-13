@@ -114,11 +114,3 @@ def resolve_messages_file(service: str, talk_room_id: int, member_id: int) -> Pa
     """Resolve path to messages.json file."""
     member_path = resolve_member_path(service, talk_room_id, member_id)
     return member_path / "messages.json"
-
-
-def resolve_media_path(
-    service: str, talk_room_id: int, member_id: int, media_type: str, filename: str
-) -> Path:
-    """Resolve path to a media file."""
-    member_path = resolve_member_path(service, talk_room_id, member_id)
-    return member_path / media_type / filename

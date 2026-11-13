@@ -513,42 +513,44 @@ class TestMediaEndpoint:
 
 
 # ---------------------------------------------------------------------------
-# GET /api/content/media_file (param-based)
+# GET /api/content/media_file is gone
 # ---------------------------------------------------------------------------
 
 
-class TestMediaFileParamEndpoint:
-    def test_invalid_media_type_returns_400(self):
-        response = client.get(
-            "/api/content/media_file?service=hinatazaka46&talk_room_id=34&member_id=58&type=executable&file=a.exe"
-        )
-        assert response.status_code == 400
-        assert "Invalid media type" in response.json()["detail"]
+class TestMediaFileRouteRemoved:
+    """Security audit 2026-11-13, backend/api/content.py:media-file-route:no-archive-containment.
 
-    def test_path_traversal_in_filename_returns_400(self):
-        response = client.get(
-            "/api/content/media_file?service=hinatazaka46&talk_room_id=34&member_id=58&type=picture&file=../../secret"
-        )
-        assert response.status_code == 400
-        assert "Invalid filename" in response.json()["detail"]
+    The route joined a query-string file name to the member folder with only a
+    blacklist (no ``:`` check, no containment), so on Windows ``D:name`` read
+    outside the archive. Nothing called it; archive files go through
+    /api/content/media.
+    """
 
-    def test_null_byte_in_filename_returns_400(self):
-        response = client.get(
-            "/api/content/media_file?service=hinatazaka46&talk_room_id=34&member_id=58&type=picture&file=test%00.jpg"
-        )
-        assert response.status_code == 400
+    def test_the_route_is_not_registered(self):
+        paths = {getattr(route, "path", None) for route in app.routes}
+        assert "/api/content/media_file" not in paths
 
-    def test_backslash_in_filename_returns_400(self):
-        response = client.get(
-            "/api/content/media_file?service=hinatazaka46&talk_room_id=34&member_id=58&type=picture&file=..\\secret"
-        )
-        assert response.status_code == 400
-
-    def test_invalid_service_returns_400(self):
-        response = client.get(
-            "/api/content/media_file?service=badservice&talk_room_id=34&member_id=58&type=picture&file=img.jpg"
-        )
-        assert response.status_code == 400
+    def test_a_request_never_serves_an_archive_file(self, tmp_path):
+        picture = tmp_path / "日向坂46" / "messages" / "34 G" / "58 M" / "picture"
+        picture.mkdir(parents=True)
+        (picture / "secret.jpg").write_bytes(b"SECRET-0001")
+        with (
+            patch("backend.api.content.get_output_dir", return_value=tmp_path),
+            patch(
+                "backend.services.path_resolver.get_output_dir", return_value=tmp_path
+            ),
+        ):
+            response = client.get(
+                "/api/content/media_file",
+                params={
+                    "service": "hinatazaka46",
+                    "talk_room_id": 34,
+                    "member_id": 58,
+                    "type": "picture",
+                    "file": "secret.jpg",
+                },
+            )
+        assert b"SECRET-0001" not in response.content
 
 
 # ---------------------------------------------------------------------------
