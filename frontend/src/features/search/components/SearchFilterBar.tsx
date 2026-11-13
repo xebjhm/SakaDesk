@@ -72,9 +72,14 @@ export const SearchFilterBar: React.FC<SearchFilterBarProps> = ({
     let cancelled = false;
     fetch('/api/search/members')
       .then(r => r.json())
-      .then((data: MembersResponse) => {
+      .then((data: Partial<MembersResponse> | null) => {
         if (cancelled) { logDialogLoad('search_members', 'cancelled'); return; }
-        setMembersData(data);
+        // A server answering `{}` (or null) leaves the lists empty rather than crashing the filter.
+        setMembersData({
+          ...data,
+          members: Array.isArray(data?.members) ? data.members : [],
+          services: Array.isArray(data?.services) ? data.services : [],
+        });
         logDialogLoad('search_members', 'ok');
       })
       // The member autocomplete stays empty; services and the other filters still work.
