@@ -223,6 +223,13 @@ def test_traversal_is_refused_with_a_path_free_breadcrumb(root, path, status):
     [event] = _events(logs)
     assert event["outcome"] == "rejected" and event["status"] == status
     assert event["log_level"] == "warning" and event["service"] == "hinatazaka46"
+    # No part of the requested path, no folder name and not the archive root
+    # appears in any logged value (reason codes are the only free-form text).
+    logged = str([{k: v for k, v in e.items() if k != "reason"} for e in logs])
+    pieces = [str(root), root.name, "日向坂46", "etc", "outside"]
+    pieces += [p for p in path.replace("\\", "/").split("/") if p not in ("", "..")]
+    for piece in pieces:
+        assert piece not in logged, piece
 
 
 def test_nul_in_path_is_400_with_a_breadcrumb(root):
