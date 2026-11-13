@@ -22,7 +22,11 @@ from structlog.testing import capture_logs
 
 from backend.main import app
 from backend.security_headers import SANDBOX_CSP
-from backend.services.blog_service import BlogService, _thumbnail_ext
+from backend.services.blog_service import (
+    BlogService,
+    ThumbnailDownload,
+    _thumbnail_ext,
+)
 
 pytestmark = pytest.mark.usefixtures("session_image_fetch")
 
@@ -74,7 +78,7 @@ async def test_an_unsafe_member_code_is_never_fetched_or_written(tmp_path):
         name = await BlogService()._download_member_thumbnail(
             session, ESCAPE_MEMBER, "http://127.0.0.1:1/v3payload.cmd", thumbs
         )
-    assert name is None
+    assert name == ThumbnailDownload(None)
     session.get.assert_not_called()
     assert list((tmp_path / "escape_target").iterdir()) == []
     assert [e["reason"] for e in logs if e["event"] == "member_thumbnail_rejected"] == [
@@ -88,7 +92,7 @@ async def test_a_thumbnail_is_saved_only_under_a_picture_extension(tmp_path):
     name = await BlogService()._download_member_thumbnail(
         session, "55401", "https://img.nogizaka46.com/x/v3payload.cmd", tmp_path
     )
-    assert name == "55401.jpg"
+    assert name == ThumbnailDownload("55401.jpg")
     assert sorted(p.name for p in tmp_path.iterdir()) == ["55401.jpg"]
 
 
@@ -98,7 +102,7 @@ async def test_a_failed_thumbnail_logs_the_status_only(tmp_path):
         name = await BlogService()._download_member_thumbnail(
             _session(status=404), "55401", "https://x/a.jpg", tmp_path
         )
-    assert name is None
+    assert name == ThumbnailDownload(None, transient=False)
     (event,) = [e for e in logs if e["event"] == "thumbnail_download_failed"]
     assert event["status"] == 404 and "member_id" not in event
     assert list(tmp_path.iterdir()) == []
@@ -112,7 +116,7 @@ async def test_a_thumbnail_error_logs_the_error_type_only(tmp_path):
         name = await BlogService()._download_member_thumbnail(
             session, "55401", "https://x/a.jpg", tmp_path
         )
-    assert name is None
+    assert name == ThumbnailDownload(None, transient=True)
     (event,) = [e for e in logs if e["event"] == "thumbnail_download_error"]
     assert event["error_type"] == "OSError" and "victim" not in str(logs)
 
@@ -121,12 +125,9 @@ async def test_a_thumbnail_error_logs_the_error_type_only(tmp_path):
 async def test_a_member_without_a_url_is_skipped(tmp_path):
     session = _session()
     with capture_logs() as logs:
-        assert (
-            await BlogService()._download_member_thumbnail(
-                session, "55401", None, tmp_path
-            )
-            is None
-        )
+        assert await BlogService()._download_member_thumbnail(
+            session, "55401", None, tmp_path
+        ) == ThumbnailDownload(None)
     session.get.assert_not_called()
     assert [e["reason"] for e in logs if e["event"] == "member_thumbnail_rejected"] == [
         "url"
@@ -151,7 +152,7 @@ async def test_members_with_unsafe_codes_are_dropped_before_any_download(tmp_pat
             ),
         ]
     )
-    download = AsyncMock(return_value="55401.jpg")
+    download = AsyncMock(return_value=ThumbnailDownload("55401.jpg"))
     with (
         patch("backend.services.blog_service.get_scraper", return_value=scraper),
         patch.object(
@@ -251,7 +252,7 @@ async def test_writing_a_thumbnail_removes_its_other_extensions(tmp_path):
         "https://img.nogizaka46.com/a",
         tmp_path,
     )
-    assert name == "55401.png"
+    assert name == ThumbnailDownload("55401.png")
     assert sorted(p.name for p in tmp_path.iterdir()) == ["55401.png", "99.jpg"]
 
 
@@ -269,7 +270,9 @@ async def test_a_failed_thumbnail_leaves_the_cache_unhashed_so_it_is_retried(tmp
     scraper = MagicMock()
     scraper.get_members_with_thumbnails = AsyncMock(return_value=listed)
     download = AsyncMock(
-        side_effect=lambda _s, mid, _u, _d: "1.jpg" if mid == "1" else None
+        side_effect=lambda _s, mid, _u, _d: (
+            ThumbnailDownload("1.jpg") if mid == "1" else ThumbnailDownload(None, True)
+        )
     )
     with (
         patch("backend.services.blog_service.get_scraper", return_value=scraper),
@@ -286,7 +289,7 @@ async def test_a_failed_thumbnail_leaves_the_cache_unhashed_so_it_is_retried(tmp
         cache = json.loads((tmp_path / "members.json").read_text(encoding="utf-8"))
         assert cache["hash"] is None
         await svc.get_members_with_thumbnails("nogizaka46")
-    assert download.await_count == 4  # the second call downloaded again
+    assert download.await_count == 3  # the second call retried only member 2
     incomplete = [e for e in logs if e["event"] == "members_thumbnails_incomplete"]
     assert incomplete and (incomplete[0]["failed"], incomplete[0]["count"]) == (1, 2)
 
@@ -301,7 +304,7 @@ async def test_a_complete_download_is_cached_by_hash(tmp_path):
     ]
     scraper = MagicMock()
     scraper.get_members_with_thumbnails = AsyncMock(return_value=listed)
-    download = AsyncMock(return_value="1.jpg")
+    download = AsyncMock(return_value=ThumbnailDownload("1.jpg"))
     with (
         patch("backend.services.blog_service.get_scraper", return_value=scraper),
         patch.object(
@@ -317,6 +320,48 @@ async def test_a_complete_download_is_cached_by_hash(tmp_path):
     assert download.await_count == 1
 
 
+async def _fake_fetch(_session, url, **_kw):
+    """Serve a picture for the first member; refuse like the real fetcher otherwise."""
+    from backend.services.remote_images import RemoteImageRefused
+
+    if url.endswith("/1.jpg"):
+        return b"\xff\xd8jpeg", "image/jpeg"
+    if "elsewhere" in url:
+        raise RemoteImageRefused("host")
+    if url.endswith("/gone.jpg"):
+        raise RemoteImageRefused("status", status=404)
+    if url.endswith("/big.jpg"):
+        raise RemoteImageRefused("too_large")
+    if url.endswith("/5xx.jpg"):
+        raise RemoteImageRefused("status", status=503)
+    raise TimeoutError()
+
+
+async def _run_members(svc, tmp_path, members, fake=_fake_fetch):
+    scraper = MagicMock()
+    scraper.get_members_with_thumbnails = AsyncMock(return_value=members)
+    with (
+        patch("backend.services.blog_service.get_scraper", return_value=scraper),
+        patch("backend.services.blog_service.fetch_official_image", fake),
+        patch.object(
+            svc, "get_member_thumbnails_path", return_value=tmp_path / "thumbs"
+        ),
+        patch.object(
+            svc, "get_members_cache_path", return_value=tmp_path / "members.json"
+        ),
+    ):
+        return await svc.get_members_with_thumbnails("nogizaka46")
+
+
+def _cache(tmp_path):
+    return json.loads((tmp_path / "members.json").read_text(encoding="utf-8"))
+
+
+_OK_MEMBER = SimpleNamespace(
+    id="1", name="a", thumbnail_url="https://img.nogizaka46.com/1.jpg"
+)
+
+
 @pytest.mark.asyncio
 @pytest.mark.parametrize(
     "member",
@@ -329,37 +374,81 @@ async def test_a_complete_download_is_cached_by_hash(tmp_path):
         SimpleNamespace(
             id="2", name="b", thumbnail_url="https://elsewhere.example/2.jpg"
         ),
+        SimpleNamespace(
+            id="2", name="b", thumbnail_url="https://img.nogizaka46.com/gone.jpg"
+        ),
+        SimpleNamespace(
+            id="2", name="b", thumbnail_url="https://img.nogizaka46.com/big.jpg"
+        ),
     ],
 )
-async def test_a_member_with_nothing_to_fetch_does_not_block_the_cache(
-    tmp_path, member
-):
-    """No URL, an unsafe id or an off-list host never downloads: not a failure to retry."""
+async def test_a_permanent_failure_does_not_block_the_cache(tmp_path, member):
+    """No URL, an unsafe id, an off-list host, a 404 or an oversized body cannot be
+    fixed by retrying: the hash is stored and the next call is a cache hit."""
     svc = BlogService()
-    listed = [
-        SimpleNamespace(
-            id="1", name="a", thumbnail_url="https://img.nogizaka46.com/1.jpg"
-        ),
-        member,
-    ]
-    scraper = MagicMock()
-    scraper.get_members_with_thumbnails = AsyncMock(return_value=listed)
-    download = AsyncMock(
-        side_effect=lambda _s, mid, _u, _d: "1.jpg" if mid == "1" else None
+    fetch = AsyncMock(side_effect=_fake_fetch)
+    await _run_members(svc, tmp_path, [_OK_MEMBER, member], fetch)
+    first = fetch.await_count
+    assert _cache(tmp_path)["hash"] is not None
+    await _run_members(svc, tmp_path, [_OK_MEMBER, member], fetch)
+    assert fetch.await_count == first  # the second call was a cache hit
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("name", ["timeout", "5xx"])
+async def test_a_transient_failure_blocks_the_cache_and_only_it_is_retried(
+    tmp_path, name
+):
+    svc = BlogService()
+    url = "https://img.nogizaka46.com/" + ("5xx.jpg" if name == "5xx" else "t.jpg")
+    flaky = SimpleNamespace(id="2", name="b", thumbnail_url=url)
+    gone = SimpleNamespace(
+        id="3", name="c", thumbnail_url="https://img.nogizaka46.com/gone.jpg"
     )
-    with (
-        patch("backend.services.blog_service.get_scraper", return_value=scraper),
-        patch.object(
-            svc, "get_member_thumbnails_path", return_value=tmp_path / "thumbs"
-        ),
-        patch.object(
-            svc, "get_members_cache_path", return_value=tmp_path / "members.json"
-        ),
-        patch.object(svc, "_download_member_thumbnail", download),
-    ):
-        await svc.get_members_with_thumbnails("nogizaka46")
-        first = download.await_count
-        await svc.get_members_with_thumbnails("nogizaka46")
-    cache = json.loads((tmp_path / "members.json").read_text(encoding="utf-8"))
-    assert cache["hash"] is not None
-    assert download.await_count == first  # the second call was a cache hit
+    members = [_OK_MEMBER, flaky, gone]
+    fetch = AsyncMock(side_effect=_fake_fetch)
+    await _run_members(svc, tmp_path, members, fetch)
+    cache = _cache(tmp_path)
+    assert cache["hash"] is None and cache["transient_failed"] == ["2"]
+    assert fetch.await_count == 3
+
+    await _run_members(svc, tmp_path, members, fetch)
+    # the retry pass fetched only the member that failed transiently
+    assert fetch.await_count == 4
+    assert [m["thumbnail"] for m in _cache(tmp_path)["members"]] == [
+        "1.jpg",
+        None,
+        None,
+    ]
+    assert (tmp_path / "thumbs" / "1.jpg").exists()
+
+
+@pytest.mark.asyncio
+async def test_a_retry_that_succeeds_stores_the_hash(tmp_path):
+    svc = BlogService()
+    flaky = SimpleNamespace(
+        id="2", name="b", thumbnail_url="https://img.nogizaka46.com/t.jpg"
+    )
+
+    async def recovered(_s, url, **_kw):
+        return b"\xff\xd8jpeg", "image/jpeg"
+
+    await _run_members(svc, tmp_path, [_OK_MEMBER, flaky])
+    assert _cache(tmp_path)["hash"] is None
+    members = await _run_members(svc, tmp_path, [_OK_MEMBER, flaky], recovered)
+    assert [m["thumbnail"] for m in members] == ["1.jpg", "2.jpg"]
+    assert _cache(tmp_path)["hash"] is not None
+    assert "transient_failed" not in _cache(tmp_path)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "status,transient", [(404, False), (403, False), (429, True), (503, True)]
+)
+async def test_download_marks_only_retryable_statuses_transient(
+    tmp_path, status, transient
+):
+    result = await BlogService()._download_member_thumbnail(
+        _session(status=status), "55401", "https://img.nogizaka46.com/a.jpg", tmp_path
+    )
+    assert result == ThumbnailDownload(None, transient=transient)

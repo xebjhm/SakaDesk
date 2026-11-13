@@ -157,7 +157,7 @@ async def test_a_member_thumbnail_on_a_loopback_url_is_not_fetched(tmp_path):
         name = await BlogService()._download_member_thumbnail(
             session, "55401", "http://127.0.0.1:1/x.jpg", tmp_path
         )
-    assert name is None and session.calls == []
+    assert name.filename is None and not name.transient and session.calls == []
     assert {
         "event": "thumbnail_download_refused",
         "reason": "scheme",

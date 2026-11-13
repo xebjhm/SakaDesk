@@ -42,8 +42,6 @@ from backend.services.path_resolver import get_output_dir
 from backend.services.remote_images import (
     RemoteImageRefused,
     fetch_official_image,
-    upgrade_official_url,
-    url_refusal,
 )
 from backend.services.safe_paths import (
     UnsafePath,
@@ -473,6 +471,26 @@ def _merge_blog_index(current: dict, incoming: dict) -> dict:
     return merged
 
 
+@dataclass(frozen=True)
+class ThumbnailDownload:
+    """Outcome of one member thumbnail download.
+
+    ``filename`` is the saved file name, or ``None`` when nothing was saved.
+    ``transient`` is only meaningful without a ``filename``: ``True`` when a
+    later attempt can succeed (network error, timeout, HTTP 408, 429 or 5xx,
+    a failed write), ``False`` when it cannot (unsafe id, no URL, a refusal
+    such as an off-list host, a redirect off the list, ``too_large`` or an
+    HTTP 4xx other than 408 and 429).
+    """
+
+    filename: Optional[str]
+    transient: bool = False
+
+
+_TRANSIENT_STATUSES = frozenset({408, 429})
+"""HTTP statuses below 500 that a later attempt can still turn into a 200."""
+
+
 @dataclass
 class BlogDownloadItem:
     """Item in the blog content download queue."""
@@ -691,8 +709,11 @@ class BlogService:
         member_id: str,
         thumbnail_url: str,
         thumbnails_dir: Path,
-    ) -> Optional[str]:
-        """Download one member thumbnail; the local file name, or None.
+    ) -> ThumbnailDownload:
+        """Download one member thumbnail; a :class:`ThumbnailDownload`.
+
+        ``filename`` is the local file name, or ``None`` with ``transient``
+        telling whether a retry can help.
 
         ``member_id`` names the file, so it must be ``safe_paths.is_safe_id``
         and ``thumbnail_url`` a non-empty string; otherwise nothing is fetched
@@ -704,14 +725,16 @@ class BlogService:
         ``thumbnail_download_error`` (``error_type``); never an id or a URL.
         The fetch goes through ``remote_images.fetch_official_image`` (official
         https hosts, checked redirects, 10 MiB cap); a refusal logs
-        ``thumbnail_download_refused`` (``reason``).
+        ``thumbnail_download_refused`` (``reason``). Only a network or write
+        error, HTTP 408, 429 or 5xx is transient; a rejected id or URL and
+        every other refusal is permanent.
         """
         if not is_safe_id(member_id):
             logger.warning("member_thumbnail_rejected", reason="member_id")
-            return None
+            return ThumbnailDownload(None)
         if not isinstance(thumbnail_url, str) or not thumbnail_url:
             logger.warning("member_thumbnail_rejected", reason="url")
-            return None
+            return ThumbnailDownload(None)
         try:
             content, content_type = await fetch_official_image(session, thumbnail_url)
             ext = _thumbnail_ext(content_type, thumbnail_url)
@@ -732,16 +755,19 @@ class BlogService:
                             "member_thumbnail_sibling_unlink_failed",
                             error_type=type(e).__name__,
                         )
-            return local_filename
+            return ThumbnailDownload(local_filename)
         except RemoteImageRefused as e:
             if e.reason == "status":
                 logger.warning("thumbnail_download_failed", status=e.status)
-            else:
-                logger.warning("thumbnail_download_refused", reason=e.reason)
-            return None
+                status = e.status or 0
+                return ThumbnailDownload(
+                    None, transient=status >= 500 or status in _TRANSIENT_STATUSES
+                )
+            logger.warning("thumbnail_download_refused", reason=e.reason)
+            return ThumbnailDownload(None)
         except Exception as e:
             logger.warning("thumbnail_download_error", error_type=type(e).__name__)
-            return None
+            return ThumbnailDownload(None, transient=True)
 
     async def get_members_with_thumbnails(self, service: str) -> List[Dict[Any, Any]]:
         """Get blog members with locally cached thumbnails.
@@ -824,33 +850,37 @@ class BlogService:
                 cached_hash=cache.get("hash") if cache else None,
             )
 
+            # A previous pass for this same member list that only failed
+            # transiently: keep what it saved and retry just those members.
+            kept: dict[str, dict] = {}
+            retry_ids: set[str] = set()
+            if cache and cache.get("pending_hash") == fresh_hash:
+                retry_ids = set(cache.get("transient_failed", []))
+                kept = {m["id"]: m for m in cache.get("members", []) if "id" in m}
+
             # Download all thumbnails (they change together)
             thumbnails_dir.mkdir(parents=True, exist_ok=True)
 
             result_members: list[dict] = []
-            # Members whose thumbnail could be fetched at all: one with no URL,
-            # an unsafe id or an off-list host never downloads, so it must not
-            # count as a failure that keeps the cache from being hashed.
-            fetchable: set[str] = {
-                m.id
-                for m in fresh_members
-                if is_safe_id(m.id)
-                and isinstance(m.thumbnail_url, str)
-                and url_refusal(upgrade_official_url(m.thumbnail_url)) is None
-            }
+            transient_ids: list[str] = []
 
             async def download_and_add(member: MemberInfo):
-                thumbnail_filename = await self._download_member_thumbnail(
+                if member.id in kept and member.id not in retry_ids:
+                    result_members.append(kept[member.id])
+                    return
+                outcome = await self._download_member_thumbnail(
                     session,
                     member.id,
                     member.thumbnail_url,
                     thumbnails_dir,
                 )
+                if outcome.filename is None and outcome.transient:
+                    transient_ids.append(member.id)
                 result_members.append(
                     {
                         "id": member.id,
                         "name": member.name,
-                        "thumbnail": thumbnail_filename,
+                        "thumbnail": outcome.filename,
                     }
                 )
 
@@ -859,17 +889,18 @@ class BlogService:
             # Sort by ID for consistency
             result_members.sort(key=lambda m: m["id"])
 
-            failed = sum(
-                1
-                for m in result_members
-                if m["thumbnail"] is None and m["id"] in fetchable
-            )
-            # The hash says "these thumbnails are on disk": only a complete
-            # download may store it, else the next call retries (audit 2026-11-13).
-            new_cache = {
+            failed = len(transient_ids)
+            # The hash says "these thumbnails are on disk": only a download
+            # without a transient failure may store it, else the next call
+            # retries those members (a permanent failure, such as a 404 or an
+            # unsafe id, would never succeed and must not block it).
+            new_cache: dict[str, Any] = {
                 "hash": None if failed else fresh_hash,
                 "members": result_members,
             }
+            if failed:
+                new_cache["pending_hash"] = fresh_hash
+                new_cache["transient_failed"] = sorted(transient_ids)
             await self._save_members_cache(service, new_cache)
             if failed:
                 logger.warning(
