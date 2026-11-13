@@ -12,6 +12,7 @@
  * in it loads until BlogBody inserts a copy.
  */
 import DOMPurify from 'dompurify';
+import { isLoopbackHost } from '../../utils/loopbackHost';
 
 /** Elements a post keeps. */
 export const BLOG_ALLOWED_TAGS: string[] = [
@@ -28,17 +29,6 @@ const LOCAL_IMAGE_PATH = '/api/blogs/image';
 
 /** A base no real URL can resolve against: relative values that land on it had no base to use. */
 const NO_BASE = 'https://no-base.invalid/';
-
-function isLoopbackHost(rawHost: string): boolean {
-    const host = rawHost.toLowerCase().replace(/\.+$/, '');
-    return (
-        host === 'localhost' || host.endsWith('.localhost') || host === '0.0.0.0'
-        || /^127\.\d+\.\d+\.\d+$/.test(host)
-        // Every IPv6 literal starting with '::' is special (loopback, unspecified, IPv4-mapped or
-        // IPv4-compatible such as [::7f00:1]); no public address does.
-        || host.startsWith('[::')
-    );
-}
 
 /**
  * The URL a post's `src`/`href` may keep, or null to drop it. Values resolve against the post's

@@ -32,6 +32,9 @@ describe('openExternal', () => {
         ['', 'invalid'],
         [null, 'invalid'],
         [`${window.location.origin}/api/settings`, 'same_origin'],
+        ['http://localhost:9999/x', 'loopback'],
+        ['http://127.0.0.2/x', 'loopback'],
+        ['http://[::1]:8000/x', 'loopback'],
     ])('refuses %s (%s)', (href, reason) => {
         expect(openExternal(href, 'message')).toBe('blocked');
         expect(open).not.toHaveBeenCalled();
