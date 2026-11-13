@@ -30,6 +30,7 @@ app-level dialogs use `brandScopeStyle()` / `Modal scope="brand"`. Never
 hard-code colours or arbitrary radius / shadow / text / spacing values.
 `frontend/src/design/guard.test.ts` fails the build on new hex / `rgb()` /
 `hsl()` literals, arbitrary radius / shadow / text / spacing values and more
-uses of the superseded `*-group-*` role utilities; a second ratchet fails it on
-named palette classes (e.g. `bg-gray-100`, `bg-black/40`), `z-40` / `z-50`,
-Tailwind's default font sizes and CSS colour literals. Preview tokens and primitives at `?view=design` on the dev server.
+uses of the superseded `*-group-*` role utilities; its drift ratchet fails it
+on named palette classes (e.g. `bg-gray-100`, `bg-black/40`), `z-40` / `z-50`,
+Tailwind's default font sizes and CSS colour literals. Preview tokens and
+primitives at `?view=design` on the dev server.
