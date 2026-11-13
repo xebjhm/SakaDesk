@@ -141,7 +141,8 @@ export function useSettings(_isAuthenticated: boolean | null): UseSettingsReturn
             // Another archive: the chat's list snapshots show rooms of the old one (W3).
             if ('output_dir' in updates) forgetListSnapshots();
             setAppSettings(data);
-            setOutputDirInput(data.output_dir);
+            // Only a folder save rewrites the field: a picked but unsaved folder survives other saves.
+            if (savesFolder) setOutputDirInput(data.output_dir);
 
             // Blog backup toggle: start/stop backup on setting change.
             // During first-launch setup, App.tsx defers saving blogs_full_backup

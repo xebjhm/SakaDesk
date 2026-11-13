@@ -453,6 +453,16 @@ describe('useSettings – output folder picker (security audit 2026-11-13)', () 
         expect(result.current.folderErrorKey).toBe('settings.outputDirError.busy')
     })
 
+    it('a save of something else keeps a picked but unsaved folder in the field', async () => {
+        withPicker({ path: 'D:\\データ' })
+        const { result } = renderHook(() => useSettings(true))
+        await waitForMount(result)
+        await act(async () => { await result.current.handleSelectFolder() })
+        expect(result.current.outputDirInput).toBe('D:\\データ')
+        await act(async () => { await result.current.saveSettings({ blogs_full_backup: true }) })
+        expect(result.current.outputDirInput).toBe('D:\\データ')
+    })
+
     it('the newest word wins: a save of the folder drops an older picker error, a success leaves none', async () => {
         withPicker({ path: null, error: 'busy' })
         const { result } = renderHook(() => useSettings(true))
