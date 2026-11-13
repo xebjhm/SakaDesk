@@ -143,7 +143,7 @@ export function AboutModal({ isOpen, onClose, onOpenDiagnostics }: AboutModalPro
                 </div>
                 <div className="flex items-center gap-1 text-caption text-muted">
                     <span>{t('about.madeWith')}</span>
-                    <button type="button" onClick={handleHeartClick} aria-label={t('about.madeWithLove')} className="relative cursor-default focus:outline-none">
+                    <button type="button" onClick={handleHeartClick} aria-label={t('about.madeWithLove')} className="relative cursor-default rounded-xs focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-0">
                         <Heart className={cn('h-3 w-3 fill-current text-heart transition-transform active:scale-125', goldenFingerActive && 'animate-heartbeat motion-reduce:animate-none')} />
                         {floatingHearts.map((heart) => (
                             <Heart
