@@ -2,8 +2,11 @@
 
 <img>, <video> and hidden-iframe downloads cannot add the X-SakaDesk-Token
 header, so the page swaps the header once for an HttpOnly SameSite=Strict
-cookie. The API guard accepts the cookie for GET/HEAD only, so a cookie can
-never authorize a change and cannot mint itself: this POST needs the header.
+cookie. The cookie holds ``api_auth.cookie_value()``, a value derived from the
+launch token, never the token itself: browsers send cookies to every port of
+127.0.0.1, and a leaked cookie must not work as the header. The API guard
+accepts the cookie for GET/HEAD only, so a cookie can never authorize a change
+and cannot mint itself: this POST needs the header.
 """
 
 from __future__ import annotations
@@ -22,7 +25,7 @@ router = APIRouter(prefix="/api/session", tags=["session"])
 async def bootstrap(response: Response) -> dict[str, bool]:
     response.set_cookie(
         api_auth.TOKEN_COOKIE,
-        api_auth.LAUNCH_TOKEN,
+        api_auth.cookie_value(),
         httponly=True,
         samesite="strict",
         path="/api/",

@@ -40,13 +40,34 @@ def test_initial_token_is_random_without_env(monkeypatch):
     assert api_auth._initial_token() != api_auth._initial_token()
 
 
-def test_health_proof_is_hmac_of_the_nonce():
+def _hmac(msg: bytes) -> str:
+    return hmac.new(api_auth.LAUNCH_TOKEN.encode(), msg, hashlib.sha256).hexdigest()
+
+
+def test_health_proof_is_a_domain_separated_hmac_of_the_nonce():
     nonce = "n" * 24
-    expected = hmac.new(
-        api_auth.LAUNCH_TOKEN.encode(), nonce.encode(), hashlib.sha256
-    ).hexdigest()
-    assert api_auth.health_proof(nonce) == expected
-    assert api_auth.health_proof("m" * 24) != expected
+    assert api_auth.health_proof(nonce) == _hmac(b"health:" + nonce.encode())
+    assert api_auth.health_proof(nonce) != _hmac(nonce.encode())
+    assert api_auth.health_proof("m" * 24) != api_auth.health_proof(nonce)
+
+
+def test_cookie_value_is_derived_from_but_not_the_token():
+    assert api_auth.cookie_value() == _hmac(b"sakadesk-cookie-v1")
+    assert api_auth.cookie_value() != api_auth.LAUNCH_TOKEN
+    assert api_auth.LAUNCH_TOKEN not in api_auth.cookie_value()
+
+
+def test_cookie_ok_accepts_only_the_derived_cookie():
+    assert api_auth.cookie_ok(api_auth.cookie_value()) is True
+    assert api_auth.cookie_ok(api_auth.LAUNCH_TOKEN) is False
+    assert api_auth.cookie_ok(api_auth.cookie_value() + "0") is False
+    assert api_auth.cookie_ok("") is False
+    assert api_auth.cookie_ok(None) is False
+    assert api_auth.cookie_ok("日向坂46-クッキー") is False
+
+
+def test_header_check_refuses_the_cookie_value():
+    assert api_auth.token_ok(api_auth.cookie_value()) is False
 
 
 def test_valid_nonce_shape():

@@ -5,9 +5,15 @@ including processes of other Windows accounts on the same PC. A random token,
 created once per process and handed only to SakaDesk's own windows (in the URL
 fragment, see desktop.py), separates the app's UI from any other caller.
 
-``SAKADESK_API_TOKEN`` pins the value for development (dev.sh / dev.ps1 share it
-with the Vite proxy) and e2e runs; a pin shorter than 16 characters is ignored.
-``SAKADESK_TEST_CLIENT=1`` (set only by the root conftest) lets pytest's
+Values derived from the token are domain-separated, so none can stand in for
+another: the media cookie holds ``cookie_value()`` (an HMAC of a fixed label),
+never the token, so a cookie leaked to another 127.0.0.1 port cannot be sent as
+the header; the open ``/health`` signs ``"health:" + nonce``, so it cannot be
+made to produce the cookie value or any other keyed value.
+
+``SAKADESK_API_TOKEN`` pins the value for development (dev.sh / dev.ps1 put it
+in the dev page's ``#t=`` URL) and e2e runs; a pin shorter than 16 characters is
+ignored. ``SAKADESK_TEST_CLIENT=1`` (set only by the root conftest) lets pytest's
 TestClient, which always sends ``Host: testserver``, through the guard.
 """
 
@@ -44,11 +50,35 @@ def _initial_token() -> str:
 LAUNCH_TOKEN: str = _initial_token()
 
 
-def token_ok(value: str | None) -> bool:
-    """Constant-time comparison with the launch token."""
+def _keyed(message: bytes) -> str:
+    """HMAC-SHA256 of ``message`` under the launch token (hex)."""
+    return hmac.new(LAUNCH_TOKEN.encode("utf-8"), message, hashlib.sha256).hexdigest()
+
+
+def _same(value: str | None, expected: str) -> bool:
+    """Constant-time equality; empty or missing values never match."""
     if not value:
         return False
-    return hmac.compare_digest(value.encode("utf-8"), LAUNCH_TOKEN.encode("utf-8"))
+    return hmac.compare_digest(value.encode("utf-8"), expected.encode("utf-8"))
+
+
+def token_ok(value: str | None) -> bool:
+    """Constant-time comparison with the launch token (the header value)."""
+    return _same(value, LAUNCH_TOKEN)
+
+
+def cookie_value() -> str:
+    """The media cookie's value: HMAC-SHA256 of ``b"sakadesk-cookie-v1"`` (hex).
+
+    Derived from, but never equal to, the launch token: the API guard accepts
+    it only as the cookie on GET/HEAD and never as the header.
+    """
+    return _keyed(b"sakadesk-cookie-v1")
+
+
+def cookie_ok(value: str | None) -> bool:
+    """Constant-time comparison with ``cookie_value()``."""
+    return _same(value, cookie_value())
 
 
 def valid_nonce(nonce: str) -> bool:
@@ -57,15 +87,14 @@ def valid_nonce(nonce: str) -> bool:
 
 
 def health_proof(nonce: str) -> str:
-    """HMAC-SHA256 of the nonce under the launch token (hex).
+    """HMAC-SHA256 of ``b"health:" + nonce`` under the launch token (hex).
 
     desktop.py's readiness probe sends a fresh nonce and accepts the server
     only if it returns this proof, so a process squatting the port cannot pass
-    itself off as SakaDesk's backend.
+    itself off as SakaDesk's backend. The ``health:`` prefix keeps the open
+    /health endpoint from signing anything another check accepts.
     """
-    return hmac.new(
-        LAUNCH_TOKEN.encode("utf-8"), nonce.encode("utf-8"), hashlib.sha256
-    ).hexdigest()
+    return _keyed(b"health:" + nonce.encode("utf-8"))
 
 
 def test_client_mode() -> bool:

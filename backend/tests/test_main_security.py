@@ -97,10 +97,24 @@ def test_api_with_wrong_token_is_unauthorized():
 
 def test_cookie_authorizes_get_but_never_a_mutation():
     """<img>/<video> GETs carry the cookie; POSTs must carry the header."""
-    jar = {api_auth.TOKEN_COOKIE: api_auth.LAUNCH_TOKEN}
+    jar = {api_auth.TOKEN_COOKIE: api_auth.cookie_value()}
     cookie_client = TestClient(app, base_url="http://127.0.0.1:8765", cookies=jar)
     assert cookie_client.get(_JSON_GET).status_code == 200
     assert cookie_client.post(_JSON_GET, json={}).status_code == 401
+
+
+def test_launch_token_is_not_accepted_as_the_cookie():
+    """Only the derived cookie value works as a cookie, not the token itself."""
+    jar = {api_auth.TOKEN_COOKIE: api_auth.LAUNCH_TOKEN}
+    cookie_client = TestClient(app, base_url="http://127.0.0.1:8765", cookies=jar)
+    assert cookie_client.get(_JSON_GET).status_code == 401
+
+
+def test_cookie_value_is_not_accepted_as_the_header():
+    """A leaked cookie (sent to any 127.0.0.1 port) cannot authorize writes."""
+    header = {"X-SakaDesk-Token": api_auth.cookie_value()}
+    assert app_client.get(_JSON_GET, headers=header).status_code == 401
+    assert app_client.post(_JSON_GET, json={}, headers=header).status_code == 401
 
 
 def test_bootstrap_sets_an_httponly_strict_cookie():
@@ -108,7 +122,8 @@ def test_bootstrap_sets_an_httponly_strict_cookie():
     resp = fresh.post("/api/session/bootstrap", headers=TOKEN)
     assert resp.status_code == 200
     cookie = resp.headers["set-cookie"]
-    assert cookie.startswith(f"{api_auth.TOKEN_COOKIE}={api_auth.LAUNCH_TOKEN}")
+    assert cookie.startswith(f"{api_auth.TOKEN_COOKIE}={api_auth.cookie_value()};")
+    assert api_auth.LAUNCH_TOKEN not in cookie
     assert "HttpOnly" in cookie
     assert "SameSite=strict" in cookie
     assert "Path=/api/" in cookie
@@ -164,7 +179,7 @@ def test_guard_rechecks_the_test_client_flag_per_request(monkeypatch):
     assert client.get(_JSON_GET).status_code == 401
 
 
-_COOKIE = {api_auth.TOKEN_COOKIE: api_auth.LAUNCH_TOKEN}
+_COOKIE = {api_auth.TOKEN_COOKIE: api_auth.cookie_value()}
 
 
 @pytest.mark.parametrize(

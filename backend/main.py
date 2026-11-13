@@ -458,11 +458,13 @@ async def api_guard(request: Request, call_next):
 
     1. A request that carries an Origin must come from this server's own
        origin (CSRF, other loopback ports, ``Origin: null``).
-    2. Every request must carry the per-launch token: the X-SakaDesk-Token
-       header, or for GET/HEAD the HttpOnly cookie set by
-       /api/session/bootstrap. Processes and pages without it get 401. A
-       cookie-authorised request whose Sec-Fetch-Site is neither same-origin
-       nor none (an absent header is allowed) is also refused.
+    2. Every request must carry the per-launch token in the X-SakaDesk-Token
+       header, or for GET/HEAD (and only when the header is absent) the
+       HttpOnly cookie set by /api/session/bootstrap, which holds the derived
+       ``api_auth.cookie_value()``: the token is refused as the cookie and the
+       cookie value as the header. Processes and pages without either get 401.
+       A cookie-authorised request whose Sec-Fetch-Site is neither
+       same-origin nor none (an absent header is allowed) is also refused.
     Under pytest only (SAKADESK_TEST_CLIENT=1), TestClient's Host: testserver
     skips step 2.
     """
@@ -480,11 +482,13 @@ async def api_guard(request: Request, call_next):
         )
         if not is_test_client:
             token = request.headers.get(api_auth.TOKEN_HEADER, "")
-            if not token and request.method in ("GET", "HEAD"):
-                token = request.cookies.get(api_auth.TOKEN_COOKIE, "")
+            if token:
+                authorized = api_auth.token_ok(token)
+            elif request.method in ("GET", "HEAD"):
+                cookie = request.cookies.get(api_auth.TOKEN_COOKIE, "")
                 fetch_site = request.headers.get("sec-fetch-site")
                 if (
-                    token
+                    cookie
                     and fetch_site is not None
                     and fetch_site not in ("same-origin", "none")
                 ):
@@ -496,7 +500,10 @@ async def api_guard(request: Request, call_next):
                     return JSONResponse(
                         status_code=401, content={"detail": "Unauthorized"}
                     )
-            if not api_auth.token_ok(token):
+                authorized = api_auth.cookie_ok(cookie)
+            else:
+                authorized = False
+            if not authorized:
                 logger.info(
                     "api_request_rejected", reason="token", method=request.method
                 )

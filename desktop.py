@@ -979,9 +979,10 @@ def wait_for_server(
     """Wait until SakaDesk's own backend answers on the port.
 
     Polls /health with a fresh nonce and accepts only a response carrying
-    HMAC(launch token, nonce): /health proves the ASGI app is loaded (no 404
-    flash on second launch), and the proof proves the answering process is
-    this backend and not a squatter on the port (security audit 2026-11-13).
+    ``api_auth.health_proof(nonce)``, HMAC(launch token, "health:" + nonce):
+    /health proves the ASGI app is loaded (no 404 flash on second launch), and
+    the proof proves the answering process is this backend and not a squatter
+    on the port (security audit 2026-11-13).
     Any answer that is not a valid proof (wrong or missing proof, non-JSON or
     non-object body, HTTP error status) logs ``server_identity_mismatch`` once and
     polling continues; connection refusals and timeouts retry silently. Returns
