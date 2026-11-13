@@ -641,6 +641,12 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
   to the opener on close, after the commit. **Tab is trapped:** it cycles over the frame's
   tabbable elements in DOM order, and focus that lands outside the top-most frame is pulled
   back (except in a menu).
+- **The rest is inert:** while any dialog is open, `#root` and every dialog below the top one
+  carry `inert` (`dialogStack.ts`), so clicks and a screen reader's virtual cursor stay in the
+  top dialog too, not only Tab. Dialogs, portaled menus and the lifted call render in `<body>`
+  outside `#root` and stay usable; anything rendered inside `#root` (a toast) does not respond
+  while a dialog is open, so it waits (`useAnyDialogOpen`): the settings error toast appears
+  once the dialogs close.
 - **Nested stacks:** dialogs stack in opening order (`dialogStack.ts`), even when a parent
   and a child open in the same render. Each level is `Z_INDEX.DIALOG` + depth ×
   `Z_INDEX.DIALOG_STEP`, the body scroll is locked while any dialog is open, and closing the
@@ -1212,7 +1218,7 @@ reader's photo viewer keeps the post's reading order (← / ‹ the image above,
 `Z_INDEX` (`frontend/src/constants/zIndex.ts`) is the only source of layering for
 overlays: `DROPDOWN` 50 (menus anchored in the frame), `DIALOG` 100 plus `DIALOG_STEP` 10 per
 stacked dialog, `POPOVER` 1000 (portaled menus, above any dialog) and `TOAST` 1100 (above
-everything, e.g. the settings error toast). No `z-[…]`, `z-40` or `z-50` classes; `z-10` /
+everything, e.g. the settings error toast, which waits for open dialogs to close). No `z-[…]`, `z-40` or `z-50` classes; `z-10` /
 `z-20` stay for stacking inside one frame (sticky headers, viewer chrome).
 
 **The incoming call.** A call that starts with no dialog open is drawn inside the chat

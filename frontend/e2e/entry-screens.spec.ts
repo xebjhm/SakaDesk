@@ -133,7 +133,7 @@ for (const [base, added] of [['hinatazaka46', '櫻坂46'], ['sakurazaka46', '日
   })
 }
 
-test('the settings error toast over Settings', async ({ page }) => {
+test('the settings error toast after Settings closes', async ({ page }) => {
   const state = await pinEntry(page, { tosAccepted: true, services: ['hinatazaka46'], configured: true, authed: ['hinatazaka46'] })
   await page.goto('/')
   await expect(page.getByRole('navigation', { name: 'Groups' })).toBeVisible({ timeout: 10000 })
@@ -141,6 +141,9 @@ test('the settings error toast over Settings', async ({ page }) => {
   await page.getByTitle('Settings', { exact: true }).click()
   await page.getByRole('menuitem', { name: 'Settings' }).click()
   await page.getByRole('dialog', { name: 'Settings' }).getByRole('switch', { name: 'Incoming calls' }).click()
+  // The toast waits while Settings is open (it lives in the inert app root) and shows on close.
+  await expect(page.getByTestId('settings-error-toast')).toHaveCount(0)
+  await page.keyboard.press('Escape')
   await expect(page.getByTestId('settings-error-toast')).toBeVisible()
   await shot(page, 'error-toast')
 })

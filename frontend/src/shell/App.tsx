@@ -14,6 +14,7 @@ import { serviceIdToGroupId } from '../config/colors'
 import { applyGroupTokens } from '../design/applyTokens'
 import type { GroupId } from '../design/tokens'
 import { Z_INDEX } from '../constants/zIndex'
+import { useAnyDialogOpen } from '../design/dialog/useAnyDialogOpen'
 import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
@@ -62,6 +63,8 @@ function App() {
         checkAuth,
     } = useAuth();
 
+    const anyDialogOpen = useAnyDialogOpen()
+
     // Settings hook
     const {
         appSettings,
@@ -80,6 +83,13 @@ function App() {
         folderErrorKey,
         openSettingsModal,
     } = useSettings(isAuthenticated);
+
+    // The settings error toast waits while a dialog is open (it sits in #root, inert then): one
+    // breadcrumb per deferral, not per render.
+    const toastDeferred = settingsErrorKey !== null && anyDialogOpen
+    useEffect(() => {
+        if (toastDeferred) clientLog('dialog', { target: 'settings_error_toast', outcome: 'suppressed' })
+    }, [toastDeferred])
 
     // Sync hook - now syncs ALL connected services independently
     const {
@@ -464,8 +474,8 @@ function App() {
                     crashError={crashError}
                 />
 
-                {/* ERROR TOAST: a status card on the toast layer, so it shows over an open Settings dialog. */}
-                {settingsErrorKey && (
+                {/* ERROR TOAST: a status card on the toast layer. It lives in #root, which is inert while a dialog is open, so it waits for the dialogs to close (Settings and Setup show the failure inline). */}
+                {settingsErrorKey && !anyDialogOpen && (
                     <div
                         data-testid="settings-error-toast"
                         role="alert"

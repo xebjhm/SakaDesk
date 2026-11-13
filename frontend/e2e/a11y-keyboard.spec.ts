@@ -46,4 +46,34 @@ test.describe('keyboard access', () => {
     await page.keyboard.press('Enter')
     await expect(page.getByRole('textbox', { name: /Filter by member/ })).toBeVisible()
   })
+
+  test('an open dialog makes the app behind it inert and gives it back on close', async ({ page }) => {
+    await pinBigRoom(page, { messages })
+    await page.goto('/')
+    await page.getByText('Big Room', { exact: true }).click()
+    await page.getByTitle('More options').click()
+    await page.getByText('Date Search', { exact: true }).click()
+    const dialog = page.getByRole('dialog', { name: 'Date Search' })
+    await expect(dialog).toBeVisible()
+    await expect(page.locator('#root')).toHaveAttribute('inert', '')
+    // Tab cycles inside the dialog only.
+    for (let i = 0; i < 6; i += 1) {
+      await page.keyboard.press('Tab')
+      expect(await page.evaluate(() => !!document.activeElement?.closest('[role="dialog"]'))).toBe(true)
+    }
+    await page.keyboard.press('Escape')
+    await expect(dialog).toHaveCount(0)
+    await expect(page.locator('#root')).not.toHaveAttribute('inert', '')
+  })
+
+  test('below md the closed member sidebar is inert and the chat is inert while it is open', async ({ page }) => {
+    await pinBigRoom(page, { messages })
+    await page.setViewportSize({ width: 600, height: 800 })
+    await page.goto('/')
+    const sidebar = page.locator('div.fixed.inset-y-0.left-0.z-30')
+    await expect(sidebar).toHaveAttribute('inert', '')
+    await page.getByRole('button', { name: 'Show conversations' }).click()
+    await expect(sidebar).not.toHaveAttribute('inert', '')
+    await expect(page.locator('div.contents[inert]')).toHaveCount(1)
+  })
 })

@@ -18,6 +18,8 @@ import { ContentSheet } from '../../core/layout/ContentSheet';
 import { selectIsSyncing, useSyncProgressStore } from '../../shell/syncProgressStore';
 import { useTranslation, Trans } from '../../i18n';
 import { useFeatureActive } from '../../design/featureActive';
+import { useInert } from '../../hooks/useInert';
+import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { Avatar, EmptyState, IconButton, StatusBlock } from '../../design/primitives';
 import { logWait, settleDelay, useDelayedLoading } from '../../design/loading';
 import { groupTokens } from '../../design/tokens';
@@ -182,6 +184,13 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // The last load failure and the room it belongs to (another room's failure never shows).
     const [loadFailure, setLoadFailure] = useState<{ dir: string; kind: ChatLoadFailure } | null>(null);
     const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+    // Below md (a narrow window or a zoomed page) the member list slides over the chat: closed, it is
+    // off-screen and must not take focus; open, the chat behind its scrim must not (UI health A-D6).
+    const narrow = useMediaQuery('(max-width: 767.98px)');
+    const sidebarRef = useRef<HTMLDivElement>(null);
+    const chatRef = useRef<HTMLDivElement>(null);
+    useInert(sidebarRef, narrow && !isSidebarOpen);
+    useInert(chatRef, narrow && isSidebarOpen);
     const [messagesForDir, setMessagesForDir] = useState<string | null>(null); // Which dir current messages belong to (state, for render gating)
     // Mirror of messagesForDir for fetchMessages: is the room already on screen when its fetch starts?
     const shownDirRef = useRef<string | null>(null);
@@ -907,6 +916,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Hidden: no chat is reported as viewed, so its notifications come through.
     useUiStateReporter(featureActive ? selectedGroupDir : undefined);
     const callActive = incomingCall.phase !== 'idle';
+    // The list under an in-frame call is covered by it: no focus and no virtual cursor there.
+    const listWrapRef = useRef<HTMLDivElement>(null);
+    useInert(listWrapRef, callActive);
     // The unread arrows float over the list only: never over the room's wait, skeleton or failure
     // (N4: at 960×640 the down arrow sat over the loading skeleton), nor over a call.
     const unreadArrows = listShown && !chatLoad.failure && !callActive;
@@ -980,7 +992,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     return (
         <div className="flex h-full w-full overflow-hidden">
             {/* Member sidebar on the canvas (level 0), next to the feature rail. Below md it slides in over the chat. */}
-            <div className={cn(
+            <div ref={sidebarRef} className={cn(
                 'fixed inset-y-0 left-0 z-30 transform transition-transform duration-base ease-standard',
                 'max-md:bg-group-canvas md:relative md:translate-x-0',
                 isSidebarOpen ? 'translate-x-0' : '-translate-x-full',
@@ -1004,6 +1016,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
             )}
 
             {/* Main Chat Area */}
+            <div ref={chatRef} className="contents">
             <ContentSheet className="relative">
                 {/* Header: the official title layer (gradient, or Sakurazaka's white header + thin bar) */}
                 <header
@@ -1144,6 +1157,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                         </div>
                     )}
 
+                    <div ref={listWrapRef} className="contents">
                     {listShown && selectedGroupDir && messagesService && (
                         <MessageList
                             memberId={selectedGroupDir}
@@ -1171,6 +1185,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                             footer={milestoneFooter}
                         />
                     )}
+                    </div>
                     <CallOverlay
                         call={incomingCall}
                         // The accent follows the chat's group context (--ds-accent); light-style services (櫻坂) get a white answer button.
@@ -1219,6 +1234,7 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
                     }}
                 />
             </ContentSheet>
+            </div>
 
             {selectedGroupDir && (
                 <CalendarModal
