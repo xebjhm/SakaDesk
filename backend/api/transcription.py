@@ -65,7 +65,9 @@ async def transcribe(request: TranscribeRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     output_dir = get_output_dir()
-    member_dir = resolve_service_path_or_http(output_dir, request.member_path)
+    member_dir = resolve_service_path_or_http(
+        output_dir, request.member_path, route="transcribe"
+    )
 
     if not member_dir.is_dir():
         raise HTTPException(status_code=404, detail="Member directory not found")
@@ -108,7 +110,9 @@ async def transcribe(request: TranscribeRequest):
     # must stay inside that folder before it is sent to the AI provider.
     service_dir_name = request.member_path.split("/")[0]
     media_path_from_output = f"{service_dir_name}/{media_file}"
-    media_path = resolve_service_path_or_http(output_dir, media_path_from_output)
+    media_path = resolve_service_path_or_http(
+        output_dir, media_path_from_output, route="transcribe_media"
+    )
     if not media_path.exists():
         raise HTTPException(status_code=404, detail="Media file not found on disk")
 
@@ -266,7 +270,9 @@ async def get_cached(service: str, message_id: int, member_path: Optional[str] =
 
     # Fast path: caller knows the member directory — load directly, no scan.
     if member_path:
-        member_dir = resolve_service_path_or_http(output_dir, member_path)
+        member_dir = resolve_service_path_or_http(
+            output_dir, member_path, route="transcription"
+        )
         if member_dir.is_dir():
             result = await asyncio.to_thread(storage.load, member_dir, message_id)
             if result:

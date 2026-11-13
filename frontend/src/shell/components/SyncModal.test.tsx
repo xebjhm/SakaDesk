@@ -228,4 +228,34 @@ describe('SyncModal', () => {
         fireEvent.click(screen.getByRole('button', { name: 'common.cancel' }));
         expect(onCancel).toHaveBeenCalledTimes(1);
     });
+
+    it('does not claim all media is present when Verify skipped items for safety', () => {
+        const withRejected: SyncProgress = {
+            ...baseProgress,
+            state: 'complete',
+            phase: 'complete',
+            completed: 45,
+            total: 45,
+            result: {
+                members: 45, checked: 100, missing: 0, repaired: 0, failed: 0, still_missing: 0,
+                unresolved: 0, rejected: 3,
+            },
+        };
+        render(<SyncModal syncProgress={withRejected} />);
+        expect(screen.queryByText('settings.verifyNoGaps')).not.toBeInTheDocument();
+        expect(screen.getByText('settings.verifySummary')).toBeInTheDocument();
+        expect(screen.getByTestId('sync-rejected')).toHaveTextContent('settings.verifyRejected');
+    });
+
+    it('still says all present when nothing was missing, unresolved or skipped', () => {
+        const clean: SyncProgress = {
+            ...baseProgress,
+            state: 'complete',
+            phase: 'complete',
+            result: { members: 1, checked: 3, missing: 0, repaired: 0, failed: 0, still_missing: 0, unresolved: 0, rejected: 0 },
+        };
+        render(<SyncModal syncProgress={clean} />);
+        expect(screen.getByText('settings.verifyNoGaps')).toBeInTheDocument();
+        expect(screen.queryByTestId('sync-rejected')).not.toBeInTheDocument();
+    });
 });

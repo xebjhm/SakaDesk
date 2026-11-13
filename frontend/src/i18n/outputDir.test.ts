@@ -40,4 +40,9 @@ describe('output folder strings (security audit 2026-11-13)', () => {
     it('English busy wording', () => {
         expect(en.settings.outputDirError.busy).toBe('A folder picker is already open. Close it, then click Browse again.');
     });
+
+    it.each(Object.entries(locales))('%s explains media Verify skipped for safety', (_code, locale) => {
+        const settings = (locale as unknown as { settings: Record<string, unknown> }).settings;
+        expect(String(settings.verifyRejected)).toContain('{{count}}');
+    });
 });

@@ -527,7 +527,9 @@ async def translate(request: TranslateRequest):
             )
 
         output_dir = get_output_dir()
-        member_dir = resolve_service_path_or_http(output_dir, request.member_path)
+        member_dir = resolve_service_path_or_http(
+            output_dir, request.member_path, route="translate"
+        )
 
         if not member_dir.is_dir():
             raise HTTPException(status_code=404, detail="Member directory not found")
@@ -694,7 +696,9 @@ async def translate_batch(request: TranslateBatchRequest):
     provider = await _get_provider_from_config()
 
     output_dir = get_output_dir()
-    member_dir = resolve_service_path_or_http(output_dir, request.member_path)
+    member_dir = resolve_service_path_or_http(
+        output_dir, request.member_path, route="translate_batch"
+    )
 
     if not member_dir.is_dir():
         raise HTTPException(status_code=404, detail="Member directory not found")

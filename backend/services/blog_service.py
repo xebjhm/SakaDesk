@@ -71,8 +71,8 @@ def _blog_folder(base: Path, member_name: str, blog_id: str, date: str) -> Path:
     surrounding whitespace stripped (Windows cannot create a folder ending in a
     space) and ``/`` replaced by ``_``, as archives have always been laid out.
     Raises ``safe_paths.UnsafePath`` (security audit 2026-11-13) with reason
-    ``blog_id`` when ``blog_id`` is not ``safe_paths.is_safe_id``, or
-    ``segment`` when either folder name is not a ``safe_paths.plain_segment``:
+    ``blog_id`` when ``blog_id`` is not ``safe_paths.is_safe_id``, ``date`` when
+    ``date`` is not ``safe_paths.is_blog_date`` (8 digits), or ``segment`` when either folder name is not a ``safe_paths.plain_segment``:
     such a value comes from a hostile or broken index and would leave the
     blogs folder. Callers that loop over the index skip and count it.
 

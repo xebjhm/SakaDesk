@@ -67,6 +67,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
         : null;
     const result = syncProgress.state === 'complete' ? syncProgress.result : null;
     const unresolved = result?.unresolved ?? 0;
+    const rejected = result?.rejected ?? 0;
 
     const footer = (syncProgress.state === 'complete' || syncProgress.state === 'error') && onClose
         ? <Button variant="secondary" onClick={onClose}>{t('common.done')}</Button>
@@ -109,7 +110,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                 {result && (
                     <div className="flex flex-col gap-2 text-small text-secondary">
                         <p>
-                            {result.missing === 0 && unresolved === 0
+                            {result.missing === 0 && unresolved === 0 && rejected === 0
                                 ? t('settings.verifyNoGaps')
                                 : t('settings.verifySummary', {
                                     checked: result.checked,
@@ -117,6 +118,12 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                                     stillMissing: result.still_missing,
                                 })}
                         </p>
+                        {rejected > 0 && (
+                            <p data-testid="sync-rejected" className="flex items-center gap-2 text-semantic-warning">
+                                <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0" />
+                                {t('settings.verifyRejected', { count: rejected })}
+                            </p>
+                        )}
                         {/* e4e4118: warning-tinted border, heading bg and text, icons in the warning hue. */}
                         {unresolved > 0 && (
                             <div data-testid="sync-unresolved" className="flex flex-col overflow-hidden rounded-lg border border-semantic-warning">

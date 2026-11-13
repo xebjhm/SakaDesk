@@ -170,6 +170,8 @@ def test_the_app_data_folder_is_refused_inside_above_and_through_a_link(raw):
         "S:\\Roaming\\pysaka",  # SUBST drive onto the sign-in folder
         "C:\\Users\\Me\\AppData\\Roaming\\pyzaka",  # the legacy sign-in folder
         "c:\\users\\me\\appdata\\roaming\\PYZAKA\\auth_data",
+        "C:\\Users\\Me\\AppData\\Local\\zakadesk",  # the legacy data folder (setup.iss)
+        "c:\\users\\me\\appdata\\local\\ZAKADESK\\logs",
     ],
 )
 def test_the_install_and_sign_in_folders_are_refused(raw):

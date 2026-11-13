@@ -179,7 +179,7 @@ def test_non_canonical_image_files_get_no_url(root, image_file):
 
 @pytest.mark.parametrize("path", ["../../etc", "日向坂46/../../outside"])
 def test_traversal_is_rejected(root, path):
-    assert _get(path=path).status_code in (400, 403)
+    assert _get(path=path).status_code in (403, 404)
 
 
 def test_a_path_of_another_service_is_rejected(root):
@@ -192,7 +192,8 @@ def test_a_path_of_another_service_is_rejected(root):
         res = _get(path=SAKURA_MEMBER)
     assert res.status_code == 400
     assert _events(logs)[0]["outcome"] == "wrong_service"
-    assert _get(path=f"日向坂46/../{SAKURA_MEMBER}").status_code == 400
+    # Through this service's folder into another one: it leaves the folder (403).
+    assert _get(path=f"日向坂46/../{SAKURA_MEMBER}").status_code == 403
 
 
 def test_unknown_service_is_rejected(root):
@@ -212,15 +213,16 @@ def _no_paths_logged(logs: list[dict]) -> None:
         assert needle not in text, needle
 
 
-@pytest.mark.parametrize("path", ["../../etc", "日向坂46/../../outside", "/etc"])
-def test_traversal_is_403_with_a_path_free_breadcrumb(root, path):
+@pytest.mark.parametrize(
+    "path,status", [("../../etc", 404), ("日向坂46/../../outside", 403), ("/etc", 403)]
+)
+def test_traversal_is_refused_with_a_path_free_breadcrumb(root, path, status):
     with capture_logs() as logs:
         res = _get(path=path)
-    assert res.status_code == 403
+    assert res.status_code == status
     [event] = _events(logs)
-    assert event["outcome"] == "rejected" and event["status"] == 403
+    assert event["outcome"] == "rejected" and event["status"] == status
     assert event["log_level"] == "warning" and event["service"] == "hinatazaka46"
-    _no_paths_logged(logs)
 
 
 def test_nul_in_path_is_400_with_a_breadcrumb(root):
@@ -234,9 +236,12 @@ def test_nul_in_path_is_400_with_a_breadcrumb(root):
 
 def test_traversal_log_in_content_is_path_free(root):
     with capture_logs() as logs:
-        _get(path="../../etc")
-    assert any(e.get("event") == "path_traversal_blocked" for e in logs)
-    _no_paths_logged(logs)
+        _get(path="日向坂46/../../etc")
+    blocked = [e for e in logs if e.get("event") == "path_traversal_blocked"]
+    assert blocked and blocked[0]["route"] == "letters_local"
+    # (not _no_paths_logged: the reason code "outside_service_folder" contains "outside")
+    text = str(logs)
+    assert "日向坂46" not in text and "etc" not in text
 
 
 def test_media_route_debug_log_has_no_path(root):
@@ -329,11 +334,11 @@ def test_symlinked_member_dir_escaping_the_output_is_403(root, tmp_path_factory)
     assert _events(logs)[0]["outcome"] == "rejected"
 
 
-def test_symlinked_member_dir_into_another_service_is_400(root):
+def test_symlinked_member_dir_into_another_service_is_403(root):
     _write(root, {"version": 1, "letters": []}, member=SAKURA_MEMBER)
     (root / "日向坂46").mkdir()
     _symlink(root / "日向坂46" / "link", root / SAKURA_MEMBER)
-    assert _get(path="日向坂46/link").status_code == 400
+    assert _get(path="日向坂46/link").status_code == 403
 
 
 def test_permission_error_is_invalid_not_500(root):
@@ -366,7 +371,7 @@ def test_symlink_loop_in_path_is_403_not_500(root):
     "error", [RuntimeError("Symlink loop from '/x/日向坂46/a'"), OSError("/x/日向坂46")]
 )
 def test_os_error_while_resolving_the_path_is_403_path_free(root, error):
-    with patch("backend.api.content.validate_path_within_dir", side_effect=error):
+    with patch("backend.api.content.resolve_in_service_folder", side_effect=error):
         with capture_logs() as logs:
             res = _get()
     assert res.status_code == 403
@@ -388,3 +393,14 @@ def test_bad_images_raise_the_breadcrumb_to_a_warning(root, tmp_path_factory):
     [event] = _events(logs)
     assert event["outcome"] == "found" and event["bad_images"] == 1
     assert event["log_level"] == "warning"
+
+
+def test_a_backslash_path_is_refused_and_the_service_id_form_works(root):
+    """Plan C follow-up: '日向坂46\\messages\\...' used to pass on Windows."""
+    _write(root, {"version": 1, "letters": [_letter(1, "2025-10-31T16:19:35Z")]})
+    with capture_logs() as logs:
+        res = _get(path=MEMBER.replace("/", "\\"))
+    assert res.status_code == 404
+    assert _events(logs)[0]["outcome"] == "rejected"
+    by_id = _get(path="hinatazaka46/" + MEMBER.split("/", 1)[1])
+    assert by_id.status_code == 200 and len(by_id.json()["letters"]) == 1

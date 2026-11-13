@@ -111,7 +111,7 @@ def blog_date(published_at: object) -> str:
     """The ``YYYYMMDD`` date part of an ISO ``published_at``; ``""`` for a non-``str``.
 
     ``"2026-01-17T22:21:00+09:00"`` gives ``"20260117"``. Not validated here:
-    the result is checked as part of the folder name (:func:`blog_folder`).
+    :func:`blog_folder` refuses anything but 8 digits (:func:`is_blog_date`).
     """
     return published_at[:10].replace("-", "") if isinstance(published_at, str) else ""
 
@@ -130,16 +130,28 @@ def member_folder(base: Path, member_name: object) -> Path:
     return join_within(base, member_folder_name(member_name))
 
 
+def is_blog_date(date: object) -> bool:
+    """True for the ``YYYYMMDD`` part of a blog folder name: exactly 8 ASCII digits."""
+    return (
+        isinstance(date, str) and len(date) == 8 and date.isascii() and date.isdigit()
+    )
+
+
 def blog_folder(base: Path, member_name: object, blog_id: object, date: str) -> Path:
     """``base / <member folder name> / <date>_<blog id>`` for one cached blog.
 
     Raises ``UnsafePath`` with reason ``blog_id`` when ``blog_id`` is not
-    :func:`is_safe_id`, or ``segment`` when either folder name is not a
+    :func:`is_safe_id`, ``date`` when ``date`` is not :func:`is_blog_date` (a
+    blog with a missing or unparseable ``published_at`` would otherwise be
+    stored under ``<member>/_<id>``), or ``segment`` when either folder name is not a
     :func:`plain_segment`. Every reader and writer of blog folders builds the
     path here, so the derivation lives in one place.
     """
     if not is_safe_id(blog_id):
         raise UnsafePath("blog_id")
+    if not is_blog_date(date):
+        # A missing or non-string published_at gave "" and the folder "_<id>".
+        raise UnsafePath("date")
     return join_within(base, member_folder_name(member_name), f"{date}_{blog_id}")
 
 

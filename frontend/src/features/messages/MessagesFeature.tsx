@@ -96,6 +96,8 @@ export interface SyncProgress {
         members: number; checked: number; missing: number;
         repaired: number; failed: number; still_missing: number;
         unresolved?: number;
+        /** Missing items Verify skipped because their saved location is outside the group's folder. */
+        rejected?: number;
         unresolved_items?: { member: string; timestamp: string | null; media_type: string }[];
     } | null;
 }

@@ -74,6 +74,7 @@ from backend.services.passive_media import (
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
+    get_service_display_name,
     get_service_identifier,
 )
 
@@ -242,10 +243,14 @@ def _list_group_refs(
     ``load_sync_metadata``. Returns ``(refs, matched_service)`` where
     ``matched_service`` is False when ``service_filter`` matched no directory.
 
+    Only folders named exactly after their service's display name are listed
+    (``group_folder_skipped``).
+
     Blocking filesystem work - call via ``asyncio.to_thread``.
     """
     refs: List[_GroupRef] = []
     matched_service = False
+    skipped_names = 0
 
     # Iterate over service directories (e.g., 日向坂46)
     for service_dir in output_dir.iterdir():
@@ -261,6 +266,11 @@ def _list_group_refs(
         service_id = get_service_identifier(service_display_name)
         if not service_id:
             # Skip unknown service directories
+            continue
+        if get_service_display_name(service_id) != service_display_name:
+            # A romaji-named folder ("hinatazaka46") would list but never open:
+            # every client-path route reads <output>/<display name> (Plan C).
+            skipped_names += 1
             continue
 
         # Scope to one service when requested - ids are only unique per service.
@@ -310,6 +320,10 @@ def _list_group_refs(
                     server_unread_count=server_unread_count,
                 )
             )
+    if skipped_names:
+        logger.info(
+            "group_folder_skipped", reason="not_display_name", count=skipped_names
+        )
     return refs, matched_service
 
 
@@ -550,7 +564,7 @@ async def get_messages_by_path(
         return get_test_messages_response(path, last_read_id)
 
     output_dir = get_output_dir()
-    safe_path = resolve_service_path_or_http(output_dir, path)
+    safe_path = resolve_service_path_or_http(output_dir, path, route="messages_by_path")
     logger.debug("Loading messages", path=path, limit=limit, last_read_id=last_read_id)
 
     msg_file = safe_path / "messages.json"
@@ -712,7 +726,9 @@ async def get_group_messages(
     ``If-None-Match`` gets ``304`` without the files being parsed.
     """
     output_dir = get_output_dir()
-    safe_path = resolve_service_path_or_http(output_dir, group_path)
+    safe_path = resolve_service_path_or_http(
+        output_dir, group_path, route="group_messages"
+    )
 
     if not safe_path.is_dir():
         raise HTTPException(status_code=404, detail="Group not found")
@@ -743,7 +759,7 @@ async def get_profile_images(path: str):
     """Archived list icon / chat icon / call-screen images of one member, newest
     first per kind; falls back to the remote URLs before pysaka archived them."""
     output_dir = get_output_dir()
-    member_dir = resolve_service_path_or_http(output_dir, path)
+    member_dir = resolve_service_path_or_http(output_dir, path, route="profile_images")
     msg_file = member_dir / "messages.json"
     if not msg_file.exists():
         raise HTTPException(status_code=404, detail="No messages found")
@@ -819,7 +835,9 @@ def _compute_unread_counts(
                 last_read_id = int(state) if state else 0
                 revealed_ids = set()
 
-            safe_path = resolve_service_path_or_http(output_dir, path)
+            safe_path = resolve_service_path_or_http(
+                output_dir, path, route="unread_counts"
+            )
 
             # Check if it's a group chat (has subdirectories with messages.json)
             # or individual member (has messages.json directly)
@@ -858,7 +876,9 @@ def _compute_unread_counts(
     return result
 
 
-def resolve_service_path_or_http(output_dir: Path, client_path: str) -> Path:
+def resolve_service_path_or_http(
+    output_dir: Path, client_path: str, *, route: str
+) -> Path:
     """Resolve a client path inside a service folder, or raise the HTTP error.
 
     Wraps ``archive_urls.resolve_in_service_folder``: the first segment must be a
@@ -871,17 +891,18 @@ def resolve_service_path_or_http(output_dir: Path, client_path: str) -> Path:
     (``path_traversal_blocked``, ``reason=unresolvable``); 404 when there is no
     known service folder (``media_request_rejected``,
     ``reason=no_service_folder``). Logs reason codes only. Blocking (it
-    resolves). Whether the file exists is not checked.
+    resolves). Whether the file exists is not checked. Every log event carries
+    ``route``, the calling route's code.
     """
     try:
         return resolve_in_service_folder(output_dir, client_path)
     except ServicePathError as e:
         if e.reason == "not_plain":
-            logger.warning("path_rooted_blocked")
+            logger.warning("path_rooted_blocked", route=route)
         elif e.reason == "no_service_folder":
-            logger.info("media_request_rejected", reason=e.reason)
+            logger.info("media_request_rejected", reason=e.reason, route=route)
         elif e.reason != "invalid_chars":
-            logger.warning("path_traversal_blocked", reason=e.reason)
+            logger.warning("path_traversal_blocked", reason=e.reason, route=route)
         detail = {
             400: "Invalid path characters",
             403: "Access denied",
@@ -890,7 +911,7 @@ def resolve_service_path_or_http(output_dir: Path, client_path: str) -> Path:
         raise HTTPException(status_code=e.status_code, detail=detail) from None
 
 
-def _resolve_media_path(file_path: str) -> Path:
+def _resolve_media_path(file_path: str, *, route: str = "media") -> Path:
     """Resolve a media-route path ``<service>/<rest>`` to its archive file.
 
     ``<service>`` is a service id (any case) or its display-name folder
@@ -899,7 +920,7 @@ def _resolve_media_path(file_path: str) -> Path:
     only SakaDesk's own service folders in it are served), which raises 400,
     403 or 404 as described there; a missing file is a 404 too.
     """
-    safe_path = resolve_service_path_or_http(get_output_dir(), file_path)
+    safe_path = resolve_service_path_or_http(get_output_dir(), file_path, route=route)
     if not safe_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     return safe_path
@@ -944,7 +965,7 @@ async def get_avatar(file_path: str, w: int = Query(...)):
     if w not in avatar_resize.ALLOWED_WIDTHS:
         logger.info("avatar_request_rejected", reason="width", width=w)
         raise HTTPException(status_code=400, detail="Unsupported width")
-    safe_path = _resolve_media_path(file_path)
+    safe_path = _resolve_media_path(file_path, route="avatar")
     served = await asyncio.to_thread(avatar_resize.resized_avatar, safe_path, w)
     passive = passive_media(served.name, route="avatar")
     return FileResponse(served, media_type=passive.media_type, headers=passive.headers)
@@ -1032,7 +1053,7 @@ def _thumb_source(file_path: str) -> tuple[Path, str]:
 
     403 outside the service folder, 404 when it is not a regular archive file.
     """
-    safe_path = _resolve_media_path(file_path)
+    safe_path = _resolve_media_path(file_path, route="thumb")
     output_dir = get_output_dir()
     try:
         is_file = archive_file_ok(output_dir, safe_path)
@@ -1290,7 +1311,7 @@ async def download_media(file_path: str, filename: Optional[str] = None):
                   ``passive_media.download_name`` (last path part, the served
                   file's extension).
     """
-    safe_path = _resolve_media_path(file_path)
+    safe_path = _resolve_media_path(file_path, route="download")
     return FileResponse(
         safe_path,
         filename=download_name(filename, safe_path.name),
@@ -1326,7 +1347,7 @@ async def copy_to_clipboard(request: ClipboardRequest):
     from urllib.parse import unquote
 
     file_path_str = unquote(request.media_url[len(prefix) :])
-    safe_path = _resolve_media_path(file_path_str)
+    safe_path = _resolve_media_path(file_path_str, route="clipboard")
     # Only pictures, videos and voice files: the clipboard hands the file to
     # other programs (security audit 2026-11-13).
     if safe_path.suffix.lower() not in INLINE_MEDIA_TYPES:

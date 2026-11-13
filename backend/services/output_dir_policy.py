@@ -26,7 +26,9 @@ Then on the normalised path and on its resolved form (links followed):
   per-user install folder (``%LOCALAPPDATA%\\Programs\\SakaDesk``, which the
   uninstaller empties) and pysaka's sign-in folder (``%APPDATA%\\pysaka``,
   deleted on uninstall, and its legacy name ``%APPDATA%\\pyzaka``, which the
-  uninstaller deletes too);
+  uninstaller deletes too) and the legacy data folder
+  ``%LOCALAPPDATA%\\zakadesk``, which the uninstaller deletes when
+  ``%LOCALAPPDATA%\\SakaDesk`` is absent;
 - ``system``: the Windows folder, Program Files (also its ``ProgramW6432``
   form, which a 32-bit process sees), Program Files (x86) or ProgramData, or a
   folder inside one;
@@ -141,7 +143,9 @@ def _app_owned_dirs() -> list[Path]:
     SakaDesk's data folder, the per-user install folder
     (``%LOCALAPPDATA%\\Programs\\SakaDesk``: ``setup.iss`` installs there with
     ``PrivilegesRequired=lowest``) and pysaka's sign-in folder
-    (``%APPDATA%\\pysaka``, which pysaka derives from the home folder). The
+    (``%APPDATA%\\pysaka``, which pysaka derives from the home folder), and
+    the legacy data folder ``%LOCALAPPDATA%\\zakadesk``, which the uninstaller
+    deletes when ``%LOCALAPPDATA%\\SakaDesk`` is absent. The
     environment variables and the home-based forms are both listed.
     """
     app = get_app_data_dir()
@@ -153,6 +157,9 @@ def _app_owned_dirs() -> list[Path]:
             bases.add(Path(value))
     owned = [app]
     owned += [base / "Programs" / "SakaDesk" for base in local]
+    # The uninstaller reads and deletes this legacy data folder when
+    # %LOCALAPPDATA%\SakaDesk is absent (setup.iss).
+    owned += [base / "zakadesk" for base in local]
     owned += [base / "pysaka" for base in roaming]
     owned += [base / "pyzaka" for base in roaming]
     forms: list[Path] = []

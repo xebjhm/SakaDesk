@@ -25,8 +25,9 @@ async def test_get_groups(client):
         root_path.exists.return_value = True
 
         # Service directory (e.g., 日向坂46)
+        # Service folders are named after the display name (Plan C follow-up)
         service_dir = MagicMock()
-        service_dir.name = "hinatazaka46"
+        service_dir.name = "日向坂46"
         service_dir.is_dir.return_value = True
 
         root_path.iterdir.return_value = [service_dir]
