@@ -6,6 +6,7 @@ import { logDialogLoad } from '../../design/dialog/dialogLog';
 import type { BaseModalProps } from '../../types/modal';
 import type { Message } from '../../types';
 import { useTranslation } from '../../i18n';
+import { dateTimeFormat } from '../../utils/intlCache';
 import { toLocalDateStr } from '../../utils/dateFormatters';
 import { holidayName } from '../../utils/jpHolidays';
 import { buildMonthGrid, dayTone, DAY_TONE_CLASS, MONTH_KEYS, pickerYearRange } from '../calendar/monthGrid';
@@ -343,7 +344,7 @@ export const CalendarModal: React.FC<CalendarModalProps> = (props) => {
                                 >
                                     <span aria-hidden="true">{date.getDate()}</span>
                                     {/* The full date names the day (UI health A-S3); the holiday follows. */}
-                                    <span className="sr-only">{date.toLocaleDateString(i18n.language, { dateStyle: 'full' })}</span>
+                                    <span className="sr-only">{dateTimeFormat(i18n.language, { dateStyle: 'full' }).format(date)}</span>
                                     {holiday && <span className="sr-only">, <span lang="ja">{holiday}</span></span>}
                                     {hasMessages && <span aria-hidden="true" className="absolute bottom-1 h-1.5 w-1.5 rounded-pill bg-accent" />}
                                     {(holiday || countText) && (

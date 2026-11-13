@@ -65,6 +65,14 @@ describe('CalendarModal, Japanese style', () => {
         }
     });
 
+    it('names every day through the shared formatter, not one toLocaleDateString per cell', () => {
+        const slow = vi.spyOn(Date.prototype, 'toLocaleDateString');
+        open();
+        expect(day(4)).toHaveAccessibleName('Wednesday, November 4, 2026');
+        expect(slow).not.toHaveBeenCalled();
+        slow.mockRestore();
+    });
+
     it('names the holiday in Japanese in the tooltip and the accessible name', () => {
         open([{ date: '2026-11-23', count: 4 }]);
         const culture = day(3);
