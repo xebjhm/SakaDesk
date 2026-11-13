@@ -360,3 +360,26 @@ def test_spa_files_keep_their_types_whatever_the_registry_says():
     assert mimetypes.guess_type("index-abc.css")[0] == "text/css"
     assert mimetypes.guess_type("logo-192.png")[0] == "image/png"
     assert mimetypes.guess_type("noto-sans-jp-0-wght-normal.woff2")[0] == "font/woff2"
+
+
+def test_the_app_wraps_the_error_middleware_with_the_headers():
+    from backend import main
+    from backend.security_headers import (
+        AppWithSecurityHeaders,
+        SecurityHeadersMiddleware,
+    )
+
+    assert isinstance(main.app, AppWithSecurityHeaders)
+    assert not any(m.cls is SecurityHeadersMiddleware for m in main.app.user_middleware)
+
+
+def test_the_spa_root_ignores_the_working_directory(tmp_path, monkeypatch):
+    """report-hardening #73 (audit 2026-11-13): a frontend/dist planted in the cwd was served."""
+    from pathlib import Path
+
+    from backend import main
+
+    (tmp_path / "frontend" / "dist").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+    expected = Path(main.__file__).resolve().parent.parent / "frontend" / "dist"
+    assert main._frontend_dist_dir() == expected

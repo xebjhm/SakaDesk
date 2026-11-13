@@ -82,7 +82,7 @@ from backend.api import (  # noqa: E402
     session,
 )
 from backend.api_no_store import ApiNoStoreMiddleware  # noqa: E402
-from backend.security_headers import DOCS_CSP, SecurityHeadersMiddleware  # noqa: E402
+from backend.security_headers import DOCS_CSP, AppWithSecurityHeaders  # noqa: E402
 from backend.services import api_auth, log_throttle  # noqa: E402
 from backend.services import app_state  # noqa: E402
 from backend.services.data_lock import DataDirLock  # noqa: E402
@@ -432,12 +432,15 @@ def _docs_csp_overrides(docs: dict[str, str | None]) -> dict[str, str]:
 
 
 _docs = _docs_urls(frozen=bool(getattr(sys, "frozen", False)))
-app = FastAPI(
+app = AppWithSecurityHeaders(
     title="SakaDesk",
     lifespan=lifespan,
     docs_url=_docs["docs_url"],
     redoc_url=_docs["redoc_url"],
     openapi_url=_docs["openapi_url"],
+    # CSP, framing, sniffing and embedding headers on every response, including
+    # the guards' 400/401/403 and Starlette's own 500 page.
+    csp_overrides=_docs_csp_overrides(_docs),
 )
 
 # Coded AI errors → {"detail", "code"} so the UI can localize the message.
@@ -563,10 +566,6 @@ app.add_middleware(_LoggingTrustedHostMiddleware, allowed_hosts=_ALLOWED_HOSTS)
 # API JSON must never enter the browser HTTP cache (cache-lock stalls on polls).
 app.add_middleware(ApiNoStoreMiddleware)
 
-# Outermost: CSP, framing, sniffing and embedding headers on every response,
-# including the 400/401/403 answers of the guards above.
-app.add_middleware(SecurityHeadersMiddleware, csp_overrides=_docs_csp_overrides(_docs))
-
 app.include_router(auth.router, prefix="/api/auth", tags=["auth"])
 app.include_router(session.router)
 app.include_router(sync.router, prefix="/api/sync", tags=["sync"])
@@ -630,9 +629,17 @@ _pin_static_types()
 
 
 # Serve Frontend (Production Mode)
-frontend_dist = Path("frontend/dist")
-if not frontend_dist.exists():
-    frontend_dist = Path(__file__).parent.parent / "frontend" / "dist"
+def _frontend_dist_dir() -> Path:
+    """The built SPA next to the code: ``<repo>/frontend/dist`` in source runs,
+    ``<_MEIPASS>/frontend/dist`` when frozen (``tooling/build_windows.spec``).
+
+    Never the working directory: a ``frontend/dist`` planted there would be
+    served with the app's authority (security audit 2026-11-13).
+    """
+    return Path(__file__).resolve().parent.parent / "frontend" / "dist"
+
+
+frontend_dist = _frontend_dist_dir()
 
 if frontend_dist.exists():
     app.mount("/assets", StaticFiles(directory=frontend_dist / "assets"), name="assets")

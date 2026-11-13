@@ -126,3 +126,37 @@ class TestIndexHtml:
         scripts = re.findall(r"<script\b([^>]*)>", html)
         assert scripts and all("src=" in attrs for attrs in scripts)
         assert "https://" not in html and "http://" not in html
+
+
+from backend.security_headers import AppWithSecurityHeaders  # noqa: E402
+
+
+def test_a_500_from_an_unhandled_error_keeps_the_headers():
+    """Plan A follow-up: Starlette's ServerErrorMiddleware sat outside the headers middleware."""
+    app = AppWithSecurityHeaders(csp_overrides={})
+
+    @app.get("/boom")
+    async def boom():
+        raise RuntimeError("C:\\Users\\victim")
+
+    resp = TestClient(app, raise_server_exceptions=False).get("/boom")
+    assert resp.status_code == 500
+    assert resp.headers.get_list("content-security-policy") == [APP_CSP]
+    assert resp.headers["x-frame-options"] == "SAMEORIGIN"
+    assert resp.headers["x-content-type-options"] == "nosniff"
+    assert resp.headers["cross-origin-resource-policy"] == "same-origin"
+    assert "victim" not in resp.text
+
+
+def test_overrides_still_apply_and_headers_are_not_doubled():
+    app = AppWithSecurityHeaders(csp_overrides={"/docs-like": "frame-ancestors 'self'"})
+
+    @app.get("/docs-like")
+    async def docs_like():
+        return {"ok": True}
+
+    resp = TestClient(app).get("/docs-like")
+    assert resp.headers.get_list("content-security-policy") == [
+        "frame-ancestors 'self'"
+    ]
+    assert resp.headers.get_list("x-frame-options") == ["SAMEORIGIN"]

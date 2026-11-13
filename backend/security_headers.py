@@ -1,5 +1,6 @@
 """Response security headers on everything the app produces
-(security audit 2026-11-13; a 500 from Starlette's outermost error middleware bypasses them).
+(security audit 2026-11-13). Apps built as :class:`AppWithSecurityHeaders` get them on
+Starlette's own 500 page too.
 
 Unless the route already set its own value, every response gets:
 
@@ -33,7 +34,9 @@ FastAPI's /docs and /redoc pages (CDN scripts with inline setup) get
 from __future__ import annotations
 
 from collections.abc import Mapping
+from typing import Any
 
+from fastapi import FastAPI
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 APP_CSP = "; ".join(
@@ -98,3 +101,25 @@ class SecurityHeadersMiddleware:
             await send(message)
 
         await self.app(scope, receive, send_with_headers)
+
+
+class AppWithSecurityHeaders(FastAPI):
+    """``FastAPI`` whose security headers also cover Starlette's own 500 page.
+
+    ``add_middleware`` always places user middleware inside Starlette's
+    ``ServerErrorMiddleware``, so the plain-text 500 it sends for an unhandled
+    exception skipped :class:`SecurityHeadersMiddleware`. This class wraps the
+    stack Starlette builds instead, so every response gets the headers once.
+    ``csp_overrides`` is passed to the middleware.
+    """
+
+    def __init__(
+        self, *args: Any, csp_overrides: Mapping[str, str] | None = None, **kwargs: Any
+    ) -> None:
+        super().__init__(*args, **kwargs)
+        self._csp_overrides = dict(csp_overrides or {})
+
+    def build_middleware_stack(self) -> ASGIApp:
+        return SecurityHeadersMiddleware(
+            super().build_middleware_stack(), csp_overrides=self._csp_overrides
+        )
