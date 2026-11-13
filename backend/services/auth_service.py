@@ -11,7 +11,7 @@ import asyncio
 import collections
 import contextlib
 import structlog
-from typing import Any, Dict, Mapping, Optional, cast
+from typing import Any, Callable, Dict, Mapping, Optional, cast
 import aiohttp
 from pysaka import (
     BrowserAuth,
@@ -35,6 +35,15 @@ from backend.services.service_utils import (
 )
 
 logger = structlog.get_logger(__name__)
+
+_GEO_PROVIDERS: tuple[tuple[str, Callable[[dict[str, Any]], Optional[str]]], ...] = (
+    (
+        "https://ipwho.is/",
+        lambda d: d.get("country_code") if d.get("success", True) else None,
+    ),
+)
+"""Geo-IP lookups for the region notice, HTTPS only: a cleartext answer could be
+changed on the way (report-hardening #32, audit 2026-11-13)."""
 
 # How long the status path (``get_status``, which the app's loading screen waits
 # on) waits for an in-line renewal. A slower renewal keeps running in the
@@ -1011,22 +1020,10 @@ class AuthService:
 
     async def _lookup_country(self) -> Optional[str]:
         """Best-effort ISO country code for this machine's public IP, via a free
-        no-key geo-IP service (with a fallback). None if all lookups fail, so the
-        caller fails open."""
-        providers = [
-            (
-                "http://ip-api.com/json/?fields=status,countryCode",
-                lambda d: d.get("countryCode")
-                if d.get("status") == "success"
-                else None,
-            ),
-            (
-                "https://ipwho.is/",
-                lambda d: d.get("country_code") if d.get("success", True) else None,
-            ),
-        ]
+        no-key HTTPS geo-IP service. None if the lookup fails, so the caller
+        fails open."""
         timeout = aiohttp.ClientTimeout(total=6)
-        for url, extract in providers:
+        for url, extract in _GEO_PROVIDERS:
             try:
                 async with aiohttp.ClientSession(timeout=timeout) as session:
                     async with session.get(url) as resp:
@@ -1037,5 +1034,5 @@ class AuthService:
                         if code:
                             return str(code).upper()
             except Exception as e:
-                logger.debug("geoip_lookup_failed", url=url, error=str(e))
+                logger.debug("geoip_lookup_failed", error_type=type(e).__name__)
         return None

@@ -1107,8 +1107,10 @@ async def get_members(service: str = Query(...), talk_room_id: int = Query(...))
         talk_room_path = resolve_talk_room_path(service, talk_room_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        # The error text holds the archive path (report-hardening #76).
+        logger.info("content_not_found", route="members")
+        raise HTTPException(status_code=404, detail="Not found")
 
     members = []
     for member_dir in talk_room_path.iterdir():
@@ -1153,8 +1155,10 @@ async def get_messages_param(
         msg_file = resolve_messages_file(service, talk_room_id, member_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        # The error text holds the archive path (report-hardening #76).
+        logger.info("content_not_found", route="messages")
+        raise HTTPException(status_code=404, detail="Not found")
 
     if not msg_file.exists():
         raise HTTPException(status_code=404, detail="No messages found")
@@ -1211,8 +1215,10 @@ async def get_talk_room_messages_param(
         talk_room_path = resolve_talk_room_path(service, talk_room_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        # The error text holds the archive path (report-hardening #76).
+        logger.info("content_not_found", route="talk_room_messages")
+        raise HTTPException(status_code=404, detail="Not found")
 
     all_messages = []
     members_map = {}
