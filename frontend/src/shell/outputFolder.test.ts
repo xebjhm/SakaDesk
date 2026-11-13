@@ -59,9 +59,9 @@ describe('saveErrorKey', () => {
 
 describe('setupFolderErrorKey', () => {
     it("prefers the folder's own key, falls back to the generic save failure, never to another reason", () => {
-    expect(setupFolderErrorKey('settings.outputDirError.root', 'settings.saveFailed')).toBe('settings.outputDirError.root')
-    expect(setupFolderErrorKey(null, 'settings.saveFailed')).toBe('settings.saveFailed')
-    expect(setupFolderErrorKey(null, 'settings.somethingElse')).toBeNull()
-    expect(setupFolderErrorKey(null, null)).toBeNull()
-  })
-})
+        expect(setupFolderErrorKey('settings.outputDirError.root', 'settings.saveFailed')).toBe('settings.outputDirError.root');
+        expect(setupFolderErrorKey(null, 'settings.saveFailed')).toBe('settings.saveFailed');
+        expect(setupFolderErrorKey(null, 'settings.somethingElse')).toBeNull();
+        expect(setupFolderErrorKey(null, null)).toBeNull();
+    });
+});
