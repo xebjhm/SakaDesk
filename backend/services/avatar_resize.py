@@ -18,9 +18,9 @@ short side is not larger than the width is served unchanged (never upscaled),
 as is one above ``MAX_SOURCE_PIXELS`` (not worth decoding for a thumbnail).
 Only the photo pipeline's picture formats (``photo_thumb.picture_formats()``)
 are decoded; any other format is served unchanged
-(``avatar_resize_skipped reason=not_picture``). JPEGs are decoded at a reduced scale (``draft``) before the Lanczos pass. Any
-Pillow or file failure (including a source that vanished) falls back to the
-original file.
+(``avatar_resize_skipped reason=not_picture``). JPEGs are decoded at a
+reduced scale (``draft``) before the Lanczos pass. Any Pillow or file failure
+(including a source that vanished) falls back to the original file.
 
 Cached variants are never evicted. Each is a few KB and a re-archived source
 simply gets a new key (the old variant becomes an orphan), so the cache stays
@@ -98,8 +98,11 @@ def resized_avatar(
     ``cache_dir()``; made now if missing), or ``source`` itself when its
     short side is not larger than ``width``, it has more than
     ``MAX_SOURCE_PIXELS`` pixels, it is not a picture format, it cannot be
-    stat-ed (e.g. it vanished), or Pillow cannot read or write it (a structured warning is logged for the
-    last three; no path is included). If another reader holds the variant
+    stat-ed (e.g. it vanished), or Pillow cannot read or write it. Each case
+    logs a structured line without the path: ``avatar_resize_skipped`` with
+    ``reason`` ``source_small`` (debug), ``source_large`` (warning) or
+    ``not_picture`` (info), or ``avatar_resize_failed`` (warning, with
+    ``reason="stat"`` for the stat case). If another reader holds the variant
     open when it is moved into place (``PermissionError`` on Windows) and it
     already exists, the existing variant is served.
 
