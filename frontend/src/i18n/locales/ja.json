@@ -820,6 +820,7 @@
     "diskUsageFailed": "計算できませんでした"
   },
   "memories": {
+    "chunkFailed": "思い出を開けませんでした",
     "home": {
       "recapCard": "一年の振り返り",
       "opensOn": "12月1日に、ここが開きます。",

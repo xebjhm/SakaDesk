@@ -824,6 +824,7 @@
     "diskUsageFailed": "Couldn't calculate"
   },
   "memories": {
+    "chunkFailed": "Couldn't open Memories",
     "home": {
       "recapCard": "Year recap",
       "opensOn": "Opens here on December 1.",

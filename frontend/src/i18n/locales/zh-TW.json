@@ -820,6 +820,7 @@
     "diskUsageFailed": "無法計算"
   },
   "memories": {
+    "chunkFailed": "無法開啟回憶",
     "home": {
       "recapCard": "年度回顧",
       "opensOn": "12月1日，這裡就會打開。",

@@ -61,8 +61,13 @@ test('the Memories hub opens with no Content-Security-Policy violation', async (
   await pinBigRoom(page, { messages: { current: buildBigRoom(10) }, feature: 'memories' })
   const violations = await watchViolations(page)
   const hub = page.waitForResponse((res) => /\/api\/memories\/[^/]+\/hub/.test(res.url()))
+  // Memories is a lazy chunk (plan F Task 9): the static route must serve it as JavaScript.
+  const chunk = page.waitForResponse((res) => /\/assets\/MemoriesFeature-[^/]+\.js$/.test(res.url()))
 
   await page.goto('/')
+  const chunkResponse = await chunk
+  expect(chunkResponse.status()).toBe(200)
+  expect(chunkResponse.headers()['content-type']).toMatch(/javascript/)
   await hub
   await expect(page.getByRole('heading', { level: 1 }).first()).toBeVisible({ timeout: 10000 })
 

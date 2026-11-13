@@ -20,7 +20,6 @@
  * save dialog. Nothing leaves the machine. Whether the user then saves the file is not
  * observable, so the outcome is `handed_off`, never "saved".
  */
-import { toCanvas } from 'html-to-image';
 import { openDownloadUrl } from '../../../utils/download';
 
 /** Width in pixels of an exported poster (a 9:16 stage gives 1080 × 1920). */
@@ -321,6 +320,8 @@ export async function renderToCanvas(node: HTMLElement, opts: RenderOptions = {}
     // CSP dependency: html-to-image must always get a non-empty `fontEmbedCSS` (EXPORT_FIT_CSS at the
     // least). Without it the library adds a <base> (refused by `base-uri 'none'`) and fetches
     // stylesheets through `connect-src`.
+    // Loaded at export time: the library is only needed when the user saves a poster or a share image.
+    const { toCanvas } = await import('html-to-image');
     const canvas = await toCanvas(node, {
         pixelRatio: shown > 0 ? width / shown : 1,
         fontEmbedCSS: fontEmbedCSS ? `${fontEmbedCSS}\n${EXPORT_FIT_CSS}` : EXPORT_FIT_CSS,
