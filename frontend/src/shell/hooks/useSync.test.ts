@@ -2,7 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { renderHook, waitFor, act } from '@testing-library/react'
 import { useSync } from './useSync'
 import { clientLog } from '../../utils/clientLog'
-import { resetSyncProgressStore, useSyncProgressStore } from '../syncProgressStore'
+import i18n from '../../i18n'
+import { resetSyncProgressStore, setServiceProgress, useSyncProgressStore } from '../syncProgressStore'
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }))
 
@@ -807,6 +808,28 @@ describe('useSync', () => {
             expect(outcome).toEqual({ completed: 0, failed: 1, cancelled: false, lost: true })
             expect(clientLog).toHaveBeenCalledWith('sync_sequence', { outcome: 'lost', count: 0 })
             expect(useSyncProgressStore.getState().active.state).toBe('error')
+        })
+
+        it('keeps the lost-connection error when the active service has a progress entry of its own', async () => {
+            setServiceProgress({ hinatazaka46: { state: 'complete' } })
+            let reads = 0
+            vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+                const url = String(input)
+                if (url.includes('/api/sync/start-all')) return reply({ sequence_id: 'seq1', results: {} })
+                if (url.includes('/api/sync/queue')) {
+                    reads += 1
+                    return reply(reads === 1
+                        ? { sequence: { id: 'seq1', services: ['yodel'], current_index: 0, blocking: true, state: 'running', completed: [], failed: [] } }
+                        : { sequence: null })
+                }
+                return reply({ state: 'running', phase: 'syncing', completed: 0, total: 1 })
+            }))
+            const { result } = renderHook(() => useSync(unconfigured))
+            await act(async () => { await result.current.startSequentialSync(['yodel']) })
+            // Let the commit-time effects and follower microtasks settle.
+            await act(async () => { await Promise.resolve() })
+            expect(useSyncProgressStore.getState().active.state).toBe('error')
+            expect(useSyncProgressStore.getState().active.detail).toBe(i18n.t('sync.lostConnection'))
         })
 
         it.each([

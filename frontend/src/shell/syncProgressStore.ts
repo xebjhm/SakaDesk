@@ -5,8 +5,9 @@ export const IDLE_PROGRESS: SyncProgress = { state: 'idle' };
 
 export interface SyncProgressState {
     /**
-     * The progress the app shows: the active service's, or the running step of a sequential sync.
-     * Derived from `byService` (kept current by `useSync`'s follower), not a primary store.
+     * The progress the app shows: by default the active service's, or the running step of a
+     * sequential sync, copied from `byService` by `useSync`'s follower. `useSync` also writes it
+     * directly (a starting, failed, cancelled or lost sync); the follower must not overwrite those.
      */
     active: SyncProgress;
     /** Every service's latest progress: the primary record. */
@@ -18,7 +19,7 @@ export interface SyncProgressState {
  * `setServiceProgress`); views read it through a selector, so a progress tick re-renders the views
  * that show progress (the sync dialog, the inline first-sync view, the chat header pill) and
  * nothing else. It replaced the progress state `App` held, which re-rendered the whole UI every
- * second while a sync ran. The source of truth is `byService`; `active` is a derived view of it.
+ * second while a sync ran. The single-source rule applies to `byService`; `active` is the shown progress, not a second record.
  */
 export const useSyncProgressStore = create<SyncProgressState>()(() => ({ active: IDLE_PROGRESS, byService: {} }));
 
@@ -32,7 +33,7 @@ export function setServiceProgress(
     useSyncProgressStore.setState((s) => ({ byService: typeof update === 'function' ? update(s.byService) : update }));
 }
 
-/** Tests and logout-like resets: back to idle, no services. */
+/** Back to idle, no services (tests). */
 export function resetSyncProgressStore(): void {
     useSyncProgressStore.setState({ active: IDLE_PROGRESS, byService: {} });
 }

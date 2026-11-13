@@ -287,24 +287,38 @@ export function useSync({
     useEffect(() => { markServiceDisconnectedRef.current = markServiceDisconnected; }, [markServiceDisconnected]);
 
     // The shown progress follows the active service and, during a sequential sync, its running step
-    // (that one wins). Re-applied when either changes, and after every per-service update once that
-    // update's synchronous work is done (a microtask), as the two commit-time effects this replaces did.
+    // (that one wins). It is re-applied when the followed service itself changes and after an update
+    // of a followed service's progress once that update's synchronous work is done (a microtask). A
+    // sequence ending (running step -> none) re-applies nothing, so the lost-connection error written
+    // by endSequence is not overwritten.
+    const sequentialService = sequentialSyncInfo?.currentService ?? null;
     const followRef = useRef<{ activeService: string | null; sequentialService: string | null }>({ activeService: null, sequentialService: null });
     useLayoutEffect(() => {
-        followRef.current = { activeService, sequentialService: sequentialSyncInfo?.currentService ?? null };
+        followRef.current = { activeService, sequentialService };
     });
     useEffect(() => {
-        const follow = () => {
+        // Only an update of a followed service is copied: an unrelated service's tick (or a poller
+        // still finishing after the sequence ended) must not overwrite what useSync wrote to `active`.
+        const follow = (changed: string[]) => {
             const { byService } = useSyncProgressStore.getState();
-            const { activeService: shown, sequentialService } = followRef.current;
-            if (shown && byService[shown]) setActiveProgress(byService[shown]);
-            if (sequentialService && byService[sequentialService]) setActiveProgress(byService[sequentialService]);
+            const { activeService: shown, sequentialService: running } = followRef.current;
+            if (shown && changed.includes(shown) && byService[shown]) setActiveProgress(byService[shown]);
+            if (running && changed.includes(running) && byService[running]) setActiveProgress(byService[running]);
         };
-        follow();
         return useSyncProgressStore.subscribe((st, prev) => {
-            if (st.byService !== prev.byService) queueMicrotask(follow);
+            if (st.byService === prev.byService) return;
+            const changed = Object.keys(st.byService).filter((id) => st.byService[id] !== prev.byService[id]);
+            queueMicrotask(() => follow(changed));
         });
-    }, [activeService, sequentialSyncInfo]);
+    }, []);
+    useEffect(() => {
+        const entry = activeService ? useSyncProgressStore.getState().byService[activeService] : undefined;
+        if (entry) setActiveProgress(entry);
+    }, [activeService]);
+    useEffect(() => {
+        const entry = sequentialService ? useSyncProgressStore.getState().byService[sequentialService] : undefined;
+        if (entry) setActiveProgress(entry);
+    }, [sequentialService]);
 
     const refreshUserProfile = useCallback(async (service: string) => {
         if (!service) {

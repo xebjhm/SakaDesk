@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { act, render, screen } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../__tests__/mocks/server';
 import i18n from '../../i18n';
@@ -8,7 +8,7 @@ import { resetSyncProgressStore, setActiveProgress } from '../../shell/syncProgr
 import { MessagesFeature } from './MessagesFeature';
 
 // A non-memo stand-in: it renders exactly when MessagesFeature renders.
-const renders = { feature: 0 };
+const renders = { feature: 0, roomFetched: false };
 vi.mock('./components/MemberList', () => ({
     MemberList: () => { renders.feature += 1; return null; },
 }));
@@ -22,6 +22,7 @@ describe('MessagesFeature during a sync (UI health #2)', () => {
     beforeAll(async () => { await i18n.changeLanguage('en'); });
     beforeEach(() => {
         renders.feature = 0;
+        renders.roomFetched = false;
         resetSyncProgressStore();
         useAppStore.setState({
             activeService: SERVICE,
@@ -29,7 +30,7 @@ describe('MessagesFeature during a sync (UI health #2)', () => {
         });
         server.use(
             http.get('/api/content/groups', () => HttpResponse.json({ groups: [], last_sync: {} })),
-            http.get('/api/content/messages_by_path', () => HttpResponse.json({ member, messages: [], total_count: 0, max_message_id: 0 })),
+            http.get('/api/content/messages_by_path', () => { renders.roomFetched = true; return HttpResponse.json({ member, messages: [], total_count: 0, max_message_id: 0 }); }),
             http.get('/api/chat/letters_local', () => HttpResponse.json({ letters: [] })),
             http.get('/api/account/profile', () => HttpResponse.json({ name: 'me', avatars: [] })),
             http.get('/api/content/profile_images', () => HttpResponse.json({ kinds: {} })),
@@ -39,7 +40,8 @@ describe('MessagesFeature during a sync (UI health #2)', () => {
 
     it('does not re-render on progress ticks; only the header pill changes', async () => {
         render(<MessagesFeature appSettings={null} syncVersion={0} />);
-        await act(async () => { await new Promise((r) => setTimeout(r, 50)); }); // let the room load settle
+        await waitFor(() => expect(renders.roomFetched).toBe(true));
+        await act(async () => { await new Promise((r) => queueMicrotask(() => r(null))); }); // flush its state updates
         act(() => setActiveProgress({ state: 'running', detail: 'Fetching page 1' }));
         const afterStart = renders.feature; // the one render for isSyncing false -> true
         for (let page = 2; page <= 6; page += 1) {
