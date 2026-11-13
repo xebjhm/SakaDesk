@@ -40,7 +40,9 @@ from backend.services.passive_media import INLINE_MEDIA_TYPES
 from backend.services.path_resolver import get_output_dir
 from backend.services.safe_paths import (
     UnsafePath,
+    blog_date,
     blog_folder,
+    blog_folder_name,
     is_safe_id,
     join_within,
     member_folder_name,
@@ -910,7 +912,7 @@ class BlogService:
                     continue
 
                 blog_id = blog["id"]
-                date = blog["published_at"][:10].replace("-", "")
+                date = blog_date(blog["published_at"])
                 try:
                     cache_path = _blog_folder(base, member_name, blog_id, date)
                 except UnsafePath:
@@ -1349,7 +1351,7 @@ class BlogService:
             # One existence check per blog: in a worker thread, off the event loop.
             rejected = 0
             for blog in blogs:
-                date = blog["published_at"][:10].replace("-", "")
+                date = blog_date(blog["published_at"])
                 try:
                     folder = _blog_folder(base, member_name, blog["id"], date)
                 except UnsafePath:
@@ -1439,7 +1441,7 @@ class BlogService:
             raise ValueError(f"Blog {blog_id} not found in index")
 
         # Check cache
-        date = blog_meta["published_at"][:10].replace("-", "")
+        date = blog_date(blog_meta["published_at"])
         try:
             cache_path = self.get_blog_cache_path(service, member_name, blog_id, date)
         except UnsafePath as e:
@@ -1555,7 +1557,7 @@ class BlogService:
                 for blog in member_data.get("blogs", []):
                     if blog.get("removed"):
                         continue
-                    date = blog["published_at"][:10].replace("-", "")
+                    date = blog_date(blog["published_at"])
                     try:
                         folder = _blog_folder(base, member_name, blog["id"], date)
                     except UnsafePath:
@@ -2055,7 +2057,7 @@ def gallery_index(
         name, blogs = member.get("name", ""), member.get("blogs", [])
         if not isinstance(name, str) or not isinstance(blogs, list):
             continue  # a malformed member: skip her, keep the others
-        folder = name.strip().replace("/", "_")
+        folder = member_folder_name(name)
         if not plain_segment(folder):
             continue
         valid = [
@@ -2064,7 +2066,7 @@ def gallery_index(
             if isinstance(b, dict)
             and is_safe_id(b.get("id"))
             and isinstance(b.get("published_at"), str)
-            and plain_segment(f"{b['published_at'][:10].replace('-', '')}_{b['id']}")
+            and plain_segment(blog_folder_name(b["published_at"], b["id"]))
         ]
         out.append(GalleryMember(folder, valid))
     return GalleryIndex(base, mtime_ns, out)
@@ -2085,7 +2087,7 @@ def gallery_member_blogs(base: Path, member: GalleryMember) -> list[CachedBlog]:
         return []
     out: list[CachedBlog] = []
     for blog in member.blogs:
-        name = f"{blog['published_at'][:10].replace('-', '')}_{blog['id']}"
+        name = blog_folder_name(blog["published_at"], blog["id"])
         if name not in present:
             continue
         try:
@@ -2244,7 +2246,7 @@ def gallery_member_listing(
     images: dict[Path, list[list]] = {}
     skipped = 0
     for blog in member.blogs:
-        name = f"{blog['published_at'][:10].replace('-', '')}_{blog['id']}"
+        name = blog_folder_name(blog["published_at"], blog["id"])
         if name not in present:
             continue
         path = folder / name

@@ -177,3 +177,11 @@ def test_console_device_names_are_not_plain(name):
 def test_is_within_on_windows_paths(base, path, inside):
     """Production runs on Windows; pin the drive, UNC, \\\\?\\ and case rules."""
     assert is_within(PureWindowsPath(base), PureWindowsPath(path)) is inside
+
+
+def test_blog_date_and_folder_name():
+    from backend.services.safe_paths import blog_date, blog_folder_name
+
+    assert blog_date("2026-01-17T22:21:00+09:00") == "20260117"
+    assert blog_date(None) == "" and blog_date(20260117) == ""
+    assert blog_folder_name("2026-01-17T22:21:00+09:00", "123") == "20260117_123"

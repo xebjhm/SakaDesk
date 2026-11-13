@@ -23,7 +23,7 @@ from backend.services.blog_service import (
     get_blog_backup_manager,
 )
 from backend.services.service_utils import validate_service
-from backend.services.safe_paths import UnsafePath
+from backend.services.safe_paths import UnsafePath, blog_date
 
 logger = structlog.get_logger(__name__)
 
@@ -757,7 +757,7 @@ async def serve_blog_image(
     if not blog_meta or member_name is None:
         raise HTTPException(status_code=404, detail="Blog not found")
 
-    date = blog_meta["published_at"][:10].replace("-", "")
+    date = blog_date(blog_meta["published_at"])
     try:
         cache_path = blog_service.get_blog_cache_path(
             service, member_name, blog_id, date

@@ -17,7 +17,11 @@ import structlog
 
 from backend.services.platform import get_app_data_dir
 from backend.services.path_resolver import get_output_dir
-from backend.services.safe_paths import blog_folder_or_none, member_folder_or_none
+from backend.services.safe_paths import (
+    blog_date,
+    blog_folder_or_none,
+    member_folder_or_none,
+)
 from backend.services.service_utils import (
     get_service_display_name,
     get_service_identifier,
@@ -405,12 +409,7 @@ def _build_blog_index_process(
                     continue
 
                 published_at = entry.get("published_at", "")
-                date_prefix = ""
-                if published_at:
-                    try:
-                        date_prefix = published_at[:10].replace("-", "")
-                    except Exception:
-                        pass
+                date_prefix = blog_date(published_at)
 
                 blog_dir = blog_folder_or_none(
                     blogs_dir, member_name, str(blog_id), date_prefix
@@ -562,12 +561,7 @@ def _index_blogs_for_service_process(
                 continue
 
             published_at = entry.get("published_at", "")
-            date_prefix = ""
-            if published_at:
-                try:
-                    date_prefix = published_at[:10].replace("-", "")
-                except Exception:
-                    pass
+            date_prefix = blog_date(published_at)
 
             blog_dir = blog_folder_or_none(
                 blogs_dir, member_name, str(blog_id), date_prefix
@@ -2357,12 +2351,7 @@ class SearchService:
                     published_at = entry.get("published_at", "")
                     # Derive date prefix from published_at for directory lookup
                     # Format: YYYYMMDD from ISO timestamp like "2026-01-17T22:21:00+09:00"
-                    date_prefix = ""
-                    if published_at:
-                        try:
-                            date_prefix = published_at[:10].replace("-", "")
-                        except Exception:
-                            pass
+                    date_prefix = blog_date(published_at)
 
                     blog_dir = blog_folder_or_none(
                         blogs_dir, member_name, str(blog_id), date_prefix
@@ -2657,12 +2646,7 @@ class SearchService:
                     continue
 
                 published_at = entry.get("published_at", "")
-                date_prefix = ""
-                if published_at:
-                    try:
-                        date_prefix = published_at[:10].replace("-", "")
-                    except Exception:
-                        pass
+                date_prefix = blog_date(published_at)
 
                 blog_dir = blog_folder_or_none(
                     blogs_dir, member_name, str(blog_id), date_prefix

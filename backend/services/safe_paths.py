@@ -107,6 +107,24 @@ def member_folder_name(member_name: object) -> str:
     return member_name.strip().replace("/", "_") if isinstance(member_name, str) else ""
 
 
+def blog_date(published_at: object) -> str:
+    """The ``YYYYMMDD`` date part of an ISO ``published_at``; ``""`` for a non-``str``.
+
+    ``"2026-01-17T22:21:00+09:00"`` gives ``"20260117"``. Not validated here:
+    the result is checked as part of the folder name (:func:`blog_folder`).
+    """
+    return published_at[:10].replace("-", "") if isinstance(published_at, str) else ""
+
+
+def blog_folder_name(published_at: object, blog_id: object) -> str:
+    """The name of one cached blog's folder: ``<date>_<blog id>`` (:func:`blog_date`).
+
+    Not validated here (:func:`blog_folder` does that); a gallery listing
+    that already validated both parts uses it to find the folder.
+    """
+    return f"{blog_date(published_at)}_{blog_id}"
+
+
 def member_folder(base: Path, member_name: object) -> Path:
     """``base / <member folder name>``; else raise ``UnsafePath("segment")``."""
     return join_within(base, member_folder_name(member_name))
