@@ -123,21 +123,6 @@ jobs:
         npm ci
         npm run build
 
-    - name: Verify frontend dist contents
-      working-directory: ./frontend
-      shell: pwsh
-      run: |
-        # Everything in frontend/public ships in the installer and is served by
-        # the app; only real UI assets may reach dist (security audit 2026-11-13).
-        $allowedFiles = @('index.html', 'logo-192.png', 'logo-32.png')
-        $allowedDirs = @('assets')
-        $badFiles = Get-ChildItem dist -File | Where-Object { $_.Name -notin $allowedFiles }
-        $badDirs = Get-ChildItem dist -Directory | Where-Object { $_.Name -notin $allowedDirs }
-        if ($badFiles -or $badDirs) {
-          Write-Error "Unexpected entries in frontend/dist: $((@($badFiles) + @($badDirs)).Name -join ', ')"
-          exit 1
-        }
-
     # Python setup
     - name: Set up Python
       uses: actions/setup-python@v5

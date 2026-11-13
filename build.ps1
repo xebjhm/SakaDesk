@@ -13,7 +13,8 @@
       3. Installer:  Inno Setup (tooling\windows\setup.iss)   -> dist\SakaDesk-<ver>-Setup.exe
 
     Build-only dependencies (pyinstaller, pywebview -> pythonnet) are injected
-    ephemerally with `uv run --with`, so pyproject.toml / uv.lock stay clean.
+    ephemerally with `uv run --with`, pinned to the CI versions
+    (.github/workflows/build.yml), so pyproject.toml / uv.lock stay clean.
     Python is pinned to 3.12 because pythonnet/pywebview do not support 3.14.
 
     Requires: uv, Node/npm, and (for the installer step) Inno Setup 6.
@@ -117,7 +118,7 @@ else {
 # --- 2. Executable (+ installer) ------------------------------------------
 Write-Host "[2/2] Building executable (PyInstaller)$(if (-not $ExeOnly) { ' + installer (Inno Setup)' })..." -ForegroundColor Cyan
 # Ephemeral build deps via --with (kept out of pyproject/uv.lock); pinned to 3.12.
-$uvPrefix = @('run', '--python', '3.12', '--with', 'pyinstaller', '--with', 'pywebview==5.3.2', 'python')
+$uvPrefix = @('run', '--python', '3.12', '--with', 'pyinstaller==6.13.0', '--with', 'pywebview==5.3.2', 'python')
 if ($ExeOnly) {
     & uv @uvPrefix -m PyInstaller --noconfirm --clean 'tooling/build_windows.spec'
 }

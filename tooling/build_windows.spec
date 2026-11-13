@@ -65,8 +65,19 @@ packages_to_collect = [
     'PIL',
 ]
 
+def _not_backend_tests(name):
+    return not (name == 'backend.tests' or name.startswith('backend.tests.'))
+
+
 for pkg in packages_to_collect:
-    tmp_ret = collect_all(pkg)
+    if pkg == 'backend':
+        # The shipped app needs no tests (backend.fixtures stays: test mode
+        # imports it at run time). Security audit 2026-11-13.
+        tmp_ret = collect_all(
+            pkg, filter_submodules=_not_backend_tests, exclude_datas=['tests/**']
+        )
+    else:
+        tmp_ret = collect_all(pkg)
     datas += tmp_ret[0]
     binaries += tmp_ret[1]
     hiddenimports += tmp_ret[2]
@@ -83,7 +94,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['backend.tests'],
     win_no_prefer_redirects=False,
     win_private_assemblies=False,
     cipher=block_cipher,
@@ -97,7 +108,7 @@ exe = EXE(
     [],
     exclude_binaries=True,
     name='SakaDesk',
-    debug=True,
+    debug=False,
     bootloader_ignore_signals=False,
     strip=False,
     upx=True,

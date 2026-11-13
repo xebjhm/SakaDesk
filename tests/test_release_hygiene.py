@@ -10,6 +10,7 @@ UI assets may live there (a real paid-message export shipped from v0.1.0 to
 from __future__ import annotations
 
 import importlib.util
+import re
 import tomllib
 from pathlib import Path
 from types import ModuleType
@@ -59,11 +60,34 @@ def test_no_unrelated_tk_distribution_dependency():
     assert "tk" not in names
 
 
-def test_ci_checks_frontend_dist_contents():
+def test_ci_builds_through_the_dist_gate_once():
+    """The dist allowlist lives in build_windows.verify_frontend_dist (tested above);
+    the CI build runs that script, and no second copy of the rule exists in CI."""
     workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text(
         encoding="utf-8"
     )
-    assert "Verify frontend dist contents" in workflow
+    assert "python tooling/windows/build_windows.py" in workflow
+    assert "Verify frontend dist contents" not in workflow
+
+
+def test_the_spec_ships_no_tests_and_no_debug_bootloader():
+    """report-hardening #7 and #74 (audit 2026-11-13)."""
+    spec = (ROOT / "tooling" / "build_windows.spec").read_text(encoding="utf-8")
+    assert "debug=False" in spec and "debug=True" not in spec
+    assert "excludes=['backend.tests']" in spec
+    assert "exclude_datas=['tests/**']" in spec
+
+
+def test_the_local_build_pins_the_ci_build_tools():
+    """report-hardening #8: build.ps1 installed whatever pyinstaller was newest."""
+    workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text(
+        encoding="utf-8"
+    )
+    pins = re.search(r"uv pip install (pyinstaller==\S+) (pywebview==\S+)", workflow)
+    assert pins is not None
+    build_ps1 = (ROOT / "build.ps1").read_text(encoding="utf-8")
+    for pin in pins.groups():
+        assert f"'{pin}'" in build_ps1
 
 
 def test_dist_allowlist_is_public_plus_index_html():
