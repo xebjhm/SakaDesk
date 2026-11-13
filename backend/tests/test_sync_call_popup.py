@@ -162,7 +162,7 @@ async def _close(tasks: list[tuple[Any, str]]) -> None:
 
 @pytest.mark.asyncio
 async def test_voice_is_downloaded_first_then_dispatched(tmp_path: Path) -> None:
-    md = tmp_path / "m"
+    md = tmp_path / "日向坂46" / "m"
     mgr, seen = _manager(md, items=[(10, "voice"), (11, "picture")])
     with structlog.testing.capture_logs() as logs:
         ctl, tasks = await _run(tmp_path, mgr)
@@ -183,7 +183,7 @@ async def test_voice_is_downloaded_first_then_dispatched(tmp_path: Path) -> None
 
 @pytest.mark.asyncio
 async def test_no_matching_voice_item_still_dispatches(tmp_path: Path) -> None:
-    md = tmp_path / "m"
+    md = tmp_path / "日向坂46" / "m"
     mgr, seen = _manager(md, items=[(11, "picture")])
     with structlog.testing.capture_logs() as logs:
         ctl, tasks = await _run(tmp_path, mgr)
@@ -197,7 +197,7 @@ async def test_no_matching_voice_item_still_dispatches(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_empty_media_queue_still_dispatches(tmp_path: Path) -> None:
-    md = tmp_path / "m"
+    md = tmp_path / "日向坂46" / "m"
     mgr, seen = _manager(md, items=[])
     ctl, tasks = await _run(tmp_path, mgr)
     await _close(tasks)
@@ -208,7 +208,7 @@ async def test_empty_media_queue_still_dispatches(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_failure_before_dispatch_abandons(tmp_path: Path) -> None:
-    md = tmp_path / "m"
+    md = tmp_path / "日向坂46" / "m"
 
     async def boom(*_a):
         raise RuntimeError("x")
@@ -222,7 +222,7 @@ async def test_failure_before_dispatch_abandons(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_cancel_before_dispatch_abandons_as_cancelled(tmp_path: Path) -> None:
-    md = tmp_path / "m"
+    md = tmp_path / "日向坂46" / "m"
 
     async def cancel(*_a):
         raise asyncio.CancelledError
@@ -237,7 +237,7 @@ async def test_cancel_before_dispatch_abandons_as_cancelled(tmp_path: Path) -> N
 
 @pytest.mark.asyncio
 async def test_session_expiry_before_dispatch_abandons(tmp_path: Path) -> None:
-    md = tmp_path / "m"
+    md = tmp_path / "日向坂46" / "m"
 
     async def expired(*_a):
         raise SessionExpiredError("expired")
@@ -252,7 +252,7 @@ async def test_session_expiry_before_dispatch_abandons(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_failure_after_dispatch_does_not_abandon(tmp_path: Path) -> None:
-    md = tmp_path / "m"
+    md = tmp_path / "日向坂46" / "m"
     calls = 0
 
     async def second_fails(_s, queue, item_callback=None):
@@ -275,7 +275,7 @@ async def test_failure_after_dispatch_does_not_abandon(tmp_path: Path) -> None:
 
 @pytest.mark.asyncio
 async def test_abandon_failure_does_not_wedge_the_service(tmp_path: Path) -> None:
-    md = tmp_path / "m"
+    md = tmp_path / "日向坂46" / "m"
 
     async def boom(*_a):
         raise RuntimeError("x")
