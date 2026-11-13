@@ -168,6 +168,8 @@ def test_the_app_data_folder_is_refused_inside_above_and_through_a_link(raw):
         "C:\\Users\\Me\\AppData\\Roaming\\pysaka\\auth_data",
         "C:\\Users\\Me\\AppData\\Roaming",
         "S:\\Roaming\\pysaka",  # SUBST drive onto the sign-in folder
+        "C:\\Users\\Me\\AppData\\Roaming\\pyzaka",  # the legacy sign-in folder
+        "c:\\users\\me\\appdata\\roaming\\PYZAKA\\auth_data",
     ],
 )
 def test_the_install_and_sign_in_folders_are_refused(raw):
@@ -232,3 +234,9 @@ def test_same_dir_ignores_slashes_case_and_dots(a, b):
 def test_same_dir_tells_different_folders_apart():
     assert not policy.same_dir("C:\\x", "C:\\y")
     assert not policy.same_dir("C:\\x", "D:\\x")
+
+
+def test_the_64_bit_program_files_folder_is_refused():
+    policy.os.environ["ProgramW6432"] = "D:\\Programs64"
+    assert _check("D:\\Programs64\\Foo") == "system"
+    assert _check("D:\\Programs64x") == "ok"

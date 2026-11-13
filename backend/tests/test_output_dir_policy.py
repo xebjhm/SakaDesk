@@ -99,6 +99,9 @@ def test_a_good_folder_is_created_and_normalised(sandbox):
         (lambda s: s["app"].parent / "Programs", "app_data"),
         (lambda s: s["home"] / "AppData" / "Roaming" / "pysaka", "app_data"),
         (lambda s: s["home"] / "AppData" / "Roaming" / "pysaka" / "auth", "app_data"),
+        # the legacy sign-in folder, which the uninstaller deletes as well
+        (lambda s: s["home"] / "AppData" / "Roaming" / "pyzaka", "app_data"),
+        (lambda s: s["home"] / "AppData" / "Roaming" / "pyzaka" / "x", "app_data"),
         (lambda s: s["windows"], "system"),
         (lambda s: s["windows"] / "Temp" / "x", "system"),
     ],
@@ -258,3 +261,75 @@ def test_settings_and_fresh_check_report_the_default_for_an_empty_value(tmp_path
         fresh = client.get("/api/settings/fresh").json()
     assert settings["output_dir"] == str(tmp_path)
     assert fresh["output_dir"] == str(tmp_path)
+
+
+def test_programw6432_is_a_system_variable():
+    assert "ProgramW6432" in policy._SYSTEM_DIR_VARS
+
+
+def test_a_program_files_folder_named_by_programw6432_is_refused(sandbox, monkeypatch):
+    pf = sandbox["root"] / "PF64"
+    pf.mkdir()
+    monkeypatch.setenv("ProgramW6432", str(pf))
+    with pytest.raises(policy.OutputDirRejected) as exc:
+        policy.check_output_dir(str(pf / "SakaDesk"))
+    assert exc.value.reason == "system"
+
+
+@pytest.mark.parametrize(
+    "pick,reason",
+    [
+        (lambda s: s["home"], "profile"),
+        (lambda s: s["app"] / "logs", "app_data"),
+        (lambda s: s["home"] / "AppData" / "Roaming" / "pyzaka", "app_data"),
+        (lambda s: s["windows"] / "Temp", "system"),
+    ],
+)
+def test_a_saved_value_that_breaks_a_folder_rule_is_kept_and_warned_once(
+    sandbox, pick, reason
+):
+    value = str(pick(sandbox))
+    with capture_logs() as logs:
+        for _ in range(3):
+            assert path_resolver.output_dir_value(value, Path("/d")) == Path(value)
+        path_resolver.wait_for_output_dir_checks_for_tests()
+    events = [e for e in logs if e["event"] == "output_dir_saved_unusual"]
+    assert [e["reason"] for e in events] == [reason]
+    assert "AppData" not in str(logs) and "Temp" not in str(logs)
+
+
+def test_a_link_into_a_protected_saved_folder_is_warned_through_the_resolver(sandbox):
+    link = sandbox["root"] / "innocent"
+    try:
+        link.symlink_to(sandbox["app"], target_is_directory=True)
+    except OSError:
+        pytest.skip("creating symlinks needs extra rights here")
+    with capture_logs() as logs:
+        path_resolver.output_dir_value(str(link), Path("/d"))
+        path_resolver.wait_for_output_dir_checks_for_tests()
+    assert [e["reason"] for e in logs if e["event"] == "output_dir_saved_unusual"] == [
+        "app_data"
+    ]
+
+
+def test_the_saved_value_check_runs_off_the_calling_thread(sandbox, monkeypatch):
+    import threading
+
+    seen: list[str] = []
+    monkeypatch.setattr(
+        path_resolver,
+        "deep_problem",
+        lambda v: seen.append(threading.current_thread().name),
+    )
+    path_resolver.output_dir_value(str(sandbox["root"] / "a"), Path("/d"))
+    path_resolver.wait_for_output_dir_checks_for_tests()
+    assert seen and seen[0] != threading.current_thread().name
+
+
+def test_a_good_saved_value_is_not_warned(sandbox):
+    with capture_logs() as logs:
+        path_resolver.output_dir_value(
+            str(sandbox["home"] / "Documents" / "S"), Path("/d")
+        )
+        path_resolver.wait_for_output_dir_checks_for_tests()
+    assert not [e for e in logs if e["event"].startswith("output_dir_")]

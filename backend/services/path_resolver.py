@@ -12,7 +12,7 @@ from typing import Any, cast
 
 import structlog
 
-from backend.services.output_dir_policy import lexical_problem
+from backend.services.output_dir_policy import deep_problem, lexical_problem
 from backend.services.service_utils import get_service_display_name, validate_service
 
 logger = structlog.get_logger(__name__)
@@ -34,6 +34,50 @@ def _read_settings(settings_path: Path) -> Any:
 
 # Digests of saved values (and defaulting reasons) already logged (never the values).
 _noted_values: set[str] = set()
+# Saved values whose filesystem rules were already checked (or are being) in this
+# process, and the checking threads (tests wait for them).
+_deep_checked: set[str] = set()
+_deep_threads: list[threading.Thread] = []
+
+
+def _check_saved_value(value: str) -> None:
+    """Log ``output_dir_saved_unusual`` if ``value`` breaks a filesystem folder rule. Runs in a thread."""
+    try:
+        problem = deep_problem(value)
+    except Exception as e:  # a check must never take the thread down silently
+        logger.warning("output_dir_saved_check_failed", error_type=type(e).__name__)
+        return
+    if problem is not None:
+        _note_once(value, "output_dir_saved_unusual", problem)
+
+
+def _note_deep_once(value: str) -> None:
+    """Start the one-per-process filesystem check of a saved value (a daemon thread).
+
+    ``deep_problem`` resolves links, which can be slow on a network drive, so
+    it never runs on the caller's thread (this is reached from request
+    handlers on the event loop).
+    """
+    with _last_good_lock:
+        if value in _deep_checked:
+            return
+        _deep_checked.add(value)
+        thread = threading.Thread(
+            target=_check_saved_value,
+            args=(value,),
+            name="output-dir-saved-check",
+            daemon=True,
+        )
+        _deep_threads.append(thread)
+    thread.start()
+
+
+def wait_for_output_dir_checks_for_tests() -> None:
+    """Test-only: wait for the saved-value check threads started so far."""
+    with _last_good_lock:
+        threads = list(_deep_threads)
+    for thread in threads:
+        thread.join(timeout=10)
 
 
 def _note_once(key: str, event: str, reason: str) -> None:
@@ -57,7 +101,12 @@ def output_dir_value(value: object, default: Path) -> Path:
     archive in use keeps working (security audit 2026-11-13); if it fails
     ``output_dir_policy.lexical_problem`` (relative, a root, a network or
     device path) that reason is logged once per distinct value per process as
-    ``output_dir_saved_unusual``, never the value. No filesystem call.
+    ``output_dir_saved_unusual``, never the value. A value that passes the
+    lexical rules but breaks a filesystem rule (``root`` once resolved,
+    ``profile``, ``app_data``, ``system``; ``output_dir_policy.deep_problem``)
+    is logged the same way, once per distinct value per process, from a
+    background thread after this returns. No filesystem call on the calling
+    thread.
     """
     if value is None:
         return default
@@ -70,13 +119,18 @@ def output_dir_value(value: object, default: Path) -> Path:
     problem = lexical_problem(value)
     if problem is not None:
         _note_once(value, "output_dir_saved_unusual", problem)
+    else:
+        _note_deep_once(value)
     return Path(value)
 
 
 def reset_output_dir_notes_for_tests() -> None:
     """Test-only: forget which unusual saved values were already logged."""
+    wait_for_output_dir_checks_for_tests()
     with _last_good_lock:
         _noted_values.clear()
+        _deep_checked.clear()
+        _deep_threads.clear()
 
 
 def output_dir_from_settings(settings_path: Path, default: Path) -> Path:

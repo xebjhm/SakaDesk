@@ -25,15 +25,17 @@ Then on the normalised path and on its resolved form (links followed):
   folder above it: SakaDesk's data folder (``%LOCALAPPDATA%\\SakaDesk``), the
   per-user install folder (``%LOCALAPPDATA%\\Programs\\SakaDesk``, which the
   uninstaller empties) and pysaka's sign-in folder (``%APPDATA%\\pysaka``,
-  deleted on uninstall);
-- ``system``: the Windows folder, Program Files, Program Files (x86) or
-  ProgramData, or a folder inside one;
+  deleted on uninstall, and its legacy name ``%APPDATA%\\pyzaka``, which the
+  uninstaller deletes too);
+- ``system``: the Windows folder, Program Files, Program Files (x86) (also its
+  ``ProgramW6432`` form) or ProgramData, or a folder inside one;
 - ``not_writable``: the folder cannot be created or a file written in it.
 
 A mapped drive letter (``Z:\\SakaDesk``) passes even though it resolves to a
 UNC path: the user mapped it, and only the typed UNC form is refused. A value
 already saved is not held to these rules (an archive in use must keep
-working); :func:`lexical_problem` lets a reader log what looks wrong.
+working); :func:`lexical_problem` and :func:`deep_problem` let a reader log
+what looks wrong.
 """
 
 from __future__ import annotations
@@ -55,7 +57,13 @@ GRANT_LIFETIME_SECONDS = 600.0
 
 _now = time.monotonic
 """The grant clock (tests replace it)."""
-_SYSTEM_DIR_VARS = ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData")
+_SYSTEM_DIR_VARS = (
+    "SystemRoot",
+    "ProgramFiles",
+    "ProgramFiles(x86)",
+    "ProgramW6432",
+    "ProgramData",
+)
 
 # Folders the native picker returned in this process (comparison form), oldest first.
 _grants: dict[str, tuple[str, float]] = {}
@@ -145,6 +153,7 @@ def _app_owned_dirs() -> list[Path]:
     owned = [app]
     owned += [base / "Programs" / "SakaDesk" for base in local]
     owned += [base / "pysaka" for base in roaming]
+    owned += [base / "pyzaka" for base in roaming]
     forms: list[Path] = []
     for folder in owned:
         forms.extend(_forms(folder))
@@ -184,6 +193,26 @@ def _writable(folder: Path) -> bool:
     return True
 
 
+def deep_problem(raw: str) -> str | None:
+    """The reason a lexically fine ``raw`` may not be the archive root, or None.
+
+    The filesystem rules of :func:`check_output_dir` without its writability
+    probe (nothing is created or written): ``invalid`` when it cannot be
+    resolved, ``root``, ``profile``, ``app_data`` or ``system`` on the
+    normalised and the resolved form. ``raw`` must pass
+    :func:`lexical_problem`. Blocking (it resolves): never call it on the
+    event loop.
+    """
+    normal = Path(os.path.normpath(raw))
+    try:
+        resolved = normal.resolve()
+    except (OSError, RuntimeError):
+        return "invalid"
+    if resolved == Path(resolved.anchor):
+        return "root"
+    return _protected({Path(_key(str(normal))), Path(_key(str(resolved)))})
+
+
 def check_output_dir(raw: object) -> str:
     """The value to save for ``raw`` as the archive root, or raise :class:`OutputDirRejected`.
 
@@ -195,16 +224,10 @@ def check_output_dir(raw: object) -> str:
     problem = lexical_problem(raw)
     if problem is not None:
         raise OutputDirRejected(problem)
-    normal = Path(os.path.normpath(str(raw)))
-    try:
-        resolved = normal.resolve()
-    except (OSError, RuntimeError):
-        raise OutputDirRejected("invalid") from None
-    if resolved == Path(resolved.anchor):
-        raise OutputDirRejected("root")
-    reason = _protected({Path(_key(str(normal))), Path(_key(str(resolved)))})
+    reason = deep_problem(str(raw))
     if reason is not None:
         raise OutputDirRejected(reason)
+    normal = Path(os.path.normpath(str(raw)))
     if not _writable(normal):
         raise OutputDirRejected("not_writable")
     return str(normal)
