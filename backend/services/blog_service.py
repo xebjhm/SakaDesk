@@ -38,6 +38,7 @@ from pysaka.blog import (
 
 from backend.services.passive_media import INLINE_MEDIA_TYPES
 from backend.services.path_resolver import get_output_dir
+from backend.services.safe_paths import plain_segment
 from backend.services.service_utils import (
     get_service_display_name,
     get_service_enum,
@@ -1803,19 +1804,6 @@ def _bump_folder_mtime(folder: Path) -> None:
         logger.warning("blog_folder_touch_failed", error_type=type(e).__name__)
 
 
-def _plain_segment(name: str) -> bool:
-    """One path segment that cannot leave its folder.
-
-    No separator, no ``:`` (on Windows ``base / "C:x"`` replaces the drive and
-    ``a:b`` names an alternate data stream), not ``.`` / ``..``.
-    """
-    return (
-        bool(name)
-        and name not in (".", "..")
-        and not any(c in name for c in ("/", "\\", "\x00", ":"))
-    )
-
-
 @dataclass(frozen=True)
 class GalleryMember:
     """One member of the index: her folder name and her well-formed blog entries."""
@@ -1907,7 +1895,7 @@ def gallery_index(
         if not isinstance(name, str) or not isinstance(blogs, list):
             continue  # a malformed member: skip her, keep the others
         folder = name.strip().replace("/", "_")
-        if not _plain_segment(folder):
+        if not plain_segment(folder):
             continue
         valid = [
             b
@@ -1915,7 +1903,7 @@ def gallery_index(
             if isinstance(b, dict)
             and isinstance(b.get("id"), str)
             and isinstance(b.get("published_at"), str)
-            and _plain_segment(f"{b['published_at'][:10].replace('-', '')}_{b['id']}")
+            and plain_segment(f"{b['published_at'][:10].replace('-', '')}_{b['id']}")
         ]
         out.append(GalleryMember(folder, valid))
     return GalleryIndex(base, mtime_ns, out)

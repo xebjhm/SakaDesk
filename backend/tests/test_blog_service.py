@@ -1066,12 +1066,12 @@ def test_gallery_orders_naive_as_utc_and_unparsable_last_and_skips_a_folder_with
 
 def test_a_folder_name_with_a_colon_is_not_a_plain_segment():
     """3.5: ``base / "C:x"`` replaces the drive on Windows; ``a:b`` is a data stream."""
-    from backend.services import blog_service as bs
+    from backend.services.safe_paths import plain_segment
 
-    assert bs._plain_segment("C:x") is False
-    assert bs._plain_segment("a:b") is False
-    assert bs._plain_segment("20260205_b1") is True
-    assert bs._plain_segment("金村 美玖 🌸") is True
+    assert plain_segment("C:x") is False
+    assert plain_segment("a:b") is False
+    assert plain_segment("20260205_b1") is True
+    assert plain_segment("金村 美玖 🌸") is True
 
 
 def test_a_blog_write_moves_its_folder_mtime_even_where_the_fs_does_not(tmp_path):
