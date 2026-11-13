@@ -227,6 +227,11 @@ describe('countDriftViolations (UI health #14)', () => {
         expect(countDriftViolations(css, 'index.css')).toBe(0);
     });
 
+    it('does not count inherit, but still counts a literal beside it', () => {
+        expect(countDriftViolations('a { color: inherit; background: inherit; border-color: inherit }', 'index.css')).toBe(0);
+        expect(countDriftViolations('a { color: inherit; background: #fff }', 'index.css')).toBe(1);
+    });
+
     it('scans source and CSS files, not tests or token files', () => {
         expect(isDriftScanned('features/incomingCall/callScreen.css')).toBe(true);
         expect(isDriftScanned('core/media/VideoPlayer.tsx')).toBe(true);
