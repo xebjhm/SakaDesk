@@ -4,10 +4,11 @@ import { SyncModal } from './SyncModal';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 // Mock i18n to return the key as-is (with interpolation params ignored)
+const lang = vi.hoisted(() => ({ current: 'en' }));
 vi.mock('../../i18n', () => ({
     useTranslation: () => ({
         t: (key: string) => key,
-        i18n: { language: 'en' },
+        i18n: { language: lang.current },
     }),
 }));
 
@@ -257,5 +258,15 @@ describe('SyncModal', () => {
         render(<SyncModal syncProgress={clean} />);
         expect(screen.getByText('settings.verifyNoGaps')).toBeInTheDocument();
         expect(screen.queryByTestId('sync-rejected')).not.toBeInTheDocument();
+    });
+
+    it.each([['en', '12,345'], ['de', '12.345']])('formats the item count with the UI language (%s)', (language, formatted) => {
+        lang.current = language;
+        try {
+            render(<SyncModal syncProgress={{ ...baseProgress, total: 12345 }} />);
+            expect(screen.getByText(`${formatted} sync.items`)).toBeInTheDocument();
+        } finally {
+            lang.current = 'en';
+        }
     });
 });
