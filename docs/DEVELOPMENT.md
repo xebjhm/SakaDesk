@@ -121,7 +121,8 @@ page. `e2e/launch-auth.spec.ts` turns that header off and checks the real
 `npm run build` first.
 
 CI runs `e2e/csp.spec.ts`, `e2e/launch-auth.spec.ts` and `e2e/entry-flow.spec.ts` on
-every push and pull request (job `e2e` in `.github/workflows/build.yml`), against the
+pushes to `main` and `dev`, pull requests into `main` and `dev`, `v*.*.*` tags and
+manual dispatch (job `e2e` in `.github/workflows/build.yml`), against the
 built frontend, with `SAKADESK_DATA_DIR` pointing at a temporary folder whose
 `settings.json` is `{"is_configured": true, "output_dir": "<that folder>/out"}`. Do the
 same locally: an empty data dir makes the CSP and screen specs stop at the setup wizard.

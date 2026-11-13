@@ -64,9 +64,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   markup; it now finishes quickly.
 - **An archive saved at the top of a drive showed no messages**; it loads
   again.
-- **Signing out could be undone** by a sign-in renewal that was still running in
-  the background; signing out now waits for it, and also discards any poster or
-  animation that was still waiting to be saved.
 - **Searching for quotation marks or percent signs found unrelated messages**;
   such characters are now searched exactly as typed.
 - **Member photos in the blog member picker stayed missing** after a failed
