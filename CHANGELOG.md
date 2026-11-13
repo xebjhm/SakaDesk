@@ -53,13 +53,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   starring a message no longer redraws the chat.
 - **The window stays smooth while syncing.** It no longer redraws everything
   every second during a sync; only the progress itself updates.
-- **Talk is where you left it.** Switching to Blogs or Memories and back keeps
-  the open chat, its scroll position and the member list, instead of loading
-  them again.
+- **Messages stays where you left it.** Switching to Blogs or Memories and
+  back keeps the open chat, its scroll position and the member list, instead
+  of loading them again. A call you declined does not ring again when you come
+  back.
 - **Chat photos load lighter.** Photos in a chat are shown from smaller copies
   wherever they look the same on your screen, and the viewer still opens the
   full photo. Voice and video messages only look up their text when it can be
-  shown.
+  shown, so with transcription off a video no longer shows subtitles from an
+  earlier transcript.
+- **Blogs open faster.** In a long list the blog cards appear sooner, and a
+  blog's pictures after the first ones load as you scroll.
 - **SakaDesk starts with less to load.** Memories now loads the first time you
   open it, and the conversation list checks for changes less often.
 
