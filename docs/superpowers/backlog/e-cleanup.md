@@ -12,7 +12,7 @@ Items found during D2a, D2b, D2c and D2d that were left on purpose. Pick them up
 - **`TranslateButton` palette.** `frontend/src/core/common/TranslateButton.tsx` builds its colours from hex + alpha; move it to tokens (shared with the chat).
 - **Rail: fast move then click selects nothing.** Moving fast and clicking at once in `frontend/src/features/blogs/components/TimelineRail.tsx` selects no post.
 - **Back label on the timeline path.** "Back to latest blogs" in `frontend/src/features/blogs/components/BlogReader.tsx` is misleading when the reader was opened from a member timeline.
-- **Fonts are not pinned in the shots.** `frontend/e2e/d2b-screens.spec.ts` and `frontend/e2e/visual-zero-pixel.spec.ts` depend on the Google Fonts load; pin or stub the fonts.
+- **Fonts in the shots.** Fonts are bundled now, so the e2e shots no longer wait on a network load; `frontend/e2e/d2b-screens.spec.ts` and `frontend/e2e/visual-zero-pixel.spec.ts` could still wait on `document.fonts.ready` before capturing.
 - **`formatBlogDate` tests.** Add zh-CN, yue, midnight and the ICU "at" separator cases to `frontend/src/utils/dateFormatters.test.ts`.
 - **`d2b.test` only checks truthy.** Tighten the assertions in `frontend/src/i18n/d2b.test.ts` (line 27).
 - **A to B to A in-flight spinner.** Going A, B, A quickly in `frontend/src/features/blogs/BlogsFeature.tsx` can leave the spinner running while the in-flight guard skips the second load of A.

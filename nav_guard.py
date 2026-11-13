@@ -17,9 +17,11 @@ its scheme, to ``webbrowser.open``. This module gives both one policy
   ``frontend/src/utils/loopbackHost.ts``) other than the app origin is
   cancelled and never opened;
 - every other URL (``file:``, ``ms-settings:``, ``javascript:``, ``data:``,
-  malformed, containing a character ShellExecute could misread
-  (``" < > ^`` or a backtick), or longer than ``MAX_URL_LENGTH``) is cancelled
-  and never opened;
+  malformed, containing whitespace or a control character, or longer than
+  ``MAX_URL_LENGTH``) is cancelled and never opened; an ``http(s)`` URL
+  containing a character ShellExecute could misread (``" < > ^`` or a
+  backtick) is not refused: it is external, and :func:`open_external`
+  percent-encodes those characters before handing it to the browser;
 - a new-window request never becomes a window: an external web URL goes to the
   browser as above, anything else (including the app's own URLs) is dropped.
 
