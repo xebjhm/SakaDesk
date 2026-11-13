@@ -214,13 +214,23 @@ describe('BlogReader links', () => {
     });
 
     it('does nothing for a link that is not a web page', () => {
-        // The sanitizer has already dropped the href of a mailto: or app-relative link, so the
-        // anchor is inert; a click must still never navigate the window.
+        // The sanitizer has already dropped the href of a mailto: link, so the anchor is inert;
+        // a click must still never navigate the window.
         render(<BlogReader {...props({ content: LINKS })} />);
         expect(fireEvent.click(screen.getByText('mail'))).toBe(false);
-        expect(fireEvent.click(screen.getByText('local'))).toBe(false);
         expect(open).not.toHaveBeenCalled();
         expect(clientLog).toHaveBeenCalledWith('external_link', { surface: 'blog_post', outcome: 'blocked', reason: 'invalid' });
+    });
+
+    it('treats a link to the local image endpoint as a relative link on the official site', () => {
+        // Only <img src> may keep the app-relative cached-image URL; on a link it resolves against
+        // the blog base like any relative href and opens in the browser, never in the window.
+        render(<BlogReader {...props({ content: LINKS })} />);
+        expect(fireEvent.click(screen.getByText('local'))).toBe(false);
+        expect(open).toHaveBeenCalledWith(
+            'https://www.hinatazaka46.com/api/blogs/image?service=hinatazaka46&blog_id=1&filename=img_0.jpg',
+            '_blank', 'noopener,noreferrer',
+        );
     });
 
     it('opens the photo viewer for a linked image instead of the link', () => {

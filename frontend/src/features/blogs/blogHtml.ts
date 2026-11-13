@@ -33,15 +33,15 @@ const NO_BASE = 'https://no-base.invalid/';
 /**
  * The URL a post's `src`/`href` may keep, or null to drop it. Values resolve against the post's
  * blog base URL (an unresolvable relative value when there is none). Kept: the cached-image
- * endpoint as a relative app URL, `data:` images (img src only), and absolute http(s) URLs off
- * the app origin and off loopback.
+ * endpoint as a relative app URL and `data:` images (both img src only), and absolute http(s)
+ * URLs off the app origin and off loopback.
  */
 function resolvePostUrl(
     raw: string, base: string, appOrigin: string, isImgSrc: boolean,
 ): string | null {
     try {
         const local = new URL(raw, appOrigin);
-        if (local.origin === appOrigin && local.pathname === LOCAL_IMAGE_PATH) {
+        if (isImgSrc && local.origin === appOrigin && local.pathname === LOCAL_IMAGE_PATH) {
             return `${LOCAL_IMAGE_PATH}${local.search}`;
         }
         if (isImgSrc && /^data:image\//i.test(raw.trim())) return raw;

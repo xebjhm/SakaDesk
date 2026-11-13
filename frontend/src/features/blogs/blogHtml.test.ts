@@ -47,6 +47,12 @@ describe('post URLs', () => {
             .toBe('/api/blogs/image?service=hinatazaka46&blog_id=1&filename=img_0.jpg');
         expect(urlOf('img', 'http://127.0.0.1:8000/api/blogs/image?x=1')).toBe('/api/blogs/image?x=1');
     });
+    it('does not keep the cached-image endpoint on a link', () => {
+        expect(urlOf('a', 'http://127.0.0.1:8000/api/blogs/image?x=1')).toBeNull();
+        expect(urlOf('a', '/api/blogs/image?a=1', '')).toBeNull();
+        // With a base it is an ordinary relative link on the official site, never an app URL.
+        expect(urlOf('a', '/api/blogs/image?a=1')).toBe('https://blog.example.com/api/blogs/image?a=1');
+    });
     it('keeps absolute off-origin URLs and resolves relative ones on the blog base', () => {
         expect(urlOf('img', 'https://cdn.example.com/a.jpg')).toBe('https://cdn.example.com/a.jpg');
         expect(urlOf('a', 'https://example.com/x')).toBe('https://example.com/x');
