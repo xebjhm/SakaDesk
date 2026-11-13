@@ -1029,8 +1029,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     return (
         <div className="flex h-full w-full overflow-hidden">
             {/* Member sidebar on the canvas (level 0), next to the feature rail. Below md it slides in over the chat. */}
-            <div ref={sidebarRef} tabIndex={-1} className={cn(
-                // Focus lands here when the overlay has nothing tabbable: the keyboard ring, none for the mouse.
+            <div ref={sidebarRef} tabIndex={sidebarOverlay ? -1 : undefined} className={cn(
+                // Focusable only as the narrow overlay, where focus lands here when nothing in it is
+                // tabbable: the keyboard ring, none for the mouse.
                 'outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent',
                 'fixed inset-y-0 left-0 z-30 transform transition-transform duration-base ease-standard',
                 'max-md:bg-group-canvas md:relative md:translate-x-0',

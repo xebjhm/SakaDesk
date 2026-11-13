@@ -104,4 +104,18 @@ describe('MessagesFeature narrow member sidebar, keyboard (UI health A-D6)', () 
         await user.click(screen.getByRole('button', { name: 'other room' }));
         await waitFor(() => expect(sidebar()).toHaveAttribute('inert'));
     });
+
+    it('is not focusable at wide widths, so a click on blank space focuses nothing', async () => {
+        narrow(false);
+        const user = userEvent.setup();
+        render(<MessagesFeature appSettings={null} syncVersion={0} />);
+        expect(sidebar()).not.toHaveAttribute('tabindex');
+        await user.click(sidebar());
+        expect(sidebar()).not.toHaveFocus();
+    });
+
+    it('is a programmatic focus target only as the narrow overlay', async () => {
+        await openSidebar();
+        expect(sidebar()).toHaveAttribute('tabindex', '-1');
+    });
 });

@@ -396,7 +396,14 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     useLayoutEffect(() => {
         if (isUnread || !focusAfterReveal.current) return;
         focusAfterReveal.current = false;
-        contentRef.current?.focus({ preventScroll: true });
+        const el = contentRef.current;
+        if (!el) return;
+        // Focusable only for this programmatic focus: a permanent tabindex would let a mouse click
+        // focus every bubble (a later key press then draws the ring) and drop focus to <body> when
+        // the clicked bubble scrolls out of the virtual list.
+        el.setAttribute('tabindex', '-1');
+        el.addEventListener('blur', () => el.removeAttribute('tabindex'), { once: true });
+        el.focus({ preventScroll: true });
     }, [isUnread]);
 
     const favoriteStar = starred && (
@@ -501,8 +508,6 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                     <div
                         ref={contentRef}
-                        // Programmatic focus target after a keyboard reveal; not a Tab stop.
-                        tabIndex={-1}
                         className={cn(
                             'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
                             'border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard',

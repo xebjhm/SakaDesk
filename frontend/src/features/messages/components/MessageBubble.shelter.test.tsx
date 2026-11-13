@@ -79,4 +79,27 @@ describe('MessageBubble unread shelter (UI health #3)', () => {
         rerender(<MessageBubble {...props} isUnread={false} />);
         expect(document.activeElement).toBe(document.body);
     });
+
+    it('is not focusable by a click: a revealed bubble has no tabindex until a keyboard reveal', async () => {
+        render(<MessageBubble message={msg()} member_name="n" service="hinatazaka46" isUnread={false} onReveal={vi.fn()} />);
+        const text = screen.getByText('こんにちは');
+        expect(text.closest('[tabindex]')).toBeNull();
+        await userEvent.click(text);
+        expect(text.closest('[tabindex]')).toBeNull();
+        expect(document.activeElement).toBe(document.body);
+    });
+
+    it('drops the transient tabindex again when the revealed bubble loses focus', async () => {
+        const Harness = () => {
+            const [unread, setUnread] = useState(true);
+            return <MessageBubble message={msg()} member_name="n" service="hinatazaka46" isUnread={unread} onReveal={() => setUnread(false)} />;
+        };
+        render(<Harness />);
+        screen.getByRole('button', { name: 'Show unread message' }).focus();
+        await userEvent.keyboard('{Enter}');
+        const content = screen.getByText('こんにちは').closest('[tabindex="-1"]') as HTMLElement;
+        expect(content).toHaveFocus();
+        content.blur();
+        expect(content).not.toHaveAttribute('tabindex');
+    });
 });
