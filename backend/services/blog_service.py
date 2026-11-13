@@ -1074,7 +1074,7 @@ class BlogService:
                             logger.debug(
                                 "detail_metadata_failed",
                                 blog_id=blog["id"],
-                                error=str(e),
+                                error_type=type(e).__name__,
                             )
 
                     await asyncio.gather(

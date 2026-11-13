@@ -479,6 +479,24 @@ async def test_an_answered_but_undated_pending_retry_still_counts():
 
 
 @pytest.mark.asyncio
+async def test_a_failed_detail_fetch_logs_the_error_class_only():
+    """aiohttp error text carries URLs, so only the class goes to the log."""
+    scraper = _scraper(
+        {"1": [_entry("b-new", "2026-11-01T00:00:00+09:00", thumb=None)]}
+    )
+    scraper.get_blog_detail_metadata = AsyncMock(
+        side_effect=ConnectionError("https://example.invalid/secret-path")
+    )
+    with capture_logs() as logs:
+        await _sync(_with_pending([]), scraper)
+    failed = [e for e in logs if e["event"] == "detail_metadata_failed"]
+    assert len(failed) == 1
+    assert failed[0]["error_type"] == "ConnectionError"
+    assert "error" not in failed[0]
+    assert "secret-path" not in repr(logs)
+
+
+@pytest.mark.asyncio
 async def test_pending_entries_expire_by_attempts_and_age():
     scraper = _scraper({"1": []})
     pending = [
