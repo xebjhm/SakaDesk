@@ -25,11 +25,10 @@ class TestRedactPath:
         assert result == "File at /[REDACTED]\\AppData\\Local"
 
     def test_redacts_windows_forward_slash_path(self):
-        """Redacts Windows C:/Users/username paths."""
+        """Redacts Windows C:/Users/username paths, drive letter included."""
         text = "File at C:/Users/john/AppData/Local"
-        result = _redact_path(text, "john")
-        # The /Users/john pattern matches first, leaving C: prefix intact
-        assert result == "File at C:/[REDACTED]/AppData/Local"
+        result = _redact_path(text, "john", home="")
+        assert result == "File at /[REDACTED]/AppData/Local"
 
     def test_case_insensitive(self):
         """Matching is case-insensitive for the username."""
@@ -37,11 +36,10 @@ class TestRedactPath:
         result = _redact_path(text, "john")
         assert result == "Path /[REDACTED]/file.txt and /[REDACTED]/other.txt"
 
-    def test_noop_when_username_empty(self):
-        """Returns text unchanged when username is empty string."""
+    def test_noop_when_username_and_home_are_empty(self):
+        """Returns text unchanged when neither a login name nor a home folder is known."""
         text = "/home/john/documents/file.txt"
-        result = _redact_path(text, "")
-        assert result == text
+        assert _redact_path(text, "", home="") == text
 
     def test_preserves_text_without_paths(self):
         """Returns text unchanged when no matching paths exist."""

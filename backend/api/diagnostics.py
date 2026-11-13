@@ -643,6 +643,17 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
         logs_summary.recent.append("logs_unreadable")  # a code: str(e) has paths
         logger.warning("diagnostics_logs_read_failed", error_type=type(e).__name__)
 
+    # The panel shows and copies these as text: the same redaction as the log
+    # lines and the bug report (security audit 2026-11-13).
+    sys_info.app_data_dir = _scrub(sys_info.app_data_dir)
+    sys_info.settings_path = _scrub(sys_info.settings_path)
+    sys_info.logs_dir = _scrub(sys_info.logs_dir)
+    if isinstance(sync_state.last_error, str):
+        sync_state.last_error = _scrub(sync_state.last_error)
+    for service_info in sync_state.services or []:
+        if isinstance(service_info.last_error, str):
+            service_info.last_error = _scrub(service_info.last_error)
+
     return DiagnosticsResponse(
         system=sys_info,
         auth_status=auth_status,

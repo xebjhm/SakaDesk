@@ -71,17 +71,56 @@ def _get_username() -> str:
             return ""
 
 
-def _redact_path(text: str, username: str) -> str:
-    """Redact username from file paths."""
-    if not username:
-        return text
-    # Handle both forward and back slashes
-    patterns = [
-        rf"/home/{re.escape(username)}",
-        rf"/Users/{re.escape(username)}",
-        rf"C:\\Users\\{re.escape(username)}",
-        rf"C:/Users/{re.escape(username)}",
-    ]
+# Between path parts: any run of backslashes (raw, repr()-escaped by structlog's
+# ConsoleRenderer, doubled again inside str(OSError), or JSON-escaped) or a "/".
+_SEP = r"(?:\\+|/)"
+# A match ends where its last part ends: a separator, a quote, whitespace,
+# punctuation or the end of the text, so "hina" never cuts into "hinata".
+_END = r"(?=[\\/'\"\s,;:)\]}>]|$)"
+
+
+def _path_regex(path_text: str) -> Optional[str]:
+    """A pattern for ``path_text`` that accepts any separator form (:data:`_SEP`).
+
+    ``None`` when the path names no folder: empty, a bare root (``/``, ``C:\\``)
+    or a drive alone (``C:``) must never become a pattern that matches
+    everywhere (security audit 2026-11-13).
+    """
+    parts = [p for p in re.split(r"[\\/]+", path_text) if p]
+    if not parts or (len(parts) == 1 and parts[0].endswith(":")):
+        return None
+    body = _SEP.join(re.escape(p) for p in parts)
+    if path_text[:1] in ("/", "\\"):
+        body = _SEP + body
+    return body + _END
+
+
+def _home_text() -> str:
+    """The current user's home folder as text; ``""`` when it cannot be found."""
+    try:
+        return str(Path.home())
+    except (RuntimeError, KeyError, OSError):
+        return ""
+
+
+def _redact_path(text: str, username: str, home: Optional[str] = None) -> str:
+    """Redact the user's home folder and their login name in profile paths.
+
+    ``home`` defaults to :func:`_home_text`: it also covers a profile on another
+    drive or one whose folder name is not the login name. The login name is
+    matched under ``X:\\Users\\`` (any drive letter), ``/home/`` and
+    ``/Users/``. Every separator form matches (:data:`_SEP`), in any letter
+    case; each match becomes ``/[REDACTED]``.
+    """
+    patterns: list[str] = []
+    home_pattern = _path_regex(_home_text() if home is None else home)
+    if home_pattern:
+        patterns.append(home_pattern)
+    if username:
+        user = re.escape(username)
+        patterns.append(rf"[A-Za-z]:{_SEP}Users{_SEP}{user}{_END}")
+        patterns.append(rf"{_SEP}home{_SEP}{user}{_END}")
+        patterns.append(rf"{_SEP}Users{_SEP}{user}{_END}")
     result = text
     for pattern in patterns:
         result = re.sub(pattern, "/[REDACTED]", result, flags=re.IGNORECASE)
@@ -121,6 +160,10 @@ _SECRET_PATTERNS = [
     re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
     # Authorization: Bearer <token>
     re.compile(r"[Bb]earer\s+\S+"),
+    # Provider API keys: Google (AIza + 35) and OpenAI-style (sk-...); the long
+    # base64 rule below misses a 39-character Gemini key.
+    re.compile(r"AIza[0-9A-Za-z_-]{35}"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),
     # Long hex secrets (>= 32 hex chars, e.g. API keys / hashes)
     re.compile(r"\b[0-9a-fA-F]{32,}\b"),
     # Long base64/base64url secrets (>= 40 chars)
@@ -141,12 +184,20 @@ def _scrub_secrets(text: str) -> str:
 
 
 def scrub_log_line(
-    line: str, username: str, nickname: Nicknames, output_dir: Optional[str] = None
+    line: str,
+    username: str,
+    nickname: Nicknames,
+    output_dir: Optional[str] = None,
+    *,
+    home: Optional[str] = None,
 ) -> str:
     """Full redaction for a single emitted log line, in a fixed order.
 
-    1. the custom output dir (``[REDACTED_DIR]``), 2. the username in user
-    profile paths (``/[REDACTED]``), 3. the nicknames, 4. secrets. Paths come
+    1. the custom output dir (``[REDACTED_DIR]``), 2. the home folder
+    (``home``, default ``Path.home()``) and the username in user profile paths
+    (``/[REDACTED]``), 3. the nicknames, 4. secrets. Every path is matched in
+    any separator form, so ``repr()``-escaped Windows paths from structlog's
+    ConsoleRenderer are redacted too (security audit 2026-11-13). Paths come
     first: a nickname that overlaps the username or a folder of the output dir
     (``hin`` / ``hina``) must not rewrite part of the path before the path
     patterns see it, which left ``C:\\Users\\[REDACTED]a`` or the whole
@@ -155,7 +206,7 @@ def scrub_log_line(
     diagnostics endpoints (SEC-5).
     """
     text = _redact_output_dir(line, output_dir)
-    text = _redact_path(text, username)
+    text = _redact_path(text, username, home)
     text = _redact_nickname(text, nickname)
     return _scrub_secrets(text)
 
@@ -164,17 +215,14 @@ def _redact_output_dir(text: str, output_dir: Optional[str]) -> str:
     """Redact a user-chosen data/output directory from free text.
 
     The output dir can live outside C:\\Users (e.g. D:\\SakaData), so _redact_path
-    won't catch it — but sync errors embed it. Redact all slash variants.
+    won't catch it — but sync errors embed it. Redact it in every separator
+    form, including ``repr()``-escaped ones (:func:`_path_regex`).
     """
     if not output_dir:
         return text
-    variants = {
-        output_dir,
-        output_dir.replace("\\", "/"),
-        output_dir.replace("/", "\\"),
-    }
-    names = sorted((v for v in variants if v), key=lambda v: (-len(v), v))
-    pattern = "|".join(re.escape(v) for v in names)
+    pattern = _path_regex(output_dir)
+    if pattern is None:
+        return text
     return re.sub(pattern, "[REDACTED_DIR]", text, flags=re.IGNORECASE)
 
 
