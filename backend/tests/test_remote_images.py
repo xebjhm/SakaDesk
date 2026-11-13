@@ -40,9 +40,11 @@ class _Session:
     def __init__(self, responses):
         self.responses = dict(responses)
         self.calls: list[tuple[str, bool]] = []
+        self.timeouts: list[object] = []
 
-    def get(self, url, allow_redirects=True):
+    def get(self, url, allow_redirects=True, timeout=None):
         self.calls.append((url, allow_redirects))
+        self.timeouts.append(timeout)
         return self.responses[url]
 
 
@@ -56,7 +58,6 @@ async def test_an_official_https_image_is_fetched_without_following_redirects():
 @pytest.mark.parametrize(
     "url,reason",
     [
-        ("http://cdn.hinatazaka46.com/a.jpg", "scheme"),
         ("https://127.0.0.1/a.jpg", "host"),
         ("https://192.168.0.10/a.jpg", "host"),
         ("https://cdn.hinatazaka46.com.evil.example/a.jpg", "host"),
@@ -162,3 +163,30 @@ async def test_a_member_thumbnail_on_a_loopback_url_is_not_fetched(tmp_path):
         "reason": "scheme",
         "log_level": "warning",
     } in logs
+
+
+@pytest.mark.asyncio
+async def test_an_old_http_link_on_an_official_host_is_fetched_over_https():
+    """Older posts embed http:// links to the official sites; the fetch upgrades them."""
+    session = _Session({OK: _Resp()})
+    body, _ = await ri.fetch_official_image(
+        session, "http://cdn.hinatazaka46.com/files/a.jpg"
+    )
+    assert body == b"img"
+    assert session.calls == [(OK, False)]
+
+
+@pytest.mark.asyncio
+async def test_http_on_another_host_is_still_refused():
+    session = _Session({})
+    with pytest.raises(ri.RemoteImageRefused) as err:
+        await ri.fetch_official_image(session, "http://192.168.0.1/a.jpg")
+    assert err.value.reason == "scheme" and session.calls == []
+
+
+@pytest.mark.asyncio
+async def test_every_request_has_a_bounded_timeout():
+    session = _Session({OK: _Resp()})
+    await ri.fetch_official_image(session, OK)
+    assert session.timeouts == [ri.FETCH_TIMEOUT]
+    assert ri.FETCH_TIMEOUT.total is not None and ri.FETCH_TIMEOUT.total <= 60

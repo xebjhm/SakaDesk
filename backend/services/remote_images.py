@@ -37,6 +37,9 @@ MAX_REMOTE_IMAGE_BYTES = 10 * 1024 * 1024
 MAX_REDIRECTS = 3
 """Redirect hops followed, each re-checked by :func:`url_refusal`."""
 
+FETCH_TIMEOUT = aiohttp.ClientTimeout(total=60, sock_read=20)
+"""Per request: a slow-drip server cannot hold a download slot for long."""
+
 _REDIRECT_STATUSES = frozenset({301, 302, 303, 307, 308})
 _CHUNK_BYTES = 64 * 1024
 
@@ -73,19 +76,47 @@ def url_refusal(url: object) -> str | None:
     return None
 
 
+def _upgraded(url: object) -> object:
+    """``url`` with ``http://`` turned into ``https://`` on an official host.
+
+    Older posts embed cleartext links to the official sites, which all serve
+    https; anything else is returned unchanged for :func:`url_refusal` to judge.
+    """
+    if not isinstance(url, str):
+        return url
+    try:
+        parts = urlsplit(url)
+        port = parts.port
+    except ValueError:
+        return url
+    if parts.scheme != "http" or parts.hostname not in OFFICIAL_IMAGE_HOSTS:
+        return url
+    if port not in (None, 80) or parts.username or parts.password:
+        return url
+    return parts._replace(scheme="https", netloc=parts.hostname).geturl()
+
+
 async def fetch_official_image(
     session: aiohttp.ClientSession,
     url: str,
     *,
     max_bytes: int = MAX_REMOTE_IMAGE_BYTES,
 ) -> tuple[bytes, str]:
-    """``(body, Content-Type)`` of an official-host image; raises :class:`RemoteImageRefused`."""
-    current = url
+    """``(body, Content-Type)`` of an official-host image; raises :class:`RemoteImageRefused`.
+
+    An ``http://`` link to an official host is fetched over https (redirect
+    targets are not upgraded); every request uses :data:`FETCH_TIMEOUT`.
+    """
+    current = _upgraded(url)
     for _hop in range(MAX_REDIRECTS + 1):
         reason = url_refusal(current)
         if reason is not None:
             raise RemoteImageRefused(reason)
-        async with session.get(current, allow_redirects=False) as resp:
+        if not isinstance(current, str):  # unreachable: url_refusal checked it
+            raise RemoteImageRefused("invalid_url")
+        async with session.get(
+            current, allow_redirects=False, timeout=FETCH_TIMEOUT
+        ) as resp:
             if resp.status in _REDIRECT_STATUSES:
                 location = resp.headers.get("Location")
                 if not location:
