@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeAll, afterAll } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import i18n from '../../i18n';
 import { clientLog } from '../../utils/clientLog';
+import en from '../../i18n/locales/en.json';
 import { ErrorBoundary } from './ErrorBoundary';
 
 vi.mock('../../utils/clientLog', async (importOriginal) => ({
@@ -27,5 +28,25 @@ describe('ErrorBoundary crash screen (UI health C-I1)', () => {
         expect(container.querySelector('.bg-semantic-danger-icon.text-semantic-danger')).not.toBeNull();
         expect(container.firstElementChild).toHaveClass('items-safe-center');
         expect(clientLog).toHaveBeenCalledWith('app_load_failed', { target: 'render', error_type: 'typeerror' });
+    });
+
+    it('shows English, not raw keys, when i18n cannot resolve a key', async () => {
+        await i18n.changeLanguage('en');
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        // An uninitialised / failed i18n returns the key unless the call carries a defaultValue.
+        const spy = vi.spyOn(i18n, 't').mockImplementation(((key: string, opts?: { defaultValue?: string }) => opts?.defaultValue ?? key) as never);
+        try {
+            const { container } = render(<ErrorBoundary onReportIssue={vi.fn()}><Boom /></ErrorBoundary>);
+            expect(screen.getByRole('heading', { name: 'Something went wrong' })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /Try again/ })).toBeInTheDocument();
+            expect(screen.getByRole('button', { name: /Report issue/ })).toBeInTheDocument();
+            // The inline defaults must stay equal to the English locale.
+            expect(container.textContent).toContain(en.errorBoundary.body);
+            expect(screen.getByRole('heading').textContent).toBe(en.errorBoundary.title);
+            expect(container.textContent).not.toContain('errorBoundary.');
+        } finally {
+            spy.mockRestore();
+            await i18n.changeLanguage('ja');
+        }
     });
 });

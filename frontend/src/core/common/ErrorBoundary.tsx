@@ -49,7 +49,8 @@ export class ErrorBoundary extends Component<Props, State> {
         if (this.state.hasError) {
             const { error, errorInfo } = this.state;
             // Translate through the i18n instance directly: this screen renders after a crash, so it
-            // cannot rely on a provider. An unresolved key falls back to English, never throws.
+            // cannot rely on a provider. Every call carries its English text as `defaultValue`, so an
+            // uninitialised or failed i18n shows English, not raw keys.
             const t = i18n.t.bind(i18n);
 
             return (
@@ -61,11 +62,11 @@ export class ErrorBoundary extends Component<Props, State> {
                             <span aria-hidden="true" className="flex shrink-0 rounded-card bg-semantic-danger-icon p-3 text-semantic-danger">
                                 <AlertTriangle className="h-6 w-6" />
                             </span>
-                            <h1 className="min-w-0 break-words text-heading font-bold text-primary">{t('errorBoundary.title')}</h1>
+                            <h1 className="min-w-0 break-words text-heading font-bold text-primary">{t('errorBoundary.title', { defaultValue: 'Something went wrong' })}</h1>
                         </div>
 
                         <div className="flex flex-col gap-4 px-6 pb-6 pt-4">
-                            <p className="text-body text-secondary">{t('errorBoundary.body')}</p>
+                            <p className="text-body text-secondary">{t('errorBoundary.body', { defaultValue: 'SakaDesk ran into an unexpected error. Your data is safe: only the screen failed to draw.' })}</p>
 
                             {error && (
                                 <div className="max-h-32 overflow-auto rounded-lg bg-sunken p-4 font-mono text-caption text-secondary">
@@ -83,11 +84,11 @@ export class ErrorBoundary extends Component<Props, State> {
                             <div className="flex flex-wrap gap-3 pt-2">
                                 <Button variant="secondary" className="min-w-fit flex-1" onClick={this.handleRetry}>
                                     <RefreshCw aria-hidden="true" className="h-4 w-4" />
-                                    {t('errorBoundary.retry')}
+                                    {t('errorBoundary.retry', { defaultValue: 'Try again' })}
                                 </Button>
                                 <Button variant="primary" className="min-w-fit flex-1" onClick={this.handleReport}>
                                     <Bug aria-hidden="true" className="h-4 w-4" />
-                                    {t('errorBoundary.report')}
+                                    {t('errorBoundary.report', { defaultValue: 'Report issue' })}
                                 </Button>
                             </div>
                         </div>
