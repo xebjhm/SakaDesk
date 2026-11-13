@@ -499,9 +499,9 @@
   },
   "serviceRail": {
     "label": "Groups",
-    "sessionExpiredRelogin": "Session expired - click to re-login",
+    "sessionExpiredRelogin": "Session expired - select to sign in again",
     "addService": "Add Service",
-    "serviceDisconnected": "{{name}}, session expired - click to re-login",
+    "serviceDisconnected": "{{name}}, session expired - select to sign in again",
     "moveUp": "Move up",
     "moveDown": "Move down"
   },

@@ -498,9 +498,9 @@
   },
   "serviceRail": {
     "label": "群组",
-    "sessionExpiredRelogin": "会话已过期 - 点击重新登录",
+    "sessionExpiredRelogin": "会话已过期 - 选择即可重新登录",
     "addService": "添加服务",
-    "serviceDisconnected": "{{name}}，会话已过期 - 点击重新登录",
+    "serviceDisconnected": "{{name}}，会话已过期 - 选择即可重新登录",
     "moveUp": "上移",
     "moveDown": "下移"
   },

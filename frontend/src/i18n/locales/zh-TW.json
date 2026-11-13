@@ -498,9 +498,9 @@
   },
   "serviceRail": {
     "label": "群組",
-    "sessionExpiredRelogin": "工作階段已過期 - 點擊重新登入",
+    "sessionExpiredRelogin": "工作階段已過期 - 選取即可重新登入",
     "addService": "新增服務",
-    "serviceDisconnected": "{{name}}，工作階段已過期 - 點擊重新登入",
+    "serviceDisconnected": "{{name}}，工作階段已過期 - 選取即可重新登入",
     "moveUp": "上移",
     "moveDown": "下移"
   },

@@ -498,9 +498,9 @@
   },
   "serviceRail": {
     "label": "グループ",
-    "sessionExpiredRelogin": "セッション切れ - クリックして再ログイン",
+    "sessionExpiredRelogin": "セッション切れ - 選択して再ログイン",
     "addService": "サービスを追加",
-    "serviceDisconnected": "{{name}}、セッション切れ - クリックして再ログイン",
+    "serviceDisconnected": "{{name}}、セッション切れ - 選択して再ログイン",
     "moveUp": "上へ移動",
     "moveDown": "下へ移動"
   },

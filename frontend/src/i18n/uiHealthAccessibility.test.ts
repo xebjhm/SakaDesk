@@ -33,4 +33,10 @@ describe('UI health accessibility strings', () => {
     it.each(Object.entries(locales))('%s has every key', (_code, data) => {
         for (const dotted of KEYS) expect(lookup(data, dotted), dotted).toBeTruthy();
     });
+
+    it.each(Object.entries(locales))('%s words the expired-session prompt for every input device', (_code, data) => {
+        for (const dotted of ['serviceRail.serviceDisconnected', 'serviceRail.sessionExpiredRelogin']) {
+            expect(String(lookup(data, dotted)), dotted).not.toMatch(/click|クリック|點擊|点击/i);
+        }
+    });
 });
