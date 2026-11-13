@@ -90,6 +90,21 @@ class TestDecide:
             ("http://[::1]:8765/", ng.NavAction.BLOCK, "loopback"),
             ("http://[::ffff:127.0.0.1]/", ng.NavAction.BLOCK, "loopback"),
             ("http://0.0.0.0:8765/", ng.NavAction.BLOCK, "loopback"),
+            ("http://2130706433/", ng.NavAction.BLOCK, "loopback"),
+            ("http://127.1:8765/", ng.NavAction.BLOCK, "loopback"),
+            ("http://0x7f.0.0.1/", ng.NavAction.BLOCK, "loopback"),
+            ("http://0/", ng.NavAction.BLOCK, "loopback"),
+            ("http://[0:0:0:0:0:0:0:1]/", ng.NavAction.BLOCK, "loopback"),
+            ("http://2130706434/", ng.NavAction.BLOCK, "loopback"),
+            ("http://134744072/", ng.NavAction.EXTERNAL, "external_web"),
+            ("http://[2001:db8::1]/", ng.NavAction.EXTERNAL, "external_web"),
+            (f"{APP}/api/settings", ng.NavAction.BLOCK, "app_api"),
+            (f"{APP}/api", ng.NavAction.BLOCK, "app_api"),
+            (f"{APP}/%61pi/settings", ng.NavAction.BLOCK, "app_api"),
+            (f"{APP}/docs", ng.NavAction.BLOCK, "app_api"),
+            (f"{APP}/redoc", ng.NavAction.BLOCK, "app_api"),
+            (f"{APP}/openapi.json", ng.NavAction.BLOCK, "app_api"),
+            (f"{APP}/apiary", ng.NavAction.ALLOW, "app_origin"),
             ("https://127.0.0.1:8765/", ng.NavAction.BLOCK, "loopback"),
             ("http://localhost.example.com/", ng.NavAction.EXTERNAL, "external_web"),
             ('https://example.com/a"b', ng.NavAction.EXTERNAL, "external_web"),
@@ -117,6 +132,33 @@ class TestDecide:
     )
     def test_decision(self, url, action, reason):
         assert ng.decide(url, host=HOST, port=PORT) == ng.NavDecision(action, reason)
+
+
+class TestIsLoopbackHost:
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "localhost", "a.localhost", "127.0.0.1", "127.255.255.254",
+            "0.0.0.0", "2130706433", "127.1", "127.0.1", "0x7f.0.0.1",
+            "0x7f000001", "017700000001", "0177.0.0.1", "0", "0x0", "0x",
+            "127.0.0.1.", "::1", "::", "0:0:0:0:0:0:0:1", "0:0:0:0:0:0:0:0",
+            "::ffff:127.0.0.1", "::ffff:7f00:1", "::127.0.0.1", "::bad:",
+        ],
+    )  # fmt: skip
+    def test_loopback(self, host):
+        assert ng.is_loopback_host(host)
+
+    @pytest.mark.parametrize(
+        "host",
+        [
+            "example.com", "128.0.0.1", "134744072", "8.8.8.8", "1.2.3",
+            "4294967296", "256.0.0.1", "1.2.3.4.5", "09", "1..1",
+            "127.0.0.1x", "2001:db8::1", "1::", "localhost.example.com",
+            "",
+        ],
+    )  # fmt: skip
+    def test_not_loopback(self, host):
+        assert not ng.is_loopback_host(host)
 
 
 class TestNavigationStarting:
@@ -190,7 +232,7 @@ class TestNewWindowRequested:
         [
             ("ms-settings:", "scheme"),
             ("file:///C:/", "scheme"),
-            (f"{APP}/api/x", "app_origin"),
+            (f"{APP}/api/x", "app_api"),
         ],
     )
     def test_anything_else_is_dropped(self, url, reason):
