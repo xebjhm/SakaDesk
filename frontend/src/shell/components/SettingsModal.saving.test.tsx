@@ -373,7 +373,7 @@ describe('app settings save failures', () => {
         renderModal(base, { onSaveSettings });
         const row = screen.getByRole('switch', { name: i18n.t('settings.closeToTray') }).closest('section')!;
         await act(async () => { fireEvent.click(within(row as HTMLElement).getByRole('switch')); });
-        expect(within(row as HTMLElement).getByRole('status')).toHaveTextContent(i18n.t('settings.saveFailed'));
+        expect(within(row as HTMLElement).getByText(i18n.t('settings.saveFailed'))).toBeInTheDocument();
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_app_save', outcome: 'error' });
         // Only the failed row shows it.
         expect(screen.getAllByText(i18n.t('settings.saveFailed'))).toHaveLength(1);
@@ -384,7 +384,7 @@ describe('app settings save failures', () => {
         renderModal(base, { onSaveSettings });
         const row = screen.getByRole('switch', { name: i18n.t('settings.autostart') }).closest('section') as HTMLElement;
         await act(async () => { fireEvent.click(within(row).getByRole('switch')); });
-        expect(within(row).getByRole('status')).toHaveTextContent(i18n.t('settings.saveFailed'));
+        expect(within(row).getByText(i18n.t('settings.saveFailed'))).toBeInTheDocument();
         await act(async () => { fireEvent.click(within(row).getByRole('switch')); });
         expect(screen.queryByText(i18n.t('settings.saveFailed'))).toBeNull();
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_app_save', outcome: 'ok' });
@@ -396,7 +396,7 @@ describe('app settings save failures', () => {
         openTab('Sync');
         await act(async () => { fireEvent.click(screen.getByRole('radio', { name: /^Off/ })); });
         const group = screen.getByRole('radiogroup');
-        expect(within(group.closest('section') as HTMLElement).getByRole('status')).toHaveTextContent(i18n.t('settings.saveFailed'));
+        expect(within(group.closest('section') as HTMLElement).getByText(i18n.t('settings.saveFailed'))).toBeInTheDocument();
     });
 });
 
@@ -551,7 +551,7 @@ describe('AI tab', () => {
         fireEvent.change(key, { target: { value: KEY } });
         fireEvent.blur(key);
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_save', outcome: 'error' }));
-        expect(screen.getByRole('status')).toHaveTextContent(i18n.t('translation.settings.saveFailed'));
+        expect(screen.getByText(i18n.t('translation.settings.saveFailed'))).toBeInTheDocument();
         fireEvent.change(key, { target: { value: '' } });
         expect(screen.queryByText('Saved securely in credential manager')).toBeNull();
         expect(screen.getByText(i18n.t('translation.settings.keyMissing'))).toBeInTheDocument();
@@ -577,7 +577,7 @@ describe('AI tab', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Clear API key' }));
         fireEvent.click(within(await screen.findByRole('dialog', { name: 'Clear API key' })).getByRole('button', { name: 'Confirm' }));
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_key_clear', outcome: 'error' }));
-        expect(screen.getByRole('status')).toHaveTextContent(i18n.t('translation.settings.clearApiKeyFailed'));
+        expect(screen.getByText(i18n.t('translation.settings.clearApiKeyFailed'))).toBeInTheDocument();
         expect(screen.getByText('Saved securely in credential manager')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Clear API key' })).toBeInTheDocument();
     });

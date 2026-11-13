@@ -1,5 +1,5 @@
-import React, { useId } from 'react';
-import { Switch } from '../../design/primitives';
+import React, { useEffect, useId } from 'react';
+import { Switch, announce } from '../../design/primitives';
 
 interface SettingRowProps {
     label: React.ReactNode;
@@ -23,6 +23,10 @@ export const SettingRow: React.FC<SettingRowProps> = ({ label, labelId, descript
     const autoId = useId();
     const descId = description ? (descriptionId ?? `${autoId}-desc`) : undefined;
     const errId = error ? (errorId ?? `${autoId}-err`) : undefined;
+    // A failed save is announced through the dialog's one live region, not by a region that mounts
+    // with its text (often missed). The error line itself has no live role, so it is not read twice;
+    // the control reads it again through aria-describedby when focused.
+    useEffect(() => { if (error) announce(error); }, [error]);
     const describedBy = [descId, errId].filter(Boolean).join(' ') || undefined;
     // The control reads the row's description and error (UI health A-S6), unless it names its own.
     // aria-invalid is for fields and switches, not a plain button.
@@ -43,7 +47,7 @@ export const SettingRow: React.FC<SettingRowProps> = ({ label, labelId, descript
             </div>
             {description && <p id={descId} className="max-w-md text-small text-muted">{description}</p>}
             {children}
-            {error && <p id={errId} role="status" className="text-small text-status-danger">{error}</p>}
+            {error && <p id={errId} className="text-small text-status-danger">{error}</p>}
         </section>
     );
 };

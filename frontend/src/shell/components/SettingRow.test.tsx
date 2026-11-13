@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { act, render, screen } from '@testing-library/react';
+import { LiveRegionHost } from '../../design/primitives';
 import { SettingRow } from './SettingRow';
 
 describe('SettingRow descriptions (UI health A-S6)', () => {
@@ -39,5 +40,19 @@ describe('SettingRow descriptions (UI health A-S6)', () => {
         const plain = screen.getByRole('button', { name: '確認' });
         expect(plain).not.toHaveAttribute('aria-invalid');
         expect(plain).toHaveAccessibleDescription('保存できませんでした');
+    });
+
+    it('announces an error once when it appears, and the error line is not a live region itself', async () => {
+        const row = (error?: string) => (
+            <><LiveRegionHost /><SettingRow label="通知" error={error} control={<button type="button">切替</button>} /></>
+        );
+        const { rerender } = render(row());
+        expect(screen.getByRole('status')).toBeEmptyDOMElement();
+        rerender(row('保存できませんでした'));
+        await act(async () => { await new Promise(r => setTimeout(r, 120)); });
+        // One status region (the announcer), carrying the message; the row's own line is plain text.
+        expect(screen.getAllByRole('status')).toHaveLength(1);
+        expect(screen.getByRole('status')).toHaveTextContent('保存できませんでした');
+        expect(screen.getAllByText('保存できませんでした')).toHaveLength(2); // the visible line and the announcer
     });
 });
