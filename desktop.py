@@ -879,6 +879,11 @@ def _app_url(port: int, query: str = "") -> str:
     The fragment never reaches the server, the logs or a command line. The page
     moves it into sessionStorage and strips it on load
     (frontend/src/core/api/launchAuth.ts). Never log this URL.
+
+    Accepted risk (security audit 2026-11-13): WebView2 keeps its history
+    database in the user's profile and may record this first URL, fragment
+    included. The token is per launch, so a recorded value is dead once the app
+    exits.
     """
     return f"http://{HOST}:{port}/{query}#t={api_auth.LAUNCH_TOKEN}"
 
@@ -895,9 +900,10 @@ def create_server_socket() -> tuple:
     can read it. Without the reuse the app would take a fresh port (a fresh, empty
     origin) and the migration would find nothing to carry over.
 
-    On Windows the socket is bound with SO_EXCLUSIVEADDRUSE (see _bind_option), so
-    a port still in TIME_WAIT after a quick close-reopen shifts to a new port; that
-    is harmless now that state lives in the backend store.
+    On Windows the socket is bound with SO_EXCLUSIVEADDRUSE (see _bind_option).
+    If the saved port cannot be bound exclusively (for example another socket
+    still holds it), a fresh port is allocated and written to the port file,
+    replacing the saved port for later launches.
 
     TODO(next release): once upgraders have migrated, drop this reuse entirely and
     bind an ephemeral port (this was briefly done, then reverted for the migration
@@ -1197,7 +1203,8 @@ def main() -> None:
             _focus_existing_window()
             os._exit(0)
 
-        # Create server socket with SO_REUSEADDR for stable port across restarts
+        # Bound and listening before uvicorn starts: the saved port when it can be
+        # bound (exclusively on Windows, see _bind_option), otherwise a fresh one
         port, sock = create_server_socket()
 
         # Start API server with the pre-bound socket
