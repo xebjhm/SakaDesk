@@ -7,6 +7,7 @@ import { downloadMedia } from '../../utils/download';
 import { useAmplifiedVolume } from './useAmplifiedVolume';
 import { useMediaDuration, useMediaSource } from './mediaElement';
 import { useMediaPlayback } from './useMediaPlayback';
+import { clientLog } from '../../utils/clientLog';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { useTranscription } from '../../hooks/useTranscription';
@@ -94,6 +95,7 @@ const SkipButton: React.FC<{
 
     return (
         <button
+            type="button"
             onClick={onClick}
             disabled={disabled}
             className={cn(
@@ -102,10 +104,11 @@ const SkipButton: React.FC<{
                 disabled && "opacity-50 cursor-not-allowed"
             )}
             title={title}
+            aria-label={title}
         >
-            <Icon className="w-6 h-6 text-secondary" strokeWidth={2} />
+            <Icon aria-hidden="true" className="w-6 h-6 text-secondary" strokeWidth={2} />
             {/* Number "5" inside the circle */}
-            <span className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5">
+            <span aria-hidden="true" className="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5">
                 5
             </span>
         </button>
@@ -140,6 +143,11 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
     const containerRef = useRef<HTMLDivElement>(null);
     const menuButtonRef = useRef<HTMLButtonElement>(null);
     const volumeHideTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+    // Keyboard focus is inside the volume control (set only for :focus-visible focus).
+    const keyboardVolumeFocusRef = useRef(false);
+    // Breadcrumbs for the keyboard decisions are logged once per player instance.
+    const loggedVolumeRef = useRef(false);
+    const loggedSpaceRef = useRef(false);
 
     // Only gallery/fullscreen own transcription; callers must supply all
     // three ids or none.
@@ -320,63 +328,64 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
     // handleMuteToggle provided by useAmplifiedVolume hook
 
-    // Keyboard shortcuts - must be after handler definitions
-    useEffect(() => {
-        const handleKeyDown = (e: KeyboardEvent) => {
-            // A menu, field or already-handled key is not a player shortcut.
-            if (e.defaultPrevented) return;
-            const el = e.target instanceof HTMLElement ? e.target : null;
-            if (el?.closest('[role="menu"], input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
-            // In viewer mode: listen globally (no focus check), skip Left/Right (reserved for modal nav)
-            // In normal mode: only when container is focused
-            if (!viewerMode) {
-                const isFocused = containerRef.current?.contains(document.activeElement);
-                if (!isFocused) return;
-
-                const target = e.target as HTMLElement;
-                if (target.tagName === 'BUTTON' || target.tagName === 'INPUT') return;
-            }
-
-            switch (e.key) {
-                case ' ':
+    // Player shortcuts. Viewer mode: window-wide (the viewer has no focusable player box), except in a
+    // field or menu, and Space on a focused button keeps that button's action. Inline bubbles: on their
+    // own box only (one window listener per voice bubble before).
+    const handleShortcut = useCallback((e: KeyboardEvent | React.KeyboardEvent): void => {
+        if (e.defaultPrevented) return;
+        const el = e.target instanceof HTMLElement ? e.target : null;
+        if (el?.closest('[role="menu"], input, textarea, [contenteditable=""], [contenteditable="true"]')) return;
+        if (!viewerMode && el?.tagName === 'BUTTON') return;
+        switch (e.key) {
+            case ' ':
+                if (el?.closest('button')) {
+                    if (!loggedSpaceRef.current) {
+                        loggedSpaceRef.current = true;
+                        clientLog('media_playback', { surface: 'voice', phase: 'shortcut', outcome: 'space_left_to_button' });
+                    }
+                    return;
+                }
+                e.preventDefault();
+                togglePlay();
+                break;
+            case 'ArrowLeft':
+                if (!viewerMode) {
                     e.preventDefault();
-                    togglePlay();
-                    break;
-                case 'ArrowLeft':
-                    if (!viewerMode) {
-                        e.preventDefault();
-                        handleSkipBack();
-                    }
-                    break;
-                case 'ArrowRight':
-                    if (!viewerMode) {
-                        e.preventDefault();
-                        handleSkipForward();
-                    }
-                    break;
-                case 'ArrowUp':
-                    if (viewerMode) {
-                        e.preventDefault();
-                        setVolume(Math.min(volume + 0.05, 1));
-                    }
-                    break;
-                case 'ArrowDown':
-                    if (viewerMode) {
-                        e.preventDefault();
-                        setVolume(Math.max(volume - 0.05, 0));
-                    }
-                    break;
-                case 'm':
-                case 'M':
+                    handleSkipBack();
+                }
+                break;
+            case 'ArrowRight':
+                if (!viewerMode) {
                     e.preventDefault();
-                    handleMuteToggle();
-                    break;
-            }
-        };
-
-        window.addEventListener('keydown', handleKeyDown);
-        return () => window.removeEventListener('keydown', handleKeyDown);
+                    handleSkipForward();
+                }
+                break;
+            case 'ArrowUp':
+                if (viewerMode) {
+                    e.preventDefault();
+                    setVolume(Math.min(volume + 0.05, 1));
+                }
+                break;
+            case 'ArrowDown':
+                if (viewerMode) {
+                    e.preventDefault();
+                    setVolume(Math.max(volume - 0.05, 0));
+                }
+                break;
+            case 'm':
+            case 'M':
+                e.preventDefault();
+                handleMuteToggle();
+                break;
+        }
     }, [viewerMode, togglePlay, handleSkipBack, handleSkipForward, handleMuteToggle, volume, setVolume]);
+
+    useEffect(() => {
+        if (!viewerMode) return;
+        const onKey = (e: KeyboardEvent) => handleShortcut(e);
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [viewerMode, handleShortcut]);
 
     const handleVolumeMouseEnter = useCallback(() => {
         if (volumeHideTimeout.current) {
@@ -392,6 +401,24 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             setShowVolume(false);
         }, 300);
     }, []);
+
+    // Keyboard focus in the volume control holds the slider open (it is hover-only otherwise).
+    // Mouse focus changes nothing: only focus that matched :focus-visible is tracked and released.
+    const handleVolumeFocus = useCallback((e: React.FocusEvent) => {
+        if (!(e.target instanceof Element) || !e.target.matches(':focus-visible')) return;
+        keyboardVolumeFocusRef.current = true;
+        if (!loggedVolumeRef.current) {
+            loggedVolumeRef.current = true;
+            clientLog('media_playback', { surface: 'voice', phase: 'volume', outcome: 'opened_by_focus' });
+        }
+        handleVolumeMouseEnter();
+    }, [handleVolumeMouseEnter]);
+
+    const handleVolumeBlur = useCallback(() => {
+        if (!keyboardVolumeFocusRef.current) return;
+        keyboardVolumeFocusRef.current = false;
+        handleVolumeMouseLeave();
+    }, [handleVolumeMouseLeave]);
 
     const handleProgressChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         const newTime = parseFloat(e.target.value);
@@ -462,6 +489,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
             <div
                 ref={containerRef}
                 tabIndex={0}
+                onKeyDown={viewerMode ? undefined : handleShortcut}
                 className="bg-sheet rounded-lg p-3 outline-none focus:ring-2 shadow-card"
                 style={{
                     '--tw-ring-color': withAlpha(accentColor, 50),
@@ -530,7 +558,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
                 {/* Row 2: Progress Bar */}
                 <div className="mb-2">
-                    <div className="relative h-1 bg-sunken rounded-full overflow-hidden">
+                    <div className="relative h-1 bg-sunken rounded-full overflow-hidden ring-offset-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent">
                         <div
                             className="absolute inset-y-0 left-0 rounded-full"
                             style={{ width: `${animatedProgress}%`, backgroundColor: accentColor }}
@@ -541,6 +569,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                             max={duration || 100}
                             value={currentTime}
                             onChange={handleProgressChange}
+                            aria-label={t('media.seek')}
+                            aria-valuetext={t('media.timeOf', { current: formatTime(currentTime), total: formatTime(duration) })}
                             className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                         />
                     </div>
@@ -558,17 +588,20 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                             className="relative flex items-center"
                             onMouseEnter={handleVolumeMouseEnter}
                             onMouseLeave={handleVolumeMouseLeave}
+                            onFocusCapture={handleVolumeFocus}
+                            onBlurCapture={handleVolumeBlur}
                         >
                             <button
                                 onClick={handleMuteToggle}
                                 className="p-1 hover:bg-sunken rounded-full transition-colors"
                                 title={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
+                                aria-label={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
                                 type="button"
                             >
                                 {isMuted ? (
-                                    <VolumeX className="w-4 h-4 text-secondary" />
+                                    <VolumeX aria-hidden="true" className="w-4 h-4 text-secondary" />
                                 ) : (
-                                    <Volume2 className="w-4 h-4 text-secondary" />
+                                    <Volume2 aria-hidden="true" className="w-4 h-4 text-secondary" />
                                 )}
                             </button>
                             <div
@@ -586,6 +619,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                     step={0.01}
                                     value={volume}
                                     onChange={handleVolumeChange}
+                                    aria-label={t('media.volume')}
+                                    aria-valuetext={t('media.volumeValue', { percent: Math.round(volume * 100) })}
                                     className="w-full h-1 rounded-full appearance-none cursor-pointer"
                                     style={{
                                         accentColor: accentColor,
@@ -610,14 +645,15 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                             className="w-12 h-12 rounded-full shadow-card flex items-center justify-center hover:shadow-sheet hover:scale-105 transition-all hover:brightness-90"
                             style={{ backgroundColor: accentColor }}
                             type="button"
+                            aria-label={isPlaying ? t('media.pause') : t('media.play')}
                             aria-busy={isBuffering || undefined}
                         >
                             {isBuffering ? (
                                 <span data-testid="voice-buffering" className="flex"><Spinner size="md" tone="current" className="text-inverse" labelVisibility="compact" /></span>
                             ) : isPlaying ? (
-                                <Pause className="w-6 h-6 text-inverse fill-current" />
+                                <Pause aria-hidden="true" className="w-6 h-6 text-inverse fill-current" />
                             ) : (
-                                <Play className="w-6 h-6 text-inverse fill-current ml-0.5" />
+                                <Play aria-hidden="true" className="w-6 h-6 text-inverse fill-current ml-0.5" />
                             )}
                         </button>
 
@@ -715,6 +751,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
         <div
             ref={containerRef}
             tabIndex={0}
+            onKeyDown={viewerMode ? undefined : handleShortcut}
             className={cn('bg-sunken rounded-lg p-3 min-w-[300px] outline-none focus:ring-2', joinedBelow && 'rounded-b-none', tailCorner && 'rounded-tl-tail')}
             style={{ '--ring-color': withAlpha(accentColor, 50) } as React.CSSProperties}
         >
@@ -723,7 +760,7 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
 
             {/* Row 1: Progress Slider with smooth animation */}
             <div className="mb-3">
-                <div className="relative h-1 bg-control-off rounded-full overflow-hidden">
+                <div className="relative h-1 bg-control-off rounded-full overflow-hidden ring-offset-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent">
                     <div
                         className="absolute inset-y-0 left-0 rounded-full"
                         style={{ width: `${animatedProgress}%`, backgroundColor: accentColor }}
@@ -734,6 +771,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         max={duration || 100}
                         value={currentTime}
                         onChange={handleProgressChange}
+                        aria-label={t('media.seek')}
+                        aria-valuetext={t('media.timeOf', { current: formatTime(currentTime), total: formatTime(duration) })}
                         className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
                     />
                 </div>
@@ -747,17 +786,20 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                         className="relative flex items-center"
                         onMouseEnter={handleVolumeMouseEnter}
                         onMouseLeave={handleVolumeMouseLeave}
+                        onFocusCapture={handleVolumeFocus}
+                        onBlurCapture={handleVolumeBlur}
                     >
                         <button
                             onClick={handleMuteToggle}
                             className="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
                             title={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
+                                aria-label={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}
                             type="button"
                         >
                             {isMuted ? (
-                                <VolumeX className="w-4 h-4 text-secondary" />
+                                <VolumeX aria-hidden="true" className="w-4 h-4 text-secondary" />
                             ) : (
-                                <Volume2 className="w-4 h-4 text-secondary" />
+                                <Volume2 aria-hidden="true" className="w-4 h-4 text-secondary" />
                             )}
                         </button>
                         <div
@@ -775,6 +817,8 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                                 step={0.01}
                                 value={volume}
                                 onChange={handleVolumeChange}
+                                aria-label={t('media.volume')}
+                                aria-valuetext={t('media.volumeValue', { percent: Math.round(volume * 100) })}
                                 className="w-full h-1 rounded-full appearance-none cursor-pointer"
                                 style={{
                                     accentColor: accentColor,
@@ -791,14 +835,15 @@ export const VoicePlayer: React.FC<VoicePlayerProps> = ({
                     className="w-10 h-10 rounded-full shadow-pill flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
                     style={{ backgroundColor: accentColor }}
                     type="button"
+                    aria-label={isPlaying ? t('media.pause') : t('media.play')}
                     aria-busy={isBuffering || undefined}
                 >
                     {isBuffering ? (
                         <span data-testid="voice-buffering" className="flex"><Spinner size="sm" tone="current" className="text-inverse" labelVisibility="compact" /></span>
                     ) : isPlaying ? (
-                        <Pause className="w-5 h-5 text-inverse fill-current" />
+                        <Pause aria-hidden="true" className="w-5 h-5 text-inverse fill-current" />
                     ) : (
-                        <Play className="w-5 h-5 text-inverse fill-current ml-0.5" />
+                        <Play aria-hidden="true" className="w-5 h-5 text-inverse fill-current ml-0.5" />
                     )}
                 </button>
 
