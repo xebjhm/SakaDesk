@@ -950,7 +950,9 @@ export const MessagesFeature: React.FC<MessagesFeatureProps> = ({
     // Toggle favorite status: optimistic in `favoriteOverrides` (no timeline rebuild), then the API.
     const handleToggleFavorite = useCallback(async (messageId: number, currentState: boolean) => {
         if (!activeService) {
-            console.error('No active service for favorite toggle');
+            // Defensive: the list only renders with a service, so no UI path reaches this (untestable).
+            // Breadcrumb: ids and a code only.
+            clientLog('chat_load', { outcome: 'favorite_no_service', message_id: messageId });
             return;
         }
         const room = overridesRoomRef.current;

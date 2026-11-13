@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
@@ -59,11 +59,13 @@ async function toggleFromMenu() {
 }
 
 describe('MessagesFeature: ★ without rebuilding the timeline (UI health #1)', () => {
+    let consoleError: ReturnType<typeof vi.spyOn>;
     beforeAll(async () => { await i18n.changeLanguage('en'); });
+    afterEach(() => { consoleError.mockRestore(); });
     beforeEach(() => {
         vi.mocked(timelineModule.buildTimeline).mockClear();
         vi.mocked(clientLog).mockClear();
-        vi.spyOn(console, 'error').mockImplementation(() => {});
+        consoleError = vi.spyOn(console, 'error').mockImplementation(() => {});
         useAppStore.setState({
             activeService: SERVICE,
             selectedConversations: { [SERVICE]: { path: ROOM, name: '金村 美玖', isGroupChat: false } },
@@ -82,14 +84,21 @@ describe('MessagesFeature: ★ without rebuilding the timeline (UI health #1)', 
         expect(vi.mocked(timelineModule.buildTimeline).mock.calls.length).toBe(builds);
     });
 
-    it('a failed save reverts the star without a rebuild and logs a code-only breadcrumb', async () => {
-        server.use(http.post('/api/favorites/:id', () => HttpResponse.json({ detail: 'x' }, { status: 500 })));
+    it('a failed save keeps the optimistic star until the answer, then reverts without a rebuild and logs a code-only breadcrumb', async () => {
+        let answer!: () => void;
+        const gate = new Promise<void>((resolve) => { answer = resolve; });
+        server.use(http.post('/api/favorites/:id', async () => {
+            await gate;
+            return HttpResponse.json({ detail: 'x' }, { status: 500 });
+        }));
         render(<MessagesFeature {...props} />);
         await screen.findByText('こんにちは');
         const builds = vi.mocked(timelineModule.buildTimeline).mock.calls.length;
 
         await toggleFromMenu();
 
+        await waitFor(() => expect(star()).not.toBeNull());
+        answer();
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('chat_load', { outcome: 'favorite_save_failed', message_id: 1 }));
         await waitFor(() => expect(star()).toBeNull());
         expect(vi.mocked(timelineModule.buildTimeline).mock.calls.length).toBe(builds);
