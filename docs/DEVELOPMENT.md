@@ -120,6 +120,14 @@ page. `e2e/launch-auth.spec.ts` turns that header off and checks the real
 `#t=` launch path instead; the backend serves `frontend/dist`, so run
 `npm run build` first.
 
+CI runs `e2e/csp.spec.ts`, `e2e/launch-auth.spec.ts` and `e2e/entry-flow.spec.ts` on
+every push and pull request (job `e2e` in `.github/workflows/build.yml`), against the
+built frontend, with `SAKADESK_DATA_DIR` pointing at a temporary folder whose
+`settings.json` is `{"is_configured": true, "output_dir": "<that folder>/out"}`. Do the
+same locally: an empty data dir makes the CSP and screen specs stop at the setup wizard.
+The screenshot specs (`*-screens`, `visual-zero-pixel`) are local only: their pixels
+depend on the platform.
+
 #### Option 2: Real Auth - For Manual Testing
 
 For testing the complete flow with real authentication:

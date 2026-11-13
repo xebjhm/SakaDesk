@@ -94,3 +94,8 @@ def test_dev_ps1_does_not_leave_its_token_in_the_session():
     assert "$script:TokenGenerated = $true" in text
     finally_block = text[text.rindex("} finally {") :]
     assert "Remove-Item Env:SAKADESK_API_TOKEN" in finally_block
+
+
+def test_playwright_lets_ci_choose_how_uv_runs_the_backend():
+    config = (ROOT / "frontend" / "playwright.config.ts").read_text(encoding="utf-8")
+    assert "process.env.SAKADESK_E2E_UV_RUN ?? 'uv run'" in config

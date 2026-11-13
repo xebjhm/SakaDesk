@@ -5,6 +5,10 @@ import { E2E_API_TOKEN } from './e2e/apiToken'
 // the test server (SAKADESK_API_TOKEN below) and send it on every request the page makes.
 // e2e/launch-auth.spec.ts turns the header off to test the real #t= path.
 
+// CI installs with `uv sync --no-sources` (no ../pysaka checkout), so it runs the backend
+// with `uv run --no-sources`; local runs keep the editable sibling.
+const uvRun = process.env.SAKADESK_E2E_UV_RUN ?? 'uv run'
+
 export default defineConfig({
   testDir: './e2e',
   // e2e/probe runs against the Vite dev server: see playwright.probe.config.ts.
@@ -34,8 +38,8 @@ export default defineConfig({
   // SAKADESK_TEST_MODE is set via env var (CI step or shell), not inline in the command
   webServer: {
     command: process.platform === 'win32'
-      ? 'cd .. && uv run uvicorn backend.main:app --port 8000 --timeout-keep-alive 600'
-      : 'cd .. && SAKADESK_TEST_MODE=true uv run uvicorn backend.main:app --port 8000 --timeout-keep-alive 600',
+      ? `cd .. && ${uvRun} uvicorn backend.main:app --port 8000 --timeout-keep-alive 600`
+      : `cd .. && SAKADESK_TEST_MODE=true ${uvRun} uvicorn backend.main:app --port 8000 --timeout-keep-alive 600`,
     url: 'http://localhost:8000/health',
     reuseExistingServer: !process.env.CI,
     timeout: 30000,

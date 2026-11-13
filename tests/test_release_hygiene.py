@@ -132,3 +132,20 @@ def test_build_exe_checks_dist_before_bundling(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         build.build_exe()
     assert calls == []
+
+
+def test_ci_runs_the_security_e2e_specs_before_building():
+    """Plan D2 Decision 11: CSP / eval, launch token and entry flow in a real browser."""
+    workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text(
+        encoding="utf-8"
+    )
+    assert "\n  e2e:\n" in workflow
+    for spec in (
+        "e2e/csp.spec.ts",
+        "e2e/launch-auth.spec.ts",
+        "e2e/entry-flow.spec.ts",
+    ):
+        assert spec in workflow
+    assert "needs: [lint, test-backend, test-frontend, e2e]" in workflow
+    assert "SAKADESK_E2E_UV_RUN: uv run --no-sources" in workflow
+    assert "SAKADESK_DATA_DIR=" in workflow
