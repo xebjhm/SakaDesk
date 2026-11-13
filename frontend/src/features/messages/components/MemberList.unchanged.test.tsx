@@ -26,17 +26,19 @@ const group = {
     member_count: 1, is_group_chat: false, is_active: true, members: [{ id: '58', name: '金村 美玖', path: 'g/34/58' }],
 };
 let groupRequests = 0;
+let served: Record<string, unknown>[] = [group];
 
 describe('MemberList with unchanged answers (UI health P-F1)', () => {
     beforeAll(async () => { await i18n.changeLanguage('en'); });
     beforeEach(() => {
         renders.badge = 0;
         groupRequests = 0;
+        served = [group];
         vi.mocked(clientLog).mockClear();
         server.use(
             http.get('/api/content/groups', () => {
                 groupRequests += 1;
-                return HttpResponse.json({ groups: [group], last_sync: { hinatazaka46: '2026-11-01T00:00:00Z' } });
+                return HttpResponse.json({ groups: served, last_sync: { hinatazaka46: '2026-11-01T00:00:00Z' } });
             }),
             http.post('/api/content/unread_counts', () => HttpResponse.json({ 'g/34/58': 2 })),
         );
@@ -54,5 +56,27 @@ describe('MemberList with unchanged answers (UI health P-F1)', () => {
         expect(renders.badge).toBe(settled);
         const unchanged = vi.mocked(clientLog).mock.calls.filter(([e, f]) => e === 'sidebar_load' && f?.outcome === 'unchanged');
         expect(unchanged).toHaveLength(1);
+    });
+
+    it('a changed answer re-renders and re-arms the breadcrumb: the next unchanged streak logs again', async () => {
+        const unchangedLogs = () => vi.mocked(clientLog).mock.calls.filter(([e, f]) => e === 'sidebar_load' && f?.outcome === 'unchanged').length;
+        render(<MemberList onSelectGroup={() => {}} activeService="hinatazaka46" />);
+        await screen.findByText('金村 美玖');
+        await waitFor(() => expect(unchangedLogs()).toBe(1));
+        const settled = renders.badge;
+
+        // A bumped count, then a new room: each is a changed answer.
+        served = [{ ...group, server_unread_count: 4 }];
+        await waitFor(() => expect(renders.badge).toBeGreaterThan(settled));
+        served = [...served, { ...group, id: '35', name: '小坂 菜緒', dir_name: '35 小坂 菜緒', group_path: 'g/35', members: [{ id: '59', name: '小坂 菜緒', path: 'g/35/59' }] }];
+        expect(await screen.findByText('小坂 菜緒')).toBeInTheDocument();
+
+        // The streak after the change is logged again (a second breadcrumb, once for that streak).
+        await waitFor(() => expect(unchangedLogs()).toBe(2));
+        const rendered = renders.badge;
+        const before = groupRequests;
+        await waitFor(() => expect(groupRequests).toBeGreaterThanOrEqual(before + 3));
+        expect(unchangedLogs()).toBe(2);
+        expect(renders.badge).toBe(rendered);
     });
 });
