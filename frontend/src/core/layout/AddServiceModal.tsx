@@ -28,7 +28,8 @@ export const AddServiceModal: React.FC<AddServiceModalProps> = ({
         setFreshlyAddedService: s.setFreshlyAddedService,
     })));
 
-    // Filter out already selected services, sorted by global order
+    // Filter out already selected services, sorted by global order. Reading the order in render is
+    // intentional: it cannot change while this modal is open, so no subscription is needed.
     const availableServices = getOrderedServiceDefs(getServiceOrder()).filter(
         (s) => !selectedServices.includes(s.id)
     );

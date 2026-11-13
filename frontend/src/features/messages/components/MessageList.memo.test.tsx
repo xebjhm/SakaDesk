@@ -69,6 +69,12 @@ describe('MessageList memo boundaries (UI health #2)', () => {
 
         rerender(list(onReveal, 'other'));
         // Same room key again after a switch: the map was cleared, so the callback is new.
-        expect(revealProps.get(2)).not.toBe(first);
+        const afterSwitch = revealProps.get(2);
+        expect(afterSwitch).not.toBe(first);
+
+        // The new room rendered again stays stable (an effect-cleanup reset would drop it here).
+        // A new onReveal makes the list render again (it is memoised on its props).
+        rerender(list(vi.fn(), 'other'));
+        expect(revealProps.get(2)).toBe(afterSwitch);
     });
 });
