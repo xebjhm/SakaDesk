@@ -747,3 +747,17 @@ def test_a_chat_outside_the_service_folder_but_under_the_root_is_skipped(
     c.member_dir = tmp_path / "櫻坂46" / "messages" / "1 a" / "2 b"
     plans, skips = run([c], tmp_path)
     assert plans == [] and [s.reason for s in skips] == ["bad_path"]
+
+
+@pytest.mark.parametrize(
+    ("member_dir", "folder"),
+    [("58 Mr.", "58 Mr"), ("58 ", "58"), ("58 a . ", "58 a")],
+)
+def test_a_trailing_dot_or_space_names_the_folder_windows_keeps(
+    tmp_path: Path, member_dir: str, folder: str
+) -> None:
+    """Windows drops a trailing dot or space from a folder name; the target matches."""
+    c = chat(tmp_path, member_dir=member_dir)
+    plans, skips = run([c], tmp_path)
+    assert skips == []
+    assert plans[0].target.path == f"日向坂46/messages/34 金村 美玖/{folder}"

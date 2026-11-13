@@ -143,7 +143,9 @@ def _chat_path(
     """Path relative to the output root (the dir holding the service folder), POSIX.
 
     It is ``<service display name>/messages/<folder>...`` with every part a
-    ``safe_paths.plain_segment``; ``None`` otherwise (a ``..`` or drive part
+    ``safe_paths.plain_segment`` once a trailing dot or space is dropped from
+    each folder (Windows drops them when it creates the folder, so the target
+    names the folder that exists); ``None`` otherwise (a ``..`` or drive part
     from an escaping ``member_dir``, or another service's folder; security
     audit 2026-11-13). Outside the output root the path is rebuilt from the
     folder names under the LAST ``messages`` component (a parent folder may be
@@ -160,14 +162,16 @@ def _chat_path(
         )
         tail = all_parts[last + 1 :] if last >= 0 else all_parts[-1:]
         parts = (service_display, "messages", *tail)
+    folders = tuple(p.rstrip(" .") for p in parts[2:])
     if (
         len(parts) < 3
         or parts[0] != service_display
         or parts[1] != "messages"
-        or not all(plain_segment(p) for p in parts)
+        or not plain_segment(parts[0])
+        or not all(f and plain_segment(f) for f in folders)
     ):
         return None
-    return "/".join(parts)
+    return "/".join((parts[0], parts[1], *folders))
 
 
 def _room_name(group_dir: Path, group_id: str) -> str:
