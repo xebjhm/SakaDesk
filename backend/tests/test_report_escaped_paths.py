@@ -92,3 +92,26 @@ def test_diagnostics_scrub_the_system_paths(monkeypatch):
     body = TestClient(app).get("/api/diagnostics").json()
     assert "Real Name" not in json.dumps(body, ensure_ascii=False)
     assert body["system"]["logs_dir"].startswith("/[REDACTED]")
+
+
+def test_long_backslash_runs_scrub_in_linear_time():
+    """A separator run is bounded, so a line of backslashes cannot stall a report."""
+    import time
+
+    from backend.api.report import scrub_log_line
+
+    line = "C:" + "\\" * 100_000 + "Users" + "\\" * 100_000 + "Alic"
+    start = time.monotonic()
+    scrub_log_line(line, "Alice", {}, None, home="C:\\Users\\Alice")
+    assert time.monotonic() - start < 1.0
+
+
+def test_json_escaped_osError_paths_are_still_redacted():
+    """str(OSError) doubles backslashes and JSON doubles them again: up to 8 in a row."""
+    from backend.api.report import scrub_log_line
+
+    line = (
+        '{"err": "C:\\\\\\\\\\\\\\\\Users\\\\\\\\\\\\\\\\Alice\\\\\\\\\\\\\\\\x.txt"}'
+    )
+    out = scrub_log_line(line, "Alice", {}, None, home="C:\\Users\\Alice")
+    assert "Alice" not in out

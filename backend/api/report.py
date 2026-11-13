@@ -71,9 +71,11 @@ def _get_username() -> str:
             return ""
 
 
-# Between path parts: any run of backslashes (raw, repr()-escaped by structlog's
-# ConsoleRenderer, doubled again inside str(OSError), or JSON-escaped) or a "/".
-_SEP = r"(?:\\+|/)"
+# Between path parts: a run of up to 8 backslashes (raw, repr()-escaped by
+# structlog's ConsoleRenderer, doubled again inside str(OSError), then JSON-escaped)
+# or a "/". The bound keeps every match attempt short, so a long run of
+# backslashes costs linear time instead of quadratic.
+_SEP = r"(?:\\{1,8}|/)"
 # A match ends where its last part ends: a separator, a quote, whitespace,
 # punctuation or the end of the text, so "hina" never cuts into "hinata".
 _END = r"(?=[\\/'\"\s,;:)\]}>]|$)"
