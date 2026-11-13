@@ -44,17 +44,17 @@ Second of three plans for the UI-health findings of the 0.5.0 audit (`/home/xtor
 
 ## Decisions (reviewers: these are deliberate; the owner confirms the ones marked ⚑)
 
-1. **Unread shelter = native `<button>`** named per kind ("Show unread photo"); the hidden bubble content is `inert` (its voice/video controls leave the Tab order and its text the accessibility tree). ⚑ **"Reveal all unread" becomes a ConversationMenu item** (Eye icon, accent like the other items; `disabledReason` when nothing is unread) opening the existing confirm. Long-press stays.
-2. **Search is a combobox.** The field owns ↑/↓/Enter (`aria-activedescendant` over a `role="listbox"` of `role="option"` rows); Tab, Shift+Tab and Enter on any other control are native again; while an IME composes every key is left to it. Escape stays with the dialog layer (already IME-safe). The member suggestions become a plain group of buttons (they are actions, reached with Tab), and the filter input gets a keyboard focus ring. The main search field keeps no ring: it is the dialog's only text field, focused on open, and its caret is the indicator (⚑ owner may ask for a ring). Results are memoised and stale searches are aborted (perf report P-B4, P-F2).
-3. **Player names without a restyle:** shared `media.*` keys name play/pause/mute/fullscreen and the ranges; ranges get `aria-valuetext` ("0:12 of 0:45", "70%"). ⚑ Keyboard focus on the seek range draws a 2 px `ring-accent` around the bar (keyboard focus only). Controls stay visible while focus is inside; Space on a focused button keeps the button's action. Voice: the volume slider shows while it has focus; inline shortcuts live on the player box (no window listener per bubble).
+1. **Unread shelter = native `<button>`** named per kind ("Show unread photo"); the hidden bubble content is `inert` (its voice/video controls leave the Tab order and its text the accessibility tree). ⚑ **"Reveal all unread" becomes a ConversationMenu item** (Eye icon in `text-secondary`, neutral like every new utility item under R-e; the other ⋯ icons are grandfathered accents, DESIGN_SYSTEM §4; `disabledReason` when nothing is unread) opening the existing confirm. Long-press stays. Default: neutral icon; the owner may instead choose the accent to match the grandfathered items.
+2. **Search is a combobox.** The field owns ↑/↓/Enter (`aria-activedescendant` over a `role="listbox"` of `role="option"` rows); Tab, Shift+Tab and Enter on any other control are native again; while an IME composes every key is left to it. Escape stays with the dialog layer (already IME-safe). The member suggestions become a plain group of buttons (they are actions, reached with Tab), and the filter input gets a focus ring (⚑ on a text input `focus-visible` also matches a mouse click, so the ring shows on click too, as on every other text field with a ring; default: accepted). The main search field keeps no ring: it is the dialog's only text field, focused on open, and its caret is the indicator (⚑ owner may ask for a ring). Results are memoised and stale searches are aborted (perf report P-B4, P-F2).
+3. **Player names without a restyle:** shared `media.*` keys name play/pause/mute/fullscreen and the ranges; ranges get `aria-valuetext` ("0:12 of 0:45", "70%"). ⚑ Keyboard focus on the seek range draws a 2 px `ring-accent` around the bar, with no offset (keyboard focus only: `has-[:focus-visible]:`, so a mouse seek or drag shows nothing new; default: apply). Controls stay visible while **keyboard** focus is inside (`:focus-visible`; after a mouse click on a control they still auto-hide as today); Space on a focused button keeps the button's action. Voice: the volume slider opens on keyboard focus (a mouse click or drag keeps today's collapse 300 ms after the pointer leaves); inline shortcuts live on the player box (no window listener per bubble).
 4. **Dialog layer, interim:** while any dialog is open, `#root` and every dialog below the top one are `inert`. **Native `<dialog>` + `showModal()` is won't-fix this wave:** the lifted incoming call's interleaved z-index (DESIGN_SYSTEM "Layering") and the toast layer depend on the custom stack; `inert` gives the background isolation the audit asked for now. Dialogs, portaled menus and the lifted call render in `<body>` outside `#root`, so they stay usable.
 5. **Covered content is inert:** the off-canvas member sidebar while closed at narrow widths (reachable with 200 % zoom), the chat behind an open off-canvas sidebar, and the message list under an in-frame call.
-6. **Announcements:** a `LiveRegion` primitive (always mounted, `role="status"`, polite). Clipboard toasts keep their look and announce through it. The settings error toast is suppressed while Settings or Setup is open (both already show the failure inline: Settings on the row, Setup by the folder field, which now also shows a generic save failure); setting rows link their description and error with `aria-describedby`, and the error line is a persistent live region.
-7. ⚑ **Menus open on their first enabled item; items show `ring-2 ring-inset ring-accent` on keyboard focus** (today `bg-sunken`, 1.1:1). Mouse hover keeps `bg-sunken`.
-8. **Chat photo = image inside a button** named "Open photo" (keyboard ring inset, like MediaTileButton). ⚑ **Older/newer overlay buttons** (`IconButton variant="overlay"`, chevrons, labels `media.older`/`media.newer`) on the photo viewer and the gallery detail, disabled-with-reason at the ends; arrows typed in a range input, a tab list or a menu are left to that control.
-9. **Landmarks and names:** `<main id="sd-main">` around the content area; ⚑ one skip link ("Skip to content") as the first Tab stop, visible only while focused (brand sheet pill, top-left, toast layer); the chat timeline is a named `region` (it is focusable for keyboard scrolling, so it needs a role and name); Home/End jump only when the key was not typed into a control; selected conversation `aria-current="true"`; a disconnected group's name says "session expired"; Badge exposes its count as visually hidden text; calendar days are named with the full date (`dateStyle: 'full'`) plus the holiday.
-10. ⚑ **Transcript text from tokens:** inactive lines `text-secondary` / `text-viewer-muted`, active `text-primary` / `text-viewer`, timestamps `text-muted` / `text-viewer-muted`, the hint `text-caption` (≥ 4.5:1 everywhere; inactive lines become darker on light surfaces and brighter on the viewer). Segments are buttons with `aria-current`. ⚑ YearStrip and the failed media tile use `text-secondary` on `bg-sunken` instead of `text-muted` (4.39:1 → 7:1). About's heart gets a keyboard ring.
-11. **Keyboard paths for pointer-only actions:** ⚑ a ★ toggle (`aria-pressed`) in each bubble's trailing column, visible only while keyboard focus is in that row (mouse users see nothing new); the follow-up time also shows on keyboard focus; ⚑ the service rail menu (right-click, Shift+F10 or the Menu key) gains **Move up** / **Move down**; the media gallery and profile-image tabs follow the ARIA tabs pattern (arrows, Home/End, roving `tabIndex`, `role="tabpanel"`; no `aria-controls`, per the tabs guide).
+6. **Announcements:** a `LiveRegion` primitive (always mounted, `role="status"`, polite). Clipboard toasts keep their look and announce through it. ⚑ The settings error toast waits while Settings or Setup is open (both already show the failure inline: Settings on the row, Setup by the folder field, which now also shows a generic save failure) and while any other dialog is open (it lives in `#root`, which is inert then, Task 5: it would show but not respond). It is not cleared: it appears when the dialogs close, and each suppression logs one `dialog` breadcrumb (`target=settings_error_toast`, `outcome=suppressed`). Default: accepted. The first-sync toast is visual only and stays where it is; its status is not announced while the sync dialog is open (the dialog itself shows completion). Setting rows link their description and error with `aria-describedby`, and the error line is a persistent live region.
+7. ⚑ **Menus open on their first enabled item that is not destructive; items show `ring-2 ring-inset ring-accent` on keyboard focus** (today `bg-sunken`, 1.1:1). Mouse hover keeps `bg-sunken`. A `destructive` item is never the opening focus (it carries `data-destructive`): a menu whose usable items are all destructive opens on its container as today, so a right-click or the Menu key followed by Enter never removes a group (ServiceRail's "Remove service" removes at once, without a confirm).
+8. **Chat photo = image inside a button** named "Open photo" (keyboard ring inset, like MediaTileButton). ⚑ **Older/newer overlay buttons** (`IconButton variant="overlay"`, chevrons, labels `media.older`/`media.newer`) on the photo viewer and the gallery detail; at an end they use `IconButton`'s new `disabledReason` (as `Button`'s: 40 % opacity, `aria-disabled`, the reason as title and description, click swallowed); arrows typed in a range input, a tab list or a menu are left to that control.
+9. **Landmarks and names:** `<main id="sd-main">` around the content area; ⚑ one skip link ("Skip to content") as the first Tab stop, visible only while focused (a `bg-sheet` card with the button radius `rounded-md`, top-left, toast layer); the chat timeline is a named `region` (it is focusable for keyboard scrolling, so it needs a role and name); Home/End jump only when the key was not typed into a control; selected conversation `aria-current="true"`; a disconnected group's name says "session expired"; Badge exposes its count as visually hidden text (it joins the name of each conversation button with unread messages, e.g. "3 unread 金村 美玖": tests select such a row by a pattern or by `aria-current`, never by its exact name); calendar days are named with the full date (`dateStyle: 'full'`) plus the holiday.
+10. ⚑ **Transcript text from tokens:** inactive lines `text-secondary` / `text-viewer-muted`, active `text-primary` / `text-viewer`, timestamps `text-muted` / `text-viewer-muted` (≥ 4.5:1 everywhere; inactive lines become darker on light surfaces and brighter on the viewer). The disclosure toggle is neutral (`text-secondary hover:text-primary` on light surfaces, `text-viewer-muted` on the viewer; DESIGN_SYSTEM §4: disclosure controls are neutral, like the sibling transcribe button); the accent stays only on the active line's tint and time (current state). Sizes move to the scale: the toggle and the lines 12 → 11 px (`text-caption`), the "click to jump" hint 10 → 11 px. The low-confidence dotted underline uses `var(--ds-semantic-warning-text)` on light surfaces and `decoration-viewer` on the dark viewer (the warning text colour is nearly invisible there; today it is a translucent amber). Default for all of these: apply. Segments are buttons with `aria-current`. ⚑ YearStrip and the failed media tile use `text-secondary` on `bg-sunken` instead of `text-muted` (4.39:1 → 7:1). About's heart gets a keyboard ring.
+11. **Keyboard paths for pointer-only actions:** ⚑ a ★ toggle (`aria-pressed`) in each bubble's trailing column, visible and clickable only while keyboard focus is in that row (`opacity-0 pointer-events-none` otherwise: no invisible hit target, so a stray click never sets a favourite on the official app; mouse users see nothing new); the follow-up time also shows on keyboard focus; ⚑ the service rail menu (right-click, Shift+F10 or the Menu key) gains **Move up** / **Move down**; the media gallery and profile-image tabs follow the ARIA tabs pattern (arrows, Home/End, roving `tabIndex`, `role="tabpanel"`; no `aria-controls`, per the tabs guide).
 12. **No new dependency:** Playwright's `toHaveAccessibleName` / `getByRole` replace `@axe-core/playwright`. ⚑ Adding axe as a dev dependency later is a reasonable follow-up (trusted, dev-only); not needed to verify this plan.
 13. **`InlineTranslation.tsx` is Plan H Task 3's** (one owner per file): its contrast, `aria-expanded` and `lang` fixes are there.
 
@@ -240,7 +240,11 @@ describe('ConversationMenu reveal all (UI health #3)', () => {
 
     it('offers Reveal all unread and calls onRevealAll', async () => {
         const onRevealAll = open(3);
-        await userEvent.click(screen.getByRole('menuitem', { name: /Reveal all unread/ }));
+        const item = screen.getByRole('menuitem', { name: /Reveal all unread/ });
+        // A new utility item is neutral (R-e), not accent.
+        expect(item.querySelector('svg')).toHaveClass('text-secondary');
+        expect(item.querySelector('svg')).not.toHaveClass('text-accent');
+        await userEvent.click(item);
         expect(onRevealAll).toHaveBeenCalledTimes(1);
     });
 
@@ -386,7 +390,8 @@ and destructure `unreadCount = 0, onRevealAll,`.
 ```tsx
                         {onRevealAll && (
                             <MenuItem
-                                icon={<Eye className="h-4 w-4 text-accent" />}
+                                // Neutral (R-e): the accents of the items above are grandfathered (DESIGN_SYSTEM §4).
+                                icon={<Eye className="h-4 w-4 text-secondary" />}
                                 disabledReason={unreadCount === 0 ? t('conversationMenu.revealAllNone') : undefined}
                                 logTarget="reveal_all"
                                 onClick={() => {
@@ -591,8 +596,8 @@ describe('SearchModal keyboard (UI health #5)', () => {
 ```
 
 Update `frontend/src/features/search/SearchModal.test.tsx`:
-- replace every `screen.findByRole('textbox')` / `screen.getByRole('textbox')` with `'combobox'`:
-  `cd frontend && sed -i "s/ByRole('textbox')/ByRole('combobox')/g" src/features/search/SearchModal.test.tsx`
+- replace every `screen.findByRole('textbox')` / `screen.getByRole('textbox')` with `'combobox'`, here and in `frontend/src/design/l2Loading.test.tsx` (its search-field case):
+  `cd frontend && sed -i "s/ByRole('textbox')/ByRole('combobox')/g" src/features/search/SearchModal.test.tsx src/design/l2Loading.test.tsx`
 - rename the test "moves the selection with arrows and Tab, and Enter opens a blog with its highlight" to "moves the selection with the arrows, and Enter opens a blog with its highlight", and delete its four Tab lines:
 
 ```tsx
@@ -856,11 +861,11 @@ and to `<SearchResultList>`: `listId={listId}` and `onHover={setSelectedIndex}` 
                 >
 ```
 
-(the button's children are unchanged) and give the member filter `<input>` a keyboard ring: replace its `outline-none` with `rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent`.
+(the button's children are unchanged) and give the member filter `<input>` a focus ring: replace its `outline-none` with `rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-accent` (on a text input this also shows on a mouse click: ⚑ Decision 2).
 
 - [ ] **Step 5: Run the tests**
 
-Run: `cd frontend && npx vitest run src/features/search src/i18n src/core/dialogs.style.test.ts`
+Run: `cd frontend && npx vitest run src/features/search src/i18n src/core/dialogs.style.test.ts src/design/l2Loading.test.tsx`
 Expected: PASS.
 
 - [ ] **Step 6: Real-browser check**
@@ -905,10 +910,10 @@ uv run git commit -m "fix(search): make the field a combobox and leave Tab to th
 **Files:**
 - Modify: `frontend/src/core/media/VideoPlayer.tsx`
 - Modify: `frontend/src/i18n/locales/*.json`, `frontend/src/i18n/uiHealthAccessibility.test.ts`
-- Create: `frontend/src/core/media/VideoPlayer.a11y.test.tsx`
+- Create: `frontend/src/core/media/VideoPlayer.a11y.test.tsx`, `frontend/src/__tests__/focusVisible.ts`
 
 **Interfaces:**
-- Produces: keys `media.play`, `media.pause`, `media.mute`, `media.unmute`, `media.seek`, `media.volume`, `media.timeOf`, `media.volumeValue`, `media.fullscreen`, `media.exitFullscreen` (Task 4 reuses them).
+- Produces: `mockFocusVisible(keyboard: boolean)` (test helper, Task 4 reuses it); keys `media.play`, `media.pause`, `media.mute`, `media.unmute`, `media.seek`, `media.volume`, `media.timeOf`, `media.volumeValue`, `media.fullscreen`, `media.exitFullscreen` (Task 4 reuses them).
 
 - [ ] **Step 1: Add the strings**
 
@@ -938,12 +943,33 @@ and append the ten keys (under `// Task 3`) to `KEYS`.
 
 - [ ] **Step 2: Write the failing test**
 
+Create `frontend/src/__tests__/focusVisible.ts`:
+
+```ts
+import { vi } from 'vitest';
+
+/**
+ * Pins `el.matches(':focus-visible')` for the focused element: `true` as after a keyboard focus,
+ * `false` as after a mouse click (Chromium focuses a clicked button, but not focus-visibly). The
+ * players only ever ask `matches(':focus-visible')`; jsdom infers it from its own event
+ * bookkeeping, so tests state the modality they mean. Undo with `vi.restoreAllMocks()`.
+ */
+export function mockFocusVisible(keyboard: boolean) {
+    const original = Element.prototype.matches;
+    return vi.spyOn(Element.prototype, 'matches').mockImplementation(function (this: Element, selector: string) {
+        if (selector === ':focus-visible') return keyboard && this === document.activeElement;
+        return original.call(this, selector);
+    });
+}
+```
+
 Create `frontend/src/core/media/VideoPlayer.a11y.test.tsx`:
 
 ```tsx
-import { describe, it, expect, beforeAll } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { describe, it, expect, vi, beforeAll, beforeEach, afterEach } from 'vitest';
+import { act, fireEvent, render, screen } from '@testing-library/react';
 import i18n from '../../i18n';
+import { mockFocusVisible } from '../../__tests__/focusVisible';
 import { VideoPlayer } from './VideoPlayer';
 
 describe('VideoPlayer accessible controls (UI health #7)', () => {
@@ -959,21 +985,60 @@ describe('VideoPlayer accessible controls (UI health #7)', () => {
         expect(screen.getByRole('slider', { name: 'Volume' })).toHaveAttribute('aria-valuetext', expect.stringMatching(/^\d+%$/));
     });
 
-    it('rings the bar while the seek range has keyboard focus', () => {
+    it('rings the bar only while the seek range has keyboard focus', () => {
         render(<VideoPlayer src="/api/content/media/hinatazaka46/v.mp4" />);
         const seek = screen.getByRole('slider', { name: 'Playback position' });
-        expect(seek.parentElement).toHaveClass('focus-within:ring-2', 'focus-within:ring-accent');
+        // has-[:focus-visible]: a range keeps focus after a mouse seek, so focus-within would ring it then.
+        expect(seek.parentElement).toHaveClass('has-[:focus-visible]:ring-2', 'has-[:focus-visible]:ring-accent', 'ring-offset-0');
+        expect(seek.parentElement?.className).not.toMatch(/focus-within:/);
     });
 
     it('marks the subtitles toggle as pressed or not', () => {
         render(<VideoPlayer src="/api/content/media/hinatazaka46/v.mp4" variant="gallery" transcriptionSegments={[{ start: 0, end: 1, text: 'あ', confidence: 1 }]} />);
         expect(screen.getByRole('button', { name: 'Subtitles' })).toHaveAttribute('aria-pressed');
     });
+
+    describe('controls while playing', () => {
+        beforeEach(() => {
+            vi.useFakeTimers();
+            window.HTMLMediaElement.prototype.play = (() => Promise.resolve()) as never;
+            window.HTMLMediaElement.prototype.pause = (() => undefined) as never;
+            window.HTMLMediaElement.prototype.load = (() => undefined) as never;
+        });
+        afterEach(() => {
+            vi.useRealTimers();
+            vi.restoreAllMocks();
+        });
+
+        const start = () => {
+            const { container } = render(<VideoPlayer src="/api/content/media/hinatazaka46/v.mp4" />);
+            fireEvent.play(container.querySelector('video')!);
+            const mute = screen.getByRole('button', { name: 'Mute' });
+            return { mute, bar: () => mute.closest('.transition-opacity') };
+        };
+
+        it('still hide after a mouse click on a control', () => {
+            mockFocusVisible(false);
+            const { mute, bar } = start();
+            act(() => mute.focus());
+            fireEvent.mouseMove(mute);
+            act(() => { vi.advanceTimersByTime(900); });
+            expect(bar()).toHaveClass('opacity-0');
+        });
+
+        it('stay while keyboard focus is on a control', () => {
+            mockFocusVisible(true);
+            const { mute, bar } = start();
+            act(() => mute.focus());
+            act(() => { vi.advanceTimersByTime(900); });
+            expect(bar()).toHaveClass('opacity-100');
+        });
+    });
 });
 ```
 
 Run: `cd frontend && npx vitest run src/core/media/VideoPlayer.a11y.test.tsx`
-Expected: FAIL — unnamed buttons and sliders.
+Expected: FAIL — unnamed buttons and sliders; no keyboard-only ring; keyboard focus does not hold the controls.
 
 - [ ] **Step 3: Implement**
 
@@ -981,7 +1046,7 @@ In `frontend/src/core/media/VideoPlayer.tsx` (names only — classes stay as the
 
 (a) Big centre button: add `type="button"` and `aria-label={t('media.play')}`; give its icon `aria-hidden="true"`.
 
-(b) Seek bar container `<div className="relative h-1 mb-2 group/seek">` → add `rounded-full focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2` (the input inside is transparent; the ring shows where focus is). The seek `<input type="range" ...>` gets:
+(b) Seek bar container `<div className="relative h-1 mb-2 group/seek">` → add `rounded-full ring-offset-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent` (the input inside is transparent; the ring shows where keyboard focus is; `has-[:focus-visible]` because a range keeps focus after a mouse seek, and no offset because the default offset colour is a white band on the dark bar). The seek `<input type="range" ...>` gets:
 
 ```tsx
                         aria-label={t('media.seek')}
@@ -996,21 +1061,29 @@ In `frontend/src/core/media/VideoPlayer.tsx` (names only — classes stay as the
 
 (f) Fullscreen button: `aria-label={isFullscreen ? t('media.exitFullscreen') : t('media.fullscreen')}`; icons `aria-hidden="true"`.
 
-(g) Controls stay while focus is inside. Replace `resetControlsTimeout` with:
+(g) Controls stay while keyboard focus is inside. Replace `resetControlsTimeout` with:
 
 ```tsx
     // Auto-hide controls shortly after the mouse stops moving, but never while keyboard focus is in
-    // the player (a focused control must stay visible; UI health #7).
+    // the player (a focused control must stay visible; UI health #7). Mouse focus does not hold them:
+    // Chromium focuses a clicked button, and `:focus-visible` tells the two apart.
     const resetControlsTimeout = useCallback(() => {
         setShowControls(true);
         if (controlsTimeoutRef.current) clearTimeout(controlsTimeoutRef.current);
         controlsTimeoutRef.current = setTimeout(() => {
-            if (isPlaying && !containerRef.current?.contains(document.activeElement)) setShowControls(false);
+            const el = document.activeElement;
+            const keyboardFocusInside = !!el && !!containerRef.current?.contains(el) && el.matches(':focus-visible');
+            if (isPlaying && !keyboardFocusInside) setShowControls(false);
         }, 800);
     }, [isPlaying]);
+
+    // Keyboard focus moving onto a control shows the controls and restarts the timer; a click does not.
+    const handleFocusCapture = useCallback((e: React.FocusEvent) => {
+        if (e.target instanceof Element && e.target.matches(':focus-visible')) resetControlsTimeout();
+    }, [resetControlsTimeout]);
 ```
 
-and add `onFocusCapture={resetControlsTimeout}` to the player container (`ref={containerRef}` div, next to `onMouseMove`).
+and add `onFocusCapture={handleFocusCapture}` to the player container (`ref={containerRef}` div, next to `onMouseMove`).
 
 (h) In the viewer-mode window key handler, Space on a focused button keeps the button's action:
 
@@ -1054,6 +1127,7 @@ Create `frontend/src/core/media/VoicePlayer.a11y.test.tsx`:
 import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import i18n from '../../i18n';
+import { mockFocusVisible } from '../../__tests__/focusVisible';
 import { VoicePlayer } from './VoicePlayer';
 
 describe('VoicePlayer accessible controls (UI health #7)', () => {
@@ -1068,11 +1142,27 @@ describe('VoicePlayer accessible controls (UI health #7)', () => {
         expect(screen.getByRole('slider', { name: 'Volume' })).toHaveAttribute('aria-valuetext', expect.stringMatching(/%$/));
     });
 
-    it('shows the volume slider while it has focus', () => {
+    it('shows the volume slider while it has keyboard focus', () => {
+        mockFocusVisible(true);
         render(<VoicePlayer src="/api/content/media/hinatazaka46/v.m4a" />);
         const volume = screen.getByRole('slider', { name: 'Volume' });
         act(() => volume.focus()); // focus + focusin: React's onFocus listens to focusin
         expect(volume.parentElement).toHaveClass('opacity-100');
+    });
+
+    it('keeps the hover behaviour after a mouse focus (no slider held open)', () => {
+        mockFocusVisible(false);
+        render(<VoicePlayer src="/api/content/media/hinatazaka46/v.m4a" />);
+        const volume = screen.getByRole('slider', { name: 'Volume' });
+        act(() => volume.focus());
+        expect(volume.parentElement).not.toHaveClass('opacity-100');
+    });
+
+    it('rings a seek bar only for keyboard focus', () => {
+        render(<VoicePlayer src="/api/content/media/hinatazaka46/v.m4a" />);
+        const bar = screen.getByRole('slider', { name: 'Playback position' }).closest('.h-1');
+        expect(bar).toHaveClass('has-[:focus-visible]:ring-2', 'has-[:focus-visible]:ring-accent', 'ring-offset-0');
+        expect(bar?.className).not.toMatch(/focus-within:/);
     });
 
     it('adds no window key listener for an inline bubble', () => {
@@ -1107,11 +1197,17 @@ In `frontend/src/core/media/VoicePlayer.tsx`:
                             aria-valuetext={t('media.timeOf', { current: formatTime(currentTime), total: formatTime(duration) })}
 ```
 
-and on each seek bar container (`<div className="relative h-1 bg-sunken rounded-full overflow-hidden">` and `<div className="relative h-1 bg-control-off rounded-full overflow-hidden">`) add `focus-within:ring-2 focus-within:ring-accent focus-within:ring-offset-2`.
+and on each seek bar container (`<div className="relative h-1 bg-sunken rounded-full overflow-hidden">` and `<div className="relative h-1 bg-control-off rounded-full overflow-hidden">`) add `ring-offset-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent` (keyboard focus only, as the video seek bar).
 
 (d) Both mute buttons: add `aria-label={isMuted ? t('voicePlayer.unmute') : t('voicePlayer.mute')}` (keep `title`); icons `aria-hidden="true"`.
 
-(e) Both volume wrappers (`<div className="relative flex items-center" onMouseEnter={handleVolumeMouseEnter} onMouseLeave={handleVolumeMouseLeave}>`) also open on keyboard focus: add `onFocusCapture={handleVolumeMouseEnter}` and `onBlurCapture={handleVolumeMouseLeave}`. Both volume ranges: `aria-label={t('media.volume')}` and `aria-valuetext={t('media.volumeValue', { percent: Math.round(volume * 100) })}`.
+(e) Both volume wrappers (`<div className="relative flex items-center" onMouseEnter={handleVolumeMouseEnter} onMouseLeave={handleVolumeMouseLeave}>`) also open on keyboard focus, and only then (a mouse click or drag keeps today's collapse 300 ms after the pointer leaves): add
+
+```tsx
+                onFocusCapture={(e) => { if (e.target instanceof Element && e.target.matches(':focus-visible')) handleVolumeMouseEnter(); }}
+                onBlurCapture={handleVolumeMouseLeave}
+```
+ Both volume ranges: `aria-label={t('media.volume')}` and `aria-valuetext={t('media.volumeValue', { percent: Math.round(volume * 100) })}`.
 
 (f) Replace the keyboard `useEffect` (the one with `window.addEventListener('keydown', handleKeyDown)`) with:
 
@@ -1175,7 +1271,7 @@ and add `onKeyDown={viewerMode ? undefined : handleShortcut}` to every element t
 - [ ] **Step 3: Run the tests and refresh the snapshots**
 
 Run: `cd frontend && npx vitest run src/core/media/VoicePlayer.test.tsx -u && git diff -- src/core/media/__snapshots__ | head -80`
-Expected: the snapshot diff only adds `aria-label` / `aria-valuetext` / `aria-hidden` / `type="button"` attributes and the `focus-within:` classes.
+Expected: the snapshot diff only adds `aria-label` / `aria-valuetext` / `aria-hidden` / `type="button"` attributes and the `ring-offset-0 has-[:focus-visible]:` ring classes.
 
 Run: `cd frontend && npx vitest run src/core/media src/features/messages`
 Expected: PASS.
@@ -1197,6 +1293,7 @@ uv run git commit -m "fix(a11y): name the voice controls and scope their shortcu
 - Create (if absent): `frontend/src/hooks/useInert.ts` (Task 1 Step 4)
 - Modify: `frontend/src/features/messages/MessagesFeature.tsx`
 - Modify: `frontend/e2e/a11y-keyboard.spec.ts`
+- Modify: `docs/design/DESIGN_SYSTEM.md` ("Dialogs")
 
 **Interfaces:**
 - Produces: `useMediaQuery(query: string): boolean` (false without `matchMedia`).
@@ -1322,6 +1419,16 @@ function syncInert(): void {
 
 and call `syncInert();` right before `notify();` in `pushDialog`, `popDialog` and `resetDialogStack`.
 
+In `docs/design/DESIGN_SYSTEM.md` "Dialogs", after the **Focus** bullet ("… focus that lands outside the top-most frame is pulled back (except in a menu).") add:
+
+```markdown
+- **The rest is inert:** while any dialog is open, `#root` and every dialog below the top one
+  carry `inert` (`dialogStack.ts`), so clicks and a screen reader's virtual cursor stay in the
+  top dialog too, not only Tab. Dialogs, portaled menus and the lifted call render in `<body>`
+  outside `#root` and stay usable; anything rendered inside `#root` (a toast) does not respond
+  while a dialog is open.
+```
+
 Create `frontend/src/hooks/useMediaQuery.ts`:
 
 ```ts
@@ -1404,7 +1511,7 @@ Expected: all passed.
 - [ ] **Step 7: Commit**
 
 ```bash
-git add frontend/src frontend/e2e/a11y-keyboard.spec.ts
+git add frontend/src frontend/e2e/a11y-keyboard.spec.ts docs/design/DESIGN_SYSTEM.md
 uv run git commit -m "fix(a11y): make the app behind dialogs and covered panes inert" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -1419,9 +1526,12 @@ uv run git commit -m "fix(a11y): make the app behind dialogs and covered panes i
 - Modify: `frontend/src/core/media/VideoPlayer.tsx`, `frontend/src/core/media/MediaGalleryModal.tsx`, `frontend/src/core/media/PhotoDetailModal.tsx`
 - Create: `frontend/src/design/primitives/LiveRegion.test.tsx`, `frontend/src/shell/components/SettingRow.test.tsx`
 - Modify: `frontend/src/core/dialogs.style.test.ts` (add the new shell file to `FILES`)
+- Create: `frontend/src/design/dialog/useAnyDialogOpen.ts`, `frontend/src/design/dialog/useAnyDialogOpen.test.tsx`
+- Modify: `frontend/src/shell/outputFolder.ts`, `frontend/src/shell/outputFolder.test.ts`
+- Modify: `docs/design/DESIGN_SYSTEM.md` ("Layering")
 
 **Interfaces:**
-- Produces: `LiveRegion({ message: string })`; `SettingsErrorToast({ errorKey: string | null, suppressed: boolean, onDebug: () => void, onClose: () => void })`.
+- Produces: `LiveRegion({ message: string })`; `SettingsErrorToast({ errorKey: string | null, suppressed: boolean, onDebug: () => void, onClose: () => void })`; `useAnyDialogOpen(): boolean`; `setupFolderErrorKey(folderErrorKey: string | null, settingsErrorKey: string | null): string | null`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1449,12 +1559,16 @@ describe('LiveRegion', () => {
 Create `frontend/src/shell/components/SettingsErrorToast.test.tsx`:
 
 ```tsx
-import { describe, it, expect, vi, beforeAll } from 'vitest';
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import i18n from '../../i18n';
+import { clientLog } from '../../utils/clientLog';
 import { SettingsErrorToast } from './SettingsErrorToast';
 
+vi.mock('../../utils/clientLog', async (orig) => ({ ...(await orig<typeof import('../../utils/clientLog')>()), clientLog: vi.fn() }));
+
 describe('SettingsErrorToast', () => {
+    beforeEach(() => vi.mocked(clientLog).mockClear());
     beforeAll(async () => { await i18n.changeLanguage('en'); });
 
     it('shows the error as an alert with its actions', () => {
@@ -1463,9 +1577,57 @@ describe('SettingsErrorToast', () => {
         expect(screen.getByRole('button', { name: 'Close' })).toBeInTheDocument();
     });
 
-    it('stays hidden while a dialog that shows the error itself is open', () => {
-        render(<SettingsErrorToast errorKey="settings.saveFailed" suppressed onDebug={vi.fn()} onClose={vi.fn()} />);
+    it('stays hidden while a dialog is open, logs one breadcrumb per suppression, and shows afterwards', () => {
+        const ui = (suppressed: boolean) => (
+            <SettingsErrorToast errorKey="settings.saveFailed" suppressed={suppressed} onDebug={vi.fn()} onClose={vi.fn()} />
+        );
+        const { rerender } = render(ui(true));
         expect(screen.queryByRole('alert')).toBeNull();
+        rerender(ui(true));
+        expect(vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'dialog')).toEqual([
+            ['dialog', { target: 'settings_error_toast', outcome: 'suppressed' }],
+        ]);
+        rerender(ui(false));
+        expect(screen.getByRole('alert')).toBeInTheDocument();
+    });
+});
+```
+
+Create `frontend/src/design/dialog/useAnyDialogOpen.test.tsx`:
+
+```tsx
+import { describe, it, expect, afterEach } from 'vitest';
+import { act, render, screen } from '@testing-library/react';
+import { popDialog, pushDialog, resetDialogStack } from './dialogStack';
+import { useAnyDialogOpen } from './useAnyDialogOpen';
+
+const Probe = () => <p>{useAnyDialogOpen() ? 'open' : 'none'}</p>;
+
+describe('useAnyDialogOpen', () => {
+    afterEach(() => resetDialogStack());
+
+    it('follows the dialog stack', () => {
+        render(<Probe />);
+        expect(screen.getByText('none')).toBeInTheDocument();
+        let entry!: ReturnType<typeof pushDialog>;
+        act(() => { entry = pushDialog({ node: () => null, dismissible: true }); });
+        expect(screen.getByText('open')).toBeInTheDocument();
+        act(() => popDialog(entry));
+        expect(screen.getByText('none')).toBeInTheDocument();
+    });
+});
+```
+
+
+Append to `frontend/src/shell/outputFolder.test.ts` (add `setupFolderErrorKey` to its import from `./outputFolder`):
+
+```ts
+describe('setupFolderErrorKey', () => {
+    it('shows the folder error, else only a generic save failure', () => {
+        expect(setupFolderErrorKey('settings.outputDirError.not_writable', 'settings.saveFailed')).toBe('settings.outputDirError.not_writable');
+        expect(setupFolderErrorKey(null, 'settings.saveFailed')).toBe('settings.saveFailed');
+        expect(setupFolderErrorKey(null, 'settings.outputDirError.not_writable')).toBeNull();
+        expect(setupFolderErrorKey(null, null)).toBeNull();
     });
 });
 ```
@@ -1503,8 +1665,8 @@ describe('SettingRow descriptions (UI health A-S6)', () => {
 
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `cd frontend && npx vitest run src/design/primitives/LiveRegion.test.tsx src/shell/components/SettingsErrorToast.test.tsx src/shell/components/SettingRow.test.tsx`
-Expected: FAIL — missing modules; the row control has no description.
+Run: `cd frontend && npx vitest run src/design/primitives/LiveRegion.test.tsx src/shell/components/SettingsErrorToast.test.tsx src/shell/components/SettingRow.test.tsx src/design/dialog/useAnyDialogOpen.test.tsx src/shell/outputFolder.test.ts`
+Expected: FAIL — missing modules and `setupFolderErrorKey`; the row control has no description.
 
 - [ ] **Step 3: Implement**
 
@@ -1529,18 +1691,20 @@ and add `export { LiveRegion } from './LiveRegion';` to `frontend/src/design/pri
 Create `frontend/src/shell/components/SettingsErrorToast.tsx` (the markup moved from `App.tsx` unchanged, plus `suppressed`):
 
 ```tsx
-import React from 'react';
+import React, { useEffect } from 'react';
 import { AlertCircle, X } from 'lucide-react';
 import { Button, IconButton } from '../../design/primitives';
 import { Z_INDEX } from '../../constants/zIndex';
 import { useTranslation } from '../../i18n';
+import { clientLog } from '../../utils/clientLog';
 
 export interface SettingsErrorToastProps {
     /** i18n key of the newest settings save error, or null. */
     errorKey: string | null;
     /**
-     * True while Settings or Setup is open: both show the failure inline (the row, the folder field),
-     * and a toast behind a modal dialog would be missed and unreachable (UI health A-D2).
+     * True while Settings or Setup is open (both show the failure inline: the row, the folder field)
+     * or any other dialog is: the toast lives in #root, which is inert then, so it would show but
+     * not respond (UI health A-D2). The error is kept and shows when the dialogs close.
      */
     suppressed: boolean;
     onDebug: () => void;
@@ -1550,6 +1714,11 @@ export interface SettingsErrorToastProps {
 /** A status card on the toast layer for a settings save that failed outside the dialogs. */
 export const SettingsErrorToast: React.FC<SettingsErrorToastProps> = ({ errorKey, suppressed, onDebug, onClose }) => {
     const { t } = useTranslation();
+    const waiting = !!errorKey && suppressed;
+    useEffect(() => {
+        // One breadcrumb per suppression (codes only): the toast waits behind a dialog.
+        if (waiting) clientLog('dialog', { target: 'settings_error_toast', outcome: 'suppressed' });
+    }, [waiting, errorKey]);
     if (!errorKey || suppressed) return null;
     return (
         <div
@@ -1574,18 +1743,47 @@ export const SettingsErrorToast: React.FC<SettingsErrorToastProps> = ({ errorKey
 
 Add `'../shell/components/SettingsErrorToast.tsx',` to `FILES` in `frontend/src/core/dialogs.style.test.ts`.
 
-In `frontend/src/shell/App.tsx`: import `SettingsErrorToast` from `./components/SettingsErrorToast`; replace the whole `{settingsErrorKey && ( <div data-testid="settings-error-toast" … </div> )}` block with
+Create `frontend/src/design/dialog/useAnyDialogOpen.ts`:
+
+```ts
+import { useSyncExternalStore } from 'react';
+import { openDialogCount, subscribeDialogStack } from './dialogStack';
+
+const anyOpen = () => openDialogCount() > 0;
+
+/** True while any dialog is on the layer (and `#root` is inert, Task 5); kept current through the stack's listeners. */
+export function useAnyDialogOpen(): boolean {
+    return useSyncExternalStore(subscribeDialogStack, anyOpen, () => false);
+}
+```
+
+In `frontend/src/shell/outputFolder.ts` add:
+
+```ts
+/**
+ * The error Setup shows by its folder field: the folder's own, else a generic save failure (Setup
+ * saves only the folder). Never another reason: an output-folder refusal already arrives as the
+ * folder's own key.
+ */
+export function setupFolderErrorKey(folderErrorKey: string | null, settingsErrorKey: string | null): string | null {
+    return folderErrorKey ?? (settingsErrorKey === 'settings.saveFailed' ? settingsErrorKey : null);
+}
+```
+
+In `docs/design/DESIGN_SYSTEM.md` "Layering", replace "`TOAST` 1100 (above everything, e.g. the settings error toast)" with "`TOAST` 1100 (above everything; the settings error toast is rendered in `#root`, which is inert while a dialog is open, so it waits until the dialogs close and shows then)".
+
+In `frontend/src/shell/App.tsx`: import `SettingsErrorToast` from `./components/SettingsErrorToast`, `useAnyDialogOpen` from `../design/dialog/useAnyDialogOpen` and `setupFolderErrorKey` from `./outputFolder`; in the component add `const anyDialogOpen = useAnyDialogOpen();`; replace the whole `{settingsErrorKey && ( <div data-testid="settings-error-toast" … </div> )}` block with
 
 ```tsx
                 <SettingsErrorToast
                     errorKey={settingsErrorKey}
-                    suppressed={showSettingsModal || showSetupWizard}
+                    suppressed={showSettingsModal || showSetupWizard || anyDialogOpen}
                     onDebug={() => setShowDiagnostics(true)}
                     onClose={clearSettingsError}
                 />
 ```
 
-and give the wizard the generic failure too: `<SetupWizard … folderErrorKey={folderErrorKey ?? settingsErrorKey} />` (the wizard saves only the folder, so a failed save is about the folder). Remove now-unused imports from `App.tsx` (`AlertCircle`, `X`, `Z_INDEX`, `Button`/`IconButton` if nothing else uses them — `tsc` tells).
+and give the wizard the generic save failure too, nothing else: `<SetupWizard … folderErrorKey={setupFolderErrorKey(folderErrorKey, settingsErrorKey)} />`. Remove now-unused imports from `App.tsx` (`AlertCircle`, `X`, `Z_INDEX`, `Button`/`IconButton` if nothing else uses them — `tsc` tells).
 
 Replace `frontend/src/shell/components/SettingRow.tsx` with:
 
@@ -1641,12 +1839,12 @@ Clipboard toasts announce through a `LiveRegion` (their visual stays):
 - [ ] **Step 4: Run the tests**
 
 Run: `cd frontend && npx vitest run src/design src/shell src/core`
-Expected: PASS (`SettingsModal.saving.test.tsx` still finds each row's `role="status"` error).
+Expected: PASS (`SettingsModal.saving.test.tsx` still finds each row's `role="status"` error; an App test that expects the toast while a dialog is open must now close the dialog first).
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src
+git add frontend/src docs/design/DESIGN_SYSTEM.md
 uv run git commit -m "fix(a11y): announce toasts and keep settings errors in view" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -1677,6 +1875,28 @@ In `frontend/src/design/primitives/Menu.test.tsx`:
         );
         expect(screen.getByRole('menuitem', { name: '二' })).toHaveFocus();
     });
+
+    it('never opens on a destructive item, even when it comes first', async () => {
+        const onRemove = vi.fn();
+        const { unmount } = render(
+            <Menu aria-label="m" onClose={vi.fn()}>
+                <MenuItem destructive onClick={onRemove}>削除</MenuItem>
+                <MenuItem>二</MenuItem>
+            </Menu>,
+        );
+        expect(screen.getByRole('menuitem', { name: '削除' })).toHaveAttribute('data-destructive');
+        expect(screen.getByRole('menuitem', { name: '二' })).toHaveFocus();
+        unmount();
+        // Only destructive items (ServiceRail with one group): the menu itself takes focus, so Enter does nothing.
+        render(
+            <Menu aria-label="m" onClose={vi.fn()}>
+                <MenuItem destructive onClick={onRemove}>削除</MenuItem>
+            </Menu>,
+        );
+        expect(screen.getByRole('menu')).toHaveFocus();
+        await userEvent.keyboard('{Enter}');
+        expect(onRemove).not.toHaveBeenCalled();
+    });
 ```
 
 In `frontend/src/design/DesignPage.test.tsx`: replace `expect(screen.getByRole('menu')).toHaveFocus();` with `expect(screen.getByRole('menu').querySelector('[role^="menuitem"]')).toHaveFocus();`.
@@ -1691,13 +1911,15 @@ In `frontend/src/design/primitives/Menu.tsx`, in the mount effect replace `menu?
 
 ```tsx
         // Opening focuses the first enabled item (UI health A-D3; the menu pattern): an item with a
-        // disabled reason is skipped unless every item has one. An empty menu takes focus itself.
-        const items = Array.from(menu?.querySelectorAll<HTMLElement>(ITEMS) ?? []);
+        // disabled reason is skipped unless every item has one, and a destructive item is never the
+        // opening focus (Enter right after a right-click must not remove anything). With no other
+        // item, or none at all, the menu takes focus itself, as before.
+        const items = Array.from(menu?.querySelectorAll<HTMLElement>(ITEMS) ?? []).filter((el) => !el.hasAttribute('data-destructive'));
         const first = items.find((el) => el.getAttribute('aria-disabled') !== 'true') ?? items[0];
         (first ?? menu)?.focus({ preventScroll: true });
 ```
 
-and in `MenuItem`'s class list replace `'transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none',` with
+in `MenuItem`'s `<button>` add `data-destructive={destructive || undefined}` (next to `type={type}`), and in its class list replace `'transition-colors duration-fast ease-standard hover:bg-sunken focus-visible:bg-sunken focus-visible:outline-none',` with
 
 ```tsx
                     // Keyboard focus: the §9 accent ring, inset (the item fills the menu); hover keeps the grey.
@@ -1722,6 +1944,7 @@ uv run git commit -m "fix(a11y): open menus on their first item with a focus rin
 
 **Files:**
 - Modify: `frontend/src/core/media/PhotoPlayer.tsx`, `frontend/src/features/messages/components/MessageBubble.tsx`
+- Modify: `frontend/src/design/primitives/Button.tsx` (`IconButton` `disabledReason`), `frontend/src/design/primitives/Controls.test.tsx`, `docs/design/DESIGN_SYSTEM.md` (the `IconButton` paragraph)
 - Create: `frontend/src/core/media/StepButtons.tsx`, `frontend/src/core/media/StepButtons.test.tsx`
 - Modify: `frontend/src/core/media/PhotoDetailModal.tsx`, `frontend/src/core/media/MediaGalleryModal.tsx`
 - Modify: `frontend/src/i18n/locales/*.json`, `frontend/src/i18n/uiHealthAccessibility.test.ts`
@@ -1729,7 +1952,7 @@ uv run git commit -m "fix(a11y): open menus on their first item with a focus rin
 - Modify: `frontend/src/features/messages/components/__snapshots__/MessageBubble.test.tsx.snap`
 
 **Interfaces:**
-- Produces: `PhotoPlayer` prop `actionLabel?: string`; `StepButtons({ hasOlder, hasNewer, onOlder, onNewer })`; keys `messageList.openPhoto`, `media.older`, `media.newer`, `media.noOlder`, `media.noNewer`.
+- Produces: `PhotoPlayer` prop `actionLabel?: string`; `IconButton` prop `disabledReason?: string` (as `Button`'s); `StepButtons({ hasOlder, hasNewer, onOlder, onNewer })`; keys `messageList.openPhoto`, `media.older`, `media.newer`, `media.noOlder`, `media.noNewer`.
 
 - [ ] **Step 1: Add the strings**
 
@@ -1802,14 +2025,33 @@ describe('StepButtons', () => {
         const newer = screen.getByRole('button', { name: 'Newer' });
         expect(newer).toHaveAttribute('aria-disabled', 'true');
         expect(newer).toHaveAttribute('title', 'This is the newest one');
+        expect(newer).toHaveAccessibleDescription('This is the newest one');
         await userEvent.click(newer);
         expect(onNewer).not.toHaveBeenCalled();
     });
 });
 ```
 
-Run: `cd frontend && npx vitest run src/core/media/PhotoPlayer.button.test.tsx src/core/media/StepButtons.test.tsx`
-Expected: FAIL.
+Append to `frontend/src/design/primitives/Controls.test.tsx` (inside the existing `describe('IconButton', …)`):
+
+```tsx
+    it('blocks with a reason like Button: focusable, described, click swallowed (DESIGN_SYSTEM §9)', async () => {
+        const onClick = vi.fn();
+        render(<IconButton aria-label="次へ" icon={<X />} disabledReason="これが最後です 🌸" onClick={onClick} />);
+        const button = screen.getByRole('button', { name: '次へ' });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        expect(button).not.toBeDisabled();
+        expect(button).toHaveAttribute('title', 'これが最後です 🌸');
+        expect(button).toHaveAccessibleDescription('これが最後です 🌸');
+        expect(button.className).toContain('aria-disabled:opacity-40');
+        await userEvent.click(button);
+        expect(onClick).not.toHaveBeenCalled();
+    });
+```
+
+
+Run: `cd frontend && npx vitest run src/core/media/PhotoPlayer.button.test.tsx src/core/media/StepButtons.test.tsx src/design/primitives/Controls.test.tsx`
+Expected: FAIL (no photo button, no `StepButtons`, `IconButton` ignores `disabledReason`).
 
 - [ ] **Step 3: Implement**
 
@@ -1833,6 +2075,7 @@ Expected: FAIL.
             src={shownSrc}
             alt={alt}
             loading={effectiveLoading}
+            decoding="async"
             onError={fail}
             onLoad={() => markLoaded(shownSrc)}
             className={cn(
@@ -1857,9 +2100,46 @@ Expected: FAIL.
     );
 ```
 
-  (Keep any other attribute the current bubble `<img>` has — e.g. `decoding="async"` from Plan F Task 6 — on `image`.)
+  (`decoding="async"` is Plan F Task 6's; it is in the snippet so the bubble keeps it whichever plan lands first. Keep any other attribute the current bubble `<img>` has on `image` too.)
 
 `frontend/src/features/messages/components/MessageBubble.tsx`: pass `actionLabel={t('messageList.openPhoto')}` to the bubble `<PhotoPlayer variant="bubble" …>`.
+
+`frontend/src/design/primitives/Button.tsx` — `IconButton` gets `Button`'s blocked state. Add to `IconButtonProps`:
+
+```tsx
+    /** Translated reason the action is unavailable: aria-disabled, focusable, the reason as title and description, clicks swallowed (as `Button`). */
+    disabledReason?: string;
+```
+
+and replace the `IconButton` body with:
+
+```tsx
+    ({ icon, variant = 'ghost', size = 'md', shape, type = 'button', className, disabledReason, disabled, onClick, title, ...rest }, ref) => {
+        const resolved: IconButtonShape = shape ?? (FLOATING.has(variant) ? 'circle' : 'rounded');
+        const reasonId = useId();
+        const reason = disabledReason || undefined;
+        // No warnNoReason() here (unlike Button): existing icon buttons that pass `disabled` would start warning.
+        return (
+            <button
+                {...rest}
+                ref={ref}
+                type={type}
+                disabled={disabled && !reason}
+                aria-disabled={reason !== undefined ? true : undefined}
+                aria-describedby={reason !== undefined ? reasonId : rest['aria-describedby']}
+                title={reason ?? title}
+                data-shape={resolved}
+                className={cn(BASE, ICON_VARIANT[variant], ICON_SIZE[size], SHAPE[resolved], className)}
+                onClick={reason !== undefined ? (e) => { e.preventDefault(); e.stopPropagation(); } : onClick}
+            >
+                <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center">{icon}</span>
+                {reason !== undefined && <span id={reasonId} aria-hidden="true" className="sr-only">{reason}</span>}
+            </button>
+        );
+    },
+```
+
+(`BASE` already carries the `aria-disabled:` 40 % look.) In `docs/design/DESIGN_SYSTEM.md`, at the end of the `IconButton` paragraph ("… Sizes: `sm` (`h-8`) and `md` (`h-10`).") add: "It takes `disabledReason` like `Button` (focusable, 40 %, the reason as title and description)."
 
 Create `frontend/src/core/media/StepButtons.tsx`:
 
@@ -1878,8 +2158,8 @@ export interface StepButtonsProps {
 
 /**
  * Older / newer overlay buttons on a dark viewer (UI health A-K5; DESIGN_SYSTEM "Left is older,
- * right is newer"). At an end the button stays focusable and says why it does nothing
- * (aria-disabled + title), as the zoom buttons do.
+ * right is newer"). At an end the button keeps its colour at 40 %, stays focusable and says why it
+ * does nothing (`disabledReason`, DESIGN_SYSTEM §9).
  */
 export const StepButtons: React.FC<StepButtonsProps> = ({ hasOlder, hasNewer, onOlder, onNewer }) => {
     const { t } = useTranslation();
@@ -1889,19 +2169,17 @@ export const StepButtons: React.FC<StepButtonsProps> = ({ hasOlder, hasNewer, on
                 variant="overlay"
                 className="absolute left-4 top-1/2 z-10 -translate-y-1/2"
                 aria-label={t('media.older')}
-                title={hasOlder ? undefined : t('media.noOlder')}
-                aria-disabled={!hasOlder || undefined}
+                disabledReason={hasOlder ? undefined : t('media.noOlder')}
                 icon={<ChevronLeft />}
-                onClick={() => { if (hasOlder) onOlder(); }}
+                onClick={onOlder}
             />
             <IconButton
                 variant="overlay"
                 className="absolute right-4 top-1/2 z-10 -translate-y-1/2"
                 aria-label={t('media.newer')}
-                title={hasNewer ? undefined : t('media.noNewer')}
-                aria-disabled={!hasNewer || undefined}
+                disabledReason={hasNewer ? undefined : t('media.noNewer')}
                 icon={<ChevronRight />}
-                onClick={() => { if (hasNewer) onNewer(); }}
+                onClick={onNewer}
             />
         </>
     );
@@ -1936,15 +2214,15 @@ export const StepButtons: React.FC<StepButtonsProps> = ({ hasOlder, hasNewer, on
 - [ ] **Step 4: Refresh the bubble snapshot and run the tests**
 
 Run: `cd frontend && npx vitest run src/features/messages/components/MessageBubble.test.tsx -u && git diff -- src/features/messages/components/__snapshots__ | head -40`
-Expected: the picture snapshot's `<img>` is now inside `<button type="button" aria-label="Open photo" class="block h-full w-full cursor-pointer …">` and loses its own `cursor-pointer`; nothing else changes.
+Expected: the picture snapshot's `<img>` is now inside `<button type="button" aria-label="Open photo" class="block h-full w-full cursor-pointer …">`, loses its own `cursor-pointer` and keeps `decoding="async"` (added here if Plan F Task 6 has not run); nothing else changes.
 
-Run: `cd frontend && npx vitest run src/core/media src/features/messages src/i18n`
+Run: `cd frontend && npx vitest run src/core/media src/features/messages src/i18n src/design`
 Expected: PASS.
 
 - [ ] **Step 5: Commit**
 
 ```bash
-git add frontend/src
+git add frontend/src docs/design/DESIGN_SYSTEM.md
 uv run git commit -m "fix(a11y): open photos by keyboard and step viewers with buttons" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -2174,6 +2452,8 @@ and give the disconnected badge `aria-hidden="true"` (its meaning is now in the 
 Run: `cd frontend && npx vitest run src/shell src/core src/design src/features/messages src/i18n`
 Expected: PASS.
 
+The Badge's visually hidden count now joins the accessible name of every conversation button with unread messages ("3 unread 金村 美玖"). The existing exact-name queries for "Big Room" are scoped to the `#msg-…` avatars (`e2e/dialogs-chat.spec.ts`, `e2e/d2c-screens.spec.ts`) and are unaffected; if another suite selects a conversation row by its exact name while it has unread messages, change it to a pattern (`{ name: /Big Room/ }`) or to `aria-current`.
+
 - [ ] **Step 6: Real-browser check**
 
 Append to `frontend/e2e/a11y-keyboard.spec.ts` inside the `describe`:
@@ -2182,16 +2462,18 @@ Append to `frontend/e2e/a11y-keyboard.spec.ts` inside the `describe`:
   test('the skip link is the first Tab stop and lands in main; names are exposed', async ({ page }) => {
     await pinBigRoom(page, { messages })
     await page.goto('/')
-    await page.getByText('Big Room', { exact: true }).click()
-    await page.locator('body').click({ position: { x: 1, y: 1 } })
+    await expect(page.getByText('Big Room', { exact: true })).toBeVisible()
+    // Tab before any click: a click moves Chromium's sequential-focus start to the clicked node.
     await page.keyboard.press('Tab')
     const skip = page.getByRole('button', { name: 'Skip to content' })
     await expect(skip).toBeFocused()
     await expect(skip).toBeVisible()
     await page.keyboard.press('Enter')
     await expect(page.getByRole('main')).toBeFocused()
+    await page.getByText('Big Room', { exact: true }).click()
     await expect(page.getByRole('region', { name: 'Messages' })).toBeVisible()
-    await expect(page.getByRole('button', { name: 'Big Room', exact: true })).toHaveAttribute('aria-current', 'true')
+    // By aria-current, not by exact name: a row with unread messages is named "N unread Big Room".
+    await expect(page.locator('button[aria-current="true"]')).toContainText('Big Room')
   })
 ```
 
@@ -2250,9 +2532,29 @@ describe('TranscriptPanel readable and operable (UI health #12)', () => {
         expect(screen.getByRole('button', { name: /おはよう/ }).querySelector('[lang="ja"]')).toHaveClass('text-viewer');
     });
 
-    it('says whether the panel is open', () => {
+    it('says whether the panel is open, with a neutral toggle on light surfaces', () => {
         render(<TranscriptPanel segments={segments} currentTime={0} onSeek={vi.fn()} variant="dark" />);
-        expect(screen.getByRole('button', { name: /Voice Content/ })).toHaveAttribute('aria-expanded', 'false');
+        const toggle = screen.getByRole('button', { name: /Voice Content/ });
+        expect(toggle).toHaveAttribute('aria-expanded', 'false');
+        // DESIGN_SYSTEM §4: disclosure controls are neutral; the accent is only the active line's.
+        expect(toggle).toHaveClass('text-secondary', 'hover:text-primary', 'text-caption');
+        expect(toggle).not.toHaveAttribute('style');
+    });
+
+    it('keeps the accent on the active line only, and the lines on the type scale', () => {
+        const { container } = render(<TranscriptPanel segments={segments} currentTime={2.5} onSeek={vi.fn()} defaultExpanded variant="dark" />);
+        expect(screen.getByRole('button', { name: /ございます/ })).toHaveAttribute('style');
+        expect(screen.getByRole('button', { name: /おはよう/ })).not.toHaveAttribute('style');
+        expect(container.querySelector('.text-xs')).toBeNull();
+    });
+
+    it('marks a low-confidence line with a dotted underline that shows on both surfaces', () => {
+        const low = [{ start: 0, end: 2, text: 'たぶん', confidence: 0.2 }];
+        const { unmount } = render(<TranscriptPanel segments={low} currentTime={0} onSeek={vi.fn()} defaultExpanded variant="light" />);
+        expect(screen.getByText('たぶん')).toHaveClass('decoration-dotted', 'underline-offset-2', 'decoration-viewer');
+        unmount();
+        render(<TranscriptPanel segments={low} currentTime={0} onSeek={vi.fn()} defaultExpanded variant="dark" />);
+        expect(screen.getByText('たぶん').getAttribute('style')).toContain('--ds-semantic-warning-text');
     });
 });
 ```
@@ -2266,7 +2568,8 @@ In `frontend/src/core/media/TranscriptPanel.tsx`, below `const isLight = variant
 
 ```tsx
     // Text colours from tokens (UI health #12): ≥ 4.5:1 on the dark viewer (`light`) and on light
-    // surfaces (`dark`). The accent stays only on the dark variant's toggle and active time (data colour).
+    // surfaces (`dark`). The toggle is neutral (a disclosure control, DESIGN_SYSTEM §4); the accent
+    // stays only on the light-surface active line (its tint and time: current state).
     const tone = isLight
         ? { meta: 'text-viewer-muted', line: 'text-viewer-muted', active: 'text-viewer', activeTime: 'text-viewer-muted', activeBg: 'bg-viewer-control' }
         : { meta: 'text-muted', line: 'text-secondary', active: 'text-primary', activeTime: '', activeBg: '' };
@@ -2303,8 +2606,10 @@ Replace the main return's toggle header and segments with:
                 <button
                     onClick={() => setExpanded(!expanded)}
                     aria-expanded={expanded}
-                    className={cn('flex items-center gap-1 rounded-xs py-1 text-left text-caption focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent', isLight && tone.meta)}
-                    style={isLight ? undefined : { color: accentColor }}
+                    className={cn(
+                        'flex items-center gap-1 rounded-xs py-1 text-left text-caption transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
+                        isLight ? tone.meta : 'text-secondary hover:text-primary',
+                    )}
                     type="button"
                 >
                     <Chevron aria-hidden="true" className="h-3 w-3" />
@@ -2329,7 +2634,7 @@ Replace the main return's toggle header and segments with:
             {expanded && (
                 <div
                     ref={containerRef}
-                    className={`max-h-32 overflow-y-auto text-xs leading-relaxed mt-1${
+                    className={`max-h-32 overflow-y-auto text-caption leading-relaxed mt-1${
                         withBackdrop
                             ? ` rounded-sm px-2 py-1.5 backdrop-blur-sm ${isLight ? 'bg-black/40' : 'bg-white/85'}`
                             : ''
@@ -2365,8 +2670,13 @@ Replace the main return's toggle header and segments with:
                                 </span>
                                 <span
                                     lang="ja"
-                                    className={cn(isActive ? cn(tone.active, 'font-medium') : tone.line, lowConfidence && 'underline decoration-dotted underline-offset-[3px]')}
-                                    style={lowConfidence ? { textDecorationColor: 'var(--ds-semantic-warning-text)' } : undefined}
+                                    className={cn(
+                                        isActive ? cn(tone.active, 'font-medium') : tone.line,
+                                        lowConfidence && 'underline decoration-dotted underline-offset-2',
+                                        // The warning text colour is nearly invisible on the dark viewer: its underline token there.
+                                        lowConfidence && isLight && 'decoration-viewer',
+                                    )}
+                                    style={lowConfidence && !isLight ? { textDecorationColor: 'var(--ds-semantic-warning-text)' } : undefined}
                                     title={lowConfidence ? `⚠ ${t('transcription.lowConfidence', { pct: Math.round(seg.confidence * 100) })}` : undefined}
                                 >
                                     {seg.text}
@@ -2384,7 +2694,7 @@ Replace the main return's toggle header and segments with:
 
 Add `import { cn } from '../../utils/classnames';` and change `activeRef`'s type to `useRef<HTMLButtonElement>(null)` (it was a div ref). The `withBackdrop` palette classes stay as they are (no visual change requested; Plan H's widened guard ratchets them).
 
-Note: `underline-offset-[3px]` is an arbitrary value outside the guarded families (radius/shadow/text/spacing) and equals the old inline `textUnderlineOffset: '3px'`.
+Note: `underline-offset-2` (2 px) replaces the old inline 3 px offset (no new arbitrary value). The lines move from `text-xs` (12 px, off the scale) to `text-caption` (11 px), the hint from 10 px to `text-caption`, and the toggle from 12 px to `text-caption`: ⚑ Decision 10.
 
 - [ ] **Step 3: Readable muted text on sunken and the About heart ring**
 
@@ -2465,6 +2775,8 @@ describe('MessageBubble keyboard paths (UI health A-K4, A-K8)', () => {
         const star = screen.getByRole('button', { name: 'Favorite' });
         expect(star).toHaveAttribute('aria-pressed', 'false');
         expect(star).toHaveClass('opacity-0', 'focus-visible:opacity-100');
+        // No invisible hit target: a stray mouse click must not set a favourite on the official app.
+        expect(star).toHaveClass('pointer-events-none', 'focus-visible:pointer-events-auto', 'group-has-[:focus-visible]/row:pointer-events-auto');
         star.focus();
         await userEvent.keyboard('{Enter}');
         expect(onToggleFavorite).toHaveBeenCalledWith(7, false);
@@ -2497,10 +2809,26 @@ describe('ServiceRail reorder from the menu (UI health A-K6)', () => {
         expect(useAppStore.getState().serviceOrder.slice(0, 2)).toEqual(['sakurazaka46', 'hinatazaka46']);
     });
 
-    it('opens the menu at the button when the keyboard asks for it', () => {
+    it('opens the menu at the button when the event has no pointer position', () => {
+        // Chromium's keyboard contextmenu (Shift+F10, the Menu key) usually carries the element's
+        // coordinates, so this (0, 0) path rarely runs there; it is pinned here so it stays correct.
         renderRail();
-        fireEvent.contextMenu(screen.getAllByRole('button', { name: /46/ })[1], { clientX: 0, clientY: 0 });
+        const button = screen.getAllByRole('button', { name: /46/ })[1];
+        vi.spyOn(button, 'getBoundingClientRect').mockReturnValue(
+            { left: 8, right: 72, top: 140, bottom: 196, width: 64, height: 56, x: 8, y: 140, toJSON: () => ({}) } as DOMRect,
+        );
+        fireEvent.contextMenu(button, { clientX: 0, clientY: 0 });
+        const menu = screen.getByRole('menu');
+        expect(menu.style.left).toBe('72px');
+        expect(menu.style.top).toBe('140px');
         expect(screen.getByRole('menuitem', { name: 'Move up' })).toBeInTheDocument();
+    });
+
+    it('never opens its menu on Remove service when that is the only usable item (Task 7)', () => {
+        useAppStore.setState({ selectedServices: ['hinatazaka46'], serviceOrder: ['hinatazaka46', 'sakurazaka46', 'nogizaka46', 'yodel'] });
+        renderRail();
+        fireEvent.contextMenu(screen.getAllByRole('button', { name: /46/ })[0]);
+        expect(screen.getByRole('menu')).toHaveFocus();
     });
 });
 ```
@@ -2546,16 +2874,16 @@ In `frontend/src/features/messages/components/MessageBubble.tsx` (use the bubble
 (a) After `const favoriteStar = …` add:
 
 ```tsx
-    // Keyboard path to ★ (UI health A-K4): a toggle in the trailing column, shown only while keyboard
-    // focus is in this row (mouse users keep the context menu and see nothing new). Not on a sheltered
-    // or keepsake bubble.
+    // Keyboard path to ★ (UI health A-K4): a toggle in the trailing column, shown and clickable only
+    // while keyboard focus is in this row (mouse users keep the context menu, see nothing new and
+    // cannot hit it by accident). Not on a sheltered or keepsake bubble.
     const starToggle = !readOnly && !isUnread && onToggleFavorite && (
         <button
             type="button"
             aria-pressed={starred}
             aria-label={t('messageList.favorite')}
             onClick={handleToggleFavorite}
-            className="flex h-6 w-6 items-center justify-center rounded-sm text-secondary opacity-0 transition-opacity duration-fast ease-standard focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-has-[:focus-visible]/row:opacity-100"
+            className="pointer-events-none flex h-6 w-6 items-center justify-center rounded-sm text-secondary opacity-0 transition-opacity duration-fast ease-standard focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-has-[:focus-visible]/row:pointer-events-auto group-has-[:focus-visible]/row:opacity-100"
         >
             <Star aria-hidden="true" className={cn('h-3.5 w-3.5', starred && 'fill-current text-semantic-star')} />
         </button>
@@ -2744,7 +3072,7 @@ uv run git commit -m "docs(changelog): note the keyboard and screen reader fixes
 - **`dialog`** — Task 5 keeps the custom layer and adds inert as an interim because the guide's native path replaces it entirely ("The browser provides: inert page, focus containment, top layer … DON'T add `role="dialog"`, `aria-modal`, a focus trap, `inert` toggling"), which conflicts with the lifted-call layering this wave (Decision 4).
 - **`navigation-drawer`** — Task 5's off-canvas member list ("Mark the rest of the page `inert` while the drawer is open"), applied in both directions at narrow widths.
 - **`menu`** — Task 7 opens on the first item ("`nomemory` makes reopening start at the first item") with the existing roles (focusgroup is not used: Chromium-only behaviour would still need the current fallback).
-- **`persistent-toast-notifications`** — Task 6 suppresses the settings toast behind Settings/Setup ("DON'T surface toast notifications in the background while a modal dialog is open") and uses always-present regions ("Use an ARIA live region, ensuring that the container is present in the page on load").
+- **`persistent-toast-notifications`** — Task 6 holds the settings toast while Settings, Setup or any other dialog is open ("DON'T surface toast notifications in the background while a modal dialog is open") and uses always-present regions ("Use an ARIA live region, ensuring that the container is present in the page on load").
 - **`ime-safe-enter-submit`** — Task 2 returns early for every key while composing, with the Safari-safe pair ("Pairing `event.isComposing` with `event.keyCode === 229`").
 - **`carousel`** — Task 8's older/newer buttons ("Use HTML `<button>` elements for previous/next controls", "do not intercept keys from links, form fields, or buttons").
 - **`tabs`** — Task 11's tabs ("Set `role=tabpanel` on the tab panels and use `aria-labelledby`", "Do not add `aria-controls` to the tabs: no screen reader uses it").
@@ -2756,17 +3084,19 @@ uv run git commit -m "docs(changelog): note the keyboard and screen reader fixes
 Record results in `.superpowers/sdd/windows-acceptance.md` under "Plan G".
 
 1. **Narrator (Win+Ctrl+Enter), chat.** Tab into a chat with unread messages: Narrator says "Show unread photo, button" (or message/video/voice); Enter reveals it. The ⋯ menu reads "Reveal all unread". Narrator's scan mode (Caps Lock+Space) does not read text under an open dialog.
-2. **Narrator, players.** On a voice bubble: "Play, button", "Playback position, slider, 0:00 of 0:23", "Volume, slider, 100%". In the photo viewer: "Older, button" / "Newer, button"; at the newest photo, "Newer" says why it does nothing.
+2. **Narrator, players.** On a voice bubble: "Play, button", "Playback position, slider, 0:00 of 0:23", "Volume, slider, 100%". In the photo viewer: "Older, button" / "Newer, button"; at the newest photo, "Newer" is dimmed and says why it does nothing.
 3. **Search with an IME (Microsoft IME Japanese, then Chinese Pinyin/Bopomofo).** Type a word, use ↑/↓ to pick a candidate: the result selection does not move; after confirming, ↑/↓ moves the results and Enter opens one. Tab from the field reaches the filter button; Enter there opens the filters.
-4. **Keyboard only, 125 % / 150 % / 200 % scaling.** First Tab shows "Skip to content" at the top-left; Enter lands in the content. Menus open with the first item ringed. At 200 % page zoom (Ctrl + plus) with a narrow window, the member list slides in and Tab never reaches it while it is closed.
-5. **Dialogs.** Open Settings and Tab around: focus never leaves the dialog; trigger a save failure (e.g. a read-only output folder): the row shows the error and no toast appears behind the dialog.
+4. **Keyboard only, 125 % / 150 % / 200 % scaling.** First Tab shows "Skip to content" at the top-left; Enter lands in the content. Menus open with the first item ringed; the group rail's menu with one group opens without focusing "Remove service" (Enter does nothing). At 200 % page zoom (Ctrl + plus) with a narrow window, the member list slides in and Tab never reaches it while it is closed.
+5. **Dialogs.** Open Settings and Tab around: focus never leaves the dialog; trigger a save failure (e.g. a read-only output folder): the row shows the error and no toast appears over the dialog; close Settings: the toast shows and its Debug and Close work (⚑ Decision 6).
 6. **High Contrast themes** — checked in Plan H; here confirm the new focus rings are visible in "Night sky" (they are transparent outlines there and turn into the theme's focus colour).
+7. **Mouse only (no visible change).** Click Play or mute on a video and move the mouse away: the controls hide as before; seek with the mouse: no ring on the bar; drag a voice bubble's volume and move away: the slider collapses as before. In a chat, clicking near a bubble's trailing edge never sets a ★. Expected differences (⚑): the search member filter shows its ring on click (Decision 2); the transcript toggle is grey, not the group colour, and the transcript text is 11 px (Decision 10).
 
 ## Self-review
 
 - **Spec coverage:** every row of `report-accessibility.md` maps to a task here, to Plan H (InlineTranslation contrast/`aria-expanded`/`lang`, the forced-colours parts, the §12 gradient captions) or to a won't-fix with reason (Appendix A). UI-HEALTH-REPORT #3, #5, #7, #12 (transcript), #15 (interim) and the focus/keyboard quick wins (menu ring, first-item focus, `aria-current`, timeline region, `<main>` + skip link) are covered.
 - **Placeholders:** none; every step shows its code and every command its expected result.
-- **Names:** `useInert`, `ShelterOverlay`, `reveal`, `contentRef`, `onRevealAll`, `unreadCount`, `handleInputKeyDown`, `listId`, `optionId`, `onHover`, `searchAbortRef`, `syncInert`, `useMediaQuery`, `LiveRegion`, `SettingsErrorToast`, `StepButtons`, `actionLabel`, `SkipLink`, `sd-main`, `tone`, `starToggle`, `moveService`, `onTabsKeyDown` are consistent across tasks and tests.
+- **Pre-flight review** (`.superpowers/sdd/ui-plans-preflight-review.md`) applied: G1-1 (neutral Reveal-all icon), G2-1, G2-2 (⚑, accepted), G3-1/G3-2 and G4-1/G4-2 (keyboard-only holding and rings via `:focus-visible` / `has-[:focus-visible]:`, `ring-offset-0`), G5-1 (the settings toast waits while any dialog is open), G5-2, G6-1 (Setup falls back only to the generic save failure; one suppression breadcrumb), G7-1 (never open on a destructive item), G8-1, G8-2 (`IconButton` `disabledReason`), G9-1/2/3, G10-1 (neutral toggle), G10-2, G11-1 (no invisible ★ hit target), G11-2.
+- **Names:** `useInert`, `ShelterOverlay`, `reveal`, `contentRef`, `onRevealAll`, `unreadCount`, `handleInputKeyDown`, `listId`, `optionId`, `onHover`, `searchAbortRef`, `syncInert`, `useMediaQuery`, `mockFocusVisible`, `handleFocusCapture`, `LiveRegion`, `SettingsErrorToast`, `useAnyDialogOpen`, `setupFolderErrorKey`, `data-destructive`, `disabledReason` (on `IconButton`), `StepButtons`, `actionLabel`, `SkipLink`, `sd-main`, `tone`, `starToggle`, `moveService`, `onTabsKeyDown` are consistent across tasks and tests.
 
 ## Appendix A — Triage of `report-accessibility.md`
 
@@ -2776,16 +3106,16 @@ Record results in `.superpowers/sdd/windows-acceptance.md` under "Plan G".
 | A-K2 | Search swallows Tab, hijacks Enter, no combobox roles, IME arrows (Keyboard, Top 2) | task G2 |
 | A-K3 | Chat pictures open via `<img onClick>` (Keyboard) | task G8 |
 | A-K4 | Favourite only via right-click / long-press (Keyboard) | task G11 |
-| A-K5 | Photo viewers without prev/next buttons; frame arrows cancel slider keys (Keyboard) | task G8 |
-| A-K6 | Service reorder by drag only; remove via context menu only (Keyboard) | task G11 (menu opens from Shift+F10 / Menu key too) |
+| A-K5 | Photo viewers without prev/next buttons; frame arrows cancel slider keys (Keyboard) | task G8 (`IconButton` gains `disabledReason` for the end states) |
+| A-K6 | Service reorder by drag only; remove via context menu only (Keyboard) | task G11 (menu opens from Shift+F10 / Menu key too; it never opens on "Remove service", G7) |
 | A-K7 | Timeline `tabIndex=0` wrapper without role/name; Home/End ignore target (Keyboard) | task G9 |
 | A-K8 | Follow-up bubble time only on hover (Keyboard) | task G11 |
-| A-M1 | VideoPlayer unnamed controls, invisible seek, auto-hide while focused, CC state, Space on buttons (Media) | task G3 |
+| A-M1 | VideoPlayer unnamed controls, invisible seek, auto-hide while focused, CC state, Space on buttons (Media) | task G3 (keyboard focus only: mouse use behaves as today) |
 | A-M2 | VoicePlayer unnamed play/seek, title-only mute, hidden-but-tabbable volume, window-wide keys (Media) | task G4 |
 | A-M3 | Transcript segments are `div onClick` (Media) | task G10 |
 | A-D1 | Custom div dialogs; background never inert (Dialogs) | task G5 (interim `inert`); native `<dialog>` won't-fix this wave (Decision 4) |
-| A-D2 | Settings error toast outside the trap; toasts mount with text; VideoPlayer toast no role (Dialogs) | task G6 |
-| A-D3 | Menu focuses the container; focused item 1.1:1 (Dialogs) | task G7 |
+| A-D2 | Settings error toast outside the trap; toasts mount with text; VideoPlayer toast no role (Dialogs) | task G6 (the settings toast waits while any dialog is open) |
+| A-D3 | Menu focuses the container; focused item 1.1:1 (Dialogs) | task G7 (first enabled, non-destructive item) |
 | A-D4 | Filter listbox of tabbable option buttons; inputs `outline-none` without replacement (Dialogs) | task G2 (suggestions become a button group; filter input ring); main search field ring ⚑ (Decision 2) |
 | A-D5 | Tabs without arrows/tabpanel; underline invisible in forced colours; ←/→ on tab changes photo (Dialogs) | task G11; the forced-colours underline is Plan H Task 2 (`[aria-selected="true"]` outline) |
 | A-D6 | Covered content focusable (off-canvas sidebar, list under the call) (Dialogs) | task G5 |

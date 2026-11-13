@@ -12,12 +12,12 @@ First of three plans for the UI-health findings of the 0.5.0 audit (`/home/xtork
 | 2 | #1 part 2, P-B1b/c: ★ rebuilds the timeline; two date parses per message; the room cache is unbounded |
 | 3 | #2 part 1, P-A1: the 1 Hz sync-progress poll re-renders the whole visible UI |
 | 4 | #2 part 2, P-A2, P-A4: inline callbacks defeat `React.memo(MessageBubble)`; `useAppStore()` without a selector |
-| 5 | #11, P-A5: switching to Blogs or Memories unmounts Messages and throws its room cache away |
+| 5 | #11, P-A5: switching to Blogs or Memories unmounts Messages and throws its room cache away (kept mounted, with its dialogs hidden and its side effects gated while hidden) |
 | 6 | #8, P-C1, P-C3: chat photos decode full-size originals; every voice/video bubble asks for a transcript |
 | 7 | P-B2, P-B3: reveal is O(U²·R); the closed gallery and favourites dialogs sort on every change |
 | 8 | P-F1: the sidebar polls two endpoints every 2 s and re-sorts the grid on each tick |
 | 9 | #13 (part), P-E2: no code splitting — Memories and html-to-image are in the main chunk |
-| 10 | P-B6, P-B7, P-D2, P-C2b: `Intl.DateTimeFormat` per call, unthrottled rail hover, uncapped card stagger, blog images all eager |
+| 10 | P-B6 (formatter part), P-B7, P-D2, P-C2b: `Intl.DateTimeFormat` per call, uncapped card stagger, blog images all eager (the rail hover throttle is won't-fix, Appendix A) |
 | 11 | P-D1a (owner-gated): three 100 px-blurred orbs animate forever behind the blog feed |
 | 12 | CHANGELOG and final verification |
 
@@ -32,7 +32,7 @@ First of three plans for the UI-health findings of the 0.5.0 audit (`/home/xtork
 - Worktree: `/home/xtorker/repos/Project-Saka/SakaDesk-hardening`, branch `fix/050-security-hardening`. **Re-read every file before editing it and match code by text, not line number.** Where a snippet shows surrounding code that has changed (another plan may have landed first), keep the current code and apply only the change described.
 - Runtime: WebView2 (evergreen Chromium) only. Current stable Chromium features are allowed without fallbacks (UI-HEALTH-REPORT §4).
 - **UI design system is mandatory** (`SakaDesk-hardening/CLAUDE.md`, `docs/design/DESIGN_SYSTEM.md`): tokens and primitives from `frontend/src/design/`; no hex/`rgb()`/`hsl()` literals, no arbitrary radius/shadow/text/spacing values, no named palette classes; `frontend/src/design/guard.test.ts` stays green. **No visual change** except where the Decisions section names one.
-- i18n: any new user-facing string gets a key in all five locales (`frontend/src/i18n/locales/{en,ja,zh-TW,zh-CN,yue}.json`). This plan adds none.
+- i18n: any new user-facing string gets a key in all five locales (`frontend/src/i18n/locales/{en,ja,zh-TW,zh-CN,yue}.json`). This plan adds one (`memories.chunkFailed`, Task 9).
 - If `frontend/src/design/drift-guard-baseline.json` exists (Plan H Task 9), a task that removes palette classes or arbitrary values (e.g. Task 11's `blur-[100px]`) lowers it: `UPDATE_DRIFT_BASELINE=1 npx vitest run src/design/guard.test.ts` (the diff only goes down).
 - Breadcrumbs: every new decision, skip or failure path calls `clientLog(event, fields)` (`frontend/src/utils/clientLog.ts`) with codes, counts and ids only — never text, names, URLs or paths. This plan reuses existing events with new `outcome` codes (the backend accepts any `^[a-z0-9_]{1,40}$` value); a new event name would need adding to both `clientLog.ts` and `backend/api/client_log.py`.
 - Frontend commands run from `frontend/`: `npx vitest run <path>`, `npx tsc --noEmit`, `npm run lint` (0 errors, ≤ 20 warnings). E2E: `npm run build && npx playwright test <spec> --reporter=line` with port 8000 free (the config starts the backend in test mode).
@@ -47,16 +47,21 @@ First of three plans for the UI-health findings of the 0.5.0 audit (`/home/xtork
 2. **`last_read_id` is no longer sent with the room fetch.** The backend keys the ETag on it, but the frontend never reads `unread_count` (it counts unread from its own read state) and `max_message_id` does not depend on it (`backend/api/content.py` `_load_member_messages` / `_load_group_messages`). Sending it made every read position a different ETag.
 3. **★ is an override map, not a rewrite of the room.** `favoriteOverrides` (message id → starred) lives in `MessagesFeature`; the bubble reads `isFavorite`, the ConversationMenu dialogs get the messages with the overrides applied. A fresh 200 prunes overrides the server now agrees with; a saved ★ also patches the cached room so a later visit shows it. The timeline is never rebuilt for a ★.
 4. **Room cache bound:** at most 20 rooms (unchanged) **and** 60 000 messages in total; the oldest rooms are evicted first and the room just stored always stays.
-5. **Paging the timeline (`firstItemIndex`/`startReached`) and a timeline Worker are won't-fix in this wave.** Every whole-history consumer (calendar jump, media gallery, favourites, search target, unread arrows, letters merge) would need a second data path. Tasks 1–2 remove the repeat work; the first open of a huge room keeps one parse. Revisit if Task 1's e2e shows a long task over 200 ms on the 5 000-message fixture.
-6. **Sync progress has one store** (`frontend/src/shell/syncProgressStore.ts`, zustand) written only by `useSync`; `App` no longer holds it. Consumers subscribe with selectors: the sync dialog and the inline first-sync view read the progress, the chat header pill reads the active progress, `MessagesFeature` and `ContentArea` read booleans. This is the primary store (not a mirror), per the single-source-of-truth rule.
-7. **Messages stays mounted after its first visit.** When another feature shows it is hidden with `content-visibility: hidden` (layout and scroll state kept, skipped from rendering, focus and the accessibility tree) plus `inert`. While hidden: the sidebar does not poll, the incoming call is off (as when it unmounted), the open chat is not reported as viewed (notifications for it come through), and a finished sync only marks the room for a refresh. Showing it again runs one background refresh (cheap through Task 1), which also re-evaluates the incoming call exactly as the old remount did.
-8. **Chat photos use the thumbnail route only when it does not upscale:** the bubble box (≤ 320 × 500 CSS px) × device pixel ratio must fit in one of the allowed widths (160/320/480/640); otherwise, and for `.gif` files (a thumbnail is one still frame) and pictures without stored dimensions, the original stays. At 100–150 % scaling chat photos come from thumbnails; at 200 % they stay originals. No visible difference.
+5. **Paging the timeline (`firstItemIndex`/`startReached`) and a timeline Worker are won't-fix in this wave.** Every whole-history consumer (calendar jump, media gallery, favourites, search target, unread arrows, letters merge) would need a second data path. Tasks 1–2 remove the repeat work; the first open of a huge room keeps one parse. Revisit if Task 1's e2e annotation `longest-task-first-open-ms` (5 000-message fixture) exceeds 200 ms.
+6. **Sync progress has one store** (`frontend/src/shell/syncProgressStore.ts`, zustand) written only by `useSync`; `App` no longer holds it. Consumers subscribe with selectors: the sync dialog and the inline first-sync view read the progress, the chat header pill reads the active progress, `MessagesFeature` and `ContentArea` read booleans. `byService` is the primary data (no copy left in `App`). `active` is, as before, a derived copy: a microtask follower keeps it equal to the active service's (or the running sequence step's) entry, and `useSync` still writes it directly in a few places (the lost-connection error, the start of a sequence). This is a like-for-like move of today's two pieces of state, so the single-source rule is claimed for the store, not for `active`.
+7. **Messages stays mounted after its first visit.** When another feature shows it is hidden with `content-visibility: hidden` (layout and scroll state kept, skipped from rendering, focus and the accessibility tree) plus `inert`, and `useFeatureActive()` is false inside it (the context reaches portaled children too). Mechanism, in one place per concern:
+   - **Its dialogs and menus are not rendered while hidden.** `Modal` and `Menu` render nothing when `useFeatureActive()` is false (they are portaled to `<body>`, outside `KeepMounted`, so neither `content-visibility` nor `inert` would hide them). Their open state is kept, so a dialog left open (reachable only through a toast click or a search result that switches feature) comes back with Talk. Unmounting pops the dialog stack, so `#root` is never left inert (Plan G Task 5).
+   - **Side effects wait for Talk to show.** Gated on `featureActive`: the sidebar poll; the room fetch on a finished sync and on a selection change (`chat_load outcome=deferred`, `reason=hidden` / `hidden_select`); restoring the new group's saved room after a group switch made from Blogs or Memories (`reason=hidden_restore`, restored on the hidden → shown edge); the read sync to the official app (never fired while hidden; the hidden → shown edge counts as opening the room, as the remount did; `reason=hidden_read_sync`); milestones (`useMilestone` gets no room key); the room extras (letters, profile, the once-a-day streak keep the last shown room's answers and ask nothing new); the open chat is not reported as viewed (notifications for it come through); the incoming call is off.
+   - **Showing it again** runs one background refresh (cheap through Task 1), restores a deferred room and lets the extras catch up.
+   - ⚑ **Differences from the old unmount** (default: accepted): an incoming call declined before the trip does not ring again on return (`useIncomingCall` keeps its dismissed set; the remount cleared it); a call ringing when Talk is hidden ends with the hook's off path, logged `call_cancel reason=disabled`; Messages-side UI state (an open drawer, a scrolled list, an open dialog) survives the trip.
+8. **Chat photos use a thumbnail only when a pre-generated one covers the box, otherwise the original (rule: no visible difference and no extra backend work).** The bubble box (≤ 320 × 500 CSS px, fitted like `MediaContainer`) × device pixel ratio must fit in a width at or under `THUMB_PREGEN_WIDTH` (480: pre-generated for every picture), the same cap `thumbWidthFor` uses, and the chat then asks for the 480 itself: 320 / 160 would be derived on demand and 640 is rendered on demand only (`backend/services/photo_thumb.py` docstring), so neither is asked for. A picture whose long side is already ≤ 480 px keeps its original (a thumbnail would only re-encode it). GIFs (a thumbnail is one still frame) and pictures without stored dimensions keep the original. In practice: 100 % scaling uses thumbnails; landscape photos also at 125–150 %; portrait photos and anything at 200 % keep the original. ⚑ Residual (default: accepted): a picture synced moments ago, before the background worker made its 480, is rendered once on its first request (as in the media gallery), so its pulse can last a little longer the first time.
 9. **Transcript lookups only when a transcript can show:** a voice/video bubble asks `GET /api/transcription/...` only when transcription is on and the bubble is revealed, and aborts on unmount. ⚑ With transcription off, a bubble video opened full screen no longer shows subtitles from a cached transcript (the user turned transcripts off).
-10. **Sidebar poll 2 s → 10 s**, and an unchanged groups payload or unread map sets no state. A sync end, a reveal and a room switch still refresh at once (existing triggers). An unchanged streak logs `sidebar_load` `outcome=unchanged` once.
-11. **Code splitting:** Memories (`React.lazy`, Suspense fallback = the pane `StatusBlock` loading state) and `html-to-image` (dynamic import at export time). Locales stay bundled (the startup language decision is synchronous and ordered in `shell/language.ts`; 5 JSON files cost a few ms) and framer-motion stays (three fades; replacing them is a motion rewrite for little gain).
-12. ⚑ **Card stagger capped at 8 steps** (`min(index, 8) × 50 ms`) in the blog feed and the member timeline: in a long list the last cards appear within 0.4 s instead of several seconds. Same animation, shorter tail.
+10. ⚑ **Sidebar poll 2 s → 10 s**, and an unchanged groups payload or unread map sets no state. A sync end, a reveal and a room switch still refresh at once (existing triggers). Visible: without such a trigger (a read made on the phone and picked up by a sync this window did not see end), the conversation list and its unread badges update up to 10 s later instead of 2 s (default: accepted). An unchanged streak logs `sidebar_load` `outcome=unchanged` once.
+11. **Code splitting:** Memories (`React.lazy`, Suspense fallback = the pane `StatusBlock` loading state, inside a small error boundary that shows `StatusBlock kind="error"` with Retry if the chunk fails, so a failed chunk never replaces the app with the crash screen) and `html-to-image` (dynamic import at export time). ⚑ Visible: the first Memories open shows the loading state for a moment (default: accepted). Locales stay bundled (the startup language decision is synchronous and ordered in `shell/language.ts`; 5 JSON files cost a few ms) and framer-motion stays (three fades; replacing them is a motion rewrite for little gain).
+12. ⚑ **Card stagger capped at 8 steps** (`min(index, 8) × 50 ms`, in `features/blogs/components/stagger.ts`) in the blog feed and the member timeline: in a long list the last cards appear within 0.4 s instead of several seconds. Same animation, shorter tail (default: apply).
+12a. ⚑ **Blog post images after the first load lazily** (`loading="lazy"`, all `decoding="async"`): they appear as you scroll the reader instead of all at once (default: apply; it also keeps pictures above a search highlight from pushing it away).
 13. ⚑ **Task 11 is owner-gated:** dropping `blur-[100px]` + `will-change-transform` from the blog feed's orbs (they are radial gradients already) changes the look slightly. Execute it only after the owner compares the before/after screenshots it produces. The caption cards' `backdrop-blur-lg` is the accepted original look (DESIGN_SYSTEM "The blog feed") and stays.
-14. **Measurement without new dependencies:** render counts through `React.memo` test doubles and Profiler-free counters in vitest; real-browser behaviour (304 passthrough, scroll state across a feature switch) in a new `frontend/e2e/perf-chat.spec.ts`; long tasks via `PerformanceObserver('longtask')` inside the page. `web-vitals` is not added.
+14. **Measurement without new dependencies:** render counts through `React.memo` test doubles and Profiler-free counters in vitest; real-browser behaviour (304 passthrough, scroll state across a feature switch) in `frontend/e2e/perf-chat.spec.ts` (Task 1, landed, asserts the page's own `chat_load outcome=not_modified` breadcrumb and records long tasks as test annotations via `PerformanceObserver('longtask')`). `web-vitals` is not added.
 
 ## File Structure
 
@@ -72,20 +77,24 @@ First of three plans for the UI-health findings of the 0.5.0 audit (`/home/xtork
 | `frontend/src/shell/hooks/useSync.ts` | modify (Tasks 3, 4) | writes the store; selector |
 | `frontend/src/shell/App.tsx`, `frontend/src/shell/components/SyncModal.tsx`, `frontend/src/core/layout/{Layout,ContentArea,InlineSyncView}.tsx` | modify (Tasks 3–5, 9) | store consumers; keep-mounted; lazy Memories |
 | `frontend/src/features/messages/components/SyncStatusPill.tsx` | create (Task 3) | the chat header's sync pill |
-| `frontend/src/core/layout/KeepMounted.tsx`, `frontend/src/core/layout/featureActive.ts`, `frontend/src/hooks/useInert.ts` | create (Task 5) | hidden-but-mounted feature, its context, the `inert` hook |
+| `frontend/src/core/layout/KeepMounted.tsx`, `frontend/src/design/featureActive.ts`, `frontend/src/hooks/useInert.ts` | create (Task 5) | hidden-but-mounted feature, its context (design level: the primitives read it), the `inert` hook |
+| `frontend/src/design/primitives/{Modal,Menu}.tsx` | modify (Task 5) | render nothing inside a hidden feature |
+| `frontend/src/core/layout/MemoriesChunkBoundary.tsx`, `frontend/src/i18n/locales/*.json` | create / modify (Task 9) | Retry instead of the crash screen when the Memories chunk fails; its one string |
 | `frontend/src/hooks/useVisiblePolling.ts` | modify (Task 5) | `enabled` flag |
 | `frontend/src/features/messages/components/MemberList.tsx` | modify (Tasks 4, 5, 8) | `React.memo`, paused polling, unchanged payloads |
 | `frontend/src/features/messages/mediaUrl.ts`, `frontend/src/core/media/PhotoPlayer.tsx`, `frontend/src/hooks/useTranscription.ts` | modify (Task 6) | chat thumbnail width, `decoding="async"`, aborted lookups |
 | `frontend/src/features/messages/readStateStore.ts`, `frontend/src/utils/timeOrder.ts`, `frontend/src/core/modals/FavoritesModal.tsx`, `frontend/src/core/media/MediaGalleryModal.tsx` | modify (Task 7) | linear reveal; sorting once; closed dialogs idle |
 | `frontend/src/config/uiConstants.ts` | modify (Task 8) | `sidebarMs: 10000` |
 | `frontend/src/features/memories/recap/posterImage.ts` | modify (Task 9) | dynamic `html-to-image` |
-| `frontend/src/utils/intlCache.ts`, `frontend/src/utils/dateFormatters.ts`, `frontend/src/features/blogs/components/{TimelineRail,RecentPostsFeed,MemberTimelineModal}.tsx`, `frontend/src/features/blogs/blogHtml.ts` | create/modify (Task 10) | formatter cache, rAF hover, stagger cap, image hints |
+| `frontend/src/utils/intlCache.ts`, `frontend/src/utils/dateFormatters.ts`, `frontend/src/features/blogs/components/stagger.ts`, `frontend/src/features/blogs/components/{RecentPostsFeed,MemberTimelineModal}.tsx`, `frontend/src/features/blogs/blogHtml.ts` | create/modify (Task 10) | formatter cache, stagger cap, image hints |
 | `frontend/src/core/common/DynamicBackground.tsx` | modify (Task 11, gated) | orbs without filter |
 | `frontend/e2e/perf-chat.spec.ts` | create (Tasks 1, 5) | real-browser checks |
 
 ---
 
 ### Task 1: An unchanged room is never parsed or re-rendered again
+
+Landed: d74c6725..1bfd4ee0
 
 **Files:**
 - Modify: `frontend/src/features/messages/MessagesFeature.tsx` (`MessageCacheEntry`, `fetchMessages`, its three callers)
@@ -506,7 +515,7 @@ uv run git commit -m "perf(chat): skip unchanged rooms with the ETag on refresh"
 - Create: `frontend/src/features/messages/roomCache.ts`, `frontend/src/features/messages/roomCache.test.ts`
 - Modify: `frontend/src/features/messages/timeline/buildTimeline.ts`, `frontend/src/features/messages/timeline/buildTimeline.test.ts`
 - Modify: `frontend/src/features/messages/MessagesFeature.tsx`, `frontend/src/features/messages/components/MessageList.tsx`, `frontend/src/features/messages/components/MessageBubble.tsx`
-- Create: `frontend/src/features/messages/MessagesFeature.timeline.test.tsx`
+- Create: `frontend/src/features/messages/MessagesFeature.timeline.test.tsx`, `frontend/src/features/messages/MessagesFeature.evicted.test.tsx`
 
 **Interfaces:**
 - Consumes: `MessageCacheEntry` with `etag` (Task 1).
@@ -770,6 +779,7 @@ import { http, HttpResponse } from 'msw';
 import { server } from '../../__tests__/mocks/server';
 import i18n from '../../i18n';
 import { useAppStore } from '../../store/appStore';
+import { clientLog } from '../../utils/clientLog';
 import * as timelineModule from './timeline/buildTimeline';
 import { MessagesFeature } from './MessagesFeature';
 
@@ -778,6 +788,10 @@ vi.mock('./timeline/buildTimeline', async (importOriginal) => {
     const actual = await importOriginal<typeof import('./timeline/buildTimeline')>();
     return { ...actual, buildTimeline: vi.fn(actual.buildTimeline) };
 });
+vi.mock('../../utils/clientLog', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../utils/clientLog')>()),
+    clientLog: vi.fn(),
+}));
 
 const SERVICE = 'hinatazaka46';
 const ROOM = '日向坂46/messages/34 金村 美玖/58 金村 美玖';
@@ -800,13 +814,25 @@ function serve() {
     );
 }
 
-const props = { appSettings: null, syncVersion: 0 };
+// Interim until Task 3 removes the prop: MessagesFeature still reads `syncProgress.state`.
+const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };
 const star = () => document.querySelector('.text-semantic-star');
+
+/** Open the bubble's context menu (retrying on the current node: the bubble can be replaced right after it appears) and click ★. */
+async function toggleStar() {
+    await waitFor(() => {
+        if (!screen.queryByRole('menuitem', { name: /favorites/ })) fireEvent.contextMenu(screen.getByText('こんにちは'));
+        expect(screen.getByRole('menuitem', { name: /favorites/ })).toBeInTheDocument();
+    });
+    await userEvent.click(screen.getByRole('menuitem', { name: /favorites/ }));
+}
 
 describe('MessagesFeature: ★ without rebuilding the timeline (UI health #1)', () => {
     beforeAll(async () => { await i18n.changeLanguage('en'); });
     beforeEach(() => {
         vi.mocked(timelineModule.buildTimeline).mockClear();
+        vi.mocked(clientLog).mockClear();
+        vi.spyOn(console, 'error').mockImplementation(() => {});
         useAppStore.setState({
             activeService: SERVICE,
             selectedConversations: { [SERVICE]: { path: ROOM, name: '金村 美玖', isGroupChat: false } },
@@ -819,24 +845,108 @@ describe('MessagesFeature: ★ without rebuilding the timeline (UI health #1)', 
         await screen.findByText('こんにちは');
         const builds = vi.mocked(timelineModule.buildTimeline).mock.calls.length;
 
-        await waitFor(() => {
-            if (!screen.queryByRole('menuitem', { name: /favorites/ })) fireEvent.contextMenu(screen.getByText('こんにちは'));
-            expect(screen.getByRole('menuitem', { name: /favorites/ })).toBeInTheDocument();
-        });
-        await userEvent.click(screen.getByRole('menuitem', { name: /favorites/ }));
+        await toggleStar();
 
         await waitFor(() => expect(star()).not.toBeNull());
         expect(vi.mocked(timelineModule.buildTimeline).mock.calls.length).toBe(builds);
     });
+
+    it('takes the star back and leaves a code breadcrumb when the save fails', async () => {
+        server.use(http.post('/api/favorites/:id', () => new HttpResponse(null, { status: 500 })));
+        render(<MessagesFeature {...props} />);
+        await screen.findByText('こんにちは');
+        await toggleStar();
+        await waitFor(() => expect(vi.mocked(clientLog)).toHaveBeenCalledWith('chat_load', { outcome: 'favorite_not_saved' }));
+        expect(star()).toBeNull();
+    });
 });
 ```
 
-> Until Task 3 lands, use `const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };` here too.
+Create `frontend/src/features/messages/MessagesFeature.evicted.test.tsx` (a 304 for a room the 60 000-message bound evicted while it stays on screen):
+
+```tsx
+import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
+import { render, screen, waitFor } from '@testing-library/react';
+import { http, HttpResponse } from 'msw';
+import { server } from '../../__tests__/mocks/server';
+import i18n from '../../i18n';
+import { useAppStore } from '../../store/appStore';
+import { clientLog } from '../../utils/clientLog';
+import type { Timeline } from './timeline/buildTimeline';
+import { MessagesFeature } from './MessagesFeature';
+
+// vi.mock factories are hoisted above the imports: shared state comes from vi.hoisted.
+const { timelines } = vi.hoisted(() => ({ timelines: [] as Timeline[] }));
+vi.mock('./components/MessageList', () => ({
+    MessageList: (p: { timeline: Timeline }) => { timelines.push(p.timeline); return <div data-testid="list" />; },
+}));
+vi.mock('react-virtuoso', async () => (await import('../../__tests__/virtuosoMock')).virtuosoMock);
+// Stands in for the 60 000-message bound evicting the room on screen: nothing stays cached.
+vi.mock('./roomCache', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('./roomCache')>()),
+    storeRoom: (cache: Map<string, unknown>) => { cache.clear(); },
+}));
+vi.mock('../../utils/clientLog', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../utils/clientLog')>()),
+    clientLog: vi.fn(),
+}));
+
+const SERVICE = 'hinatazaka46';
+const ROOM = '日向坂46/messages/34 金村 美玖/58 金村 美玖';
+const member = { id: '58', name: '金村 美玖', path: ROOM, thumbnail_local: null, thumbnail: null, portrait: null, phone_image: null };
+// Interim until Task 3 removes the prop: MessagesFeature still reads `syncProgress.state`.
+const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };
+
+describe('MessagesFeature: a 304 for an evicted room (UI health #1)', () => {
+    beforeAll(async () => { await i18n.changeLanguage('en'); });
+    beforeEach(() => {
+        timelines.length = 0;
+        vi.mocked(clientLog).mockClear();
+        useAppStore.setState({
+            activeService: SERVICE,
+            selectedConversations: { [SERVICE]: { path: ROOM, name: '金村 美玖', isGroupChat: false } },
+        });
+        let calls = 0;
+        server.use(
+            http.get('/api/content/groups', () => HttpResponse.json({ groups: [], last_sync: {} })),
+            http.get('/api/content/messages_by_path', () => {
+                calls += 1;
+                if (calls > 1) return new HttpResponse(null, { status: 304, headers: { ETag: '"v1"' } });
+                return HttpResponse.json({
+                    member,
+                    messages: [{ id: 1, timestamp: '2024-01-15T09:00:00Z', type: 'text', content: 'こんにちは', is_favorite: false, media_file: null, width: null, height: null }],
+                    total_count: 1,
+                    max_message_id: 1,
+                }, { headers: { ETag: '"v1"' } });
+            }),
+            http.get('/api/chat/letters_local', () => HttpResponse.json({ letters: [] })),
+            http.get('/api/account/profile', () => HttpResponse.json({ name: 'me', avatars: [] })),
+            http.get('/api/content/profile_images', () => HttpResponse.json({ kinds: {} })),
+            http.get('/api/chat/streak/:id', () => HttpResponse.json({ status: 'unavailable' })),
+        );
+    });
+
+    it('keeps the room on screen (no error state, same timeline) and logs the kept room', async () => {
+        const { rerender, findByTestId } = render(<MessagesFeature {...props} />);
+        await findByTestId('list');
+        const shown = timelines[timelines.length - 1];
+
+        rerender(<MessagesFeature {...props} syncVersion={1} />);
+        await waitFor(() => expect(vi.mocked(clientLog)).toHaveBeenCalledWith('chat_load', { outcome: 'kept_room', reason: 'error', error_code: 304 }));
+
+        expect(screen.getByTestId('list')).toBeInTheDocument();
+        expect(timelines[timelines.length - 1]).toBe(shown);
+        expect(screen.queryByText(/Couldn't load the messages/)).toBeNull();
+    });
+});
+```
+
+(Task 1's background-refresh path already does this: the 304 with no cached entry is a failed background refresh, which keeps the room on screen. The test pins it now that the message bound makes eviction possible.)
 
 - [ ] **Step 6: Run it to verify it fails**
 
 Run: `cd frontend && npx vitest run src/features/messages/MessagesFeature.timeline.test.tsx`
-Expected: FAIL — `buildTimeline` is called once more after the click (the toggle maps the whole message array).
+Expected: FAIL — `buildTimeline` is called once more after the click (the toggle maps the whole message array), and the failed save logs no breadcrumb.
 
 - [ ] **Step 7: Wire the overrides, the cache bound and the bubble prop**
 
@@ -921,6 +1031,8 @@ and below the block add:
         if (!saved) {
             if (overridesRoomRef.current === room) setFavoriteOverrides(prev => withFavorite(prev, messageId, currentState));
             console.error('Failed to toggle favorite');
+            // Code only (no ids, no text), on an existing event: a ★ that did not save is findable in debug.log.
+            clientLog('chat_load', { outcome: 'favorite_not_saved' });
             return;
         }
         if (room) patchCachedFavorite(room, messageId, !currentState);
@@ -973,7 +1085,7 @@ In `frontend/src/features/messages/components/MessageBubble.tsx`:
 - [ ] **Step 8: Run the tests**
 
 Run: `cd frontend && npx vitest run src/features/messages`
-Expected: PASS (including `MessagesFeature.favorite.test.tsx`: the star still lights at once, stays on save and goes out on failure).
+Expected: PASS (including `MessagesFeature.favorite.test.tsx`: the star still lights at once, stays on save and goes out on failure; and `MessagesFeature.evicted.test.tsx`, which already passes on Task 1's code and pins the evicted-room path).
 
 - [ ] **Step 9: Commit**
 
@@ -987,7 +1099,7 @@ uv run git commit -m "perf(chat): toggle stars and build timelines without whole
 ### Task 3: Sync progress lives in a store; a tick re-renders only the progress views
 
 **Files:**
-- Create: `frontend/src/shell/syncProgressStore.ts`, `frontend/src/shell/syncProgressStore.test.ts`
+- Create: `frontend/src/shell/syncProgressStore.ts`, `frontend/src/shell/syncProgressStore.test.tsx`
 - Create: `frontend/src/features/messages/components/SyncStatusPill.tsx`
 - Modify: `frontend/src/shell/hooks/useSync.ts`, `frontend/src/shell/hooks/useSync.test.ts`
 - Modify: `frontend/src/shell/App.tsx`, `frontend/src/shell/components/SyncModal.tsx`
@@ -1000,10 +1112,11 @@ uv run git commit -m "perf(chat): toggle stars and build timelines without whole
 
 - [ ] **Step 1: Write the failing store test**
 
-Create `frontend/src/shell/syncProgressStore.test.ts`:
+Create `frontend/src/shell/syncProgressStore.test.tsx`:
 
-```ts
+```tsx
 import { describe, it, expect, beforeEach } from 'vitest';
+import { act, render } from '@testing-library/react';
 import { IDLE_PROGRESS, resetSyncProgressStore, selectIsSyncing, setActiveProgress, setServiceProgress, useSyncProgressStore } from './syncProgressStore';
 
 describe('syncProgressStore', () => {
@@ -1023,23 +1136,25 @@ describe('syncProgressStore', () => {
         expect(selectIsSyncing(s)).toBe(true);
     });
 
-    it('notifies a selector only when its slice changes', () => {
-        const seen: boolean[] = [];
-        const unsub = useSyncProgressStore.subscribe((s, prev) => {
-            if (selectIsSyncing(s) !== selectIsSyncing(prev)) seen.push(selectIsSyncing(s));
-        });
-        setActiveProgress({ state: 'running', completed: 1 });
-        setActiveProgress({ state: 'running', completed: 2 });
-        setActiveProgress({ state: 'complete' });
-        unsub();
-        expect(seen).toEqual([true, false]);
+    it('re-renders a selector subscriber only when its slice changes', () => {
+        const renders: boolean[] = [];
+        const Probe = () => {
+            renders.push(useSyncProgressStore(selectIsSyncing));
+            return null;
+        };
+        render(<Probe />);
+        act(() => setActiveProgress({ state: 'running', completed: 1 }));
+        act(() => setActiveProgress({ state: 'running', completed: 2 }));
+        act(() => setActiveProgress({ state: 'running', completed: 3 }));
+        act(() => setActiveProgress({ state: 'complete' }));
+        expect(renders).toEqual([false, true, false]);
     });
 });
 ```
 
 - [ ] **Step 2: Run it to verify it fails**
 
-Run: `cd frontend && npx vitest run src/shell/syncProgressStore.test.ts`
+Run: `cd frontend && npx vitest run src/shell/syncProgressStore.test.tsx`
 Expected: FAIL — `Cannot find module './syncProgressStore'`.
 
 - [ ] **Step 3: Create the store**
@@ -1086,7 +1201,7 @@ export function resetSyncProgressStore(): void {
 export const selectIsSyncing = (s: SyncProgressState): boolean => s.active.state === 'running';
 ```
 
-Run: `cd frontend && npx vitest run src/shell/syncProgressStore.test.ts`
+Run: `cd frontend && npx vitest run src/shell/syncProgressStore.test.tsx`
 Expected: PASS.
 
 - [ ] **Step 4: Make useSync write the store**
@@ -1157,7 +1272,18 @@ and replace each of its four reads `syncProgressByServiceRef.current[X]` (in `po
 
 (add `useLayoutEffect` to the React import if it is missing).
 
-(f) In `UseSyncReturn` delete the `syncProgress` and `syncProgressByService` members, and delete them from the returned object.
+(f) In `UseSyncReturn` delete the `syncProgress` and `syncProgressByService` members, and delete them from the returned object. Update the hook's header example (the `@example` at the top of `useSync.ts`, which destructures `syncProgress`) so the docs match the code:
+
+```ts
+ *   const { startSync } = useSync({ … });
+ *   const syncing = useSyncProgressStore(selectIsSyncing);
+ *
+ *   return (
+ *     <button onClick={() => startSync(true)}>
+ *       {syncing ? 'Syncing...' : 'Sync Now'}
+ *     </button>
+ *   );
+```
 
 (g) Remove now-unused imports (`useState` stays — other state uses it; keep `SyncProgress` type import, still used by the initial-progress literals).
 
@@ -1248,7 +1374,7 @@ and use `if (isInitialSyncing && initialSyncActive) { content = <ContentSheet><L
 
 (h) Tests:
 - `frontend/src/core/layout/ContentArea.test.tsx`: change the mock to `vi.mock('./InlineSyncView', () => ({ InlineSyncView: () => <div>syncing</div>, LiveInlineSyncView: () => <div>syncing</div> }));`.
-- In `MessagesFeature.{favorite,avatars,loading,galleryStatus,recovery,refresh,timeline}.test.tsx` remove `syncProgress: { state: 'idle' } as never, ` from `props`.
+- In `MessagesFeature.{favorite,avatars,loading,galleryStatus,recovery,refresh,timeline,evicted}.test.tsx` remove `syncProgress: { state: 'idle' } as never, ` from `props` (and the interim comment above it).
 - In `MessagesFeature.loading.test.tsx`, the test "the header sync pill uses a decorative spinner…": replace `render(<MessagesFeature {...props} syncProgress={{ state: 'running' } as never} />)` with
 
 ```tsx
@@ -1453,6 +1579,9 @@ export const MessageList = React.memo(MessageListComponent);
         }
         return fn;
     }, []);
+    // The list is not remounted on a room switch: drop the previous room's callbacks, so the map holds
+    // only the open room's ids.
+    useEffect(() => () => revealCallbacks.current.clear(), [memberId]);
 ```
 
 (c) In `renderItem`, replace `onReveal={() => onReveal(msg.id)}` with `onReveal={revealFor(msg.id)}`.
@@ -1598,7 +1727,8 @@ uv run git commit -m "perf(chat): keep list memo boundaries and select store fie
 ### Task 5: Messages stays mounted when another feature shows
 
 **Files:**
-- Create: `frontend/src/hooks/useInert.ts`, `frontend/src/core/layout/featureActive.ts`, `frontend/src/core/layout/KeepMounted.tsx`, `frontend/src/core/layout/KeepMounted.test.tsx`
+- Create: `frontend/src/hooks/useInert.ts`, `frontend/src/design/featureActive.ts`, `frontend/src/core/layout/KeepMounted.tsx`, `frontend/src/core/layout/KeepMounted.test.tsx`
+- Modify: `frontend/src/design/primitives/Modal.tsx`, `frontend/src/design/primitives/Menu.tsx`; create `frontend/src/design/primitives/featureHidden.test.tsx`
 - Modify: `frontend/src/core/layout/ContentArea.tsx`, `frontend/src/core/layout/ContentArea.test.tsx`
 - Modify: `frontend/src/hooks/useVisiblePolling.ts`, `frontend/src/hooks/useVisiblePolling.test.ts`
 - Modify: `frontend/src/features/messages/MessagesFeature.tsx`, `frontend/src/features/messages/components/MemberList.tsx`
@@ -1607,7 +1737,7 @@ uv run git commit -m "perf(chat): keep list memo boundaries and select store fie
 
 **Interfaces:**
 - Consumes: `fetchMessages(path, groupChat)` (Task 1); `useSyncProgressStore` (Task 3).
-- Produces: `useInert(ref: RefObject<HTMLElement | null>, on: boolean): void` (Plan G reuses it); `FeatureActiveContext`, `useFeatureActive(): boolean` (default `true`); `KeepMounted({ active, children })`; `useVisiblePolling(callback, intervalMs, deps, options?: { enabled?: boolean })`; `MemberList` prop `paused?: boolean`.
+- Produces: `useInert(ref: RefObject<HTMLElement | null>, on: boolean): void` (Plan G reuses it); `FeatureActiveContext`, `useFeatureActive(): boolean` (default `true`, in `design/featureActive.ts`); `Modal` and `Menu` render nothing while it is false; `KeepMounted({ active, children })`; `useVisiblePolling(callback, intervalMs, deps, options?: { enabled?: boolean })`; `MemberList` prop `paused?: boolean`.
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -1617,7 +1747,7 @@ Create `frontend/src/core/layout/KeepMounted.test.tsx`:
 import { describe, it, expect } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { KeepMounted } from './KeepMounted';
-import { useFeatureActive } from './featureActive';
+import { useFeatureActive } from '../../design/featureActive';
 
 const Probe = () => <span data-testid="probe">{useFeatureActive() ? 'active' : 'hidden'}</span>;
 
@@ -1685,21 +1815,36 @@ Create `frontend/src/features/messages/MessagesFeature.hidden.test.tsx`:
 
 ```tsx
 import { describe, it, expect, vi, beforeAll, beforeEach } from 'vitest';
-import { render, screen, waitFor } from '@testing-library/react';
+import { act, render, screen, waitFor } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { http, HttpResponse } from 'msw';
 import { server } from '../../__tests__/mocks/server';
 import i18n from '../../i18n';
 import { useAppStore } from '../../store/appStore';
-import { FeatureActiveContext } from '../../core/layout/featureActive';
+import { FeatureActiveContext } from '../../design/featureActive';
+import { clientLog } from '../../utils/clientLog';
+import { useMilestone } from './milestones';
 import { MessagesFeature } from './MessagesFeature';
 
 vi.mock('react-virtuoso', async () => (await import('../../__tests__/virtuosoMock')).virtuosoMock);
+vi.mock('./milestones', async (importOriginal) => {
+    const actual = await importOriginal<typeof import('./milestones')>();
+    return { ...actual, useMilestone: vi.fn(actual.useMilestone) };
+});
+vi.mock('../../utils/clientLog', async (importOriginal) => ({
+    ...(await importOriginal<typeof import('../../utils/clientLog')>()),
+    clientLog: vi.fn(),
+}));
 
 const SERVICE = 'hinatazaka46';
 const ROOM = '日向坂46/messages/34 金村 美玖/58 金村 美玖';
+const OTHER = 'sakurazaka46';
+const OTHER_ROOM = '櫻坂46/messages/40 森田 ひかる/60 森田 ひかる';
 const member = { id: '58', name: '金村 美玖', path: ROOM, thumbnail_local: null, thumbnail: null, portrait: null, phone_image: null };
 let archived = false;
 let roomFetches = 0;
+let letterFetches = 0;
+let readSyncs: string[] = [];
 let uiStates: { group_id: string | null }[] = [];
 
 function serve() {
@@ -1718,18 +1863,28 @@ function serve() {
             uiStates.push(await request.json() as { group_id: string | null });
             return new HttpResponse(null, { status: 204 });
         }),
-        http.get('/api/chat/letters_local', () => HttpResponse.json({ letters: [] })),
+        http.post('/api/chat/mark-room-read-remote', async ({ request }) => {
+            readSyncs.push((await request.json() as { service: string }).service);
+            return HttpResponse.json({ ok: true });
+        }),
+        http.get('/api/chat/letters_local', () => {
+            letterFetches += 1;
+            return HttpResponse.json({ letters: [] });
+        }),
+        http.get('/api/chat/message_dates/*', () => HttpResponse.json({ dates: [] })),
         http.get('/api/account/profile', () => HttpResponse.json({ name: 'me', avatars: [] })),
         http.get('/api/content/profile_images', () => HttpResponse.json({ kinds: {} })),
         http.get('/api/chat/streak/:id', () => HttpResponse.json({ status: 'unavailable' })),
     );
 }
 
-const view = (active: boolean, syncVersion = 0) => (
+const READ_SYNC_ON = { sync_read_to_phone: true } as never;
+const view = (active: boolean, syncVersion = 0, appSettings: never | null = null) => (
     <FeatureActiveContext.Provider value={active}>
-        <MessagesFeature appSettings={null} syncVersion={syncVersion} />
+        <MessagesFeature appSettings={appSettings} syncVersion={syncVersion} />
     </FeatureActiveContext.Provider>
 );
+const lastMilestoneRoom = () => vi.mocked(useMilestone).mock.calls.at(-1)?.[0].roomKey;
 const star = () => document.querySelector('.text-semantic-star');
 
 describe('MessagesFeature hidden behind another feature (UI health #11)', () => {
@@ -1737,7 +1892,11 @@ describe('MessagesFeature hidden behind another feature (UI health #11)', () => 
     beforeEach(() => {
         archived = false;
         roomFetches = 0;
+        letterFetches = 0;
+        readSyncs = [];
         uiStates = [];
+        vi.mocked(clientLog).mockClear();
+        vi.mocked(useMilestone).mockClear();
         useAppStore.setState({
             activeService: SERVICE,
             selectedConversations: { [SERVICE]: { path: ROOM, name: '金村 美玖', isGroupChat: false } },
@@ -1773,13 +1932,105 @@ describe('MessagesFeature hidden behind another feature (UI health #11)', () => 
         rerender(view(true));
         await waitFor(() => expect(star()).not.toBeNull());
     });
+
+    it('asks for no room extras on a finished sync while hidden, and catches up when shown', async () => {
+        const { rerender } = render(view(true));
+        await screen.findByText('こんにちは');
+        const before = letterFetches;
+        rerender(view(false));
+        rerender(view(false, 1));
+        await new Promise((r) => setTimeout(r, 50));
+        expect(letterFetches).toBe(before);
+        rerender(view(true, 1));
+        await waitFor(() => expect(letterFetches).toBe(before + 1));
+    });
+
+    it('evaluates no milestone while hidden', async () => {
+        const { rerender } = render(view(true));
+        await screen.findByText('こんにちは');
+        rerender(view(false));
+        expect(lastMilestoneRoom()).toBeNull();
+        rerender(view(true));
+        await waitFor(() => expect(lastMilestoneRoom()).not.toBeNull());
+    });
+
+    it('defers the room restore and the read sync of a group switch made while hidden', async () => {
+        const { rerender } = render(view(true, 0, READ_SYNC_ON));
+        await screen.findByText('こんにちは');
+        await waitFor(() => expect(readSyncs).toEqual([SERVICE]));
+        const fetchesBefore = roomFetches;
+        rerender(view(false, 0, READ_SYNC_ON));
+        act(() => {
+            useAppStore.setState({
+                activeService: OTHER,
+                selectedConversations: {
+                    [SERVICE]: { path: ROOM, name: '金村 美玖', isGroupChat: false },
+                    [OTHER]: { path: OTHER_ROOM, name: '森田 ひかる', isGroupChat: false },
+                },
+            });
+        });
+        await new Promise((r) => setTimeout(r, 50));
+        expect(readSyncs).toEqual([SERVICE]);
+        expect(roomFetches).toBe(fetchesBefore);
+        expect(vi.mocked(clientLog)).toHaveBeenCalledWith('chat_load', { outcome: 'deferred', reason: 'hidden_restore' });
+
+        rerender(view(true, 0, READ_SYNC_ON));
+        await waitFor(() => expect(readSyncs).toEqual([SERVICE, OTHER]));
+        await waitFor(() => expect(roomFetches).toBe(fetchesBefore + 1));
+    });
+
+    it('does not show its dialogs while hidden, and brings an open one back with Talk', async () => {
+        const { rerender } = render(view(true));
+        await screen.findByText('こんにちは');
+        await userEvent.click(screen.getByRole('button', { name: 'More options' }));
+        await userEvent.click(screen.getByRole('menuitem', { name: 'Date Search' }));
+        expect(await screen.findByRole('dialog', { name: 'Date Search' })).toBeInTheDocument();
+        rerender(view(false));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        rerender(view(true));
+        expect(await screen.findByRole('dialog', { name: 'Date Search' })).toBeInTheDocument();
+    });
 });
 ```
 
+Create `frontend/src/design/primitives/featureHidden.test.tsx`:
+
+```tsx
+import { describe, it, expect, vi } from 'vitest';
+import { render, screen } from '@testing-library/react';
+import { FeatureActiveContext } from '../featureActive';
+import { openDialogCount } from '../dialog/dialogStack';
+import { Modal } from './Modal';
+import { Menu, MenuItem } from './Menu';
+
+const ui = (active: boolean) => (
+    <FeatureActiveContext.Provider value={active}>
+        <Modal isOpen onClose={vi.fn()} title="日付で探す" closeLabel="閉じる" logId="calendar">本文</Modal>
+        <Menu aria-label="操作" onClose={vi.fn()} point={{ x: 10, y: 10 }}><MenuItem>一</MenuItem></Menu>
+    </FeatureActiveContext.Provider>
+);
+
+describe('dialogs and menus of a hidden feature (plan F Task 5)', () => {
+    it('render nothing while the feature is hidden, and leave the dialog stack', () => {
+        const { rerender } = render(ui(true));
+        expect(screen.getByRole('dialog', { name: '日付で探す' })).toBeInTheDocument();
+        expect(screen.getByRole('menu', { name: '操作' })).toBeInTheDocument();
+        rerender(ui(false));
+        expect(screen.queryByRole('dialog')).toBeNull();
+        expect(screen.queryByRole('menu')).toBeNull();
+        expect(openDialogCount()).toBe(0);
+        rerender(ui(true));
+        expect(screen.getByRole('dialog', { name: '日付で探す' })).toBeInTheDocument();
+    });
+});
+```
+
+(`logId` must be a `DialogLogId`: use the id `CalendarModal` passes.)
+
 - [ ] **Step 2: Run them to verify they fail**
 
-Run: `cd frontend && npx vitest run src/core/layout/KeepMounted.test.tsx src/core/layout/ContentArea.test.tsx src/hooks/useVisiblePolling.test.ts src/features/messages/MessagesFeature.hidden.test.tsx`
-Expected: FAIL — missing modules `./KeepMounted` / `./featureActive`; ContentArea replaces the messages node; the polling hook ignores `enabled`; the hidden MessagesFeature fetches on the sync bump and keeps reporting the chat.
+Run: `cd frontend && npx vitest run src/core/layout/KeepMounted.test.tsx src/core/layout/ContentArea.test.tsx src/hooks/useVisiblePolling.test.ts src/features/messages/MessagesFeature.hidden.test.tsx src/design/primitives/featureHidden.test.tsx`
+Expected: FAIL — missing modules `./KeepMounted` / `design/featureActive`; ContentArea replaces the messages node; the polling hook ignores `enabled`; the hidden MessagesFeature fetches on the sync bump, asks for letters, evaluates milestones, restores the new group's room and syncs its read state, keeps reporting the chat and keeps its dialog. ("does not mount messages before its first visit" already passes on today's code: it is a guard, not one of the failures.)
 
 - [ ] **Step 3: Implement the hook, the context and KeepMounted**
 
@@ -1800,7 +2051,7 @@ export function useInert(ref: RefObject<HTMLElement | null>, on: boolean): void 
 }
 ```
 
-Create `frontend/src/core/layout/featureActive.ts`:
+Create `frontend/src/design/featureActive.ts` (a design-level context, like `design/scopeContext.ts`: the `Modal` and `Menu` primitives read it):
 
 ```ts
 import { createContext, useContext } from 'react';
@@ -1811,12 +2062,36 @@ export const FeatureActiveContext = createContext(true);
 export const useFeatureActive = (): boolean => useContext(FeatureActiveContext);
 ```
 
+`frontend/src/design/primitives/Modal.tsx` — replace the `Modal` wrapper with:
+
+```tsx
+/** Level 1 dialog on the dialog layer (docs/design/DESIGN_SYSTEM.md, "Dialogs"). */
+export const Modal: React.FC<ModalProps> = (props) => {
+    // A dialog of a feature kept mounted behind another one (Messages behind Blogs) is not shown: it is
+    // portaled outside the hidden box, so neither content-visibility nor inert would hide it, and it
+    // would keep the app behind it inert. Its open state is kept: it comes back with the feature.
+    const featureActive = useFeatureActive();
+    return props.isOpen && featureActive ? <OpenModal {...props} /> : null;
+};
+```
+
+(`import { useFeatureActive } from '../featureActive';`).
+
+`frontend/src/design/primitives/Menu.tsx` — rename the component `export const Menu: React.FC<MenuProps> = ({` to `const OpenMenu: React.FC<MenuProps> = ({` and add after it:
+
+```tsx
+/** Level-2 popover menu (docs/design/DESIGN_SYSTEM.md, "Menus"); nothing while its feature is hidden (as `Modal`). */
+export const Menu: React.FC<MenuProps> = (props) => (useFeatureActive() ? <OpenMenu {...props} /> : null);
+```
+
+(`import { useFeatureActive } from '../featureActive';`). In `docs/design/DESIGN_SYSTEM.md`, add to "Dialogs" and to "Menus": "Inside a feature kept mounted behind another one (`useFeatureActive()` false, `design/featureActive.ts`), `Modal` and `Menu` render nothing; their open state is kept, so they come back with the feature."
+
 Create `frontend/src/core/layout/KeepMounted.tsx`:
 
 ```tsx
 import React, { useRef } from 'react';
 import { useInert } from '../../hooks/useInert';
-import { FeatureActiveContext } from './featureActive';
+import { FeatureActiveContext } from '../../design/featureActive';
 
 const HIDDEN: React.CSSProperties = { contentVisibility: 'hidden' };
 
@@ -1935,7 +2210,7 @@ export function useVisiblePolling(
 
 - [ ] **Step 6: MessagesFeature pauses its work while hidden**
 
-In `frontend/src/features/messages/MessagesFeature.tsx` (add `import { useFeatureActive } from '../../core/layout/featureActive';`):
+In `frontend/src/features/messages/MessagesFeature.tsx` (add `import { useFeatureActive } from '../../design/featureActive';`):
 
 (a) After `const { t } = useTranslation();` add:
 
@@ -1944,7 +2219,47 @@ In `frontend/src/features/messages/MessagesFeature.tsx` (add `import { useFeatur
     const featureActive = useFeatureActive();
 ```
 
-(b) Replace the sync-refresh effect with:
+(b) Group switch: lift the restore out of the service-switch effect, and defer it while hidden. Before the effect add:
+
+```tsx
+    // Restores the saved room of `service`, or clears the selection. Used by the group-switch effect
+    // and by the hidden → shown edge (a group switch made from Blogs or Memories restores on show).
+    const restoreSavedConversation = useCallback((service: string | null) => {
+        const saved = service ? getSelectedConversation(service) : null;
+        if (saved) {
+            console.debug('[MessagesFeature] service switch → restoring', { service, isGroupChat: saved.isGroupChat });
+            setSelectedGroupDir(saved.path);
+            setSelectedName(saved.name);
+            setIsGroupChat(saved.isGroupChat);
+            setBackgroundSettings(loadBackgroundSettings(saved.path));
+        } else {
+            setSelectedGroupDir(undefined);
+            setSelectedName(undefined);
+            setIsGroupChat(false);
+        }
+    }, [getSelectedConversation]);
+    // Set by a group switch made while hidden: the show edge restores the new group's room.
+    const restoreOnShowRef = useRef(false);
+```
+
+and replace everything in the effect from `// Restore previous selection for the new service (if any)` down to (not including) `// Update ref for next switch` with:
+
+```tsx
+        if (featureActive) {
+            restoreSavedConversation(activeService);
+        } else {
+            // Hidden: no room is opened behind another feature (no fetch, no read sync, no extras).
+            setSelectedGroupDir(undefined);
+            setSelectedName(undefined);
+            setIsGroupChat(false);
+            restoreOnShowRef.current = true;
+            clientLog('chat_load', { outcome: 'deferred', reason: 'hidden_restore' });
+        }
+```
+
+Its dependency list becomes `[activeService, getSelectedConversation, setSelectedConversation, showDir, restoreSavedConversation]` (with `// eslint-disable-next-line react-hooks/exhaustive-deps -- featureActive is read, not a trigger: the show edge below handles it` above it; the existing note on the excluded selection fields stays).
+
+(c) Replace the sync-refresh effect with:
 
 ```tsx
     useEffect(() => {
@@ -1959,18 +2274,25 @@ In `frontend/src/features/messages/MessagesFeature.tsx` (add `import { useFeatur
         // eslint-disable-next-line react-hooks/exhaustive-deps -- see comment above
     }, [syncVersion]);
 
-    // Shown again after another feature: one background refresh (a 304 when nothing changed). It also
-    // lets the incoming call evaluate, as the remount did before Messages was kept mounted.
+    // Shown again after another feature: restore the room of a group switch made while hidden (the
+    // selection effect then loads it), else one background refresh (a 304 when nothing changed). It
+    // also lets the incoming call evaluate, as the remount did before Messages was kept mounted.
     const wasActiveRef = useRef(featureActive);
     useEffect(() => {
         const was = wasActiveRef.current;
         wasActiveRef.current = featureActive;
-        if (!was && featureActive && selectedGroupDir) fetchMessages(selectedGroupDir, isGroupChat);
+        if (was || !featureActive) return;
+        if (restoreOnShowRef.current) {
+            restoreOnShowRef.current = false;
+            restoreSavedConversation(activeService);
+        } else if (selectedGroupDir) {
+            fetchMessages(selectedGroupDir, isGroupChat);
+        }
         // eslint-disable-next-line react-hooks/exhaustive-deps -- runs on the hidden → shown edge only
     }, [featureActive]);
 ```
 
-(c) In the selection effect, guard the fetch:
+(c1) In the selection effect, guard the fetch:
 
 ```tsx
     useEffect(() => {
@@ -1978,12 +2300,75 @@ In `frontend/src/features/messages/MessagesFeature.tsx` (add `import { useFeatur
             // The ref mirror for fetchMessages (the state was set while rendering, above): a cached
             // room is on screen, so its fetch is a background refresh.
             if (messagesCacheRef.current.has(selectedGroupDir)) showDir(selectedGroupDir);
-            // Hidden (a group switch made from Blogs or Memories): the show effect loads it later.
-            if (featureActive) fetchMessages(selectedGroupDir, isGroupChat);
+            if (featureActive) {
+                fetchMessages(selectedGroupDir, isGroupChat);
+            } else {
+                // Hidden (a selection made by a search or a restore behind another feature): the
+                // show effect refreshes it.
+                clientLog('chat_load', { outcome: 'deferred', reason: 'hidden_select' });
+            }
             setIsSidebarOpen(false);
         }
         // eslint-disable-next-line react-hooks/exhaustive-deps -- featureActive is handled by the show effect
     }, [selectedGroupDir, isGroupChat, showDir]);
+```
+
+(c2) The read sync to the official app never fires while hidden; the hidden → shown edge counts as opening the room (the remount did that before). Replace `syncReadPrevRef` and its effect with:
+
+```tsx
+    const syncReadPrevRef = useRef<{ dir: string | undefined; on: boolean | undefined; active: boolean }>({
+        dir: undefined,
+        on: undefined,
+        active: featureActive,
+    });
+    useEffect(() => {
+        const on = appSettings?.sync_read_to_phone;
+        const prev = syncReadPrevRef.current;
+        if (!featureActive) {
+            // Hidden: nothing is opened behind another feature. The room as last shown is kept, so
+            // the show edge decides.
+            if (selectedGroupDir && on && (selectedGroupDir !== prev.dir || prev.on === undefined)) {
+                clientLog('chat_load', { outcome: 'deferred', reason: 'hidden_read_sync' });
+            }
+            syncReadPrevRef.current = { ...prev, active: false };
+            return;
+        }
+        syncReadPrevRef.current = { dir: selectedGroupDir, on, active: true };
+        if (!selectedGroupDir || !on) return;
+        // Shown again after another feature counts as opening the room.
+        const roomOpened = selectedGroupDir !== prev.dir || !prev.active;
+        const settingsJustLoaded = prev.on === undefined; // null → loaded transition
+        if (!roomOpened && !settingsJustLoaded) return; // pure setting toggle → ignore
+        const parsedOpen = parseReadStatePath(selectedGroupDir);
+        if (!parsedOpen) return;
+        fetch('/api/chat/mark-room-read-remote', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ service: parsedOpen.service, group_id: parsedOpen.groupId }),
+        }).catch(() => {});
+    }, [selectedGroupDir, appSettings?.sync_read_to_phone, featureActive]);
+```
+
+(keep the existing comment block above it and its fire-and-forget comment above the `fetch`).
+
+(c3) The room extras keep the arguments of the room as last shown while hidden, so a finished sync or a group switch made from another feature asks nothing (no letters, profile or once-a-day streak request), and the shown room keeps its letters (no skeleton, no lost scroll position). They catch up in the render that shows Messages again. Replace `const roomExtras = useRoomExtras(activeService, selectedGroupDir, isGroupChat, syncVersion);` with:
+
+```tsx
+    const liveExtrasArgs = useMemo(
+        () => ({ service: activeService, dir: selectedGroupDir, isGroupChat, syncVersion }),
+        [activeService, selectedGroupDir, isGroupChat, syncVersion],
+    );
+    const [extrasArgs, setExtrasArgs] = useState(liveExtrasArgs);
+    // Updated while rendering (the "adjust state on a prop change" pattern), so the render that shows
+    // Messages again already asks for the current room.
+    if (featureActive && extrasArgs !== liveExtrasArgs) setExtrasArgs(liveExtrasArgs);
+    const roomExtras = useRoomExtras(extrasArgs.service, extrasArgs.dir, extrasArgs.isGroupChat, extrasArgs.syncVersion);
+```
+
+(c4) No milestone is evaluated while hidden (the room's open ends, as the unmount did; the show edge opens it again). In the `useMilestone({...})` arguments:
+
+```tsx
+        roomKey: featureActive && selectedGroupDir && messagesService && !isGroupChat ? `${messagesService}|${selectedGroupDir}` : null,
 ```
 
 (d) `useUiStateReporter(featureActive ? selectedGroupDir : undefined);`
@@ -2011,7 +2396,7 @@ In `frontend/src/features/messages/components/MemberList.tsx`: add `paused?: boo
 
 - [ ] **Step 7: Run the unit tests**
 
-Run: `cd frontend && npx vitest run src/core/layout src/hooks src/features/messages`
+Run: `cd frontend && npx vitest run src/core/layout src/hooks src/features/messages src/design`
 Expected: PASS (the old "shows a star set elsewhere … when the chat opens again" test in `MessagesFeature.favorite.test.tsx` still passes: an unmount and a fresh mount behave as before).
 
 - [ ] **Step 8: Add the real-browser check**
@@ -2049,7 +2434,7 @@ Expected: all passed.
 - [ ] **Step 9: Commit**
 
 ```bash
-git add frontend/src frontend/e2e/perf-chat.spec.ts
+git add frontend/src frontend/e2e/perf-chat.spec.ts docs/design/DESIGN_SYSTEM.md
 uv run git commit -m "perf(layout): keep Messages mounted while another feature shows" -m "Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>"
 ```
 
@@ -2065,7 +2450,7 @@ uv run git commit -m "perf(layout): keep Messages mounted while another feature 
 - Create: `frontend/src/features/messages/components/MessageList.thumbs.test.tsx`, `frontend/src/hooks/useTranscription.abort.test.ts`, `frontend/src/features/messages/components/MessageBubble.transcriptGate.test.tsx`
 
 **Interfaces:**
-- Produces: `CHAT_MEDIA_MAX_WIDTH = 320`, `CHAT_MEDIA_MAX_HEIGHT = 500`, `chatPictureThumbWidth(width, height, mediaFile, dpr): ThumbWidth | undefined` in `mediaUrl.ts`.
+- Produces: `CHAT_MEDIA_MAX_WIDTH = 320`, `CHAT_MEDIA_MAX_HEIGHT = 500`, `chatPictureThumbWidth(width, height, mediaFile, dpr): typeof THUMB_PREGEN_WIDTH | undefined` in `mediaUrl.ts` (480 or the original; Decision 8).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2073,19 +2458,25 @@ Append to `frontend/src/features/messages/mediaUrl.test.ts` (add `chatPictureThu
 
 ```ts
 describe('chatPictureThumbWidth', () => {
-    it('picks the smallest width covering the bubble box at the screen density', () => {
+    it('uses the pre-generated 480 when it covers the bubble box at the screen density', () => {
         // 800×600 fits 320×240: the long side is 320 CSS px.
-        expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 1)).toBe(320);
+        expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 1)).toBe(480);
+        expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 1.25)).toBe(480);
         expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 1.5)).toBe(480);
-        expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 2)).toBe(640);
         // 600×800 fits 320×427: the long side is 427 CSS px.
         expect(chatPictureThumbWidth(600, 800, 'p/1.jpg', 1)).toBe(480);
-        expect(chatPictureThumbWidth(600, 800, 'p/1.jpg', 1.5)).toBe(640);
     });
 
-    it('keeps the original when a thumbnail would upscale', () => {
-        expect(chatPictureThumbWidth(600, 800, 'p/1.jpg', 2)).toBeUndefined();
+    it('keeps the original when the box needs more than 480 px (no 640, no upscale)', () => {
+        expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 2)).toBeUndefined();
         expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 2.5)).toBeUndefined();
+        expect(chatPictureThumbWidth(600, 800, 'p/1.jpg', 1.25)).toBeUndefined();
+        expect(chatPictureThumbWidth(600, 800, 'p/1.jpg', 1.5)).toBeUndefined();
+    });
+
+    it('keeps the original when it is no larger than the thumbnail', () => {
+        expect(chatPictureThumbWidth(400, 300, 'p/1.jpg', 1)).toBeUndefined();
+        expect(chatPictureThumbWidth(480, 360, 'p/1.jpg', 1)).toBeUndefined();
     });
 
     it('keeps the original for GIFs and for pictures without dimensions', () => {
@@ -2123,9 +2514,9 @@ describe('MessageList chat thumbnails (UI health #8)', () => {
         Object.defineProperty(window, 'devicePixelRatio', { value: 1, configurable: true });
     });
 
-    it('asks pictures for the thumbnail that covers their box; GIFs keep the original', () => {
+    it('asks pictures for the pre-generated thumbnail when it covers their box; GIFs keep the original', () => {
         renderList({ timeline: buildTimeline([pic(1, 'p/1.jpg'), pic(2, 'p/2.gif')], []) });
-        expect(thumbs.get(1)).toBe(320);
+        expect(thumbs.get(1)).toBe(480);
         expect(thumbs.has(2)).toBe(true);
         expect(thumbs.get(2)).toBeUndefined();
     });
@@ -2235,15 +2626,19 @@ export const CHAT_MEDIA_MAX_WIDTH = 320;
 export const CHAT_MEDIA_MAX_HEIGHT = 500;
 
 /**
- * The thumbnail width for a chat picture (UI health #8), or undefined to keep the original. The
- * picture's box (fitted like MediaContainer) × `dpr` must fit in an allowed width, so a thumbnail
- * never upscales: at 200 % most chat photos keep their original. GIFs keep it too (a thumbnail is
- * one still frame), and so do pictures without stored dimensions (their box is unknown).
+ * The thumbnail width for a chat picture (UI health #8), or undefined to keep the original. Rule:
+ * no visible difference and no extra backend work, so only the pre-generated `THUMB_PREGEN_WIDTH`
+ * (480) is used, and only when the picture's box (fitted like MediaContainer) × `dpr` fits in it:
+ * 320 / 160 would be derived on demand and 640 is rendered on demand only. At 200 % chat photos
+ * keep their original. GIFs keep it too (a thumbnail is one still frame), and so do pictures
+ * without stored dimensions (their box is unknown) or no larger than the thumbnail (it would only
+ * re-encode them).
  */
 export function chatPictureThumbWidth(
     width: number | null | undefined, height: number | null | undefined, mediaFile: string | null | undefined, dpr: number,
-): ThumbWidth | undefined {
+): typeof THUMB_PREGEN_WIDTH | undefined {
     if (!width || !height || !mediaFile || /\.gif$/i.test(mediaFile)) return undefined;
+    if (Math.max(width, height) <= THUMB_PREGEN_WIDTH) return undefined;
     const ratio = width / height;
     let boxWidth = Math.min(CHAT_MEDIA_MAX_WIDTH, width);
     let boxHeight = boxWidth / ratio;
@@ -2253,7 +2648,7 @@ export function chatPictureThumbWidth(
     }
     const scale = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
     const needed = Math.ceil(Math.max(boxWidth, boxHeight) * scale - 0.01);
-    return THUMB_WIDTHS.find((w) => w >= needed);
+    return needed <= THUMB_PREGEN_WIDTH ? THUMB_PREGEN_WIDTH : undefined;
 }
 ```
 
@@ -2684,7 +3079,12 @@ uv run git commit -m "perf(sidebar): poll every 10 s and skip unchanged answers"
 
 **Files:**
 - Modify: `frontend/src/core/layout/ContentArea.tsx`, `frontend/src/core/layout/ContentArea.test.tsx`
+- Create: `frontend/src/core/layout/MemoriesChunkBoundary.tsx`, `frontend/src/core/layout/MemoriesChunkBoundary.test.tsx`
 - Modify: `frontend/src/features/memories/recap/posterImage.ts`
+- Modify: `frontend/src/i18n/locales/{en,ja,zh-TW,zh-CN,yue}.json` (one key, `memories.chunkFailed`)
+
+**Interfaces:**
+- Produces: `MemoriesChunkError` (the lazy import's rejection, wrapped) and `MemoriesChunkBoundary` (props `children`, `title`, `retryLabel`, `onRetry`) in `core/layout/MemoriesChunkBoundary.tsx`. It shows `StatusBlock kind="error"` with Retry for a `MemoriesChunkError` and re-throws anything else to the root `ErrorBoundary` (a render crash inside Memories keeps today's crash screen).
 
 - [ ] **Step 1: Record the current bundle**
 
@@ -2729,31 +3129,166 @@ and add the test that pins the lazy load (inside the `describe`):
 Run: `cd frontend && npx vitest run src/core/layout/ContentArea.test.tsx`
 Expected: FAIL — only the new test: Memories renders at once (static import), so there is no loading status.
 
-- [ ] **Step 3: Lazy-load Memories**
+Create `frontend/src/core/layout/MemoriesChunkBoundary.test.tsx`:
 
-In `frontend/src/core/layout/ContentArea.tsx`: remove `import { MemoriesFeature } from '../../features/memories';`, add `lazy, Suspense` to the React import, `import { StatusBlock } from '../../design/primitives';` and `import { clientLog } from '../../utils/clientLog';`, then at module level:
+```tsx
+import { describe, it, expect, vi, afterEach } from 'vitest';
+import { Component, type ReactNode } from 'react';
+import { render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import { MemoriesChunkBoundary, MemoriesChunkError } from './MemoriesChunkBoundary';
+
+class Outer extends Component<{ children: ReactNode }, { crashed: boolean }> {
+    state = { crashed: false };
+    static getDerivedStateFromError() { return { crashed: true }; }
+    render() { return this.state.crashed ? <p>crash screen</p> : this.props.children; }
+}
+
+describe('MemoriesChunkBoundary (plan F Task 9)', () => {
+    afterEach(() => vi.restoreAllMocks());
+
+    it('shows an error with Retry when the chunk fails, and renders Memories after Retry', async () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        let fail = true;
+        const Child = () => {
+            if (fail) throw new MemoriesChunkError(new TypeError('Failed to fetch dynamically imported module'));
+            return <p>思い出</p>;
+        };
+        const onRetry = vi.fn(() => { fail = false; });
+        render(
+            <Outer>
+                <MemoriesChunkBoundary title="思い出を開けませんでした" retryLabel="再試行" onRetry={onRetry}>
+                    <Child />
+                </MemoriesChunkBoundary>
+            </Outer>,
+        );
+        expect(screen.getByText('思い出を開けませんでした')).toBeInTheDocument();
+        expect(screen.queryByText('crash screen')).toBeNull();
+        await userEvent.click(screen.getByRole('button', { name: '再試行' }));
+        expect(onRetry).toHaveBeenCalledTimes(1);
+        expect(screen.getByText('思い出')).toBeInTheDocument();
+    });
+
+    it('leaves any other error to the root boundary', () => {
+        vi.spyOn(console, 'error').mockImplementation(() => {});
+        const Child = () => { throw new Error('render bug'); };
+        render(
+            <Outer>
+                <MemoriesChunkBoundary title="t" retryLabel="r" onRetry={vi.fn()}>
+                    <Child />
+                </MemoriesChunkBoundary>
+            </Outer>,
+        );
+        expect(screen.getByText('crash screen')).toBeInTheDocument();
+    });
+});
+```
+
+Run: `cd frontend && npx vitest run src/core/layout/MemoriesChunkBoundary.test.tsx`
+Expected: FAIL — module `./MemoriesChunkBoundary` not found.
+
+- [ ] **Step 3: Lazy-load Memories inside the chunk boundary**
+
+Create `frontend/src/core/layout/MemoriesChunkBoundary.tsx`:
+
+```tsx
+import { Component, type ErrorInfo, type ReactNode } from 'react';
+import { StatusBlock } from '../../design/primitives';
+import { clientLog } from '../../utils/clientLog';
+
+/** The lazy Memories import failed (a missing or unreadable chunk), as opposed to a render crash. */
+export class MemoriesChunkError extends Error {
+    /** The import's rejection (kept as a field: `lib` is ES2020, without `ErrorOptions`). */
+    readonly reason: unknown;
+    constructor(reason: unknown) {
+        super('memories chunk failed to load');
+        this.name = 'MemoriesChunkError';
+        this.reason = reason;
+    }
+}
+
+interface Props {
+    children: ReactNode;
+    title: string;
+    retryLabel: string;
+    /** Re-creates the lazy component (React.lazy keeps a rejected import), before the children render again. */
+    onRetry: () => void;
+}
+
+/**
+ * Between the Memories Suspense and the root: a chunk that fails to load shows an error with Retry
+ * inside the pane, instead of the app-wide crash screen. Any other error is thrown on to the root
+ * `ErrorBoundary`, so a render crash inside Memories behaves as before.
+ */
+export class MemoriesChunkBoundary extends Component<Props, { error: unknown }> {
+    state: { error: unknown } = { error: null };
+
+    static getDerivedStateFromError(error: unknown) {
+        return { error };
+    }
+
+    componentDidCatch(error: unknown, _info: ErrorInfo) {
+        if (error instanceof MemoriesChunkError) clientLog('app_load_failed', { target: 'memories_chunk', outcome: 'shown' });
+    }
+
+    private retry = () => {
+        clientLog('app_load_failed', { target: 'memories_chunk', outcome: 'retry' });
+        this.props.onRetry();
+        this.setState({ error: null });
+    };
+
+    render() {
+        const { error } = this.state;
+        if (error === null) return this.props.children;
+        if (!(error instanceof MemoriesChunkError)) throw error;
+        return (
+            <StatusBlock kind="error" variant="pane" surface="memories_chunk" title={this.props.title}
+                onRetry={this.retry} retryLabel={this.props.retryLabel} />
+        );
+    }
+}
+```
+
+(`target` and `outcome` are whitelisted `clientLog` fields; any `^[a-z0-9_]{1,40}$` value is accepted.)
+
+Add the key to each locale under `memories` (next to `home`): en `"chunkFailed": "Couldn't open Memories"`, ja `"思い出を開けませんでした"`, zh-TW `"無法開啟回憶"`, zh-CN `"无法打开回忆"`, yue `"開唔到回憶"`.
+
+In `frontend/src/core/layout/ContentArea.tsx`: remove `import { MemoriesFeature } from '../../features/memories';`, add `lazy, Suspense, useState` to the React import, `import { StatusBlock } from '../../design/primitives';`, `import { clientLog } from '../../utils/clientLog';` and `import { MemoriesChunkBoundary, MemoriesChunkError } from './MemoriesChunkBoundary';`, then at module level:
 
 ```tsx
 // Memories (about 20 000 lines, with the recap's canvas export) loads on its first visit (UI health #13).
-const MemoriesFeature = lazy(() =>
+const loadMemories = () =>
     import('../../features/memories/MemoriesFeature')
         .then((m) => ({ default: m.MemoriesFeature }))
         .catch((err: unknown) => {
             clientLog('app_load_failed', { target: 'memories_chunk' });
-            throw err;
-        }),
-);
+            throw new MemoriesChunkError(err);
+        });
+const InitialMemories = lazy(loadMemories);
 ```
 
-and render it inside a Suspense boundary:
+In the component (it already has `const { t } = useTranslation();`; add it if not):
+
+```tsx
+    // React.lazy keeps a rejected import: Retry needs a new lazy component.
+    const [MemoriesFeature, setMemoriesFeature] = useState(() => InitialMemories);
+```
+
+and render it inside the boundary and a Suspense:
 
 ```tsx
     } else if (activeFeature === 'memories') {
         other = (
             <ContentSheet>
-                <Suspense fallback={<StatusBlock kind="loading" variant="pane" surface="memories_chunk" />}>
-                    <MemoriesFeature service={service} nickname={userNickname} />
-                </Suspense>
+                <MemoriesChunkBoundary
+                    title={t('memories.chunkFailed')}
+                    retryLabel={t('common.retry')}
+                    onRetry={() => setMemoriesFeature(() => lazy(loadMemories))}
+                >
+                    <Suspense fallback={<StatusBlock kind="loading" variant="pane" surface="memories_chunk" />}>
+                        <MemoriesFeature service={service} nickname={userNickname} />
+                    </Suspense>
+                </MemoriesChunkBoundary>
             </ContentSheet>
         );
     }
@@ -2772,7 +3307,7 @@ In `frontend/src/features/memories/recap/posterImage.ts`: delete `import { toCan
 
 - [ ] **Step 5: Run the tests and rebuild**
 
-Run: `cd frontend && npx vitest run src/core/layout src/features/memories/recap && npm run build >/dev/null && ls -l dist/assets/*.js | awk '{print $5, $9}' | sort -n | tail -5`
+Run: `cd frontend && npx vitest run src/core/layout src/features/memories/recap src/i18n && npm run build >/dev/null && ls -l dist/assets/*.js | awk '{print $5, $9}' | sort -n | tail -5`
 Expected: tests PASS; the listing now has a `MemoriesFeature-*.js` chunk and an `html-to-image`-named (or hashed) chunk, and `App-*.js` is smaller than in Step 1.
 
 Run: `npx playwright test e2e/csp.spec.ts --reporter=line`
@@ -2792,13 +3327,13 @@ uv run git commit -m "perf(bundle): load Memories and html-to-image on first use
 ### Task 10: Shared date formatters, capped card stagger, blog image hints
 
 **Files:**
-- Create: `frontend/src/utils/intlCache.ts`, `frontend/src/utils/intlCache.test.ts`
+- Create: `frontend/src/utils/intlCache.ts`, `frontend/src/utils/intlCache.test.ts`, `frontend/src/features/blogs/components/stagger.ts`, `frontend/src/features/blogs/components/stagger.test.ts`
 - Modify: `frontend/src/utils/dateFormatters.ts`, `frontend/src/features/messages/components/MessageBubble.tsx` (`clockLabel`), `frontend/src/features/memories/day/format.ts`, `frontend/src/features/memories/home/SameTimeLine.tsx`
 - Modify: `frontend/src/features/blogs/components/RecentPostsFeed.tsx`, `frontend/src/features/blogs/components/MemberTimelineModal.tsx`
 - Modify: `frontend/src/features/blogs/blogHtml.ts`, `frontend/src/features/blogs/blogHtml.test.ts`
 
 **Interfaces:**
-- Produces: `dateTimeFormat(locale: string | undefined, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat`; `STAGGER_STEP_MS = 50`, `STAGGER_MAX_STEPS = 8`, `staggerDelay(index: number): number` exported from `RecentPostsFeed.tsx`.
+- Produces: `dateTimeFormat(locale: string | undefined, options: Intl.DateTimeFormatOptions): Intl.DateTimeFormat`; `STAGGER_STEP_MS = 50`, `STAGGER_MAX_STEPS = 8`, `staggerDelay(index: number): number` in `features/blogs/components/stagger.ts` (not in `RecentPostsFeed.tsx`: a non-component export there trips `react-refresh/only-export-components` and spends the lint warning budget).
 
 - [ ] **Step 1: Write the failing tests**
 
@@ -2846,7 +3381,7 @@ Create `frontend/src/features/blogs/components/stagger.test.ts`:
 
 ```ts
 import { describe, it, expect } from 'vitest';
-import { staggerDelay } from './RecentPostsFeed';
+import { staggerDelay } from './stagger';
 
 describe('staggerDelay', () => {
     it('steps 50 ms per card and stops after 8 steps', () => {
@@ -2858,7 +3393,7 @@ describe('staggerDelay', () => {
 - [ ] **Step 2: Run them to verify they fail**
 
 Run: `cd frontend && npx vitest run src/utils/intlCache.test.ts src/features/blogs/blogHtml.test.ts src/features/blogs/components/stagger.test.ts`
-Expected: FAIL — missing `./intlCache`, no loading hints, `staggerDelay` not exported.
+Expected: FAIL — missing `./intlCache` and `./stagger`, no loading hints.
 
 - [ ] **Step 3: Implement**
 
@@ -2889,18 +3424,18 @@ Replace `new Intl.DateTimeFormat(` with `dateTimeFormat(` (importing it from the
 - `frontend/src/features/memories/day/format.ts`: the three functions;
 - `frontend/src/features/memories/home/SameTimeLine.tsx`: the `dateFormat` constant.
 
-`frontend/src/features/blogs/components/RecentPostsFeed.tsx` — add at module level:
+Create `frontend/src/features/blogs/components/stagger.ts`:
 
-```tsx
-/** The feed's reveal stagger: 50 ms per card, at most 8 steps, so a long list never waits seconds. */
+```ts
+/** The blog cards' reveal stagger: 50 ms per card, at most 8 steps, so a long list never waits seconds. */
 export const STAGGER_STEP_MS = 50;
 export const STAGGER_MAX_STEPS = 8;
 export const staggerDelay = (index: number): number => Math.min(index, STAGGER_MAX_STEPS) * STAGGER_STEP_MS;
 ```
 
-and replace `const delay = isNew ? Math.random() * 400 : index * 50;` with `const delay = isNew ? Math.random() * 400 : staggerDelay(index);`.
+`frontend/src/features/blogs/components/RecentPostsFeed.tsx` — `import { staggerDelay } from './stagger';` and replace `const delay = isNew ? Math.random() * 400 : index * 50;` with `const delay = isNew ? Math.random() * 400 : staggerDelay(index);`.
 
-`frontend/src/features/blogs/components/MemberTimelineModal.tsx` — `import { staggerDelay } from './RecentPostsFeed';` and replace `animationDelay={index * 50}` with `animationDelay={staggerDelay(index)}`.
+`frontend/src/features/blogs/components/MemberTimelineModal.tsx` — `import { staggerDelay } from './stagger';` and replace `animationDelay={index * 50}` with `animationDelay={staggerDelay(index)}`.
 
 `frontend/src/features/blogs/blogHtml.ts` — in `buildBlogFragment`, after `resolveBlogUrls(...)`, add:
 
@@ -3007,8 +3542,9 @@ Under `## [Unreleased]` → `### Changed` (after the existing entries):
 - **Talk is where you left it.** Switching to Blogs or Memories and back keeps
   the open chat, its scroll position and the member list, instead of loading
   them again.
-- **Chat photos load lighter.** Photos in a chat are shown from small copies
-  that match your screen, and the viewer still opens the full photo. Voice and
+- **Chat photos load lighter.** Photos in a chat are shown from smaller copies
+  wherever they look the same on your screen, and the viewer still opens the
+  full photo. Voice and
   video messages only look up their text when it can be shown.
 - **SakaDesk starts with less to load.** Memories now loads the first time you
   open it, and the conversation list checks for changes less often.
@@ -3051,10 +3587,10 @@ Record results in `.superpowers/sdd/windows-acceptance.md` under "Plan F".
 
 1. **No-op sync (Tasks 1, 3).** Open a long chat (several thousand messages), press Sync now with nothing new: the chat does not flicker or jump, and during the sync the window stays responsive (scroll the chat, hover the member list). `debug.log` shows `chat_load outcome=not_modified` after the sync.
 2. **★ in a long chat (Task 2).** Star and unstar a message near the bottom of a long chat: the star appears at once, the list does not jump; reopen the chat later and the star is still there; Favorites lists it.
-3. **Blogs and back (Task 5).** Scroll a chat to the middle, open Blogs, wait for a sync to finish (or press Sync now there), come back to Talk: same position, no loading skeleton, new messages present. While on Blogs, a notification for the chat that was open in Talk does arrive. An incoming call does not ring while you are on Blogs.
-4. **Chat photos at 100 / 125 / 150 / 200 % display scaling (Task 6).** Photos look as sharp as before at each scale (at 200 % they come from the original); a GIF in a chat still animates; clicking a photo opens the full-size original in the viewer.
+3. **Blogs and back (Task 5).** Scroll a chat to the middle, open Blogs, wait for a sync to finish (or press Sync now there), come back to Talk: same position, no loading skeleton, new messages present. While on Blogs, a notification for the chat that was open in Talk does arrive. An incoming call does not ring while you are on Blogs; one ringing when you switch to Blogs stops; one you declined before the trip does not ring again when you come back (⚑ Decision 7). Switch group on the rail while on Blogs, then come back to Talk: the new group's last room opens (with sync-read-to-phone on, its unread clears on the phone only now). A dialog opened from Talk never shows over Blogs.
+4. **Chat photos at 100 / 125 / 150 / 200 % display scaling (Task 6).** Photos look as sharp as before at each scale (thumbnails at 100 %, landscape photos also at 125–150 %; portrait photos above 100 % and every photo at 200 % come from the original, Decision 8); a GIF in a chat still animates; clicking a photo opens the full-size original in the viewer.
 5. **Transcription off (Task 6, Decision 9).** With transcription off, voice/video bubbles show no transcript footer; full-screen video shows no subtitles. With it on, revealed voice bubbles show their saved text as before.
-6. **Memories first open (Task 9).** The first Memories open shows the loading state for a moment at most, then Memories; later opens are immediate.
+6. **Memories first open (Task 9).** The first Memories open shows the loading state for a moment at most, then Memories; later opens are immediate. (A chunk that fails to load shows an error with Retry inside the pane, not the crash screen: covered by the unit test, no manual step.)
 7. **Blog feed GPU (Task 11, if run).** Task Manager → GPU column: with the blog feed open and idle, GPU use is lower than before; the background looks the same to you.
 8. **CJK IME (regression).** Typing Japanese / Chinese in Search and Settings fields still works (no task here touches input, listed as a smoke check).
 
@@ -3062,7 +3598,8 @@ Record results in `.superpowers/sdd/windows-acceptance.md` under "Plan F".
 
 - **Spec coverage:** every row of `report-performance.md` maps to a task here, to Plan G (search rendering, shelter component, voice listeners — their code is rewritten there), to Plan B (fonts, BlogReader sanitize) or to a won't-fix with a reason (Appendix A). UI-HEALTH-REPORT priorities #1, #2, #8, #11, #13 and the perf quick wins (memo search results → Plan G Task 2; BlogReader `useMemo` → closed; `Intl` cache → Task 10; stagger cap → Task 10) are covered.
 - **Placeholders:** none; the one fill-in is the measured bundle size in Task 9's commit body, with the command that produces it.
-- **Names:** `etag`, `fetchMessages(path, groupChat)`, `favoriteOverrides`, `withFavorite`, `pruneFavoriteOverrides`, `applyFavoriteOverrides`, `setFavoriteIn`, `storeRoom`, `ROOM_CACHE_LIMITS`, `useSyncProgressStore`, `setActiveProgress`, `setServiceProgress`, `resetSyncProgressStore`, `selectIsSyncing`, `SyncStatusPill`, `LiveSyncModal`, `LiveInlineSyncView`, `useInert`, `FeatureActiveContext`, `useFeatureActive`, `KeepMounted`, `chatPictureThumbWidth`, `CHAT_MEDIA_MAX_WIDTH/HEIGHT`, `sortNewestFirst`, `shallowEqualRecord`, `dateTimeFormat`, `staggerDelay` are used consistently across tasks and tests.
+- **Pre-flight review** (`.superpowers/sdd/ui-plans-preflight-review.md`) applied: F2-1 (★ save failure breadcrumb, evicted-room 304 test), F3-1/2/3, F4-1, F5-1 (dialogs and menus render nothing while hidden), F5-2 (every hidden side effect gated, one test each), F5-3 (documented as a ⚑ difference), F5-4, F6-1 (480 cap), F8-1, F9-1, F10-1/2. Task 1 had landed (d74c6725..1bfd4ee0) and is unchanged apart from its note.
+- **Names:** `etag`, `fetchMessages(path, groupChat)`, `favoriteOverrides`, `withFavorite`, `pruneFavoriteOverrides`, `applyFavoriteOverrides`, `setFavoriteIn`, `storeRoom`, `ROOM_CACHE_LIMITS`, `useSyncProgressStore`, `setActiveProgress`, `setServiceProgress`, `resetSyncProgressStore`, `selectIsSyncing`, `SyncStatusPill`, `LiveSyncModal`, `LiveInlineSyncView`, `useInert`, `FeatureActiveContext`, `useFeatureActive` (in `design/featureActive.ts`), `KeepMounted`, `restoreSavedConversation`, `chatPictureThumbWidth`, `THUMB_PREGEN_WIDTH`, `CHAT_MEDIA_MAX_WIDTH/HEIGHT`, `MemoriesChunkBoundary`, `MemoriesChunkError`, `sortNewestFirst`, `shallowEqualRecord`, `dateTimeFormat`, `staggerDelay` (in `stagger.ts`) are used consistently across tasks and tests.
 
 ## Appendix A — Triage of `report-performance.md`
 
@@ -3079,7 +3616,7 @@ Status: **closed** (already done on this branch), **task** (this plan or another
 | P-A2 | Inline callbacks defeat `React.memo(MessageBubble)` (A) | task F4 |
 | P-A3 | `ShelterOverlay` declared inside render (A) | task G1 (rewritten as a module-scope button) |
 | P-A4 | `useAppStore()` without selector in 9 components (A) | task F4 (10 sites incl. AddServiceModal; a test keeps it at zero) |
-| P-A5 | Feature switch unmounts MessagesFeature (A, Top 4) | task F5 |
+| P-A5 | Feature switch unmounts MessagesFeature (A, Top 4) | task F5 (dialogs and menus hidden, side effects gated while hidden; Decision 7) |
 | P-B2 | `applyReveal` O(U²·R); `revealedIds.includes` (B) | task F7 |
 | P-B3 | Always-mounted gallery/favourites filter and sort while closed (B) | task F7 |
 | P-B4 | Search results re-render on hover; DOMPurify per render (B) | task G2 (search rewrite) |
@@ -3087,16 +3624,16 @@ Status: **closed** (already done on this branch), **task** (this plan or another
 | P-B6 | TimelineRail unthrottled mousemove, `top` transitions, `Intl` per render (B) | task F10 for the formatter; won't-fix for the rest: React batches the per-event update, and the `top` transitions are the accepted e4e4118 rail motion |
 | P-B7 | `new Intl.DateTimeFormat` per call in lists (B) | task F10 |
 | P-B8 | One window keydown listener per inline voice bubble (B) | task G4 (container key handling) |
-| P-C1 | Chat photos decode originals; no `decoding="async"` (C, Top 3) | task F6 |
+| P-C1 | Chat photos decode originals; no `decoding="async"` (C, Top 3) | task F6 (the pre-generated 480 only where it covers the box, else the original; Decision 8) |
 | P-C2a | BlogReader sanitize/highlight on every render (C) | closed — security Plan B (`buildBlogFragment` in a `useMemo`, BlogReader.tsx) |
 | P-C2b | Blog post images eager, no size (C) | task F10 (lazy after the first, async decode); sizes are unknown in remote HTML — won't-fix |
 | P-C3 | Transcript GET on every voice/video mount, not aborted (C) | task F6 (batching: won't-fix, the endpoint is per message and the gate removes most calls) |
 | P-C4 | No `preload`/`poster` on chat videos (C) | won't-fix: Chromium's default is `preload=metadata` already; posters are made in the background and not guaranteed, so `preload=none` would show black boxes |
 | P-D1a | Blog feed orbs `blur(100px)` + `will-change`, animated forever (D, Top 5) | task F11 (owner-gated) |
 | P-D1b | `backdrop-blur-lg` caption on every card (D) | won't-fix: the accepted original feed look (DESIGN_SYSTEM "The blog feed") |
-| P-D2 | Uncapped stagger; `content-visibility: auto` for month sections (D) | task F10 (cap); `content-visibility` won't-fix: the member timeline groups are short lists and the guide forbids it above the fold |
+| P-D2 | Uncapped stagger; `content-visibility: auto` for month sections (D) | task F10 (cap, in `stagger.ts`); `content-visibility` won't-fix: the member timeline groups are short lists and the guide forbids it above the fold |
 | P-E1 | Render-blocking Google Fonts (E) | closed — security Plan B Task 8 (bundled `@fontsource-variable/*`, CHANGELOG "Fonts now come with the app") |
-| P-E2 | No `React.lazy`: Memories, html-to-image, holidays, locales, framer-motion (E) | task F9 for Memories + html-to-image; the holiday data is used by the chat calendar (stays); locales and framer-motion won't-fix (Decision 11) |
+| P-E2 | No `React.lazy`: Memories, html-to-image, holidays, locales, framer-motion (E) | task F9 for Memories (with a chunk error boundary) + html-to-image; the holiday data is used by the chat calendar (stays); locales and framer-motion won't-fix (Decision 11) |
 | P-E3 | Startup steps run one after another (E) | won't-fix: local-server round trips of a few ms each; the order is the tested startup contract (`App.tsx` hydrate → migrate → language → rehydrate) |
 | P-F1 | Sidebar polls every 2 s, re-sorts each tick, recount on every reveal (F) | task F8 (the reveal recount is the read-state trigger and stays) |
 | P-F2 | Search fetch without AbortController; stale results; load-more races (F) | task G2 |

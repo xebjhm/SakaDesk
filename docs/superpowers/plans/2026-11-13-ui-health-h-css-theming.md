@@ -42,15 +42,16 @@ Third of three plans for the UI-health findings of the 0.5.0 audit (`/home/xtork
 ## Decisions (reviewers: these are deliberate; the owner confirms the ones marked ⚑)
 
 1. **`break-words` (`overflow-wrap: break-word`) on every `whitespace-pre-wrap` / `pre-line` text**, enforced by a source scan. Unbreakable runs (`wwwww`, `〜〜〜`, `……`, `！！！`) now wrap inside the bubble instead of being cut off. No change for normal text.
-2. **High Contrast = one `forced-colors` block** in `index.css`: the Switch gets a `ButtonText` border and thumb, `Highlight` track when on (`forced-color-adjust: none` only there: it carries the state); selection drawn only by a tint or a shadow ring (`aria-pressed`, `aria-current`, `aria-selected`, checked menu radios) gets a 2 px `Highlight` outline; sheet/card/pill/dialog/menu edges get a 1 px `CanvasText` outline (inset, so no layout change); the scrollbar thumb is `CanvasText`. Users with "more contrast" also get a darker scrollbar thumb. Normal mode is unchanged. The white captions on light gradient ends (§12 accepted deviation) need nothing: forced colours replace both the gradient and the text colour (Windows owner check 1).
-3. **Translations carry their own language:** message translations get `lang` = the translation target language, injected blog lines too; `[lang="zh-TW"|"zh-CN"|"yue"|"en"]` content rules switch the font variables (like the existing `ja` rule), and the target language's faces load when a translation shows. ⚑ CJK translations are upright (no fake italic); English blog translations stay italic. ⚑ The translation toggle and re-run icon move from `#94a3b8`/`#cbd5e1` to `text-muted` (4.8:1), the message translation text to `text-muted` and the blog translation line to `text-secondary` with the same `border-l-2 border-strong` as the injected blog lines (was a 1.5 px `#d1d5db` line). Per-language stacks are written once by `design/fonts.ts` as `--ds-font-sans-<lang>` / `--ds-font-serif-<lang>`, so `index.css` no longer copies the JP stack.
+2. **High Contrast = one `forced-colors` block** in `index.css`: the Switch gets a `ButtonText` border and thumb, `Highlight` track when on (`forced-color-adjust: none` only there: it carries the state); selection drawn only by a tint or a shadow ring (`aria-pressed`, `aria-current`, `aria-selected`, checked menu radios) gets a 2 px `Highlight` outline; sheet/card/pill/dialog/menu edges get a 1 px `CanvasText` outline (inset, so no layout change), except the full-screen dark viewer (a dialog inside `data-surface="dark"`), which would otherwise get a frame round the whole window; the scrollbar thumb is `CanvasText`, including on hover and on dark surfaces (whose own thumb rules are more specific and would otherwise lose the thumb). Users with "more contrast" also get a darker scrollbar thumb. Normal mode is unchanged. The white captions on light gradient ends (§12 accepted deviation) need nothing: forced colours replace both the gradient and the text colour (Windows owner check 1).
+3. **Translations carry their own language:** message translations get `lang` = the translation target language, injected blog lines too; `[lang="zh-TW"|"zh-CN"|"yue"|"en"]` content rules switch the font variables (like the existing `ja` rule; one `:is(…)` companion rule per face keeps `.font-display` / `.font-reading` on marked elements in every one of these languages, not only `ja`), and the target language's faces load when a translation shows. ⚑ CJK translations are upright (no fake italic); English blog translations stay italic. ⚑ The translation toggle and re-run icon move from `#94a3b8`/`#cbd5e1` to `text-muted` (4.8:1), the message translation text to `text-muted` and the blog translation line to `text-secondary` with the same `border-l-2 border-strong` as the injected blog lines (was a 1.5 px `#d1d5db` line). Per-language stacks are written once by `design/fonts.ts` as `--ds-font-sans-<lang>` / `--ds-font-serif-<lang>`, so `index.css` no longer copies the JP stack.
 4. **Safe alignment:** named utilities `justify-safe-center` / `items-safe-center` (plugin, registered in `cn()`) replace centring inside scrollers (FilmStrip, Gacha). Visible only where content overflowed (the oldest film frame is reachable again).
-5. ⚑ **Button labels never squeeze:** `Button` uses `min-h-8`/`min-h-10` and `whitespace-nowrap` (a CJK label can no longer shrink to one character per line). Identical for every single-line label today.
+5. ⚑ **Button labels never squeeze:** `Button` uses `min-h-8`/`min-h-10` and `whitespace-nowrap` (a CJK label can no longer shrink to one character per line). Identical for every single-line label today. Risk: in a narrow footer (the crash card's two `flex-1` buttons, ConfirmDialog footers) a long Japanese or Cantonese label now overflows its button instead of wrapping; Windows owner check 4 looks for it. Default: apply.
 6. ⚑ **Settings' content pane reserves its scrollbar gutter** (`scrollbar-gutter: stable`): switching between a short and a long tab no longer moves the content by 10 px. The shared `Modal` body is left as is (reserving a gutter in every dialog narrows the accepted layouts on the right).
 7. ⚑ **`tabular-nums` on message times, unread badges and the chat header's unread pill** (DESIGN_SYSTEM §8 asks for it); ⚑ **`text-wrap: balance`** on EmptyState and landing headings, **`text-wrap: pretty`** on blog post bodies, and **`word-break: auto-phrase`** (named utility `phrase-break`) on Japanese blog titles in the reader and on the feed cards: line breaks change slightly (no orphans, no phrase split mid-word).
-8. ⚑ **Crash screen on the design system:** translated (5 locales), brand scope, `bg-window` page, `Sheet`-like card with a `bg-status-danger` header, `Button secondary` "Try again" and `Button primary` "Report issue", safe-centred, and a `clientLog` breadcrumb. Seen only after a render crash.
+8. ⚑ **Crash screen on the design system:** translated (5 locales), brand scope, `bg-window` page, a `Sheet`-like card with a plain header: the error-state danger icon tile (`bg-semantic-danger-icon` + `text-semantic-danger`, as `StatusBlock kind="error"` draws it) beside the title in `text-primary` (no solid danger header: DESIGN_SYSTEM "Semantic colours" keeps the solid step for destructive buttons and finished-step marks), `Button secondary` "Try again" and `Button primary` "Report issue", safe-centred, and a `clientLog` breadcrumb. Seen only after a render crash. Default: apply. It uses the `Button` primitive and `brandScopeStyle` like any new UI (plain `<button>`s would survive a crash inside those primitives, but a crash there already breaks most of the app; the primitives rule wins).
 9. **Numbers follow the UI language** (`toLocaleString(i18n.language)` in the sync views). The hand-built `YYYY/MM/DD HH:mm` (`formatDateTime`, 18 call sites) and the gallery's `YYYY / MM` month labels are won't-fix: they are unambiguous in all five UI languages and changing them is a visible format change across the app.
 10. **Legacy colour layer removed:** the `--color-*` block in `index.css`, the `theme-*`/`surface-*`/`text-*`/`feedback-*`/`brand-*` colours and `theme-gradient*` images in `tailwind.config.js` (no usage anywhere), and its write on every group switch (`applyGroupTokens`). `generateThemeCSSVariables` stays for the pre-D1 equality tests. ⚑ `body` text moves from `text-gray-900` (#111827) to `text-primary` (#1f2937) — only text without its own colour class. `<meta name="color-scheme" content="light">` + `:root { color-scheme: light }`: form controls and scrollbars stay light whatever Windows' theme (the app has no dark mode yet). The `#F0F2F5` body background stays (it must match pywebview's window colour).
+10a. ⚑ **`cn()` merges two classes of the newly registered `animate-*` / `shadow-*` keys** (Task 8): where both are passed, only the last one stays, as with every other utility group. A grep of every non-test `cn(…)` and `className` found no call site that passes two of them today (the keys are used alone: `shadow-memories-polaroid` in the Memories paper surfaces, `animate-progress-indeterminate` in `ProgressBar`, `animate-star-fall` / `animate-fan-in` / `animate-petal-fall` in the recap slides), so nothing changes on screen. Default: apply.
 11. **Second guard ratchet ("drift")** in `design/guard.ts`: named palette classes (incl. `black`/`white`), `z-40`/`z-50`/`z-[…]`, Tailwind default font sizes (`text-xs`…`text-9xl`), arbitrary `leading/tracking/duration/delay/ease/bg/border/ring/outline/fill/stroke/from/via/to/decoration/blur-[…]`, plus hex/`rgb()`/`hsl()` literals in `*.css` and `tailwind.config.js`. Baseline `drift-guard-baseline.json` (same rules: new files 0, counts only go down, no `design/` entries). The three existing `z-40`/`z-50` sites (TimelineRail tooltip, VideoPlayer clipboard toast, Postcard caption) and `callScreen.css`'s 57 literals are ratcheted, not restyled (the call screen's glass look was accepted; recolouring it is a redesign).
 12. **Won't-fix here** (Appendix A has each reason): container queries for pane layouts (C-L2), a bubble width cap (C-L3), JS layout in MemberSelectModal (C-L6 part), a `ClampText` primitive (C-Y3), MemberPane title-only names (C-Y7), the px type scale (C-Y8), a darker default scrollbar thumb (C-Y9), translating Developer Diagnostics (C-I1 part, owner ⚑).
 
@@ -222,8 +223,11 @@ describe('forced colours (UI health #6)', () => {
         '[aria-current="true"]',
         '[aria-selected="true"]',
         '.shadow-card',
-        '[role="dialog"]',
+        '[role="dialog"]:not([data-surface="dark"] *)',
         '::-webkit-scrollbar-thumb',
+        '::-webkit-scrollbar-thumb:hover',
+        '[data-surface="dark"] ::-webkit-scrollbar-thumb',
+        '.sd-call-overlay ::-webkit-scrollbar-thumb:hover',
     ])('styles %s', (selector) => {
         expect(block).toContain(selector);
     });
@@ -252,9 +256,10 @@ Append to `frontend/src/index.css` (after the last `@layer base { … }`, outsid
   .shadow-sheet,
   .shadow-card,
   .shadow-pill,
-  [role="dialog"],
+  [role="dialog"]:not([data-surface="dark"] *),
   [role="menu"],
   [role="listbox"] {
+    /* Not the full-screen dark viewer (its backdrop is data-surface="dark"): no frame round the window. */
     outline: 1px solid CanvasText;
     outline-offset: -1px;
   }
@@ -288,7 +293,14 @@ Append to `frontend/src/index.css` (after the last `@layer base { … }`, outsid
     outline-offset: 2px;
   }
 
-  ::-webkit-scrollbar-thumb {
+  /* The hover and dark-surface thumb rules are more specific than the bare one: list them all, or
+     their (forced-away) colours win and the thumb vanishes on hover and on dark surfaces. */
+  ::-webkit-scrollbar-thumb,
+  ::-webkit-scrollbar-thumb:hover,
+  [data-surface="dark"] ::-webkit-scrollbar-thumb,
+  [data-surface="dark"] ::-webkit-scrollbar-thumb:hover,
+  .sd-call-overlay ::-webkit-scrollbar-thumb,
+  .sd-call-overlay ::-webkit-scrollbar-thumb:hover {
     background-color: CanvasText;
   }
 }
@@ -315,8 +327,8 @@ Add to `docs/design/DESIGN_SYSTEM.md`, after "### Layering":
 
 Windows High Contrast replaces colours with system colours and drops shadows and gradients. One
 `@media (forced-colors: active)` block in `frontend/src/index.css` redraws what would vanish:
-surface edges (`shadow-sheet`/`card`/`pill`, dialogs, menus, list boxes) get an inset 1 px
-`CanvasText` outline; the `Switch` gets a `ButtonText` border and thumb and a `Highlight` track when
+surface edges (`shadow-sheet`/`card`/`pill`, dialogs except the full-screen dark viewer, menus,
+list boxes) get an inset 1 px `CanvasText` outline; the `Switch` gets a `ButtonText` border and thumb and a `Highlight` track when
 on (the only `forced-color-adjust: none`); anything selected through ARIA (`aria-pressed`,
 `aria-current`, `aria-selected`, checked `menuitemradio`) gets a 2 px `Highlight` outline. **So a
 selected or current state must always carry its ARIA attribute**, not only a tint or a ring. Focus
@@ -438,6 +450,13 @@ describe('content in another language keeps its glyphs (UI health #10)', () => {
 
     it('no longer copies the Japanese stack literally', () => {
         expect(css).not.toContain('"Noto Sans JP Variable", system-ui');
+    });
+
+    it('keeps the display and reading faces on marked elements in every content language', () => {
+        const marked = ':is([lang="ja"], [lang="zh-TW"], [lang="zh-CN"], [lang="yue"], [lang="en"]):not(html)';
+        expect(css).toContain(`${marked}.font-reading {`);
+        expect(css).toContain(`${marked}.font-display {`);
+        expect(css).not.toContain('[lang="ja"]:not(html).font-display');
     });
 });
 ```
@@ -576,12 +595,13 @@ In `frontend/src/index.css`, replace the Japanese content rule block (the one st
     --ds-font-family-serif: var(--ds-font-serif-en);
     font-family: var(--ds-font-family-sans);
   }
-  /* The rule above (0,1,1) outranks .font-reading / .font-display (0,1,0) on the same element, so the
-     marked blog titles would fall back to sans: restore their faces with a higher specificity (0,2,1). */
-  [lang="ja"]:not(html).font-reading {
+  /* The rules above (0,1,1) outrank .font-reading / .font-display (0,1,0) on the same element, so a
+     marked title (a Japanese blog title, the DesignPage language samples, a translated heading) would
+     fall back to sans: restore their faces with a higher specificity (0,2,1), for every language. */
+  :is([lang="ja"], [lang="zh-TW"], [lang="zh-CN"], [lang="yue"], [lang="en"]):not(html).font-reading {
     font-family: var(--ds-font-family-reading);
   }
-  [lang="ja"]:not(html).font-display {
+  :is([lang="ja"], [lang="zh-TW"], [lang="zh-CN"], [lang="yue"], [lang="en"]):not(html).font-display {
     font-family: var(--ds-font-family-serif);
   }
 }
@@ -1035,6 +1055,9 @@ describe('ErrorBoundary crash screen (UI health C-I1)', () => {
         expect(screen.getByRole('button', { name: /もう一度試す/ })).toBeInTheDocument();
         expect(screen.getByRole('button', { name: /問題を報告/ })).toBeInTheDocument();
         expect(container.innerHTML).not.toMatch(/(bg|text)-(gray|red|blue|white)/);
+        // The error-state tile, not a solid danger header (DESIGN_SYSTEM "Semantic colours").
+        expect(container.innerHTML).not.toContain('bg-status-danger');
+        expect(container.querySelector('.bg-semantic-danger-icon.text-semantic-danger')).not.toBeNull();
         expect(container.firstElementChild).toHaveClass('items-safe-center');
         expect(clientLog).toHaveBeenCalledWith('app_load_failed', { target: 'render', error_type: 'typeerror' });
     });
@@ -1076,12 +1099,16 @@ import { breadcrumbCode, clientLog } from '../../utils/clientLog';
             return (
                 <div style={brandScopeStyle()} className="flex h-screen items-safe-center justify-center overflow-y-auto bg-window p-4">
                     <div role="alert" className="w-full max-w-md overflow-hidden rounded-xl bg-sheet shadow-sheet">
-                        <div className="flex items-center gap-3 bg-status-danger px-6 py-4 text-inverse">
-                            <AlertTriangle aria-hidden="true" className="h-6 w-6 shrink-0" />
-                            <h1 className="text-heading font-bold">{t('errorBoundary.title')}</h1>
+                        {/* Plain header with the error-state tile (as StatusBlock kind="error"): the solid
+                            danger step is only for destructive buttons (DESIGN_SYSTEM "Semantic colours"). */}
+                        <div className="flex items-center gap-3 px-6 pt-6">
+                            <span aria-hidden="true" className="flex shrink-0 rounded-card bg-semantic-danger-icon p-3 text-semantic-danger">
+                                <AlertTriangle className="h-6 w-6" />
+                            </span>
+                            <h1 className="text-heading font-bold text-primary">{t('errorBoundary.title')}</h1>
                         </div>
 
-                        <div className="flex flex-col gap-4 p-6">
+                        <div className="flex flex-col gap-4 px-6 pb-6 pt-4">
                             <p className="text-body text-secondary">{t('errorBoundary.body')}</p>
 
                             {error && (
@@ -1293,10 +1320,18 @@ const twMerge = extendTailwindMerge<'mask-image'>({ extend: { classGroups: TW_ME
 
 and add every key the failing test lists to its group (`animate`: `'star-fall', 'fan-in', 'petal-fall', 'progress-indeterminate'` and any other listed; `shadow`: `'memories-polaroid'` and any other listed). If TypeScript narrows the literal too much for `extendTailwindMerge`, annotate it `as const` and keep the generic.
 
-- [ ] **Step 3: Run the tests**
+- [ ] **Step 3: Run the tests and re-check the call sites (⚑ Decision 10a)**
 
 Run: `cd frontend && npx vitest run src/utils src/design`
 Expected: PASS.
+
+Run:
+
+```bash
+cd frontend && grep -rnoE "(^|[ \"'\`])(shadow|animate)-[a-z0-9-]+[^\"'\`]*[ ](shadow|animate)-[a-z0-9-]+" src --include=*.tsx --include=*.ts | grep -v "\.test\."
+```
+
+Expected: only pairs from different groups (`shadow-sheet animate-reveal`, `shadow-card animate-reveal`, `shadow-sheet animate-toast-in`) and, until Task 6 replaces it, `ErrorBoundary.tsx`'s `shadow-lg shadow-blue-500` (size + colour, two groups). If a pair of two `shadow-*` or two `animate-*` keys appears, `cn()` now keeps only the last: name it in the PR body.
 
 - [ ] **Step 4: Commit**
 
@@ -1376,6 +1411,19 @@ describe('drift ratchet repository', () => {
         const baseline = JSON.parse(readFileSync(DRIFT_BASELINE, 'utf-8')) as Record<string, number>;
         expect(Object.keys(baseline).filter((rel) => rel.startsWith('design/'))).toEqual([]);
     });
+
+    it('accepts no drift in a file the UI-health plans F and G created', () => {
+        // The baseline is written from the tree after F and G: drift they added would be accepted
+        // silently. design/ files are never in it (checked above); listed so a move out is caught too.
+        const createdByFAndG = [
+            'core/layout/KeepMounted.tsx', 'design/featureActive.ts', 'core/layout/MemoriesChunkBoundary.tsx',
+            'features/messages/components/SyncStatusPill.tsx', 'features/blogs/components/stagger.ts', 'hooks/useInert.ts',
+            'core/media/StepButtons.tsx', 'shell/components/SkipLink.tsx', 'design/primitives/LiveRegion.tsx',
+            'shell/components/SettingsErrorToast.tsx', 'design/dialog/useAnyDialogOpen.ts', 'hooks/useMediaQuery.ts',
+        ];
+        const baseline = JSON.parse(readFileSync(DRIFT_BASELINE, 'utf-8')) as Record<string, number>;
+        expect(createdByFAndG.filter((rel) => rel in baseline)).toEqual([]);
+    });
 });
 ```
 
@@ -1409,7 +1457,7 @@ export function countDriftViolations(source: string, relPath = ''): number {
     return countPatterns(source, /\.css$|tailwind\.config\.js$/.test(relPath) ? COLOUR_LITERALS : DRIFT_PATTERNS);
 }
 
-/** The style ratchet's files plus every CSS file under src (index.css, callScreen.css). */
+/** The style ratchet's files plus every CSS file under src (index.css, callScreen.css, callPopup.css). */
 export function isDriftScanned(relPath: string): boolean {
     if (relPath.endsWith('.css')) return true;
     return isScanned(relPath);
@@ -1437,7 +1485,7 @@ and inside: `const n = count(readFileSync(full, 'utf-8'), rel);` (the existing c
 - [ ] **Step 3: Write the baseline and review it**
 
 Run: `cd frontend && UPDATE_DRIFT_BASELINE=1 npx vitest run src/design/guard.test.ts && cat src/design/drift-guard-baseline.json`
-Expected: about a dozen entries, none under `design/`: `core/media/VideoPlayer.tsx`, `core/media/SubtitleOverlay.tsx`, `core/media/VoicePlayer.tsx`, `core/media/TranscriptPanel.tsx` (its `withBackdrop` classes and `text-xs`), `core/media/TranscribeButton.tsx`, `core/common/TranslateButton.tsx`, `core/common/SafeImage.tsx`, `core/common/DynamicBackground.tsx` (its `blur-[100px]` unless Plan F Task 11 ran), `features/blogs/components/TimelineRail.tsx` (`z-50`, `border-l-[3px]`, both documented as deliberate), `features/memories/memoir/Postcard.tsx` (`z-40`), `features/incomingCall/callScreen.css` (57), `index.css` (the `#F0F2F5` body colour and the scrollbar fallbacks). `core/common/ErrorBoundary.tsx` and `core/common/InlineTranslation.tsx` are absent (Tasks 6 and 3). If a `design/` file appears, replace its classes with tokens in this task.
+Expected: about a dozen entries, none under `design/`: `core/media/VideoPlayer.tsx`, `core/media/SubtitleOverlay.tsx`, `core/media/VoicePlayer.tsx`, `core/media/TranscriptPanel.tsx` (its `withBackdrop` classes; Plan G Task 10 moved its `text-xs` to `text-caption`), `core/media/TranscribeButton.tsx`, `core/common/TranslateButton.tsx`, `core/common/SafeImage.tsx`, `core/common/DynamicBackground.tsx` (its `blur-[100px]` unless Plan F Task 11 ran), `features/blogs/components/TimelineRail.tsx` (`z-50`, `border-l-[3px]`, both documented as deliberate), `features/memories/memoir/Postcard.tsx` (`z-40`), `features/incomingCall/callScreen.css` (57), `features/callPopup/callPopup.css` (1 colour literal; `isDriftScanned` scans every CSS file), `index.css` (the `#F0F2F5` body colour and the scrollbar fallbacks). No file created by Plan F or G may appear (the test above): if one does, replace its classes with tokens in this task. `core/common/ErrorBoundary.tsx` and `core/common/InlineTranslation.tsx` are absent (Tasks 6 and 3). If a `design/` file appears, replace its classes with tokens in this task.
 
 Run: `cd frontend && npx vitest run src/design`
 Expected: PASS.
@@ -1536,32 +1584,33 @@ uv run git commit -m "docs(changelog): note the text, contrast and translation f
 
 Record results in `.superpowers/sdd/windows-acceptance.md` under "Plan H".
 
-1. **High Contrast themes (Settings → Accessibility → Contrast themes): Aquatic, Desert, Dusk, Night sky.** In each: a Settings switch reads clearly on vs off; the selected group in the left rail, the selected conversation tile, the selected tab in Media and the highlighted search result have a visible outline; dialogs and menus have a visible edge; focus rings show when tabbing; the chat header title is readable (no white-on-white).
+1. **High Contrast themes (Settings → Accessibility → Contrast themes): Aquatic, Desert, Dusk, Night sky.** In each: a Settings switch reads clearly on vs off; the selected group in the left rail, the selected conversation tile, the selected tab in Media and the highlighted search result have a visible outline; dialogs and menus have a visible edge, but the full-screen photo/video viewer has no frame round the window; scrollbar thumbs stay visible on hover and inside the viewer; focus rings show when tabbing; the chat header title is readable (no white-on-white).
 2. **Translations (target 繁體中文, then 简体中文, then English), UI language Japanese.** Translate a message and a blog post: Chinese text uses Chinese glyph shapes (compare 骨, 角, 直 against Japanese), is upright, and the "Translate" toggle reads clearly; English blog lines stay italic.
 3. **CJK IME.** Type in Search, the member filter and any Settings field with Microsoft IME (Japanese) and a Chinese IME: composition, candidate list and confirm work; no clipped candidate text.
 4. **Scaling 100 / 125 / 150 / 200 %.** A message of 300 "w" and a long "〜〜〜" run wraps inside its bubble at every scale; Settings does not shift when switching tabs; the Memories film strip's oldest frame is reachable by scrolling left; buttons in the Settings footer and dialogs show their full labels on one line in Japanese and Cantonese.
 5. **Dark Windows theme (Settings → Personalization → Colors → Dark).** Native scrollbars, the date inputs and selects in SakaDesk stay light.
-6. **Crash screen.** In a dev build, throw from a component (the DesignPage error demo, if present, or a temporary throw) with UI language 粵語: the crash screen is in Cantonese, uses the app's colours, and both buttons work; `debug.log` shows `app_load_failed target=render`.
+6. **Crash screen.** In a dev build, throw from a component (the DesignPage error demo, if present, or a temporary throw) with UI language 粵語: the crash screen is in Cantonese, uses the app's colours (a red icon tile beside a dark title, no red header bar, ⚑ Decision 8), both buttons show their full labels and work; `debug.log` shows `app_load_failed target=render`.
 
 ## Self-review
 
 - **Spec coverage:** every row of `report-css-theming.md` maps to a task here, to Plan B (fonts), to Plan G (menu focus ring, ShareDialog name) or to a won't-fix with reason (Appendix A). UI-HEALTH-REPORT #4, #6, #10, #14 and the CSS quick wins (`break-words`, safe centring, `tabular-nums`, `color-scheme`, `scrollbar-gutter` on Settings) are covered; the quick win "`scrollbar-gutter` on the Modal scroller" is a won't-fix (Decision 6).
 - **Placeholders:** Task 8's list of missing registry keys is produced by the failing test (the step names the known ones and says to add every listed key).
-- **Names:** `langStackVar`, `writeLanguageStacks`, `loadLanguageFaces`, `isCjkLanguage`, `justify-safe-center`, `items-safe-center`, `scrollbar-stable`, `phrase-break`, `TW_MERGE_CLASS_GROUPS`, `DRIFT_PATTERNS`, `countDriftViolations`, `isDriftScanned`, `DRIFT_LABELS`, `drift-guard-baseline.json`, `UPDATE_DRIFT_BASELINE` are consistent across tasks and tests.
+- **Pre-flight review** (`.superpowers/sdd/ui-plans-preflight-review.md`) applied: H2-1 (forced thumb on hover and dark surfaces), H2-2 (no outline on the dark viewer), H3-1 (`:is(…)` companions for every content language), H4-1 (overflow risk in Decision 5), H6-1 (error-state tile instead of a solid danger header; ⚑ restated), H8-1 (⚑ 10a with the grep result), H9-1 (`callPopup.css` listed; no F/G file in the drift baseline). Not applied: H6-2 (plain `<button>`s on the crash screen) — it conflicts with the design-system primitives rule (Decision 8).
+- **Names:** `langStackVar`, `writeLanguageStacks`, `loadLanguageFaces`, `isCjkLanguage`, `justify-safe-center`, `items-safe-center`, `scrollbar-stable`, `phrase-break`, `TW_MERGE_CLASS_GROUPS`, `DRIFT_PATTERNS`, `countDriftViolations`, `isDriftScanned`, `DRIFT_LABELS`, `drift-guard-baseline.json`, `UPDATE_DRIFT_BASELINE`, `createdByFAndG` are consistent across tasks and tests.
 
 ## Appendix A — Triage of `report-css-theming.md`
 
 | Id | Finding (report section) | Status |
 |---|---|---|
-| C-F1 | No forced-colors handling: Switch, Pill, RailItem, Settings tabs, avatar selection, surface edges (Theming, Top 1) | task H2 |
+| C-F1 | No forced-colors handling: Switch, Pill, RailItem, Settings tabs, avatar selection, surface edges (Theming, Top 1) | task H2 (the dark viewer keeps no frame; the thumb rules cover hover and dark surfaces) |
 | C-Y1 | Message/memory/letter text clipped: `whitespace-pre-wrap` without `overflow-wrap` (Typography, Top 2) | task H1 |
-| C-Y2 | Translations in Japanese glyphs; italic CJK (Typography, Top 3) | task H3 |
+| C-Y2 | Translations in Japanese glyphs; italic CJK (Typography, Top 3) | task H3 (display / reading faces kept for every content language) |
 | C-Y4 | Render-blocking Google Fonts; weight 300 loaded unused (Typography, Top 4) | closed — security Plan B Task 8 (bundled `@fontsource-variable/*`; CHANGELOG "Fonts now come with the app") |
-| C-T1 | Guard scans only .ts/.tsx; misses palette classes, z-40/50, arbitrary values, default sizes, CSS literals (Token discipline, Top 5) | task H9 |
+| C-T1 | Guard scans only .ts/.tsx; misses palette classes, z-40/50, arbitrary values, default sizes, CSS literals (Token discipline, Top 5) | task H9 (no file created by Plan F or G may enter the baseline) |
 | C-T2 | Legacy `--color-*` vars and utilities unused but rewritten; index.css defaults differ; body `text-gray-900` (Token discipline) | task H7 |
 | C-T3 | JP font stacks duplicated in index.css, untested (Token discipline) | task H3 (stacks as variables from `fontStacks`) |
 | C-T4 | `callScreen.css` separate style system; decline red not semantic danger (Token discipline) | task H9 ratchets its 57 literals; recolouring won't-fix (accepted glass call screen; a red change is a visible redesign) |
-| C-T5 | tailwind-merge list stale (Token discipline) | task H8 |
+| C-T5 | tailwind-merge list stale (Token discipline) | task H8 (no current call site combines two of the new keys, ⚑ Decision 10a) |
 | C-L1 | `justify-center` / vertical centring inside scrollers clip the start (FilmStrip, Gacha, ErrorBoundary) (Layout) | task H4 (FilmStrip, Gacha); ErrorBoundary in task H6 |
 | C-L2 | Pane components use viewport breakpoints; md: always true at ≥960 px (Layout) | won't-fix: container queries would apply the narrow layouts at today's pane widths — a visible change to accepted Memories/chat layouts; the `max-md:` drawer is reachable with page zoom (Plan G Task 5 makes it inert when closed); revisit in a layout design round |
 | C-L3 | Bubble only `max-w-[80%]` → ~110 JP chars per line at 2560 px (Layout) | won't-fix ⚑: a width cap changes the accepted bubble width at common window sizes too (80 % of a 900 px pane is 720 px > 42 rem); owner decision |
@@ -1574,7 +1623,7 @@ Record results in `.superpowers/sdd/windows-acceptance.md` under "Plan H".
 | C-Y7 | MemberPane truncated names readable only via `title` (Typography) | won't-fix: the full name is in the DOM (screen readers read it); a reveal-on-hover would change the accepted pane; low |
 | C-Y8 | px type scale (Typography) | won't-fix: no in-app text size setting is planned; Chromium zoom scales px text |
 | C-Y9 | Scrollbar thumb at rest ~1.8:1 (Typography) | won't-fix for the default (accepted subtle thumb); task H2 darkens it for "more contrast" and High Contrast users |
-| C-I1 | Crash screen hard-coded English, palette classes, off-system button; Diagnostics English (i18n) | crash screen → task H6; Developer Diagnostics won't-fix ⚑: a hidden developer console by design (DESIGN_SYSTEM "Developer surfaces"); translate only if the owner decides it is user-facing |
+| C-I1 | Crash screen hard-coded English, palette classes, off-system button; Diagnostics English (i18n) | crash screen → task H6 (error-state tile, no solid danger header); Developer Diagnostics won't-fix ⚑: a hidden developer console by design (DESIGN_SYSTEM "Developer surfaces"); translate only if the owner decides it is user-facing |
 | C-I2 | Hand-built YYYY/MM/DD; `toLocaleString()` without locale (i18n) | numbers → task H6; dates won't-fix (Decision 9) |
 | C-F2 | Menu item focus `bg-sunken` ~1.1:1, outline removed (Theming) | task G7 (Plan G) |
 | C-F3 | No `color-scheme` (Theming) | task H7 |
