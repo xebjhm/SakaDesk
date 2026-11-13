@@ -5,7 +5,7 @@ Every archive containment check trusts ``output_dir`` as its base, so whoever
 sets it decides which files the archive routes may read. ``POST /api/settings``
 therefore takes a new value only when the user chose it in the native folder
 picker the backend runs (:func:`grant`, then :func:`take_grant` when it is
-saved) or it is the default folder, and only if :func:`check_output_dir`
+saved; a pick is used once and expires after ``GRANT_LIFETIME_SECONDS``) or it is the default folder, and only if :func:`check_output_dir`
 passes. Reasons (log, API and UI codes):
 
 Lexical, before any filesystem call (so a network path is never opened):
@@ -42,16 +42,24 @@ import ntpath
 import os
 import tempfile
 import threading
+import time
 from pathlib import Path, PureWindowsPath
+from typing import Optional
 
 from backend.services.platform import get_app_data_dir
 
 MAX_OUTPUT_DIR_CHARS = 1024
 MAX_GRANTS = 8
+GRANT_LIFETIME_SECONDS = 600.0
+"""How long a pick stays usable."""
+
+_now = time.monotonic
+"""The grant clock (tests replace it)."""
 _SYSTEM_DIR_VARS = ("SystemRoot", "ProgramFiles", "ProgramFiles(x86)", "ProgramData")
 
 # Folders the native picker returned in this process (comparison form), oldest first.
-_grants: list[str] = []
+_grants: dict[str, tuple[str, float]] = {}
+"""Comparison key -> (the picked string, when it was picked), oldest first."""
 _grants_lock = threading.Lock()
 
 
@@ -202,30 +210,55 @@ def check_output_dir(raw: object) -> str:
     return str(normal)
 
 
+def _expire_locked(now: float) -> None:
+    """Drop grants older than ``GRANT_LIFETIME_SECONDS``. ``_grants_lock`` must be held."""
+    for key in [
+        k for k, (_, at) in _grants.items() if now - at > GRANT_LIFETIME_SECONDS
+    ]:
+        del _grants[key]
+
+
 def grant(value: str) -> None:
-    """Remember a folder the native picker returned; only the newest ``MAX_GRANTS`` are kept."""
+    """Remember a folder the native picker returned, exactly as ``value``.
+
+    A pick lives ``GRANT_LIFETIME_SECONDS``; only the newest ``MAX_GRANTS``
+    are kept.
+    """
     key = _key(value)
+    now = _now()
     with _grants_lock:
-        if key in _grants:
-            _grants.remove(key)
-        _grants.append(key)
-        del _grants[:-MAX_GRANTS]
+        _expire_locked(now)
+        _grants.pop(key, None)
+        _grants[key] = (value, now)
+        while len(_grants) > MAX_GRANTS:
+            del _grants[next(iter(_grants))]
 
 
 def has_grant(value: str) -> bool:
-    """True when the picker returned ``value`` (as :func:`same_dir` compares) and it is unused."""
+    """True when the picker returned ``value`` (as :func:`same_dir` compares) and it is unused and fresh."""
     with _grants_lock:
+        _expire_locked(_now())
         return _key(value) in _grants
 
 
-def take_grant(value: str) -> bool:
-    """Use up the pick of ``value``; True if there was one."""
+def take_grant(value: str) -> Optional[str]:
+    """Use up the pick of ``value`` atomically.
+
+    Returns the exact string the picker returned (it may differ from
+    ``value`` in case or slashes), or ``None`` when there was no fresh,
+    unused pick: of any number of simultaneous callers, one gets it.
+    """
     key = _key(value)
     with _grants_lock:
-        if key in _grants:
-            _grants.remove(key)
-            return True
-    return False
+        _expire_locked(_now())
+        entry = _grants.pop(key, None)
+    return entry[0] if entry is not None else None
+
+
+def clear_grants() -> None:
+    """Forget every pick (a new archive folder was saved)."""
+    with _grants_lock:
+        _grants.clear()
 
 
 def clear_grants_for_tests() -> None:

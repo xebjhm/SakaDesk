@@ -47,6 +47,7 @@ def settings_file(tmp_path, monkeypatch):
         lambda: str(tmp_path / "home" / "Documents" / "SakaDesk"),
     )
     output_dir_policy.clear_grants_for_tests()
+    monkeypatch.setattr(settings_api, "_picker_cooldown_until", 0.0)
     yield path
     output_dir_policy.clear_grants_for_tests()
 
@@ -57,7 +58,9 @@ def _saved(path: Path) -> dict:
 
 def _pick(monkeypatch, chosen):
     """Make the native dialog return ``chosen`` (a str or None), then call the picker route."""
-    monkeypatch.setattr(settings_api, "_ask_directory", lambda title: chosen)
+    monkeypatch.setattr(
+        settings_api, "_ask_directory", lambda title, initialdir=None: chosen
+    )
     return client.post("/api/settings/select-folder").json()
 
 
@@ -153,9 +156,11 @@ def test_a_default_folder_that_breaks_a_rule_is_refused(settings_file, monkeypat
 
     monkeypatch.setattr(output_dir_policy, "check_output_dir", deny)
     default = settings_api.get_default_output_dir()
+    before = settings_file.read_text(encoding="utf-8")
     response = client.post("/api/settings", json={"output_dir": default})
     assert response.status_code == 400
     assert response.json()["detail"]["reason"] == "not_writable"
+    assert settings_file.read_text(encoding="utf-8") == before
 
 
 @pytest.mark.parametrize(
@@ -187,7 +192,7 @@ def test_the_picker_reports_a_cancel(settings_file, monkeypatch):
 
 
 def test_the_picker_reports_a_missing_tkinter(settings_file, monkeypatch):
-    def unavailable(title):
+    def unavailable(title, initialdir=None):
         raise settings_api._PickerUnavailable()
 
     monkeypatch.setattr(settings_api, "_ask_directory", unavailable)
@@ -198,7 +203,7 @@ def test_the_picker_reports_a_missing_tkinter(settings_file, monkeypatch):
 
 
 def test_a_dialog_failure_gives_a_code_not_the_error_text(settings_file, monkeypatch):
-    def broken(title):
+    def broken(title, initialdir=None):
         raise RuntimeError("C:\\Users\\victim secret detail")
 
     monkeypatch.setattr(settings_api, "_ask_directory", broken)
@@ -237,7 +242,7 @@ def test_a_picker_left_open_times_out_and_stays_busy_until_closed(
 ):
     closed = threading.Event()
 
-    def slow(title):
+    def slow(title, initialdir=None):
         closed.wait(5)
         return None
 
@@ -260,7 +265,9 @@ def test_the_dialog_title_follows_the_ui_language(settings_file, monkeypatch):
     seen: list[str] = []
     monkeypatch.setattr(settings_api, "resolve_ui_language", lambda config: "ja")
     monkeypatch.setattr(
-        settings_api, "_ask_directory", lambda title: seen.append(title)
+        settings_api,
+        "_ask_directory",
+        lambda title, initialdir=None: seen.append(title),
     )
     client.post("/api/settings/select-folder")
     assert seen == ["SakaDesk のデータ保存先フォルダを選択"]
@@ -282,7 +289,9 @@ def test_ask_directory_uses_a_hidden_topmost_root(monkeypatch):
     root = tk.Tk.return_value
     root.withdraw.assert_called_once_with()
     root.attributes.assert_called_once_with("-topmost", True)
-    tk.filedialog.askdirectory.assert_called_once_with(title="T", mustexist=True)
+    tk.filedialog.askdirectory.assert_called_once_with(
+        title="T", mustexist=True, initialdir=None
+    )
     root.destroy.assert_called_once_with()
 
 
@@ -308,8 +317,8 @@ def test_grants_keep_only_the_newest_picks():
         assert not output_dir_policy.has_grant("/picks/0")
         assert not output_dir_policy.has_grant("/picks/1")
         assert output_dir_policy.has_grant("/picks/2/")
-        assert output_dir_policy.take_grant("/picks/2") is True
-        assert output_dir_policy.take_grant("/picks/2") is False
+        assert output_dir_policy.take_grant("/picks/2") == "/picks/2"
+        assert output_dir_policy.take_grant("/picks/2") is None
     finally:
         output_dir_policy.clear_grants_for_tests()
 
@@ -323,3 +332,244 @@ def test_get_treats_a_spaces_only_saved_folder_as_the_default(settings_file, tmp
     assert response.json()["output_dir"] == str(
         tmp_path / "home" / "Documents" / "SakaDesk"
     )
+
+
+# ---- fix round 1 -----------------------------------------------------------
+
+
+def test_ask_directory_opens_at_the_given_folder(monkeypatch):
+    tk = MagicMock()
+    tk.filedialog.askdirectory.return_value = ""
+    monkeypatch.setitem(sys.modules, "tkinter", tk)
+    monkeypatch.setitem(sys.modules, "tkinter.filedialog", tk.filedialog)
+    settings_api._ask_directory("T", "C:/Archive")
+    tk.filedialog.askdirectory.assert_called_once_with(
+        title="T", mustexist=True, initialdir="C:/Archive"
+    )
+
+
+def test_ask_directory_destroys_the_root_when_the_dialog_raises(monkeypatch):
+    tk = MagicMock()
+    tk.filedialog.askdirectory.side_effect = RuntimeError("boom")
+    monkeypatch.setitem(sys.modules, "tkinter", tk)
+    monkeypatch.setitem(sys.modules, "tkinter.filedialog", tk.filedialog)
+    with pytest.raises(RuntimeError):
+        settings_api._ask_directory("T")
+    tk.Tk.return_value.destroy.assert_called_once_with()
+
+
+def test_the_picker_opens_at_the_saved_folder(settings_file, tmp_path, monkeypatch):
+    seen: list = []
+    monkeypatch.setattr(
+        settings_api,
+        "_ask_directory",
+        lambda title, initialdir=None: seen.append(initialdir),
+    )
+    client.post("/api/settings/select-folder")
+    assert seen == [str(tmp_path / "current")]
+
+
+def test_the_picker_opens_at_the_default_when_nothing_is_saved(
+    settings_file, tmp_path, monkeypatch
+):
+    settings_file.write_text("{}", encoding="utf-8")
+    seen: list = []
+    monkeypatch.setattr(
+        settings_api,
+        "_ask_directory",
+        lambda title, initialdir=None: seen.append(initialdir),
+    )
+    client.post("/api/settings/select-folder")
+    assert seen == [str(tmp_path / "home" / "Documents" / "SakaDesk")]
+
+
+def test_the_dialog_runs_off_the_event_loop_thread(settings_file, monkeypatch):
+    threads: list = []
+    loop_thread: list = []
+
+    def dialog(title, initialdir=None):
+        threads.append(threading.get_ident())
+        return None
+
+    monkeypatch.setattr(settings_api, "_ask_directory", dialog)
+
+    async def go():
+        loop_thread.append(threading.get_ident())
+        return await settings_api.select_folder()
+
+    import asyncio
+
+    asyncio.run(go())
+    assert threads and threads[0] != loop_thread[0]
+
+
+def test_a_cancel_starts_a_short_cooldown(settings_file, monkeypatch):
+    now = [100.0]
+    monkeypatch.setattr(settings_api, "_monotonic", lambda: now[0])
+    calls: list = []
+    monkeypatch.setattr(
+        settings_api,
+        "_ask_directory",
+        lambda title, initialdir=None: calls.append(1),
+    )
+    assert client.post("/api/settings/select-folder").json() == {"path": None}
+    with capture_logs() as logs:
+        assert client.post("/api/settings/select-folder").json() == {
+            "path": None,
+            "error": "cooldown",
+        }
+    assert [e["outcome"] for e in logs if e["event"] == "output_dir_picker"] == [
+        "cooldown"
+    ]
+    assert len(calls) == 1
+    now[0] += settings_api._PICKER_COOLDOWN_SECONDS + 0.1
+    assert client.post("/api/settings/select-folder").json() == {"path": None}
+    assert len(calls) == 2
+
+
+def test_a_pick_does_not_start_a_cooldown(settings_file, tmp_path, monkeypatch):
+    chosen = tmp_path / "archive"
+    chosen.mkdir()
+    assert _pick(monkeypatch, str(chosen)) == {"path": str(chosen)}
+    assert _pick(monkeypatch, str(chosen)) == {"path": str(chosen)}
+
+
+def test_simultaneous_posts_use_one_grant_once(settings_file, tmp_path, monkeypatch):
+    import asyncio
+    import time
+
+    import httpx
+
+    picked = tmp_path / "picked"
+    picked.mkdir()
+    output_dir_policy.grant(str(picked))
+    real = output_dir_policy.check_output_dir
+
+    def slow(raw):
+        time.sleep(0.2)
+        return real(raw)
+
+    monkeypatch.setattr(output_dir_policy, "check_output_dir", slow)
+
+    async def go():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            return await asyncio.gather(
+                *[
+                    c.post("/api/settings", json={"output_dir": str(picked)})
+                    for _ in range(3)
+                ]
+            )
+
+    responses = asyncio.run(go())
+    codes = sorted(r.status_code for r in responses)
+    assert codes == [200, 400, 400]
+    for r in responses:
+        if r.status_code == 400:
+            assert r.json()["detail"]["reason"] == "not_picked"
+    assert _saved(settings_file)["output_dir"] == str(picked)
+
+
+def test_a_posted_old_value_cannot_undo_a_picker_save(
+    settings_file, tmp_path, monkeypatch
+):
+    import asyncio
+
+    import httpx
+
+    old = _saved(settings_file)["output_dir"]
+    newdir = tmp_path / "newpick"
+    newdir.mkdir()
+    output_dir_policy.grant(str(newdir))
+    real_load = settings_api._store_load
+
+    async def slow_load():
+        config = await real_load()
+        await asyncio.sleep(0.2)  # the stale read the old-value POST decides on
+        return config
+
+    async def go():
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(
+            transport=transport, base_url="http://testserver"
+        ) as c:
+            monkeypatch.setattr(settings_api, "_store_load", slow_load)
+            stale = asyncio.create_task(
+                c.post(
+                    "/api/settings",
+                    json={"output_dir": old, "auto_sync_enabled": False},
+                )
+            )
+            await asyncio.sleep(0.05)
+            monkeypatch.setattr(settings_api, "_store_load", real_load)
+            fresh = await c.post("/api/settings", json={"output_dir": str(newdir)})
+            return fresh, await stale
+
+    fresh, stale = asyncio.run(go())
+    assert fresh.status_code == 200
+    assert stale.status_code == 200
+    assert _saved(settings_file)["output_dir"] == str(newdir)
+    assert _saved(settings_file)["auto_sync_enabled"] is False
+
+
+def test_posting_the_saved_folder_never_rewrites_it(settings_file, tmp_path):
+    current = _saved(settings_file)["output_dir"]
+    r = client.post(
+        "/api/settings",
+        json={"output_dir": current, "auto_sync_enabled": False},
+    )
+    assert r.status_code == 200
+    saved = _saved(settings_file)
+    assert saved["output_dir"] == current
+    assert saved["is_configured"] is True
+    assert saved["auto_sync_enabled"] is False
+
+
+def test_the_picked_string_is_saved_not_the_request_text(
+    settings_file, tmp_path, monkeypatch
+):
+    picked = tmp_path / "Archive"
+    picked.mkdir()
+    monkeypatch.setattr(
+        output_dir_policy, "_key", lambda v: str(v).lower().replace("\\", "/")
+    )
+    output_dir_policy.grant(str(picked))
+    r = client.post("/api/settings", json={"output_dir": str(picked).lower()})
+    assert r.status_code == 200
+    assert _saved(settings_file)["output_dir"] == str(picked)
+
+
+def test_a_save_clears_the_remaining_grants(settings_file, tmp_path, monkeypatch):
+    a = tmp_path / "a"
+    b = tmp_path / "b"
+    a.mkdir()
+    b.mkdir()
+    output_dir_policy.grant(str(a))
+    output_dir_policy.grant(str(b))
+    assert client.post("/api/settings", json={"output_dir": str(a)}).status_code == 200
+    r = client.post("/api/settings", json={"output_dir": str(b)})
+    assert r.status_code == 400
+    assert r.json()["detail"]["reason"] == "not_picked"
+
+
+def test_a_grant_expires(settings_file, tmp_path, monkeypatch):
+    picked = tmp_path / "picked"
+    picked.mkdir()
+    now = [1000.0]
+    monkeypatch.setattr(output_dir_policy, "_now", lambda: now[0])
+    output_dir_policy.grant(str(picked))
+    assert output_dir_policy.has_grant(str(picked))
+    now[0] += output_dir_policy.GRANT_LIFETIME_SECONDS + 1
+    assert not output_dir_policy.has_grant(str(picked))
+    r = client.post("/api/settings", json={"output_dir": str(picked)})
+    assert r.status_code == 400
+    assert r.json()["detail"]["reason"] == "not_picked"
+
+
+def test_take_grant_reports_whether_it_removed_one():
+    output_dir_policy.clear_grants_for_tests()
+    output_dir_policy.grant("/x/y")
+    assert output_dir_policy.take_grant("/x/y") == "/x/y"
+    assert output_dir_policy.take_grant("/x/y") is None
