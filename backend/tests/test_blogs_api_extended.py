@@ -566,6 +566,21 @@ class TestProxyBlogImage:
             "attachment; filename*=UTF-8''%E5%86%99%E7%9C%9F.png"
         )
 
+    @patch("httpx.AsyncClient")
+    def test_proxy_image_download_name_keeps_the_image_extension(self, mock_httpx_cls):
+        """A page cannot save a proxied image as evil.exe or into another folder."""
+        _make_proxy_stream_client(
+            mock_httpx_cls, chunks=[b"\xff\xd8"], headers={"content-type": "image/jpeg"}
+        )
+        response = client.get(
+            "/api/blogs/proxy-image?url=https://cdn.hinatazaka46.com/a.jpg"
+            "&download=..%5C..%5Cevil.exe"
+        )
+        assert response.status_code == 200
+        assert response.headers["content-disposition"] == (
+            "attachment; filename*=UTF-8''evil.jpg"
+        )
+
     def test_proxy_image_refuses_cleartext_http(self):
         """Audit 2026-11-13: an on-path attacker could answer a cleartext fetch."""
         with patch("httpx.AsyncClient") as mock_httpx_cls, capture_logs() as logs:

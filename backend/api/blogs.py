@@ -706,7 +706,12 @@ async def proxy_blog_image(
 
     headers = {"X-Content-Type-Options": "nosniff"}
     if download:
-        safe_name = quote(download, safe="")
+        # The client's name, reduced to one part ending in the image's own
+        # extension (security audit 2026-11-13).
+        ext = next(
+            (e for e, t in INLINE_MEDIA_TYPES.items() if t == content_type), ".jpg"
+        )
+        safe_name = quote(download_name(download, f"image{ext}"), safe="")
         headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{safe_name}"
     else:
         headers["Content-Security-Policy"] = SANDBOX_CSP
