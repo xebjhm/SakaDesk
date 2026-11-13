@@ -97,6 +97,52 @@ def join_within(base: Path, *parts: str) -> Path:
     return base.joinpath(*parts)
 
 
+def member_folder_name(member_name: object) -> str:
+    """The folder name of a member under a service's blogs folder.
+
+    The name with surrounding whitespace stripped (Windows cannot create a
+    folder ending in a space) and ``/`` replaced by ``_``, as archives have
+    always been laid out; ``""`` (never a ``plain_segment``) for a non-``str``.
+    """
+    return member_name.strip().replace("/", "_") if isinstance(member_name, str) else ""
+
+
+def member_folder(base: Path, member_name: object) -> Path:
+    """``base / <member folder name>``; else raise ``UnsafePath("segment")``."""
+    return join_within(base, member_folder_name(member_name))
+
+
+def blog_folder(base: Path, member_name: object, blog_id: object, date: str) -> Path:
+    """``base / <member folder name> / <date>_<blog id>`` for one cached blog.
+
+    Raises ``UnsafePath`` with reason ``blog_id`` when ``blog_id`` is not
+    :func:`is_safe_id`, or ``segment`` when either folder name is not a
+    :func:`plain_segment`. Every reader and writer of blog folders builds the
+    path here, so the derivation lives in one place.
+    """
+    if not is_safe_id(blog_id):
+        raise UnsafePath("blog_id")
+    return join_within(base, member_folder_name(member_name), f"{date}_{blog_id}")
+
+
+def blog_folder_or_none(
+    base: Path, member_name: object, blog_id: object, date: str
+) -> Path | None:
+    """:func:`blog_folder`, or ``None`` when the index entry is unsafe."""
+    try:
+        return blog_folder(base, member_name, blog_id, date)
+    except UnsafePath:
+        return None
+
+
+def member_folder_or_none(base: Path, member_name: object) -> Path | None:
+    """:func:`member_folder`, or ``None`` when the member name is unsafe."""
+    try:
+        return member_folder(base, member_name)
+    except UnsafePath:
+        return None
+
+
 def is_within(base: Path, path: Path) -> bool:
     """True if ``path`` lies strictly inside ``base``, judged on the text alone.
 

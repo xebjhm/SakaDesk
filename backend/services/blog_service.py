@@ -40,8 +40,9 @@ from backend.services.passive_media import INLINE_MEDIA_TYPES
 from backend.services.path_resolver import get_output_dir
 from backend.services.safe_paths import (
     UnsafePath,
+    blog_folder,
     is_safe_id,
-    join_within,
+    member_folder_name,
     plain_segment,
 )
 from backend.services.service_utils import (
@@ -68,19 +69,14 @@ def _blog_folder(base: Path, member_name: str, blog_id: str, date: str) -> Path:
     Loops over many blogs resolve ``base`` once and call this per blog:
     ``get_blogs_base_path`` reads settings.json from disk on every call.
     """
-    if not is_safe_id(blog_id):
-        raise UnsafePath("blog_id")
-    safe_name = (
-        member_name.strip().replace("/", "_") if isinstance(member_name, str) else ""
-    )
-    return join_within(base, safe_name, f"{date}_{blog_id}")
+    return blog_folder(base, member_name, blog_id, date)
 
 
 def _safe_blog_members(service: str, members: object) -> dict[str, str]:
     """The scraped ``{member id: name}`` entries that can name archive folders.
 
     The id must be ``safe_paths.is_safe_id`` and the name a ``str`` whose
-    folder form (stripped, ``/`` → ``_``, as :func:`_blog_folder` builds it) is
+    folder form (``safe_paths.member_folder_name``, as :func:`_blog_folder` builds it) is
     a ``safe_paths.plain_segment``. Others are dropped with one
     ``blog_remote_rejected`` (``kind=member``, ``count``); a value that is not a
     mapping logs ``reason=not_mapping``. Never an id or a name is logged
@@ -96,7 +92,7 @@ def _safe_blog_members(service: str, members: object) -> dict[str, str]:
         for mid, name in members.items()
         if is_safe_id(mid)
         and isinstance(name, str)
-        and plain_segment(name.strip().replace("/", "_"))
+        and plain_segment(member_folder_name(name))
     }
     if len(safe) != len(members):
         logger.warning(

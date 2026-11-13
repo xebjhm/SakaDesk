@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from structlog.testing import capture_logs
 
 from backend.main import app
-from backend.services.blog_service import BlogService, _blog_folder
+from backend.services.blog_service import BlogService, _blog_folder, _safe_blog_members
 from backend.services.safe_paths import UnsafePath
 
 client = TestClient(app)
@@ -60,6 +60,38 @@ class TestBlogFolder:
     def test_a_date_that_leaves_is_refused(self, tmp_path):
         with pytest.raises(UnsafePath):
             _blog_folder(tmp_path, "金村 美玖", "1", "../../x")
+
+    @pytest.mark.parametrize(
+        "name", ["長濱 ねる", "ゆっかー・みくにん", "ポカ：ねる", "ＫＡＮＡ　ＭＩＫＵ"]
+    )
+    def test_real_member_name_forms_are_kept_as_folders(self, tmp_path, name):
+        assert _blog_folder(tmp_path, name, "1", "20260101") == (
+            tmp_path / name / "20260101_1"
+        )
+
+
+class TestSafeBlogMembers:
+    @pytest.mark.parametrize("members", [None, [], "x", [("1", "a")], 7])
+    def test_a_value_that_is_not_a_mapping_gives_nothing_and_logs_the_reason(
+        self, members
+    ):
+        with capture_logs() as logs:
+            assert _safe_blog_members("nogizaka46", members) == {}
+        assert _events(logs, "blog_remote_rejected") == [
+            {
+                "event": "blog_remote_rejected",
+                "log_level": "warning",
+                "service": "nogizaka46",
+                "kind": "member",
+                "reason": "not_mapping",
+            }
+        ]
+
+    def test_real_member_name_forms_are_kept_without_a_log(self):
+        members = {"1": "長濱 ねる", "2": "ゆっかー・みくにん", "3": "ポカ：ねる"}
+        with capture_logs() as logs:
+            assert _safe_blog_members("nogizaka46", members) == members
+        assert not _events(logs, "blog_remote_rejected")
 
 
 async def _metadata(member_id, since_date=None, max_pages=None, member_name=None):

@@ -17,6 +17,7 @@ import structlog
 
 from backend.services.platform import get_app_data_dir
 from backend.services.path_resolver import get_output_dir
+from backend.services.safe_paths import blog_folder_or_none, member_folder_or_none
 from backend.services.service_utils import (
     get_service_display_name,
     get_service_identifier,
@@ -363,6 +364,7 @@ def _build_blog_index_process(
     output_dir: Path,
 ) -> int:
     """Blog index build inside the worker process (called by _build_full_index_process)."""
+    refused = 0
     count = 0
     batch: list[Tuple[Any, ...]] = []
 
@@ -410,9 +412,13 @@ def _build_blog_index_process(
                     except Exception:
                         pass
 
-                blog_json_path = (
-                    blogs_dir / member_name / f"{date_prefix}_{blog_id}" / "blog.json"
+                blog_dir = blog_folder_or_none(
+                    blogs_dir, member_name, str(blog_id), date_prefix
                 )
+                if blog_dir is None:
+                    refused += 1
+                    continue
+                blog_json_path = blog_dir / "blog.json"
                 if not blog_json_path.exists():
                     continue
 
@@ -461,6 +467,9 @@ def _build_blog_index_process(
                     conn.commit()
                     count += len(batch)
                     batch.clear()
+
+    if refused:
+        logger.warning("search_blog_path_refused", count=refused)
 
     if batch:
         conn.executemany(
@@ -527,6 +536,7 @@ def _index_blogs_for_service_process(
     ):
         existing_ids.add(row[0])
 
+    refused = 0
     total = 0
     batch: list[Tuple[Any, ...]] = []
 
@@ -539,7 +549,10 @@ def _index_blogs_for_service_process(
             continue
 
         member_name = member_info.get("name", "")
-        member_dir = blogs_dir / member_name
+        member_dir = member_folder_or_none(blogs_dir, member_name)
+        if member_dir is None:
+            refused += 1
+            continue
         if not member_dir.is_dir():
             continue
 
@@ -556,7 +569,13 @@ def _index_blogs_for_service_process(
                 except Exception:
                     pass
 
-            blog_json_path = member_dir / f"{date_prefix}_{blog_id}" / "blog.json"
+            blog_dir = blog_folder_or_none(
+                blogs_dir, member_name, str(blog_id), date_prefix
+            )
+            if blog_dir is None:
+                refused += 1
+                continue
+            blog_json_path = blog_dir / "blog.json"
             if not blog_json_path.exists():
                 continue
 
@@ -606,6 +625,9 @@ def _index_blogs_for_service_process(
                 conn.commit()
                 total += len(batch)
                 batch.clear()
+
+    if refused:
+        logger.warning("search_blog_path_refused", count=refused)
 
     if batch:
         conn.executemany(
@@ -2282,6 +2304,7 @@ class SearchService:
             return 0
 
         conn = self._get_conn()
+        refused = 0
         count = 0
         batch: list[Tuple[Any, ...]] = []
         normalize_count = 0
@@ -2341,7 +2364,12 @@ class SearchService:
                         except Exception:
                             pass
 
-                    blog_dir = blogs_dir / member_name / f"{date_prefix}_{blog_id}"
+                    blog_dir = blog_folder_or_none(
+                        blogs_dir, member_name, str(blog_id), date_prefix
+                    )
+                    if blog_dir is None:
+                        refused += 1
+                        continue
                     blog_json_path = blog_dir / "blog.json"
 
                     if not blog_json_path.exists():
@@ -2402,6 +2430,9 @@ class SearchService:
                         count += len(batch)
                         batch.clear()
                         time.sleep(0)
+
+        if refused:
+            logger.warning("search_blog_path_refused", count=refused)
 
         if batch:
             conn.executemany(
@@ -2594,6 +2625,7 @@ class SearchService:
         ):
             existing_ids.add(row[0])
 
+        refused = 0
         total = 0
         batch: list[Tuple[Any, ...]] = []
         normalize_count = 0
@@ -2608,7 +2640,10 @@ class SearchService:
                 continue
 
             member_name = member_info.get("name", "")
-            member_dir = blogs_dir / member_name
+            member_dir = member_folder_or_none(blogs_dir, member_name)
+            if member_dir is None:
+                refused += 1
+                continue
             if not member_dir.is_dir():
                 continue
 
@@ -2629,7 +2664,13 @@ class SearchService:
                     except Exception:
                         pass
 
-                blog_json_path = member_dir / f"{date_prefix}_{blog_id}" / "blog.json"
+                blog_dir = blog_folder_or_none(
+                    blogs_dir, member_name, str(blog_id), date_prefix
+                )
+                if blog_dir is None:
+                    refused += 1
+                    continue
+                blog_json_path = blog_dir / "blog.json"
                 if not blog_json_path.exists():
                     continue
 
@@ -2679,6 +2720,9 @@ class SearchService:
                     total += len(batch)
                     batch.clear()
                     time.sleep(0)
+
+        if refused:
+            logger.warning("search_blog_path_refused", count=refused)
 
         if batch:
             conn.executemany(
