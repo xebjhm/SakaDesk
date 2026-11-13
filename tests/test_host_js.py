@@ -163,3 +163,11 @@ def test_a_missing_bridge_is_null_and_eval_itself_is_refused(node, tmp_path):
     assert _run_like_webview2(node, tmp_path, host_js.script("eval('1')"))[0] == {
         "e": "EvalError"
     }
+
+
+def test_js_value_survives_a_lone_surrogate():
+    """An ill-formed Windows file name can hold one; quote() of raw UTF-8 would raise."""
+    import host_js
+
+    expr = host_js.js_value({"name": "a\ud800b"})
+    assert '"' not in expr and "\\" not in expr and "\n" not in expr

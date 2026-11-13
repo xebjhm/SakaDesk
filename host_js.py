@@ -50,7 +50,9 @@ def js_value(value: object) -> str:
 
     Raises ``TypeError`` / ``ValueError`` for a value JSON cannot hold.
     """
-    text = json.dumps(value, ensure_ascii=False, allow_nan=False)
+    # ASCII JSON: a lone surrogate becomes a \udXXX escape (quoted as %5C...) instead of
+    # failing to encode; JSON.parse restores it.
+    text = json.dumps(value, ensure_ascii=True, allow_nan=False)
     return "JSON.parse(decodeURIComponent('" + quote(text, safe="") + "'))"
 
 
