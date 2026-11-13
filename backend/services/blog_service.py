@@ -1862,7 +1862,7 @@ GALLERY_MEMO_MAX = 32
 _GALLERY_IMAGE_NAME = re.compile(
     r"^img_[0-9]+(?:"
     + "|".join(re.escape(ext) for ext in sorted(_BLOG_IMAGE_EXTS))
-    + r")$",
+    + r")\Z",
     re.IGNORECASE,
 )
 """A cached blog image the photo gallery lists: ``img_<n>`` plus a picture extension

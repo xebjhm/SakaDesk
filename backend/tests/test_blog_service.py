@@ -1159,3 +1159,11 @@ def test_blog_image_ext_edge_cases(url, ext, reason):
         assert _blog_image_ext(url) == ext
     defaulted = [e for e in logs if e["event"] == "blog_image_ext_defaulted"]
     assert [e["reason"] for e in defaulted] == ([reason] if reason else [])
+
+
+def test_gallery_image_name_refuses_a_trailing_newline():
+    """``$`` would match before a final newline; the gallery rule is exact."""
+    from backend.services.blog_service import _GALLERY_IMAGE_NAME
+
+    assert _GALLERY_IMAGE_NAME.match("img_1.jpg") is not None
+    assert _GALLERY_IMAGE_NAME.match("img_1.jpg\n") is None
