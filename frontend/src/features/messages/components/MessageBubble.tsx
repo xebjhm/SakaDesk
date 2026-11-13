@@ -381,11 +381,14 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     }, []);
 
     // A keyboard reveal unmounts the focused shelter button; focus then moves to the revealed bubble
-    // (a mouse reveal never takes focus).
+    // (a mouse reveal never takes focus). The reveal lands within the click's own render, so the flag
+    // is dropped one task later: a reveal that did not take effect must not pull focus when a later
+    // reveal-all flips the bubble.
     const focusAfterReveal = useRef(false);
     const reveal = useCallback((viaKeyboard: boolean) => {
         focusAfterReveal.current = viaKeyboard;
         onReveal?.();
+        if (viaKeyboard) setTimeout(() => { focusAfterReveal.current = false; }, 0);
     }, [onReveal]);
     // The hidden bubble's own controls and text leave the Tab order and the accessibility tree.
     const contentRef = useRef<HTMLDivElement>(null);

@@ -67,4 +67,16 @@ describe('MessageBubble unread shelter (UI health #3)', () => {
         expect(screen.queryByRole('button', { name: 'Show unread message' })).toBeNull();
         expect(screen.getByText('こんにちは').closest('[tabindex="-1"]')).not.toBe(document.activeElement);
     });
+
+    it('does not pull focus on a later reveal when the keyboard reveal did not take effect', async () => {
+        const props = { message: msg(), member_name: 'n', service: 'hinatazaka46' as const, onReveal: vi.fn() };
+        const { rerender } = render(<MessageBubble {...props} isUnread />);
+        screen.getByRole('button', { name: 'Show unread message' }).focus();
+        await userEvent.keyboard('{Enter}');
+        expect(props.onReveal).toHaveBeenCalledTimes(1);
+        await new Promise(resolve => setTimeout(resolve, 10));
+        (document.activeElement as HTMLElement).blur();
+        rerender(<MessageBubble {...props} isUnread={false} />);
+        expect(document.activeElement).toBe(document.body);
+    });
 });
