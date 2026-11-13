@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { subscribeDialogStack, topDialog } from '../dialog/dialogStack';
+import { announce, subscribe, getAnnouncement } from './announcer';
 
 /**
  * The one announcer (UI health A-D2). Transient messages that are not alerts (a clipboard toast,
@@ -21,23 +22,6 @@ import { subscribeDialogStack, topDialog } from '../dialog/dialogStack';
  */
 const SET_DELAY_MS = 50;
 const LIVE_MS = 3000;
-
-interface Announcement { message: string; seq: number; at: number }
-let current: Announcement = { message: '', seq: 0, at: 0 };
-const listeners = new Set<() => void>();
-
-/** Announces `message` politely (an empty message does nothing). */
-export function announce(message: string): void {
-    if (!message) return;
-    current = { message, seq: current.seq + 1, at: Date.now() };
-    for (const listener of Array.from(listeners)) listener();
-}
-
-function subscribe(listener: () => void): () => void {
-    listeners.add(listener);
-    return () => { listeners.delete(listener); };
-}
-const getAnnouncement = () => current;
 
 /** The element that holds the region: the top dialog's frame, else <body>. */
 const getTarget = (): HTMLElement => topDialog()?.node() ?? document.body;

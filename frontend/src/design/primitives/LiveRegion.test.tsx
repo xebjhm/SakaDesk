@@ -1,7 +1,8 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from 'vitest';
 import { act, render, screen } from '@testing-library/react';
 import { Modal } from './Modal';
-import { LiveRegion, LiveRegionHost, announce } from './LiveRegion';
+import { LiveRegion, LiveRegionHost } from './LiveRegion';
+import { announce } from './announcer';
 import { resetDialogStack } from '../dialog/dialogStack';
 
 const LATER = 100;

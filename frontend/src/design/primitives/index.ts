@@ -25,4 +25,5 @@ export {
     StatusBlock,
     type StatusBlockProps, type StatusBlockVariant, type StatusBlockLoadingProps, type StatusBlockEmptyProps, type StatusBlockProblemProps,
 } from './StatusBlock';
-export { LiveRegion, LiveRegionHost, announce } from './LiveRegion';
+export { LiveRegion, LiveRegionHost } from './LiveRegion';
+export { announce } from './announcer';
