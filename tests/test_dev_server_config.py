@@ -59,3 +59,9 @@ def test_dev_api_token_file_is_gitignored():
 def test_e2e_sends_the_api_token():
     text = _read("frontend", "playwright.config.ts")
     assert "X-SakaDesk-Token" in text and "SAKADESK_API_TOKEN" in text
+    # One token for the config and launch-auth.spec.ts, never two literals.
+    assert "from './e2e/apiToken'" in text
+    assert "process.env.SAKADESK_API_TOKEN" in _read("frontend", "e2e", "apiToken.ts")
+    spec = _read("frontend", "e2e", "launch-auth.spec.ts")
+    assert "from './apiToken'" in spec
+    assert "extraHTTPHeaders: {}" in spec

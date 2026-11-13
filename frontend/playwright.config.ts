@@ -1,8 +1,9 @@
 import { defineConfig, devices } from '@playwright/test'
+import { E2E_API_TOKEN } from './e2e/apiToken'
 
 // The backend requires the per-launch token (security audit 2026-11-13): pin one for
-// the test server and send it on every request the page makes.
-const E2E_API_TOKEN = process.env.SAKADESK_API_TOKEN ?? 'e2e-local-api-token-0001'
+// the test server (SAKADESK_API_TOKEN below) and send it on every request the page makes.
+// e2e/launch-auth.spec.ts turns the header off to test the real #t= path.
 
 export default defineConfig({
   testDir: './e2e',
