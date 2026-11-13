@@ -6,6 +6,10 @@ import i18n from '../../i18n';
 import { useAppStore } from '../../store/appStore';
 import type { Timeline } from './timeline/buildTimeline';
 import { MessagesFeature } from './MessagesFeature';
+import { clientLog } from '../../utils/clientLog';
+
+vi.mock('../../utils/clientLog', async (orig) => ({ ...(await orig<typeof import('../../utils/clientLog')>()), clientLog: vi.fn() }));
+const chatLoads = () => vi.mocked(clientLog).mock.calls.filter(([e]) => e === 'chat_load');
 
 // Every timeline the list was given, in render order: a 304 must not produce a new one.
 const timelines: Timeline[] = [];
@@ -53,6 +57,7 @@ const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syn
 describe('MessagesFeature: conditional room refresh (UI health #1)', () => {
     beforeAll(async () => { await i18n.changeLanguage('en'); });
     beforeEach(() => {
+        vi.mocked(clientLog).mockClear();
         timelines.length = 0;
         seen = [];
         version = '"v1"';
@@ -70,11 +75,20 @@ describe('MessagesFeature: conditional room refresh (UI health #1)', () => {
         const shown = timelines[timelines.length - 1];
 
         rerender(<MessagesFeature {...props} syncVersion={1} />);
-        await waitFor(() => expect(seen).toHaveLength(2));
-        await new Promise((r) => setTimeout(r, 50));
+        // The breadcrumb is logged after the 304 was handled: the refresh has fully run.
+        await waitFor(() => expect(chatLoads()).toEqual([['chat_load', { outcome: 'not_modified' }]]));
 
         expect(seen.map((s) => s.tag)).toEqual([null, '"v1"']);
         expect(timelines[timelines.length - 1]).toBe(shown);
+    });
+
+    it('a 304 for a room that is not cached is a failed load: error_code 304, no room kept', async () => {
+        // The server answers 304 although no ETag was sent (the room was evicted while the request ran).
+        server.use(http.get('/api/content/messages_by_path', () => new HttpResponse(null, { status: 304 })));
+        const { queryByTestId } = render(<MessagesFeature {...props} />);
+        await waitFor(() => expect(chatLoads()).toHaveLength(1));
+        expect(chatLoads()[0]).toEqual(['chat_load', { outcome: 'error_state', reason: 'error', error_code: 304 }]);
+        expect(queryByTestId('list')).toBeNull();
     });
 
     it('never sends last_read_id (the read position must not change the ETag)', async () => {
