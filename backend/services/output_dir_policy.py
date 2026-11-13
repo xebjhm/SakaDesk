@@ -27,8 +27,9 @@ Then on the normalised path and on its resolved form (links followed):
   uninstaller empties) and pysaka's sign-in folder (``%APPDATA%\\pysaka``,
   deleted on uninstall, and its legacy name ``%APPDATA%\\pyzaka``, which the
   uninstaller deletes too);
-- ``system``: the Windows folder, Program Files, Program Files (x86) (also its
-  ``ProgramW6432`` form) or ProgramData, or a folder inside one;
+- ``system``: the Windows folder, Program Files (also its ``ProgramW6432``
+  form, which a 32-bit process sees), Program Files (x86) or ProgramData, or a
+  folder inside one;
 - ``not_writable``: the folder cannot be created or a file written in it.
 
 A mapped drive letter (``Z:\\SakaDesk``) passes even though it resolves to a
