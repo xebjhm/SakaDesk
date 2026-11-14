@@ -20,7 +20,7 @@ are parsed. Up to ``MAX_SIGNATURES`` signatures let a release carry the
 current and the next key while keys are rotated; one valid signature from a
 trusted key is enough.
 
-``cryptography`` is imported only inside :func:`verify_signatures`, so the
+``cryptography`` is imported only inside :func:`_ed25519_verify`, so the
 release workflow's signer can import this module with the standard library
 alone. Nothing here logs: callers log the :class:`ManifestRefused` reason.
 
@@ -207,6 +207,24 @@ def parse_envelope(data: bytes) -> tuple[bytes, list[tuple[str, bytes]]]:
     return payload, parsed
 
 
+def _ed25519_verify(public_key_raw: bytes, signature: bytes, message: bytes) -> bool:
+    """True when ``signature`` is a valid Ed25519 signature of ``message``.
+
+    The one place that imports ``cryptography`` (lazily) and verifies;
+    :func:`verify_signatures` and :func:`self_check` both go through it.
+    Raises ValueError when ``public_key_raw`` is not a 32-byte public key.
+    """
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    public = Ed25519PublicKey.from_public_bytes(public_key_raw)
+    try:
+        public.verify(signature, message)
+    except InvalidSignature:
+        return False
+    return True
+
+
 def verify_signatures(
     payload: bytes,
     signatures: Sequence[tuple[str, bytes]],
@@ -219,26 +237,50 @@ def verify_signatures(
     32-byte Ed25519 public key) or ``bad_signature`` (none of those signatures
     is valid).
     """
-    from cryptography.exceptions import InvalidSignature
-    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
-
     candidates = [(kid, sig) for kid, sig in signatures if kid in trusted_keys]
     if not candidates:
         raise ManifestRefused("unknown_key")
     message = SIGNING_CONTEXT + payload
     for kid, signature in candidates:
         try:
-            public = Ed25519PublicKey.from_public_bytes(
-                base64.b64decode(trusted_keys[kid], validate=True)
+            valid = _ed25519_verify(
+                base64.b64decode(trusted_keys[kid], validate=True), signature, message
             )
         except (binascii.Error, ValueError):
             raise ManifestRefused("keys_invalid") from None
-        try:
-            public.verify(signature, message)
-        except InvalidSignature:
-            continue
-        return kid
+        if valid:
+            return kid
     raise ManifestRefused("bad_signature")
+
+
+# RFC 8032 section 7.1, TEST 1 (empty message).
+_SELF_CHECK_PUBLIC_KEY = bytes.fromhex(
+    "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62325af021a68f707511a"
+)
+_SELF_CHECK_SIGNATURE = bytes.fromhex(
+    "e5564300c360ac729086e2cc806e828a84877f1eb8e5d974d873e06522490155"
+    "5fb8821590a33bacc61e39701cf9b46bd25bf5f0595bbe24655141438e7a100b"
+)
+
+
+def self_check() -> None:
+    """Prove the Ed25519 verifier works in this process; used by the build.
+
+    Verifies the RFC 8032 section 7.1 TEST 1 signature through the same
+    ``cryptography`` code path as :func:`verify_signatures`, and checks that
+    the same signature with one byte changed is rejected. The Windows build
+    runs the frozen app with ``--self-check-updater`` so a build that
+    bundled a broken or missing ``cryptography`` cannot ship (an app that
+    cannot verify would refuse every update). Raises ManifestRefused
+    (``self_check_failed``) when the valid signature is rejected or the
+    altered one is accepted; an ImportError or other exception from the
+    verifier propagates.
+    """
+    if not _ed25519_verify(_SELF_CHECK_PUBLIC_KEY, _SELF_CHECK_SIGNATURE, b""):
+        raise ManifestRefused("self_check_failed")
+    altered = bytes([_SELF_CHECK_SIGNATURE[0] ^ 1]) + _SELF_CHECK_SIGNATURE[1:]
+    if _ed25519_verify(_SELF_CHECK_PUBLIC_KEY, altered, b""):
+        raise ManifestRefused("self_check_failed")
 
 
 def parse_manifest(payload: bytes) -> ReleaseManifest:

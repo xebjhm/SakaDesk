@@ -510,3 +510,35 @@ class TestCommand:
     def test_the_real_release_keys_file_still_loads(self):
         path = ROOT / "backend" / "services" / "release_keys.py"
         assert rs.load_trusted_keys(path) == release_keys.TRUSTED_RELEASE_KEYS
+
+
+class TestSelfCheck:
+    def test_the_rfc_8032_vector_passes(self):
+        rs.self_check()
+
+    def test_a_verifier_that_rejects_everything_raises(self, monkeypatch):
+        monkeypatch.setattr(rs, "_ed25519_verify", lambda *args: False)
+        with pytest.raises(rs.ManifestRefused) as raised:
+            rs.self_check()
+        assert raised.value.reason == "self_check_failed"
+
+    def test_a_verifier_that_accepts_everything_raises(self, monkeypatch):
+        monkeypatch.setattr(rs, "_ed25519_verify", lambda *args: True)
+        with pytest.raises(rs.ManifestRefused) as raised:
+            rs.self_check()
+        assert raised.value.reason == "self_check_failed"
+
+    def test_an_unusable_cryptography_propagates(self, monkeypatch):
+        def broken(*args):
+            raise ImportError("no cryptography")
+
+        monkeypatch.setattr(rs, "_ed25519_verify", broken)
+        with pytest.raises(ImportError):
+            rs.self_check()
+
+    def test_the_altered_signature_really_differs(self):
+        altered = (
+            bytes([rs._SELF_CHECK_SIGNATURE[0] ^ 1]) + rs._SELF_CHECK_SIGNATURE[1:]
+        )
+        assert altered != rs._SELF_CHECK_SIGNATURE
+        assert rs._ed25519_verify(rs._SELF_CHECK_PUBLIC_KEY, altered, b"") is False

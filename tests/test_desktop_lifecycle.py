@@ -218,3 +218,64 @@ class TestNavigationGuardInstall:
             call("OPEN_EXTERNAL_LINKS_IN_BROWSER", True)
             in desktop.webview.settings.__setitem__.call_args_list
         )
+
+
+class TestUpdaterSelfCheckFlag:
+    """OD-6: ``--self-check-updater`` runs before anything else and maps to exit codes."""
+
+    @staticmethod
+    def _run(monkeypatch, argv, self_check):
+        from backend.services import release_signing
+
+        exits: list[int] = []
+
+        class _Exit(BaseException):
+            pass
+
+        def fake_exit(code):
+            exits.append(code)
+            raise _Exit
+
+        monkeypatch.setattr(desktop.os, "_exit", fake_exit, raising=False)
+        monkeypatch.setattr(release_signing, "self_check", self_check)
+        try:
+            desktop._run_updater_self_check(argv)
+        except _Exit:
+            pass
+        return exits
+
+    def test_no_flag_does_nothing(self, monkeypatch):
+        calls = []
+        exits = self._run(monkeypatch, ["SakaDesk.exe"], lambda: calls.append(1))
+        assert exits == [] and calls == []
+
+    def test_success_exits_zero(self, monkeypatch):
+        calls = []
+        exits = self._run(
+            monkeypatch,
+            ["SakaDesk.exe", "--self-check-updater"],
+            lambda: calls.append(1),
+        )
+        assert calls == [1]
+        assert exits == [0]
+
+    def test_failure_exits_one(self, monkeypatch):
+        def broken():
+            raise RuntimeError("boom")
+
+        exits = self._run(monkeypatch, ["--self-check-updater"], broken)
+        assert exits == [1]
+
+    def test_the_flag_is_handled_before_main_and_the_heavy_imports(self):
+        source = (Path(desktop.__file__)).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        names = []
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                names.append(node.names[0].name)
+            elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+                func = node.value.func
+                names.append(
+                    func.id if isinstance(func, ast.Name) else ast.unparse(func)
+                )
+        assert names.index("_run_updater_self_check") < names.index("webview")

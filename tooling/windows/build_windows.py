@@ -94,6 +94,34 @@ def verify_update_verifier_bundled(app_dir: Path) -> None:
         sys.exit(1)
 
 
+SELF_CHECK_TIMEOUT_S = 120
+
+
+def run_updater_self_check(app_dir: Path) -> None:
+    """Stop the build when the built app cannot verify update signatures.
+
+    Runs ``SakaDesk.exe --self-check-updater`` from ``app_dir``: the frozen app
+    verifies a built-in Ed25519 test vector and exits 0 on success, before it
+    opens a window or does anything else. A non-zero exit, or no answer within
+    ``SELF_CHECK_TIMEOUT_S`` seconds, ends the build with code 1.
+    """
+    try:
+        done = subprocess.run(
+            [str(app_dir / "SakaDesk.exe"), "--self-check-updater"],
+            timeout=SELF_CHECK_TIMEOUT_S,
+        )
+        failed = done.returncode != 0
+    except subprocess.TimeoutExpired:
+        failed = True
+    if failed:
+        sys.stdout.write(
+            "ERROR: the update signature checker failed its self-check in the "
+            "built app\n"
+        )
+        sys.exit(1)
+    print("Update signature checker self-check passed")
+
+
 def build_exe():
     """Build the executable with PyInstaller."""
     print("--- Building Executable with PyInstaller ---")
@@ -119,6 +147,7 @@ def build_exe():
 
     run_command(cmd, cwd=PROJECT_ROOT)
     verify_update_verifier_bundled(DIST_DIR / "SakaDesk")
+    run_updater_self_check(DIST_DIR / "SakaDesk")
 
 
 def _validate_version(version: str) -> None:

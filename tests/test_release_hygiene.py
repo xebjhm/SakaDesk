@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import importlib.util
 import re
+import subprocess
 import tomllib
 from pathlib import Path
 from types import ModuleType
@@ -180,3 +181,83 @@ def test_build_exe_checks_the_bundle_after_pyinstaller(tmp_path, monkeypatch):
     with pytest.raises(SystemExit):
         build.build_exe()
     assert len(calls) == 1  # PyInstaller ran, then the bundle gate stopped the build
+
+
+def _bundle(tmp_path):
+    bindings = (
+        tmp_path
+        / "dist"
+        / "SakaDesk"
+        / "_internal"
+        / "cryptography"
+        / "hazmat"
+        / "bindings"
+    )
+    bindings.mkdir(parents=True)
+    (bindings / "_rust.pyd").write_bytes(b"x")
+
+
+def _patch_build(build, monkeypatch, tmp_path, events):
+    monkeypatch.setattr(build, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(build, "DIST_DIR", tmp_path / "dist")
+    monkeypatch.setattr(
+        build, "run_command", lambda *a, **k: events.append("pyinstaller")
+    )
+
+
+def test_build_exe_self_checks_after_pyinstaller_and_the_bundle_gate(
+    tmp_path, monkeypatch
+):
+    """OD-6: PyInstaller, then the bundle gate, then the self-check."""
+    build = _build_windows()
+    _ui_build(tmp_path / "frontend" / "dist")
+    _bundle(tmp_path)
+    events: list = []
+    _patch_build(build, monkeypatch, tmp_path, events)
+    real_gate = build.verify_update_verifier_bundled
+    monkeypatch.setattr(
+        build,
+        "verify_update_verifier_bundled",
+        lambda app: (events.append("gate"), real_gate(app))[1],
+    )
+
+    def fake_run(cmd, **kwargs):
+        events.append(("self-check", cmd, kwargs["timeout"]))
+        return subprocess.CompletedProcess(cmd, 0)
+
+    monkeypatch.setattr(build.subprocess, "run", fake_run)
+    build.build_exe()
+    expected = str(tmp_path / "dist" / "SakaDesk" / "SakaDesk.exe")
+    assert events == [
+        "pyinstaller",
+        "gate",
+        ("self-check", [expected, "--self-check-updater"], 120),
+    ]
+
+
+@pytest.mark.parametrize("outcome", [1, "timeout"])
+def test_the_build_stops_when_the_updater_self_check_fails(
+    tmp_path, monkeypatch, capsys, outcome
+):
+    build = _build_windows()
+
+    def fake_run(cmd, **kwargs):
+        if outcome == "timeout":
+            raise subprocess.TimeoutExpired(cmd, kwargs["timeout"])
+        return subprocess.CompletedProcess(cmd, outcome)
+
+    monkeypatch.setattr(build.subprocess, "run", fake_run)
+    with pytest.raises(SystemExit) as exc:
+        build.run_updater_self_check(tmp_path)
+    assert exc.value.code == 1
+    assert capsys.readouterr().out == (
+        "ERROR: the update signature checker failed its self-check in the built app\n"
+    )
+
+
+def test_the_build_continues_when_the_updater_self_check_passes(tmp_path, monkeypatch):
+    build = _build_windows()
+    monkeypatch.setattr(
+        build.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0)
+    )
+    build.run_updater_self_check(tmp_path)

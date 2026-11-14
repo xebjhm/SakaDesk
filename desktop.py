@@ -1,6 +1,35 @@
 import multiprocessing
+from sys import argv as _argv
 
 multiprocessing.freeze_support()
+
+
+def _run_updater_self_check(argv: list[str]) -> None:
+    """Exit 0 / 1 after checking the update signature verifier, if asked to.
+
+    Does nothing unless ``--self-check-updater`` is in ``argv``. With the flag,
+    runs ``release_signing.self_check()`` and ends the process (``os._exit``) with
+    code 0 when it passes and 1 on any exception. The Windows build runs the
+    frozen app this way (tooling/windows/build_windows.py). The call sits right
+    after ``freeze_support()``, before the pywebview and backend imports and
+    before ``main()``: no window, tray, single-instance mutex, socket, server,
+    logging or network is touched. Writes nothing to stdout or stderr (a
+    windowed executable has none): the exit code is the result.
+    """
+    if "--self-check-updater" not in argv:
+        return
+    import os
+
+    try:
+        from backend.services import release_signing
+
+        release_signing.self_check()
+    except Exception:
+        os._exit(1)
+    os._exit(0)
+
+
+_run_updater_self_check(_argv)
 
 import webview  # noqa: E402
 
