@@ -5,7 +5,6 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
-import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -17,6 +16,7 @@ from cryptography.hazmat.primitives.asymmetric import ec
 
 from backend.services import release_signing as rs
 from backend.tests.signing_helpers import new_key, trusted
+from ci_env import on_ci
 
 ROOT = Path(__file__).resolve().parent.parent
 VERSION = "0.5.1"
@@ -37,13 +37,13 @@ def _openssl_has_ed25519() -> bool:
 _HAS_ED25519 = _openssl_has_ed25519()
 # Locally the suite skips without OpenSSL 3; in CI it must run, so it fails instead.
 pytestmark = pytest.mark.skipif(
-    not _HAS_ED25519 and not os.environ.get("CI"),
+    not _HAS_ED25519 and not on_ci(),
     reason="needs OpenSSL 3 with Ed25519 (CI and WSL have it)",
 )
 
 
 def test_openssl_with_ed25519_is_available_in_ci():
-    if os.environ.get("CI"):
+    if on_ci():
         assert _HAS_ED25519, "the release signer's tests need OpenSSL 3 with Ed25519"
 
 
