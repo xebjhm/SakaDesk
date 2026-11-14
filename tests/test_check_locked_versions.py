@@ -87,3 +87,51 @@ def test_the_pin_is_read_from_pyproject():
 def test_the_real_lock_parses():
     locked = _check().locked_versions((ROOT / "uv.lock").read_text(encoding="utf-8"))
     assert "fastapi" in locked and "cryptography" in locked
+
+
+def _project(tmp_path: Path, module: ModuleType, monkeypatch, pin: str) -> None:
+    (tmp_path / "uv.lock").write_text(LOCK, encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        f'[project]\ndependencies = ["httpx", "pysaka=={pin}"]\n', encoding="utf-8"
+    )
+    monkeypatch.setattr(module, "ROOT", tmp_path)
+
+
+def test_main_exits_0_when_the_environment_matches(tmp_path, monkeypatch, capsys):
+    module = _check()
+    _project(tmp_path, module, monkeypatch, "0.4.8")
+    monkeypatch.setattr(
+        module,
+        "installed_versions",
+        lambda: {"httpx": "0.28.1", "pysaka": "0.4.8", "sakadesk": "0.5.0"},
+    )
+    assert module.main() == 0
+    captured = capsys.readouterr()
+    assert captured.out == "environment matches uv.lock\n"
+    assert captured.err == ""
+
+
+def test_main_exits_1_with_one_error_line_per_problem(tmp_path, monkeypatch, capsys):
+    module = _check()
+    _project(tmp_path, module, monkeypatch, "0.4.8")
+    monkeypatch.setattr(
+        module,
+        "installed_versions",
+        lambda: {"httpx": "0.28.0", "pysaka": "0.4.9", "surprise": "1.0"},
+    )
+    assert module.main() == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert captured.err.splitlines() == [
+        "ERROR: httpx 0.28.0 != locked 0.28.1",
+        "ERROR: pysaka 0.4.9 != pin 0.4.8",
+        "ERROR: surprise 1.0 is not in uv.lock",
+    ]
+
+
+def test_installed_versions_returns_canonical_names_for_this_environment():
+    versions = _check().installed_versions()
+    assert versions  # this environment has distributions
+    assert all(name == _check().canonical(name) for name in versions)
+    assert all(isinstance(v, str) and v for v in versions.values())
+    assert "pytest" in versions
