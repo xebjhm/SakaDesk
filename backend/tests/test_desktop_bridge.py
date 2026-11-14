@@ -398,6 +398,9 @@ def test_a_failed_thread_start_is_dropped_and_gives_the_slot_back(
         desktop_bridge.MAX_STUCK_CLICKS + 1
     )
     assert seen == []
+    # The fixture's 50 ms wait is for stuck handlers; a loaded runner must
+    # not time these healthy clicks out before the handler appends.
+    monkeypatch.setattr(desktop_bridge, "CLICK_TIMEOUT_S", 5.0)
     for _ in range(desktop_bridge.MAX_STUCK_CLICKS):
         desktop_bridge.open_login("hinatazaka46")
     assert seen == ["hinatazaka46"] * desktop_bridge.MAX_STUCK_CLICKS
