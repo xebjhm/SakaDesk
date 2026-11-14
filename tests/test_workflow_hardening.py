@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import os
 import re
 import shutil
@@ -64,7 +65,7 @@ SIGN_ALLOWED_ACTIONS = (
     "actions/upload-artifact",
 )
 FORBIDDEN_COMMAND = re.compile(
-    r"(^|[\s;&|(])(uv|pip|pip3)(\s|$)|python3?\s+-m\s+pip\b|--with\b"
+    r"(^|[\s;&|(])(uv|uvx|pip|pip3|pipx)(\s|$)|python3?\s+-m\s+pip\b|--with\b"
 )
 
 
@@ -76,6 +77,8 @@ def test_the_sign_job_installs_nothing():
         assert not FORBIDDEN_COMMAND.search(step.get("run", "")), step.get("name")
     assert FORBIDDEN_COMMAND.search("uv run x")
     assert FORBIDDEN_COMMAND.search("python3 -m pip install x")
+    assert FORBIDDEN_COMMAND.search("uvx ruff check")
+    assert FORBIDDEN_COMMAND.search("pipx run x")
     assert not FORBIDDEN_COMMAND.search("set -euo pipefail")
     (signing,) = [
         s for s in _steps("sign") if s.get("name") == "Sign the update manifest"
@@ -372,3 +375,71 @@ def test_ci_checks_the_environment_against_the_lock():
     assert names.index("Check the environment matches uv.lock") < names.index(
         "Install Build Tools"
     )
+
+
+def _named_step(job: str, name: str) -> dict:
+    (step,) = [s for s in _steps(job) if s.get("name") == name]
+    return step
+
+
+def _run_hash_check(tmp_path: Path, expected: str, content: bytes):
+    """Run the `sign` installer hash-check step against a fake installer file."""
+    if shutil.which("bash") is None or shutil.which("sha256sum") is None:
+        pytest.skip("bash and sha256sum are required")
+    step = _named_step("sign", "Check the installer matches the build job's hash")
+    folder = tmp_path / "SakaDesk-0.5.1-Setup"
+    folder.mkdir()
+    (folder / "SakaDesk-0.5.1-Setup.exe").write_bytes(content)
+    script = tmp_path / "step.sh"
+    script.write_text(step["run"], encoding="utf-8")
+    env = {
+        **os.environ,
+        "GITHUB_REF_NAME": "v0.5.1",
+        "EXPECTED_INSTALLER_SHA256": expected,
+    }
+    return subprocess.run(
+        ["bash", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True
+    )
+
+
+def test_the_sign_installer_check_fails_without_an_expected_hash(tmp_path):
+    proc = _run_hash_check(tmp_path, "", b"MZ installer")
+    assert proc.returncode != 0
+    assert "::error::" in proc.stdout
+
+
+def test_the_sign_installer_check_fails_on_a_wrong_hash(tmp_path):
+    proc = _run_hash_check(tmp_path, "0" * 64, b"MZ installer")
+    assert proc.returncode != 0
+    assert "::error::" in proc.stdout
+
+
+def test_the_sign_installer_check_passes_on_the_right_hash(tmp_path):
+    right = hashlib.sha256(b"MZ installer").hexdigest()
+    proc = _run_hash_check(tmp_path, right, b"MZ installer")
+    assert proc.returncode == 0, proc.stdout + proc.stderr
+
+
+def test_the_sign_installer_check_fails_when_the_installer_is_missing(tmp_path):
+    step = _named_step("sign", "Check the installer matches the build job's hash")
+    if shutil.which("bash") is None:
+        pytest.skip("bash is required")
+    script = tmp_path / "step.sh"
+    script.write_text(step["run"], encoding="utf-8")
+    env = {**os.environ, "GITHUB_REF_NAME": "v0.5.1", "EXPECTED_INSTALLER_SHA256": "x"}
+    proc = subprocess.run(
+        ["bash", str(script)], cwd=tmp_path, env=env, capture_output=True, text=True
+    )
+    assert proc.returncode != 0
+
+
+def test_the_new_hash_steps_fail_on_a_broken_pipe_stage():
+    for job, name in (
+        ("sign", "Check the installer matches the build job's hash"),
+        ("sign", "Hash the signed manifest"),
+        (
+            "release",
+            "Check the files match the hashes the build and sign jobs produced",
+        ),
+    ):
+        assert "set -euo pipefail" in _named_step(job, name)["run"], name

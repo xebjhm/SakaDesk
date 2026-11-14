@@ -337,6 +337,7 @@ jobs:
       env:
         EXPECTED_INSTALLER_SHA256: ${{ needs.build.outputs.installer_sha256 }}
       run: |
+        set -euo pipefail
         TAG_VERSION="${GITHUB_REF_NAME#v}"
         ACTUAL="$(sha256sum "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" | cut -d' ' -f1)"
         if [ -z "$EXPECTED_INSTALLER_SHA256" ] || [ "$ACTUAL" != "$EXPECTED_INSTALLER_SHA256" ]; then
@@ -358,6 +359,7 @@ jobs:
     - name: Hash the signed manifest
       id: manifest_hash
       run: |
+        set -euo pipefail
         TAG_VERSION="${GITHUB_REF_NAME#v}"
         HASH="$(sha256sum "SakaDesk-${TAG_VERSION}-manifest.json" | cut -d' ' -f1)"
         echo "manifest_sha256=$HASH" >> "$GITHUB_OUTPUT"
@@ -490,6 +492,7 @@ jobs:
         EXPECTED_INSTALLER_SHA256: ${{ needs.build.outputs.installer_sha256 }}
         EXPECTED_MANIFEST_SHA256: ${{ needs.sign.outputs.manifest_sha256 }}
       run: |
+        set -euo pipefail
         TAG_VERSION="${GITHUB_REF_NAME#v}"
         INSTALLER="$(sha256sum "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" | cut -d' ' -f1)"
         MANIFEST="$(sha256sum "SakaDesk-${TAG_VERSION}-manifest.json" | cut -d' ' -f1)"
