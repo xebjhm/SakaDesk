@@ -345,3 +345,124 @@ def test_trusted_release_keys_are_well_formed():
         raw = base64.b64decode(public, validate=True)
         assert len(raw) == 32
         assert rs.key_id(raw) == kid
+
+
+class TestCommand:
+    def _args(self, tmp_path, key, installer_bytes=CONTENT) -> list[str]:
+        installer = tmp_path / rs.installer_asset_name(VERSION)
+        installer.write_bytes(installer_bytes)
+        manifest = tmp_path / rs.manifest_asset_name(VERSION)
+        manifest.write_bytes(signed_manifest(CONTENT, VERSION, key))
+        return [
+            "--manifest",
+            str(manifest),
+            "--installer",
+            str(installer),
+            "--version",
+            VERSION,
+        ]
+
+    def test_a_matching_release_passes(self, tmp_path, monkeypatch, capsys):
+        key = new_key()
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", trusted(key))
+        assert rs.main(self._args(tmp_path, key)) == 0
+        assert capsys.readouterr().out.startswith(
+            "manifest OK: SakaDesk-0.5.1-Setup.exe"
+        )
+
+    def test_a_changed_installer_fails(self, tmp_path, monkeypatch, capsys):
+        key = new_key()
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", trusted(key))
+        assert rs.main(self._args(tmp_path, key, installer_bytes=b"MZ-other")) == 1
+        assert capsys.readouterr().err == "ERROR: installer_mismatch\n"
+
+    def test_an_app_without_trusted_keys_fails(self, tmp_path, monkeypatch, capsys):
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", {})
+        assert rs.main(self._args(tmp_path, new_key())) == 1
+        assert capsys.readouterr().err == "ERROR: no_trusted_keys\n"
+
+    def test_an_untrusted_signature_fails_with_its_reason(
+        self, tmp_path, monkeypatch, capsys
+    ):
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", trusted(new_key()))
+        assert rs.main(self._args(tmp_path, new_key())) == 1
+        assert capsys.readouterr().err == "ERROR: unknown_key\n"
+
+    def test_a_keys_file_is_read_without_running_it(self, tmp_path, monkeypatch):
+        key = new_key()
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", {})
+        ((kid, public),) = trusted(key).items()
+        keys_file = tmp_path / "previous_release_keys.py"
+        keys_file.write_text(
+            '"""An older release_keys.py."""\n'
+            'raise SystemExit("this file must never be executed")\n'
+            "TRUSTED_RELEASE_KEYS: dict[str, str] = {\n"
+            f'    "{kid}": "{public}",\n'
+            "}\n",
+            encoding="utf-8",
+        )
+        assert rs.main([*self._args(tmp_path, key), "--keys-file", str(keys_file)]) == 0
+
+    def test_a_keys_file_without_the_mapping_fails(self, tmp_path, capsys):
+        keys_file = tmp_path / "previous_release_keys.py"
+        keys_file.write_text("OTHER = {}\n", encoding="utf-8")
+        assert (
+            rs.main([*self._args(tmp_path, new_key()), "--keys-file", str(keys_file)])
+            == 1
+        )
+        assert capsys.readouterr().err == "ERROR: keys_file_invalid\n"
+
+    def test_a_malformed_trusted_key_fails_cleanly(self, tmp_path, monkeypatch, capsys):
+        key = new_key()
+        ((kid, _),) = trusted(key).items()
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", {kid: "not base64!"})
+        assert rs.main(self._args(tmp_path, key)) == 1
+        assert capsys.readouterr().err == "ERROR: keys_invalid\n"
+
+    def test_an_invalid_version_fails(self, tmp_path, capsys):
+        args = self._args(tmp_path, new_key())
+        args[-1] = "1.2/../x"
+        assert rs.main(args) == 1
+        assert capsys.readouterr().err == "ERROR: version_invalid\n"
+
+    def test_a_missing_manifest_fails(self, tmp_path, monkeypatch, capsys):
+        key = new_key()
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", trusted(key))
+        args = self._args(tmp_path, key)
+        (tmp_path / rs.manifest_asset_name(VERSION)).unlink()
+        assert rs.main(args) == 1
+        assert capsys.readouterr().err == "ERROR: manifest_unreadable\n"
+
+    def test_a_missing_installer_fails(self, tmp_path, monkeypatch, capsys):
+        key = new_key()
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", trusted(key))
+        args = self._args(tmp_path, key)
+        (tmp_path / rs.installer_asset_name(VERSION)).unlink()
+        assert rs.main(args) == 1
+        assert capsys.readouterr().err == "ERROR: installer_unreadable\n"
+
+    def test_a_renamed_installer_fails(self, tmp_path, monkeypatch, capsys):
+        key = new_key()
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", trusted(key))
+        args = self._args(tmp_path, key)
+        installer = tmp_path / rs.installer_asset_name(VERSION)
+        args[3] = str(installer.rename(tmp_path / "other.exe"))
+        assert rs.main(args) == 1
+        assert capsys.readouterr().err == "ERROR: wrong_asset\n"
+
+    def test_a_keys_file_with_a_non_mapping_value_fails(self, tmp_path, capsys):
+        keys_file = tmp_path / "k.py"
+        keys_file.write_text("TRUSTED_RELEASE_KEYS = [1]\n", encoding="utf-8")
+        assert (
+            rs.main([*self._args(tmp_path, new_key()), "--keys-file", str(keys_file)])
+            == 1
+        )
+        assert capsys.readouterr().err == "ERROR: keys_file_invalid\n"
+
+    def test_a_missing_keys_file_fails(self, tmp_path, capsys):
+        missing = tmp_path / "nope.py"
+        assert (
+            rs.main([*self._args(tmp_path, new_key()), "--keys-file", str(missing)])
+            == 1
+        )
+        assert capsys.readouterr().err == "ERROR: keys_file_invalid\n"

@@ -24,20 +24,31 @@ trusted key is enough.
 release workflow's signer can import this module with the standard library
 alone. Nothing here logs: callers log the :class:`ManifestRefused` reason.
 
-Command line (used by the release workflow; see :func:`main`)::
+Command line (:func:`main`, used by the release workflow's ``sign`` job to
+check a release before it is published)::
 
     python -m backend.services.release_signing --manifest M --installer I --version V [--keys-file F]
+
+It checks the manifest against ``release_keys.TRUSTED_RELEASE_KEYS``, or
+against the ``TRUSTED_RELEASE_KEYS`` of the ``release_keys.py`` copy ``F``
+(read with :mod:`ast`, never executed), then checks the installer's name, size
+and SHA-256 against the signed values. Exit code 0 and ``manifest OK: ...`` on
+stdout, or 1 and ``ERROR: <code>`` on stderr.
 """
 
 from __future__ import annotations
 
+import argparse
+import ast
 import base64
 import binascii
 import hashlib
 import json
 import re
+import sys
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
+from pathlib import Path
 from typing import BinaryIO
 
 from backend.services import release_keys
@@ -300,3 +311,100 @@ def stream_digest(stream: BinaryIO) -> tuple[str, int]:
         digest.update(chunk)
         size += len(chunk)
     return digest.hexdigest(), size
+
+
+def load_trusted_keys(path: Path) -> dict[str, str]:
+    """``TRUSTED_RELEASE_KEYS`` from a copy of ``release_keys.py``, read with ``ast``.
+
+    Used for an older release's file, so it is parsed, never executed. Only a
+    literal ``str`` to ``str`` mapping is accepted; whether each value is a
+    usable public key is checked later by :func:`verify_signatures`
+    (``keys_invalid``). Raises ManifestRefused(``keys_file_invalid``).
+    """
+    try:
+        tree = ast.parse(path.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError, RecursionError):
+        raise ManifestRefused("keys_file_invalid") from None
+    for node in tree.body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1:
+            target, value = node.targets[0], node.value
+        elif isinstance(node, ast.AnnAssign) and node.value is not None:
+            target, value = node.target, node.value
+        else:
+            continue
+        if not (isinstance(target, ast.Name) and target.id == "TRUSTED_RELEASE_KEYS"):
+            continue
+        try:
+            keys = ast.literal_eval(value)
+        except (ValueError, TypeError, SyntaxError, RecursionError):
+            raise ManifestRefused("keys_file_invalid") from None
+        if isinstance(keys, dict) and all(
+            isinstance(k, str) and isinstance(v, str) for k, v in keys.items()
+        ):
+            return keys
+        raise ManifestRefused("keys_file_invalid")
+    raise ManifestRefused("keys_file_invalid")
+
+
+def _fail(code: str) -> int:
+    sys.stderr.write(f"ERROR: {code}\n")
+    return 1
+
+
+def main(argv: Sequence[str] | None = None) -> int:
+    """Check a release's manifest and installer against the keys an app trusts.
+
+    Exit code 0 and ``manifest OK: ...`` on stdout, or 1 and ``ERROR: <code>``
+    on stderr: ``version_invalid``, ``keys_file_invalid``, ``no_trusted_keys``,
+    ``manifest_unreadable``, a :class:`ManifestRefused` reason,
+    ``installer_unreadable`` or ``installer_mismatch`` (``wrong_asset`` when
+    the installer's file name is not the signed one). ``--keys-file`` checks
+    against an older ``release_keys.py`` (the previous release's) instead of
+    this app's keys.
+    """
+    parser = argparse.ArgumentParser(
+        prog="python -m backend.services.release_signing",
+        description="Check a signed update manifest and its installer.",
+    )
+    parser.add_argument("--manifest", type=Path, required=True)
+    parser.add_argument("--installer", type=Path, required=True)
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--keys-file", type=Path, default=None)
+    args = parser.parse_args(argv)
+    if not is_valid_version(args.version):
+        return _fail("version_invalid")
+    try:
+        keys = (
+            load_trusted_keys(args.keys_file)
+            if args.keys_file is not None
+            else release_keys.TRUSTED_RELEASE_KEYS
+        )
+    except ManifestRefused as e:
+        return _fail(e.reason)
+    if not keys:
+        return _fail("no_trusted_keys")
+    try:
+        data = args.manifest.read_bytes()
+    except OSError:
+        return _fail("manifest_unreadable")
+    try:
+        manifest = verify_update_manifest(data, version=args.version, trusted_keys=keys)
+    except ManifestRefused as e:
+        return _fail(e.reason)
+    if args.installer.name != manifest.asset:
+        return _fail("wrong_asset")
+    try:
+        with args.installer.open("rb") as f:
+            sha256, size = stream_digest(f)
+    except OSError:
+        return _fail("installer_unreadable")
+    if (sha256, size) != (manifest.sha256, manifest.size):
+        return _fail("installer_mismatch")
+    sys.stdout.write(
+        f"manifest OK: {manifest.asset} {manifest.size} bytes sha256 {manifest.sha256}\n"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
