@@ -484,6 +484,15 @@ class TestCommand:
             'TRUSTED_RELEASE_KEYS = {"a": "b"}\nTRUSTED_RELEASE_KEYS |= {"c": "d"}\n',
             'TRUSTED_RELEASE_KEYS: dict[str, str] = {}\nTRUSTED_RELEASE_KEYS = {"c": "d"}\n',
             'OTHER = TRUSTED_RELEASE_KEYS = {"a": "b"}\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nif True:\n    TRUSTED_RELEASE_KEYS = {"c": "d"}\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\ntry:\n    TRUSTED_RELEASE_KEYS = {"c": "d"}\nexcept Exception:\n    pass\n',
+            'if True:\n    TRUSTED_RELEASE_KEYS = {"a": "b"}\n',
+            "def f():\n    global TRUSTED_RELEASE_KEYS\n    TRUSTED_RELEASE_KEYS = {}\n",
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\n(TRUSTED_RELEASE_KEYS, x) = ({}, 1)\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\n[*TRUSTED_RELEASE_KEYS, x] = [1, 2]\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nif (TRUSTED_RELEASE_KEYS := {}):\n    pass\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nfor TRUSTED_RELEASE_KEYS in [1]:\n    pass\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nwith open("x") as TRUSTED_RELEASE_KEYS:\n    pass\n',
         ],
     )
     def test_a_keys_file_that_reassigns_the_mapping_is_refused(self, tmp_path, source):
@@ -492,3 +501,7 @@ class TestCommand:
         with pytest.raises(rs.ManifestRefused) as raised:
             rs.load_trusted_keys(keys_file)
         assert raised.value.reason == "keys_file_invalid"
+
+    def test_the_real_release_keys_file_still_loads(self):
+        path = ROOT / "backend" / "services" / "release_keys.py"
+        assert rs.load_trusted_keys(path) == release_keys.TRUSTED_RELEASE_KEYS

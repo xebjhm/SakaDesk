@@ -314,17 +314,29 @@ def stream_digest(stream: BinaryIO) -> tuple[str, int]:
     return digest.hexdigest(), size
 
 
-def _binds_trusted_keys(node: ast.stmt) -> bool:
-    """True when a top-level statement assigns (or augments) ``TRUSTED_RELEASE_KEYS``."""
-    if isinstance(node, ast.Assign):
-        targets = node.targets
-    elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
-        targets = [node.target]
-    else:
-        return False
-    return any(
-        isinstance(t, ast.Name) and t.id == "TRUSTED_RELEASE_KEYS" for t in targets
-    )
+_KEYS_NAME = "TRUSTED_RELEASE_KEYS"
+
+
+def _count_key_bindings(tree: ast.Module) -> int:
+    """How many places in ``tree`` bind, rebind, augment or delete ``TRUSTED_RELEASE_KEYS``.
+
+    Counts assignment, annotated, augmented and walrus targets (tuple, list
+    and starred unpacking included), ``for`` / ``with`` / ``except`` targets,
+    ``del``, imports, and ``def`` / ``class`` statements of that name.
+    ``global`` mentions and function parameters are not bindings of the
+    module's mapping and are ignored.
+    """
+    count = 0
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Name):
+            count += node.id == _KEYS_NAME and not isinstance(node.ctx, ast.Load)
+        elif isinstance(node, ast.alias):
+            count += (node.asname or node.name.split(".")[0]) == _KEYS_NAME
+        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
+            count += node.name == _KEYS_NAME
+        elif isinstance(node, ast.ExceptHandler):
+            count += node.name == _KEYS_NAME
+    return count
 
 
 def load_trusted_keys(path: Path) -> dict[str, str]:
@@ -332,12 +344,12 @@ def load_trusted_keys(path: Path) -> dict[str, str]:
 
     Used for an older release's file, so it is parsed, never executed. The
     file must be at most ``MAX_KEYS_FILE_BYTES``, and the name must be bound
-    exactly once at the top level, by a plain or annotated assignment to a
-    literal ``str`` to ``str`` mapping (Python keeps the last binding, so a
-    second or augmented one could make the check use other keys than the
-    app). Whether each value is a usable public key is checked later by
-    :func:`verify_signatures` (``keys_invalid``). Raises
-    ManifestRefused(``keys_file_invalid``).
+    exactly once anywhere in the file (:func:`_count_key_bindings`), by a
+    top-level plain or annotated assignment to a literal ``str`` to ``str``
+    mapping (Python keeps the last binding, so a second, augmented or nested
+    one could make the check use other keys than the app). Whether each value
+    is a usable public key is checked later by :func:`verify_signatures`
+    (``keys_invalid``). Raises ManifestRefused(``keys_file_invalid``).
     """
     try:
         with path.open("rb") as f:
@@ -347,15 +359,25 @@ def load_trusted_keys(path: Path) -> dict[str, str]:
         tree = ast.parse(raw.decode("utf-8"))
     except (OSError, SyntaxError, ValueError, RecursionError):
         raise ManifestRefused("keys_file_invalid") from None
-    bindings = [node for node in tree.body if _binds_trusted_keys(node)]
-    if len(bindings) != 1:
+    if _count_key_bindings(tree) != 1:
         raise ManifestRefused("keys_file_invalid")
-    node = bindings[0]
-    if isinstance(node, ast.Assign) and len(node.targets) == 1:
-        value = node.value
-    elif isinstance(node, ast.AnnAssign) and node.value is not None:
-        value = node.value
-    else:
+    value = None
+    for node in tree.body:
+        if (
+            isinstance(node, ast.Assign)
+            and len(node.targets) == 1
+            and isinstance(node.targets[0], ast.Name)
+            and node.targets[0].id == _KEYS_NAME
+        ):
+            value = node.value
+        elif (
+            isinstance(node, ast.AnnAssign)
+            and isinstance(node.target, ast.Name)
+            and node.target.id == _KEYS_NAME
+            and node.value is not None
+        ):
+            value = node.value
+    if value is None:
         raise ManifestRefused("keys_file_invalid")
     try:
         keys = ast.literal_eval(value)
