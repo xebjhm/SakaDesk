@@ -13,6 +13,7 @@ is safe here.
 
 from __future__ import annotations
 
+import ast
 import json
 import re
 from pathlib import Path
@@ -146,16 +147,37 @@ class TestMainWindowKwargs:
         assert kwargs["text_select"] is True
 
 
+def _is_call_to(stmt: ast.stmt, dotted: str) -> bool:
+    """True when ``stmt`` is a bare expression statement calling ``dotted``."""
+    if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)):
+        return False
+    return ast.unparse(stmt.value.func) == dotted
+
+
 class TestQuittingAfterGuiLoop:
     def test_main_marks_quitting_as_soon_as_the_gui_loop_returns(self):
-        source = (Path(desktop.__file__).resolve()).read_text(encoding="utf-8")
-        body = source[source.index("\ndef main(") :]
-        start = re.search(r"^ +webview\.start\($", body, re.MULTILINE)
-        assert start is not None
-        after = body[start.end() :]
-        mark_at = after.index("        _mark_quitting()\n")
-        cleanup_at = after.index("desktop_bridge.set_call_popup_host(None)")
-        assert mark_at < cleanup_at
+        source = Path(desktop.__file__).resolve().read_text(encoding="utf-8")
+        (main,) = [
+            n
+            for n in ast.parse(source).body
+            if isinstance(n, ast.FunctionDef) and n.name == "main"
+        ]
+        blocks = [
+            block
+            for node in ast.walk(main)
+            for field in ("body", "orelse", "finalbody")
+            if isinstance(block := getattr(node, field, None), list)
+        ]
+        (block, at) = [
+            (block, i)
+            for block in blocks
+            for i, stmt in enumerate(block)
+            if _is_call_to(stmt, "webview.start")
+        ][0]
+        following = block[at + 1]
+        assert _is_call_to(following, "_mark_quitting")
+        assert isinstance(following, ast.Expr)
+        assert isinstance(following.value, ast.Call) and not following.value.args
 
 
 class TestNavigationGuardInstall:

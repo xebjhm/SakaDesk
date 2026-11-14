@@ -81,8 +81,12 @@ KEEP_ALIVE_TIMEOUT_S = 600
 # Global reference so cleanup can signal graceful shutdown
 _uvicorn_server: uvicorn.Server | None = None
 
-# Set by the tray's Quit item (and the session-end guard) so the closing handler
-# lets the window close.
+# True once the app is quitting. Set by the tray's Quit item, by the
+# session-end guard (Windows shutdown, logoff, installer close) and by main()
+# right after the GUI loop returns. Read by the closing handler (lets the
+# window close), the toast-click handlers (open chat, memories, login: they
+# touch no window), the call popup (same) and the tray-hint guard (sends no
+# hint).
 _quitting = False
 
 # How long the one-time tray hint waits before sending, so the session-end guard
@@ -92,7 +96,12 @@ TRAY_HINT_GUARD_DELAY_S = 0.5
 
 
 def _mark_quitting() -> None:
-    """Remember that the app is quitting, so the closing handler lets it close."""
+    """Remember that the app is quitting.
+
+    Called by the tray's Quit item, the session-end guard and main() after the
+    GUI loop returns. The closing handler, the toast-click handlers, the call
+    popup and the tray-hint guard read the flag (see ``_quitting``).
+    """
     global _quitting
     _quitting = True
 
@@ -245,7 +254,7 @@ def make_open_chat_handler(
     """Build the toast-click handler that brings ``window`` forward on a chat.
 
     In production ``desktop_bridge`` runs the handler on a daemon thread it
-    starts for the click, bounded by ``CLICK_TIMEOUT_S``. It shows the window (never
+    starts for the click; the click waits at most ``CLICK_TIMEOUT_S``. It shows the window (never
     ``window.restore()``, which would un-maximize it), calls
     ``focus_fn(hwnd)`` with the window's own handle (or None), then asks the
     frontend to navigate via ``window.__sakadeskOpenChat``. The payload is the
@@ -1340,7 +1349,7 @@ def main() -> None:
             _save_window_geometry(geom)
 
         # Toast click -> show, focus and open that chat (runs on a daemon thread
-        # started by desktop_bridge, bounded by CLICK_TIMEOUT_S).
+        # started by desktop_bridge; the click waits at most CLICK_TIMEOUT_S).
         desktop_bridge.set_open_chat_handler(
             make_open_chat_handler(window, _focus_window, is_quitting=lambda: _quitting)
         )
@@ -1438,7 +1447,8 @@ def main() -> None:
         # Cleanup AFTER webview closes but BEFORE process exits. The window may
         # have closed without Quit (no tray, close_to_tray off, unreadable
         # settings), so mark quitting now: a late toast click must not reach a
-        # destroyed window. Nothing reads the flag again except those guards.
+        # destroyed window. Only the closing handler, the toast-click handlers, the
+        # call popup and the tray-hint guard read the flag.
         _mark_quitting()
         desktop_bridge.set_call_popup_host(None)
         tray.stop()
