@@ -69,8 +69,9 @@ MAX_REDIRECTS = 5
 class UpdateNotVerified(Exception):
     """The release has no manifest the app can trust, or the installer changed.
 
-    ``reason`` is a log code (``manifest_missing``, a
-    ``release_signing.ManifestRefused`` reason, or ``hash_mismatch``).
+    ``reason`` is a log code (``manifest_missing``, ``manifest_too_large``,
+    ``manifest_redirect_refused``, a ``release_signing.ManifestRefused``
+    reason, or ``hash_mismatch``).
     """
 
     def __init__(self, reason: str) -> None:

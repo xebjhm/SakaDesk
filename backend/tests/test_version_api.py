@@ -4,6 +4,7 @@ from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 
 import respx
+import structlog.testing
 from fastapi.testclient import TestClient
 
 from backend.main import app
@@ -463,7 +464,7 @@ class TestInstallUpgrade:
         data = response.json()
         assert data["success"] is True
         assert len(scheduled) == 1
-        mock_launch.assert_called_once_with(installer, expected_sha256="ab" * 32)
+        mock_launch.assert_called_once_with(installer, expected_sha256=_SHA)
 
     @patch("backend.api.version.launch_installer", return_value=False)
     def test_install_upgrade_failure(self, mock_launch, tmp_path):
@@ -990,6 +991,34 @@ class TestGenerationGuardDuringDownload:
         assert v._upgrade_state["state"] == "downloading"
         assert v._upgrade_state["error"] is None
 
+    def test_superseded_not_verified_does_not_mark_error(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        async def scenario():
+            gate = asyncio.Event()
+
+            async def info(_version):
+                await gate.wait()
+                raise UpdateNotVerified("unknown_key")
+
+            with patch.object(v, "get_installer_info", info):
+                v._upgrade_generation += 1
+                task = asyncio.create_task(
+                    v._download_and_prepare_upgrade("1.0.0", v._upgrade_generation)
+                )
+                await asyncio.sleep(0)
+                v._upgrade_generation += 1
+                v._upgrade_state["state"] = "downloading"  # the newer attempt
+                gate.set()
+                await task
+
+        self._run(scenario())
+        assert v._upgrade_state["state"] == "downloading"
+        assert v._upgrade_state["error"] is None
+        assert v._upgrade_state["error_code"] is None
+
     def test_cancel_wait_timeout_still_cleans_up_and_ignores_late_result(
         self, tmp_path
     ):
@@ -1252,9 +1281,43 @@ class TestNullReleaseFields:
         import backend.api.version as v
 
         respx.get(v.GITHUB_API_URL).respond(200, json={"tag_name": None, "body": None})
-        cache = asyncio.run(v._fetch_latest_release(force=True))
+        with structlog.testing.capture_logs() as logs:
+            cache = asyncio.run(v._fetch_latest_release(force=True))
         assert cache["error"] is None
         assert cache["latest_version"] is None
+        assert [
+            e["reason"] for e in logs if e["event"] == "version_check_unexpected_body"
+        ] == ["no_tag"]
+
+    @respx.mock
+    def test_a_non_object_body_is_logged_and_tolerated(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        respx.get(v.GITHUB_API_URL).respond(200, json=["unexpected"])
+        with structlog.testing.capture_logs() as logs:
+            cache = asyncio.run(v._fetch_latest_release(force=True))
+        assert cache["error"] is None
+        assert cache["latest_version"] is None
+        assert [
+            e["reason"] for e in logs if e["event"] == "version_check_unexpected_body"
+        ] == [
+            "not_object",
+            "no_tag",
+        ]
+
+    @respx.mock
+    def test_the_endpoint_survives_a_null_tag(self):
+        import backend.api.version as v
+
+        respx.get(v.GITHUB_API_URL).respond(200, json={"tag_name": None, "body": None})
+        response = client.get("/api/version?force=true")
+        assert response.status_code == 200
+        data = response.json()
+        assert data["update_available"] is False
+        assert data["latest_version"] is None
+        assert data["error"] is None
 
     @respx.mock
     def test_an_unexpected_failure_shows_no_exception_text(self):

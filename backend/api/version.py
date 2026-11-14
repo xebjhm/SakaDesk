@@ -190,10 +190,13 @@ async def _fetch_latest_release(force: bool = False) -> dict:
             if response.status_code == 200:
                 data = response.json()
                 if not isinstance(data, dict):
+                    logger.warning("version_check_unexpected_body", reason="not_object")
                     data = {}
                 tag = data.get("tag_name")
                 body = data.get("body")
                 html_url = data.get("html_url")
+                if not isinstance(tag, str) or not tag:
+                    logger.warning("version_check_unexpected_body", reason="no_tag")
                 # Hardening #64: null notes or tag must not break the check.
                 _cache["latest_version"] = (
                     tag.lstrip("v") if isinstance(tag, str) and tag else None
