@@ -10,7 +10,6 @@ UI assets may live there (a real paid-message export shipped from v0.1.0 to
 from __future__ import annotations
 
 import importlib.util
-import re
 import subprocess
 import tomllib
 from pathlib import Path
@@ -80,15 +79,27 @@ def test_the_spec_ships_no_tests_and_no_debug_bootloader():
 
 
 def test_the_local_build_pins_the_ci_build_tools():
-    """report-hardening #8: build.ps1 installed whatever pyinstaller was newest."""
+    """report-hardening #8 and OD-7: build.ps1 pins what the locked build group pins."""
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    pins = pyproject["dependency-groups"]["build"]
+    assert sorted(p.split("==")[0] for p in pins) == ["pyinstaller", "pywebview"]
+    assert all("==" in pin for pin in pins)
+    build_ps1 = (ROOT / "build.ps1").read_text(encoding="utf-8")
+    for pin in pins:
+        assert f"'{pin}'" in build_ps1
+
+
+def test_the_ci_build_tools_come_from_the_locked_build_group():
+    """OD-7: no `uv pip install` in CI; the build job syncs the `build` group."""
     workflow = (ROOT / ".github" / "workflows" / "build.yml").read_text(
         encoding="utf-8"
     )
-    pins = re.search(r"uv pip install (pyinstaller==\S+) (pywebview==\S+)", workflow)
-    assert pins is not None
-    build_ps1 = (ROOT / "build.ps1").read_text(encoding="utf-8")
-    for pin in pins.groups():
-        assert f"'{pin}'" in build_ps1
+    assert "uv pip install" not in workflow
+    assert "uv sync --no-sources --group build" in workflow
+    lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    locked = {p["name"]: p["version"] for p in lock["package"]}
+    assert locked["pyinstaller"] == "6.13.0"
+    assert locked["pywebview"] == "5.3.2"
 
 
 def test_dist_allowlist_is_public_plus_index_html():

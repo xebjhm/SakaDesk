@@ -217,16 +217,14 @@ jobs:
       with:
         version: "0.9.21"
 
-    - name: Install Dependencies
-      run: uv sync --no-sources
+    # The build tools (PyInstaller, pywebview) are the locked `build` group.
+    - name: Install Dependencies and the Build Tools
+      run: uv sync --no-sources --group build
 
-    # Hardening #3: before the build tools below, which uv.lock does not contain.
+    # Hardening #3: the synced environment, build tools included, must be the
+    # one uv.lock describes.
     - name: Check the environment matches uv.lock
       run: uv run --no-sources python tooling/ci/check_locked_versions.py
-
-    # Pinned for reproducible builds; not in pyproject.toml (build-only tools)
-    - name: Install Build Tools
-      run: uv pip install pyinstaller==6.13.0 pywebview==5.3.2
 
     # Hardening #4: one known Inno Setup, verified after install.
     - name: Install Inno Setup

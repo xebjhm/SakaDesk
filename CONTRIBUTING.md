@@ -573,7 +573,7 @@ These are common pitfalls to avoid:
 2. **Use `TZ=UTC` for frontend tests** — snapshots with timestamps break across timezones
 3. **Mock `AudioContext`** — jsdom doesn't provide Web Audio API
 4. **Mock `useAppStore.getState()`** — if hooks call `getState()` directly, tests need it
-5. **`uv add --dev` in CI is fragile** — use `uv pip install` for build-only tools
+5. **Build-only tools are a locked group** — PyInstaller and pywebview live in the `build` dependency group (`uv.lock`); CI installs them with `uv sync --no-sources --group build`, a plain `uv sync` / `uv run` does not
 6. **E2E tests need Python/uv** — they must run after Python setup, not after Node setup
 7. **Windows PowerShell env syntax** — `VAR=value cmd` doesn't work, use Playwright's `env` option
 8. **pysaka must be on PyPI first** — SakaDesk CI pulls from PyPI, not local path

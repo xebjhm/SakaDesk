@@ -373,12 +373,13 @@ def test_dependabot_keeps_the_action_pins_current():
 
 
 def test_ci_checks_the_environment_against_the_lock():
-    """Hardening #3: in the test job, and in the build job before the build tools."""
+    """Hardening #3 / OD-7: in the test job, and in the build job after the build tools."""
     assert "python tooling/ci/check_locked_versions.py" in _run_text("test-backend")
     names = _names("build")
-    assert names.index("Check the environment matches uv.lock") < names.index(
-        "Install Build Tools"
-    )
+    sync = "Install Dependencies and the Build Tools"
+    assert "uv sync --no-sources --group build" in _named_step("build", sync)["run"]
+    assert names.index(sync) < names.index("Check the environment matches uv.lock")
+    assert "uv pip" not in _run_text("build")
 
 
 def _named_step(job: str, name: str) -> dict:
