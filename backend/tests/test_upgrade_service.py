@@ -556,13 +556,16 @@ class TestDownloadInstaller:
         ):
             assert await download_installer(info) is None
 
+    @respx.mock
     @pytest.mark.asyncio
     async def test_an_unsigned_info_is_refused_before_the_network(self, tmp_path):
+        anything = respx.route().respond(500)
         info = InstallerInfo(url=_make_info(b"MZ").url, size=2, digest=None, sha256="")
         with patch(
             "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
         ):
             assert await download_installer(info) is None
+        assert not anything.called
 
     @respx.mock
     @pytest.mark.asyncio
