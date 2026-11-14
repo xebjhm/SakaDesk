@@ -170,6 +170,8 @@ jobs:
     runs-on: windows-latest
     permissions:
       contents: read
+    outputs:
+      installer_sha256: ${{ steps.installer_hash.outputs.installer_sha256 }}
 
     steps:
     - uses: actions/checkout@v4
@@ -249,6 +251,16 @@ jobs:
     - name: Build with PyInstaller & Inno Setup
       run: uv run --no-sources python tooling/windows/build_windows.py
 
+    # Later jobs check the installer against this hash (see `sign`).
+    - name: Hash the installer
+      id: installer_hash
+      env:
+        PKG_VERSION: ${{ steps.version.outputs.VERSION }}
+      run: |
+        $path = Join-Path "dist" "SakaDesk-$($env:PKG_VERSION)-Setup.exe"
+        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+        echo "installer_sha256=$hash" >> $env:GITHUB_OUTPUT
+
     - name: Upload Build Artifact
       uses: actions/upload-artifact@v4
       with:
@@ -257,12 +269,15 @@ jobs:
 
   # Signs the update manifest (Plan E). The key is a secret of the `release`
   # environment, which only v*.*.* tags may use, and this job holds no write
-  # token. While the key is present only git, the runner's own python3 (standard
-  # library) and OpenSSL run: nothing is installed, because any step in a job can
-  # read all of that job's secrets from the runner's memory. Verification runs in
+  # token. Nothing is installed: besides GitHub's own checkout and artifact
+  # actions, only git, the runner's python3 (standard library) and OpenSSL run
+  # while the key is present, because any step in a job can read all of that
+  # job's secrets from the runner's memory. Verification runs in
   # `verify-manifest`, which holds no secrets.
   sign:
     needs: [build]
+    outputs:
+      manifest_sha256: ${{ steps.manifest_hash.outputs.manifest_sha256 }}
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: release
@@ -290,16 +305,36 @@ jobs:
       with:
         pattern: SakaDesk-*-Setup
 
+    # Artifact tokens can replace artifacts, so bind the download to the hash
+    # the trusted `build` job computed (job outputs come from the job itself).
+    - name: Check the installer matches the build job's hash
+      env:
+        EXPECTED_INSTALLER_SHA256: ${{ needs.build.outputs.installer_sha256 }}
+      run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        ACTUAL="$(sha256sum "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" | cut -d' ' -f1)"
+        if [ -z "$EXPECTED_INSTALLER_SHA256" ] || [ "$ACTUAL" != "$EXPECTED_INSTALLER_SHA256" ]; then
+          echo "::error::the downloaded installer does not match the build job's hash"
+          exit 1
+        fi
+
     - name: Sign the update manifest
       env:
         SAKADESK_RELEASE_SIGNING_KEY: ${{ secrets.SAKADESK_RELEASE_SIGNING_KEY }}
         SAKADESK_RELEASE_SIGNING_KEY_NEXT: ${{ secrets.SAKADESK_RELEASE_SIGNING_KEY_NEXT }}
       run: |
         TAG_VERSION="${GITHUB_REF_NAME#v}"
-        python3 tooling/release/sign_manifest.py \
+        python3 -I tooling/release/sign_manifest.py \
           --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
           --version "$TAG_VERSION" \
           --out "SakaDesk-${TAG_VERSION}-manifest.json"
+
+    - name: Hash the signed manifest
+      id: manifest_hash
+      run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        HASH="$(sha256sum "SakaDesk-${TAG_VERSION}-manifest.json" | cut -d' ' -f1)"
+        echo "manifest_sha256=$HASH" >> "$GITHUB_OUTPUT"
 
     - name: Upload the signed manifest
       uses: actions/upload-artifact@v4
@@ -345,7 +380,7 @@ jobs:
     - name: Verify the manifest with the new release's keys
       run: |
         TAG_VERSION="${GITHUB_REF_NAME#v}"
-        uv run --no-project --with "cryptography==46.0.3" python -m backend.services.release_signing \
+        uv run --no-project --with "cryptography==46.0.3" --with "cffi==2.0.0" --with "pycparser==2.23" python -m backend.services.release_signing \
           --manifest "SakaDesk-${TAG_VERSION}-manifest.json" \
           --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
           --version "$TAG_VERSION"
@@ -377,7 +412,7 @@ jobs:
           echo "::error::backend/services/release_keys.py is missing at $PREV_TAG"
           exit 1
         fi
-        uv run --no-project --with "cryptography==46.0.3" python -m backend.services.release_signing \
+        uv run --no-project --with "cryptography==46.0.3" --with "cffi==2.0.0" --with "pycparser==2.23" python -m backend.services.release_signing \
           --manifest "SakaDesk-${TAG_VERSION}-manifest.json" \
           --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
           --version "$TAG_VERSION" \
@@ -421,6 +456,25 @@ jobs:
           fi
         done
         echo "Release assets verified for ${TAG_VERSION}"
+
+    # Artifact tokens can replace artifacts (any job in the run holds one), so
+    # bind both files to the hashes the trusted build and sign jobs produced.
+    - name: Check the files match the hashes the build and sign jobs produced
+      env:
+        EXPECTED_INSTALLER_SHA256: ${{ needs.build.outputs.installer_sha256 }}
+        EXPECTED_MANIFEST_SHA256: ${{ needs.sign.outputs.manifest_sha256 }}
+      run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        INSTALLER="$(sha256sum "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" | cut -d' ' -f1)"
+        MANIFEST="$(sha256sum "SakaDesk-${TAG_VERSION}-manifest.json" | cut -d' ' -f1)"
+        if [ -z "$EXPECTED_INSTALLER_SHA256" ] || [ "$INSTALLER" != "$EXPECTED_INSTALLER_SHA256" ]; then
+          echo "::error::the installer does not match the build job's hash"
+          exit 1
+        fi
+        if [ -z "$EXPECTED_MANIFEST_SHA256" ] || [ "$MANIFEST" != "$EXPECTED_MANIFEST_SHA256" ]; then
+          echo "::error::the manifest does not match the sign job's hash"
+          exit 1
+        fi
 
     - name: Generate SHA-256 Checksums
       run: |

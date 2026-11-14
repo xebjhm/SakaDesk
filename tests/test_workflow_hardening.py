@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -51,17 +52,76 @@ def test_only_the_sign_job_can_read_the_signing_key():
         "SAKADESK_RELEASE_SIGNING_KEY",
         "SAKADESK_RELEASE_SIGNING_KEY_NEXT",
     }
-    assert "python3 tooling/release/sign_manifest.py" in step["run"]
+    assert "python3 -I tooling/release/sign_manifest.py" in step["run"]
     for other in sign["steps"]:
         if other is not step:
             assert "secrets." not in yaml.safe_dump(other)
 
 
+SIGN_ALLOWED_ACTIONS = (
+    "actions/checkout",
+    "actions/download-artifact",
+    "actions/upload-artifact",
+)
+FORBIDDEN_COMMAND = re.compile(
+    r"(^|[\s;&|(])(uv|pip|pip3)(\s|$)|python3?\s+-m\s+pip\b|--with\b"
+)
+
+
 def test_the_sign_job_installs_nothing():
     for step in _steps("sign"):
-        assert not step.get("uses", "").startswith("astral-sh/setup-uv")
-        run = step.get("run", "")
-        assert "uv " not in run and "pip" not in run and "--with" not in run
+        uses = step.get("uses")
+        if uses is not None:
+            assert uses.startswith(SIGN_ALLOWED_ACTIONS), uses
+        assert not FORBIDDEN_COMMAND.search(step.get("run", "")), step.get("name")
+    assert FORBIDDEN_COMMAND.search("uv run x")
+    assert FORBIDDEN_COMMAND.search("python3 -m pip install x")
+    assert not FORBIDDEN_COMMAND.search("set -euo pipefail")
+    (signing,) = [
+        s for s in _steps("sign") if s.get("name") == "Sign the update manifest"
+    ]
+    assert "python3 -I tooling/release/sign_manifest.py" in signing["run"]
+
+
+def _index(job: str, needle: str) -> int:
+    (index,) = [
+        i
+        for i, step in enumerate(_steps(job))
+        if needle in "".join(str(v) for v in step.get("env", {}).values())
+    ]
+    return index
+
+
+def test_files_are_bound_to_the_hashes_the_trusted_jobs_produced():
+    jobs = _workflow()["jobs"]
+    assert "installer_sha256" in jobs["build"]["outputs"]
+    assert "manifest_sha256" in jobs["sign"]["outputs"]
+    build_hash = "needs.build.outputs.installer_sha256"
+    assert _index("sign", build_hash) < _names("sign").index("Sign the update manifest")
+    attest = _names("release").index("Attest Build Provenance")
+    assert _index("release", build_hash) < attest
+    assert _index("release", "needs.sign.outputs.manifest_sha256") < attest
+    for job in ("sign", "release"):
+        for step in _steps(job):
+            assert "needs." not in step.get("run", "")
+    # The build job's hash step precedes the upload and writes the output.
+    names = _names("build")
+    (hash_step,) = [s for s in _steps("build") if s.get("id") == "installer_hash"]
+    assert names.index(hash_step["name"]) < names.index("Upload Build Artifact")
+    assert "Get-FileHash -Algorithm SHA256" in hash_step["run"]
+    assert "installer_sha256=" in hash_step["run"]
+
+
+def test_the_verifier_dependencies_are_pinned():
+    runs = [
+        s["run"]
+        for s in _steps("verify-manifest")
+        if "release_signing" in s.get("run", "")
+    ]
+    assert len(runs) == 2
+    for run in runs:
+        for pin in ("cryptography==46.0.3", "cffi==2.0.0", "pycparser==2.23"):
+            assert f'--with "{pin}"' in run
 
 
 def test_the_tag_must_be_on_main_before_signing():
