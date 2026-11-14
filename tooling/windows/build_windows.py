@@ -77,6 +77,23 @@ def verify_frontend_dist(dist: Path) -> None:
         sys.exit(1)
 
 
+# The in-app updater checks release signatures with cryptography, imported
+# lazily (backend/services/release_signing.py), so a build without it would
+# only fail when an update is offered. Stop the build instead.
+UPDATE_VERIFIER_BINDINGS = Path("cryptography") / "hazmat" / "bindings"
+
+
+def verify_update_verifier_bundled(app_dir: Path) -> None:
+    """Stop the build when the frozen app lacks cryptography's compiled bindings."""
+    bindings = app_dir / "_internal" / UPDATE_VERIFIER_BINDINGS
+    if not any(bindings.glob("_rust*")):
+        sys.stdout.write(
+            "ERROR: the update signature checker (cryptography) is missing from "
+            f"{app_dir.name}; check the PyInstaller analysis.\n"
+        )
+        sys.exit(1)
+
+
 def build_exe():
     """Build the executable with PyInstaller."""
     print("--- Building Executable with PyInstaller ---")
@@ -101,6 +118,7 @@ def build_exe():
     ]
 
     run_command(cmd, cwd=PROJECT_ROOT)
+    verify_update_verifier_bundled(DIST_DIR / "SakaDesk")
 
 
 def _validate_version(version: str) -> None:

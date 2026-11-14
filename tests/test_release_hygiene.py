@@ -149,3 +149,34 @@ def test_ci_runs_the_security_e2e_specs_before_building():
     assert "needs: [lint, test-backend, test-frontend, e2e]" in workflow
     assert "SAKADESK_E2E_UV_RUN: uv run --no-sources" in workflow
     assert "SAKADESK_DATA_DIR=" in workflow
+
+
+def test_the_build_stops_without_the_update_signature_checker(tmp_path, capsys):
+    """Plan E: cryptography is imported lazily, so only this gate catches a packaging slip."""
+    app = tmp_path / "SakaDesk"
+    (app / "_internal").mkdir(parents=True)
+    with pytest.raises(SystemExit) as exc:
+        _build_windows().verify_update_verifier_bundled(app)
+    assert exc.value.code == 1
+    assert capsys.readouterr().out.startswith("ERROR: the update signature checker")
+
+
+def test_the_build_accepts_a_bundled_signature_checker(tmp_path):
+    bindings = (
+        tmp_path / "SakaDesk" / "_internal" / "cryptography" / "hazmat" / "bindings"
+    )
+    bindings.mkdir(parents=True)
+    (bindings / "_rust.pyd").write_bytes(b"x")
+    _build_windows().verify_update_verifier_bundled(tmp_path / "SakaDesk")
+
+
+def test_build_exe_checks_the_bundle_after_pyinstaller(tmp_path, monkeypatch):
+    build = _build_windows()
+    _ui_build(tmp_path / "frontend" / "dist")
+    calls: list = []
+    monkeypatch.setattr(build, "PROJECT_ROOT", tmp_path)
+    monkeypatch.setattr(build, "DIST_DIR", tmp_path / "dist")
+    monkeypatch.setattr(build, "run_command", lambda *a, **k: calls.append(a))
+    with pytest.raises(SystemExit):
+        build.build_exe()
+    assert len(calls) == 1  # PyInstaller ran, then the bundle gate stopped the build
