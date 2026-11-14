@@ -195,12 +195,13 @@ async def _fetch_latest_release(force: bool = False) -> dict:
                 tag = data.get("tag_name")
                 body = data.get("body")
                 html_url = data.get("html_url")
-                if not isinstance(tag, str) or not tag:
-                    logger.warning("version_check_unexpected_body", reason="no_tag")
                 # Hardening #64: null notes or tag must not break the check.
-                _cache["latest_version"] = (
-                    tag.lstrip("v") if isinstance(tag, str) and tag else None
-                )
+                # A tag that is only "v" has no version either.
+                latest = tag.lstrip("v") if isinstance(tag, str) else None
+                if not latest:
+                    latest = None
+                    logger.warning("version_check_unexpected_body", reason="no_tag")
+                _cache["latest_version"] = latest
                 _cache["release_url"] = html_url if isinstance(html_url, str) else None
                 _cache["release_notes"] = body[:500] if isinstance(body, str) else ""
                 _cache["error"] = None

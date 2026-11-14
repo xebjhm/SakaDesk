@@ -24,8 +24,8 @@ trusted key is enough.
 release workflow's signer can import this module with the standard library
 alone. Nothing here logs: callers log the :class:`ManifestRefused` reason.
 
-Command line (:func:`main`, used by the release workflow's ``sign`` job to
-check a release before it is published)::
+Command line (:func:`main`, used by the release workflow's ``verify-manifest``
+job to check a release before it is published)::
 
     python -m backend.services.release_signing --manifest M --installer I --version V [--keys-file F]
 
@@ -322,7 +322,9 @@ def _count_key_bindings(tree: ast.Module) -> int:
 
     Counts assignment, annotated, augmented and walrus targets (tuple, list
     and starred unpacking included), ``for`` / ``with`` / ``except`` targets,
-    ``del``, imports, and ``def`` / ``class`` statements of that name.
+    ``del``, imports, ``match`` capture targets (``case x``, ``*x``,
+    ``**x``), and ``def`` / ``class`` statements of that name. A star import
+    (``from m import *``) may bind any name, so it counts as one binding.
     ``global`` mentions and function parameters are not bindings of the
     module's mapping and are ignored.
     """
@@ -331,7 +333,14 @@ def _count_key_bindings(tree: ast.Module) -> int:
         if isinstance(node, ast.Name):
             count += node.id == _KEYS_NAME and not isinstance(node.ctx, ast.Load)
         elif isinstance(node, ast.alias):
-            count += (node.asname or node.name.split(".")[0]) == _KEYS_NAME
+            # A star import may bind any name, so it counts as a binding.
+            count += node.name == "*" or (
+                (node.asname or node.name.split(".")[0]) == _KEYS_NAME
+            )
+        elif isinstance(node, (ast.MatchAs, ast.MatchStar)):
+            count += node.name == _KEYS_NAME
+        elif isinstance(node, ast.MatchMapping):
+            count += node.rest == _KEYS_NAME
         elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             count += node.name == _KEYS_NAME
         elif isinstance(node, ast.ExceptHandler):

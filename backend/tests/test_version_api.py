@@ -740,8 +740,6 @@ class TestPrepareUpgradeLogs:
 
         from types import SimpleNamespace
 
-        from structlog.testing import capture_logs
-
         import backend.api.version as v
 
         account = "金村美玖"
@@ -756,7 +754,7 @@ class TestPrepareUpgradeLogs:
         async def boom(_version):
             raise OSError(f"denied {installer}")
 
-        with capture_logs() as logs:
+        with structlog.testing.capture_logs() as logs:
             with (
                 patch.object(v, "get_installer_info", info),
                 patch.object(v, "download_installer", download),
@@ -1024,8 +1022,6 @@ class TestGenerationGuardDuringDownload:
     ):
         import asyncio
 
-        from structlog.testing import capture_logs
-
         import backend.api.version as v
 
         cleaned: list[bool] = []
@@ -1061,7 +1057,7 @@ class TestGenerationGuardDuringDownload:
                 gate.set()
                 await task
 
-        with capture_logs() as logs:
+        with structlog.testing.capture_logs() as logs:
             self._run(scenario())
         assert cleaned == [True]
         assert any(e["event"] == "upgrade_cancel_wait_timeout" for e in logs)
@@ -1281,6 +1277,21 @@ class TestNullReleaseFields:
         import backend.api.version as v
 
         respx.get(v.GITHUB_API_URL).respond(200, json={"tag_name": None, "body": None})
+        with structlog.testing.capture_logs() as logs:
+            cache = asyncio.run(v._fetch_latest_release(force=True))
+        assert cache["error"] is None
+        assert cache["latest_version"] is None
+        assert [
+            e["reason"] for e in logs if e["event"] == "version_check_unexpected_body"
+        ] == ["no_tag"]
+
+    @respx.mock
+    def test_a_tag_of_only_v_means_no_version(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        respx.get(v.GITHUB_API_URL).respond(200, json={"tag_name": "v", "body": None})
         with structlog.testing.capture_logs() as logs:
             cache = asyncio.run(v._fetch_latest_release(force=True))
         assert cache["error"] is None

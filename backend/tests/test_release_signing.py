@@ -493,6 +493,11 @@ class TestCommand:
             'TRUSTED_RELEASE_KEYS = {"a": "b"}\nif (TRUSTED_RELEASE_KEYS := {}):\n    pass\n',
             'TRUSTED_RELEASE_KEYS = {"a": "b"}\nfor TRUSTED_RELEASE_KEYS in [1]:\n    pass\n',
             'TRUSTED_RELEASE_KEYS = {"a": "b"}\nwith open("x") as TRUSTED_RELEASE_KEYS:\n    pass\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nmatch 1:\n    case TRUSTED_RELEASE_KEYS:\n        pass\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nmatch 1:\n    case [*TRUSTED_RELEASE_KEYS]:\n        pass\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nmatch 1:\n    case {**TRUSTED_RELEASE_KEYS}:\n        pass\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nmatch 1:\n    case int() as TRUSTED_RELEASE_KEYS:\n        pass\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nfrom elsewhere import *\n',
         ],
     )
     def test_a_keys_file_that_reassigns_the_mapping_is_refused(self, tmp_path, source):

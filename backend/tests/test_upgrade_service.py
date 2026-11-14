@@ -56,8 +56,8 @@ class TestInstallerAssetName:
 
     def test_strips_v_only_once(self):
         result = _installer_asset_name("vv1.0.0")
-        # lstrip("v") strips all leading v's
-        assert result == "SakaDesk-1.0.0-Setup.exe"
+        # Exactly one leading "v", like get_installer_info.
+        assert result == "SakaDesk-v1.0.0-Setup.exe"
 
     def test_three_part_version(self):
         result = _installer_asset_name("1.2.3")
@@ -376,8 +376,9 @@ class TestGetInstallerInfo:
         monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", {})
         respx.get(_RELEASE_API).respond(200, json=_github_release_json())
         _serve_manifest()
-        with pytest.raises(UpdateNotVerified):
+        with pytest.raises(UpdateNotVerified) as exc:
             await get_installer_info("v1.0.0")
+        assert exc.value.reason == "unknown_key"
 
     @respx.mock
     @pytest.mark.asyncio
@@ -416,6 +417,28 @@ class TestGetInstallerInfo:
             await get_installer_info("v1.0.0")
         assert exc.value.reason == "manifest_redirect_refused"
         assert not evil.called
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_the_manifest_request_asks_for_identity_encoding(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        route = _serve_manifest()
+        await get_installer_info("v1.0.0")
+        assert route.calls.last.request.headers["accept-encoding"] == "identity"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_a_manifest_behind_the_release_asset_redirect_is_fetched(self):
+        """GitHub serves release assets through a 302 to release-assets.githubusercontent.com."""
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        cdn = "https://release-assets.githubusercontent.com/github-production-release-asset/1/m?sig=x"
+        respx.get(_MANIFEST_URL).respond(302, headers={"Location": cdn})
+        hop = respx.get(cdn).respond(
+            200, content=signed_manifest(_INSTALLER_BYTES, "1.0.0", _KEY)
+        )
+        result = await get_installer_info("v1.0.0")
+        assert result is not None
+        assert hop.called
 
     @respx.mock
     @pytest.mark.asyncio
@@ -551,10 +574,47 @@ class TestDownloadInstaller:
         info = _make_info(content)
         info = InstallerInfo(url=info.url, size=1024, digest=None, sha256=info.sha256)
         respx.get(info.url).respond(200, content=content)
+        with (
+            capture_logs() as logs,
+            patch(
+                "backend.services.upgrade_service.get_app_data_dir",
+                return_value=tmp_path,
+            ),
+        ):
+            assert await download_installer(info) is None
+        assert [
+            e["reason"] for e in logs if e["event"] == "installer_download_refused"
+        ] == ["too_large"]
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_the_installer_request_asks_for_identity_encoding(self, tmp_path):
+        content = _make_installer_content(64)
+        info = _make_info(content)
+        installer = respx.get(info.url).respond(200, content=content)
         with patch(
             "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
         ):
-            assert await download_installer(info) is None
+            assert await download_installer(info) is not None
+        assert installer.calls.last.request.headers["accept-encoding"] == "identity"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_an_installer_behind_the_release_asset_redirect_downloads(
+        self, tmp_path
+    ):
+        """GitHub serves release assets through a 302 to release-assets.githubusercontent.com."""
+        content = _make_installer_content(64)
+        info = _make_info(content)
+        cdn = "https://release-assets.githubusercontent.com/github-production-release-asset/1/i?sig=x"
+        respx.get(info.url).respond(302, headers={"Location": cdn})
+        hop = respx.get(cdn).respond(200, content=content)
+        with patch(
+            "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
+        ):
+            result = await download_installer(info)
+        assert result is not None and result.read_bytes() == content
+        assert hop.called
 
     @respx.mock
     @pytest.mark.asyncio

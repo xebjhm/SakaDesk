@@ -69,9 +69,11 @@ MAX_REDIRECTS = 5
 class UpdateNotVerified(Exception):
     """The release has no manifest the app can trust, or the installer changed.
 
-    ``reason`` is a log code (``manifest_missing``, ``manifest_too_large``,
-    ``manifest_redirect_refused``, a ``release_signing.ManifestRefused``
-    reason, or ``hash_mismatch``).
+    ``reason`` is a log code. While looking the release up: ``manifest_missing``,
+    ``manifest_too_large``, ``manifest_redirect_refused`` or a
+    ``release_signing.ManifestRefused`` reason (the manifest is not signed by a
+    trusted key for exactly this version's installer). Right before launch:
+    ``hash_mismatch`` (the installer on disk is not the signed file).
     """
 
     def __init__(self, reason: str) -> None:
@@ -130,7 +132,9 @@ def _download_client(timeout: float) -> httpx.AsyncClient:
         follow_redirects=True,
         max_redirects=MAX_REDIRECTS,
         event_hooks={"request": [_check_hop]},
-        headers={"User-Agent": "SakaDesk-Updater"},
+        # The signed size and SHA-256 are of the raw bytes: never let a
+        # transparent content decoding change what is checked.
+        headers={"User-Agent": "SakaDesk-Updater", "Accept-Encoding": "identity"},
     )
 
 
@@ -158,7 +162,8 @@ def _installer_asset_name(version: str) -> str:
 
     Matches Inno Setup OutputBaseFilename: SakaDesk-{version}-Setup
     """
-    return release_signing.installer_asset_name(version.lstrip("v"))
+    bare = version[1:] if version.startswith("v") else version
+    return release_signing.installer_asset_name(bare)
 
 
 def _find_asset(assets: list, name: str, expected_url: str) -> Optional[dict]:
