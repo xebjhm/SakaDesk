@@ -49,8 +49,9 @@ _server_loop: asyncio.AbstractEventLoop | None = None
 # semaphore is never released), which blocked the WinRT thread that delivers
 # clicks. Clicks run on their own daemon thread; the caller waits at most this.
 CLICK_TIMEOUT_S = 8.0
-# A stuck click keeps its slot until its call returns (maybe never). With this
-# many stuck, later clicks are dropped instead of piling up blocked threads.
+# Every click that is still running holds a slot until its call returns (maybe
+# never, when stuck). With this many running, later clicks are dropped instead
+# of piling up blocked threads.
 MAX_STUCK_CLICKS = 2
 _click_slots = threading.BoundedSemaphore(MAX_STUCK_CLICKS)
 
@@ -78,8 +79,8 @@ def _run_click(
         try:
             fn()
         finally:
-            done.set()
             slots.release()
+            done.set()
 
     try:
         threading.Thread(target=work, name=f"toast_click_{op}", daemon=True).start()

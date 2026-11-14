@@ -375,3 +375,29 @@ def test_a_slot_comes_back_when_the_stuck_call_returns(fresh_click_slots) -> Non
             break
         threading.Event().wait(0.02)
     assert seen and seen[0] == "hinatazaka46"
+
+
+def test_a_failed_thread_start_is_dropped_and_gives_the_slot_back(
+    fresh_click_slots, monkeypatch
+) -> None:
+    real_start = threading.Thread.start
+
+    def failing_start(self) -> None:
+        raise RuntimeError("can't start new thread")
+
+    seen: list[str] = []
+    desktop_bridge.set_open_login_handler(lambda service: seen.append(service))
+    with monkeypatch.context() as patch:
+        patch.setattr(threading.Thread, "start", failing_start)
+        with capture_logs() as logs:
+            for _ in range(desktop_bridge.MAX_STUCK_CLICKS + 1):
+                desktop_bridge.open_login("hinatazaka46")
+    assert threading.Thread.start is real_start
+    dropped = [e for e in logs if e["event"] == "toast_click_dropped"]
+    assert [e["reason"] for e in dropped] == ["no_thread"] * (
+        desktop_bridge.MAX_STUCK_CLICKS + 1
+    )
+    assert seen == []
+    for _ in range(desktop_bridge.MAX_STUCK_CLICKS):
+        desktop_bridge.open_login("hinatazaka46")
+    assert seen == ["hinatazaka46"] * desktop_bridge.MAX_STUCK_CLICKS

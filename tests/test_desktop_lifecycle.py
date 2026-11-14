@@ -146,6 +146,18 @@ class TestMainWindowKwargs:
         assert kwargs["text_select"] is True
 
 
+class TestQuittingAfterGuiLoop:
+    def test_main_marks_quitting_as_soon_as_the_gui_loop_returns(self):
+        source = (Path(desktop.__file__).resolve()).read_text(encoding="utf-8")
+        body = source[source.index("\ndef main(") :]
+        start = re.search(r"^ +webview\.start\($", body, re.MULTILINE)
+        assert start is not None
+        after = body[start.end() :]
+        mark_at = after.index("        _mark_quitting()\n")
+        cleanup_at = after.index("desktop_bridge.set_call_popup_host(None)")
+        assert mark_at < cleanup_at
+
+
 class TestNavigationGuardInstall:
     def test_main_installs_the_guard_before_the_gui_loop_starts(self):
         source = (Path(desktop.__file__).resolve()).read_text(encoding="utf-8")

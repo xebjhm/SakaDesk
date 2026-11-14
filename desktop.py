@@ -244,7 +244,8 @@ def make_open_chat_handler(
 ):
     """Build the toast-click handler that brings ``window`` forward on a chat.
 
-    The handler runs on a WinRT thread. It shows the window (never
+    In production ``desktop_bridge`` runs the handler on a daemon thread it
+    starts for the click, bounded by ``CLICK_TIMEOUT_S``. It shows the window (never
     ``window.restore()``, which would un-maximize it), calls
     ``focus_fn(hwnd)`` with the window's own handle (or None), then asks the
     frontend to navigate via ``window.__sakadeskOpenChat``. The payload is the
@@ -1338,7 +1339,8 @@ def main() -> None:
             logger.info("Window closing", geometry=geom)
             _save_window_geometry(geom)
 
-        # Toast click -> show, focus and open that chat (runs on a WinRT thread).
+        # Toast click -> show, focus and open that chat (runs on a daemon thread
+        # started by desktop_bridge, bounded by CLICK_TIMEOUT_S).
         desktop_bridge.set_open_chat_handler(
             make_open_chat_handler(window, _focus_window, is_quitting=lambda: _quitting)
         )
@@ -1433,7 +1435,11 @@ def main() -> None:
             storage_path=str(get_app_data_dir() / "webview"),
         )
 
-        # Cleanup AFTER webview closes but BEFORE process exits.
+        # Cleanup AFTER webview closes but BEFORE process exits. The window may
+        # have closed without Quit (no tray, close_to_tray off, unreadable
+        # settings), so mark quitting now: a late toast click must not reach a
+        # destroyed window. Nothing reads the flag again except those guards.
+        _mark_quitting()
         desktop_bridge.set_call_popup_host(None)
         tray.stop()
 
