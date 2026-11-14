@@ -1,0 +1,286 @@
+"""Signed update manifests (security audit 2026-11-13: N6, hardening #61/#62).
+
+The in-app updater installs an installer only when a manifest signed by a
+release key the app trusts (:mod:`backend.services.release_keys`) names
+exactly that installer: product, platform, version, file name, size and
+SHA-256. The release workflow writes the manifest
+(``tooling/release/sign_manifest.py``); the updater checks it before the
+download, checks the downloaded bytes against it, and hashes the file again
+right before starting Setup (:mod:`backend.services.upgrade_service`).
+
+File ``SakaDesk-<version>-manifest.json``::
+
+    {"payload": "<base64 of the payload bytes>",
+     "schema": 1,
+     "signatures": [{"key_id": "<16 hex digits>", "signature": "<base64, 64 bytes>"}]}
+
+The payload is :func:`manifest_payload`. Each signature is Ed25519 over
+``SIGNING_CONTEXT + payload``, and the signed bytes are checked before they
+are parsed. Up to ``MAX_SIGNATURES`` signatures let a release carry the
+current and the next key while keys are rotated; one valid signature from a
+trusted key is enough.
+
+``cryptography`` is imported only inside :func:`verify_signatures`, so the
+release workflow's signer can import this module with the standard library
+alone. Nothing here logs: callers log the :class:`ManifestRefused` reason.
+
+Command line (used by the release workflow; see :func:`main`)::
+
+    python -m backend.services.release_signing --manifest M --installer I --version V [--keys-file F]
+"""
+
+from __future__ import annotations
+
+import base64
+import binascii
+import hashlib
+import json
+import re
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
+from typing import BinaryIO
+
+from backend.services import release_keys
+
+PRODUCT = "SakaDesk"
+PLATFORM = "windows-x64"
+SCHEMA = 1
+SIGNING_CONTEXT = b"SakaDesk update manifest v1\n"
+MAX_ENVELOPE_BYTES = 64 * 1024
+MAX_SIGNATURES = 4
+MAX_INSTALLER_BYTES = 500 * 1024 * 1024
+MAX_VERSION_LENGTH = 32
+# 1.2.3 plus up to three suffix parts: 0.3.3-hotfix1, 0.4.0rc1, 0.3.2.dev0.
+_VERSION = re.compile(
+    r"\d{1,4}\.\d{1,4}\.\d{1,4}(?:[.-]?[0-9A-Za-z]{1,16}){0,3}", re.ASCII
+)
+_SHA256_HEX = re.compile(r"[0-9a-f]{64}")
+_KEY_ID = re.compile(r"[0-9a-f]{16}")
+_PAYLOAD_KEYS = frozenset(
+    {"asset", "platform", "product", "schema", "sha256", "size", "version"}
+)
+_CHUNK = 1024 * 1024
+
+
+class ManifestRefused(Exception):
+    """The manifest cannot be trusted. ``reason`` is a log code, never data from the file."""
+
+    def __init__(self, reason: str) -> None:
+        super().__init__(reason)
+        self.reason = reason
+
+
+@dataclass(frozen=True)
+class ReleaseManifest:
+    """What a valid signature vouches for."""
+
+    product: str
+    platform: str
+    version: str
+    asset: str
+    size: int
+    sha256: str
+
+
+def _is_int(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def installer_asset_name(version: str) -> str:
+    """``SakaDesk-<version>-Setup.exe`` (Inno Setup's OutputBaseFilename)."""
+    return f"SakaDesk-{version}-Setup.exe"
+
+
+def manifest_asset_name(version: str) -> str:
+    """``SakaDesk-<version>-manifest.json``."""
+    return f"SakaDesk-{version}-manifest.json"
+
+
+def is_valid_version(version: object) -> bool:
+    """True for a bare release version such as ``0.5.1`` or ``0.4.0rc1`` (no ``v``)."""
+    return (
+        isinstance(version, str)
+        and len(version) <= MAX_VERSION_LENGTH
+        and _VERSION.fullmatch(version) is not None
+    )
+
+
+def is_sha256_hex(value: object) -> bool:
+    """True for 64 lower-case hex digits."""
+    return isinstance(value, str) and _SHA256_HEX.fullmatch(value) is not None
+
+
+def key_id(public_key_raw: bytes) -> str:
+    """The id of a raw 32-byte Ed25519 public key: the first 16 hex digits of its SHA-256."""
+    return hashlib.sha256(public_key_raw).hexdigest()[:16]
+
+
+def manifest_payload(*, version: str, asset: str, size: int, sha256: str) -> bytes:
+    """The bytes the release workflow signs: canonical JSON (sorted keys, no spaces, ASCII)."""
+    body = {
+        "asset": asset,
+        "platform": PLATFORM,
+        "product": PRODUCT,
+        "schema": SCHEMA,
+        "sha256": sha256,
+        "size": size,
+        "version": version,
+    }
+    return json.dumps(
+        body, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("ascii")
+
+
+def build_envelope(payload: bytes, signatures: Sequence[tuple[str, bytes]]) -> bytes:
+    """The manifest file for ``payload`` with ``signatures`` (key id, 64-byte signature)."""
+    envelope = {
+        "payload": base64.b64encode(payload).decode("ascii"),
+        "schema": SCHEMA,
+        "signatures": [
+            {"key_id": kid, "signature": base64.b64encode(sig).decode("ascii")}
+            for kid, sig in signatures
+        ],
+    }
+    return (json.dumps(envelope, sort_keys=True, indent=2) + "\n").encode("ascii")
+
+
+def _b64(text: object) -> bytes:
+    if not isinstance(text, str):
+        raise ManifestRefused("malformed")
+    try:
+        return base64.b64decode(text.encode("ascii"), validate=True)
+    except (binascii.Error, UnicodeEncodeError, ValueError):
+        raise ManifestRefused("malformed") from None
+
+
+def parse_envelope(data: bytes) -> tuple[bytes, list[tuple[str, bytes]]]:
+    """The payload bytes and the (key id, signature) pairs of a manifest file.
+
+    Raises ManifestRefused: ``too_large``, ``malformed`` or ``unsigned``.
+    """
+    if len(data) > MAX_ENVELOPE_BYTES:
+        raise ManifestRefused("too_large")
+    try:
+        envelope = json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, ValueError):
+        raise ManifestRefused("malformed") from None
+    if not isinstance(envelope, dict):
+        raise ManifestRefused("malformed")
+    schema = envelope.get("schema")
+    if not _is_int(schema) or schema != SCHEMA:
+        raise ManifestRefused("malformed")
+    signatures = envelope.get("signatures")
+    if not isinstance(signatures, list):
+        raise ManifestRefused("malformed")
+    if not signatures:
+        raise ManifestRefused("unsigned")
+    if len(signatures) > MAX_SIGNATURES:
+        raise ManifestRefused("malformed")
+    payload = _b64(envelope.get("payload"))
+    parsed: list[tuple[str, bytes]] = []
+    for entry in signatures:
+        if not isinstance(entry, dict):
+            raise ManifestRefused("malformed")
+        kid = entry.get("key_id")
+        if not isinstance(kid, str) or _KEY_ID.fullmatch(kid) is None:
+            raise ManifestRefused("malformed")
+        signature = _b64(entry.get("signature"))
+        if len(signature) != 64:
+            raise ManifestRefused("malformed")
+        parsed.append((kid, signature))
+    return payload, parsed
+
+
+def verify_signatures(
+    payload: bytes,
+    signatures: Sequence[tuple[str, bytes]],
+    trusted_keys: Mapping[str, str],
+) -> str:
+    """The id of a trusted key whose signature over ``SIGNING_CONTEXT + payload`` is valid.
+
+    Raises ManifestRefused: ``unknown_key`` (no signature from a trusted key)
+    or ``bad_signature`` (none of those signatures is valid).
+    """
+    from cryptography.exceptions import InvalidSignature
+    from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+
+    candidates = [(kid, sig) for kid, sig in signatures if kid in trusted_keys]
+    if not candidates:
+        raise ManifestRefused("unknown_key")
+    message = SIGNING_CONTEXT + payload
+    for kid, signature in candidates:
+        public = Ed25519PublicKey.from_public_bytes(
+            base64.b64decode(trusted_keys[kid], validate=True)
+        )
+        try:
+            public.verify(signature, message)
+        except InvalidSignature:
+            continue
+        return kid
+    raise ManifestRefused("bad_signature")
+
+
+def parse_manifest(payload: bytes) -> ReleaseManifest:
+    """The fields of a signed payload. Raises ManifestRefused(``malformed``)."""
+    try:
+        body = json.loads(payload.decode("ascii"))
+    except (UnicodeDecodeError, ValueError):
+        raise ManifestRefused("malformed") from None
+    if not isinstance(body, dict) or set(body) != _PAYLOAD_KEYS:
+        raise ManifestRefused("malformed")
+    if not _is_int(body["schema"]) or body["schema"] != SCHEMA:
+        raise ManifestRefused("malformed")
+    texts = [body[k] for k in ("product", "platform", "version", "asset")]
+    if not all(isinstance(t, str) for t in texts):
+        raise ManifestRefused("malformed")
+    size, sha256 = body["size"], body["sha256"]
+    if not _is_int(size) or not 0 < size <= MAX_INSTALLER_BYTES:
+        raise ManifestRefused("malformed")
+    if not is_sha256_hex(sha256):
+        raise ManifestRefused("malformed")
+    return ReleaseManifest(
+        product=body["product"],
+        platform=body["platform"],
+        version=body["version"],
+        asset=body["asset"],
+        size=size,
+        sha256=sha256,
+    )
+
+
+def verify_update_manifest(
+    data: bytes,
+    *,
+    version: str,
+    trusted_keys: Mapping[str, str] | None = None,
+) -> ReleaseManifest:
+    """The manifest in ``data`` when a trusted key signed it for ``version``'s installer.
+
+    ``trusted_keys`` defaults to ``release_keys.TRUSTED_RELEASE_KEYS`` (read at
+    call time). Raises ManifestRefused: ``too_large``, ``malformed``,
+    ``unsigned``, ``unknown_key``, ``bad_signature``, ``wrong_product``,
+    ``wrong_platform``, ``wrong_version`` or ``wrong_asset``.
+    """
+    keys = release_keys.TRUSTED_RELEASE_KEYS if trusted_keys is None else trusted_keys
+    payload, signatures = parse_envelope(data)
+    verify_signatures(payload, signatures, keys)
+    manifest = parse_manifest(payload)
+    if manifest.product != PRODUCT:
+        raise ManifestRefused("wrong_product")
+    if manifest.platform != PLATFORM:
+        raise ManifestRefused("wrong_platform")
+    if manifest.version != version:
+        raise ManifestRefused("wrong_version")
+    if manifest.asset != installer_asset_name(version):
+        raise ManifestRefused("wrong_asset")
+    return manifest
+
+
+def stream_digest(stream: BinaryIO) -> tuple[str, int]:
+    """SHA-256 hex digest and byte count of everything left in ``stream``."""
+    digest = hashlib.sha256()
+    size = 0
+    while chunk := stream.read(_CHUNK):
+        digest.update(chunk)
+        size += len(chunk)
+    return digest.hexdigest(), size

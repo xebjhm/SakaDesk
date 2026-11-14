@@ -20,6 +20,7 @@ dependencies = [
     "pywin32>=312 ; sys_platform == 'win32'",
     "pystray>=0.19.5 ; sys_platform == 'win32'",
     "pillow>=12.1.0",
+    "cryptography==46.0.3",
 ]
 
 [tool.uv.sources]
