@@ -19,14 +19,17 @@ The upgrade flow:
 """
 
 import asyncio
+import contextlib
 import hashlib
 import os
+import sys
 import uuid
 
 import structlog
 import subprocess
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Optional, cast
+from typing import BinaryIO, Optional, cast
 from urllib.parse import urlparse
 from dataclasses import dataclass
 
@@ -424,14 +427,83 @@ async def _replace_with_retry(part_path: Path, installer_path: Path) -> bool:
     return False  # pragma: no cover - the loop always returns
 
 
+# CreateFile arguments for _held_for_launch (winnt.h / fileapi.h values).
+_GENERIC_READ = 0x80000000
+_FILE_SHARE_READ = 0x00000001
+_OPEN_EXISTING = 3
+
+
+@contextlib.contextmanager
+def _held_for_launch(path: Path) -> Iterator[BinaryIO]:
+    """``path`` open for reading; on Windows nobody can change it until the block ends.
+
+    The Windows handle shares read access only: writers, renames and deletes
+    fail with a sharing violation, while starting the installer (which opens
+    it for reading and executing) still works. Elsewhere a plain read handle.
+    """
+    if sys.platform == "win32":
+        import _winapi
+        import msvcrt
+
+        handle = _winapi.CreateFile(
+            str(path),
+            _GENERIC_READ,
+            _FILE_SHARE_READ,
+            _winapi.NULL,
+            _OPEN_EXISTING,
+            0,
+            _winapi.NULL,
+        )
+        try:
+            fd = msvcrt.open_osfhandle(handle, os.O_RDONLY)
+        except OSError:
+            _winapi.CloseHandle(handle)
+            raise
+        stream: BinaryIO = os.fdopen(fd, "rb")
+    else:
+        stream = open(path, "rb")
+    with stream:
+        yield stream
+
+
+def _verify_and_start(
+    installer_path: Path, expected_sha256: str, log_path: Path
+) -> None:
+    """Hash the installer under a held handle and start it while still holding it.
+
+    Raises UpdateNotVerified("hash_mismatch") (nothing started) or OSError.
+    """
+    with _held_for_launch(installer_path) as stream:
+        actual, _size = release_signing.stream_digest(stream)
+        if actual != expected_sha256:
+            raise UpdateNotVerified("hash_mismatch")
+        subprocess.Popen(
+            [
+                str(installer_path),
+                "/SILENT",
+                "/SUPPRESSMSGBOXES",
+                "/NORESTART",
+                f"/LOG={log_path}",
+            ],
+            creationflags=subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
+            | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
+            close_fds=True,
+        )
+
+
 async def launch_installer(
     installer_path: Path,
     *,
+    expected_sha256: str,
     attempts: int = LAUNCH_ATTEMPTS,
     retry_delay: float = LAUNCH_RETRY_DELAY_SECONDS,
 ) -> bool:
     """
-    Launch the Inno Setup installer directly and prepare for app exit.
+    Check the installer once more and launch it, then prepare for app exit.
+
+    The installer is hashed through :func:`_held_for_launch` and started
+    while that handle is still open, so the file Setup runs is the one whose
+    SHA-256 matched the signed manifest (hardening #62).
 
     The caller (``/upgrade/install``) exits the app right after this returns.
     Inno Setup handles the rest:
@@ -443,16 +515,22 @@ async def launch_installer(
     - [Run] section → relaunches SakaDesk.exe after install
 
     When Windows reports the installer in use (sharing violation, e.g. an
-    antivirus scan of the fresh file), the launch is tried up to ``attempts``
-    times in total, ``retry_delay`` seconds apart. Other errors fail at once.
+    antivirus scan of the fresh file), the attempt is repeated up to
+    ``attempts`` times in total, ``retry_delay`` seconds apart. Other errors
+    fail at once.
 
     Args:
         installer_path: Path to the downloaded installer
+        expected_sha256: The signed SHA-256 (hex) the installer must have
         attempts: Maximum launch attempts on a sharing violation
         retry_delay: Seconds to wait between attempts
 
     Returns:
         True if installer was launched successfully
+
+    Raises:
+        UpdateNotVerified: the installer is not the signed file (``hash_mismatch``);
+            nothing was started.
     """
     if not is_windows():
         logger.error("In-place upgrade only supported on Windows")
@@ -471,18 +549,12 @@ async def launch_installer(
         return False
     for attempt in range(1, attempts + 1):
         try:
-            subprocess.Popen(
-                [
-                    str(installer_path),
-                    "/SILENT",
-                    "/SUPPRESSMSGBOXES",
-                    "/NORESTART",
-                    f"/LOG={log_path}",
-                ],
-                creationflags=subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
-                | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
-                close_fds=True,
+            await asyncio.to_thread(
+                _verify_and_start, installer_path, expected_sha256, log_path
             )
+        except UpdateNotVerified:
+            logger.error("installer_launch_refused", reason="hash_mismatch")
+            raise
         except OSError as e:
             in_use = getattr(e, "winerror", None) == _ERROR_SHARING_VIOLATION
             if in_use and attempt < attempts:

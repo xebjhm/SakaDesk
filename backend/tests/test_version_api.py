@@ -453,11 +453,13 @@ class TestInstallUpgrade:
         installer.touch()
         v._upgrade_state["state"] = "ready"
         v._upgrade_state["installer_path"] = installer
+        v._upgrade_state["installer_sha256"] = "ab" * 32
         with patch("backend.api.version.asyncio.create_task", side_effect=capture):
             response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is True
         assert len(scheduled) == 1
+        mock_launch.assert_called_once_with(installer, expected_sha256="ab" * 32)
 
     @patch("backend.api.version.launch_installer", return_value=False)
     def test_install_upgrade_failure(self, mock_launch, tmp_path):
@@ -729,6 +731,8 @@ class TestPrepareUpgradeLogs:
     def test_ready_and_failure_logs_carry_no_user_path(self, tmp_path):
         import asyncio
 
+        from types import SimpleNamespace
+
         from structlog.testing import capture_logs
 
         import backend.api.version as v
@@ -737,7 +741,7 @@ class TestPrepareUpgradeLogs:
         installer = tmp_path / "Users" / account / "SakaDesk-1.0.0-Setup.exe"
 
         async def info(_version):
-            return object()
+            return SimpleNamespace(sha256="ab" * 32)
 
         async def download(_info, _cb):
             return installer
@@ -888,7 +892,7 @@ class TestStartInstallHardening:
         v._upgrade_state["installer_path"] = installer
         seen: list[dict] = []
 
-        async def slow_launch(_path):
+        async def slow_launch(_path, **_kwargs):
             seen.append(await v.install_upgrade())  # a second click mid-retry
             return False
 
@@ -1098,7 +1102,7 @@ class TestGenerationGuardDuringDownload:
         v._upgrade_state["state"] = "ready"
         v._upgrade_state["installer_path"] = installer
 
-        async def explode(_path):
+        async def explode(_path, **_kwargs):
             raise OSError("logs dir unavailable")
 
         with patch.object(v, "launch_installer", explode):

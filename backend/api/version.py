@@ -375,6 +375,7 @@ async def _download_and_prepare_upgrade(
             return
 
         _upgrade_state["installer_path"] = installer_path
+        _upgrade_state["installer_sha256"] = info.sha256
         _upgrade_state["state"] = "ready"
         _upgrade_state["progress"] = 100.0
 
@@ -501,7 +502,10 @@ async def install_upgrade():
     # /upgrade/install during the retries cannot start a second installer.
     _upgrade_state["state"] = "launching"
     try:
-        success = await launch_installer(installer_path)
+        success = await launch_installer(
+            installer_path,
+            expected_sha256=_upgrade_state.get("installer_sha256") or "",
+        )
     except Exception as e:
         logger.error("upgrade_install_failed", error_type=type(e).__name__)
         success = False

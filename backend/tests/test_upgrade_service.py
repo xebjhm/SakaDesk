@@ -1,14 +1,17 @@
 """Tests for upgrade_service.py — installer naming, launch, download, and utilities."""
 
 import asyncio
+import contextlib
 import hashlib
+import sys
 from unittest.mock import patch
 
 import httpx
 import pytest
 import respx
+from structlog.testing import capture_logs
 
-from backend.services import release_keys
+from backend.services import release_keys, upgrade_service
 from backend.services.release_signing import MAX_ENVELOPE_BYTES
 from backend.services.upgrade_service import (
     GITHUB_REPO,
@@ -24,6 +27,8 @@ from backend.services.upgrade_service import (
     release_asset_url,
 )
 from backend.tests.signing_helpers import new_key, signed_manifest, trusted
+
+_EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 
 
 # ── GITHUB_REPO constant ────────────────────────────────────────────
@@ -108,13 +113,17 @@ class TestLaunchInstaller:
         installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
         installer.touch()
         with patch("backend.services.upgrade_service.is_windows", return_value=False):
-            result = asyncio.run(launch_installer(installer))
+            result = asyncio.run(
+                launch_installer(installer, expected_sha256=_EMPTY_SHA256)
+            )
         assert result is False
 
     def test_returns_false_when_installer_missing(self, tmp_path):
         installer = tmp_path / "nonexistent.exe"
         with patch("backend.services.upgrade_service.is_windows", return_value=True):
-            result = asyncio.run(launch_installer(installer))
+            result = asyncio.run(
+                launch_installer(installer, expected_sha256=_EMPTY_SHA256)
+            )
         assert result is False
 
     def test_launches_silently_with_log_in_logs_dir(self, tmp_path):
@@ -131,7 +140,9 @@ class TestLaunchInstaller:
             ),
             patch("backend.services.upgrade_service.subprocess") as mock_subprocess,
         ):
-            result = asyncio.run(launch_installer(installer))
+            result = asyncio.run(
+                launch_installer(installer, expected_sha256=_EMPTY_SHA256)
+            )
         assert result is True
         args = mock_subprocess.Popen.call_args.args[0]
         assert args == [
@@ -153,7 +164,9 @@ class TestLaunchInstaller:
             patch("backend.services.upgrade_service.subprocess") as mock_subprocess,
         ):
             mock_subprocess.Popen.side_effect = OSError("blocked")
-            result = asyncio.run(launch_installer(installer))
+            result = asyncio.run(
+                launch_installer(installer, expected_sha256=_EMPTY_SHA256)
+            )
         assert result is False
 
 
@@ -814,7 +827,10 @@ class TestLogsCarryNoUserPaths:
             patch("backend.services.upgrade_service.subprocess"),
             capture_logs() as logs,
         ):
-            assert asyncio.run(launch_installer(installer)) is True
+            assert (
+                asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
+                is True
+            )
         assert logs and _ACCOUNT not in repr(logs)
         (launched,) = [
             e for e in logs if e["event"] == "Installer launched successfully"
@@ -829,7 +845,10 @@ class TestLogsCarryNoUserPaths:
             patch("backend.services.upgrade_service.is_windows", return_value=True),
             capture_logs() as logs,
         ):
-            assert asyncio.run(launch_installer(installer)) is False
+            assert (
+                asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
+                is False
+            )
         assert logs and _ACCOUNT not in repr(logs)
 
     def test_launch_failure_logs_error_type_not_message(self, tmp_path):
@@ -845,7 +864,10 @@ class TestLogsCarryNoUserPaths:
             capture_logs() as logs,
         ):
             mock_subprocess.Popen.side_effect = OSError(f"blocked {installer}")
-            assert asyncio.run(launch_installer(installer)) is False
+            assert (
+                asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
+                is False
+            )
         assert logs and _ACCOUNT not in repr(logs)
         assert any(e.get("error_type") == "OSError" for e in logs)
 
@@ -1003,7 +1025,12 @@ class TestLaunchRetry:
         ):
             mock_subprocess.Popen.side_effect = side_effect
             result = asyncio.run(
-                launch_installer(installer, attempts=attempts, retry_delay=0)
+                launch_installer(
+                    installer,
+                    expected_sha256=_EMPTY_SHA256,
+                    attempts=attempts,
+                    retry_delay=0,
+                )
             )
         return result, mock_subprocess.Popen.call_count
 
@@ -1099,4 +1126,97 @@ class TestLaunchLogsDirFailure:
                 side_effect=OSError("offline share"),
             ),
         ):
-            assert asyncio.run(launch_installer(installer)) is False
+            assert (
+                asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
+                is False
+            )
+
+
+class TestLaunchReverifies:
+    """Hardening #62: the installer is hashed again right before it is started."""
+
+    def _patches(self, tmp_path):
+        return (
+            patch("backend.services.upgrade_service.is_windows", return_value=True),
+            patch(
+                "backend.services.upgrade_service.get_logs_dir", return_value=tmp_path
+            ),
+            patch("backend.services.upgrade_service.subprocess"),
+        )
+
+    def test_an_installer_changed_after_download_is_not_started(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ-signed")
+        signed = hashlib.sha256(b"MZ-signed").hexdigest()
+        installer.write_bytes(b"MZ-swapped")
+        win, logs_dir, sub = self._patches(tmp_path)
+        with capture_logs() as logs, win, logs_dir, sub as mock_subprocess:
+            with pytest.raises(UpdateNotVerified) as exc:
+                asyncio.run(launch_installer(installer, expected_sha256=signed))
+        assert exc.value.reason == "hash_mismatch"
+        mock_subprocess.Popen.assert_not_called()
+        assert [
+            e["reason"] for e in logs if e["event"] == "installer_launch_refused"
+        ] == ["hash_mismatch"]
+
+    def test_setup_starts_while_the_checked_handle_is_held(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ-signed")
+        order: list[str] = []
+        real = upgrade_service._held_for_launch
+
+        @contextlib.contextmanager
+        def recording(path):
+            with real(path) as stream:
+                order.append("held")
+                yield stream
+                order.append("released")
+
+        win, logs_dir, sub = self._patches(tmp_path)
+        with (
+            win,
+            logs_dir,
+            sub as mock_subprocess,
+            patch.object(upgrade_service, "_held_for_launch", recording),
+        ):
+            mock_subprocess.Popen.side_effect = lambda *a, **k: order.append("started")
+            ok = asyncio.run(
+                launch_installer(
+                    installer, expected_sha256=hashlib.sha256(b"MZ-signed").hexdigest()
+                )
+            )
+        assert ok is True
+        assert order == ["held", "started", "released"]
+
+    def test_handle_is_released_when_the_hash_does_not_match(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ")
+        seen = []
+        real = upgrade_service._held_for_launch
+
+        @contextlib.contextmanager
+        def recording(path):
+            with real(path) as stream:
+                seen.append(stream)
+                yield stream
+
+        win, logs_dir, sub = self._patches(tmp_path)
+        with (
+            win,
+            logs_dir,
+            sub,
+            patch.object(upgrade_service, "_held_for_launch", recording),
+        ):
+            with pytest.raises(UpdateNotVerified):
+                asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
+        assert seen[0].closed
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows share modes")
+    def test_windows_refuses_writers_while_held(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ")
+        with upgrade_service._held_for_launch(installer) as stream:
+            assert stream.read() == b"MZ"
+            with pytest.raises(PermissionError):
+                open(installer, "ab").close()
+        open(installer, "ab").close()  # writable again once released
