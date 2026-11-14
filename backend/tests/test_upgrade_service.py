@@ -296,6 +296,17 @@ class TestGetInstallerInfo:
 
     @respx.mock
     @pytest.mark.asyncio
+    async def test_success_logs_the_verifying_key_id(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        _serve_manifest()
+        with capture_logs() as logs:
+            await get_installer_info("v1.0.0")
+        (event,) = [e for e in logs if e["event"] == "upgrade_manifest_verified"]
+        assert event["key_id"] == next(iter(trusted(_KEY)))
+        assert event["size"] == 1024
+
+    @respx.mock
+    @pytest.mark.asyncio
     async def test_adds_v_prefix_when_missing(self):
         route = respx.get(_RELEASE_API).respond(200, json=_github_release_json())
         _serve_manifest()

@@ -181,6 +181,48 @@ class TestErrorCacheTTL:
             session.get.assert_called_once()
 
 
+class TestVersionCheckFailureLogging:
+    """Every failed GitHub lookup leaves a codes-only breadcrumb."""
+
+    def setup_method(self):
+        _reset_version_cache()
+
+    @staticmethod
+    def _fetch(status=None, raises=None):
+        import asyncio
+        from unittest.mock import AsyncMock, MagicMock, patch
+
+        import backend.api.version as v
+
+        resp = MagicMock()
+        resp.status_code = status
+        session = AsyncMock()
+        if raises is not None:
+            session.get = AsyncMock(side_effect=raises)
+        else:
+            session.get = AsyncMock(return_value=resp)
+        cm = MagicMock()
+        cm.__aenter__ = AsyncMock(return_value=session)
+        cm.__aexit__ = AsyncMock(return_value=False)
+        with patch("backend.api.version.httpx.AsyncClient", return_value=cm):
+            with structlog.testing.capture_logs() as logs:
+                asyncio.run(v._fetch_latest_release(force=True))
+        return [e for e in logs if e["event"] == "version_check_failed"]
+
+    def test_404_403_and_other_statuses_are_logged_with_the_code(self):
+        for status in (404, 403, 500):
+            events = self._fetch(status=status)
+            assert [(e["status"], e["log_level"]) for e in events] == [
+                (status, "warning")
+            ]
+
+    def test_a_timeout_is_logged(self):
+        import httpx
+
+        events = self._fetch(raises=httpx.ReadTimeout("slow"))
+        assert [e["reason"] for e in events] == ["timeout"]
+
+
 class TestUpgradeStatus:
     """Tests for GET /api/version/upgrade/status."""
 

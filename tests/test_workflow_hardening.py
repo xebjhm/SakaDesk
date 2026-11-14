@@ -65,7 +65,8 @@ SIGN_ALLOWED_ACTIONS = (
     "actions/upload-artifact",
 )
 FORBIDDEN_COMMAND = re.compile(
-    r"(^|[\s;&|(])(uv|uvx|pip|pip3|pipx)(\s|$)|python3?\s+-m\s+pip\b|--with\b"
+    r"(^|[\s;&|(])(uv|uvx|pip|pip3|pipx|curl|wget|npm|npx|apt-get|apt|ensurepip|brew|choco)"
+    r"(\s|$)|python3?\s+-m\s+(pip|ensurepip)\b|--with\b"
 )
 
 
@@ -79,7 +80,20 @@ def test_the_sign_job_installs_nothing():
     assert FORBIDDEN_COMMAND.search("python3 -m pip install x")
     assert FORBIDDEN_COMMAND.search("uvx ruff check")
     assert FORBIDDEN_COMMAND.search("pipx run x")
+    for command in (
+        "curl -O x",
+        "wget x",
+        "npm ci",
+        "npx y",
+        "apt-get update",
+        "apt x",
+    ):
+        assert FORBIDDEN_COMMAND.search(command), command
+    assert FORBIDDEN_COMMAND.search("python3 -m ensurepip")
+    assert FORBIDDEN_COMMAND.search("x && brew install y")
+    assert FORBIDDEN_COMMAND.search("choco install z")
     assert not FORBIDDEN_COMMAND.search("set -euo pipefail")
+    assert not FORBIDDEN_COMMAND.search("echo applying")
     (signing,) = [
         s for s in _steps("sign") if s.get("name") == "Sign the update manifest"
     ]

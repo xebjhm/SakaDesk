@@ -12,8 +12,10 @@ printed. The manifest format is defined in
 ``backend/services/release_signing.py``, and the payload bytes come from its
 ``manifest_payload``.
 
-Usage (repository root):
-    uv run --no-project python tooling/release/sign_manifest.py \\
+Usage (repository root), as CI runs it. CI deliberately does not use uv: the
+``sign`` job installs nothing (Plan E OD-2), so the runner's own ``python3``
+runs the script in isolated mode:
+    python3 -I tooling/release/sign_manifest.py \\
         --installer SakaDesk-0.5.1-Setup/SakaDesk-0.5.1-Setup.exe \\
         --version 0.5.1 --out SakaDesk-0.5.1-manifest.json
 

@@ -206,13 +206,17 @@ async def _fetch_latest_release(force: bool = False) -> dict:
                 _cache["release_notes"] = body[:500] if isinstance(body, str) else ""
                 _cache["error"] = None
             elif response.status_code == 404:
+                logger.warning("version_check_failed", status=404)
                 _cache["error"] = "No releases found"
             elif response.status_code == 403:
+                logger.warning("version_check_failed", status=403)
                 _cache["error"] = "Rate limited - try again later"
             else:
+                logger.warning("version_check_failed", status=response.status_code)
                 _cache["error"] = f"GitHub API error: {response.status_code}"
 
     except httpx.TimeoutException:
+        logger.warning("version_check_failed", reason="timeout")
         _cache["error"] = "Request timed out"
     except Exception as e:
         logger.warning("version_check_failed", error_type=type(e).__name__)

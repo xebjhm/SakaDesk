@@ -158,9 +158,10 @@ class InstallerInfo:
 
 
 def _installer_asset_name(version: str) -> str:
-    """Build expected installer filename for a given version.
+    """The expected installer file name for ``version`` (one leading ``v`` is dropped).
 
-    Matches Inno Setup OutputBaseFilename: SakaDesk-{version}-Setup
+    Matches Inno Setup OutputBaseFilename: SakaDesk-{version}-Setup. The only
+    place the updater builds the name, via ``release_signing.installer_asset_name``.
     """
     bare = version[1:] if version.startswith("v") else version
     return release_signing.installer_asset_name(bare)
@@ -237,7 +238,7 @@ async def get_installer_info(version: str) -> Optional[InstallerInfo]:
     if not release_signing.is_valid_version(bare):
         logger.warning("upgrade_release_refused", reason="version_invalid")
         return None
-    installer_name = release_signing.installer_asset_name(bare)
+    installer_name = _installer_asset_name(bare)
     manifest_name = release_signing.manifest_asset_name(bare)
     api_url = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v{bare}"
 
@@ -287,7 +288,7 @@ async def get_installer_info(version: str) -> Optional[InstallerInfo]:
         raise UpdateNotVerified(e.reason) from None
 
     digest = installer.get("digest")
-    logger.info("upgrade_manifest_verified", size=manifest.size)
+    logger.info("upgrade_manifest_verified", size=manifest.size, key_id=manifest.key_id)
     return InstallerInfo(
         url=release_asset_url(bare, installer_name),
         size=manifest.size,

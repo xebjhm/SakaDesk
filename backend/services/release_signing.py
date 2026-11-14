@@ -47,7 +47,7 @@ import json
 import re
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import BinaryIO
 
@@ -84,7 +84,12 @@ class ManifestRefused(Exception):
 
 @dataclass(frozen=True)
 class ReleaseManifest:
-    """What a valid signature vouches for."""
+    """What a valid signature vouches for.
+
+    ``key_id`` is the (public) id of the trusted key whose signature verified
+    the manifest; it is empty on the result of :func:`parse_manifest`, which
+    checks no signature.
+    """
 
     product: str
     platform: str
@@ -92,6 +97,7 @@ class ReleaseManifest:
     asset: str
     size: int
     sha256: str
+    key_id: str = ""
 
 
 def _is_int(value: object) -> bool:
@@ -326,6 +332,8 @@ def verify_update_manifest(
 ) -> ReleaseManifest:
     """The manifest in ``data`` when a trusted key signed it for ``version``'s installer.
 
+    The result's ``key_id`` is the key that verified it.
+
     ``trusted_keys`` defaults to ``release_keys.TRUSTED_RELEASE_KEYS`` (read at
     call time). Raises ManifestRefused: ``too_large``, ``malformed``,
     ``unsigned``, ``unknown_key``, ``keys_invalid``, ``bad_signature``, ``wrong_product``,
@@ -333,8 +341,8 @@ def verify_update_manifest(
     """
     keys = release_keys.TRUSTED_RELEASE_KEYS if trusted_keys is None else trusted_keys
     payload, signatures = parse_envelope(data)
-    verify_signatures(payload, signatures, keys)
-    manifest = parse_manifest(payload)
+    verifying_key_id = verify_signatures(payload, signatures, keys)
+    manifest = replace(parse_manifest(payload), key_id=verifying_key_id)
     if manifest.product != PRODUCT:
         raise ManifestRefused("wrong_product")
     if manifest.platform != PLATFORM:
@@ -359,47 +367,63 @@ def stream_digest(stream: BinaryIO) -> tuple[str, int]:
 _KEYS_NAME = "TRUSTED_RELEASE_KEYS"
 
 
-def _count_key_bindings(tree: ast.Module) -> int:
-    """How many places in ``tree`` bind, rebind, augment or delete ``TRUSTED_RELEASE_KEYS``.
+def _keys_dict(node: ast.stmt) -> ast.Dict | None:
+    """The dict literal of ``TRUSTED_RELEASE_KEYS = {...}`` (plain or annotated), else None."""
+    if (
+        isinstance(node, ast.Assign)
+        and len(node.targets) == 1
+        and isinstance(node.targets[0], ast.Name)
+        and node.targets[0].id == _KEYS_NAME
+        and isinstance(node.value, ast.Dict)
+    ):
+        return node.value
+    if (
+        isinstance(node, ast.AnnAssign)
+        and isinstance(node.target, ast.Name)
+        and node.target.id == _KEYS_NAME
+        and isinstance(node.value, ast.Dict)
+    ):
+        return node.value
+    return None
 
-    Counts assignment, annotated, augmented and walrus targets (tuple, list
-    and starred unpacking included), ``for`` / ``with`` / ``except`` targets,
-    ``del``, imports, ``match`` capture targets (``case x``, ``*x``,
-    ``**x``), and ``def`` / ``class`` statements of that name. A star import
-    (``from m import *``) may bind any name, so it counts as one binding.
-    ``global`` mentions and function parameters are not bindings of the
-    module's mapping and are ignored.
-    """
-    count = 0
-    for node in ast.walk(tree):
-        if isinstance(node, ast.Name):
-            count += node.id == _KEYS_NAME and not isinstance(node.ctx, ast.Load)
-        elif isinstance(node, ast.alias):
-            # A star import may bind any name, so it counts as a binding.
-            count += node.name == "*" or (
-                (node.asname or node.name.split(".")[0]) == _KEYS_NAME
-            )
-        elif isinstance(node, (ast.MatchAs, ast.MatchStar)):
-            count += node.name == _KEYS_NAME
-        elif isinstance(node, ast.MatchMapping):
-            count += node.rest == _KEYS_NAME
-        elif isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
-            count += node.name == _KEYS_NAME
-        elif isinstance(node, ast.ExceptHandler):
-            count += node.name == _KEYS_NAME
-    return count
+
+def _keys_value(tree: ast.Module) -> ast.Dict:
+    """The dict literal of the one allowed statement. Raises ManifestRefused(``keys_file_invalid``)."""
+    body = list(tree.body)
+    if (
+        body
+        and isinstance(body[0], ast.Expr)
+        and isinstance(body[0].value, ast.Constant)
+        and isinstance(body[0].value.value, str)
+    ):
+        body.pop(0)
+    if (
+        body
+        and isinstance(body[0], ast.ImportFrom)
+        and body[0].module == "__future__"
+        and body[0].level == 0
+        and [(a.name, a.asname) for a in body[0].names] == [("annotations", None)]
+    ):
+        body.pop(0)
+    value = _keys_dict(body[0]) if len(body) == 1 else None
+    if value is None:
+        raise ManifestRefused("keys_file_invalid")
+    return value
 
 
 def load_trusted_keys(path: Path) -> dict[str, str]:
     """``TRUSTED_RELEASE_KEYS`` from a copy of ``release_keys.py``, read with ``ast``.
 
     Used for an older release's file, so it is parsed, never executed. The
-    file must be at most ``MAX_KEYS_FILE_BYTES``, and the name must be bound
-    exactly once anywhere in the file (:func:`_count_key_bindings`), by a
-    top-level plain or annotated assignment to a literal ``str`` to ``str``
-    mapping (Python keeps the last binding, so a second, augmented or nested
-    one could make the check use other keys than the app). Whether each value
-    is a usable public key is checked later by :func:`verify_signatures`
+    file must be at most ``MAX_KEYS_FILE_BYTES`` and its module body must be
+    exactly: an optional docstring, an optional
+    ``from __future__ import annotations``, and one top-level statement
+    ``TRUSTED_RELEASE_KEYS = {...}`` or ``TRUSTED_RELEASE_KEYS: <annotation> =
+    {...}`` whose value is a literal ``str`` to ``str`` dict. Anything else
+    (a second statement, a later assignment, ``.update(...)``, an ``if`` block,
+    another import) is refused, because Python would run it and the app could
+    end up with other keys than the check used. Whether each value is a usable
+    public key is checked later by :func:`verify_signatures`
     (``keys_invalid``). Raises ManifestRefused(``keys_file_invalid``).
     """
     try:
@@ -408,31 +432,9 @@ def load_trusted_keys(path: Path) -> dict[str, str]:
         if len(raw) > MAX_KEYS_FILE_BYTES:
             raise ManifestRefused("keys_file_invalid")
         tree = ast.parse(raw.decode("utf-8"))
-    except (OSError, SyntaxError, ValueError, RecursionError):
-        raise ManifestRefused("keys_file_invalid") from None
-    if _count_key_bindings(tree) != 1:
-        raise ManifestRefused("keys_file_invalid")
-    value = None
-    for node in tree.body:
-        if (
-            isinstance(node, ast.Assign)
-            and len(node.targets) == 1
-            and isinstance(node.targets[0], ast.Name)
-            and node.targets[0].id == _KEYS_NAME
-        ):
-            value = node.value
-        elif (
-            isinstance(node, ast.AnnAssign)
-            and isinstance(node.target, ast.Name)
-            and node.target.id == _KEYS_NAME
-            and node.value is not None
-        ):
-            value = node.value
-    if value is None:
-        raise ManifestRefused("keys_file_invalid")
-    try:
+        value = _keys_value(tree)
         keys = ast.literal_eval(value)
-    except (ValueError, TypeError, SyntaxError, RecursionError):
+    except (OSError, SyntaxError, ValueError, TypeError, RecursionError):
         raise ManifestRefused("keys_file_invalid") from None
     if isinstance(keys, dict) and all(
         isinstance(k, str) and isinstance(v, str) for k, v in keys.items()

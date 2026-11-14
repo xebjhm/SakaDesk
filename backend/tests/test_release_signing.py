@@ -62,6 +62,7 @@ class TestRoundTrip:
             asset="SakaDesk-0.5.1-Setup.exe",
             size=len(CONTENT),
             sha256=hashlib.sha256(CONTENT).hexdigest(),
+            key_id=rs.key_id(public_raw(key)),
         )
 
     def test_the_payload_is_canonical_json(self):
@@ -395,13 +396,23 @@ class TestCommand:
         keys_file = tmp_path / "previous_release_keys.py"
         keys_file.write_text(
             '"""An older release_keys.py."""\n'
-            'raise SystemExit("this file must never be executed")\n'
             "TRUSTED_RELEASE_KEYS: dict[str, str] = {\n"
             f'    "{kid}": "{public}",\n'
             "}\n",
             encoding="utf-8",
         )
         assert rs.main([*self._args(tmp_path, key), "--keys-file", str(keys_file)]) == 0
+
+    def test_a_keys_file_with_code_is_refused_not_run(self, tmp_path):
+        keys_file = tmp_path / "k.py"
+        keys_file.write_text(
+            'raise SystemExit("this file must never be executed")\n'
+            "TRUSTED_RELEASE_KEYS = {}\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(rs.ManifestRefused) as raised:
+            rs.load_trusted_keys(keys_file)
+        assert raised.value.reason == "keys_file_invalid"
 
     def test_a_keys_file_without_the_mapping_fails(self, tmp_path, capsys):
         keys_file = tmp_path / "previous_release_keys.py"
@@ -498,6 +509,19 @@ class TestCommand:
             'TRUSTED_RELEASE_KEYS = {"a": "b"}\nmatch 1:\n    case {**TRUSTED_RELEASE_KEYS}:\n        pass\n',
             'TRUSTED_RELEASE_KEYS = {"a": "b"}\nmatch 1:\n    case int() as TRUSTED_RELEASE_KEYS:\n        pass\n',
             'TRUSTED_RELEASE_KEYS = {"a": "b"}\nfrom elsewhere import *\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nTRUSTED_RELEASE_KEYS["c"] = "d"\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nTRUSTED_RELEASE_KEYS.clear()\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nTRUSTED_RELEASE_KEYS.update({"c": "d"})\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nif True:\n    pass\n',
+            'import os\nTRUSTED_RELEASE_KEYS = {"a": "b"}\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nimport os\n',
+            '"""Doc."""\n"""Second string."""\nTRUSTED_RELEASE_KEYS = {"a": "b"}\n',
+            'from __future__ import annotations\n"""Doc after the import."""\nTRUSTED_RELEASE_KEYS = {"a": "b"}\n',
+            'from __future__ import division\nTRUSTED_RELEASE_KEYS = {"a": "b"}\n',
+            'TRUSTED_RELEASE_KEYS = dict(a="b")\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"} | {"c": "d"}\n',
+            'TRUSTED_RELEASE_KEYS = A = {"a": "b"}\n',
+            "TRUSTED_RELEASE_KEYS: dict[str, str]\n",
         ],
     )
     def test_a_keys_file_that_reassigns_the_mapping_is_refused(self, tmp_path, source):
@@ -542,3 +566,21 @@ class TestSelfCheck:
         )
         assert altered != rs._SELF_CHECK_SIGNATURE
         assert rs._ed25519_verify(rs._SELF_CHECK_PUBLIC_KEY, altered, b"") is False
+
+
+class TestKeysFileShape:
+    @pytest.mark.parametrize(
+        "source",
+        [
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\n',
+            'TRUSTED_RELEASE_KEYS: dict[str, str] = {"a": "b"}\n',
+            '"""Doc."""\nTRUSTED_RELEASE_KEYS = {"a": "b"}\n',
+            'from __future__ import annotations\nTRUSTED_RELEASE_KEYS: dict[str, str] = {"a": "b"}\n',
+            '"""Doc."""\n\nfrom __future__ import annotations\n\nTRUSTED_RELEASE_KEYS = {"a": "b"}\n',
+            "TRUSTED_RELEASE_KEYS = {}\n",
+        ],
+    )
+    def test_the_allowed_shapes_load(self, tmp_path, source):
+        keys_file = tmp_path / "k.py"
+        keys_file.write_text(source, encoding="utf-8")
+        assert rs.load_trusted_keys(keys_file) in ({"a": "b"}, {})
