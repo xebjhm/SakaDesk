@@ -443,16 +443,111 @@ git push origin dev
 
 - [ ] pysaka: Check PyPI page shows new version
 - [ ] SakaDesk: Check GitHub Actions — build should be green
-- [ ] SakaDesk: Check GitHub Releases page — installer exe attached
+- [ ] SakaDesk: Check GitHub Releases page — `SakaDesk-X.Y.Z-Setup.exe`, `SakaDesk-X.Y.Z-manifest.json` and `checksums-sha256.txt` attached (see [Release signing](#release-signing))
 - [ ] Download and smoke-test the installer
 
 #### CI/CD Behavior
 
 | Trigger | What happens |
 |---------|-------------|
-| Push to `main`/`dev` | Build + test (artifact only, no release) |
-| Push tag `v*.*.*` | Build + test + create GitHub Release with installer |
-| Pull request | Build + test |
+| Push to `main` | Lint + tests, plus the Windows installer build (artifact only, no release) |
+| Push to `dev` | Lint + tests only (no Windows build, no release) |
+| Push tag `v*.*.*` | Lint + tests + Windows build, then `sign` (environment `release`) signs the update manifest, `verify-manifest` checks it with no secrets, and `release` publishes the installer, the manifest and checksums |
+| Manual run (`gh workflow run build.yml --ref <branch>`) | Lint + tests + Windows installer build (artifact only). `sign`, `verify-manifest` and `release` never run, even on a tag ref |
+| Pull request | Lint + tests only (no Windows build) |
+
+### Release signing
+
+Every release carries `SakaDesk-X.Y.Z-manifest.json`: the installer's name,
+size and SHA-256, signed with the SakaDesk release key (Ed25519). The in-app
+updater installs a release only when that signature checks out against a
+public key built into the app (`backend/services/release_keys.py`), and it
+hashes the installer again right before starting it. Format and checks:
+`backend/services/release_signing.py`.
+
+**Where the key lives.** The private key is the secret
+`SAKADESK_RELEASE_SIGNING_KEY` of the `release` GitHub environment, which only
+`v*.*.*` tags may use, plus one offline backup kept by the maintainer. It is
+never committed, pasted into an issue or a chat, or printed by any script.
+
+**What CI does on a tag.** `build` runs the tests, builds the installer and
+reports its SHA-256 as a job output.
+
+- `sign` (environment `release`, read-only token) checks that the tag commit is
+  on `main`, checks the downloaded installer matches the hash `build`
+  reported, and signs the manifest with the runner's own `python3` (standard
+  library) and OpenSSL. Nothing is installed in the `sign` job, because any
+  step in a job can read all of that job's secrets. It reports the manifest's
+  SHA-256.
+- `verify-manifest` (no environment, no secrets, read-only token) runs the
+  app's own checker against the keys of the release being built **and** of the
+  previous release.
+- `release` checks the installer and the manifest against the hashes `build`
+  and `sign` reported, attests both, attaches them and `checksums-sha256.txt`
+  to a draft, then publishes it (immutable releases need the draft step).
+
+The previous-release check is skipped only when the previous `v*.*.*` tag is
+below 0.5.0 (the first signed release). A missing previous tag, or a missing
+`backend/services/release_keys.py` at a tag from 0.5.0 on, fails the release.
+So if a tag from 0.5.0 on was pushed but its release failed, and that tag's
+trusted keys are wrong or missing, delete the tag (locally and on GitHub)
+before tagging again; otherwise the next release's check runs against it.
+
+**Check a release by hand:**
+
+```bash
+D="$(mktemp -d)"
+gh release download vX.Y.Z --repo xebjhm/SakaDesk --pattern 'SakaDesk-*' --dir "$D"
+uv run python -m backend.services.release_signing \
+  --manifest "$D/SakaDesk-X.Y.Z-manifest.json" \
+  --installer "$D/SakaDesk-X.Y.Z-Setup.exe" --version X.Y.Z
+gh attestation verify "$D/SakaDesk-X.Y.Z-Setup.exe" --repo xebjhm/SakaDesk
+```
+
+The checker prints `manifest OK: ...` and exits 0, or prints `ERROR: <code>`
+and exits 1. Add `--keys-file <release_keys.py>` to check against another
+version's trusted keys.
+
+**First-time setup (done once).**
+`uv run python scripts/generate_release_key.py --out ~/sakadesk-release-key.pem`,
+add the printed line to `TRUSTED_RELEASE_KEYS`, create the `release`
+environment (tag policy `v*.*.*`), then
+`gh secret set SAKADESK_RELEASE_SIGNING_KEY --env release --repo xebjhm/SakaDesk < ~/sakadesk-release-key.pem`,
+back the file up offline and `shred -u` it.
+
+**Users on older versions.** Versions up to 0.4.2 do not check signatures and
+install the first signed release (0.5.0) the old way. From then on only signed
+releases install in-app. If a release ever lacks a valid manifest, the app says
+the update could not be verified and keeps the current version; people can
+still install it by hand.
+
+**Rotating the key (planned).**
+
+1. Generate the new key with the script (a new `--out` file). Add its line to
+   `TRUSTED_RELEASE_KEYS` next to the current one (at most two) and store it as
+   `SAKADESK_RELEASE_SIGNING_KEY_NEXT` in the `release` environment.
+2. Release as usual for a few versions (a few months): every manifest is signed
+   by both keys, and installed apps learn the new public key.
+3. Make the new key current: `gh secret set SAKADESK_RELEASE_SIGNING_KEY --env release --repo xebjhm/SakaDesk < new-key.pem`,
+   `gh secret delete SAKADESK_RELEASE_SIGNING_KEY_NEXT --env release --repo xebjhm/SakaDesk`,
+   and remove the old line from `TRUSTED_RELEASE_KEYS` in the next release.
+   `verify-manifest` refuses to let a release through when the previous release
+   could not verify the new manifest, so a step taken too early fails the
+   release instead of stranding users. People who skipped every release since
+   step 1 must install by hand.
+
+**If the key leaks.** Generate a new key and ship a release that is signed by
+both keys (step 1) but trusts only the new one (drop the leaked line in the
+same release); then delete the leaked secret. Apps older than that release
+still trust the leaked key until they update: say so in the release notes.
+
+**If the key is lost (no backup).** Installed apps can never verify another
+update. Set up a new key (first-time setup), trust and sign with it only, and
+for that one release run
+`gh variable set SAKADESK_ALLOW_KEY_RESET --body yes --repo xebjhm/SakaDesk`
+so `verify-manifest` skips the previous-release check; delete it right after with
+`gh variable delete SAKADESK_ALLOW_KEY_RESET --repo xebjhm/SakaDesk`. Everyone
+must install that release by hand: say so in the release notes.
 
 ### Lessons Learned (v0.2.0)
 

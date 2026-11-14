@@ -130,6 +130,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   translations now use Chinese characters' own shapes instead of Japanese ones,
   are no longer slanted, and their controls are easier to read.
 - **The error screen is now in your language** and matches the rest of the app.
+- **Update checks no longer stop when a release has no notes.** SakaDesk keeps
+  offering new versions even if one was published without a description.
+- **Clicking a notification while SakaDesk is closing no longer leaves later
+  clicks stuck.** A click now gives up after a few seconds instead of waiting
+  for a window that is going away.
 
 ### Security
 - **Other programs and web pages can no longer use SakaDesk's local
@@ -179,6 +184,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The installer no longer contains developer test files or a debugging build
   of the launcher**, and the app's security protections also apply to its
   internal error pages.
+- **Updates are checked against SakaDesk's own signature.** The built-in
+  updater now installs a new version only if it was signed with the SakaDesk
+  release key, is exactly the version it offered, and is still unchanged at the
+  moment it starts. Anything else is refused, and Settings says the update
+  could not be verified.
+- **Uninstalling uses Windows' own credential tool** from the system folder,
+  never a program with the same name somewhere else.
 
 ## [0.4.2] - 2026-11-10
 
