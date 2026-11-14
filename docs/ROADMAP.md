@@ -142,7 +142,7 @@ Completed items have been archived — see git history for details.
 
 **Goal:** Release to 10-20% of users first (RC), then full release.
 
-**Already exists:** GitHub-latest-release version check (`backend/api/version.py`), update UI (`UpgradeIcon.tsx`), standard release-please workflow. None of it supports channels or percentage rollout.
+**Already exists:** GitHub-latest-release version check (`backend/api/version.py`), update UI (`UpgradeIcon.tsx`), a tag-driven release workflow that signs every update. None of it supports channels or percentage rollout.
 
 **Recommendation:** Start with Option B (release channels), evolve to percentage-based if needed.
 

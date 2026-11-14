@@ -282,3 +282,84 @@ def test_the_windows_build_can_be_dry_run_by_hand():
     assert (
         "github.event_name == 'workflow_dispatch'" in _workflow()["jobs"]["build"]["if"]
     )
+
+
+_USES = re.compile(r"^\s*(?:-\s*)?uses:\s*(\S+)(.*)$")
+
+
+def _uses_lines():
+    for path in sorted(WORKFLOWS.glob("*.yml")):
+        for line in path.read_text(encoding="utf-8").splitlines():
+            match = _USES.match(line)
+            if match:
+                yield path.name, match.group(1), match.group(2)
+
+
+def test_every_action_is_pinned_to_a_full_commit_sha():
+    """Hardening #1."""
+    found = list(_uses_lines())
+    assert found
+    for name, ref, comment in found:
+        assert re.fullmatch(r"[\w.-]+/[\w./-]+@[0-9a-f]{40}", ref), f"{name}: {ref}"
+        assert re.fullmatch(r"\s+# v\d+(\.\d+)*", comment), (
+            f"{name}: {ref} needs '# vX.Y.Z'"
+        )
+
+
+def test_uv_and_inno_setup_are_pinned():
+    """Hardening #3 (uv) and #4 (Inno Setup)."""
+    text = WORKFLOW.read_text(encoding="utf-8")
+    assert 'version: "latest"' not in text
+    assert text.count('version: "0.9.21"') == text.count("astral-sh/setup-uv@")
+    assert "choco install innosetup --version=6.7.1" in text
+    assert 'StartsWith("6.7.1")' in text
+
+
+def test_checkouts_do_not_keep_the_token():
+    for name, job in _workflow()["jobs"].items():
+        for step in job["steps"]:
+            if step.get("uses", "").startswith("actions/checkout@"):
+                assert step["with"]["persist-credentials"] is False, name
+
+
+def test_every_job_declares_its_permissions():
+    workflow = _workflow()
+    assert workflow["permissions"] == {}
+    for name, job in workflow["jobs"].items():
+        assert "permissions" in job, name
+
+
+def test_release_please_is_gone():
+    """Hardening #2: no dormant workflow with a standing write token."""
+    for rel in (
+        ".github/workflows/release-please.yml",
+        ".github/release-please-config.json",
+        ".github/.release-please-manifest.json",
+    ):
+        assert not (ROOT / rel).exists(), rel
+
+
+def test_pre_commit_hooks_are_frozen_to_commits():
+    """Hardening #9."""
+    repo = None
+    for line in (
+        (ROOT / ".pre-commit-config.yaml").read_text(encoding="utf-8").splitlines()
+    ):
+        repo_match = re.match(r"^\s*-\s*repo:\s*(\S+)", line)
+        if repo_match:
+            repo = repo_match.group(1)
+            continue
+        rev = re.match(r"^\s*rev:\s*(\S+)(.*)$", line)
+        if rev and repo not in ("local", "meta"):
+            assert re.fullmatch(r"[0-9a-f]{40}", rev.group(1)), repo
+            assert re.fullmatch(r"\s+# frozen: v[\d.]+", rev.group(2)), repo
+
+
+def test_dependabot_keeps_the_action_pins_current():
+    config = yaml.safe_load(
+        (ROOT / ".github" / "dependabot.yml").read_text(encoding="utf-8")
+    )
+    (update,) = [
+        u for u in config["updates"] if u["package-ecosystem"] == "github-actions"
+    ]
+    assert update["target-branch"] == "dev"
