@@ -352,7 +352,7 @@ class TestInstall:
             }
         ]
 
-    @pytest.mark.parametrize("relative", ["pyproject.toml", "build.ps1"])
+    @pytest.mark.parametrize("relative", ["pyproject.toml"])
     def test_the_build_pins_the_validated_pywebview(self, relative):
         text = (ROOT / relative).read_text(encoding="utf-8")
         pinned = re.findall(r"pywebview==([0-9.]+)", text)

@@ -526,8 +526,9 @@ version's trusted keys.
 **First-time setup (done once, before the first 0.5.0 tag).**
 `uv run python scripts/generate_release_key.py --out ~/sakadesk-release-key.pem`,
 add the printed line to `TRUSTED_RELEASE_KEYS`, create the `release`
-environment with its `v*.*.*` tag policy **first** (setting a secret on an
-environment that does not exist creates it unprotected), then
+environment with its `v*.*.*` tag policy **first** (a workflow job that names
+an environment that does not exist creates it without any protection rules),
+then
 `gh secret set SAKADESK_RELEASE_SIGNING_KEY --env release --repo xebjhm/SakaDesk < ~/sakadesk-release-key.pem`,
 back the file up offline and `shred -u` it.
 

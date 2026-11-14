@@ -78,15 +78,15 @@ def test_the_spec_ships_no_tests_and_no_debug_bootloader():
     assert "exclude_datas=['tests/**']" in spec
 
 
-def test_the_local_build_pins_the_ci_build_tools():
-    """report-hardening #8 and OD-7: build.ps1 pins what the locked build group pins."""
+def test_the_local_build_uses_the_locked_build_tools():
+    """report-hardening #8 and OD-7: build.ps1 builds with the locked build group."""
     pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
     pins = pyproject["dependency-groups"]["build"]
     assert sorted(p.split("==")[0] for p in pins) == ["pyinstaller", "pywebview"]
     assert all("==" in pin for pin in pins)
     build_ps1 = (ROOT / "build.ps1").read_text(encoding="utf-8")
-    for pin in pins:
-        assert f"'{pin}'" in build_ps1
+    assert "'--group', 'build'" in build_ps1
+    assert "'--with'" not in build_ps1
 
 
 def test_the_ci_build_tools_come_from_the_locked_build_group():
