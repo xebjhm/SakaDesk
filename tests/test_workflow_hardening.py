@@ -2,8 +2,12 @@
 
 from __future__ import annotations
 
+import os
+import shutil
+import subprocess
 from pathlib import Path
 
+import pytest
 import yaml
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -27,30 +31,37 @@ def _run_text(job: str) -> str:
     return "\n".join(step.get("run", "") for step in _steps(job))
 
 
+PUSH_TAG_ONLY = "github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')"
+
+
 def test_only_the_sign_job_can_read_the_signing_key():
     jobs = _workflow()["jobs"]
     sign = jobs["sign"]
     assert sign["environment"] == "release"
     assert sign["permissions"] == {"contents": "read"}
     assert sign["needs"] == ["build"]
-    assert sign["if"] == "startsWith(github.ref, 'refs/tags/v')"
+    assert sign["if"] == PUSH_TAG_ONLY
+    assert "env" not in sign
     for name, job in jobs.items():
         if name != "sign":
             assert "secrets." not in yaml.safe_dump(job), name
+            assert "environment" not in job, name
     (step,) = [s for s in sign["steps"] if s.get("name") == "Sign the update manifest"]
     assert set(step["env"]) == {
         "SAKADESK_RELEASE_SIGNING_KEY",
         "SAKADESK_RELEASE_SIGNING_KEY_NEXT",
     }
-    assert "uv run --no-project python tooling/release/sign_manifest.py" in step["run"]
+    assert "python3 tooling/release/sign_manifest.py" in step["run"]
+    for other in sign["steps"]:
+        if other is not step:
+            assert "secrets." not in yaml.safe_dump(other)
 
 
-def test_nothing_from_pypi_runs_up_to_the_signing_step():
-    steps = _steps("sign")
-    upto = steps[: _names("sign").index("Sign the update manifest") + 1]
-    for step in upto:
+def test_the_sign_job_installs_nothing():
+    for step in _steps("sign"):
+        assert not step.get("uses", "").startswith("astral-sh/setup-uv")
         run = step.get("run", "")
-        assert "--with" not in run and "uv sync" not in run and "pip" not in run
+        assert "uv " not in run and "pip" not in run and "--with" not in run
 
 
 def test_the_tag_must_be_on_main_before_signing():
@@ -62,22 +73,131 @@ def test_the_tag_must_be_on_main_before_signing():
     assert _steps("sign")[0]["with"]["fetch-depth"] == 0
 
 
-def test_the_manifest_is_checked_with_this_and_the_previous_release_keys():
-    run = _run_text("sign")
-    assert run.count("python -m backend.services.release_signing") == 2
-    assert "--keys-file" in run
-    assert "git describe --tags --abbrev=0" in run
-    (previous,) = [
+def _previous_keys_step() -> dict:
+    (step,) = [
         s
-        for s in _steps("sign")
+        for s in _steps("verify-manifest")
         if s.get("name") == "Verify the manifest with the previous release's keys"
     ]
+    return step
+
+
+def test_the_manifest_is_verified_outside_the_signing_job():
+    job = _workflow()["jobs"]["verify-manifest"]
+    assert "environment" not in job
+    assert job["permissions"] == {"contents": "read"}
+    assert job["needs"] == ["build", "sign"]
+    assert job["if"] == PUSH_TAG_ONLY
+    assert _steps("verify-manifest")[0]["with"]["fetch-depth"] == 0
+    run = _run_text("verify-manifest")
+    assert run.count("python -m backend.services.release_signing") == 2
+    assert "--keys-file" in run
+    assert "release_signing" not in _run_text("sign")
+    previous = _previous_keys_step()
     assert previous["if"] == "vars.SAKADESK_ALLOW_KEY_RESET != 'yes'"
+    assert previous["env"]["FIRST_SIGNED_VERSION"] == "0.5.0"
+    assert "|| true" not in previous["run"]
+    assert "2>/dev/null" not in previous["run"]
 
 
-def test_release_waits_for_sign_and_publishes_a_complete_draft():
+def _git(repo: Path, *args: str) -> None:
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "t",
+        "GIT_AUTHOR_EMAIL": "t@example.invalid",
+        "GIT_COMMITTER_NAME": "t",
+        "GIT_COMMITTER_EMAIL": "t@example.invalid",
+        "GIT_CONFIG_GLOBAL": os.devnull,
+        "GIT_CONFIG_SYSTEM": os.devnull,
+    }
+    subprocess.run(["git", *args], cwd=repo, env=env, check=True, capture_output=True)
+
+
+def _run_previous_check(tmp_path: Path, previous_tag: str | None, keys: bool):
+    """Run the previous-keys step script in a throwaway repo; return (proc, uv calls)."""
+    if shutil.which("bash") is None or shutil.which("git") is None:
+        pytest.skip("bash and git are required")
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    _git(repo, "init", "-q")
+    (repo / "backend" / "services").mkdir(parents=True)
+    if keys:
+        (repo / "backend" / "services" / "release_keys.py").write_text(
+            "KEYS = {}\n", encoding="utf-8"
+        )
+    (repo / "README").write_text("one\n", encoding="utf-8")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "previous")
+    if previous_tag:
+        _git(repo, "tag", previous_tag)
+    (repo / "README").write_text("two\n", encoding="utf-8")
+    _git(repo, "commit", "-q", "-am", "release")
+    sha = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "uv-calls.txt"
+    fake = bin_dir / "uv"
+    fake.write_text(f'#!/bin/sh\necho "$@" >> "{calls}"\n', encoding="utf-8")
+    fake.chmod(0o755)
+    runner_temp = tmp_path / "runner"
+    runner_temp.mkdir()
+
+    env = {
+        **os.environ,
+        "PATH": f"{bin_dir}{os.pathsep}{os.environ['PATH']}",
+        "GITHUB_SHA": sha,
+        "GITHUB_REF_NAME": "v0.5.1",
+        "RUNNER_TEMP": str(runner_temp),
+        "FIRST_SIGNED_VERSION": _previous_keys_step()["env"]["FIRST_SIGNED_VERSION"],
+    }
+    script = tmp_path / "step.sh"
+    script.write_text(_previous_keys_step()["run"], encoding="utf-8")
+    proc = subprocess.run(
+        ["bash", str(script)], cwd=repo, env=env, capture_output=True, text=True
+    )
+    called = calls.read_text(encoding="utf-8") if calls.exists() else ""
+    return proc, called
+
+
+def test_previous_keys_check_skips_only_below_the_first_signed_release(tmp_path):
+    proc, called = _run_previous_check(tmp_path, "v0.4.2", keys=False)
+    assert proc.returncode == 0, proc.stderr
+    assert "::notice::" in proc.stdout
+    assert called == ""
+
+
+def test_previous_keys_check_verifies_at_the_first_signed_release(tmp_path):
+    proc, called = _run_previous_check(tmp_path, "v0.5.0", keys=True)
+    assert proc.returncode == 0, proc.stderr
+    assert "--keys-file" in called
+    assert "previous_release_keys.py" in called
+
+
+def test_previous_keys_check_fails_when_the_keys_file_is_missing(tmp_path):
+    proc, called = _run_previous_check(tmp_path, "v0.5.0", keys=False)
+    assert proc.returncode != 0
+    assert "::error::" in proc.stdout
+    assert called == ""
+
+
+def test_previous_keys_check_fails_without_a_previous_tag(tmp_path):
+    proc, called = _run_previous_check(tmp_path, None, keys=True)
+    assert proc.returncode != 0
+    assert "::error::" in proc.stdout
+    assert called == ""
+
+
+def test_release_waits_for_verification_and_publishes_a_complete_draft():
     release = _workflow()["jobs"]["release"]
-    assert release["needs"] == ["build", "sign"]
+    assert release["needs"] == ["build", "sign", "verify-manifest"]
+    assert release["if"] == PUSH_TAG_ONLY
     run = _run_text("release")
     assert "--draft" in run and "--verify-tag" in run and "--draft=false" in run
     assert "SakaDesk-${TAG_VERSION}-manifest.json" in run

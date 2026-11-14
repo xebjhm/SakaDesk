@@ -164,7 +164,8 @@ jobs:
   build:
     needs: [lint, test-backend, test-frontend, e2e]
     # Tags release; main builds an artifact; a manual run dry-runs the Windows
-    # toolchain on any branch (sign and release stay tag-only).
+    # toolchain on any branch (sign, verify-manifest and release run only for
+    # pushed tags).
     if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     permissions:
@@ -255,12 +256,14 @@ jobs:
         path: dist/SakaDesk-${{ steps.version.outputs.VERSION }}-Setup.exe
 
   # Signs the update manifest (Plan E). The key is a secret of the `release`
-  # environment, which only v*.*.* tags may use, so no other job or ref can read
-  # it, and this job holds no write token. Until the key has been used, only the
-  # standard library and the runner's OpenSSL run (tooling/release/sign_manifest.py).
+  # environment, which only v*.*.* tags may use, and this job holds no write
+  # token. While the key is present only git, the runner's own python3 (standard
+  # library) and OpenSSL run: nothing is installed, because any step in a job can
+  # read all of that job's secrets from the runner's memory. Verification runs in
+  # `verify-manifest`, which holds no secrets.
   sign:
     needs: [build]
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     environment: release
     permissions:
@@ -287,21 +290,55 @@ jobs:
       with:
         pattern: SakaDesk-*-Setup
 
-    - name: Install uv
-      uses: astral-sh/setup-uv@v4
-      with:
-        version: "latest"
-
     - name: Sign the update manifest
       env:
         SAKADESK_RELEASE_SIGNING_KEY: ${{ secrets.SAKADESK_RELEASE_SIGNING_KEY }}
         SAKADESK_RELEASE_SIGNING_KEY_NEXT: ${{ secrets.SAKADESK_RELEASE_SIGNING_KEY_NEXT }}
       run: |
         TAG_VERSION="${GITHUB_REF_NAME#v}"
-        uv run --no-project python tooling/release/sign_manifest.py \
+        python3 tooling/release/sign_manifest.py \
           --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
           --version "$TAG_VERSION" \
           --out "SakaDesk-${TAG_VERSION}-manifest.json"
+
+    - name: Upload the signed manifest
+      uses: actions/upload-artifact@v4
+      with:
+        name: SakaDesk-manifest
+        path: SakaDesk-*-manifest.json
+        if-no-files-found: error
+
+  # The app's own verifier against this release's keys and the previous
+  # release's keys, in a job with no secrets: a release that installed clients
+  # could not verify is never published.
+  verify-manifest:
+    needs: [build, sign]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    # Full history and tags: the previous-release check uses `git describe`.
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+
+    - name: Download Build Artifact
+      uses: actions/download-artifact@v4
+      with:
+        pattern: SakaDesk-*-Setup
+
+    - name: Download the signed manifest
+      uses: actions/download-artifact@v4
+      with:
+        name: SakaDesk-manifest
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
 
     # The app's own verifier and keys: a key the released app does not trust
     # would make every later update fail, so stop before publishing.
@@ -314,35 +351,41 @@ jobs:
           --version "$TAG_VERSION"
 
     # Installed clients run the previous release, so its keys must verify too
-    # (key rotation safety, Plan E Decision 6). The first signed release has
-    # no previous keys and skips this. The variable is for one emergency only:
-    # a lost key (CONTRIBUTING.md, "Release signing").
+    # (key rotation safety, Plan E Decision 6). Fails closed: only a previous
+    # tag below the first signed release may skip. The variable is for one
+    # emergency only: a lost key (CONTRIBUTING.md, "Release signing").
     - name: Verify the manifest with the previous release's keys
       if: vars.SAKADESK_ALLOW_KEY_RESET != 'yes'
+      env:
+        # The first release that ships the verifier (Plan E D-6); tags below it
+        # trust no key.
+        FIRST_SIGNED_VERSION: "0.5.0"
       run: |
+        set -euo pipefail
         TAG_VERSION="${GITHUB_REF_NAME#v}"
-        PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*.*.*' "${GITHUB_SHA}^" 2>/dev/null || true)"
-        if [ -z "$PREV_TAG" ] || ! git cat-file -e "${PREV_TAG}:backend/services/release_keys.py" 2>/dev/null; then
-          echo "::notice::the previous release trusts no signing key (first signed release)"
+        if ! PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*.*.*' "${GITHUB_SHA}^")" || [ -z "$PREV_TAG" ]; then
+          echo "::error::cannot determine the previous release tag"
+          exit 1
+        fi
+        PREV_VERSION="${PREV_TAG#v}"
+        LOWEST="$(printf '%s\n%s\n' "$PREV_VERSION" "$FIRST_SIGNED_VERSION" | sort -V | sed -n 1p)"
+        if [ "$PREV_VERSION" != "$FIRST_SIGNED_VERSION" ] && [ "$LOWEST" = "$PREV_VERSION" ]; then
+          echo "::notice::the previous release ($PREV_TAG) is below $FIRST_SIGNED_VERSION and trusts no signing key"
           exit 0
         fi
-        git show "${PREV_TAG}:backend/services/release_keys.py" > "$RUNNER_TEMP/previous_release_keys.py"
+        if ! git show "${PREV_TAG}:backend/services/release_keys.py" > "$RUNNER_TEMP/previous_release_keys.py"; then
+          echo "::error::backend/services/release_keys.py is missing at $PREV_TAG"
+          exit 1
+        fi
         uv run --no-project --with "cryptography==46.0.3" python -m backend.services.release_signing \
           --manifest "SakaDesk-${TAG_VERSION}-manifest.json" \
           --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
           --version "$TAG_VERSION" \
           --keys-file "$RUNNER_TEMP/previous_release_keys.py"
 
-    - name: Upload the signed manifest
-      uses: actions/upload-artifact@v4
-      with:
-        name: SakaDesk-manifest
-        path: SakaDesk-*-manifest.json
-        if-no-files-found: error
-
   release:
-    needs: [build, sign]
-    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [build, sign, verify-manifest]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
