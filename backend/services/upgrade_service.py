@@ -12,7 +12,8 @@ The upgrade flow:
    hosts; check its size and SHA-256 against the signed manifest (and
    GitHub's digest when present), then rename it to the installer name
 3. Right before launch, hash the installer again through a handle that keeps
-   writers out, and start it while that handle is open (retrying while Windows
+   writers, renames and deletes out, and start it with that handle inherited
+   so it stays open until Setup's loader exits (retrying while Windows
    reports the file in use) with /SILENT /SUPPRESSMSGBOXES /NORESTART
    /LOG=<logs>/installer.log; the app then exits, Setup waits for it to exit,
    installs, and relaunches it
@@ -435,11 +436,12 @@ _OPEN_EXISTING = 3
 
 @contextlib.contextmanager
 def _held_for_launch(path: Path) -> Iterator[BinaryIO]:
-    """``path`` open for reading; on Windows nobody can change it until the block ends.
+    """``path`` open for reading; on Windows nobody can change it while a handle is open.
 
     The Windows handle shares read access only: writers, renames and deletes
     fail with a sharing violation, while starting the installer (which opens
-    it for reading and executing) still works. Elsewhere a plain read handle.
+    it for reading and executing) still works. A child that inherits the handle
+    keeps it open past the block. Elsewhere a plain read handle.
     """
     if sys.platform == "win32":
         import _winapi
@@ -469,7 +471,13 @@ def _held_for_launch(path: Path) -> Iterator[BinaryIO]:
 def _verify_and_start(
     installer_path: Path, expected_sha256: str, log_path: Path
 ) -> None:
-    """Hash the installer under a held handle and start it while still holding it.
+    """Hash the installer under a held handle and start it, handing Setup that handle.
+
+    The handle is inherited by the new process (the only handle it inherits),
+    so it stays open, read-only with writers, renames and deletes refused,
+    until Setup's loader exits: the loader re-opens its own exe by path and
+    runs ``setup.tmp``, which reads the setup header and data from that path
+    again. Our copy closes when this function returns.
 
     Raises UpdateNotVerified("hash_mismatch") (nothing started) or OSError.
     """
@@ -477,6 +485,15 @@ def _verify_and_start(
         actual, _size = release_signing.stream_digest(stream)
         if actual != expected_sha256:
             raise UpdateNotVerified("hash_mismatch")
+        extra: dict = {}
+        if sys.platform == "win32":
+            import msvcrt
+
+            handle = msvcrt.get_osfhandle(stream.fileno())
+            os.set_handle_inheritable(handle, True)
+            extra["startupinfo"] = subprocess.STARTUPINFO(
+                lpAttributeList={"handle_list": [handle]}
+            )
         subprocess.Popen(
             [
                 str(installer_path),
@@ -488,6 +505,7 @@ def _verify_and_start(
             creationflags=subprocess.DETACHED_PROCESS  # type: ignore[attr-defined]
             | subprocess.CREATE_NEW_PROCESS_GROUP,  # type: ignore[attr-defined]
             close_fds=True,
+            **extra,
         )
 
 
@@ -501,9 +519,14 @@ async def launch_installer(
     """
     Check the installer once more and launch it, then prepare for app exit.
 
-    The installer is hashed through :func:`_held_for_launch` and started
-    while that handle is still open, so the file Setup runs is the one whose
-    SHA-256 matched the signed manifest (hardening #62).
+    The installer is hashed through :func:`_held_for_launch`, and Setup is
+    started with that very handle inherited (and no other), so on Windows the
+    file stays read-only and cannot be written, renamed or deleted until
+    Setup's loader exits, covering the loader's own re-open by path and
+    ``setup.tmp``'s reads of the setup data (hardening #62). The handle pins
+    the file, not the path: a directory junction planted earlier on a parent
+    folder could still be repointed before the process starts (same-user
+    attacker; not addressed).
 
     The caller (``/upgrade/install``) exits the app right after this returns.
     Inno Setup handles the rest:

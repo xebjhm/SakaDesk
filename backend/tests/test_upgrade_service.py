@@ -3,8 +3,9 @@
 import asyncio
 import contextlib
 import hashlib
+import os
 import sys
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
@@ -1132,6 +1133,12 @@ class TestLaunchLogsDirFailure:
             )
 
 
+@contextlib.contextmanager
+def _plain_held(path):
+    with open(path, "rb") as stream:
+        yield stream
+
+
 class TestLaunchReverifies:
     """Hardening #62: the installer is hashed again right before it is started."""
 
@@ -1170,6 +1177,8 @@ class TestLaunchReverifies:
             with real(path) as stream:
                 order.append("held")
                 yield stream
+                # The digest came from this very stream, not from a re-open.
+                assert stream.tell() == len(b"MZ-signed")
                 order.append("released")
 
         win, logs_dir, sub = self._patches(tmp_path)
@@ -1211,12 +1220,68 @@ class TestLaunchReverifies:
                 asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
         assert seen[0].closed
 
+    def test_setup_inherits_only_the_held_handle(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ-signed")
+        fake_msvcrt = MagicMock()
+        fake_msvcrt.get_osfhandle.return_value = 4242
+        fake_sys = MagicMock(platform="win32")
+        win, logs_dir, sub = self._patches(tmp_path)
+        with (
+            win,
+            logs_dir,
+            sub as mock_subprocess,
+            patch.object(upgrade_service, "sys", fake_sys),
+            patch.dict(sys.modules, {"msvcrt": fake_msvcrt}),
+            patch.object(os, "set_handle_inheritable", create=True) as inheritable,
+            patch.object(upgrade_service, "_held_for_launch", _plain_held),
+        ):
+            ok = asyncio.run(
+                launch_installer(
+                    installer, expected_sha256=hashlib.sha256(b"MZ-signed").hexdigest()
+                )
+            )
+        assert ok is True
+        inheritable.assert_called_once_with(4242, True)
+        mock_subprocess.STARTUPINFO.assert_called_once_with(
+            lpAttributeList={"handle_list": [4242]}
+        )
+        kwargs = mock_subprocess.Popen.call_args.kwargs
+        assert kwargs["startupinfo"] is mock_subprocess.STARTUPINFO.return_value
+        assert kwargs["close_fds"] is True
+
+    def test_no_startupinfo_off_windows(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ-signed")
+        win, logs_dir, sub = self._patches(tmp_path)
+        with win, logs_dir, sub as mock_subprocess:
+            asyncio.run(
+                launch_installer(
+                    installer, expected_sha256=hashlib.sha256(b"MZ-signed").hexdigest()
+                )
+            )
+        assert "startupinfo" not in mock_subprocess.Popen.call_args.kwargs
+
     @pytest.mark.skipif(sys.platform != "win32", reason="Windows share modes")
     def test_windows_refuses_writers_while_held(self, tmp_path):
         installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
         installer.write_bytes(b"MZ")
+        decoy = tmp_path / "decoy.exe"
+        decoy.write_bytes(b"EVIL")
+        parent = tmp_path / "dir"
+        parent.mkdir()
+        inner = parent / "SakaDesk-1.0.0-Setup.exe"
+        inner.write_bytes(b"MZ")
         with upgrade_service._held_for_launch(installer) as stream:
             assert stream.read() == b"MZ"
             with pytest.raises(PermissionError):
                 open(installer, "ab").close()
+            with pytest.raises(PermissionError):
+                os.replace(decoy, installer)
+            with pytest.raises(PermissionError):
+                os.remove(installer)
+            open(installer, "rb").close()  # readers are fine
+        with upgrade_service._held_for_launch(inner):
+            with pytest.raises(PermissionError):
+                parent.rename(tmp_path / "dir2")
         open(installer, "ab").close()  # writable again once released
