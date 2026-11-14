@@ -4,8 +4,9 @@
 
 Writes the PRIVATE key (PKCS#8 PEM, unencrypted: the release workflow reads
 it as is) to ``--out`` with owner-only permissions (POSIX; run it from WSL)
-and never overwrites a file. Prints the key id, the public key and the line
-to add to ``backend/services/release_keys.py``; never prints the private key.
+and never overwrites a file or writes inside this repository. Prints the
+key id, the public key and the line to add to
+``backend/services/release_keys.py``; never prints the private key.
 Next steps: CONTRIBUTING.md, "Release signing".
 """
 
@@ -46,6 +47,12 @@ def generate(out: Path) -> tuple[str, str]:
     return key_id(raw), base64.b64encode(raw).decode("ascii")
 
 
+def _inside_repo(out: Path) -> bool:
+    """True if ``out`` (or its parent directory, symlinks resolved) is under ROOT."""
+    paths = (out.resolve(strict=False), out.parent.resolve(strict=False))
+    return any(ROOT == p or ROOT in p.parents for p in paths)
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Generate the SakaDesk release signing key."
@@ -55,6 +62,9 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     out = args.out.expanduser()
+    if _inside_repo(out):
+        sys.stderr.write("ERROR: inside_repo\n")
+        return 1
     try:
         kid, public = generate(out)
     except FileExistsError:

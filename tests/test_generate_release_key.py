@@ -50,3 +50,25 @@ def test_never_overwrites_an_existing_file(tmp_path, capsys):
     assert _script().main(["--out", str(out)]) == 1
     assert out.read_text(encoding="utf-8") == "keep"
     assert capsys.readouterr().err == "ERROR: exists\n"
+
+
+def test_refuses_to_write_inside_the_repository(capsys):
+    out = ROOT / "tmp-test-key.pem"
+    try:
+        assert _script().main(["--out", str(out)]) == 1
+        assert not out.exists()
+        assert capsys.readouterr().err == "ERROR: inside_repo\n"
+    finally:
+        out.unlink(missing_ok=True)
+
+
+def test_refuses_a_symlinked_directory_into_the_repository(tmp_path, capsys):
+    link = tmp_path / "link"
+    link.symlink_to(ROOT, target_is_directory=True)
+    out = ROOT / "tmp-test-key2.pem"
+    try:
+        assert _script().main(["--out", str(link / out.name)]) == 1
+        assert not out.exists()
+        assert capsys.readouterr().err == "ERROR: inside_repo\n"
+    finally:
+        out.unlink(missing_ok=True)
