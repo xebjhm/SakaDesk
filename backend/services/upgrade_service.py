@@ -172,7 +172,15 @@ def _find_asset(assets: list, name: str, expected_url: str) -> Optional[dict]:
 
 
 async def _fetch_small(url: str, limit: int) -> Optional[bytes]:
-    """GET ``url`` (every hop checked) and return its body if at most ``limit`` bytes."""
+    """GET ``url`` (every hop checked) and return its body if at most ``limit`` bytes.
+
+    Returns None on a non-200 status or a network error (worth retrying).
+
+    Raises:
+        UpdateNotVerified: the body is larger than ``limit``
+            (``manifest_too_large``) or a hop left the allowed hosts
+            (``manifest_redirect_refused``); both are logged first.
+    """
     try:
         async with _download_client(30.0) as client:
             async with client.stream("GET", url) as response:
@@ -188,7 +196,7 @@ async def _fetch_small(url: str, limit: int) -> Optional[bytes]:
                         logger.error(
                             "upgrade_manifest_download_failed", reason="too_large"
                         )
-                        return None
+                        raise UpdateNotVerified("manifest_too_large")
                 return bytes(body)
     except _HopRefused as e:
         logger.error(
@@ -196,6 +204,7 @@ async def _fetch_small(url: str, limit: int) -> Optional[bytes]:
             reason="redirect",
             host_class=e.host_class,
         )
+        raise UpdateNotVerified("manifest_redirect_refused") from None
     except (httpx.HTTPError, httpx.StreamError) as e:
         logger.error("upgrade_manifest_download_failed", error_type=type(e).__name__)
     return None
@@ -209,11 +218,14 @@ async def get_installer_info(version: str) -> Optional[InstallerInfo]:
         InstallerInfo with the pinned URL, the signed size and SHA-256 and
         GitHub's digest; None when the version is not a plain release
         version, the release or its installer cannot be found, or the
-        manifest cannot be downloaded (worth retrying later).
+        manifest cannot be downloaded because of a network failure or a
+        non-200 status (worth retrying later).
 
     Raises:
-        UpdateNotVerified: the release has no manifest, or the manifest is not
-            signed by a trusted key for exactly this version's installer.
+        UpdateNotVerified: the release has no manifest, the manifest is too
+            large or its download was redirected off the allowed hosts, or the
+            manifest is not signed by a trusted key for exactly this version's
+            installer.
     """
     bare = version[1:] if version.startswith("v") else version
     if not release_signing.is_valid_version(bare):

@@ -412,7 +412,9 @@ class TestGetInstallerInfo:
             302, headers={"Location": "https://evil.example.com/m.json"}
         )
         evil = respx.get("https://evil.example.com/m.json").respond(200, content=b"{}")
-        assert await get_installer_info("v1.0.0") is None
+        with pytest.raises(UpdateNotVerified) as exc:
+            await get_installer_info("v1.0.0")
+        assert exc.value.reason == "manifest_redirect_refused"
         assert not evil.called
 
     @respx.mock
@@ -420,7 +422,9 @@ class TestGetInstallerInfo:
     async def test_an_oversized_manifest_is_refused(self):
         respx.get(_RELEASE_API).respond(200, json=_github_release_json())
         _serve_manifest(b" " * (MAX_ENVELOPE_BYTES + 1))
-        assert await get_installer_info("v1.0.0") is None
+        with pytest.raises(UpdateNotVerified) as exc:
+            await get_installer_info("v1.0.0")
+        assert exc.value.reason == "manifest_too_large"
 
     @respx.mock
     @pytest.mark.asyncio
