@@ -17,6 +17,7 @@ from pydantic import BaseModel
 
 from backend.services.upgrade_service import (
     GITHUB_REPO,
+    UpdateNotVerified,
     get_installer_info,
     download_installer,
     launch_installer,
@@ -67,17 +68,31 @@ class UpgradeStatus(BaseModel):
     state: str  # idle, downloading, ready, launching, error
     progress: float = 0.0  # 0-100 for download progress
     error: Optional[str] = None
+    error_code: Optional[str] = None  # "not_verified": the UI shows its own text
     version: Optional[str] = None
 
 
+# The one error code the UI translates: the release or the installer could not
+# be verified against the signed manifest (Plan E). Details go to the log.
+NOT_VERIFIED = "not_verified"
+NOT_VERIFIED_TEXT = "The update could not be verified"
+
+
+def _fresh_upgrade_state() -> dict:
+    """The idle upgrade state."""
+    return {
+        "state": "idle",
+        "progress": 0.0,
+        "error": None,
+        "error_code": None,
+        "version": None,
+        "installer_path": None,
+        "installer_sha256": None,
+    }
+
+
 # Upgrade state tracking
-_upgrade_state: dict = {
-    "state": "idle",
-    "progress": 0.0,
-    "error": None,
-    "version": None,
-    "installer_path": None,
-}
+_upgrade_state: dict = _fresh_upgrade_state()
 
 # The running download task and its generation. Each /upgrade/start that
 # launches a download, and each /upgrade/cancel, bumps the generation; a
@@ -174,9 +189,17 @@ async def _fetch_latest_release(force: bool = False) -> dict:
 
             if response.status_code == 200:
                 data = response.json()
-                _cache["latest_version"] = data.get("tag_name", "").lstrip("v")
-                _cache["release_url"] = data.get("html_url")
-                _cache["release_notes"] = data.get("body", "")[:500]  # Truncate
+                if not isinstance(data, dict):
+                    data = {}
+                tag = data.get("tag_name")
+                body = data.get("body")
+                html_url = data.get("html_url")
+                # Hardening #64: null notes or tag must not break the check.
+                _cache["latest_version"] = (
+                    tag.lstrip("v") if isinstance(tag, str) and tag else None
+                )
+                _cache["release_url"] = html_url if isinstance(html_url, str) else None
+                _cache["release_notes"] = body[:500] if isinstance(body, str) else ""
                 _cache["error"] = None
             elif response.status_code == 404:
                 _cache["error"] = "No releases found"
@@ -188,7 +211,8 @@ async def _fetch_latest_release(force: bool = False) -> dict:
     except httpx.TimeoutException:
         _cache["error"] = "Request timed out"
     except Exception as e:
-        _cache["error"] = f"Failed to check: {str(e)}"
+        logger.warning("version_check_failed", error_type=type(e).__name__)
+        _cache["error"] = "Failed to check"
 
     _cache["last_check"] = now
     return _cache
@@ -233,6 +257,7 @@ async def get_upgrade_status():
         state=_upgrade_state["state"],
         progress=_upgrade_state["progress"],
         error=_upgrade_state["error"],
+        error_code=_upgrade_state.get("error_code"),
         version=_upgrade_state["version"],
     )
 
@@ -280,13 +305,7 @@ async def start_upgrade():
     # A cancel during the version fetch below bumps the generation; the start
     # then gives up instead of launching a download nobody is waiting for.
     claimed_generation = _upgrade_generation
-    _upgrade_state = {
-        "state": "downloading",
-        "progress": 0.0,
-        "error": None,
-        "version": None,
-        "installer_path": None,
-    }
+    _upgrade_state = {**_fresh_upgrade_state(), "state": "downloading"}
 
     def _rollback(error: str, reason: str) -> dict:
         global _upgrade_state
@@ -335,7 +354,8 @@ async def _download_and_prepare_upgrade(
     ``generation`` is the /upgrade/start generation this download belongs to.
     When a newer start or a cancel has moved the generation on, the result is
     dropped (and a downloaded installer is not reported "ready"). ``None``
-    (direct calls) always writes the state.
+    (direct calls) always writes the state. A release without a valid signed
+    manifest ends in ``error`` with ``error_code`` ``not_verified``.
     """
     global _upgrade_state
 
@@ -344,7 +364,19 @@ async def _download_and_prepare_upgrade(
 
     try:
         # Get installer info (URL, size, SHA-256 digest)
-        info = await get_installer_info(version)
+        try:
+            info = await get_installer_info(version)
+        except UpdateNotVerified as e:
+            if not _current():
+                logger.info("upgrade_download_superseded", generation=generation)
+                return
+            logger.warning(
+                "upgrade_download_failed", reason=NOT_VERIFIED, detail=e.reason
+            )
+            _upgrade_state["state"] = "error"
+            _upgrade_state["error"] = NOT_VERIFIED_TEXT
+            _upgrade_state["error_code"] = NOT_VERIFIED
+            return
         if not _current():
             logger.info("upgrade_download_superseded", generation=generation)
             return
@@ -483,6 +515,10 @@ async def install_upgrade():
     and relaunching after install ([Run] section).
 
     Call this only after /upgrade/status shows state="ready".
+
+    The installer is hashed again against the signed SHA-256 right before it
+    starts; a mismatch, or no signed hash, ends in ``error`` with
+    ``error_code`` ``not_verified``.
     """
     global _upgrade_state
 
@@ -498,14 +534,33 @@ async def install_upgrade():
         logger.warning("upgrade_install_refused", reason="installer_missing")
         return {"success": False, "error": "Installer not found"}
 
+    expected = _upgrade_state.get("installer_sha256")
+    if not expected:
+        logger.warning("upgrade_install_refused", reason="no_signed_hash")
+        _upgrade_state.update(
+            state="error", error=NOT_VERIFIED_TEXT, error_code=NOT_VERIFIED
+        )
+        return {
+            "success": False,
+            "error": NOT_VERIFIED_TEXT,
+            "error_code": NOT_VERIFIED,
+        }
+
     # Claim "launching" before the (possibly retrying) launch, so a second
     # /upgrade/install during the retries cannot start a second installer.
     _upgrade_state["state"] = "launching"
     try:
-        success = await launch_installer(
-            installer_path,
-            expected_sha256=_upgrade_state.get("installer_sha256") or "",
+        success = await launch_installer(installer_path, expected_sha256=expected)
+    except UpdateNotVerified:
+        logger.warning("upgrade_install_failed", reason=NOT_VERIFIED)
+        _upgrade_state.update(
+            state="error", error=NOT_VERIFIED_TEXT, error_code=NOT_VERIFIED
         )
+        return {
+            "success": False,
+            "error": NOT_VERIFIED_TEXT,
+            "error_code": NOT_VERIFIED,
+        }
     except Exception as e:
         logger.error("upgrade_install_failed", error_type=type(e).__name__)
         success = False
@@ -577,12 +632,6 @@ async def cancel_upgrade():
     logger.info("upgrade_cancelled", from_state=_upgrade_state["state"])
     cleanup_upgrade_files()
 
-    _upgrade_state = {
-        "state": "idle",
-        "progress": 0.0,
-        "error": None,
-        "version": None,
-        "installer_path": None,
-    }
+    _upgrade_state = _fresh_upgrade_state()
 
     return {"success": True, "message": "Upgrade cancelled"}

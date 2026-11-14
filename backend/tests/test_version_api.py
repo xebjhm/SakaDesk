@@ -3,11 +3,21 @@
 from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 
+import respx
 from fastapi.testclient import TestClient
 
 from backend.main import app
+from backend.services.upgrade_service import InstallerInfo, UpdateNotVerified
 
 client = TestClient(app)
+
+_SHA = "ab" * 32
+_FAKE_INFO = InstallerInfo(
+    url="https://github.com/xebjhm/SakaDesk/releases/download/v1.0.0/SakaDesk-1.0.0-Setup.exe",
+    size=1,
+    digest=None,
+    sha256=_SHA,
+)
 
 
 def _reset_version_cache():
@@ -22,13 +32,7 @@ def _reset_version_cache():
         "error": None,
     }
     v._download_task = None
-    v._upgrade_state = {
-        "state": "idle",
-        "progress": 0.0,
-        "error": None,
-        "version": None,
-        "installer_path": None,
-    }
+    v._upgrade_state = v._fresh_upgrade_state()
 
 
 class TestGetCurrentVersion:
@@ -453,7 +457,7 @@ class TestInstallUpgrade:
         installer.touch()
         v._upgrade_state["state"] = "ready"
         v._upgrade_state["installer_path"] = installer
-        v._upgrade_state["installer_sha256"] = "ab" * 32
+        v._upgrade_state["installer_sha256"] = _SHA
         with patch("backend.api.version.asyncio.create_task", side_effect=capture):
             response = client.post("/api/version/upgrade/install")
         data = response.json()
@@ -470,6 +474,7 @@ class TestInstallUpgrade:
         installer.touch()
         v._upgrade_state["state"] = "ready"
         v._upgrade_state["installer_path"] = installer
+        v._upgrade_state["installer_sha256"] = _SHA
         response = client.post("/api/version/upgrade/install")
         data = response.json()
         assert data["success"] is False
@@ -553,6 +558,7 @@ class TestQuiesceWorkersBeforeExit:
         installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
         installer.touch()
         v._upgrade_state["installer_path"] = installer
+        v._upgrade_state["installer_sha256"] = _SHA
 
         order = []
 
@@ -785,7 +791,7 @@ class TestCancelStopsDownload:
             gate = asyncio.Event()
 
             async def info(_version):
-                return object()
+                return _FAKE_INFO
 
             async def download(_info, _cb):
                 try:
@@ -822,7 +828,7 @@ class TestCancelStopsDownload:
         import backend.api.version as v
 
         async def info(_version):
-            return object()
+            return _FAKE_INFO
 
         async def download(_info, _cb):
             return tmp_path / "x.exe"
@@ -890,9 +896,10 @@ class TestStartInstallHardening:
         installer.touch()
         v._upgrade_state["state"] = "ready"
         v._upgrade_state["installer_path"] = installer
+        v._upgrade_state["installer_sha256"] = _SHA
         seen: list[dict] = []
 
-        async def slow_launch(_path, **_kwargs):
+        async def slow_launch(_path, *, expected_sha256):
             seen.append(await v.install_upgrade())  # a second click mid-retry
             return False
 
@@ -925,7 +932,7 @@ class TestGenerationGuardDuringDownload:
             gate, reached = asyncio.Event(), asyncio.Event()
 
             async def info(_version):
-                return object()
+                return _FAKE_INFO
 
             async def download(_info, _cb):
                 reached.set()
@@ -959,7 +966,7 @@ class TestGenerationGuardDuringDownload:
             gate = asyncio.Event()
 
             async def info(_version):
-                return object()
+                return _FAKE_INFO
 
             async def download(_info, _cb):
                 await gate.wait()
@@ -998,7 +1005,7 @@ class TestGenerationGuardDuringDownload:
             gate = asyncio.Event()
 
             async def info(_version):
-                return object()
+                return _FAKE_INFO
 
             async def stubborn(_info, _cb):
                 try:
@@ -1040,7 +1047,7 @@ class TestGenerationGuardDuringDownload:
 
         async def scenario():
             async def info(_version):
-                return object()
+                return _FAKE_INFO
 
             async def broken(_info, _cb):
                 try:
@@ -1101,11 +1108,160 @@ class TestGenerationGuardDuringDownload:
         installer.touch()
         v._upgrade_state["state"] = "ready"
         v._upgrade_state["installer_path"] = installer
+        v._upgrade_state["installer_sha256"] = _SHA
 
-        async def explode(_path, **_kwargs):
+        async def explode(_path, *, expected_sha256):
             raise OSError("logs dir unavailable")
 
         with patch.object(v, "launch_installer", explode):
             result = asyncio.run(v.install_upgrade())
         assert result["success"] is False
         assert v._upgrade_state["state"] == "error"
+
+
+class TestSignedUpdates:
+    """Plan E: unverified releases and changed installers end in error_code not_verified."""
+
+    def setup_method(self):
+        _reset_version_cache()
+
+    def test_an_unverified_release_reports_not_verified(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        async def info(_version):
+            raise UpdateNotVerified("unknown_key")
+
+        with patch.object(v, "get_installer_info", info):
+            asyncio.run(v._download_and_prepare_upgrade("1.0.0"))
+        status = client.get("/api/version/upgrade/status").json()
+        assert status["state"] == "error"
+        assert status["error_code"] == "not_verified"
+        assert status["error"] == v.NOT_VERIFIED_TEXT
+
+    def test_ready_keeps_the_signed_hash(self, tmp_path):
+        import asyncio
+
+        import backend.api.version as v
+
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+
+        async def info(_version):
+            return _FAKE_INFO
+
+        async def download(_info, _cb):
+            return installer
+
+        with (
+            patch.object(v, "get_installer_info", info),
+            patch.object(v, "download_installer", download),
+        ):
+            asyncio.run(v._download_and_prepare_upgrade("1.0.0"))
+        assert v._upgrade_state["state"] == "ready"
+        assert v._upgrade_state["installer_sha256"] == _SHA
+        assert client.get("/api/version/upgrade/status").json()["error_code"] is None
+
+    def test_install_passes_the_signed_hash(self, tmp_path):
+        import backend.api.version as v
+
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
+        v._upgrade_state.update(
+            state="ready", installer_path=installer, installer_sha256=_SHA
+        )
+        with patch(
+            "backend.api.version.launch_installer", return_value=False
+        ) as launch:
+            client.post("/api/version/upgrade/install")
+        launch.assert_called_once_with(installer, expected_sha256=_SHA)
+
+    def test_install_refuses_without_a_signed_hash(self, tmp_path):
+        import backend.api.version as v
+
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
+        v._upgrade_state.update(
+            state="ready", installer_path=installer, installer_sha256=None
+        )
+        with patch("backend.api.version.launch_installer") as launch:
+            data = client.post("/api/version/upgrade/install").json()
+        assert data == {
+            "success": False,
+            "error": v.NOT_VERIFIED_TEXT,
+            "error_code": "not_verified",
+        }
+        launch.assert_not_called()
+        assert v._upgrade_state["state"] == "error"
+
+    def test_install_reports_an_installer_changed_after_download(self, tmp_path):
+        import asyncio
+
+        import backend.api.version as v
+
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.touch()
+        v._upgrade_state.update(
+            state="ready", installer_path=installer, installer_sha256=_SHA
+        )
+
+        async def changed(_path, *, expected_sha256):
+            raise UpdateNotVerified("hash_mismatch")
+
+        with patch.object(v, "launch_installer", changed):
+            result = asyncio.run(v.install_upgrade())
+        assert result["error_code"] == "not_verified"
+        assert v._upgrade_state["state"] == "error"
+        assert v._upgrade_state["error_code"] == "not_verified"
+
+    def test_cancel_clears_the_code_and_the_hash(self):
+        import backend.api.version as v
+
+        v._upgrade_state.update(
+            state="error", error_code="not_verified", installer_sha256=_SHA
+        )
+        client.post("/api/version/upgrade/cancel")
+        assert v._upgrade_state == v._fresh_upgrade_state()
+
+
+class TestNullReleaseFields:
+    """Hardening #64: a release whose notes or tag are null must not break update checks."""
+
+    def setup_method(self):
+        _reset_version_cache()
+
+    @respx.mock
+    def test_null_body_and_url_are_tolerated(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        respx.get(v.GITHUB_API_URL).respond(
+            200, json={"tag_name": "v9.9.9", "body": None, "html_url": None}
+        )
+        cache = asyncio.run(v._fetch_latest_release(force=True))
+        assert cache["error"] is None
+        assert cache["latest_version"] == "9.9.9"
+        assert cache["release_notes"] == ""
+        assert cache["release_url"] is None
+
+    @respx.mock
+    def test_a_null_tag_means_no_version(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        respx.get(v.GITHUB_API_URL).respond(200, json={"tag_name": None, "body": None})
+        cache = asyncio.run(v._fetch_latest_release(force=True))
+        assert cache["error"] is None
+        assert cache["latest_version"] is None
+
+    @respx.mock
+    def test_an_unexpected_failure_shows_no_exception_text(self):
+        import asyncio
+
+        import backend.api.version as v
+
+        respx.get(v.GITHUB_API_URL).respond(200, content=b"not json at C:\\Users\\x")
+        cache = asyncio.run(v._fetch_latest_release(force=True))
+        assert cache["error"] == "Failed to check"
