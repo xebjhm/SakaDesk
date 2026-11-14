@@ -22,6 +22,8 @@ export interface UpgradeStatus {
     state: 'idle' | 'downloading' | 'ready' | 'launching' | 'error';
     progress: number;
     error: string | null;
+    /** A failure the UI explains itself (`not_verified`); absent or null otherwise. */
+    error_code?: string | null;
     version: string | null;
 }
 
@@ -77,9 +79,9 @@ async function pollStatus() {
     }
 }
 
-function failed(error: string | null, progress = 0): UpgradeStatus {
+function failed(error: string | null, progress = 0, errorCode: string | null = null): UpgradeStatus {
     const version = useUpgradeStore.getState().status?.version ?? null;
-    return { state: 'error', progress, error, version };
+    return { state: 'error', progress, error, error_code: errorCode, version };
 }
 
 /** The stage to show. Settings passes `ignoreDismissed` so a skipped version can still be installed there. */
@@ -91,6 +93,15 @@ export function upgradeStage(
     if (s === 'error' || s === 'launching' || s === 'ready' || s === 'downloading') return s;
     if (state.versionInfo?.update_available && (ignoreDismissed || !state.dismissed)) return 'available';
     return 'hidden';
+}
+
+/**
+ * i18n key for an upgrade failure the UI explains in the user's language, or null to show
+ * "Upgrade failed:" plus the backend text. `not_verified`: the release or the installer
+ * did not match the signed manifest (backend/api/version.py).
+ */
+export function upgradeErrorKey(code?: string | null): string | null {
+    return code === 'not_verified' ? 'update.notVerified' : null;
 }
 
 /** Open the GitHub release page (platforms without in-place upgrade). */
@@ -129,7 +140,7 @@ export const useUpgradeStore = create<UpgradeState>()((set, get) => ({
             if (data.success) {
                 setStatus({ state: 'downloading', progress: 0, error: null, version: data.version });
             } else {
-                setStatus(failed(data.error ?? null));
+                setStatus(failed(data.error ?? null, 0, data.error_code ?? null));
             }
         } catch (err) {
             console.warn('[upgrade] Start failed:', err);
@@ -148,7 +159,7 @@ export const useUpgradeStore = create<UpgradeState>()((set, get) => ({
                 // The backend also exits after ~2 seconds as a fallback.
                 setTimeout(() => window.close(), 1500);
             } else {
-                setStatus(failed(data.error ?? null, 100));
+                setStatus(failed(data.error ?? null, 100, data.error_code ?? null));
             }
         } catch (err) {
             console.warn('[upgrade] Install failed:', err);

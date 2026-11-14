@@ -353,7 +353,8 @@
     "download": "下载更新",
     "installHint": "SakaDesk 会关闭，安装完成后自动重新打开。",
     "retry": "重试",
-    "openReleasePage": "打开下载页面"
+    "openReleasePage": "打开下载页面",
+    "notVerified": "无法验证这个更新，所以没有安装。请稍后再试。"
   },
   "memberList": {
     "title": "聊天",

@@ -1,7 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
 import { UpgradeIcon } from './UpgradeIcon';
-import { resetUpgradeStoreForTests } from '../upgrade/upgradeStore';
+import { resetUpgradeStoreForTests, useUpgradeStore } from '../upgrade/upgradeStore';
+import i18n from '../../i18n';
 
 // 0.4.1: the 0.3.4 → 0.4.0 upgrade broke because a click on the ring while
 // downloading cancelled, and auto-download then started a second download
@@ -73,5 +74,22 @@ describe('UpgradeIcon while downloading', () => {
         // Still downloading: the cancel × is still there and no new download started.
         expect(await screen.findByRole('button', { name: 'Cancel download' })).toBeInTheDocument();
         expect(starts()).toBe(1);
+    });
+});
+
+describe('UpgradeIcon error tooltip (security Plan E)', () => {
+    beforeEach(() => {
+        resetUpgradeStoreForTests();
+        vi.stubGlobal('fetch', mockBackend([]));
+    });
+    afterEach(() => { vi.unstubAllGlobals(); resetUpgradeStoreForTests(); });
+
+    it('uses the translated message for an unverified update', async () => {
+        await i18n.changeLanguage('en');
+        useUpgradeStore.setState({
+            status: { state: 'error', progress: 0, error: 'The update could not be verified', error_code: 'not_verified', version: '0.4.1' },
+        });
+        render(<UpgradeIcon />);
+        expect(screen.getByTitle('This update could not be verified, so it was not installed. Try again later.')).toBeInTheDocument();
     });
 });

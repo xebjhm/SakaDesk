@@ -77,4 +77,27 @@ describe('UpdateActions (Settings → Updates)', () => {
         expect(open).toHaveBeenCalledWith(INFO.release_url, '_blank');
         open.mockRestore();
     });
+
+    it('explains an unverified update in the user\'s language instead of the backend text', () => {
+        useUpgradeStore.setState({
+            versionInfo: INFO,
+            status: { state: 'error', progress: 0, error: 'The update could not be verified', error_code: 'not_verified', version: '0.4.2' },
+        });
+        render(<UpdateActions />);
+        expect(screen.getByText('This update could not be verified, so it was not installed. Try again later.')).toBeInTheDocument();
+        expect(screen.queryByText(/Upgrade failed/)).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    });
+
+    it('keeps the install failure code from the backend', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            json: async () => ({ success: false, error: 'The update could not be verified', error_code: 'not_verified' }),
+        }) as Response));
+        useUpgradeStore.setState({ versionInfo: INFO, status: { state: 'ready', progress: 100, error: null, version: '0.4.2' } });
+        render(<UpdateActions />);
+        fireEvent.click(screen.getByRole('button', { name: 'Install Now' }));
+        expect(await screen.findByText('This update could not be verified, so it was not installed. Try again later.')).toBeInTheDocument();
+        expect(useUpgradeStore.getState().status?.error_code).toBe('not_verified');
+    });
 });

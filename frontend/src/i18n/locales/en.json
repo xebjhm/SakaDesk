@@ -353,7 +353,8 @@
     "download": "Download update",
     "installHint": "SakaDesk closes and reopens when the install finishes.",
     "retry": "Try again",
-    "openReleasePage": "Open download page"
+    "openReleasePage": "Open download page",
+    "notVerified": "This update could not be verified, so it was not installed. Try again later."
   },
   "memberList": {
     "title": "Talk",
