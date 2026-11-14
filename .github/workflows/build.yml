@@ -163,7 +163,9 @@ jobs:
 
   build:
     needs: [lint, test-backend, test-frontend, e2e]
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    # Tags release; main builds an artifact; a manual run dry-runs the Windows
+    # toolchain on any branch (sign and release stay tag-only).
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     permissions:
       contents: read
@@ -219,9 +221,13 @@ jobs:
     # fleet-wide). Mirrors pysaka's "Verify version matches tag" guard.
     - name: Verify Version Matches Tag
       if: startsWith(github.ref, 'refs/tags/v')
+      env:
+        # Hardening #5: ref names may contain $(...); never expand them into the script.
+        TAG_NAME: ${{ github.ref_name }}
+        PKG_VERSION: ${{ steps.version.outputs.VERSION }}
       run: |
-        $tagVersion = "${{ github.ref_name }}" -replace '^v', ''
-        $pkgVersion = "${{ steps.version.outputs.VERSION }}"
+        $tagVersion = $env:TAG_NAME -replace '^v', ''
+        $pkgVersion = $env:PKG_VERSION
         if ($tagVersion -ne $pkgVersion) {
           Write-Error "Tag version ($tagVersion) does not match pyproject version ($pkgVersion)"
           exit 1
@@ -248,8 +254,94 @@ jobs:
         name: SakaDesk-${{ steps.version.outputs.VERSION }}-Setup
         path: dist/SakaDesk-${{ steps.version.outputs.VERSION }}-Setup.exe
 
-  release:
+  # Signs the update manifest (Plan E). The key is a secret of the `release`
+  # environment, which only v*.*.* tags may use, so no other job or ref can read
+  # it, and this job holds no write token. Until the key has been used, only the
+  # standard library and the runner's OpenSSL run (tooling/release/sign_manifest.py).
+  sign:
     needs: [build]
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+
+    # Hardening #6: release branches merge into main before tagging
+    # (CONTRIBUTING.md, Phase 4), so a tag off main is not a release.
+    - name: Verify the tag commit is on main
+      run: |
+        git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+        if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          echo "::error::the tag commit is not on main"
+          exit 1
+        fi
+
+    - name: Download Build Artifact
+      uses: actions/download-artifact@v4
+      with:
+        pattern: SakaDesk-*-Setup
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Sign the update manifest
+      env:
+        SAKADESK_RELEASE_SIGNING_KEY: ${{ secrets.SAKADESK_RELEASE_SIGNING_KEY }}
+        SAKADESK_RELEASE_SIGNING_KEY_NEXT: ${{ secrets.SAKADESK_RELEASE_SIGNING_KEY_NEXT }}
+      run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        uv run --no-project python tooling/release/sign_manifest.py \
+          --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
+          --version "$TAG_VERSION" \
+          --out "SakaDesk-${TAG_VERSION}-manifest.json"
+
+    # The app's own verifier and keys: a key the released app does not trust
+    # would make every later update fail, so stop before publishing.
+    - name: Verify the manifest with the new release's keys
+      run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        uv run --no-project --with "cryptography==46.0.3" python -m backend.services.release_signing \
+          --manifest "SakaDesk-${TAG_VERSION}-manifest.json" \
+          --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
+          --version "$TAG_VERSION"
+
+    # Installed clients run the previous release, so its keys must verify too
+    # (key rotation safety, Plan E Decision 6). The first signed release has
+    # no previous keys and skips this. The variable is for one emergency only:
+    # a lost key (CONTRIBUTING.md, "Release signing").
+    - name: Verify the manifest with the previous release's keys
+      if: vars.SAKADESK_ALLOW_KEY_RESET != 'yes'
+      run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*.*.*' "${GITHUB_SHA}^" 2>/dev/null || true)"
+        if [ -z "$PREV_TAG" ] || ! git cat-file -e "${PREV_TAG}:backend/services/release_keys.py" 2>/dev/null; then
+          echo "::notice::the previous release trusts no signing key (first signed release)"
+          exit 0
+        fi
+        git show "${PREV_TAG}:backend/services/release_keys.py" > "$RUNNER_TEMP/previous_release_keys.py"
+        uv run --no-project --with "cryptography==46.0.3" python -m backend.services.release_signing \
+          --manifest "SakaDesk-${TAG_VERSION}-manifest.json" \
+          --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
+          --version "$TAG_VERSION" \
+          --keys-file "$RUNNER_TEMP/previous_release_keys.py"
+
+    - name: Upload the signed manifest
+      uses: actions/upload-artifact@v4
+      with:
+        name: SakaDesk-manifest
+        path: SakaDesk-*-manifest.json
+        if-no-files-found: error
+
+  release:
+    needs: [build, sign]
     if: startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
@@ -259,45 +351,61 @@ jobs:
 
     steps:
     - uses: actions/checkout@v4
+      with:
+        persist-credentials: false
 
     - name: Download Build Artifact
       uses: actions/download-artifact@v4
       with:
         pattern: SakaDesk-*-Setup
 
-    # XREPO-02 / XREPO-09: the in-app upgrader looks up the release asset by the
-    # exact name SakaDesk-<tag-without-v>-Setup.exe (upgrade_service.
-    # _installer_asset_name). Assert the built artifact carries that exact name
-    # before publishing, so a packaging rename (e.g. adding -x64) can never ship
-    # an unlisted asset that every client fails to download.
-    - name: Verify Installer Asset Name
+    - name: Download the signed manifest
+      uses: actions/download-artifact@v4
+      with:
+        name: SakaDesk-manifest
+
+    # XREPO-02 / XREPO-09: the in-app upgrader looks up the release assets by the
+    # exact names SakaDesk-<tag-without-v>-Setup.exe and -manifest.json
+    # (backend/services/release_signing.py). Assert both exist before publishing.
+    - name: Verify Release Asset Names
       run: |
         TAG_VERSION="${GITHUB_REF_NAME#v}"
-        EXPECTED="SakaDesk-${TAG_VERSION}-Setup.exe"
-        if [ ! -f "SakaDesk-${TAG_VERSION}-Setup/${EXPECTED}" ]; then
-          echo "Error: expected installer asset ${EXPECTED} not found. Contents:"
-          find SakaDesk-*-Setup -type f
-          exit 1
-        fi
-        echo "Installer asset verified: ${EXPECTED}"
+        for f in "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" "SakaDesk-${TAG_VERSION}-manifest.json"; do
+          if [ ! -f "$f" ]; then
+            echo "Error: expected release asset $f not found. Contents:"
+            find . -maxdepth 2 -name 'SakaDesk-*' -type f
+            exit 1
+          fi
+        done
+        echo "Release assets verified for ${TAG_VERSION}"
 
     - name: Generate SHA-256 Checksums
       run: |
-        cd SakaDesk-*-Setup
-        sha256sum *.exe > ../checksums-sha256.txt
-        cat ../checksums-sha256.txt
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        (cd "SakaDesk-${TAG_VERSION}-Setup" && sha256sum "SakaDesk-${TAG_VERSION}-Setup.exe") > checksums-sha256.txt
+        sha256sum "SakaDesk-${TAG_VERSION}-manifest.json" >> checksums-sha256.txt
+        cat checksums-sha256.txt
 
     - name: Attest Build Provenance
       uses: actions/attest-build-provenance@v2
       with:
-        subject-path: SakaDesk-*-Setup/*.exe
+        subject-path: |
+          SakaDesk-*-Setup/*.exe
+          SakaDesk-*-manifest.json
 
+    # Draft first, publish once every asset is attached: required when the
+    # repository has immutable releases on (assets lock at publication).
     - name: Create GitHub Release
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
         gh release create "$GITHUB_REF_NAME" \
-          SakaDesk-*-Setup/*.exe \
+          "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
+          "SakaDesk-${TAG_VERSION}-manifest.json" \
           checksums-sha256.txt \
-          --title "SakaDesk $(echo $GITHUB_REF_NAME | sed 's/^v//')" \
+          --draft \
+          --verify-tag \
+          --title "SakaDesk ${TAG_VERSION}" \
           --generate-notes
+        gh release edit "$GITHUB_REF_NAME" --draft=false --latest
