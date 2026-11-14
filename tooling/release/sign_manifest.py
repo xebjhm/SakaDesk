@@ -38,11 +38,17 @@ from backend.services import release_signing as rs  # noqa: E402
 
 KEY_ENV = "SAKADESK_RELEASE_SIGNING_KEY"
 NEXT_KEY_ENV = "SAKADESK_RELEASE_SIGNING_KEY_NEXT"
-# Split so the repository's detect-private-key hook does not flag this literal.
+# Split only so detect-private-key doesn't flag this constant; the hook still
+# scans this file and would catch a pasted real key.
 _PEM_HEADER = "-----BEGIN " + "PRIVATE KEY-----"
 # DER prefix of an Ed25519 SubjectPublicKeyInfo; the raw 32-byte key follows.
 _ED25519_SPKI_PREFIX = bytes.fromhex("302a300506032b6570032100")
 _OPENSSL_TIMEOUT_S = 30
+# Left out of OpenSSL's environment: the signing keys themselves, and the
+# variables that make OpenSSL load a config file or engine from elsewhere.
+_OPENSSL_ENV_DROPPED = frozenset(
+    {KEY_ENV, NEXT_KEY_ENV, "OPENSSL_CONF", "OPENSSL_ENGINES"}
+)
 
 
 class SignError(Exception):
@@ -58,6 +64,7 @@ def _openssl(args: Sequence[str]) -> bytes:
         done = subprocess.run(
             ["openssl", *args],
             capture_output=True,
+            env={k: v for k, v in os.environ.items() if k not in _OPENSSL_ENV_DROPPED},
             timeout=_OPENSSL_TIMEOUT_S,
             check=False,
         )

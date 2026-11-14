@@ -5,6 +5,7 @@ from __future__ import annotations
 import hashlib
 import importlib.util
 import json
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -33,10 +34,17 @@ def _openssl_has_ed25519() -> bool:
     return done.returncode == 0
 
 
+_HAS_ED25519 = _openssl_has_ed25519()
+# Locally the suite skips without OpenSSL 3; in CI it must run, so it fails instead.
 pytestmark = pytest.mark.skipif(
-    not _openssl_has_ed25519(),
+    not _HAS_ED25519 and not os.environ.get("CI"),
     reason="needs OpenSSL 3 with Ed25519 (CI and WSL have it)",
 )
+
+
+def test_openssl_with_ed25519_is_available_in_ci():
+    if os.environ.get("CI"):
+        assert _HAS_ED25519, "the release signer's tests need OpenSSL 3 with Ed25519"
 
 
 def _signer() -> ModuleType:
@@ -173,3 +181,65 @@ def test_output_never_contains_key_material(tmp_path, capsys):
     body = "".join(pem.strip().splitlines()[1:-1])
     assert "PRIVATE KEY" not in captured.out + captured.err
     assert body not in captured.out + captured.err
+
+
+def _garbage_pem() -> str:
+    return (
+        "-----BEGIN " + "PRIVATE KEY-----\nAAAAAAAA\n-----END " + "PRIVATE KEY-----\n"
+    )
+
+
+def test_the_key_file_is_removed_when_openssl_rejects_the_key(tmp_path):
+    signer = _signer()
+    with pytest.raises(signer.SignError) as raised:
+        signer.sign_with_pem(_garbage_pem(), b"hello", tmp_path)
+    assert raised.value.code == "openssl_failed"
+    assert not (tmp_path / "key.pem").exists()
+
+
+def test_the_key_file_is_removed_when_openssl_is_missing(tmp_path, monkeypatch):
+    empty = tmp_path / "empty-path"
+    empty.mkdir()
+    monkeypatch.setenv("PATH", str(empty))
+    work = tmp_path / "work"
+    work.mkdir()
+    signer = _signer()
+    with pytest.raises(signer.SignError) as raised:
+        signer.sign_with_pem(_pem(new_key()), b"hello", work)
+    assert raised.value.code == "openssl_unavailable"
+    assert not (work / "key.pem").exists()
+
+
+def test_openssl_runs_without_the_signing_keys_in_its_environment(
+    tmp_path, monkeypatch
+):
+    for name in (
+        "SAKADESK_RELEASE_SIGNING_KEY",
+        "SAKADESK_RELEASE_SIGNING_KEY_NEXT",
+        "OPENSSL_CONF",
+        "OPENSSL_ENGINES",
+    ):
+        monkeypatch.setenv(name, "value-" + name)
+    monkeypatch.setenv("SAKADESK_TEST_KEEP", "kept")
+    signer = _signer()
+    real_run = subprocess.run
+    envs = []
+
+    def spy(*args, **kwargs):
+        envs.append(kwargs.get("env"))
+        return real_run(*args, **kwargs)
+
+    monkeypatch.setattr(signer.subprocess, "run", spy)
+    signer.sign_with_pem(_pem(new_key()), b"hello", tmp_path)
+    assert len(envs) == 2
+    for env in envs:
+        assert env is not None
+        assert env["SAKADESK_TEST_KEEP"] == "kept"
+        assert "PATH" in env
+        for name in (
+            "SAKADESK_RELEASE_SIGNING_KEY",
+            "SAKADESK_RELEASE_SIGNING_KEY_NEXT",
+            "OPENSSL_CONF",
+            "OPENSSL_ENGINES",
+        ):
+            assert name not in env

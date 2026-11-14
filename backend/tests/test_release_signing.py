@@ -466,3 +466,29 @@ class TestCommand:
             == 1
         )
         assert capsys.readouterr().err == "ERROR: keys_file_invalid\n"
+
+    def test_a_huge_keys_file_is_refused(self, tmp_path):
+        keys_file = tmp_path / "k.py"
+        keys_file.write_text(
+            "TRUSTED_RELEASE_KEYS = {}\n# " + "x" * rs.MAX_KEYS_FILE_BYTES + "\n",
+            encoding="utf-8",
+        )
+        with pytest.raises(rs.ManifestRefused) as raised:
+            rs.load_trusted_keys(keys_file)
+        assert raised.value.reason == "keys_file_invalid"
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nTRUSTED_RELEASE_KEYS = {"c": "d"}\n',
+            'TRUSTED_RELEASE_KEYS = {"a": "b"}\nTRUSTED_RELEASE_KEYS |= {"c": "d"}\n',
+            'TRUSTED_RELEASE_KEYS: dict[str, str] = {}\nTRUSTED_RELEASE_KEYS = {"c": "d"}\n',
+            'OTHER = TRUSTED_RELEASE_KEYS = {"a": "b"}\n',
+        ],
+    )
+    def test_a_keys_file_that_reassigns_the_mapping_is_refused(self, tmp_path, source):
+        keys_file = tmp_path / "k.py"
+        keys_file.write_text(source, encoding="utf-8")
+        with pytest.raises(rs.ManifestRefused) as raised:
+            rs.load_trusted_keys(keys_file)
+        assert raised.value.reason == "keys_file_invalid"

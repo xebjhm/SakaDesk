@@ -61,6 +61,7 @@ MAX_ENVELOPE_BYTES = 64 * 1024
 MAX_SIGNATURES = 4
 MAX_INSTALLER_BYTES = 500 * 1024 * 1024
 MAX_VERSION_LENGTH = 32
+MAX_KEYS_FILE_BYTES = 64 * 1024
 # 1.2.3 plus up to three suffix parts: 0.3.3-hotfix1, 0.4.0rc1, 0.3.2.dev0.
 _VERSION = re.compile(
     r"\d{1,4}\.\d{1,4}\.\d{1,4}(?:[.-]?[0-9A-Za-z]{1,16}){0,3}", re.ASCII
@@ -313,36 +314,57 @@ def stream_digest(stream: BinaryIO) -> tuple[str, int]:
     return digest.hexdigest(), size
 
 
+def _binds_trusted_keys(node: ast.stmt) -> bool:
+    """True when a top-level statement assigns (or augments) ``TRUSTED_RELEASE_KEYS``."""
+    if isinstance(node, ast.Assign):
+        targets = node.targets
+    elif isinstance(node, (ast.AnnAssign, ast.AugAssign)):
+        targets = [node.target]
+    else:
+        return False
+    return any(
+        isinstance(t, ast.Name) and t.id == "TRUSTED_RELEASE_KEYS" for t in targets
+    )
+
+
 def load_trusted_keys(path: Path) -> dict[str, str]:
     """``TRUSTED_RELEASE_KEYS`` from a copy of ``release_keys.py``, read with ``ast``.
 
-    Used for an older release's file, so it is parsed, never executed. Only a
-    literal ``str`` to ``str`` mapping is accepted; whether each value is a
-    usable public key is checked later by :func:`verify_signatures`
-    (``keys_invalid``). Raises ManifestRefused(``keys_file_invalid``).
+    Used for an older release's file, so it is parsed, never executed. The
+    file must be at most ``MAX_KEYS_FILE_BYTES``, and the name must be bound
+    exactly once at the top level, by a plain or annotated assignment to a
+    literal ``str`` to ``str`` mapping (Python keeps the last binding, so a
+    second or augmented one could make the check use other keys than the
+    app). Whether each value is a usable public key is checked later by
+    :func:`verify_signatures` (``keys_invalid``). Raises
+    ManifestRefused(``keys_file_invalid``).
     """
     try:
-        tree = ast.parse(path.read_text(encoding="utf-8"))
+        with path.open("rb") as f:
+            raw = f.read(MAX_KEYS_FILE_BYTES + 1)
+        if len(raw) > MAX_KEYS_FILE_BYTES:
+            raise ManifestRefused("keys_file_invalid")
+        tree = ast.parse(raw.decode("utf-8"))
     except (OSError, SyntaxError, ValueError, RecursionError):
         raise ManifestRefused("keys_file_invalid") from None
-    for node in tree.body:
-        if isinstance(node, ast.Assign) and len(node.targets) == 1:
-            target, value = node.targets[0], node.value
-        elif isinstance(node, ast.AnnAssign) and node.value is not None:
-            target, value = node.target, node.value
-        else:
-            continue
-        if not (isinstance(target, ast.Name) and target.id == "TRUSTED_RELEASE_KEYS"):
-            continue
-        try:
-            keys = ast.literal_eval(value)
-        except (ValueError, TypeError, SyntaxError, RecursionError):
-            raise ManifestRefused("keys_file_invalid") from None
-        if isinstance(keys, dict) and all(
-            isinstance(k, str) and isinstance(v, str) for k, v in keys.items()
-        ):
-            return keys
+    bindings = [node for node in tree.body if _binds_trusted_keys(node)]
+    if len(bindings) != 1:
         raise ManifestRefused("keys_file_invalid")
+    node = bindings[0]
+    if isinstance(node, ast.Assign) and len(node.targets) == 1:
+        value = node.value
+    elif isinstance(node, ast.AnnAssign) and node.value is not None:
+        value = node.value
+    else:
+        raise ManifestRefused("keys_file_invalid")
+    try:
+        keys = ast.literal_eval(value)
+    except (ValueError, TypeError, SyntaxError, RecursionError):
+        raise ManifestRefused("keys_file_invalid") from None
+    if isinstance(keys, dict) and all(
+        isinstance(k, str) and isinstance(v, str) for k, v in keys.items()
+    ):
+        return keys
     raise ManifestRefused("keys_file_invalid")
 
 
