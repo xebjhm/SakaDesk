@@ -138,9 +138,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   longer read your archive, change settings or remove your sign-in through it,
   and their refused attempts no longer crowd out the log that bug reports
   include.
-- **Installers no longer include a leftover sample of real messages.** A file
-  with copies of a member's paid messages had been bundled with every version
-  since the first release; it has been removed.
+- **Installers no longer include leftover development sample data.** A sample
+  file that earlier versions bundled by mistake has been removed.
 - **Blog posts and saved files can no longer take over SakaDesk.** A file
   saved from a blog post now only ever opens as a picture, video, voice clip
   or plain download, and blog images fetched for saving or copying must be
