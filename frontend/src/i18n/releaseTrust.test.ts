@@ -5,11 +5,13 @@ import zhCN from './locales/zh-CN.json';
 import zhTW from './locales/zh-TW.json';
 import yue from './locales/yue.json';
 
-const locales = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue } as const;
+// Each locale must carry update.notVerified; the annotation checks that at compile time.
+type WithNotVerified = { update: { notVerified: string } };
+const locales: Record<string, WithNotVerified> = { en, ja, 'zh-CN': zhCN, 'zh-TW': zhTW, yue };
 
 describe('unverified update message (security Plan E)', () => {
     it.each(Object.entries(locales))('%s explains that the update was not installed', (_code, locale) => {
-        const text = (locale as unknown as { update: Record<string, string> }).update.notVerified;
+        const text = locale.update.notVerified;
         expect(text.trim()).not.toBe('');
     });
 

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import i18n from '../../i18n';
 import { UpdateActions } from './UpdateActions';
 import { useUpgradeStore, resetUpgradeStoreForTests, type VersionInfo } from './upgradeStore';
@@ -27,7 +27,7 @@ describe('UpdateActions (Settings → Updates)', () => {
             return json({});
         }));
     });
-    afterEach(() => { vi.unstubAllGlobals(); resetUpgradeStoreForTests(); });
+    afterEach(() => { cleanup(); vi.unstubAllGlobals(); resetUpgradeStoreForTests(); });
 
     it('renders nothing when up to date', () => {
         useUpgradeStore.setState({ versionInfo: { ...INFO, update_available: false } });
@@ -55,8 +55,10 @@ describe('UpdateActions (Settings → Updates)', () => {
         expect(screen.getByText(/closes and reopens/)).toBeInTheDocument();
         vi.useFakeTimers({ toFake: ['setTimeout'] });
         const close = vi.spyOn(window, 'close').mockImplementation(() => {});
-        fireEvent.click(screen.getByRole('button', { name: 'Install Now' }));
-        await vi.waitFor(() => expect(calls).toContain('POST /api/version/upgrade/install'));
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Install Now' }));
+            await vi.waitFor(() => expect(calls).toContain('POST /api/version/upgrade/install'));
+        });
         vi.useRealTimers();
         close.mockRestore();
     });

@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { render, screen, fireEvent, waitFor, act } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, act, cleanup } from '@testing-library/react';
 import { UpgradeIcon } from './UpgradeIcon';
 import { resetUpgradeStoreForTests, useUpgradeStore } from '../upgrade/upgradeStore';
 import i18n from '../../i18n';
@@ -34,7 +34,7 @@ describe('UpgradeIcon while downloading', () => {
         resetUpgradeStoreForTests();
         vi.stubGlobal('fetch', mockBackend(calls));
     });
-    afterEach(() => { vi.unstubAllGlobals(); resetUpgradeStoreForTests(); });
+    afterEach(() => { cleanup(); vi.unstubAllGlobals(); resetUpgradeStoreForTests(); });
 
     const starts = () => calls.filter((c) => c.url === '/api/version/upgrade/start').length;
     const cancels = () => calls.filter((c) => c.url === '/api/version/upgrade/cancel').length;
@@ -82,7 +82,7 @@ describe('UpgradeIcon error tooltip (security Plan E)', () => {
         resetUpgradeStoreForTests();
         vi.stubGlobal('fetch', mockBackend([]));
     });
-    afterEach(() => { vi.unstubAllGlobals(); resetUpgradeStoreForTests(); });
+    afterEach(() => { cleanup(); vi.unstubAllGlobals(); resetUpgradeStoreForTests(); });
 
     it('uses the translated message for an unverified update', async () => {
         await i18n.changeLanguage('en');
@@ -90,6 +90,8 @@ describe('UpgradeIcon error tooltip (security Plan E)', () => {
             status: { state: 'error', progress: 0, error: 'The update could not be verified', error_code: 'not_verified', version: '0.4.1' },
         });
         render(<UpgradeIcon />);
+        // Let the icon's own mount-time fetches settle inside act.
+        await act(async () => { await new Promise((r) => setTimeout(r, 20)); });
         expect(screen.getByTitle('This update could not be verified, so it was not installed. Try again later.')).toBeInTheDocument();
     });
 });
