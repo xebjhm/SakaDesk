@@ -470,8 +470,9 @@ hashes the installer again right before starting it. Format and checks:
 `v*.*.*` tags may use, plus one offline backup kept by the maintainer. It is
 never committed, pasted into an issue or a chat, or printed by any script.
 
-**What CI does on a tag.** `build` runs the tests, builds the installer and
-reports its SHA-256 as a job output.
+**What CI does on a tag.** The lint and test jobs that `build` needs run the
+tests; `build` then builds the installer and reports its SHA-256 as a job
+output.
 
 - `sign` (environment `release`, read-only token) checks that the tag commit is
   on `main`, checks the downloaded installer matches the hash `build`
@@ -508,7 +509,7 @@ The checker prints `manifest OK: ...` and exits 0, or prints `ERROR: <code>`
 and exits 1. Add `--keys-file <release_keys.py>` to check against another
 version's trusted keys.
 
-**First-time setup (done once).**
+**First-time setup (done once, before the first 0.5.0 tag).**
 `uv run python scripts/generate_release_key.py --out ~/sakadesk-release-key.pem`,
 add the printed line to `TRUSTED_RELEASE_KEYS`, create the `release`
 environment (tag policy `v*.*.*`), then
@@ -528,18 +529,33 @@ still install it by hand.
    `SAKADESK_RELEASE_SIGNING_KEY_NEXT` in the `release` environment.
 2. Release as usual for a few versions (a few months): every manifest is signed
    by both keys, and installed apps learn the new public key.
-3. Make the new key current: `gh secret set SAKADESK_RELEASE_SIGNING_KEY --env release --repo xebjhm/SakaDesk < new-key.pem`,
+3. Make the new key current, in one release: before tagging it, run
+   `gh secret set SAKADESK_RELEASE_SIGNING_KEY --env release --repo xebjhm/SakaDesk < new-key.pem` and
    `gh secret delete SAKADESK_RELEASE_SIGNING_KEY_NEXT --env release --repo xebjhm/SakaDesk`,
-   and remove the old line from `TRUSTED_RELEASE_KEYS` in the next release.
-   `verify-manifest` refuses to let a release through when the previous release
-   could not verify the new manifest, so a step taken too early fails the
-   release instead of stranding users. People who skipped every release since
-   step 1 must install by hand.
+   and in that same release remove the old line from `TRUSTED_RELEASE_KEYS`.
+   That release's manifest is signed by the new key only; `verify-manifest`
+   accepts it because the previous release (from step 1 or 2) already trusts
+   the new key. The check refuses a release the previous release could not
+   verify, so a step taken too early fails the release instead of stranding
+   users. People who skipped every release since step 1 must install by hand.
 
-**If the key leaks.** Generate a new key and ship a release that is signed by
-both keys (step 1) but trusts only the new one (drop the leaked line in the
-same release); then delete the leaked secret. Apps older than that release
-still trust the leaked key until they update: say so in the release notes.
+**If the key leaks.**
+
+1. Generate a new key with the script and store it as
+   `SAKADESK_RELEASE_SIGNING_KEY_NEXT`. Leave the leaked key as
+   `SAKADESK_RELEASE_SIGNING_KEY` for now.
+2. Make `TRUSTED_RELEASE_KEYS` hold only the new key (drop the leaked line)
+   and tag a recovery release. It is signed by the leaked key (as current) and
+   the new key (as `_NEXT`): the previous release still trusts only the leaked
+   key, so the previous-release check passes, while the app in this release
+   trusts only the new key.
+3. Once that release is published, do rotation step 3's two commands: set the
+   new key as `SAKADESK_RELEASE_SIGNING_KEY` and delete
+   `SAKADESK_RELEASE_SIGNING_KEY_NEXT`. Later releases are signed by the new
+   key only.
+
+Apps older than the recovery release still trust the leaked key until they
+update: say so in the release notes.
 
 **If the key is lost (no backup).** Installed apps can never verify another
 update. Set up a new key (first-time setup), trust and sign with it only, and
