@@ -267,7 +267,11 @@ def test_release_waits_for_verification_and_publishes_a_complete_draft():
     (attest,) = [
         s for s in _steps("release") if s.get("name") == "Attest Build Provenance"
     ]
-    assert "SakaDesk-*-manifest.json" in attest["with"]["subject-path"]
+    version = "${{ needs.build.outputs.version }}"
+    assert attest["with"]["subject-path"].splitlines() == [
+        f"SakaDesk-{version}-Setup/SakaDesk-{version}-Setup.exe",
+        f"SakaDesk-{version}-manifest.json",
+    ]
 
 
 def test_no_run_block_expands_github_expressions():
@@ -443,3 +447,47 @@ def test_the_new_hash_steps_fail_on_a_broken_pipe_stage():
         ),
     ):
         assert "set -euo pipefail" in _named_step(job, name)["run"], name
+
+
+def test_build_exposes_the_version_for_exact_names():
+    assert (
+        _workflow()["jobs"]["build"]["outputs"]["version"]
+        == "${{ steps.version.outputs.VERSION }}"
+    )
+
+
+def test_artifacts_and_attestations_are_named_exactly():
+    """OD-5: exact names, no `pattern:` and no glob in any `with:`."""
+    version = "${{ needs.build.outputs.version }}"
+    for job in ("sign", "verify-manifest", "release"):
+        for step in _steps(job):
+            with_ = step.get("with", {})
+            assert "pattern" not in with_, (job, step.get("name"))
+            for key, value in with_.items():
+                assert "*" not in str(value), (job, step.get("name"), key)
+            if "download-artifact" in step.get("uses", ""):
+                assert with_["name"] in (
+                    f"SakaDesk-{version}-Setup",
+                    "SakaDesk-manifest",
+                )
+                if with_["name"] != "SakaDesk-manifest":
+                    assert with_["path"] == f"SakaDesk-{version}-Setup"
+
+
+def test_verify_manifest_checks_hashes_before_the_first_verifier_call():
+    names = _names("verify-manifest")
+    check = "Check the files match the hashes the build and sign jobs produced"
+    assert check in names
+    first_verifier = min(
+        i
+        for i, step in enumerate(_steps("verify-manifest"))
+        if "backend.services.release_signing" in step.get("run", "")
+    )
+    assert names.index(check) < first_verifier
+    step = _named_step("verify-manifest", check)
+    assert "set -euo pipefail" in step["run"]
+    assert "::error::" in step["run"]
+    assert set(step["env"]) == {
+        "EXPECTED_INSTALLER_SHA256",
+        "EXPECTED_MANIFEST_SHA256",
+    }
