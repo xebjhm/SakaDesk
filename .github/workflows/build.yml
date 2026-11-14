@@ -80,6 +80,10 @@ jobs:
     - name: Install Dependencies
       run: uv sync --no-sources
 
+    # Hardening #3: the synced environment must be the one uv.lock describes.
+    - name: Check the environment matches uv.lock
+      run: uv run --no-sources python tooling/ci/check_locked_versions.py
+
     - name: Run Tests with Coverage
       run: |
         uv run --no-sources pytest -v --tb=short \
@@ -212,6 +216,10 @@ jobs:
 
     - name: Install Dependencies
       run: uv sync --no-sources
+
+    # Hardening #3: before the build tools below, which uv.lock does not contain.
+    - name: Check the environment matches uv.lock
+      run: uv run --no-sources python tooling/ci/check_locked_versions.py
 
     # Pinned for reproducible builds; not in pyproject.toml (build-only tools)
     - name: Install Build Tools
