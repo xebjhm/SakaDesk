@@ -37,7 +37,7 @@ function setRatio(value: number) {
     Object.defineProperty(window, 'devicePixelRatio', { configurable: true, writable: true, value });
 }
 
-const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };
+const props = { appSettings: null, syncVersion: 0 };
 
 describe('MessagesFeature avatar sizes', () => {
     const original = window.devicePixelRatio;

@@ -1,8 +1,9 @@
 import { useEffect, type RefObject } from 'react';
+import { isCjkLanguage } from '../../../design/fonts';
 
 /** Classes of an injected translation line (design tokens; Tailwind sees them in this file). */
 export const TRANSLATION_LINE_CLASS =
-    'blog-translation-inline inline-block border-l-2 border-strong pl-3 text-body italic text-secondary';
+    'blog-translation-inline inline-block border-l-2 border-strong pl-3 text-body text-secondary';
 
 /**
  * Inject blog translations into the rendered post DOM — immersive style.
@@ -14,11 +15,13 @@ export const TRANSLATION_LINE_CLASS =
  * @param containerRef Element holding the sanitized post HTML.
  * @param translations One translation per text segment, in order.
  * @param enabled Whether translations are currently shown (expanded).
+ * @param targetLanguage The translations' language: set as `lang` on each line, italic only when not CJK.
  */
 export function useInlineBlogTranslations(
     containerRef: RefObject<HTMLElement | null>,
     translations: string[],
     enabled: boolean,
+    targetLanguage: string,
 ): void {
     useEffect(() => {
         const container = containerRef.current;
@@ -42,6 +45,8 @@ export function useInlineBlogTranslations(
             br.className = 'blog-translation-inline';
             const span = document.createElement('span');
             span.className = TRANSLATION_LINE_CLASS;
+            span.lang = targetLanguage;
+            if (!isCjkLanguage(targetLanguage)) span.classList.add('italic');
             span.textContent = text;
             const ref = afterNode.nextSibling;
             root.insertBefore(br, ref);
@@ -85,5 +90,5 @@ export function useInlineBlogTranslations(
         return () => {
             container.querySelectorAll('.blog-translation-inline').forEach(el => el.remove());
         };
-    }, [containerRef, translations, enabled]);
+    }, [containerRef, translations, enabled, targetLanguage]);
 }

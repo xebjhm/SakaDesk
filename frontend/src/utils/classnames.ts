@@ -1,32 +1,40 @@
 import { type ClassValue, clsx } from "clsx"
 import { extendTailwindMerge } from "tailwind-merge"
 
-// Teach tailwind-merge the design-system classes (tailwind.config.js) so a token
-// text size and a token text colour are not treated as conflicting `text-*` classes,
-// and the group gradient (a background-image) is not treated as a `bg-` colour.
-// `mask-image` is a design-system group tailwind-merge does not know (the `mask-fade-y` utility).
-const twMerge = extendTailwindMerge<'mask-image'>({
-    extend: {
-        classGroups: {
-            'font-size': [{ text: ['caption', 'small', 'body', 'title', 'heading', 'display', 'reading', 'tile-date', 'tile-date-lg', 'tile-title', 'tile-title-lg', 'tile-name', 'tile-name-lg', 'segment'] }],
-            'font-family': [{ font: ['sans', 'display', 'reading'] }],
-            'text-color': [{ text: ['primary', 'secondary', 'muted', 'inverse', 'accent', 'accent-strong', 'accent-tonal', 'expressive-header', 'group-title', 'group-strong', 'status-danger', 'status-success', 'status-warning', 'semantic-success', 'semantic-warning', 'semantic-danger', 'semantic-info', 'viewer', 'viewer-muted', 'console', 'console-muted', 'console-prompt', 'console-error', 'console-warning', 'console-badge', 'calendar-holiday', 'calendar-saturday', 'heart', 'semantic-oshi', 'semantic-oshi-solid', 'semantic-star', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text'] }],
-            'bg-color': [{ bg: ['skeleton', 'accent', 'accent-strong', 'accent-subtle', 'accent-border', 'accent-logo', 'status-attention', 'semantic-success-subtle', 'semantic-warning-subtle', 'semantic-danger-subtle', 'semantic-info-subtle', 'semantic-success-icon', 'semantic-warning-icon', 'semantic-danger-icon', 'semantic-info-icon', 'semantic-oshi-subtle', 'semantic-oshi-solid', 'console', 'console-badge', 'header-glass', 'header-shade', 'frost', 'group-title-tint', 'group-title-wash', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text', 'tile-glass', 'segment-track'] }],
-            'bg-image': [{ bg: ['accent-gradient', 'accent-wash', 'accent-tonal', 'expressive-soft', 'expressive-header', 'expressive-header-bar', 'expressive-progress', 'expressive-orb-1', 'expressive-orb-2', 'expressive-orb-3', 'aurora', 'group-canvas', 'group-title', 'group-title-bar', 'group-ambient-1', 'group-ambient-2', 'group-ambient-3', 'member-wash', 'accent-aura', 'accent-tile', 'tile-vignette', 'accent-lens'] }],
-            'border-color': [{ border: ['accent', 'accent-strong', 'accent-border', 'accent-wash', 'frost', 'semantic-success', 'semantic-warning', 'semantic-danger', 'semantic-info', 'semantic-oshi', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text', 'tile-glass'] }],
-            'ring-color': [{ ring: ['accent', 'expressive-header', 'expressive-header-focus', 'accent-border', 'accent-logo', 'accent-subtle', 'semantic-oshi'] }],
-            fill: [{ fill: ['semantic-oshi'] }],
-            rounded: [{ rounded: ['tail', 'card', 'sheet', 'pill'] }],
-            'rounded-tl': [{ 'rounded-tl': ['tail'] }],
-            shadow: [{ shadow: ['accent-glow', 'accent-beacon', 'accent-glow-hover', 'accent-halo', 'accent-unread', 'pill', 'card', 'sheet', 'group-glow', 'tile', 'tile-hover', 'caption', 'caption-hover', 'segment'] }],
-            duration: [{ duration: ['fast', 'base', 'glide', 'lift', 'zoom', 'lens'] }],
-            animate: [{ animate: ['landing', 'reveal', 'orb-drift-1', 'orb-drift-2', 'orb-breathe', 'heart-float', 'heartbeat', 'shimmer', 'shimmer-sweep', 'pop', 'confetti', 'sparkle', 'toast-in'] }],
-            ease: [{ ease: ['standard', 'spring'] }],
-            'mask-image': [{ mask: ['fade-y'] }],
-            transition: [{ transition: ['caption'] }],
-        },
-    },
-})
+// Teach tailwind-merge every design-system utility declared in tailwind.config.js
+// (DESIGN_SYSTEM "Adding or changing a token", step 2). Without this a token name is
+// treated as a built-in one: a token text size and a token text colour would both be
+// `text-*` colours and drop each other, and a group gradient (a background-image)
+// would be a `bg-` colour. `classnames.registry.test.ts` checks this list against the config.
+// `extend` keeps every built-in group merging; `mask-image` is a design-system group
+// tailwind-merge does not know (the `mask-fade-y` utility).
+// `phrase-break` is deliberately NOT registered: it must coexist with `break-words` / `break-all`.
+export const TW_MERGE_CLASS_GROUPS = {
+    'font-size': [{ text: ['caption', 'small', 'body', 'title', 'heading', 'display', 'reading', 'tile-date', 'tile-date-lg', 'tile-title', 'tile-title-lg', 'tile-name', 'tile-name-lg', 'segment'] }],
+    'font-family': [{ font: ['sans', 'display', 'reading'] }],
+    'text-color': [{ text: ['memories-night-ink', 'accent', 'accent-strong', 'accent-tonal', 'expressive-header', 'primary', 'secondary', 'muted', 'inverse', 'group-title', 'group-strong', 'status-danger', 'status-success', 'status-warning', 'semantic-success', 'semantic-warning', 'semantic-danger', 'semantic-info', 'semantic-oshi', 'semantic-oshi-solid', 'semantic-star', 'viewer', 'viewer-muted', 'console', 'console-muted', 'console-prompt', 'console-error', 'console-warning', 'console-badge', 'calendar-holiday', 'calendar-saturday', 'heart', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text'] }],
+    'bg-color': [{ bg: ['accent', 'accent-strong', 'accent-subtle', 'accent-border', 'accent-logo', 'sheet', 'card', 'pill', 'elevated', 'sunken', 'window', 'scrim', 'group-accent', 'group-badge', 'group-subtle', 'mark-exact', 'mark-reading', 'toast', 'status-danger', 'status-success', 'status-attention', 'semantic-success-subtle', 'semantic-warning-subtle', 'semantic-danger-subtle', 'semantic-info-subtle', 'semantic-success-icon', 'semantic-warning-icon', 'semantic-danger-icon', 'semantic-info-icon', 'semantic-oshi-subtle', 'semantic-oshi-solid', 'viewer-scrim', 'viewer-stage', 'viewer-control', 'viewer-control-hover', 'console', 'console-badge', 'control-off', 'skeleton', 'skeleton-veil', 'group-marker', 'header-glass', 'header-shade', 'frost', 'group-title-tint', 'group-title-wash', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text', 'tile-glass', 'segment-track', 'memories-paper', 'memories-washi', 'memories-rarity-n', 'memories-rarity-r', 'memories-onair', 'memories-note'] }],
+    'bg-image': [{ bg: ['accent-gradient', 'accent-wash', 'accent-tonal', 'expressive-soft', 'expressive-header', 'expressive-header-bar', 'expressive-progress', 'expressive-orb-1', 'expressive-orb-2', 'expressive-orb-3', 'aurora', 'accent-aura', 'accent-tile', 'tile-vignette', 'memories-cork', 'memories-foil', 'memories-ruled', 'memories-rarity-sr', 'memories-night', 'memories-sky', 'accent-lens', 'group-canvas', 'group-title', 'group-title-bar', 'group-ambient-1', 'group-ambient-2', 'group-ambient-3', 'member-wash'] }],
+    'border-color': [{ border: ['accent-border', 'accent-wash', 'accent', 'accent-strong', 'frost', 'subtle', 'strong', 'mark-underline', 'semantic-success', 'semantic-warning', 'semantic-danger', 'semantic-info', 'semantic-oshi', 'group-bubble', 'group-subtle', 'surface', 'tile-glass', 'memories-paper', 'memories-silhouette', 'group-shelter-picture', 'group-shelter-video', 'group-shelter-voice', 'group-shelter-text'] }],
+    'ring-color': [{ ring: ['accent', 'expressive-header', 'expressive-header-focus', 'accent-border', 'accent-logo', 'accent-subtle', 'semantic-oshi', 'group', 'group-logo', 'surface', 'strong'] }],
+    fill: [{ fill: ['semantic-oshi'] }],
+    rounded: [{ rounded: ['tail', 'card', 'sheet', 'pill'] }],
+    shadow: [{ shadow: ['accent-glow', 'accent-halo', 'accent-glow-hover', 'accent-unread', 'accent-beacon', 'pill', 'card', 'sheet', 'group-glow', 'tile', 'tile-hover', 'caption', 'caption-hover', 'segment', 'memories-polaroid'] }],
+    duration: [{ duration: ['fast', 'base', 'glide', 'lift', 'zoom', 'lens'] }],
+    animate: [{ animate: ['landing', 'reveal', 'toast-in', 'orb-drift-1', 'orb-drift-2', 'orb-breathe', 'heart-float', 'heartbeat', 'star-fall', 'fan-in', 'petal-fall', 'shimmer', 'shimmer-sweep', 'progress-indeterminate', 'pop', 'confetti', 'sparkle'] }],
+    ease: [{ ease: ['standard', 'spring'] }],
+    sepia: [{ sepia: ['memories-1', 'memories-2', 'memories-3'] }],
+    'max-h': [{ 'max-h': ['small-3'] }],
+    blur: [{ blur: ['placeholder'] }],
+    'backdrop-blur': [{ 'backdrop-blur': ['frost'] }],
+    'rounded-tl': [{ 'rounded-tl': ['tail'] }],
+    'mask-image': [{ mask: ['fade-y'] }],
+    transition: [{ transition: ['caption'] }],
+    'justify-content': [{ justify: ['safe-center'] }],
+    'align-items': [{ items: ['safe-center'] }],
+}
+
+const twMerge = extendTailwindMerge<'mask-image'>({ extend: { classGroups: TW_MERGE_CLASS_GROUPS } })
 
 export function cn(...inputs: ClassValue[]) {
     return twMerge(clsx(inputs))

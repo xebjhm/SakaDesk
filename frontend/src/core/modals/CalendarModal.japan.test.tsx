@@ -65,17 +65,25 @@ describe('CalendarModal, Japanese style', () => {
         }
     });
 
+    it('names every day through the shared formatter, not one toLocaleDateString per cell', () => {
+        const slow = vi.spyOn(Date.prototype, 'toLocaleDateString');
+        open();
+        expect(day(4)).toHaveAccessibleName('Wednesday, November 4, 2026');
+        expect(slow).not.toHaveBeenCalled();
+        slow.mockRestore();
+    });
+
     it('names the holiday in Japanese in the tooltip and the accessible name', () => {
         open([{ date: '2026-11-23', count: 4 }]);
         const culture = day(3);
-        expect(culture).toHaveAccessibleName('3, 文化の日');
+        expect(culture).toHaveAccessibleName('Tuesday, November 3, 2026, 文化の日');
         const tip = within(culture).getByRole('tooltip', { hidden: true });
         expect(tip).toHaveAttribute('aria-hidden', 'true');
         expect(within(tip).getByText('文化の日')).toHaveAttribute('lang', 'ja');
         expect(within(culture).getByText('文化の日', { selector: '.sr-only [lang="ja"]' })).toBeInTheDocument();
         // A holiday with messages lists both lines; the count is the accessible description.
         const labour = day(23);
-        expect(labour).toHaveAccessibleName('23, 勤労感謝の日');
+        expect(labour).toHaveAccessibleName('Monday, November 23, 2026, 勤労感謝の日');
         expect(labour).toHaveAccessibleDescription('4 items');
         expect(within(labour).getByRole('tooltip', { hidden: true })).toHaveTextContent('勤労感謝の日4 items');
         // The tooltip shows on hover and keyboard focus, in the app's dark tooltip style.
@@ -238,7 +246,7 @@ describe('CalendarModal, Japanese style', () => {
             await i18n.changeLanguage('ja');
             try {
                 open(dates);
-                await user.click(screen.getByRole('button', { name: /2026年11月/ }));
+                await user.click(screen.getByRole('button', { expanded: false, name: /2026年11月/ }));
                 expect(within(screen.getByRole('group', { name: '年' })).getByRole('button', { name: '2024年' })).toBeInTheDocument();
                 expect(within(screen.getByRole('group', { name: '月' })).getAllByRole('button')[0]).toHaveTextContent('1月');
             } finally {

@@ -22,7 +22,7 @@ const base: AppSettings = {
 
 function renderModal() {
     render(
-        <SettingsModal appSettings={base} outputDirInput="/out" setOutputDirInput={() => {}}
+        <SettingsModal appSettings={base} outputDirInput="/out" onSelectFolder={() => {}}
             onSaveSettings={vi.fn().mockResolvedValue(true)} onClose={() => {}} activeService="hinatazaka46"
             onVerifyAndFix={() => {}} onDeepResync={() => {}} />,
     );

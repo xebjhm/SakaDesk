@@ -36,7 +36,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
         Test User
       </span>
       <time
-        class="text-caption text-muted"
+        class="text-caption tabular-nums text-muted"
         datetime="2024-01-15T10:30:00Z"
       >
         10:30
@@ -46,22 +46,29 @@ exports[`MessageBubble component > Snapshots > should match snapshot for picture
       class="relative"
     >
       <div
-        class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
+        class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
       >
         <div
           class="relative rounded-sm overflow-hidden mb-2 flex items-center justify-center bg-sunken animate-pulse motion-reduce:animate-none"
           data-testid="bubble-media-box"
           style="width: 320px; height: 240px;"
         >
-          <img
-            alt="Attachment"
-            class="w-full h-full object-contain transition-opacity duration-base ease-standard motion-reduce:transition-none opacity-0 cursor-pointer"
-            loading="eager"
-            src="/api/content/media/%E6%97%A5%E5%90%91%E5%9D%8246/path/to/photo.jpg"
-          />
+          <button
+            aria-label="Open photo"
+            class="block h-full w-full cursor-pointer rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent"
+            type="button"
+          >
+            <img
+              alt="Attachment"
+              class="w-full h-full object-contain transition-opacity duration-base ease-standard motion-reduce:transition-none opacity-0"
+              decoding="async"
+              loading="eager"
+              src="/api/content/media/%E6%97%A5%E5%90%91%E5%9D%8246/path/to/photo.jpg"
+            />
+          </button>
         </div>
         <div
-          class="whitespace-pre-wrap text-body text-primary"
+          class="whitespace-pre-wrap break-words text-body text-primary"
           lang="ja"
         >
           <span>
@@ -110,7 +117,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
         Test User
       </span>
       <time
-        class="text-caption text-muted"
+        class="text-caption tabular-nums text-muted"
         datetime="2024-01-15T10:30:00Z"
       >
         10:30
@@ -120,10 +127,10 @@ exports[`MessageBubble component > Snapshots > should match snapshot for text me
       class="relative"
     >
       <div
-        class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
+        class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3"
       >
         <div
-          class="whitespace-pre-wrap text-body text-primary"
+          class="whitespace-pre-wrap break-words text-body text-primary"
           lang="ja"
         >
           <span>
@@ -172,7 +179,7 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
         Test User
       </span>
       <time
-        class="text-caption text-muted"
+        class="text-caption tabular-nums text-muted"
         datetime="2024-01-15T10:30:00Z"
       >
         10:30
@@ -181,11 +188,14 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
     <div
       class="relative"
     >
-      <div
-        class="absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors rounded-card rounded-tl-tail bg-group-shelter-text text-inverse"
+      <button
+        aria-label="Show unread message"
+        class="absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface rounded-card rounded-tl-tail bg-group-shelter-text text-inverse"
         data-testid="unread-shelter"
+        type="button"
       >
         <svg
+          aria-hidden="true"
           class="h-8 w-8"
           fill="none"
           height="24"
@@ -201,12 +211,13 @@ exports[`MessageBubble component > Snapshots > should match snapshot for unread 
             d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"
           />
         </svg>
-      </div>
+      </button>
       <div
-        class="border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3 pointer-events-none opacity-0"
+        class="focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard rounded-card rounded-tl-tail overflow-hidden p-3 pointer-events-none opacity-0"
+        inert=""
       >
         <div
-          class="whitespace-pre-wrap text-body text-primary"
+          class="whitespace-pre-wrap break-words text-body text-primary"
           lang="ja"
         >
           <span>

@@ -8,7 +8,7 @@ import time
 import unicodedata
 from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor
 from datetime import datetime, timezone
-from html import unescape
+from html import escape as _html_escape, unescape
 from pathlib import Path
 from typing import Any, Dict, Iterable, List, Optional, Tuple
 
@@ -17,6 +17,11 @@ import structlog
 
 from backend.services.platform import get_app_data_dir
 from backend.services.path_resolver import get_output_dir
+from backend.services.safe_paths import (
+    blog_date,
+    blog_folder_or_none,
+    member_folder_or_none,
+)
 from backend.services.service_utils import (
     get_service_display_name,
     get_service_identifier,
@@ -40,11 +45,36 @@ def _configure_connection(conn: sqlite3.Connection) -> None:
     conn.execute("PRAGMA recursive_triggers=ON")
 
 
+_TAG_RE = re.compile(r"<[^<>]+>")
+"""A tag. ``[^<>]`` cannot run past the next ``<``, so a run of unclosed ``<``
+costs linear time (the old ``<[^>]+>`` was quadratic; security audit 2026-11-13)."""
+
+MAX_INDEX_HTML_CHARS = 2 * 1024 * 1024
+"""Characters of one blog's HTML that are indexed (about 25 times the longest real post).
+
+Silent: this runs in the search build process, which has no logger."""
+
+
 def _strip_html(html: str) -> str:
-    """Strip HTML tags, decode entities, collapse whitespace."""
-    text = re.sub(r"<[^>]+>", " ", html)
+    """Strip HTML tags, decode entities, collapse whitespace (linear, capped input)."""
+    text = _TAG_RE.sub(" ", html[:MAX_INDEX_HTML_CHARS])
     text = unescape(text)
     return re.sub(r"\s+", " ", text).strip()
+
+
+def _fts_phrase(text: str) -> str:
+    """``text`` as one FTS5 string: a ``"`` inside is doubled, so it can never close
+    the string or add an operator (report-hardening #48, audit 2026-11-13)."""
+    return '"' + text.replace('"', '""') + '"'
+
+
+def _like_contains(text: str) -> str:
+    """A LIKE pattern matching ``text`` anywhere, with ``\\``, ``%`` and ``_`` literal.
+
+    Use it with ``LIKE ? ESCAPE '\\'`` (report-hardening #49, audit 2026-11-13).
+    """
+    escaped = text.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+    return f"%{escaped}%"
 
 
 _ALIASES_PATH = Path(__file__).parent.parent / "data" / "search_aliases.json"
@@ -208,11 +238,20 @@ def _normalize_with_readings_standalone(kakasi_inst: Any, text: str) -> str:
 
 
 def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
+    """:func:`_build_full_index_process_stats` returning only the message count."""
+    return _build_full_index_process_stats(db_path_str, output_dir_str)[0]
+
+
+def _build_full_index_process_stats(
+    db_path_str: str, output_dir_str: str
+) -> tuple[int, int]:
     """Full message + blog index build. Runs in a **separate process** so
     pykakasi CPU work cannot hold the main process's GIL.
 
     Opens its own SQLite connection (WAL mode) and pykakasi instance.
-    Returns the number of messages indexed.
+    Returns ``(messages indexed, blog index entries refused)``. The refused
+    count is for the parent to log: a spawned worker has no structlog setup,
+    so anything it logs is lost.
     """
     import pykakasi
 
@@ -221,7 +260,7 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
     output_dir = Path(output_dir_str)
 
     if not output_dir.exists():
-        return 0
+        return 0, 0
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
@@ -337,7 +376,7 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
         batch.clear()
 
     # Blog index
-    blog_count = _build_blog_index_process(conn, kakasi, output_dir)
+    blog_count, blogs_refused = _build_blog_index_process(conn, kakasi, output_dir)
 
     now = datetime.now(timezone.utc).isoformat()
     conn.execute(
@@ -354,15 +393,20 @@ def _build_full_index_process(db_path_str: str, output_dir_str: str) -> int:
     )
     conn.commit()
     conn.close()
-    return count
+    return count, blogs_refused
 
 
 def _build_blog_index_process(
     conn: sqlite3.Connection,
     kakasi_inst: Any,
     output_dir: Path,
-) -> int:
-    """Blog index build inside the worker process (called by _build_full_index_process)."""
+) -> tuple[int, int]:
+    """Blog index build inside the worker process (called by _build_full_index_process_stats).
+
+    Returns ``(blogs indexed, index entries refused as unsafe folder names)``;
+    it logs nothing about the refusals (the parent does).
+    """
+    refused = 0
     count = 0
     batch: list[Tuple[Any, ...]] = []
 
@@ -403,16 +447,15 @@ def _build_blog_index_process(
                     continue
 
                 published_at = entry.get("published_at", "")
-                date_prefix = ""
-                if published_at:
-                    try:
-                        date_prefix = published_at[:10].replace("-", "")
-                    except Exception:
-                        pass
+                date_prefix = blog_date(published_at)
 
-                blog_json_path = (
-                    blogs_dir / member_name / f"{date_prefix}_{blog_id}" / "blog.json"
+                blog_dir = blog_folder_or_none(
+                    blogs_dir, member_name, str(blog_id), date_prefix
                 )
+                if blog_dir is None:
+                    refused += 1
+                    continue
+                blog_json_path = blog_dir / "blog.json"
                 if not blog_json_path.exists():
                     continue
 
@@ -473,13 +516,26 @@ def _build_blog_index_process(
         conn.commit()
         count += len(batch)
 
-    return count
+    return count, refused
 
 
 def _index_blogs_for_service_process(
     db_path_str: str, output_dir_str: str, service: str
 ) -> int:
-    """Incremental blog index for one service. Runs in a separate process."""
+    """:func:`_index_blogs_for_service_process_stats` returning only the indexed count."""
+    return _index_blogs_for_service_process_stats(db_path_str, output_dir_str, service)[
+        0
+    ]
+
+
+def _index_blogs_for_service_process_stats(
+    db_path_str: str, output_dir_str: str, service: str
+) -> tuple[int, int]:
+    """Incremental blog index for one service. Runs in a separate process.
+
+    Returns ``(blogs indexed, index entries refused as unsafe folder names)``;
+    the parent logs the refusals (a spawned worker has no structlog setup).
+    """
     import pykakasi
 
     kakasi = pykakasi.kakasi()
@@ -487,7 +543,7 @@ def _index_blogs_for_service_process(
     output_dir = Path(output_dir_str)
 
     if not output_dir.exists():
-        return 0
+        return 0, 0
 
     # Find the service display directory
     service_dir = None
@@ -500,18 +556,18 @@ def _index_blogs_for_service_process(
             except Exception:
                 continue
     if not service_dir:
-        return 0
+        return 0, 0
 
     blogs_dir = service_dir / "blogs"
     index_path = blogs_dir / "index.json"
     if not blogs_dir.is_dir() or not index_path.exists():
-        return 0
+        return 0, 0
 
     try:
         with open(index_path, "r", encoding="utf-8") as f:
             index_data = json.load(f)
     except Exception:
-        return 0
+        return 0, 0
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(db_path))
@@ -527,6 +583,7 @@ def _index_blogs_for_service_process(
     ):
         existing_ids.add(row[0])
 
+    refused = 0
     total = 0
     batch: list[Tuple[Any, ...]] = []
 
@@ -539,7 +596,10 @@ def _index_blogs_for_service_process(
             continue
 
         member_name = member_info.get("name", "")
-        member_dir = blogs_dir / member_name
+        member_dir = member_folder_or_none(blogs_dir, member_name)
+        if member_dir is None:
+            refused += 1
+            continue
         if not member_dir.is_dir():
             continue
 
@@ -549,14 +609,15 @@ def _index_blogs_for_service_process(
                 continue
 
             published_at = entry.get("published_at", "")
-            date_prefix = ""
-            if published_at:
-                try:
-                    date_prefix = published_at[:10].replace("-", "")
-                except Exception:
-                    pass
+            date_prefix = blog_date(published_at)
 
-            blog_json_path = member_dir / f"{date_prefix}_{blog_id}" / "blog.json"
+            blog_dir = blog_folder_or_none(
+                blogs_dir, member_name, str(blog_id), date_prefix
+            )
+            if blog_dir is None:
+                refused += 1
+                continue
+            blog_json_path = blog_dir / "blog.json"
             if not blog_json_path.exists():
                 continue
 
@@ -619,7 +680,7 @@ def _index_blogs_for_service_process(
         total += len(batch)
 
     conn.close()
-    return total
+    return total, refused
 
 
 def _index_members_process(
@@ -972,11 +1033,32 @@ class SearchService:
     # ------------------------------------------------------------------
 
     @staticmethod
+    def _mark_spans(text: str, spans: Iterable[Tuple[int, int, str]]) -> str:
+        """``text`` HTML-escaped, with each ``(start, length, cls)`` span in ``<mark>``.
+
+        Snippets are rendered as HTML (``SearchResultItem``) and archived text is
+        remote content: a ``<`` in it must stay text, and only these marks may be
+        markup (security audit 2026-11-13). Spans apply in start order; an empty
+        span, one outside ``text`` or one overlapping an earlier span is skipped.
+        """
+        out: List[str] = []
+        pos = 0
+        for start, length, cls in sorted(spans, key=lambda s: s[0]):
+            if length <= 0 or start < pos or start + length > len(text):
+                continue
+            cls_attr = f' class="{cls}"' if cls else ""
+            out.append(_html_escape(text[pos:start], quote=False))
+            matched = _html_escape(text[start : start + length], quote=False)
+            out.append(f"<mark{cls_attr}>{matched}</mark>")
+            pos = start + length
+        out.append(_html_escape(text[pos:], quote=False))
+        return "".join(out)
+
+    @staticmethod
     def _build_snippet(
         content: str, idx: int, match_len: int, max_len: int, mark_cls: str = ""
     ) -> str:
-        """Build a snippet with context around a match at *idx*."""
-        cls_attr = f' class="{mark_cls}"' if mark_cls else ""
+        """Build an escaped snippet with context around a match at *idx* (``_mark_spans``)."""
         ctx = max_len - match_len
         start = max(0, idx - ctx // 2)
         end = min(len(content), idx + match_len + ctx // 2)
@@ -984,10 +1066,10 @@ class SearchService:
         prefix = "..." if start > 0 else ""
         suffix = "..." if end < len(content) else ""
 
-        before = content[start:idx]
-        matched = content[idx : idx + match_len]
-        after = content[idx + match_len : end]
-        return f"{prefix}{before}<mark{cls_attr}>{matched}</mark>{after}{suffix}"
+        snippet = SearchService._mark_spans(
+            content[start:end], [(idx - start, match_len, mark_cls)]
+        )
+        return f"{prefix}{snippet}{suffix}"
 
     def _make_multi_word_snippet(
         self,
@@ -1033,7 +1115,9 @@ class SearchService:
                         continue
 
         if not matches:
-            return content[:max_len] + ("..." if len(content) > max_len else "")
+            return _html_escape(content[:max_len], quote=False) + (
+                "..." if len(content) > max_len else ""
+            )
 
         matches.sort(key=lambda m: m[0])
 
@@ -1046,20 +1130,13 @@ class SearchService:
         prefix = "..." if start > 0 else ""
         suffix = "..." if end < len(content) else ""
 
-        # Build snippet with all highlights (apply in reverse to preserve positions)
-        snippet = content[start:end]
-        rel_matches = []
-        for idx, length, cls in matches:
-            rel_idx = idx - start
-            if 0 <= rel_idx and rel_idx + length <= len(snippet):
-                rel_matches.append((rel_idx, length, cls))
-
-        rel_matches.sort(key=lambda m: m[0], reverse=True)
-        for rel_idx, length, cls in rel_matches:
-            cls_attr = f' class="{cls}"' if cls else ""
-            matched = snippet[rel_idx : rel_idx + length]
-            snippet = f"{snippet[:rel_idx]}<mark{cls_attr}>{matched}</mark>{snippet[rel_idx + length :]}"
-
+        # Build the escaped snippet with every highlight that fits the window.
+        rel_matches = [
+            (idx - start, length, cls)
+            for idx, length, cls in matches
+            if 0 <= idx - start and idx - start + length <= end - start
+        ]
+        snippet = self._mark_spans(content[start:end], rel_matches)
         return f"{prefix}{snippet}{suffix}"
 
     def _map_reading_to_original(
@@ -1173,7 +1250,9 @@ class SearchService:
                     )
 
         # 4. No match found — show beginning of content
-        return content[:max_len] + ("..." if len(content) > max_len else "")
+        return _html_escape(content[:max_len], quote=False) + (
+            "..." if len(content) > max_len else ""
+        )
 
     # ------------------------------------------------------------------
     # Blog snippet generation
@@ -1208,8 +1287,7 @@ class SearchService:
                 max_len=max_len,
                 is_romaji=is_romaji,
             )
-            # _make_snippet returns highlighted text with <mark> if found;
-            # if it fell through to the "no match" fallback it won't have <mark>.
+            # _make_snippet escapes the text, so "<mark" appears only when it marked a match.
             if "<mark" in snippet:
                 return snippet
 
@@ -1219,19 +1297,13 @@ class SearchService:
             lower_query = query.lower()
             idx = lower_title.find(lower_query)
             if idx != -1:
-                matched = title[idx : idx + len(query)]
-                before = title[:idx]
-                after = title[idx + len(query) :]
-                return f"{before}<mark>{matched}</mark>{after}"
+                return self._mark_spans(title, [(idx, len(query), "")])
             # Normalized match in title
             if normalized_query and normalized_query != lower_query:
                 idx = lower_title.find(normalized_query)
                 if idx != -1:
-                    matched = title[idx : idx + len(normalized_query)]
-                    before = title[:idx]
-                    after = title[idx + len(normalized_query) :]
-                    cls = ' class="reading"' if is_romaji else ""
-                    return f"{before}<mark{cls}>{matched}</mark>{after}"
+                    cls = "reading" if is_romaji else ""
+                    return self._mark_spans(title, [(idx, len(normalized_query), cls)])
             # Reading match in title_normalized
             if title_normalized and normalized_query:
                 idx = title_normalized.find(normalized_query)
@@ -1241,15 +1313,16 @@ class SearchService:
                     )
                     if mapping:
                         orig_idx, orig_len = mapping
-                        matched = title[orig_idx : orig_idx + orig_len]
-                        before = title[:orig_idx]
-                        after = title[orig_idx + orig_len :]
-                        return f'{before}<mark class="reading">{matched}</mark>{after}'
+                        return self._mark_spans(
+                            title, [(orig_idx, orig_len, "reading")]
+                        )
 
         # 3. Fallback: first max_len chars of content
         if content:
-            return content[:max_len] + ("..." if len(content) > max_len else "")
-        return title or ""
+            return _html_escape(content[:max_len], quote=False) + (
+                "..." if len(content) > max_len else ""
+            )
+        return _html_escape(title or "", quote=False)
 
     # ------------------------------------------------------------------
     # Blog search (sync, runs in executor)
@@ -1329,15 +1402,13 @@ class SearchService:
         all_params: list[Any] = []
 
         if len(normalized_query) >= 3:
-            # FTS5 MATCH — escape double quotes to prevent syntax injection
-            safe_query = query.lower().replace('"', '""')
-            safe_normalized = normalized_query.replace('"', '""')
+            # FTS5 MATCH — every term is one escaped phrase string
             if exact_only:
-                match_expr = f'{{title content}}: "{safe_query}"'
+                match_expr = f"{{title content}}: {_fts_phrase(query.lower())}"
             else:
                 match_expr = (
-                    f"{{title title_normalized content content_normalized}}: "
-                    f'"{safe_normalized}"'
+                    "{title title_normalized content content_normalized}: "
+                    + _fts_phrase(normalized_query)
                 )
             data_sql = (
                 "SELECT b.blog_id, b.title, b.title_normalized, b.content, "
@@ -1354,19 +1425,23 @@ class SearchService:
             # LIKE fallback
             like_clauses: list[str] = []
             if exact_only:
-                like_clauses.append("(b.title LIKE ? OR b.content LIKE ?)")
-                all_params.extend([f"%{query}%", f"%{query}%"])
+                like_clauses.append(
+                    "(b.title LIKE ? ESCAPE '\\' OR b.content LIKE ? ESCAPE '\\')"
+                )
+                all_params.extend([_like_contains(query), _like_contains(query)])
             else:
                 like_clauses.append(
-                    "(b.title LIKE ? OR b.title_normalized LIKE ? "
-                    "OR b.content LIKE ? OR b.content_normalized LIKE ?)"
+                    "(b.title LIKE ? ESCAPE '\\' "
+                    "OR b.title_normalized LIKE ? ESCAPE '\\' "
+                    "OR b.content LIKE ? ESCAPE '\\' "
+                    "OR b.content_normalized LIKE ? ESCAPE '\\')"
                 )
                 all_params.extend(
                     [
-                        f"%{query}%",
-                        f"%{normalized_query}%",
-                        f"%{query}%",
-                        f"%{normalized_query}%",
+                        _like_contains(query),
+                        _like_contains(normalized_query),
+                        _like_contains(query),
+                        _like_contains(normalized_query),
                     ]
                 )
             all_params.extend(filter_params)
@@ -1753,16 +1828,16 @@ class SearchService:
                         # text, NOT Levenshtein fuzzy search. Skips
                         # pronunciation/reading-based matching via
                         # pykakasi-normalized kana column.
-                        match_parts.append(f'{{content}}: "{w.lower()}"')
+                        match_parts.append(f"{{content}}: {_fts_phrase(w.lower())}")
                     elif _is_romaji(w) and len(w) >= 3:
                         # Search both English content and reading
                         match_parts.append(
-                            f'({{content}}: "{w.lower()}" OR '
-                            f'{{content content_normalized}}: "{norm_w}")'
+                            f"({{content}}: {_fts_phrase(w.lower())} OR "
+                            f"{{content content_normalized}}: {_fts_phrase(norm_w)})"
                         )
                     else:
                         match_parts.append(
-                            f'{{content content_normalized}}: "{norm_w}"'
+                            f"{{content content_normalized}}: {_fts_phrase(norm_w)}"
                         )
                 match_expr = " AND ".join(match_parts)
                 data_sql = (
@@ -1783,13 +1858,14 @@ class SearchService:
                 for w in words:
                     norm_w = self._normalize_query(w)
                     if exact_only:
-                        like_clauses.append("m.content LIKE ?")
-                        all_params.append(f"%{w}%")
+                        like_clauses.append("m.content LIKE ? ESCAPE '\\'")
+                        all_params.append(_like_contains(w))
                     else:
                         like_clauses.append(
-                            "(m.content LIKE ? OR m.content_normalized LIKE ?)"
+                            "(m.content LIKE ? ESCAPE '\\' "
+                            "OR m.content_normalized LIKE ? ESCAPE '\\')"
                         )
-                        all_params.extend([f"%{w}%", f"%{norm_w}%"])
+                        all_params.extend([_like_contains(w), _like_contains(norm_w)])
                 all_params.extend(filter_params)
                 data_sql = (
                     "SELECT m.message_id, m.content, m.content_normalized, "
@@ -1812,11 +1888,13 @@ class SearchService:
                         # text, NOT Levenshtein fuzzy search. Skips
                         # pronunciation/reading-based matching via
                         # pykakasi-normalized kana column.
-                        match_expr = f'{{content}}: "{term.lower()}"'
+                        match_expr = f"{{content}}: {_fts_phrase(term.lower())}"
                     else:
                         # Reading match (match_type=1) when romaji, exact (0) otherwise
                         mt = 1 if is_term_romaji else 0
-                        match_expr = f'{{content content_normalized}}: "{norm}"'
+                        match_expr = (
+                            f"{{content content_normalized}}: {_fts_phrase(norm)}"
+                        )
 
                     sq_mt = 0 if exact_only else (1 if is_term_romaji else 0)
                     sq = (
@@ -1833,7 +1911,7 @@ class SearchService:
 
                     # Romaji: also search English text (skip in exact_only mode -- already covered above)
                     if not exact_only and is_term_romaji and len(term) >= 3:
-                        en_match = f'{{content}}: "{term.lower()}"'
+                        en_match = f"{{content}}: {_fts_phrase(term.lower())}"
                         sq_en = (
                             "SELECT m.message_id, m.content, m.content_normalized, "
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
@@ -1852,19 +1930,20 @@ class SearchService:
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
                             "m.timestamp, m.type, 0 as match_type "
                             f"FROM search_messages m {unread_join_sql} "
-                            f"WHERE m.content LIKE ? {filter_sql}"
+                            f"WHERE m.content LIKE ? ESCAPE '\\' {filter_sql}"
                         )
-                        all_params.append(f"%{term}%")
+                        all_params.append(_like_contains(term))
                     else:
                         sq = (
                             "SELECT m.message_id, m.content, m.content_normalized, "
                             "m.service, m.group_id, m.group_name, m.member_id, m.member_name, "
                             "m.timestamp, m.type, 0 as match_type "
                             f"FROM search_messages m {unread_join_sql} "
-                            f"WHERE (m.content LIKE ? OR m.content_normalized LIKE ?) {filter_sql}"
+                            "WHERE (m.content LIKE ? ESCAPE '\\' "
+                            f"OR m.content_normalized LIKE ? ESCAPE '\\') {filter_sql}"
                         )
-                        all_params.append(f"%{term}%")
-                        all_params.append(f"%{norm}%")
+                        all_params.append(_like_contains(term))
+                        all_params.append(_like_contains(norm))
                     all_params.extend(filter_params)
                     sub_queries.append(sq)
 
@@ -2270,6 +2349,7 @@ class SearchService:
             return 0
 
         conn = self._get_conn()
+        refused = 0
         count = 0
         batch: list[Tuple[Any, ...]] = []
         normalize_count = 0
@@ -2322,14 +2402,14 @@ class SearchService:
                     published_at = entry.get("published_at", "")
                     # Derive date prefix from published_at for directory lookup
                     # Format: YYYYMMDD from ISO timestamp like "2026-01-17T22:21:00+09:00"
-                    date_prefix = ""
-                    if published_at:
-                        try:
-                            date_prefix = published_at[:10].replace("-", "")
-                        except Exception:
-                            pass
+                    date_prefix = blog_date(published_at)
 
-                    blog_dir = blogs_dir / member_name / f"{date_prefix}_{blog_id}"
+                    blog_dir = blog_folder_or_none(
+                        blogs_dir, member_name, str(blog_id), date_prefix
+                    )
+                    if blog_dir is None:
+                        refused += 1
+                        continue
                     blog_json_path = blog_dir / "blog.json"
 
                     if not blog_json_path.exists():
@@ -2390,6 +2470,9 @@ class SearchService:
                         count += len(batch)
                         batch.clear()
                         time.sleep(0)
+
+        if refused:
+            logger.warning("search_blog_path_refused", count=refused)
 
         if batch:
             conn.executemany(
@@ -2582,6 +2665,7 @@ class SearchService:
         ):
             existing_ids.add(row[0])
 
+        refused = 0
         total = 0
         batch: list[Tuple[Any, ...]] = []
         normalize_count = 0
@@ -2596,7 +2680,10 @@ class SearchService:
                 continue
 
             member_name = member_info.get("name", "")
-            member_dir = blogs_dir / member_name
+            member_dir = member_folder_or_none(blogs_dir, member_name)
+            if member_dir is None:
+                refused += 1
+                continue
             if not member_dir.is_dir():
                 continue
 
@@ -2610,14 +2697,15 @@ class SearchService:
                     continue
 
                 published_at = entry.get("published_at", "")
-                date_prefix = ""
-                if published_at:
-                    try:
-                        date_prefix = published_at[:10].replace("-", "")
-                    except Exception:
-                        pass
+                date_prefix = blog_date(published_at)
 
-                blog_json_path = member_dir / f"{date_prefix}_{blog_id}" / "blog.json"
+                blog_dir = blog_folder_or_none(
+                    blogs_dir, member_name, str(blog_id), date_prefix
+                )
+                if blog_dir is None:
+                    refused += 1
+                    continue
+                blog_json_path = blog_dir / "blog.json"
                 if not blog_json_path.exists():
                     continue
 
@@ -2667,6 +2755,9 @@ class SearchService:
                     total += len(batch)
                     batch.clear()
                     time.sleep(0)
+
+        if refused:
+            logger.warning("search_blog_path_refused", count=refused)
 
         if batch:
             conn.executemany(
@@ -3026,12 +3117,14 @@ class SearchService:
             loop = asyncio.get_running_loop()
             output_dir = get_output_dir()
             try:
-                count = await loop.run_in_executor(
+                count, refused = await loop.run_in_executor(
                     self._build_executor,
-                    _build_full_index_process,
+                    _build_full_index_process_stats,
                     str(self._db_path),
                     str(output_dir),
                 )
+                if refused:
+                    logger.warning("search_blog_path_refused", count=refused)
                 logger.info("Full search index built (process)", count=count)
                 return count
             except Exception as e:
@@ -3089,13 +3182,15 @@ class SearchService:
         """Incremental blog index in a separate **process** (own GIL)."""
         loop = asyncio.get_running_loop()
         output_dir = get_output_dir()
-        count = await loop.run_in_executor(
+        count, refused = await loop.run_in_executor(
             self._build_executor,
-            _index_blogs_for_service_process,
+            _index_blogs_for_service_process_stats,
             str(self._db_path),
             str(output_dir),
             service,
         )
+        if refused:
+            logger.warning("search_blog_path_refused", count=refused)
         logger.info("Blog index updated (process)", service=service, new_blogs=count)
         return count
 

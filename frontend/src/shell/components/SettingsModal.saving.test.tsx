@@ -36,18 +36,18 @@ afterEach(async () => {
     if (i18n.language !== 'en') await i18n.changeLanguage('en');
 });
 
-function renderModal(appSettings: AppSettings = base, props: Partial<React.ComponentProps<typeof SettingsModal>> = {}) {
-    const onSaveSettings = vi.fn().mockResolvedValue(true);
+function renderModal(appSettings: AppSettings = base, props: Partial<React.ComponentProps<typeof SettingsModal>> = {}, saveOk = true) {
+    const onSaveSettings = vi.fn().mockResolvedValue(saveOk);
     const onClose = vi.fn();
     const onDeepResync = vi.fn();
     const onVerifyAndFix = vi.fn();
-    const setOutputDirInput = vi.fn();
+    const onSelectFolder = vi.fn();
     render(
-        <SettingsModal appSettings={appSettings} outputDirInput="/out" setOutputDirInput={setOutputDirInput}
+        <SettingsModal appSettings={appSettings} outputDirInput="/out" onSelectFolder={onSelectFolder}
             onSaveSettings={onSaveSettings} onClose={onClose} activeService="hinatazaka46"
             onVerifyAndFix={onVerifyAndFix} onDeepResync={onDeepResync} {...props} />,
     );
-    return { onSaveSettings, onClose, onDeepResync, onVerifyAndFix, setOutputDirInput };
+    return { onSaveSettings, onClose, onDeepResync, onVerifyAndFix, onSelectFolder };
 }
 
 const openTab = (name: string) => fireEvent.click(screen.getByRole('button', { name, exact: true } as never));
@@ -64,13 +64,45 @@ describe('general tab saving', () => {
         await act(async () => { await i18n.changeLanguage('en'); });
     });
 
-    it('output folder: typing updates the input, Save posts output_dir', () => {
-        const { onSaveSettings, setOutputDirInput } = renderModal();
-        const input = screen.getByDisplayValue('/out');
-        fireEvent.change(input, { target: { value: '/new' } });
-        expect(setOutputDirInput).toHaveBeenCalledWith('/new');
+    it('output folder: the field is read-only, Browse asks the hook, Save posts the shown folder', () => {
+        const { onSaveSettings, onSelectFolder } = renderModal();
+        expect(screen.getByDisplayValue('/out')).toHaveAttribute('readonly');
+        fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+        expect(onSelectFolder).toHaveBeenCalledOnce();
         fireEvent.click(screen.getByRole('button', { name: 'Save' }));
         expect(onSaveSettings).toHaveBeenCalledWith({ output_dir: '/out' });
+    });
+
+    it('output folder: the description points to Browse and names the field', () => {
+        renderModal();
+        const field = screen.getByDisplayValue('/out');
+        const desc = screen.getByText(i18n.t('settings.outputFolderDesc'));
+        expect(field.getAttribute('aria-describedby')?.split(' ')).toContain(desc.id);
+        expect(field).not.toHaveAttribute('aria-invalid');
+    });
+
+    it('output folder: a folder problem shows on the row and ties to the field', () => {
+        renderModal(base, { folderErrorKey: 'settings.outputDirError.network' });
+        const msg = screen.getByText(i18n.t('settings.outputDirError.network'));
+        const field = screen.getByDisplayValue('/out');
+        expect(field.getAttribute('aria-describedby')?.split(' ')).toContain(msg.id);
+        expect(field).toHaveAttribute('aria-invalid', 'true');
+    });
+
+    it('output folder: a failed save shows its generic message until the next Browse drops it', async () => {
+        const { onSelectFolder } = renderModal(base, {}, false);
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        expect(await screen.findByText(i18n.t('settings.saveFailed'))).toBeInTheDocument();
+        fireEvent.click(screen.getByRole('button', { name: 'Browse' }));
+        expect(onSelectFolder).toHaveBeenCalledOnce();
+        expect(screen.queryByText(i18n.t('settings.saveFailed'))).toBeNull();
+    });
+
+    it('output folder: the newest problem wins over the generic save message', async () => {
+        renderModal(base, { folderErrorKey: 'settings.outputDirError.not_picked' }, false);
+        fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+        await waitFor(() => expect(screen.getByText(i18n.t('settings.outputDirError.not_picked'))).toBeInTheDocument());
+        expect(screen.queryByText(i18n.t('settings.saveFailed'))).toBeNull();
     });
 });
 
@@ -218,7 +250,7 @@ describe('sync tab saving', () => {
             });
             const statusReads = () => fetchMock.mock.calls.filter(([url]) => url === '/api/blogs/backup/status').length;
             const { unmount } = render(
-                <SettingsModal appSettings={{ ...base, blogs_full_backup: true }} outputDirInput="/out" setOutputDirInput={vi.fn()}
+                <SettingsModal appSettings={{ ...base, blogs_full_backup: true }} outputDirInput="/out" onSelectFolder={vi.fn()}
                     onSaveSettings={vi.fn()} onClose={vi.fn()} activeService="hinatazaka46" onVerifyAndFix={vi.fn()} onDeepResync={vi.fn()} />,
             );
             await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_blog_backup', outcome: 'ok' }));
@@ -247,7 +279,7 @@ describe('sync tab saving', () => {
             });
             const statusReads = () => fetchMock.mock.calls.filter(([url]) => url === '/api/blogs/backup/status').length;
             const { unmount } = render(
-                <SettingsModal appSettings={{ ...base, blogs_full_backup: true }} outputDirInput="/out" setOutputDirInput={vi.fn()}
+                <SettingsModal appSettings={{ ...base, blogs_full_backup: true }} outputDirInput="/out" onSelectFolder={vi.fn()}
                     onSaveSettings={vi.fn()} onClose={vi.fn()} activeService="hinatazaka46" onVerifyAndFix={vi.fn()} onDeepResync={vi.fn()} />,
             );
             await waitFor(() => expect(signals).toHaveLength(1));
@@ -341,7 +373,7 @@ describe('app settings save failures', () => {
         renderModal(base, { onSaveSettings });
         const row = screen.getByRole('switch', { name: i18n.t('settings.closeToTray') }).closest('section')!;
         await act(async () => { fireEvent.click(within(row as HTMLElement).getByRole('switch')); });
-        expect(within(row as HTMLElement).getByRole('status')).toHaveTextContent(i18n.t('settings.saveFailed'));
+        expect(within(row as HTMLElement).getByText(i18n.t('settings.saveFailed'))).toBeInTheDocument();
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_app_save', outcome: 'error' });
         // Only the failed row shows it.
         expect(screen.getAllByText(i18n.t('settings.saveFailed'))).toHaveLength(1);
@@ -352,7 +384,7 @@ describe('app settings save failures', () => {
         renderModal(base, { onSaveSettings });
         const row = screen.getByRole('switch', { name: i18n.t('settings.autostart') }).closest('section') as HTMLElement;
         await act(async () => { fireEvent.click(within(row).getByRole('switch')); });
-        expect(within(row).getByRole('status')).toHaveTextContent(i18n.t('settings.saveFailed'));
+        expect(within(row).getByText(i18n.t('settings.saveFailed'))).toBeInTheDocument();
         await act(async () => { fireEvent.click(within(row).getByRole('switch')); });
         expect(screen.queryByText(i18n.t('settings.saveFailed'))).toBeNull();
         expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_app_save', outcome: 'ok' });
@@ -364,7 +396,7 @@ describe('app settings save failures', () => {
         openTab('Sync');
         await act(async () => { fireEvent.click(screen.getByRole('radio', { name: /^Off/ })); });
         const group = screen.getByRole('radiogroup');
-        expect(within(group.closest('section') as HTMLElement).getByRole('status')).toHaveTextContent(i18n.t('settings.saveFailed'));
+        expect(within(group.closest('section') as HTMLElement).getByText(i18n.t('settings.saveFailed'))).toBeInTheDocument();
     });
 });
 
@@ -519,7 +551,7 @@ describe('AI tab', () => {
         fireEvent.change(key, { target: { value: KEY } });
         fireEvent.blur(key);
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_save', outcome: 'error' }));
-        expect(screen.getByRole('status')).toHaveTextContent(i18n.t('translation.settings.saveFailed'));
+        expect(screen.getByText(i18n.t('translation.settings.saveFailed'))).toBeInTheDocument();
         fireEvent.change(key, { target: { value: '' } });
         expect(screen.queryByText('Saved securely in credential manager')).toBeNull();
         expect(screen.getByText(i18n.t('translation.settings.keyMissing'))).toBeInTheDocument();
@@ -545,7 +577,7 @@ describe('AI tab', () => {
         fireEvent.click(await screen.findByRole('button', { name: 'Clear API key' }));
         fireEvent.click(within(await screen.findByRole('dialog', { name: 'Clear API key' })).getByRole('button', { name: 'Confirm' }));
         await waitFor(() => expect(clientLog).toHaveBeenCalledWith('dialog_load', { surface: 'settings_ai_key_clear', outcome: 'error' }));
-        expect(screen.getByRole('status')).toHaveTextContent(i18n.t('translation.settings.clearApiKeyFailed'));
+        expect(screen.getByText(i18n.t('translation.settings.clearApiKeyFailed'))).toBeInTheDocument();
         expect(screen.getByText('Saved securely in credential manager')).toBeInTheDocument();
         expect(screen.getByRole('button', { name: 'Clear API key' })).toBeInTheDocument();
     });

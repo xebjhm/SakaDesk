@@ -119,7 +119,7 @@ describe('DesignPage language', () => {
         render(<DesignPage />);
         const trigger = screen.getByRole('button', { name: 'Open menu' });
         await userEvent.click(trigger);
-        expect(screen.getByRole('menu')).toHaveFocus();
+        expect(screen.getByRole('menu').querySelector('[role^="menuitem"]')).toHaveFocus();
         await userEvent.keyboard('{Escape}');
         expect(screen.queryByRole('menu')).toBeNull();
         expect(trigger).toHaveFocus();

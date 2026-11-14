@@ -15,6 +15,14 @@ interface SearchInputProps {
   onFilterToggle?: () => void;
   filtersActive?: boolean;
   contentType?: ContentTypeFilter;
+  /** The field's keys (↑ / ↓ / Enter over the results); the dialog keeps every other control's keys. */
+  onKeyDown: React.KeyboardEventHandler<HTMLInputElement>;
+  /** Id of the results listbox the field controls. */
+  listId: string;
+  /** Id of the highlighted option (aria-activedescendant), when there is one. */
+  activeId?: string;
+  /** True while results are listed. */
+  expanded: boolean;
 }
 
 export const SearchInput: React.FC<SearchInputProps> = ({
@@ -27,6 +35,10 @@ export const SearchInput: React.FC<SearchInputProps> = ({
   onFilterToggle,
   filtersActive,
   contentType = 'all',
+  onKeyDown,
+  listId,
+  activeId,
+  expanded,
 }) => {
   const { t } = useTranslation();
 
@@ -49,6 +61,12 @@ export const SearchInput: React.FC<SearchInputProps> = ({
       <input
         ref={inputRef}
         type="text"
+        role="combobox"
+        aria-autocomplete="list"
+        aria-expanded={expanded}
+        aria-controls={listId}
+        aria-activedescendant={activeId}
+        onKeyDown={onKeyDown}
         value={value}
         onChange={(e) => onChange(e.target.value)}
         onCompositionStart={onCompositionStart}

@@ -109,7 +109,7 @@ export const BlogCard: React.FC<BlogCardProps> = ({ post, onClick, size = 'norma
                 <span
                     lang="ja"
                     className={cn(
-                        'line-clamp-2 font-reading text-primary',
+                        'line-clamp-2 phrase-break font-reading text-primary',
                         isFeatured ? 'text-tile-title-lg font-medium' : 'text-tile-title font-semibold',
                         // After the size: tailwind-merge drops a leading that precedes a font size.
                         'leading-snug',

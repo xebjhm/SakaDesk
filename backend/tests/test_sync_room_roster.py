@@ -64,7 +64,7 @@ def _manager(*, scanned: bool, complete: bool = True, extra=EXTRA, sync_counts=N
                     "group_name": g["name"],
                     "member_id": member["id"],
                     "member_name": member["name"],
-                    "member_dir": Path("m"),
+                    "member_dir": Path("out") / "日向坂46" / "messages" / "1 g" / "2 m",
                     "phone_image": None,
                     "initial_sync": m.get_last_ts(g["id"], member["id"]) is None,
                 },
@@ -455,12 +455,15 @@ async def test_scan_fetch_failure_breadcrumb(tmp_path):
 # --- Final review item 1: mark a scan only after the media phase ------------
 
 
-def _scan_with_media(m):
-    """Make sync_member queue one media item, so phase 3 has work to do."""
+def _scan_with_media(m, tmp_path):
+    """Make sync_member queue one media item, so phase 3 has work to do.
+
+    The item lives inside the (patched) service folder under ``tmp_path``.
+    """
     counts = {79: 1, 22: 50, 0: 3}
 
     async def _sync(s, g, member, q, **kw):
-        q.append({"url": "u", "path": "p", "timestamp": "t"})
+        q.append({"url": "u", "path": tmp_path / "日向坂46" / "p", "timestamp": "t"})
         return counts.get(member["id"], 0)
 
     m.sync_member = AsyncMock(side_effect=_sync)
@@ -469,7 +472,7 @@ def _scan_with_media(m):
 
 async def test_scan_marked_only_after_media_phase(tmp_path):
     order: list[str] = []
-    m = _scan_with_media(_manager(scanned=False))
+    m = _scan_with_media(_manager(scanned=False), tmp_path)
 
     async def _media(session, chunk, item_callback=None):
         order.append("media")
@@ -488,7 +491,7 @@ async def test_scan_marked_only_after_media_phase(tmp_path):
 
 
 async def test_scan_not_marked_when_media_phase_raises(tmp_path):
-    m = _scan_with_media(_manager(scanned=False))
+    m = _scan_with_media(_manager(scanned=False), tmp_path)
     m.process_media_queue = AsyncMock(side_effect=OSError("disk full"))
     with capture_logs() as logs:
         await _run_start_sync(
@@ -500,7 +503,7 @@ async def test_scan_not_marked_when_media_phase_raises(tmp_path):
 
 
 async def test_scan_not_marked_when_media_phase_cancelled(tmp_path):
-    m = _scan_with_media(_manager(scanned=False))
+    m = _scan_with_media(_manager(scanned=False), tmp_path)
     m.process_media_queue = AsyncMock(side_effect=asyncio.CancelledError())
     with capture_logs() as logs:
         with pytest.raises(asyncio.CancelledError):
@@ -520,7 +523,7 @@ async def test_scan_marked_despite_failed_downloads(tmp_path):
     """A download that fails inside process_media_queue (it reports fewer
     successes, never raises) must not keep the room rescanning forever:
     Verify & Fix covers the missing file."""
-    m = _scan_with_media(_manager(scanned=False))
+    m = _scan_with_media(_manager(scanned=False), tmp_path)
 
     async def _media(session, chunk, item_callback=None):
         if item_callback:
@@ -946,7 +949,7 @@ async def test_room_past_fetch_completes_after_rate_limit(tmp_path):
     media is downloaded) even when a sibling hits 429 meanwhile."""
     from pysaka import RateLimitedError
 
-    m = _scan_with_media(_manager(scanned=True, extra=[]))
+    m = _scan_with_media(_manager(scanned=True, extra=[]), tmp_path)
     m.client.get_groups = AsyncMock(return_value=[GROUP, GROUP_B])
     rows = [_make_message(1, 79, "2026-10-02T00:00:00Z")]
 
@@ -1156,18 +1159,28 @@ async def test_scan_room_owns_the_detail_line(tmp_path):
 # --- S3 (spec 2026-11-10): deferred backfill / letter media -------------------
 
 
-def _deferring_manager():
+def _deferring_manager(tmp_path):
     m = _manager(scanned=True, extra=[])
 
     async def _backfill(session, group, member, media_queue=None):
         media_queue.append(
-            {"url": "u", "path": Path("b.jpg"), "timestamp": None, "message_id": 7}
+            {
+                "url": "u",
+                "path": tmp_path / "日向坂46" / "b.jpg",
+                "timestamp": None,
+                "message_id": 7,
+            }
         )
         return 0
 
     async def _letters(session, group, member, media_queue=None):
         media_queue.append(
-            {"url": "u", "path": Path("l.jpg"), "timestamp": None, "kind": "letter"}
+            {
+                "url": "u",
+                "path": tmp_path / "日向坂46" / "l.jpg",
+                "timestamp": None,
+                "kind": "letter",
+            }
         )
         return 0
 
@@ -1185,7 +1198,7 @@ def _deferring_manager():
 
 
 async def test_backfill_and_letter_media_join_phase_3_then_finalize(tmp_path):
-    m = _deferring_manager()
+    m = _deferring_manager(tmp_path)
     order: list[str] = []
     downloaded: list[list] = []
 
@@ -1220,7 +1233,7 @@ async def test_backfill_and_letter_media_join_phase_3_then_finalize(tmp_path):
 
 
 async def test_failed_downloads_count_as_processed(tmp_path):
-    m = _deferring_manager()
+    m = _deferring_manager(tmp_path)
 
     async def _media(session, chunk, item_callback=None):
         await item_callback(True)
@@ -1246,7 +1259,7 @@ async def test_failed_downloads_count_as_processed(tmp_path):
 
 
 async def test_cancelled_media_phase_skips_finalize_with_a_breadcrumb(tmp_path):
-    m = _deferring_manager()
+    m = _deferring_manager(tmp_path)
     m.process_media_queue = AsyncMock(side_effect=asyncio.CancelledError())
     with capture_logs() as logs:
         with pytest.raises(asyncio.CancelledError):
@@ -1263,7 +1276,7 @@ async def test_cancelled_media_phase_skips_finalize_with_a_breadcrumb(tmp_path):
 
 
 async def test_failing_finalize_never_fails_the_sync(tmp_path):
-    m = _deferring_manager()
+    m = _deferring_manager(tmp_path)
     m.process_media_queue = AsyncMock(return_value={})
     m.finalize_deferred_media.side_effect = OSError("disk")
     with capture_logs() as logs:

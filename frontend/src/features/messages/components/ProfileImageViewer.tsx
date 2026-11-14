@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { useTranslation } from '../../../i18n';
@@ -27,6 +27,7 @@ export const ProfileImageViewer: React.FC<ProfileImageViewerProps> = ({ images, 
     const available = PROFILE_IMAGE_KINDS.filter(k => (images[k]?.length ?? 0) > 0);
     const [kind, setKind] = useState<ProfileImageKind>(available.includes(initialKind) ? initialKind : available[0]);
     const [index, setIndex] = useState(0);
+    const tabRefs = useRef<Partial<Record<ProfileImageKind, HTMLButtonElement | null>>>({});
 
     const items: MediaViewerItem[] = useMemo(() => {
         const entries = images[kind] ?? [];
@@ -40,14 +41,32 @@ export const ProfileImageViewer: React.FC<ProfileImageViewerProps> = ({ images, 
 
     if (available.length === 0) return null;
 
+    // Arrows, Home and End move between the kinds and select them (UI health A-D5; the tabs pattern).
+    const onTabsKeyDown = (e: React.KeyboardEvent) => {
+        const at = available.indexOf(kind);
+        const next = e.key === 'ArrowRight' ? (at + 1) % available.length
+            : e.key === 'ArrowLeft' ? (at - 1 + available.length) % available.length
+            : e.key === 'Home' ? 0
+            : e.key === 'End' ? available.length - 1
+            : -1;
+        if (next === -1) return;
+        e.preventDefault();
+        e.stopPropagation(); // the viewer's left / right step photos only outside the tabs
+        setKind(available[next]);
+        setIndex(0);
+        tabRefs.current[available[next]]?.focus();
+    };
+
     const tabs = (
-        <div role="tablist" aria-label={t('profileImages.kinds')} className="flex gap-1">
+        <div role="tablist" aria-label={t('profileImages.kinds')} className="flex gap-1" onKeyDown={onTabsKeyDown}>
             {available.map(k => (
                 <button
                     key={k}
                     type="button"
+                    ref={(el) => { tabRefs.current[k] = el; }}
                     role="tab"
                     aria-selected={k === kind}
+                    tabIndex={k === kind ? 0 : -1}
                     title={t(`profileImages.${KIND_I18N_KEY[k]}Hint`)}
                     onClick={() => { setKind(k); setIndex(0); }}
                     className={cn(

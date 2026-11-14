@@ -1,4 +1,13 @@
 import { defineConfig, devices } from '@playwright/test'
+import { E2E_API_TOKEN } from './e2e/apiToken'
+
+// The backend requires the per-launch token (security audit 2026-11-13): pin one for
+// the test server (SAKADESK_API_TOKEN below) and send it on every request the page makes.
+// e2e/launch-auth.spec.ts turns the header off to test the real #t= path.
+
+// CI installs with `uv sync --no-sources` (no ../pysaka checkout), so it runs the backend
+// with `uv run --no-sources`; local runs keep the editable sibling.
+const uvRun = process.env.SAKADESK_E2E_UV_RUN ?? 'uv run'
 
 export default defineConfig({
   testDir: './e2e',
@@ -13,6 +22,7 @@ export default defineConfig({
   use: {
     // Base URL for the backend (runs on port 8000)
     baseURL: 'http://localhost:8000',
+    extraHTTPHeaders: { 'X-SakaDesk-Token': E2E_API_TOKEN },
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
   },
@@ -28,11 +38,11 @@ export default defineConfig({
   // SAKADESK_TEST_MODE is set via env var (CI step or shell), not inline in the command
   webServer: {
     command: process.platform === 'win32'
-      ? 'cd .. && uv run uvicorn backend.main:app --port 8000 --timeout-keep-alive 600'
-      : 'cd .. && SAKADESK_TEST_MODE=true uv run uvicorn backend.main:app --port 8000 --timeout-keep-alive 600',
-    url: 'http://localhost:8000/api/auth/status',
+      ? `cd .. && ${uvRun} uvicorn backend.main:app --port 8000 --timeout-keep-alive 600`
+      : `cd .. && SAKADESK_TEST_MODE=true ${uvRun} uvicorn backend.main:app --port 8000 --timeout-keep-alive 600`,
+    url: 'http://localhost:8000/health',
     reuseExistingServer: !process.env.CI,
     timeout: 30000,
-    env: { SAKADESK_TEST_MODE: 'true' },
+    env: { SAKADESK_TEST_MODE: 'true', SAKADESK_API_TOKEN: E2E_API_TOKEN },
   },
 })

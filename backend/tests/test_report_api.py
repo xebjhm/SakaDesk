@@ -2,8 +2,10 @@
 
 import json
 from unittest.mock import MagicMock, patch
+import pytest
 
 from fastapi.testclient import TestClient
+from structlog.testing import capture_logs
 
 from backend.main import app
 
@@ -344,6 +346,49 @@ class TestBuildGithubUrl:
         assert "no+audio" in url or "no%20audio" in url
 
 
+class TestGithubUrlLimit:
+    """The URL stays under the desktop shell's 8192-character limit."""
+
+    def test_long_cjk_text_is_trimmed_to_a_valid_url(self):
+        from urllib.parse import parse_qs, urlsplit
+
+        from backend.api.report import MAX_GITHUB_URL_LENGTH, _build_github_url
+
+        text = "日本語のバグ報告" * 200  # 1600 chars, ~14 KB once encoded
+        diag = {"system": {"os": "Linux"}, "context": {"error_message": text}}
+        with capture_logs() as logs:
+            url = _build_github_url("other", text, text, diag)
+
+        assert MAX_GITHUB_URL_LENGTH < 8192
+        assert len(url) <= MAX_GITHUB_URL_LENGTH
+        parts = urlsplit(url)
+        assert (parts.scheme, parts.netloc, parts.path) == (
+            "https",
+            "github.com",
+            "/xebjhm/SakaDesk/issues/new",
+        )
+        query = parse_qs(parts.query, strict_parsing=True)
+        assert set(query) == {"title", "body"}
+        assert query["title"][0].startswith("[Bug] Other: 日本語")
+        body = query["body"][0]
+        assert "\u2026" in body
+        assert "PASTE_HERE" in body
+        assert body.count("日本語のバグ報告") > 1  # still carries useful text
+        events = [e for e in logs if e["event"] == "report_url_truncated"]
+        assert len(events) == 1
+        assert text not in str(events)
+        assert events[0]["length_before"] > MAX_GITHUB_URL_LENGTH
+        assert events[0]["length_after"] == len(url)
+
+    def test_short_report_is_untouched_and_not_logged(self):
+        from backend.api.report import _build_github_url
+
+        with capture_logs() as logs:
+            url = _build_github_url("other", "doing", "wrong", {})
+        assert "\u2026" not in url and "%E2%80%A6" not in url
+        assert not [e for e in logs if e["event"] == "report_url_truncated"]
+
+
 class TestHelperFunctions:
     """Tests for standalone helper functions in report module."""
 
@@ -426,6 +471,28 @@ class TestHelperFunctions:
             result = _get_sync_state()
         assert result["last_sync"] == "2025-01-01T00:00:00Z"
 
+    @pytest.mark.parametrize("saved", ["", "   ", 5])
+    def test_get_sync_state_reads_the_default_folder_for_an_unusable_value(
+        self, tmp_path, saved
+    ):
+        """Sync writes to the default folder for these values, so the report reads it."""
+        from backend.api.report import _get_sync_state
+
+        default = tmp_path / "default"
+        (default / "hinatazaka46").mkdir(parents=True)
+        (default / "hinatazaka46" / "sync_metadata.json").write_text(
+            json.dumps({"last_sync": "2025-02-02T00:00:00Z", "last_error": "boom"}),
+            encoding="utf-8",
+        )
+        settings_path = tmp_path / "settings.json"
+        settings_path.write_text(json.dumps({"output_dir": saved}), encoding="utf-8")
+        with (
+            patch("backend.api.report.get_settings_path", return_value=settings_path),
+            patch("backend.api.report.get_default_output_dir", return_value=default),
+        ):
+            result = _get_sync_state()
+        assert result == {"last_sync": "2025-02-02T00:00:00Z", "last_error": "boom"}
+
     def test_get_nickname_from_settings(self, tmp_path):
         """Reads nickname from settings file."""
         from backend.api.report import _get_nicknames
@@ -458,3 +525,60 @@ class TestHelperFunctions:
             with patch.dict("os.environ", {"USER": "envuser"}):
                 result = _get_username()
         assert result == "envuser"
+
+
+class TestReportTextAndContextRoom:
+    def test_long_error_message_keeps_most_of_its_text(self):
+        from backend.api.report import MAX_GITHUB_URL_LENGTH, _build_github_url
+
+        message = "x" * 6000
+        diag = {"system": {"os": "Linux"}, "context": {"error_message": message}}
+        url = _build_github_url("other", "", "", diag)
+        assert len(url) <= MAX_GITHUB_URL_LENGTH
+        from urllib.parse import parse_qs, urlsplit
+
+        body = parse_qs(urlsplit(url).query)["body"][0]
+        assert body.count("x") > 4000
+
+    def test_clipboard_diagnostics_carry_the_full_user_text(self):
+        from unittest.mock import patch as _patch
+
+        long_text = "word " * 3000
+        with (
+            _patch("backend.api.report._get_nicknames", return_value=[]),
+            _patch("backend.api.report._get_username", return_value="testuser"),
+            _patch("backend.api.report._get_smart_logs", return_value={}),
+            _patch("backend.api.report._get_sync_state", return_value={}),
+            _patch("backend.api.report._get_token_expiry", return_value={}),
+        ):
+            response = client.post(
+                "/api/report",
+                params={
+                    "what_doing": long_text,
+                    "what_wrong": "C:\\Users\\testuser\\x",
+                },
+                json={"category": "login"},
+            )
+        data = response.json()
+        assert data["diagnostics"]["report_text"]["what_doing"] == long_text
+        assert "testuser" not in data["diagnostics"]["report_text"]["what_wrong"]
+        assert "report_text" not in data["github_url"]
+
+    def test_text_is_withheld_when_nicknames_are_unreadable(self):
+        from unittest.mock import patch as _patch
+
+        with (
+            _patch("backend.api.report._get_nicknames", return_value=None),
+            _patch("backend.api.report._get_username", return_value="testuser"),
+            _patch("backend.api.report._get_sync_state", return_value={}),
+            _patch("backend.api.report._get_token_expiry", return_value={}),
+        ):
+            response = client.post(
+                "/api/report",
+                params={"what_doing": "a", "what_wrong": "b"},
+                json={"category": "login"},
+            )
+        assert response.json()["diagnostics"]["report_text"] == {
+            "what_doing": None,
+            "what_wrong": None,
+        }

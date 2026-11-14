@@ -13,6 +13,12 @@
  * hand-built loading indicators outside `design/primitives/`: raw
  * `animate-spin` and `common.loading` used as text. It is compared
  * with loading-guard-baseline.json under the same rules.
+ *
+ * A third ratchet (`countDriftViolations`, `isDriftScanned`, UI health #14) counts what the
+ * first one missed: named palette classes, `z-40`/`z-50`/`z-[...]`, Tailwind's default font sizes,
+ * arbitrary values for leading/tracking/duration/delay/ease and colour-like utilities, and
+ * hex/`rgb()`/`hsl()` literals in CSS files and `tailwind.config.js`. It is compared with
+ * drift-guard-baseline.json under the same rules.
  */
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
@@ -105,6 +111,24 @@ export function countLoadingViolations(source: string): number {
     return countPatterns(source, LOADING_PATTERNS);
 }
 
+const PALETTE = '(?:slate|gray|zinc|neutral|stone|red|orange|amber|yellow|lime|green|emerald|teal|cyan|sky|blue|indigo|violet|purple|fuchsia|pink|rose)';
+const COLOUR_UTILITY = '(?:bg|text|border(?:-[trblxy])?|ring|ring-offset|outline|fill|stroke|from|via|to|divide|placeholder|caret|accent|decoration|shadow)';
+
+/** UI health #14: drift the style ratchet did not count. Width/height/position/aspect arbitrary values stay allowed. */
+export const DRIFT_PATTERNS: readonly RegExp[] = [
+    new RegExp(`(?<![\\w-])-?${COLOUR_UTILITY}-${PALETTE}-\\d{2,3}(?:\\/\\d{1,3})?(?![\\w-])`, 'g'),
+    new RegExp(`(?<![\\w-])${COLOUR_UTILITY}-(?:black|white)(?:\\/\\d{1,3})?(?![\\w-])`, 'g'),
+    /(?<![\w-])-?z-(?:40|50|\[)/g,
+    /(?<![\w-])text-(?:xs|sm|base|lg|xl|[2-9]xl)(?![\w-])/g,
+    /(?<![\w-])(?:leading|tracking|duration|delay|ease|bg|border(?:-[trblxy])?|ring|outline|fill|stroke|from|via|to|decoration|blur)-\[/g,
+];
+/** Colour literals (the first two style PATTERNS), counted in CSS files and the Tailwind config. */
+const COLOUR_LITERALS: readonly RegExp[] = [PATTERNS[0], PATTERNS[1]];
+
+export function countDriftViolations(source: string, relPath = ''): number {
+    return countPatterns(source, /\.css$|tailwind\.config\.js$/.test(relPath) ? COLOUR_LITERALS : DRIFT_PATTERNS);
+}
+
 export function isScanned(relPath: string): boolean {
     if (!/\.tsx?$/.test(relPath) || relPath.endsWith('.d.ts')) return false;
     if (/\.(test|spec)\.tsx?$/.test(relPath)) return false;
@@ -117,9 +141,15 @@ export function isLoadingScanned(relPath: string): boolean {
     return isScanned(relPath) && !relPath.startsWith('design/primitives/');
 }
 
+/** The style ratchet's files plus every CSS file under src (index.css, callScreen.css, callPopup.css). */
+export function isDriftScanned(relPath: string): boolean {
+    if (relPath.endsWith('.css')) return true;
+    return isScanned(relPath);
+}
+
 export function scanTree(
     srcRoot: string,
-    count: (source: string) => number = countViolations,
+    count: (source: string, relPath: string) => number = countViolations,
     scanned: (relPath: string) => boolean = isScanned,
 ): Record<string, number> {
     const result: Record<string, number> = {};
@@ -132,7 +162,7 @@ export function scanTree(
             }
             const rel = path.relative(srcRoot, full).split(path.sep).join('/');
             if (!scanned(rel)) continue;
-            const n = count(readFileSync(full, 'utf-8'));
+            const n = count(readFileSync(full, 'utf-8'), rel);
             if (n > 0) result[rel] = n;
         }
     };
@@ -160,6 +190,12 @@ export const LOADING_LABELS: BaselineLabels = {
     noun: 'hand-built loading indicator(s)',
     hint: 'use Spinner / StatusBlock (docs/design/DESIGN_SYSTEM.md, "Loading and waiting")',
     path: 'src/design/loading-guard-baseline.json',
+};
+
+export const DRIFT_LABELS: BaselineLabels = {
+    noun: 'palette / layering / arbitrary value(s) or CSS colour literal(s)',
+    hint: 'use tokens, Z_INDEX and the type scale (docs/design/DESIGN_SYSTEM.md)',
+    path: 'src/design/drift-guard-baseline.json',
 };
 
 export function compareToBaseline(

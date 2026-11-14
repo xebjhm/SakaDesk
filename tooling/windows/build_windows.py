@@ -13,6 +13,13 @@ BUILD_DIR = PROJECT_ROOT / "build"
 ISS_SCRIPT = PROJECT_ROOT / "tooling" / "windows" / "setup.iss"
 PYPROJECT_TOML = PROJECT_ROOT / "pyproject.toml"
 
+# Everything in frontend/dist is bundled into the installer and served by the app
+# (a real paid-message export once shipped this way; security audit 2026-11-13).
+# frontend/public's allowlist (tests/test_release_hygiene.py) lacks index.html,
+# which Vite builds from frontend/index.html.
+DIST_ALLOWED_FILES = frozenset({"index.html", "logo-192.png", "logo-32.png"})
+DIST_ALLOWED_DIRS = frozenset({"assets"})
+
 
 def get_version() -> str:
     """Extract version from pyproject.toml."""
@@ -46,16 +53,41 @@ def find_iscc():
     return None
 
 
+def verify_frontend_dist(dist: Path) -> None:
+    """Stop the build when frontend/dist holds anything but the UI build.
+
+    Allowed: the files in DIST_ALLOWED_FILES and the directories in
+    DIST_ALLOWED_DIRS. Anything else is named and the build exits with code 1
+    before PyInstaller bundles it.
+    """
+    unexpected = sorted(
+        entry.name
+        for entry in dist.iterdir()
+        if not (
+            (entry.is_file() and entry.name in DIST_ALLOWED_FILES)
+            or (entry.is_dir() and entry.name in DIST_ALLOWED_DIRS)
+        )
+    )
+    if unexpected:
+        print(f"ERROR: unexpected entries in frontend/dist: {', '.join(unexpected)}")
+        print(
+            "Only the UI build may ship (index.html, logo-192.png, logo-32.png, "
+            "assets/). Remove them (check frontend/public) and rebuild."
+        )
+        sys.exit(1)
+
+
 def build_exe():
     """Build the executable with PyInstaller."""
     print("--- Building Executable with PyInstaller ---")
 
-    # Ensure frontend is built first?
-    # We assume 'frontend/dist' exists or let the user handle it.
-    # But strictly speaking, for a full build script, we might want to check.
+    # We assume 'frontend/dist' exists or let the user handle it; when it does,
+    # it must hold only the UI build, because PyInstaller bundles all of it.
     frontend_dist = PROJECT_ROOT / "frontend" / "dist"
     if not frontend_dist.exists():
         print("WARNING: frontend/dist not found. The GUI will be empty.")
+    else:
+        verify_frontend_dist(frontend_dist)
 
     spec_file = PROJECT_ROOT / "tooling" / "build_windows.spec"
 

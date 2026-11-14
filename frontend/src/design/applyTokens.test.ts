@@ -59,18 +59,12 @@ describe('applyStaticTokens', () => {
 describe('applyGroupTokens', () => {
     beforeEach(() => vi.mocked(clientLog).mockClear());
 
-    it.each(GROUP_IDS)('writes %s group and legacy variables and logs', (id) => {
+    it.each(GROUP_IDS)('writes %s group variables, no legacy --color-*, and logs', (id) => {
         applyGroupTokens(id);
         for (const [name, value] of Object.entries(groupTokenVars(id))) {
             expect(style().getPropertyValue(name)).toBe(value);
         }
-        const changed = ['--color-success', '--color-warning', '--color-error', '--color-primary', '--color-secondary', '--color-accent', '--color-gradient-from', '--color-gradient-to'];
-        for (const [name, value] of Object.entries(legacy.cssVars[id])) {
-            if (!changed.includes(name)) expect(style().getPropertyValue(name)).toBe(value);
-        }
-        const r = groupRoles(id);
-        expect(style().getPropertyValue('--color-primary')).toBe(r.logo);
-        expect(style().getPropertyValue('--color-secondary')).toBe(r.action);
+        for (const name of Object.keys(legacy.cssVars[id])) expect(style().getPropertyValue(name)).toBe('');
         expect(clientLog).toHaveBeenCalledWith('design_tokens_applied', { theme: id });
     });
 });

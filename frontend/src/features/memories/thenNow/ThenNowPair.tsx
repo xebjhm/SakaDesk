@@ -72,7 +72,7 @@ const SlideSide: React.FC<{
                     highlight={keyword}
                     highlightTone="mark"
                     data-voice="quote"
-                    className={cn(QUOTE_CLASS, 'line-clamp-4 whitespace-pre-line text-title text-primary')}
+                    className={cn(QUOTE_CLASS, 'line-clamp-4 whitespace-pre-line break-words text-title text-primary')}
                 />
             )}
         </div>

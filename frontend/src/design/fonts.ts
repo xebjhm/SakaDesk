@@ -1,53 +1,122 @@
 /**
  * Language-aware font stacks (spec §6). The UI language picks the glyph set
  * (JP / TC / HK / SC / Latin); Japanese content keeps JP glyphs through
- * `[lang="ja"]` content rules in index.css. Only the active language's family is loaded.
+ * `[lang="..."]` content rules in index.css (their stacks are CSS variables written by
+ * `writeLanguageStacks`).
+ *
+ * Every face is self-hosted: the @fontsource-variable packages are bundled by Vite into
+ * /assets in `unicode-range` slices (a page fetches only the slices its text uses), so text
+ * never waits on a third-party host and the Content-Security-Policy allows fonts only from
+ * the app (security audit 2026-11-13; UI health report: render-blocking Google Fonts). The
+ * Japanese faces load with every entry point, since Japanese content is everywhere; another
+ * language's faces are their own stylesheet chunk, requested when that language is applied or a
+ * translation in it is shown (loadLanguageFaces).
  */
+import '@fontsource-variable/noto-sans-jp';
+import '@fontsource-variable/noto-serif-jp';
 import i18n from '../i18n';
 import type { SupportedLanguage } from '../i18n';
 import { fontFamily } from './tokens/type';
 import { clientLog } from '../utils/clientLog';
 
-interface FontStack { sans: string; serif: string; google: string }
+interface FontStack { sans: string; serif: string }
 
 const JP_FALLBACK = fontFamily.sansJp;
 const SERIF_FALLBACK = fontFamily.reading;
-const W = 'wght@400;500;600;700';
 
 export const fontStacks: Record<SupportedLanguage, FontStack> = {
-    ja: { sans: JP_FALLBACK, serif: SERIF_FALLBACK, google: `family=Noto+Sans+JP:${W}&family=Noto+Serif+JP:${W}` },
-    'zh-TW': { sans: `"Noto Sans TC", ${JP_FALLBACK}`, serif: `"Noto Serif TC", ${SERIF_FALLBACK}`, google: `family=Noto+Sans+TC:${W}&family=Noto+Serif+TC:${W}` },
-    yue: { sans: `"Noto Sans HK", ${JP_FALLBACK}`, serif: `"Noto Serif HK", ${SERIF_FALLBACK}`, google: `family=Noto+Sans+HK:${W}&family=Noto+Serif+HK:${W}` },
-    'zh-CN': { sans: `"Noto Sans SC", ${JP_FALLBACK}`, serif: `"Noto Serif SC", ${SERIF_FALLBACK}`, google: `family=Noto+Sans+SC:${W}&family=Noto+Serif+SC:${W}` },
-    en: { sans: `"Noto Sans", ${JP_FALLBACK}`, serif: `"Noto Serif", ${SERIF_FALLBACK}`, google: `family=Noto+Sans:${W}&family=Noto+Serif:${W}` },
+    ja: { sans: JP_FALLBACK, serif: SERIF_FALLBACK },
+    'zh-TW': { sans: `"Noto Sans TC Variable", ${JP_FALLBACK}`, serif: `"Noto Serif TC Variable", ${SERIF_FALLBACK}` },
+    yue: { sans: `"Noto Sans HK Variable", ${JP_FALLBACK}`, serif: `"Noto Serif HK Variable", ${SERIF_FALLBACK}` },
+    'zh-CN': { sans: `"Noto Sans SC Variable", ${JP_FALLBACK}`, serif: `"Noto Serif SC Variable", ${SERIF_FALLBACK}` },
+    en: { sans: `"Noto Sans Variable", ${JP_FALLBACK}`, serif: `"Noto Serif Variable", ${SERIF_FALLBACK}` },
 };
 
-function stackFor(lang: string): FontStack {
-    return (fontStacks as Record<string, FontStack>)[lang] ?? fontStacks.en;
+/** Loads one language's own faces (a stylesheet chunk); resolves once it is in. */
+export type FaceLoader = () => Promise<unknown>;
+export type FaceLoaders = Record<SupportedLanguage, FaceLoader | null>;
+
+/** Each language's own faces. Japanese has none to load: its faces are imported above. */
+export const faceLoaders: FaceLoaders = {
+    ja: null,
+    'zh-TW': () => Promise.all([import('@fontsource-variable/noto-sans-tc'), import('@fontsource-variable/noto-serif-tc')]),
+    yue: () => Promise.all([import('@fontsource-variable/noto-sans-hk'), import('@fontsource-variable/noto-serif-hk')]),
+    'zh-CN': () => Promise.all([import('@fontsource-variable/noto-sans-sc'), import('@fontsource-variable/noto-serif-sc')]),
+    en: () => Promise.all([import('@fontsource-variable/noto-sans'), import('@fontsource-variable/noto-serif')]),
+};
+
+function knownLanguage(lang: string): SupportedLanguage | null {
+    return Object.prototype.hasOwnProperty.call(fontStacks, lang) ? (lang as SupportedLanguage) : null;
 }
 
-export function applyLanguageFonts(lang: string, doc: Document = document): void {
-    const stack = stackFor(lang);
+/** The CSS variable holding one language's stack (`--ds-font-sans-zh-tw`, ...): `[lang]` content rules read it. */
+export function langStackVar(lang: SupportedLanguage, face: 'sans' | 'serif'): string {
+    return `--ds-font-${face}-${lang.toLowerCase()}`;
+}
+
+/**
+ * Writes every language's stacks on the root once (UI health #10), so the `[lang="..."]` content
+ * rules in index.css switch to them without copying the stacks (one source: `fontStacks`).
+ */
+export function writeLanguageStacks(doc: Document = document): void {
+    const root = doc.documentElement;
+    for (const lang of Object.keys(fontStacks) as SupportedLanguage[]) {
+        root.style.setProperty(langStackVar(lang, 'sans'), fontStacks[lang].sans);
+        root.style.setProperty(langStackVar(lang, 'serif'), fontStacks[lang].serif);
+    }
+}
+
+/** Languages whose `loadLanguageFaces` failure was already logged this session. */
+const loggedFaceFallbacks = new Set<string>();
+
+/**
+ * Requests a language's own faces for content shown in it (a translation), whatever the UI language.
+ * The dynamic imports are cached by the module system, so repeated calls are free; an unknown code
+ * does nothing. Logs `design_fonts_fallback` when the faces fail to load, once per language per
+ * session (a cached rejected import would otherwise log again on every re-expand).
+ */
+export function loadLanguageFaces(lang: string, loaders: FaceLoaders = faceLoaders): void {
+    const known = knownLanguage(lang);
+    if (!known) return;
+    const target = known.toLowerCase().replace(/-/g, '_');
+    loaders[known]?.().catch(() => {
+        if (loggedFaceFallbacks.has(target)) return;
+        loggedFaceFallbacks.add(target);
+        clientLog('design_fonts_fallback', { target });
+    });
+}
+
+/**
+ * Chinese, Cantonese, Japanese and Korean: drawn upright (an italic ideograph is a fake slant).
+ * `ko` has no font stack of its own (the UI is not translated to it) but a translation target may
+ * be Korean, and Hangul is upright too, so it is kept here.
+ */
+export function isCjkLanguage(lang: string | null | undefined): boolean {
+    return !!lang && /^(zh|yue|ja|ko)\b/i.test(lang);
+}
+
+/**
+ * Applies `lang`'s stacks to the root font variables and requests its faces; an unknown
+ * language gets the English stacks and faces. Logs `design_fonts_applied`, and
+ * `design_fonts_fallback` when the faces fail to load (the stack's next font then renders).
+ */
+export function applyLanguageFonts(lang: string, doc: Document = document, loaders: FaceLoaders = faceLoaders): void {
+    const known = knownLanguage(lang);
+    const key: SupportedLanguage = known ?? 'en';
+    const stack = fontStacks[key];
     const root = doc.documentElement;
     root.style.setProperty('--ds-font-family-sans', stack.sans);
     root.style.setProperty('--ds-font-family-serif', stack.serif);
     root.lang = lang;
-    let link = doc.getElementById('ds-fonts') as HTMLLinkElement | null;
-    if (!link) {
-        link = doc.createElement('link');
-        link.id = 'ds-fonts';
-        link.rel = 'stylesheet';
-        doc.head.appendChild(link);
-    }
     // Code-safe breadcrumb value (client-log values match ^[a-z0-9_]{1,40}$).
-    const target = (lang in fontStacks) ? lang.toLowerCase().replace(/-/g, '_') : 'fallback_en';
-    link.onerror = () => clientLog('design_fonts_fallback', { target });
-    link.href = `https://fonts.googleapis.com/css2?${stack.google}&display=swap`;
+    const target = known ? known.toLowerCase().replace(/-/g, '_') : 'fallback_en';
+    loaders[key]?.().catch(() => clientLog('design_fonts_fallback', { target }));
     clientLog('design_fonts_applied', { target });
 }
 
 /** Applies the current language now and on every change. Call once per entry point. */
-export function installLanguageFonts(): void {
-    applyLanguageFonts(i18n.language);
-    i18n.on('languageChanged', (lng: string) => applyLanguageFonts(lng));
+export function installLanguageFonts(loaders: FaceLoaders = faceLoaders): void {
+    writeLanguageStacks(document);
+    applyLanguageFonts(i18n.language, document, loaders);
+    i18n.on('languageChanged', (lng: string) => applyLanguageFonts(lng, document, loaders));
 }

@@ -19,3 +19,17 @@ export function timeNeighbours(index: number, total: number, order: ListOrder): 
         ordinal: order === 'newest_first' ? total - index : index + 1,
     };
 }
+
+/**
+ * `items` newest first by their ISO `timestamp`, parsing each timestamp once (not twice per
+ * comparison). Equal times keep their input order; unparsable timestamps go last.
+ */
+export function sortNewestFirst<T extends { timestamp: string }>(items: readonly T[]): T[] {
+    return items
+        .map((item) => {
+            const t = Date.parse(item.timestamp);
+            return { item, t: Number.isNaN(t) ? -Infinity : t };
+        })
+        .sort((a, b) => (a.t === b.t ? 0 : a.t < b.t ? 1 : -1))
+        .map(({ item }) => item);
+}

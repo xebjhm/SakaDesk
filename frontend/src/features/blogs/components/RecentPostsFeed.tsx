@@ -10,6 +10,7 @@ import { cn } from '../../../utils/classnames';
 import { useAppStore } from '../../../store/appStore';
 import type { BlogSelectionMode } from '../../../store/appStore';
 import { useTranslation } from '../../../i18n';
+import { staggerDelay } from './stagger';
 
 interface RecentPostsFeedProps {
     posts: RecentPost[];
@@ -159,7 +160,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                             const isNew = knownPostIds && knownPostIds.size > 0 && !knownPostIds.has(post.id);
                             // Known posts (or initial load): sequential stagger delay
                             // New posts (from background sync): random delay for a "light up" effect
-                            const delay = isNew ? Math.random() * 400 : index * 50;
+                            const delay = isNew ? Math.random() * 400 : staggerDelay(index);
                             return (
                                 <div
                                     key={post.id}

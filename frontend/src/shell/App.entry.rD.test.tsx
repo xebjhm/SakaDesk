@@ -92,6 +92,7 @@ describe('cancelling the first-launch sync (R-d)', () => {
                     adaptive_sync_enabled: false, blogs_full_backup: !!body.blogs_full_backup, is_configured: true,
                 });
             }),
+            http.post('*/api/settings/select-folder', () => HttpResponse.json({ path: 'C:\\SakaDesk-データ' })),
             http.post('*/api/sync/start-all', async ({ request }) => {
                 startAll.push(await request.json());
                 return HttpResponse.json({ sequence_id: seq.id, results: {} });
@@ -101,7 +102,13 @@ describe('cancelling the first-launch sync (R-d)', () => {
                 return HttpResponse.json({ status: 'started' });
             }),
             http.get('*/api/sync/queue', () => HttpResponse.json({ running: null, queued: [], sequence: seq })),
-            http.get('*/api/sync/progress', () => HttpResponse.json({ state: 'running', phase: 'messages', phase_name: 'Messages', completed: 5, total: 20 })),
+            // Idle until the sequence is started: a service that already reports running before
+            // the wizard finishes is being synced by someone else, and is (rightly) not started again.
+            http.get('*/api/sync/progress', () => HttpResponse.json(
+                startAll.length === 0
+                    ? { state: 'idle' }
+                    : { state: 'running', phase: 'messages', phase_name: 'Messages', completed: 5, total: 20 },
+            )),
             http.post('*/api/sync/cancel', ({ request }) => {
                 cancels.push(new URL(request.url).search);
                 seq.state = 'cancelled';
@@ -112,7 +119,8 @@ describe('cancelling the first-launch sync (R-d)', () => {
         const user = userEvent.setup();
         const { unmount } = render(<AuthProvider><App /></AuthProvider>);
 
-        await user.type(await screen.findByPlaceholderText('C:\\Users\\YourName\\SakaDesk-data'), 'C:\\SakaDesk-データ');
+        await user.click(await screen.findByRole('button', { name: 'Browse' }));
+        await waitFor(() => expect(screen.getByLabelText('Output Folder Path')).toHaveValue('C:\\SakaDesk-データ'));
         await user.click(screen.getByRole('checkbox'));
         await user.click(screen.getByRole('button', { name: 'Start Using SakaDesk' }));
         await user.click(await screen.findByRole('button', { name: 'Cancel' }, { timeout: 5000 }));

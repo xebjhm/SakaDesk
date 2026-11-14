@@ -5,8 +5,8 @@ import { FeatureRail } from './FeatureRail';
 import { ContentArea } from './ContentArea';
 import { Canvas } from '../../design/primitives';
 import { useAppStore } from '../../store/appStore';
+import { useShallow } from 'zustand/react/shallow';
 import { useTranslation } from '../../i18n';
-import type { SyncProgress } from '../../features/messages/MessagesFeature';
 
 interface LayoutProps {
     messagesContent: React.ReactNode;
@@ -15,7 +15,6 @@ interface LayoutProps {
     onReportIssue: () => void;
     onOpenAbout: () => void;
     onOpenSearch: () => void;
-    syncProgressByService?: Record<string, SyncProgress>;
     initialSyncServices?: Record<string, true>;
     blogBackupEnabled?: boolean;
     /** The fan's nickname per service (`%%%` in her messages). */
@@ -34,16 +33,18 @@ export const Layout: React.FC<LayoutProps> = ({
     onReportIssue,
     onOpenAbout,
     onOpenSearch,
-    syncProgressByService,
     initialSyncServices,
     blogBackupEnabled,
     userNicknames,
 }) => {
     const { t } = useTranslation();
-    const { activeService, setActiveService, selectedServices, getServiceOrder } = useAppStore();
+    const activeService = useAppStore((s) => s.activeService);
+    const setActiveService = useAppStore((s) => s.setActiveService);
+    const selectedServices = useAppStore((s) => s.selectedServices);
+    // getServiceOrder() builds a new array when services are missing from the stored order: compare by content.
+    const serviceOrder = useAppStore(useShallow((s) => s.getServiceOrder()));
 
     // Sort selected services by global display order
-    const serviceOrder = getServiceOrder();
     const services = [...selectedServices].sort(
         (a, b) => serviceOrder.indexOf(a) - serviceOrder.indexOf(b)
     );
@@ -69,14 +70,16 @@ export const Layout: React.FC<LayoutProps> = ({
             {activeService ? (
                 <Canvas className="flex h-full min-w-0 flex-1 rounded-l-sheet">
                     <FeatureRail service={activeService} />
-                    <ContentArea
-                        service={activeService}
-                        messagesContent={messagesContent}
-                        syncProgress={syncProgressByService?.[activeService]}
-                        isInitialSyncing={!!initialSyncServices?.[activeService]}
-                        blogBackupEnabled={blogBackupEnabled}
-                        userNickname={userNicknames?.[activeService]}
-                    />
+                    {/* The one main landmark; the skip link moves focus here (tabIndex -1: focusable by script only). */}
+                    <main id="sd-main" tabIndex={-1} className="flex h-full min-w-0 flex-1 outline-none">
+                        <ContentArea
+                            service={activeService}
+                            messagesContent={messagesContent}
+                            isInitialSyncing={!!initialSyncServices?.[activeService]}
+                            blogBackupEnabled={blogBackupEnabled}
+                            userNickname={userNicknames?.[activeService]}
+                        />
+                    </main>
                 </Canvas>
             ) : (
                 <div className="flex flex-1 items-center justify-center text-secondary">

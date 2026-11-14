@@ -311,6 +311,7 @@ def test_notify_open_memories_accepts_delivered_and_refusals():
         ("avatar_fallback", {"surface": "member_select"}, "info"),
         ("display_density_change", {"dppx_pct": 175}, "info"),
         ("menu_item_blocked", {"target": "sent_letters"}, "info"),
+        ("menu_open_focus", {"target": "menu", "outcome": "container"}, "info"),
         ("blog_fallback", {"target": "card_thumb", "reason": "image_error"}, "info"),
         (
             "blog_fallback",
@@ -328,6 +329,13 @@ def test_notify_open_memories_accepts_delivered_and_refusals():
             "info",
         ),
         ("entry_validation", {"surface": "setup", "reason": "missing_folder"}, "info"),
+        ("output_folder_pick_failed", {"reason": "http_500"}, "info"),
+        ("output_folder_pick_failed", {"error_type": "typeerror"}, "info"),
+        ("output_folder_pick_ignored", {"reason": "superseded"}, "info"),
+        ("setup_save_failed", {"reason": "save_refused"}, "info"),
+        ("download_refused", {"reason": "not_app_url"}, "info"),
+        ("rail_reorder", {"target": "move_down", "outcome": "moved"}, "info"),
+        ("rail_reorder", {"target": "move_up", "outcome": "blocked"}, "info"),
         ("archive_stats_load", {"outcome": "ok"}, "info"),
         ("archive_stats_load", {"outcome": "failed"}, "info"),
         ("celebration", {"target": "first_sync", "outcome": "shown"}, "info"),
@@ -1346,3 +1354,51 @@ def test_media_breadcrumbs_reject_text_and_unknown_keys(event, fields):
         r = client.post("/api/client-log", json={"event": event, "fields": fields})
     assert r.status_code == 422
     assert _client_events(logs) == []
+
+
+@pytest.mark.parametrize(
+    "fields",
+    [
+        {"surface": "blog_post", "outcome": "opened"},
+        {"surface": "message", "outcome": "blocked", "reason": "scheme"},
+        {"surface": "blog_post", "outcome": "blocked", "reason": "same_origin"},
+    ],
+)
+def test_external_link_breadcrumb_is_accepted(fields):
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log", json={"event": "external_link", "fields": fields}
+        )
+    assert res.status_code == 204
+    entry = _client_events(logs)[0]
+    assert entry["event"] == "external_link"
+    assert entry["log_level"] == "info"
+
+
+def test_external_link_breadcrumb_rejects_a_url():
+    res = client.post(
+        "/api/client-log",
+        json={"event": "external_link", "fields": {"surface": "https://evil.example"}},
+    )
+    assert res.status_code == 422
+
+
+def test_csp_violation_breadcrumb_is_a_warning():
+    with capture_logs() as logs:
+        res = client.post(
+            "/api/client-log",
+            json={"event": "csp_violation", "fields": {"target": "img_src"}},
+        )
+    assert res.status_code == 204
+    entry = _client_events(logs)[0]
+    assert entry["event"] == "csp_violation"
+    assert entry["log_level"] == "warning"
+    assert entry["target"] == "img_src"
+
+
+def test_csp_violation_breadcrumb_rejects_a_url():
+    res = client.post(
+        "/api/client-log",
+        json={"event": "csp_violation", "fields": {"target": "https://evil.example/x"}},
+    )
+    assert res.status_code == 422

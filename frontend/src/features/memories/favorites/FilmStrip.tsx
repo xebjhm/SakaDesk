@@ -134,7 +134,7 @@ const Strip: React.FC<StripProps> = ({ day, index, setIndex, from, onClose }) =>
 
     return (
         <div ref={root} tabIndex={-1} data-testid="film-strip" className="flex flex-col gap-4 focus:outline-none">
-            <div className="flex items-center justify-center gap-3 overflow-x-auto rounded-lg bg-sunken p-4">
+            <div className="flex items-center justify-safe-center gap-3 overflow-x-auto rounded-lg bg-sunken p-4">
                 {shown.map((m, i) => {
                     const at = start + i;
                     return (

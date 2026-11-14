@@ -29,12 +29,56 @@ describe('Menu', () => {
             </Menu>,
         );
         const menu = screen.getByRole('menu', { name: '操作' });
-        expect(menu).toHaveFocus();
+        expect(screen.getByRole('menuitemradio', { name: '1x' })).toHaveFocus();
+        expect(screen.getByRole('menuitemradio', { name: '1x' })).toHaveClass('focus-visible:ring-2', 'focus-visible:ring-inset', 'focus-visible:ring-accent');
         expect(menu).toHaveClass('bg-card', 'rounded-card', 'shadow-card');
         expect(screen.getByRole('menuitemradio', { name: '1x' })).toHaveAttribute('aria-checked', 'true');
         expect(screen.getByRole('menuitemradio', { name: '1x' })).toHaveClass('text-accent-strong');
         expect(screen.getByRole('menuitem', { name: '削除 🗑️' })).toHaveClass('text-status-danger');
         expect(screen.getByRole('separator')).not.toHaveClass('border-t');
+    });
+
+    it('skips items with a disabled reason when it opens, unless all have one', () => {
+        render(
+            <Menu aria-label="m" onClose={vi.fn()}>
+                <MenuItem disabledReason="理由">一</MenuItem>
+                <MenuItem>二</MenuItem>
+            </Menu>,
+        );
+        expect(screen.getByRole('menuitem', { name: '二' })).toHaveFocus();
+    });
+
+    it('opens on the first item when every item has a disabled reason', () => {
+        render(
+            <Menu aria-label="m" onClose={vi.fn()}>
+                <MenuItem disabledReason="理由">一</MenuItem>
+                <MenuItem disabledReason="理由">二</MenuItem>
+            </Menu>,
+        );
+        expect(screen.getByRole('menuitem', { name: '一' })).toHaveFocus();
+    });
+
+    it('never opens on a destructive item, even when it comes first', async () => {
+        const onRemove = vi.fn();
+        const { unmount } = render(
+            <Menu aria-label="m" onClose={vi.fn()}>
+                <MenuItem destructive onClick={onRemove}>削除</MenuItem>
+                <MenuItem>二</MenuItem>
+            </Menu>,
+        );
+        expect(screen.getByRole('menuitem', { name: '削除' })).toHaveAttribute('data-destructive');
+        expect(screen.getByRole('menuitem', { name: '二' })).toHaveFocus();
+        unmount();
+        // Only destructive items (ServiceRail with one group): the menu itself takes focus, so Enter does nothing.
+        render(
+            <Menu aria-label="m" onClose={vi.fn()}>
+                <MenuItem destructive onClick={onRemove}>削除</MenuItem>
+            </Menu>,
+        );
+        expect(screen.getByRole('menu')).toHaveFocus();
+        await userEvent.keyboard('{Enter}');
+        expect(onRemove).not.toHaveBeenCalled();
+        expect(clientLog).toHaveBeenCalledWith('menu_open_focus', { target: 'menu', outcome: 'container' });
     });
 
     it('Enter and Space on an item with a disabledReason do not call its onClick', async () => {
@@ -59,7 +103,6 @@ describe('Menu', () => {
                 <MenuItem>三</MenuItem>
             </Menu>,
         );
-        await userEvent.keyboard('{ArrowDown}');
         expect(screen.getByRole('menuitem', { name: '一' })).toHaveFocus();
         await userEvent.keyboard('{ArrowDown}');
         expect(screen.getByRole('menuitem', { name: '三' })).toHaveFocus();
@@ -225,7 +268,7 @@ describe('Menu inside a Modal', () => {
         const onDialogClose = vi.fn();
         render(<Harness onDialogClose={onDialogClose} />);
         await userEvent.click(screen.getByRole('button', { name: '開く' }));
-        expect(screen.getByRole('menu')).toHaveFocus();
+        expect(screen.getByRole('menuitem', { name: '一' })).toHaveFocus();
         await userEvent.keyboard('{Escape}');
         expect(screen.queryByRole('menu')).toBeNull();
         expect(onDialogClose).not.toHaveBeenCalled();
@@ -240,7 +283,7 @@ describe('Menu inside a Modal', () => {
         render(<Harness onDialogClose={vi.fn()} />);
         await userEvent.click(screen.getByRole('button', { name: '開く' }));
         await userEvent.keyboard('{ArrowDown}');
-        expect(screen.getByRole('menuitem', { name: '一' })).toHaveFocus();
+        expect(screen.getByRole('menuitem', { name: '二' })).toHaveFocus();
         await userEvent.tab();
         expect(screen.queryByRole('menu')).toBeNull();
         expect(screen.getByRole('dialog')).toBeInTheDocument();
@@ -254,7 +297,7 @@ describe('Menu inside a Modal', () => {
         resetDialogStack();
         render(<Harness onDialogClose={vi.fn()} />);
         await userEvent.click(screen.getByRole('button', { name: '開く' }));
-        expect(screen.getByRole('menu')).toHaveFocus();
+        expect(screen.getByRole('menuitem', { name: '一' })).toHaveFocus();
         expect(screen.getByRole('dialog')).not.toHaveFocus();
     });
 });

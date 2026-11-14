@@ -32,10 +32,14 @@ export interface EntryState {
   settingsSaves: Record<string, unknown>[]
   /** Status POST /api/settings answers (500 shows the App error toast). */
   settingsSaveStatus: number
+  /** The folder POST /api/settings/select-folder returns (the native picker is never opened in e2e). */
+  pickedFolder: string
   /** /api/sync/progress per service (idle when missing); tests change it to move a sync on. */
   progress: Record<string, Record<string, unknown>>
-  /** Services a sync was started for (POST /api/sync/start), in order. */
+  /** Services a sync was started for (POST /api/sync/start and /start-all), in order. */
   syncStarts: string[]
+  /** The sequence POST /api/sync/start-all queued; GET /api/sync/queue reports it from `progress`. */
+  sequence: { id: string; services: string[]; blocking: boolean } | null
   /** Bodies of non-GET /api/app-state/prefs requests, in order. */
   prefsPosts: Record<string, unknown>[]
 }
@@ -50,6 +54,8 @@ export interface EntryOptions {
   /** Services logged in at start. */
   authed?: string[]
 }
+
+let sequenceCounter = 0
 
 export async function pinEntry(page: Page, opts: EntryOptions = {}): Promise<EntryState> {
   // Content, blog, media and conversation routes; registered first so the routes below win.
@@ -72,8 +78,10 @@ export async function pinEntry(page: Page, opts: EntryOptions = {}): Promise<Ent
     },
     settingsSaves: [],
     settingsSaveStatus: 200,
+    pickedFolder: 'C:\\SakaDesk-データ',
     progress: {},
     syncStarts: [],
+    sequence: null,
     prefsPosts: [],
   }
 
@@ -134,10 +142,51 @@ export async function pinEntry(page: Page, opts: EntryOptions = {}): Promise<Ent
   })
   await page.route((url) => url.pathname.startsWith('/api/settings/service/'), (route) => route.fulfill({ json: {} }))
   await page.route((url) => url.pathname === '/api/settings/fresh', (route) => route.fulfill({ json: { is_fresh: false } }))
+  await page.route((url) => url.pathname === '/api/settings/select-folder', (route) =>
+    route.fulfill({ json: { path: state.pickedFolder } }),
+  )
 
-  await page.route('**/api/sync/start*', (route) => {
-    state.syncStarts.push(new URL(route.request().url()).searchParams.get('service') ?? '')
-    return route.fulfill({ json: { status: 'started' } })
+  // Like the backend queue, a service that is already queued or running is not started again
+  // (the app may ask twice, e.g. the start-up sync and the first-login sync of a new group).
+  const startOnce = (service: string) => {
+    const active = state.syncStarts.includes(service) && state.progress[service]?.state !== 'complete'
+    if (!active) state.syncStarts.push(service)
+    return active
+  }
+  await page.route((url) => url.pathname === '/api/sync/start', (route) => {
+    const already = startOnce(new URL(route.request().url()).searchParams.get('service') ?? '')
+    return route.fulfill({ json: { status: already ? 'already_queued' : 'started' } })
+  })
+  // The app queues every multi-service / start-up sync as one backend sequence and follows it
+  // via /api/sync/queue (since the sync coordinator). Services run in the backend's fixed order.
+  await page.route((url) => url.pathname === '/api/sync/start-all', (route) => {
+    const body = route.request().postDataJSON() as { services: string[]; blocking?: boolean }
+    const ordered = ALL_SERVICES.filter((s) => body.services.includes(s))
+    ordered.forEach(startOnce)
+    state.sequence = { id: `seq-${++sequenceCounter}`, services: ordered, blocking: body.blocking ?? false }
+    return route.fulfill({ json: { sequence_id: state.sequence.id, results: {} } })
+  })
+  await page.route((url) => url.pathname === '/api/sync/queue', (route) => {
+    const seq = state.sequence
+    if (!seq) return route.fulfill({ json: { running: null, queued: [], sequence: null } })
+    const completed = seq.services.filter((s) => state.progress[s]?.state === 'complete')
+    const current = seq.services.findIndex((s) => !completed.includes(s))
+    const done = current === -1
+    return route.fulfill({
+      json: {
+        running: done ? null : { service: seq.services[current], kind: 'sync', origin: 'api' },
+        queued: [],
+        sequence: {
+          id: seq.id,
+          services: seq.services,
+          current_index: done ? Math.max(seq.services.length - 1, 0) : current,
+          blocking: seq.blocking,
+          state: done ? 'complete' : 'running',
+          completed,
+          failed: [],
+        },
+      },
+    })
   })
   await page.route((url) => url.pathname === '/api/version', (route) =>
     route.fulfill({
@@ -147,7 +196,10 @@ export async function pinEntry(page: Page, opts: EntryOptions = {}): Promise<Ent
   await page.route('**/api/sync/cancel*', (route) => route.fulfill({ json: { status: 'cancelled' } }))
   await page.route('**/api/sync/progress*', (route) => {
     const service = new URL(route.request().url()).searchParams.get('service') ?? ''
-    return route.fulfill({ json: state.progress[service] ?? { state: 'idle' } })
+    // Like the backend, a service no sync was started for is idle: the app follows a sync that is
+    // already running instead of starting one, so a progress set up front must not show before the start.
+    const started = state.syncStarts.includes(service)
+    return route.fulfill({ json: (started && state.progress[service]) || { state: 'idle' } })
   })
   await page.route('**/api/profile**', (route) => route.fulfill({ json: {} }))
   return state

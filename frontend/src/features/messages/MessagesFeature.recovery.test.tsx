@@ -61,7 +61,7 @@ function serve() {
     );
 }
 
-const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };
+const props = { appSettings: null, syncVersion: 0 };
 
 function stored(): { lastReadId: number; readCount: number; revealedIds: number[] } {
     return JSON.parse((conv.store[KEY] as { value: string }).value);

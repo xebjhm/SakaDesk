@@ -1,8 +1,7 @@
 // frontend/src/features/blogs/components/BlogReader.tsx
 // Blog reader: breadcrumb, the post at a readable width, older/newer pills and the timeline rail.
 
-import React, { useEffect, useState, useRef } from 'react';
-import DOMPurify from 'dompurify';
+import React, { useEffect, useMemo, useState, useRef } from 'react';
 import { useReducedMotion } from 'framer-motion';
 import { AlertCircle, ChevronLeft } from 'lucide-react';
 import type { BlogMember, BlogMeta, BlogContentResponse } from '../../../types';
@@ -11,7 +10,8 @@ import { getServiceBlogBaseUrl } from '../../../data/services';
 import { useBlogTranslationVisibility, useInlineBlogTranslations } from '../hooks';
 import { BlogNavFooter } from './BlogNavFooter';
 import { TimelineRail } from './TimelineRail';
-import { BLOG_PROSE } from './blogProse';
+import { BlogBody } from './BlogBody';
+import { buildBlogFragment, highlightKey, parseHighlightKey } from '../blogHtml';
 import { MediaViewerModal } from '../../../core/media/PhotoDetailModal';
 import type { MediaViewerItem } from '../../../core/media/PhotoDetailModal';
 import { useAppStore } from '../../../store/appStore';
@@ -24,6 +24,8 @@ import { readCachedTranslation } from '../../../core/persistence/translationLoad
 import { formatBlogDate } from '../../../utils/dateFormatters';
 import { resolveWash } from '../memberWash';
 import { clientLog } from '../../../utils/clientLog';
+import { loadLanguageFaces } from '../../../design/fonts';
+import { openExternal } from '../../../utils/openExternal';
 
 export interface BlogReaderProps {
     content: BlogContentResponse | null;
@@ -207,69 +209,18 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         if (memberBlogs[index]) onNavigate(memberBlogs[index]);
     };
 
-    // Normalize relative URLs in HTML content to absolute URLs
-    // Skip /api/ URLs — those are local backend endpoints (e.g., cached blog images)
-    const normalizeHtmlUrls = (html: string, baseUrl: string): string => {
-        if (!baseUrl) return html;
-        return html.replace(
-            /(src|href)=(["'])([^"']+)\2/g,
-            (match, attr, quote, url) => {
-                if (!url) return match;
-                if (url.startsWith('//')) return `${attr}=${quote}https:${url}${quote}`;
-                if (url.startsWith('/api/')) return match;
-                if (url.startsWith('/')) return `${attr}=${quote}${baseUrl}${url}${quote}`;
-                if (!url.startsWith('http')) return `${attr}=${quote}${baseUrl}/${url}${quote}`;
-                return match;
-            }
-        );
-    };
-
-    // Sanitize HTML content using DOMPurify (XSS protection)
-    // DOMPurify is a well-established sanitization library that removes malicious content
-    // First normalize URLs to handle cached content with relative URLs
+    // The post body: sanitized into a DOM fragment whose URLs are resolved against the blog host
+    // (loopback and app URLs dropped, except the cached-image endpoint) with search terms marked
+    // on its text nodes (blogHtml.ts).
+    // It is never serialized, edited or re-parsed as an HTML string. Reading
+    // matches get the reading mark (fill + dashed underline), exact matches the exact mark.
     const baseUrl = getServiceBlogBaseUrl(serviceId);
-    const normalizedHtml = content ? normalizeHtmlUrls(content.content.html, baseUrl) : '';
-    const sanitizedHtml = normalizedHtml
-        ? DOMPurify.sanitize(normalizedHtml, {
-            ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'a', 'img', 'div', 'span', 'h1', 'h2', 'h3', 'h4', 'ul', 'ol', 'li'],
-            ALLOWED_ATTR: ['href', 'src', 'alt', 'class', 'target', 'rel'],
-        })
-        : '';
-
-    // Highlight search query matches in blog content.
-    // Uses both the raw searchQuery and matchedTerms extracted from snippet
-    // <mark> tags. This handles reading-based matches where the query is
-    // hiragana (e.g., "かわいい") but the blog text is kanji (e.g., "可愛い").
-    // Reading-based matches get the reading mark (fill + dashed underline), exact matches the exact mark (BLOG_PROSE).
-    let processedHtml = sanitizedHtml;
-    if ((searchQuery || matchedTerms?.length) && processedHtml) {
-        const allTerms = new Set<string>();
-        const readingSet = new Set(readingTerms || []);
-        if (searchQuery) allTerms.add(searchQuery);
-        matchedTerms?.forEach(t => allTerms.add(t));
-
-        // Split into exact and reading term lists
-        const exactTermsList = [...allTerms].filter(t => !readingSet.has(t));
-        const readTermsList = [...allTerms].filter(t => readingSet.has(t));
-
-        // Helper to escape regex special chars
-        const escapeRegex = (s: string) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-        // Apply reading highlights first then exact highlights
-        // Applying exact last means if a term appears in both, exact style wins
-        for (const [terms, cssClass] of [
-            [readTermsList, 'search-snippet search-highlight reading'],
-            [exactTermsList, 'search-snippet search-highlight'],
-        ] as [string[], string][]) {
-            if (terms.length === 0) continue;
-            const escaped = terms.map(escapeRegex);
-            escaped.sort((a, b) => b.length - a.length);
-            const regex = new RegExp(`(${escaped.join('|')})`, 'gi');
-            processedHtml = processedHtml.replace(/>([^<]+)</g, (_match, text) => {
-                return '>' + (text as string).replace(regex, `<mark class="${cssClass}">$1</mark>`) + '<';
-            });
-        }
-    }
+    const postHtml = content?.content.html ?? '';
+    const termsKey = highlightKey(searchQuery, matchedTerms, readingTerms);
+    const postFragment = useMemo(
+        () => (postHtml ? buildBlogFragment(postHtml, parseHighlightKey(termsKey), baseUrl) : null),
+        [postHtml, baseUrl, termsKey],
+    );
 
     // Scroll to the first search highlight after content renders (instant with reduced motion)
     useEffect(() => {
@@ -284,25 +235,19 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
         }
     }, [searchQuery, matchedTerms, content, reducedMotion]);
 
-    // Intercept clicks on blog images to open in photo viewer
+    // Clicks inside the post. An image opens the photo viewer. A link never navigates the app
+    // window: a web link opens in the browser (openExternal), anything else does nothing.
     useEffect(() => {
         const container = blogContentRef.current;
         if (!container || !content) return;
 
-        const handleImgClick = (e: Event) => {
-            const target = e.target as HTMLElement;
-            if (target.tagName !== 'IMG') return;
-
-            const imgSrc = (target as HTMLImageElement).src;
+        const openPhotoViewer = (img: HTMLImageElement) => {
+            const imgSrc = img.src;
             if (!imgSrc) return;
-
-            // Collect all image srcs from the blog content
-            const allImgs = Array.from(container.querySelectorAll('img'));
-            const items: MediaViewerItem[] = allImgs
-                .map(img => img.src)
+            const items: MediaViewerItem[] = Array.from(container.querySelectorAll('img'))
+                .map(el => el.src)
                 .filter(Boolean)
                 .map(src => ({ src, type: 'picture' as const, timestamp: blog.published_at }));
-
             const clickedIdx = items.findIndex(item => item.src === imgSrc);
             if (clickedIdx !== -1) {
                 setBlogPhotoItems(items);
@@ -310,12 +255,46 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
             }
         };
 
-        container.addEventListener('click', handleImgClick);
-        return () => container.removeEventListener('click', handleImgClick);
+        const postLink = (target: EventTarget | null): HTMLAnchorElement | null => {
+            const anchor = target instanceof Element ? target.closest('a') : null;
+            return anchor && container.contains(anchor) ? anchor : null;
+        };
+
+        const handleClick = (e: MouseEvent) => {
+            const link = postLink(e.target);
+            if (link) e.preventDefault();
+            const target = e.target as HTMLElement;
+            if (target.tagName === 'IMG') {
+                openPhotoViewer(target as HTMLImageElement);
+                return;
+            }
+            if (link) openExternal(link.getAttribute('href'), 'blog_post');
+        };
+
+        // A middle click would open the link in a new window.
+        const handleAuxClick = (e: MouseEvent) => {
+            if (e.button !== 1) return;
+            const link = postLink(e.target);
+            if (!link) return;
+            e.preventDefault();
+            openExternal(link.getAttribute('href'), 'blog_post');
+        };
+
+        container.addEventListener('click', handleClick);
+        container.addEventListener('auxclick', handleAuxClick);
+        return () => {
+            container.removeEventListener('click', handleClick);
+            container.removeEventListener('auxclick', handleAuxClick);
+        };
     }, [content, blog.published_at]);
 
     // Inject translations into the blog DOM (immersive, per paragraph) while expanded.
-    useInlineBlogTranslations(blogContentRef, blogTranslations, translationsExpanded);
+    useInlineBlogTranslations(blogContentRef, blogTranslations, translationsExpanded, translationTargetLanguage);
+
+    // The translation language's own faces (a Chinese translation in Noto Sans TC, not JP glyphs).
+    useEffect(() => {
+        if (translationsExpanded) loadLanguageFaces(translationTargetLanguage);
+    }, [translationsExpanded, translationTargetLanguage]);
 
     // Reset translations when blog changes
     useEffect(() => {
@@ -373,7 +352,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                         {!loading && !error && content && (
                             <article className="mx-auto w-full max-w-2xl px-8 pb-24 pt-6">
                                 <header className="mb-8 flex flex-col gap-2">
-                                    <h1 lang="ja" className="font-reading text-heading font-semibold text-primary">{content.meta.title}</h1>
+                                    <h1 lang="ja" className="phrase-break text-balance font-reading text-heading font-semibold text-primary">{content.meta.title}</h1>
                                     <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-small text-muted">
                                         <button
                                             type="button"
@@ -407,13 +386,8 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                                     </div>
                                 </header>
 
-                                {/* Sanitized with DOMPurify, then search highlights injected */}
-                                <div
-                                    ref={blogContentRef}
-                                    lang="ja"
-                                    className={BLOG_PROSE}
-                                    dangerouslySetInnerHTML={{ __html: processedHtml }}
-                                />
+                                {/* Sanitized DOM fragment with its search marks (blogHtml.ts) */}
+                                <BlogBody fragment={postFragment} containerRef={blogContentRef} />
                             </article>
                         )}
                     </div>
@@ -446,6 +420,7 @@ export const BlogReader: React.FC<BlogReaderProps> = ({
                     currentIndex={blogPhotoIndex}
                     onClose={() => setBlogPhotoIndex(null)}
                     onNavigate={setBlogPhotoIndex}
+                    sequence="reading"
                 />
             )}
         </div>

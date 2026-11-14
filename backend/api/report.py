@@ -12,14 +12,19 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 from collections.abc import Sequence
-from typing import Any, Optional, Union, cast
+from typing import Any, Optional, Union
 from urllib.parse import urlencode, quote
 
 import structlog
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from backend.services.platform import get_logs_dir, get_settings_path
+from backend.services.path_resolver import output_dir_value
+from backend.services.platform import (
+    get_default_output_dir,
+    get_logs_dir,
+    get_settings_path,
+)
 from backend.services.settings_store import read_settings_file
 from pysaka.credentials import get_token_manager
 from pysaka import Group, get_jwt_remaining_seconds
@@ -66,17 +71,59 @@ def _get_username() -> str:
             return ""
 
 
-def _redact_path(text: str, username: str) -> str:
-    """Redact username from file paths."""
-    if not username:
-        return text
-    # Handle both forward and back slashes
-    patterns = [
-        rf"/home/{re.escape(username)}",
-        rf"/Users/{re.escape(username)}",
-        rf"C:\\Users\\{re.escape(username)}",
-        rf"C:/Users/{re.escape(username)}",
-    ]
+# Between path parts: a run of up to 8 backslashes (raw, repr()-escaped by
+# structlog's ConsoleRenderer, doubled again inside str(OSError), then JSON-escaped)
+# or a "/". The bound keeps every match attempt short, so a long run of
+# backslashes costs linear time instead of quadratic.
+_SEP = r"(?:\\{1,8}|/)"
+# A match ends where its last part ends: anywhere the next character cannot
+# continue a name (any punctuation, including CJK, a separator, whitespace or
+# the end of the text), so "hina" never cuts into "hinata" or "hina_2".
+_END = r"(?![\w-])"
+
+
+def _path_regex(path_text: str) -> Optional[str]:
+    """A pattern for ``path_text`` that accepts any separator form (:data:`_SEP`).
+
+    ``None`` when the path names no folder: empty, a bare root (``/``, ``C:\\``)
+    or a drive alone (``C:``) must never become a pattern that matches
+    everywhere (security audit 2026-11-13).
+    """
+    parts = [p for p in re.split(r"[\\/]+", path_text) if p]
+    if not parts or (len(parts) == 1 and parts[0].endswith(":")):
+        return None
+    body = _SEP.join(re.escape(p) for p in parts)
+    if path_text[:1] in ("/", "\\"):
+        body = _SEP + body
+    return body + _END
+
+
+def _home_text() -> str:
+    """The current user's home folder as text; ``""`` when it cannot be found."""
+    try:
+        return str(Path.home())
+    except (RuntimeError, KeyError, OSError):
+        return ""
+
+
+def _redact_path(text: str, username: str, home: Optional[str] = None) -> str:
+    """Redact the user's home folder and their login name in profile paths.
+
+    ``home`` defaults to :func:`_home_text`: it also covers a profile on another
+    drive or one whose folder name is not the login name. The login name is
+    matched under ``X:\\Users\\`` (any drive letter), ``/home/`` and
+    ``/Users/``. Every separator form matches (:data:`_SEP`), in any letter
+    case; each match becomes ``/[REDACTED]``.
+    """
+    patterns: list[str] = []
+    home_pattern = _path_regex(_home_text() if home is None else home)
+    if home_pattern:
+        patterns.append(home_pattern)
+    if username:
+        user = re.escape(username)
+        patterns.append(rf"[A-Za-z]:{_SEP}Users{_SEP}{user}{_END}")
+        patterns.append(rf"{_SEP}home{_SEP}{user}{_END}")
+        patterns.append(rf"{_SEP}Users{_SEP}{user}{_END}")
     result = text
     for pattern in patterns:
         result = re.sub(pattern, "/[REDACTED]", result, flags=re.IGNORECASE)
@@ -116,6 +163,10 @@ _SECRET_PATTERNS = [
     re.compile(r"eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+"),
     # Authorization: Bearer <token>
     re.compile(r"[Bb]earer\s+\S+"),
+    # Provider API keys: Google (AIza + 35) and OpenAI-style (sk-...); the long
+    # base64 rule below misses a 39-character Gemini key.
+    re.compile(r"AIza[0-9A-Za-z_-]{35}"),
+    re.compile(r"\bsk-[A-Za-z0-9_-]{20,}"),
     # Long hex secrets (>= 32 hex chars, e.g. API keys / hashes)
     re.compile(r"\b[0-9a-fA-F]{32,}\b"),
     # Long base64/base64url secrets (>= 40 chars)
@@ -136,12 +187,20 @@ def _scrub_secrets(text: str) -> str:
 
 
 def scrub_log_line(
-    line: str, username: str, nickname: Nicknames, output_dir: Optional[str] = None
+    line: str,
+    username: str,
+    nickname: Nicknames,
+    output_dir: Optional[str] = None,
+    *,
+    home: Optional[str] = None,
 ) -> str:
     """Full redaction for a single emitted log line, in a fixed order.
 
-    1. the custom output dir (``[REDACTED_DIR]``), 2. the username in user
-    profile paths (``/[REDACTED]``), 3. the nicknames, 4. secrets. Paths come
+    1. the custom output dir (``[REDACTED_DIR]``), 2. the home folder
+    (``home``, default ``Path.home()``) and the username in user profile paths
+    (``/[REDACTED]``), 3. the nicknames, 4. secrets. Every path is matched in
+    any separator form, so ``repr()``-escaped Windows paths from structlog's
+    ConsoleRenderer are redacted too (security audit 2026-11-13). Paths come
     first: a nickname that overlaps the username or a folder of the output dir
     (``hin`` / ``hina``) must not rewrite part of the path before the path
     patterns see it, which left ``C:\\Users\\[REDACTED]a`` or the whole
@@ -150,7 +209,7 @@ def scrub_log_line(
     diagnostics endpoints (SEC-5).
     """
     text = _redact_output_dir(line, output_dir)
-    text = _redact_path(text, username)
+    text = _redact_path(text, username, home)
     text = _redact_nickname(text, nickname)
     return _scrub_secrets(text)
 
@@ -159,17 +218,14 @@ def _redact_output_dir(text: str, output_dir: Optional[str]) -> str:
     """Redact a user-chosen data/output directory from free text.
 
     The output dir can live outside C:\\Users (e.g. D:\\SakaData), so _redact_path
-    won't catch it — but sync errors embed it. Redact all slash variants.
+    won't catch it — but sync errors embed it. Redact it in every separator
+    form, including ``repr()``-escaped ones (:func:`_path_regex`).
     """
     if not output_dir:
         return text
-    variants = {
-        output_dir,
-        output_dir.replace("\\", "/"),
-        output_dir.replace("/", "\\"),
-    }
-    names = sorted((v for v in variants if v), key=lambda v: (-len(v), v))
-    pattern = "|".join(re.escape(v) for v in names)
+    pattern = _path_regex(output_dir)
+    if pattern is None:
+        return text
     return re.sub(pattern, "[REDACTED_DIR]", text, flags=re.IGNORECASE)
 
 
@@ -214,11 +270,19 @@ def _redact_diagnostics(
 
 
 def _get_output_dir() -> Optional[str]:
-    """Read the configured sync output dir (for redaction of custom data paths)."""
+    """Read the configured sync output dir (for redaction of custom data paths).
+
+    The saved text as is. When the saved value is unset, empty, blank or not a
+    string, sync uses the default folder, so that folder's path is returned:
+    logs name it and must be redacted too. None when settings cannot be read.
+    """
     try:
         data = read_settings_file(get_settings_path())
         if isinstance(data, dict):
-            return cast(Optional[str], data.get("output_dir"))
+            raw = data.get("output_dir")
+            if isinstance(raw, str) and raw.strip():
+                return raw
+            return str(get_default_output_dir())
     except Exception as e:
         # Do NOT fail silently: if the output dir can't be read, custom-data-dir
         # redaction is skipped and a path outside C:\Users could reach the public
@@ -327,34 +391,36 @@ def _get_sync_state() -> dict:
     try:
         settings = read_settings_file(get_settings_path())
         if isinstance(settings, dict):
-            output_dir = settings.get("output_dir")
-            if output_dir:
-                # Check per-service metadata files
-                latest_sync = None
-                last_error = None
-                output_path = Path(output_dir)
+            # The resolver sync uses: an empty saved value is the default folder
+            output_dir = output_dir_value(
+                settings.get("output_dir"), get_default_output_dir()
+            )
+            # Check per-service metadata files
+            latest_sync = None
+            last_error = None
+            output_path = Path(output_dir)
 
-                for service_dir in output_path.iterdir():
-                    if not service_dir.is_dir():
-                        continue
-                    metadata_path = service_dir / "sync_metadata.json"
-                    if metadata_path.exists():
-                        try:
-                            with open(metadata_path, "r", encoding="utf-8") as mf:
-                                metadata = json.load(mf)
-                                utc_sync = metadata.get("last_sync")
-                                if utc_sync:
-                                    if latest_sync is None or utc_sync > latest_sync:
-                                        latest_sync = utc_sync
-                                if metadata.get("last_error"):
-                                    last_error = metadata.get("last_error")
-                        except Exception:
-                            pass
+            for service_dir in output_path.iterdir():
+                if not service_dir.is_dir():
+                    continue
+                metadata_path = service_dir / "sync_metadata.json"
+                if metadata_path.exists():
+                    try:
+                        with open(metadata_path, "r", encoding="utf-8") as mf:
+                            metadata = json.load(mf)
+                            utc_sync = metadata.get("last_sync")
+                            if utc_sync:
+                                if latest_sync is None or utc_sync > latest_sync:
+                                    latest_sync = utc_sync
+                            if metadata.get("last_error"):
+                                last_error = metadata.get("last_error")
+                    except Exception:
+                        pass
 
-                return {
-                    "last_sync": latest_sync,
-                    "last_error": last_error,
-                }
+            return {
+                "last_sync": latest_sync,
+                "last_error": last_error,
+            }
     except Exception:
         pass
     return {"last_sync": None, "last_error": None}
@@ -394,9 +460,14 @@ WITHHELD_LOGS = {"errors": [], "recent": [], "withheld": "nicknames_unavailable"
 def _withhold_free_text(diagnostics: dict) -> None:
     """Fail closed when the nicknames are unknown: drop the logs and free text.
 
-    Log lines and the error message are where a nickname would appear; with
-    no nickname list they cannot be redacted, so they are not sent at all.
+    Log lines, the error message and the user's own report text are where a
+    nickname would appear; with no nickname list they cannot be redacted, so
+    they are not sent at all.
     """
+    report_text = diagnostics.get("report_text")
+    if isinstance(report_text, dict):
+        for key in report_text:
+            report_text[key] = None
     diagnostics["logs"] = dict(WITHHELD_LOGS)
     context = diagnostics.get("context")
     if isinstance(context, dict):
@@ -406,14 +477,31 @@ def _withhold_free_text(diagnostics: dict) -> None:
     logger.warning("report_logs_withheld", reason="nicknames_unavailable")
 
 
-def _build_github_url(
+MAX_GITHUB_URL_LENGTH = 8000
+"""Longest ``github_url`` returned. The desktop shell refuses a URL over 8192
+characters (``nav_guard.MAX_URL_LENGTH``), which would silently drop the report
+page, so the percent-encoded URL is kept below that with some margin."""
+
+_URL_EXCLUDED_KEYS = ("logs", "report_text")
+"""Top-level diagnostics keys left out of the URL body: the logs and the
+user's full text (the URL carries that text itself, possibly cut)."""
+
+_TRUNCATION_MARK = "\u2026"
+_URL_TEXT_KEYS = ("error_message", "current_screen")
+"""Free-text keys of ``diagnostics["context"]`` that are also trimmed when the URL is too long."""
+
+
+def _clip(text: Any, limit: int) -> Any:
+    """``text`` cut to ``limit`` characters plus an ellipsis; other values and short text as is."""
+    if isinstance(text, str) and len(text) > limit:
+        return text[:limit] + _TRUNCATION_MARK
+    return text
+
+
+def _render_github_url(
     category: str, what_doing: str, what_wrong: str, diagnostics: dict
 ) -> str:
-    """Build GitHub issue URL with pre-filled content.
-
-    Only includes compact system info in the URL to avoid GitHub's URL length limit.
-    Logs are excluded — they're too large for URL encoding.
-    """
+    """The untrimmed GitHub new-issue URL (see :func:`_build_github_url`)."""
     category_labels = {
         "sync_data": "Sync / Data",
         "playback": "Playback",
@@ -424,7 +512,7 @@ def _build_github_url(
     title = f"[Bug] {category_labels.get(category, 'Other')}: {what_wrong[:50]}"
 
     # Compact diagnostics — exclude logs to keep URL short
-    compact_diag = {k: v for k, v in diagnostics.items() if k != "logs"}
+    compact_diag = {k: v for k, v in diagnostics.items() if k not in _URL_EXCLUDED_KEYS}
     diag_json = json.dumps(compact_diag, indent=2)
 
     body = f"""## Bug Report
@@ -459,6 +547,70 @@ PASTE_HERE
 
     params = urlencode({"title": title, "body": body}, quote_via=quote)
     return f"https://github.com/xebjhm/SakaDesk/issues/new?{params}"
+
+
+def _build_github_url(
+    category: str, what_doing: str, what_wrong: str, diagnostics: dict
+) -> str:
+    """Build GitHub issue URL with pre-filled content, at most
+    ``MAX_GITHUB_URL_LENGTH`` characters.
+
+    Only includes compact system info in the URL to avoid GitHub's URL length limit.
+    The ``logs`` and ``report_text`` diagnostics are excluded — they're too large
+    for URL encoding. When the percent-encoded
+    URL is still too long (CJK text encodes to 9 characters per character), the
+    user-written text is cut, all of it to the same length, found by bisection:
+    ``what_doing``, ``what_wrong`` and the ``context`` fields ``error_message`` and
+    ``current_screen``, each cut text ending in an ellipsis. The full text stays in
+    the ``report_text`` diagnostics (clipboard copy, scrubbed like the rest of the
+    diagnostics). A cut logs ``report_url_truncated`` with the URL length before
+    and after and the characters kept per field, never the text.
+    If the fixed part alone is over the limit, every cut text is reduced to the
+    ellipsis alone (the URL is then returned over the limit) and the cut is
+    logged as above with ``kept_chars`` 0.
+    """
+    url = _render_github_url(category, what_doing, what_wrong, diagnostics)
+    if len(url) <= MAX_GITHUB_URL_LENGTH:
+        return url
+
+    def render(keep: int) -> str:
+        context = diagnostics.get("context")
+        trimmed = diagnostics
+        if isinstance(context, dict):
+            trimmed = {
+                **diagnostics,
+                "context": {
+                    k: _clip(v, keep) if k in _URL_TEXT_KEYS else v
+                    for k, v in context.items()
+                },
+            }
+        return _render_github_url(
+            category, _clip(what_doing, keep), _clip(what_wrong, keep), trimmed
+        )
+
+    context = diagnostics.get("context")
+    context_lengths = [
+        len(v)
+        for k, v in (context.items() if isinstance(context, dict) else ())
+        if k in _URL_TEXT_KEYS and isinstance(v, str)
+    ]
+    low, high = 0, max(len(what_doing), len(what_wrong), *context_lengths, 1)
+    if len(render(0)) > MAX_GITHUB_URL_LENGTH:
+        low = high = 0
+    while low < high:
+        mid = (low + high + 1) // 2
+        if len(render(mid)) <= MAX_GITHUB_URL_LENGTH:
+            low = mid
+        else:
+            high = mid - 1
+    trimmed_url = render(low)
+    logger.info(
+        "report_url_truncated",
+        length_before=len(url),
+        length_after=len(trimmed_url),
+        kept_chars=low,
+    )
+    return trimmed_url
 
 
 @router.post("", response_model=ReportResponse)
@@ -513,6 +665,9 @@ def _generate_report(
             "current_screen": context.current_screen,
             "error_message": context.error_message,
         }
+
+    # The user's full text, for the clipboard copy (the URL may cut it)
+    diagnostics["report_text"] = {"what_doing": what_doing, "what_wrong": what_wrong}
 
     # Smart logs
     log_path = get_logs_dir() / "debug.log"

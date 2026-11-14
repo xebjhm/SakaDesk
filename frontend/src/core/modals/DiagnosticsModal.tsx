@@ -604,7 +604,7 @@ export function DiagnosticsModal({ isOpen, onClose }: DiagnosticsModalProps) {
                                         </Pill>
                                     </div>
                                 </div>
-                                <div data-surface="dark" className="h-48 overflow-y-auto whitespace-pre-wrap rounded-card bg-console p-4 font-mono text-caption text-console-muted">
+                                <div data-surface="dark" className="h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-card bg-console p-4 font-mono text-caption text-console-muted">
                                     {getLogsForTab().length > 0 ? (
                                         getLogsForTab().map((line, i) => (
                                             <div

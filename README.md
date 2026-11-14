@@ -86,8 +86,28 @@ uv run python desktop.py
 
 **Option B: Separate backend and frontend (for development)**
 
+`./dev.sh` (Linux/macOS) or `.\dev.ps1` (Windows) starts both servers. When
+the frontend is up, `dev.sh` prints the app URL and `dev.ps1` opens it in your
+browser: `http://127.0.0.1:5173/#t=<token>`.
+
+The scripts draw a new token on every `start` / `restart` and overwrite the
+git-ignored `.dev-api-token` (readable by you only), so an old URL in your
+browser history stops working. After a restart, reopen the app tab with the
+new URL: an older tab keeps the old token and its changes get 401. An
+exported `SAKADESK_API_TOKEN` is used as given instead of a new one.
+
+By hand: the local API requires a per-launch token, and the dev server does
+not add it. The page must be opened with the token in the URL fragment, like
+SakaDesk's own windows. Generate a new one into `.dev-api-token` each time you
+start the backend (the file `dev.sh` / `dev.ps1` use too):
+
+```bash
+(umask 077 && uv run python -c "import secrets; print(secrets.token_urlsafe(32))" > .dev-api-token)
+```
+
 Terminal 1 - Backend:
 ```bash
+export SAKADESK_API_TOKEN=$(cat .dev-api-token)
 uv run uvicorn backend.main:app --port 8000 --reload --reload-exclude "output/*" --reload-exclude "auth_data/*" --timeout-keep-alive 600
 ```
 
@@ -97,7 +117,17 @@ cd frontend
 npm run dev
 ```
 
-Then open http://localhost:5173 in your browser.
+Then open the app URL with the token from the same file:
+
+```bash
+echo "http://127.0.0.1:5173/#t=$(cat .dev-api-token)"
+```
+
+The dev server listens on this machine only (127.0.0.1) and adds no token of
+its own. The page moves the token out of the address bar on load and keeps it
+for that tab only. A tab opened without `#t=` has no token, so the API answers
+its changes with 401 (and its reads too, unless an earlier tab left the media
+cookie): reopen it with the URL above.
 
 ### 3. Run tests
 
@@ -208,9 +238,18 @@ Settings include:
 
 ## API Documentation
 
-When running the backend, interactive API documentation is available at:
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+When the backend runs from source (not in the packaged app, which turns these
+pages off), interactive API documentation is available at:
+- Swagger UI: http://127.0.0.1:8000/docs
+- ReDoc: http://127.0.0.1:8000/redoc
+
+Every `/api` call needs the `X-SakaDesk-Token` header set to the backend's
+`SAKADESK_API_TOKEN`; the docs pages cannot add it, so their "Try it out"
+requests answer 401. Use a client that sends the header, for example:
+
+```bash
+curl -H "X-SakaDesk-Token: $SAKADESK_API_TOKEN" http://127.0.0.1:8000/api/settings
+```
 
 ## Dependencies
 
@@ -223,7 +262,7 @@ When running the backend, interactive API documentation is available at:
 - **windows-toasts** - Native Windows toast notifications (Windows only)
 - **pywin32** - Start Menu shortcut / app identity so toasts show as banners (Windows only)
 - **pykakasi** + **jaconv** - Japanese transliteration for search
-- **tk** - Tkinter for native file dialogs
+- **tkinter** (Python standard library) - Native file dialogs
 
 > `pywebview` is used at runtime to create the desktop window but is a build-time/system dependency, not listed in `pyproject.toml`.
 
@@ -237,6 +276,7 @@ When running the backend, interactive API documentation is available at:
 - **react-virtuoso** - Virtual scrolling
 - **lucide-react** - Icon set
 - **dompurify** - HTML sanitization
+- **@fontsource-variable/noto-*** - Self-hosted Noto fonts (SIL Open Font License 1.1)
 - **clsx** + **tailwind-merge** - Class name utilities
 
 ## License

@@ -1,5 +1,7 @@
-import { describe, it, expect, vi } from 'vitest';
+import { describe, it, expect, vi, beforeAll } from 'vitest';
 import { fireEvent, render, screen } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
+import i18n from '../../../i18n';
 import { ConversationMenu } from './ConversationMenu';
 
 describe('ConversationMenu trigger', () => {
@@ -59,6 +61,51 @@ describe('ConversationMenu trigger', () => {
         fireEvent.click(trigger);
         expect(trigger).toHaveAttribute('aria-expanded', 'true');
         expect(trigger).toHaveClass('aria-expanded:bg-sunken');
+        expect(screen.getByRole('menu')).toBeInTheDocument();
+    });
+});
+
+describe('ConversationMenu reveal all (UI health #3)', () => {
+    beforeAll(async () => { await i18n.changeLanguage('en'); });
+
+    const open = (unreadCount: number, onRevealAll = vi.fn()) => {
+        render(
+            <ConversationMenu
+                conversationPath="p"
+                isGroupChat={false}
+                messages={[]}
+                memberName="テスト 🌸"
+                onOpenCalendar={vi.fn()}
+                letters={[]}
+                lettersStatus="ready"
+                onJumpToLetter={vi.fn()}
+                unreadCount={unreadCount}
+                onRevealAll={onRevealAll}
+            />,
+        );
+        fireEvent.click(screen.getByRole('button', { name: /./ }));
+        return onRevealAll;
+    };
+
+    it('offers Reveal all unread and calls onRevealAll', async () => {
+        const onRevealAll = open(3);
+        const item = screen.getByRole('menuitem', { name: /Reveal all unread/ });
+        // A new utility item is neutral (R-e), not accent.
+        expect(item.querySelector('svg')).toHaveClass('text-secondary');
+        expect(item.querySelector('svg')).not.toHaveClass('text-accent');
+        await userEvent.click(item);
+        expect(onRevealAll).toHaveBeenCalledTimes(1);
+        expect(screen.queryByRole('menu')).toBeNull();
+    });
+
+    it('keeps the item focusable with a reason when nothing is unread', async () => {
+        const onRevealAll = open(0);
+        const item = screen.getByRole('menuitem', { name: /Reveal all unread/ });
+        expect(item).toHaveAttribute('aria-disabled', 'true');
+        expect(item).toHaveAttribute('title', 'Nothing is unread in this chat');
+        expect(item).toHaveAccessibleDescription('Nothing is unread in this chat');
+        await userEvent.click(item);
+        expect(onRevealAll).not.toHaveBeenCalled();
         expect(screen.getByRole('menu')).toBeInTheDocument();
     });
 });

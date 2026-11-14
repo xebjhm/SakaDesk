@@ -38,10 +38,12 @@ from backend.services.platform import (
     get_default_output_dir,
 )
 from backend.services.new_message_collector import NewMessageCollector
+from backend.services.path_resolver import output_dir_value
 from backend.services.nickname import nickname_for
 from backend.services.notification_planner import find_avatar, plan_toasts
 from backend.services.notification_service import send_planned
 from backend.services.chat_kind import is_member_dir
+from backend.services.safe_paths import is_int_id, is_within
 from backend.services.memories.index import build_all as build_memory_index
 from backend.services.memories import index as memory_index
 from backend.services.memories.album import warm_album
@@ -129,6 +131,45 @@ def _rows_newer_than(
     )
 
 
+def _int_id_rows(rows: Any, *, kind: str, service: str) -> list[dict[str, Any]]:
+    """The rows whose ``id`` is a true ``int`` (security audit 2026-11-13).
+
+    Group, member and message ids from the message API become folder and file
+    names in the archive (pysaka's ``<id> <name>`` folders and
+    ``<id>.<ext>`` files), so a row whose id is anything else (``"../x"``,
+    ``1.0``, ``True``, missing) is dropped before pysaka sees it. Drops log
+    one ``remote_id_rejected`` with ``service``, ``kind``, ``count`` and the
+    type names (of the ``id`` for a dict row, of the row itself for a non-dict
+    row), never a value. ``rows`` that is not a list counts as empty
+    (``None`` silently, anything else logs ``remote_id_rejected`` with
+    ``reason=not_list``).
+    """
+    if not isinstance(rows, list):
+        if rows is not None:
+            logger.warning(
+                "remote_id_rejected", service=service, kind=kind, reason="not_list"
+            )
+        return []
+    keep = [r for r in rows if isinstance(r, dict) and is_int_id(r.get("id"))]
+    if len(keep) != len(rows):
+        dropped = [
+            r for r in rows if not (isinstance(r, dict) and is_int_id(r.get("id")))
+        ]
+        logger.warning(
+            "remote_id_rejected",
+            service=service,
+            kind=kind,
+            count=len(dropped),
+            id_types=sorted(
+                {
+                    type(r.get("id") if isinstance(r, dict) else r).__name__
+                    for r in dropped
+                }
+            ),
+        )
+    return keep
+
+
 class SyncService:
     """
     Per-service sync orchestrator for SakaDesk.
@@ -164,13 +205,63 @@ class SyncService:
         return get_service_enum(self._service)
 
     def _resolve_service_paths(self, app_settings: dict) -> None:
-        """Set output_dir / service_data_dir / metadata_file for this service."""
-        self.output_dir = Path(
-            app_settings.get("output_dir", str(get_default_output_dir()))
+        """Set output_dir / service_data_dir / metadata_file for this service.
+
+        An unset or empty ``output_dir`` means the default folder
+        (``path_resolver.output_dir_value``), never the process's working
+        directory (security audit 2026-11-13).
+        """
+        self.output_dir = output_dir_value(
+            app_settings.get("output_dir"), get_default_output_dir()
         )
         service_display = get_service_display_name(self._service)
         self.service_data_dir = self.output_dir / service_display
         self.metadata_file = self.service_data_dir / "sync_metadata.json"
+
+    def _contained_media(
+        self, items: list[dict[str, Any]], *, phase: str
+    ) -> list[dict[str, Any]]:
+        """The media items whose files stay inside this service's folder (security audit 2026-11-13).
+
+        pysaka builds each item's ``path`` (and ``member_dir``) from remote
+        ids, and its own fetches (past-message backfill, letters, a recovery
+        re-fetch) bypass :func:`_int_id_rows`. An item is kept only if its
+        ``path`` and, when present, its ``member_dir`` pass
+        ``safe_paths.is_within(self.service_data_dir, ...)``; the rest are
+        dropped with one ``media_item_rejected`` (``phase``, ``count``), never
+        a path. Lexical only (no filesystem call), but each ``is_within`` costs
+        tens of microseconds, so each distinct ``member_dir`` is checked once
+        per call and async callers run the whole filter in a worker thread.
+        """
+        keep: list[dict[str, Any]] = []
+        dir_ok: dict[Path, bool] = {}
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path")
+            member_dir = item.get("member_dir")
+            if not isinstance(path, (str, Path)) or not is_within(
+                self.service_data_dir, Path(path)
+            ):
+                continue
+            if member_dir is not None:
+                if not isinstance(member_dir, (str, Path)):
+                    continue
+                md = Path(member_dir)
+                if md not in dir_ok:
+                    dir_ok[md] = is_within(self.service_data_dir, md)
+                if not dir_ok[md]:
+                    continue
+            keep.append(item)
+        if len(keep) != len(items):
+            logger.warning(
+                "media_item_rejected",
+                service=self._service,
+                phase=phase,
+                reason="outside_service_dir",
+                count=len(items) - len(keep),
+            )
+        return keep
 
     async def load_config(self):
         """Load config from pysaka's TokenManager (WCM on Windows)."""
@@ -196,12 +287,9 @@ class SyncService:
         return await load_config()
 
     async def get_output_dir(self):
-        """Resolve the effective output directory."""
+        """Resolve the effective output directory (``path_resolver.output_dir_value``)."""
         settings = await self.load_app_settings()
-        path_str = settings.get("output_dir")
-        if path_str:
-            return Path(path_str)
-        return get_default_output_dir()
+        return output_dir_value(settings.get("output_dir"), get_default_output_dir())
 
     async def load_metadata(self):
         """Load sync metadata for quick checks (per-service location)."""
@@ -501,6 +589,7 @@ class SyncService:
                 groups = await client.get_groups(
                     session, include_inactive=include_inactive
                 )
+                groups = _int_id_rows(groups, kind="group", service=self._service)
 
                 if not groups:
                     logger.info("No groups found!")
@@ -568,6 +657,9 @@ class SyncService:
                             error_type=type(e).__name__,
                         )
                         continue
+                    members = _int_id_rows(
+                        members, kind="member", service=self._service
+                    )
                     for m in members:
                         tasks.append(
                             {
@@ -818,6 +910,9 @@ class SyncService:
                         all_messages = await self.manager.client.get_messages(
                             session, gid, since_ts=min_since_ts
                         )
+                    all_messages = _int_id_rows(
+                        all_messages, kind="message", service=self._service
+                    )
 
                     # pysaka 0.4.6: room authors missing from the API member
                     # list (graduated members, the official account). Archived
@@ -852,6 +947,9 @@ class SyncService:
                         if not scan:
                             raise
                         extra_members = []
+                    extra_members = _int_id_rows(
+                        extra_members, kind="member", service=self._service
+                    )
                     if extra_members:
                         logger.info(
                             "room_extra_members_found",
@@ -1205,6 +1303,11 @@ class SyncService:
 
                 # Phase 3: Media Download (Queued)
                 phase3_t0 = time.monotonic()
+                # Every item must stay inside this service's folder: pysaka
+                # built its path from remote ids (security audit 2026-11-13).
+                media_queue[:] = await asyncio.to_thread(
+                    self._contained_media, media_queue, phase="sync"
+                )
                 media_count = len(media_queue)
                 progress.start_phase(
                     "downloading", "Downloading Media", 3, media_count, "files"
@@ -1859,6 +1962,11 @@ class SyncService:
             "repaired": 0,
             "failed": 0,
             "still_missing": 0,
+            # Missing items dropped by the service-folder containment filter
+            # (``_contained_media``): counted in ``checked`` but never in
+            # missing, repaired, failed and still_missing, because nothing is done
+            # about them.
+            "rejected": 0,
             # Media-type messages with no recorded/downloadable media source
             # (e.g. media removed on the server). Reported so completeness is
             # never overclaimed as "all present" while these exist.
@@ -1949,9 +2057,18 @@ class SyncService:
                                         "media_type": u.get("media_type"),
                                     }
                                 )
-                        if scan["missing"]:
-                            totals["missing"] += len(scan["missing"])
-                            gaps_by_group[gid].append((member_dir, scan["missing"]))
+                        # A stored media_file can name a path outside the
+                        # service folder (security audit 2026-11-13).
+                        missing = scan["missing"]
+                        if missing:
+                            contained = await asyncio.to_thread(
+                                self._contained_media, missing, phase="verify"
+                            )
+                            totals["rejected"] += len(missing) - len(contained)
+                            missing = contained
+                        if missing:
+                            totals["missing"] += len(missing)
+                            gaps_by_group[gid].append((member_dir, missing))
                         progress.update(1, detail=f"{member_dir.name}")
 
                 # Phase 2: per-group fresh timeline fetch + reconcile.
@@ -1975,8 +2092,12 @@ class SyncService:
                         # (its gaps stay missing). Auth failures propagate so the
                         # UI can prompt re-login. Never log message text/URLs.
                         try:
-                            timeline = await manager.client.get_messages(
-                                session, gid, since_ts=since_ts
+                            timeline = _int_id_rows(
+                                await manager.client.get_messages(
+                                    session, gid, since_ts=since_ts
+                                ),
+                                kind="message",
+                                service=self._service,
                             )
                         except (SessionExpiredError, RefreshFailedError):
                             raise

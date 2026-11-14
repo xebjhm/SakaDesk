@@ -66,6 +66,7 @@
     "tabUpdates": "更新",
     "sections": "設定分類",
     "outputFolder": "輸出資料夾",
+    "outputFolderDesc": "訊息和照片會儲存在這裡。如要改用其他資料夾，請按「瀏覽」選擇，再按「儲存」。",
     "autoSync": "自動同步",
     "syncEvery": "同步間隔",
     "smartTimingDesc": "根據成員發訊習慣隨機調整間隔",
@@ -97,6 +98,7 @@
     "verifySummary": "已檢查 {{checked}} 個檔案 · 修復 {{repaired}} 個 · {{stillMissing}} 個仍無法取得",
     "verifyNoGaps": "已下載訊息的媒體皆已存在。",
     "verifyUnresolved": "{{count}} 個媒體沒有可用來源，無法驗證。",
+    "verifyRejected": "{{count}} 個媒體的儲存位置在此團體的資料夾之外，已略過。",
     "deepResync": "深度驗證（完全重新同步）",
     "deepResyncButton": "全部重新同步",
     "deepResyncDesc": "從頭重新檢查每位成員的完整時間軸並重新下載缺失內容（已儲存的檔案會略過）。可找出媒體驗證無法察覺的缺口，包括完全缺失的訊息。此操作耗時較長且會發出大量 API 請求，請偶爾使用。",
@@ -154,6 +156,23 @@
     "resetDefaults": "重設為預設值",
     "resetConfirm": "要將設定重設為預設值嗎？資料夾、已儲存的 API 金鑰與語言會保留。",
     "saveFailed": "無法儲存此設定，請再試一次。",
+    "outputDirError": {
+      "invalid": "無法使用此資料夾，請選擇其他資料夾。",
+      "device": "無法使用此位置，請選擇其他資料夾。",
+      "network": "無法使用網路位置。請選擇這台電腦上的資料夾（已對應的磁碟機代號可以使用）。",
+      "root": "請選擇磁碟機內的資料夾，而不是整個磁碟機。",
+      "relative": "請選擇以磁碟機代號開頭的資料夾。",
+      "profile": "請選擇專用的資料夾（例如 Documents\\SakaDesk），而不是整個使用者資料夾。",
+      "app_data": "此資料夾存放著 SakaDesk 自己的檔案（設定、安裝或登入資料），請選擇其他資料夾。",
+      "system": "這是 Windows 系統資料夾，請選擇其他資料夾。",
+      "not_writable": "SakaDesk 無法在此資料夾儲存檔案，請選擇可寫入的資料夾。",
+      "not_picked": "請再用「瀏覽」選擇資料夾。",
+      "unavailable": "無法使用資料夾選擇視窗。請重新安裝 SakaDesk 後再試一次。",
+      "timeout": "5 分鐘內沒有選擇資料夾。請關閉資料夾選擇視窗，再按一次「瀏覽」。",
+      "busy": "資料夾選擇視窗已經開啟。請先將其關閉，再按一次「瀏覽」。",
+      "cooldown": "請稍候，再按一次「瀏覽」。",
+      "failed": "無法開啟資料夾選擇視窗，請再試一次。"
+    },
     "transcriptionCpuDesc": "適用所有電腦，速度較慢",
     "transcriptionGpuDesc": "需要 NVIDIA GPU（CUDA），速度更快",
     "transcriptionGpuTesting": "測試 GPU 中...",
@@ -233,8 +252,8 @@
     "setupDataFolder": "設定資料儲存位置",
     "outputFolderPath": "輸出資料夾路徑",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
-    "outputFolderHint": "輸入儲存訊息的完整路徑。您可以從檔案總管複製路徑。",
-    "folderRequired": "請先輸入或選擇資料夾",
+    "outputFolderHint": "訊息和照片會儲存在這裡。如要改用其他資料夾，請按「瀏覽」。",
+    "folderRequired": "請先選擇資料夾",
     "downloadBlogsOffline": "下載 Blog 以供搜尋",
     "downloadBlogsHint": "下載所有 Blog 文章以啟用全文搜尋。每個服務約使用 5-15 GB。",
     "startUsing": "開始使用 SakaDesk"
@@ -356,7 +375,9 @@
     "media": "媒體",
     "background": "背景",
     "sentLetters": "已傳送的信件",
-    "sentLettersGroupChat": "群組聊天沒有已傳送的信件"
+    "sentLettersGroupChat": "群組聊天沒有已傳送的信件",
+    "revealAll": "顯示全部未讀",
+    "revealAllNone": "此對話沒有未讀訊息"
   },
   "messageList": {
     "noMessages": "沒有訊息",
@@ -381,7 +402,16 @@
     "noContent": "(無內容)",
     "attachment": "附件",
     "openCalendar": "跳至日期",
-    "openConversations": "顯示對話列表"
+    "openConversations": "顯示對話列表",
+    "revealUnread": {
+      "text": "顯示未讀訊息",
+      "picture": "顯示未讀照片",
+      "video": "顯示未讀影片",
+      "voice": "顯示未讀語音"
+    },
+    "openPhoto": "開啟照片",
+    "timeline": "訊息",
+    "favorite": "我的最愛"
   },
   "calendar": {
     "loadFailed": "無法載入日期",
@@ -468,8 +498,11 @@
   },
   "serviceRail": {
     "label": "群組",
-    "sessionExpiredRelogin": "工作階段已過期 - 點擊重新登入",
-    "addService": "新增服務"
+    "sessionExpiredRelogin": "工作階段已過期 - 選取即可重新登入",
+    "addService": "新增服務",
+    "serviceDisconnected": "{{name}}，工作階段已過期 - 選取即可重新登入",
+    "moveUp": "上移",
+    "moveDown": "下移"
   },
   "search": {
     "memberCount": "{{count}} 位成員",
@@ -504,7 +537,8 @@
     "blogBackupInProgress": "Blog 備份進行中 — 搜尋結果可能不完整。",
     "enableFullBackup": "啟用完整備份",
     "official": "官方",
-    "buildingHint": "搜尋索引仍在建立中，結果可能不完整。"
+    "buildingHint": "搜尋索引仍在建立中，結果可能不完整。",
+    "resultsLabel": "搜尋結果"
   },
   "media": {
     "title": "媒體",
@@ -534,7 +568,25 @@
       "openVideo": "開啟 {{date}} 的影片",
       "retryPhoto": "重新載入 {{date}} 的照片"
     },
-    "photoLoading": "正在載入照片…"
+    "photoLoading": "正在載入照片…",
+    "play": "播放",
+    "pause": "暫停",
+    "mute": "靜音",
+    "unmute": "取消靜音",
+    "seek": "播放位置",
+    "volume": "音量",
+    "timeOf": "{{current}} / {{total}}",
+    "volumeValue": "{{percent}}%",
+    "fullscreen": "全螢幕",
+    "exitFullscreen": "結束全螢幕",
+    "older": "較早",
+    "newer": "較新",
+    "noOlder": "這是最早的一則",
+    "noNewer": "這是最新的一則",
+    "previousPhoto": "上一張照片",
+    "nextPhoto": "下一張照片",
+    "firstPhoto": "這是第一張照片",
+    "lastPhoto": "這是最後一張照片"
   },
   "sentLetters": {
     "title": "已傳送的信件",
@@ -801,6 +853,7 @@
     "diskUsageFailed": "無法計算"
   },
   "memories": {
+    "chunkFailed": "無法開啟回憶",
     "home": {
       "recapCard": "年度回顧",
       "opensOn": "12月1日，這裡就會打開。",
@@ -1415,5 +1468,14 @@
       "stubsLabel": "特別的日子",
       "footer": "SakaDesk"
     }
+  },
+  "a11y": {
+    "skipToContent": "跳至內容"
+  },
+  "errorBoundary": {
+    "title": "發生問題",
+    "body": "SakaDesk 發生未預期的錯誤。您的資料安全無虞，只是畫面無法顯示。",
+    "retry": "再試一次",
+    "report": "回報問題"
   }
 }

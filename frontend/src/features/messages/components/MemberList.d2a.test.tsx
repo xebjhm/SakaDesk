@@ -43,7 +43,7 @@ describe('MemberList (D2a)', () => {
     it('selects with an accent ring, a white gap and the accent halo, and caps the badge at 99+', async () => {
         serve();
         render(<MemberList activeService="hinatazaka46" selectedGroupDir={PATH} onSelectGroup={vi.fn()} />);
-        expect(await screen.findByText('99+')).toHaveClass('bg-accent');
+        expect((await screen.findByText('99+')).parentElement).toHaveClass('bg-accent');
         const cell = screen.getByRole('button', { name: /石塚 瑶季/ });
         const avatar = cell.querySelector('.ring-2')!;
         expect(avatar).toHaveClass('ring-2', 'ring-accent', 'ring-offset-2', 'shadow-accent-halo');

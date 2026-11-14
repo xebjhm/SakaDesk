@@ -81,13 +81,6 @@ def get_settings_path() -> Path:
     return get_app_data_dir() / "settings.json"
 
 
-def get_credentials_dir() -> Path:
-    """Get directory for credential storage."""
-    creds_dir = get_app_data_dir() / "credentials"
-    creds_dir.mkdir(parents=True, exist_ok=True)
-    return creds_dir
-
-
 def get_session_dir() -> Path:
     """
     Get directory for browser session data (auth_data).
@@ -108,19 +101,6 @@ def get_logs_dir() -> Path:
     logs_dir = get_app_data_dir() / "logs"
     logs_dir.mkdir(parents=True, exist_ok=True)
     return logs_dir
-
-
-def log_platform_info():
-    """Log platform information for debugging."""
-    logger.info(f"Platform: {get_system()}")
-    logger.info(f"Dev Mode: {is_dev_mode()}")
-    logger.info(f"App Data Dir: {get_app_data_dir()}")
-
-    if is_dev_mode() and not is_windows():
-        logger.warning(
-            "⚠️  Running in development mode - credentials are stored in plaintext. "
-            "For production, run on Windows where credentials use Windows Credential Manager."
-        )
 
 
 def _build_dropfiles_data(file_path: Path) -> bytes:

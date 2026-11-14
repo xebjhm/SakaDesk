@@ -38,7 +38,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import httpx  # noqa: E402
 
 from backend.main import app  # noqa: E402
-from backend.services import app_state  # noqa: E402
+from backend.services import api_auth, app_state  # noqa: E402
 from backend.services.memories import index as mi  # noqa: E402
 from backend.services.memories import oshi as oshi_mod  # noqa: E402
 from backend.services.memories import people  # noqa: E402
@@ -119,8 +119,11 @@ async def _run(args: argparse.Namespace, root: Path) -> None:
         patch.object(people, "output_dir", lambda: out),
         patch.object(oshi_mod, "oshi_names", no_oshi),
     ):
+        # The API guard needs the launch token even in-process (audit 2026-11-13).
         async with httpx.AsyncClient(
-            transport=transport, base_url="http://127.0.0.1"
+            transport=transport,
+            base_url="http://127.0.0.1",
+            headers={api_auth.TOKEN_HEADER: api_auth.LAUNCH_TOKEN},
         ) as client:
 
             async def get(path: str) -> dict:

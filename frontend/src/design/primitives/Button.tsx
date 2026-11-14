@@ -55,9 +55,11 @@ const ICON_VARIANT: Record<IconButtonVariant, string> = {
 const FLOATING: ReadonlySet<IconButtonVariant> = new Set<IconButtonVariant>(['overlay', 'accent']);
 const SHAPE: Record<IconButtonShape, string> = { rounded: 'rounded-md', circle: 'rounded-full' };
 
+// min-h, not h, and no wrapping (UI health C-L4): a CJK label can no longer shrink to one character
+// per line inside a fixed-height button; single-line labels look exactly as before.
 const SIZE: Record<ButtonSize, string> = {
-    sm: 'h-8 px-3 text-small',
-    md: 'h-10 px-5 text-body',
+    sm: 'min-h-8 px-3 text-small whitespace-nowrap',
+    md: 'min-h-10 px-5 text-body whitespace-nowrap',
 };
 
 const ICON_SIZE: Record<ButtonSize, string> = {
@@ -139,20 +141,31 @@ export interface IconButtonProps
     size?: ButtonSize;
     /** Defaults to `circle` for `overlay` / `accent` (floating) and `rounded` otherwise (inline). */
     shape?: IconButtonShape;
+    /** Translated reason the action is unavailable: aria-disabled, focusable, the reason as title and description, clicks swallowed (as `Button`). */
+    disabledReason?: string;
 }
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
-    ({ icon, variant = 'ghost', size = 'md', shape, type = 'button', className, ...rest }, ref) => {
+    ({ icon, variant = 'ghost', size = 'md', shape, type = 'button', className, disabledReason, disabled, onClick, title, ...rest }, ref) => {
         const resolved: IconButtonShape = shape ?? (FLOATING.has(variant) ? 'circle' : 'rounded');
+        const reasonId = useId();
+        const reason = disabledReason || undefined;
+        // No warnNoReason() here (unlike Button): existing icon buttons that pass `disabled` would start warning.
         return (
             <button
                 {...rest}
                 ref={ref}
                 type={type}
+                disabled={disabled && !reason}
+                aria-disabled={reason !== undefined ? true : rest['aria-disabled']}
+                aria-describedby={reason !== undefined ? reasonId : rest['aria-describedby']}
+                title={reason ?? title}
                 data-shape={resolved}
                 className={cn(BASE, ICON_VARIANT[variant], ICON_SIZE[size], SHAPE[resolved], className)}
+                onClick={reason !== undefined ? (e) => { e.preventDefault(); e.stopPropagation(); } : onClick}
             >
                 <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center">{icon}</span>
+                {reason !== undefined && <span id={reasonId} aria-hidden="true" className="sr-only">{reason}</span>}
             </button>
         );
     },

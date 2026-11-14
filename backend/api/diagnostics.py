@@ -13,7 +13,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import structlog
-from backend.services.platform import get_app_data_dir, get_settings_path, get_logs_dir
+from backend.services.path_resolver import output_dir_value
+from backend.services.platform import (
+    get_app_data_dir,
+    get_default_output_dir,
+    get_settings_path,
+    get_logs_dir,
+)
 from backend.services.settings_store import read_settings_file
 from pysaka.credentials import get_token_manager
 from pysaka import Group, get_jwt_remaining_seconds
@@ -418,21 +424,19 @@ async def get_disk_usage():
     )
 
 
-def _normalise_output_dir(value: object) -> Optional[str]:
-    """A settings ``output_dir`` value as a non-empty string, else None.
-
-    The one normalisation used by the summary and the poll endpoint, so a
-    hand-edited non-string value never reaches ``Path()`` in the walk thread.
-    """
-    return value if isinstance(value, str) and value else None
-
-
 def _configured_output_dir() -> Optional[str]:
-    """The configured output folder from settings, or None (blocking read)."""
+    """The archive folder sync uses, as text, or None when settings cannot be read.
+
+    Read through ``path_resolver.output_dir_value``, the resolver sync uses: an
+    unset, empty or non-string saved value is the default folder, and the
+    value never reaches ``Path()`` unchecked. Blocking read.
+    """
     try:
         data = read_settings_file(get_settings_path())
         if isinstance(data, dict):
-            return _normalise_output_dir(data.get("output_dir"))
+            return str(
+                output_dir_value(data.get("output_dir"), get_default_output_dir())
+            )
     except Exception as e:
         logger.warning("diagnostics_settings_read_failed", error_type=type(e).__name__)
     return None
@@ -490,7 +494,9 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
             config_state["adaptive_sync"] = data.get("adaptive_sync_enabled", True)
             config_state["notifications"] = data.get("notifications_enabled", True)
             config_state["blogs_full_backup"] = data.get("blogs_full_backup", False)
-            output_dir = _normalise_output_dir(data.get("output_dir"))
+            output_dir = str(
+                output_dir_value(data.get("output_dir"), get_default_output_dir())
+            )
         else:
             # No settings file yet — show all defaults
             config_state["is_configured"] = False
@@ -636,6 +642,17 @@ def _collect_diagnostics(refresh_disk_usage: bool = False) -> DiagnosticsRespons
     except Exception as e:
         logs_summary.recent.append("logs_unreadable")  # a code: str(e) has paths
         logger.warning("diagnostics_logs_read_failed", error_type=type(e).__name__)
+
+    # The panel shows and copies these as text: the same redaction as the log
+    # lines and the bug report (security audit 2026-11-13).
+    sys_info.app_data_dir = _scrub(sys_info.app_data_dir)
+    sys_info.settings_path = _scrub(sys_info.settings_path)
+    sys_info.logs_dir = _scrub(sys_info.logs_dir)
+    if isinstance(sync_state.last_error, str):
+        sync_state.last_error = _scrub(sync_state.last_error)
+    for service_info in sync_state.services or []:
+        if isinstance(service_info.last_error, str):
+            service_info.last_error = _scrub(service_info.last_error)
 
     return DiagnosticsResponse(
         system=sys_info,

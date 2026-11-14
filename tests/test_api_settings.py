@@ -51,24 +51,31 @@ async def test_get_settings_defaults(client, isolated_settings):
 
 @pytest.mark.asyncio
 async def test_update_settings(client, isolated_settings):
-    """Test updating settings saves to the isolated file."""
+    """Test updating settings saves to the isolated file (output_dir from the picker)."""
+    from backend.services import output_dir_policy
+
+    picked = isolated_settings.parent / "custom_output"
+    output_dir_policy.grant(str(picked))
     payload = {
-        "output_dir": "/tmp/custom_output",
+        "output_dir": str(picked),
         "auto_sync_enabled": False,
         "sync_interval_minutes": 15,
     }
 
-    response = client.post("/api/settings", json=payload)
+    try:
+        response = client.post("/api/settings", json=payload)
+    finally:
+        output_dir_policy.clear_grants_for_tests()
 
     assert response.status_code == 200
     data = response.json()
-    assert data["output_dir"] == "/tmp/custom_output"
+    assert data["output_dir"] == str(picked)
     assert data["auto_sync_enabled"] is False
     assert data["is_configured"] is True
 
     # Verify the isolated file was actually written
     saved = json.loads(isolated_settings.read_text(encoding="utf-8"))
-    assert saved["output_dir"] == "/tmp/custom_output"
+    assert saved["output_dir"] == str(picked)
     assert saved["auto_sync_enabled"] is False
 
 

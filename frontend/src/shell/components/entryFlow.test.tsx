@@ -62,15 +62,14 @@ describe('ToS', () => {
 
 describe('setup wizard', () => {
     const props = (over: Partial<ComponentProps<typeof SetupWizard>> = {}) => ({
-        outputDirInput: '', setOutputDirInput: vi.fn(), setupBlogFullBackup: false, setSetupBlogFullBackup: vi.fn(),
+        outputDirInput: '', setupBlogFullBackup: false, setSetupBlogFullBackup: vi.fn(),
         onSelectFolder: vi.fn(), onComplete: vi.fn(), isValid: false, ...over,
     });
 
-    it('types the folder, browses, opts into blogs; Start waits for a valid folder', async () => {
+    it('shows the folder read-only, browses, opts into blogs; Start waits for a valid folder', async () => {
         const p = props();
         render(<SetupWizard {...p} />);
-        await userEvent.type(screen.getByPlaceholderText(i18n.t('setup.outputFolderPlaceholder')), 'D');
-        expect(p.setOutputDirInput).toHaveBeenCalledWith('D');
+        expect(screen.getByPlaceholderText(i18n.t('setup.outputFolderPlaceholder'))).toHaveAttribute('readonly');
         await userEvent.click(screen.getByRole('button', { name: 'Browse' }));
         expect(p.onSelectFolder).toHaveBeenCalledOnce();
         await userEvent.click(screen.getByRole('checkbox', { name: /Download blogs for search/ }));
@@ -85,6 +84,15 @@ describe('setup wizard', () => {
         render(<SetupWizard {...p} />);
         await userEvent.click(screen.getByRole('button', { name: 'Start Using SakaDesk' }));
         expect(p.onComplete).toHaveBeenCalledOnce();
+    });
+
+    it('says why the last pick was refused, tied to the field', () => {
+        render(<SetupWizard {...props({ outputDirInput: 'C:\\データ', isValid: true, folderErrorKey: 'settings.outputDirError.root' })} />);
+        const alert = screen.getByRole('alert');
+        expect(alert).toHaveTextContent(i18n.t('settings.outputDirError.root'));
+        const field = screen.getByLabelText('Output Folder Path');
+        expect(field.getAttribute('aria-describedby')?.split(' ')).toContain(alert.id);
+        expect(field).toHaveAttribute('aria-invalid', 'true');
     });
 });
 

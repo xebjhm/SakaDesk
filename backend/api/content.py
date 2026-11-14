@@ -25,7 +25,6 @@ import asyncio
 import hashlib
 import json
 import structlog
-import os
 from typing import Optional, List, Dict, Any
 
 from backend.services.platform import (
@@ -40,7 +39,6 @@ from backend.services.path_resolver import (
     resolve_service_path,
     resolve_talk_room_path,
     resolve_messages_file,
-    resolve_media_path,
 )
 from backend.services.chat_kind import (  # noqa: F401  (GROUP_CHAT_IDS re-exported)
     GROUP_CHAT_IDS,
@@ -63,13 +61,20 @@ from backend.services import (
 from backend.services.archive_urls import (
     ArchiveReadError,
     archive_file_ok,
+    ServicePathError,
     is_plain_relative,
-    media_disk_path,
+    resolve_in_service_folder,
 )
 from backend.services.media_range import MediaFileResponse
+from backend.services.passive_media import (
+    INLINE_MEDIA_TYPES,
+    download_name,
+    passive_media,
+)
 from backend.version import APP_VERSION
 from backend.services.service_utils import (
     validate_service,
+    get_service_display_name,
     get_service_identifier,
 )
 
@@ -97,18 +102,11 @@ def validate_path_within_dir(base_dir: Path, user_path: str) -> Path:
     base_resolved = base_dir.resolve()
     target_path = (base_dir / user_path).resolve()
 
-    try:
-        common = os.path.commonpath([str(base_resolved), str(target_path)])
-        if common != str(base_resolved):
-            logger.warning("path_traversal_blocked")
-            raise HTTPException(status_code=403, detail="Access denied")
-    except ValueError:
-        raise HTTPException(status_code=403, detail="Access denied")
-
-    if (
-        not str(target_path).startswith(str(base_resolved) + os.sep)
-        and target_path != base_resolved
-    ):
+    # Path.is_relative_to compares parts (case-insensitively on Windows), so a
+    # drive root such as "D:\\" or "/" works as a base; str(base) + os.sep
+    # doubled its separator and refused every path (audit 2026-11-13 follow-up).
+    if not target_path.is_relative_to(base_resolved):
+        logger.warning("path_traversal_blocked")
         raise HTTPException(status_code=403, detail="Access denied")
 
     return target_path
@@ -245,10 +243,14 @@ def _list_group_refs(
     ``load_sync_metadata``. Returns ``(refs, matched_service)`` where
     ``matched_service`` is False when ``service_filter`` matched no directory.
 
+    Only folders named exactly after their service's display name are listed
+    (``group_folder_skipped``).
+
     Blocking filesystem work - call via ``asyncio.to_thread``.
     """
     refs: List[_GroupRef] = []
     matched_service = False
+    skipped_names = 0
 
     # Iterate over service directories (e.g., 日向坂46)
     for service_dir in output_dir.iterdir():
@@ -264,6 +266,11 @@ def _list_group_refs(
         service_id = get_service_identifier(service_display_name)
         if not service_id:
             # Skip unknown service directories
+            continue
+        if get_service_display_name(service_id) != service_display_name:
+            # A romaji-named folder ("hinatazaka46") would list but never open:
+            # every client-path route reads <output>/<display name> (Plan C).
+            skipped_names += 1
             continue
 
         # Scope to one service when requested - ids are only unique per service.
@@ -313,6 +320,10 @@ def _list_group_refs(
                     server_unread_count=server_unread_count,
                 )
             )
+    if skipped_names:
+        logger.info(
+            "group_folder_skipped", reason="not_display_name", count=skipped_names
+        )
     return refs, matched_service
 
 
@@ -553,7 +564,7 @@ async def get_messages_by_path(
         return get_test_messages_response(path, last_read_id)
 
     output_dir = get_output_dir()
-    safe_path = validate_path_within_dir(output_dir, path)
+    safe_path = resolve_service_path_or_http(output_dir, path, route="messages_by_path")
     logger.debug("Loading messages", path=path, limit=limit, last_read_id=last_read_id)
 
     msg_file = safe_path / "messages.json"
@@ -715,7 +726,9 @@ async def get_group_messages(
     ``If-None-Match`` gets ``304`` without the files being parsed.
     """
     output_dir = get_output_dir()
-    safe_path = validate_path_within_dir(output_dir, group_path)
+    safe_path = resolve_service_path_or_http(
+        output_dir, group_path, route="group_messages"
+    )
 
     if not safe_path.is_dir():
         raise HTTPException(status_code=404, detail="Group not found")
@@ -746,7 +759,7 @@ async def get_profile_images(path: str):
     """Archived list icon / chat icon / call-screen images of one member, newest
     first per kind; falls back to the remote URLs before pysaka archived them."""
     output_dir = get_output_dir()
-    member_dir = validate_path_within_dir(output_dir, path)
+    member_dir = resolve_service_path_or_http(output_dir, path, route="profile_images")
     msg_file = member_dir / "messages.json"
     if not msg_file.exists():
         raise HTTPException(status_code=404, detail="No messages found")
@@ -822,7 +835,9 @@ def _compute_unread_counts(
                 last_read_id = int(state) if state else 0
                 revealed_ids = set()
 
-            safe_path = validate_path_within_dir(output_dir, path)
+            safe_path = resolve_service_path_or_http(
+                output_dir, path, route="unread_counts"
+            )
 
             # Check if it's a group chat (has subdirectories with messages.json)
             # or individual member (has messages.json directly)
@@ -861,17 +876,51 @@ def _compute_unread_counts(
     return result
 
 
-def _resolve_media_path(file_path: str) -> Path:
-    """Resolve a media file path, translating service ID to display name.
+def resolve_service_path_or_http(
+    output_dir: Path, client_path: str, *, route: str
+) -> Path:
+    """Resolve a client path inside a service folder, or raise the HTTP error.
 
-    Raises HTTPException 400 for control characters, 403 outside the output
-    dir and 404 if the resolved path does not exist. A path whose first
-    segment is not a known service id is read relative to the output dir.
+    Wraps ``archive_urls.resolve_in_service_folder``: the first segment must be a
+    service id (any case) or its display-name folder and the resolved path
+    (symlinks followed) must lie strictly inside that service's folder in
+    ``output_dir``. Raises 400 for control characters; 403 for a path that is
+    not ``archive_urls.is_plain_relative`` (``path_rooted_blocked``), that
+    leaves the service folder (``path_traversal_blocked``,
+    ``reason=outside_service_folder``) or cannot be resolved
+    (``path_traversal_blocked``, ``reason=unresolvable``); 404 when there is no
+    known service folder (``media_request_rejected``,
+    ``reason=no_service_folder``). Logs reason codes only. Blocking (it
+    resolves). Whether the file exists is not checked. Every log event carries
+    ``route``, the calling route's code.
     """
-    output_dir = get_output_dir()
-    # The translation is shared with archive_urls.media_route_path (POST /api/media/meta).
-    disk_path, _service = media_disk_path(file_path)
-    safe_path = validate_path_within_dir(output_dir, disk_path)
+    try:
+        return resolve_in_service_folder(output_dir, client_path)
+    except ServicePathError as e:
+        if e.reason == "not_plain":
+            logger.warning("path_rooted_blocked", route=route)
+        elif e.reason == "no_service_folder":
+            logger.info("media_request_rejected", reason=e.reason, route=route)
+        elif e.reason != "invalid_chars":
+            logger.warning("path_traversal_blocked", reason=e.reason, route=route)
+        detail = {
+            400: "Invalid path characters",
+            403: "Access denied",
+            404: "File not found",
+        }[e.status_code]
+        raise HTTPException(status_code=e.status_code, detail=detail) from None
+
+
+def _resolve_media_path(file_path: str, *, route: str = "media") -> Path:
+    """Resolve a media-route path ``<service>/<rest>`` to its archive file.
+
+    ``<service>`` is a service id (any case) or its display-name folder
+    (``日向坂46``). The path goes through :func:`resolve_service_path_or_http`
+    (security audit 2026-11-13: the output dir is a folder the user picked, so
+    only SakaDesk's own service folders in it are served), which raises 400,
+    403 or 404 as described there; a missing file is a 404 too.
+    """
+    safe_path = resolve_service_path_or_http(get_output_dir(), file_path, route=route)
     if not safe_path.exists():
         raise HTTPException(status_code=404, detail="File not found")
     return safe_path
@@ -881,10 +930,13 @@ def _resolve_media_path(file_path: str) -> Path:
 async def get_media(file_path: str):
     """Serve media files.
 
-    Path format: {service_id}/{rest} where service_id is romaji (e.g., 'sakurazaka46')
-    and rest is the relative path from the service directory (e.g., 'messages/.../voice/123.m4a').
+    Path format: {service}/{rest} where service is the romaji service id (any
+    case, e.g., 'sakurazaka46') or the display-name folder (e.g., '櫻坂46') and
+    rest is the relative path from the service directory (e.g.,
+    'messages/.../voice/123.m4a').
 
-    The service_id is translated to the display name (e.g., '櫻坂46') for disk lookup.
+    The service id is translated to the display name for disk lookup; the file
+    must lie inside that service folder (:func:`resolve_service_path_or_http`).
 
     Range requests get bounded ``206`` bodies (at most
     ``media_range.MEDIA_RANGE_CAP`` bytes) and reading stops when the client
@@ -906,16 +958,17 @@ async def get_avatar(file_path: str, w: int = Query(...)):
     ``file_path`` is the same as for ``/media/{file_path}`` and is validated
     the same way. ``w`` must be one of ``avatar_resize.ALLOWED_WIDTHS``
     (400 otherwise). The variant is cached on disk; a source that is not
-    larger than ``w``, or one Pillow cannot read, is served unchanged.
+    larger than ``w``, or one Pillow cannot read, is served unchanged. Type and
+    headers come from ``passive_media`` (route ``avatar``), so an unchanged
+    source that is not a picture is an attachment, never an inline page.
     """
     if w not in avatar_resize.ALLOWED_WIDTHS:
         logger.info("avatar_request_rejected", reason="width", width=w)
         raise HTTPException(status_code=400, detail="Unsupported width")
-    safe_path = _resolve_media_path(file_path)
+    safe_path = _resolve_media_path(file_path, route="avatar")
     served = await asyncio.to_thread(avatar_resize.resized_avatar, safe_path, w)
-    if served == safe_path:
-        return FileResponse(safe_path)
-    return FileResponse(served, media_type="image/webp")
+    passive = passive_media(served.name, route="avatar")
+    return FileResponse(served, media_type=passive.media_type, headers=passive.headers)
 
 
 _THUMB_CACHE_CONTROL = "private, max-age=86400"
@@ -940,8 +993,8 @@ async def get_thumb(
     """Serve an archived picture (or a video's poster) downscaled to fit ``w`` px (WebP).
 
     ``file_path`` is the same as for ``/media/{file_path}`` and is validated
-    the same way (403 outside the output dir), then must be a regular file
-    inside it (``archive_file_ok``). ``w`` must be one of
+    the same way (403 outside the service folder), then must be a regular
+    file inside the output dir (``archive_file_ok``). ``w`` must be one of
     ``photo_thumb.ALLOWED_WIDTHS`` (400 otherwise). A video is served from
     its cached poster frame (``backend.services.video_poster``; ``v`` is the
     video's version); this route never makes a poster. A missing file, a
@@ -998,9 +1051,9 @@ async def get_thumb(
 def _thumb_source(file_path: str) -> tuple[Path, str]:
     """``(validated archive file, its cache key from photo_thumb.archive_rel)``. Blocking.
 
-    403 outside the output dir, 404 when it is not a regular archive file.
+    403 outside the service folder, 404 when it is not a regular archive file.
     """
-    safe_path = _resolve_media_path(file_path)
+    safe_path = _resolve_media_path(file_path, route="thumb")
     output_dir = get_output_dir()
     try:
         is_file = archive_file_ok(output_dir, safe_path)
@@ -1075,8 +1128,10 @@ async def get_members(service: str = Query(...), talk_room_id: int = Query(...))
         talk_room_path = resolve_talk_room_path(service, talk_room_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        # The error text holds the archive path (report-hardening #76).
+        logger.info("content_not_found", route="members")
+        raise HTTPException(status_code=404, detail="Not found")
 
     members = []
     for member_dir in talk_room_path.iterdir():
@@ -1121,8 +1176,10 @@ async def get_messages_param(
         msg_file = resolve_messages_file(service, talk_room_id, member_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        # The error text holds the archive path (report-hardening #76).
+        logger.info("content_not_found", route="messages")
+        raise HTTPException(status_code=404, detail="Not found")
 
     if not msg_file.exists():
         raise HTTPException(status_code=404, detail="No messages found")
@@ -1179,8 +1236,10 @@ async def get_talk_room_messages_param(
         talk_room_path = resolve_talk_room_path(service, talk_room_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        # The error text holds the archive path (report-hardening #76).
+        logger.info("content_not_found", route="talk_room_messages")
+        raise HTTPException(status_code=404, detail="Not found")
 
     all_messages = []
     members_map = {}
@@ -1238,41 +1297,6 @@ async def get_talk_room_messages_param(
     }
 
 
-@router.get("/media_file")
-async def get_media_param(
-    service: str = Query(...),
-    talk_room_id: int = Query(...),
-    member_id: int = Query(...),
-    type: str = Query(..., description="Media type: picture, video, voice"),
-    file: str = Query(..., description="Filename"),
-):
-    """Serve media files (param-based)."""
-    # Validate media type
-    ALLOWED_MEDIA_TYPES = {"picture", "video", "voice"}
-    if type not in ALLOWED_MEDIA_TYPES:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid media type: {type}. Allowed: {', '.join(ALLOWED_MEDIA_TYPES)}",
-        )
-
-    # Validate filename (no path traversal)
-    if "/" in file or "\\" in file or ".." in file or "\x00" in file:
-        raise HTTPException(status_code=400, detail="Invalid filename")
-
-    try:
-        validate_service(service)
-        media_path = resolve_media_path(service, talk_room_id, member_id, type, file)
-    except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
-
-    if not media_path.exists():
-        raise HTTPException(status_code=404, detail="File not found")
-
-    return FileResponse(media_path)
-
-
 @router.get("/download/{file_path:path}")
 async def download_media(file_path: str, filename: Optional[str] = None):
     """Serve a media file with Content-Disposition: attachment.
@@ -1283,12 +1307,14 @@ async def download_media(file_path: str, filename: Optional[str] = None):
 
     Args:
         filename: Custom download filename (e.g. with timestamp prefix).
-                  Defaults to the file's actual name on disk.
+                  Defaults to the file's actual name on disk. It is reduced by
+                  ``passive_media.download_name`` (last path part, the served
+                  file's extension).
     """
-    safe_path = _resolve_media_path(file_path)
+    safe_path = _resolve_media_path(file_path, route="download")
     return FileResponse(
         safe_path,
-        filename=filename or safe_path.name,
+        filename=download_name(filename, safe_path.name),
         media_type="application/octet-stream",
     )
 
@@ -1304,7 +1330,8 @@ async def copy_to_clipboard(request: ClipboardRequest):
     Resolves the media URL to a local file path and places it on the
     clipboard using CF_HDROP format so it can be pasted into other apps.
 
-    Returns 501 on non-Windows platforms.
+    Returns 501 on non-Windows platforms and 400 for a file that is not a
+    picture, video or voice file.
     """
     if not is_windows():
         raise HTTPException(
@@ -1320,7 +1347,12 @@ async def copy_to_clipboard(request: ClipboardRequest):
     from urllib.parse import unquote
 
     file_path_str = unquote(request.media_url[len(prefix) :])
-    safe_path = _resolve_media_path(file_path_str)
+    safe_path = _resolve_media_path(file_path_str, route="clipboard")
+    # Only pictures, videos and voice files: the clipboard hands the file to
+    # other programs (security audit 2026-11-13).
+    if safe_path.suffix.lower() not in INLINE_MEDIA_TYPES:
+        logger.info("clipboard_refused", reason="not_media")
+        raise HTTPException(status_code=400, detail="Not a media file")
 
     try:
         copy_file_to_clipboard(safe_path)

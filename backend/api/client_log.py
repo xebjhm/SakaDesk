@@ -58,6 +58,7 @@ ClientEvent = Literal[
     "call_layer",
     "sync_start_skipped",
     "menu_item_blocked",
+    "menu_open_focus",
     "blog_fallback",
     "group_marker_fallback",
     "entry_validation",
@@ -110,6 +111,13 @@ ClientEvent = Literal[
     "ui_wait",
     "media_grid",
     "media_poster",
+    "external_link",
+    "csp_violation",
+    "output_folder_pick_failed",
+    "output_folder_pick_ignored",
+    "setup_save_failed",
+    "download_refused",
+    "rail_reorder",
 ]
 
 ALLOWED_FIELDS = frozenset(
@@ -159,6 +167,7 @@ ALLOWED_FIELDS = frozenset(
 )
 WARNING_EVENTS = frozenset(
     {
+        "csp_violation",
         "call_error",
         "app_load_failed",
         "design_tokens_fallback",

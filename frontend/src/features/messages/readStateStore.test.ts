@@ -249,3 +249,39 @@ describe('saveReadState', () => {
         ]));
     });
 });
+
+/** The pre-0.5.1 implementation, kept as the reference for equivalence. */
+function referenceApplyReveal(prev: ReadState, msgId: number, messageIds: number[]): ReadState {
+    if (prev.revealedIds.includes(msgId)) return prev;
+    const newRevealedIds = [...prev.revealedIds, msgId];
+    const unreadMsgIds = messageIds.filter(id => id > prev.lastReadId).sort((a, b) => a - b);
+    let newLastReadId = prev.lastReadId;
+    for (const id of unreadMsgIds) {
+        if (newRevealedIds.includes(id)) {
+            const allPreviousRead = unreadMsgIds.filter(uid => uid <= id && uid > newLastReadId).every(uid => newRevealedIds.includes(uid));
+            if (allPreviousRead) newLastReadId = id;
+        }
+    }
+    return { lastReadId: newLastReadId, revealedIds: newRevealedIds.filter(id => id > newLastReadId), readCount: (prev.readCount || 0) + 1 };
+}
+
+describe('applyReveal is linear and unchanged in meaning (UI health P-B2)', () => {
+    it('matches the reference on 2 000 generated cases', () => {
+        let seed = 7;
+        const rand = (n: number) => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed % n; };
+        for (let c = 0; c < 2000; c += 1) {
+            const ids = Array.from({ length: 1 + rand(30) }, (_, i) => i + 1 + rand(3) * 100);
+            const lastReadId = rand(20);
+            const revealedIds = ids.filter(() => rand(3) === 0).filter(id => id > lastReadId);
+            const prev: ReadState = { lastReadId, readCount: rand(5), revealedIds };
+            const msgId = ids[rand(ids.length)];
+            expect(applyReveal(prev, msgId, ids)).toEqual(referenceApplyReveal(prev, msgId, ids));
+        }
+    });
+
+    it('round-trips through the saved row format unchanged', () => {
+        const next = applyReveal({ lastReadId: 2, readCount: 1, revealedIds: [5] }, 3, [1, 2, 3, 4, 5, 6]);
+        expect(parseReadState({ value: JSON.stringify(next) })).toEqual(next);
+        expect(Array.isArray(JSON.parse(JSON.stringify(next)).revealedIds)).toBe(true);
+    });
+});

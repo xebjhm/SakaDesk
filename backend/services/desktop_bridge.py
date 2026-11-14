@@ -23,6 +23,8 @@ from typing import Any, Protocol, TypeVar
 
 import structlog
 
+import host_js
+
 from backend.services.notification_planner import ChatTarget
 
 logger = structlog.get_logger(__name__)
@@ -311,7 +313,7 @@ async def _run_host(
 
     Returns ``no_host`` when no host is registered and ``failed`` on a timeout
     (``call_popup_bridge_failed`` ``reason=timeout``) or an exception
-    (``error_type`` only). Timeouts in a row are counted (any call that
+    (``error_type``, plus ``js_error`` when the page script threw: its error name, or ``other``). Timeouts in a row are counted (any call that
     completes resets the count); see :func:`call_popup_available`.
     """
     global _host_timeouts
@@ -329,7 +331,12 @@ async def _run_host(
         return failed
     except Exception as e:
         _host_timeouts = 0
-        logger.warning("call_popup_bridge_failed", op=op, error_type=type(e).__name__)
+        logger.warning(
+            "call_popup_bridge_failed",
+            op=op,
+            error_type=type(e).__name__,
+            **host_js.error_fields(e),
+        )
         return failed
     _host_timeouts = 0
     return result

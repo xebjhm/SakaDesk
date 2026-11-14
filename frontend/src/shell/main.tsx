@@ -6,12 +6,37 @@ import '../index.css'
 import '../i18n'
 
 import { clientLog } from '../utils/clientLog'
+import { bootstrapApiCookie, installApiAuth, sessionStorageOrNull, takeLaunchToken } from '../core/api/launchAuth'
+import { installCspViolationLog } from '../core/security/cspViolations'
 import { installCallPopupBridge } from '../features/callPopup/callPopupBridge'
 import { isCallPopupView } from './callPopupRoute'
 import { isDesignView } from '../design/designRoute'
 import { isTimelineProbeView } from '../features/messages/timeline/probeRoute'
+import { LiveRegionHost } from '../design/primitives'
 import { applyStaticTokens } from '../design/applyTokens'
 import { installLanguageFonts } from '../design/fonts'
+
+// Launch auth before any request (including clientLog from the font/token setup below):
+// the token header and the media cookie must exist before the first fetch or <img>
+// (security audit 2026-11-13). SakaDesk's windows and the Vite dev server page (opened by
+// dev.sh / dev.ps1) both arrive with #t=<token>. Without one, /api answers 401; only the
+// general Playwright suite gets through, because it adds the header itself.
+let launchTokenStoreFailed = false
+const launchToken = takeLaunchToken(window.location, sessionStorageOrNull(), window.history, () => {
+    launchTokenStoreFailed = true
+})
+if (launchToken) installApiAuth(launchToken)
+// After installApiAuth so this log request carries the header. Codes only, never the token.
+if (launchTokenStoreFailed) clientLog('app_load_failed', { error_type: 'launch_token_store' })
+const apiReady: Promise<void> = launchToken
+    ? bootstrapApiCookie().then((ok) => {
+          if (!ok) clientLog('app_load_failed', { error_type: 'api_bootstrap' })
+      })
+    : Promise.resolve()
+
+// Content-Security-Policy refusals become breadcrumbs. After installApiAuth, so the log request
+// carries the token header (any earlier request would 401).
+installCspViolationLog()
 
 // Design tokens must exist before the first paint of any entry point.
 applyStaticTokens()
@@ -41,10 +66,10 @@ if (import.meta.env.DEV && isDesignView(window.location.search)) {
     // The host evaluates `window.__sakadeskCallPopup.start(...)` right after the page's `loaded`
     // event, which can precede the chunk below: publish the (queueing) global synchronously.
     installCallPopupBridge()
-    Promise.all([
+    apiReady.then(() => Promise.all([
         import('../core/common/ErrorBoundary'),
         import('../features/callPopup'),
-    ]).then(([{ ErrorBoundary }, { CallPopupApp }]) => {
+    ])).then(([{ ErrorBoundary }, { CallPopupApp }]) => {
         // The bottom-right call popup: no auth, no App shell, no sync, no ui-state reporter.
         root.render(
             <React.StrictMode>
@@ -55,16 +80,17 @@ if (import.meta.env.DEV && isDesignView(window.location.search)) {
         )
     }).catch(() => clientLog('call_popup_error', { error_type: 'load_failed' }))
 } else {
-    Promise.all([
+    apiReady.then(() => Promise.all([
         import('./App'),
         import('../core/common/ErrorBoundary'),
         import('./context/AuthContext'),
-    ]).then(([{ default: App }, { ErrorBoundary }, { AuthProvider }]) => {
+    ])).then(([{ default: App }, { ErrorBoundary }, { AuthProvider }]) => {
         root.render(
             <React.StrictMode>
                 <AuthProvider>
                     <ErrorBoundary>
                         <App />
+                        <LiveRegionHost />
                     </ErrorBoundary>
                 </AuthProvider>
             </React.StrictMode>,

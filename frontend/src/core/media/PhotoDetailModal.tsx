@@ -5,11 +5,13 @@ import { useTranslation } from '../../i18n';
 import { cn, formatDownloadFilename } from '../../utils/classnames';
 import { downloadMedia } from '../../utils/download';
 import { timeNeighbours, type ListOrder } from '../../utils/timeOrder';
-import { Modal, IconButton, Button } from '../../design/primitives';
+import { Modal, IconButton, Button, LiveRegion } from '../../design/primitives';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { PhotoPlayer } from './PhotoPlayer';
+import { leavesKeysToControl } from './keyGuard';
+import { StepButtons } from './StepButtons';
 import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 
 /** A single media item in the viewer. */
@@ -44,6 +46,11 @@ interface MediaViewerModalProps {
     headerSlot?: React.ReactNode;
     /** How `mediaItems` is sorted (default `oldest_first`); ← / → always step older / newer and the counter counts the oldest as 1. */
     order?: ListOrder;
+    /**
+     * `time` (default): the items are a timeline, the step buttons say older / newer. `reading`: the
+     * images of one post in reading order (not a timeline), the buttons say previous / next photo.
+     */
+    sequence?: 'time' | 'reading';
 }
 
 /**
@@ -66,6 +73,7 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
     onNavigate,
     headerSlot,
     order = 'oldest_first',
+    sequence = 'time',
 }) => {
     const { t } = useTranslation();
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
@@ -95,7 +103,11 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
         downloadMedia(item.src, formatDownloadFilename(item.src, item.timestamp));
     }, [item]);
 
+    // Logged once per viewer (by leavesKeysToControl): a range, tab list or menu kept the arrow keys.
+    const loggedKeysRef = useRef(false);
     const handleKeyDown = useCallback((e: React.KeyboardEvent<HTMLDivElement>) => {
+        // Keys typed in a range (video seek / volume), a tab list or a menu belong to that control.
+        if (leavesKeysToControl(e.target, loggedKeysRef)) return;
         switch (e.key) {
             case 'ArrowLeft':
                 e.preventDefault();
@@ -135,6 +147,16 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
             onKeyDown={handleKeyDown}
         >
             <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={onClose} />
+            {/* A single item has nothing to step to (the gallery hides them too). */}
+            {mediaItems.length > 1 && (
+                <StepButtons
+                    hasOlder={older !== null}
+                    hasNewer={newer !== null}
+                    onOlder={() => { if (older !== null) onNavigate(older); }}
+                    onNewer={() => { if (newer !== null) onNavigate(newer); }}
+                    sequence={sequence}
+                />
+            )}
 
             {isPicture && (
                 // aria-disabled (not disabled) at the limits, so a focused button keeps focus and ← / → keep working.
@@ -229,8 +251,9 @@ export const MediaViewerModal: React.FC<MediaViewerModalProps> = ({
                 <div className="absolute bottom-6 left-1/2 max-w-[60vw] -translate-x-1/2 truncate text-small text-viewer-muted">{item.sourceLabel}</div>
             )}
 
+            <LiveRegion message={toastMessage ?? ''} />
             {toastMessage && (
-                <div role="status" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer animate-reveal motion-reduce:animate-none">
+                <div aria-hidden="true" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer animate-reveal motion-reduce:animate-none">
                     {toastMessage}
                 </div>
             )}

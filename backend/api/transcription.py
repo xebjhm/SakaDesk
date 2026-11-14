@@ -22,7 +22,7 @@ from backend.services.transcription_service import (
     GeminiTranscriptionProvider,
 )
 from pysaka.media import get_audio_metadata
-from backend.api.content import get_output_dir, validate_path_within_dir
+from backend.api.content import get_output_dir, resolve_service_path_or_http
 from backend.api.errors import CodedHTTPException, ai_provider_error
 from backend.services.service_utils import validate_service, get_service_display_name
 
@@ -32,15 +32,16 @@ logger = structlog.get_logger(__name__)
 storage = TranscriptionStorage()
 
 
-def _get_gemini_api_key() -> str | None:
-    """Load LLM API key from keyring (shared with translation)."""
-    from pysaka.credentials import get_token_manager
+def _get_gemini_api_key(saved_provider: str | None) -> str | None:
+    """Load the LLM API key (shared with translation) only if it is a Gemini key.
 
-    tm = get_token_manager()
-    data = tm.store.load("llm_provider_api_key")
-    if data:
-        return cast(Optional[str], data.get("api_key"))
-    return None
+    ``saved_provider`` is the provider saved in settings; it adopts a key stored
+    before its provider was recorded. A key saved for another provider is never
+    returned.
+    """
+    from backend.api.translation import _load_api_key_for
+
+    return _load_api_key_for("gemini", saved_provider)
 
 
 class TranscribeRequest(BaseModel):
@@ -64,7 +65,9 @@ async def transcribe(request: TranscribeRequest):
         raise HTTPException(status_code=400, detail=str(e))
 
     output_dir = get_output_dir()
-    member_dir = validate_path_within_dir(output_dir, request.member_path)
+    member_dir = resolve_service_path_or_http(
+        output_dir, request.member_path, route="transcribe"
+    )
 
     if not member_dir.is_dir():
         raise HTTPException(status_code=404, detail="Member directory not found")
@@ -100,12 +103,16 @@ async def transcribe(request: TranscribeRequest):
         raise HTTPException(status_code=400, detail="Message has no media file")
 
     # Resolve media path — media_file is relative to the service directory
-    # (e.g., "messages/34 金村 美玖/.../voice/123.m4a") but validate_path_within_dir
-    # expects paths relative to output_dir. Extract the service dir name from
-    # member_path (e.g., "日向坂46/messages/34 金村 美玖/58 金村 美玖").
+    # (e.g., "messages/34 金村 美玖/.../voice/123.m4a") but the resolver expects
+    # paths that start with the service folder. Use the first segment of
+    # member_path (e.g., "日向坂46/messages/34 金村 美玖/58 金村 美玖"), which
+    # the member_dir check above already proved is a service folder. The file
+    # must stay inside that folder before it is sent to the AI provider.
     service_dir_name = request.member_path.split("/")[0]
     media_path_from_output = f"{service_dir_name}/{media_file}"
-    media_path = validate_path_within_dir(output_dir, media_path_from_output)
+    media_path = resolve_service_path_or_http(
+        output_dir, media_path_from_output, route="transcribe_media"
+    )
     if not media_path.exists():
         raise HTTPException(status_code=404, detail="Media file not found on disk")
 
@@ -137,7 +144,17 @@ async def transcribe(request: TranscribeRequest):
         return {"ok": True, "transcription": _result_to_dict(result)}
 
     try:
-        api_key = _get_gemini_api_key()
+        from backend.services.settings_store import load_config
+
+        config = await load_config()
+        provider = config.get("translation_provider")
+        # Checked before the key load: a key is bound to its provider, so for a
+        # non-Gemini provider the load answers None and would hide this reason.
+        if provider and provider != "gemini":
+            raise CodedHTTPException(
+                400, "wrong_provider", "Transcription requires the Gemini provider."
+            )
+        api_key = await asyncio.to_thread(_get_gemini_api_key, provider)
 
         # Extract member/group context from member_path
         # e.g., "日向坂46/messages/85 片山 紗希/137 片山 紗希"
@@ -158,17 +175,8 @@ async def transcribe(request: TranscribeRequest):
                 400, "no_api_key", "No API key configured for transcription."
             )
 
-        # Read provider and model from settings (shared with translation)
-        from backend.services.settings_store import load_config
+        # Provider and model come from settings (shared with translation)
         from backend.api.translation import DEFAULT_GEMINI_MODEL, _valid_model_ids
-
-        config = await load_config()
-        provider = config.get("translation_provider")
-
-        if provider and provider != "gemini":
-            raise CodedHTTPException(
-                400, "wrong_provider", "Transcription requires the Gemini provider."
-            )
 
         model = config.get("translation_model")
         if not model or model not in _valid_model_ids():
@@ -183,7 +191,7 @@ async def transcribe(request: TranscribeRequest):
         except Exception as e:
             # Maps httpx transport errors AND typed provider errors (safety block,
             # empty output) to a coded HTTPException the UI can localize.
-            logger.warning("Transcription provider error", error=str(e))
+            logger.warning("Transcription provider error", error_type=type(e).__name__)
             raise ai_provider_error(e)
 
         duration = segments[-1].end if segments else 0.0
@@ -220,13 +228,17 @@ async def transcribe(request: TranscribeRequest):
 
     except HTTPException:
         raise  # Re-raise specific HTTP errors (incl. CodedHTTPException) as-is
-    except FileNotFoundError as e:
-        raise HTTPException(status_code=404, detail=str(e))
+    except FileNotFoundError:
+        # The message may hold a media path: a fixed answer, a code in the log.
+        logger.info("transcription_media_missing", message_id=request.message_id)
+        raise HTTPException(status_code=404, detail="Not found") from None
     except Exception as e:
         logger.error(
-            "Transcription failed", message_id=request.message_id, error=str(e)
+            "Transcription failed",
+            message_id=request.message_id,
+            error_type=type(e).__name__,
         )
-        raise CodedHTTPException(500, "unknown", f"Transcription failed: {e}")
+        raise CodedHTTPException(500, "unknown", "Transcription failed")
 
 
 @router.get("/status")
@@ -258,7 +270,9 @@ async def get_cached(service: str, message_id: int, member_path: Optional[str] =
 
     # Fast path: caller knows the member directory — load directly, no scan.
     if member_path:
-        member_dir = validate_path_within_dir(output_dir, member_path)
+        member_dir = resolve_service_path_or_http(
+            output_dir, member_path, route="transcription"
+        )
         if member_dir.is_dir():
             result = await asyncio.to_thread(storage.load, member_dir, message_id)
             if result:

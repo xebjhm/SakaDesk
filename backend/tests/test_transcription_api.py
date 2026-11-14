@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from structlog.testing import capture_logs
 from unittest.mock import AsyncMock, patch
 
 import httpx
@@ -212,6 +213,36 @@ class TestTranscribePost:
         assert resp.status_code == 400
         assert "api key" in resp.json()["detail"].lower()
 
+    def test_a_non_gemini_provider_is_wrong_provider_not_no_key(
+        self, tmp_path, monkeypatch
+    ):
+        """The key is bound to its provider, so it loads as None for another one;
+        the answer must still name the provider, not a missing key."""
+        member_rel = _setup_voice_member(tmp_path)
+        monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
+        with (
+            patch.object(transcription_api.storage, "load", return_value=None),
+            patch.object(
+                transcription_api, "_get_gemini_api_key", return_value=None
+            ) as load_key,
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(return_value={"translation_provider": "openai"}),
+            ),
+        ):
+            resp = client.post(
+                "/api/transcription/transcribe",
+                json={
+                    "message_id": 500,
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "force": True,
+                },
+            )
+        assert resp.status_code == 400
+        assert resp.json()["code"] == "wrong_provider"
+        load_key.assert_not_called()
+
     def test_rate_limit_maps_to_429(self, tmp_path, monkeypatch):
         member_rel = _setup_voice_member(tmp_path)
         monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
@@ -250,6 +281,98 @@ class TestTranscribePost:
             )
         assert resp.status_code == 429
 
+    def test_a_vanished_media_file_answers_404_without_its_path(
+        self, tmp_path, monkeypatch
+    ):
+        """A FileNotFoundError message can hold the media path; the 404 must not."""
+        member_rel = _setup_voice_member(tmp_path)
+        monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
+        secret = str(tmp_path / "secret-voice-9.m4a")
+
+        async def _ok(*a, **k):
+            return ("こんにちは", [])
+
+        with (
+            patch.object(transcription_api.storage, "load", return_value=None),
+            patch.object(
+                transcription_api.storage,
+                "save",
+                side_effect=FileNotFoundError(secret),
+            ),
+            patch.object(transcription_api, "_get_gemini_api_key", return_value="k"),
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(
+                    return_value={
+                        "translation_provider": "gemini",
+                        "translation_model": "gemini-3.1-flash-lite",
+                    }
+                ),
+            ),
+            patch.object(
+                transcription_api.GeminiTranscriptionProvider, "transcribe", new=_ok
+            ),
+            capture_logs() as logs,
+        ):
+            resp = client.post(
+                "/api/transcription/transcribe",
+                json={
+                    "message_id": 500,
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "force": True,
+                },
+            )
+        assert resp.status_code == 404
+        assert "secret-voice" not in resp.text
+        assert "secret-voice" not in repr(logs)
+        assert any(e["event"] == "transcription_media_missing" for e in logs)
+
+    def test_an_unexpected_failure_answers_a_fixed_500_without_its_message(
+        self, tmp_path, monkeypatch
+    ):
+        """An OSError message can hold a path; the 500 must not echo it."""
+        member_rel = _setup_voice_member(tmp_path)
+        monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
+
+        async def _ok(*a, **k):
+            return ("こんにちは", [])
+
+        with (
+            patch.object(transcription_api.storage, "load", return_value=None),
+            patch.object(
+                transcription_api.storage,
+                "save",
+                side_effect=OSError("C:/Users/x/secret"),
+            ),
+            patch.object(transcription_api, "_get_gemini_api_key", return_value="k"),
+            patch(
+                "backend.services.settings_store.load_config",
+                new=AsyncMock(
+                    return_value={
+                        "translation_provider": "gemini",
+                        "translation_model": "gemini-3.1-flash-lite",
+                    }
+                ),
+            ),
+            patch.object(
+                transcription_api.GeminiTranscriptionProvider, "transcribe", new=_ok
+            ),
+            capture_logs() as logs,
+        ):
+            resp = client.post(
+                "/api/transcription/transcribe",
+                json={
+                    "message_id": 500,
+                    "service": "hinatazaka46",
+                    "member_path": member_rel,
+                    "force": True,
+                },
+            )
+        assert resp.status_code == 500
+        assert "secret" not in resp.text
+        assert "C:/Users" not in repr(logs)
+
 
 client = TestClient(app)
 
@@ -286,7 +409,7 @@ def test_get_cached_returns_404_when_not_found():
 def test_get_cached_with_member_path_loads_directly(tmp_path, monkeypatch):
     """member_path fast path loads the transcript without scanning member dirs."""
     monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
-    member_path = "hinatazaka46/messages/1 group/2 member"
+    member_path = "日向坂46/messages/1 group/2 member"
     _save_transcript(tmp_path / member_path, 4242)
 
     response = client.get(
@@ -303,7 +426,7 @@ def test_get_cached_with_member_path_loads_directly(tmp_path, monkeypatch):
 def test_get_cached_with_member_path_returns_404_when_absent(tmp_path, monkeypatch):
     """member_path fast path returns 404 (no fallback scan) when not cached there."""
     monkeypatch.setattr(transcription_api, "get_output_dir", lambda: tmp_path)
-    member_path = "hinatazaka46/messages/1 group/2 member"
+    member_path = "日向坂46/messages/1 group/2 member"
     (tmp_path / member_path).mkdir(parents=True)
 
     response = client.get(

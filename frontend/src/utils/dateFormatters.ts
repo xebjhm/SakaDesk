@@ -1,5 +1,6 @@
 // src/utils/dateFormatters.ts
 // Shared timezone-consistent date helpers.
+import { dateTimeFormat } from './intlCache';
 
 /**
  * Format a timestamp (ISO string or Date) as a LOCAL calendar date "YYYY-MM-DD".
@@ -59,7 +60,7 @@ export function formatDatePillLabel(
   if (isSameLocalDay(date, yesterday)) return t('date.yesterday');
   const options: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', weekday: 'short' };
   if (date.getFullYear() !== now.getFullYear()) options.year = 'numeric';
-  return new Intl.DateTimeFormat(locale, options).format(date);
+  return dateTimeFormat(locale, options).format(date);
 }
 
 /** Local midnight of a "YYYY-MM-DD" from toLocalDateStr; null for anything else. */
@@ -84,8 +85,8 @@ const BLOG_DATE_OPTIONS: Record<BlogDateStyle, Intl.DateTimeFormatOptions> = {
 export function formatBlogDate(date: Date, locale: string | undefined, style: BlogDateStyle): string {
   if (Number.isNaN(date.getTime())) return '';
   try {
-    return new Intl.DateTimeFormat(locale, BLOG_DATE_OPTIONS[style]).format(date);
+    return dateTimeFormat(locale, BLOG_DATE_OPTIONS[style]).format(date);
   } catch {
-    return new Intl.DateTimeFormat(undefined, BLOG_DATE_OPTIONS[style]).format(date);
+    return dateTimeFormat(undefined, BLOG_DATE_OPTIONS[style]).format(date);
   }
 }

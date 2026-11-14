@@ -44,6 +44,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Memories, sign-in and settings show a clear loading state instead of a
   blank or frozen screen. Long waits explain what is happening and offer
   Cancel or Retry.
+- **Fonts now come with the app.** SakaDesk no longer downloads its fonts from
+  Google when it starts, so text looks right straight away even offline,
+  behind a proxy or where Google is blocked. The installer is larger as a
+  result.
+- **Chats reopen and refresh faster.** Coming back to a chat, or finishing a
+  sync that brought nothing new, no longer reloads the whole conversation, and
+  starring a message no longer redraws the chat.
+- **The window stays smooth while syncing.** It no longer redraws everything
+  every second during a sync; only the progress itself updates.
+- **Messages stays where you left it.** Switching to Blogs or Memories and
+  back keeps the open chat, its scroll position and the member list, instead
+  of loading them again. A call you declined does not ring again when you come
+  back.
+- **Chat photos load lighter.** Photos in a chat are shown from smaller copies
+  wherever they look the same on your screen, and the viewer still opens the
+  full photo. Voice and video messages only look up their text when it can be
+  shown, so with transcription off a video no longer shows subtitles from an
+  earlier transcript.
+- **Blogs open faster.** In a long list the blog cards appear sooner, and a
+  blog's pictures after the first one load as you scroll.
+  The blog feed's background also uses less graphics power.
+- **SakaDesk starts with less to load.** Memories now loads the first time you
+  open it, and the conversation list checks for changes less often.
+- **More things work without a mouse.** A "Skip to content" link appears when
+  you press Tab, the photo viewer has older and newer buttons, groups can be
+  moved up or down from their menu, and messages can be starred from the
+  keyboard.
+- **Tidier text.** Message times and unread counts line up, headings and
+  Japanese blog titles break at more natural places, and Settings no longer
+  shifts sideways when you switch tabs.
 
 ### Fixed
 - **Bug reports hide your nickname for every group.** Previously the
@@ -52,6 +82,103 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **No more red corner on the incoming-call window.** The rounded corners of
   the bottom-right call card are see-through again instead of showing a solid
   red patch, on every display scale.
+- **Blogs stopped updating for a whole group** when an official post had an
+  unreadable or future date. A post with an unreadable date now waits until it
+  has one, a future date no longer holds back new posts, and an archive that
+  already stopped recovers on the next sync.
+- **Search indexing could stall for minutes** on a blog post with unusual
+  markup; it now finishes quickly.
+- **An archive saved at the top of a drive showed no messages**; it loads
+  again.
+- **Searching for quotation marks or percent signs found unrelated messages**;
+  such characters are now searched exactly as typed.
+- **Member photos in the blog member picker stayed missing** after a failed
+  download; they are downloaded again the next time the picker opens.
+- **Opening a very long blog post no longer makes the rest of the app wait**
+  while the post is prepared for reading.
+- **Verify & fix media no longer says all media is present** when it skipped
+  files whose saved location is outside a group's folder; it now says how many
+  it skipped.
+- **Unread messages could not be revealed with the keyboard.** The unread cover
+  is now a button you can reach with Tab and open with Enter or Space, and
+  "Reveal all unread" is in the chat's ⋯ menu.
+- **The search box no longer traps Tab and Enter.** You can now reach the
+  filters and "Load more" with the keyboard, and the arrow keys no longer move
+  the selection while you pick a Japanese or Chinese candidate.
+- **Screen readers can now use the media players.** Play, mute, full screen and
+  the position and volume sliders are named, the controls stay visible while
+  you use them from the keyboard, and photos in a chat open with Enter.
+- **Screen readers stay inside an open dialog.** The app behind a dialog is no
+  longer read out or clickable while it is open, and menus now open on their
+  first item with a visible focus ring. A settings error now waits until the
+  dialog closes instead of appearing over it.
+- **Screen readers now hear short messages.** "Copied" and incoming calls are
+  announced, even while a photo viewer or another dialog is open.
+- **Setup shows a failed save next to the folder field.** If saving the archive
+  folder fails for any reason, the setup screen now says so under the folder
+  field instead of in a separate message.
+- **Voice transcripts are easier to read** and each line can be chosen with the
+  keyboard to jump to that moment.
+- **Long laughs and dashes no longer get cut off.** A message, memory or letter
+  with a long unbroken run such as "wwwww" or "〜〜〜" now wraps inside its
+  bubble instead of running past the edge.
+- **Windows High Contrast now shows what is on and what is selected.**
+  Switches, the selected group, conversation, tab or filter, the current sync
+  step and the edges of dialogs and cards stay visible with every contrast
+  theme.
+- **Translations look like the language they are in.** Chinese and Cantonese
+  translations now use Chinese characters' own shapes instead of Japanese ones,
+  are no longer slanted, and their controls are easier to read.
+- **The error screen is now in your language** and matches the rest of the app.
+
+### Security
+- **Other programs and web pages can no longer use SakaDesk's local
+  connection.** SakaDesk now answers only its own windows. Other apps, other
+  Windows accounts on the same PC and web pages open in your browser can no
+  longer read your archive, change settings or remove your sign-in through it,
+  and their refused attempts no longer crowd out the log that bug reports
+  include.
+- **Installers no longer include leftover development sample data.** A sample
+  file that earlier versions bundled by mistake has been removed.
+- **Blog posts and saved files can no longer take over SakaDesk.** A file
+  saved from a blog post now only ever opens as a picture, video, voice clip
+  or plain download, and blog images fetched for saving or copying must be
+  real images from the official sites over a secure connection.
+- **Links in blog posts and messages open in your browser.** A link can no
+  longer replace SakaDesk's window with another site, and links to anything
+  other than a web page are ignored. Search highlighting in a blog post can
+  no longer turn the post's text into part of the page.
+- **SakaDesk only runs the code it ships with.** The app now tells its window
+  to refuse scripts, styles and fonts from anywhere else, as a second line of
+  defence if hostile content ever slips through.
+- **Data from the official sites can no longer place files outside your
+  archive.** Member and post codes from the blog sites and ids from the
+  message service are now checked before SakaDesk uses them in folder or file
+  names, and anything that would lead outside your SakaDesk folder is
+  skipped. Member photos are saved and shown only as pictures.
+- **Only you can change where SakaDesk keeps your archive.** The output folder
+  can now only be chosen with Browse, in Windows' own folder picker, and
+  SakaDesk only opens files inside the group folders it creates there, so a
+  web page or hostile content can no longer point it at your other files.
+  Network locations, whole drives, system folders and your user folder itself
+  are refused (a mapped drive letter works), and the folder you already use
+  keeps working.
+- **Toast and call-popup clicks no longer need script evaluation**, so the app's
+  content security policy now refuses all evaluated code. A page that slipped
+  past the other defences can no longer turn text into running script.
+- **Bug reports and the diagnostics panel hide your Windows user folder**,
+  including the escaped paths that appear in error messages, and hide
+  translation API keys.
+- **Blog backups download pictures only from the official sites** over a
+  secure connection and refuse oversized files, so a tampered blog post cannot
+  make SakaDesk contact other machines on your network.
+- **Your translation key is only sent to the service it was saved for**, and a
+  speech-to-text clean-up step can no longer send it anywhere else.
+- **Downloads keep a safe file name**, and copying to the clipboard works only
+  for photos, videos and voice messages.
+- **The installer no longer contains developer test files or a debugging build
+  of the launcher**, and the app's security protections also apply to its
+  internal error pages.
 
 ## [0.4.2] - 2026-11-10
 

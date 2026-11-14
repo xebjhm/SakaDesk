@@ -6,9 +6,9 @@ import { useInlineBlogTranslations } from './useInlineBlogTranslations';
 // Two segments separated by a <br><br> run, as official blog HTML is structured.
 const HTML = '<p>今日は晴れ🌸<br><br>ありがとう</p>';
 
-function Harness({ translations, enabled }: { translations: string[]; enabled: boolean }) {
+function Harness({ translations, enabled, lang = 'en' }: { translations: string[]; enabled: boolean; lang?: string }) {
     const ref = useRef<HTMLDivElement>(null);
-    useInlineBlogTranslations(ref, translations, enabled);
+    useInlineBlogTranslations(ref, translations, enabled, lang);
     return <div ref={ref} dangerouslySetInnerHTML={{ __html: HTML }} />;
 }
 
@@ -48,5 +48,12 @@ describe('useInlineBlogTranslations', () => {
         const span = container.querySelector('span.blog-translation-inline')!;
         expect(span.getAttribute('style')).toBeNull();
         expect(span).toHaveClass('text-secondary', 'border-strong', 'italic');
+    });
+
+    it('marks each line with its language and draws CJK upright', () => {
+        const { container } = render(<Harness translations={['今天天氣好🌸', '謝謝']} enabled lang="zh-TW" />);
+        const spans = Array.from(container.querySelectorAll('span.blog-translation-inline'));
+        expect(spans.map(s => s.getAttribute('lang'))).toEqual(['zh-TW', 'zh-TW']);
+        expect(spans[0]).not.toHaveClass('italic');
     });
 });

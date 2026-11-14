@@ -11,7 +11,7 @@ import asyncio
 import collections
 import contextlib
 import structlog
-from typing import Any, Dict, Mapping, Optional, cast
+from typing import Any, Callable, Dict, Mapping, Optional, cast
 import aiohttp
 from pysaka import (
     BrowserAuth,
@@ -35,6 +35,15 @@ from backend.services.service_utils import (
 )
 
 logger = structlog.get_logger(__name__)
+
+_GEO_PROVIDERS: tuple[tuple[str, Callable[[dict[str, Any]], Optional[str]]], ...] = (
+    (
+        "https://ipwho.is/",
+        lambda d: d.get("country_code") if d.get("success", True) else None,
+    ),
+)
+"""Geo-IP lookups for the region notice, HTTPS only: a cleartext answer could be
+changed on the way (report-hardening #32, audit 2026-11-13)."""
 
 # How long the status path (``get_status``, which the app's loading screen waits
 # on) waits for an in-line renewal. A slower renewal keeps running in the
@@ -230,7 +239,7 @@ class AuthService:
             logger.error(
                 "Failed to check auth status",
                 service=service,
-                error=str(e),
+                error_type=type(e).__name__,
                 exc_info=True,
             )
 
@@ -726,19 +735,15 @@ class AuthService:
             self._invalidate_session_cache(group.value)
             logger.info("Credentials saved to TokenManager", service=service)
         except Exception as e:
-            logger.error("Failed to save credentials", service=service, error=str(e))
+            logger.error(
+                "Failed to save credentials",
+                service=service,
+                error_type=type(e).__name__,
+            )
             raise
 
-    async def logout(self, service: str):
-        """
-        Clear credentials for a specific service and forget its needs-login mark.
-
-        Args:
-            service: The service to log out of (e.g., 'hinatazaka46').
-        """
-        validate_service(service)
-        group = self._get_group(service)
-
+    def _delete_session(self, service: str, group: Group) -> None:
+        """Delete the stored session and its cached status. Never raises."""
         try:
             tm = get_token_manager()
             tm.delete_session(group.value)
@@ -747,9 +752,43 @@ class AuthService:
             self._invalidate_session_cache(group.value)
             logger.info("Credentials cleared from TokenManager", service=service)
         except Exception as e:
-            logger.error("Failed to clear credentials", service=service, error=str(e))
+            logger.error(
+                "Failed to clear credentials",
+                service=service,
+                error_type=type(e).__name__,
+            )
+
+    async def logout(self, service: str):
+        """
+        Clear credentials for a specific service and forget its needs-login mark.
+
+        Holds the service's ``refresh_gate`` while deleting, so a renewal that
+        already holds it (and saves inside it) finishes first and its session
+        is then deleted. If the gate stays busy past ``GATE_WAIT_SECONDS`` the
+        session is deleted anyway (``logout_gate_timeout``). Pending memories
+        exports are dropped too (``logout_exports_cleared``, ``count``): they
+        hold the previous session's content (security audit 2026-11-13).
+
+        Args:
+            service: The service to log out of (e.g., 'hinatazaka46').
+        """
+        validate_service(service)
+        group = self._get_group(service)
+
+        try:
+            async with refresh_gate.hold(group.value):
+                self._delete_session(service, group)
+        except TimeoutError:
+            logger.warning("logout_gate_timeout", service=service)
+            self._delete_session(service, group)
         # A logged-out service must not keep reporting session_expired.
         await session_alert.clear(service)
+
+        from backend.services.memories import exports
+
+        held = len(exports.store)
+        exports.store.clear()
+        logger.info("logout_exports_cleared", count=held)
 
     def _get_token_remaining_seconds(self, token: str) -> float:
         """Get seconds remaining until token expires. Uses shared pysaka utility."""
@@ -942,7 +981,9 @@ class AuthService:
             token_data = tm.load_session(group.value)
             return cast(Dict[Any, Any], token_data or {})
         except Exception as e:
-            logger.error("Failed to load config", service=service, error=str(e))
+            logger.error(
+                "Failed to load config", service=service, error_type=type(e).__name__
+            )
             return {}
 
     async def check_geo_availability(self, service: str) -> dict:
@@ -979,22 +1020,10 @@ class AuthService:
 
     async def _lookup_country(self) -> Optional[str]:
         """Best-effort ISO country code for this machine's public IP, via a free
-        no-key geo-IP service (with a fallback). None if all lookups fail, so the
-        caller fails open."""
-        providers = [
-            (
-                "http://ip-api.com/json/?fields=status,countryCode",
-                lambda d: d.get("countryCode")
-                if d.get("status") == "success"
-                else None,
-            ),
-            (
-                "https://ipwho.is/",
-                lambda d: d.get("country_code") if d.get("success", True) else None,
-            ),
-        ]
+        no-key HTTPS geo-IP service. None if the lookup fails, so the caller
+        fails open."""
         timeout = aiohttp.ClientTimeout(total=6)
-        for url, extract in providers:
+        for url, extract in _GEO_PROVIDERS:
             try:
                 async with aiohttp.ClientSession(timeout=timeout) as session:
                     async with session.get(url) as resp:
@@ -1005,5 +1034,5 @@ class AuthService:
                         if code:
                             return str(code).upper()
             except Exception as e:
-                logger.debug("geoip_lookup_failed", url=url, error=str(e))
+                logger.debug("geoip_lookup_failed", error_type=type(e).__name__)
         return None

@@ -14,7 +14,12 @@ is safe here.
 from __future__ import annotations
 
 import json
+import re
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import call
+
+from structlog.testing import capture_logs
 
 import desktop
 
@@ -128,4 +133,54 @@ class TestMainWindowKwargs:
         assert kwargs["min_size"] == (960, 640)
         assert kwargs["width"] == 2100 and kwargs["x"] == 10
         assert kwargs["resizable"] is True and kwargs["hidden"] is False
-        assert kwargs["url"].endswith(":8000")
+        assert (
+            kwargs["url"] == f"http://127.0.0.1:8000/#t={desktop.api_auth.LAUNCH_TOKEN}"
+        )
+
+    def test_text_select_true_so_pywebview_injects_no_style(self):
+        """The app CSP (style-src 'self') refuses pywebview's injected
+        ``body{user-select:none}`` <style>; the app's own CSS carries that rule."""
+        kwargs = desktop._main_window_kwargs(
+            {"width": 1280, "height": 800}, 8000, False
+        )
+        assert kwargs["text_select"] is True
+
+
+class TestNavigationGuardInstall:
+    def test_main_installs_the_guard_before_the_gui_loop_starts(self):
+        source = (Path(desktop.__file__).resolve()).read_text(encoding="utf-8")
+        body = source[source.index("\ndef main(") :]
+        install_at = body.index("        _install_navigation_guard(")
+        start = re.search(r"^ +webview\.start\($", body, re.MULTILINE)
+        assert start is not None
+        assert install_at < start.start()
+
+    def test_skipped_off_windows(self):
+        calls: list[dict] = []
+        with capture_logs() as logs:
+            assert (
+                desktop._install_navigation_guard(
+                    8765, is_windows=False, install=lambda **kw: calls.append(kw)
+                )
+                is False
+            )
+        assert calls == []
+        assert {
+            "event": "nav_guard",
+            "installed": False,
+            "reason": "platform",
+            "log_level": "info",
+        } in logs
+
+    def test_installs_with_the_app_origin_on_windows(self):
+        calls: list[dict] = []
+        assert desktop._install_navigation_guard(
+            8765, is_windows=True, install=lambda **kw: calls.append(kw) is None
+        )
+        assert calls == [{"host": "127.0.0.1", "port": 8765}]
+
+    def test_new_window_links_open_in_the_browser_explicitly(self):
+        assert (
+            call("OPEN_EXTERNAL_LINKS_IN_BROWSER", True)
+            in desktop.webview.settings.__setitem__.call_args_list
+        )

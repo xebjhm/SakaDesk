@@ -1,0 +1,13 @@
+{
+  "core/common/SafeImage.tsx": 1,
+  "core/common/TranslateButton.tsx": 3,
+  "core/media/SubtitleOverlay.tsx": 4,
+  "core/media/TranscribeButton.tsx": 2,
+  "core/media/TranscriptPanel.tsx": 2,
+  "core/media/VideoPlayer.tsx": 28,
+  "core/media/VoicePlayer.tsx": 4,
+  "features/blogs/components/TimelineRail.tsx": 2,
+  "features/incomingCall/callScreen.css": 57,
+  "features/memories/memoir/Postcard.tsx": 1,
+  "index.css": 5
+}

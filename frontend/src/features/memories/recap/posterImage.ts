@@ -6,13 +6,13 @@
  * URL and draws the SVG on a canvas. Recap media is served same-origin by the local server
  * (`/api/content/media/...`, avatars from the profile-image routes), so the canvas is never
  * tainted. Web fonts are embedded by this module rather than by the library: the Noto families
- * come from Google Fonts in about a hundred `unicode-range` slices each, and only the slices
- * that cover the node's text (at most {@link MAX_FONT_FACES}) are inlined. Embedding goes to
- * the network: the Google stylesheet and each slice are fetched again, and the browser may or
- * may not answer them from its HTTP cache. Each request has a {@link FONT_FETCH_TIMEOUT_MS}
- * timeout and the whole embed a {@link FONT_BUDGET_MS} budget. When fonts cannot be embedded
- * in time (offline, a stalled network), the image is drawn with the system fallback fonts and
- * every fallback is reported as a log code.
+ * are self-hosted (design/fonts.ts) in about a hundred `unicode-range` slices each, and only
+ * the slices that cover the node's text (at most {@link MAX_FONT_FACES}) are inlined. Each
+ * slice is fetched again from the app (`/assets`; a slice Vite inlined is already a data URL),
+ * and the browser may or may not answer it from its HTTP cache. Each request has a
+ * {@link FONT_FETCH_TIMEOUT_MS} timeout and the whole embed a {@link FONT_BUDGET_MS} budget.
+ * When fonts cannot be embedded in time (a stalled request), the image is drawn with the
+ * system fallback fonts and every fallback is reported as a log code.
  *
  * Saving: the desktop webview ignores `<a download>` blob URLs, so {@link saveBlob} hands the
  * bytes to the local server (`POST /api/memories/export`, held in memory only) and opens the
@@ -20,7 +20,6 @@
  * save dialog. Nothing leaves the machine. Whether the user then saves the file is not
  * observable, so the outcome is `handed_off`, never "saved".
  */
-import { toCanvas } from 'html-to-image';
 import { openDownloadUrl } from '../../../utils/download';
 
 /** Width in pixels of an exported poster (a 9:16 stage gives 1080 × 1920). */
@@ -242,7 +241,7 @@ export async function buildFontEmbedCSS(node: HTMLElement, opts: FontFetchOption
             const faces = Array.from(sheet.cssRules).filter((r) => r.constructor.name === 'CSSFontFaceRule' || r.type === 5);
             if (faces.length) sources.push({ css: faces.map((r) => r.cssText).join('\n'), base });
         } catch {
-            // A cross-origin sheet (Google Fonts) hides its rules; read its text instead.
+            // A cross-origin sheet hides its rules; read its text instead.
             if (!sheet.href) continue;
             const res = await fetchWithTimeout(sheet.href, opts);
             if (res.ok) sources.push({ css: await res.text(), base });
@@ -318,6 +317,11 @@ export async function renderToCanvas(node: HTMLElement, opts: RenderOptions = {}
         budget.abort();
     }
     const shown = node.getBoundingClientRect().width || node.offsetWidth;
+    // CSP dependency: html-to-image must always get a non-empty `fontEmbedCSS` (EXPORT_FIT_CSS at the
+    // least). Without it the library adds a <base> (refused by `base-uri 'none'`) and fetches
+    // stylesheets through `connect-src`.
+    // Loaded at export time: the library is only needed when the user saves a poster or a share image.
+    const { toCanvas } = await import('html-to-image');
     const canvas = await toCanvas(node, {
         pixelRatio: shown > 0 ? width / shown : 1,
         fontEmbedCSS: fontEmbedCSS ? `${fontEmbedCSS}\n${EXPORT_FIT_CSS}` : EXPORT_FIT_CSS,

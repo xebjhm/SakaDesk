@@ -14,13 +14,26 @@ from typing import List, Optional
 import structlog
 
 from backend.services import avatar_resize
+from backend.services import blog_service as blog_service_module
+from backend.security_headers import SANDBOX_CSP
+from backend.services.passive_media import (
+    INLINE_MEDIA_TYPES,
+    download_name,
+    passive_media,
+)
 from backend.services.blog_service import (
     BlogService,
     blog_backup_enabled,
     gallery_images,
     get_blog_backup_manager,
 )
+from backend.services.remote_images import (
+    MAX_REMOTE_IMAGE_BYTES,
+    upgrade_official_url,
+    url_refusal,
+)
 from backend.services.service_utils import validate_service
+from backend.services.safe_paths import UnsafePath, blog_date
 
 logger = structlog.get_logger(__name__)
 
@@ -165,6 +178,11 @@ class _HTMLSanitizer(HTMLParser):
 
     def get_html(self) -> str:
         return "".join(self._out)
+
+
+MAX_BLOG_HTML_CHARS = 2 * 1024 * 1024
+"""Cap on the characters of one blog's HTML taken as input: the sanitizer and the
+response only ever see this many (the same cap as the search index)."""
 
 
 def _sanitize_blog_html(html: str) -> str:
@@ -327,14 +345,17 @@ async def get_member_thumbnail(
 
     Args:
         service: Service name (e.g., 'hinatazaka46').
-        member_id: Member ID.
+        member_id: Member ID; anything that is not ``safe_paths.is_safe_id``
+            answers 404 before any filesystem call (security audit 2026-11-13).
         w: Optional width; one of ``avatar_resize.ALLOWED_WIDTHS`` (400
             otherwise). Serves a cached square WebP downscaled to ``w`` px,
             cropped from the top (portrait photos keep the head).
 
     Returns:
-        The thumbnail image file. Resized or not, it carries the same
-        ``Cache-Control`` (``_THUMBNAIL_CACHE_CONTROL``).
+        The thumbnail file, typed and headed by ``passive_media`` (route
+        ``member_thumbnail``: a picture inline with ``nosniff`` and the
+        sandbox CSP). Resized or not, it carries the same ``Cache-Control``
+        (``_THUMBNAIL_CACHE_CONTROL``).
     """
     try:
         validate_service(service)
@@ -346,6 +367,7 @@ async def get_member_thumbnail(
         if not thumbnail_path or not thumbnail_path.exists():
             raise HTTPException(status_code=404, detail="Thumbnail not found")
 
+        served = thumbnail_path
         if w is not None:
             served = await asyncio.to_thread(
                 avatar_resize.resized_avatar,
@@ -354,27 +376,11 @@ async def get_member_thumbnail(
                 None,
                 avatar_resize.TOP,
             )
-            if served != thumbnail_path:
-                return FileResponse(
-                    served,
-                    media_type="image/webp",
-                    headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL},
-                )
-
-        # Determine media type from extension
-        ext = thumbnail_path.suffix.lower()
-        media_types = {
-            ".jpg": "image/jpeg",
-            ".jpeg": "image/jpeg",
-            ".png": "image/png",
-            ".webp": "image/webp",
-        }
-        media_type = media_types.get(ext, "image/jpeg")
-
+        passive = passive_media(served.name, route="member_thumbnail")
         return FileResponse(
-            thumbnail_path,
-            media_type=media_type,
-            headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL},
+            served,
+            media_type=passive.media_type,
+            headers={"Cache-Control": _THUMBNAIL_CACHE_CONTROL, **passive.headers},
         )
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
@@ -382,10 +388,7 @@ async def get_member_thumbnail(
         raise
     except Exception as e:
         logger.error(
-            "Failed to serve member thumbnail",
-            service=service,
-            member_id=member_id,
-            error=str(e),
+            "member_thumbnail_failed", service=service, error_type=type(e).__name__
         )
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
@@ -455,7 +458,13 @@ async def get_blog_content(service: str = Query(...), blog_id: str = Query(...))
         # leaves the backend (defense-in-depth behind the frontend DOMPurify).
         content = result.get("content")
         if isinstance(content, dict) and isinstance(content.get("html"), str):
-            content["html"] = _sanitize_blog_html(content["html"])
+            html = content["html"]
+            if len(html) > MAX_BLOG_HTML_CHARS:
+                logger.info("blog_html_truncated", service=service)
+                html = html[:MAX_BLOG_HTML_CHARS]
+            # html.parser work: in a worker thread, so a large post does not
+            # block every other request (report-hardening #52).
+            content["html"] = await asyncio.to_thread(_sanitize_blog_html, html)
         return result
     except ValueError as e:
         raise HTTPException(
@@ -574,11 +583,14 @@ async def sync_blog_metadata(service: str = Query(...)):
         service: Service name (e.g., 'sakurazaka46').
 
     Returns:
-        Stats about the sync operation.
+        Stats about the sync operation. Answers 502 when every member's sync
+        failed (nothing was scanned, ``last_sync`` is not stamped).
     """
     try:
         validate_service(service)
         index = await blog_service.sync_blog_metadata(service)
+        if index.get("sync_failed"):
+            raise HTTPException(status_code=502, detail="Blog sync failed")
 
         # Calculate stats
         total_blogs = sum(
@@ -592,6 +604,8 @@ async def sync_blog_metadata(service: str = Query(...)):
             "total_blogs": total_blogs,
             "last_sync": index.get("last_sync"),
         }
+    except HTTPException:
+        raise
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except Exception as e:
@@ -599,23 +613,21 @@ async def sync_blog_metadata(service: str = Query(...)):
         raise HTTPException(status_code=500, detail="An internal error occurred")
 
 
-# Allowed domains for the image proxy (official blog hosts and CDNs)
-_PROXY_ALLOWED_HOSTS = {
-    "cdn.hinatazaka46.com",
-    "www.hinatazaka46.com",
-    "hinatazaka46.com",
-    "cdn.sakurazaka46.com",
-    "www.sakurazaka46.com",
-    "sakurazaka46.com",
-    "cdn.nogizaka46.com",
-    "www.nogizaka46.com",
-    "nogizaka46.com",
-    "img.nogizaka46.com",
-}
+# The proxy and the blog backup apply the same URL rules (upgrade_official_url,
+# url_refusal) and the same size cap.
+_PROXY_MAX_IMAGE_BYTES = MAX_REMOTE_IMAGE_BYTES
 
-# Cap the proxied image size to avoid unbounded memory use (10 MB is generous
-# for a blog image; official assets are well under this).
-_PROXY_MAX_IMAGE_BYTES = 10 * 1024 * 1024
+
+_PROXY_IMAGE_TYPES = frozenset(
+    t for t in INLINE_MEDIA_TYPES.values() if t.startswith("image/")
+)
+"""Upstream types the proxy passes on (jpeg, png, gif, webp); else 502 (no HTML, SVG, XML)."""
+
+
+def _proxy_reject(status: int, reason: str, detail: str) -> HTTPException:
+    """Log ``proxy_image_rejected`` (a reason code, never the URL); build the error."""
+    logger.info("proxy_image_rejected", reason=reason, status=status)
+    return HTTPException(status_code=status, detail=detail)
 
 
 @router.get("/proxy-image")
@@ -623,71 +635,104 @@ async def proxy_blog_image(
     url: str = Query(...),
     download: Optional[str] = Query(None),
 ):
-    """Proxy download for external blog images to bypass browser CORS restrictions.
+    """Fetch an official blog image the page cannot fetch itself (the CDNs send no CORS).
 
-    Only allows fetching from known official blog domains for security.
-    Pass ``download=filename`` to force a download (Content-Disposition: attachment).
+    The URL goes through the blog backup's rules: an ``http://`` link to an
+    official host is upgraded to ``https`` (``upgrade_official_url``), then
+    only ``https`` on an official host with no port or port 443 is fetched
+    (``url_refusal``: 403 otherwise; a malformed URL or port is 400). Redirects
+    are not followed (a 3xx answers 502), unlike the backup, which re-checks
+    each hop: the proxy's client has no such check, and official image URLs
+    are served directly, so the allowlist and scheme hold for the final URL
+    too. The upstream must
+    answer a type in ``_PROXY_IMAGE_TYPES`` (502 otherwise) of at most
+    ``_PROXY_MAX_IMAGE_BYTES`` (502); a network or HTTP error is 502 with a
+    fixed message. The image is returned with that exact type and
+    ``X-Content-Type-Options: nosniff``; inline answers also carry
+    ``SANDBOX_CSP``, and ``download=filename`` answers an attachment with that
+    name instead. Every refusal logs ``proxy_image_rejected`` with ``reason``
+    (``invalid_url``, ``scheme``, ``host``, ``port``, ``redirect``,
+    ``content_type``,
+    ``too_large``, ``upstream`` with ``error_type``) and ``status``.
     """
-    from urllib.parse import urlparse
-    import httpx
+    from urllib.parse import quote
 
-    parsed = urlparse(url)
-    if parsed.hostname not in _PROXY_ALLOWED_HOSTS:
-        raise HTTPException(status_code=403, detail="Domain not allowed for proxy")
+    import httpx
+    from starlette.responses import Response
+
+    url = str(upgrade_official_url(url))
+    refusal = url_refusal(url)
+    if refusal == "invalid_url":
+        raise _proxy_reject(400, "invalid_url", "Invalid URL")
+    if refusal == "scheme":
+        raise _proxy_reject(403, "scheme", "Only https image URLs can be proxied")
+    if refusal == "host":
+        raise _proxy_reject(403, "host", "Domain not allowed for proxy")
+    if refusal == "port":
+        raise _proxy_reject(403, "port", "Only the default https port can be proxied")
 
     try:
         # follow_redirects=False: an allowlisted host that open-redirects must not
         # be able to steer this server-side fetch to an internal address (SSRF).
         async with httpx.AsyncClient(follow_redirects=False) as client:
             async with client.stream("GET", url, timeout=30.0) as resp:
-                # SD-BE-API-15: raise_for_status() only fires on 4xx/5xx. With
-                # redirects disabled (correct, for SSRF), a 3xx from an
-                # allowlisted host would otherwise stream through as a "success"
-                # with an empty redirect body and the redirect's content-type —
-                # a silently broken image. Treat any redirect as an upstream
-                # error the caller can see.
+                # SD-BE-API-15: raise_for_status() only fires on 4xx/5xx; with
+                # redirects disabled a 3xx would stream through as a broken image.
                 if resp.is_redirect:
-                    raise HTTPException(
-                        status_code=502, detail="Upstream image redirected"
-                    )
+                    raise _proxy_reject(502, "redirect", "Upstream image redirected")
                 resp.raise_for_status()
 
-                content_type = resp.headers.get(
-                    "content-type", "application/octet-stream"
+                content_type = (
+                    resp.headers.get("content-type", "")
+                    .split(";", 1)[0]
+                    .strip()
+                    .lower()
                 )
+                if content_type not in _PROXY_IMAGE_TYPES:
+                    raise _proxy_reject(502, "content_type", "Upstream is not an image")
 
                 # Reject oversized responses up front when the server declares a
                 # length; otherwise cap while streaming below.
                 declared_len = resp.headers.get("content-length")
                 if declared_len is not None:
                     try:
-                        if int(declared_len) > _PROXY_MAX_IMAGE_BYTES:
-                            raise HTTPException(
-                                status_code=502, detail="Image too large"
-                            )
+                        too_large = int(declared_len) > _PROXY_MAX_IMAGE_BYTES
                     except ValueError:
-                        pass
+                        too_large = False
+                    if too_large:
+                        raise _proxy_reject(502, "too_large", "Image too large")
 
                 chunks: list[bytes] = []
                 total = 0
                 async for chunk in resp.aiter_bytes():
                     total += len(chunk)
                     if total > _PROXY_MAX_IMAGE_BYTES:
-                        raise HTTPException(status_code=502, detail="Image too large")
+                        raise _proxy_reject(502, "too_large", "Image too large")
                     chunks.append(chunk)
                 content = b"".join(chunks)
-
-        from starlette.responses import Response
-
-        headers = {}
-        if download:
-            from urllib.parse import quote
-
-            safe_name = quote(download, safe="")
-            headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{safe_name}"
-        return Response(content=content, media_type=content_type, headers=headers)
+    except httpx.InvalidURL:
+        raise _proxy_reject(400, "invalid_url", "Invalid URL") from None
     except httpx.HTTPError as e:
-        raise HTTPException(status_code=502, detail=f"Failed to fetch image: {e}")
+        logger.info(
+            "proxy_image_rejected",
+            reason="upstream",
+            status=502,
+            error_type=type(e).__name__,
+        )
+        raise HTTPException(status_code=502, detail="Failed to fetch image") from None
+
+    headers = {"X-Content-Type-Options": "nosniff"}
+    if download:
+        # The client's name, reduced to one part ending in the image's own
+        # extension (security audit 2026-11-13).
+        ext = next(
+            (e for e, t in INLINE_MEDIA_TYPES.items() if t == content_type), ".jpg"
+        )
+        safe_name = quote(download_name(download, f"image{ext}"), safe="")
+        headers["Content-Disposition"] = f"attachment; filename*=UTF-8''{safe_name}"
+    else:
+        headers["Content-Security-Policy"] = SANDBOX_CSP
+    return Response(content=content, media_type=content_type, headers=headers)
 
 
 @router.get("/image")
@@ -699,7 +744,10 @@ async def serve_blog_image(
 ):
     """Serve a locally cached blog image from disk.
 
-    Used when full blog backup has downloaded images locally.
+    Used when full blog backup has downloaded images locally. Inline answers
+    take type and headers from ``passive_media`` (route ``blog_image``): a
+    cached file that is not a picture is an attachment. ``download=name``
+    always answers a ``application/octet-stream`` attachment with that name.
     """
     import re
 
@@ -709,7 +757,7 @@ async def serve_blog_image(
         raise HTTPException(status_code=400, detail=str(e))
 
     # Validate filename to prevent path traversal
-    if not re.match(r"^img_\d+\.\w+$", filename):
+    if not re.fullmatch(r"img_\d+\.\w+", filename):
         raise HTTPException(status_code=400, detail="Invalid filename")
 
     # Resolve the blog's cache directory via service
@@ -717,7 +765,9 @@ async def serve_blog_image(
     blog_meta = None
     member_name = None
     for _mid, member_data in index.get("members", {}).items():
-        for blog in member_data.get("blogs", []):
+        for blog in blog_service_module._readable_blogs(
+            service, "image", member_data.get("blogs", [])
+        ):
             if blog["id"] == blog_id:
                 blog_meta = blog
                 member_name = member_data.get("name", "")
@@ -728,30 +778,31 @@ async def serve_blog_image(
     if not blog_meta or member_name is None:
         raise HTTPException(status_code=404, detail="Blog not found")
 
-    date = blog_meta["published_at"][:10].replace("-", "")
-    cache_path = blog_service.get_blog_cache_path(service, member_name, blog_id, date)
+    date = blog_date(blog_meta["published_at"])
+    try:
+        cache_path = blog_service.get_blog_cache_path(
+            service, member_name, blog_id, date
+        )
+    except UnsafePath as e:
+        # A hostile or broken index entry (security audit 2026-11-13).
+        logger.warning(
+            "blog_path_rejected", service=service, where="image", reason=e.reason
+        )
+        raise HTTPException(status_code=404, detail="Blog not found")
     image_path = cache_path / "images" / filename
 
     if not image_path.exists():
         raise HTTPException(status_code=404, detail="Image not found")
 
-    ext = image_path.suffix.lower()
-    media_types = {
-        ".jpg": "image/jpeg",
-        ".jpeg": "image/jpeg",
-        ".png": "image/png",
-        ".webp": "image/webp",
-        ".gif": "image/gif",
-    }
-    headers = {"Cache-Control": "public, max-age=604800"}
     if download:
         return FileResponse(
             image_path,
-            filename=download,
+            filename=download_name(download, image_path.name),
             media_type="application/octet-stream",
         )
+    passive = passive_media(image_path.name, route="blog_image")
     return FileResponse(
         image_path,
-        media_type=media_types.get(ext, "application/octet-stream"),
-        headers=headers,
+        media_type=passive.media_type,
+        headers={"Cache-Control": "public, max-age=604800", **passive.headers},
     )

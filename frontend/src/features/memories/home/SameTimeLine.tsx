@@ -7,6 +7,7 @@ import { logMemoriesLoad, logMemoriesSkip } from '../memoriesLog';
 import { formatJstClock, formatJstIsoDate, JST_TIME_ZONE, jstNow } from '../shared/jst';
 import { MemoryText } from '../shared/MemoryText';
 import type { SameTimeMoment } from '../types';
+import { dateTimeFormat } from '../../../utils/intlCache';
 
 interface SameTimeLineProps {
     service: string;
@@ -121,7 +122,7 @@ export const SameTimeLine: React.FC<SameTimeLineProps> = ({ service, initial, go
     if (!moment) return null;
     const thisYear = moment.year === jstNow(new Date(now)).year;
     // Her name goes in as a marker, then becomes a `lang="ja"` span inside the translated label.
-    const dateFormat = new Intl.DateTimeFormat(i18n.language, {
+    const dateFormat = dateTimeFormat(i18n.language, {
         ...(thisYear ? {} : { year: 'numeric' }), month: 'long', day: 'numeric', timeZone: JST_TIME_ZONE,
     });
     const params = { date: formatJstIsoDate(dateFormat, moment.date), time: formatJstClock(moment.message.ts), name: NAME_MARK };

@@ -6,10 +6,12 @@ import { formatName, getShortName } from '../../../utils';
 import { UI_CONSTANTS } from '../../../config/uiConstants';
 import { Avatar, Badge, Button, EmptyState, IconButton, Spinner } from '../../../design/primitives';
 import { useTranslation } from '../../../i18n';
+import { useFeatureActive } from '../../../design/featureActive';
 import { computeUnreadByPath } from '../utils/unreadCap';
 import { persisted } from '../../../core/persistence/persisted';
 import { useVisiblePolling } from '../../../hooks/useVisiblePolling';
 import { clientLog } from '../../../utils/clientLog';
+import { shallowEqualRecord } from '../../../utils/shallowEqualRecord';
 import { pollJson, pollLogKey, SIDEBAR_POLL_TIMEOUT_MS, useUnmountSignal } from '../../../utils/pollJson';
 import { fetchProfileImages, memberImageUrl, PROFILE_IMAGE_KINDS, type ProfileImagesByKind } from '../profileImages';
 import { resizedAvatarUrl } from '../mediaUrl';
@@ -44,6 +46,8 @@ interface SidebarProps {
     isSyncing?: boolean;
     readStateVersion?: number; // Increments when read state changes, triggers sidebar refresh
     onSyncNow?: () => void; // Manual sync trigger
+    /** Kept mounted behind another feature: no polling and no sync-end load until shown again (it then loads at once). */
+    paused?: boolean;
 }
 
 function formatRelativeTime(isoTime: string, t: (key: string, opts?: Record<string, unknown>) => string): string {
@@ -56,6 +60,27 @@ function formatRelativeTime(isoTime: string, t: (key: string, opts?: Record<stri
     const days = Math.floor(hours / 24);
     return t('time.daysAgo', { count: days });
 }
+
+/** The label is worded in whole minutes, so it needs a fresh reading once a minute. */
+const LAST_SYNCED_TICK_MS = 60_000;
+
+/**
+ * "Last synced … ago". It re-renders itself every `LAST_SYNCED_TICK_MS` (the member list is memoised
+ * and an unchanged server answer sets no state, so nothing else would advance it). It sits still
+ * while its feature is hidden and reads afresh when shown again.
+ */
+const LastSyncedLabel: React.FC<{ isoTime: string }> = ({ isoTime }) => {
+    const { t } = useTranslation();
+    const active = useFeatureActive();
+    const [, setTick] = useState(0);
+    useEffect(() => {
+        if (!active) return undefined;
+        setTick((n) => n + 1);
+        const timer = setInterval(() => setTick((n) => n + 1), LAST_SYNCED_TICK_MS);
+        return () => clearInterval(timer);
+    }, [active]);
+    return <>{t('sync.lastSynced', { time: formatRelativeTime(isoTime, t) })}</>;
+};
 
 /** Drawn size of a member tile avatar (h-16 w-16), in CSS px. */
 const AVATAR_CSS_PX = 64;
@@ -74,7 +99,7 @@ const SectionHeading: React.FC<{ children: React.ReactNode }> = ({ children }) =
 /** `/api/content/groups`: legacy array, or object with groups + last_sync. */
 type GroupsResponse = GroupInfo[] | { groups: GroupInfo[]; last_sync?: Record<string, string> };
 
-export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow }) => {
+const MemberListComponent: React.FC<SidebarProps> = ({ onSelectGroup, selectedGroupDir, activeService, isSyncing, readStateVersion, onSyncNow, paused }) => {
     const { t } = useTranslation();
     const [groups, setGroups] = useState<GroupInfo[]>([]);
     // Resized variant matched to the screen: 64 CSS px × device pixel ratio, rounded up to an allowed width.
@@ -129,6 +154,8 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
     // Last logged sidebar_load failure (service:status:outcome); cleared on success.
     const lastFailureLog = useRef<string | null>(null);
     groupsRef.current = groups;
+    // An unchanged answer is logged once per streak (sidebar_load outcome=unchanged), not every tick.
+    const unchangedLogged = useRef(false);
     const serviceKey = (base: string, service: string | undefined) => `${base}_${service ?? 'all'}`;
 
     /**
@@ -156,10 +183,20 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
             const data = result.data;
             // Support both old format (array) and new format (object with groups + last_sync)
             const groupList = Array.isArray(data) ? data : data.groups;
-            setGroups(groupList);
+            // An unchanged list sets no state: no re-sort and no re-render on each tick (UI health P-F1).
+            if (JSON.stringify(groupList) !== JSON.stringify(groupsRef.current)) {
+                setGroups(groupList);
+                unchangedLogged.current = false;
+            } else if (!unchangedLogged.current) {
+                unchangedLogged.current = true;
+                clientLog('sidebar_load', { ...(service ? { service } : {}), outcome: 'unchanged' });
+            }
             setLoadError(false);
             lastFailureLog.current = null;
-            if (!Array.isArray(data) && data.last_sync) setLastSyncMap(data.last_sync);
+            if (!Array.isArray(data) && data.last_sync) {
+                const lastSync = data.last_sync;
+                setLastSyncMap(prev => (shallowEqualRecord(prev, lastSync) ? prev : lastSync));
+            }
             checkUnread(groupList, replace);
         } else if (result.status === 'rejected' || result.status === 'failed') {
             // pollJson logged the failure itself; this records what the user sees.
@@ -252,7 +289,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                 backendCounts,
             );
 
-            setUnreadCounts(counts);
+            setUnreadCounts(prev => (shallowEqualRecord(prev, counts) ? prev : counts));
         } catch (err) {
             console.error('Failed to fetch unread counts:', err);
             // Keep the last known counts: they were correct one poll ago, while
@@ -264,15 +301,21 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         trigger => { void loadGroups(trigger === 'immediate'); },
         UI_CONSTANTS.polling.sidebarMs,
         [activeService],
+        { enabled: !paused },
     );
 
     // Refresh when a sync ends. Only a true -> false transition counts: mount is
     // already covered by the polling hook's immediate load, and a second request
-    // would start a concurrent cold scan on the backend.
+    // would start a concurrent cold scan on the backend. Paused, the load waits:
+    // resuming the poll loads at once.
     const wasSyncing = useRef(isSyncing);
     useEffect(() => {
         if (wasSyncing.current === true && isSyncing === false) {
-            void loadGroups(true);
+            if (paused) {
+                clientLog('sidebar_load', { ...(activeService ? { service: activeService } : {}), outcome: 'deferred', reason: 'hidden' });
+            } else {
+                void loadGroups(true);
+            }
         }
         wasSyncing.current = isSyncing;
     }, [isSyncing]);
@@ -347,6 +390,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                     <button
                         key={group.id}
                         type="button"
+                        aria-current={isSelected ? 'true' : undefined}
                         onClick={() => onSelectGroup(info.path, info.isGroupChat, info.displayName)}
                         onContextMenu={info.isGroupChat ? undefined : (e) => {
                             e.preventDefault();
@@ -461,7 +505,7 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
                         <>
                             <span className={onSyncNow ? undefined : 'pr-2'}>
                                 {activeService && lastSyncMap[activeService]
-                                    ? t('sync.lastSynced', { time: formatRelativeTime(lastSyncMap[activeService], t) })
+                                    ? <LastSyncedLabel isoTime={lastSyncMap[activeService]} />
                                     : t('sync.notSynced')}
                             </span>
                             {onSyncNow && (
@@ -492,3 +536,6 @@ export const MemberList: React.FC<SidebarProps> = ({ onSelectGroup, selectedGrou
         </div>
     );
 };
+
+/** Memoised: its parent re-renders for chat state the sidebar does not show. */
+export const MemberList = React.memo(MemberListComponent);

@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeAll, afterEach } from 'vitest';
+import { describe, it, expect, vi, beforeAll, afterAll, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import i18n from '../../../i18n';
 import { BlogReader, type BlogReaderProps } from './BlogReader';
@@ -16,6 +16,15 @@ vi.mock('../../../data/memberData', () => ({
     getMemberByBlogId: () => null,
     getMemberPenlightHex: () => ['#5bbee4', '#f2a0c0'],
 }));
+
+// The photo viewer is out of scope here: a stand-in shows which photo it opened.
+vi.mock('../../../core/media/PhotoDetailModal', async () => {
+    const { createElement } = await import('react');
+    return {
+        MediaViewerModal: ({ currentIndex, sequence }: { currentIndex: number; sequence?: string }) =>
+            createElement('div', { 'data-testid': 'photo-viewer', 'data-sequence': sequence }, String(currentIndex)),
+    };
+});
 
 const CONTENT = {
     meta: { id: '142', member_name: '春野 ひなた', title: '春の日記 42 🌸', published_at: '2026-11-03T09:00:00Z', url: '' },
@@ -135,5 +144,107 @@ describe('BlogReader translate with a failing cache read', () => {
         fireEvent.click(screen.getByRole('button', { name: /translate/i }));
         await waitFor(() => expect(fetchMock).toHaveBeenCalledWith('/api/translation/translate', expect.anything()));
         expect(clientLog).toHaveBeenCalledWith('translation_batch_failed', { count: 1, error_type: 'typeerror', caller: 'blog' });
+    });
+});
+
+describe('BlogReader search highlight', () => {
+    const realScrollIntoView = Element.prototype.scrollIntoView;
+    beforeAll(() => { Element.prototype.scrollIntoView = vi.fn(); });
+    afterAll(() => { Element.prototype.scrollIntoView = realScrollIntoView; });
+
+    // The check-1 payload of audit lead post-sanitize-search-highlight-markup-injection: the
+    // server sanitizer keeps an <img> alt as escaped text that looks like markup.
+    const HOSTILE = {
+        ...CONTENT,
+        content: {
+            html: '<p>今日は桜を見に行きました。<img src="/api/blogs/image?service=hinatazaka46&amp;blog_id=142&amp;filename=img_0.jpg" alt="&gt;XSSTERM&lt;img src=x onerror=globalThis.__xss=1&gt;"/></p>',
+        },
+    };
+
+    it('never turns attribute text into markup', () => {
+        const { container } = render(
+            <BlogReader {...props({ content: HOSTILE, searchQuery: '桜', matchedTerms: ['桜', 'XSSTERM'] })} />,
+        );
+        expect(container.querySelector('[onerror]')).toBeNull();
+        const imgs = container.querySelectorAll('article img');
+        expect(imgs).toHaveLength(1);
+        expect(imgs[0].getAttribute('alt')).toBe('>XSSTERM<img src=x onerror=globalThis.__xss=1>');
+        expect(Array.from(container.querySelectorAll('mark')).map((m) => m.textContent)).toEqual(['桜']);
+    });
+
+    it('keeps a forged mark in the post as text', () => {
+        const forged = { ...CONTENT, content: { html: '<p>&lt;mark&gt;XSSTERM&lt;/mark&gt; 春</p>' } };
+        const { container } = render(<BlogReader {...props({ content: forged })} />);
+        expect(container.querySelector('mark')).toBeNull();
+        expect(container.querySelector('article p')!.textContent).toBe('<mark>XSSTERM</mark> 春');
+    });
+
+    it('marks exact and reading matches with their classes', () => {
+        const { container } = render(
+            <BlogReader {...props({ searchQuery: '春', matchedTerms: ['春', 'もっと'], readingTerms: ['もっと'] })} />,
+        );
+        const marks = (selector: string) => Array.from(container.querySelectorAll(selector)).map((m) => m.textContent);
+        expect(marks('mark.search-highlight:not(.reading)')).toEqual(['春']);
+        expect(marks('mark.search-highlight.reading')).toEqual(['もっと']);
+    });
+});
+
+describe('BlogReader links', () => {
+    let open: ReturnType<typeof vi.spyOn>;
+    beforeEach(() => {
+        open = vi.spyOn(window, 'open').mockReturnValue(null);
+        vi.mocked(clientLog).mockClear();
+    });
+    afterEach(() => open.mockRestore());
+
+    const LINKS = {
+        ...CONTENT,
+        content: {
+            html: '<p><a href="https://example.com/more">web</a> <a href="mailto:a@example.com">mail</a> '
+                + '<a href="/api/blogs/image?service=hinatazaka46&amp;blog_id=1&amp;filename=img_0.jpg">local</a> '
+                + '<a href="https://example.com/photo"><img src="/api/blogs/image?service=hinatazaka46&amp;blog_id=142&amp;filename=img_0.jpg" alt="photo"></a></p>',
+        },
+    };
+
+    it('opens a web link in the browser and never navigates the window', () => {
+        render(<BlogReader {...props({ content: LINKS })} />);
+        expect(fireEvent.click(screen.getByRole('link', { name: 'web' }))).toBe(false);
+        expect(open).toHaveBeenCalledWith('https://example.com/more', '_blank', 'noopener,noreferrer');
+        expect(clientLog).toHaveBeenCalledWith('external_link', { surface: 'blog_post', outcome: 'opened' });
+    });
+
+    it('does nothing for a link that is not a web page', () => {
+        // The sanitizer has already dropped the href of a mailto: link, so the anchor is inert;
+        // a click must still never navigate the window.
+        render(<BlogReader {...props({ content: LINKS })} />);
+        expect(fireEvent.click(screen.getByText('mail'))).toBe(false);
+        expect(open).not.toHaveBeenCalled();
+        expect(clientLog).toHaveBeenCalledWith('external_link', { surface: 'blog_post', outcome: 'blocked', reason: 'invalid' });
+    });
+
+    it('leaves a link to the local image endpoint inert', () => {
+        // Only <img src> may keep the app-relative cached-image URL; an anchor to it has no href
+        // (it would resolve to a 404 on the official site), so a click opens nothing and never
+        // navigates the window.
+        render(<BlogReader {...props({ content: LINKS })} />);
+        expect(screen.getByText('local')).not.toHaveAttribute('href');
+        expect(fireEvent.click(screen.getByText('local'))).toBe(false);
+        expect(open).not.toHaveBeenCalled();
+    });
+
+    it('opens the photo viewer for a linked image instead of the link', () => {
+        render(<BlogReader {...props({ content: LINKS })} />);
+        expect(fireEvent.click(screen.getByAltText('photo'))).toBe(false);
+        expect(open).not.toHaveBeenCalled();
+        expect(screen.getByTestId('photo-viewer')).toHaveTextContent('0');
+        // The photos of one post are in reading order, not a timeline.
+        expect(screen.getByTestId('photo-viewer')).toHaveAttribute('data-sequence', 'reading');
+    });
+
+    it('opens a middle-clicked web link in the browser', () => {
+        render(<BlogReader {...props({ content: LINKS })} />);
+        const event = new MouseEvent('auxclick', { bubbles: true, cancelable: true, button: 1 });
+        expect(fireEvent(screen.getByRole('link', { name: 'web' }), event)).toBe(false);
+        expect(open).toHaveBeenCalledTimes(1);
     });
 });

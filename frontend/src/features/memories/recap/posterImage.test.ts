@@ -176,6 +176,17 @@ describe('renderToCanvas', () => {
         const out = await renderToCanvas(node, { fetchImpl: fetchImpl as unknown as typeof fetch });
         expect(out.fontFallbacks).toEqual(['font_embed_failed']);
     });
+
+    it('rejects when the html-to-image chunk cannot be loaded (PosterView then shows its export-failed state)', async () => {
+        vi.resetModules();
+        vi.doMock('html-to-image', () => { throw new TypeError('Failed to fetch dynamically imported module'); });
+        try {
+            const fresh = await import('./posterImage');
+            await expect(fresh.renderToCanvas(stage('A', []), { fetchImpl: vi.fn() as unknown as typeof fetch })).rejects.toThrow();
+        } finally {
+            vi.doUnmock('html-to-image');
+        }
+    });
 });
 
 describe('saveBlob', () => {

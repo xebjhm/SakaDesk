@@ -121,3 +121,6 @@ frontend/e2e/*.spec.ts-snapshots/
 
 # D2a before/after screenshots (e2e/d2a-screens.spec.ts)
 frontend/e2e-shots/
+
+# Per-launch dev API token shared by dev.sh / dev.ps1
+.dev-api-token

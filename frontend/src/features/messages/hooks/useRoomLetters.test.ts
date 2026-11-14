@@ -43,6 +43,28 @@ describe('useRoomLetters', () => {
         expect(again.result.current.letters).toEqual([L]);
     });
 
+    it('a refetch with the same letters keeps the same array; changed letters replace it', async () => {
+        let letters = [L];
+        let calls = 0;
+        server.use(
+            http.get('/api/chat/letters_local', () => { calls += 1; return HttpResponse.json({ letters }); }),
+            http.get('/api/account/profile', () => HttpResponse.json(PROFILE)),
+        );
+        const { result, rerender } = renderHook(({ key }) => useRoomLetters('hinatazaka46', 'room/same', false, key), { initialProps: { key: 0 } });
+        await waitFor(() => expect(result.current.ready).toBe(true));
+        const held = result.current.letters;
+
+        rerender({ key: 1 });
+        await waitFor(() => expect(calls).toBe(2));
+        await new Promise((r) => setTimeout(r, 30));
+        expect(result.current.letters).toBe(held);
+
+        letters = [L, { ...L, id: 2 }];
+        rerender({ key: 2 });
+        await waitFor(() => expect(result.current.letters).toHaveLength(2));
+        expect(result.current.letters).not.toBe(held);
+    });
+
     it('I1: switching to a room with cached letters is ready from its very first render', async () => {
         server.use(
             http.get('/api/chat/letters_local', () => HttpResponse.json({ letters: [L] })),

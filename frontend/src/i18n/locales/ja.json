@@ -66,6 +66,7 @@
     "tabUpdates": "アップデート",
     "sections": "設定の項目",
     "outputFolder": "保存先フォルダ",
+    "outputFolderDesc": "メッセージや写真はここに保存されます。別のフォルダにするには「参照」をクリックして選び、「保存」をクリックしてください。",
     "autoSync": "自動同期",
     "syncEvery": "同期間隔",
     "smartTimingDesc": "メンバーの投稿パターンに基づいて同期間隔をランダム化",
@@ -97,6 +98,7 @@
     "verifySummary": "{{checked}} 件を確認 · {{repaired}} 件を修復 · {{stillMissing}} 件は取得不可",
     "verifyNoGaps": "ダウンロード済みメッセージのメディアはすべて揃っています。",
     "verifyUnresolved": "{{count}} 件のメディアは取得元がなく、確認できませんでした。",
+    "verifyRejected": "{{count}} 件のメディアは、保存先がこのグループのフォルダの外を指していたため、スキップしました。",
     "deepResync": "ディープ再検証（完全再同期）",
     "deepResyncButton": "すべて再同期",
     "deepResyncDesc": "各メンバーのタイムライン全体を最初から再確認し、欠落分を再取得します（保存済みのファイルはスキップ）。メディア検証では分からない欠落（メッセージ自体の欠落を含む）も検出します。時間がかかり、多数の API リクエストを行うため、必要なときのみ実行してください。",
@@ -154,6 +156,23 @@
     "resetDefaults": "デフォルトに戻す",
     "resetConfirm": "設定をデフォルトに戻しますか？データフォルダ・保存済みのAPIキー・言語は保持されます。",
     "saveFailed": "この設定を保存できませんでした。もう一度お試しください。",
+    "outputDirError": {
+      "invalid": "このフォルダは使用できません。別のフォルダを選択してください。",
+      "device": "この場所は使用できません。別のフォルダを選択してください。",
+      "network": "ネットワーク上の場所は使用できません。この PC 上のフォルダを選択してください（割り当てたドライブ文字は使用できます）。",
+      "root": "ドライブ全体ではなく、ドライブ内のフォルダを選択してください。",
+      "relative": "ドライブ文字から始まるフォルダを選択してください。",
+      "profile": "ユーザーフォルダ全体ではなく、Documents\\SakaDesk のような専用のフォルダを選択してください。",
+      "app_data": "このフォルダには SakaDesk 自身のファイル（設定・インストール・サインイン情報）が含まれています。別のフォルダを選択してください。",
+      "system": "ここは Windows のシステムフォルダです。別のフォルダを選択してください。",
+      "not_writable": "このフォルダにはファイルを保存できません。書き込みできるフォルダを選択してください。",
+      "not_picked": "「参照」からもう一度フォルダを選択してください。",
+      "unavailable": "フォルダ選択画面を利用できません。SakaDesk を再インストールしてからもう一度お試しください。",
+      "timeout": "5 分以内にフォルダが選択されませんでした。フォルダ選択画面を閉じてから、もう一度「参照」をクリックしてください。",
+      "busy": "フォルダ選択画面がすでに開いています。閉じてから、もう一度「参照」をクリックしてください。",
+      "cooldown": "少し待ってから、もう一度「参照」をクリックしてください。",
+      "failed": "フォルダ選択画面を開けませんでした。もう一度お試しください。"
+    },
     "transcriptionCpuDesc": "すべてのPCで動作、処理は遅め",
     "transcriptionGpuDesc": "NVIDIA GPU（CUDA）が必要、高速処理",
     "transcriptionGpuTesting": "GPUをテスト中...",
@@ -233,8 +252,8 @@
     "setupDataFolder": "データ保存先の設定",
     "outputFolderPath": "データ出力先パス",
     "outputFolderPlaceholder": "C:\\Users\\YourName\\SakaDesk-data",
-    "outputFolderHint": "メッセージ等の保存先を指定してください。エクスプローラーからパスをコピーできます。",
-    "folderRequired": "先にフォルダを入力するか選択してください",
+    "outputFolderHint": "メッセージや写真はここに保存されます。別のフォルダにするには「参照」をクリックしてください。",
+    "folderRequired": "先にフォルダを選択してください",
     "downloadBlogsOffline": "ブログの検索用ダウンロード",
     "downloadBlogsHint": "すべてのブログ記事をダウンロードして全文検索を有効にします。サービスごとに約5〜15 GBを使用します。",
     "startUsing": "SakaDeskを始める"
@@ -356,7 +375,9 @@
     "media": "メディア",
     "background": "背景設定",
     "sentLetters": "送信したレター",
-    "sentLettersGroupChat": "グループトークにはレターがありません"
+    "sentLettersGroupChat": "グループトークにはレターがありません",
+    "revealAll": "未読をすべて表示",
+    "revealAllNone": "このトークに未読はありません"
   },
   "messageList": {
     "noMessages": "メッセージがありません",
@@ -381,7 +402,16 @@
     "noContent": "(内容なし)",
     "attachment": "添付ファイル",
     "openCalendar": "日付を選んで移動",
-    "openConversations": "トーク一覧を表示"
+    "openConversations": "トーク一覧を表示",
+    "revealUnread": {
+      "text": "未読のメッセージを表示",
+      "picture": "未読の写真を表示",
+      "video": "未読の動画を表示",
+      "voice": "未読のボイスを表示"
+    },
+    "openPhoto": "写真を開く",
+    "timeline": "メッセージ",
+    "favorite": "お気に入り"
   },
   "calendar": {
     "loadFailed": "日付を読み込めませんでした",
@@ -468,8 +498,11 @@
   },
   "serviceRail": {
     "label": "グループ",
-    "sessionExpiredRelogin": "セッション切れ - クリックして再ログイン",
-    "addService": "サービスを追加"
+    "sessionExpiredRelogin": "セッション切れ - 選択して再ログイン",
+    "addService": "サービスを追加",
+    "serviceDisconnected": "{{name}}、セッション切れ - 選択して再ログイン",
+    "moveUp": "上へ移動",
+    "moveDown": "下へ移動"
   },
   "search": {
     "memberCount": "{{count}}人のメンバー",
@@ -504,7 +537,8 @@
     "blogBackupInProgress": "ブログバックアップ中 — 検索結果が不完全な場合があります。",
     "enableFullBackup": "フルバックアップを有効にする",
     "official": "公式",
-    "buildingHint": "検索インデックスを生成中です。結果が不完全な場合があります。"
+    "buildingHint": "検索インデックスを生成中です。結果が不完全な場合があります。",
+    "resultsLabel": "検索結果"
   },
   "media": {
     "title": "メディア",
@@ -534,7 +568,25 @@
       "openVideo": "{{date}} の動画を開く",
       "retryPhoto": "{{date}} の写真を再読み込み"
     },
-    "photoLoading": "写真を読み込み中…"
+    "photoLoading": "写真を読み込み中…",
+    "play": "再生",
+    "pause": "一時停止",
+    "mute": "ミュート",
+    "unmute": "ミュート解除",
+    "seek": "再生位置",
+    "volume": "音量",
+    "timeOf": "{{total}} 中 {{current}}",
+    "volumeValue": "{{percent}}%",
+    "fullscreen": "全画面表示",
+    "exitFullscreen": "全画面表示を終了",
+    "older": "古い方へ",
+    "newer": "新しい方へ",
+    "noOlder": "これが一番古いものです",
+    "noNewer": "これが一番新しいものです",
+    "previousPhoto": "前の写真",
+    "nextPhoto": "次の写真",
+    "firstPhoto": "これが最初の写真です",
+    "lastPhoto": "これが最後の写真です"
   },
   "sentLetters": {
     "title": "送信したレター",
@@ -801,6 +853,7 @@
     "diskUsageFailed": "計算できませんでした"
   },
   "memories": {
+    "chunkFailed": "思い出を開けませんでした",
     "home": {
       "recapCard": "一年の振り返り",
       "opensOn": "12月1日に、ここが開きます。",
@@ -1415,5 +1468,14 @@
       "stubsLabel": "特別な日",
       "footer": "SakaDesk"
     }
+  },
+  "a11y": {
+    "skipToContent": "コンテンツへスキップ"
+  },
+  "errorBoundary": {
+    "title": "問題が発生しました",
+    "body": "予期しないエラーが発生しました。データは無事です。画面の表示だけに失敗しました。",
+    "retry": "もう一度試す",
+    "report": "問題を報告"
   }
 }

@@ -30,6 +30,22 @@ function notify(): void {
 }
 
 /**
+ * While any dialog is open, the app root (`#root`) and every dialog below the top one are inert
+ * (UI health #15, an interim to native <dialog>): Tab, clicks and a screen reader's virtual cursor
+ * stay in the top dialog. Dialogs, portaled menus and the lifted incoming call render in <body>
+ * outside #root, so they stay usable; a lower dialog becomes live again when the one above closes,
+ * before its focus is restored (focusRestore runs in a microtask). `inert` on #root is independent
+ * of a hidden kept-mounted feature's own `inert` (KeepMounted), which stays when the stack empties.
+ */
+function syncInert(): void {
+    if (typeof document === 'undefined') return;
+    document.getElementById('root')?.toggleAttribute('inert', stack.length > 0);
+    stack.forEach((entry, i) => {
+        entry.node()?.parentElement?.toggleAttribute('inert', i < stack.length - 1);
+    });
+}
+
+/**
  * A new opening order. Dialogs take it while rendering, where a parent renders before the
  * dialogs nested in it; React runs their layout effects child first, so pushing in effect
  * order alone would put a child that opens in the same render below its parent.
@@ -56,6 +72,7 @@ export function pushDialog(init: DialogEntryInit): DialogEntry {
     let at = stack.length;
     while (at > 0 && stack[at - 1].order > full.order) at -= 1;
     stack = [...stack.slice(0, at), full, ...stack.slice(at)];
+    syncInert();
     notify();
     return full;
 }
@@ -68,6 +85,7 @@ export function popDialog(entry: DialogEntry): void {
         document.body.style.overflow = savedOverflow ?? '';
         savedOverflow = null;
     }
+    syncInert();
     notify();
 }
 
@@ -124,5 +142,6 @@ export function resetDialogStack(): void {
     if (stack.length > 0) document.body.style.overflow = savedOverflow ?? '';
     stack = [];
     savedOverflow = null;
+    syncInert();
     notify();
 }

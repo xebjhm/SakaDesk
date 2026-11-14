@@ -4,16 +4,14 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@300;400;500;600;700&family=Noto+Serif+JP:wght@400;500;600;700&display=swap"
-    rel="stylesheet">
+  <!-- The app has no dark mode yet: form controls and scrollbars stay light whatever Windows' theme. -->
+  <meta name="color-scheme" content="light" />
   <link rel="icon" type="image/png" href="/logo-32.png" />
   <link rel="preload" as="image" href="/logo-192.png" />
   <title>SakaDesk</title>
 </head>
 
-<body style="background-color:#F0F2F5;margin:0">
+<body>
   <div id="root"></div>
   <script type="module" src="/src/shell/main.tsx"></script>
 </body>
