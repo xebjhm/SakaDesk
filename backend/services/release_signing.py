@@ -115,6 +115,12 @@ def key_id(public_key_raw: bytes) -> str:
     return hashlib.sha256(public_key_raw).hexdigest()[:16]
 
 
+def _canonical(body: Mapping[str, object]) -> bytes:
+    return json.dumps(
+        body, sort_keys=True, separators=(",", ":"), ensure_ascii=True
+    ).encode("ascii")
+
+
 def manifest_payload(*, version: str, asset: str, size: int, sha256: str) -> bytes:
     """The bytes the release workflow signs: canonical JSON (sorted keys, no spaces, ASCII)."""
     body = {
@@ -126,9 +132,7 @@ def manifest_payload(*, version: str, asset: str, size: int, sha256: str) -> byt
         "size": size,
         "version": version,
     }
-    return json.dumps(
-        body, sort_keys=True, separators=(",", ":"), ensure_ascii=True
-    ).encode("ascii")
+    return _canonical(body)
 
 
 def build_envelope(payload: bytes, signatures: Sequence[tuple[str, bytes]]) -> bytes:
@@ -162,7 +166,7 @@ def parse_envelope(data: bytes) -> tuple[bytes, list[tuple[str, bytes]]]:
         raise ManifestRefused("too_large")
     try:
         envelope = json.loads(data.decode("utf-8"))
-    except (UnicodeDecodeError, ValueError):
+    except (UnicodeDecodeError, ValueError, RecursionError):
         raise ManifestRefused("malformed") from None
     if not isinstance(envelope, dict):
         raise ManifestRefused("malformed")
@@ -198,8 +202,10 @@ def verify_signatures(
 ) -> str:
     """The id of a trusted key whose signature over ``SIGNING_CONTEXT + payload`` is valid.
 
-    Raises ManifestRefused: ``unknown_key`` (no signature from a trusted key)
-    or ``bad_signature`` (none of those signatures is valid).
+    Raises ManifestRefused: ``unknown_key`` (no signature from a trusted key),
+    ``keys_invalid`` (a trusted key that carries a signature is not a base64
+    32-byte Ed25519 public key) or ``bad_signature`` (none of those signatures
+    is valid).
     """
     from cryptography.exceptions import InvalidSignature
     from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
@@ -209,9 +215,12 @@ def verify_signatures(
         raise ManifestRefused("unknown_key")
     message = SIGNING_CONTEXT + payload
     for kid, signature in candidates:
-        public = Ed25519PublicKey.from_public_bytes(
-            base64.b64decode(trusted_keys[kid], validate=True)
-        )
+        try:
+            public = Ed25519PublicKey.from_public_bytes(
+                base64.b64decode(trusted_keys[kid], validate=True)
+            )
+        except (binascii.Error, ValueError):
+            raise ManifestRefused("keys_invalid") from None
         try:
             public.verify(signature, message)
         except InvalidSignature:
@@ -221,10 +230,15 @@ def verify_signatures(
 
 
 def parse_manifest(payload: bytes) -> ReleaseManifest:
-    """The fields of a signed payload. Raises ManifestRefused(``malformed``)."""
+    """The fields of a signed payload. Raises ManifestRefused(``malformed``).
+
+    Only the canonical form is accepted: the payload bytes must equal
+    canonical JSON (the form :func:`manifest_payload` writes) of the fields
+    they carry, so duplicate keys, whitespace and escape variants are refused.
+    """
     try:
         body = json.loads(payload.decode("ascii"))
-    except (UnicodeDecodeError, ValueError):
+    except (UnicodeDecodeError, ValueError, RecursionError):
         raise ManifestRefused("malformed") from None
     if not isinstance(body, dict) or set(body) != _PAYLOAD_KEYS:
         raise ManifestRefused("malformed")
@@ -237,6 +251,8 @@ def parse_manifest(payload: bytes) -> ReleaseManifest:
     if not _is_int(size) or not 0 < size <= MAX_INSTALLER_BYTES:
         raise ManifestRefused("malformed")
     if not is_sha256_hex(sha256):
+        raise ManifestRefused("malformed")
+    if payload != _canonical(body):
         raise ManifestRefused("malformed")
     return ReleaseManifest(
         product=body["product"],
@@ -258,7 +274,7 @@ def verify_update_manifest(
 
     ``trusted_keys`` defaults to ``release_keys.TRUSTED_RELEASE_KEYS`` (read at
     call time). Raises ManifestRefused: ``too_large``, ``malformed``,
-    ``unsigned``, ``unknown_key``, ``bad_signature``, ``wrong_product``,
+    ``unsigned``, ``unknown_key``, ``keys_invalid``, ``bad_signature``, ``wrong_product``,
     ``wrong_platform``, ``wrong_version`` or ``wrong_asset``.
     """
     keys = release_keys.TRUSTED_RELEASE_KEYS if trusted_keys is None else trusted_keys

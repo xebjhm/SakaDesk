@@ -182,6 +182,8 @@ class TestMalformed:
             b"",
             b"not json",
             b"[]",
+            b"[" * 60000,
+            b'{"a":' * 12000,
             _raw_envelope(schema=True, payload="", signatures=[]),
             _raw_envelope(
                 schema=1,
@@ -229,12 +231,62 @@ class TestMalformed:
             {"schema": 2},
             {"version": 5},
             {"extra": "x"},
+            {"schema": True},
         ],
     )
     def test_a_signed_but_malformed_payload_is_refused(self, override):
         key = new_key()
         assert (
             _refused(_envelope(_payload(**override), key), trusted(key)) == "malformed"
+        )
+
+    @pytest.mark.parametrize("payload", [b"[" * 30000, b'{"a":' * 6000])
+    def test_a_deeply_nested_signed_payload_is_malformed(self, payload):
+        key = new_key()
+        assert _refused(_envelope(payload, key), trusted(key)) == "malformed"
+
+    def test_a_payload_with_a_duplicate_key_is_malformed(self):
+        key = new_key()
+        canonical = _payload().decode("ascii")
+        dup = canonical.replace("{", '{"sha256":"' + "0" * 64 + '",', 1).encode("ascii")
+        assert _refused(_envelope(dup, key), trusted(key)) == "malformed"
+
+    def test_a_non_canonical_signed_payload_is_malformed(self):
+        key = new_key()
+        spaced = _payload().replace(b",", b", ")
+        escaped = _payload().replace(b"SakaDesk", b"Saka\\u0044esk")
+        for payload in (spaced, escaped):
+            assert _refused(_envelope(payload, key), trusted(key)) == "malformed"
+
+    def test_the_canonical_payload_is_accepted(self):
+        key = new_key()
+        data = _envelope(_payload(), key)
+        assert rs.verify_update_manifest(
+            data, version=VERSION, trusted_keys=trusted(key)
+        )
+
+
+class TestTrustStore:
+    def test_a_malformed_trust_store_value_is_keys_invalid(self):
+        key = new_key()
+        data = signed_manifest(CONTENT, VERSION, key)
+        kid = rs.key_id(public_raw(key))
+        for bad in ("@@@", base64.b64encode(b"short").decode("ascii")):
+            assert _refused(data, {kid: bad}) == "keys_invalid"
+
+    def test_an_invalid_trusted_signature_before_a_valid_one_is_accepted(self):
+        good, other = new_key(), new_key()
+        payload = _payload()
+        kid_good, kid_other = rs.key_id(public_raw(good)), rs.key_id(public_raw(other))
+        data = rs.build_envelope(
+            payload,
+            [
+                (kid_other, good.sign(rs.SIGNING_CONTEXT + payload)),
+                (kid_good, good.sign(rs.SIGNING_CONTEXT + payload)),
+            ],
+        )
+        assert rs.verify_update_manifest(
+            data, version=VERSION, trusted_keys=trusted(good, other)
         )
 
 
