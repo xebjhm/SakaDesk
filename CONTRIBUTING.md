@@ -469,10 +469,18 @@ hashes the installer again right before starting it. Format and checks:
 `SAKADESK_RELEASE_SIGNING_KEY` of the `release` GitHub environment, which only
 `v*.*.*` tags may use, plus one offline backup kept by the maintainer. It is
 never committed, pasted into an issue or a chat, or printed by any script.
+The key is only as safe as the right to push `v*` tags: anyone who can push
+such a tag together with a modified workflow can make the `release`
+environment hand them the secret. Only admins may push `v*` tags (the tag
+ruleset).
 
 **What CI does on a tag.** The lint and test jobs that `build` needs run the
-tests; `build` then builds the installer and reports its SHA-256 as a job
-output.
+tests; `build` then installs the locked build tools (the `build` dependency
+group), builds the installer, runs the built app's updater self-check
+(`SakaDesk.exe --self-check-updater`: a known Ed25519 test vector must
+verify, or the build fails), and reports the installer's SHA-256 and the
+version as job outputs. Later jobs download artifacts by their exact names
+and attest exactly two files, with no globs.
 
 - `sign` (environment `release`, read-only token) checks that the tag commit is
   on `main`, checks the downloaded installer matches the hash `build`
@@ -480,8 +488,9 @@ output.
   library) and OpenSSL. Nothing is installed in the `sign` job, because any
   step in a job can read all of that job's secrets. It reports the manifest's
   SHA-256.
-- `verify-manifest` (no environment, no secrets, read-only token) runs the
-  app's own checker against the keys of the release being built **and** of the
+- `verify-manifest` (no environment, no secrets, read-only token) first checks
+  the downloaded installer and manifest against the hashes `build` and `sign`
+  reported, then runs the app's own checker against the keys of the release being built **and** of the
   previous release.
 - `release` checks the installer and the manifest against the hashes `build`
   and `sign` reported, attests both, attaches them and `checksums-sha256.txt`
@@ -493,6 +502,11 @@ below 0.5.0 (the first signed release). A missing previous tag, or a missing
 So if a tag from 0.5.0 on was pushed but its release failed, and that tag's
 trusted keys are wrong or missing, delete the tag (locally and on GitHub)
 before tagging again; otherwise the next release's check runs against it.
+
+If the `release` job fails after creating the draft, the draft stays: delete
+it (keeping the tag) with
+`gh release delete vX.Y.Z --repo xebjhm/SakaDesk --yes` before re-running the
+job.
 
 **Check a release by hand:**
 
@@ -512,7 +526,8 @@ version's trusted keys.
 **First-time setup (done once, before the first 0.5.0 tag).**
 `uv run python scripts/generate_release_key.py --out ~/sakadesk-release-key.pem`,
 add the printed line to `TRUSTED_RELEASE_KEYS`, create the `release`
-environment (tag policy `v*.*.*`), then
+environment with its `v*.*.*` tag policy **first** (setting a secret on an
+environment that does not exist creates it unprotected), then
 `gh secret set SAKADESK_RELEASE_SIGNING_KEY --env release --repo xebjhm/SakaDesk < ~/sakadesk-release-key.pem`,
 back the file up offline and `shred -u` it.
 
@@ -525,11 +540,13 @@ still install it by hand.
 **Rotating the key (planned).**
 
 1. Generate the new key with the script (a new `--out` file). Add its line to
-   `TRUSTED_RELEASE_KEYS` next to the current one (at most two) and store it as
-   `SAKADESK_RELEASE_SIGNING_KEY_NEXT` in the `release` environment.
+   `TRUSTED_RELEASE_KEYS` next to the current one (at most two), store it as
+   `SAKADESK_RELEASE_SIGNING_KEY_NEXT` in the `release` environment, back the
+   file up offline, then `shred -u` it.
 2. Release as usual for a few versions (a few months): every manifest is signed
    by both keys, and installed apps learn the new public key.
-3. Make the new key current, in one release: before tagging it, run
+3. Make the new key current, in one release: before tagging it, read the
+   offline backup from step 1 back and run
    `gh secret set SAKADESK_RELEASE_SIGNING_KEY --env release --repo xebjhm/SakaDesk < new-key.pem` and
    `gh secret delete SAKADESK_RELEASE_SIGNING_KEY_NEXT --env release --repo xebjhm/SakaDesk`,
    and in that same release remove the old line from `TRUSTED_RELEASE_KEYS`.
@@ -541,9 +558,10 @@ still install it by hand.
 
 **If the key leaks.**
 
-1. Generate a new key with the script and store it as
-   `SAKADESK_RELEASE_SIGNING_KEY_NEXT`. Leave the leaked key as
-   `SAKADESK_RELEASE_SIGNING_KEY` for now.
+1. Generate a new key with the script, store it as
+   `SAKADESK_RELEASE_SIGNING_KEY_NEXT`, back the file up offline, then
+   `shred -u` it. Leave the leaked key as `SAKADESK_RELEASE_SIGNING_KEY` for
+   now.
 2. Make `TRUSTED_RELEASE_KEYS` hold only the new key (drop the leaked line)
    and tag a recovery release. It is signed by the leaked key (as current) and
    the new key (as `_NEXT`): the previous release still trusts only the leaked
