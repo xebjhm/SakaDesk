@@ -113,7 +113,9 @@ jobs:
       run: npm run test:coverage
 
   e2e:
-    runs-on: ubuntu-latest
+    # Playwright 1.57 has no Chromium build for ubuntu-latest (26.04) yet; move
+    # back to ubuntu-latest once the pinned Playwright supports it.
+    runs-on: ubuntu-24.04
     timeout-minutes: 20
     permissions:
       contents: read
