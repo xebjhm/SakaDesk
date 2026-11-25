@@ -584,3 +584,8 @@ class TestKeysFileShape:
         keys_file = tmp_path / "k.py"
         keys_file.write_text(source, encoding="utf-8")
         assert rs.load_trusted_keys(keys_file) in ({"a": "b"}, {})
+
+
+def test_the_app_trusts_a_release_key():
+    """Plan E Task 4: an app that trusts no key would refuse every update."""
+    assert 1 <= len(release_keys.TRUSTED_RELEASE_KEYS) <= 2

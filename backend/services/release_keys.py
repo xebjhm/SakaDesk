@@ -7,4 +7,6 @@ backup (CONTRIBUTING.md, "Release signing"). Keep at most two entries: the
 current key and, while rotating, the next one.
 """
 
-TRUSTED_RELEASE_KEYS: dict[str, str] = {}
+TRUSTED_RELEASE_KEYS: dict[str, str] = {
+    "fce860001c1c746e": "PSX6UiYLFvxHR6xzdA6cB7Mm06jGKJyu7KMMeB9sNpc=",
+}
