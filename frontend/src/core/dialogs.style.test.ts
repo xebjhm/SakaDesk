@@ -9,6 +9,7 @@ import path from 'node:path';
  */
 const FILES = [
     'modals/CalendarModal.tsx',
+    'common/ErrorBoundary.tsx',
     'modals/BackgroundModal.tsx',
     'modals/FavoritesModal.tsx',
     'modals/SentLettersModal.tsx',
@@ -22,6 +23,7 @@ const FILES = [
     'media/MediaGalleryModal.tsx',
     'media/LazyVideo.tsx',
     'media/PhotoPlayer.tsx',
+    '../shell/components/SettingsErrorToast.tsx',
     '../features/messages/components/ProfileImageViewer.tsx',
     '../features/messages/components/MessageBubble.tsx',
     '../features/messages/components/MessageList.tsx',

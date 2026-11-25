@@ -3,6 +3,7 @@ Path resolver for multi-service content API.
 Converts API parameters to disk paths, decoupling API from disk structure.
 """
 
+import hashlib
 import json
 import threading
 from pathlib import Path
@@ -11,6 +12,7 @@ from typing import Any, cast
 
 import structlog
 
+from backend.services.output_dir_policy import deep_problem, lexical_problem
 from backend.services.service_utils import get_service_display_name, validate_service
 
 logger = structlog.get_logger(__name__)
@@ -30,8 +32,109 @@ def _read_settings(settings_path: Path) -> Any:
         return json.load(f)
 
 
+# Digests of saved values (and defaulting reasons) already logged (never the values).
+_noted_values: set[str] = set()
+# Saved values whose filesystem rules were already checked (or are being) in this
+# process, and the checking threads (tests wait for them).
+_deep_checked: set[str] = set()
+_deep_threads: list[threading.Thread] = []
+
+
+def _check_saved_value(value: str) -> None:
+    """Log ``output_dir_saved_unusual`` if ``value`` breaks a filesystem folder rule. Runs in a thread."""
+    try:
+        problem = deep_problem(value)
+    except Exception as e:  # a check must never take the thread down silently
+        logger.warning("output_dir_saved_check_failed", error_type=type(e).__name__)
+        return
+    if problem is not None:
+        _note_once(value, "output_dir_saved_unusual", problem)
+
+
+def _note_deep_once(value: str) -> None:
+    """Start the one-per-process filesystem check of a saved value (a daemon thread).
+
+    ``deep_problem`` resolves links, which can be slow on a network drive, so
+    it never runs on the caller's thread (this is reached from request
+    handlers on the event loop).
+    """
+    with _last_good_lock:
+        if value in _deep_checked:
+            return
+        _deep_checked.add(value)
+        thread = threading.Thread(
+            target=_check_saved_value,
+            args=(value,),
+            name="output-dir-saved-check",
+            daemon=True,
+        )
+        _deep_threads.append(thread)
+    thread.start()
+
+
+def wait_for_output_dir_checks_for_tests() -> None:
+    """Test-only: wait for the saved-value check threads started so far."""
+    with _last_good_lock:
+        threads = list(_deep_threads)
+    for thread in threads:
+        thread.join(timeout=10)
+
+
+def _note_once(key: str, event: str, reason: str) -> None:
+    """Log ``event`` with ``reason`` the first time ``key`` is seen in this process."""
+    digest = hashlib.sha256(key.encode("utf-8", "surrogatepass")).hexdigest()
+    with _last_good_lock:
+        first = digest not in _noted_values
+        _noted_values.add(digest)
+    if first:
+        logger.warning(event, reason=reason)
+
+
+def output_dir_value(value: object, default: Path) -> Path:
+    """The archive root for a saved ``output_dir`` value: ``Path(value)``, or ``default`` when unset.
+
+    ``None`` means unset. So does an empty or whitespace-only string (it used
+    to become the process's working directory for the sync writer) and a
+    non-string; those two also log ``output_dir_defaulted`` once per process
+    with ``reason`` ``empty`` or ``not_string``. A saved value is used as
+    saved, even one that would not be accepted as a new value today, so an
+    archive in use keeps working (security audit 2026-11-13); if it fails
+    ``output_dir_policy.lexical_problem`` (relative, a root, a network or
+    device path) that reason is logged once per distinct value per process as
+    ``output_dir_saved_unusual``, never the value. A value that passes the
+    lexical rules but breaks a filesystem rule (``root`` once resolved,
+    ``profile``, ``app_data``, ``system``; ``output_dir_policy.deep_problem``)
+    is logged the same way, once per distinct value per process, from a
+    background thread after this returns. No filesystem call on the calling
+    thread.
+    """
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        _note_once("\0not_string", "output_dir_defaulted", "not_string")
+        return default
+    if not value.strip():
+        _note_once("\0empty", "output_dir_defaulted", "empty")
+        return default
+    problem = lexical_problem(value)
+    if problem is not None:
+        _note_once(value, "output_dir_saved_unusual", problem)
+    else:
+        _note_deep_once(value)
+    return Path(value)
+
+
+def reset_output_dir_notes_for_tests() -> None:
+    """Test-only: forget which unusual saved values were already logged."""
+    wait_for_output_dir_checks_for_tests()
+    with _last_good_lock:
+        _noted_values.clear()
+        _deep_checked.clear()
+        _deep_threads.clear()
+
+
 def output_dir_from_settings(settings_path: Path, default: Path) -> Path:
-    """The ``output_dir`` in ``settings_path``, else ``default``. Blocking; never raises.
+    """The ``output_dir`` in ``settings_path`` (:func:`output_dir_value`), else ``default``. Blocking; never raises.
 
     A file that exists but cannot be read or parsed gives the last value read
     from it (else ``default``) and logs ``output_dir_settings_unreadable``
@@ -53,14 +156,10 @@ def output_dir_from_settings(settings_path: Path, default: Path) -> Path:
             fallback="last_good" if last is not None else "default",
         )
         return last if last is not None else default
-    path_str = settings.get("output_dir") if isinstance(settings, dict) else None
-    if not path_str:
-        # The last value read is now the default: a later transient failure
-        # must not bring back a custom dir the user cleared.
-        with _last_good_lock:
-            _last_good[key] = default
-        return default
-    out = Path(path_str)
+    raw = settings.get("output_dir") if isinstance(settings, dict) else None
+    # An unset value records the default as the last value read: a later
+    # transient failure must not bring back a custom dir the user cleared.
+    out = output_dir_value(raw, default)
     with _last_good_lock:
         _last_good[key] = out
     return out
@@ -114,11 +213,3 @@ def resolve_messages_file(service: str, talk_room_id: int, member_id: int) -> Pa
     """Resolve path to messages.json file."""
     member_path = resolve_member_path(service, talk_room_id, member_id)
     return member_path / "messages.json"
-
-
-def resolve_media_path(
-    service: str, talk_room_id: int, member_id: int, media_type: str, filename: str
-) -> Path:
-    """Resolve path to a media file."""
-    member_path = resolve_member_path(service, talk_room_id, member_id)
-    return member_path / media_type / filename

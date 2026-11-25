@@ -85,6 +85,36 @@ export function thumbWidthFor(cssPx: number, dpr: number, opts: { large?: boolea
     return allowed.find(w => w >= needed) ?? allowed[allowed.length - 1];
 }
 
+/** The chat bubble's picture box (MessageBubble's MediaContainer), in CSS px. */
+export const CHAT_MEDIA_MAX_WIDTH = 320;
+export const CHAT_MEDIA_MAX_HEIGHT = 500;
+
+/**
+ * The thumbnail width for a chat picture (UI health #8), or undefined to keep the original. Rule:
+ * no visible difference and no extra backend work, so only the pre-generated `THUMB_PREGEN_WIDTH`
+ * (480) is used, and only when the picture's box (fitted like MediaContainer) x `dpr` fits in it:
+ * 320 / 160 would be derived on demand and 640 is rendered on demand only. At 200 % chat photos
+ * keep their original. GIFs keep it too (a thumbnail is one still frame), and so do pictures
+ * without stored dimensions (their box is unknown) or no larger than the thumbnail (it would only
+ * re-encode them).
+ */
+export function chatPictureThumbWidth(
+    width: number | null | undefined, height: number | null | undefined, mediaFile: string | null | undefined, dpr: number,
+): typeof THUMB_PREGEN_WIDTH | undefined {
+    if (!width || !height || !mediaFile || /\.gif$/i.test(mediaFile)) return undefined;
+    if (Math.max(width, height) <= THUMB_PREGEN_WIDTH) return undefined;
+    const ratio = width / height;
+    let boxWidth = Math.min(CHAT_MEDIA_MAX_WIDTH, width);
+    let boxHeight = boxWidth / ratio;
+    if (boxHeight > CHAT_MEDIA_MAX_HEIGHT) {
+        boxHeight = CHAT_MEDIA_MAX_HEIGHT;
+        boxWidth = boxHeight * ratio;
+    }
+    const scale = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
+    const needed = Math.ceil(Math.max(boxWidth, boxHeight) * scale - 0.01);
+    return needed <= THUMB_PREGEN_WIDTH ? THUMB_PREGEN_WIDTH : undefined;
+}
+
 /**
  * A downscaled WebP of an archived picture (`/api/content/thumb/...?w=<width>`), for grids and
  * small stills; the media viewer keeps the full file. Only media-route URLs are rewritten

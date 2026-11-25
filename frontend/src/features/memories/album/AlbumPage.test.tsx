@@ -154,7 +154,11 @@ describe('AlbumPage', () => {
         expect(screen.getByRole('button', { name: /小坂 菜緒/ })).toHaveAttribute('aria-current', 'true');
         // The previous months stay, busy, instead of a loading line.
         expect(section('2026-10').closest('[aria-busy="true"]')).not.toBeNull();
-        expect(screen.queryByRole('status', { name: 'Loading…' })).toBeNull();
+        // Thumbnail spinners share the role and name; only the album's own loading line counts.
+        expect(
+            screen.queryAllByRole('status', { name: 'Loading…' })
+                .filter((el) => !el.closest('[data-testid="memory-thumb"]')),
+        ).toEqual([]);
         finish(monthsPayload([monthSummary('2025-03')]));
         expect(await screen.findByTestId('album-month-2025-03')).toBeInTheDocument();
         expect(screen.queryByTestId('album-month-2026-10')).toBeNull();
@@ -270,7 +274,7 @@ describe('AlbumPage', () => {
         await act(async () => { resolvers.get('2026-10')!(); });
         await waitFor(() => expect(fetchAlbumMonth).toHaveBeenCalledTimes(3));
         expect(vi.mocked(fetchAlbumMonth).mock.calls[2][1]).toBe('2026-08');
-        expect(within(section('2026-10')).getByTestId('album-grid')).toBeInTheDocument();
+        expect(await within(section('2026-10')).findByTestId('album-grid')).toBeInTheDocument();
     });
 
     it('loads the sections in order without an IntersectionObserver', async () => {

@@ -13,8 +13,14 @@ is safe here.
 
 from __future__ import annotations
 
+import ast
 import json
+import re
+from pathlib import Path
 from types import SimpleNamespace
+from unittest.mock import call
+
+from structlog.testing import capture_logs
 
 import desktop
 
@@ -128,4 +134,148 @@ class TestMainWindowKwargs:
         assert kwargs["min_size"] == (960, 640)
         assert kwargs["width"] == 2100 and kwargs["x"] == 10
         assert kwargs["resizable"] is True and kwargs["hidden"] is False
-        assert kwargs["url"].endswith(":8000")
+        assert (
+            kwargs["url"] == f"http://127.0.0.1:8000/#t={desktop.api_auth.LAUNCH_TOKEN}"
+        )
+
+    def test_text_select_true_so_pywebview_injects_no_style(self):
+        """The app CSP (style-src 'self') refuses pywebview's injected
+        ``body{user-select:none}`` <style>; the app's own CSS carries that rule."""
+        kwargs = desktop._main_window_kwargs(
+            {"width": 1280, "height": 800}, 8000, False
+        )
+        assert kwargs["text_select"] is True
+
+
+def _is_call_to(stmt: ast.stmt, dotted: str) -> bool:
+    """True when ``stmt`` is a bare expression statement calling ``dotted``."""
+    if not (isinstance(stmt, ast.Expr) and isinstance(stmt.value, ast.Call)):
+        return False
+    return ast.unparse(stmt.value.func) == dotted
+
+
+class TestQuittingAfterGuiLoop:
+    def test_main_marks_quitting_as_soon_as_the_gui_loop_returns(self):
+        source = Path(desktop.__file__).resolve().read_text(encoding="utf-8")
+        (main,) = [
+            n
+            for n in ast.parse(source).body
+            if isinstance(n, ast.FunctionDef) and n.name == "main"
+        ]
+        blocks = [
+            block
+            for node in ast.walk(main)
+            for field in ("body", "orelse", "finalbody")
+            if isinstance(block := getattr(node, field, None), list)
+        ]
+        (block, at) = [
+            (block, i)
+            for block in blocks
+            for i, stmt in enumerate(block)
+            if _is_call_to(stmt, "webview.start")
+        ][0]
+        following = block[at + 1]
+        assert _is_call_to(following, "_mark_quitting")
+        assert isinstance(following, ast.Expr)
+        assert isinstance(following.value, ast.Call) and not following.value.args
+
+
+class TestNavigationGuardInstall:
+    def test_main_installs_the_guard_before_the_gui_loop_starts(self):
+        source = (Path(desktop.__file__).resolve()).read_text(encoding="utf-8")
+        body = source[source.index("\ndef main(") :]
+        install_at = body.index("        _install_navigation_guard(")
+        start = re.search(r"^ +webview\.start\($", body, re.MULTILINE)
+        assert start is not None
+        assert install_at < start.start()
+
+    def test_skipped_off_windows(self):
+        calls: list[dict] = []
+        with capture_logs() as logs:
+            assert (
+                desktop._install_navigation_guard(
+                    8765, is_windows=False, install=lambda **kw: calls.append(kw)
+                )
+                is False
+            )
+        assert calls == []
+        assert {
+            "event": "nav_guard",
+            "installed": False,
+            "reason": "platform",
+            "log_level": "info",
+        } in logs
+
+    def test_installs_with_the_app_origin_on_windows(self):
+        calls: list[dict] = []
+        assert desktop._install_navigation_guard(
+            8765, is_windows=True, install=lambda **kw: calls.append(kw) is None
+        )
+        assert calls == [{"host": "127.0.0.1", "port": 8765}]
+
+    def test_new_window_links_open_in_the_browser_explicitly(self):
+        assert (
+            call("OPEN_EXTERNAL_LINKS_IN_BROWSER", True)
+            in desktop.webview.settings.__setitem__.call_args_list
+        )
+
+
+class TestUpdaterSelfCheckFlag:
+    """OD-6: ``--self-check-updater`` runs before anything else and maps to exit codes."""
+
+    @staticmethod
+    def _run(monkeypatch, argv, self_check):
+        from backend.services import release_signing
+
+        exits: list[int] = []
+
+        class _Exit(BaseException):
+            pass
+
+        def fake_exit(code):
+            exits.append(code)
+            raise _Exit
+
+        monkeypatch.setattr(desktop.os, "_exit", fake_exit, raising=False)
+        monkeypatch.setattr(release_signing, "self_check", self_check)
+        try:
+            desktop._run_updater_self_check(argv)
+        except _Exit:
+            pass
+        return exits
+
+    def test_no_flag_does_nothing(self, monkeypatch):
+        calls = []
+        exits = self._run(monkeypatch, ["SakaDesk.exe"], lambda: calls.append(1))
+        assert exits == [] and calls == []
+
+    def test_success_exits_zero(self, monkeypatch):
+        calls = []
+        exits = self._run(
+            monkeypatch,
+            ["SakaDesk.exe", "--self-check-updater"],
+            lambda: calls.append(1),
+        )
+        assert calls == [1]
+        assert exits == [0]
+
+    def test_failure_exits_one(self, monkeypatch):
+        def broken():
+            raise RuntimeError("boom")
+
+        exits = self._run(monkeypatch, ["--self-check-updater"], broken)
+        assert exits == [1]
+
+    def test_the_flag_is_handled_before_main_and_the_heavy_imports(self):
+        source = (Path(desktop.__file__)).read_text(encoding="utf-8")
+        tree = ast.parse(source)
+        names = []
+        for node in tree.body:
+            if isinstance(node, ast.Import):
+                names.append(node.names[0].name)
+            elif isinstance(node, ast.Expr) and isinstance(node.value, ast.Call):
+                func = node.value.func
+                names.append(
+                    func.id if isinstance(func, ast.Name) else ast.unparse(func)
+                )
+        assert names.index("_run_updater_self_check") < names.index("webview")

@@ -361,6 +361,19 @@ def test_avatar_digest_handles_foreign_and_missing_files(tmp_path):
     assert binder._avatar_digest(tmp_path, "r", url) is None
 
 
+def test_avatar_digest_refuses_a_symlink_out_of_the_icon_folder(tmp_path):
+    outside = tmp_path / "outside.png"
+    outside.write_bytes(b"secret")
+    folder = tmp_path / "r" / "profile_images" / "thumbnail"
+    folder.mkdir(parents=True)
+    try:
+        (folder / "link.png").symlink_to(outside)
+    except (OSError, NotImplementedError):
+        pytest.skip("symlinks unavailable")
+    url = "/api/content/media/x/r/profile_images/thumbnail/link.png"
+    assert binder._avatar_digest(tmp_path, "r", url) is None
+
+
 def test_avatar_digest_is_memoised_per_file_stat(tmp_path, monkeypatch):
     path = tmp_path / "r" / "profile_images" / "thumbnail" / "a.jpg"
     path.parent.mkdir(parents=True)
@@ -711,3 +724,20 @@ async def test_postcard_photo_of_a_special_day_carries_its_caption(tmp_path):
     assert y2025["face"]["id"] == 6 and y2025["photo"] is None
     join = k["special.join_day"]
     assert join["face"]["id"] == 1 and join["refs"]["photo"]["id"] == 2
+
+
+def test_avatar_digest_never_reads_outside_the_icon_folder(tmp_path):
+    """An icon URL from the archive cannot point the hash at another file."""
+    from backend.services import profile_images_service
+    from backend.services.memories.binder import _avatar_digest
+
+    sdir = tmp_path / "日向坂46"
+    icons = sdir / "room" / profile_images_service.DIR_NAME
+    icons.mkdir(parents=True)
+    (icons / "a.jpg").write_bytes(b"icon")
+    (tmp_path / "secret.png").write_bytes(b"secret")
+    marker = f"/{profile_images_service.DIR_NAME}/"
+    assert _avatar_digest(sdir, "room", f"x{marker}a.jpg") is not None
+    for rel in ("../../../secret.png", "..%2F..%2F..%2Fsecret.png", "C:/secret.png"):
+        assert _avatar_digest(sdir, "room", f"x{marker}{rel}") is None
+    assert _avatar_digest(sdir, "../..", f"x{marker}secret.png") is None

@@ -128,7 +128,7 @@ export const LandingPage: React.FC<LandingPageProps> = ({ onComplete }) => {
                 <div className="flex min-h-full items-center justify-center p-4">
                     <Sheet className="flex w-full max-w-4xl flex-col gap-8 p-10 animate-reveal motion-reduce:animate-none">
                         <header className="flex flex-col gap-2 text-center">
-                            <h1 className="font-display text-display font-bold text-primary">{t('landing.welcome')}</h1>
+                            <h1 className="text-balance font-display text-display font-bold text-primary">{t('landing.welcome')}</h1>
                             <p className="text-body text-secondary">{t('landing.selectGroups')}</p>
                         </header>
 

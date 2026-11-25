@@ -111,7 +111,7 @@ const FilmTile: React.FC = () => (
 const FailedTile: React.FC<{ onRetry?: () => void }> = ({ onRetry }) => {
     const { t } = useTranslation();
     return (
-        <span className={cn(FILL, 'flex flex-col items-center justify-center gap-1 bg-sunken p-2 text-center text-muted')}>
+        <span className={cn(FILL, 'flex flex-col items-center justify-center gap-1 bg-sunken p-2 text-center text-secondary')}>
             <ImageOff aria-hidden="true" className="h-5 w-5" />
             <span className="text-caption">{t('loading.error')}</span>
             {onRetry && (

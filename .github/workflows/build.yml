@@ -16,18 +16,21 @@ jobs:
     permissions:
       contents: read
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
 
     # Python linting
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: '3.12'
 
+    # Hardening #3: the uv that wrote uv.lock, not whatever is newest.
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
       with:
-        version: "latest"
+        version: "0.9.21"
 
     - name: Install Dependencies
       run: uv sync --no-sources
@@ -43,7 +46,7 @@ jobs:
 
     # Frontend linting
     - name: Use Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: '20'
 
@@ -60,20 +63,26 @@ jobs:
     permissions:
       contents: read
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
 
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: '3.12'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
       with:
-        version: "latest"
+        version: "0.9.21"
 
     - name: Install Dependencies
       run: uv sync --no-sources
+
+    # Hardening #3: the synced environment must be the one uv.lock describes.
+    - name: Check the environment matches uv.lock
+      run: uv run --no-sources python tooling/ci/check_locked_versions.py
 
     - name: Run Tests with Coverage
       run: |
@@ -86,10 +95,12 @@ jobs:
     permissions:
       contents: read
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
 
     - name: Use Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: '20'
 
@@ -101,19 +112,93 @@ jobs:
       working-directory: ./frontend
       run: npm run test:coverage
 
+  e2e:
+    # Playwright 1.57 has no Chromium build for ubuntu-latest (26.04) yet; move
+    # back to ubuntu-latest once the pinned Playwright supports it.
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
+
+    - name: Set up Python
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+      with:
+        python-version: '3.12'
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
+      with:
+        version: "0.9.21"
+
+    - name: Install Dependencies
+      run: uv sync --no-sources
+
+    - name: Use Node.js
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+      with:
+        node-version: '20'
+
+    - name: Install Frontend Dependencies
+      working-directory: ./frontend
+      run: npm ci
+
+    - name: Build Frontend
+      working-directory: ./frontend
+      run: npm run build
+
+    - name: Install Chromium for Playwright
+      working-directory: ./frontend
+      run: npx playwright install --with-deps chromium
+
+    # The specs need a configured app (is_configured + an output folder) in a
+    # throwaway data dir, never a real profile.
+    - name: Prepare a configured data dir
+      run: |
+        mkdir -p "$RUNNER_TEMP/sakadesk-data/out"
+        printf '{"is_configured": true, "output_dir": "%s"}' "$RUNNER_TEMP/sakadesk-data/out" > "$RUNNER_TEMP/sakadesk-data/settings.json"
+        echo "SAKADESK_DATA_DIR=$RUNNER_TEMP/sakadesk-data" >> "$GITHUB_ENV"
+
+    - name: Run the security e2e specs
+      working-directory: ./frontend
+      env:
+        SAKADESK_E2E_UV_RUN: uv run --no-sources
+      run: npx playwright test e2e/csp.spec.ts e2e/launch-auth.spec.ts e2e/entry-flow.spec.ts
+
+    - name: Upload the Playwright report
+      if: failure()
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: playwright-report
+        path: frontend/playwright-report
+        retention-days: 7
+
   build:
-    needs: [lint, test-backend, test-frontend]
-    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v')
+    needs: [lint, test-backend, test-frontend, e2e]
+    # Tags release; main builds an artifact; a manual run dry-runs the Windows
+    # toolchain on any branch (sign, verify-manifest and release run only for
+    # pushed tags).
+    if: github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     permissions:
       contents: read
+    outputs:
+      # The pyproject version (equal to the tag on tag builds): later jobs name
+      # artifacts and attestation subjects exactly from it.
+      version: ${{ steps.version.outputs.VERSION }}
+      installer_sha256: ${{ steps.installer_hash.outputs.installer_sha256 }}
 
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        persist-credentials: false
 
     # Frontend build
     - name: Use Node.js
-      uses: actions/setup-node@v4
+      uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
       with:
         node-version: '20'
 
@@ -125,30 +210,46 @@ jobs:
 
     # Python setup
     - name: Set up Python
-      uses: actions/setup-python@v5
+      uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
       with:
         python-version: '3.12'
 
     - name: Install uv
-      uses: astral-sh/setup-uv@v4
+      uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
       with:
-        version: "latest"
+        version: "0.9.21"
 
-    - name: Install Dependencies
-      run: uv sync --no-sources
+    # The build tools (PyInstaller, pywebview) are the locked `build` group.
+    - name: Install Dependencies and the Build Tools
+      run: uv sync --no-sources --group build
 
-    # Pinned for reproducible builds; not in pyproject.toml (build-only tools)
-    - name: Install Build Tools
-      run: uv pip install pyinstaller==6.13.0 pywebview==5.3.2
+    # Hardening #3: the synced environment, build tools included, must be the
+    # one uv.lock describes.
+    - name: Check the environment matches uv.lock
+      run: uv run --no-sources python tooling/ci/check_locked_versions.py
 
-    # Build
+    # Hardening #4: one known Inno Setup, verified after install.
     - name: Install Inno Setup
-      run: choco install innosetup
+      run: |
+        choco install innosetup --version=6.7.1 --allow-downgrade --yes --no-progress
+        # ISCC.exe has no usable version resource (it reads 0.0.0.0), so check
+        # the version Inno Setup registers among the installed programs.
+        $uninstall = @(
+          'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+          'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        )
+        $entries = @(Get-ItemProperty $uninstall -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Inno Setup*' })
+        if ($entries.Count -ne 1) { Write-Error "expected one Inno Setup install, found $($entries.Count)"; exit 1 }
+        $found = $entries[0].DisplayVersion
+        if ($found -ne "6.7.1") { Write-Error "Inno Setup $found, expected 6.7.1"; exit 1 }
+        $iscc = Join-Path $entries[0].InstallLocation "ISCC.exe"
+        if (-not (Test-Path -LiteralPath $iscc)) { Write-Error "ISCC.exe not found in the Inno Setup folder"; exit 1 }
+        Write-Host "Inno Setup $found at $iscc"
 
     - name: Extract Version
       id: version
       run: |
-        $version = (uv run --no-sources python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
+        $version = (uv run --no-sources --group build python -c "import tomllib; print(tomllib.load(open('pyproject.toml', 'rb'))['project']['version'])")
         echo "VERSION=$version" >> $env:GITHUB_OUTPUT
 
     # XREPO-02: fail a tagged release build if the tag and the pyproject version
@@ -159,9 +260,13 @@ jobs:
     # fleet-wide). Mirrors pysaka's "Verify version matches tag" guard.
     - name: Verify Version Matches Tag
       if: startsWith(github.ref, 'refs/tags/v')
+      env:
+        # Hardening #5: ref names may contain $(...); never expand them into the script.
+        TAG_NAME: ${{ github.ref_name }}
+        PKG_VERSION: ${{ steps.version.outputs.VERSION }}
       run: |
-        $tagVersion = "${{ github.ref_name }}" -replace '^v', ''
-        $pkgVersion = "${{ steps.version.outputs.VERSION }}"
+        $tagVersion = $env:TAG_NAME -replace '^v', ''
+        $pkgVersion = $env:PKG_VERSION
         if ($tagVersion -ne $pkgVersion) {
           Write-Error "Tag version ($tagVersion) does not match pyproject version ($pkgVersion)"
           exit 1
@@ -177,20 +282,207 @@ jobs:
     # pysaka release can never silently change an old tag's rebuild.
     - name: Verify pysaka Pinned for Release
       if: startsWith(github.ref, 'refs/tags/v')
-      run: uv run --no-sources python tooling/windows/check_release_pin.py
+      run: uv run --no-sources --group build python tooling/windows/check_release_pin.py
 
     - name: Build with PyInstaller & Inno Setup
-      run: uv run --no-sources python tooling/windows/build_windows.py
+      run: uv run --no-sources --group build python tooling/windows/build_windows.py
+
+    # Later jobs check the installer against this hash (see `sign`).
+    - name: Hash the installer
+      id: installer_hash
+      env:
+        PKG_VERSION: ${{ steps.version.outputs.VERSION }}
+      run: |
+        $path = Join-Path "dist" "SakaDesk-$($env:PKG_VERSION)-Setup.exe"
+        $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $path).Hash.ToLowerInvariant()
+        echo "installer_sha256=$hash" >> $env:GITHUB_OUTPUT
 
     - name: Upload Build Artifact
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
       with:
         name: SakaDesk-${{ steps.version.outputs.VERSION }}-Setup
         path: dist/SakaDesk-${{ steps.version.outputs.VERSION }}-Setup.exe
 
-  release:
+  # Signs the update manifest (Plan E). The key is a secret of the `release`
+  # environment, which only v*.*.* tags may use, and this job holds no write
+  # token. Nothing is installed: besides GitHub's own checkout and artifact
+  # actions, only git, the runner's python3 (standard library) and OpenSSL run
+  # while the key is present, because any step in a job can read all of that
+  # job's secrets from the runner's memory. Verification runs in
+  # `verify-manifest`, which holds no secrets.
+  sign:
     needs: [build]
-    if: startsWith(github.ref, 'refs/tags/v')
+    outputs:
+      manifest_sha256: ${{ steps.manifest_hash.outputs.manifest_sha256 }}
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    environment: release
+    permissions:
+      contents: read
+
+    steps:
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+
+    # Hardening #6: release branches merge into main before tagging
+    # (CONTRIBUTING.md, Phase 4), so a tag off main is not a release.
+    - name: Verify the tag commit is on main
+      run: |
+        git fetch --no-tags origin +refs/heads/main:refs/remotes/origin/main
+        if ! git merge-base --is-ancestor "$GITHUB_SHA" origin/main; then
+          echo "::error::the tag commit is not on main"
+          exit 1
+        fi
+
+    # Exact name; `name:` extracts straight into `path` (no per-artifact folder).
+    - name: Download Build Artifact
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: SakaDesk-${{ needs.build.outputs.version }}-Setup
+        path: SakaDesk-${{ needs.build.outputs.version }}-Setup
+
+    # Artifact tokens can replace artifacts, so bind the download to the hash
+    # the trusted `build` job computed (job outputs come from the job itself).
+    - name: Check the installer matches the build job's hash
+      env:
+        EXPECTED_INSTALLER_SHA256: ${{ needs.build.outputs.installer_sha256 }}
+      run: |
+        set -euo pipefail
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        ACTUAL="$(sha256sum "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" | cut -d' ' -f1)"
+        if [ -z "$EXPECTED_INSTALLER_SHA256" ] || [ "$ACTUAL" != "$EXPECTED_INSTALLER_SHA256" ]; then
+          echo "::error::the downloaded installer does not match the build job's hash"
+          exit 1
+        fi
+
+    - name: Sign the update manifest
+      env:
+        SAKADESK_RELEASE_SIGNING_KEY: ${{ secrets.SAKADESK_RELEASE_SIGNING_KEY }}
+        SAKADESK_RELEASE_SIGNING_KEY_NEXT: ${{ secrets.SAKADESK_RELEASE_SIGNING_KEY_NEXT }}
+      run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        python3 -I tooling/release/sign_manifest.py \
+          --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
+          --version "$TAG_VERSION" \
+          --out "SakaDesk-${TAG_VERSION}-manifest.json"
+
+    - name: Hash the signed manifest
+      id: manifest_hash
+      run: |
+        set -euo pipefail
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        HASH="$(sha256sum "SakaDesk-${TAG_VERSION}-manifest.json" | cut -d' ' -f1)"
+        echo "manifest_sha256=$HASH" >> "$GITHUB_OUTPUT"
+
+    - name: Upload the signed manifest
+      uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+      with:
+        name: SakaDesk-manifest
+        path: SakaDesk-${{ needs.build.outputs.version }}-manifest.json
+        if-no-files-found: error
+
+  # The app's own verifier against this release's keys and the previous
+  # release's keys, in a job with no secrets: a release that installed clients
+  # could not verify is never published.
+  verify-manifest:
+    needs: [build, sign]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+    # Full history and tags: the previous-release check uses `git describe`.
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+      with:
+        fetch-depth: 0
+        persist-credentials: false
+
+    # Exact name; `name:` extracts straight into `path` (no per-artifact folder).
+    - name: Download Build Artifact
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: SakaDesk-${{ needs.build.outputs.version }}-Setup
+        path: SakaDesk-${{ needs.build.outputs.version }}-Setup
+
+    - name: Download the signed manifest
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: SakaDesk-manifest
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@38f3f104447c67c051c4a08e39b64a148898af3a # v4.2.0
+      with:
+        version: "0.9.21"
+
+    # Artifact tokens can replace artifacts, so bind both downloads to the
+    # hashes the trusted build and sign jobs produced before verifying them.
+    - name: Check the files match the hashes the build and sign jobs produced
+      env:
+        EXPECTED_INSTALLER_SHA256: ${{ needs.build.outputs.installer_sha256 }}
+        EXPECTED_MANIFEST_SHA256: ${{ needs.sign.outputs.manifest_sha256 }}
+      run: |
+        set -euo pipefail
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        INSTALLER="$(sha256sum "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" | cut -d' ' -f1)"
+        MANIFEST="$(sha256sum "SakaDesk-${TAG_VERSION}-manifest.json" | cut -d' ' -f1)"
+        if [ -z "$EXPECTED_INSTALLER_SHA256" ] || [ "$INSTALLER" != "$EXPECTED_INSTALLER_SHA256" ]; then
+          echo "::error::the installer does not match the build job's hash"
+          exit 1
+        fi
+        if [ -z "$EXPECTED_MANIFEST_SHA256" ] || [ "$MANIFEST" != "$EXPECTED_MANIFEST_SHA256" ]; then
+          echo "::error::the manifest does not match the sign job's hash"
+          exit 1
+        fi
+
+    # The app's own verifier and keys: a key the released app does not trust
+    # would make every later update fail, so stop before publishing.
+    - name: Verify the manifest with the new release's keys
+      run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        uv run --no-project --with "cryptography==46.0.3" --with "cffi==2.0.0" --with "pycparser==2.23" python -m backend.services.release_signing \
+          --manifest "SakaDesk-${TAG_VERSION}-manifest.json" \
+          --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
+          --version "$TAG_VERSION"
+
+    # Installed clients run the previous release, so its keys must verify too
+    # (key rotation safety, Plan E Decision 6). Fails closed: only a previous
+    # tag below the first signed release may skip. The variable is for one
+    # emergency only: a lost key (CONTRIBUTING.md, "Release signing").
+    - name: Verify the manifest with the previous release's keys
+      if: vars.SAKADESK_ALLOW_KEY_RESET != 'yes'
+      env:
+        # The first release that ships the verifier (Plan E D-6); tags below it
+        # trust no key.
+        FIRST_SIGNED_VERSION: "0.5.0"
+      run: |
+        set -euo pipefail
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        if ! PREV_TAG="$(git describe --tags --abbrev=0 --match 'v*.*.*' "${GITHUB_SHA}^")" || [ -z "$PREV_TAG" ]; then
+          echo "::error::cannot determine the previous release tag"
+          exit 1
+        fi
+        PREV_VERSION="${PREV_TAG#v}"
+        LOWEST="$(printf '%s\n%s\n' "$PREV_VERSION" "$FIRST_SIGNED_VERSION" | sort -V | sed -n 1p)"
+        if [ "$PREV_VERSION" != "$FIRST_SIGNED_VERSION" ] && [ "$LOWEST" = "$PREV_VERSION" ]; then
+          echo "::notice::the previous release ($PREV_TAG) is below $FIRST_SIGNED_VERSION and trusts no signing key"
+          exit 0
+        fi
+        if ! git show "${PREV_TAG}:backend/services/release_keys.py" > "$RUNNER_TEMP/previous_release_keys.py"; then
+          echo "::error::backend/services/release_keys.py is missing at $PREV_TAG"
+          exit 1
+        fi
+        uv run --no-project --with "cryptography==46.0.3" --with "cffi==2.0.0" --with "pycparser==2.23" python -m backend.services.release_signing \
+          --manifest "SakaDesk-${TAG_VERSION}-manifest.json" \
+          --installer "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
+          --version "$TAG_VERSION" \
+          --keys-file "$RUNNER_TEMP/previous_release_keys.py"
+
+  release:
+    needs: [build, sign, verify-manifest]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -198,46 +490,84 @@ jobs:
       attestations: write
 
     steps:
-    - uses: actions/checkout@v4
-
-    - name: Download Build Artifact
-      uses: actions/download-artifact@v4
+    - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
       with:
-        pattern: SakaDesk-*-Setup
+        persist-credentials: false
 
-    # XREPO-02 / XREPO-09: the in-app upgrader looks up the release asset by the
-    # exact name SakaDesk-<tag-without-v>-Setup.exe (upgrade_service.
-    # _installer_asset_name). Assert the built artifact carries that exact name
-    # before publishing, so a packaging rename (e.g. adding -x64) can never ship
-    # an unlisted asset that every client fails to download.
-    - name: Verify Installer Asset Name
+    # Exact name; `name:` extracts straight into `path` (no per-artifact folder).
+    - name: Download Build Artifact
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: SakaDesk-${{ needs.build.outputs.version }}-Setup
+        path: SakaDesk-${{ needs.build.outputs.version }}-Setup
+
+    - name: Download the signed manifest
+      uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+      with:
+        name: SakaDesk-manifest
+
+    # XREPO-02 / XREPO-09: the in-app upgrader looks up the release assets by the
+    # exact names SakaDesk-<tag-without-v>-Setup.exe and -manifest.json
+    # (backend/services/release_signing.py). Assert both exist before publishing.
+    - name: Verify Release Asset Names
       run: |
         TAG_VERSION="${GITHUB_REF_NAME#v}"
-        EXPECTED="SakaDesk-${TAG_VERSION}-Setup.exe"
-        if [ ! -f "SakaDesk-${TAG_VERSION}-Setup/${EXPECTED}" ]; then
-          echo "Error: expected installer asset ${EXPECTED} not found. Contents:"
-          find SakaDesk-*-Setup -type f
+        for f in "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" "SakaDesk-${TAG_VERSION}-manifest.json"; do
+          if [ ! -f "$f" ]; then
+            echo "Error: expected release asset $f not found. Contents:"
+            find . -maxdepth 2 -name 'SakaDesk-*' -type f
+            exit 1
+          fi
+        done
+        echo "Release assets verified for ${TAG_VERSION}"
+
+    # Artifact tokens can replace artifacts (any job in the run holds one), so
+    # bind both files to the hashes the trusted build and sign jobs produced.
+    - name: Check the files match the hashes the build and sign jobs produced
+      env:
+        EXPECTED_INSTALLER_SHA256: ${{ needs.build.outputs.installer_sha256 }}
+        EXPECTED_MANIFEST_SHA256: ${{ needs.sign.outputs.manifest_sha256 }}
+      run: |
+        set -euo pipefail
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        INSTALLER="$(sha256sum "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" | cut -d' ' -f1)"
+        MANIFEST="$(sha256sum "SakaDesk-${TAG_VERSION}-manifest.json" | cut -d' ' -f1)"
+        if [ -z "$EXPECTED_INSTALLER_SHA256" ] || [ "$INSTALLER" != "$EXPECTED_INSTALLER_SHA256" ]; then
+          echo "::error::the installer does not match the build job's hash"
           exit 1
         fi
-        echo "Installer asset verified: ${EXPECTED}"
+        if [ -z "$EXPECTED_MANIFEST_SHA256" ] || [ "$MANIFEST" != "$EXPECTED_MANIFEST_SHA256" ]; then
+          echo "::error::the manifest does not match the sign job's hash"
+          exit 1
+        fi
 
     - name: Generate SHA-256 Checksums
       run: |
-        cd SakaDesk-*-Setup
-        sha256sum *.exe > ../checksums-sha256.txt
-        cat ../checksums-sha256.txt
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
+        (cd "SakaDesk-${TAG_VERSION}-Setup" && sha256sum "SakaDesk-${TAG_VERSION}-Setup.exe") > checksums-sha256.txt
+        sha256sum "SakaDesk-${TAG_VERSION}-manifest.json" >> checksums-sha256.txt
+        cat checksums-sha256.txt
 
     - name: Attest Build Provenance
-      uses: actions/attest-build-provenance@v2
+      uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2.4.0
       with:
-        subject-path: SakaDesk-*-Setup/*.exe
+        subject-path: |
+          SakaDesk-${{ needs.build.outputs.version }}-Setup/SakaDesk-${{ needs.build.outputs.version }}-Setup.exe
+          SakaDesk-${{ needs.build.outputs.version }}-manifest.json
 
+    # Draft first, publish once every asset is attached: required when the
+    # repository has immutable releases on (assets lock at publication).
     - name: Create GitHub Release
       env:
         GH_TOKEN: ${{ github.token }}
       run: |
+        TAG_VERSION="${GITHUB_REF_NAME#v}"
         gh release create "$GITHUB_REF_NAME" \
-          SakaDesk-*-Setup/*.exe \
+          "SakaDesk-${TAG_VERSION}-Setup/SakaDesk-${TAG_VERSION}-Setup.exe" \
+          "SakaDesk-${TAG_VERSION}-manifest.json" \
           checksums-sha256.txt \
-          --title "SakaDesk $(echo $GITHUB_REF_NAME | sed 's/^v//')" \
+          --draft \
+          --verify-tag \
+          --title "SakaDesk ${TAG_VERSION}" \
           --generate-notes
+        gh release edit "$GITHUB_REF_NAME" --draft=false --latest

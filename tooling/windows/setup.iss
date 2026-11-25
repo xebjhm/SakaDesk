@@ -227,7 +227,9 @@ procedure DeleteCredential(Target: String);
 var
   ResultCode: Integer;
 begin
-  Exec('cmdkey.exe', '/delete:' + Target, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
+  // System32's cmdkey only: a bare name is looked up in the current folder and
+  // on PATH first (security audit 2026-11-13, hardening #63).
+  Exec(ExpandConstant('{sys}\cmdkey.exe'), '/delete:' + Target, '', SW_HIDE, ewWaitUntilTerminated, ResultCode);
 end;
 
 // Delete a pysaka credential group across every storage scheme the app has used.

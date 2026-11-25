@@ -5,7 +5,7 @@ import type { ReactNode } from 'react'
 
 // Mock appStore - needs to be before other imports that use it
 vi.mock('../../store/appStore', () => ({
-    useAppStore: () => ({
+    useAppStore: (select: (s: unknown) => unknown) => select({
         activeService: null,
         setActiveService: vi.fn(),
     }),

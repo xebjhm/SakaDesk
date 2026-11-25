@@ -1,6 +1,7 @@
 // frontend/src/core/layout/FeatureRail.tsx
 import React, { useState } from 'react';
 import { useAppStore, FeatureId } from '../../store/appStore';
+import { useShallow } from 'zustand/react/shallow';
 import { getAvailableFeatures, isFeaturePaid } from '../../config/features';
 import { useAuth } from '../../shell/hooks/useAuth';
 import { LoginModal } from '../../shell/components/LoginModal';
@@ -18,12 +19,13 @@ export interface FeatureRailProps {
  */
 export const FeatureRail: React.FC<FeatureRailProps> = ({ service }) => {
     const { t } = useTranslation();
-    const { getActiveFeature, setActiveFeature, getFeatureOrder, triggerBlogViewReset } = useAppStore();
+    const activeFeature = useAppStore((s) => s.getActiveFeature(service));
+    const featureOrder = useAppStore(useShallow((s) => s.getFeatureOrder(service)));
+    const setActiveFeature = useAppStore((s) => s.setActiveFeature);
+    const triggerBlogViewReset = useAppStore((s) => s.triggerBlogViewReset);
     const { isServiceConnected, checkAuth, isServiceDisconnected } = useAuth();
     const [loginModal, setLoginModal] = useState<{ featureId: FeatureId } | null>(null);
 
-    const activeFeature = getActiveFeature(service);
-    const featureOrder = getFeatureOrder(service);
     const availableFeatures = getAvailableFeatures(service);
 
     // Sort available features by user preference

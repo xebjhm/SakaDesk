@@ -1,9 +1,7 @@
 {
   "config/uiConstants.ts": 8,
-  "core/common/InlineTranslation.tsx": 6,
   "core/common/TranslateButton.tsx": 15,
   "core/media/TranscribeButton.tsx": 13,
-  "core/media/TranscriptPanel.tsx": 16,
   "core/media/VideoPlayer.tsx": 1,
   "core/media/VoicePlayer.tsx": 1,
   "data/memberData.ts": 2,

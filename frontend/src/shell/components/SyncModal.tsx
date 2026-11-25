@@ -10,8 +10,9 @@ import { getSyncPhaseName, getSyncUnitLabel, isSyncActive } from '../../utils/sy
 import { SyncProgressPanel } from '../../core/common/SyncProgressPanel';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
 import type { SequentialSyncInfo } from '../hooks/useSync';
+import { useSyncProgressStore } from '../syncProgressStore';
 
-interface SyncModalProps {
+export interface SyncModalProps {
     syncProgress: SyncProgress;
     sequentialSyncInfo?: SequentialSyncInfo | null;
     onClose?: () => void;
@@ -52,7 +53,7 @@ const SyncServiceChip: React.FC<{ serviceId: string; label: string }> = ({ servi
  * group as a marker (decision D5). Not dismissible; Done or Cancel (D2d decisions 4, 6, 9-11, 17, 19).
  */
 export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSyncInfo, onClose, onCancel }) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const isComplete = syncProgress.phase === 'complete';
     const title = isComplete
         ? t('sync.complete')
@@ -60,13 +61,14 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
     const subtitle = isComplete
         ? t('sync.syncComplete')
         : syncProgress.total
-            ? `${syncProgress.total.toLocaleString()} ${getSyncUnitLabel(syncProgress, t)}`
+            ? `${syncProgress.total.toLocaleString(i18n.language)} ${getSyncUnitLabel(syncProgress, t)}`
             : t('sync.pleaseWait');
     const serviceName = sequentialSyncInfo
         ? getServiceById(sequentialSyncInfo.currentService)?.displayName ?? sequentialSyncInfo.currentService
         : null;
     const result = syncProgress.state === 'complete' ? syncProgress.result : null;
     const unresolved = result?.unresolved ?? 0;
+    const rejected = result?.rejected ?? 0;
 
     const footer = (syncProgress.state === 'complete' || syncProgress.state === 'error') && onClose
         ? <Button variant="secondary" onClick={onClose}>{t('common.done')}</Button>
@@ -109,7 +111,7 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                 {result && (
                     <div className="flex flex-col gap-2 text-small text-secondary">
                         <p>
-                            {result.missing === 0 && unresolved === 0
+                            {result.missing === 0 && unresolved === 0 && rejected === 0
                                 ? t('settings.verifyNoGaps')
                                 : t('settings.verifySummary', {
                                     checked: result.checked,
@@ -117,6 +119,12 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
                                     stillMissing: result.still_missing,
                                 })}
                         </p>
+                        {rejected > 0 && (
+                            <p data-testid="sync-rejected" className="flex items-center gap-2 text-semantic-warning">
+                                <AlertTriangle aria-hidden="true" className="h-4 w-4 shrink-0" />
+                                {t('settings.verifyRejected', { count: rejected })}
+                            </p>
+                        )}
                         {/* e4e4118: warning-tinted border, heading bg and text, icons in the warning hue. */}
                         {unresolved > 0 && (
                             <div data-testid="sync-unresolved" className="flex flex-col overflow-hidden rounded-lg border border-semantic-warning">
@@ -149,4 +157,10 @@ export const SyncModal: React.FC<SyncModalProps> = ({ syncProgress, sequentialSy
             </div>
         </Modal>
     );
+};
+
+/** The sync dialog fed from the progress store: it, not App, re-renders on each tick. */
+export const LiveSyncModal: React.FC<Omit<SyncModalProps, 'syncProgress'>> = (props) => {
+    const syncProgress = useSyncProgressStore((s) => s.active);
+    return <SyncModal {...props} syncProgress={syncProgress} />;
 };

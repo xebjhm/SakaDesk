@@ -213,16 +213,18 @@ async def get_letters(group_id: int, service: str, count: int = 200):
 async def get_letters_local(service: str, path: str):
     """The user's sent letters to one member, from the local archive only.
 
-    ``path`` is the member directory relative to the output directory (as in
-    ``/api/content/messages_by_path``) and must lie inside this service's
-    folder. A missing or unreadable ``letters.json`` gives an empty list. A
-    path that escapes the output directory, or that cannot be resolved (a
-    symlink loop or another filesystem error), is rejected with 403.
+    ``path`` is ``<service>/<rest>`` with ``/`` separators (``<service>`` a
+    service id or its display-name folder), resolved through
+    ``content.resolve_service_path_or_http``: 400 for control characters, 403
+    for a rooted path or one that leaves the service folder or cannot be
+    resolved, 404 when it names no service folder, and 400 (``wrong_service``)
+    when it lies in another service's folder. A missing or unreadable
+    ``letters.json`` gives an empty list.
     Logs one ``letters_local`` breadcrumb per request: outcome and counts,
     never letter text, names or paths. It is a warning for an ``invalid`` file
     or when any letter image failed the containment or filesystem check.
     """
-    from backend.api.content import get_output_dir, validate_path_within_dir
+    from backend.api.content import get_output_dir, resolve_service_path_or_http
 
     try:
         display_name = get_service_display_name(service)
@@ -231,26 +233,33 @@ async def get_letters_local(service: str, path: str):
         raise HTTPException(status_code=400, detail="Invalid service")
     output_dir = get_output_dir()
     try:
-        member_dir = validate_path_within_dir(output_dir, path)
+        # The same rule as every other client path: "<service>/<rest>" with "/"
+        # separators, resolved strictly inside a service folder.
+        member_dir = resolve_service_path_or_http(
+            output_dir, path, route="letters_local"
+        )
     except HTTPException as e:
         logger.warning(
             "letters_local", outcome="rejected", service=service, status=e.status_code
         )
         raise
     except (RuntimeError, OSError):
-        # A symlink loop or filesystem error while resolving: the error text
-        # carries the path, so it is dropped and only the status is logged.
+        # A filesystem error while resolving: the error text carries the path,
+        # so it is dropped and only the status is logged.
         logger.warning("letters_local", outcome="rejected", service=service, status=403)
         raise HTTPException(status_code=403, detail="Access denied") from None
     try:
-        parts = list(member_dir.relative_to(output_dir.resolve()).parts)
-    except ValueError:
+        # The parts below THIS service's folder, from the resolved path.
+        parts = list(
+            member_dir.relative_to((output_dir / display_name).resolve()).parts
+        )
+    except (ValueError, OSError, RuntimeError):
         parts = []
-    if not parts or parts[0] != display_name:
+    if not parts:
         logger.warning("letters_local", outcome="wrong_service", service=service)
         raise HTTPException(status_code=400, detail="Path is not in this service")
     outcome, letters, skipped, bad_images = await asyncio.to_thread(
-        read_local_letters, output_dir, member_dir, service, parts[1:]
+        read_local_letters, output_dir, member_dir, service, parts
     )
     log = logger.warning if outcome == "invalid" or bad_images > 0 else logger.info
     log(
@@ -314,12 +323,14 @@ async def get_message_dates(member_path: str):
 
     Returns a list of dates with message counts for the given member path.
     """
-    from backend.api.content import validate_path_within_dir
+    from backend.api.content import resolve_service_path_or_http
 
     output_dir = _get_output_dir()
     # API-I2: reject path traversal before touching disk (parallels the
-    # content.py endpoints), else ../ escapes read a messages.json anywhere.
-    full_path = validate_path_within_dir(output_dir, member_path)
+    # content.py endpoints); only paths inside a service folder are read.
+    full_path = resolve_service_path_or_http(
+        output_dir, member_path, route="message_dates"
+    )
 
     if not full_path.exists():
         raise HTTPException(status_code=404, detail="Path not found")

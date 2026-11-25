@@ -7,6 +7,7 @@ import type { DialogLogId } from '../dialog/dialogLog';
 import { IconButton } from './Button';
 import { brandScopeStyle } from '../brandScope';
 import { ScopeContext, useScope } from '../scopeContext';
+import { useFeatureActive } from '../featureActive';
 
 export interface ModalProps {
     isOpen: boolean;
@@ -75,7 +76,13 @@ function warnOnce(message: string): void {
 }
 
 /** Level 1 dialog on the dialog layer (docs/design/DESIGN_SYSTEM.md, "Dialogs"). */
-export const Modal: React.FC<ModalProps> = (props) => (props.isOpen ? <OpenModal {...props} /> : null);
+export const Modal: React.FC<ModalProps> = (props) => {
+    // A dialog of a feature kept mounted behind another one (Messages behind Blogs) is not shown: it is
+    // portaled outside the hidden box, so neither content-visibility nor inert would hide it, and it
+    // would keep the app behind it inert. Its open state is kept: it comes back with the feature.
+    const featureActive = useFeatureActive();
+    return props.isOpen && featureActive ? <OpenModal {...props} /> : null;
+};
 
 const OpenModal: React.FC<ModalProps> = ({
     onClose, title, icon, 'aria-label': ariaLabel, labelledBy, closeLabel, headerExtra, toolbar, children, footer, footerDivider = false,

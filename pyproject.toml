@@ -7,11 +7,10 @@ requires-python = ">=3.12"
 dependencies = [
     "fastapi",
     "uvicorn[standard]",
-    "pysaka==0.4.8",
+    "pysaka==0.4.9",
     "python-multipart",
     "aiofiles",
     "keyring",
-    "tk>=0.1.0",
     "structlog>=25.5.0",
     "keyrings-alt>=5.0.2",
     "pykakasi>=2.3.0",
@@ -21,12 +20,17 @@ dependencies = [
     "pywin32>=312 ; sys_platform == 'win32'",
     "pystray>=0.19.5 ; sys_platform == 'win32'",
     "pillow>=12.1.0",
+    "cryptography==46.0.3",
 ]
 
 [tool.uv.sources]
 pysaka = { path = "../pysaka", editable = true }
 
 [dependency-groups]
+build = [
+    "pyinstaller==6.13.0",
+    "pywebview==5.3.2",
+]
 dev = [
     "httpx>=0.28.1",
     "pytest>=8.4.2",

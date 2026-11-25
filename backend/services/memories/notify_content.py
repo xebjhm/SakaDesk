@@ -74,6 +74,7 @@ from typing import Any
 import structlog
 
 from backend.services import app_state, photo_thumb
+from backend.services.archive_urls import ArchiveReadError, resolve_within
 from backend.services.i18n import get_strings, resolve_ui_language
 from backend.services.memories import binder, hub, people, recap
 from backend.services.memories import index as mi
@@ -162,22 +163,48 @@ def _skip(kind: str, service: str, reason: str, member_id: str | None = None) ->
     )
 
 
-def _first_file(paths: Sequence[Path]) -> Path | None:
-    """The first of ``paths`` that is a file, absolute; else ``None``. Blocking."""
+def _contained(sdir: Path, path: Path) -> Path | None:
+    """``path`` resolved (links followed) when it stays inside the service folder ``sdir``. Blocking.
+
+    Both are made absolute first (no ``..`` folding), so a relative output
+    folder still compares part for part.
+    """
+    try:
+        return resolve_within(sdir.absolute(), path.absolute())
+    except ArchiveReadError:
+        return None
+
+
+def _first_file(sdir: Path, paths: Sequence[Path]) -> Path | None:
+    """The first of ``paths`` that is a file inside ``sdir``, resolved; else ``None``. Blocking.
+
+    A path that resolves outside the service folder (a ``..`` in a tampered
+    ``media_file`` or a planted link) is skipped with ``memories_notify_skip``
+    (``reason=outside_service_dir``; security audit 2026-11-13).
+    """
     for path in paths:
-        resolved = path.resolve()
+        resolved = _contained(sdir, path)
+        if resolved is None:
+            _skip("on_this_day", "*", "outside_service_dir")
+            continue
         if resolved.is_file():
             return resolved
     return None
 
 
-def _find_avatar_abs(room_dir: Path) -> Path | None:
+def _find_avatar_abs(sdir: Path, room_dir: Path) -> Path | None:
+    """The room's avatar resolved inside ``sdir``; ``None`` when absent or outside (logged)."""
     found = find_avatar(room_dir)
-    return found.resolve() if found is not None else None
+    if found is None:
+        return None
+    resolved = _contained(sdir, found)
+    if resolved is None:
+        _skip("avatar", "*", "outside_service_dir")
+    return resolved
 
 
 async def _avatar(sdir: Path, room: str) -> Path | None:
-    return await asyncio.to_thread(_find_avatar_abs, sdir / room)
+    return await asyncio.to_thread(_find_avatar_abs, sdir, sdir / room)
 
 
 def _memoir_route(sdir: Path, summary: mi.MemberSummary, **extra: str) -> dict:
@@ -238,9 +265,9 @@ def _hero_candidates(sdir: Path, moment: dict) -> list[Path]:
     ]
 
 
-async def _toast_hero(candidates: Sequence[Path]) -> Path | None:
+async def _toast_hero(sdir: Path, candidates: Sequence[Path]) -> Path | None:
     """The toast copy of the first existing candidate, or ``None`` (never the original)."""
-    source = await asyncio.to_thread(_first_file, candidates)
+    source = await asyncio.to_thread(_first_file, sdir, candidates)
     if source is None:
         return None
     try:
@@ -314,7 +341,7 @@ async def on_this_day_plan(
             body = ctx.strings["otd_body_photo"].format(name=name)
         else:  # a video, voice or empty message: no words, no photo claim
             body = ctx.strings["otd_body_hidden"].format(name=name)
-        hero = await _toast_hero(_hero_candidates(sdir, moment))
+        hero = await _toast_hero(sdir, _hero_candidates(sdir, moment))
     person = next(s for s in summaries if message["room"] in s.member_dirs)
     return MemoryToastPlan(
         kind="on_this_day",

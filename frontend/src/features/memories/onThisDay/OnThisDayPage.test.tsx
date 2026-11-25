@@ -163,7 +163,7 @@ describe('OnThisDayPage overview, details', () => {
         await screen.findAllByTestId('otd-column');
         await userEvent.click(screen.getByRole('button', { name: /Choose a date/ }));
         const dialog = await screen.findByRole('dialog');
-        expect(within(dialog).getByRole('button', { name: /February/ })).toBeInTheDocument();
+        expect(within(dialog).getByRole('button', { expanded: false, name: /^February 2026/ })).toBeInTheDocument();
     });
 });
 

@@ -13,10 +13,10 @@ export const typeScale = {
 
 export type TypeStep = keyof typeof typeScale;
 
-/** Font families beyond the default sans (Noto Sans JP). Both load from Google Fonts in index.html. */
+/** Font families beyond the default sans (Noto Sans JP). Both are self-hosted (design/fonts.ts). */
 export const fontFamily = {
     /** Blog titles only (feed, cards, post, rail tooltip); post bodies stay in the sans. */
-    reading: '"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif',
+    reading: '"Noto Serif JP Variable", "Yu Mincho", "Hiragino Mincho ProN", serif',
     /** Japanese sans stack: the default UI sans and the fallback of every per-language stack (design/fonts.ts). */
-    sansJp: '"Noto Sans JP", system-ui, -apple-system, sans-serif',
+    sansJp: '"Noto Sans JP Variable", system-ui, -apple-system, sans-serif',
 } as const;

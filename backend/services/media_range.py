@@ -34,6 +34,12 @@ A file that vanished between path validation and ``stat``/``open`` gets
 ``404``. ``HEAD`` is not handled (a body is always sent); the media routes are
 GET-only.
 
+Only passive media is served inline (``backend.services.passive_media``):
+pictures, video and voice get their exact type; any other file name
+(``.html``, ``.svg``, ...) is sent as ``application/octet-stream`` with
+``Content-Disposition: attachment``. Every response carries
+``X-Content-Type-Options: nosniff`` and the sandbox CSP.
+
 Each response is counted, and every ``MEDIA_SUMMARY_EVERY`` requests an info
 ``media_requests_summary`` line reports the counts per media kind and status.
 The detailed ``media_request`` breadcrumb (status, range header capped to
@@ -54,7 +60,6 @@ import re
 import time
 from dataclasses import dataclass
 from email.utils import formatdate
-from mimetypes import guess_type
 from pathlib import Path
 from typing import BinaryIO
 
@@ -62,6 +67,8 @@ import structlog
 from starlette.datastructures import Headers
 from starlette.responses import JSONResponse, Response
 from starlette.types import Message, Receive, Scope, Send
+
+from backend.services.passive_media import passive_media
 
 logger = structlog.get_logger(__name__)
 
@@ -184,8 +191,10 @@ class MediaFileResponse(Response):
     """Serve ``path`` honouring the request's ``Range`` with bounded bodies.
 
     See the module docstring for the exact semantics (``If-Range``, ``404`` on a
-    vanished file, no ``HEAD`` support). The file is stat'ed, opened, read and
-    closed in worker threads so the event loop never blocks on disk.
+    vanished file, no ``HEAD`` support). The type and the passive-media headers
+    come from ``passive_media`` (route code ``media``). The file is stat'ed,
+    opened, read and closed in worker threads so the event loop never blocks on
+    disk.
     """
 
     def __init__(
@@ -198,12 +207,12 @@ class MediaFileResponse(Response):
         self.path = path
         self.cap = cap
         self.chunk_size = chunk_size
-        media_type = guess_type(path.name)[0] or "text/plain"
-        self.media_type = media_type
-        self.media_kind = media_type.split("/", 1)[0]
+        passive = passive_media(path.name, route="media")
+        self.media_type = passive.media_type
+        self.media_kind = passive.media_type.split("/", 1)[0]
         self.background = None
         self.status_code = 200
-        self.init_headers()
+        self.init_headers(passive.headers)
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         started = time.perf_counter()

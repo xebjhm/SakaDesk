@@ -9,11 +9,26 @@ import { useAppStore } from '../store/appStore'
 import { persisted } from '../core/persistence/persisted'
 import { Z_INDEX } from '../constants/zIndex'
 import i18n from '../i18n'
+import { clientLog } from '../utils/clientLog'
 
-// A failed settings save must be visible while Settings is open: the toast sits on the
-// toast layer, above the dialog scrim.
+vi.mock('../utils/clientLog', async (orig) => ({ ...(await orig<typeof import('../utils/clientLog')>()), clientLog: vi.fn() }))
+
+/** Opens Settings, flips a switch whose save fails, and returns the dialog (the toast waits for it to close). */
+async function failASave(user: ReturnType<typeof userEvent.setup>) {
+  await user.click(await screen.findByRole('button', { name: i18n.t('common.settings') }))
+  await user.click(await screen.findByRole('menuitem', { name: i18n.t('common.settings') }))
+  const dialog = await screen.findByRole('dialog', { name: i18n.t('settings.title') })
+  const toggle = within(dialog).getByRole('switch', { name: i18n.t('settings.closeToTray') })
+  await user.click(toggle)
+  await within(dialog).findByText(i18n.t('settings.saveFailed'))
+  return { dialog, toggle }
+}
+
+// A failed settings save shows on the Settings row; the toast (in #root, inert while a dialog is
+// open) waits for the dialogs to close and then appears on the toast layer.
 describe('App settings error toast', () => {
   beforeEach(() => {
+    vi.mocked(clientLog).mockClear()
     vi.spyOn(persisted, 'getPref').mockImplementation(<T,>(key: string, fallback: T): T => {
       if (key === 'tos_accepted_at') return '2024-01-01T00:00:00Z' as unknown as T
       if (key === 'language') return 'en' as unknown as T
@@ -28,22 +43,25 @@ describe('App settings error toast', () => {
     )
   })
 
-  it('renders above the open Settings dialog', async () => {
+  it('waits while Settings is open, then shows once on close', async () => {
     server.use(http.post('/api/settings', () => new HttpResponse(null, { status: 500 })))
     const user = userEvent.setup()
     render(<AuthProvider><App /></AuthProvider>)
+    const { dialog } = await failASave(user)
 
-    await user.click(await screen.findByRole('button', { name: i18n.t('common.settings') }))
-    await user.click(await screen.findByRole('menuitem', { name: i18n.t('common.settings') }))
-    const dialog = await screen.findByRole('dialog', { name: i18n.t('settings.title') })
-    await user.click(within(dialog).getByRole('switch', { name: i18n.t('settings.closeToTray') }))
+    // The row says it; the toast waits, and the deferral is logged once.
+    expect(screen.queryByTestId('settings-error-toast')).toBeNull()
+    const deferrals = () => vi.mocked(clientLog).mock.calls.filter(
+      ([event, fields]) => event === 'dialog' && fields?.target === 'settings_error_toast' && fields?.outcome === 'suppressed',
+    )
+    expect(deferrals()).toHaveLength(1)
 
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: i18n.t('settings.title') })).toBeNull())
+    expect(dialog).not.toBeInTheDocument()
     const toast = await screen.findByTestId('settings-error-toast')
     expect(toast.style.zIndex).toBe(String(Z_INDEX.TOAST))
-    const backdrop = dialog.closest('[data-testid="modal-backdrop"]') as HTMLElement
-    expect(Number(toast.style.zIndex)).toBeGreaterThan(Number(backdrop.style.zIndex))
-    // The row says it too.
-    expect(within(dialog).getByText(i18n.t('settings.saveFailed'))).toBeInTheDocument()
+    expect(deferrals()).toHaveLength(1)
     // D2d: a translated status card with a Debug action.
     expect(toast).toHaveAttribute('role', 'alert')
     expect(within(toast).getByText(i18n.t('common.error'))).toBeInTheDocument()
@@ -57,11 +75,8 @@ describe('App settings error toast', () => {
     const user = userEvent.setup()
     render(<AuthProvider><App /></AuthProvider>)
 
-    await user.click(await screen.findByRole('button', { name: i18n.t('common.settings') }))
-    await user.click(await screen.findByRole('menuitem', { name: i18n.t('common.settings') }))
-    const dialog = await screen.findByRole('dialog', { name: i18n.t('settings.title') })
-    await user.click(within(dialog).getByRole('switch', { name: i18n.t('settings.closeToTray') }))
-
+    await failASave(user)
+    await user.keyboard('{Escape}')
     const toast = await screen.findByTestId('settings-error-toast')
     try {
       await act(async () => { await i18n.changeLanguage('ja') })
@@ -81,11 +96,8 @@ describe('App settings error toast', () => {
     const user = userEvent.setup()
     render(<AuthProvider><App /></AuthProvider>)
 
-    await user.click(await screen.findByRole('button', { name: i18n.t('common.settings') }))
-    await user.click(await screen.findByRole('menuitem', { name: i18n.t('common.settings') }))
-    const dialog = await screen.findByRole('dialog', { name: i18n.t('settings.title') })
-    await user.click(within(dialog).getByRole('switch', { name: i18n.t('settings.closeToTray') }))
-
+    await failASave(user)
+    await user.keyboard('{Escape}')
     const toast = await screen.findByTestId('settings-error-toast')
     await user.click(within(toast).getByRole('button', { name: i18n.t('common.debug') }))
     expect(await screen.findByRole('dialog', { name: 'Developer Diagnostics' })).toBeInTheDocument()
@@ -100,15 +112,13 @@ describe('App settings error toast', () => {
     const user = userEvent.setup()
     render(<AuthProvider><App /></AuthProvider>)
 
-    await user.click(await screen.findByRole('button', { name: i18n.t('common.settings') }))
-    await user.click(await screen.findByRole('menuitem', { name: i18n.t('common.settings') }))
-    const dialog = await screen.findByRole('dialog', { name: i18n.t('settings.title') })
-    const toggle = within(dialog).getByRole('switch', { name: i18n.t('settings.closeToTray') })
-    await user.click(toggle)
-    await screen.findByTestId('settings-error-toast')
+    const { toggle } = await failASave(user)
 
     fail = false
     await user.click(toggle)
-    await waitFor(() => expect(screen.queryByTestId('settings-error-toast')).toBeNull())
+    await waitFor(() => expect(screen.queryByText(i18n.t('settings.saveFailed'))).toBeNull())
+    await user.keyboard('{Escape}')
+    await waitFor(() => expect(screen.queryByRole('dialog', { name: i18n.t('settings.title') })).toBeNull())
+    expect(screen.queryByTestId('settings-error-toast')).toBeNull()
   })
 })

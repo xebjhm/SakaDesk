@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import type { IncomingCall } from './useIncomingCall';
 import { CallOverlay } from './CallOverlay';
+import { LiveRegionHost } from '../../design/primitives';
 import { persisted } from '../../core/persistence/persisted';
 import { VOLUME_STORAGE_KEY } from '../../core/media/VoicePlayer';
 import { groupRoles } from '../../design/tokens';
@@ -20,7 +21,7 @@ const call = (over: Partial<IncomingCall> = {}): IncomingCall => ({
 
 describe('CallOverlay', () => {
     it('renders no call UI when idle (only the empty live region)', () => {
-        render(<CallOverlay call={call({ phase: 'idle', message: null })} {...theme} />);
+        render(<><LiveRegionHost /><CallOverlay call={call({ phase: 'idle', message: null })} {...theme} /></>);
         expect(screen.queryByTestId('call-overlay')).toBeNull();
         expect(screen.getByRole('status')).toBeEmptyDOMElement();
     });
@@ -135,24 +136,29 @@ describe('CallOverlay', () => {
     });
 
     describe('live region', () => {
-        it('is one persistent element whose text follows the phase', () => {
-            const ringing = call();
-            const { rerender } = render(<CallOverlay call={call({ phase: 'idle', message: null })} {...theme} />);
-            const region = screen.getByRole('status');
-            expect(region).toHaveAttribute('aria-live', 'polite');
-            expect(region).toBeEmptyDOMElement();
+        it('announces through the shared host as the phase changes', () => {
+            vi.useFakeTimers();
+            try {
+                const ringing = call();
+                const ui = (c: IncomingCall) => <><LiveRegionHost /><CallOverlay call={c} {...theme} /></>;
+                const { rerender } = render(ui(call({ phase: 'idle', message: null })));
+                const region = screen.getByRole('status');
+                expect(region).toHaveAttribute('aria-live', 'polite');
+                expect(region).toBeEmptyDOMElement();
 
-            rerender(<CallOverlay call={ringing} {...theme} />);
-            expect(screen.getByRole('status')).toBe(region);
-            expect(region).toHaveTextContent('金村 美玖');
-            expect(region).toHaveTextContent('Incoming call…');
+                rerender(ui(ringing));
+                act(() => { vi.advanceTimersByTime(100); });
+                expect(screen.getByRole('status')).toBe(region);
+                expect(region).toHaveTextContent('金村 美玖');
+                expect(region).toHaveTextContent('Incoming call…');
 
-            rerender(<CallOverlay call={{ ...ringing, phase: 'connected', talkStartedAt: Date.now() }} {...theme} />);
-            expect(region).toBeEmptyDOMElement();
-
-            rerender(<CallOverlay call={{ ...ringing, phase: 'ended', talkStartedAt: Date.now() }} {...theme} />);
-            expect(screen.getByRole('status')).toBe(region);
-            expect(region).toHaveTextContent('Call ended');
+                rerender(ui({ ...ringing, phase: 'ended', talkStartedAt: Date.now() }));
+                act(() => { vi.advanceTimersByTime(100); });
+                expect(screen.getByRole('status')).toBe(region);
+                expect(region).toHaveTextContent('Call ended');
+            } finally {
+                vi.useRealTimers();
+            }
         });
     });
 

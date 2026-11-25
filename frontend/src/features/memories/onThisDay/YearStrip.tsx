@@ -80,7 +80,7 @@ export const YearStrip: React.FC<YearStripProps> = ({ years, resetKey, onOpen })
                             if (!words) return null;
                             return (
                                 <div key={`${m.room}|${m.id}`} className="rounded-md bg-sunken px-3 py-2">
-                                    <div className="flex items-baseline gap-2 text-caption text-muted">
+                                    <div className="flex items-baseline gap-2 text-caption text-secondary">
                                         <span lang="ja" className="min-w-0 truncate">{m.name}</span>
                                         <span className="tabular-nums">{formatJstClock(m.ts)}</span>
                                     </div>

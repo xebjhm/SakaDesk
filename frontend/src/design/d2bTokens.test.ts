@@ -16,7 +16,7 @@ describe('D2b tokens', () => {
     });
 
     it('add the serif reading family', () => {
-        expect(fontFamily.reading).toBe('"Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif');
+        expect(fontFamily.reading).toBe('"Noto Serif JP Variable", "Yu Mincho", "Hiragino Mincho ProN", serif');
         expect(staticTokenVars()['--ds-font-family-reading']).toBe(fontFamily.reading);
     });
 

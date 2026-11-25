@@ -171,7 +171,7 @@ describe('calendar, diagnostics and search on StatusBlock', () => {
             const ref = createRef<SearchModalHandle>();
             render(<SearchModal ref={ref} />);
             act(() => ref.current!.open());
-            const input = screen.getByRole('textbox');
+            const input = screen.getByRole('combobox');
             fireEvent.change(input, { target: { value: '春 🌸' } });
         };
         const isSearch = (u: unknown) => String(u).startsWith('/api/search?');

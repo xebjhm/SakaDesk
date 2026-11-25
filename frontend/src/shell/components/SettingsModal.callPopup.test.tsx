@@ -13,7 +13,7 @@ function renderModal(onSaveSettings = vi.fn().mockResolvedValue(true), appSettin
         <SettingsModal
             appSettings={appSettings}
             outputDirInput="/out"
-            setOutputDirInput={() => {}}
+            onSelectFolder={() => {}}
             onSaveSettings={onSaveSettings}
             onClose={() => {}}
             activeService="hinatazaka46"

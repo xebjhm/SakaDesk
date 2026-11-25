@@ -220,7 +220,7 @@ export const GachaPage: React.FC<GachaPageProps> = ({ service, go }) => {
                         </Button>
                     </div>
                 )}
-                <div className="flex min-h-0 flex-1 flex-col items-center gap-8 overflow-y-auto overscroll-contain p-6 md:flex-row md:justify-center md:gap-12">
+                <div className="flex min-h-0 flex-1 flex-col items-safe-center gap-8 overflow-y-auto overscroll-contain p-6 md:flex-row md:justify-safe-center md:gap-12">
                     <CapsuleMachine pullsLeft={left} busy={busy} onPull={() => { void pull(); }} dropped={dropped} reducedMotion={reducedMotion} />
                     <div className="flex w-full max-w-sm shrink-0 justify-center">
                         {open ? (

@@ -84,7 +84,7 @@ describe('ToS (R-d)', () => {
 describe('setup (D2d)', () => {
     it('ties the folder field to its label and names the dialog by its h2', () => {
         render(
-            <SetupWizard outputDirInput="" setOutputDirInput={vi.fn()} setupBlogFullBackup={false}
+            <SetupWizard outputDirInput="" setupBlogFullBackup={false}
                 setSetupBlogFullBackup={vi.fn()} onSelectFolder={vi.fn()} onComplete={vi.fn()} isValid={false} />,
         );
         expect(screen.getByLabelText('Output Folder Path')).toHaveAttribute('placeholder', i18n.t('setup.outputFolderPlaceholder'));
@@ -416,7 +416,7 @@ describe('one login per app (D2d review)', () => {
 });
 
 describe('setup (R-d)', () => {
-    const props = { outputDirInput: '', setOutputDirInput: vi.fn(), setupBlogFullBackup: false, setSetupBlogFullBackup: vi.fn(), onSelectFolder: vi.fn(), onComplete: vi.fn() };
+    const props = { outputDirInput: '', setupBlogFullBackup: false, setSetupBlogFullBackup: vi.fn(), onSelectFolder: vi.fn(), onComplete: vi.fn() };
 
     it('is a brand dialog with the folder icon, the ink checkbox and the e4e4118 near-white option box (pending decision D1)', () => {
         render(<SetupWizard {...props} isValid={false} />);
@@ -427,7 +427,7 @@ describe('setup (R-d)', () => {
         expect(checkbox.closest('label')).toHaveClass('bg-elevated');
     });
 
-    it('validates on click: says what is missing, focuses the field and logs it', async () => {
+    it('validates on click: says what is missing, focuses Browse and logs it', async () => {
         const onComplete = vi.fn();
         const { rerender } = render(<SetupWizard {...props} onComplete={onComplete} isValid={false} />);
         const start = screen.getByRole('button', { name: 'Start Using SakaDesk' });
@@ -437,7 +437,7 @@ describe('setup (R-d)', () => {
         expect(onComplete).not.toHaveBeenCalled();
         expect(screen.getByRole('alert')).toHaveTextContent(i18n.t('setup.folderRequired'));
         const field = screen.getByLabelText('Output Folder Path');
-        expect(field).toHaveFocus();
+        expect(screen.getByRole('button', { name: 'Browse' })).toHaveFocus();
         expect(field).toHaveAttribute('aria-invalid', 'true');
         expect(clientLog).toHaveBeenCalledWith('entry_validation', { surface: 'setup', reason: 'missing_folder' });
         rerender(<SetupWizard {...props} outputDirInput="C:\\データ" onComplete={onComplete} isValid />);

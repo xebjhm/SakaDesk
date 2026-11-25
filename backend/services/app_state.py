@@ -40,6 +40,7 @@ import json
 from collections.abc import Callable, Iterable
 from contextlib import closing
 import sqlite3
+import threading
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -64,14 +65,23 @@ def _path() -> Path:
     return _db_path or (get_app_data_dir() / "app_state.db")
 
 
+_wal_lock = threading.Lock()
+"""One WAL switch at a time in this process (the single-instance guard covers other processes)."""
+
+
 def connect() -> sqlite3.Connection:
     """New connection. Callers use ``with closing(connect()) as c, c:`` --
     the inner ``with`` commits (or rolls back) and ``closing`` releases the
-    handle, which sqlite3's own context manager does not."""
+    handle, which sqlite3's own context manager does not.
+
+    The WAL switch runs under :data:`_wal_lock`: concurrent first connections
+    switching a fresh file to WAL get "database is locked" at once (SQLite
+    does not busy-wait there), which failed a concurrent first start about
+    once in 100 runs."""
     conn = sqlite3.connect(_path())
-    # busy_timeout first, so a concurrent first start waits on the WAL switch.
     conn.execute("PRAGMA busy_timeout=5000")
-    conn.execute("PRAGMA journal_mode=WAL")
+    with _wal_lock:
+        conn.execute("PRAGMA journal_mode=WAL")
     return conn
 
 

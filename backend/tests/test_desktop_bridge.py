@@ -304,3 +304,103 @@ def test_open_memories_handler_error_is_caught() -> None:
     (event,) = [e for e in logs if e["event"] == "memories_open_failed"]
     assert event["error_type"] == "RuntimeError"
     assert "金村" not in repr(logs) and "memoir" not in repr(logs)
+
+
+# ------------------------------------------------------------ bounded toast clicks
+
+
+@pytest.fixture
+def fresh_click_slots(monkeypatch):
+    monkeypatch.setattr(
+        desktop_bridge,
+        "_click_slots",
+        threading.BoundedSemaphore(desktop_bridge.MAX_STUCK_CLICKS),
+    )
+    monkeypatch.setattr(desktop_bridge, "CLICK_TIMEOUT_S", 0.05)
+    gates: list[threading.Event] = []
+    yield gates
+    for gate in gates:  # let stuck test threads finish
+        gate.set()
+
+
+def _stuck_handler(gates: list[threading.Event]):
+    gate = threading.Event()
+    gates.append(gate)
+
+    def handler(*_args) -> None:
+        gate.wait(5)
+
+    return handler
+
+
+def test_a_stuck_chat_click_returns_after_the_timeout(fresh_click_slots) -> None:
+    import time
+
+    desktop_bridge.set_open_chat_handler(_stuck_handler(fresh_click_slots))
+    started = time.monotonic()
+    with capture_logs() as logs:
+        desktop_bridge.open_chat(TARGET, 7)
+    assert time.monotonic() - started < 2
+    (timeout,) = [e for e in logs if e["event"] == "toast_click_timeout"]
+    assert timeout["op"] == "open_chat"
+    assert "金村" not in repr(logs)
+
+
+def test_stuck_clicks_are_capped_then_new_clicks_are_dropped(fresh_click_slots) -> None:
+    desktop_bridge.set_open_login_handler(_stuck_handler(fresh_click_slots))
+    for _ in range(desktop_bridge.MAX_STUCK_CLICKS):
+        desktop_bridge.open_login("hinatazaka46")
+    seen: list[str] = []
+    desktop_bridge.set_open_login_handler(lambda service: seen.append(service))
+    with capture_logs() as logs:
+        desktop_bridge.open_login("hinatazaka46")
+    assert seen == []
+    (dropped,) = [e for e in logs if e["event"] == "toast_click_dropped"]
+    assert (dropped["op"], dropped["reason"]) == ("open_login", "busy")
+
+
+def test_a_slot_comes_back_when_the_stuck_call_returns(fresh_click_slots) -> None:
+    desktop_bridge.set_open_memories_handler(_stuck_handler(fresh_click_slots))
+    for _ in range(desktop_bridge.MAX_STUCK_CLICKS):
+        desktop_bridge.open_memories("hinatazaka46", {"page": "recap"})
+    for gate in fresh_click_slots:
+        gate.set()
+    seen: list[str] = []
+    desktop_bridge.set_open_memories_handler(
+        lambda service, _route: seen.append(service)
+    )
+    for _ in range(50):  # the released threads give their slots back
+        desktop_bridge.open_memories("hinatazaka46", {"page": "recap"})
+        if seen:
+            break
+        threading.Event().wait(0.02)
+    assert seen and seen[0] == "hinatazaka46"
+
+
+def test_a_failed_thread_start_is_dropped_and_gives_the_slot_back(
+    fresh_click_slots, monkeypatch
+) -> None:
+    real_start = threading.Thread.start
+
+    def failing_start(self) -> None:
+        raise RuntimeError("can't start new thread")
+
+    seen: list[str] = []
+    desktop_bridge.set_open_login_handler(lambda service: seen.append(service))
+    with monkeypatch.context() as patch:
+        patch.setattr(threading.Thread, "start", failing_start)
+        with capture_logs() as logs:
+            for _ in range(desktop_bridge.MAX_STUCK_CLICKS + 1):
+                desktop_bridge.open_login("hinatazaka46")
+    assert threading.Thread.start is real_start
+    dropped = [e for e in logs if e["event"] == "toast_click_dropped"]
+    assert [e["reason"] for e in dropped] == ["no_thread"] * (
+        desktop_bridge.MAX_STUCK_CLICKS + 1
+    )
+    assert seen == []
+    # The fixture's 50 ms wait is for stuck handlers; a loaded runner must
+    # not time these healthy clicks out before the handler appends.
+    monkeypatch.setattr(desktop_bridge, "CLICK_TIMEOUT_S", 5.0)
+    for _ in range(desktop_bridge.MAX_STUCK_CLICKS):
+        desktop_bridge.open_login("hinatazaka46")
+    assert seen == ["hinatazaka46"] * desktop_bridge.MAX_STUCK_CLICKS

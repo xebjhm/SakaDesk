@@ -22,8 +22,12 @@ import { pregenLabelKey, pregenProgress } from '../../core/media/grid/gallerySta
 
 interface SettingsModalProps {
     appSettings: AppSettings;
+    /** The folder the read-only field shows: the saved one, or one just picked with Browse. */
     outputDirInput: string;
-    setOutputDirInput: (dir: string) => void;
+    /** Open the native folder picker (the only way to choose the output folder). */
+    onSelectFolder: () => void;
+    /** i18n key of the newest output-folder problem (a failed pick or a refused save), or null. */
+    folderErrorKey?: string | null;
     onSaveSettings: (updates: Partial<AppSettings>) => Promise<boolean>;
     onClose: () => void;
     activeService: string;
@@ -130,7 +134,8 @@ const GroupChip: React.FC<{ serviceId: string }> = ({ serviceId }) => (
 export const SettingsModal: React.FC<SettingsModalProps> = ({
     appSettings,
     outputDirInput,
-    setOutputDirInput,
+    onSelectFolder,
+    folderErrorKey = null,
     onSaveSettings,
     onClose,
     activeService,
@@ -196,6 +201,20 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
         return ok;
     };
     const rowError = (row: SaveRow): string | undefined => (failedRow === row ? t('settings.saveFailed') : undefined);
+
+    // The output folder comes only from the native picker (security audit 2026-11-13). The row
+    // shows the newest problem: the specific reason from the hook (a failed pick or a refused
+    // save), else the generic message of a failed save. A new pick drops the old generic one.
+    const outputFolderDescId = useId();
+    const outputFolderErrorId = useId();
+    const outputFolderError = folderErrorKey ? t(folderErrorKey) : rowError('outputDir');
+    const browseOutputFolder = () => {
+        if (failedRowRef.current === 'outputDir') {
+            failedRowRef.current = null;
+            setFailedRow(null);
+        }
+        onSelectFolder();
+    };
 
     const formatBytes = (bytes: number): string => {
         if (bytes >= 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
@@ -458,7 +477,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                     </button>
                 ))}
             </nav>
-            <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto px-6 pb-6 pt-2">
+            <div className="flex min-w-0 flex-1 flex-col gap-6 overflow-y-auto scrollbar-stable px-6 pb-6 pt-2">
                 {activeTab === 'general' && (<>
                     <SettingRow label={t('settings.language')} description={t('settings.languageDesc')}>
                         <Select
@@ -474,14 +493,25 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({
                         </Select>
                     </SettingRow>
 
-                    <SettingRow label={t('settings.outputFolder')} error={rowError('outputDir')}>
+                    <SettingRow
+                        label={t('settings.outputFolder')}
+                        description={t('settings.outputFolderDesc')}
+                        descriptionId={outputFolderDescId}
+                        error={outputFolderError}
+                        errorId={outputFolderErrorId}
+                    >
                         <div className="flex gap-2">
                             <Input
                                 aria-label={t('settings.outputFolder')}
                                 value={outputDirInput}
-                                onChange={(e) => setOutputDirInput(e.target.value)}
+                                readOnly
+                                aria-invalid={outputFolderError ? true : undefined}
+                                aria-describedby={outputFolderError ? `${outputFolderDescId} ${outputFolderErrorId}` : outputFolderDescId}
                                 className="flex-1"
                             />
+                            <Button variant="secondary" onClick={browseOutputFolder}>
+                                {t('common.browse')}
+                            </Button>
                             <Button variant="primary" onClick={() => save('outputDir', { output_dir: outputDirInput })}>
                                 {t('common.save')}
                             </Button>

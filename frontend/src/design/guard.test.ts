@@ -5,7 +5,8 @@ import { describe, it, expect } from 'vitest';
 import { existsSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import {
-    LOADING_LABELS, compareToBaseline, countLoadingViolations, countViolations, isLoadingScanned, isScanned, scanTree,
+    DRIFT_LABELS, LOADING_LABELS, compareToBaseline, countDriftViolations, countLoadingViolations, countViolations,
+    isDriftScanned, isLoadingScanned, isScanned, scanTree,
 } from './guard';
 
 const SRC = path.resolve(__dirname, '..');
@@ -192,5 +193,89 @@ describe('loading ratchet repository', () => {
     it('ends the loading-UX wave empty: no hand-built loading indicator is left anywhere (L7)', () => {
         expect(JSON.parse(readFileSync(LOADING_BASELINE, 'utf-8'))).toEqual({});
         expect(scanTree(SRC, countLoadingViolations, isLoadingScanned)).toEqual({});
+    });
+});
+
+const DRIFT_BASELINE = path.resolve(__dirname, 'drift-guard-baseline.json');
+const TAILWIND_CONFIG = path.resolve(SRC, '../tailwind.config.js');
+
+describe('countDriftViolations (UI health #14)', () => {
+    it.each([
+        ['className="bg-gray-100 text-white hover:bg-black/40 border-red-500"', 4],
+        ['className="z-40 z-50 z-[60] -z-[1]"', 4],
+        ['className="text-xs text-sm text-2xl"', 3],
+        ['className="leading-[1.3] tracking-[2px] duration-[350ms] delay-[50ms] ease-[cubic-bezier(0,0,1,1)] bg-[url(x)] blur-[100px]"', 7],
+    ])('counts %s as %i', (source, count) => {
+        expect(countDriftViolations(source, 'a.tsx')).toBe(count);
+    });
+
+    it.each([
+        'className="bg-sheet text-primary text-small z-10 z-20 shadow-card"',
+        'className="w-[320px] max-w-[min(80%,42rem)] aspect-[3/4] min-w-[95px]"',
+        'className="text-accent-strong text-semantic-star text-viewer-muted"',
+        '// bg-gray-100 in a comment',
+    ])('ignores %s', (source) => {
+        expect(countDriftViolations(source, 'a.tsx')).toBe(0);
+    });
+
+    it('counts colour literals in CSS', () => {
+        expect(countDriftViolations('a { color: #fff; background: rgba(0,0,0,.5) } /* #000 */', 'x.css')).toBe(2);
+    });
+
+    it('does not count CSS keywords, system colours or transparent', () => {
+        const css = '@media (forced-colors: active) { a { color: CanvasText; outline: 2px solid Highlight; background: Canvas } b { color: currentColor; background: transparent } }';
+        expect(countDriftViolations(css, 'index.css')).toBe(0);
+    });
+
+    it('does not count inherit, but still counts a literal beside it', () => {
+        expect(countDriftViolations('a { color: inherit; background: inherit; border-color: inherit }', 'index.css')).toBe(0);
+        expect(countDriftViolations('a { color: inherit; background: #fff }', 'index.css')).toBe(1);
+    });
+
+    it('scans source and CSS files, not tests or token files', () => {
+        expect(isDriftScanned('features/incomingCall/callScreen.css')).toBe(true);
+        expect(isDriftScanned('core/media/VideoPlayer.tsx')).toBe(true);
+        expect(isDriftScanned('core/media/VideoPlayer.test.tsx')).toBe(false);
+        expect(isDriftScanned('design/tokens/color.ts')).toBe(false);
+    });
+});
+
+describe('drift ratchet repository', () => {
+    const current = () => {
+        const found = scanTree(SRC, countDriftViolations, isDriftScanned);
+        const configCount = countDriftViolations(readFileSync(TAILWIND_CONFIG, 'utf-8'), 'tailwind.config.js');
+        return configCount > 0 ? { ...found, '../tailwind.config.js': configCount } : found;
+    };
+
+    it('matches src/design/drift-guard-baseline.json', () => {
+        if (process.env.UPDATE_DRIFT_BASELINE) {
+            writeFileSync(DRIFT_BASELINE, JSON.stringify(current(), null, 2) + '\n', 'utf-8');
+            return;
+        }
+        const baseline = JSON.parse(readFileSync(DRIFT_BASELINE, 'utf-8')) as Record<string, number>;
+        expect(compareToBaseline(current(), baseline, (rel) => existsSync(path.join(SRC, rel)), DRIFT_LABELS)).toEqual([]);
+    });
+
+    it('has no design-system file in the drift baseline', () => {
+        const baseline = JSON.parse(readFileSync(DRIFT_BASELINE, 'utf-8')) as Record<string, number>;
+        expect(Object.keys(baseline).filter((rel) => rel.startsWith('design/'))).toEqual([]);
+    });
+
+    it('accepts no drift in a file the UI-health plans F, G and H created', () => {
+        // The baseline may hold only debt that existed before the UI-health wave (since d74c6725):
+        // drift in a file created by it must be fixed with tokens, not baselined. This is the
+        // non-test source files `git diff --name-only --diff-filter=A d74c6725 HEAD -- frontend/src`
+        // lists at the time the baseline was written, relative to src.
+        const createdInWave = [
+            'core/layout/KeepMounted.tsx', 'core/layout/MemoriesChunkBoundary.tsx', 'core/media/StepButtons.tsx',
+            'core/media/keyGuard.ts', 'design/dialog/useAnyDialogOpen.ts', 'design/featureActive.ts',
+            'design/primitives/LiveRegion.tsx', 'design/primitives/announcer.ts',
+            'features/blogs/components/stagger.ts', 'features/messages/components/SyncStatusPill.tsx',
+            'features/messages/favoriteOverrides.ts', 'features/messages/roomCache.ts', 'hooks/useInert.ts',
+            'hooks/useMediaQuery.ts', 'shell/components/SettingsErrorToast.tsx', 'shell/components/SkipLink.tsx',
+            'shell/syncProgressStore.ts', 'utils/intlCache.ts', 'utils/shallowEqualRecord.ts',
+        ];
+        const baseline = JSON.parse(readFileSync(DRIFT_BASELINE, 'utf-8')) as Record<string, number>;
+        expect(createdInWave.filter((rel) => rel in baseline)).toEqual([]);
     });
 });

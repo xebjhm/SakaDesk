@@ -108,14 +108,15 @@ class TestMediaRouteResolution:
         r = client.get("/api/content/media/hinatazaka46/messages/a.jpg")
         assert r.status_code == 200 and r.content == b"\xff\xd8\xff\xe0"
 
-    def test_an_unknown_service_is_still_used_literally(self, out: Path):
+    def test_a_display_name_folder_works_and_an_unknown_one_is_404(self, out: Path):
         assert (
             client.get("/api/content/media/日向坂46/messages/a.jpg").status_code == 200
         )
         assert client.get("/api/content/media/unknown46/a.jpg").status_code == 404
 
-    def test_a_single_segment_is_relative_to_the_output_dir(self, out: Path):
-        assert client.get("/api/content/media/loose.jpg").status_code == 200
+    def test_a_file_outside_the_service_folders_is_404(self, out: Path):
+        # Security audit 2026-11-13: only service folders are served.
+        assert client.get("/api/content/media/loose.jpg").status_code == 404
 
     def test_missing_is_404(self, out: Path):
         assert client.get("/api/content/media/hinatazaka46/none.jpg").status_code == 404

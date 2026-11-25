@@ -7,11 +7,13 @@ pykakasi, or a full SearchService with live DB connections.
 import asyncio
 import json
 import sqlite3
+import time as _time
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
+from backend.services import search_service as _ss
 from backend.services import shutdown_state
 import backend.services.search_service as search_service_module
 from backend.services.search_service import (
@@ -673,3 +675,86 @@ class TestShutdownSearchServiceDrain:
         proc.kill.assert_called_once()
         assert proc.join.call_count == 2
         assert errors == []
+
+
+# ── Snippet escaping (security audit 2026-11-13) ─────────────────────
+
+
+class TestSnippetEscaping:
+    """Snippets are HTML: archived text stays text, only <mark> is markup."""
+
+    def test_build_snippet_escapes_the_text_around_the_mark(self):
+        content = "a<b> & 桜 </p>"
+        idx = content.index("桜")
+        result = SearchService._build_snippet(content, idx=idx, match_len=1, max_len=80)
+        assert result == "a&lt;b&gt; &amp; <mark>桜</mark> &lt;/p&gt;"
+
+    def test_build_snippet_escapes_the_matched_text(self):
+        result = SearchService._build_snippet("x<y", idx=1, match_len=1, max_len=80)
+        assert result == "x<mark>&lt;</mark>y"
+
+    def test_forged_mark_in_the_text_stays_text(self, tmp_path):
+        svc = SearchService(tmp_path / "t.db")
+        content = "今日は桜を見に行きました。<mark>XSSTERM</mark> 綺麗"
+        result = svc._make_snippet(content, "桜")
+        assert result.count("<mark") == 1
+        assert "&lt;mark&gt;XSSTERM&lt;/mark&gt;" in result
+
+    def test_no_match_fallback_is_escaped(self, tmp_path):
+        svc = SearchService(tmp_path / "t.db")
+        assert svc._make_snippet("<img src=x onerror=1>", "zzz") == (
+            "&lt;img src=x onerror=1&gt;"
+        )
+
+    def test_multi_word_snippet_escapes_and_marks_each_word(self, tmp_path):
+        svc = SearchService(tmp_path / "t.db")
+        result = svc._make_multi_word_snippet("<b>春 と 夏</b>", ["春", "夏"])
+        assert result == "&lt;b&gt;<mark>春</mark> と <mark>夏</mark>&lt;/b&gt;"
+
+    def test_mark_spans_skips_overlaps_and_out_of_range_spans(self):
+        result = SearchService._mark_spans(
+            "abcdef", [(0, 3, ""), (2, 2, ""), (5, 9, "")]
+        )
+        assert result == "<mark>abc</mark>def"
+
+    def test_blog_title_snippet_is_escaped(self, tmp_path):
+        svc = SearchService(tmp_path / "t.db")
+        result = svc._make_blog_snippet(title="<i>桜</i>", content="", query="桜")
+        assert result == "&lt;i&gt;<mark>桜</mark>&lt;/i&gt;"
+
+    def test_a_forged_mark_in_the_content_is_not_a_content_match(self, tmp_path):
+        """'<mark' in archived text once made the content look matched."""
+        svc = SearchService(tmp_path / "t.db")
+        result = svc._make_blog_snippet(title="桜の日", content="x<mark>y", query="桜")
+        assert result == "<mark>桜</mark>の日"
+
+    def test_blog_content_fallback_is_escaped(self, tmp_path):
+        svc = SearchService(tmp_path / "t.db")
+        assert svc._make_blog_snippet(title="t", content="a<b", query="zzz") == "a&lt;b"
+
+
+def test_strip_html_is_linear_on_unclosed_tags():
+    """search-service.strip-html:quadratic-unclosed-tag-regex (audit 2026-11-13)."""
+    start = _time.monotonic()
+    out = _ss._strip_html("<" * 200_000)
+    assert _time.monotonic() - start < 1.0
+    assert out == "<" * 200_000
+
+
+def test_strip_html_keeps_its_output_for_normal_html():
+    html = '<p>春の<b>日記</b> &amp; 🌸</p><img src="x.jpg"><br/>終わり'
+    assert _ss._strip_html(html) == "春の 日記 & 🌸 終わり"
+
+
+def test_strip_html_caps_the_indexed_text():
+    html = "あ" * (_ss.MAX_INDEX_HTML_CHARS + 10)
+    assert len(_ss._strip_html(html)) == _ss.MAX_INDEX_HTML_CHARS
+
+
+def test_fts_phrase_doubles_quotes():
+    assert _ss._fts_phrase('a"b') == '"a""b"'
+    assert _ss._fts_phrase("桜") == '"桜"'
+
+
+def test_like_contains_escapes_wildcards():
+    assert _ss._like_contains("100%_\\") == "%100\\%\\_\\\\%"

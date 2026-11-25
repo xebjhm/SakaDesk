@@ -52,6 +52,29 @@ function timeOf(iso: string): number | null {
     return Number.isNaN(t) ? null : t;
 }
 
+/**
+ * Local "YYYY-MM-DD" (the same as toLocalDateStr) of a parsed time. Messages come in time order,
+ * so the previous day's key is reused while the time stays inside that local day: one Date
+ * per day instead of a second string parse per message (UI health #1).
+ */
+function makeDayKeyer(): (time: number | null, iso: string) => string {
+    let start = Infinity;
+    let end = -Infinity;
+    let key = '';
+    return (time, iso) => {
+        if (time === null) return toLocalDateStr(iso); // invalid: '' (an undated group)
+        if (time >= start && time < end) return key;
+        const d = new Date(time);
+        const y = d.getFullYear();
+        const m = d.getMonth();
+        const day = d.getDate();
+        start = new Date(y, m, day).getTime();
+        end = new Date(y, m, day + 1).getTime();
+        key = `${y}-${String(m + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+        return key;
+    };
+}
+
 interface Previous { kind: 'message' | 'letter'; day: string; sender: string; time: number | null }
 
 /** Build the timeline. `messages` must be chronological (the backend sorts them); letters may come in any order. */
@@ -84,6 +107,7 @@ export function buildTimeline(messages: readonly Message[], letters: readonly Le
 
     let prev: Previous | null = null;
     let next = 0;
+    const dayOf = makeDayKeyer();
     for (const message of messages) {
         const time = timeOf(message.timestamp);
         // Ties go to the message: only letters strictly earlier are placed before it.
@@ -91,7 +115,7 @@ export function buildTimeline(messages: readonly Message[], letters: readonly Le
             prev = addLetter(dated[next].letter);
             next += 1;
         }
-        const day = toLocalDateStr(message.timestamp);
+        const day = dayOf(time, message.timestamp);
         const sender = String(message.member_id ?? '');
         const continues = prev !== null && prev.kind === 'message' && prev.day === day && prev.sender === sender
             && prev.time !== null && time !== null && time >= prev.time && time - prev.time <= RUN_GAP_MS;

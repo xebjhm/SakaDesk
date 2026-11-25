@@ -2,24 +2,30 @@
 
 URLs point at the existing media route (``/api/content/media/<service id>/...``),
 which maps the service id to its display-name folder and re-validates that the
-path stays inside the output directory. URLs built here by :func:`media_url`
+path stays inside that service folder. URLs built here by :func:`media_url`
 stay in their service folder because callers build URL parts only from already
-validated paths; URLs sent back by a client are re-checked against both the
-output directory and the service folder by :func:`classify_media_route`.
+validated paths; URLs sent back by a client are re-checked by
+:func:`classify_media_route`.
 
-Reads of archive files go through :func:`read_archive_json` and
-:func:`archive_file_ok`, which resolve symlinks and require the file to stay
-inside the output directory.
+Every path a client names (a media URL, a member or group folder, a message
+date or transcription request) is resolved by :func:`locate_in_service_folder` /
+:func:`resolve_in_service_folder`: its first segment must be a known service (id or
+display-name folder) and the result must stay strictly inside
+``<output dir>/<that service's display-name folder>``, symlinks followed. The
+output dir is a folder the user picked, so nothing outside the service
+folders is ever read on a client's say-so.
+
+Reads of archive files by server-built paths go through
+:func:`read_archive_json` and :func:`archive_file_ok`, which resolve symlinks
+and require the file to stay inside the output directory.
 
 :func:`is_plain_relative` is the lexical gate every client path passes before
 anything resolves it: on Windows a rooted, drive or UNC path joined to a base
 replaces the base, and resolving ``//host/share`` would open an SMB
 connection (leaking the user's NTLM hash) before any containment check.
 
-:func:`media_disk_path` is the one translation of a media-route path
-(``<service id>/<rest>``) to its on-disk path (``<display name>/<rest>``),
-shared by the media route and :func:`classify_media_route` (which maps a whole
-media-route URL sent by a client back to the archive file).
+:func:`classify_media_route` maps a whole media-route URL sent by a client
+back to the archive file.
 """
 
 from __future__ import annotations
@@ -125,32 +131,84 @@ def read_archive_json(output_dir: Path, path: Path) -> object:
         raise ArchiveReadError("unreadable") from None
 
 
-def media_disk_path(file_path: str) -> tuple[str, str | None]:
-    """``(on-disk path, service id)`` of a media-route path ``<service id>/<rest>``.
+_BAD_PATH_CHARS = ("\x00", "\n", "\r")
+ServicePathReason = Literal[
+    "invalid_chars",
+    "not_plain",
+    "no_service_folder",
+    "outside_service_folder",
+    "unresolvable",
+]
 
-    A known service id (any case) is replaced by its display-name folder and
-    returned normalised (``hinatazaka46``); otherwise ``file_path`` comes back
-    unchanged with ``None`` (the media route then reads it as relative to the
-    output dir, as it always has). Nothing is validated here.
+
+class ServicePathError(Exception):
+    """A client path does not name a file inside a service folder.
+
+    ``reason`` is a code, never the path: ``invalid_chars`` (NUL or a line
+    break; HTTP 400), ``not_plain`` (not :func:`is_plain_relative`; 403),
+    ``no_service_folder`` (the first segment is not a known service, or
+    nothing follows it; 404), ``outside_service_folder`` (it resolves outside
+    the service folder, or to the folder itself; 403) and ``unresolvable``
+    (a filesystem error while resolving, such as a symlink loop; 403).
+    """
+
+    STATUS: dict[str, int] = {
+        "invalid_chars": 400,
+        "not_plain": 403,
+        "no_service_folder": 404,
+        "outside_service_folder": 403,
+        "unresolvable": 403,
+    }
+
+    def __init__(self, reason: ServicePathReason) -> None:
+        super().__init__(reason)
+        self.reason: ServicePathReason = reason
+        self.status_code: int = self.STATUS[reason]
+
+
+def locate_in_service_folder(output_dir: Path, client_path: str) -> tuple[str, Path]:
+    """``(service id, resolved path)`` of a client path ``<service>/<rest>``.
+
+    ``<service>`` is a service id (any case) or its display-name folder
+    (``日向坂46``) and ``<rest>`` must not be empty. The resolved path (symlinks
+    followed) lies strictly inside ``<output_dir>/<display-name folder>``, which
+    itself lies inside ``output_dir``. Whether the path exists is not checked.
+    Raises :class:`ServicePathError` with a reason code otherwise; the lexical
+    checks run before anything is resolved. Blocking (it resolves).
     """
     from backend.services.service_utils import (
         get_service_display_name,
-        get_service_enum,
+        get_service_identifier,
     )
 
-    parts = file_path.split("/", 1)
-    if len(parts) == 2:
-        service_part, rest = parts
-        try:
-            display_name = get_service_display_name(service_part)
-        except ValueError:
-            return file_path, None
-        return f"{display_name}/{rest}", get_service_enum(service_part).value
-    return file_path, None
+    if any(c in client_path for c in _BAD_PATH_CHARS):
+        raise ServicePathError("invalid_chars")
+    if not is_plain_relative(client_path):
+        raise ServicePathError("not_plain")
+    first, _, rest = client_path.partition("/")
+    service = get_service_identifier(first) if rest else None
+    if service is None:
+        raise ServicePathError("no_service_folder")
+    display_name = get_service_display_name(service)
+    try:
+        base = output_dir.resolve()
+        folder = (output_dir / display_name).resolve()
+        target = (folder / rest).resolve()
+    except (OSError, ValueError, RuntimeError):
+        raise ServicePathError("unresolvable") from None
+    if not folder.is_relative_to(base) or folder == base:
+        raise ServicePathError("outside_service_folder")
+    if not target.is_relative_to(folder) or target == folder:
+        raise ServicePathError("outside_service_folder")
+    return service, target
+
+
+def resolve_in_service_folder(output_dir: Path, client_path: str) -> Path:
+    """The resolved path of a client path inside a service folder (:func:`locate_in_service_folder`)."""
+    return locate_in_service_folder(output_dir, client_path)[1]
 
 
 MediaRouteRejection = Literal["invalid", "outside"]
-_BAD_PATH_CHARS = ("\x00", "\n", "\r")
 
 
 def classify_media_route(
@@ -158,16 +216,20 @@ def classify_media_route(
 ) -> tuple[str, Path] | MediaRouteRejection:
     """``(service id, resolved archive path)`` of a client media-route URL, or why not.
 
-    Accepts only a same-origin path ``/api/content/media/<service id>/<rest>``
+    Accepts only a same-origin path ``/api/content/media/<service>/<rest>``
     (percent-decoded once, like the route; a query or fragment is ignored)
-    with a known service id and a non-empty ``rest``. After resolving
-    (symlinks followed) the file must lie strictly inside the service's
-    display-name folder, which itself must lie inside ``output_dir``.
+    where ``<service>`` is a service id (any case) or its display-name folder
+    and ``rest`` is not empty. The path goes through
+    :func:`locate_in_service_folder`: after resolving (symlinks followed) the file
+    must lie strictly inside the service's display-name folder, which itself
+    must lie inside ``output_dir``; the service id returned is the normalised
+    one (``hinatazaka46``).
 
     - ``"invalid"``: not such a URL (another route, an absolute or
       cross-origin URL, an unknown service, an empty ``rest``, control
-      characters, or a ``rest`` that is not :func:`is_plain_relative`, which
-      is checked before anything is resolved);
+      characters, a path that is not :func:`is_plain_relative`, which is
+      checked before anything is resolved, or a filesystem error while
+      resolving);
     - ``"outside"``: it resolves outside the service folder or the output
       dir (traversal, a symlink out, or the folder itself).
 
@@ -181,25 +243,10 @@ def classify_media_route(
     if parts.scheme or parts.netloc or not parts.path.startswith(MEDIA_PREFIX):
         return "invalid"
     file_path = unquote(parts.path[len(MEDIA_PREFIX) :])
-    if any(c in file_path for c in _BAD_PATH_CHARS):
-        return "invalid"
-    disk_path, service = media_disk_path(file_path)
-    if service is None:
-        return "invalid"
-    display_name, rest = disk_path.split("/", 1)
-    if not rest or not is_plain_relative(rest):
-        return "invalid"
     try:
-        base = output_dir.resolve()
-        folder = (output_dir / display_name).resolve()
-        target = (folder / rest).resolve()
-    except (OSError, ValueError, RuntimeError):
-        return "invalid"
-    if not folder.is_relative_to(base) or folder == base:
-        return "outside"
-    if not target.is_relative_to(folder) or target == folder:
-        return "outside"
-    return service, target
+        return locate_in_service_folder(output_dir, file_path)
+    except ServicePathError as e:
+        return "outside" if e.reason == "outside_service_folder" else "invalid"
 
 
 def media_route_target(output_dir: Path, url: str) -> tuple[str, Path] | None:

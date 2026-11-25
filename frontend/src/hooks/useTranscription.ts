@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from '../i18n';
 import { aiErrorKey } from '../i18n/aiError';
+import { clientLog } from '../utils/clientLog';
 
 export interface TranscriptionSegment {
     start: number;
@@ -92,19 +93,24 @@ export function useTranscription(
         setError(null);
         if (!service || !messageId) return;
 
-        let cancelled = false;
-        // 404 = not transcribed yet, and a network error: stay idle, don't show an error.
-        fetchCachedTranscription(service, messageId, memberPath).then(
+        // Aborted when the bubble scrolls away or the message changes: it must not hold one of the
+        // six connections the media and the next lookups need.
+        const controller = new AbortController();
+        // 404 = not transcribed yet: stay idle. A failure stays idle too (no error shown) but leaves a
+        // code-only breadcrumb; an abort is the normal way out and logs nothing.
+        fetchCachedTranscription(service, messageId, memberPath, controller.signal).then(
             (cached) => {
-                if (!cancelled && cached) {
+                if (!controller.signal.aborted && cached) {
                     setTranscription(cached);
                     setState('done');
                 }
             },
-            () => {},
+            () => {
+                if (!controller.signal.aborted) clientLog('chat_load', { outcome: 'transcript_lookup_failed', message_id: messageId });
+            },
         );
         return () => {
-            cancelled = true;
+            controller.abort();
             // Cancel any in-flight transcribe POST for the message we're leaving.
             abortRef.current?.abort();
         };

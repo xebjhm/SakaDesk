@@ -17,7 +17,7 @@ function renderModal(appSettings: AppSettings = base, onSaveSettings = vi.fn().m
         <SettingsModal
             appSettings={appSettings}
             outputDirInput="/out"
-            setOutputDirInput={() => {}}
+            onSelectFolder={() => {}}
             onSaveSettings={onSaveSettings}
             onClose={() => {}}
             activeService="hinatazaka46"

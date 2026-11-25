@@ -43,7 +43,7 @@ function push(out: React.ReactNode[], node: React.ReactNode): void {
 }
 
 /**
- * Her words as she wrote them: `lang="ja"`, line breaks kept (`whitespace-pre-wrap`), the
+ * Her words as she wrote them: `lang="ja"`, line breaks kept (`whitespace-pre-wrap`) and long runs wrapped (`break-words`), the
  * nickname placeholder replaced with the fan's nickname (`replaceNickname` semantics), each
  * replacement optionally underlined, and an optional keyword (matched under NFKC) marked in her
  * own words. Without a
@@ -81,7 +81,7 @@ export const MemoryText: React.FC<MemoryTextProps> = ({
         push(body, part.slice(at));
     }
     return (
-        <Tag data-testid="memory-text" data-voice={voice} lang="ja" className={cn('whitespace-pre-wrap', className)}>
+        <Tag data-testid="memory-text" data-voice={voice} lang="ja" className={cn('whitespace-pre-wrap break-words', className)}>
             {body}
         </Tag>
     );

@@ -1,10 +1,43 @@
 import multiprocessing
+from sys import argv as _argv
 
 multiprocessing.freeze_support()
+
+
+def _run_updater_self_check(argv: list[str]) -> None:
+    """Exit 0 / 1 after checking the update signature verifier, if asked to.
+
+    Does nothing unless ``--self-check-updater`` is in ``argv``. With the flag,
+    runs ``release_signing.self_check()`` and ends the process (``os._exit``) with
+    code 0 when it passes and 1 on any exception. The Windows build runs the
+    frozen app this way (tooling/windows/build_windows.py). The call sits right
+    after ``freeze_support()``, before the pywebview and backend imports and
+    before ``main()``: no window, tray, single-instance mutex, socket, server,
+    logging or network is touched. Writes nothing to stdout or stderr (a
+    windowed executable has none): the exit code is the result.
+    """
+    if "--self-check-updater" not in argv:
+        return
+    import os
+
+    try:
+        from backend.services import release_signing
+
+        release_signing.self_check()
+    except Exception:
+        os._exit(1)
+    os._exit(0)
+
+
+_run_updater_self_check(_argv)
 
 import webview  # noqa: E402
 
 webview.settings["ALLOW_DOWNLOADS"] = True
+# New-window requests open in the browser, never in a SakaDesk window. nav_guard
+# replaces pywebview's handler (and filters schemes); this keeps that behaviour
+# should the guard not install.
+webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
 import asyncio  # noqa: E402
 import threading  # noqa: E402
 import uvicorn  # noqa: E402
@@ -14,6 +47,9 @@ import socket  # noqa: E402
 import traceback  # noqa: E402
 import time  # noqa: E402
 import json  # noqa: E402
+import hmac  # noqa: E402
+import secrets  # noqa: E402
+import urllib.error  # noqa: E402
 import urllib.request  # noqa: E402
 import ctypes  # noqa: E402
 import platform  # noqa: E402
@@ -24,6 +60,7 @@ from typing import Any, Callable  # noqa: E402
 # Explicit imports to ensure PyInstaller finds them
 from backend.main import app  # noqa: E402
 from backend.services.platform import get_logs_dir, get_app_data_dir  # noqa: E402
+from backend.services import api_auth  # noqa: E402
 from backend.services import window_geometry  # noqa: E402
 from backend.services import desktop_bridge  # noqa: E402
 from backend.services import session_alert  # noqa: E402
@@ -33,6 +70,7 @@ from backend.services.app_identity import (  # noqa: E402
 )
 from backend.services import settings_store  # noqa: E402
 from backend.services import autostart  # noqa: E402
+import host_js  # noqa: E402
 from backend.services.i18n import get_strings, resolve_ui_language  # noqa: E402
 from backend.services.notification_planner import UiState  # noqa: E402
 from backend.services.tray_tooltip import refresh_tray_tooltip  # noqa: E402
@@ -41,6 +79,7 @@ from tray import TrayController  # noqa: E402
 from call_popup_window import CallPopupWindow  # noqa: E402
 from window_chrome import make_title_bar_handler  # noqa: E402
 from window_diagnostics import attach_window_diagnostics  # noqa: E402
+import nav_guard  # noqa: E402
 from backend.services.desktop_runtime import harden_frozen_windows  # noqa: E402
 
 # Setup logging
@@ -71,8 +110,12 @@ KEEP_ALIVE_TIMEOUT_S = 600
 # Global reference so cleanup can signal graceful shutdown
 _uvicorn_server: uvicorn.Server | None = None
 
-# Set by the tray's Quit item (and the session-end guard) so the closing handler
-# lets the window close.
+# True once the app is quitting. Set by the tray's Quit item, by the
+# session-end guard (Windows shutdown, logoff, installer close) and by main()
+# right after the GUI loop returns. Read by the closing handler (lets the
+# window close), the toast-click handlers (open chat, memories, login: they
+# touch no window), the call popup (same) and the tray-hint guard (sends no
+# hint).
 _quitting = False
 
 # How long the one-time tray hint waits before sending, so the session-end guard
@@ -82,7 +125,12 @@ TRAY_HINT_GUARD_DELAY_S = 0.5
 
 
 def _mark_quitting() -> None:
-    """Remember that the app is quitting, so the closing handler lets it close."""
+    """Remember that the app is quitting.
+
+    Called by the tray's Quit item, the session-end guard and main() after the
+    GUI loop returns. The closing handler, the toast-click handlers, the call
+    popup and the tray-hint guard read the flag (see ``_quitting``).
+    """
     global _quitting
     _quitting = True
 
@@ -229,10 +277,13 @@ def _focus_existing_window() -> None:
     _focus_window(None)
 
 
-def make_open_chat_handler(window, focus_fn):
+def make_open_chat_handler(
+    window, focus_fn, is_quitting: Callable[[], bool] = lambda: False
+):
     """Build the toast-click handler that brings ``window`` forward on a chat.
 
-    The handler runs on a WinRT thread. It shows the window (never
+    In production ``desktop_bridge`` runs the handler on a daemon thread it
+    starts for the click; the click waits at most ``CLICK_TIMEOUT_S``. It shows the window (never
     ``window.restore()``, which would un-maximize it), calls
     ``focus_fn(hwnd)`` with the window's own handle (or None), then asks the
     frontend to navigate via ``window.__sakadeskOpenChat``. The payload is the
@@ -240,22 +291,32 @@ def make_open_chat_handler(window, focus_fn):
     when one is given. The script returns whether that function existed: it
     logs ``notify_open_chat`` (service, is_group_chat, has_target,
     ``delivered=True``) or ``notify_open_chat_failed`` with
-    ``reason=not_ready`` (frontend not mounted yet) or ``error_type``.
-    It never raises. Names and paths are never logged.
+    ``reason=not_ready`` (frontend not mounted yet) or ``error_type`` (plus
+    ``js_error``, the page error's name or ``other``, when the page script threw).
+    It never raises. Names and paths are never logged. The payload reaches the
+    page percent-encoded (``host_js.js_value``), so no value can break out of
+    the script, and the call needs no ``eval`` (``host_js``).
+    While the app is quitting (``is_quitting()``) it logs ``reason=quitting``
+    and touches no window: the WebView may already be torn down.
     """
 
     def handler(target, message_id: int | None = None) -> None:
+        if is_quitting():
+            logger.info(
+                "notify_open_chat_failed", service=target.service, reason="quitting"
+            )
+            return
         try:
             window.show()
             focus_fn(_native_hwnd(window))
             fields = asdict(target)
             if message_id is not None:
                 fields["message_id"] = message_id
-            payload = json.dumps(fields, ensure_ascii=False)
-            delivered = window.evaluate_js(
+            delivered = host_js.run(
+                window,
                 "window.__sakadeskOpenChat ? (window.__sakadeskOpenChat("
-                + payload
-                + "), true) : false"
+                + host_js.js_value(fields)
+                + "), true) : false",
             )
             if delivered is True:
                 logger.info(
@@ -276,12 +337,15 @@ def make_open_chat_handler(window, focus_fn):
                 "notify_open_chat_failed",
                 service=getattr(target, "service", None),
                 error_type=type(e).__name__,
+                **host_js.error_fields(e),
             )
 
     return handler
 
 
-def make_open_login_handler(window, focus_fn):
+def make_open_login_handler(
+    window, focus_fn, is_quitting: Callable[[], bool] = lambda: False
+):
     """Build the "log in again" toast-click handler: show ``window``, open the login.
 
     Like :func:`make_open_chat_handler`: shows the window (never ``restore()``),
@@ -289,17 +353,26 @@ def make_open_login_handler(window, focus_fn):
     login dialog via ``window.__sakadeskOpenLogin(service)``, which returns
     whether it did. Logs ``notify_open_login`` (``service``, ``delivered=True``)
     or ``notify_open_login_failed`` with ``reason=not_ready`` (frontend not
-    mounted, or an unknown service) or ``error_type``. It never raises.
+    mounted, or an unknown service) or ``error_type`` (plus ``js_error`` when the
+    page script threw). It never raises. The
+    payload reaches the page percent-encoded (``host_js.js_value``), so no value
+    can break out of the script, and the call needs no ``eval`` (``host_js``).
+    While the app is quitting (``is_quitting()``) it logs ``reason=quitting``
+    and touches no window: the WebView may already be torn down.
     """
 
     def handler(service: str) -> None:
+        if is_quitting():
+            logger.info("notify_open_login_failed", service=service, reason="quitting")
+            return
         try:
             window.show()
             focus_fn(_native_hwnd(window))
-            delivered = window.evaluate_js(
+            delivered = host_js.run(
+                window,
                 "window.__sakadeskOpenLogin ? window.__sakadeskOpenLogin("
-                + json.dumps(service)
-                + ") === true : false"
+                + host_js.js_value(service)
+                + ") === true : false",
             )
             if delivered is True:
                 logger.info("notify_open_login", service=service, delivered=True)
@@ -312,6 +385,7 @@ def make_open_login_handler(window, focus_fn):
                 "notify_open_login_failed",
                 service=service,
                 error_type=type(e).__name__,
+                **host_js.error_fields(e),
             )
 
     return handler
@@ -328,37 +402,46 @@ def _memories_target(route: object) -> str:
     )
 
 
-def make_open_memories_handler(window, focus_fn):
+def make_open_memories_handler(
+    window, focus_fn, is_quitting: Callable[[], bool] = lambda: False
+):
     """Build the Memories toast-click handler: show ``window``, open Memories.
 
     Like :func:`make_open_login_handler`: shows the window (never
     ``restore()``), calls ``focus_fn(hwnd)``, then asks the frontend to open
     Memories via ``window.__sakadeskOpenMemories({"service", "route"})``,
-    which returns whether it navigated. The payload is JSON-encoded, so a
-    member path can never break out of the script. Logs
+    which returns whether it navigated. The payload reaches the page
+    percent-encoded (``host_js.js_value``), so no value can break out of the
+    script, and the call needs no ``eval`` (``host_js``). Logs
     ``notify_open_memories`` (``service``, ``target`` = page code,
     ``delivered=True``) or ``notify_open_memories_failed`` with
     ``reason=refused`` (the frontend answered false: a malformed link, an
     unknown group or onboarding; its own breadcrumb has the exact code),
-    ``reason=not_ready`` (the bridge is not mounted yet) or ``error_type``.
-    Never logs the route; never raises.
+    ``reason=not_ready`` (the bridge is not mounted yet) or ``error_type``
+    (plus ``js_error`` when the page script threw). Never logs the route;
+    never raises.
+    While the app is quitting (``is_quitting()``) it logs ``reason=quitting``
+    and touches no window: the WebView may already be torn down.
     """
 
     def handler(service: str, route: dict) -> None:
         target = _memories_target(route)
+        if is_quitting():
+            logger.info(
+                "notify_open_memories_failed",
+                service=service,
+                target=target,
+                reason="quitting",
+            )
+            return
         try:
             window.show()
             focus_fn(_native_hwnd(window))
-            payload = json.dumps(
-                {"service": service, "route": route}, ensure_ascii=False
-            )
-            # json.dumps leaves "</" alone; escape it so the payload can never
-            # close a <script> element wherever the string ends up.
-            payload = payload.replace("</", "<\\/")
-            delivered = window.evaluate_js(
+            delivered = host_js.run(
+                window,
                 "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories("
-                + payload
-                + ") === true : null"
+                + host_js.js_value({"service": service, "route": route})
+                + ") === true : null",
             )
             if delivered is True:
                 logger.info(
@@ -380,6 +463,7 @@ def make_open_memories_handler(window, focus_fn):
                 service=service,
                 target=target,
                 error_type=type(e).__name__,
+                **host_js.error_fields(e),
             )
 
     return handler
@@ -858,8 +942,54 @@ def _get_port_file():
     return get_app_data_dir() / ".port"
 
 
+def _bind_option() -> int:
+    """Socket option for the backend listener.
+
+    Windows: SO_EXCLUSIVEADDRUSE, so no other socket — including one of another
+    Windows account — can bind SakaDesk's address and answer the window in its
+    place (security audit 2026-11-13). Elsewhere SO_REUSEADDR: Linux and macOS
+    never let a second socket take over an active listener.
+    """
+    return getattr(socket, "SO_EXCLUSIVEADDRUSE", socket.SO_REUSEADDR)
+
+
+def _app_url(port: int, query: str = "") -> str:
+    """URL of a SakaDesk window, with the launch token in the fragment.
+
+    The fragment never reaches the server, the logs or a command line. The page
+    moves it into sessionStorage and strips it on load
+    (frontend/src/core/api/launchAuth.ts). Never log this URL.
+
+    Accepted risk (security audit 2026-11-13): WebView2 keeps its history
+    database in the user's profile and may record this first URL, fragment
+    included. The token is per launch, so a recorded value is dead once the app
+    exits.
+    """
+    return f"http://{HOST}:{port}/{query}#t={api_auth.LAUNCH_TOKEN}"
+
+
+def _install_navigation_guard(
+    port: int,
+    *,
+    is_windows: bool | None = None,
+    install: Callable[..., bool] = nav_guard.install,
+) -> bool:
+    """Keep the main window and the call popup on the app origin (``nav_guard``).
+
+    Windows only (pywebview's EdgeChromium backend); call before
+    ``webview.start()``. Elsewhere logs ``nav_guard`` with ``installed=False``
+    and ``reason="platform"``. Returns whether the guard is in place.
+    """
+    if is_windows is None:
+        is_windows = platform.system() == "Windows"
+    if not is_windows:
+        logger.info("nav_guard", installed=False, reason="platform")
+        return False
+    return install(host=HOST, port=port)
+
+
 def create_server_socket() -> tuple:
-    """Create a bound server socket, reusing the saved port when it's free.
+    """Create a bound, listening server socket, reusing the saved port when it's free.
 
     Persistent app state now lives in the backend SQLite app-state store, so a
     port change no longer loses anything (the store is read at startup regardless
@@ -870,24 +1000,27 @@ def create_server_socket() -> tuple:
     can read it. Without the reuse the app would take a fresh port (a fresh, empty
     origin) and the migration would find nothing to carry over.
 
-    SO_REUSEADDR lets it rebind a port still in TCP TIME_WAIT after a quick
-    close-reopen. A fast reopen while the prior instance still holds the port
-    (`_port_is_active`) still shifts to a new port, but that is now harmless.
+    On Windows the socket is bound with SO_EXCLUSIVEADDRUSE (see _bind_option).
+    If the saved port cannot be bound exclusively (for example another socket
+    still holds it), a fresh port is allocated and written to the port file,
+    replacing the saved port for later launches.
 
     TODO(next release): once upgraders have migrated, drop this reuse entirely and
     bind an ephemeral port (this was briefly done, then reverted for the migration
     window above).
 
-    Returns (port, socket) — bound but NOT listening; uvicorn calls listen().
+    Returns (port, socket) — bound AND listening, so no other socket can win the
+    address between bind and uvicorn's start.
     """
     port_file = _get_port_file()
 
     def _port_is_active(port: int) -> bool:
         """Check if something is actually listening on the port.
 
-        SO_REUSEADDR on Windows allows bind() to succeed even when another
-        process is actively listening — so bind() alone can't tell us if
-        the port is truly free.  A TCP connect check catches this.
+        On Windows the listener uses SO_EXCLUSIVEADDRUSE (see _bind_option), so
+        bind() on a port a live listener holds fails anyway. The TCP connect check
+        still detects a previous SakaDesk instance that is still listening on the
+        saved port, so we move to a fresh port instead of failing the bind.
         """
         try:
             conn = socket.create_connection((HOST, port), timeout=0.5)
@@ -897,11 +1030,12 @@ def create_server_socket() -> tuple:
             return False
 
     def _try_bind(port: int):
-        """Try to bind a SO_REUSEADDR socket to the given port."""
+        """Try to bind and listen on the given port; None (socket closed) on OSError."""
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+            sock.setsockopt(socket.SOL_SOCKET, _bind_option(), 1)
             sock.bind((HOST, port))
+            sock.listen(128)
             return sock
         except OSError:
             sock.close()
@@ -911,47 +1045,78 @@ def create_server_socket() -> tuple:
     if port_file.exists():
         try:
             saved = int(port_file.read_text(encoding="utf-8").strip())
-            if 1024 < saved < 65536:
-                # On Windows, SO_REUSEADDR lets bind() succeed even if an old
-                # process is still listening. Check with a connect() first.
-                if not _port_is_active(saved):
-                    sock = _try_bind(saved)
-                    if sock is not None:
-                        return saved, sock
         except (ValueError, OSError):
-            pass  # Corrupt file or port in use — allocate new one
+            logger.info("server_port_saved_unreadable")  # corrupt or unreadable file
+        else:
+            if not 1024 < saved < 65536:
+                logger.info("server_port_saved_out_of_range")
+            # A previous SakaDesk instance may still be listening on the saved
+            # port: connect first and move to a fresh port if so.
+            elif _port_is_active(saved):
+                logger.info("server_port_saved_in_use")
+            else:
+                sock = _try_bind(saved)
+                if sock is not None:
+                    return saved, sock
+                logger.info("server_port_saved_unavailable")
 
     # Allocate a new port and persist it
     sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    sock.bind((HOST, 0))
+    try:
+        sock.setsockopt(socket.SOL_SOCKET, _bind_option(), 1)
+        sock.bind((HOST, 0))
+        sock.listen(128)
+    except OSError:
+        sock.close()
+        logger.error("server_port_allocate_failed")
+        raise  # startup cannot continue without a socket
     port = sock.getsockname()[1]
+    logger.info("server_port_allocated")
     try:
         port_file.write_text(str(port), encoding="utf-8")
     except OSError:
-        pass  # Non-fatal — app still works, just may not persist port
+        logger.warning("server_port_persist_failed")  # non-fatal
     return port, sock
 
 
 def wait_for_server(
     host: str, port: int, timeout: float = SERVER_STARTUP_TIMEOUT
 ) -> bool:
-    """Wait for the server to respond to HTTP requests.
+    """Wait until SakaDesk's own backend answers on the port.
 
-    Uses the /health endpoint instead of raw TCP connect — this ensures
-    the ASGI app is fully loaded and can serve routes, not just that the
-    socket is listening. Prevents the 404 flash on second launch where
-    WebView2 restores its cached session before uvicorn is ready.
+    Polls /health with a fresh nonce and accepts only a response carrying
+    ``api_auth.health_proof(nonce)``, HMAC(launch token, "health:" + nonce):
+    /health proves the ASGI app is loaded (no 404 flash on second launch), and
+    the proof proves the answering process is this backend and not a squatter
+    on the port (security audit 2026-11-13).
+    Any answer that is not a valid proof (wrong or missing proof, non-JSON or
+    non-object body, HTTP error status) logs ``server_identity_mismatch`` once and
+    polling continues; connection refusals and timeouts retry silently. Returns
+    False when ``timeout`` elapses.
     """
-    url = f"http://{host}:{port}/health"
+    nonce = secrets.token_urlsafe(24)
+    expected = api_auth.health_proof(nonce)
+    url = f"http://{host}:{port}/health?nonce={nonce}"
+    warned = False
     start = time.time()
     while time.time() - start < timeout:
+        answered = False  # something replied, but not with a valid proof
         try:
-            resp = urllib.request.urlopen(url, timeout=1)
-            if resp.status == 200:
-                return True
+            with urllib.request.urlopen(url, timeout=1) as resp:
+                answered = True
+                body = json.loads(resp.read().decode("utf-8"))
+                if resp.status == 200 and isinstance(body, dict):
+                    if hmac.compare_digest(str(body.get("proof", "")), expected):
+                        return True
+        except urllib.error.HTTPError:
+            answered = True  # an HTTP error status is an answer, not "not up yet"
+        except ValueError:
+            answered = True  # non-JSON / undecodable body
         except Exception:
-            pass
+            answered = False  # refused / timeout: retry silently
+        if answered and not warned:
+            logger.warning("server_identity_mismatch")
+            warned = True
         time.sleep(0.1)
     return False
 
@@ -969,11 +1134,10 @@ def build_server_config(asgi_app: Callable[..., Any]) -> uvicorn.Config:
 
 
 def start_server(sock: socket.socket) -> None:
-    """Start uvicorn with a pre-bound SO_REUSEADDR socket.
+    """Start uvicorn with a pre-bound, listening socket.
 
-    By passing our own socket, we bypass asyncio's default socket creation
-    which uses SO_EXCLUSIVEADDRUSE on Windows — that flag rejects ports
-    in TIME_WAIT state and would force a new port on quick restarts.
+    By passing our own pre-bound, already-listening socket (see
+    create_server_socket), uvicorn serves on exactly the address we claimed.
     """
     global _uvicorn_server
     config = build_server_config(app)
@@ -1042,7 +1206,7 @@ def _main_window_kwargs(geom: dict, port: int, background: bool) -> dict[str, An
     logger.info("window_min_size", width=min_size[0], height=min_size[1])
     return {
         "title": "SakaDesk",
-        "url": f"http://{HOST}:{port}",
+        "url": _app_url(port),
         "width": geom["width"],
         "height": geom["height"],
         "x": geom.get("x"),
@@ -1051,6 +1215,9 @@ def _main_window_kwargs(geom: dict, port: int, background: bool) -> dict[str, An
         "min_size": min_size,
         "background_color": "#F0F2F5",
         "hidden": background,
+        # pywebview's default (False) injects an inline <style> the app CSP
+        # (style-src 'self') refuses; index.css sets body user-select/cursor.
+        "text_select": True,
     }
 
 
@@ -1139,7 +1306,8 @@ def main() -> None:
             _focus_existing_window()
             os._exit(0)
 
-        # Create server socket with SO_REUSEADDR for stable port across restarts
+        # Bound and listening before uvicorn starts: the saved port when it can be
+        # bound (exclusively on Windows, see _bind_option), otherwise a fresh one
         port, sock = create_server_socket()
 
         # Start API server with the pre-bound socket
@@ -1209,17 +1377,22 @@ def main() -> None:
             logger.info("Window closing", geometry=geom)
             _save_window_geometry(geom)
 
-        # Toast click -> show, focus and open that chat (runs on a WinRT thread).
+        # Toast click -> show, focus and open that chat (runs on a daemon thread
+        # started by desktop_bridge; the click waits at most CLICK_TIMEOUT_S).
         desktop_bridge.set_open_chat_handler(
-            make_open_chat_handler(window, _focus_window)
+            make_open_chat_handler(window, _focus_window, is_quitting=lambda: _quitting)
         )
         # "Log in again" toast click -> show, focus and open that login dialog.
         desktop_bridge.set_open_login_handler(
-            make_open_login_handler(window, _focus_window)
+            make_open_login_handler(
+                window, _focus_window, is_quitting=lambda: _quitting
+            )
         )
         # Memories toast click -> show, focus and open Memories at the route.
         desktop_bridge.set_open_memories_handler(
-            make_open_memories_handler(window, _focus_window)
+            make_open_memories_handler(
+                window, _focus_window, is_quitting=lambda: _quitting
+            )
         )
 
         show_window = make_open_window_handler(window, _focus_window)
@@ -1230,7 +1403,7 @@ def main() -> None:
         if platform.system() == "Windows":
             popup = CallPopupWindow(
                 main_window=window,
-                url=f"http://{HOST}:{port}/?view=call-popup",
+                url=_app_url(port, "?view=call-popup"),
                 is_quitting=lambda: _quitting,
             )
             desktop_bridge.set_call_popup_host(popup)
@@ -1288,6 +1461,9 @@ def main() -> None:
             logger.warning("background_start_without_tray")
             window.show()
 
+        # Both windows stay on the app origin; other web links open in the browser.
+        _install_navigation_guard(port)
+
         # Start native GUI loop
         # private_mode=False: persist localStorage (ToS, read states, language)
         # storage_path: store webview data in app data dir alongside settings
@@ -1297,7 +1473,12 @@ def main() -> None:
             storage_path=str(get_app_data_dir() / "webview"),
         )
 
-        # Cleanup AFTER webview closes but BEFORE process exits.
+        # Cleanup AFTER webview closes but BEFORE process exits. The window may
+        # have closed without Quit (no tray, close_to_tray off, unreadable
+        # settings), so mark quitting now: a late toast click must not reach a
+        # destroyed window. Only the closing handler, the toast-click handlers, the
+        # call popup and the tray-hint guard read the flag.
+        _mark_quitting()
         desktop_bridge.set_call_popup_host(None)
         tray.stop()
 

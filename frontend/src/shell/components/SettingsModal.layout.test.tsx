@@ -16,7 +16,7 @@ const settings = { output_dir: '/out', auto_sync_enabled: true, sync_interval_mi
 
 function renderModal(onClose = vi.fn(), onSaveSettings = vi.fn().mockResolvedValue(true)) {
     render(
-        <SettingsModal appSettings={settings} outputDirInput="/out" setOutputDirInput={() => {}} onSaveSettings={onSaveSettings}
+        <SettingsModal appSettings={settings} outputDirInput="/out" onSelectFolder={() => {}} onSaveSettings={onSaveSettings}
             onClose={onClose} activeService="hinatazaka46" onVerifyAndFix={() => {}} onDeepResync={() => {}} />,
     );
     return { onClose, onSaveSettings };

@@ -53,7 +53,7 @@ export const LetterRow: React.FC<LetterRowProps> = ({ letter, avatarUrl, userNam
                         <img src={imageUrl} alt="" draggable={false} className="h-full w-full object-cover" onError={() => setImageFailed(true)} />
                     </button>
                 ) : (
-                    <Card lang={letter.text ? 'ja' : undefined} className="max-w-xs whitespace-pre-wrap p-3 text-body text-primary">
+                    <Card lang={letter.text ? 'ja' : undefined} className="max-w-xs whitespace-pre-wrap break-words p-3 text-body text-primary">
                         {letter.text || t('sentLetters.noTextContent')}
                     </Card>
                 )}

@@ -1,3 +1,5 @@
+import pytest
+
 from backend.api.report import _redact_path, _redact_nickname
 
 
@@ -23,11 +25,10 @@ class TestRedactPath:
         assert result == "File at /[REDACTED]\\AppData\\Local"
 
     def test_redacts_windows_forward_slash_path(self):
-        """Redacts Windows C:/Users/username paths."""
+        """Redacts Windows C:/Users/username paths, drive letter included."""
         text = "File at C:/Users/john/AppData/Local"
-        result = _redact_path(text, "john")
-        # The /Users/john pattern matches first, leaving C: prefix intact
-        assert result == "File at C:/[REDACTED]/AppData/Local"
+        result = _redact_path(text, "john", home="")
+        assert result == "File at /[REDACTED]/AppData/Local"
 
     def test_case_insensitive(self):
         """Matching is case-insensitive for the username."""
@@ -35,11 +36,10 @@ class TestRedactPath:
         result = _redact_path(text, "john")
         assert result == "Path /[REDACTED]/file.txt and /[REDACTED]/other.txt"
 
-    def test_noop_when_username_empty(self):
-        """Returns text unchanged when username is empty string."""
+    def test_noop_when_username_and_home_are_empty(self):
+        """Returns text unchanged when neither a login name nor a home folder is known."""
         text = "/home/john/documents/file.txt"
-        result = _redact_path(text, "")
-        assert result == text
+        assert _redact_path(text, "", home="") == text
 
     def test_preserves_text_without_paths(self):
         """Returns text unchanged when no matching paths exist."""
@@ -518,3 +518,28 @@ def test_an_unreadable_output_dir_logs_the_error_type_not_its_text(tmp_path):
     assert ev["error_type"] == "OSError"
     assert "error" not in ev
     assert secret not in str(ev)
+
+
+@pytest.mark.parametrize("saved", ["", "   ", 5])
+def test_redaction_covers_the_default_folder_for_an_unusable_value(tmp_path, saved):
+    """Sync logs the default folder when the saved value is empty; redact that."""
+    import json
+    from unittest.mock import patch
+
+    from backend.api import report
+    from backend.services import settings_store
+
+    settings_store._last_good_files.clear()
+    path = tmp_path / "settings.json"
+    path.write_text(json.dumps({"output_dir": saved}), encoding="utf-8")
+    default = tmp_path / "default-archive"
+    with (
+        patch("backend.api.report.get_settings_path", return_value=path),
+        patch("backend.api.report.get_default_output_dir", return_value=default),
+    ):
+        got = report._get_output_dir()
+    settings_store._last_good_files.clear()
+    assert got == str(default)
+    assert report._redact_output_dir(f"failed in {default}/x", got) == (
+        "failed in [REDACTED_DIR]/x"
+    )

@@ -73,6 +73,7 @@ from backend.services.archive_urls import (
     resolve_within,
 )
 from backend.services.letters_local import read_local_letters
+from backend.services.log_throttle import LogThrottle
 from backend.services.memories import index as mi
 from backend.services.memories import oshi as oshi_mod
 from backend.services.memories.facts import (
@@ -182,10 +183,29 @@ def sort_people(
 # --- media ---------------------------------------------------------------------------
 
 
+_media_refusal_logs = LogThrottle(limit=5, window_s=3600.0)
+"""Budget for ``memories_media_file_refused``: album views read thousands of facts."""
+
+
 def _media_parts(media_file: str | None) -> list[str]:
-    if not media_file:
+    """The ``/``-separated parts of a service-relative pysaka ``media_file``.
+
+    Empty for no file, and for a value that could leave the service folder:
+    a ``.`` or ``..`` part, or a ``:`` (a drive such as ``C:`` or an
+    alternate data stream). Leading and repeated separators are dropped, so a
+    UNC or rooted value becomes relative. A refused value logs
+    ``memories_media_file_refused`` (``reason=not_plain``) through a throttle
+    (security audit 2026-11-13).
+    """
+    if not isinstance(media_file, str) or not media_file:
         return []
-    return [p for p in media_file.replace("\\", "/").split("/") if p]
+    parts = [p for p in media_file.replace("\\", "/").split("/") if p]
+    if any(p in (".", "..") or ":" in p for p in parts):
+        _media_refusal_logs.log(
+            logger.warning, "memories_media_file_refused", reason="not_plain"
+        )
+        return []
+    return parts
 
 
 def media_url_of(service: str, media_file: str | None) -> str | None:
@@ -200,7 +220,10 @@ def media_url_for(service: str, fact: Fact) -> str | None:
 
 
 def media_file_for(fact: Fact) -> str | None:
-    """The fact's service-relative ``media_file`` with ``/`` separators."""
+    """The fact's service-relative ``media_file`` with ``/`` separators.
+
+    ``None`` when there is none or it is not plain-relative (:func:`_media_parts`).
+    """
     parts = _media_parts(fact.media_file)
     return "/".join(parts) if parts else None
 

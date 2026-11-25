@@ -3,7 +3,7 @@ import { Download, ArrowUpCircle, X, AlertCircle } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
 import { Spinner } from '../../design/primitives';
-import { useUpgradeStore, upgradeStage, openReleasePage } from '../upgrade/upgradeStore';
+import { useUpgradeStore, upgradeStage, upgradeErrorKey, openReleasePage } from '../upgrade/upgradeStore';
 
 // SVG progress ring constants (hoisted to avoid recomputation on every render)
 const RING_RADIUS = 18;
@@ -83,7 +83,10 @@ export function UpgradeIcon() {
             case 'downloading': return `${t('update.downloading', { version })} ${Math.round(progress)}%`;
             case 'ready': return t('update.readyToInstall', { version });
             case 'launching': return t('update.installing');
-            case 'error': return `${t('update.upgradeFailed')} ${upgradeStatus?.error || ''}`;
+            case 'error': {
+                const errorKey = upgradeErrorKey(upgradeStatus?.error_code);
+                return errorKey ? t(errorKey) : `${t('update.upgradeFailed')} ${upgradeStatus?.error || ''}`;
+            }
             default: return '';
         }
     })();

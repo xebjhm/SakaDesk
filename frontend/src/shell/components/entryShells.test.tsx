@@ -39,7 +39,7 @@ describe('entry-flow shells (content is D2d)', () => {
     it('setup is not dismissible: Escape (unclaimed) and a backdrop click leave it open', () => {
         const onComplete = vi.fn();
         render(
-            <SetupWizard outputDirInput="C:\\データ" setOutputDirInput={vi.fn()} setupBlogFullBackup={false}
+            <SetupWizard outputDirInput="C:\\データ" setupBlogFullBackup={false}
                 setSetupBlogFullBackup={vi.fn()} onSelectFolder={vi.fn()} onComplete={onComplete} isValid />,
         );
         expect(escapeIsClaimed()).toBe(false);
@@ -61,7 +61,7 @@ describe('entry-flow shells (content is D2d)', () => {
 
     it('the setup wizard is a named modal dialog', () => {
         render(
-            <SetupWizard outputDirInput="C:\\データ" setOutputDirInput={vi.fn()} setupBlogFullBackup={false}
+            <SetupWizard outputDirInput="C:\\データ" setupBlogFullBackup={false}
                 setSetupBlogFullBackup={vi.fn()} onSelectFolder={vi.fn()} onComplete={vi.fn()} isValid />,
         );
         expect(screen.getByRole('dialog', { name: /Welcome/i })).toHaveAttribute('aria-modal', 'true');

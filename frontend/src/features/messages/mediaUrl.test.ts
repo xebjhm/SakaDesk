@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { AVATAR_WIDTHS, avatarWidthFor, buildMediaUrl, resizedAvatarUrl } from './mediaUrl';
+import { AVATAR_WIDTHS, avatarWidthFor, buildMediaUrl, chatPictureThumbWidth, resizedAvatarUrl } from './mediaUrl';
 
 describe('buildMediaUrl', () => {
     it('encodes the service and each path segment, keeping slashes', () => {
@@ -115,5 +115,34 @@ describe('thumbnailUrl / thumbWidthFor', () => {
         expect(thumbWidthFor(200, 2, { large: true })).toBe(480);
         expect(thumbWidthFor(900, 2, { large: true })).toBe(640);
         expect(thumbWidthFor(150, 2, { large: false })).toBe(320);
+    });
+});
+
+describe('chatPictureThumbWidth', () => {
+    it('uses the pre-generated 480 when it covers the bubble box at the screen density', () => {
+        // 800×600 fits 320×240: the long side is 320 CSS px.
+        expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 1)).toBe(480);
+        expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 1.25)).toBe(480);
+        expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 1.5)).toBe(480);
+        // 600×800 fits 320×427: the long side is 427 CSS px.
+        expect(chatPictureThumbWidth(600, 800, 'p/1.jpg', 1)).toBe(480);
+    });
+
+    it('keeps the original when the box needs more than 480 px (no 640, no upscale)', () => {
+        expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 2)).toBeUndefined();
+        expect(chatPictureThumbWidth(800, 600, 'p/1.jpg', 2.5)).toBeUndefined();
+        expect(chatPictureThumbWidth(600, 800, 'p/1.jpg', 1.25)).toBeUndefined();
+        expect(chatPictureThumbWidth(600, 800, 'p/1.jpg', 1.5)).toBeUndefined();
+    });
+
+    it('keeps the original when it is no larger than the thumbnail', () => {
+        expect(chatPictureThumbWidth(400, 300, 'p/1.jpg', 1)).toBeUndefined();
+        expect(chatPictureThumbWidth(480, 360, 'p/1.jpg', 1)).toBeUndefined();
+    });
+
+    it('keeps the original for GIFs and for pictures without dimensions', () => {
+        expect(chatPictureThumbWidth(800, 600, 'p/1.GIF', 1)).toBeUndefined();
+        expect(chatPictureThumbWidth(null, 600, 'p/1.jpg', 1)).toBeUndefined();
+        expect(chatPictureThumbWidth(800, 600, null, 1)).toBeUndefined();
     });
 });

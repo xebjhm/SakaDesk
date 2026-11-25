@@ -4,7 +4,11 @@ import { toLocalDateStr, formatDatePillLabel, fromLocalDateStr, toValidDate, for
 // SD-FE-CORE-02: bucket/match by LOCAL date, matching what message bubbles show.
 describe('toLocalDateStr', () => {
   describe('in a fixed JST (+09:00) local timezone', () => {
+    // The suite runs with TZ=UTC; restore that value afterwards. Deleting it
+    // would fall back to the machine's own zone and shift later tests' dates.
+    let previousTZ: string | undefined;
     beforeAll(() => {
+      previousTZ = process.env.TZ;
       // Freeze the environment's timezone-offset so getHours/getDate reflect JST
       // regardless of the CI machine's zone. jsdom respects the process TZ, but
       // to be robust we shift Date via a spy on the offset-sensitive getters is
@@ -12,7 +16,8 @@ describe('toLocalDateStr', () => {
       process.env.TZ = 'Asia/Tokyo';
     });
     afterAll(() => {
-      delete process.env.TZ;
+      if (previousTZ === undefined) delete process.env.TZ;
+      else process.env.TZ = previousTZ;
     });
 
     it('rolls a late-UTC timestamp forward to the local (next) day', () => {

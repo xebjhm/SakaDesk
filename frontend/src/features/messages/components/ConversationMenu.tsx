@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { MoreVertical, Mail, Image, Calendar, Palette, Star } from 'lucide-react';
+import { MoreVertical, Mail, Image, Calendar, Palette, Star, Eye } from 'lucide-react';
 import type { Message, BackgroundSettings } from '../../../types';
 import type { Letter } from '../letters';
 import type { LettersStatus } from '../hooks/useRoomExtras';
@@ -40,6 +40,10 @@ interface ChatHeaderMenuProps {
     onJumpToLetter: (id: number) => void;
     /** True on a light header (Sakurazaka): neutral hover on the sheet; otherwise the glass over the gradient. */
     light?: boolean;
+    /** Unread messages in the room; 0 keeps "Reveal all unread" focusable with a reason. */
+    unreadCount?: number;
+    /** Opens the reveal-all confirm (MessagesFeature's ConfirmDialog). */
+    onRevealAll?: () => void;
 }
 
 type ModalType = 'letters' | 'media' | 'calendar' | 'background' | 'favorites' | null;
@@ -59,6 +63,8 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
     onOpenCalendar,
     onBackgroundChange,
     light = false,
+    unreadCount = 0,
+    onRevealAll,
 }) => {
     const { t } = useTranslation();
     const [showMenu, setShowMenu] = useState(false);
@@ -136,6 +142,20 @@ export const ConversationMenu: React.FC<ChatHeaderMenuProps> = ({
                                 {item.label}
                             </MenuItem>
                         ))}
+                        {onRevealAll && (
+                            <MenuItem
+                                // Neutral (R-e): the accents of the items above are grandfathered (DESIGN_SYSTEM §4).
+                                icon={<Eye className="h-4 w-4 text-secondary" />}
+                                disabledReason={unreadCount === 0 ? t('conversationMenu.revealAllNone') : undefined}
+                                logTarget="reveal_all"
+                                onClick={() => {
+                                    setShowMenu(false);
+                                    onRevealAll();
+                                }}
+                            >
+                                {t('conversationMenu.revealAll')}
+                            </MenuItem>
+                        )}
                     </Menu>
                 )}
             </div>

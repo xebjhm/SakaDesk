@@ -177,6 +177,14 @@ describe('MessageBubble component', () => {
     expect(link).toHaveAttribute('target', '_blank')
   })
 
+  it('opens a linked URL in the browser instead of navigating the window', () => {
+    const open = vi.spyOn(window, 'open').mockReturnValue(null)
+    render(<MessageBubble {...defaultProps} message={createMessage({ content: 'See https://example.com now' })} />)
+    expect(fireEvent.click(screen.getByRole('link'))).toBe(false)
+    expect(open).toHaveBeenCalledWith('https://example.com/', '_blank', 'noopener,noreferrer')
+    open.mockRestore()
+  })
+
   it('should render video message with video element', () => {
     const videoMessage = createMessage({
       type: 'video',

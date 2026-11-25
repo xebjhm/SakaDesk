@@ -14,13 +14,15 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
     class="mb-3"
   >
     <div
-      class="relative h-1 bg-control-off rounded-full overflow-hidden"
+      class="relative h-1 bg-control-off rounded-full overflow-hidden ring-offset-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent"
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
         style="width: 0%; background-color: var(--ds-accent);"
       />
       <input
+        aria-label="Playback position"
+        aria-valuetext="0:00 of 0:00"
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         max="100"
         min="0"
@@ -39,11 +41,13 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
         class="relative flex items-center"
       >
         <button
+          aria-label="Mute (M)"
           class="p-1.5 hover:bg-sunken hover:brightness-94 rounded-full transition-colors"
           title="Mute (M)"
           type="button"
         >
           <svg
+            aria-hidden="true"
             class="w-4 h-4 text-secondary"
             fill="none"
             height="24"
@@ -70,6 +74,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
           class="flex items-center overflow-hidden transition-all duration-200 ease-out w-0 ml-0 opacity-0"
         >
           <input
+            aria-label="Volume"
+            aria-valuetext="50%"
             class="w-full h-1 rounded-full appearance-none cursor-pointer"
             max="1"
             min="0"
@@ -82,11 +88,13 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for compact v
       </div>
     </div>
     <button
+      aria-label="Play"
       class="w-10 h-10 rounded-full shadow-pill flex items-center justify-center transition-colors shrink-0 hover:brightness-90"
       style="background-color: var(--ds-accent);"
       type="button"
     >
       <svg
+        aria-hidden="true"
         class="w-5 h-5 text-inverse fill-current ml-0.5"
         fill="none"
         height="24"
@@ -245,13 +253,15 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     class="mb-2"
   >
     <div
-      class="relative h-1 bg-sunken rounded-full overflow-hidden"
+      class="relative h-1 bg-sunken rounded-full overflow-hidden ring-offset-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent"
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
         style="width: 0%; background-color: var(--ds-accent);"
       />
       <input
+        aria-label="Playback position"
+        aria-valuetext="0:00 of 0:00"
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         max="100"
         min="0"
@@ -284,11 +294,13 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         class="relative flex items-center"
       >
         <button
+          aria-label="Mute (M)"
           class="p-1 hover:bg-sunken rounded-full transition-colors"
           title="Mute (M)"
           type="button"
         >
           <svg
+            aria-hidden="true"
             class="w-4 h-4 text-secondary"
             fill="none"
             height="24"
@@ -315,6 +327,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           class="flex items-center overflow-hidden transition-all duration-200 ease-out w-0 ml-0 opacity-0"
         >
           <input
+            aria-label="Volume"
+            aria-valuetext="50%"
             class="w-full h-1 rounded-full appearance-none cursor-pointer"
             max="1"
             min="0"
@@ -330,11 +344,14 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       class="flex items-center gap-2"
     >
       <button
+        aria-label="Back 5 seconds (←)"
         class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-sunken active:brightness-94 opacity-50 cursor-not-allowed"
         disabled=""
         title="Back 5 seconds (←)"
+        type="button"
       >
         <svg
+          aria-hidden="true"
           class="w-6 h-6 text-secondary"
           fill="none"
           height="24"
@@ -354,17 +371,20 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           />
         </svg>
         <span
+          aria-hidden="true"
           class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5"
         >
           5
         </span>
       </button>
       <button
+        aria-label="Play"
         class="w-12 h-12 rounded-full shadow-card flex items-center justify-center hover:shadow-sheet hover:scale-105 transition-all hover:brightness-90"
         style="background-color: var(--ds-accent);"
         type="button"
       >
         <svg
+          aria-hidden="true"
           class="w-6 h-6 text-inverse fill-current ml-0.5"
           fill="none"
           height="24"
@@ -382,11 +402,14 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         </svg>
       </button>
       <button
+        aria-label="Forward 5 seconds (→)"
         class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-sunken active:brightness-94 opacity-50 cursor-not-allowed"
         disabled=""
         title="Forward 5 seconds (→)"
+        type="button"
       >
         <svg
+          aria-hidden="true"
           class="w-6 h-6 text-secondary"
           fill="none"
           height="24"
@@ -406,6 +429,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           />
         </svg>
         <span
+          aria-hidden="true"
           class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5"
         >
           5
@@ -504,13 +528,15 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
     class="mb-2"
   >
     <div
-      class="relative h-1 bg-sunken rounded-full overflow-hidden"
+      class="relative h-1 bg-sunken rounded-full overflow-hidden ring-offset-0 has-[:focus-visible]:ring-2 has-[:focus-visible]:ring-accent"
     >
       <div
         class="absolute inset-y-0 left-0 rounded-full"
         style="width: 0%; background-color: var(--ds-accent);"
       />
       <input
+        aria-label="Playback position"
+        aria-valuetext="0:00 of 0:00"
         class="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
         max="100"
         min="0"
@@ -543,11 +569,13 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         class="relative flex items-center"
       >
         <button
+          aria-label="Mute (M)"
           class="p-1 hover:bg-sunken rounded-full transition-colors"
           title="Mute (M)"
           type="button"
         >
           <svg
+            aria-hidden="true"
             class="w-4 h-4 text-secondary"
             fill="none"
             height="24"
@@ -574,6 +602,8 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           class="flex items-center overflow-hidden transition-all duration-200 ease-out w-0 ml-0 opacity-0"
         >
           <input
+            aria-label="Volume"
+            aria-valuetext="50%"
             class="w-full h-1 rounded-full appearance-none cursor-pointer"
             max="1"
             min="0"
@@ -589,11 +619,14 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
       class="flex items-center gap-2"
     >
       <button
+        aria-label="Back 5 seconds (←)"
         class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-sunken active:brightness-94 opacity-50 cursor-not-allowed"
         disabled=""
         title="Back 5 seconds (←)"
+        type="button"
       >
         <svg
+          aria-hidden="true"
           class="w-6 h-6 text-secondary"
           fill="none"
           height="24"
@@ -613,17 +646,20 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           />
         </svg>
         <span
+          aria-hidden="true"
           class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5"
         >
           5
         </span>
       </button>
       <button
+        aria-label="Play"
         class="w-12 h-12 rounded-full shadow-card flex items-center justify-center hover:shadow-sheet hover:scale-105 transition-all hover:brightness-90"
         style="background-color: var(--ds-accent);"
         type="button"
       >
         <svg
+          aria-hidden="true"
           class="w-6 h-6 text-inverse fill-current ml-0.5"
           fill="none"
           height="24"
@@ -641,11 +677,14 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
         </svg>
       </button>
       <button
+        aria-label="Forward 5 seconds (→)"
         class="relative w-10 h-10 flex items-center justify-center rounded-full transition-colors hover:bg-sunken active:brightness-94 opacity-50 cursor-not-allowed"
         disabled=""
         title="Forward 5 seconds (→)"
+        type="button"
       >
         <svg
+          aria-hidden="true"
           class="w-6 h-6 text-secondary"
           fill="none"
           height="24"
@@ -665,6 +704,7 @@ exports[`VoicePlayer component > Snapshots > should match snapshot for premium v
           />
         </svg>
         <span
+          aria-hidden="true"
           class="absolute inset-0 flex items-center justify-center text-[9px] font-bold text-secondary mt-0.5"
         >
           5

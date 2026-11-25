@@ -1,0 +1,15 @@
+# Keeps the SHA-pinned actions current (hardening #1). One grouped PR a month
+# into dev; review the diff like any dependency bump.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    target-branch: dev
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"]
+    commit-message:
+      prefix: ci
+      include: scope

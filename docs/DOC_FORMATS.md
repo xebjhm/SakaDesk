@@ -23,9 +23,8 @@ type(scope)!: subject
 - **Breaking changes:** `!` after the type/scope plus a `BREAKING CHANGE:`
   footer.
 - Exempt from the rule: merge commits, `Revert …`, `fixup!`, `squash!`, and
-  release-please's `chore(release): …`.
-- Why: one consistent history, and release-please (configured in this repo)
-  parses conventional commits to build release PRs.
+  release commits `chore(release): …`.
+- Why: one consistent history that people and tools can read by type.
 
 Examples:
 

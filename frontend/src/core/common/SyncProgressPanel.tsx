@@ -33,7 +33,7 @@ export interface SyncProgressPanelProps {
  * running phase whose total stays 0 (verifying) shows its count alone over an indeterminate bar.
  */
 export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const total = progress.total ?? 0;
     const scanning = (progress.state === 'running' || progress.state === 'queued')
         && total === 0
@@ -45,7 +45,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
     // A running phase with no total (verifying counts members with total 0): the count alone
     // over an indeterminate bar, never "N / 0 · 0 %".
     const unknownTotal = !scanning && progress.state === 'running' && total === 0;
-    const countText = (progress.completed ?? 0).toLocaleString();
+    const countText = (progress.completed ?? 0).toLocaleString(i18n.language);
     const ratio = total > 0 ? (progress.completed || 0) / total : 0;
     const percent = Math.round(ratio * 100);
     const currentIndex = PHASE_ORDER.indexOf(progress.phase || '');
@@ -73,7 +73,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                 ) : (
                     <div className="flex justify-between text-small font-semibold tabular-nums">
                         <span className="text-secondary">
-                            {progress.completed?.toLocaleString() || 0} / {progress.total?.toLocaleString() || 0}
+                            {progress.completed?.toLocaleString(i18n.language) || 0} / {progress.total?.toLocaleString(i18n.language) || 0}
                         </span>
                         <span className="text-primary">{`${percent}%`}</span>
                     </div>
@@ -85,7 +85,7 @@ export const SyncProgressPanel: React.FC<SyncProgressPanelProps> = ({ progress }
                     label={t('sync.progress')}
                     valueText={scanning
                         ? undefined
-                        : unknownTotal ? countText : `${progress.completed?.toLocaleString() || 0} / ${progress.total?.toLocaleString() || 0}`}
+                        : unknownTotal ? countText : `${progress.completed?.toLocaleString(i18n.language) || 0} / ${progress.total?.toLocaleString(i18n.language) || 0}`}
                     fillTestId="sync-progress-fill"
                 />
                 {showScanExplanation && (

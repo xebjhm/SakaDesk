@@ -115,6 +115,7 @@ async def test_verify_and_fix_no_messages_root_returns_zero_totals(
         "repaired": 0,
         "failed": 0,
         "still_missing": 0,
+        "rejected": 0,
         "unresolved": 0,
         "unresolved_items": [],
     }
@@ -137,6 +138,7 @@ async def test_verify_and_fix_returns_zero_totals_when_already_running(tmp_path)
         "repaired": 0,
         "failed": 0,
         "still_missing": 0,
+        "rejected": 0,
         "unresolved": 0,
         "unresolved_items": [],
     }
@@ -289,3 +291,92 @@ async def test_verify_auth_errors_still_propagate(tmp_path, monkeypatch, exc_nam
     with pytest.raises(exc_cls):
         await svc.verify_and_fix_media()
     assert svc.running is False
+
+
+def _scan_stub(good, bad):
+    def scan(self, member_dir):
+        return {"checked": 5, "missing": [*good, *bad], "unresolved": []}
+
+    return scan
+
+
+def _gap_service(tmp_path, monkeypatch):
+    from backend.services.sync_service import SyncService
+
+    output_dir = tmp_path / "out"
+    member_dir = output_dir / "日向坂46" / "messages" / "10 G" / "20 M"
+    member_dir.mkdir(parents=True)
+    (member_dir / "messages.json").write_text('{"messages": []}', encoding="utf-8")
+    svc = SyncService(service="hinatazaka46")
+    monkeypatch.setattr(
+        svc,
+        "load_app_settings",
+        _async({"output_dir": str(output_dir), "is_configured": True}),
+    )
+    monkeypatch.setattr(
+        "backend.services.sync_service.get_service_display_name",
+        lambda service: "日向坂46",
+    )
+
+    class StubClient:
+        async def get_messages(self, session, gid, since_ts=None):
+            return []
+
+    monkeypatch.setattr(svc, "_authenticated_client", _async(StubClient()))
+    return svc, output_dir, member_dir
+
+
+@pytest.mark.asyncio
+async def test_verify_counts_items_the_containment_filter_dropped(
+    tmp_path, monkeypatch
+):
+    from pysaka import SyncManager
+
+    svc, output_dir, member_dir = _gap_service(tmp_path, monkeypatch)
+    inside = {"path": member_dir / "picture" / "1.jpg", "timestamp": "2026-01-01"}
+    outside = {"path": output_dir / "elsewhere" / "2.jpg", "timestamp": "2026-01-02"}
+    monkeypatch.setattr(
+        SyncManager, "scan_member_media", _scan_stub([inside], [outside])
+    )
+
+    async def reconcile(self, session, member_dir, missing, timeline, **kw):
+        return {"repaired": 0, "failed": 0, "still_missing": len(missing)}
+
+    monkeypatch.setattr(SyncManager, "reconcile_member_media", reconcile)
+
+    result = await svc.verify_and_fix_media()
+
+    assert result["checked"] == 5
+    assert result["missing"] == 1 and result["still_missing"] == 1
+    assert result["rejected"] == 1
+    assert result["repaired"] == 0 and result["failed"] == 0
+
+
+@pytest.mark.asyncio
+async def test_verify_with_only_rejected_items_ends_with_rejected(
+    tmp_path, monkeypatch
+):
+    from pysaka import SyncManager
+
+    svc, output_dir, _ = _gap_service(tmp_path, monkeypatch)
+    outside = {"path": output_dir / "elsewhere" / "2.jpg", "timestamp": "2026-01-02"}
+    monkeypatch.setattr(SyncManager, "scan_member_media", _scan_stub([], [outside]))
+
+    result = await svc.verify_and_fix_media()
+
+    assert (result["missing"], result["rejected"]) == (0, 1)
+
+
+@pytest.mark.asyncio
+async def test_verify_skips_the_filter_when_nothing_is_missing(tmp_path, monkeypatch):
+    from pysaka import SyncManager
+
+    svc, _, _ = _gap_service(tmp_path, monkeypatch)
+    monkeypatch.setattr(SyncManager, "scan_member_media", _scan_stub([], []))
+    calls = []
+    monkeypatch.setattr(svc, "_contained_media", lambda *a, **k: calls.append(1) or [])
+
+    result = await svc.verify_and_fix_media()
+
+    assert calls == []
+    assert result["missing"] == 0 and result["rejected"] == 0

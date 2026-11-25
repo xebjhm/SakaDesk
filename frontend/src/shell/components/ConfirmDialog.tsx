@@ -53,7 +53,7 @@ export const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
                 </>
             }
         >
-            <p className="whitespace-pre-line text-body text-secondary">{message}</p>
+            <p className="whitespace-pre-line break-words text-body text-secondary">{message}</p>
         </Modal>
     );
 };

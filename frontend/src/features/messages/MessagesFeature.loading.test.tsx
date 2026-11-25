@@ -5,6 +5,7 @@ import { server } from '../../__tests__/mocks/server';
 import i18n from '../../i18n';
 import { useAppStore } from '../../store/appStore';
 import { clientLog } from '../../utils/clientLog';
+import { resetSyncProgressStore, useSyncProgressStore } from '../../shell/syncProgressStore';
 import { LETTERS_WAIT_MS } from './hooks/useRoomLetters';
 
 vi.mock('../../utils/clientLog', () => ({ clientLog: vi.fn() }));
@@ -67,7 +68,7 @@ const RETRY = 'もう一度';
 const JUMP = '未読の最初へ移動';
 const SECRET = 'SECRET-DETAIL /home/someone/日向坂46';
 
-const props = { appSettings: null, syncProgress: { state: 'idle' } as never, syncVersion: 0 };
+const props = { appSettings: null, syncVersion: 0 };
 
 /** The reply each room's message list gets; replaced per test. */
 let replies: Record<RoomId, () => Promise<Response> | Response>;
@@ -146,6 +147,7 @@ async function open(id: RoomId) {
 describe('MessagesFeature: the chat timeline is never blank while a room loads (L5)', () => {
     beforeAll(async () => { await i18n.changeLanguage('ja'); });
     beforeEach(() => {
+        resetSyncProgressStore();
         vi.useFakeTimers();
         vi.mocked(clientLog).mockClear();
         menu.status = undefined;
@@ -584,7 +586,8 @@ describe('MessagesFeature: the chat timeline is never blank while a room loads (
             activeService: SERVICE,
             selectedConversations: { [SERVICE]: { path: room('A').dir, name: room('A').name, isGroupChat: false } },
         });
-        const { container } = render(<MessagesFeature {...props} syncProgress={{ state: 'running' } as never} />);
+        useSyncProgressStore.setState({ active: { state: 'running' } });
+        const { container } = render(<MessagesFeature {...props} />);
         await flush();
         const spinner = container.querySelector('header svg[data-spinner]');
         expect(spinner).not.toBeNull();

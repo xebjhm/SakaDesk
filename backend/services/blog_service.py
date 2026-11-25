@@ -19,9 +19,10 @@ import threading
 import time
 from collections import OrderedDict
 from dataclasses import dataclass
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import datetime, timedelta, timezone
+from pathlib import Path, PurePosixPath
 from typing import Any, Dict, List, Optional, cast
+from urllib.parse import urlsplit
 
 import aiofiles
 import aiohttp
@@ -35,7 +36,23 @@ from pysaka.blog import (
     get_scraper,
 )
 
+from backend.services.log_throttle import LogThrottle
+from backend.services.passive_media import INLINE_MEDIA_TYPES
 from backend.services.path_resolver import get_output_dir
+from backend.services.remote_images import (
+    RemoteImageRefused,
+    fetch_official_image,
+)
+from backend.services.safe_paths import (
+    UnsafePath,
+    blog_date,
+    blog_folder,
+    blog_folder_name,
+    is_safe_id,
+    join_within,
+    member_folder_name,
+    plain_segment,
+)
 from backend.services.service_utils import (
     get_service_display_name,
     get_service_enum,
@@ -48,12 +65,52 @@ logger = structlog.get_logger(__name__)
 def _blog_folder(base: Path, member_name: str, blog_id: str, date: str) -> Path:
     """Folder of one cached blog under a service's blogs ``base``.
 
+    ``base / <member name> / <date>_<blog id>``: the member name with
+    surrounding whitespace stripped (Windows cannot create a folder ending in a
+    space) and ``/`` replaced by ``_``, as archives have always been laid out.
+    Raises ``safe_paths.UnsafePath`` (security audit 2026-11-13) with reason
+    ``blog_id`` when ``blog_id`` is not ``safe_paths.is_safe_id``, ``date`` when
+    ``date`` is not ``safe_paths.is_blog_date`` (8 digits), or ``segment`` when
+    either folder name is not a ``safe_paths.plain_segment``: such a value comes
+    from a hostile or broken index and would leave the blogs folder. Callers
+    that loop over the index skip and count it.
+
     Loops over many blogs resolve ``base`` once and call this per blog:
     ``get_blogs_base_path`` reads settings.json from disk on every call.
     """
-    # Sanitize: strip trailing whitespace that Windows cannot mkdir
-    safe_name = member_name.strip().replace("/", "_")
-    return base / safe_name / f"{date}_{blog_id}"
+    return blog_folder(base, member_name, blog_id, date)
+
+
+def _safe_blog_members(service: str, members: object) -> dict[str, str]:
+    """The scraped ``{member id: name}`` entries that can name archive folders.
+
+    The id must be ``safe_paths.is_safe_id`` and the name a ``str`` whose
+    folder form (``safe_paths.member_folder_name``, as :func:`_blog_folder` builds it)
+    is a ``safe_paths.plain_segment``. Others are dropped with one
+    ``blog_remote_rejected`` (``kind=member``, ``count``); a value that is not a
+    mapping logs ``reason=not_mapping``. Never an id or a name is logged
+    (security audit 2026-11-13).
+    """
+    if not isinstance(members, dict):
+        logger.warning(
+            "blog_remote_rejected", service=service, kind="member", reason="not_mapping"
+        )
+        return {}
+    safe = {
+        mid: name
+        for mid, name in members.items()
+        if is_safe_id(mid)
+        and isinstance(name, str)
+        and plain_segment(member_folder_name(name))
+    }
+    if len(safe) != len(members):
+        logger.warning(
+            "blog_remote_rejected",
+            service=service,
+            kind="member",
+            count=len(members) - len(safe),
+        )
+    return safe
 
 
 # Groups that have blog support. Yodel does not have blogs.
@@ -122,6 +179,241 @@ def _newer_stamp(a: Optional[str], b: Optional[str]) -> Optional[str]:
     return a if a >= b else b
 
 
+def _parse_published(value: object) -> Optional[datetime]:
+    """A stored ``published_at`` as an aware datetime (naive = UTC).
+
+    ``None`` when ``value`` is not a ``str`` or does not parse as ISO 8601
+    (pysaka yields ``None`` for a date it cannot read, PY-MGR-04).
+    """
+    if not isinstance(value, str):
+        return None
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+    return parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+
+
+def _published_key(value: object) -> datetime:
+    """Sort key for a row :func:`_readable_blogs` returned (always parses)."""
+    return _parse_published(value) or datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _text(value: object) -> str:
+    """``value`` when it is a ``str``, else ``""`` (a title or URL the scraper left out)."""
+    return value if isinstance(value, str) else ""
+
+
+def _thumbnail(value: object) -> Optional[str]:
+    """``value`` when it is a non-empty ``str``, else ``None``."""
+    return value if isinstance(value, str) and value else None
+
+
+CURSOR_SKEW = timedelta(days=1)
+"""How far past now a stored date may lie and still move the incremental cursor."""
+
+
+def _incremental_cursor(rows: object, now: datetime) -> tuple[Optional[datetime], int]:
+    """The incremental cursor of a member's stored rows, and how many were ignored.
+
+    The newest :func:`_parse_published` date that is not later than
+    ``now + CURSOR_SKEW`` (security audit 2026-11-13: one future-dated post
+    made pysaka stop at the first real entry forever). ``None`` when no row
+    qualifies; pagination then runs to the incremental page cap.
+    """
+    items = rows if isinstance(rows, list) else []
+    limit = now + CURSOR_SKEW
+    dates = [
+        d
+        for b in items
+        if isinstance(b, dict)
+        and (d := _parse_published(b.get("published_at"))) is not None
+        and d <= limit
+    ]
+    return (max(dates) if dates else None), len(items) - len(dates)
+
+
+PENDING_DATES_MAX = 50
+"""Most posts a member keeps waiting for a date (the oldest are dropped first)."""
+
+PENDING_RETRIES_PER_SYNC = 10
+"""Most pending posts whose detail page is fetched again per member and sync."""
+
+PENDING_MAX_ATTEMPTS = 5
+"""Detail fetches a pending post gets before it is given up."""
+
+PENDING_MAX_AGE = timedelta(days=30)
+"""How long a post may wait for a date before it is given up."""
+
+
+def _clean_pending(raw: object, now: datetime) -> tuple[list[dict], dict[str, int]]:
+    """A member's ``pending_dates`` list as usable entries, and the drop counts.
+
+    A post skipped for an unknown date is older than the cursor once a newer
+    post is stored, so the list pages never yield it again; its id is kept
+    here (``id``, ``first_seen``, ``attempts`` and the list page's ``title``,
+    ``url``, ``thumbnail``) and its detail page is asked again on later syncs.
+    Entries whose id is not ``safe_paths.is_safe_id`` or whose ``first_seen``
+    does not parse count as ``invalid`` (a repeated id is merged silently);
+    entries older than ``PENDING_MAX_AGE`` count as ``expired``.
+    """
+    if not isinstance(raw, list):
+        return [], {}
+    kept: list[dict] = []
+    seen: set[str] = set()
+    dropped: dict[str, int] = {}
+    for item in raw:
+        first_seen = (
+            _parse_published(item.get("first_seen")) if isinstance(item, dict) else None
+        )
+        if (
+            not isinstance(item, dict)
+            or not is_safe_id(item.get("id"))
+            or first_seen is None
+        ):
+            dropped["invalid"] = dropped.get("invalid", 0) + 1
+            continue
+        if item["id"] in seen:
+            continue
+        seen.add(item["id"])
+        if now - first_seen > PENDING_MAX_AGE:
+            dropped["expired"] = dropped.get("expired", 0) + 1
+            continue
+        attempts = item.get("attempts")
+        kept.append(
+            {
+                "id": item["id"],
+                "first_seen": item["first_seen"],
+                "attempts": attempts
+                if isinstance(attempts, int) and not isinstance(attempts, bool)
+                else 0,
+                "title": _text(item.get("title")),
+                "url": _text(item.get("url")),
+                "thumbnail": _thumbnail(item.get("thumbnail")),
+            }
+        )
+    return kept, dropped
+
+
+_row_skip_logs = LogThrottle(limit=5, window_s=3600.0)
+"""Budget for ``blog_rows_skipped``: the readers run on every Blogs-view poll."""
+
+_image_refusal_logs = LogThrottle(limit=20, window_s=60.0)
+"""Budget for ``blog_image_refused``: one blog can hold dozens of off-list images."""
+
+
+def _readable_blogs(service: str, where: str, blogs: object) -> list[dict]:
+    """The index rows a reader can use (security audit 2026-11-13).
+
+    A row is a ``dict`` with a ``str`` id and a ``published_at`` that
+    :func:`_parse_published` reads. Rows written before the fix may hold
+    ``published_at: null``; they are left out of every list, count and
+    download queue, so one bad row cannot break a whole group. (An unsafe id
+    is still refused where a folder is built: ``_blog_folder``.) Logs
+    ``blog_rows_skipped`` (``service``, ``where``, ``count``) through a
+    throttle.
+    """
+    if not isinstance(blogs, list):
+        return []
+    rows = [
+        b
+        for b in blogs
+        if isinstance(b, dict)
+        and isinstance(b.get("id"), str)
+        and _parse_published(b.get("published_at")) is not None
+    ]
+    if len(rows) != len(blogs):
+        _row_skip_logs.log(
+            logger.warning,
+            "blog_rows_skipped",
+            service=service,
+            where=where,
+            count=len(blogs) - len(rows),
+        )
+    return rows
+
+
+_BLOG_IMAGE_EXTS = frozenset(
+    ext
+    for ext, media_type in INLINE_MEDIA_TYPES.items()
+    if media_type.startswith("image/")
+)
+"""Extensions a downloaded blog image keeps; any other URL suffix is stored as ``.jpg``.
+
+Derived from ``INLINE_MEDIA_TYPES`` (the picture entries), so the set is not duplicated."""
+
+
+def _blog_image_ext(img_url: str) -> str:
+    """The file extension of a downloaded blog image (security audit 2026-11-13).
+
+    Remote blog HTML chooses the image URL and the archive serves files by
+    extension, so only a picture extension (``_BLOG_IMAGE_EXTS``, compared in
+    lower case on the URL path) is kept. Anything else (``.html``, ``.svg``,
+    none) becomes ``.jpg`` and logs ``blog_image_ext_defaulted`` with
+    ``reason`` ``not_image`` or ``no_suffix`` (never the URL). The bytes are
+    stored unchanged: a body that is not a picture then simply fails to show.
+    """
+    try:
+        suffix = PurePosixPath(urlsplit(img_url).path).suffix.lower()
+    except ValueError:
+        suffix = ""
+    if suffix in _BLOG_IMAGE_EXTS:
+        return suffix
+    logger.info(
+        "blog_image_ext_defaulted", reason="not_image" if suffix else "no_suffix"
+    )
+    return ".jpg"
+
+
+_THUMBNAIL_EXTS: tuple[str, ...] = (".jpg", ".png", ".webp")
+"""The extensions a member thumbnail is saved under, in the order the reader looks."""
+
+_THUMBNAIL_EXT_BY_TYPE = {
+    "image/jpeg": ".jpg",
+    "image/jpg": ".jpg",
+    "image/pjpeg": ".jpg",
+    "image/png": ".png",
+    "image/webp": ".webp",
+}
+"""Content-Type → the extension a member thumbnail is saved under (``get_member_thumbnail_path`` looks for exactly these)."""
+
+_THUMBNAIL_EXT_BY_SUFFIX = {
+    ".jpg": ".jpg",
+    ".jpeg": ".jpg",
+    ".png": ".png",
+    ".webp": ".webp",
+}
+"""A picture suffix of the thumbnail URL → the extension it is saved under."""
+
+
+def _thumbnail_ext(content_type: str, url: str) -> str:
+    """The extension a downloaded member thumbnail is saved under (security audit 2026-11-13).
+
+    From the response's ``Content-Type`` (``_THUMBNAIL_EXT_BY_TYPE``), else
+    the URL path's suffix when it is a picture one (lower case), else ``.jpg``
+    with ``member_thumbnail_ext_defaulted`` (``reason`` ``not_image`` or
+    ``no_suffix``; never the URL). The remote side never chooses any other
+    extension, so a thumbnail is only ever served as a picture; bytes that
+    are not one simply fail to show.
+    """
+    media_type = content_type.split(";", 1)[0].strip().lower()
+    ext = _THUMBNAIL_EXT_BY_TYPE.get(media_type)
+    if ext is not None:
+        return ext
+    try:
+        suffix = PurePosixPath(urlsplit(url).path).suffix.lower()
+    except ValueError:
+        suffix = ""
+    ext = _THUMBNAIL_EXT_BY_SUFFIX.get(suffix)
+    if ext is not None:
+        return ext
+    logger.info(
+        "member_thumbnail_ext_defaulted",
+        reason="not_image" if suffix else "no_suffix",
+    )
+    return ".jpg"
+
+
 def _merge_blog_index(current: dict, incoming: dict) -> dict:
     """Merge ``incoming`` (a writer's mutated snapshot) onto the latest on-disk
     ``current`` so a concurrent writer's changes are not lost.
@@ -158,6 +450,13 @@ def _merge_blog_index(current: dict, incoming: dict) -> dict:
                 by_id[blog["id"]] = blog
         out_m["blogs"] = list(by_id.values())
 
+        # A post that got its date (stored in either snapshot) stops waiting.
+        pending = out_m.get("pending_dates")
+        if isinstance(pending, list):
+            out_m["pending_dates"] = [
+                p for p in pending if not (isinstance(p, dict) and p.get("id") in by_id)
+            ]
+
         # blogs_removed sticks if either writer set it.
         if cur_m.get("blogs_removed") or inc_m.get("blogs_removed"):
             out_m["blogs_removed"] = True
@@ -171,6 +470,26 @@ def _merge_blog_index(current: dict, incoming: dict) -> dict:
         current.get("last_download"), incoming.get("last_download")
     )
     return merged
+
+
+@dataclass(frozen=True)
+class ThumbnailDownload:
+    """Outcome of one member thumbnail download.
+
+    ``filename`` is the saved file name, or ``None`` when nothing was saved.
+    ``transient`` is only meaningful without a ``filename``: ``True`` when a
+    later attempt can succeed (network error, timeout, HTTP 408, 429 or 5xx,
+    a failed write), ``False`` when it cannot (unsafe id, no URL, a refusal
+    such as an off-list host, a redirect off the list, ``too_large`` or an
+    HTTP 4xx other than 408 and 429).
+    """
+
+    filename: Optional[str]
+    transient: bool = False
+
+
+_TRANSIENT_STATUSES = frozenset({408, 429})
+"""HTTP statuses below 500 that a later attempt can still turn into a 200."""
 
 
 @dataclass
@@ -239,7 +558,7 @@ class BlogService:
     def get_blog_cache_path(
         self, service: str, member_name: str, blog_id: str, date: str
     ) -> Path:
-        """Get path to cached blog content."""
+        """Get path to cached blog content (raises ``UnsafePath``: see ``_blog_folder``)."""
         return _blog_folder(
             self.get_blogs_base_path(service), member_name, blog_id, date
         )
@@ -381,9 +700,9 @@ class BlogService:
     async def _save_members_cache(self, service: str, cache: dict):
         """Save members cache to disk."""
         cache_path = self.get_members_cache_path(service)
-        cache_path.parent.mkdir(parents=True, exist_ok=True)
-        async with aiofiles.open(cache_path, "w", encoding="utf-8") as f:
-            await f.write(json.dumps(cache, ensure_ascii=False, indent=2))
+        await self._atomic_write(
+            cache_path, json.dumps(cache, ensure_ascii=False, indent=2)
+        )
 
     async def _download_member_thumbnail(
         self,
@@ -391,54 +710,73 @@ class BlogService:
         member_id: str,
         thumbnail_url: str,
         thumbnails_dir: Path,
-    ) -> Optional[str]:
-        """Download a single member thumbnail and return local filename."""
+    ) -> ThumbnailDownload:
+        """Download one member thumbnail; a :class:`ThumbnailDownload`.
+
+        ``filename`` is the local file name, or ``None`` with ``transient``
+        telling whether a retry can help.
+
+        ``member_id`` names the file, so it must be ``safe_paths.is_safe_id``
+        and ``thumbnail_url`` a non-empty string; otherwise nothing is fetched
+        and ``member_thumbnail_rejected`` (``reason`` ``member_id`` or ``url``)
+        is logged (security audit 2026-11-13). The file is
+        ``<member_id><ext>`` with ``ext`` from :func:`_thumbnail_ext`, written
+        atomically inside ``thumbnails_dir``. A non-200 answer logs
+        ``thumbnail_download_failed`` (``status``), any other failure
+        ``thumbnail_download_error`` (``error_type``); never an id or a URL.
+        The fetch goes through ``remote_images.fetch_official_image`` (official
+        https hosts, checked redirects, 10 MiB cap); a refusal logs
+        ``thumbnail_download_refused`` (``reason``). Only a network or write
+        error, HTTP 408, 429 or 5xx is transient; a rejected id or URL and
+        every other refusal is permanent.
+        """
+        if not is_safe_id(member_id):
+            logger.warning("member_thumbnail_rejected", reason="member_id")
+            return ThumbnailDownload(None)
+        if not isinstance(thumbnail_url, str) or not thumbnail_url:
+            logger.warning("member_thumbnail_rejected", reason="url")
+            return ThumbnailDownload(None)
         try:
-            async with session.get(thumbnail_url) as resp:
-                if resp.status != 200:
-                    logger.warning(
-                        "thumbnail_download_failed",
-                        member_id=member_id,
-                        status=resp.status,
-                    )
-                    return None
-
-                # Determine extension from URL or content-type
-                content_type = resp.headers.get("Content-Type", "")
-                if "jpeg" in content_type or "jpg" in content_type:
-                    ext = ".jpg"
-                elif "png" in content_type:
-                    ext = ".png"
-                elif "webp" in content_type:
-                    ext = ".webp"
-                else:
-                    # Try from URL
-                    url_path = thumbnail_url.split("?")[0]
-                    ext = Path(url_path).suffix or ".jpg"
-
-                local_filename = f"{member_id}{ext}"
-                local_path = thumbnails_dir / local_filename
-
-                content = await resp.read()
-                async with aiofiles.open(local_path, "wb") as f:
-                    await f.write(content)
-
-                return local_filename
-
-        except Exception as e:
-            logger.warning(
-                "thumbnail_download_error",
-                member_id=member_id,
-                error=str(e),
+            content, content_type = await fetch_official_image(session, thumbnail_url)
+            ext = _thumbnail_ext(content_type, thumbnail_url)
+            local_filename = f"{member_id}{ext}"
+            await self._atomic_write(
+                join_within(thumbnails_dir, local_filename), content
             )
-            return None
+            # A thumbnail saved earlier under another extension would win in
+            # get_member_thumbnail_path; only the new file may remain.
+            for other in _THUMBNAIL_EXTS:
+                if other != ext:
+                    try:
+                        join_within(thumbnails_dir, f"{member_id}{other}").unlink(
+                            missing_ok=True
+                        )
+                    except OSError as e:
+                        logger.warning(
+                            "member_thumbnail_sibling_unlink_failed",
+                            error_type=type(e).__name__,
+                        )
+            return ThumbnailDownload(local_filename)
+        except RemoteImageRefused as e:
+            if e.reason == "status":
+                logger.warning("thumbnail_download_failed", status=e.status)
+                status = e.status or 0
+                return ThumbnailDownload(
+                    None, transient=status >= 500 or status in _TRANSIENT_STATUSES
+                )
+            logger.warning("thumbnail_download_refused", reason=e.reason)
+            return ThumbnailDownload(None)
+        except Exception as e:
+            logger.warning("thumbnail_download_error", error_type=type(e).__name__)
+            return ThumbnailDownload(None, transient=True)
 
     async def get_members_with_thumbnails(self, service: str) -> List[Dict[Any, Any]]:
         """Get blog members with locally cached thumbnails.
 
         Uses content hash caching: fetches member data from official site,
         compares hash with cached data, and re-downloads thumbnails only
-        if data has changed. Images are cached locally.
+        if data has changed or the last download was incomplete. Images are
+        cached locally.
 
         Args:
             service: Service name.
@@ -466,7 +804,21 @@ class BlogService:
             # get_members_with_thumbnails is implemented on every concrete scraper
             # but not declared on the BaseBlogScraper return type of get_scraper;
             # cast so mypy accepts the call (present at runtime for all groups).
-            fresh_members = await cast(Any, scraper).get_members_with_thumbnails()
+            listed = await cast(Any, scraper).get_members_with_thumbnails() or []
+            # The member id names the thumbnail file (security audit 2026-11-13).
+            fresh_members = [
+                m
+                for m in listed
+                if is_safe_id(getattr(m, "id", None))
+                and isinstance(getattr(m, "name", None), str)
+            ]
+            if len(fresh_members) != len(listed):
+                logger.warning(
+                    "member_thumbnail_rejected",
+                    service=service,
+                    reason="member_id",
+                    count=len(listed) - len(fresh_members),
+                )
 
             if not fresh_members:
                 logger.warning("no_members_fetched", service=service)
@@ -499,23 +851,37 @@ class BlogService:
                 cached_hash=cache.get("hash") if cache else None,
             )
 
+            # A previous pass for this same member list that only failed
+            # transiently: keep what it saved and retry just those members.
+            kept: dict[str, dict] = {}
+            retry_ids: set[str] = set()
+            if cache and cache.get("pending_hash") == fresh_hash:
+                retry_ids = set(cache.get("transient_failed", []))
+                kept = {m["id"]: m for m in cache.get("members", []) if "id" in m}
+
             # Download all thumbnails (they change together)
             thumbnails_dir.mkdir(parents=True, exist_ok=True)
 
             result_members: list[dict] = []
+            transient_ids: list[str] = []
 
             async def download_and_add(member: MemberInfo):
-                thumbnail_filename = await self._download_member_thumbnail(
+                if member.id in kept and member.id not in retry_ids:
+                    result_members.append(kept[member.id])
+                    return
+                outcome = await self._download_member_thumbnail(
                     session,
                     member.id,
                     member.thumbnail_url,
                     thumbnails_dir,
                 )
+                if outcome.filename is None and outcome.transient:
+                    transient_ids.append(member.id)
                 result_members.append(
                     {
                         "id": member.id,
                         "name": member.name,
-                        "thumbnail": thumbnail_filename,
+                        "thumbnail": outcome.filename,
                     }
                 )
 
@@ -524,12 +890,26 @@ class BlogService:
             # Sort by ID for consistency
             result_members.sort(key=lambda m: m["id"])
 
-            # Save cache
-            new_cache = {
-                "hash": fresh_hash,
+            failed = len(transient_ids)
+            # The hash says "these thumbnails are on disk": only a download
+            # without a transient failure may store it, else the next call
+            # retries those members (a permanent failure, such as a 404 or an
+            # unsafe id, would never succeed and must not block it).
+            new_cache: dict[str, Any] = {
+                "hash": None if failed else fresh_hash,
                 "members": result_members,
             }
+            if failed:
+                new_cache["pending_hash"] = fresh_hash
+                new_cache["transient_failed"] = sorted(transient_ids)
             await self._save_members_cache(service, new_cache)
+            if failed:
+                logger.warning(
+                    "members_thumbnails_incomplete",
+                    service=service,
+                    failed=failed,
+                    count=len(result_members),
+                )
 
             logger.info(
                 "members_thumbnails_cached",
@@ -540,25 +920,25 @@ class BlogService:
             return result_members
 
     def get_member_thumbnail_path(self, service: str, member_id: str) -> Optional[Path]:
-        """Get path to a member's cached thumbnail image.
+        """Path to a member's cached thumbnail image, or None.
 
-        Args:
-            service: Service name.
-            member_id: Member ID.
-
-        Returns:
-            Path to the thumbnail file, or None if not found.
+        ``member_id`` comes from the request path: anything that is not
+        ``safe_paths.is_safe_id`` (a separator, ``:``, ``..``, a device name)
+        logs ``member_thumbnail_rejected`` (``reason=member_id``) and returns
+        None before any filesystem call (security audit 2026-11-13). Looks for
+        ``<member_id>.jpg``, ``.png`` then ``.webp`` in the service's
+        ``member_thumbnails`` folder.
         """
+        if not is_safe_id(member_id):
+            logger.warning("member_thumbnail_rejected", reason="member_id")
+            return None
         thumbnails_dir = self.get_member_thumbnails_path(service)
         if not thumbnails_dir.exists():
             return None
-
-        # Check for common extensions
-        for ext in [".jpg", ".png", ".webp"]:
-            path = thumbnails_dir / f"{member_id}{ext}"
+        for ext in _THUMBNAIL_EXTS:
+            path = join_within(thumbnails_dir, f"{member_id}{ext}")
             if path.exists():
                 return path
-
         return None
 
     # =========================================================================
@@ -601,9 +981,14 @@ class BlogService:
         connector = aiohttp.TCPConnector(limit=10)
         async with aiohttp.ClientSession(connector=connector) as session:
             scraper = get_scraper(group, session)
-            members = await scraper.get_members()
+            members = _safe_blog_members(service, await scraper.get_members())
             completed = 0
             total = len(members)
+            # Blog entries whose id cannot name a folder (security audit 2026-11-13).
+            rejected_blogs = 0
+            skipped_dates = 0
+            pending_resolved = 0
+            pending_dropped: dict[str, int] = {}
 
             async def sync_member(member_id: str, member_name: str):
                 nonlocal completed
@@ -613,27 +998,102 @@ class BlogService:
                     await progress_callback(
                         f"Scanning {member_name} ({completed + 1}/{total})"
                     )
+                try:
+                    await _sync_one(member_id, member_name)
+                finally:
+                    # A failed member still counts as processed (progress total).
+                    completed += 1
+
+            async def _sync_one(member_id: str, member_name: str):
+                nonlocal rejected_blogs, skipped_dates, pending_resolved
 
                 if member_id not in index["members"]:
                     index["members"][member_id] = {"name": member_name, "blogs": []}
 
-                existing_ids = {b["id"] for b in index["members"][member_id]["blogs"]}
+                existing_ids = {
+                    b.get("id")
+                    for b in index["members"][member_id]["blogs"]
+                    if isinstance(b, dict)
+                }
 
                 # Bind datetime unconditionally: it is also used below (the
                 # isinstance check when appending blogs). A local import inside the
                 # `if` branch made `datetime` a function-local for the whole scope,
                 # so a first sync (branch skipped) hit an unbound local.
-                from datetime import datetime
+                from datetime import datetime, timezone
 
                 # For incremental sync, use since_date to stop early when hitting old blogs
                 # This avoids paginating through entire history just to find no new posts
                 since_date = None
                 if not is_first_sync and index["members"][member_id]["blogs"]:
-                    # Find the newest blog date for this member
-                    newest_date_str = max(
-                        b["published_at"] for b in index["members"][member_id]["blogs"]
+                    since_date, ignored = _incremental_cursor(
+                        index["members"][member_id]["blogs"],
+                        datetime.now(timezone.utc),
                     )
-                    since_date = datetime.fromisoformat(newest_date_str)
+                    if ignored:
+                        logger.info(
+                            "blog_cursor_rows_ignored", service=service, count=ignored
+                        )
+
+                # Posts skipped earlier for an unknown date: ask their detail
+                # page again (they are older than the cursor by now).
+                now = datetime.now(timezone.utc)
+                member_row = index["members"][member_id]
+                pending, dropped = _clean_pending(member_row.get("pending_dates"), now)
+                pending = [p for p in pending if p["id"] not in existing_ids]
+                batch = pending[:PENDING_RETRIES_PER_SYNC]
+                if cancel_event and cancel_event.is_set():
+                    batch = []
+                waiting = pending[len(batch) :]
+
+                async def retry_pending(item: dict):
+                    try:
+                        (
+                            thumb,
+                            detail_date,
+                            detail_title,
+                        ) = await scraper.get_blog_detail_metadata(item["id"])
+                    except Exception as e:
+                        # No answer from the detail page: this says nothing
+                        # about the date, so it is not one of the attempts.
+                        logger.info(
+                            "blog_pending_retry_failed",
+                            service=service,
+                            error_type=type(e).__name__,
+                        )
+                        return item, False, None, None, None
+                    return item, True, thumb, detail_date, detail_title
+
+                retried = await asyncio.gather(*[retry_pending(p) for p in batch])
+                for item, answered, thumb, detail_date, detail_title in retried:
+                    if isinstance(detail_date, datetime):
+                        stored_date: Optional[str] = detail_date.isoformat()
+                    elif isinstance(detail_date, str) and _parse_published(detail_date):
+                        stored_date = detail_date
+                    else:
+                        stored_date = None
+                    if stored_date is not None:
+                        index["members"][member_id]["blogs"].append(
+                            {
+                                "id": item["id"],
+                                "title": _text(detail_title) or item["title"],
+                                "published_at": stored_date,
+                                "url": item["url"],
+                                "thumbnail": _thumbnail(thumb) or item["thumbnail"],
+                            }
+                        )
+                        existing_ids.add(item["id"])
+                        pending_resolved += 1
+                        continue
+                    if not answered:
+                        waiting.append(item)
+                        continue
+                    item["attempts"] += 1
+                    if item["attempts"] >= PENDING_MAX_ATTEMPTS:
+                        dropped["attempts"] = dropped.get("attempts", 0) + 1
+                    else:
+                        waiting.append(item)
+                pending = waiting
 
                 # Use fast metadata method - parses list pages only
                 # Pass member_name to filter out "featured" blogs from other members
@@ -647,6 +1107,9 @@ class BlogService:
                     max_pages=max_pages,
                     member_name=member_name,
                 ):
+                    if not is_safe_id(entry.id):
+                        rejected_blogs += 1
+                        continue
                     if entry.id not in existing_ids:
                         blog_data = {
                             "id": entry.id,
@@ -659,7 +1122,13 @@ class BlogService:
                         # Sakurazaka list pages have incomplete data (no time,
                         # no thumbnails, possibly truncated titles), so the
                         # detail page is the single source of truth.
-                        if not blog_data["thumbnail"]:
+                        # The detail page also supplies a date the list page
+                        # could not give (security audit 2026-11-13).
+                        unknown_date = (
+                            not isinstance(blog_data["published_at"], datetime)
+                            and _parse_published(blog_data["published_at"]) is None
+                        )
+                        if not blog_data["thumbnail"] or unknown_date:
                             needs_detail.append((len(new_entries) - 1, blog_data))
 
                 # Batch detail fetches for entries missing thumbnails
@@ -682,7 +1151,7 @@ class BlogService:
                             logger.debug(
                                 "detail_metadata_failed",
                                 blog_id=blog["id"],
-                                error=str(e),
+                                error_type=type(e).__name__,
                             )
 
                     await asyncio.gather(
@@ -691,27 +1160,88 @@ class BlogService:
 
                 for blog_data in new_entries:
                     pub_at = blog_data["published_at"]
+                    if isinstance(pub_at, datetime):
+                        stored = pub_at.isoformat()
+                    elif isinstance(pub_at, str) and _parse_published(pub_at):
+                        stored = pub_at
+                    else:
+                        # Never persist an unknown date: every reader and the
+                        # cursor need one (security audit 2026-11-13).
+                        skipped_dates += 1
+                        if blog_data["id"] not in {p["id"] for p in pending}:
+                            pending.append(
+                                {
+                                    "id": blog_data["id"],
+                                    "first_seen": now.isoformat(),
+                                    "attempts": 0,
+                                    "title": _text(blog_data["title"]),
+                                    "url": _text(blog_data["url"]),
+                                    "thumbnail": _thumbnail(blog_data["thumbnail"]),
+                                }
+                            )
+                        continue
                     index["members"][member_id]["blogs"].append(
                         {
                             "id": blog_data["id"],
-                            "title": blog_data["title"],
-                            "published_at": pub_at.isoformat()
-                            if isinstance(pub_at, datetime)
-                            else pub_at,
-                            "url": blog_data["url"],
-                            "thumbnail": blog_data["thumbnail"],
+                            "title": _text(blog_data["title"]),
+                            "published_at": stored,
+                            "url": _text(blog_data["url"]),
+                            "thumbnail": _thumbnail(blog_data["thumbnail"]),
                         }
                     )
 
-                completed += 1
+                if len(pending) > PENDING_DATES_MAX:
+                    dropped["cap"] = len(pending) - PENDING_DATES_MAX
+                    pending = pending[-PENDING_DATES_MAX:]
+                if pending or "pending_dates" in member_row:
+                    member_row["pending_dates"] = pending
+                for reason, count in dropped.items():
+                    pending_dropped[reason] = pending_dropped.get(reason, 0) + count
 
             # Run all member syncs concurrently with semaphore limit
-            await asyncio.gather(
+            # One member's failure must not abort the others or the index save.
+            results = await asyncio.gather(
                 *[
                     sync_member(member_id, member_name)
                     for member_id, member_name in members.items()
-                ]
+                ],
+                return_exceptions=True,
             )
+            failed_members = 0
+            for result in results:
+                if isinstance(result, BaseException):
+                    failed_members += 1
+                    logger.warning(
+                        "blog_member_sync_failed",
+                        service=service,
+                        error_type=type(result).__name__,
+                    )
+            if failed_members:
+                logger.warning(
+                    "blog_sync_members_failed", service=service, count=failed_members
+                )
+            for reason, count in pending_dropped.items():
+                logger.warning(
+                    "blog_pending_dropped", service=service, reason=reason, count=count
+                )
+            if pending_resolved:
+                logger.info(
+                    "blog_pending_resolved", service=service, count=pending_resolved
+                )
+            if skipped_dates:
+                logger.warning(
+                    "blog_entry_skipped",
+                    service=service,
+                    reason="unparsed_date",
+                    count=skipped_dates,
+                )
+            if rejected_blogs:
+                logger.warning(
+                    "blog_remote_rejected",
+                    service=service,
+                    kind="blog",
+                    count=rejected_blogs,
+                )
 
         # SD-BE-SVC-05: a cancelled run must not write its stale snapshot back —
         # doing so after a newer run's save can roll the index backwards.
@@ -719,6 +1249,12 @@ class BlogService:
             logger.info(
                 "Blog metadata sync cancelled; skipping index save", service=service
             )
+            return index
+
+        if members and failed_members == len(members):
+            # Nothing was scanned: leave last_sync and the stored index alone
+            # and flag the failure for the caller.
+            index["sync_failed"] = True
             return index
 
         from datetime import datetime, timezone
@@ -748,6 +1284,7 @@ class BlogService:
         queue: list[BlogDownloadItem] = []
         # Resolved once: it reads settings.json, too slow to repeat per blog.
         base = self.get_blogs_base_path(service)
+        rejected = 0
 
         for member_id, member_data in index.get("members", {}).items():
             # Skip members whose blogs are all removed (e.g., graduated)
@@ -756,14 +1293,20 @@ class BlogService:
 
             member_name = member_data.get("name", "")
 
-            for blog in member_data.get("blogs", []):
+            for blog in _readable_blogs(
+                service, "download_queue", member_data.get("blogs", [])
+            ):
                 # Skip individually removed blogs
                 if blog.get("removed"):
                     continue
 
                 blog_id = blog["id"]
-                date = blog["published_at"][:10].replace("-", "")
-                cache_path = _blog_folder(base, member_name, blog_id, date)
+                date = blog_date(blog["published_at"])
+                try:
+                    cache_path = _blog_folder(base, member_name, blog_id, date)
+                except UnsafePath:
+                    rejected += 1
+                    continue
 
                 # Skip if already fully cached (validated non-empty, not partial)
                 if skip_cached and self._is_blog_cached(cache_path):
@@ -774,14 +1317,21 @@ class BlogService:
                         blog_id=blog_id,
                         member_id=member_id,
                         member_name=member_name,
-                        title=blog["title"],
+                        title=_text(blog.get("title")),
                         published_at=blog["published_at"],
-                        url=blog["url"],
+                        url=_text(blog.get("url")),
                         cache_path=cache_path,
                         service=service,
                     )
                 )
 
+        if rejected:
+            logger.warning(
+                "blog_path_rejected",
+                service=service,
+                where="download_queue",
+                count=rejected,
+            )
         return queue
 
     async def download_blog_content(
@@ -1010,43 +1560,46 @@ class BlogService:
     ) -> list[dict]:
         """Download images concurrently with bounded concurrency.
 
+        Each file is named ``img_<n>`` plus ``_blog_image_ext`` of its URL.
+
         Args:
             semaphore: Limits total in-flight image downloads across all
                        blogs in a batch.  When provided, ``session.get``
                        is only called after acquiring the semaphore, so
                        the aiohttp timeout clock does not start while
                        waiting.  None for unbounded (single-blog fetches).
+
+        Fetches go through ``remote_images.fetch_official_image``; an off-list
+        or oversized image is not archived (``blog_image_refused``,
+        ``reason``) and the reader keeps its remote URL.
         """
         results: list[dict] = [None] * len(image_urls)  # type: ignore
 
         async def download_image(idx: int, img_url: str):
-            ext = Path(img_url).suffix or ".jpg"
-            # Clean extension (remove query params)
-            if "?" in ext:
-                ext = ext.split("?")[0]
-            local_name = f"img_{idx}{ext}"
+            local_name = f"img_{idx}{_blog_image_ext(img_url)}"
             local_path = images_dir / local_name
 
             async def _fetch_image():
-                async with session.get(img_url) as resp:
-                    if resp.status == 200:
-                        content = await resp.read()
-                        await self._atomic_write(local_path, content)
-                        results[idx] = {
-                            "original_url": img_url,
-                            "local_path": f"./images/{local_name}",
-                        }
+                try:
+                    content, _content_type = await fetch_official_image(
+                        session, img_url
+                    )
+                except RemoteImageRefused as e:
+                    if e.reason == "status":
+                        logger.debug("blog_image_download_failed", status=e.status)
                     else:
-                        logger.debug(
-                            "Image download non-200", url=img_url, status=resp.status
+                        _image_refusal_logs.log(
+                            logger.info, "blog_image_refused", reason=e.reason
                         )
-                        # Mirror the exception path: never leave a None slot in
-                        # the results array (None serialized into blog.json would
-                        # break _rewrite_local_images' img.get() calls).
-                        results[idx] = {
-                            "original_url": img_url,
-                            "local_path": None,
-                        }
+                    # Never leave a None slot: blog.json would break
+                    # _rewrite_local_images' img.get() calls.
+                    results[idx] = {"original_url": img_url, "local_path": None}
+                    return
+                await self._atomic_write(local_path, content)
+                results[idx] = {
+                    "original_url": img_url,
+                    "local_path": f"./images/{local_name}",
+                }
 
             try:
                 if semaphore:
@@ -1055,12 +1608,7 @@ class BlogService:
                 else:
                     await _fetch_image()
             except Exception as e:
-                logger.warning(
-                    "Failed to download image",
-                    url=img_url,
-                    error_type=type(e).__name__,
-                    error=str(e) or "(no message)",
-                )
+                logger.warning("blog_image_download_error", error_type=type(e).__name__)
                 results[idx] = {"original_url": img_url, "local_path": None}
 
         await asyncio.gather(
@@ -1089,9 +1637,12 @@ class BlogService:
         # Stage 1: Metadata sync
         if progress_callback:
             await progress_callback("Stage 1: Syncing blog metadata...")
-        await self.sync_blog_metadata(
+        stage1 = await self.sync_blog_metadata(
             service, progress_callback, cancel_event=cancel_event
         )
+        if isinstance(stage1, dict) and stage1.get("sync_failed"):
+            logger.warning("blog_backup_aborted", service=service, reason="sync_failed")
+            return {"sync_failed": True}
         logger.info(
             "blog_stage1_complete",
             service=service,
@@ -1153,7 +1704,9 @@ class BlogService:
                 continue
 
             member_name = member_data.get("name", "")
-            for blog in member_data.get("blogs", []):
+            for blog in _readable_blogs(
+                service, "recent", member_data.get("blogs", [])
+            ):
                 blog_id = blog["id"]
                 # Skip individually removed blogs
                 if blog.get("removed"):
@@ -1166,17 +1719,17 @@ class BlogService:
                 all_posts.append(
                     {
                         "id": blog_id,
-                        "title": blog["title"],
+                        "title": _text(blog.get("title")),
                         "published_at": blog["published_at"],
-                        "url": blog["url"],
-                        "thumbnail": blog.get("thumbnail"),
+                        "url": _text(blog.get("url")),
+                        "thumbnail": _thumbnail(blog.get("thumbnail")),
                         "member_id": member_id,
                         "member_name": member_name,
                     }
                 )
 
         # Sort by date descending, take limit
-        all_posts.sort(key=lambda x: x["published_at"], reverse=True)
+        all_posts.sort(key=lambda x: _published_key(x["published_at"]), reverse=True)
         return all_posts[:limit]
 
     async def get_blog_list(self, service: str, member_id: str) -> dict:
@@ -1184,23 +1737,45 @@ class BlogService:
         index = await self.load_blog_index(service)
         member_data = index.get("members", {}).get(member_id, {})
 
-        blogs = member_data.get("blogs", [])
+        blogs = _readable_blogs(service, "list", member_data.get("blogs", []))
         base = self.get_blogs_base_path(service)
         member_name = member_data.get("name", "")
 
-        def _mark_cached() -> None:
+        def _with_cached() -> list[dict]:
             # One existence check per blog: in a worker thread, off the event loop.
+            out: list[dict] = []
+            rejected = 0
             for blog in blogs:
-                date = blog["published_at"][:10].replace("-", "")
-                folder = _blog_folder(base, member_name, blog["id"], date)
-                blog["cached"] = (folder / "blog.json").exists()
+                try:
+                    folder = _blog_folder(
+                        base, member_name, blog["id"], blog_date(blog["published_at"])
+                    )
+                    cached = (folder / "blog.json").exists()
+                except UnsafePath:
+                    cached = False
+                    rejected += 1
+                out.append(
+                    {
+                        **blog,
+                        "title": _text(blog.get("title")),
+                        "url": _text(blog.get("url")),
+                        "thumbnail": _thumbnail(blog.get("thumbnail")),
+                        "cached": cached,
+                    }
+                )
+            if rejected:
+                logger.warning(
+                    "blog_path_rejected", service=service, where="list", count=rejected
+                )
+            return out
 
-        await asyncio.to_thread(_mark_cached)
-
+        listed = await asyncio.to_thread(_with_cached)
         return {
             "member_id": member_id,
             "member_name": member_data.get("name", ""),
-            "blogs": sorted(blogs, key=lambda b: b["published_at"], reverse=True),
+            "blogs": sorted(
+                listed, key=lambda b: _published_key(b["published_at"]), reverse=True
+            ),
         }
 
     def _rewrite_local_images(
@@ -1259,7 +1834,9 @@ class BlogService:
         found_member_id = None
 
         for mid, member_data in index.get("members", {}).items():
-            for blog in member_data.get("blogs", []):
+            for blog in _readable_blogs(
+                service, "content", member_data.get("blogs", [])
+            ):
                 if blog["id"] == blog_id:
                     blog_meta = blog
                     member_name = member_data.get("name", "")
@@ -1272,8 +1849,15 @@ class BlogService:
             raise ValueError(f"Blog {blog_id} not found in index")
 
         # Check cache
-        date = blog_meta["published_at"][:10].replace("-", "")
-        cache_path = self.get_blog_cache_path(service, member_name, blog_id, date)
+        date = blog_date(blog_meta["published_at"])
+        try:
+            cache_path = self.get_blog_cache_path(service, member_name, blog_id, date)
+        except UnsafePath as e:
+            # Before any fetch or write (security audit 2026-11-13).
+            logger.warning(
+                "blog_path_rejected", service=service, where="content", reason=e.reason
+            )
+            raise
         cache_file = cache_path / "blog.json"
 
         if cache_file.exists():
@@ -1286,9 +1870,9 @@ class BlogService:
             blog_id=blog_meta["id"],
             member_id=found_member_id or "",
             member_name=member_name,
-            title=blog_meta["title"],
+            title=_text(blog_meta.get("title")),
             published_at=blog_meta["published_at"],
-            url=blog_meta["url"],
+            url=_text(blog_meta.get("url")),
             cache_path=cache_path,
             service=service,
         )
@@ -1357,10 +1941,16 @@ class BlogService:
         """
         index = await self.load_blog_index(service)
 
+        members = index.get("members", {})
+        readable = {
+            mid: _readable_blogs(service, "stats", m.get("blogs", []))
+            for mid, m in members.items()
+        }
+
         total_blogs = 0
         removed_count = 0
-        for m in index.get("members", {}).values():
-            blogs = m.get("blogs", [])
+        for mid, m in members.items():
+            blogs = readable[mid]
             total_blogs += len(blogs)
             if m.get("blogs_removed"):
                 removed_count += len(blogs)
@@ -1373,17 +1963,26 @@ class BlogService:
             # Thousands of synchronous existence checks: in a worker thread so
             # the event loop keeps serving media and polls meanwhile.
             count = 0
-            for member_data in index.get("members", {}).values():
+            rejected = 0
+            for mid, member_data in members.items():
                 if member_data.get("blogs_removed"):
                     continue
                 member_name = member_data.get("name", "")
-                for blog in member_data.get("blogs", []):
+                for blog in readable[mid]:
                     if blog.get("removed"):
                         continue
-                    date = blog["published_at"][:10].replace("-", "")
-                    folder = _blog_folder(base, member_name, blog["id"], date)
+                    date = blog_date(blog["published_at"])
+                    try:
+                        folder = _blog_folder(base, member_name, blog["id"], date)
+                    except UnsafePath:
+                        rejected += 1
+                        continue
                     if (folder / "blog.json").exists():
                         count += 1
+            if rejected:
+                logger.warning(
+                    "blog_path_rejected", service=service, where="stats", count=rejected
+                )
             return count
 
         cached_count = await asyncio.to_thread(_count_cached)
@@ -1676,8 +2275,18 @@ class BlogBackupManager:
 GALLERY_MEMO_MAX = 32
 """Cached member listings kept at most (oldest dropped first). Whole-service listings are never memoised."""
 
-_GALLERY_IMAGE_NAME = re.compile(r"^img_\d+\.\w+$")
-"""A cached blog image's file name (the same rule as ``GET /api/blogs/image``)."""
+_GALLERY_IMAGE_NAME = re.compile(
+    r"^img_[0-9]+(?:"
+    + "|".join(re.escape(ext) for ext in sorted(_BLOG_IMAGE_EXTS))
+    + r")\Z",
+    re.IGNORECASE,
+)
+"""A cached blog image the photo gallery lists: ``img_<n>`` plus a picture extension
+(``_BLOG_IMAGE_EXTS``, any case). ``GET /api/blogs/image`` accepts any
+``img_<n>.<ext>`` and serves a file without a picture extension only as an
+attachment (``passive_media``); the gallery leaves such files out (security
+audit 2026-11-13). A persisted listing row with another name is malformed, so
+the blog is read again."""
 
 GallerySignature = tuple[str, int, int, int]
 """``(base, index mtime_ns, cached blog.json count, gallery version)``: unchanged means the listing is unchanged."""
@@ -1771,19 +2380,6 @@ def _bump_folder_mtime(folder: Path) -> None:
         logger.warning("blog_folder_touch_failed", error_type=type(e).__name__)
 
 
-def _plain_segment(name: str) -> bool:
-    """One path segment that cannot leave its folder.
-
-    No separator, no ``:`` (on Windows ``base / "C:x"`` replaces the drive and
-    ``a:b`` names an alternate data stream), not ``.`` / ``..``.
-    """
-    return (
-        bool(name)
-        and name not in (".", "..")
-        and not any(c in name for c in ("/", "\\", "\x00", ":"))
-    )
-
-
 @dataclass(frozen=True)
 class GalleryMember:
     """One member of the index: her folder name and her well-formed blog entries."""
@@ -1840,7 +2436,8 @@ def gallery_index(
     The blogs base is ``output_dir`` (default: the configured output dir,
     resolved once here) / the service folder / ``blogs``. Keeps ``member_id``
     only (every member when ``None``). Members and blogs whose folder name is
-    not a plain path segment, or whose entry is malformed, are left out.
+    not a plain path segment or whose blog id is not a safe id (the rules
+    ``_blog_folder`` writes by), or whose entry is malformed, are left out.
     Blocking.
     """
     root = output_dir if output_dir is not None else get_output_dir()
@@ -1874,16 +2471,16 @@ def gallery_index(
         name, blogs = member.get("name", ""), member.get("blogs", [])
         if not isinstance(name, str) or not isinstance(blogs, list):
             continue  # a malformed member: skip her, keep the others
-        folder = name.strip().replace("/", "_")
-        if not _plain_segment(folder):
+        folder = member_folder_name(name)
+        if not plain_segment(folder):
             continue
         valid = [
             b
             for b in blogs
             if isinstance(b, dict)
-            and isinstance(b.get("id"), str)
+            and is_safe_id(b.get("id"))
             and isinstance(b.get("published_at"), str)
-            and _plain_segment(f"{b['published_at'][:10].replace('-', '')}_{b['id']}")
+            and plain_segment(blog_folder_name(b["published_at"], b["id"]))
         ]
         out.append(GalleryMember(folder, valid))
     return GalleryIndex(base, mtime_ns, out)
@@ -1904,7 +2501,7 @@ def gallery_member_blogs(base: Path, member: GalleryMember) -> list[CachedBlog]:
         return []
     out: list[CachedBlog] = []
     for blog in member.blogs:
-        name = f"{blog['published_at'][:10].replace('-', '')}_{blog['id']}"
+        name = blog_folder_name(blog["published_at"], blog["id"])
         if name not in present:
             continue
         try:
@@ -1926,8 +2523,9 @@ def gallery_local_images(
     """Read each cached blog's ``blog.json``; its images whose file exists, and the skip count.
 
     An unreadable ``blog.json`` is skipped (``blog_gallery_skip``, codes
-    only). A file name must match the ``/api/blogs/image`` rule, so a hostile
-    ``local_path`` never leaves the blog's ``images`` folder. Blocking.
+    only). A file name must be a picture name (``_GALLERY_IMAGE_NAME``), so a
+    hostile ``local_path`` never leaves the blog's ``images`` folder and a
+    stored non-picture is never listed. Blocking.
     """
     found: list[LocalImage] = []
     skipped = 0
@@ -1944,7 +2542,7 @@ def _blog_images(service: str, folder: Path) -> Optional[list[list]]:
     """``[[image_index, name]]`` of one cached blog's images whose file exists. Blocking.
 
     ``None`` when its ``blog.json`` is unreadable (``blog_gallery_skip``,
-    codes only). A file name must match the ``/api/blogs/image`` rule.
+    codes only). A file name must be a picture name (``_GALLERY_IMAGE_NAME``).
     """
     try:
         content = _read_blog_json(folder / "blog.json")
@@ -2062,7 +2660,7 @@ def gallery_member_listing(
     images: dict[Path, list[list]] = {}
     skipped = 0
     for blog in member.blogs:
-        name = f"{blog['published_at'][:10].replace('-', '')}_{blog['id']}"
+        name = blog_folder_name(blog["published_at"], blog["id"])
         if name not in present:
             continue
         path = folder / name

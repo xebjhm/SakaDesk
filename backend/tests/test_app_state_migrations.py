@@ -210,3 +210,29 @@ def test_concurrent_first_start(db):
     assert _version(db) == 2
     assert OLD_TABLES | NEW_TABLES <= _names(db, "table")
     assert NEW_INDEXES <= _names(db, "index")
+
+
+def test_the_wal_switch_runs_under_the_process_lock(tmp_path, monkeypatch):
+    """Concurrent first connections switching a fresh file to WAL failed at once with
+    'database is locked' (SQLite does not busy-wait there): about 1 run in 100."""
+    seen: list[bool] = []
+    real_connect = sqlite3.connect
+
+    class Spy:
+        def __init__(self, conn):
+            self._conn = conn
+
+        def execute(self, sql, *args):
+            if "journal_mode" in sql:
+                seen.append(app_state._wal_lock.locked())
+            return self._conn.execute(sql, *args)
+
+        def close(self):
+            self._conn.close()
+
+    monkeypatch.setattr(
+        app_state.sqlite3, "connect", lambda *a, **k: Spy(real_connect(*a, **k))
+    )
+    monkeypatch.setattr(app_state, "_db_path", tmp_path / "x.db")
+    app_state.connect().close()
+    assert seen == [True]

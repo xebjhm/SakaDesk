@@ -24,6 +24,17 @@ describe('SyncProgressPanel', () => {
         expect(fill.style.width).toBe('25%');
     });
 
+    it('formats the counts in the UI language (H Decision 9)', () => {
+        const spy = vi.spyOn(Number.prototype, 'toLocaleString');
+        try {
+            render(<SyncProgressPanel progress={{ ...RUNNING, completed: 1500, total: 3000 }} />);
+            expect(spy).toHaveBeenCalled();
+            for (const call of spy.mock.calls) expect(call[0]).toBe('en');
+        } finally {
+            spy.mockRestore();
+        }
+    });
+
     it('shows the detail row only while running', () => {
         const { rerender } = render(<SyncProgressPanel progress={RUNNING} />);
         expect(screen.getByText('Fixture detail').closest('div')).toHaveClass('bg-accent-subtle');

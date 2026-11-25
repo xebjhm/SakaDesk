@@ -3,30 +3,9 @@
 @tailwind utilities;
 
 @layer base {
-  /* Theme CSS variables - defaults to Hinatazaka colors */
   :root {
-    /* Group-specific colors (updated by JS when service changes) */
-    --color-primary: #7cc7e8;
-    --color-secondary: #5dc2b5;
-    --color-accent: #fffacd;
-    --color-gradient-from: #7cc7e8;
-    --color-gradient-to: #5eb3d8;
-
-    /* UI surfaces (consistent across themes) */
-    --color-surface-base: #FFFFFF;
-    --color-surface-elevated: #FAFAFA;
-    --color-surface-sunken: #F3F4F6;
-
-    /* Text colors */
-    --color-text-primary: #1f2937;
-    --color-text-secondary: #4b5563;
-    --color-text-muted: #6b7280;
-    --color-text-inverse: #FFFFFF;
-
-    /* Feedback colors */
-    --color-success: #10B981;
-    --color-warning: #F59E0B;
-    --color-error: #EF4444;
+    /* No dark mode yet (DESIGN_SYSTEM "Dark mode"): native controls and scrollbars stay light. */
+    color-scheme: light;
   }
 
   /* The app shell never scrolls at the document level (N-R4-3): every page scrolls inside its
@@ -41,28 +20,54 @@
   }
 
   body {
-    @apply antialiased text-gray-900;
+    @apply antialiased text-primary;
     /* Must match pywebview background_color in desktop.py (#F0F2F5)
        to prevent color mismatch at Windows 11 rounded corners */
     background-color: #F0F2F5;
+    /* Desktop-app feel: pywebview used to inject this rule as an inline <style>, which the app CSP
+       (style-src 'self') refuses, so the windows are created with text_select=True and it lives here. */
+    user-select: none;
+    cursor: default;
   }
 }
 
 @layer base {
-  /* Japanese content keeps Japanese glyphs whatever the UI language (spec §6). Scoped to marked
-     content, not <html>, so the UI's own stacks and the serif/display utilities keep working. */
-  /* Literal copies of fontFamily.sansJp / .reading in design/tokens/type.ts (CSS cannot import them): keep in sync. */
+  /* Content in a language other than the UI keeps its own glyphs: Japanese content (spec §6) and
+     translations (UI health #10). Scoped to marked content, not <html>, so the UI's own stacks and
+     the serif/display utilities keep working. The stacks are written once on :root by
+     design/fonts.ts (writeLanguageStacks, from fontStacks): no copies here. */
   [lang="ja"]:not(html) {
-    --ds-font-family-sans: "Noto Sans JP", system-ui, -apple-system, sans-serif;
-    --ds-font-family-serif: "Noto Serif JP", "Yu Mincho", "Hiragino Mincho ProN", serif;
+    --ds-font-family-sans: var(--ds-font-sans-ja);
+    --ds-font-family-serif: var(--ds-font-serif-ja);
     font-family: var(--ds-font-family-sans);
   }
-  /* The rule above (0,1,1) outranks .font-reading / .font-display (0,1,0) on the same element, so the
-     marked blog titles would fall back to sans: restore their faces with a higher specificity (0,2,1). */
-  [lang="ja"]:not(html).font-reading {
+  [lang="zh-TW"]:not(html) {
+    --ds-font-family-sans: var(--ds-font-sans-zh-tw);
+    --ds-font-family-serif: var(--ds-font-serif-zh-tw);
+    font-family: var(--ds-font-family-sans);
+  }
+  [lang="zh-CN"]:not(html) {
+    --ds-font-family-sans: var(--ds-font-sans-zh-cn);
+    --ds-font-family-serif: var(--ds-font-serif-zh-cn);
+    font-family: var(--ds-font-family-sans);
+  }
+  [lang="yue"]:not(html) {
+    --ds-font-family-sans: var(--ds-font-sans-yue);
+    --ds-font-family-serif: var(--ds-font-serif-yue);
+    font-family: var(--ds-font-family-sans);
+  }
+  [lang="en"]:not(html) {
+    --ds-font-family-sans: var(--ds-font-sans-en);
+    --ds-font-family-serif: var(--ds-font-serif-en);
+    font-family: var(--ds-font-family-sans);
+  }
+  /* The rules above (0,1,1) outrank .font-reading / .font-display (0,1,0) on the same element, so a
+     marked title (a Japanese blog title, the DesignPage language samples, a translated heading) would
+     fall back to sans: restore their faces with a higher specificity (0,2,1), for every language. */
+  :is([lang="ja"], [lang="zh-TW"], [lang="zh-CN"], [lang="yue"], [lang="en"]):not(html).font-reading {
     font-family: var(--ds-font-family-reading);
   }
-  [lang="ja"]:not(html).font-display {
+  :is([lang="ja"], [lang="zh-TW"], [lang="zh-CN"], [lang="yue"], [lang="en"]):not(html).font-display {
     font-family: var(--ds-font-family-serif);
   }
 }
@@ -122,5 +127,109 @@
     .sd-call-overlay * {
       scrollbar-color: var(--ds-scrollbar-thumb-on-dark) transparent;
     }
+  }
+}
+
+/* Windows High Contrast (forced colours, UI health #6). The browser replaces colours with the
+   theme's system colours and drops box-shadows and background images, so state drawn only with a
+   background or a shadow ring disappears. These rules redraw it with system colours, keyed on the
+   ARIA state the controls already carry. Normal mode is untouched. */
+@media (forced-colors: active) {
+  /* Surfaces whose edge is only a shadow: an inset hairline (no layout change). */
+  .shadow-sheet,
+  .shadow-card,
+  .shadow-pill,
+  [role="dialog"]:not([data-surface="dark"] *),
+  [role="menu"],
+  [role="listbox"] {
+    /* Not the full-screen dark viewer (its backdrop is data-surface="dark"): no frame round the window. */
+    outline: 1px solid CanvasText;
+    outline-offset: -1px;
+  }
+
+  /* Switch: on and off were two background colours. The track gets an inset outline (a border would
+     shrink the padding box and push the absolutely placed thumb off centre) and the thumb a colour;
+     on is the Highlight track. forced-color-adjust is off only here: it carries the state. Tailwind's
+     focus variants come later in this file and win on cascade order; forced colours drop their
+     transparent outline colour and draw Highlight, and on the checked switch (colours forced off) the
+     focus rules below keep the ring visible. */
+  [role="switch"] {
+    outline: 1px solid ButtonText;
+    outline-offset: -1px;
+  }
+  [role="switch"]:focus-visible {
+    outline: 2px solid Highlight;
+    outline-offset: 2px;
+  }
+  [role="switch"] > span {
+    forced-color-adjust: none;
+    background-color: ButtonText;
+  }
+  [role="switch"][aria-checked="true"] {
+    forced-color-adjust: none;
+    background-color: Highlight;
+    outline-color: Highlight;
+  }
+  [role="switch"][aria-checked="true"]:focus-visible {
+    outline-color: ButtonText;
+  }
+  [role="switch"][aria-checked="true"] > span {
+    background-color: HighlightText;
+  }
+
+  /* Selection shown only by a tint or a shadow ring: pills, rail items, the group rail, conversations,
+     tabs, search options, checked menu radios, the active sync step. Every aria-current token that
+     means "this one" is listed (page, true, step, location, date, time); aria-current="false" is not.
+     After the surface rule, so it wins on selected surfaces.
+     Geometry tells the states apart: keyboard focus is Tailwind's outline, which forced colours redraw
+     in Highlight, 2px outside the edge; selection is the same colour inside the edge (offset -2px); a
+     selected item that has focus gets both, a 4px double ring outside the edge. */
+  [aria-pressed="true"],
+  [aria-current="page"],
+  [aria-current="true"],
+  [aria-current="step"],
+  [aria-current="location"],
+  [aria-current="date"],
+  [aria-current="time"],
+  [aria-selected="true"],
+  [role="menuitemradio"][aria-checked="true"] {
+    outline: 2px solid Highlight;
+    outline-offset: -2px;
+  }
+  /* Doubled :focus-visible: specificity above the focus utility, which comes later in the file. */
+  :is(
+    [aria-pressed="true"],
+    [aria-current="page"],
+    [aria-current="true"],
+    [aria-current="step"],
+    [aria-current="location"],
+    [aria-current="date"],
+    [aria-current="time"],
+    [aria-selected="true"],
+    [role="menuitemradio"][aria-checked="true"]
+  ):focus-visible:focus-visible {
+    outline: 4px double Highlight;
+    outline-offset: 2px;
+  }
+
+  /* The hover and dark-surface thumb rules are more specific than the bare one: list them all, or
+     their (forced-away) colours win and the thumb vanishes on hover and on dark surfaces. */
+  ::-webkit-scrollbar-thumb,
+  ::-webkit-scrollbar-thumb:hover,
+  [data-surface="dark"] ::-webkit-scrollbar-thumb,
+  [data-surface="dark"] ::-webkit-scrollbar-thumb:hover,
+  .sd-call-overlay ::-webkit-scrollbar-thumb,
+  .sd-call-overlay ::-webkit-scrollbar-thumb:hover {
+    background-color: CanvasText;
+  }
+}
+
+/* "More contrast": a darker scrollbar thumb (the at-rest thumb is a light ink veil). */
+@media (prefers-contrast: more) {
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--ds-text-secondary);
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background-color: var(--ds-text-primary);
   }
 }

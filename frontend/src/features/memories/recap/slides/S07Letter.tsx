@@ -57,7 +57,7 @@ export const S07Letter: React.FC<SlideProps<S07LetterData>> = ({ data, nickname,
                             data-testid="s07-text"
                             className={cn(
                                 QUOTE_CLASS,
-                                'whitespace-pre-line text-title leading-8 text-primary',
+                                'whitespace-pre-line break-words text-title leading-8 text-primary',
                                 // Safety net for narrow papers: whole lines only, the last one ends in 「…」.
                                 !reducedMotion && 'line-clamp-[8]',
                             )}

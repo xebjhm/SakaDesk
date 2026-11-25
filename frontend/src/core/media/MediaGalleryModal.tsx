@@ -1,13 +1,13 @@
-import React, { useState, useMemo, useRef, useCallback, useEffect, memo } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect, useId, memo } from 'react';
 import { Image as ImageIcon, Film, Volume2, Calendar, VolumeX, Download, X, ZoomIn, ZoomOut, Shrink } from 'lucide-react';
 import { cn, formatDateTime, formatDuration, formatDownloadFilename } from '../../utils/classnames';
-import { timeNeighbours } from '../../utils/timeOrder';
+import { timeNeighbours, sortNewestFirst } from '../../utils/timeOrder';
 import { downloadMedia } from '../../utils/download';
 import type { Message } from '../../types';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
 import { PhotoPlayer } from './PhotoPlayer';
-import { Modal, Button, IconButton, Avatar, StatusBlock } from '../../design/primitives';
+import { Modal, LiveRegion, Button, IconButton, Avatar, StatusBlock } from '../../design/primitives';
 import {
     MediaTileButton, PregenProgressBar, VirtualMediaGrid, useHeldLoading, usePregenProgress,
     type MediaGridGroup, type VirtualMediaGridHandle,
@@ -16,9 +16,14 @@ import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
+import { useFeatureActive } from '../../design/featureActive';
+import { leavesKeysToControl } from './keyGuard';
+import { StepButtons } from './StepButtons';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 import { useTranscription } from '../../hooks/useTranscription';
+
+const NO_MESSAGES: Message[] = [];
 
 interface MediaGalleryModalProps extends BaseModalProps {
     messages: Message[];
@@ -186,7 +191,11 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const { t } = useTranslation();
 
     const [activeTab, setActiveTab] = useState<MediaTab>('photos');
+    const tabsId = useId();
+    const tabRefs = useRef<Partial<Record<MediaTab, HTMLButtonElement | null>>>({});
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+    // False while this gallery's feature is hidden (kept mounted): no key capture, no polling.
+    const featureActive = useFeatureActive();
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
     // Closing detail/voice state must happen BEFORE bubbling up — the
@@ -236,12 +245,16 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const { view, dragging, step, reset, stageHandlers } = useZoomPan(zoomStageRef, detailIsPhoto, selectedMedia?.id);
 
     // Filter messages by media type
+    // Closed (it stays mounted in ConversationMenu): nothing to list, so no filter and no sort on
+    // every change of the room (UI health P-B3). The viewer is a sibling dialog that outlives the
+    // gallery's own `isOpen`, so while it is open the items stay (its arrows and counter use them).
+    const source = isOpen || selectedMedia ? messages : NO_MESSAGES;
     const mediaItems = useMemo(() => {
-        const photos = messages.filter(m => m.type === 'picture' && m.media_file);
-        const videos = messages.filter(m => m.type === 'video' && m.media_file);
-        const voice = messages.filter(m => m.type === 'voice' && m.media_file);
+        const photos = source.filter(m => m.type === 'picture' && m.media_file);
+        const videos = source.filter(m => m.type === 'video' && m.media_file);
+        const voice = source.filter(m => m.type === 'voice' && m.media_file);
         return { photos, videos, voice };
-    }, [messages]);
+    }, [source]);
 
     // Group items by month (for all tabs)
     const groupedItems = useMemo(() => {
@@ -250,9 +263,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                       mediaItems.voice;
 
         // Sort by timestamp descending
-        const sorted = [...items].sort((a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
+        const sorted = sortNewestFirst(items);
 
         // Group by year-month
         const groups: Map<string, Message[]> = new Map();
@@ -344,14 +355,16 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         const items = activeTab === 'photos' ? mediaItems.photos :
                       activeTab === 'videos' ? mediaItems.videos :
                       mediaItems.voice;
-        return [...items].sort((a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
+        return sortNewestFirst(items);
     }, [activeTab, mediaItems]);
 
     // Keyboard navigation for detail view
+    // Logged once per gallery (by leavesKeysToControl): a range, tab list or menu kept the arrow keys.
+    const loggedKeysRef = useRef(false);
     const handleDetailKeyDown = useCallback((e: KeyboardEvent) => {
         if (!selectedMedia) return;
+        // Keys typed in a range (video seek / volume), a tab list or a menu belong to that control.
+        if (leavesKeysToControl(e.target, loggedKeysRef)) return;
 
         const currentIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
         if (currentIdx === -1) return;
@@ -384,10 +397,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }, [selectedMedia, currentTabItems, detailIsPhoto, step]);
 
     useEffect(() => {
-        if (!selectedMedia) return;
+        if (!selectedMedia || !featureActive) return;
         document.addEventListener('keydown', handleDetailKeyDown);
         return () => document.removeEventListener('keydown', handleDetailKeyDown);
-    }, [selectedMedia, handleDetailKeyDown]);
+    }, [selectedMedia, featureActive, handleDetailKeyDown]);
 
     // Detail view for selected media
     const renderDetailView = () => {
@@ -395,10 +408,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
         const mediaUrl = selectedMedia.media_file ? getMediaUrl(selectedMedia.media_file) : null;
         const detailIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
+        const { older, newer } = timeNeighbours(detailIdx, currentTabItems.length, 'newest_first');
 
         return (
             <Modal isOpen onClose={() => setSelectedMedia(null)} tone="viewer" layout="bare" aria-label={t('common.mediaViewer')} logId="media_viewer">
                 <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={() => setSelectedMedia(null)} />
+                {currentTabItems.length > 1 && (
+                    <StepButtons
+                        hasOlder={older !== null}
+                        hasNewer={newer !== null}
+                        onOlder={() => { if (older !== null) setSelectedMedia(currentTabItems[older]); }}
+                        onNewer={() => { if (newer !== null) setSelectedMedia(currentTabItems[newer]); }}
+                    />
+                )}
                 {detailIsPhoto && (
                     // aria-disabled (not disabled) at the limits, so a focused button keeps focus and ← / → keep working.
                     <div className="absolute left-4 top-4 z-10 flex gap-2">
@@ -475,8 +497,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         )}
                     </div>
                 </div>
+                <LiveRegion message={clipboardToast ?? ''} />
                 {clipboardToast && (
-                    <div role="status" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer">
+                    <div aria-hidden="true" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer">
                         {clipboardToast}
                     </div>
                 )}
@@ -500,17 +523,36 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         setActiveTab(tab);
     };
 
+    // Arrows, Home and End move between the tabs and select them (UI health A-D5; the tabs pattern).
+    const onTabsKeyDown = (e: React.KeyboardEvent) => {
+        const ids = MEDIA_TABS.map((tab) => tab.id);
+        const at = ids.indexOf(activeTab);
+        const next = e.key === 'ArrowRight' ? (at + 1) % ids.length
+            : e.key === 'ArrowLeft' ? (at - 1 + ids.length) % ids.length
+            : e.key === 'Home' ? 0
+            : e.key === 'End' ? ids.length - 1
+            : -1;
+        if (next === -1) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectTab(ids[next]);
+        tabRefs.current[ids[next]]?.focus();
+    };
+
     // Render icon-only tabs (like official app) - in the Modal toolbar slot (outside the scroller)
     const renderTabs = () => (
-        <div role="tablist" aria-label={t('media.typeTabs')} className="flex">
+        <div role="tablist" aria-label={t('media.typeTabs')} className="flex" onKeyDown={onTabsKeyDown}>
             {MEDIA_TABS.map((tab) => {
                 const selected = activeTab === tab.id;
                 return (
                     <button
                         key={tab.id}
                         type="button"
+                        ref={(el) => { tabRefs.current[tab.id] = el; }}
+                        id={`${tabsId}-${tab.id}`}
                         role="tab"
                         aria-selected={selected}
+                        tabIndex={selected ? 0 : -1}
                         aria-label={t(tab.labelKey)}
                         onClick={() => selectTab(tab.id)}
                         className={cn(
@@ -653,7 +695,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     // The list's first load (L1 timing: shown after `reveal`, slow / very-slow copy, held at least
     // `minVisible`) and its failure; pre-generation progress while the photos / videos grid is open.
     const listLoading = useHeldLoading(isOpen && listStatus === 'loading');
-    const pregen = usePregenProgress(isOpen && activeTab !== 'voice' && listStatus === 'ready', serviceId);
+    const pregen = usePregenProgress(isOpen && featureActive && activeTab !== 'voice' && listStatus === 'ready', serviceId);
 
     // Render content based on active tab
     const renderContent = () => {
@@ -701,7 +743,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     </>
                 }
             >
-                {renderContent()}
+                <div role="tabpanel" aria-labelledby={`${tabsId}-${activeTab}`}>
+                    {renderContent()}
+                </div>
             </Modal>
 
             {renderDetailView()}

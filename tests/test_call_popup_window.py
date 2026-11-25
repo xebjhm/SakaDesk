@@ -6,7 +6,6 @@ or pythonnet.
 
 from __future__ import annotations
 
-import json
 import threading
 
 import pytest
@@ -14,6 +13,7 @@ from structlog.testing import capture_logs
 
 import call_popup_window as cpw
 from backend.services.desktop_bridge import HeardTarget
+from hostjs_page import expression, shape, values
 
 
 class FakeEvent:
@@ -52,14 +52,16 @@ class FakeWindow:
         self, *, loads=True, js_result=True, hwnd=0x1234, close_on_destroy=True
     ):
         self.events, self.js, self.js_result = Events(loads), [], js_result
+        self.raw = []
         self.hidden = self.shown = 0
         self.close_on_destroy = close_on_destroy
         self.destroyed = 0
         self.native = type("N", (), {"Handle": hwnd})()
 
-    def evaluate_js(self, script):
+    def evaluate_js(self, script, callback=None, raw=False):
         self.js.append(script)
-        return self.js_result
+        self.raw.append(raw)
+        return {"v": self.js_result}
 
     def hide(self):
         self.hidden += 1
@@ -199,6 +201,9 @@ def test_ensure_creates_once_with_exact_arguments_then_reuses():
             resizable=False,
             frameless=True,
             easy_drag=False,
+            # The app CSP refuses pywebview's injected <style>; the page's own
+            # CSS keeps text unselectable.
+            text_select=True,
             focus=False,
             on_top=True,
             hidden=True,
@@ -499,9 +504,10 @@ def test_start_runs_exact_script_and_requires_true():
     win = FakeWindow()
     w, _, _ = make([win])
     assert w.start(7) is True
-    assert win.js == [
+    assert [expression(s) for s in win.js] == [
         "window.__sakadeskCallPopup ? (window.__sakadeskCallPopup.start(7), true) : false"
     ]
+    assert win.raw == [True]
     for result in (False, None):
         win.js_result = result
         assert w.start(7) is False
@@ -649,7 +655,7 @@ def test_cancel_runs_script_then_hides():
     w, _, _ = make([win])
     w.ensure()
     w.cancel(7)
-    assert win.js == [
+    assert [expression(s) for s in win.js] == [
         "window.__sakadeskCallPopup && window.__sakadeskCallPopup.cancel(7)"
     ]
     assert win.hidden == 1
@@ -657,7 +663,7 @@ def test_cancel_runs_script_then_hides():
 
 def test_cancel_hides_even_when_script_raises():
     class Raising(FakeWindow):
-        def evaluate_js(self, script):
+        def evaluate_js(self, script, callback=None, raw=False):
             raise RuntimeError("js")
 
     win = Raising()
@@ -845,20 +851,16 @@ def test_deliver_heard_runs_on_main_window_with_cjk_json():
         service="hinatazaka46", path="hinatazaka46/1/34/佐々木", message_id=55
     )
     assert w.deliver_heard(target) == "delivered"
-    payload = json.dumps(
+    assert [shape(s) for s in main.js] == [
+        "window.__sakadeskMarkVoiceHeard ? window.__sakadeskMarkVoiceHeard(<value>) : null"
+    ]
+    assert values(main.js[0]) == [
         {
             "service": "hinatazaka46",
             "path": "hinatazaka46/1/34/佐々木",
             "message_id": 55,
-        },
-        ensure_ascii=False,
-    )
-    assert main.js == [
-        "window.__sakadeskMarkVoiceHeard ? window.__sakadeskMarkVoiceHeard("
-        + payload
-        + ") : null"
+        }
     ]
-    assert "佐々木" in main.js[0]
     assert created == []
     main.js_result = None
     assert w.deliver_heard(target) == "not_ready"

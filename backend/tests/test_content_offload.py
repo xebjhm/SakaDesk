@@ -53,7 +53,7 @@ def test_get_groups_offloads_to_thread(tmp_path):
 
 def test_unread_counts_offloads_to_thread(tmp_path):
     """The per-conversation messages.json reads in /unread_counts run off-loop."""
-    member = tmp_path / "member1"
+    member = tmp_path / "日向坂46" / "member1"
     _write_member(member, [{"id": 100}, {"id": 200}])
 
     with patch("backend.api.content.get_output_dir", return_value=tmp_path):
@@ -61,8 +61,10 @@ def test_unread_counts_offloads_to_thread(tmp_path):
             "backend.api.content.asyncio.to_thread",
             wraps=__import__("asyncio").to_thread,
         ) as mock_to_thread:
-            resp = client.post("/api/content/unread_counts", json={"member1": 100})
+            resp = client.post(
+                "/api/content/unread_counts", json={"日向坂46/member1": 100}
+            )
     assert resp.status_code == 200
     assert mock_to_thread.called
     # Correctness preserved: ID 200 is the single unread message.
-    assert resp.json()["member1"] == 1
+    assert resp.json()["日向坂46/member1"] == 1

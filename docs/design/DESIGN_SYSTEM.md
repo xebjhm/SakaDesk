@@ -10,7 +10,7 @@ use it. **Read it before you add or change any UI.**
   `frontend/src/config/colors/` and `frontend/src/config/serviceThemes.ts`;
   those are not design tokens and are not scanned by the guard.
 - Primitives live in `frontend/src/design/primitives/`.
-- See everything live at `http://localhost:5173/?view=design` (dev server
+- See everything live at `http://127.0.0.1:5173/?view=design` (dev server
   only; `npm run dev` in `frontend/`). The page has a **context switcher**
   (brand, or one of the groups), contrast labels, the brand ink and aurora,
   every colour role, the expression tiers and every primitive state.
@@ -388,26 +388,38 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   (`Narration`: `font-sans text-small`, so it never reads as her words). The year poster (`recap/PosterView.tsx`) keeps the same roles; its polaroid caption uses `font-display` (there is no handwritten face in the stack). The share export (`recap/share/ShareRenderer.ts`) draws on a canvas with the same roles: the UI language's display serif for headings and numbers, the Japanese serif (`fontFamily.reading`) for her words, the sans for narration; it loads them with `document.fonts.load` (with a timeout, else system fonts) and reads every colour from the token CSS variables. The multi-member opening (`recap/Opening.tsx`, slides in `recap/slides/OpeningSlides.tsx`) plays through the same story player with the same roles: a serif `Headline`, member names as `lang="ja"` sans, role titles as neutral `bg-expressive-soft` chips, sans `Narration`; its stars are one equal size in `text-primary` (never the yellow favourite star, never sized by message volume), laid out by `starGrid` in a size-container grid whose star and caption sizes are container units, so every member fits the stage at any roster size (names truncate, stars never clip). The container-unit sizing needs CSS that has no token, so it lives in named `tailwind.config.js` utilities rather than arbitrary values: `recap-star-grid` (the size container: `--star-cols` x `--star-rows` equal cells, at most 5.5rem a row), `recap-star-size` (the star, `--star-size`) and `recap-star-label` (the captions, `--star-label` at line height 1.2, `STAR_LINE_HEIGHT`); the slide sets the four variables from `starGrid`. `size-em` sizes an inline icon (the oshi heart) to one text height. `font-reading` is the Japanese serif for blog titles
   only; post bodies stay in the sans.
 - **Per UI language** (`design/fonts.ts`, `fontStacks`): the UI language picks
-  the glyph set, and only that language's family is loaded from Google Fonts
-  (`unicode-range` slicing). `installLanguageFonts()` runs once in
-  `shell/main.tsx` and again on every language change.
+  the glyph set. Every face is self-hosted from the `@fontsource-variable/*`
+  packages (bundled into `/assets` in `unicode-range` slices; no font host).
+  The Japanese faces load with every entry point; another language's faces are
+  their own stylesheet chunk, requested when that language is applied
+  (`faceLoaders`). `installLanguageFonts()` runs once in `shell/main.tsx` and
+  again on every language change.
 
   | UI language | Sans | Serif |
   |---|---|---|
-  | `ja` | Noto Sans JP | Noto Serif JP |
-  | `zh-TW` | Noto Sans TC | Noto Serif TC |
-  | `yue` | Noto Sans HK | Noto Serif HK |
-  | `zh-CN` | Noto Sans SC | Noto Serif SC |
-  | `en` | Noto Sans | Noto Serif |
+  | `ja` | Noto Sans JP Variable | Noto Serif JP Variable |
+  | `zh-TW` | Noto Sans TC Variable | Noto Serif TC Variable |
+  | `yue` | Noto Sans HK Variable | Noto Serif HK Variable |
+  | `zh-CN` | Noto Sans SC Variable | Noto Serif SC Variable |
+  | `en` | Noto Sans Variable | Noto Serif Variable |
 
   Every stack falls back to the Japanese stack.
 - **Japanese content rule:** `[lang="ja"]:not(html)` in `@layer base`
   (`frontend/src/index.css`) switches the font variables to the Japanese
   families for any element marked `lang="ja"`, whatever the UI language. It is
   scoped to marked content, not `<html>`, so the UI's stacks keep working.
-  Companion rules `[lang="ja"]:not(html).font-reading` and `.font-display` keep
-  the serif reading and display faces on marked titles (the base rule would
-  otherwise win on the same element and render them sans).
+  Companion rules (`:is([lang="ja"], [lang="zh-TW"], [lang="zh-CN"],
+  [lang="yue"], [lang="en"]):not(html)` followed by `.font-reading` or
+  `.font-display`) keep the serif reading and display faces on marked titles
+  (the base rule would otherwise win on the same element and render them sans).
+  The same content rule exists for `zh-TW`, `zh-CN`, `yue` and `en`
+  (translations shown in their own glyphs), and the companion rules apply to
+  all five languages. The stacks come from the CSS variables
+  `--ds-font-sans-<lang>` / `--ds-font-serif-<lang>` that `writeLanguageStacks`
+  (`design/fonts.ts`) writes from `fontStacks`; index.css never copies a stack.
+  A translation's faces load when it is shown (`loadLanguageFaces`).
+  Translations are upright in CJK (`isCjkLanguage`); English blog translations
+  stay italic.
   Marked so far: message text, member names (member list, chat header,
   bubbles, profile card, call screen), letter text and voice transcripts. Blog
   content (post titles, bodies, member names on cards, in the reader, in the member
@@ -415,13 +427,17 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
   in favourites and the media gallery (lists and their viewer captions), letter text, search results
   (member, room, blog title, snippet) and filter chips, and group names shown as data
   (add service, the settings marker chip). Entry screens mark the ToS article quotes, group names on the landing cards and the sync chip, and member names in the sync's unresolved list. UI chrome is never marked.
-- `index.html` still loads Noto Sans JP and Noto Serif JP statically, because
+- `design/fonts.ts` imports Noto Sans JP and Noto Serif JP statically, because
   Japanese content always needs them.
 - **Sizes** (`text-*`, size / line height): `text-caption` 11/16,
   `text-small` 13/20, `text-body` 14/22, `text-title` 16/24,
   `text-heading` 20/28, `text-display` 32/40 (brand moments only),
   `text-reading` 16/28 (long-form reading, blog posts only).
 - Use Tailwind's `tabular-nums` for stats, times and counters.
+- Headings that wrap use `text-balance` (EmptyState, landing); long prose
+  `text-pretty` (blog bodies); Japanese titles `phrase-break`
+  (`word-break: auto-phrase`, blog reader and feed cards). Never on `*`: both
+  have a layout cost.
 
 ## 9. Buttons and states
 
@@ -437,11 +453,14 @@ Six steps (`design/tokens/radius.ts`), used through `rounded-*`:
 | `danger` | `bg-status-danger`, white text | a destructive confirm; takes the place of the primary |
 | `overlay` | `bg-viewer-control` | controls on the dark viewer |
 
+Buttons have a minimum height (`min-h-8` / `min-h-10`) and never wrap their label.
+
 `IconButton` (an `aria-label` is required) has `secondary`, `ghost`, `overlay`,
 `accent` (a floating action, e.g. the chat's unread arrows) and `soft` (the
 accent on its subtle tint, filled on hover: the group rail's actions). `shape`
 is `circle` for floating buttons (`overlay` and `accent` by default) and
-`rounded` (12 px) for inline ones. Sizes: `sm` (`h-8`) and `md` (`h-10`).
+`rounded` (12 px) for inline ones. Sizes: `sm` (`h-8`) and `md` (`h-10`). It takes `disabledReason` like `Button`
+(focusable, 40 %, the reason as title and description).
 
 | State | Rule |
 |---|---|
@@ -571,6 +590,7 @@ Other brand moments: first launch (ToS, the login carousel, setup and the first 
 | Scale | Utilities |
 |---|---|
 | Spacing | Tailwind default scale (`p-4` = 16px), multiples of 4px only |
+| Layout helpers | `justify-safe-center`, `items-safe-center` (centre inside a scroller without clipping its start), `scrollbar-stable` (a scroller whose content height changes under the user) |
 | Group-only roles | `bg-group-canvas`, `bg-group-title`, `bg-group-title-bar`, `text-group-title`, `border-group-bubble`, `decoration-group`, `ring-group-logo`, `animate-landing` |
 
 ### Which primitive when
@@ -638,6 +658,12 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
   to the opener on close, after the commit. **Tab is trapped:** it cycles over the frame's
   tabbable elements in DOM order, and focus that lands outside the top-most frame is pulled
   back (except in a menu).
+- **The rest is inert:** while any dialog is open, `#root` and every dialog below the top one
+  carry `inert` (`dialogStack.ts`), so clicks and a screen reader's virtual cursor stay in the
+  top dialog too, not only Tab. Dialogs, portaled menus and the lifted call render in `<body>`
+  outside `#root` and stay usable; anything rendered inside `#root` (a toast) does not respond
+  while a dialog is open, so it waits (`useAnyDialogOpen`): the settings error toast appears
+  once the dialogs close.
 - **Nested stacks:** dialogs stack in opening order (`dialogStack.ts`), even when a parent
   and a child open in the same render. Each level is `Z_INDEX.DIALOG` + depth ×
   `Z_INDEX.DIALOG_STEP`, the body scroll is locked while any dialog is open, and closing the
@@ -655,6 +681,9 @@ Every dialog renders through `Modal` (`design/primitives/Modal.tsx`) on the dial
   error states are `StatusBlock` (`variant="dialog"`; spinner `text-accent`; the error tile is
   `bg-semantic-danger-icon`, the empty state `EmptyState`; `retryVariant` is
   `secondary` by default and `primary` for the gradient retry the blog dialogs use).
+- **Hidden feature:** Inside a feature kept mounted behind another one (`useFeatureActive()` false,
+  `design/featureActive.ts`), `Modal` and `Menu` render nothing; their open state is kept, so
+  they come back with the feature.
 
 ### Loading and waiting
 
@@ -866,7 +895,12 @@ pre-D2 panel's values; use them for developer tooling only.
 ### Menus
 
 `Menu` (`design/primitives/Menu.tsx`) is a level-2 popover (`bg-card rounded-card shadow-card`)
-with `role="menu"` and an `aria-label`. Its parts:
+with `role="menu"` and an `aria-label`. Opening focuses the first enabled item that is not
+destructive (an item with a `disabledReason` is skipped unless all have one; a `destructive`
+item, marked `data-destructive`, is never the opening focus, so Enter right after a right-click
+cannot remove anything); when no such item exists the menu itself takes focus and logs
+`menu_open_focus` (`outcome` `container`). Items show the 2 px accent ring, inset, on keyboard
+focus only; mouse hover keeps `bg-sunken`. Its parts:
 
 - `MenuItem`: a `rounded-sm` row with an optional icon; `radio` + `selected` for one-of
   options (`menuitemradio`), `destructive` for a danger action. `disabledReason` keeps the
@@ -889,6 +923,10 @@ menu stops its keys from bubbling to a dialog around its trigger (the viewer's a
 
 A text field's suggestion list is not a `Menu` (focus must stay in the field): give it the
 same surface classes and `role="listbox"`.
+
+Inside a feature kept mounted behind another one (`useFeatureActive()` false,
+`design/featureActive.ts`), `Modal` and `Menu` render nothing; their open state is kept, so they
+come back with the feature.
 
 ### Cross-group markers
 
@@ -1196,14 +1234,33 @@ visible counter counts the oldest item as 1. Buttons that step carry older / new
 
 The rule is for time-ordered items only. Images inside one blog post are not a timeline: the blog
 reader's photo viewer keeps the post's reading order (← / ‹ the image above, → / › the one below).
+Its step buttons say previous photo / next photo (`MediaViewerModal` `sequence="reading"`), and the
+buttons are not drawn when a viewer holds a single item.
 
 ### Layering
 
 `Z_INDEX` (`frontend/src/constants/zIndex.ts`) is the only source of layering for
 overlays: `DROPDOWN` 50 (menus anchored in the frame), `DIALOG` 100 plus `DIALOG_STEP` 10 per
 stacked dialog, `POPOVER` 1000 (portaled menus, above any dialog) and `TOAST` 1100 (above
-everything, e.g. the settings error toast). No `z-[…]`, `z-40` or `z-50` classes; `z-10` /
-`z-20` stay for stacking inside one frame (sticky headers, viewer chrome).
+everything, e.g. the settings error toast, which waits for open dialogs to close). No
+`z-[…]`, `z-40` or `z-50` classes; `z-10` / `z-20` stay for stacking inside one frame (sticky
+headers, viewer chrome).
+
+**Announcements.** A transient message that is not an alert (a clipboard toast, the incoming
+call's text) is announced through the one announcer: `LiveRegionHost`, an always-mounted,
+visually hidden polite `role="status"` mounted once beside `App` (`shell/main.tsx`). Components
+call `announce(message)` or render `<LiveRegion message>` (a client that announces when its
+message changes to a non-empty text); the visible toast is `aria-hidden` so it is not read
+twice. Where the region lives follows the dialog stack: while a dialog is open `#root` and the
+lower dialogs are inert and an `aria-modal` dialog hides everything outside it from assistive
+tech, so the region is portaled into the top dialog's frame and moves when the top dialog
+changes; with none open it is in `<body>`. An identical message announces again (the text is
+cleared, then set a moment later). A message stays announceable for 3 s: if the region moves in
+that window the text is set again in its new place, after it the message is stale and is not
+replayed. Errors that need a decision stay `role="alert"` (the settings error toast).
+`SettingRow` links its control to the row's description and error (`aria-describedby`;
+`aria-invalid` on an error, for fields and switches only, not a plain button). Real screen-reader
+behaviour (NVDA / Narrator on WebView2) has to be checked by hand on Windows.
 
 **The incoming call.** A call that starts with no dialog open is drawn inside the chat
 frame (its `z-30` is local to the chat area). A call that starts while a dialog is open is
@@ -1213,6 +1270,24 @@ dialog opened during the call still goes above it. It is not on the dialog layer
 leaves Escape and Tab pressed inside it to the call (`useDialog`), and focus there is allowed.
 Because the layer does not track the call, a lifted call that goes away with focus inside it
 hands focus back to the top-most dialog itself (breadcrumb `call_layer`, `phase` `focus`).
+
+### High Contrast (forced colours)
+
+Windows High Contrast replaces colours with system colours and drops shadows and gradients. One
+`@media (forced-colors: active)` block in `frontend/src/index.css` redraws what would vanish:
+surface edges (`shadow-sheet`/`card`/`pill`, dialogs except the full-screen dark viewer, menus,
+list boxes) get an inset 1 px `CanvasText` outline; the `Switch` gets an inset 1 px `ButtonText`
+outline (not a border: a border would shrink the padding box and move the thumb), a `ButtonText`
+thumb and a `Highlight` track when on (the only `forced-color-adjust: none`), and its own
+`:focus-visible` rule (2 px `Highlight`, offset 2 px; `ButtonText` when on). Anything selected
+through ARIA (`aria-pressed`, `aria-current`, `aria-selected`, checked `menuitemradio`) gets a
+2 px `Highlight` outline inside its edge (offset -2 px). **So a selected or current state must
+always carry its ARIA attribute**, not only a tint or a ring. Keyboard focus keeps working
+because Tailwind's `outline-none` is a transparent outline: forced colours discard that colour
+and draw `Highlight`, 2 px outside the edge. The geometry tells the states apart: selected is
+inside, focused is outside, and a selected item that has focus gets a 4 px double ring outside
+the edge. Users who ask for more contrast also get a darker scrollbar thumb
+(`prefers-contrast: more`).
 
 ### Adding or changing a token
 
@@ -1231,18 +1306,18 @@ hands focus back to the top-most dialog itself (breadcrumb `call_layer`, `phase`
 
 ### The guard (ratchet)
 
-`frontend/src/design/guard.test.ts` counts hard-coded style values per file:
-hex colours, `rgb()`/`hsl()`, arbitrary radius / shadow / text / spacing
-values, and the D1 group role utilities superseded by `*-accent-*`
-(`bg-group-accent`, `bg-group-badge`, `bg-group-subtle`, `text-group-strong`,
-`border-group-subtle`, `ring-group`, `accent-group`, `shadow-group-glow`; the
-official layer is not counted) and Tailwind's `rounded-2xl` / `rounded-3xl`. Width, height and position arbitrary values are
-allowed. Comments are ignored, but string contents are still scanned (hex
-colours live in strings). Named palette classes (e.g. `bg-gray-100`,
-`bg-black/40`) are not caught by the guard but are still forbidden by the
-rules here. Token files (`design/tokens/`), `config/colors/`,
-`config/serviceThemes.ts`, tests and `.d.ts` files are not scanned. The test
-compares the counts with `guard-baseline.json`:
+`frontend/src/design/guard.test.ts` counts hard-coded style values per file: hex
+colours, `rgb()`/`hsl()`, arbitrary radius / shadow / text / spacing values, and
+the D1 group role utilities superseded by `*-accent-*` (`bg-group-accent`,
+`bg-group-badge`, `bg-group-subtle`, `text-group-strong`, `border-group-subtle`,
+`ring-group`, `accent-group`, `shadow-group-glow`; the official layer is not
+counted) and Tailwind's `rounded-2xl` / `rounded-3xl`. Width, height and
+position arbitrary values are allowed. Comments are ignored, but string contents
+are still scanned (hex colours live in strings). Named palette classes (e.g.
+`bg-gray-100`, `bg-black/40`) are counted by the drift ratchet below. Token
+files (`design/tokens/`), `config/colors/`, `config/serviceThemes.ts`, tests and
+`.d.ts` files are not scanned. The test compares the counts with
+`guard-baseline.json`:
 
 - A new file must have 0.
 - An existing file may not go up.
@@ -1280,6 +1355,30 @@ The loading-UX wave started it at the hand-built spinners of the time and
 ended it empty (`{}`); `guard.test.ts` pins that it stays empty, so any new
 hand-built spinner fails the build.
 
+#### The drift ratchet
+
+The same test file runs a third ratchet (`countDriftViolations`,
+`isDriftScanned`) over what the first one does not count: named palette classes
+(`bg-gray-100`, `text-white`, `bg-black/40`), `z-40` / `z-50` / `z-[…]`,
+Tailwind's default font sizes (`text-xs` … `text-9xl`), arbitrary `leading` /
+`tracking` / `duration` / `delay` / `ease` / colour-utility / `blur` values, and
+hex / `rgb()` / `hsl()` literals in every CSS file under `src` and in
+`tailwind.config.js`. CSS system colours (`CanvasText`, `Highlight`, …),
+`transparent`, `currentColor` and `inherit` are keywords and are not counted. It
+compares with `drift-guard-baseline.json` under the same rules (new files 0,
+counts only go down, no `design/` entries); the test also pins that no file
+created by the UI-health plans F, G and H is in it. The entries left are
+deliberate or pre-token: the call screen's own stylesheet (accepted glass look),
+the body colour that must match the native window and the scrollbar fallbacks,
+the media players' viewer chrome and the transcribe button, the translate
+button and the safe-image fallback's pre-token default text sizes, the dynamic
+background's 100 px blur, the blog rail's 3 px track and its tooltip layer, and
+the postcard caption's local stacking. The file `drift-guard-baseline.json` is
+the exact list. To rewrite it, from
+`frontend/`:
+
+    UPDATE_DRIFT_BASELINE=1 npx vitest run src/design/guard.test.ts
+
 #### The dialog style ratchet
 
 `frontend/src/core/dialogs.style.test.ts` checks what the guard does not, for every file D2c
@@ -1295,7 +1394,10 @@ moved onto the system (its `FILES` list; add a file when you restyle it). Each f
 ### Dark mode
 
 Not built yet. Token names are roles so a dark value set can be added
-later without renaming anything.
+later without renaming anything. Until then `color-scheme: light` is pinned
+in two places, `<meta name="color-scheme">` in `frontend/index.html` and on
+`:root` in `frontend/src/index.css`, so native controls and scrollbars stay
+light under a dark OS theme; a dark mode must change both.
 
 ## 12. Accepted deviations
 

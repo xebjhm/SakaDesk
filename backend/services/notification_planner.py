@@ -17,6 +17,7 @@ from typing import Any
 from backend.services.chat_kind import is_group_chat
 from backend.services.new_message_collector import CollectedChat, newest_key
 from backend.services.nickname import apply_nickname
+from backend.services.safe_paths import plain_segment
 
 PREVIEW_MAX_CHARS = 80
 ROOM_MEMBER_ID = "0"
@@ -73,7 +74,7 @@ class MemoryToastPlan:
 
 @dataclass(frozen=True)
 class Skip:
-    """A chat that was suppressed. ``reason``: diverted|disabled|viewing."""
+    """A chat that was suppressed. ``reason``: diverted|disabled|viewing|bad_path."""
 
     reason: str
     group_id: str
@@ -136,21 +137,41 @@ def find_avatar(member_dir: Path) -> Path | None:
     return None
 
 
-def _chat_path(chat_dir: Path, output_service_dir: Path, service_display: str) -> str:
-    """Path relative to the output root (the dir holding the service folder), POSIX."""
+def _chat_path(
+    chat_dir: Path, output_service_dir: Path, service_display: str
+) -> str | None:
+    """Path relative to the output root (the dir holding the service folder), POSIX.
+
+    It is ``<service display name>/messages/<folder>...`` with every part a
+    ``safe_paths.plain_segment`` once a trailing dot or space is dropped from
+    each folder (Windows drops them when it creates the folder, so the target
+    names the folder that exists); ``None`` otherwise (a ``..`` or drive part
+    from an escaping ``member_dir``, or another service's folder; security
+    audit 2026-11-13). Outside the output root the path is rebuilt from the
+    folder names under the LAST ``messages`` component (a parent folder may be
+    called "messages" too).
+    """
     try:
-        return chat_dir.relative_to(output_service_dir.parent).as_posix()
+        parts: tuple[str, ...] = chat_dir.relative_to(output_service_dir.parent).parts
     except ValueError:
-        # Outside the output root: rebuild from the folder names under the LAST
-        # "messages" component (a parent folder may be called "messages" too).
-        parts = chat_dir.parts
+        all_parts = chat_dir.parts
         last = (
-            len(parts) - 1 - parts[::-1].index("messages")
-            if "messages" in parts
+            len(all_parts) - 1 - all_parts[::-1].index("messages")
+            if "messages" in all_parts
             else -1
         )
-        tail = parts[last + 1 :] if last >= 0 else parts[-1:]
-        return "/".join((service_display, "messages", *tail))
+        tail = all_parts[last + 1 :] if last >= 0 else all_parts[-1:]
+        parts = (service_display, "messages", *tail)
+    folders = tuple(p.rstrip(" .") for p in parts[2:])
+    if (
+        len(parts) < 3
+        or parts[0] != service_display
+        or parts[1] != "messages"
+        or not plain_segment(parts[0])
+        or not all(f and plain_segment(f) for f in folders)
+    ):
+        return None
+    return "/".join((parts[0], parts[1], *folders))
 
 
 def _room_name(group_dir: Path, group_id: str) -> str:
@@ -174,7 +195,8 @@ def plan_toasts(
 ) -> tuple[list[ToastPlan], list[Skip]]:
     """Plan one toast per 1:1 member or room, and report what was skipped.
 
-    Rules apply per chat in this order: diverted (the C3 hook, which receives
+    Rules apply per chat in this order: a chat whose folder cannot be named
+    as a target is skipped first (``bad_path``), then diverted (the C3 hook, which receives
     every fully built :class:`ToastPlan`, even when notifications are off, and
     returns True to suppress it), disabled, viewing (focused app on that
     chat). ``member_count_for(group_id)``
@@ -210,6 +232,9 @@ def plan_toasts(
             path = _chat_path(
                 newest_chat.member_dir, output_service_dir, service_display
             )
+        if path is None:
+            skips.append(Skip("bad_path", group_id, member_id, count))
+            continue
         target = ChatTarget(
             service=service, path=path, name=name, is_group_chat=is_room
         )

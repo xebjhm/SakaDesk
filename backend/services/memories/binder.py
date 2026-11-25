@@ -44,6 +44,11 @@ from urllib.parse import unquote
 import structlog
 
 from backend.services import profile_images_service
+from backend.services.archive_urls import (
+    ArchiveReadError,
+    is_plain_relative,
+    resolve_within,
+)
 from backend.services.memories import cards as cards_mod
 from backend.services.memories import index as mi
 from backend.services.memories import people
@@ -149,19 +154,31 @@ _digest_cache: OrderedDict[tuple[str, int, int], str] = OrderedDict()
 _digest_lock = threading.Lock()
 
 
+def _plain_parts(value: str) -> bool:
+    """True for a non-empty plain relative path with no ``.``/``..``/empty part."""
+    if not value or not is_plain_relative(value):
+        return False
+    return all(p not in ("", ".", "..") for p in value.replace("\\", "/").split("/"))
+
+
 def _avatar_digest(sdir: Path, room: str, url: str) -> str | None:
     """sha256 of an archived icon given its media URL, or ``None``. Blocking.
 
     Memoised per file on ``(path, size, mtime_ns)`` (bounded LRU), so an
-    unchanged icon is hashed once. A foreign URL or a missing / unreadable
-    file gives ``None`` (never memoised).
+    unchanged icon is hashed once. A foreign URL, a missing / unreadable
+    file, or a room or icon path that would leave the room's icon folder
+    (``..``, a drive, a root; security audit 2026-11-13) gives ``None``
+    (never memoised).
     """
     marker = f"/{profile_images_service.DIR_NAME}/"
     if marker not in url:
         return None
     rel = unquote(url.split(marker, 1)[1])
-    path = sdir / room / profile_images_service.DIR_NAME / rel
+    if not (_plain_parts(room) and _plain_parts(rel)):
+        return None
+    base = sdir / room / profile_images_service.DIR_NAME
     try:
+        path = resolve_within(base, base / rel)
         st = path.stat()
         key = (str(path), st.st_size, st.st_mtime_ns)
         with _digest_lock:
@@ -170,7 +187,7 @@ def _avatar_digest(sdir: Path, room: str, url: str) -> str | None:
                 _digest_cache.move_to_end(key)
                 return hit
         data = path.read_bytes()
-    except OSError:
+    except (OSError, ArchiveReadError):
         return None
     digest = hashlib.sha256(data).hexdigest()
     with _digest_lock:
