@@ -1,24 +1,35 @@
 """Tests for upgrade_service.py — installer naming, launch, download, and utilities."""
 
 import asyncio
+import contextlib
 import hashlib
-from unittest.mock import patch
+import os
+import sys
+from unittest.mock import MagicMock, patch
 
 import httpx
 import pytest
 import respx
+from structlog.testing import capture_logs
 
+from backend.services import release_keys, upgrade_service
+from backend.services.release_signing import MAX_ENVELOPE_BYTES
 from backend.services.upgrade_service import (
     GITHUB_REPO,
     MAX_INSTALLER_SIZE,
     InstallerInfo,
+    UpdateNotVerified,
     _installer_asset_name,
     cleanup_upgrade_files,
     download_installer,
     get_installer_info,
     is_upgrade_supported,
     launch_installer,
+    release_asset_url,
 )
+from backend.tests.signing_helpers import new_key, signed_manifest, trusted
+
+_EMPTY_SHA256 = hashlib.sha256(b"").hexdigest()
 
 
 # ── GITHUB_REPO constant ────────────────────────────────────────────
@@ -45,8 +56,8 @@ class TestInstallerAssetName:
 
     def test_strips_v_only_once(self):
         result = _installer_asset_name("vv1.0.0")
-        # lstrip("v") strips all leading v's
-        assert result == "SakaDesk-1.0.0-Setup.exe"
+        # Exactly one leading "v", like get_installer_info.
+        assert result == "SakaDesk-v1.0.0-Setup.exe"
 
     def test_three_part_version(self):
         result = _installer_asset_name("1.2.3")
@@ -76,16 +87,19 @@ class TestInstallerInfo:
             url="https://example.com/setup.exe",
             size=1024,
             digest="sha256:abc123",
+            sha256="a" * 64,
         )
         assert info.url == "https://example.com/setup.exe"
         assert info.size == 1024
         assert info.digest == "sha256:abc123"
+        assert info.sha256 == "a" * 64
 
     def test_creates_without_digest(self):
         info = InstallerInfo(
             url="https://example.com/setup.exe",
             size=0,
             digest=None,
+            sha256="a" * 64,
         )
         assert info.digest is None
 
@@ -100,13 +114,17 @@ class TestLaunchInstaller:
         installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
         installer.touch()
         with patch("backend.services.upgrade_service.is_windows", return_value=False):
-            result = asyncio.run(launch_installer(installer))
+            result = asyncio.run(
+                launch_installer(installer, expected_sha256=_EMPTY_SHA256)
+            )
         assert result is False
 
     def test_returns_false_when_installer_missing(self, tmp_path):
         installer = tmp_path / "nonexistent.exe"
         with patch("backend.services.upgrade_service.is_windows", return_value=True):
-            result = asyncio.run(launch_installer(installer))
+            result = asyncio.run(
+                launch_installer(installer, expected_sha256=_EMPTY_SHA256)
+            )
         assert result is False
 
     def test_launches_silently_with_log_in_logs_dir(self, tmp_path):
@@ -123,7 +141,9 @@ class TestLaunchInstaller:
             ),
             patch("backend.services.upgrade_service.subprocess") as mock_subprocess,
         ):
-            result = asyncio.run(launch_installer(installer))
+            result = asyncio.run(
+                launch_installer(installer, expected_sha256=_EMPTY_SHA256)
+            )
         assert result is True
         args = mock_subprocess.Popen.call_args.args[0]
         assert args == [
@@ -145,7 +165,9 @@ class TestLaunchInstaller:
             patch("backend.services.upgrade_service.subprocess") as mock_subprocess,
         ):
             mock_subprocess.Popen.side_effect = OSError("blocked")
-            result = asyncio.run(launch_installer(installer))
+            result = asyncio.run(
+                launch_installer(installer, expected_sha256=_EMPTY_SHA256)
+            )
         assert result is False
 
 
@@ -210,126 +232,240 @@ class TestIsUpgradeSupported:
 # ── get_installer_info ──────────────────────────────────────────────
 
 
+_KEY = new_key()
+_INSTALLER_BYTES = b"MZ" + b"\x00" * 1022  # 1024 bytes, the release JSON's size
+_RELEASE_API = f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v1.0.0"
+_MANIFEST_URL = f"https://github.com/{GITHUB_REPO}/releases/download/v1.0.0/SakaDesk-1.0.0-manifest.json"
+
+
 def _github_release_json(
     asset_name="SakaDesk-1.0.0-Setup.exe",
     url="https://github.com/xebjhm/SakaDesk/releases/download/v1.0.0/SakaDesk-1.0.0-Setup.exe",
     size=1024,
     digest="sha256:abc123",
     extra_assets=None,
+    manifest=True,
 ):
-    """Build a minimal GitHub release JSON payload."""
+    """Build a minimal GitHub release JSON payload (with the signed manifest asset)."""
     assets = []
     if asset_name:
         asset = {"name": asset_name, "size": size, "digest": digest}
         if url:
             asset["browser_download_url"] = url
         assets.append(asset)
+    if manifest:
+        assets.append(
+            {
+                "name": "SakaDesk-1.0.0-manifest.json",
+                "size": 400,
+                "browser_download_url": _MANIFEST_URL,
+            }
+        )
     if extra_assets:
         assets.extend(extra_assets)
     return {"tag_name": "v1.0.0", "assets": assets}
 
 
+def _serve_manifest(data: bytes | None = None):
+    """Serve the release's manifest (by default signed by the trusted test key)."""
+    body = (
+        data if data is not None else signed_manifest(_INSTALLER_BYTES, "1.0.0", _KEY)
+    )
+    return respx.get(_MANIFEST_URL).respond(200, content=body)
+
+
 class TestGetInstallerInfo:
-    """Tests for get_installer_info — GitHub API parsing."""
+    """get_installer_info: the release lookup and the signed manifest gate."""
+
+    @pytest.fixture(autouse=True)
+    def _trust_test_key(self, monkeypatch):
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", trusted(_KEY))
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_success_returns_installer_info(self):
-        """Successful asset match returns correct InstallerInfo."""
-        payload = _github_release_json()
-        respx.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v1.0.0"
-        ).respond(200, json=payload)
-
+    async def test_success_returns_the_signed_size_and_hash(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        _serve_manifest()
         result = await get_installer_info("v1.0.0")
-        assert result is not None
-        assert result.url.endswith("SakaDesk-1.0.0-Setup.exe")
-        assert result.size == 1024
-        assert result.digest == "sha256:abc123"
+        assert result == InstallerInfo(
+            url=release_asset_url("1.0.0", "SakaDesk-1.0.0-Setup.exe"),
+            size=1024,
+            digest="sha256:abc123",
+            sha256=hashlib.sha256(_INSTALLER_BYTES).hexdigest(),
+        )
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_success_logs_the_verifying_key_id(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        _serve_manifest()
+        with capture_logs() as logs:
+            await get_installer_info("v1.0.0")
+        (event,) = [e for e in logs if e["event"] == "upgrade_manifest_verified"]
+        assert event["key_id"] == next(iter(trusted(_KEY)))
+        assert event["size"] == 1024
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_adds_v_prefix_when_missing(self):
-        """Version without 'v' prefix still queries correct GitHub tag."""
-        payload = _github_release_json()
-        route = respx.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v1.0.0"
-        ).respond(200, json=payload)
-
-        result = await get_installer_info("1.0.0")
-        assert result is not None
+        route = respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        _serve_manifest()
+        assert await get_installer_info("1.0.0") is not None
         assert route.called
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_asset_without_url_is_skipped(self):
-        """Asset missing browser_download_url is skipped."""
-        payload = _github_release_json(url=None)
-        respx.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v1.0.0"
-        ).respond(200, json=payload)
-
-        result = await get_installer_info("v1.0.0")
-        assert result is None
+    async def test_asset_without_url_is_refused(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json(url=None))
+        assert await get_installer_info("v1.0.0") is None
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_missing_asset_returns_none(self):
-        """Release with no matching installer asset returns None."""
-        payload = _github_release_json(asset_name="wrong-file.zip")
-        respx.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v1.0.0"
-        ).respond(200, json=payload)
-
-        result = await get_installer_info("v1.0.0")
-        assert result is None
+        respx.get(_RELEASE_API).respond(
+            200, json=_github_release_json(asset_name="wrong-file.zip")
+        )
+        assert await get_installer_info("v1.0.0") is None
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_non_200_returns_none(self):
-        """Non-200 response returns None."""
-        respx.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v1.0.0"
-        ).respond(404)
-
-        result = await get_installer_info("v1.0.0")
-        assert result is None
+        respx.get(_RELEASE_API).respond(404)
+        assert await get_installer_info("v1.0.0") is None
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_network_error_returns_none(self):
-        """Network error returns None gracefully."""
-        respx.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v1.0.0"
-        ).mock(side_effect=httpx.ConnectError("Connection refused"))
-
-        result = await get_installer_info("v1.0.0")
-        assert result is None
+        respx.get(_RELEASE_API).mock(
+            side_effect=httpx.ConnectError("Connection refused")
+        )
+        assert await get_installer_info("v1.0.0") is None
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_case_insensitive_match(self):
-        """Asset name matching is case-insensitive."""
-        payload = _github_release_json(asset_name="sakadesk-1.0.0-setup.exe")
-        respx.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v1.0.0"
-        ).respond(200, json=payload)
-
-        result = await get_installer_info("v1.0.0")
-        assert result is not None
+    async def test_asset_name_must_match_exactly(self):
+        """Hardening #61: no case-insensitive match (the CI asserts the exact name)."""
+        respx.get(_RELEASE_API).respond(
+            200, json=_github_release_json(asset_name="sakadesk-1.0.0-setup.exe")
+        )
+        assert await get_installer_info("v1.0.0") is None
 
     @respx.mock
     @pytest.mark.asyncio
     async def test_digest_none_when_absent(self):
-        """InstallerInfo.digest is None when GitHub doesn't provide it."""
-        payload = _github_release_json(digest=None)
-        respx.get(
-            f"https://api.github.com/repos/{GITHUB_REPO}/releases/tags/v1.0.0"
-        ).respond(200, json=payload)
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json(digest=None))
+        _serve_manifest()
+        result = await get_installer_info("v1.0.0")
+        assert result is not None and result.digest is None
 
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_a_release_without_a_manifest_is_not_verified(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json(manifest=False))
+        with pytest.raises(UpdateNotVerified) as exc:
+            await get_installer_info("v1.0.0")
+        assert exc.value.reason == "manifest_missing"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_a_manifest_from_an_untrusted_key_is_not_verified(self):
+        from structlog.testing import capture_logs
+
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        _serve_manifest(signed_manifest(_INSTALLER_BYTES, "1.0.0", new_key()))
+        with capture_logs() as logs, pytest.raises(UpdateNotVerified) as exc:
+            await get_installer_info("v1.0.0")
+        assert exc.value.reason == "unknown_key"
+        (refused,) = [e for e in logs if e["event"] == "upgrade_manifest_refused"]
+        assert refused["reason"] == "unknown_key"
+        assert "github" not in repr(logs)
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_an_empty_trust_store_refuses_every_update(self, monkeypatch):
+        """Fail closed: with no embedded release key nothing can be verified."""
+        monkeypatch.setattr(release_keys, "TRUSTED_RELEASE_KEYS", {})
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        _serve_manifest()
+        with pytest.raises(UpdateNotVerified) as exc:
+            await get_installer_info("v1.0.0")
+        assert exc.value.reason == "unknown_key"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_a_garbage_manifest_is_not_verified(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        _serve_manifest(b"not json at all")
+        with pytest.raises(UpdateNotVerified) as exc:
+            await get_installer_info("v1.0.0")
+        assert exc.value.reason == "malformed"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_a_manifest_for_another_version_is_not_verified(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        _serve_manifest(signed_manifest(_INSTALLER_BYTES, "0.9.0", _KEY))
+        with pytest.raises(UpdateNotVerified) as exc:
+            await get_installer_info("v1.0.0")
+        assert exc.value.reason == "wrong_version"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_an_installer_url_outside_this_release_is_refused(self):
+        other = "https://github.com/someone/else/releases/download/v1.0.0/SakaDesk-1.0.0-Setup.exe"
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json(url=other))
+        assert await get_installer_info("v1.0.0") is None
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_a_manifest_redirected_off_github_is_never_fetched(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        respx.get(_MANIFEST_URL).respond(
+            302, headers={"Location": "https://evil.example.com/m.json"}
+        )
+        evil = respx.get("https://evil.example.com/m.json").respond(200, content=b"{}")
+        with pytest.raises(UpdateNotVerified) as exc:
+            await get_installer_info("v1.0.0")
+        assert exc.value.reason == "manifest_redirect_refused"
+        assert not evil.called
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_the_manifest_request_asks_for_identity_encoding(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        route = _serve_manifest()
+        await get_installer_info("v1.0.0")
+        assert route.calls.last.request.headers["accept-encoding"] == "identity"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_a_manifest_behind_the_release_asset_redirect_is_fetched(self):
+        """GitHub serves release assets through a 302 to release-assets.githubusercontent.com."""
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        cdn = "https://release-assets.githubusercontent.com/github-production-release-asset/1/m?sig=x"
+        respx.get(_MANIFEST_URL).respond(302, headers={"Location": cdn})
+        hop = respx.get(cdn).respond(
+            200, content=signed_manifest(_INSTALLER_BYTES, "1.0.0", _KEY)
+        )
         result = await get_installer_info("v1.0.0")
         assert result is not None
-        assert result.digest is None
+        assert hop.called
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_an_oversized_manifest_is_refused(self):
+        respx.get(_RELEASE_API).respond(200, json=_github_release_json())
+        _serve_manifest(b" " * (MAX_ENVELOPE_BYTES + 1))
+        with pytest.raises(UpdateNotVerified) as exc:
+            await get_installer_info("v1.0.0")
+        assert exc.value.reason == "manifest_too_large"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_an_unsafe_version_never_reaches_the_network(self):
+        anything = respx.route().respond(500)
+        assert await get_installer_info("1.0.0/../../x") is None
+        assert not anything.called
 
 
 # ── download_installer ──────────────────────────────────────────────
@@ -345,9 +481,10 @@ def _make_info(
     url: str = "https://github.com/xebjhm/SakaDesk/releases/download/v1.0.0/SakaDesk-1.0.0-Setup.exe",
     with_digest: bool = True,
 ) -> InstallerInfo:
-    """Build InstallerInfo matching the given content."""
-    digest = f"sha256:{hashlib.sha256(content).hexdigest()}" if with_digest else None
-    return InstallerInfo(url=url, size=len(content), digest=digest)
+    """InstallerInfo as get_installer_info builds it for ``content`` (signed size and hash)."""
+    sha = hashlib.sha256(content).hexdigest()
+    digest = f"sha256:{sha}" if with_digest else None
+    return InstallerInfo(url=url, size=len(content), digest=digest, sha256=sha)
 
 
 class TestDownloadInstaller:
@@ -376,12 +513,13 @@ class TestDownloadInstaller:
     @respx.mock
     @pytest.mark.asyncio
     async def test_sha256_mismatch_rejects_download(self, tmp_path):
-        """SHA-256 mismatch deletes installer and returns None."""
+        """A GitHub digest that disagrees with the signed hash is refused."""
         content = _make_installer_content()
         info = InstallerInfo(
             url="https://github.com/xebjhm/SakaDesk/releases/download/v1.0.0/SakaDesk-1.0.0-Setup.exe",
             size=len(content),
             digest="sha256:0000000000000000000000000000000000000000000000000000000000000000",
+            sha256=hashlib.sha256(content).hexdigest(),
         )
         respx.get(info.url).respond(
             200, content=content, headers={"content-length": str(len(content))}
@@ -401,21 +539,104 @@ class TestDownloadInstaller:
 
     @respx.mock
     @pytest.mark.asyncio
-    async def test_missing_digest_is_rejected(self, tmp_path):
-        """Installer without digest is refused (mandatory verification)."""
+    async def test_missing_github_digest_is_fine_when_the_signed_hash_matches(
+        self, tmp_path
+    ):
+        """The signed manifest's hash is authoritative; GitHub's digest is a cross-check."""
         content = _make_installer_content()
         info = _make_info(content, with_digest=False)
         respx.get(info.url).respond(
             200, content=content, headers={"content-length": str(len(content))}
         )
-
         with patch(
-            "backend.services.upgrade_service.get_app_data_dir",
-            return_value=tmp_path,
+            "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
         ):
             result = await download_installer(info)
+        assert result is not None and result.read_bytes() == content
 
-        assert result is None
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_signed_hash_mismatch_rejects_download(self, tmp_path):
+        from structlog.testing import capture_logs
+
+        content = _make_installer_content()
+        info = InstallerInfo(
+            url=_make_info(content).url, size=len(content), digest=None, sha256="0" * 64
+        )
+        respx.get(info.url).respond(200, content=content)
+        with (
+            capture_logs() as logs,
+            patch(
+                "backend.services.upgrade_service.get_app_data_dir",
+                return_value=tmp_path,
+            ),
+        ):
+            assert await download_installer(info) is None
+        assert [
+            e["reason"] for e in logs if e["event"] == "installer_download_refused"
+        ] == ["hash_mismatch"]
+        assert not any((tmp_path / "upgrade").glob("*.exe"))
+        assert not any((tmp_path / "upgrade").glob("*.part"))
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_a_body_longer_than_the_signed_size_stops_early(self, tmp_path):
+        content = _make_installer_content(64 * 1024)
+        info = _make_info(content)
+        info = InstallerInfo(url=info.url, size=1024, digest=None, sha256=info.sha256)
+        respx.get(info.url).respond(200, content=content)
+        with (
+            capture_logs() as logs,
+            patch(
+                "backend.services.upgrade_service.get_app_data_dir",
+                return_value=tmp_path,
+            ),
+        ):
+            assert await download_installer(info) is None
+        assert [
+            e["reason"] for e in logs if e["event"] == "installer_download_refused"
+        ] == ["too_large"]
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_the_installer_request_asks_for_identity_encoding(self, tmp_path):
+        content = _make_installer_content(64)
+        info = _make_info(content)
+        installer = respx.get(info.url).respond(200, content=content)
+        with patch(
+            "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
+        ):
+            assert await download_installer(info) is not None
+        assert installer.calls.last.request.headers["accept-encoding"] == "identity"
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_an_installer_behind_the_release_asset_redirect_downloads(
+        self, tmp_path
+    ):
+        """GitHub serves release assets through a 302 to release-assets.githubusercontent.com."""
+        content = _make_installer_content(64)
+        info = _make_info(content)
+        cdn = "https://release-assets.githubusercontent.com/github-production-release-asset/1/i?sig=x"
+        respx.get(info.url).respond(302, headers={"Location": cdn})
+        hop = respx.get(cdn).respond(200, content=content)
+        with patch(
+            "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
+        ):
+            result = await download_installer(info)
+        assert result is not None and result.read_bytes() == content
+        assert hop.called
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_an_unsigned_info_is_refused_before_the_network(self, tmp_path):
+        anything = respx.route().respond(500)
+        info = InstallerInfo(url=_make_info(b"MZ").url, size=2, digest=None, sha256="")
+        with patch(
+            "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
+        ):
+            assert await download_installer(info) is None
+        assert not anything.called
 
     @respx.mock
     @pytest.mark.asyncio
@@ -464,6 +685,7 @@ class TestDownloadInstaller:
             url="https://github.com/xebjhm/SakaDesk/releases/download/v1.0.0/SakaDesk-1.0.0-Setup.exe",
             size=999,  # Different from actual content size
             digest=f"sha256:{hashlib.sha256(content).hexdigest()}",
+            sha256=hashlib.sha256(content).hexdigest(),
         )
         respx.get(info.url).respond(
             200, content=content, headers={"content-length": str(len(content))}
@@ -484,6 +706,7 @@ class TestDownloadInstaller:
             url="https://evil.com/../../etc/passwd.exe",
             size=100,
             digest="sha256:abc",
+            sha256="0" * 64,
         )
 
         with patch(
@@ -502,6 +725,7 @@ class TestDownloadInstaller:
             url="https://example.com/malware.sh",
             size=100,
             digest="sha256:abc",
+            sha256="0" * 64,
         )
 
         with patch(
@@ -578,7 +802,6 @@ class TestDownloadUrlAllowlist:
     def test_is_allowed_download_url(self):
         from backend.services.upgrade_service import _is_allowed_download_url
 
-        # Allowed: HTTPS on GitHub-controlled hosts.
         assert _is_allowed_download_url("https://github.com/x/y/z.exe") is True
         assert (
             _is_allowed_download_url("https://objects.githubusercontent.com/a") is True
@@ -587,11 +810,19 @@ class TestDownloadUrlAllowlist:
             _is_allowed_download_url("https://release-assets.githubusercontent.com/a")
             is True
         )
-        assert _is_allowed_download_url("https://cdn.githubusercontent.com/a") is True
-        # Rejected: non-HTTPS, foreign host, and look-alike host.
-        assert _is_allowed_download_url("http://github.com/x") is False
-        assert _is_allowed_download_url("https://evil.example.com/x.exe") is False
-        assert _is_allowed_download_url("https://github.com.evil.com/x.exe") is False
+        # Hardening #61: no wildcard, no other ports, no user info, HTTPS only.
+        for url in (
+            "https://cdn.githubusercontent.com/a",
+            "https://raw.githubusercontent.com/a",
+            "https://gist.githubusercontent.com/a",
+            "https://github.com:8443/x",
+            "https://user@github.com/x",
+            "http://github.com/x",
+            "https://evil.example.com/x.exe",
+            "https://github.com.evil.com/x.exe",
+            "https://github.com:bad/x",
+        ):
+            assert _is_allowed_download_url(url) is False, url
 
     @respx.mock
     @pytest.mark.asyncio
@@ -602,6 +833,7 @@ class TestDownloadUrlAllowlist:
             url="https://evil.example.com/x.exe",
             size=2,
             digest="sha256:" + hashlib.sha256(b"MZ").hexdigest(),
+            sha256="0" * 64,
         )
         with patch(
             "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
@@ -613,11 +845,7 @@ class TestDownloadUrlAllowlist:
     @respx.mock
     @pytest.mark.asyncio
     async def test_download_rejects_redirect_off_github(self, tmp_path):
-        """A redirect that leaves GitHub is rejected after being followed (SEC-4).
-
-        Without the fix, follow_redirects=True would fetch (and verify) the body
-        from the redirected host; the post-redirect re-validation returns None.
-        """
+        """A redirect that leaves GitHub's release hosts is refused before the request is sent (hardening #61)."""
         payload = b"MZfake-installer-bytes"
         digest = "sha256:" + hashlib.sha256(payload).hexdigest()
         gh_url = (
@@ -627,17 +855,31 @@ class TestDownloadUrlAllowlist:
         respx.get(gh_url).respond(
             302, headers={"Location": "https://evil.example.com/x.exe"}
         )
-        respx.get("https://evil.example.com/x.exe").respond(
+        evil = respx.get("https://evil.example.com/x.exe").respond(
             200,
             content=payload,
             headers={"content-length": str(len(payload))},
         )
-        info = InstallerInfo(url=gh_url, size=len(payload), digest=digest)
-        with patch(
-            "backend.services.upgrade_service.get_app_data_dir", return_value=tmp_path
+        info = InstallerInfo(
+            url=gh_url,
+            size=len(payload),
+            digest=digest,
+            sha256=hashlib.sha256(payload).hexdigest(),
+        )
+        from structlog.testing import capture_logs
+
+        with (
+            capture_logs() as logs,
+            patch(
+                "backend.services.upgrade_service.get_app_data_dir",
+                return_value=tmp_path,
+            ),
         ):
             result = await download_installer(info)
         assert result is None
+        assert not evil.called  # refused before the request, not after
+        (refused,) = [e for e in logs if e["event"] == "installer_download_refused"]
+        assert (refused["reason"], refused["host_class"]) == ("redirect", "other")
 
 
 # ── no user paths in logs (PII: the Windows account name) ────────────
@@ -664,7 +906,10 @@ class TestLogsCarryNoUserPaths:
             patch("backend.services.upgrade_service.subprocess"),
             capture_logs() as logs,
         ):
-            assert asyncio.run(launch_installer(installer)) is True
+            assert (
+                asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
+                is True
+            )
         assert logs and _ACCOUNT not in repr(logs)
         (launched,) = [
             e for e in logs if e["event"] == "Installer launched successfully"
@@ -679,7 +924,10 @@ class TestLogsCarryNoUserPaths:
             patch("backend.services.upgrade_service.is_windows", return_value=True),
             capture_logs() as logs,
         ):
-            assert asyncio.run(launch_installer(installer)) is False
+            assert (
+                asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
+                is False
+            )
         assert logs and _ACCOUNT not in repr(logs)
 
     def test_launch_failure_logs_error_type_not_message(self, tmp_path):
@@ -695,7 +943,10 @@ class TestLogsCarryNoUserPaths:
             capture_logs() as logs,
         ):
             mock_subprocess.Popen.side_effect = OSError(f"blocked {installer}")
-            assert asyncio.run(launch_installer(installer)) is False
+            assert (
+                asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
+                is False
+            )
         assert logs and _ACCOUNT not in repr(logs)
         assert any(e.get("error_type") == "OSError" for e in logs)
 
@@ -793,7 +1044,10 @@ class TestDownloadPartFile:
         existing.write_bytes(b"MZ-earlier")
         content = _make_installer_content()
         info = InstallerInfo(
-            url=_make_info(content).url, size=len(content), digest="sha256:" + "0" * 64
+            url=_make_info(content).url,
+            size=len(content),
+            digest="sha256:" + "0" * 64,
+            sha256=hashlib.sha256(content).hexdigest(),
         )
         respx.get(info.url).respond(200, content=content)
         with patch(
@@ -850,7 +1104,12 @@ class TestLaunchRetry:
         ):
             mock_subprocess.Popen.side_effect = side_effect
             result = asyncio.run(
-                launch_installer(installer, attempts=attempts, retry_delay=0)
+                launch_installer(
+                    installer,
+                    expected_sha256=_EMPTY_SHA256,
+                    attempts=attempts,
+                    retry_delay=0,
+                )
             )
         return result, mock_subprocess.Popen.call_count
 
@@ -946,4 +1205,161 @@ class TestLaunchLogsDirFailure:
                 side_effect=OSError("offline share"),
             ),
         ):
-            assert asyncio.run(launch_installer(installer)) is False
+            assert (
+                asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
+                is False
+            )
+
+
+@contextlib.contextmanager
+def _plain_held(path):
+    with open(path, "rb") as stream:
+        yield stream
+
+
+class TestLaunchReverifies:
+    """Hardening #62: the installer is hashed again right before it is started."""
+
+    def _patches(self, tmp_path):
+        return (
+            patch("backend.services.upgrade_service.is_windows", return_value=True),
+            patch(
+                "backend.services.upgrade_service.get_logs_dir", return_value=tmp_path
+            ),
+            patch("backend.services.upgrade_service.subprocess"),
+        )
+
+    def test_an_installer_changed_after_download_is_not_started(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ-signed")
+        signed = hashlib.sha256(b"MZ-signed").hexdigest()
+        installer.write_bytes(b"MZ-swapped")
+        win, logs_dir, sub = self._patches(tmp_path)
+        with capture_logs() as logs, win, logs_dir, sub as mock_subprocess:
+            with pytest.raises(UpdateNotVerified) as exc:
+                asyncio.run(launch_installer(installer, expected_sha256=signed))
+        assert exc.value.reason == "hash_mismatch"
+        mock_subprocess.Popen.assert_not_called()
+        assert [
+            e["reason"] for e in logs if e["event"] == "installer_launch_refused"
+        ] == ["hash_mismatch"]
+
+    def test_setup_starts_while_the_checked_handle_is_held(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ-signed")
+        order: list[str] = []
+        real = upgrade_service._held_for_launch
+
+        @contextlib.contextmanager
+        def recording(path):
+            with real(path) as stream:
+                order.append("held")
+                yield stream
+                # The digest came from this very stream, not from a re-open.
+                assert stream.tell() == len(b"MZ-signed")
+                order.append("released")
+
+        win, logs_dir, sub = self._patches(tmp_path)
+        with (
+            win,
+            logs_dir,
+            sub as mock_subprocess,
+            patch.object(upgrade_service, "_held_for_launch", recording),
+        ):
+            mock_subprocess.Popen.side_effect = lambda *a, **k: order.append("started")
+            ok = asyncio.run(
+                launch_installer(
+                    installer, expected_sha256=hashlib.sha256(b"MZ-signed").hexdigest()
+                )
+            )
+        assert ok is True
+        assert order == ["held", "started", "released"]
+
+    def test_handle_is_released_when_the_hash_does_not_match(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ")
+        seen = []
+        real = upgrade_service._held_for_launch
+
+        @contextlib.contextmanager
+        def recording(path):
+            with real(path) as stream:
+                seen.append(stream)
+                yield stream
+
+        win, logs_dir, sub = self._patches(tmp_path)
+        with (
+            win,
+            logs_dir,
+            sub,
+            patch.object(upgrade_service, "_held_for_launch", recording),
+        ):
+            with pytest.raises(UpdateNotVerified):
+                asyncio.run(launch_installer(installer, expected_sha256=_EMPTY_SHA256))
+        assert seen[0].closed
+
+    def test_setup_inherits_only_the_held_handle(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ-signed")
+        fake_msvcrt = MagicMock()
+        fake_msvcrt.get_osfhandle.return_value = 4242
+        fake_sys = MagicMock(platform="win32")
+        win, logs_dir, sub = self._patches(tmp_path)
+        with (
+            win,
+            logs_dir,
+            sub as mock_subprocess,
+            patch.object(upgrade_service, "sys", fake_sys),
+            patch.dict(sys.modules, {"msvcrt": fake_msvcrt}),
+            patch.object(os, "set_handle_inheritable", create=True) as inheritable,
+            patch.object(upgrade_service, "_held_for_launch", _plain_held),
+        ):
+            ok = asyncio.run(
+                launch_installer(
+                    installer, expected_sha256=hashlib.sha256(b"MZ-signed").hexdigest()
+                )
+            )
+        assert ok is True
+        inheritable.assert_called_once_with(4242, True)
+        mock_subprocess.STARTUPINFO.assert_called_once_with(
+            lpAttributeList={"handle_list": [4242]}
+        )
+        kwargs = mock_subprocess.Popen.call_args.kwargs
+        assert kwargs["startupinfo"] is mock_subprocess.STARTUPINFO.return_value
+        assert kwargs["close_fds"] is True
+
+    def test_no_startupinfo_off_windows(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ-signed")
+        win, logs_dir, sub = self._patches(tmp_path)
+        with win, logs_dir, sub as mock_subprocess:
+            asyncio.run(
+                launch_installer(
+                    installer, expected_sha256=hashlib.sha256(b"MZ-signed").hexdigest()
+                )
+            )
+        assert "startupinfo" not in mock_subprocess.Popen.call_args.kwargs
+
+    @pytest.mark.skipif(sys.platform != "win32", reason="Windows share modes")
+    def test_windows_refuses_writers_while_held(self, tmp_path):
+        installer = tmp_path / "SakaDesk-1.0.0-Setup.exe"
+        installer.write_bytes(b"MZ")
+        decoy = tmp_path / "decoy.exe"
+        decoy.write_bytes(b"EVIL")
+        parent = tmp_path / "dir"
+        parent.mkdir()
+        inner = parent / "SakaDesk-1.0.0-Setup.exe"
+        inner.write_bytes(b"MZ")
+        with upgrade_service._held_for_launch(installer) as stream:
+            assert stream.read() == b"MZ"
+            with pytest.raises(PermissionError):
+                open(installer, "ab").close()
+            with pytest.raises(PermissionError):
+                os.replace(decoy, installer)
+            with pytest.raises(PermissionError):
+                os.remove(installer)
+            open(installer, "rb").close()  # readers are fine
+        with upgrade_service._held_for_launch(inner):
+            with pytest.raises(PermissionError):
+                parent.rename(tmp_path / "dir2")
+        open(installer, "ab").close()  # writable again once released

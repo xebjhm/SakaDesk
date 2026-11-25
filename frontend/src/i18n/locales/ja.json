@@ -353,7 +353,8 @@
     "download": "アップデートをダウンロード",
     "installHint": "インストールが終わると SakaDesk は自動で再起動します。",
     "retry": "再試行",
-    "openReleasePage": "ダウンロードページを開く"
+    "openReleasePage": "ダウンロードページを開く",
+    "notVerified": "このアップデートは検証できなかったため、インストールしませんでした。しばらくしてから再試行してください。"
   },
   "memberList": {
     "title": "トーク",

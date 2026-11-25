@@ -1,6 +1,35 @@
 import multiprocessing
+from sys import argv as _argv
 
 multiprocessing.freeze_support()
+
+
+def _run_updater_self_check(argv: list[str]) -> None:
+    """Exit 0 / 1 after checking the update signature verifier, if asked to.
+
+    Does nothing unless ``--self-check-updater`` is in ``argv``. With the flag,
+    runs ``release_signing.self_check()`` and ends the process (``os._exit``) with
+    code 0 when it passes and 1 on any exception. The Windows build runs the
+    frozen app this way (tooling/windows/build_windows.py). The call sits right
+    after ``freeze_support()``, before the pywebview and backend imports and
+    before ``main()``: no window, tray, single-instance mutex, socket, server,
+    logging or network is touched. Writes nothing to stdout or stderr (a
+    windowed executable has none): the exit code is the result.
+    """
+    if "--self-check-updater" not in argv:
+        return
+    import os
+
+    try:
+        from backend.services import release_signing
+
+        release_signing.self_check()
+    except Exception:
+        os._exit(1)
+    os._exit(0)
+
+
+_run_updater_self_check(_argv)
 
 import webview  # noqa: E402
 
@@ -81,8 +110,12 @@ KEEP_ALIVE_TIMEOUT_S = 600
 # Global reference so cleanup can signal graceful shutdown
 _uvicorn_server: uvicorn.Server | None = None
 
-# Set by the tray's Quit item (and the session-end guard) so the closing handler
-# lets the window close.
+# True once the app is quitting. Set by the tray's Quit item, by the
+# session-end guard (Windows shutdown, logoff, installer close) and by main()
+# right after the GUI loop returns. Read by the closing handler (lets the
+# window close), the toast-click handlers (open chat, memories, login: they
+# touch no window), the call popup (same) and the tray-hint guard (sends no
+# hint).
 _quitting = False
 
 # How long the one-time tray hint waits before sending, so the session-end guard
@@ -92,7 +125,12 @@ TRAY_HINT_GUARD_DELAY_S = 0.5
 
 
 def _mark_quitting() -> None:
-    """Remember that the app is quitting, so the closing handler lets it close."""
+    """Remember that the app is quitting.
+
+    Called by the tray's Quit item, the session-end guard and main() after the
+    GUI loop returns. The closing handler, the toast-click handlers, the call
+    popup and the tray-hint guard read the flag (see ``_quitting``).
+    """
     global _quitting
     _quitting = True
 
@@ -239,10 +277,13 @@ def _focus_existing_window() -> None:
     _focus_window(None)
 
 
-def make_open_chat_handler(window, focus_fn):
+def make_open_chat_handler(
+    window, focus_fn, is_quitting: Callable[[], bool] = lambda: False
+):
     """Build the toast-click handler that brings ``window`` forward on a chat.
 
-    The handler runs on a WinRT thread. It shows the window (never
+    In production ``desktop_bridge`` runs the handler on a daemon thread it
+    starts for the click; the click waits at most ``CLICK_TIMEOUT_S``. It shows the window (never
     ``window.restore()``, which would un-maximize it), calls
     ``focus_fn(hwnd)`` with the window's own handle (or None), then asks the
     frontend to navigate via ``window.__sakadeskOpenChat``. The payload is the
@@ -255,9 +296,16 @@ def make_open_chat_handler(window, focus_fn):
     It never raises. Names and paths are never logged. The payload reaches the
     page percent-encoded (``host_js.js_value``), so no value can break out of
     the script, and the call needs no ``eval`` (``host_js``).
+    While the app is quitting (``is_quitting()``) it logs ``reason=quitting``
+    and touches no window: the WebView may already be torn down.
     """
 
     def handler(target, message_id: int | None = None) -> None:
+        if is_quitting():
+            logger.info(
+                "notify_open_chat_failed", service=target.service, reason="quitting"
+            )
+            return
         try:
             window.show()
             focus_fn(_native_hwnd(window))
@@ -295,7 +343,9 @@ def make_open_chat_handler(window, focus_fn):
     return handler
 
 
-def make_open_login_handler(window, focus_fn):
+def make_open_login_handler(
+    window, focus_fn, is_quitting: Callable[[], bool] = lambda: False
+):
     """Build the "log in again" toast-click handler: show ``window``, open the login.
 
     Like :func:`make_open_chat_handler`: shows the window (never ``restore()``),
@@ -307,9 +357,14 @@ def make_open_login_handler(window, focus_fn):
     page script threw). It never raises. The
     payload reaches the page percent-encoded (``host_js.js_value``), so no value
     can break out of the script, and the call needs no ``eval`` (``host_js``).
+    While the app is quitting (``is_quitting()``) it logs ``reason=quitting``
+    and touches no window: the WebView may already be torn down.
     """
 
     def handler(service: str) -> None:
+        if is_quitting():
+            logger.info("notify_open_login_failed", service=service, reason="quitting")
+            return
         try:
             window.show()
             focus_fn(_native_hwnd(window))
@@ -347,7 +402,9 @@ def _memories_target(route: object) -> str:
     )
 
 
-def make_open_memories_handler(window, focus_fn):
+def make_open_memories_handler(
+    window, focus_fn, is_quitting: Callable[[], bool] = lambda: False
+):
     """Build the Memories toast-click handler: show ``window``, open Memories.
 
     Like :func:`make_open_login_handler`: shows the window (never
@@ -363,10 +420,20 @@ def make_open_memories_handler(window, focus_fn):
     ``reason=not_ready`` (the bridge is not mounted yet) or ``error_type``
     (plus ``js_error`` when the page script threw). Never logs the route;
     never raises.
+    While the app is quitting (``is_quitting()``) it logs ``reason=quitting``
+    and touches no window: the WebView may already be torn down.
     """
 
     def handler(service: str, route: dict) -> None:
         target = _memories_target(route)
+        if is_quitting():
+            logger.info(
+                "notify_open_memories_failed",
+                service=service,
+                target=target,
+                reason="quitting",
+            )
+            return
         try:
             window.show()
             focus_fn(_native_hwnd(window))
@@ -1310,17 +1377,22 @@ def main() -> None:
             logger.info("Window closing", geometry=geom)
             _save_window_geometry(geom)
 
-        # Toast click -> show, focus and open that chat (runs on a WinRT thread).
+        # Toast click -> show, focus and open that chat (runs on a daemon thread
+        # started by desktop_bridge; the click waits at most CLICK_TIMEOUT_S).
         desktop_bridge.set_open_chat_handler(
-            make_open_chat_handler(window, _focus_window)
+            make_open_chat_handler(window, _focus_window, is_quitting=lambda: _quitting)
         )
         # "Log in again" toast click -> show, focus and open that login dialog.
         desktop_bridge.set_open_login_handler(
-            make_open_login_handler(window, _focus_window)
+            make_open_login_handler(
+                window, _focus_window, is_quitting=lambda: _quitting
+            )
         )
         # Memories toast click -> show, focus and open Memories at the route.
         desktop_bridge.set_open_memories_handler(
-            make_open_memories_handler(window, _focus_window)
+            make_open_memories_handler(
+                window, _focus_window, is_quitting=lambda: _quitting
+            )
         )
 
         show_window = make_open_window_handler(window, _focus_window)
@@ -1401,7 +1473,12 @@ def main() -> None:
             storage_path=str(get_app_data_dir() / "webview"),
         )
 
-        # Cleanup AFTER webview closes but BEFORE process exits.
+        # Cleanup AFTER webview closes but BEFORE process exits. The window may
+        # have closed without Quit (no tray, close_to_tray off, unreadable
+        # settings), so mark quitting now: a late toast click must not reach a
+        # destroyed window. Only the closing handler, the toast-click handlers, the
+        # call popup and the tray-hint guard read the flag.
+        _mark_quitting()
         desktop_bridge.set_call_popup_host(None)
         tray.stop()
 

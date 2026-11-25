@@ -353,7 +353,8 @@
     "download": "下載更新",
     "installHint": "SakaDesk 會關閉，安裝完成後自動重新開啟。",
     "retry": "重試",
-    "openReleasePage": "開啟下載頁面"
+    "openReleasePage": "開啟下載頁面",
+    "notVerified": "無法驗證這個更新，所以沒有安裝。請稍後再試。"
   },
   "memberList": {
     "title": "聊天",

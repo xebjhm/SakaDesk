@@ -11,13 +11,13 @@ without 'unsafe-eval' does) and decode the result the way pywebview does.
 from __future__ import annotations
 
 import json
-import os
 import shutil
 import subprocess
 
 import pytest
 
 import host_js
+from ci_env import on_ci
 from hostjs_page import shape
 
 HOSTILE = [
@@ -110,7 +110,7 @@ def test_run_raises_for_a_page_error():
 def node():
     path = shutil.which("node")
     if path is None:
-        if os.environ.get("CI"):
+        if on_ci():
             pytest.fail("node is required on CI for the eval-free script check")
         pytest.skip("node is not installed")
     return path

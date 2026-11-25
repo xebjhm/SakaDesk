@@ -264,7 +264,7 @@ curl -H "X-SakaDesk-Token: $SAKADESK_API_TOKEN" http://127.0.0.1:8000/api/settin
 - **pykakasi** + **jaconv** - Japanese transliteration for search
 - **tkinter** (Python standard library) - Native file dialogs
 
-> `pywebview` is used at runtime to create the desktop window but is a build-time/system dependency, not listed in `pyproject.toml`.
+> `pywebview` is used at runtime to create the desktop window but is a build-time dependency: it is pinned, with PyInstaller, in the `build` dependency group of `pyproject.toml` (locked in `uv.lock`; `uv sync --group build` installs it).
 
 ### Frontend (TypeScript)
 - **React 18** + **react-router-dom** - UI framework and routing

@@ -543,3 +543,41 @@ def test_hostile_page_error_name_is_logged_as_other():
         (failed,) = [e for e in logs if e["event"] == event]
         assert failed["js_error"] == "other"
         assert "金村" not in repr(failed)
+
+
+def test_chat_click_while_quitting_leaves_the_window_alone():
+    window = _FakeWindow()
+    handler = desktop.make_open_chat_handler(
+        window, lambda _hwnd: None, is_quitting=lambda: True
+    )
+    with capture_logs() as logs:
+        handler(TARGET, 5)
+    assert window.calls == []
+    (failed,) = [e for e in logs if e["event"] == "notify_open_chat_failed"]
+    assert failed["reason"] == "quitting"
+
+
+def test_login_click_while_quitting_leaves_the_window_alone():
+    window = _FakeWindow()
+    handler = desktop.make_open_login_handler(
+        window, lambda _hwnd: None, is_quitting=lambda: True
+    )
+    with capture_logs() as logs:
+        handler("hinatazaka46")
+    assert window.calls == []
+    assert [e["reason"] for e in logs if e["event"] == "notify_open_login_failed"] == [
+        "quitting"
+    ]
+
+
+def test_memories_click_while_quitting_leaves_the_window_alone():
+    window = _FakeWindow()
+    handler = desktop.make_open_memories_handler(
+        window, lambda _hwnd: None, is_quitting=lambda: True
+    )
+    with capture_logs() as logs:
+        handler("hinatazaka46", {"page": "recap"})
+    assert window.calls == []
+    assert [
+        e["reason"] for e in logs if e["event"] == "notify_open_memories_failed"
+    ] == ["quitting"]
