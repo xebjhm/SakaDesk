@@ -272,3 +272,9 @@ def test_the_build_continues_when_the_updater_self_check_passes(tmp_path, monkey
         build.subprocess, "run", lambda cmd, **kw: subprocess.CompletedProcess(cmd, 0)
     )
     build.run_updater_self_check(tmp_path)
+
+
+def test_sakadesk_requires_the_pysaka_with_contained_downloads():
+    """Plan E: pysaka 0.4.9 coerces ids, contains downloads and checks media URLs."""
+    pyproject = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
+    assert "pysaka==0.4.9" in pyproject["project"]["dependencies"]

@@ -235,8 +235,12 @@ async def test_verify_never_recreates_a_file_outside_the_service_folder(
     assert (result["missing"], result["repaired"]) == (1, 1)
     assert written == [member_dir / "picture" / "103.jpg"]
     assert not (tmp_path / "ver3-escape.png").exists()
-    (event,) = _events(logs, "media_item_rejected")
-    assert (event["phase"], event["count"]) == ("verify", 1)
+    # pysaka 0.4.9 refuses the escaping media_file itself (Plan E Task 15): it is
+    # listed as unresolved and never reaches SakaDesk's own backstop.
+    (event,) = _events(logs, "saka.scan.media_file_refused")
+    assert event["count"] == 1
+    assert (result["unresolved"], result["rejected"]) == (1, 0)
+    assert not _events(logs, "media_item_rejected")
     (rejected,) = _events(logs, "remote_id_rejected", kind="message")
     assert rejected["count"] == 1
 

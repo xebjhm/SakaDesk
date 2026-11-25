@@ -191,6 +191,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   could not be verified.
 - **Uninstalling uses Windows' own credential tool** from the system folder,
   never a program with the same name somewhere else.
+- **Synced photos, videos and voice only come from proper web addresses.**
+  SakaDesk now downloads message media only over a secure connection from
+  internet hosts, never from your own network or PC, and a message with a
+  malformed id is skipped instead of being saved under a wrong name.
 
 ## [0.4.2] - 2026-11-10
 
