@@ -8,6 +8,8 @@ the position (keeping the size) so the window can never restore off-screen.
 
 from __future__ import annotations
 
+import pytest
+
 from backend.services import window_geometry as wg
 
 
@@ -87,3 +89,73 @@ class TestPositionOnScreen:
             screen=screen,
         )
         assert out["x"] == -1800 and out["y"] == 100
+
+
+class TestMinWindowSize:
+    """D4b: the window may not shrink below 960 x 640 logical (album collapse)."""
+
+    @pytest.mark.parametrize("scale", [1.0, 1.5, 1.75])
+    def test_returns_logical_pixels_at_any_dpi(self, scale):
+        """N1: WinForms scales ``min_size`` by the DPI itself (AutoScaleMode.Dpi),
+        so a device-pixel value was scaled twice. The logical minimum is handed
+        over unchanged at 100%, 150% and 175%."""
+        assert wg.min_window_size(scale=scale, work=(7680, 4320)) == (960, 640)
+        assert wg.min_window_size(scale=scale, work=None) == (960, 640)
+
+    @pytest.mark.parametrize("scale", [1.0, 1.5, 1.75])
+    def test_effective_minimum_after_winforms_scaling(self, scale):
+        """What WinForms applies (logical x scale) is 960 x 640 CSS px in device
+        pixels, not that times the scale again."""
+        w, h = wg.min_window_size(scale=scale, work=None)
+        assert (round(w * scale), round(h * scale)) == (
+            round(960 * scale),
+            round(640 * scale),
+        )
+
+    def test_capped_to_a_small_or_heavily_scaled_screen(self):
+        # 1920x1080 at 175%: 1680x1120 device px would not fit 1017 px tall.
+        w, h = wg.min_window_size(scale=1.75, work=(1920, 1017))
+        assert (w, h) == (960, 581)
+        assert h * 1.75 <= 1017  # still fits once WinForms re-scales it
+
+    def test_never_below_the_sanity_floor(self):
+        assert wg.min_window_size(scale=0.5, work=(300, 200)) == (800, 600)
+        assert wg.min_window_size(scale=1.0, work=(300, 200)) == (400, 300)
+
+    def test_non_windows_has_no_work_area(self, monkeypatch):
+        monkeypatch.setattr(wg.platform, "system", lambda: "Linux")
+        assert wg.primary_work_size() is None
+        assert wg.min_window_size(scale=1.0) == (960, 640)
+
+
+class TestOversizedSavedGeometry:
+    """N-R4-1: a size saved while maximized (3868 x 2188 on a 3840 x 2160
+    screen at 175 %) must not restore as a normal window taller than the screen."""
+
+    def test_saved_size_is_capped_to_the_usable_area(self):
+        out = wg.parse_saved_geometry(
+            {"width": 3868, "height": 2188, "x": 452, "y": 98},
+            default={"width": 2100, "height": 1400},
+            screen=None,
+            work=(3840, 2056),
+        )
+        assert out["width"] == 3840 and out["height"] == 2056
+        assert (out["x"], out["y"]) == (452, 98)
+
+    def test_a_size_that_fits_is_kept(self):
+        out = wg.parse_saved_geometry(
+            {"width": 2659, "height": 1705},
+            default={"width": 2100, "height": 1400},
+            screen=None,
+            work=(3840, 2056),
+        )
+        assert out == {"width": 2659, "height": 1705}
+
+    def test_unknown_work_area_keeps_the_size(self):
+        out = wg.parse_saved_geometry(
+            {"width": 3868, "height": 2188},
+            default={"width": 2100, "height": 1400},
+            screen=None,
+            work=None,
+        )
+        assert out == {"width": 3868, "height": 2188}

@@ -56,7 +56,7 @@ export const BlogNavFooter: React.FC<BlogNavFooterProps> = ({
 
     const label = (blog: BlogMeta, prefix: string) => (
         <span className="min-w-0">
-            <span className="block max-w-[160px] truncate text-small font-semibold text-primary">
+            <span className="relative block max-w-[160px] truncate text-small font-semibold text-primary">
                 <span className="sr-only">{prefix}:</span>{' '}
                 <span lang="ja">{truncateTitle(blog.title)}</span>
             </span>

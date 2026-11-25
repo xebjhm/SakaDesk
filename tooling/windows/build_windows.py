@@ -13,6 +13,13 @@ BUILD_DIR = PROJECT_ROOT / "build"
 ISS_SCRIPT = PROJECT_ROOT / "tooling" / "windows" / "setup.iss"
 PYPROJECT_TOML = PROJECT_ROOT / "pyproject.toml"
 
+# Everything in frontend/dist is bundled into the installer and served by the app
+# (a real paid-message export once shipped this way; security audit 2026-11-13).
+# frontend/public's allowlist (tests/test_release_hygiene.py) lacks index.html,
+# which Vite builds from frontend/index.html.
+DIST_ALLOWED_FILES = frozenset({"index.html", "logo-192.png", "logo-32.png"})
+DIST_ALLOWED_DIRS = frozenset({"assets"})
+
 
 def get_version() -> str:
     """Extract version from pyproject.toml."""
@@ -46,16 +53,86 @@ def find_iscc():
     return None
 
 
+def verify_frontend_dist(dist: Path) -> None:
+    """Stop the build when frontend/dist holds anything but the UI build.
+
+    Allowed: the files in DIST_ALLOWED_FILES and the directories in
+    DIST_ALLOWED_DIRS. Anything else is named and the build exits with code 1
+    before PyInstaller bundles it.
+    """
+    unexpected = sorted(
+        entry.name
+        for entry in dist.iterdir()
+        if not (
+            (entry.is_file() and entry.name in DIST_ALLOWED_FILES)
+            or (entry.is_dir() and entry.name in DIST_ALLOWED_DIRS)
+        )
+    )
+    if unexpected:
+        print(f"ERROR: unexpected entries in frontend/dist: {', '.join(unexpected)}")
+        print(
+            "Only the UI build may ship (index.html, logo-192.png, logo-32.png, "
+            "assets/). Remove them (check frontend/public) and rebuild."
+        )
+        sys.exit(1)
+
+
+# The in-app updater checks release signatures with cryptography, imported
+# lazily (backend/services/release_signing.py), so a build without it would
+# only fail when an update is offered. Stop the build instead.
+UPDATE_VERIFIER_BINDINGS = Path("cryptography") / "hazmat" / "bindings"
+
+
+def verify_update_verifier_bundled(app_dir: Path) -> None:
+    """Stop the build when the frozen app lacks cryptography's compiled bindings."""
+    bindings = app_dir / "_internal" / UPDATE_VERIFIER_BINDINGS
+    if not any(bindings.glob("_rust*")):
+        sys.stdout.write(
+            "ERROR: the update signature checker (cryptography) is missing from "
+            f"{app_dir.name}; check the PyInstaller analysis.\n"
+        )
+        sys.exit(1)
+
+
+SELF_CHECK_TIMEOUT_S = 120
+
+
+def run_updater_self_check(app_dir: Path) -> None:
+    """Stop the build when the built app cannot verify update signatures.
+
+    Runs ``SakaDesk.exe --self-check-updater`` from ``app_dir``: the frozen app
+    verifies a built-in Ed25519 test vector and exits 0 on success, before it
+    opens a window or does anything else. A non-zero exit, or no answer within
+    ``SELF_CHECK_TIMEOUT_S`` seconds, ends the build with code 1.
+    """
+    try:
+        done = subprocess.run(
+            [str(app_dir / "SakaDesk.exe"), "--self-check-updater"],
+            timeout=SELF_CHECK_TIMEOUT_S,
+        )
+        failed = done.returncode != 0
+    except subprocess.TimeoutExpired:
+        failed = True
+    if failed:
+        sys.stdout.write(
+            "ERROR: the update signature checker failed its self-check in the "
+            "built app\n"
+        )
+        sys.exit(1)
+    print("Update signature checker self-check passed")
+
+
 def build_exe():
     """Build the executable with PyInstaller."""
     print("--- Building Executable with PyInstaller ---")
 
-    # Ensure frontend is built first?
-    # We assume 'frontend/dist' exists or let the user handle it.
-    # But strictly speaking, for a full build script, we might want to check.
+    # We assume 'frontend/dist' exists or let the user handle it; when it does,
+    # it must hold only the UI build, because PyInstaller bundles all of it.
     frontend_dist = PROJECT_ROOT / "frontend" / "dist"
     if not frontend_dist.exists():
         print("WARNING: frontend/dist not found. The GUI will be empty.")
+    else:
+        verify_frontend_dist(frontend_dist)
 
     spec_file = PROJECT_ROOT / "tooling" / "build_windows.spec"
 
@@ -69,6 +146,8 @@ def build_exe():
     ]
 
     run_command(cmd, cwd=PROJECT_ROOT)
+    verify_update_verifier_bundled(DIST_DIR / "SakaDesk")
+    run_updater_self_check(DIST_DIR / "SakaDesk")
 
 
 def _validate_version(version: str) -> None:

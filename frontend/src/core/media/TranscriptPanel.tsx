@@ -4,6 +4,7 @@ import { useTranslation } from '../../i18n';
 import { type TranscriptionSegment, findActiveSegmentIndex } from '../../hooks/useTranscription';
 import { useCollapseOnOutOfView } from '../../features/messages/hooks/useMessageVisibility';
 import { ACCENT, withAlpha } from '../../design/colorMix';
+import { cn } from '../../utils/classnames';
 
 interface TranscriptPanelProps {
     segments: TranscriptionSegment[];
@@ -57,7 +58,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
 }) => {
     const { t } = useTranslation();
     const [expanded, setExpanded] = useState(defaultExpanded);
-    const activeRef = useRef<HTMLDivElement>(null);
+    const activeRef = useRef<HTMLButtonElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const userScrolledRef = useRef(false);
 
@@ -101,6 +102,15 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
 
     const isLight = variant === 'light';
 
+    // Text colours from tokens. On light surfaces (`dark`) every role is text-secondary or darker,
+    // which TranscriptPanel.contrast.test.tsx measures at >= 4.5:1 on white, sunken, elevated and the
+    // group tints (text-muted falls below that on the tints). The toggle is neutral (a disclosure
+    // control); the group colour stays only on the active line: its tint and its time, the latter in
+    // the contrast-safe accent-tonal step (the 800 text step). The dark viewer (`light`) uses the viewer text tokens.
+    const tone = isLight
+        ? { meta: 'text-viewer-muted', line: 'text-viewer-muted', active: 'text-viewer', activeTime: 'text-viewer-muted', activeBg: 'bg-viewer-control' }
+        : { meta: 'text-secondary', line: 'text-secondary', active: 'text-primary', activeTime: 'text-accent-tonal', activeBg: '' };
+
     const formatTimestamp = (seconds: number) => {
         const m = Math.floor(seconds / 60);
         const s = Math.floor(seconds % 60);
@@ -113,21 +123,18 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
     // list). The rerun button stays so the user can retry if they disagree.
     if (noSpeech) {
         return (
-            <div
-                className={`flex items-center gap-1.5 text-xs py-1${isLight ? '' : ' text-muted'}`}
-                style={isLight ? { color: 'rgba(255,255,255,0.5)' } : undefined}
-            >
+            <div className={cn('flex items-center gap-1.5 py-1 text-caption', tone.meta)}>
                 <span>{t('transcription.transcript')}</span>
-                <span style={{ opacity: 0.85 }}>· {t('transcription.noSpeech')}</span>
+                <span>· {t('transcription.noSpeech')}</span>
                 {onRerun && (
                     <button
                         onClick={onRerun}
-                        className={`p-0.5 rounded hover:opacity-70 transition-opacity${isLight ? '' : ' text-muted'}`}
-                        style={isLight ? { color: 'rgba(255,255,255,0.3)' } : undefined}
+                        className={cn('rounded-xs p-0.5 transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-0', tone.meta)}
                         type="button"
                         title={t('transcription.rerun')}
+                        aria-label={t('transcription.rerun')}
                     >
-                        <RefreshCw className="w-3 h-3" />
+                        <RefreshCw aria-hidden="true" className="h-3 w-3" />
                     </button>
                 )}
             </div>
@@ -140,22 +147,25 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
             <div className="flex items-center gap-1">
                 <button
                     onClick={() => setExpanded(!expanded)}
-                    className="flex items-center gap-1 text-xs text-left py-1"
-                    style={{ color: isLight ? 'rgba(255,255,255,0.5)' : accentColor }}
+                    aria-expanded={expanded}
+                    className={cn(
+                        'flex items-center gap-1 rounded-xs py-1 text-left text-caption transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-0',
+                        isLight ? tone.meta : 'text-secondary hover:text-primary',
+                    )}
                     type="button"
                 >
-                    <Chevron className="w-3 h-3" />
+                    <Chevron aria-hidden="true" className="h-3 w-3" />
                     {t('transcription.transcript')}
                 </button>
                 {onRerun && (
                     <button
                         onClick={onRerun}
-                        className={`p-0.5 rounded hover:opacity-70 transition-opacity${isLight ? '' : ' text-muted'}`}
-                        style={isLight ? { color: 'rgba(255,255,255,0.3)' } : undefined}
+                        className={cn('rounded-xs p-0.5 transition-opacity hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ring-offset-0', tone.meta)}
                         type="button"
                         title={t('transcription.rerun')}
+                        aria-label={t('transcription.rerun')}
                     >
-                        <RefreshCw className="w-3 h-3" />
+                        <RefreshCw aria-hidden="true" className="h-3 w-3" />
                     </button>
                 )}
             </div>
@@ -166,7 +176,7 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
             {expanded && (
                 <div
                     ref={containerRef}
-                    className={`max-h-32 overflow-y-auto text-xs leading-relaxed mt-1${
+                    className={`max-h-32 overflow-y-auto text-caption leading-relaxed mt-1${
                         withBackdrop
                             ? ` rounded-sm px-2 py-1.5 backdrop-blur-sm ${isLight ? 'bg-black/40' : 'bg-white/85'}`
                             : ''
@@ -180,51 +190,42 @@ const TranscriptPanelInner: React.FC<TranscriptPanelProps> = ({
                 >
                     {segments.map((seg, i) => {
                         const isActive = i === activeIndex;
+                        const lowConfidence = seg.confidence < 0.4;
                         return (
-                            <div
+                            <button
                                 key={i}
                                 ref={isActive ? activeRef : undefined}
-                                className="py-0.5 px-1 rounded cursor-pointer transition-colors"
-                                style={isActive ? {
-                                    background: isLight ? `rgba(255,255,255,0.08)` : withAlpha(accentColor, 8),
-                                } : undefined}
+                                type="button"
+                                aria-current={isActive ? 'true' : undefined}
+                                className={cn(
+                                    'block w-full rounded-xs px-1 py-0.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-accent ring-offset-0',
+                                    isActive && tone.activeBg,
+                                )}
+                                style={isActive && !isLight ? { background: withAlpha(accentColor, 8) } : undefined}
                                 onClick={() => onSeek?.(seg.start)}
                             >
                                 <span
-                                    className="tabular-nums mr-1.5"
-                                    style={{
-                                        color: isActive
-                                            ? (isLight ? 'rgba(255,255,255,0.7)' : accentColor)
-                                            : (isLight ? 'rgba(255,255,255,0.3)' : '#999'),
-                                    }}
+                                    className={cn('mr-1.5 tabular-nums', isActive ? tone.activeTime : tone.meta)}
                                 >
                                     {formatTimestamp(seg.start)}
                                 </span>
-                                <span lang="ja"
-                                    style={{
-                                        color: isActive
-                                            ? (isLight ? 'rgba(255,255,255,0.9)' : '#333')
-                                            : (isLight ? 'rgba(255,255,255,0.4)' : '#666'),
-                                        fontWeight: isActive ? 500 : 400,
-                                        // Low confidence segments get a dashed underline
-                                        ...(seg.confidence < 0.4 ? {
-                                            textDecoration: 'underline',
-                                            textDecorationStyle: 'dotted' as const,
-                                            textDecorationColor: isLight ? 'rgba(255,200,100,0.5)' : '#d97706',
-                                            textUnderlineOffset: '3px',
-                                        } : {}),
-                                    }}
-                                    title={seg.confidence < 0.4 ? `⚠ ${t('transcription.lowConfidence', { pct: Math.round(seg.confidence * 100) })}` : undefined}
+                                <span
+                                    lang="ja"
+                                    className={cn(
+                                        isActive ? cn(tone.active, 'font-medium') : tone.line,
+                                        lowConfidence && 'underline decoration-dotted underline-offset-2',
+                                        // The warning text colour is nearly invisible on the dark viewer: its underline token there.
+                                        lowConfidence && isLight && 'decoration-viewer',
+                                    )}
+                                    style={lowConfidence && !isLight ? { textDecorationColor: 'var(--ds-semantic-warning-text)' } : undefined}
+                                    title={lowConfidence ? `⚠ ${t('transcription.lowConfidence', { pct: Math.round(seg.confidence * 100) })}` : undefined}
                                 >
                                     {seg.text}
                                 </span>
-                            </div>
+                            </button>
                         );
                     })}
-                    <div
-                        className="text-right mt-1"
-                        style={{ color: isLight ? 'rgba(255,255,255,0.2)' : '#bbb', fontSize: '10px' }}
-                    >
+                    <div className={cn('mt-1 text-right text-caption', tone.meta)}>
                         {t('transcription.clickToJump')}
                     </div>
                 </div>

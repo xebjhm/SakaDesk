@@ -110,3 +110,16 @@ def test_dpi_scale_is_sane():
     s = wg.dpi_scale()
     assert isinstance(s, float)
     assert s == 1.0 or (wg._MIN_SCALE <= s <= wg._MAX_SCALE)
+
+
+def test_default_geometry_is_capped_and_centred_on_the_work_area():
+    # N-R4-4: 1200 x 800 logical at 175 % on a 3840 x 2160 screen. The default is
+    # capped to the usable area and given a centred position, so it takes the
+    # same explicit-position path as restored geometry (which round-trips
+    # verbatim) instead of the centre-screen path that WinForms grew to 3657 x 2402.
+    out = wg.default_geometry(1.75, work=(3840, 2056))
+    assert out == {"width": 2100, "height": 1400, "x": 870, "y": 328}
+    small = wg.default_geometry(2.0, work=(1920, 1040))
+    assert small == {"width": 1920, "height": 1040, "x": 0, "y": 0}
+    # unknown work area: the plain size, no position (as before)
+    assert wg.default_geometry(1.75, work=None) == {"width": 2100, "height": 1400}

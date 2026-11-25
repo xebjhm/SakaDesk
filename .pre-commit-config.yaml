@@ -7,7 +7,7 @@ default_stages: [pre-commit]
 repos:
   # General file hygiene
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v5.0.0
+    rev: cef0300fd0fc4d2a87a85fa2093c6b283ea36f4b  # frozen: v5.0.0
     hooks:
       - id: trailing-whitespace
         args: [--markdown-linebreak-ext=md]
@@ -20,7 +20,7 @@ repos:
 
   # Python: ruff lint + format (fast, replaces flake8/isort/black)
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.14.13
+    rev: 9b1e9a33f1b33f6ecc2fdbb8d7cc894e951106e4  # frozen: v0.14.13
     hooks:
       - id: ruff
         args: [--fix, --exit-non-zero-on-fix]

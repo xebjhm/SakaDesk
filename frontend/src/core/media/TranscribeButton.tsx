@@ -1,5 +1,5 @@
 import React from 'react';
-import { Loader2 } from 'lucide-react';
+import { Spinner } from '../../design/primitives';
 import { useTranslation } from '../../i18n';
 
 interface TranscribeButtonProps {
@@ -33,7 +33,7 @@ export const TranscribeButton: React.FC<TranscribeButtonProps> = ({
                 className={`flex items-center gap-2 text-xs py-1 ${isLight ? '' : 'text-secondary'}`}
                 style={isLight ? { color: 'rgba(255,255,255,0.6)' } : undefined}
             >
-                <Loader2 className="w-3 h-3 animate-spin" />
+                <Spinner size="sm" tone="current" decorative />
                 {t('transcription.transcribing')}
             </div>
         );

@@ -13,7 +13,7 @@ export const EmptyState: React.FC<EmptyStateProps> = ({ icon, title, description
         <div data-testid="empty-state-circle" className="mb-2 flex h-16 w-16 items-center justify-center rounded-full bg-expressive-soft text-muted">
             <span aria-hidden="true" className="flex h-7 w-7 items-center justify-center [&>svg]:h-7 [&>svg]:w-7">{icon}</span>
         </div>
-        <h3 className="font-display text-heading font-semibold text-primary">{title}</h3>
+        <h3 className="text-balance font-display text-heading font-semibold text-primary">{title}</h3>
         {description && <p className="max-w-sm text-small text-secondary">{description}</p>}
         {action && <div className="mt-2">{action}</div>}
     </div>

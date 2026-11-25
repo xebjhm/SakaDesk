@@ -25,8 +25,8 @@ def _make_message(msg_id: int, member_id: int, published_at: str) -> dict:
     }
 
 
-@pytest.mark.asyncio
-async def test_first_sync_writes_full_history_to_disk(tmp_path):
+async def _run_first_sync(tmp_path, get_messages=None) -> SyncService:
+    """Drive start_sync against a fake client; returns the service."""
     svc = SyncService()
     svc._service = "hinatazaka46"
 
@@ -49,7 +49,12 @@ async def test_first_sync_writes_full_history_to_disk(tmp_path):
     client.group = Group.HINATAZAKA46
     client.get_groups = AsyncMock(return_value=[group])
     client.get_members = AsyncMock(return_value=[member])
-    client.get_messages = AsyncMock(return_value=all_msgs)
+    client.get_messages = AsyncMock(
+        side_effect=(lambda *a, **kw: get_messages(svc, all_msgs))
+        if get_messages
+        else None,
+        return_value=all_msgs,
+    )
 
     mock_progress = MagicMock()
     for attr in ("start_phase", "set_completed", "complete", "update", "error"):
@@ -101,6 +106,12 @@ async def test_first_sync_writes_full_history_to_disk(tmp_path):
         mock_sess_cls.return_value = mock_sess_ctx
 
         await svc.start_sync()
+    return svc
+
+
+@pytest.mark.asyncio
+async def test_first_sync_writes_full_history_to_disk(tmp_path):
+    await _run_first_sync(tmp_path)
 
     # The real SyncManager wrote one messages.json for member 10.
     json_paths = list(tmp_path.rglob("messages.json"))
@@ -108,5 +119,23 @@ async def test_first_sync_writes_full_history_to_disk(tmp_path):
 
     data = json.loads(json_paths[0].read_text(encoding="utf-8"))
     written_ids = {m["id"] for m in data["messages"]}
-    assert written_ids == {m["id"] for m in all_msgs}
+    assert written_ids == {1000 + i for i in range(1500)}
     assert data["total_messages"] == 1500
+
+
+@pytest.mark.asyncio
+async def test_sync_marks_service_as_writing_for_memories_index(tmp_path):
+    """D18: while a sync writes messages.json, Memories reads must see the
+    service as being written (they serve the stored index instead of
+    rebuilding it on every write); the mark is gone once the run ends."""
+    from backend.services.memories import index as mi
+
+    seen: list[bool] = []
+
+    def record(svc, msgs):
+        seen.append(mi.is_sync_writing(svc.service_data_dir))
+        return msgs
+
+    svc = await _run_first_sync(tmp_path, get_messages=record)
+    assert seen and all(seen)
+    assert not mi.is_sync_writing(svc.service_data_dir)

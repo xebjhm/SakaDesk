@@ -183,6 +183,30 @@ export const handlers = [
     return HttpResponse.json({ size_bytes: 0 })
   }),
 
+  // Thumbnail pre-generation status and cache (media pipeline, M4)
+  http.get('/api/media/status', () => {
+    return HttpResponse.json({
+      state: 'idle',
+      paused_reason: null,
+      thumbs_full: false,
+      services: {},
+      posters: { ready: 0, failed: 0, pending_client: 0, shell_off: false },
+      cache: { thumbs_bytes: 0, posters_bytes: 0, thumbs_cap: 1073741824, posters_cap: 268435456 },
+    })
+  }),
+  http.delete('/api/media/cache', () => {
+    return HttpResponse.json({ freed_bytes: 0 })
+  }),
+  // Tile placeholders and client posters (media pipeline, M5): no placeholder yet, poster stored
+  http.post('/api/media/meta', async ({ request }) => {
+    const body = (await request.json()) as { urls?: string[] }
+    const items = Object.fromEntries((body.urls ?? []).map((url) => [url, null]))
+    return HttpResponse.json({ items })
+  }),
+  http.put('/api/media/poster/*', () => {
+    return HttpResponse.json({ v: '000000000000' }, { status: 201 })
+  }),
+
   // Search status
   http.get('/api/search/status', () => {
     return HttpResponse.json({ indexed_count: 0, is_building: false })
@@ -206,6 +230,8 @@ export const handlers = [
   http.post('/api/ui-state', () => {
     return new HttpResponse(null, { status: 204 })
   }),
+  // Memories-in-view reporting (fire-and-forget)
+  http.post('/api/ui-state/memories', () => new HttpResponse(null, { status: 204 })),
 
   // Backend app-state store (empty store, already migrated). Answered so the
   // startup conversation-cache load succeeds instead of retrying with backoff.
@@ -218,4 +244,15 @@ export const handlers = [
 
   // Read-state search copy (fire-and-forget)
   http.put('/api/read-states', () => new HttpResponse(null, { status: 204 })),
+]
+
+/**
+ * Opt-in Memories time-capsule reads with no notes, for a test whose screen mounts a day view or
+ * On This Day but is not about notes: `server.use(...memoriesCapsuleEmpty)` in its `beforeEach`.
+ * Not in the default `handlers`, so a test that forgets to declare the capsule reads still fails
+ * on the unhandled request. Tests about notes mock `fetchCapsule` / `fetchCapsuleDue` instead.
+ */
+export const memoriesCapsuleEmpty = [
+  http.get('/api/memories/:service/capsule', () => HttpResponse.json({ notes: [] })),
+  http.get('/api/memories/:service/capsule/due', () => HttpResponse.json({ notes: [] })),
 ]

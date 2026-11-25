@@ -43,6 +43,48 @@ describe('useRoomLetters', () => {
         expect(again.result.current.letters).toEqual([L]);
     });
 
+    it('a refetch with the same letters keeps the same array; changed letters replace it', async () => {
+        let letters = [L];
+        let calls = 0;
+        server.use(
+            http.get('/api/chat/letters_local', () => { calls += 1; return HttpResponse.json({ letters }); }),
+            http.get('/api/account/profile', () => HttpResponse.json(PROFILE)),
+        );
+        const { result, rerender } = renderHook(({ key }) => useRoomLetters('hinatazaka46', 'room/same', false, key), { initialProps: { key: 0 } });
+        await waitFor(() => expect(result.current.ready).toBe(true));
+        const held = result.current.letters;
+
+        rerender({ key: 1 });
+        await waitFor(() => expect(calls).toBe(2));
+        await new Promise((r) => setTimeout(r, 30));
+        expect(result.current.letters).toBe(held);
+
+        letters = [L, { ...L, id: 2 }];
+        rerender({ key: 2 });
+        await waitFor(() => expect(result.current.letters).toHaveLength(2));
+        expect(result.current.letters).not.toBe(held);
+    });
+
+    it('I1: switching to a room with cached letters is ready from its very first render', async () => {
+        server.use(
+            http.get('/api/chat/letters_local', () => HttpResponse.json({ letters: [L] })),
+            http.get('/api/account/profile', () => HttpResponse.json(PROFILE)),
+        );
+        const warm = renderHook(() => useRoomLetters('hinatazaka46', 'room/i1-cached', false, 0));
+        await waitFor(() => expect(warm.result.current.ready).toBe(true));
+        warm.unmount();
+        const seen: Array<{ path: string; ready: boolean; count: number }> = [];
+        const { rerender } = renderHook(({ path }) => {
+            const r = useRoomLetters('hinatazaka46', path, false, 0);
+            seen.push({ path, ready: r.ready, count: r.letters.length });
+            return r;
+        }, { initialProps: { path: 'room/i1-other' } });
+        rerender({ path: 'room/i1-cached' });
+        const cachedRenders = seen.filter((s) => s.path === 'room/i1-cached');
+        expect(cachedRenders.length).toBeGreaterThan(0);
+        expect(cachedRenders.every((s) => s.ready && s.count === 1)).toBe(true);
+    });
+
     it('a failed request logs and leaves the room ready without letters', async () => {
         server.use(
             http.get('/api/chat/letters_local', () => HttpResponse.json({}, { status: 500 })),

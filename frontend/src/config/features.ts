@@ -1,5 +1,5 @@
 // frontend/src/config/features.ts
-import { MessageSquare, BookOpen, Newspaper, Star, Bot, LucideIcon } from 'lucide-react';
+import { MessageSquare, BookOpen, Newspaper, Star, Bot, Sparkles, LucideIcon } from 'lucide-react';
 import type { FeatureId } from '../store/appStore';
 
 export type FeatureAccessLevel = 'free' | 'paid';
@@ -37,6 +37,12 @@ export const FEATURE_DEFINITIONS: Record<FeatureId, FeatureDefinition> = {
         labelKey: 'features.fanclub',
         accessLevel: 'paid',
     },
+    memories: {
+        id: 'memories',
+        icon: Sparkles,
+        labelKey: 'features.memories',
+        accessLevel: 'free',
+    },
     ai: {
         id: 'ai',
         icon: Bot,
@@ -48,12 +54,12 @@ export const FEATURE_DEFINITIONS: Record<FeatureId, FeatureDefinition> = {
 // Which features are available per service
 // For now, only messages is available. Others will be enabled as implemented.
 export const SERVICE_FEATURES: Record<string, FeatureId[]> = {
-    'hinatazaka46': ['messages', 'blogs'],
-    'sakurazaka46': ['messages', 'blogs'],
-    'nogizaka46': ['messages', 'blogs'],
-    'yodel': ['messages'],
+    'hinatazaka46': ['messages', 'blogs', 'memories'],
+    'sakurazaka46': ['messages', 'blogs', 'memories'],
+    'nogizaka46': ['messages', 'blogs', 'memories'],
+    'yodel': ['messages', 'memories'],
     // Default for any service
-    default: ['messages', 'blogs'],
+    default: ['messages', 'blogs', 'memories'],
 };
 
 export function getAvailableFeatures(service: string): FeatureDefinition[] {

@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from 'react';
-import { Loader2, X } from 'lucide-react';
+import { X } from 'lucide-react';
 import type { BaseModalProps } from '../../../types/modal';
 import { groupTokens } from '../../../design/tokens';
 import { serviceGroupId } from '../../../config/serviceGroup';
-import { Modal, IconButton, Button } from '../../../design/primitives';
+import { Modal, IconButton, Button, Spinner } from '../../../design/primitives';
 import { logDialogLoad } from '../../../design/dialog/dialogLog';
 import { useTranslation, Trans } from '../../../i18n';
 import { cn } from '../../../utils/classnames';
@@ -116,7 +116,7 @@ export const MemberProfilePopup: React.FC<MemberProfilePopupProps> = ({
                     <h2 id="profile-title" lang="ja" className="text-heading font-semibold text-primary">{memberName}</h2>
                     <ProfileImagePills images={images} onOpen={setViewerKind} />
                     {streak.status === 'loading' ? (
-                        <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-muted motion-reduce:animate-none" />
+                        <Spinner size="md" tone="muted" />
                     ) : streak.status === 'error' ? (
                         <div role="alert" className="flex flex-col items-center gap-2">
                             <p className="text-small text-status-danger">{streak.message}</p>

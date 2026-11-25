@@ -2,6 +2,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import { Plus, Unplug, Search } from 'lucide-react';
 import { cn } from '../../utils/classnames';
+import { clientLog } from '../../utils/clientLog';
 import { useAppStore } from '../../store/appStore';
 import { SettingsMenu } from '../common/SettingsMenu';
 import { SERVICES, getServiceShortCode, getServiceLogoUrl, getServiceDisplayName } from '../../data/services';
@@ -29,9 +30,30 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
     onOpenSearch,
 }) => {
     const { t } = useTranslation();
-    const { activeService, setActiveService, removeSelectedService, getServiceOrder, setServiceOrder } = useAppStore();
+    const activeService = useAppStore((s) => s.activeService);
+    const setActiveService = useAppStore((s) => s.setActiveService);
+    const removeSelectedService = useAppStore((s) => s.removeSelectedService);
+    // Read at drop time (an event handler), so the function itself is selected.
+    const getServiceOrder = useAppStore((s) => s.getServiceOrder);
+    const setServiceOrder = useAppStore((s) => s.setServiceOrder);
     const [showAddModal, setShowAddModal] = useState(false);
     const [contextMenu, setContextMenu] = useState<{ serviceId: string; x: number; y: number } | null>(null);
+    // The button the menu was opened from; the menu hands focus back to it when it closes (the
+    // buttons are keyed by service, so after a move it is still the moved group's button).
+    const menuTriggerRef = useRef<HTMLElement | null>(null);
+    const navRef = useRef<HTMLElement>(null);
+    // A move reorders the trigger's own row on Move down, and moving a focused element blurs it in
+    // Chromium: focus goes to the moved group's button once the reorder has been committed.
+    const focusAfterMove = (serviceId: string) => {
+        requestAnimationFrame(() => {
+            const button = navRef.current?.querySelector<HTMLElement>(`[data-service="${serviceId}"]`);
+            if (!button) {
+                clientLog('rail_reorder', { target: 'focus', outcome: 'blocked' });
+                return;
+            }
+            button.focus({ preventScroll: true });
+        });
+    };
     const { isServiceDisconnected } = useAuth();
 
     // Drag-and-drop state
@@ -44,7 +66,11 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
 
     const handleContextMenu = (e: React.MouseEvent, serviceId: string) => {
         e.preventDefault();
-        setContextMenu({ serviceId, x: e.clientX, y: e.clientY });
+        menuTriggerRef.current = e.currentTarget as HTMLElement;
+        // A keyboard-opened menu (Shift+F10, the Menu key) can have no pointer position: open it at the button.
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        const fromKeyboard = e.clientX === 0 && e.clientY === 0;
+        setContextMenu({ serviceId, x: fromKeyboard ? rect.right : e.clientX, y: fromKeyboard ? rect.top : e.clientY });
     };
 
     const handleRemoveService = () => {
@@ -89,6 +115,22 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
         dragNodeRef.current = null;
     }, []);
 
+    // One rail move, from drag-and-drop or the menu's Move up / Move down (UI health A-K6). The new
+    // rail order is merged into the global order: selected-service slots take the new rail order.
+    const moveService = useCallback((from: number, to: number, via: 'drag' | 'move_up' | 'move_down') => {
+        if (from === to || to < 0 || to >= services.length) {
+            clientLog('rail_reorder', { target: via, outcome: 'blocked' });
+            return;
+        }
+        const newRail = [...services];
+        const [moved] = newRail.splice(from, 1);
+        newRail.splice(to, 0, moved);
+        const selectedSet = new Set(services);
+        let railIdx = 0;
+        setServiceOrder(getServiceOrder().map((id) => (selectedSet.has(id) ? newRail[railIdx++] : id)));
+        clientLog('rail_reorder', { target: via, outcome: 'moved' });
+    }, [services, getServiceOrder, setServiceOrder]);
+
     const handleDrop = useCallback((e: React.DragEvent, targetIndex: number) => {
         e.preventDefault();
         if (dragIndex === null || dragIndex === targetIndex) {
@@ -96,29 +138,13 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
             return;
         }
 
-        // Compute new rail order
-        const newRail = [...services];
-        const [moved] = newRail.splice(dragIndex, 1);
-        newRail.splice(targetIndex, 0, moved);
-
-        // Merge new rail order into global order:
-        // Walk global order, replace selected-service slots with new rail order
-        const selectedSet = new Set(services);
-        const globalOrder = getServiceOrder();
-        let railIdx = 0;
-        const newGlobal = globalOrder.map((id) => {
-            if (selectedSet.has(id)) {
-                return newRail[railIdx++];
-            }
-            return id;
-        });
-
-        setServiceOrder(newGlobal);
+        moveService(dragIndex, targetIndex, 'drag');
         handleDragEnd();
-    }, [dragIndex, services, getServiceOrder, setServiceOrder, handleDragEnd]);
+    }, [dragIndex, moveService, handleDragEnd]);
 
     return (
         <nav
+            ref={navRef}
             aria-label={t('serviceRail.label')}
             className="flex h-full w-16 shrink-0 flex-col items-center bg-elevated py-3"
             onClick={() => setContextMenu(null)}
@@ -146,11 +172,14 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                             )}
 
                             <button
+                                data-service={service}
                                 onClick={() => setActiveService(service)}
                                 onContextMenu={(e) => handleContextMenu(e, service)}
                                 className="group relative flex items-center justify-center rounded-pill focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
                                 title={getServiceDisplayName(service)}
-                                aria-label={getServiceDisplayName(service)}
+                                aria-label={isServiceDisconnected(service)
+                                    ? t('serviceRail.serviceDisconnected', { name: getServiceDisplayName(service) })
+                                    : getServiceDisplayName(service)}
                                 aria-current={isActive ? 'page' : undefined}
                             >
                                 {/* Service Icon Container */}
@@ -185,6 +214,7 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                                 {/* Disconnected Warning Badge */}
                                 {isServiceDisconnected(service) && (
                                     <div
+                                        aria-hidden="true"
                                         className="absolute -bottom-0.5 -right-0.5 flex h-4 w-4 items-center justify-center rounded-pill border-2 border-surface bg-status-attention"
                                         title={t('serviceRail.sessionExpiredRelogin')}
                                     >
@@ -202,12 +232,17 @@ export const ServiceRail: React.FC<ServiceRailProps> = ({
                 })}
             </div>
 
-            {/* Context Menu for removing service */}
-            {contextMenu && (
-                <Menu aria-label={t('common.removeService')} onClose={() => setContextMenu(null)} point={{ x: contextMenu.x, y: contextMenu.y }} estimatedSize={{ width: 176, height: 48 }}>
-                    <MenuItem destructive onClick={handleRemoveService}>{t('common.removeService')}</MenuItem>
-                </Menu>
-            )}
+            {/* Context menu: reorder (also the keyboard path, UI health A-K6) and remove */}
+            {contextMenu && (() => {
+                const at = services.indexOf(contextMenu.serviceId);
+                return (
+                    <Menu aria-label={t('common.moreOptions')} returnFocusRef={menuTriggerRef} onClose={() => setContextMenu(null)} point={{ x: contextMenu.x, y: contextMenu.y }} estimatedSize={{ width: 176, height: 136 }}>
+                        {at > 0 && <MenuItem onClick={() => { moveService(at, at - 1, 'move_up'); setContextMenu(null); focusAfterMove(contextMenu.serviceId); }}>{t('serviceRail.moveUp')}</MenuItem>}
+                        {at >= 0 && at < services.length - 1 && <MenuItem onClick={() => { moveService(at, at + 1, 'move_down'); setContextMenu(null); focusAfterMove(contextMenu.serviceId); }}>{t('serviceRail.moveDown')}</MenuItem>}
+                        <MenuItem destructive onClick={handleRemoveService}>{t('common.removeService')}</MenuItem>
+                    </Menu>
+                );
+            })()}
 
             {/* Bottom actions: brand context (spec §4: the rail frame's icons use the brand ink) */}
             <BrandScope className="mt-4 flex flex-col items-center gap-2">

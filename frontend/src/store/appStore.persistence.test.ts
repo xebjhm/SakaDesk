@@ -76,3 +76,24 @@ describe('appStore persistence hydration gate (SD-FE-STATE-01)', () => {
         expect(calls[calls.length - 1]?.[1] as string).toContain('nogizaka46')
     })
 })
+
+describe('persisted bundle shape read by the backend', () => {
+    // backend/services/memories/notify_scheduler.py reads bundle["state"]["selectedServices"]
+    // from this pref. Changing the shape silently disables Memories notifications.
+    it('writes {state: {selectedServices: string[]}} under sakadesk-app-state', async () => {
+        stored = {
+            [BUNDLE_KEY]: storedBundle({ selectedServices: ['sakurazaka46'], activeService: 'sakurazaka46' }),
+        }
+        const store = await freshStore()
+        await store.persist.rehydrate()
+        setPrefSpy.mockClear()
+
+        store.getState().setActiveService('hinatazaka46')
+        const calls = setPrefSpy.mock.calls.filter(([key]) => key === BUNDLE_KEY)
+        expect(calls.length).toBeGreaterThan(0)
+        const bundle = JSON.parse(calls[calls.length - 1]?.[1] as string)
+        expect(Array.isArray(bundle.state.selectedServices)).toBe(true)
+        expect(bundle.state.selectedServices).toEqual(['sakurazaka46'])
+        expect(bundle.state.selectedServices.every((s: unknown) => typeof s === 'string')).toBe(true)
+    })
+})

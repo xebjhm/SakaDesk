@@ -23,7 +23,9 @@ export const DynamicBackground: React.FC<{ className?: string }> = ({ className 
         {ORBS.map((orb) => (
             <div
                 key={orb}
-                className={cn('absolute rounded-pill blur-[100px] will-change-transform motion-reduce:animate-none', orb)}
+                // The orbs are radial gradients that already fade out: a 100 px blur on three large,
+                // always-animating layers cost GPU time on every frame for almost no visible change.
+                className={cn('absolute rounded-pill motion-reduce:animate-none', orb)}
             />
         ))}
         <div

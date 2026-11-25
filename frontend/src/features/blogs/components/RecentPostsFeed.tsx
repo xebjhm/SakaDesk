@@ -1,16 +1,16 @@
 // frontend/src/features/blogs/components/RecentPostsFeed.tsx
 // Latest posts of the active service: the group's expressive orbs behind a frosted header and a card grid.
 import React, { useMemo, useRef } from 'react';
-import { AlertCircle, Heart, Newspaper, RefreshCw, Users } from 'lucide-react';
+import { AlertCircle, Heart, Newspaper, Users } from 'lucide-react';
 import type { RecentPost } from '../../../types';
 import { BlogCard } from './BlogCard';
-import { BlogStatus } from './BlogStatus';
 import { DynamicBackground } from '../../../core/common/DynamicBackground';
-import { Button } from '../../../design/primitives';
+import { Button, Spinner, StatusBlock } from '../../../design/primitives';
 import { cn } from '../../../utils/classnames';
 import { useAppStore } from '../../../store/appStore';
 import type { BlogSelectionMode } from '../../../store/appStore';
 import { useTranslation } from '../../../i18n';
+import { staggerDelay } from './stagger';
 
 interface RecentPostsFeedProps {
     posts: RecentPost[];
@@ -99,7 +99,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                     </h2>
                     {syncing && (
                         <span role="status" className="flex items-center gap-1 text-caption text-muted">
-                            <RefreshCw aria-hidden="true" className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+                            <Spinner size="sm" tone="current" decorative />
                             {t('blogs.checkingUpdates')}
                         </span>
                     )}
@@ -138,11 +138,14 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
             </header>
 
             <div ref={scrollerRef} data-testid="feed-scroller" className="relative min-h-0 flex-1 overflow-y-auto overflow-x-hidden">
-                {loading && <BlogStatus kind="loading" title={t('blogs.loadingPosts')} />}
+                {loading && <StatusBlock kind="loading" variant="block" surface="blog_feed" label={t('blogs.loadingPosts')} labelVisibility="always" />}
 
                 {error && !loading && (
-                    <BlogStatus
+                    <StatusBlock
                         kind="error"
+                        variant="block"
+                        surface="blog_feed"
+                        retryVariant="primary"
                         icon={<AlertCircle className="h-8 w-8" />}
                         title={t('blogs.feedLoadFailed')}
                         onRetry={onRetry}
@@ -157,7 +160,7 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
                             const isNew = knownPostIds && knownPostIds.size > 0 && !knownPostIds.has(post.id);
                             // Known posts (or initial load): sequential stagger delay
                             // New posts (from background sync): random delay for a "light up" effect
-                            const delay = isNew ? Math.random() * 400 : index * 50;
+                            const delay = isNew ? Math.random() * 400 : staggerDelay(index);
                             return (
                                 <div
                                     key={post.id}
@@ -177,12 +180,14 @@ export const RecentPostsFeed: React.FC<RecentPostsFeedProps> = ({
 
                 {/* First sync: no posts yet and the background sync is running */}
                 {!loading && !error && posts.length === 0 && syncing && (
-                    <BlogStatus kind="loading" fill title={t('blogs.syncingBlogs')} hint={t('blogs.firstSyncHint')} />
+                    <StatusBlock kind="loading" variant="fill" surface="blog_feed" label={t('blogs.syncingBlogs')} labelVisibility="always" slowHint={t('blogs.firstSyncHint')} verySlowHint={t('blogs.firstSyncHint')} />
                 )}
 
                 {!loading && !error && posts.length === 0 && !syncing && (
-                    <BlogStatus
+                    <StatusBlock
                         kind="empty"
+                        variant="block"
+                        surface="blog_feed"
                         icon={selectionMode === 'favorite' ? <Heart className="h-10 w-10 text-semantic-oshi" /> : <Newspaper className="h-10 w-10" />}
                         title={selectionMode === 'favorite' ? t('blogs.noPostsFromFavorites') : t('blogs.noBlogPostsFound')}
                         hint={selectionMode === 'favorite' ? t('blogs.addMembersHint') : t('blogs.selectServiceHint')}

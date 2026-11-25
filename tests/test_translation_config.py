@@ -21,7 +21,9 @@ async def test_get_provider_defaults_model_when_none(monkeypatch):
         return {"translation_provider": "gemini", "translation_model": None}
 
     monkeypatch.setattr(translation, "load_config", fake_load_config)
-    monkeypatch.setattr(translation, "_load_api_key", lambda: "fake-key")
+    monkeypatch.setattr(
+        translation, "_load_api_key_for", lambda provider, saved: "fake-key"
+    )
 
     provider = await translation._get_provider_from_config()
 
@@ -76,6 +78,8 @@ def test_config_caches_keyring_read(client, monkeypatch):
         }
 
     monkeypatch.setattr(translation, "_load_api_key", fake_load_api_key)
+    # The key is bound to the saved provider (the status shows no other key).
+    monkeypatch.setattr(translation, "_stored_key_provider", lambda _saved: "gemini")
     monkeypatch.setattr(translation, "load_config", fake_load_config)
     translation._invalidate_key_status_cache()
 

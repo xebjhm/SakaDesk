@@ -2,7 +2,7 @@ import { describe, it, expect } from 'vitest';
 import type { Message } from '../../../types';
 import { readFileSync } from 'node:fs';
 import path from 'node:path';
-import { applyNickname } from './nickname';
+import { applyNickname, replaceNickname } from './nickname';
 
 const msg = (id: number, content: string | null): Message => ({ id, timestamp: '2026-01-01T00:00:00Z', type: 'text', is_favorite: false, content });
 
@@ -23,12 +23,22 @@ describe('applyNickname', () => {
     });
 });
 
+describe('replaceNickname', () => {
+    it('replaces every ASCII and fullwidth placeholder in one string, literally', () => {
+        expect(replaceNickname('%%%、おやすみ ％％％', 'ゆき')).toBe('ゆき、おやすみ ゆき');
+        expect(replaceNickname('%%%!', '$&')).toBe('$&!');
+        expect(replaceNickname('no placeholder', 'ゆき')).toBe('no placeholder');
+    });
+});
+
 describe('nickname coverage in the chat screen', () => {
     // 0.4.1: Favorites showed raw %%% because MessagesFeature handed the raw
-    // list to ConversationMenu. Children that show message text get displayMessages.
+    // list to ConversationMenu. Children that show message text get displayMessages (the menu gets it
+    // with the ★ overrides applied: menuMessages, derived from displayMessages).
     it('MessagesFeature never passes the raw message list to a child', () => {
         const src = readFileSync(path.resolve(process.cwd(), 'src/features/messages/MessagesFeature.tsx'), 'utf-8');
         expect(src).not.toMatch(/messages=\{messages\}/);
-        expect(src).toMatch(/messages=\{displayMessages\}/);
+        expect(src).toMatch(/messages=\{menuMessages\}/);
+        expect(src).toMatch(/applyFavoriteOverrides\(displayMessages,/);
     });
 });

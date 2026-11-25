@@ -5,12 +5,14 @@ show; this module delivers it. On Windows a toast is sent through
 ``windows_toasts`` under the ``SakaDesk`` AUMID. A click fires the toast's
 in-process ``on_activated`` callback, whose closure holds the plan, and opens
 that chat via :mod:`backend.services.desktop_bridge`, scrolled to the message
-the toast previews (``newest_id``). No launch action is set: in windows-toasts
+the toast previews (``newest_id``). A Memories toast (:func:`send_memory`)
+works the same way: its click opens Memories at the plan's route through
+:func:`desktop_bridge.open_memories`. No launch action is set: in windows-toasts
 it turns the click into a protocol activation. Everywhere else (or when
 ``windows_toasts`` cannot be imported) a :class:`NullNotifier` is used.
 
 Logs carry ids, counts, codes and error types only: never titles, bodies,
-names, paths or URLs.
+names, paths, URLs or Memories routes.
 """
 
 from __future__ import annotations
@@ -27,7 +29,11 @@ import structlog
 from backend.services import desktop_bridge
 from backend.services.app_identity import AUMID
 from backend.services.i18n import get_strings
-from backend.services.notification_planner import ChatTarget, ToastPlan
+from backend.services.notification_planner import (
+    ChatTarget,
+    MemoryToastPlan,
+    ToastPlan,
+)
 
 logger = structlog.get_logger(__name__)
 
@@ -37,6 +43,8 @@ _LIVE_TOASTS = 64  # keep recent Toast objects alive so WinRT callbacks still fi
 _SHOW_TIMEOUT_S = 10  # seconds one show may take before it counts as failed
 _SIMPLE_TAG = "app:hint"  # hint toasts share one Action Center slot
 _SIMPLE_GROUP = "app"
+_MEMORY_GROUP = "memories"
+_TAG_MAX = 64  # Windows caps a toast tag at 64 characters
 
 _notifications_enabled = True
 
@@ -61,10 +69,23 @@ class Notifier(Protocol):
 
     def show_login(self, service: str, title: str, body: str) -> bool: ...
 
+    def show_memory(self, plan: MemoryToastPlan) -> bool: ...
+
     def status(self) -> dict: ...
 
 
 # ------------------------------------------------------------------- notifiers
+
+
+def memory_tag(plan: MemoryToastPlan) -> str:
+    """The Action Center tag of a Memories toast: ``mem-{kind}-{service}-{subject}``.
+
+    At most :data:`_TAG_MAX` characters. Only the subject is cut, never the
+    kind or the group, so two groups never share a tag (kinds and group ids
+    are short; a subject is ``""`` / a recap phase / a member id).
+    """
+    prefix = f"mem-{plan.kind}-{plan.service}-"
+    return (prefix + (plan.subject or "all"))[:_TAG_MAX]
 
 
 def _click_message_id(newest_id: str) -> tuple[int | None, str | None]:
@@ -97,6 +118,9 @@ class NullNotifier:
         return False
 
     def show_login(self, service: str, title: str, body: str) -> bool:
+        return False
+
+    def show_memory(self, plan: MemoryToastPlan) -> bool:
         return False
 
     def status(self) -> dict:
@@ -192,6 +216,36 @@ class WindowsToastNotifier:
         self._last_error = None
         return True
 
+    def show_memory(self, plan: MemoryToastPlan) -> bool:
+        """Show a Memories toast (spec 15); raises on failure.
+
+        The avatar is the AppLogo image and the hero (an On This Day photo)
+        the Hero image; either failing is logged and never costs the toast.
+        One Action Center slot per kind, group and subject
+        (:func:`memory_tag`): a newer toast of the same kind, group and
+        subject replaces the older one, and two groups never replace each
+        other's. A click opens Memories at ``plan.route`` through
+        :func:`desktop_bridge.open_memories`.
+        """
+        wt = self._wt
+        try:
+            toast = wt.Toast(text_fields=[plan.title, plan.body])
+            toast.tag = memory_tag(plan)
+            toast.group = _MEMORY_GROUP
+            if plan.avatar is not None:
+                self._add_memory_image(toast, plan, plan.avatar, "avatar")
+            if plan.hero is not None:
+                self._add_memory_image(toast, plan, plan.hero, "hero")
+            toast.on_activated = lambda _args, p=plan: self._on_memory_click(p)
+            toast.on_failed = lambda args, p=plan: self._on_memory_failed(p, args)
+            self._live.append(toast)
+            self._toaster.show_toast(toast)
+        except Exception as e:
+            self._last_error = type(e).__name__
+            raise
+        self._last_error = None
+        return True
+
     def status(self) -> dict:
         return {
             "available": True,
@@ -219,6 +273,58 @@ class WindowsToastNotifier:
                 member_id=plan.member_id,
                 error_type=type(e).__name__,
             )
+
+    def _add_memory_image(
+        self, toast: Any, plan: MemoryToastPlan, path: Any, stage: str
+    ) -> None:
+        """Add ``path`` as the AppLogo (``avatar``) or Hero (``hero``) image."""
+        wt = self._wt
+        try:
+            position = (
+                wt.ToastImagePosition.AppLogo
+                if stage == "avatar"
+                else wt.ToastImagePosition.Hero
+            )
+            toast.AddImage(wt.ToastDisplayImage(wt.ToastImage(path), position=position))
+        except Exception as e:
+            # A missing or unreadable image must not cost the user the toast.
+            logger.warning(
+                "notify_failed",
+                stage=stage,
+                kind="memories",
+                memory_kind=plan.kind,
+                service=plan.service,
+                member_id=plan.member_id,
+                error_type=type(e).__name__,
+            )
+
+    def _on_memory_click(self, plan: MemoryToastPlan) -> None:
+        """WinRT-thread ``on_activated`` callback for a Memories toast. Never raises."""
+        try:
+            logger.info(
+                "notify_clicked",
+                kind="memories",
+                memory_kind=plan.kind,
+                service=plan.service,
+            )
+            desktop_bridge.open_memories(plan.service, dict(plan.route))
+        except Exception as e:
+            logger.warning("memories_open_failed", error_type=type(e).__name__)
+
+    def _on_memory_failed(self, plan: MemoryToastPlan, event_args: Any) -> None:
+        """WinRT-thread callback for a Memories toast. Never raises."""
+        self._last_error = "ToastFailed"
+        try:
+            logger.warning(
+                "notify_failed",
+                kind="memories",
+                memory_kind=plan.kind,
+                service=plan.service,
+                error_type="ToastFailed",
+                error_code=getattr(event_args, "error_code", None),
+            )
+        except Exception:  # pragma: no cover - logging must not break WinRT
+            pass
 
     def _on_click(self, plan: ToastPlan) -> None:
         """WinRT-thread ``on_activated`` callback for ``plan``'s toast. Never raises."""
@@ -563,6 +669,40 @@ async def send_login_alert(service: str, title: str, body: str) -> bool:
     return await _run_guarded(
         lambda: notifier.show_login(service, title, body),
         {"kind": "login", "service": service},
+        skip_extra={},
+        sent_extra={},
+    )
+
+
+async def send_memory(plan: MemoryToastPlan) -> bool:
+    """Show a Memories toast; return whether it showed.
+
+    Same worker thread, queue, stuck guard and timeout as other toasts. The
+    caller (the Memories scheduler) applies the settings, including the
+    global notifications switch. Skipped when the notifier is unavailable
+    (``notify_skip reason=unavailable kind=memories``). Outcomes are logged
+    as ``notify_sent`` / ``notify_failed`` / ``notify_skip`` with
+    ``kind=memories``, ``memory_kind`` and ``service``; the title, body and
+    route are never logged. Never raises.
+    """
+    fields: dict[str, Any] = {
+        "kind": "memories",
+        "memory_kind": plan.kind,
+        "service": plan.service,
+    }
+    notifier = await asyncio.to_thread(get_notifier)
+    status = notifier.status()
+    if not status.get("available", True):
+        logger.info(
+            "notify_skip",
+            reason="unavailable",
+            backend_reason=status.get("last_error"),
+            **fields,
+        )
+        return False
+    return await _run_guarded(
+        lambda: notifier.show_memory(plan),
+        fields,
         skip_extra={},
         sent_extra={},
     )

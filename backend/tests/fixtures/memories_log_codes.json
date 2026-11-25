@@ -1,0 +1,320 @@
+{
+  "memories_page.target": [
+    "home",
+    "recap",
+    "on_this_day",
+    "album",
+    "memoir",
+    "favorites",
+    "radio",
+    "gacha",
+    "calendar",
+    "day"
+  ],
+  "memories_load.target": [
+    "hub",
+    "on_this_day",
+    "day",
+    "album",
+    "favorites",
+    "memoir",
+    "binder",
+    "names",
+    "timeline",
+    "album_members",
+    "album_month",
+    "album_colors",
+    "film_strip",
+    "timeline_month",
+    "memoir_members",
+    "radio",
+    "radio_members",
+    "radio_program",
+    "radio_cassettes",
+    "gacha",
+    "calendar",
+    "calendar_months",
+    "capsule",
+    "capsule_due",
+    "same_time",
+    "day24",
+    "then_now",
+    "album_pregen",
+    "album_prefetch",
+    "letters",
+    "day_years"
+  ],
+  "memories_load.outcome": [
+    "ok",
+    "error",
+    "timeout"
+  ],
+  "memories_jump.target": [
+    "hub",
+    "on_this_day",
+    "day",
+    "album",
+    "favorites",
+    "memoir",
+    "binder",
+    "names",
+    "timeline",
+    "album_members",
+    "album_month",
+    "album_colors",
+    "film_strip",
+    "timeline_month",
+    "memoir_members",
+    "radio",
+    "radio_members",
+    "radio_program",
+    "radio_cassettes",
+    "gacha",
+    "calendar",
+    "calendar_months",
+    "capsule",
+    "capsule_due",
+    "same_time",
+    "day24",
+    "then_now",
+    "album_pregen",
+    "album_prefetch",
+    "letters",
+    "day_years"
+  ],
+  "memories_toggle.target": [
+    "other_services",
+    "day_mode",
+    "member_filter",
+    "lane_card",
+    "album_filter",
+    "album_burst",
+    "film_strip",
+    "radio_program",
+    "cassette",
+    "sleep_timer",
+    "then_now",
+    "calendar_member",
+    "album_cover",
+    "day_years"
+  ],
+  "memories_toggle.outcome": [
+    "on",
+    "off"
+  ],
+  "memories_toggle.kind": [
+    "all",
+    "picture",
+    "video",
+    "favorite",
+    "oyasumi",
+    "ohayo",
+    "otsukare",
+    "chrono",
+    "favorites",
+    "oyasumi_clips"
+  ],
+  "memories_toggle.reason": [
+    "request_failed",
+    "timeout",
+    "not_in_month"
+  ],
+  "memories_skip.target": [
+    "hub",
+    "on_this_day",
+    "day",
+    "album",
+    "favorites",
+    "memoir",
+    "binder",
+    "names",
+    "timeline",
+    "album_members",
+    "album_month",
+    "album_colors",
+    "film_strip",
+    "timeline_month",
+    "memoir_members",
+    "radio",
+    "radio_members",
+    "radio_program",
+    "radio_cassettes",
+    "gacha",
+    "calendar",
+    "calendar_months",
+    "capsule",
+    "capsule_due",
+    "same_time",
+    "day24",
+    "then_now",
+    "album_pregen",
+    "album_prefetch",
+    "letters",
+    "day_years"
+  ],
+  "memories_skip.reason": [
+    "focus_missing",
+    "empty_note",
+    "unknown_card",
+    "transcript_missing",
+    "pull_missing",
+    "day24_thin",
+    "note_empty",
+    "same_time_none",
+    "card_missing",
+    "prefetch_none",
+    "prefetch_unused",
+    "prefetch_reveal_held"
+  ],
+  "memories_radio.phase": [
+    "play",
+    "track",
+    "track_error",
+    "pause",
+    "resume",
+    "sleep_set",
+    "sleep_fade",
+    "end"
+  ],
+  "memories_radio.kind": [
+    "oyasumi",
+    "ohayo",
+    "otsukare",
+    "chrono",
+    "favorites",
+    "oyasumi_clips"
+  ],
+  "memories_radio.reason": [
+    "media_error",
+    "play_rejected",
+    "queue_end",
+    "sleep_timer",
+    "user",
+    "preempted"
+  ],
+  "memories_radio.outcome": [
+    "ok",
+    "failed"
+  ],
+  "memories_gacha.phase": [
+    "open",
+    "pull",
+    "reveal",
+    "refused",
+    "favorite",
+    "context"
+  ],
+  "memories_gacha.kind": [
+    "n",
+    "r",
+    "sr"
+  ],
+  "memories_gacha.reason": [
+    "midnight",
+    "birthday",
+    "sub_anniversary",
+    "last_message",
+    "nickname",
+    "favorite",
+    "voice",
+    "photo",
+    "message",
+    "no_pulls_left",
+    "empty_pool",
+    "request_failed"
+  ],
+  "memories_gacha.outcome": [
+    "on",
+    "off"
+  ],
+  "memories_capsule.phase": [
+    "open",
+    "save",
+    "delete",
+    "failed",
+    "resurface_open"
+  ],
+  "memories_capsule.kind": [
+    "day",
+    "card"
+  ],
+  "memories_capsule.outcome": [
+    "created",
+    "updated"
+  ],
+  "memories_capsule.error_code": [
+    "bad_note",
+    "bad_body",
+    "store_unavailable",
+    "not_found",
+    "timeout",
+    "request_failed"
+  ],
+  "recap_load.target": [
+    "members",
+    "member",
+    "years"
+  ],
+  "recap_load.outcome": [
+    "ok",
+    "empty",
+    "timeout",
+    "rejected",
+    "failed",
+    "skipped"
+  ],
+  "recap_play.phase": [
+    "open",
+    "step",
+    "pause",
+    "resume",
+    "end",
+    "close",
+    "skip",
+    "media_held",
+    "voice_start",
+    "voice_clip",
+    "voice_error",
+    "voice_end"
+  ],
+  "recap_poster.phase": [
+    "open",
+    "skip",
+    "replay",
+    "close",
+    "font_fallback",
+    "save",
+    "save_failed"
+  ],
+  "recap_share.phase": [
+    "open",
+    "close",
+    "option",
+    "style",
+    "sentence",
+    "font_fallback",
+    "photo_skip",
+    "video_unsupported",
+    "share_blur_fallback",
+    "export_start",
+    "export",
+    "export_failed",
+    "preview_failed"
+  ],
+  "recap_opening.phase": [
+    "show",
+    "skip",
+    "end",
+    "close"
+  ],
+  "notify_open_memories.target": [
+    "on_this_day",
+    "memoir",
+    "recap"
+  ],
+  "notify_open_memories.reason": [
+    "malformed",
+    "unknown_service",
+    "onboarding"
+  ]
+}

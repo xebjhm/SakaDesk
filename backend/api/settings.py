@@ -7,10 +7,12 @@ Uses platform-appropriate paths for Windows deployment.
 import asyncio
 import json
 import sys
+import threading
+import time
 import structlog
 from pathlib import Path
 from fastapi import APIRouter, HTTPException
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from typing import Any, Optional
 
 from backend.services.platform import (
@@ -20,18 +22,30 @@ from backend.services.platform import (
 from backend.services.service_utils import (
     validate_service,
 )
-from backend.services import autostart, desktop_bridge
+from backend.services import autostart, desktop_bridge, output_dir_policy
+from backend.services.i18n import get_strings, resolve_ui_language
+from backend.services.memories import notify_scheduler
 from backend.services.auto_sync_scheduler import wake_scheduler
 from backend.services.call_popup import get_call_popup_controller
 from backend.services.notification_service import set_notifications_enabled
+from backend.services.path_resolver import output_dir_value
 from backend.services.settings_store import (
+    MEMORIES_NOTIFY_TIME_DEFAULT,
+    resolve_memories_notify_time,
     load_config as _store_load,
     update_config as _store_update,
+    _write_file_locked,
 )
 
 logger = structlog.get_logger(__name__)
 
 router = APIRouter(prefix="/api/settings", tags=["settings"])
+
+MAX_SYNC_INTERVAL_MINUTES = 1440
+"""A day; a larger value only made the scheduler skip every launch (report-hardening #54)."""
+MAX_OSHI_SERVICES = 8
+MAX_OSHI_PER_SERVICE = 100
+MAX_OSHI_TEXT_CHARS = 64
 
 # Get settings file path from platform utilities
 SETTINGS_FILE = get_settings_path()
@@ -72,9 +86,9 @@ def load_config() -> dict[str, Any]:
 
 def save_config(config: dict):
     """Save configuration to file (sync, for tests only)."""
-    SETTINGS_FILE.parent.mkdir(parents=True, exist_ok=True)
-    with open(SETTINGS_FILE, "w", encoding="utf-8") as f:
-        json.dump(config, f, indent=2)
+    # Atomic (tmp file + os.replace) under the cross-thread lock, like every
+    # other settings writer: a reader never sees a half-written file.
+    _write_file_locked(SETTINGS_FILE, config)
     logger.debug(
         "Settings saved",
         settings_file=str(SETTINGS_FILE),
@@ -95,6 +109,9 @@ class SettingsResponse(BaseModel):
     user_nicknames: Optional[dict[str, str]] = (
         None  # Per-service nicknames for %%% placeholder replacement
     )
+    oshi_members: Optional[dict[str, list[str]]] = (
+        None  # Per-service oshi blog member ids, mirrored from the frontend
+    )
     notifications_enabled: bool = True  # Desktop notifications for new messages
     notifications_hide_content: bool = (
         False  # Toasts show a generic body instead of the message preview
@@ -113,6 +130,13 @@ class SettingsResponse(BaseModel):
     )
     close_to_tray: bool = True  # Closing the window hides it to the tray
     autostart: bool = False  # Start at Windows sign-in, hidden in the tray
+    # Memories notifications (spec 15)
+    memories_notify_on_this_day: bool = True
+    memories_notify_birthday: bool = True
+    memories_notify_anniversary: bool = True
+    memories_notify_recap: bool = True
+    memories_notify_cards: bool = False
+    memories_notify_time: str = MEMORIES_NOTIFY_TIME_DEFAULT  # JST "HH:MM"
 
 
 class SettingsUpdate(BaseModel):
@@ -121,8 +145,9 @@ class SettingsUpdate(BaseModel):
     # SD-BE-API-22: reject a zero/negative interval. A non-positive value was
     # accepted, persisted, and echoed by /api/sync/next_interval, driving the
     # auto-sync scheduler into an immediate-retry loop against the official API
-    # (rate-limit / account-flag risk).
-    sync_interval_minutes: Optional[int] = Field(default=None, ge=1)
+    # (rate-limit / account-flag risk). A value over a day is refused too
+    # (audit 2026-11-13).
+    sync_interval_minutes: Optional[int] = None
     adaptive_sync_enabled: Optional[bool] = None
     notifications_enabled: Optional[bool] = None
     notifications_hide_content: Optional[bool] = None
@@ -133,6 +158,45 @@ class SettingsUpdate(BaseModel):
     call_popup_enabled: Optional[bool] = None
     close_to_tray: Optional[bool] = None
     autostart: Optional[bool] = None
+    oshi_members: Optional[dict[str, list[str]]] = None
+    memories_notify_on_this_day: Optional[bool] = None
+    memories_notify_birthday: Optional[bool] = None
+    memories_notify_anniversary: Optional[bool] = None
+    memories_notify_recap: Optional[bool] = None
+    memories_notify_cards: Optional[bool] = None
+    # JST "HH:MM", 00:00-23:59 in ASCII digits ([0-9], not the Unicode \d);
+    # anything else is a 422.
+    memories_notify_time: Optional[str] = Field(
+        default=None, pattern=r"^([01][0-9]|2[0-3]):[0-5][0-9]$"
+    )
+
+    @field_validator("sync_interval_minutes")
+    @classmethod
+    def _interval_in_range(cls, value: Optional[int]) -> Optional[int]:
+        if value is not None and not 1 <= value <= MAX_SYNC_INTERVAL_MINUTES:
+            logger.info(
+                "settings_rejected", field="sync_interval_minutes", reason="range"
+            )
+            raise ValueError("sync_interval_minutes must be between 1 and 1440")
+        return value
+
+    @field_validator("oshi_members")
+    @classmethod
+    def _oshi_bounded(
+        cls, value: Optional[dict[str, list[str]]]
+    ) -> Optional[dict[str, list[str]]]:
+        if value is None:
+            return value
+        too_large = len(value) > MAX_OSHI_SERVICES or any(
+            len(key) > MAX_OSHI_TEXT_CHARS
+            or len(names) > MAX_OSHI_PER_SERVICE
+            or any(len(name) > MAX_OSHI_TEXT_CHARS for name in names)
+            for key, names in value.items()
+        )
+        if too_large:
+            logger.info("settings_rejected", field="oshi_members", reason="too_large")
+            raise ValueError("oshi_members is too large")
+        return value
 
 
 class FreshCheckResponse(BaseModel):
@@ -151,6 +215,52 @@ class ServiceSettings(BaseModel):
 
 # Settings that change when the auto-sync scheduler should next run.
 _SCHEDULE_KEYS = ("auto_sync_enabled", "sync_interval_minutes", "adaptive_sync_enabled")
+
+# Settings that change what / when the Memories notify scheduler delivers.
+_MEMORIES_NOTIFY_KEYS = (
+    "memories_notify_on_this_day",
+    "memories_notify_birthday",
+    "memories_notify_anniversary",
+    "memories_notify_recap",
+    "memories_notify_cards",
+    "memories_notify_time",
+)
+
+
+def _settings_response(config: dict[str, Any]) -> SettingsResponse:
+    """Build the response from a loaded config (defaults already merged)."""
+    saved = config.get("output_dir")
+    return SettingsResponse(
+        # The saved text exactly (POST compares against it), else the default.
+        output_dir=saved
+        if isinstance(saved, str) and saved.strip()
+        else get_default_output_dir(),
+        auto_sync_enabled=config["auto_sync_enabled"],
+        sync_interval_minutes=config["sync_interval_minutes"],
+        adaptive_sync_enabled=config["adaptive_sync_enabled"],
+        is_configured=config["is_configured"],
+        user_nickname=config.get("user_nickname"),
+        user_nicknames=config.get("user_nicknames"),
+        oshi_members=config.get("oshi_members"),
+        notifications_enabled=config["notifications_enabled"],
+        notifications_hide_content=config.get("notifications_hide_content", False),
+        blogs_full_backup=config["blogs_full_backup"],
+        language=config.get("language"),
+        auto_download_updates=config["auto_download_updates"],
+        sync_read_to_phone=config.get("sync_read_to_phone", False),
+        incoming_call_enabled=config.get("incoming_call_enabled", True),
+        call_popup_enabled=config.get("call_popup_enabled", True),
+        close_to_tray=config.get("close_to_tray", True),
+        autostart=config.get("autostart", False),
+        memories_notify_on_this_day=config.get("memories_notify_on_this_day", True),
+        memories_notify_birthday=config.get("memories_notify_birthday", True),
+        memories_notify_anniversary=config.get("memories_notify_anniversary", True),
+        memories_notify_recap=config.get("memories_notify_recap", True),
+        memories_notify_cards=config.get("memories_notify_cards", False),
+        memories_notify_time=resolve_memories_notify_time(
+            config.get("memories_notify_time", MEMORIES_NOTIFY_TIME_DEFAULT)
+        ),
+    )
 
 
 async def _apply_autostart(enabled: bool) -> None:
@@ -175,45 +285,99 @@ async def _apply_autostart(enabled: bool) -> None:
 async def get_settings():
     """Get current settings."""
     config = await _store_load()
-    output_dir = config.get("output_dir", get_default_output_dir())
 
     # Sync notification service state with persisted setting
     set_notifications_enabled(config["notifications_enabled"])
 
-    return SettingsResponse(
-        output_dir=output_dir,
-        auto_sync_enabled=config["auto_sync_enabled"],
-        sync_interval_minutes=config["sync_interval_minutes"],
-        adaptive_sync_enabled=config["adaptive_sync_enabled"],
-        is_configured=config["is_configured"],
-        user_nickname=config.get("user_nickname"),
-        user_nicknames=config.get("user_nicknames"),
-        notifications_enabled=config["notifications_enabled"],
-        notifications_hide_content=config.get("notifications_hide_content", False),
-        blogs_full_backup=config["blogs_full_backup"],
-        language=config.get("language"),
-        auto_download_updates=config["auto_download_updates"],
-        sync_read_to_phone=config.get("sync_read_to_phone", False),
-        incoming_call_enabled=config.get("incoming_call_enabled", True),
-        call_popup_enabled=config.get("call_popup_enabled", True),
-        close_to_tray=config.get("close_to_tray", True),
-        autostart=config.get("autostart", False),
+    return _settings_response(config)
+
+
+def _output_dir_refused(reason: str, source: str) -> HTTPException:
+    """Log a refused ``output_dir`` (codes only) and build its 400."""
+    logger.warning("output_dir_rejected", reason=reason, source=source)
+    return HTTPException(
+        status_code=400, detail={"code": "output_dir_rejected", "reason": reason}
     )
+
+
+async def _accept_output_dir(raw: str) -> Optional[str]:
+    """The value to save for a requested ``output_dir``, ``None`` for "keep what is saved", or raise HTTP 400 (security audit 2026-11-13).
+
+    - The saved value itself (``output_dir_policy.same_dir``): ``None``, so
+      the caller never writes ``output_dir`` back (a request that read the
+      old value cannot undo a folder saved meanwhile), and no check runs.
+    - The default folder: the form ``output_dir_policy.check_output_dir``
+      returns, if it passes.
+    - A folder the folder picker returned in this process
+      (``POST /api/settings/select-folder``): the exact string the picker
+      returned, if it passes. Each pick is used once, atomically
+      (``output_dir_policy.take_grant``: of simultaneous requests one wins),
+      and expires after ``output_dir_policy.GRANT_LIFETIME_SECONDS``.
+    - Anything else is refused with ``not_picked``: a page cannot name a
+      folder, only the user can, in the native picker.
+
+    Logs ``output_dir_accepted`` (``source``) or ``output_dir_rejected``
+    (``reason``, ``source``); never the path.
+    """
+    config = await _store_load()
+    current = config.get("output_dir")
+    if (
+        isinstance(current, str)
+        and current
+        and output_dir_policy.same_dir(raw, current)
+    ):
+        logger.info("output_dir_accepted", source="current")
+        return None
+    if output_dir_policy.same_dir(raw, get_default_output_dir()):
+        source = "default"
+        candidate = raw
+    elif output_dir_policy.has_grant(raw):
+        source = "picker"
+        # Atomic and authoritative: the has_grant above is only a cheap early exit.
+        granted = output_dir_policy.take_grant(raw)
+        if granted is None:
+            raise _output_dir_refused("not_picked", "api")
+        candidate = granted
+    else:
+        raise _output_dir_refused("not_picked", "api")
+    try:
+        value = await asyncio.to_thread(output_dir_policy.check_output_dir, candidate)
+    except output_dir_policy.OutputDirRejected as e:
+        raise _output_dir_refused(e.reason, source) from None
+    logger.info("output_dir_accepted", source=source)
+    return value
 
 
 @router.post("", response_model=SettingsResponse)
 async def update_settings(update: SettingsUpdate):
-    """Update settings."""
+    """Update settings.
+
+    ``output_dir`` (the archive root every containment check trusts) is
+    accepted only as :func:`_accept_output_dir` allows; a refused value
+    answers 400 ``{"detail": {"code": "output_dir_rejected", "reason": ...}}``
+    and nothing in the request is saved. Posting the saved folder leaves
+    ``output_dir`` untouched; saving a new one forgets every other pick.
+    """
+    new_output_dir: Optional[str] = None
+    if update.output_dir is not None:
+        # Before anything is written: a refused folder fails the whole request.
+        new_output_dir = await _accept_output_dir(update.output_dir)
     autostart_change: Optional[bool] = None
     call_popup_change: Optional[bool] = None
     schedule_changed = False
+    memories_notify_changed = False
 
     def _apply(config: dict) -> None:
         nonlocal autostart_change, call_popup_change, schedule_changed
+        nonlocal memories_notify_changed
         before = tuple(config.get(key) for key in _SCHEDULE_KEYS)
-        if update.output_dir is not None:
-            config["output_dir"] = update.output_dir
+        notify_before = tuple(config.get(key) for key in _MEMORIES_NOTIFY_KEYS)
+        notifications_before = config.get("notifications_enabled")
+        if new_output_dir is not None:
+            config["output_dir"] = new_output_dir
             config["is_configured"] = True
+        elif update.output_dir is not None:
+            config["is_configured"] = True  # the saved folder, confirmed; not rewritten
         if update.auto_sync_enabled is not None:
             config["auto_sync_enabled"] = update.auto_sync_enabled
         if update.sync_interval_minutes is not None:
@@ -243,13 +407,30 @@ async def update_settings(update: SettingsUpdate):
             if update.autostart != config.get("autostart", False):
                 autostart_change = update.autostart
             config["autostart"] = update.autostart
+        if update.oshi_members is not None:
+            config["oshi_members"] = update.oshi_members
+        for key in _MEMORIES_NOTIFY_KEYS:
+            value = getattr(update, key)
+            if value is not None:
+                config[key] = value
         schedule_changed = before != tuple(config.get(key) for key in _SCHEDULE_KEYS)
+        # The global switch gates every Memories toast too: wake on its change,
+        # so turning it on delivers a still-open occasion now, not ≤15 min later.
+        memories_notify_changed = notify_before != tuple(
+            config.get(key) for key in _MEMORIES_NOTIFY_KEYS
+        ) or notifications_before != config.get("notifications_enabled")
 
     config = await _store_update(_apply)
+
+    if new_output_dir is not None:
+        output_dir_policy.clear_grants()  # a pick is for one save
 
     if schedule_changed:
         # The scheduler would otherwise only notice after its current wait.
         wake_scheduler()
+
+    if memories_notify_changed:
+        notify_scheduler.memories_notify_settings_changed()
 
     if autostart_change is not None:
         await _apply_autostart(autostart_change)
@@ -260,33 +441,16 @@ async def update_settings(update: SettingsUpdate):
     elif call_popup_change is False:
         await get_call_popup_controller().cancel(reason="disabled")
 
-    return SettingsResponse(
-        output_dir=config.get("output_dir", get_default_output_dir()),
-        auto_sync_enabled=config["auto_sync_enabled"],
-        sync_interval_minutes=config["sync_interval_minutes"],
-        adaptive_sync_enabled=config["adaptive_sync_enabled"],
-        is_configured=config["is_configured"],
-        user_nickname=config.get("user_nickname"),
-        user_nicknames=config.get("user_nicknames"),
-        notifications_enabled=config["notifications_enabled"],
-        notifications_hide_content=config.get("notifications_hide_content", False),
-        blogs_full_backup=config["blogs_full_backup"],
-        language=config.get("language"),
-        auto_download_updates=config["auto_download_updates"],
-        sync_read_to_phone=config.get("sync_read_to_phone", False),
-        incoming_call_enabled=config.get("incoming_call_enabled", True),
-        call_popup_enabled=config.get("call_popup_enabled", True),
-        close_to_tray=config.get("close_to_tray", True),
-        autostart=config.get("autostart", False),
-    )
+    return _settings_response(config)
 
 
 @router.get("/fresh", response_model=FreshCheckResponse)
 async def check_fresh_install():
     """Check if output folder is empty (fresh install)."""
     config = await _store_load()
-    output_dir = config.get("output_dir", get_default_output_dir())
-    output_path = Path(output_dir)
+    output_path = output_dir_value(
+        config.get("output_dir"), Path(get_default_output_dir())
+    )
 
     # Fresh if: doesn't exist, is empty, or only has sync_metadata.json
     is_fresh = True
@@ -298,52 +462,151 @@ async def check_fresh_install():
         ]
         is_fresh = len(data_contents) == 0
 
-    return FreshCheckResponse(is_fresh=is_fresh, output_dir=output_dir)
+    return FreshCheckResponse(is_fresh=is_fresh, output_dir=str(output_path))
+
+
+class _PickerUnavailable(Exception):
+    """This build has no tkinter, so no native folder picker."""
+
+
+def _ask_directory(title: str, initialdir: Optional[str] = None) -> Optional[str]:
+    """Show the native folder dialog above other windows, opened at ``initialdir`` (the folder already in use, so a reflexive Enter keeps it); the chosen folder or None. Blocking.
+
+    Raises :class:`_PickerUnavailable` when tkinter is missing.
+    """
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError:
+        raise _PickerUnavailable() from None
+    root = tk.Tk()
+    try:
+        root.withdraw()  # no empty Tk window, only the dialog
+        root.attributes("-topmost", True)
+        folder = filedialog.askdirectory(
+            title=title, mustexist=True, initialdir=initialdir
+        )
+    finally:
+        root.destroy()
+    return folder or None
+
+
+_PICKER_TIMEOUT_SECONDS = 300.0
+"""How long one request waits for the dialog (it may stay open longer: see :func:`_start_picker`)."""
+
+_PICKER_COOLDOWN_SECONDS = 2.0
+"""After a cancel, ``select-folder`` answers ``cooldown`` for this long (a held Enter or Esc cannot reopen the dialog)."""
+
+_monotonic = time.monotonic
+"""The cooldown clock (tests replace it)."""
+
+_picker_cooldown_until = 0.0
+"""``_monotonic()`` value before which ``select-folder`` answers ``cooldown``."""
+
+_picker_lock = threading.Lock()
+"""Held while a folder dialog is open, from the request that opens it until the dialog closes."""
+
+
+def _start_picker(
+    title: str, initialdir: Optional[str] = None
+) -> "asyncio.Future[Optional[str]]":
+    """Run :func:`_ask_directory` on a daemon thread; a future for its result.
+
+    The caller holds :data:`_picker_lock`; the thread releases it when the
+    dialog closes, also after the request stopped waiting, so a second dialog
+    never opens over a forgotten one. A daemon thread never delays the app's
+    exit.
+    """
+    loop = asyncio.get_running_loop()
+    future: "asyncio.Future[Optional[str]]" = loop.create_future()
+
+    def settle(result: Optional[str], error: Optional[Exception]) -> None:
+        if future.done():
+            return
+        if error is not None:
+            future.set_exception(error)
+        else:
+            future.set_result(result)
+
+    def worker() -> None:
+        result: Optional[str] = None
+        error: Optional[Exception] = None
+        try:
+            result = _ask_directory(title, initialdir)
+        except Exception as e:  # noqa: BLE001 - handed to the request
+            error = e
+        finally:
+            _picker_lock.release()
+        try:
+            loop.call_soon_threadsafe(settle, result, error)
+        except RuntimeError:
+            pass  # the request's loop is gone (it timed out, or the app is exiting)
+
+    threading.Thread(target=worker, name="folder-picker", daemon=True).start()
+    return future
 
 
 @router.post("/select-folder")
 async def select_folder():
-    """Open a native folder picker dialog."""
+    """Open the native folder picker; a folder it returns may then be saved as ``output_dir``.
+
+    The chosen folder is checked (``output_dir_policy.check_output_dir``) and,
+    if it passes, remembered as picked (``output_dir_policy.grant``): one later
+    ``POST /api/settings`` may save it (security audit 2026-11-13). The dialog
+    title follows the UI language (``backend/i18n/<lang>/folder_picker.json``).
+
+    Answers ``{"path": <folder>}`` (the normalised form to save),
+    ``{"path": None}`` when the user cancelled, or ``{"path": None, "error":
+    <code>}``: ``busy`` (a dialog is already open), ``unavailable`` (no
+    tkinter), ``timeout`` (no answer within 5 minutes; that dialog keeps the
+    picker busy until it is closed), ``cooldown`` (asked again within 2 s of
+    a cancel), ``failed`` (the dialog could not open),
+    or a rule's reason (``network``, ``root``, ``profile``...). Every outcome
+    logs ``output_dir_picker`` with ``outcome`` (and ``reason`` or
+    ``error_type``); never a path.
+    """
+    global _picker_cooldown_until
+    config = await _store_load()
+    lang = await asyncio.to_thread(resolve_ui_language, config)
+    title = get_strings("folder_picker", lang)["title"]
+    if _monotonic() < _picker_cooldown_until:
+        logger.info("output_dir_picker", outcome="cooldown")
+        return {"path": None, "error": "cooldown"}
+    if not _picker_lock.acquire(blocking=False):
+        logger.info("output_dir_picker", outcome="busy")
+        return {"path": None, "error": "busy"}
     try:
-        import tkinter as tk
-        from tkinter import filedialog
-    except ImportError as e:
-        logger.warning(f"Tkinter not available: {e}")
-        return {"path": None, "error": "Folder picker not available (tkinter missing)"}
-
-    def open_dialog() -> Optional[str]:
-        """Open a tkinter folder dialog. Runs in an executor thread."""
-        try:
-            root = tk.Tk()
-            root.withdraw()  # Hide the main window
-            root.attributes("-topmost", True)  # Bring to front
-
-            folder = filedialog.askdirectory(title="Select Output Folder")
-            root.destroy()
-            return folder if folder else None
-        except Exception as e:
-            logger.error(f"Dialog error: {e}")
-            return None
-
-    # Timeout after 5 minutes (user should have selected a folder by then)
-    DIALOG_TIMEOUT_SECONDS = 300
-
-    try:
-        loop = asyncio.get_event_loop()
-        result = await asyncio.wait_for(
-            loop.run_in_executor(None, open_dialog),
-            timeout=DIALOG_TIMEOUT_SECONDS,
+        initialdir = str(
+            output_dir_value(config.get("output_dir"), Path(get_default_output_dir()))
         )
+        pending = _start_picker(title, initialdir)
+    except Exception as e:  # noqa: BLE001 - the thread never started
+        _picker_lock.release()
+        logger.error("output_dir_picker", outcome="failed", error_type=type(e).__name__)
+        return {"path": None, "error": "failed"}
+    try:
+        chosen = await asyncio.wait_for(pending, timeout=_PICKER_TIMEOUT_SECONDS)
     except asyncio.TimeoutError:
-        logger.warning("Folder dialog timed out after 5 minutes")
-        return {"path": None, "error": "Dialog timed out"}
-    except Exception as e:
-        logger.error(f"Executor error: {e}")
-        return {"path": None, "error": str(e)}
-
-    if result:
-        return {"path": result}
-    return {"path": None}
+        logger.warning("output_dir_picker", outcome="timeout")
+        return {"path": None, "error": "timeout"}
+    except _PickerUnavailable:
+        logger.warning("output_dir_picker", outcome="unavailable")
+        return {"path": None, "error": "unavailable"}
+    except Exception as e:  # noqa: BLE001 - one code, never the error text
+        logger.error("output_dir_picker", outcome="failed", error_type=type(e).__name__)
+        return {"path": None, "error": "failed"}
+    if not chosen:
+        _picker_cooldown_until = _monotonic() + _PICKER_COOLDOWN_SECONDS
+        logger.info("output_dir_picker", outcome="cancelled")
+        return {"path": None}
+    try:
+        value = await asyncio.to_thread(output_dir_policy.check_output_dir, chosen)
+    except output_dir_policy.OutputDirRejected as e:
+        logger.warning("output_dir_picker", outcome="rejected", reason=e.reason)
+        return {"path": None, "error": e.reason}
+    output_dir_policy.grant(value)
+    logger.info("output_dir_picker", outcome="picked")
+    return {"path": value}
 
 
 def _service_settings_response(stored: dict) -> "ServiceSettings":

@@ -1,5 +1,6 @@
 import React, { useId } from 'react';
 import { cn } from '../../utils/classnames';
+import { Spinner } from './Spinner';
 
 export type ButtonVariant = 'primary' | 'tonal' | 'secondary' | 'ghost' | 'danger' | 'warning' | 'overlay';
 export type IconButtonVariant = 'secondary' | 'ghost' | 'overlay' | 'accent' | 'soft';
@@ -54,9 +55,11 @@ const ICON_VARIANT: Record<IconButtonVariant, string> = {
 const FLOATING: ReadonlySet<IconButtonVariant> = new Set<IconButtonVariant>(['overlay', 'accent']);
 const SHAPE: Record<IconButtonShape, string> = { rounded: 'rounded-md', circle: 'rounded-full' };
 
+// min-h, not h, and no wrapping (UI health C-L4): a CJK label can no longer shrink to one character
+// per line inside a fixed-height button; single-line labels look exactly as before.
 const SIZE: Record<ButtonSize, string> = {
-    sm: 'h-8 px-3 text-small',
-    md: 'h-10 px-5 text-body',
+    sm: 'min-h-8 px-3 text-small whitespace-nowrap',
+    md: 'min-h-10 px-5 text-body whitespace-nowrap',
 };
 
 const ICON_SIZE: Record<ButtonSize, string> = {
@@ -74,7 +77,11 @@ function warnNoReason(): void {
 export interface ButtonProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
     variant?: ButtonVariant;
     size?: ButtonSize;
-    /** Shows a spinner, keeps the width and swallows clicks. */
+    /**
+     * Shows a centred spinner over the hidden label, keeps the width, sets `aria-busy` and swallows
+     * clicks. Under reduced motion the label stays visible (dimmed) with a static glyph at the
+     * leading edge, so the button never shows an icon alone.
+     */
     loading?: boolean;
     /** Translated reason the action is unavailable. Alone (without `disabled`) it blocks the button: aria-disabled, focusable, clicks swallowed. */
     disabledReason?: string;
@@ -101,10 +108,23 @@ export const Button = React.forwardRef<HTMLButtonElement, ButtonProps>(
                 onClick={blocked ? (e) => { e.preventDefault(); e.stopPropagation(); } : onClick}
             >
                 {loading && (
-                    <span data-spinner aria-hidden="true" className="absolute inset-0 m-auto h-3.5 w-3.5 animate-spin rounded-full border-2 border-current border-t-transparent motion-reduce:animate-none" />
+                    <Spinner
+                        size="sm"
+                        tone="current"
+                        decorative
+                        className="absolute inset-0 m-auto motion-reduce:left-1 motion-reduce:right-auto"
+                    />
                 )}
-                {/* Stays in the a11y tree while loading (opacity, not visibility) so width and name are unchanged. */}
-                <span className={cn('inline-flex items-center justify-center gap-2', loading && 'opacity-0')}>{children}</span>
+                {/* Stays in the a11y tree while loading (opacity, not visibility) so width and name are unchanged.
+                    Under reduced motion it stays readable, nudged clear of the static glyph (a transform: no width change). */}
+                <span
+                    className={cn(
+                        'inline-flex items-center justify-center gap-2',
+                        loading && 'opacity-0 motion-reduce:translate-x-2 motion-reduce:opacity-60',
+                    )}
+                >
+                    {children}
+                </span>
                 {reason !== undefined && <span id={reasonId} aria-hidden="true" className="sr-only">{reason}</span>}
             </button>
         );
@@ -121,20 +141,31 @@ export interface IconButtonProps
     size?: ButtonSize;
     /** Defaults to `circle` for `overlay` / `accent` (floating) and `rounded` otherwise (inline). */
     shape?: IconButtonShape;
+    /** Translated reason the action is unavailable: aria-disabled, focusable, the reason as title and description, clicks swallowed (as `Button`). */
+    disabledReason?: string;
 }
 
 export const IconButton = React.forwardRef<HTMLButtonElement, IconButtonProps>(
-    ({ icon, variant = 'ghost', size = 'md', shape, type = 'button', className, ...rest }, ref) => {
+    ({ icon, variant = 'ghost', size = 'md', shape, type = 'button', className, disabledReason, disabled, onClick, title, ...rest }, ref) => {
         const resolved: IconButtonShape = shape ?? (FLOATING.has(variant) ? 'circle' : 'rounded');
+        const reasonId = useId();
+        const reason = disabledReason || undefined;
+        // No warnNoReason() here (unlike Button): existing icon buttons that pass `disabled` would start warning.
         return (
             <button
                 {...rest}
                 ref={ref}
                 type={type}
+                disabled={disabled && !reason}
+                aria-disabled={reason !== undefined ? true : rest['aria-disabled']}
+                aria-describedby={reason !== undefined ? reasonId : rest['aria-describedby']}
+                title={reason ?? title}
                 data-shape={resolved}
                 className={cn(BASE, ICON_VARIANT[variant], ICON_SIZE[size], SHAPE[resolved], className)}
+                onClick={reason !== undefined ? (e) => { e.preventDefault(); e.stopPropagation(); } : onClick}
             >
                 <span aria-hidden="true" className="flex h-5 w-5 items-center justify-center">{icon}</span>
+                {reason !== undefined && <span id={reasonId} aria-hidden="true" className="sr-only">{reason}</span>}
             </button>
         );
     },

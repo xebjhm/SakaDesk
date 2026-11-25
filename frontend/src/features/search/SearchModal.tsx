@@ -2,14 +2,14 @@ import React, {
   forwardRef,
   useCallback,
   useEffect,
+  useId,
   useImperativeHandle,
   useMemo,
   useRef,
   useState,
 } from 'react';
-import { Search, Loader2, Database } from 'lucide-react';
-import { Button, Modal } from '../../design/primitives';
-import { DialogStatus } from '../../core/common/DialogStatus';
+import { Search, Database } from 'lucide-react';
+import { Button, Modal, Spinner, StatusBlock } from '../../design/primitives';
 import { logDialogLoad } from '../../design/dialog/dialogLog';
 import { useTranslation } from '../../i18n';
 import { useAppStore } from '../../store/appStore';
@@ -18,6 +18,7 @@ import { getServiceDisplayName } from '../../data/services';
 import { SearchInput } from './components/SearchInput';
 import { SearchFilterBar } from './components/SearchFilterBar';
 import { SearchResultList } from './components/SearchResultList';
+import { snippetMarks } from './snippetHtml';
 import type { SearchResult, SearchResponse, FilterChip, DateRangePreset, ContentTypeFilter } from './types';
 
 export interface SearchModalHandle {
@@ -61,6 +62,10 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
   const inputRef = useRef<HTMLInputElement>(null!);
   const listRef = useRef<HTMLDivElement>(null!);
   const wasBuilding = useRef(false);
+  const listId = useId();
+  // The running query's controller: a newer query (or closing) aborts it; load-more reads it to drop
+  // results of a query that was replaced meanwhile.
+  const searchAbortRef = useRef<AbortController | null>(null);
 
   // ─── Open / Close ──────────────────────────────────────────────────────────
   const resetState = useCallback(() => {
@@ -196,18 +201,21 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
 
     setIsLoading(true);
     setError(false);
+    const controller = new AbortController();
+    searchAbortRef.current = controller;
 
     const timer = setTimeout(async () => {
       try {
         const filterParams = buildFilterParams();
         const url = `/api/search?q=${encodeURIComponent(query.trim())}&limit=${PAGE_SIZE}&offset=0${filterParams ? '&' + filterParams : ''}`;
-        const response = await fetch(url);
+        const response = await fetch(url, { signal: controller.signal });
 
         if (!response.ok) {
           throw new Error(`HTTP ${response.status}`);
         }
 
         const data: SearchResponse = await response.json();
+        if (controller.signal.aborted) return;
         // Show building banner if index is still being built, but
         // still render whatever partial results the backend returned.
         setIsIndexBuilding(!!data.is_building);
@@ -217,6 +225,11 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
         setHasMore(data.has_more);
         setSelectedIndex(data.results.length > 0 ? 0 : -1);
       } catch (_err) {
+        // Replaced by a newer query (or the dialog closed): not an error.
+        if (controller.signal.aborted) {
+          logDialogLoad('search', 'cancelled');
+          return;
+        }
         setError(true);
         logDialogLoad('search', 'error');
         setResults([]);
@@ -224,11 +237,14 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
         setTotalCount(0);
         setHasMore(false);
       } finally {
-        setIsLoading(false);
+        if (!controller.signal.aborted) setIsLoading(false);
       }
     }, 300);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      controller.abort();
+    };
   }, [query, isComposing, buildFilterParams, searchGeneration]);
 
   // ─── Load more handler ──────────────────────────────────────────────────────
@@ -237,18 +253,24 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
       logDialogLoad('search_more', 'skipped');
       return;
     }
+    const controller = searchAbortRef.current;
     setIsLoadingMore(true);
     try {
       const filterParams = buildFilterParams();
       const url = `/api/search?q=${encodeURIComponent(query.trim())}&limit=${PAGE_SIZE}&offset=${results.length}${filterParams ? '&' + filterParams : ''}`;
-      const response = await fetch(url);
+      const response = await fetch(url, { signal: controller?.signal });
       if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const data: SearchResponse = await response.json();
+      if (controller?.signal.aborted) return; // a newer query replaced this one
       setResults((prev) => [...prev, ...data.results]);
       setHasMore(data.has_more);
       setTotalCount(data.total_count);
       logDialogLoad('search_more', 'ok', data.results.length);
     } catch (_err) {
+      if (controller?.signal.aborted) {
+        logDialogLoad('search_more', 'cancelled');
+        return;
+      }
       // The button stays, so the user can try again.
       logDialogLoad('search_more', 'error');
     } finally {
@@ -279,29 +301,17 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
 
       // Blog search result → navigate to BlogReader
       if (result.result_type === 'blog') {
-        // Extract actual matched text from snippet <mark> tags.
-        // For reading-based matches (e.g., query "かわいい" matching "可愛い"),
-        // the <mark> tags contain the original text which BlogReader needs
-        // to highlight and scroll to the correct position.
-        const matchedTerms: string[] = [];
-        const readingTerms: string[] = [];
-        if (result.snippet) {
-          const markRegex = /<mark([^>]*)>([^<]+)<\/mark>/g;
-          let m;
-          while ((m = markRegex.exec(result.snippet)) !== null) {
-            matchedTerms.push(m[2]);
-            if (m[1].includes('reading')) {
-              readingTerms.push(m[2]);
-            }
-          }
-        }
+        // The marks' texts, read from the parsed snippet (snippetHtml.ts). For reading-based
+        // matches (e.g., query "かわいい" matching "可愛い") the marks hold the original text,
+        // which BlogReader highlights and scrolls to.
+        const { matched, reading } = snippetMarks(result.snippet ?? '');
         setTargetBlog({
           blogId: result.blog_id,
           service: result.service,
           memberId: result.member_id,
           searchQuery: query,
-          matchedTerms: [...new Set(matchedTerms)],
-          readingTerms: [...new Set(readingTerms)],
+          matchedTerms: [...new Set(matched)],
+          readingTerms: [...new Set(reading)],
         });
         setActiveFeature(result.service, 'blogs');
         if (activeService !== result.service) {
@@ -334,58 +344,36 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
     [close, query]
   );
 
-  // ─── Keyboard handler ─────────────────────────────────────────────────────
-  const handleKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
-      // Enter and Escape confirm or cancel an IME candidate first: leave them to the IME.
-      const composing = e.nativeEvent.isComposing || e.keyCode === 229;
-      if (composing && (e.key === 'Enter' || e.key === 'Escape')) return;
+  // ─── Keyboard: the search field (a combobox) ───────────────────────────────
+  // ↑ / ↓ move the highlighted result and Enter opens it. Every other control in the dialog keeps
+  // its own keys (Tab, Enter on a button), and nothing is taken while an IME composes: its candidate
+  // list uses the same keys. Escape is the dialog layer's (IME-safe).
+  const handleInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.nativeEvent.isComposing || e.keyCode === 229) return;
       switch (e.key) {
         case 'ArrowDown': {
-          e.preventDefault();
           if (results.length === 0) return;
-          setSelectedIndex((prev) =>
-            prev < results.length - 1 ? prev + 1 : 0
-          );
+          e.preventDefault();
+          setSelectedIndex((prev) => (prev < results.length - 1 ? prev + 1 : 0));
           break;
         }
         case 'ArrowUp': {
-          e.preventDefault();
           if (results.length === 0) return;
-          setSelectedIndex((prev) =>
-            prev > 0 ? prev - 1 : results.length - 1
-          );
-          break;
-        }
-        case 'Tab': {
           e.preventDefault();
-          if (results.length === 0) return;
-          if (e.shiftKey) {
-            setSelectedIndex((prev) =>
-              prev > 0 ? prev - 1 : results.length - 1
-            );
-          } else {
-            setSelectedIndex((prev) =>
-              prev < results.length - 1 ? prev + 1 : 0
-            );
-          }
+          setSelectedIndex((prev) => (prev > 0 ? prev - 1 : results.length - 1));
           break;
         }
         case 'Enter': {
-          e.preventDefault();
           if (selectedIndex >= 0 && selectedIndex < results.length) {
+            e.preventDefault();
             handleNavigate(results[selectedIndex]);
           }
           break;
         }
-        case 'Escape': {
-          e.preventDefault();
-          close();
-          break;
-        }
       }
     },
-    [results, selectedIndex, handleNavigate, close]
+    [results, selectedIndex, handleNavigate]
   );
 
   // ─── Derived state ─────────────────────────────────────────────────────────
@@ -404,7 +392,6 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
       placement="top"
       aria-label={t('search.title')}
       initialFocusRef={inputRef}
-      onKeyDown={handleKeyDown}
       logId="search"
       className="max-h-[60vh] max-w-xl overflow-visible"
     >
@@ -418,11 +405,15 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
         onFilterToggle={() => setFiltersExpanded(!filtersExpanded)}
         filtersActive={filtersExpanded || selectedFilters.length > 0}
         contentType={contentType}
+        onKeyDown={handleInputKeyDown}
+        listId={listId}
+        expanded={results.length > 0}
+        activeId={selectedIndex >= 0 && selectedIndex < results.length ? `${listId}-${selectedIndex}` : undefined}
       />
 
       {blogBackupEnabled && blogSyncInProgress && (
         <p role="status" className="flex items-center gap-2 bg-sunken px-4 py-2 text-caption text-secondary">
-          <Loader2 aria-hidden="true" className="h-3 w-3 animate-spin motion-reduce:animate-none" />
+          <Spinner size="sm" tone="muted" decorative />
           {t('search.blogBackupInProgress')}
         </p>
       )}
@@ -452,24 +443,25 @@ export const SearchModal = forwardRef<SearchModalHandle, SearchModalProps>(({ us
             {t('search.buildingHint')}
           </p>
         )}
-        {isLoading && results.length === 0 && <DialogStatus kind="loading" className="py-8" />}
-        {error && <DialogStatus kind="error" title={t('search.searchFailed')} className="py-8" />}
+        {isLoading && results.length === 0 && <StatusBlock kind="loading" surface="dialog_search" className="py-8" />}
+        {/* Retry bumps searchGeneration, which also feeds the filter bar's refetchKey (a harmless extra refetch). */}
+        {error && <StatusBlock kind="error" surface="dialog_search" title={t('search.searchFailed')} onRetry={() => setSearchGeneration((g) => g + 1)} className="py-8" />}
         {!isLoading && !error && !isIndexBuilding && query.trim() && results.length === 0 && (
-          <DialogStatus kind="empty" icon={<Search />} title={t('search.noResults')} hint={t('search.noResultsHint')} className="py-8" />
+          <StatusBlock kind="empty" surface="dialog_search" icon={<Search />} title={t('search.noResults')} hint={t('search.noResultsHint')} className="py-8" />
         )}
         {results.length > 0 && (
           <SearchResultList
             results={results}
             selectedIndex={selectedIndex}
             onSelect={handleNavigate}
-            onMouseEnterItem={setSelectedIndex}
+            listId={listId}
+            onHover={setSelectedIndex}
             listRef={listRef}
             userNicknames={userNicknames}
           />
         )}
         {hasMore && results.length > 0 && (
-          <Button variant="ghost" size="sm" className="mx-auto my-1" onClick={handleLoadMore} disabled={isLoadingMore}>
-            {isLoadingMore && <Loader2 className="h-4 w-4 animate-spin motion-reduce:animate-none" />}
+          <Button variant="ghost" size="sm" className="mx-auto my-1" onClick={handleLoadMore} loading={isLoadingMore}>
             {t('search.loadMore')}
           </Button>
         )}

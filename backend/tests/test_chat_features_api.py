@@ -160,13 +160,15 @@ class TestGetMessageDates:
         (secret / "messages.json").write_text('{"messages": []}', encoding="utf-8")
 
         mock_output.return_value = tmp_path
-        response = client.get(f"/api/chat/message_dates/..%2f{secret.name}")
+        response = client.get(
+            f"/api/chat/message_dates/hinatazaka46/..%2f..%2f{secret.name}"
+        )
         assert response.status_code == 403
 
     @patch("backend.api.chat_features._get_output_dir")
     def test_message_dates_single_member(self, mock_output, tmp_path):
         """Returns date counts from a single member's messages.json."""
-        member_dir = tmp_path / "hinatazaka46" / "member1"
+        member_dir = tmp_path / "日向坂46" / "member1"
         member_dir.mkdir(parents=True)
         messages = {
             "messages": [
@@ -196,7 +198,7 @@ class TestGetMessageDates:
     @patch("backend.api.chat_features._get_output_dir")
     def test_message_dates_group_path(self, mock_output, tmp_path):
         """Returns aggregated dates from multiple member directories."""
-        group_dir = tmp_path / "service" / "group"
+        group_dir = tmp_path / "日向坂46" / "group"
         m1 = group_dir / "member1"
         m2 = group_dir / "member2"
         m1.mkdir(parents=True)
@@ -210,7 +212,7 @@ class TestGetMessageDates:
         (m2 / "messages.json").write_text(json.dumps(m2_messages), encoding="utf-8")
 
         mock_output.return_value = tmp_path
-        response = client.get("/api/chat/message_dates/service/group")
+        response = client.get("/api/chat/message_dates/hinatazaka46/group")
         assert response.status_code == 200
         data = response.json()
         assert data["total_dates"] == 1
@@ -219,10 +221,10 @@ class TestGetMessageDates:
     @patch("backend.api.chat_features._get_output_dir")
     def test_message_dates_empty_dir(self, mock_output, tmp_path):
         """Returns empty dates for directory with no messages."""
-        empty_dir = tmp_path / "service" / "empty"
+        empty_dir = tmp_path / "日向坂46" / "empty"
         empty_dir.mkdir(parents=True)
         mock_output.return_value = tmp_path
-        response = client.get("/api/chat/message_dates/service/empty")
+        response = client.get("/api/chat/message_dates/hinatazaka46/empty")
         assert response.status_code == 200
         data = response.json()
         assert data["total_dates"] == 0
@@ -270,7 +272,7 @@ class TestLocalDateBucketing:
         local-date bucket (regardless of the runner's timezone)."""
         from backend.api.chat_features import _local_date
 
-        member_dir = tmp_path / "hinatazaka46" / "member1"
+        member_dir = tmp_path / "日向坂46" / "member1"
         member_dir.mkdir(parents=True)
         messages = {
             "messages": [

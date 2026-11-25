@@ -70,4 +70,14 @@ describe('useVisiblePolling', () => {
         setVisibility('hidden');
         expect(cb).toHaveBeenCalledTimes(1);
     });
+
+    it('does not run while disabled and refreshes at once when enabled again', () => {
+        const cb = vi.fn();
+        const { rerender } = renderHook(({ enabled }) => useVisiblePolling(cb, 1000, [], { enabled }), { initialProps: { enabled: false } });
+        vi.advanceTimersByTime(5000);
+        expect(cb).not.toHaveBeenCalled();
+        rerender({ enabled: true });
+        expect(cb).toHaveBeenCalledTimes(1);
+        expect(cb).toHaveBeenLastCalledWith('immediate');
+    });
 });

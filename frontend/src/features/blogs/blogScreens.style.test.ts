@@ -10,7 +10,6 @@ import path from 'node:path';
 const FILES = [
     'BlogsFeature.tsx',
     'blogLog.ts',
-    'components/BlogStatus.tsx',
     'components/RecentPostsFeed.tsx',
     'components/BlogCard.tsx',
     '../../core/common/DynamicBackground.tsx',

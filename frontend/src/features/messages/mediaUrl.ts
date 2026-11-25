@@ -54,3 +54,83 @@ export function resizedAvatarUrl(url: string | null | undefined, width: AvatarWi
     const rest = url.slice(prefix.length);
     return `${AVATAR_API_BASE}/${rest}${rest.includes('?') ? '&' : '?'}w=${width}`;
 }
+
+export const THUMB_API_BASE = '/api/content/thumb';
+
+/** Longest-side bounds the thumbnail route accepts (mirrors `photo_thumb.ALLOWED_WIDTHS`). */
+export const THUMB_WIDTHS = [160, 320, 480, 640] as const;
+
+export type ThumbWidth = typeof THUMB_WIDTHS[number];
+
+/**
+ * The width the background worker pre-generates for every picture (`photo_thumb.PREGEN_WIDTHS`).
+ * Grid tiles never ask for more, so they hit the pre-generated variant; 320 / 160 derive from it.
+ */
+export const THUMB_PREGEN_WIDTH = 480;
+/** The extra width pre-generated for ★ items and album covers (`photo_thumb.LARGE_WIDTH`). */
+export const THUMB_LARGE_WIDTH = 640;
+
+/**
+ * The allowed thumbnail width for a picture drawn at `cssPx` CSS px (its longest side) on a
+ * screen with device pixel ratio `dpr`: the smallest one covering `cssPx × dpr`, capped at
+ * `THUMB_PREGEN_WIDTH` (480; a few % upscale is invisible and the 480 is pre-generated). Pass
+ * `large: true` for ★ items and album covers, which may use `THUMB_LARGE_WIDTH` (640). A
+ * missing / invalid `dpr` counts as 1 (as `avatarWidthFor`).
+ */
+export function thumbWidthFor(cssPx: number, dpr: number, opts: { large?: boolean } = {}): ThumbWidth {
+    const ratio = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
+    const needed = Math.ceil(cssPx * ratio - 0.01);
+    const cap = opts.large ? THUMB_LARGE_WIDTH : THUMB_PREGEN_WIDTH;
+    const allowed = THUMB_WIDTHS.filter(w => w <= cap);
+    return allowed.find(w => w >= needed) ?? allowed[allowed.length - 1];
+}
+
+/** The chat bubble's picture box (MessageBubble's MediaContainer), in CSS px. */
+export const CHAT_MEDIA_MAX_WIDTH = 320;
+export const CHAT_MEDIA_MAX_HEIGHT = 500;
+
+/**
+ * The thumbnail width for a chat picture (UI health #8), or undefined to keep the original. Rule:
+ * no visible difference and no extra backend work, so only the pre-generated `THUMB_PREGEN_WIDTH`
+ * (480) is used, and only when the picture's box (fitted like MediaContainer) x `dpr` fits in it:
+ * 320 / 160 would be derived on demand and 640 is rendered on demand only. At 200 % chat photos
+ * keep their original. GIFs keep it too (a thumbnail is one still frame), and so do pictures
+ * without stored dimensions (their box is unknown) or no larger than the thumbnail (it would only
+ * re-encode them).
+ */
+export function chatPictureThumbWidth(
+    width: number | null | undefined, height: number | null | undefined, mediaFile: string | null | undefined, dpr: number,
+): typeof THUMB_PREGEN_WIDTH | undefined {
+    if (!width || !height || !mediaFile || /\.gif$/i.test(mediaFile)) return undefined;
+    if (Math.max(width, height) <= THUMB_PREGEN_WIDTH) return undefined;
+    const ratio = width / height;
+    let boxWidth = Math.min(CHAT_MEDIA_MAX_WIDTH, width);
+    let boxHeight = boxWidth / ratio;
+    if (boxHeight > CHAT_MEDIA_MAX_HEIGHT) {
+        boxHeight = CHAT_MEDIA_MAX_HEIGHT;
+        boxWidth = boxHeight * ratio;
+    }
+    const scale = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
+    const needed = Math.ceil(Math.max(boxWidth, boxHeight) * scale - 0.01);
+    return needed <= THUMB_PREGEN_WIDTH ? THUMB_PREGEN_WIDTH : undefined;
+}
+
+/**
+ * A downscaled WebP of an archived picture (`/api/content/thumb/...?w=<width>`), for grids and
+ * small stills; the media viewer keeps the full file. Only media-route URLs are rewritten
+ * (others are returned unchanged); empty input gives `undefined`. The route answers 404 for
+ * anything it cannot thumbnail (videos included), so callers fall back to the full URL on error.
+ *
+ * `v` is the file's content version (12 hex chars, from `/api/media/meta`). When given it is
+ * appended as `&v=`, and a matching `v` makes the route answer `Cache-Control: immutable`
+ * (a stale one gets `no-cache` with the current variant); without it the URL is unchanged
+ * and the route keeps its one-day cache.
+ */
+export function thumbnailUrl(url: string | null | undefined, width: ThumbWidth, v?: string): string | undefined {
+    if (!url) return undefined;
+    const prefix = `${MEDIA_API_BASE}/`;
+    if (!url.startsWith(prefix)) return url;
+    const rest = url.slice(prefix.length);
+    const version = v ? `&v=${encodeURIComponent(v)}` : '';
+    return `${THUMB_API_BASE}/${rest}${rest.includes('?') ? '&' : '?'}w=${width}${version}`;
+}

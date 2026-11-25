@@ -19,7 +19,7 @@ from fastapi.testclient import TestClient
 from structlog.testing import capture_logs
 
 from backend.main import app
-from backend.services import media_range
+from backend.services import api_auth, media_range
 from backend.services.media_range import (
     MEDIA_RANGE_CAP,
     ByteRange,
@@ -298,7 +298,9 @@ class TestMediaRoute:
             resp = client.get("/api/content/avatar/svc/a.png?w=64")
         assert resp.status_code == 200
         assert resp.content == b"\x89PNG"
-        file_response.assert_called_once_with(src)
+        file_response.assert_called_once()
+        assert file_response.call_args.args == (src,)
+        assert file_response.call_args.kwargs["media_type"] == "image/png"
         media_response.assert_not_called()
 
     # -- If-Range (RFC 9110 §13.1.5) ---------------------------------------
@@ -578,7 +580,11 @@ async def test_disconnect_through_real_app_stops_reading(tmp_path):
         http_version="1.1",
         root_path="",
     )
-    scope["headers"] = [*scope["headers"], (b"host", b"127.0.0.1:8000")]
+    scope["headers"] = [
+        *scope["headers"],
+        (b"host", b"127.0.0.1:8000"),
+        (api_auth.TOKEN_HEADER.encode(), api_auth.LAUNCH_TOKEN.encode()),
+    ]
 
     with (
         patch("backend.api.content._resolve_media_path", return_value=video),

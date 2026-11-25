@@ -1,5 +1,6 @@
 import { describe, it, expect, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
+import userEvent from '@testing-library/user-event';
 import { ProfileImageViewer } from './ProfileImageViewer';
 import type { ProfileImagesByKind } from '../profileImages';
 
@@ -41,5 +42,25 @@ describe('ProfileImageViewer', () => {
         expect(screen.getByRole('tab', { name: /Chat icon/ })).toHaveAttribute('aria-selected', 'true');
         fireEvent.click(screen.getByRole('tab', { name: /Call screen/ }));
         expect(onClose).not.toHaveBeenCalled();
+    });
+
+    it('follows the tabs pattern: roving tabindex, arrows and End move between kinds without stepping photos (UI health A-D5)', async () => {
+        render(<ProfileImageViewer images={images} initialKind="thumbnail" onClose={vi.fn()} />);
+        const chat = screen.getByRole('tab', { name: /Chat icon/ });
+        const call = screen.getByRole('tab', { name: /Call screen/ });
+        expect(chat).toHaveAttribute('tabindex', '0');
+        expect(call).toHaveAttribute('tabindex', '-1');
+        chat.focus();
+        await userEvent.keyboard('{ArrowRight}');
+        expect(call).toHaveFocus();
+        expect(call).toHaveAttribute('aria-selected', 'true');
+        expect(document.querySelector('img')?.getAttribute('src')).toBe('/p.jpg');
+        await userEvent.keyboard('{ArrowRight}');
+        expect(chat).toHaveFocus(); // wraps; the photo list was not stepped
+        expect(document.querySelector('img')?.getAttribute('src')).toBe('/t-new.jpg');
+        await userEvent.keyboard('{End}');
+        expect(call).toHaveFocus();
+        await userEvent.keyboard('{Home}');
+        expect(chat).toHaveFocus();
     });
 });

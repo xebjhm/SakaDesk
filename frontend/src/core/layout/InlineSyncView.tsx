@@ -10,6 +10,7 @@ import { cn } from '../../utils/classnames';
 import { getSyncPhaseName, getSyncUnitLabel } from '../../utils/syncFormatters';
 import { SyncProgressPanel } from '../common/SyncProgressPanel';
 import type { SyncProgress } from '../../features/messages/MessagesFeature';
+import { useSyncProgressStore } from '../../shell/syncProgressStore';
 
 interface InlineSyncViewProps {
     service: string;
@@ -22,7 +23,7 @@ interface InlineSyncViewProps {
  * shared panel, whose bar is that group's title gradient (`e4e4118`).
  */
 export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncProgress }) => {
-    const { t } = useTranslation();
+    const { t, i18n } = useTranslation();
     const groupId = serviceIdToGroupId(service);
     const isLight = groupTokens[groupId].official.headerStyle === 'light';
     const isComplete = syncProgress.phase === 'complete';
@@ -32,7 +33,7 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
     const subtitle = isComplete
         ? t('sync.syncComplete')
         : syncProgress.total
-            ? `${syncProgress.total.toLocaleString()} ${getSyncUnitLabel(syncProgress, t)}`
+            ? `${syncProgress.total.toLocaleString(i18n.language)} ${getSyncUnitLabel(syncProgress, t)}`
             : t('sync.pleaseWait');
 
     return (
@@ -61,4 +62,10 @@ export const InlineSyncView: React.FC<InlineSyncViewProps> = ({ service, syncPro
             </Card>
         </div>
     );
+};
+
+/** The inline first-sync card fed from the progress store (re-renders on each tick, nothing around it does). */
+export const LiveInlineSyncView: React.FC<{ service: string }> = ({ service }) => {
+    const syncProgress = useSyncProgressStore((s) => s.byService[service]);
+    return syncProgress ? <InlineSyncView service={service} syncProgress={syncProgress} /> : null;
 };

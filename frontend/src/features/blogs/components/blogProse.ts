@@ -5,7 +5,7 @@
  */
 export const BLOG_PROSE = [
     // Reading type in the app font: 16 px / 28 px (`text-reading`; the serif is for titles only).
-    'break-words text-reading text-primary',
+    'break-words text-pretty text-reading text-primary',
     // Paragraph rhythm: one 16 px gap between blocks; <br> runs keep their own blank lines.
     '[&_p]:mb-4 [&_p:last-child]:mb-0',
     '[&_:is(h1,h2,h3,h4)]:mb-3 [&_:is(h1,h2,h3,h4)]:mt-8 [&_:is(h1,h2,h3,h4)]:text-title [&_:is(h1,h2,h3,h4)]:font-semibold',

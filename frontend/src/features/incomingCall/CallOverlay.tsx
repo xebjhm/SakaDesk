@@ -11,6 +11,7 @@ import { CallScreen } from './CallScreen';
 import type { AnswerStyle } from './CallScreen';
 import type { IncomingCall } from './useIncomingCall';
 import { useAnchorRect } from './useAnchorRect';
+import { LiveRegion } from '../../design/primitives';
 
 interface CallOverlayProps {
     call: IncomingCall;
@@ -163,9 +164,7 @@ export const CallOverlay: React.FC<CallOverlayProps> = ({ call, accentColor = AC
     const liveText = phase === 'ringing' ? `${call.name} ${t('call.incoming')}`
         : phase === 'ended' ? t('call.ended')
         : '';
-    const liveRegion = (
-        <div role="status" aria-live="polite" className="sr-only">{liveText}</div>
-    );
+    const liveRegion = <LiveRegion message={liveText} />;
 
     if (phase === 'idle' || !call.message) return liveRegion;
 

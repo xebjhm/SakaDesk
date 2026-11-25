@@ -697,3 +697,67 @@ def test_nickname_for_reads_per_service_setting() -> None:
     assert nickname_for({"user_nicknames": None}, "hinatazaka46") is None
     # A nickname containing regex replacement syntax is inserted literally.
     assert apply_nickname("%%%", r"\1\g<0>") == r"\1\g<0>"
+
+
+# ── Memories M4: shared clip + masked nickname ───────────────────────
+
+
+def test_clip_text_collapses_whitespace_then_cuts() -> None:
+    from backend.services.notification_planner import PREVIEW_MAX_CHARS, clip_text
+
+    assert clip_text("a  b\nc", 3) == "a b…"
+    assert clip_text("  a \t b  ", 3) == "a b"
+    assert clip_text("") == ""
+    assert clip_text("あ" * PREVIEW_MAX_CHARS) == "あ" * PREVIEW_MAX_CHARS
+    assert clip_text("あ" * 81) == "あ" * PREVIEW_MAX_CHARS + "…"
+    assert clip_text("🌸" * 61, 60) == "🌸" * 60 + "…"
+
+
+def test_apply_nickname_or_mask() -> None:
+    from backend.services.nickname import apply_nickname_or_mask
+
+    mask = "『＊＊＊』"
+    assert apply_nickname_or_mask("%%%、ありがとう", "みく推し", mask) == (
+        "みく推し、ありがとう"
+    )
+    assert apply_nickname_or_mask("％％％と%%%", None, mask) == f"{mask}と{mask}"
+    assert apply_nickname_or_mask("%%%", "", mask) == mask
+    assert apply_nickname_or_mask("", "ひな", mask) == ""
+    assert apply_nickname_or_mask("%%%", r"\1\g<0>", mask) == r"\1\g<0>"
+
+
+@pytest.mark.parametrize(
+    "member_dir",
+    ["../../../../x", "58 ok/../../..", "C:"],
+)
+def test_an_escaping_member_dir_is_skipped_not_targeted(
+    tmp_path: Path, member_dir: str
+) -> None:
+    """report-hardening #80 (audit 2026-11-13): '..' reached the toast target path."""
+    c = chat(tmp_path, member_dir=member_dir)
+    plans, skips = run([c], tmp_path)
+    assert plans == []
+    assert [s.reason for s in skips] == ["bad_path"]
+
+
+def test_a_chat_outside_the_service_folder_but_under_the_root_is_skipped(
+    tmp_path: Path,
+) -> None:
+    c = chat(tmp_path)
+    c.member_dir = tmp_path / "櫻坂46" / "messages" / "1 a" / "2 b"
+    plans, skips = run([c], tmp_path)
+    assert plans == [] and [s.reason for s in skips] == ["bad_path"]
+
+
+@pytest.mark.parametrize(
+    ("member_dir", "folder"),
+    [("58 Mr.", "58 Mr"), ("58 ", "58"), ("58 a . ", "58 a")],
+)
+def test_a_trailing_dot_or_space_names_the_folder_windows_keeps(
+    tmp_path: Path, member_dir: str, folder: str
+) -> None:
+    """Windows drops a trailing dot or space from a folder name; the target matches."""
+    c = chat(tmp_path, member_dir=member_dir)
+    plans, skips = run([c], tmp_path)
+    assert skips == []
+    assert plans[0].target.path == f"日向坂46/messages/34 金村 美玖/{folder}"

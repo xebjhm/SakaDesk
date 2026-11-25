@@ -3,9 +3,13 @@
 ``desktop.py`` registers handlers once the window exists. Toast callbacks run
 on a WinRT thread and call :func:`open_chat` or :func:`open_window`, which
 never raise (so do :func:`open_login`, which shows a service's login dialog,
-and :func:`set_tray_alert`, the tray warning badge). The backend pushes the tray tooltip with :func:`set_tray_tooltip`,
-and desktop threads (the tray) schedule coroutines on the uvicorn event loop
-with :func:`run_on_server_loop`. The call popup host
+:func:`open_memories`, which opens Memories at a route,
+and :func:`set_tray_alert`, the tray warning badge). :func:`open_chat`,
+:func:`open_login` and :func:`open_memories` run their handler on a daemon
+thread and wait at most ``CLICK_TIMEOUT_S``: pywebview can block forever on a
+window torn down mid-call. The backend pushes the tray tooltip with
+:func:`set_tray_tooltip`, and desktop threads (the tray) schedule coroutines
+on the uvicorn event loop with :func:`run_on_server_loop`. The call popup host
 (``set_call_popup_host``) runs blocking GUI calls; every async ``call_popup_*``
 wrapper runs them on a dedicated two-thread executor with a timeout and never
 raises.
@@ -22,6 +26,8 @@ from typing import Any, Protocol, TypeVar
 
 import structlog
 
+import host_js
+
 from backend.services.notification_planner import ChatTarget
 
 logger = structlog.get_logger(__name__)
@@ -30,11 +36,65 @@ _open_chat_handler: Callable[[ChatTarget, int | None], None] | None = None
 _open_window_handler: Callable[[], None] | None = None
 _tray_tooltip_handler: Callable[[str], None] | None = None
 _open_login_handler: Callable[[str], None] | None = None
+_open_memories_handler: Callable[[str, dict], None] | None = None
+_open_memories_unhandled_logged = False
 _tray_alert_handler: Callable[[bool], None] | None = None
 _open_login_unhandled_logged = False
 _tray_alert_unhandled_logged = False
 _tray_tooltip_unhandled_logged = False
 _server_loop: asyncio.AbstractEventLoop | None = None
+
+# A toast click runs window calls (show, focus, a host -> page script). pywebview
+# 5.3.2 waits forever when the WebView is torn down mid-call (its evaluate_js
+# semaphore is never released), which blocked the WinRT thread that delivers
+# clicks. Clicks run on their own daemon thread; the caller waits at most this.
+CLICK_TIMEOUT_S = 8.0
+# Every click that is still running holds a slot until its call returns (maybe
+# never, when stuck). With this many running, later clicks are dropped instead
+# of piling up blocked threads.
+MAX_STUCK_CLICKS = 2
+_click_slots = threading.BoundedSemaphore(MAX_STUCK_CLICKS)
+
+
+def _run_click(
+    op: str, fn: Callable[[], None], *, timeout: float | None = None
+) -> None:
+    """Run ``fn`` on a daemon thread and wait up to ``timeout`` seconds. Never raises.
+
+    ``timeout`` defaults to ``CLICK_TIMEOUT_S``. ``fn`` must catch and log its
+    own errors. Logs ``toast_click_dropped`` (``op``, ``reason=busy``) when
+    ``MAX_STUCK_CLICKS`` earlier clicks are still running (or ``reason=no_thread``
+    when no thread can start), and ``toast_click_timeout`` (``op``,
+    ``seconds``) when ``fn`` is still running after the wait; it keeps running
+    and frees its slot when it returns.
+    """
+    wait = CLICK_TIMEOUT_S if timeout is None else timeout
+    slots = _click_slots
+    if not slots.acquire(blocking=False):
+        logger.warning("toast_click_dropped", op=op, reason="busy")
+        return
+    done = threading.Event()
+
+    def work() -> None:
+        try:
+            fn()
+        finally:
+            slots.release()
+            done.set()
+
+    try:
+        threading.Thread(target=work, name=f"toast_click_{op}", daemon=True).start()
+    except RuntimeError as e:
+        slots.release()
+        logger.warning(
+            "toast_click_dropped",
+            op=op,
+            reason="no_thread",
+            error_type=type(e).__name__,
+        )
+        return
+    if not done.wait(wait):
+        logger.warning("toast_click_timeout", op=op, seconds=wait)
 
 
 def set_open_chat_handler(
@@ -57,6 +117,7 @@ def open_chat(target: ChatTarget, message_id: int | None = None) -> None:
 
     Logs ``notify_click_unhandled`` when no handler is registered and
     ``notify_open_chat_failed`` (error type only) when the handler raises.
+    The handler runs through :func:`_run_click`.
     """
     handler = _open_chat_handler
     if handler is None:
@@ -66,14 +127,18 @@ def open_chat(target: ChatTarget, message_id: int | None = None) -> None:
             service=target.service,
         )
         return
-    try:
-        handler(target, message_id)
-    except Exception as e:
-        logger.warning(
-            "notify_open_chat_failed",
-            service=target.service,
-            error_type=type(e).__name__,
-        )
+
+    def call() -> None:
+        try:
+            handler(target, message_id)
+        except Exception as e:
+            logger.warning(
+                "notify_open_chat_failed",
+                service=target.service,
+                error_type=type(e).__name__,
+            )
+
+    _run_click("open_chat", call)
 
 
 def set_open_window_handler(handler: Callable[[], None] | None) -> None:
@@ -308,7 +373,7 @@ async def _run_host(
 
     Returns ``no_host`` when no host is registered and ``failed`` on a timeout
     (``call_popup_bridge_failed`` ``reason=timeout``) or an exception
-    (``error_type`` only). Timeouts in a row are counted (any call that
+    (``error_type``, plus ``js_error`` when the page script threw: its error name, or ``other``). Timeouts in a row are counted (any call that
     completes resets the count); see :func:`call_popup_available`.
     """
     global _host_timeouts
@@ -326,7 +391,12 @@ async def _run_host(
         return failed
     except Exception as e:
         _host_timeouts = 0
-        logger.warning("call_popup_bridge_failed", op=op, error_type=type(e).__name__)
+        logger.warning(
+            "call_popup_bridge_failed",
+            op=op,
+            error_type=type(e).__name__,
+            **host_js.error_fields(e),
+        )
         return failed
     _host_timeouts = 0
     return result
@@ -420,7 +490,7 @@ def open_login(service: str) -> None:
 
     Logs ``login_open_unhandled`` once (until a handler is registered or cleared
     again) when no handler is registered, and ``login_open_failed`` (error type
-    only) when the handler raises.
+    only) when the handler raises. The handler runs through :func:`_run_click`.
     """
     global _open_login_unhandled_logged
     handler = _open_login_handler
@@ -429,10 +499,46 @@ def open_login(service: str) -> None:
             _open_login_unhandled_logged = True
             logger.info("login_open_unhandled", reason="no_handler")
         return
-    try:
-        handler(service)
-    except Exception as e:
-        logger.warning("login_open_failed", error_type=type(e).__name__)
+
+    def call() -> None:
+        try:
+            handler(service)
+        except Exception as e:
+            logger.warning("login_open_failed", error_type=type(e).__name__)
+
+    _run_click("open_login", call)
+
+
+def set_open_memories_handler(handler: Callable[[str, dict], None] | None) -> None:
+    """Register (or clear) the host function that opens Memories at a route."""
+    global _open_memories_handler, _open_memories_unhandled_logged
+    _open_memories_handler = handler
+    _open_memories_unhandled_logged = False
+
+
+def open_memories(service: str, route: dict) -> None:
+    """Show the main window on Memories for ``service`` at ``route``. Never raises.
+
+    Logs ``memories_open_unhandled`` once (until a handler is registered or
+    cleared again) when no handler is registered, and ``memories_open_failed``
+    (error type only) when the handler raises. The route is never logged.
+    The handler runs through :func:`_run_click`.
+    """
+    global _open_memories_unhandled_logged
+    handler = _open_memories_handler
+    if handler is None:
+        if not _open_memories_unhandled_logged:
+            _open_memories_unhandled_logged = True
+            logger.info("memories_open_unhandled", reason="no_handler")
+        return
+
+    def call() -> None:
+        try:
+            handler(service, route)
+        except Exception as e:
+            logger.warning("memories_open_failed", error_type=type(e).__name__)
+
+    _run_click("open_memories", call)
 
 
 def set_tray_alert_handler(handler: Callable[[bool], None] | None) -> None:

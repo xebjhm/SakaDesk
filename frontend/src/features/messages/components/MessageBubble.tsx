@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useRef } from 'react';
+import React, { useState, useCallback, useRef, useLayoutEffect } from 'react';
 import type { Message } from '../../../types';
 import { cn } from '../../../utils/classnames';
 import { VoicePlayer } from '../../../core/media/VoicePlayer';
@@ -15,10 +15,14 @@ import { TranslateButton } from '../../../core/common/TranslateButton';
 import { InlineTranslation } from '../../../core/common/InlineTranslation';
 import { useAppStore } from '../../../store/appStore';
 import { useJustBecame } from '../../../hooks/useJustBecame';
-import { buildMediaUrl, MEDIA_API_BASE } from '../mediaUrl';
+import { useInert } from '../../../hooks/useInert';
+import { buildMediaUrl, CHAT_MEDIA_MAX_HEIGHT, CHAT_MEDIA_MAX_WIDTH, MEDIA_API_BASE, thumbnailUrl, type ThumbWidth } from '../mediaUrl';
 import { groupTokens } from '../../../design/tokens';
 import { serviceGroupId } from '../../../config/serviceGroup';
-import { Avatar } from '../../../design/primitives';
+import { Avatar, SKELETON_PULSE, Spinner } from '../../../design/primitives';
+import { useDelayedLoading } from '../../../design/loading';
+import { openExternal } from '../../../utils/openExternal';
+import { dateTimeFormat } from '../../../utils/intlCache';
 
 interface MessageBubbleProps {
     message: Message;
@@ -29,6 +33,8 @@ interface MessageBubbleProps {
     onReveal?: () => void;
     onLongPress?: () => void;
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
+    /** The ★ as the user sees it (an unsaved or just-saved toggle); default `message.is_favorite`. */
+    isFavorite?: boolean;
     onAvatarClick?: () => void;
     onMediaClick?: (mediaUrl: string, type: string, timestamp?: string) => void;
     service?: string;
@@ -38,6 +44,28 @@ interface MessageBubbleProps {
     userNickname?: string;
     /** First message of a run (same sender, same day, ≤ 5 min apart): shows avatar, name and time. */
     runStart?: boolean;
+    /** IANA zone for the time label (Memories passes `Asia/Tokyo`); default: the machine's local clock. */
+    timeZone?: string;
+    /** A keepsake view (Memories): no context menu, long-press or favourite actions. Translate and transcript still work with `memberPath`. */
+    readOnly?: boolean;
+    /**
+     * Opt-in lazy loading for the picture (Memories' read-only day lists, which are not
+     * virtualised). Default: the photo's own default (`eager` for a bubble), as in the chat.
+     */
+    mediaLoading?: 'lazy' | 'eager';
+    /**
+     * Opt-in: draw the picture from the thumbnail route at this width (`thumbnailUrl`), falling
+     * back to the full file on error. The click still hands the full file to `onMediaClick`, so
+     * the viewer shows it. Default: the full file, as in the chat.
+     */
+    mediaThumbWidth?: ThumbWidth;
+}
+
+/** `HH:MM` of `date` on the local clock, or in `timeZone` when given. */
+function clockLabel(date: Date, timeZone: string | undefined): string {
+    if (!timeZone) return `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    if (Number.isNaN(date.getTime())) return '';
+    return dateTimeFormat('en-GB', { hour: '2-digit', minute: '2-digit', hourCycle: 'h23', timeZone }).format(date);
 }
 
 const SHELTER_ICONS = {
@@ -58,17 +86,70 @@ const SHELTER_CLASSES: Record<ShelterKind, { classic: string; light: string }> =
 const shelterKind = (type: string): ShelterKind =>
     type === 'picture' || type === 'video' || type === 'voice' ? type : 'text';
 
+interface ShelterOverlayProps {
+    type: string;
+    service?: string;
+    /** The bubble's corner classes (the shelter covers the bubble exactly). */
+    corners: string;
+    /** Translated name, by kind ("Show unread photo"). */
+    label: string;
+    /** `viaKeyboard`: the click came from Enter or Space (a click event with `detail` 0). */
+    onReveal: (viaKeyboard: boolean) => void;
+    /** Long-press (reveal all) start / end. */
+    onPressStart: () => void;
+    onPressEnd: () => void;
+}
+
+/**
+ * The official unread shelter over a hidden bubble. A native button, so Enter and Space reveal it
+ * too (UI health #3); declared at module level, so a bubble re-render never remounts it.
+ */
+const ShelterOverlay: React.FC<ShelterOverlayProps> = ({ type, service, corners, label, onReveal, onPressStart, onPressEnd }) => {
+    const kind = shelterKind(type);
+    const Icon = SHELTER_ICONS[kind];
+    const look = groupTokens[serviceGroupId(service ?? null)].official.shelterStyle;
+    return (
+        <button
+            type="button"
+            data-testid="unread-shelter"
+            aria-label={label}
+            className={cn(
+                'absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors',
+                'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
+                corners,
+                SHELTER_CLASSES[kind][look],
+            )}
+            onClick={(e) => {
+                e.stopPropagation();
+                onReveal(e.detail === 0);
+            }}
+            onMouseDown={onPressStart}
+            onMouseUp={onPressEnd}
+            onMouseLeave={onPressEnd}
+            onTouchStart={onPressStart}
+            onTouchEnd={onPressEnd}
+        >
+            <Icon aria-hidden="true" className="h-8 w-8" />
+        </button>
+    );
+};
+
 // URL regex pattern for detecting links in text
 const URL_REGEX = /(https?:\/\/[^\s<>"{}|\\^`[\]]+)/g;
 
 // Media container constraints
-const MAX_MEDIA_WIDTH = 320;
-const MAX_MEDIA_HEIGHT = 500;
+const MAX_MEDIA_WIDTH = CHAT_MEDIA_MAX_WIDTH;
+const MAX_MEDIA_HEIGHT = CHAT_MEDIA_MAX_HEIGHT;
 const DEFAULT_MEDIA_HEIGHT = 200;
 
 interface MediaContainerProps {
     message: Message;
     isVideo?: boolean;
+    /**
+     * Picture only: the photo has not loaded yet. The box pulses (`SKELETON_PULSE` on `bg-sunken`);
+     * under reduced motion, where the pulse stops, a labelled spinner shows from `reveal` instead.
+     */
+    pending?: boolean;
     children: React.ReactNode;
 }
 
@@ -76,7 +157,10 @@ interface MediaContainerProps {
  * Container for media that uses pre-calculated dimensions to prevent layout jitter.
  * Falls back to default dimensions if width/height not available.
  */
-const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = false, children }) => {
+const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = false, pending = false, children }) => {
+    const { t } = useTranslation();
+    // After `reveal`, so a photo from the cache never flashes the spinner.
+    const showSpinner = useDelayedLoading(pending);
     let containerStyle: React.CSSProperties = {
         minHeight: DEFAULT_MEDIA_HEIGHT,
     };
@@ -103,18 +187,25 @@ const MediaContainer: React.FC<MediaContainerProps> = ({ message, isVideo = fals
 
     return (
         <div
+            data-testid="bubble-media-box"
             className={cn(
-                "rounded-sm overflow-hidden mb-2 flex items-center justify-center",
-                isVideo ? "bg-viewer-stage" : "bg-elevated"
+                "relative rounded-sm overflow-hidden mb-2 flex items-center justify-center",
+                isVideo ? "bg-viewer-stage" : pending ? cn("bg-sunken", SKELETON_PULSE) : "bg-elevated"
             )}
             style={containerStyle}
         >
             {children}
+            {!isVideo && showSpinner && (
+                // Only under reduced motion (the pulse is static there); its label then shows too.
+                <div className="pointer-events-none absolute inset-0 hidden items-center justify-center motion-reduce:flex">
+                    <Spinner size="sm" tone="muted" label={t('media.photoLoading')} />
+                </div>
+            )}
         </div>
     );
 };
 
-// Component to render text with clickable URLs
+// Component to render text with clickable URLs; a click opens the browser (openExternal).
 const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
     const parts = text.split(URL_REGEX);
 
@@ -131,7 +222,17 @@ const LinkifiedText: React.FC<{ text: string }> = ({ text }) => {
                             target="_blank"
                             rel="noopener noreferrer"
                             className="break-all text-accent-strong hover:underline"
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openExternal(part, 'message');
+                            }}
+                            onAuxClick={(e) => {
+                                if (e.button !== 1) return;
+                                e.preventDefault();
+                                e.stopPropagation();
+                                openExternal(part, 'message');
+                            }}
                         >
                             {part}
                         </a>
@@ -152,16 +253,21 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     onReveal,
     onLongPress,
     onToggleFavorite,
+    isFavorite,
     onAvatarClick,
     onMediaClick,
     service,
     memberPath,
     userNickname,
     runStart = true,
+    timeZone,
+    readOnly = false,
+    mediaLoading,
+    mediaThumbWidth,
 }) => {
     const { t } = useTranslation();
-    const date = new Date(message.timestamp);
-    const time = `${date.getHours().toString().padStart(2, '0')}:${date.getMinutes().toString().padStart(2, '0')}`;
+    const starred = isFavorite ?? message.is_favorite;
+    const time = clockLabel(new Date(message.timestamp), timeZone);
     // Card radius; the first bubble of a run keeps a small top-left corner.
     const bubbleCorners = cn('rounded-card', runStart && 'rounded-tl-tail');
 
@@ -194,9 +300,9 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
     const handleToggleFavorite = useCallback(() => {
         if (onToggleFavorite) {
-            onToggleFavorite(message.id, message.is_favorite);
+            onToggleFavorite(message.id, starred);
         }
-    }, [onToggleFavorite, message.id, message.is_favorite]);
+    }, [onToggleFavorite, message.id, starred]);
 
     // Encode path segments for special chars (spaces, CJK characters)
     // media_file is relative to service dir (e.g., "messages/62 石森 璃花/.../voice/346492.m4a")
@@ -204,9 +310,19 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     const mediaUrl = message.media_file && service
         ? buildMediaUrl(service, message.media_file, api_base)
         : null;
+    const pictureThumb = mediaUrl && mediaThumbWidth !== undefined ? thumbnailUrl(mediaUrl, mediaThumbWidth) : undefined;
+    // The picture (message and shown src) that has loaded or failed: a new message in this bubble,
+    // or a new src for the same one, loads again, so the box never sits blank without its pulse.
+    const photoKey = `${message.id}|${pictureThumb ?? mediaUrl ?? ''}`;
+    const [photoSettledKey, setPhotoSettledKey] = useState<string | null>(null);
+    const photoPending = photoSettledKey !== photoKey;
+    const settlePhoto = useCallback(() => setPhotoSettledKey(photoKey), [photoKey]);
 
     // Transcription — only active for voice and non-muted video messages
     const isTranscribable = message.type === 'voice' || (message.type === 'video' && !message.is_muted);
+    const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
+    // Only a transcript that can show is asked for (UI health P-C3): transcription on, bubble revealed.
+    const lookupTranscript = isTranscribable && transcriptionEnabled && !isUnread;
     const {
         transcription,
         state: transcriptionState,
@@ -214,14 +330,13 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         retrigger: retriggerTranscription,
         error: transcriptionError,
     } = useTranscription(
-        isTranscribable ? service : undefined,
-        isTranscribable ? message.id : undefined,
-        isTranscribable ? memberPath : undefined,
+        lookupTranscript ? service : undefined,
+        lookupTranscript ? message.id : undefined,
+        lookupTranscript ? memberPath : undefined,
     );
 
     // Feature toggles
     const translationEnabled = useAppStore(s => s.translationEnabled);
-    const transcriptionEnabled = useAppStore(s => s.transcriptionEnabled);
     const hasTranscriptFooter = transcriptionEnabled && isTranscribable && !isUnread;
 
     // Translation — active for messages with text content
@@ -265,33 +380,49 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
         }
     }, []);
 
-    const ShelterOverlay = () => {
-        const Icon = SHELTER_ICONS[message.type] || MessageSquare;
-        const look = groupTokens[serviceGroupId(service ?? null)].official.shelterStyle;
-        return (
-            <div
-                data-testid="unread-shelter"
-                className={cn(
-                    'absolute inset-0 z-10 flex cursor-pointer items-center justify-center transition-colors',
-                    bubbleCorners,
-                    SHELTER_CLASSES[shelterKind(message.type)][look],
-                )}
-                onClick={(e) => {
-                    e.stopPropagation();
-                    onReveal?.();
-                }}
-                onMouseDown={handleTouchStart}
-                onMouseUp={handleTouchEnd}
-                onTouchStart={handleTouchStart}
-                onTouchEnd={handleTouchEnd}
-            >
-                <Icon className="h-8 w-8" />
-            </div>
-        );
-    };
+    // A keyboard reveal unmounts the focused shelter button; focus then moves to the revealed bubble
+    // (a mouse reveal never takes focus). The reveal lands within the click's own render, so the flag
+    // is dropped one task later: a reveal that did not take effect must not pull focus when a later
+    // reveal-all flips the bubble.
+    const focusAfterReveal = useRef(false);
+    const reveal = useCallback((viaKeyboard: boolean) => {
+        focusAfterReveal.current = viaKeyboard;
+        onReveal?.();
+        if (viaKeyboard) setTimeout(() => { focusAfterReveal.current = false; }, 0);
+    }, [onReveal]);
+    // The hidden bubble's own controls and text leave the Tab order and the accessibility tree.
+    const contentRef = useRef<HTMLDivElement>(null);
+    useInert(contentRef, isUnread);
+    useLayoutEffect(() => {
+        if (isUnread || !focusAfterReveal.current) return;
+        focusAfterReveal.current = false;
+        const el = contentRef.current;
+        if (!el) return;
+        // Focusable only for this programmatic focus: a permanent tabindex would let a mouse click
+        // focus every bubble (a later key press then draws the ring) and drop focus to <body> when
+        // the clicked bubble scrolls out of the virtual list.
+        el.setAttribute('tabindex', '-1');
+        el.addEventListener('blur', () => el.removeAttribute('tabindex'), { once: true });
+        el.focus({ preventScroll: true });
+    }, [isUnread]);
 
-    const favoriteStar = message.is_favorite && (
+    const favoriteStar = starred && (
         <Star className="h-3.5 w-3.5 shrink-0 fill-current text-semantic-star drop-shadow-sm" />
+    );
+    // Keyboard path to the star (UI health A-K4): a toggle in the trailing column, shown and clickable
+    // only while keyboard focus is in this row (mouse users keep the context menu, see nothing new and
+    // cannot hit it by accident). It calls the same handler as the context menu. Not on a sheltered
+    // (inert) or keepsake bubble.
+    const starToggle = !readOnly && !isUnread && onToggleFavorite && (
+        <button
+            type="button"
+            aria-pressed={starred}
+            aria-label={t('messageList.favorite')}
+            onClick={handleToggleFavorite}
+            className="pointer-events-none flex h-6 w-6 items-center justify-center rounded-sm text-secondary opacity-0 transition-opacity duration-fast ease-standard focus-visible:pointer-events-auto focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent group-has-[:focus-visible]/row:pointer-events-auto group-has-[:focus-visible]/row:opacity-100"
+        >
+            <Star aria-hidden="true" className={cn('h-3.5 w-3.5', starred && 'fill-current text-semantic-star')} />
+        </button>
     );
     const translateButton = translationEnabled && hasTextContent && !isUnread && translationState !== 'done' && (
         <div className={cn(
@@ -311,17 +442,17 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
     return (
         <div
             className={cn('group/row relative flex gap-3', runStart ? 'pt-3' : 'pt-1')}
-            onContextMenu={handleContextMenu}
-            onTouchStart={handleTouchStartFavorite}
-            onTouchEnd={handleTouchEndFavorite}
-            onTouchCancel={handleTouchEndFavorite}
+            onContextMenu={readOnly ? undefined : handleContextMenu}
+            onTouchStart={readOnly ? undefined : handleTouchStartFavorite}
+            onTouchEnd={readOnly ? undefined : handleTouchEndFavorite}
+            onTouchCancel={readOnly ? undefined : handleTouchEndFavorite}
         >
             {/* Context Menu */}
-            {contextMenu && (
+            {contextMenu && !readOnly && (
                 <MessageContextMenu
                     x={contextMenu.x}
                     y={contextMenu.y}
-                    isFavorite={message.is_favorite}
+                    isFavorite={starred}
                     onToggleFavorite={handleToggleFavorite}
                     onClose={() => setContextMenu(null)}
                 />
@@ -356,17 +487,29 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                 {runStart && (
                     <div className="mb-1 flex items-center gap-2">
                         <span lang="ja" className="text-small font-semibold text-accent-strong">{member_name}</span>
-                        <time className="text-caption text-muted" dateTime={message.timestamp}>{time}</time>
+                        <time className="text-caption tabular-nums text-muted" dateTime={message.timestamp}>{time}</time>
                         {favoriteStar}
                     </div>
                 )}
 
                 {/* Bubble Container */}
                 <div className="relative">
-                    {isUnread && <ShelterOverlay />}
+                    {isUnread && (
+                        <ShelterOverlay
+                            type={message.type}
+                            service={service}
+                            corners={bubbleCorners}
+                            label={t(`messageList.revealUnread.${shelterKind(message.type)}`)}
+                            onReveal={reveal}
+                            onPressStart={handleTouchStart}
+                            onPressEnd={handleTouchEnd}
+                        />
+                    )}
 
                     <div
+                        ref={contentRef}
                         className={cn(
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent focus-visible:ring-offset-2 focus-visible:ring-offset-surface',
                             'border border-group-bubble bg-card shadow-card transition-opacity duration-base ease-standard',
                             bubbleCorners,
                             // The footer carries the bottom radius so bubble and footer read as one shape
@@ -378,12 +521,17 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
 
                         {/* Picture */}
                         {message.type === 'picture' && mediaUrl && (
-                            <MediaContainer message={message}>
+                            <MediaContainer message={message} pending={photoPending}>
                                 <PhotoPlayer
                                     variant="bubble"
-                                    src={mediaUrl}
+                                    src={pictureThumb ?? mediaUrl}
+                                    fallbackSrc={pictureThumb ? mediaUrl : undefined}
+                                    loading={mediaLoading}
                                     alt={t('messageList.attachment')}
+                                    actionLabel={t('messageList.openPhoto')}
                                     onClick={() => onMediaClick?.(mediaUrl, 'picture', message.timestamp)}
+                                    onLoad={settlePhoto}
+                                    onError={settlePhoto}
                                 />
                             </MediaContainer>
                         )}
@@ -421,7 +569,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                         {/* Text */}
                         {message.content && (
                             <div lang="ja" className={cn(
-                                'whitespace-pre-wrap text-body text-primary',
+                                'whitespace-pre-wrap break-words text-body text-primary',
                                 message.type === 'voice' && 'p-3 pt-2',
                             )}>
                                 <LinkifiedText text={message.content} />
@@ -433,6 +581,7 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                             <InlineTranslation
                                 translation={translation}
                                 variant="message"
+                                lang={translationTargetLanguage}
                                 onRerun={retriggerTranslation}
                                 defaultExpanded={translationJustCompleted}
                                 messageId={message.id}
@@ -481,13 +630,14 @@ const MessageBubbleComponent: React.FC<MessageBubbleProps> = ({
                     so it reserves no flow width (the bubble never reflows when the translate button unmounts): the one translate
                     icon; later bubbles of a run also get the star and the time (on hover). A run
                     start keeps star and time in its header. */}
-                {(translateButton || !runStart) && (
+                {(translateButton || !runStart || starToggle) && (
                     <div data-testid="message-trailing" className="absolute bottom-0 left-full ml-3 flex flex-col items-start justify-end gap-1 whitespace-nowrap pb-1">
+                        {starToggle}
                         {!runStart && favoriteStar}
                         {translateButton}
                         {!runStart && (
                             <time
-                                className="text-caption text-muted opacity-0 transition-opacity duration-fast ease-standard group-hover/row:opacity-100"
+                                className="text-caption tabular-nums text-muted opacity-0 transition-opacity duration-fast ease-standard group-hover/row:opacity-100 group-has-[:focus-visible]/row:opacity-100"
                                 dateTime={message.timestamp}
                             >
                                 {time}

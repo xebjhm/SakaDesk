@@ -29,4 +29,12 @@ describe('Pill', () => {
         render(<Pill tone="oshi">Favorite</Pill>);
         expect(screen.getByRole('button', { name: 'Favorite' })).toHaveClass('bg-pill', 'text-secondary');
     });
+
+    it('tone="star" selected is neutral: never the accent, never oshi (the ★ filter; its icon is the yellow star)', () => {
+        render(<Pill selected tone="star">Favorites</Pill>);
+        const pill = screen.getByRole('button', { name: 'Favorites' });
+        expect(pill).toHaveAttribute('aria-pressed', 'true');
+        expect(pill).toHaveClass('bg-sunken', 'text-primary', 'ring-strong');
+        expect(pill).not.toHaveClass('bg-accent-subtle', 'text-accent-strong', 'ring-accent-border', 'bg-semantic-oshi-subtle');
+    });
 });

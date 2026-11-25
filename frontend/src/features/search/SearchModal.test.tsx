@@ -58,7 +58,7 @@ describe('SearchModal message result', () => {
     render(<SearchModal ref={ref} />);
     act(() => ref.current!.open());
 
-    const input = await screen.findByRole('textbox');
+    const input = await screen.findByRole('combobox');
     fireEvent.change(input, { target: { value: 'おはよう' } });
     await waitFor(() =>
       expect(vi.mocked(fetch).mock.calls.some(([u]) => String(u).startsWith('/api/search?'))).toBe(true),
@@ -83,7 +83,7 @@ describe('SearchModal message result', () => {
     render(<SearchModal ref={ref} />);
     act(() => ref.current!.open());
     const dialog = await screen.findByRole('dialog', { name: 'Search' });
-    const input = screen.getByRole('textbox');
+    const input = screen.getByRole('combobox');
     expect(input).toHaveFocus();
     fireEvent.change(input, { target: { value: 'おはよう' } });
     const mark = await screen.findByText('おはよう', { selector: 'mark' });
@@ -91,7 +91,7 @@ describe('SearchModal message result', () => {
     expect(dialog.querySelector('style')).toBeNull();
   });
 
-  it('moves the selection with arrows and Tab, and Enter opens a blog with its highlight', async () => {
+  it('moves the selection with the arrows, and Enter opens a blog with its highlight', async () => {
     const two: SearchResponse = {
       ...RESPONSE,
       total_count: 2,
@@ -107,16 +107,12 @@ describe('SearchModal message result', () => {
     const ref = createRef<SearchModalHandle>();
     render(<SearchModal ref={ref} />);
     act(() => ref.current!.open());
-    const input = await screen.findByRole('textbox');
+    const input = await screen.findByRole('combobox');
     fireEvent.change(input, { target: { value: 'おはよう' } });
     await screen.findByText('ブログ');
     const rows = () => Array.from(document.querySelectorAll('.search-snippet')).map((n) => n.parentElement!.parentElement!);
     await waitFor(() => expect(rows()[0]).toHaveClass('bg-accent-subtle'));
     fireEvent.keyDown(input, { key: 'ArrowDown' });
-    expect(rows()[1]).toHaveClass('bg-accent-subtle');
-    fireEvent.keyDown(input, { key: 'Tab' });
-    expect(rows()[0]).toHaveClass('bg-accent-subtle');
-    fireEvent.keyDown(input, { key: 'Tab', shiftKey: true });
     expect(rows()[1]).toHaveClass('bg-accent-subtle');
     fireEvent.keyDown(input, { key: 'ArrowUp' });
     expect(rows()[0]).toHaveClass('bg-accent-subtle');
@@ -187,7 +183,7 @@ describe('SearchModal breadcrumbs and keys', () => {
     const ref = createRef<SearchModalHandle>();
     render(<SearchModal ref={ref} />);
     act(() => ref.current!.open());
-    fireEvent.change(await screen.findByRole('textbox'), { target: { value: 'おはよう' } });
+    fireEvent.change(await screen.findByRole('combobox'), { target: { value: 'おはよう' } });
     const more = await screen.findByRole('button', { name: 'Load more results' });
     fireEvent.click(more);
     await waitFor(() => expect(loads()).toContainEqual({ surface: 'search_more', outcome: 'ok', count: 1 }));
@@ -201,7 +197,7 @@ describe('SearchModal breadcrumbs and keys', () => {
     const ref = createRef<SearchModalHandle>();
     render(<SearchModal ref={ref} />);
     act(() => ref.current!.open());
-    const input = await screen.findByRole('textbox');
+    const input = await screen.findByRole('combobox');
     fireEvent.change(input, { target: { value: 'おはよう' } });
     await waitFor(() => expect(document.querySelector('.search-snippet')).not.toBeNull());
     fireEvent.keyDown(input, { key: 'Enter', isComposing: true });

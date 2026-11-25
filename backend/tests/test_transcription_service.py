@@ -413,3 +413,31 @@ class TestCleanCjkSpaces:
         result = _clean_cjk_spaces("日向坂 46 の メンバー です")
         assert "日向坂 46" in result
         assert "のメンバーです" in result
+
+
+class TestLoadRawLogsNoPath:
+    """An unreadable sidecar is logged with a reason code only (spec 1.7)."""
+
+    @pytest.mark.parametrize(
+        ("content", "reason"),
+        [("{not json", "corrupt"), ('{"version": 1}', "malformed")],
+    )
+    def test_unreadable_file_logs_reason_without_path(
+        self, tmp_path: Path, content: str, reason: str
+    ) -> None:
+        from structlog.testing import capture_logs
+
+        room = tmp_path / "34 金村 美玖"
+        room.mkdir()
+        (room / TranscriptionStorage.FILENAME).write_text(content, encoding="utf-8")
+        with capture_logs() as logs:
+            assert TranscriptionStorage().load_all(room) == []
+        events = [e for e in logs if e["log_level"] == "warning"]
+        assert events == [
+            {
+                "event": "transcriptions_unreadable",
+                "log_level": "warning",
+                "reason": reason,
+            }
+        ]
+        assert str(tmp_path) not in repr(logs)

@@ -175,6 +175,10 @@ class SyncCoordinator:
         seq = self._sequence
         return seq is not None and seq.state == "running" and not seq.cancelled
 
+    def busy(self) -> bool:
+        """True while any job runs or waits (the thumbnail worker pauses then)."""
+        return self._running is not None or bool(self._queue)
+
     def _busy(self, service: str) -> bool:
         return (self._running is not None and self._running.service == service) or any(
             j.service == service for j in self._queue

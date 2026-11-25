@@ -144,3 +144,21 @@ describe('accent and expressive utilities', () => {
         expect(config).toContain("const fadeY = 'linear-gradient(to bottom, transparent 0%, black 20%, black 65%, transparent 100%)';");
     });
 });
+
+describe('year recap slide motion', () => {
+    it('eases every recap animation with the design system easing token', () => {
+        for (const name of ['star-fall', 'fan-in', 'petal-fall']) {
+            const line = config.match(new RegExp(`'${name}': '([^']+)'`))?.[1];
+            expect(line, name).toBeDefined();
+            expect(line, name).toContain('var(--ds-ease-standard)');
+            expect(line, name).not.toMatch(/\bease-in-out\b|\bease-out\b|\blinear\b/);
+        }
+    });
+});
+
+describe('indeterminate progress motion', () => {
+    it('sweeps a 1/3 segment across the track in 1.4 s on the standard easing', () => {
+        expect(config).toContain("'progress-indeterminate': { '0%': { transform: 'translateX(-100%)' }, '100%': { transform: 'translateX(300%)' } }");
+        expect(config).toContain("'progress-indeterminate': 'progress-indeterminate 1.4s var(--ds-ease-standard) infinite'");
+    });
+});

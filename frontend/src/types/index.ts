@@ -100,6 +100,23 @@ export interface BlogMeta {
     cached: boolean;
 }
 
+/** One photo of the member blog gallery (`GET /api/blogs/gallery`), newest first. */
+export interface BlogGalleryImage {
+    blog_id: string;
+    published_at: string;  // ISO datetime
+    title: string;
+    /** The image's position in its blog. */
+    image_index: number;
+    /** Media-route URL of the file (`/api/content/media/...`): thumbnails and placeholders. */
+    media_url: string;
+    /** `/api/blogs/image?...` URL of the full image (the viewer). */
+    src: string;
+}
+
+export interface BlogGalleryResponse {
+    images: BlogGalleryImage[];
+}
+
 export interface BlogListResponse {
     member_id: string;
     member_name: string;

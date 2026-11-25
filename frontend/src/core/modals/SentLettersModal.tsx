@@ -85,9 +85,9 @@ export const SentLettersModal: React.FC<SentLettersModalProps> = ({ isOpen, onCl
                             {letter.image_url ? (
                                 <img src={letter.image_url} alt="" draggable={false} className="h-full w-full object-cover" />
                             ) : letter.text ? (
-                                <p lang="ja" className="line-clamp-6 whitespace-pre-wrap p-3 text-small text-secondary">{letter.text}</p>
+                                <p lang="ja" className="line-clamp-6 whitespace-pre-wrap break-words p-3 text-small text-secondary">{letter.text}</p>
                             ) : (
-                                <p className="line-clamp-6 whitespace-pre-wrap p-3 text-small text-secondary">{t('sentLetters.noContent')}</p>
+                                <p className="line-clamp-6 whitespace-pre-wrap break-words p-3 text-small text-secondary">{t('sentLetters.noContent')}</p>
                             )}
                         </Card>
                         <time dateTime={letter.created_at} className="text-caption text-secondary transition-colors duration-fast ease-standard group-hover:text-accent-strong">

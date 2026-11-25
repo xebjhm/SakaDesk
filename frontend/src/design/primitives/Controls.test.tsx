@@ -9,7 +9,7 @@ describe('Button', () => {
         render(<Button>保存</Button>);
         const b = screen.getByRole('button', { name: '保存' });
         expect(b).toHaveAttribute('type', 'button');
-        expect(b).toHaveClass('bg-pill', 'h-10', 'rounded-md');
+        expect(b).toHaveClass('bg-pill', 'min-h-10', 'whitespace-nowrap', 'rounded-md');
     });
 
     it('primary uses the accent gradient; ghost and secondary do not', () => {
@@ -46,6 +46,19 @@ describe('IconButton', () => {
         render(<IconButton aria-label="閉じる" icon={<X />} onClick={onClick} />);
         await userEvent.click(screen.getByRole('button', { name: '閉じる' }));
         expect(onClick).toHaveBeenCalledOnce();
+    });
+
+    it('blocks with a reason like Button: focusable, described, click swallowed (DESIGN_SYSTEM §9)', async () => {
+        const onClick = vi.fn();
+        render(<IconButton aria-label="次へ" icon={<X />} disabledReason="これが最後です 🌸" onClick={onClick} />);
+        const button = screen.getByRole('button', { name: '次へ' });
+        expect(button).toHaveAttribute('aria-disabled', 'true');
+        expect(button).not.toBeDisabled();
+        expect(button).toHaveAttribute('title', 'これが最後です 🌸');
+        expect(button).toHaveAccessibleDescription('これが最後です 🌸');
+        expect(button.className).toContain('aria-disabled:opacity-40');
+        await userEvent.click(button);
+        expect(onClick).not.toHaveBeenCalled();
     });
 
     it('requires aria-label at the type level', () => {
@@ -169,7 +182,8 @@ describe('Button v2', () => {
         const b = screen.getByRole('button', { name: 'Save' });
         expect(b.className).toContain('relative');
         expect(b).toHaveAttribute('data-loading', 'true');
-        const spinner = b.querySelector('[data-spinner]')?.className ?? '';
+        // The spinner is an <svg> (lucide Loader2): read the class attribute, not SVGAnimatedString.
+        const spinner = b.querySelector('[data-spinner]')?.getAttribute('class') ?? '';
         expect(spinner).toContain('absolute');
         expect(spinner).toContain('inset-0');
         expect(spinner).toContain('m-auto');

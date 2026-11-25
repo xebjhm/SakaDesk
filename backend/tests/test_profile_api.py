@@ -337,3 +337,54 @@ class TestRefreshProfile:
         # The first update (clear) should remove hinatazaka46 but keep sakurazaka46
         assert "sakurazaka46" in cleared_services[0]
         assert "hinatazaka46" not in cleared_services[0]
+
+
+# ---------------------------------------------------------------------------
+# Privacy: the fan's nickname must never reach the logs (D19)
+# ---------------------------------------------------------------------------
+
+
+def _fetch_with_profile(profile):
+    """Run GET /api/profile with the API returning ``profile``."""
+    with patch("backend.api.profile._store_load", new_callable=AsyncMock) as ml:
+        ml.return_value = {"user_nicknames": {}}
+        with patch("backend.api.profile.get_token_manager") as mock_tm:
+            mock_tm.return_value.load_session.return_value = {"access_token": "tok"}
+            with patch("backend.api.profile.Client") as mock_client_cls:
+                mock_client = MagicMock()
+                mock_client.get_profile = AsyncMock(return_value=profile)
+                mock_client_cls.return_value = mock_client
+                with patch(
+                    "backend.api.profile.aiohttp.ClientSession"
+                ) as mock_session_cls:
+                    mock_session_cls.return_value.__aenter__ = AsyncMock(
+                        return_value=AsyncMock()
+                    )
+                    mock_session_cls.return_value.__aexit__ = AsyncMock(
+                        return_value=False
+                    )
+                    with patch(
+                        "backend.api.profile._store_update", new_callable=AsyncMock
+                    ):
+                        return client.get("/api/profile?service=hinatazaka46")
+
+
+class TestProfileLogPrivacy:
+    def test_cached_nickname_is_not_logged(self):
+        from structlog.testing import capture_logs
+
+        with capture_logs() as logs:
+            response = _fetch_with_profile({"name": "ハオ🌸"})
+        assert response.json()["nickname"] == "ハオ🌸"
+        assert "ハオ" not in repr(logs)
+        (cached,) = [e for e in logs if e["event"] == "profile_nickname_cached"]
+        assert cached["service"] == "hinatazaka46"
+
+    def test_profile_without_name_logs_keys_not_values(self):
+        from structlog.testing import capture_logs
+
+        with capture_logs() as logs:
+            _fetch_with_profile({"email": "fan@example.com", "name": ""})
+        assert "fan@example.com" not in repr(logs)
+        (missing,) = [e for e in logs if e["event"] == "profile_nickname_missing"]
+        assert missing["keys"] == ["email", "name"]

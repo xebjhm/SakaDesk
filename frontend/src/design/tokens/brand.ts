@@ -9,9 +9,14 @@ export const brandInk: Record<ScaleStep, string> = {
     500: '#8296b9', 600: '#63769a', 700: '#4d5e7d', 800: '#3a4860', 900: '#293345',
 };
 
+/** The aurora's four colour stops: sky, lavender, pink, peach. */
+const AURORA_STOPS = ['#cfe6ff', '#e3dcff', '#ffdcea', '#fff0dc'] as const;
+
 export const aurora = {
     /** Sky → lavender → pink → peach. Text on it is always dark. */
-    gradient: 'linear-gradient(120deg, #cfe6ff 0%, #e3dcff 38%, #ffdcea 72%, #fff0dc 100%)',
+    gradient: `linear-gradient(120deg, ${AURORA_STOPS[0]} 0%, ${AURORA_STOPS[1]} 38%, ${AURORA_STOPS[2]} 72%, ${AURORA_STOPS[3]} 100%)`,
+    /** The gradient's stops, for surfaces built from them (the Memories foil). */
+    stops: AURORA_STOPS,
     /** The three L2 orb colours in brand context. */
     orbs: ['#bfdcff', '#ffd0e4', '#e2d6ff'] as const,
 } as const;

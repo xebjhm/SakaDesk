@@ -237,3 +237,63 @@ class TestLocalFavoriteUpdate:
 
             data = json.loads(good_file.read_text(encoding="utf-8"))
             assert data["messages"][0]["is_favorite"] is True
+
+
+class TestFavoriteLog:
+    """Toggling a favourite records (or clears) its favorite_log row."""
+
+    @pytest.fixture
+    def api_env(self, tmp_path):
+        """Stub the pysaka client/session so the endpoint runs without network."""
+        from unittest.mock import AsyncMock, MagicMock
+
+        from backend.services import app_state
+
+        app_state.set_db_path(tmp_path / "app_state.db")
+        app_state.init_db()
+        client = MagicMock()
+        client.add_favorite = AsyncMock(return_value=True)
+        client.remove_favorite = AsyncMock(return_value=True)
+        session = MagicMock()
+        session.close = AsyncMock()
+        with (
+            patch(
+                "backend.api.favorites._get_client_and_session",
+                new=AsyncMock(return_value=(client, session)),
+            ),
+            patch("backend.api.favorites._update_local_favorite", return_value=True),
+        ):
+            yield TestClient(app), app_state
+
+    def test_add_records_favorite(self, api_env):
+        client, app_state = api_env
+        resp = client.post("/api/favorites/101?service=hinatazaka46")
+        assert resp.status_code == 200
+        assert resp.json()["is_favorite"] is True
+        assert list(app_state.favorited_at("hinatazaka46", [101])) == [101]
+
+    def test_remove_clears_favorite(self, api_env):
+        client, app_state = api_env
+        client.post("/api/favorites/101?service=hinatazaka46")
+        resp = client.delete("/api/favorites/101?service=hinatazaka46")
+        assert resp.status_code == 200
+        assert app_state.favorited_at("hinatazaka46", [101]) == {}
+
+    def test_record_failure_does_not_fail_request(self, api_env):
+        from unittest.mock import patch as mpatch
+
+        from structlog.testing import capture_logs
+
+        client, _ = api_env
+        with (
+            mpatch(
+                "backend.api.favorites.app_state.record_favorite",
+                side_effect=RuntimeError("disk gone"),
+            ),
+            capture_logs() as logs,
+        ):
+            resp = client.post("/api/favorites/101?service=hinatazaka46")
+        assert resp.status_code == 200
+        assert resp.json()["success"] is True
+        failed = [e for e in logs if e.get("event") == "favorite_log_failed"]
+        assert failed and failed[0]["error_type"] == "RuntimeError"

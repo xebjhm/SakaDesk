@@ -9,6 +9,7 @@ import path from 'node:path';
  */
 const FILES = [
     'modals/CalendarModal.tsx',
+    'common/ErrorBoundary.tsx',
     'modals/BackgroundModal.tsx',
     'modals/FavoritesModal.tsx',
     'modals/SentLettersModal.tsx',
@@ -22,6 +23,7 @@ const FILES = [
     'media/MediaGalleryModal.tsx',
     'media/LazyVideo.tsx',
     'media/PhotoPlayer.tsx',
+    '../shell/components/SettingsErrorToast.tsx',
     '../features/messages/components/ProfileImageViewer.tsx',
     '../features/messages/components/MessageBubble.tsx',
     '../features/messages/components/MessageList.tsx',
@@ -38,6 +40,7 @@ const FILES = [
     '../features/incomingCall/CallScreen.tsx',
     'common/SettingsMenu.tsx',
     '../features/search/SearchModal.tsx',
+    '../features/memories/recap/share/ShareDialog.tsx',
     '../features/search/components/SearchInput.tsx',
     '../features/search/components/SearchFilterBar.tsx',
     '../features/search/components/SearchResultItem.tsx',
@@ -46,7 +49,6 @@ const FILES = [
     '../shell/components/SettingRow.tsx',
     'layout/ServiceRail.tsx',
     'layout/UpgradeIcon.tsx',
-    'common/DialogStatus.tsx',
     // D2d
     'common/SyncProgressPanel.tsx',
     '../shell/components/SyncModal.tsx',

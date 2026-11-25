@@ -70,9 +70,14 @@ export function useRoomLetters(
         }, waitMs);
         const stopWaiting = () => { if (timer !== null) clearTimeout(timer); };
         fetchLocalLetters(service, memberPath, controller.signal)
-            .then((letters) => {
+            .then((fetched) => {
                 if (controller.signal.aborted) return;
                 stopWaiting();
+                // An unchanged answer keeps the array already held, so the timeline built from it is
+                // not rebuilt (and the list not re-rendered) by every sync (UI health #1).
+                const held = loadedRef.current?.key === roomKey ? loadedRef.current.letters : lettersCache.get(roomKey);
+                const same = held !== undefined && JSON.stringify(held) === JSON.stringify(fetched);
+                const letters = same ? held : fetched;
                 lettersCache.set(roomKey, letters);
                 if (timedOut) {
                     // The room already renders without letters: keep them for the next visit.
@@ -111,10 +116,15 @@ export function useRoomLetters(
         return () => controller.abort();
     }, [service, refreshKey]);
 
+    // Read while rendering, before the effect above commits them: a group chat (no letters) or a
+    // room whose letters are cached is ready from its first render, so a cached room's list never
+    // waits a frame for its letters (I1).
+    const own = roomKey !== null && loaded?.key === roomKey ? loaded : null;
+    const known = own ? own.letters : roomKey !== null ? (isGroupChat ? NO_LETTERS : lettersCache.get(roomKey)) : undefined;
     return {
-        letters: loaded && loaded.key === roomKey ? loaded.letters : NO_LETTERS,
+        letters: known ?? NO_LETTERS,
         profile: profile && profile.service === service ? profile.profile : null,
-        ready: roomKey !== null && loaded?.key === roomKey,
-        unavailable: roomKey !== null && loaded?.key === roomKey && loaded.unavailable,
+        ready: known !== undefined,
+        unavailable: own?.unavailable ?? false,
     };
 }

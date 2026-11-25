@@ -4,7 +4,7 @@
  */
 import {
     color, groupRoles, groupTokens, radius, shadow, typeScale, fontFamily, motion, easingCss,
-    ambientLayout, memberWash, aurora, groupAccent, blogFeed, type AccentRoles, type GroupId,
+    ambientLayout, memberWash, aurora, groupAccent, blogFeed, memories, type AccentRoles, type GroupId,
 } from './tokens';
 
 /** camelCase token name → kebab-case CSS variable segment (controlHover → control-hover). */
@@ -37,6 +37,7 @@ export function staticTokenVars(): Record<string, string> {
     }
     for (const [name, ms] of Object.entries(motion.duration)) vars[`--ds-duration-${name}`] = `${ms}ms`;
     vars['--ds-ease-standard'] = easingCss(motion.easing.standard);
+    for (const [name, ms] of Object.entries(motion.loading)) vars[`--ds-loading-${kebab(name)}`] = `${ms}ms`;
     vars['--ds-font-family-reading'] = fontFamily.reading;
     // First-paint defaults; installLanguageFonts() overrides them per UI language.
     vars['--ds-font-family-sans'] = fontFamily.sansJp;
@@ -60,6 +61,23 @@ export function staticTokenVars(): Record<string, string> {
     vars['--ds-ease-spring'] = easingCss(blogFeed.motion.spring);
     // Timeline rail lens centre: set per element by TimelineRail while zoomed.
     vars['--ds-rail-lens-y'] = blogFeed.railLensY;
+    // Memories keepsake surfaces (tokens/memories.ts).
+    for (const [step, strength] of Object.entries(memories.sepia)) vars[`--ds-mem-sepia-${step}`] = strength;
+    vars['--ds-mem-paper'] = memories.paper;
+    vars['--ds-mem-paper-line'] = memories.paperLine;
+    vars['--ds-mem-cork'] = memories.cork;
+    vars['--ds-mem-washi'] = memories.washi;
+    vars['--ds-mem-ruled'] = memories.ruled;
+    vars['--ds-mem-foil'] = memories.foil;
+    vars['--ds-mem-shadow-polaroid'] = memories.shadow.polaroid;
+    vars['--ds-mem-silhouette'] = memories.silhouette;
+    // Memories fun-wave semantic surfaces (tokens/memories.ts).
+    for (const [tier, value] of Object.entries(memories.rarity)) vars[`--ds-mem-rarity-${tier}`] = value;
+    vars['--ds-mem-night'] = memories.night;
+    vars['--ds-mem-night-ink'] = memories.nightInk;
+    vars['--ds-mem-onair'] = memories.onAir;
+    vars['--ds-mem-sky'] = memories.sky;
+    vars['--ds-mem-note'] = memories.note;
     return vars;
 }
 

@@ -12,10 +12,8 @@ from backend.services.platform import (
     is_dev_mode,
     get_app_data_dir,
     get_settings_path,
-    get_credentials_dir,
     get_session_dir,
     get_logs_dir,
-    log_platform_info,
 )
 
 
@@ -137,28 +135,6 @@ class TestSettingsPath:
         assert settings.parent == app_data
 
 
-class TestCredentialsDir:
-    """Test credentials directory resolution."""
-
-    def test_credentials_dir_returns_path(self):
-        """get_credentials_dir() should return a Path object."""
-        result = get_credentials_dir()
-        assert isinstance(result, Path)
-
-    def test_credentials_dir_exists(self):
-        """get_credentials_dir() should create the directory."""
-        result = get_credentials_dir()
-        assert result.exists()
-        assert result.is_dir()
-
-    def test_credentials_dir_in_app_data(self):
-        """get_credentials_dir() should be inside app data dir."""
-        creds = get_credentials_dir()
-        app_data = get_app_data_dir()
-        assert creds.parent == app_data
-        assert creds.name == "credentials"
-
-
 class TestSessionDir:
     """Test session directory resolution."""
 
@@ -204,30 +180,3 @@ class TestLogsDir:
         app_data = get_app_data_dir()
         assert logs.parent == app_data
         assert logs.name == "logs"
-
-
-class TestLogging:
-    """Test platform info logging."""
-
-    @patch("backend.services.platform.logger")
-    def test_log_platform_info_does_not_raise(self, mock_logger):
-        """log_platform_info() should not raise exceptions."""
-        log_platform_info()  # Should complete without error
-
-    @patch("backend.services.platform.logger")
-    def test_log_platform_info_logs_platform(self, mock_logger):
-        """log_platform_info() should log platform information."""
-        log_platform_info()
-        # Should have called logger.info at least twice
-        assert mock_logger.info.call_count >= 2
-
-    @patch("backend.services.platform.logger")
-    @patch("backend.services.platform.is_dev_mode", return_value=True)
-    @patch("backend.services.platform.is_windows", return_value=False)
-    def test_log_platform_info_warns_on_dev_mode(
-        self, mock_is_windows, mock_is_dev, mock_logger
-    ):
-        """log_platform_info() should warn when in dev mode on non-Windows."""
-        log_platform_info()
-        # Should have called logger.warning for dev mode
-        mock_logger.warning.assert_called_once()

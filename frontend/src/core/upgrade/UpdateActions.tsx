@@ -1,7 +1,7 @@
 import { Download, ArrowUpCircle, ExternalLink, RotateCcw } from 'lucide-react';
-import { Button } from '../../design/primitives';
+import { Button, ProgressBar } from '../../design/primitives';
 import { useTranslation } from '../../i18n';
-import { useUpgradeStore, upgradeStage, openReleasePage } from './upgradeStore';
+import { useUpgradeStore, upgradeStage, upgradeErrorKey, openReleasePage } from './upgradeStore';
 
 /**
  * The upgrade actions in Settings → Updates: the same stage as the rail's UpgradeIcon
@@ -25,6 +25,7 @@ export function UpdateActions() {
 
     const version = status?.version || versionInfo?.latest_version || '';
     const percent = Math.round(status?.progress ?? 0);
+    const errorKey = upgradeErrorKey(status?.error_code);
 
     return (
         <div className="mt-3 flex flex-col gap-2" data-testid="update-actions">
@@ -53,19 +54,7 @@ export function UpdateActions() {
                             {t('update.cancelDownload')}
                         </Button>
                     </div>
-                    <div
-                        role="progressbar"
-                        aria-label={t('update.downloading', { version })}
-                        aria-valuemin={0}
-                        aria-valuemax={100}
-                        aria-valuenow={percent}
-                        className="h-2 overflow-hidden rounded-full bg-sunken"
-                    >
-                        <div
-                            className="h-full rounded-full bg-expressive-progress transition-all duration-base ease-standard motion-reduce:transition-none"
-                            style={{ width: `${percent}%` }}
-                        />
-                    </div>
+                    <ProgressBar value={percent / 100} label={t('update.downloading', { version })} />
                 </>
             )}
 
@@ -87,7 +76,7 @@ export function UpdateActions() {
             {stage === 'error' && (
                 <div className="flex flex-wrap items-center gap-3">
                     <span className="text-small text-semantic-danger">
-                        {`${t('update.upgradeFailed')} ${status?.error ?? ''}`.trim()}
+                        {errorKey ? t(errorKey) : `${t('update.upgradeFailed')} ${status?.error ?? ''}`.trim()}
                     </span>
                     <Button variant="secondary" size="sm" onClick={() => { void retry(); }}>
                         <RotateCcw className="h-4 w-4" />

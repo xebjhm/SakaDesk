@@ -3,11 +3,21 @@
 SEC-1: the SPA catch-all must not serve files outside frontend/dist.
 SEC-2: the local API must reject cross-origin (CSRF) and non-loopback Host
        (DNS-rebinding) requests.
+Audit 2026-11-13: exact-Origin check, per-launch token, no production CORS, security headers.
 """
 
-from fastapi.testclient import TestClient
+import os
+import subprocess
+import sys
+from pathlib import Path
 
+import pytest
+from fastapi.testclient import TestClient
+from structlog.testing import capture_logs
+
+from backend import main as backend_main
 from backend.main import app
+from backend.services import api_auth, log_throttle
 
 client = TestClient(app)
 
@@ -33,7 +43,13 @@ def test_spa_catchall_blocks_encoded_path_traversal():
     assert "[build-system]" not in body
 
 
-# --- SEC-2: cross-origin (CSRF) + Host (DNS-rebinding) ----------------------
+# --- SEC-2 + audit 2026-11-13: who may call /api ----------------------------
+
+TOKEN = {"X-SakaDesk-Token": api_auth.LAUNCH_TOKEN}
+# A client that looks like the packaged webview (Host 127.0.0.1:<port>), so the
+# pytest-only "testserver" exemption does not apply.
+app_client = TestClient(app, base_url="http://127.0.0.1:8765")
+_JSON_GET = "/api/settings"
 
 
 def test_cross_origin_api_request_blocked():
@@ -42,16 +58,260 @@ def test_cross_origin_api_request_blocked():
     assert resp.status_code == 403
 
 
-def test_loopback_origin_api_request_allowed():
-    """/api/* with the app's own loopback Origin passes the guard."""
-    resp = client.get(_API_PATH, headers={"Origin": "http://localhost:5173"})
-    assert resp.status_code != 403
+def test_other_loopback_port_origin_blocked():
+    """A page on another localhost port is not the app (any-loopback-port-origin)."""
+    resp = app_client.post(
+        _JSON_GET, json={}, headers={**TOKEN, "Origin": "http://localhost:9999"}
+    )
+    assert resp.status_code == 403
+
+
+def test_null_origin_blocked():
+    resp = app_client.get(_JSON_GET, headers={**TOKEN, "Origin": "null"})
+    assert resp.status_code == 403
+
+
+def test_own_origin_with_token_allowed():
+    resp = app_client.get(
+        _JSON_GET, headers={**TOKEN, "Origin": "http://127.0.0.1:8765"}
+    )
+    assert resp.status_code == 200
 
 
 def test_no_origin_api_request_allowed():
     """Native/webview/CLI callers send no Origin and must be allowed."""
     resp = client.get(_API_PATH)
     assert resp.status_code != 403
+
+
+def test_api_without_token_is_unauthorized():
+    """No token, no access: other processes / accounts (no-caller-authentication)."""
+    assert app_client.get(_JSON_GET).status_code == 401
+    assert app_client.post(_JSON_GET, json={}).status_code == 401
+
+
+def test_api_with_wrong_token_is_unauthorized():
+    resp = app_client.get(_JSON_GET, headers={"X-SakaDesk-Token": "x" * 43})
+    assert resp.status_code == 401
+
+
+def test_cookie_authorizes_get_but_never_a_mutation():
+    """<img>/<video> GETs carry the cookie; POSTs must carry the header."""
+    jar = {api_auth.TOKEN_COOKIE: api_auth.cookie_value()}
+    cookie_client = TestClient(app, base_url="http://127.0.0.1:8765", cookies=jar)
+    assert cookie_client.get(_JSON_GET).status_code == 200
+    assert cookie_client.post(_JSON_GET, json={}).status_code == 401
+
+
+def test_launch_token_is_not_accepted_as_the_cookie():
+    """Only the derived cookie value works as a cookie, not the token itself."""
+    jar = {api_auth.TOKEN_COOKIE: api_auth.LAUNCH_TOKEN}
+    cookie_client = TestClient(app, base_url="http://127.0.0.1:8765", cookies=jar)
+    assert cookie_client.get(_JSON_GET).status_code == 401
+
+
+def test_cookie_value_is_not_accepted_as_the_header():
+    """A leaked cookie (sent to any 127.0.0.1 port) cannot authorize writes."""
+    header = {"X-SakaDesk-Token": api_auth.cookie_value()}
+    assert app_client.get(_JSON_GET, headers=header).status_code == 401
+    assert app_client.post(_JSON_GET, json={}, headers=header).status_code == 401
+
+
+def test_bootstrap_sets_an_httponly_strict_cookie():
+    fresh = TestClient(app, base_url="http://127.0.0.1:8765")
+    resp = fresh.post("/api/session/bootstrap", headers=TOKEN)
+    assert resp.status_code == 200
+    cookie = resp.headers["set-cookie"]
+    assert cookie.startswith(f"{api_auth.TOKEN_COOKIE}={api_auth.cookie_value()};")
+    assert api_auth.LAUNCH_TOKEN not in cookie
+    assert "HttpOnly" in cookie
+    assert "SameSite=strict" in cookie
+    assert "Path=/api/" in cookie
+
+
+def test_bootstrap_requires_the_header():
+    assert app_client.post("/api/session/bootstrap").status_code == 401
+
+
+def test_no_cors_grant_for_dev_origins():
+    """The six dev origins no longer get ACAO in production (CORS dev origins)."""
+    resp = app_client.get(
+        _JSON_GET, headers={**TOKEN, "Origin": "http://localhost:3000"}
+    )
+    assert "access-control-allow-origin" not in resp.headers
+
+
+def test_health_needs_no_token_and_returns_a_proof():
+    nonce = "abcdefghijklmnop"
+    plain = app_client.get("/health")
+    proved = app_client.get(f"/health?nonce={nonce}")
+    assert plain.status_code == 200 and "proof" not in plain.json()
+    assert proved.json()["proof"] == api_auth.health_proof(nonce)
+
+
+def test_health_ignores_a_malformed_nonce():
+    assert "proof" not in app_client.get("/health?nonce=bad nonce").json()
+
+
+def test_security_headers_on_every_response():
+    responses = (
+        app_client.get("/health"),  # 200
+        app_client.get(_JSON_GET, headers=TOKEN),  # 200
+        client.get("/health", headers={"Host": "evil.example.com"}),  # 400
+        # fresh client: app_client's jar may hold the bootstrap cookie
+        TestClient(app, base_url="http://127.0.0.1:8765").get(_JSON_GET),  # 401
+        app_client.get(  # 403
+            _JSON_GET, headers={**TOKEN, "Origin": "http://localhost:9999"}
+        ),
+    )
+    assert [r.status_code for r in responses] == [200, 200, 400, 401, 403]
+    for resp in responses:
+        assert resp.headers["x-frame-options"] == "SAMEORIGIN"
+        assert "frame-ancestors 'self'" in resp.headers["content-security-policy"]
+        assert resp.headers["x-content-type-options"] == "nosniff"
+        assert resp.headers["cross-origin-resource-policy"] == "same-origin"
+
+
+def test_guard_rechecks_the_test_client_flag_per_request(monkeypatch):
+    """The Host: testserver exemption needs SAKADESK_TEST_CLIENT at request time."""
+    assert client.get(_JSON_GET).status_code == 200
+    monkeypatch.delenv("SAKADESK_TEST_CLIENT")
+    assert client.get(_JSON_GET).status_code == 401
+
+
+_COOKIE = {api_auth.TOKEN_COOKIE: api_auth.cookie_value()}
+
+
+@pytest.mark.parametrize(
+    ("fetch_site", "status"),
+    [
+        ("same-site", 401),
+        ("cross-site", 401),
+        ("same-origin", 200),
+        ("none", 200),
+        (None, 200),
+    ],
+)
+def test_cookie_auth_honours_sec_fetch_site(fetch_site, status):
+    cookie_client = TestClient(app, base_url="http://127.0.0.1:8765", cookies=_COOKIE)
+    headers = {"Sec-Fetch-Site": fetch_site} if fetch_site else {}
+    assert cookie_client.get(_JSON_GET, headers=headers).status_code == status
+
+
+def test_header_auth_ignores_sec_fetch_site():
+    resp = app_client.get(_JSON_GET, headers={**TOKEN, "Sec-Fetch-Site": "cross-site"})
+    assert resp.status_code == 200
+
+
+def test_fetch_site_rejection_is_logged():
+    cookie_client = TestClient(app, base_url="http://127.0.0.1:8765", cookies=_COOKIE)
+    with capture_logs() as logs:
+        cookie_client.get(_JSON_GET, headers={"Sec-Fetch-Site": "same-site"})
+    assert any(
+        e["event"] == "api_request_rejected" and e["reason"] == "fetch_site"
+        for e in logs
+    )
+
+
+def test_bad_host_rejection_is_logged_without_the_host():
+    with capture_logs() as logs:
+        resp = client.get("/health", headers={"Host": "evil.example.com"})
+    assert resp.status_code == 400
+    events = [e for e in logs if e["event"] == "api_request_rejected"]
+    assert events and events[0]["reason"] == "host"
+    assert "evil.example.com" not in repr(logs)
+
+
+def test_health_rejected_nonce_is_logged():
+    with capture_logs() as logs:
+        body = app_client.get("/health?nonce=bad nonce").json()
+    assert body == {"status": "ok"}
+    assert any(e["event"] == "health_nonce_rejected" for e in logs)
+
+
+class _Clock:
+    def __init__(self) -> None:
+        self.now = 0.0
+
+    def __call__(self) -> float:
+        return self.now
+
+
+@pytest.fixture
+def tight_reject_logs(monkeypatch):
+    """A 2-lines-per-minute reject throttle on a fake clock."""
+    clock = _Clock()
+    monkeypatch.setattr(
+        log_throttle, "reject_logs", log_throttle.LogThrottle(limit=2, clock=clock)
+    )
+    return clock
+
+
+def _throttled_events(logs):
+    names = ("api_request_rejected", "health_nonce_rejected", "log_throttled")
+    return [e for e in logs if e["event"] in names]
+
+
+def test_token_rejections_are_rate_limited(tight_reject_logs):
+    """A local caller cannot flood debug.log with 401 lines."""
+    fresh = TestClient(app, base_url="http://127.0.0.1:8765")
+    with capture_logs() as logs:
+        for _ in range(5):
+            assert fresh.get(_JSON_GET).status_code == 401
+    assert [e["event"] for e in _throttled_events(logs)] == ["api_request_rejected"] * 2
+    tight_reject_logs.now += 60.0
+    with capture_logs() as logs:
+        fresh.get(_JSON_GET)
+    events = _throttled_events(logs)
+    assert events[0]["event"] == "log_throttled"
+    assert events[0]["event_name"] == "api_request_rejected"
+    assert events[0]["suppressed"] == 3
+    assert events[1]["event"] == "api_request_rejected"
+
+
+def test_origin_fetch_site_and_host_rejections_share_one_budget(tight_reject_logs):
+    cookie_client = TestClient(app, base_url="http://127.0.0.1:8765", cookies=_COOKIE)
+    with capture_logs() as logs:
+        app_client.get(_JSON_GET, headers={**TOKEN, "Origin": "http://evil.example"})
+        cookie_client.get(_JSON_GET, headers={"Sec-Fetch-Site": "cross-site"})
+        assert (
+            client.get("/health", headers={"Host": "evil.example"}).status_code == 400
+        )
+    assert [e.get("reason") for e in _throttled_events(logs)] == [
+        "origin",
+        "fetch_site",
+    ]
+
+
+def test_health_nonce_rejections_are_rate_limited(tight_reject_logs):
+    with capture_logs() as logs:
+        for _ in range(4):
+            app_client.get("/health?nonce=bad nonce")
+    assert [e["event"] for e in _throttled_events(logs)] == [
+        "health_nonce_rejected"
+    ] * 2
+
+
+def test_health_rejects_a_nonce_with_trailing_newline():
+    body = app_client.get("/health?nonce=abcdefghijklmnop%0A").json()
+    assert "proof" not in body
+
+
+def test_docs_are_disabled_when_frozen():
+    assert backend_main._docs_urls(frozen=True) == {
+        "docs_url": None,
+        "redoc_url": None,
+        "openapi_url": None,
+    }
+    assert backend_main._docs_urls(frozen=False)["docs_url"] == "/docs"
+
+
+def test_is_own_origin_requires_exact_host_match():
+    assert backend_main._is_own_origin("http://127.0.0.1:8765", "127.0.0.1:8765")
+    assert not backend_main._is_own_origin("http://127.0.0.1:9999", "127.0.0.1:8765")
+    assert not backend_main._is_own_origin("http://localhost:8765", "127.0.0.1:8765")
+    assert not backend_main._is_own_origin("null", "127.0.0.1:8765")
+    assert not backend_main._is_own_origin("file:///x", "127.0.0.1:8765")
 
 
 def test_untrusted_host_rejected():
@@ -64,3 +324,62 @@ def test_loopback_host_allowed():
     """A loopback Host header passes (control for the rejection test)."""
     resp = client.get("/health", headers={"Host": "127.0.0.1:8765"})
     assert resp.status_code == 200
+
+
+def test_testserver_host_rejected_outside_pytest(tmp_path):
+    """Production never accepts Host: testserver (testserver-allowed-host)."""
+    env = {k: v for k, v in os.environ.items() if k != "SAKADESK_TEST_CLIENT"}
+    env.update(
+        SAKADESK_DATA_DIR=str(tmp_path),
+        HOME=str(tmp_path),
+        PYTHONPATH=str(Path(__file__).resolve().parents[2]),
+    )
+    code = (
+        "from fastapi.testclient import TestClient\n"
+        "from backend.main import app\n"
+        "print(TestClient(app).get('/health').status_code)\n"
+    )
+    out = subprocess.run(
+        [sys.executable, "-c", code],
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=120,
+    )
+    assert out.stdout.strip().splitlines()[-1] == "400", out.stderr[-2000:]
+
+
+def test_spa_files_keep_their_types_whatever_the_registry_says():
+    """Windows lets the registry remap .js/.css; with nosniff that blanks the window."""
+    import mimetypes
+
+    mimetypes.add_type("text/plain", ".js")  # what some Windows registries say
+    mimetypes.add_type("text/plain", ".css")
+    backend_main._pin_static_types()
+    assert mimetypes.guess_type("index-abc.js")[0] == "text/javascript"
+    assert mimetypes.guess_type("index-abc.css")[0] == "text/css"
+    assert mimetypes.guess_type("logo-192.png")[0] == "image/png"
+    assert mimetypes.guess_type("noto-sans-jp-0-wght-normal.woff2")[0] == "font/woff2"
+
+
+def test_the_app_wraps_the_error_middleware_with_the_headers():
+    from backend import main
+    from backend.security_headers import (
+        AppWithSecurityHeaders,
+        SecurityHeadersMiddleware,
+    )
+
+    assert isinstance(main.app, AppWithSecurityHeaders)
+    assert not any(m.cls is SecurityHeadersMiddleware for m in main.app.user_middleware)
+
+
+def test_the_spa_root_ignores_the_working_directory(tmp_path, monkeypatch):
+    """report-hardening #73 (audit 2026-11-13): a frontend/dist planted in the cwd was served."""
+    from pathlib import Path
+
+    from backend import main
+
+    (tmp_path / "frontend" / "dist").mkdir(parents=True)
+    monkeypatch.chdir(tmp_path)
+    expected = Path(main.__file__).resolve().parent.parent / "frontend" / "dist"
+    assert main._frontend_dist_dir() == expected

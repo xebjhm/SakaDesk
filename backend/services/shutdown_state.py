@@ -13,7 +13,12 @@ is exactly the guarantee the write barrier exists to uphold.
 
 from __future__ import annotations
 
+import threading
+
 _shutting_down = False
+# Same flag as an Event, for worker threads that poll between units of work
+# (e.g. the Memories index build) or want to wait on it.
+_shutdown_event = threading.Event()
 
 
 def begin_shutdown() -> None:
@@ -21,10 +26,16 @@ def begin_shutdown() -> None:
     False -- once a process starts shutting down it does not un-shut-down."""
     global _shutting_down
     _shutting_down = True
+    _shutdown_event.set()
 
 
 def is_shutting_down() -> bool:
     return _shutting_down
+
+
+def shutdown_event() -> threading.Event:
+    """Set once shutdown begins; never cleared (except by ``reset_for_tests``)."""
+    return _shutdown_event
 
 
 def reset_for_tests() -> None:
@@ -33,3 +44,4 @@ def reset_for_tests() -> None:
     same process would see `is_shutting_down() == True`."""
     global _shutting_down
     _shutting_down = False
+    _shutdown_event.clear()

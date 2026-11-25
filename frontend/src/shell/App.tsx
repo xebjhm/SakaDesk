@@ -1,34 +1,37 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback } from 'react'
 import { Layout } from '../core/layout'
 import { LandingPage } from '../pages/LandingPage'
-import { AlertCircle, Loader2, X } from 'lucide-react'
-import { Button, IconButton } from '../design/primitives'
+import { Spinner } from '../design/primitives'
 import { useTranslation } from '../i18n'
 import { DiagnosticsModal, ReportIssueModal, AboutModal } from '../core/modals'
 import { ErrorBoundary } from '../core/common'
 import { MessagesFeature } from '../features/messages'
 import { useAppStore } from '../store/appStore'
+import { useShallow } from 'zustand/react/shallow'
 import type { FeatureId } from '../store/appStore'
 import { serviceIdToGroupId } from '../config/colors'
 import { applyGroupTokens } from '../design/applyTokens'
 import type { GroupId } from '../design/tokens'
-import { Z_INDEX } from '../constants/zIndex'
 import { isFeaturePaid, SERVICE_FEATURES } from '../config/features'
 import { SearchModal, useGlobalSearchShortcut } from '../features/search'
 import type { SearchModalHandle } from '../features/search'
 import { persisted } from '../core/persistence/persisted'
 import { applyStartupLanguage } from './language'
 import { openChatFromToast } from './openChat'
+import { openMemoriesFromToast } from './openMemories'
 import { clientLog } from '../utils/clientLog'
 import { markVoiceHeard } from './markVoiceHeard'
+import { useOshiMirror } from './useOshiMirror'
 
 import { useAuth } from './hooks/useAuth'
 import { useSync } from './hooks/useSync'
 import { useBackendSyncWatcher } from './hooks/useBackendSyncWatcher'
 import { useSettings } from './hooks/useSettings'
-import { SyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, EntryBackdrop, FirstSyncToast } from './components'
+import { LiveSyncModal, SetupWizard, SettingsModal, LoginModal, TosDialog, EntryBackdrop, FirstSyncToast, SettingsErrorToast } from './components'
 import { BrandScope } from '../design/brandScope'
+import { setupFolderErrorKey } from './outputFolder'
 import { celebrateFirstSync } from './firstSyncCelebration'
+import { SkipLink } from './components/SkipLink'
 
 function App() {
     const { t } = useTranslation()
@@ -39,7 +42,14 @@ function App() {
         setSelectedServices,
         setActiveFeature,
         setFreshlyAddedService,
-    } = useAppStore();
+    } = useAppStore(useShallow((s) => ({
+        activeService: s.activeService,
+        setActiveService: s.setActiveService,
+        selectedServices: s.selectedServices,
+        setSelectedServices: s.setSelectedServices,
+        setActiveFeature: s.setActiveFeature,
+        setFreshlyAddedService: s.setFreshlyAddedService,
+    })));
 
     // Auth hook
     const {
@@ -57,7 +67,6 @@ function App() {
         appSettings,
         setAppSettings,
         outputDirInput,
-        setOutputDirInput,
         settingsErrorKey,
         clearSettingsError,
         showSettingsModal,
@@ -68,13 +77,12 @@ function App() {
         setSetupBlogFullBackup,
         saveSettings,
         handleSelectFolder,
+        folderErrorKey,
         openSettingsModal,
     } = useSettings(isAuthenticated);
 
     // Sync hook - now syncs ALL connected services independently
     const {
-        syncProgress,
-        syncProgressByService,
         showSyncModal,
         setShowSyncModal,
         syncVersion,
@@ -177,6 +185,7 @@ function App() {
     const [crashError, setCrashError] = useState<string | undefined>();
     const [showAboutModal, setShowAboutModal] = useState(false);
     const [showFirstSyncToast, setShowFirstSyncToast] = useState(false);
+    const syncNow = useCallback(() => startSync(false), [startSync]);
     const hideFirstSyncToast = useCallback(() => setShowFirstSyncToast(false), []);
 
     // Search modal
@@ -237,6 +246,10 @@ function App() {
             .finally(() => setPrefsHydrated(true));
     }, []);
 
+    // Mirror the oshi list to backend settings, only once persisted state has
+    // hydrated (never overwrite the backend with the empty startup map).
+    useOshiMirror(prefsHydrated);
+
     // SD-FE-STATE-03: flush any pending debounced prefs writes when the window
     // is being hidden/closed. pywebview tears down the JS context on close, so a
     // change made within the 300ms debounce (a settings toggle, ToS acceptance,
@@ -292,6 +305,14 @@ function App() {
         return () => { delete window.__sakadeskOpenLogin; };
     }, []);
 
+    // Desktop Memories toast click: open Memories at the toast's page. Refused during
+    // onboarding, like the login toast (the main view is hidden behind it).
+    useEffect(() => {
+        window.__sakadeskOpenMemories = (payload: unknown) =>
+            openMemoriesFromToast(payload, () => openLoginStateRef.current.onboarding);
+        return () => { delete window.__sakadeskOpenMemories; };
+    }, []);
+
     // Desktop popup answered a voice: the main window (sole writer) marks it heard.
     useEffect(() => {
         window.__sakadeskMarkVoiceHeard = markVoiceHeard;
@@ -308,8 +329,9 @@ function App() {
     if (!authCheckComplete || !prefsHydrated) {
         return (
             <BrandScope className="flex h-screen items-center justify-center bg-window">
-                <span data-testid="boot-screen" role="status" aria-label={t('common.loading')}>
-                    <Loader2 aria-hidden="true" className="h-6 w-6 animate-spin text-accent motion-reduce:animate-none" />
+                {/* The Spinner is the status (named by its label, shown under reduced motion). */}
+                <span data-testid="boot-screen">
+                    <Spinner size="md" label={t('common.loading')} labelVisibility="auto" />
                 </span>
             </BrandScope>
         );
@@ -356,7 +378,10 @@ function App() {
             const success = await saveSettings({
                 output_dir: outputDirInput.trim(),
             });
-            if (success) {
+            if (!success) {
+                // The wizard stays; the reason shows by its folder field (the toast waits for the dialogs to close).
+                clientLog('setup_save_failed', { reason: 'save_refused' });
+            } else {
                 setShowSetupWizard(false);
                 // Sequential sync: one service at a time with blocking modal
                 const servicesToSync = connectedServices.length > 0
@@ -384,12 +409,14 @@ function App() {
 
     return (
         <div className="flex h-screen flex-col overflow-hidden bg-window font-sans">
+            {/* The layout (and with it <main id="sd-main">) renders only when none of these hold back. */}
+            {!isOnboarding && !showSyncModal && activeService && <SkipLink targetId="sd-main" />}
 
             <div className="flex flex-1 overflow-hidden">
                 {/* First launch (login carousel, setup, first sync) and blocking syncs: the brand orbs behind the dialogs (spec §9). The layout is hidden meanwhile. */}
                 {(isOnboarding || showSyncModal) && <EntryBackdrop />}
                 {/* Sync Modal — pass sequentialSyncInfo for multi-service progress */}
-                {showSyncModal && <SyncModal syncProgress={syncProgress} sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} onCancel={() => cancelSync()} />}
+                {showSyncModal && <LiveSyncModal sequentialSyncInfo={sequentialSyncInfo} onClose={() => setShowSyncModal(false)} onCancel={() => cancelSync()} />}
 
                 {/* Login Carousel (first-launch only) — shown BEFORE SetupWizard */}
                 {loginCarouselService && (
@@ -409,12 +436,12 @@ function App() {
                 {showSetupWizard && !loginCarousel && (
                     <SetupWizard
                         outputDirInput={outputDirInput}
-                        setOutputDirInput={setOutputDirInput}
                         setupBlogFullBackup={setupBlogFullBackup}
                         setSetupBlogFullBackup={setSetupBlogFullBackup}
                         onSelectFolder={handleSelectFolder}
                         onComplete={handleSetupComplete}
                         isValid={!!outputDirInput.trim()}
+                        folderErrorKey={setupFolderErrorKey(folderErrorKey, settingsErrorKey)}
                     />
                 )}
 
@@ -439,31 +466,11 @@ function App() {
                     crashError={crashError}
                 />
 
-                {/* ERROR TOAST: a status card on the toast layer, so it shows over an open Settings dialog. */}
-                {settingsErrorKey && (
-                    <div
-                        data-testid="settings-error-toast"
-                        role="alert"
-                        style={{ zIndex: Z_INDEX.TOAST }}
-                        className="fixed bottom-4 right-4 flex max-w-sm items-center gap-3 rounded-card bg-card p-4 shadow-card animate-reveal motion-reduce:animate-none"
-                    >
-                        <AlertCircle aria-hidden="true" className="h-5 w-5 shrink-0 text-status-danger" />
-                        <div className="min-w-0 flex-1">
-                            <p className="text-small font-semibold text-primary">{t('common.error')}</p>
-                            <p className="text-caption text-secondary">{t(settingsErrorKey)}</p>
-                        </div>
-                        <Button variant="ghost" size="sm" onClick={() => setShowDiagnostics(true)}>
-                            {t('common.debug')}
-                        </Button>
-                        <IconButton
-                            size="sm"
-                            variant="ghost"
-                            aria-label={t('common.close')}
-                            icon={<X />}
-                            onClick={clearSettingsError}
-                        />
-                    </div>
-                )}
+                <SettingsErrorToast
+                    errorKey={settingsErrorKey}
+                    onDebug={() => setShowDiagnostics(true)}
+                    onClose={clearSettingsError}
+                />
                 {showFirstSyncToast && <FirstSyncToast onDone={hideFirstSyncToast} />}
 
                 {/* Settings Modal */}
@@ -471,7 +478,8 @@ function App() {
                     <SettingsModal
                         appSettings={appSettings}
                         outputDirInput={outputDirInput}
-                        setOutputDirInput={setOutputDirInput}
+                        onSelectFolder={handleSelectFolder}
+                        folderErrorKey={folderErrorKey}
                         onSaveSettings={saveSettings}
                         onClose={() => setShowSettingsModal(false)}
                         activeService={activeService ?? ''}
@@ -549,15 +557,14 @@ function App() {
                         onReportIssue={() => setShowReportModal(true)}
                         onOpenAbout={() => setShowAboutModal(true)}
                         onOpenSearch={openSearch}
-                        syncProgressByService={syncProgressByService}
                         initialSyncServices={initialSyncServices}
                         blogBackupEnabled={appSettings?.blogs_full_backup}
+                        userNicknames={appSettings?.user_nicknames}
                         messagesContent={
                             <MessagesFeature
                                 appSettings={appSettings}
-                                syncProgress={syncProgress}
                                 syncVersion={syncVersion}
-                                onSyncNow={() => startSync(false)}
+                                onSyncNow={syncNow}
                             />
                         }
                     />

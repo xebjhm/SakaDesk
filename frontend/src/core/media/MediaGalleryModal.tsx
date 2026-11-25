@@ -1,22 +1,29 @@
-import React, { useState, useMemo, useRef, useCallback, useEffect } from 'react';
+import React, { useState, useMemo, useRef, useCallback, useEffect, useId, memo } from 'react';
 import { Image as ImageIcon, Film, Volume2, Calendar, VolumeX, Download, X, ZoomIn, ZoomOut, Shrink } from 'lucide-react';
 import { cn, formatDateTime, formatDuration, formatDownloadFilename } from '../../utils/classnames';
-import { timeNeighbours } from '../../utils/timeOrder';
+import { timeNeighbours, sortNewestFirst } from '../../utils/timeOrder';
 import { downloadMedia } from '../../utils/download';
 import type { Message } from '../../types';
 import { VoicePlayer } from './VoicePlayer';
 import { VideoPlayer } from './VideoPlayer';
-import { LazyVideo } from './LazyVideo';
 import { PhotoPlayer } from './PhotoPlayer';
-import { Modal, Button, IconButton, Avatar } from '../../design/primitives';
-import { DialogStatus } from '../common/DialogStatus';
+import { Modal, LiveRegion, Button, IconButton, Avatar, StatusBlock } from '../../design/primitives';
+import {
+    MediaTileButton, PregenProgressBar, VirtualMediaGrid, useHeldLoading, usePregenProgress,
+    type MediaGridGroup, type VirtualMediaGridHandle,
+} from './grid';
 import { CalendarModal } from '../modals/CalendarModal';
 import type { BaseModalProps } from '../../types/modal';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
+import { useFeatureActive } from '../../design/featureActive';
+import { leavesKeysToControl } from './keyGuard';
+import { StepButtons } from './StepButtons';
 import { useClipboardShortcut } from './useClipboardShortcut';
 import { useZoomPan, MIN_ZOOM, MAX_ZOOM } from './useZoomPan';
 import { useTranscription } from '../../hooks/useTranscription';
+
+const NO_MESSAGES: Message[] = [];
 
 interface MediaGalleryModalProps extends BaseModalProps {
     messages: Message[];
@@ -30,6 +37,14 @@ interface MediaGalleryModalProps extends BaseModalProps {
      * and scrolling the message list to the target message.
      */
     onSourceJump?: (messageId: number) => void;
+    /**
+     * The room's message list (the gallery's items): `loading` while its first load runs (a
+     * `StatusBlock` after the L1 reveal delay, held at least `minVisible`), `error` when it failed
+     * (a `StatusBlock`, with Retry when `onRetryList` is given). Default `ready`.
+     */
+    listStatus?: 'loading' | 'error' | 'ready';
+    /** Retry the failed list load (the error state's Retry button). */
+    onRetryList?: () => void;
 }
 
 type MediaTab = 'photos' | 'videos' | 'voice';
@@ -93,6 +108,59 @@ const VoiceRow: React.FC<VoiceRowProps> = ({
     );
 };
 
+interface GalleryTileProps {
+    item: Message;
+    url: string;
+    kind: 'picture' | 'video';
+    tilePx: number;
+    onOpen: (item: Message) => void;
+}
+
+/**
+ * One photo / video tile of the grid: the shared `MediaTileButton` (a thumbnail or poster, never a
+ * full-size image or a `<video>`) with the video mute and duration overlays. ★ items ask for the
+ * large (640) thumbnail, which pre-generation makes for them. A tile whose image failed retries on
+ * click instead of opening the viewer, and its accessible name says so.
+ */
+const GalleryTile = memo(function GalleryTile({ item, url, kind, tilePx, onOpen }: GalleryTileProps) {
+    const { t } = useTranslation();
+    const date = formatDateTime(item.timestamp);
+    return (
+        <MediaTileButton
+            url={url}
+            kind={kind}
+            cssPx={tilePx}
+            large={item.is_favorite === true}
+            label={t(kind === 'picture' ? 'media.gallery.openPhoto' : 'media.gallery.openVideo', { date })}
+            retryLabel={t('media.gallery.retryPhoto', { date })}
+            onOpen={() => onOpen(item)}
+        >
+            {kind === 'video' && (
+                <>
+                    {/* Mute icon - bottom left with background like official app */}
+                    {item.is_muted && (
+                        <div className="absolute bottom-1 left-1 rounded-pill bg-toast p-1">
+                            <VolumeX className="h-4 w-4 text-viewer" />
+                        </div>
+                    )}
+                    {/* Duration overlay - bottom right */}
+                    <div className="absolute bottom-1 right-1 rounded-pill bg-toast px-2 text-caption tabular-nums text-viewer">
+                        {formatDuration(item.media_duration)}
+                    </div>
+                </>
+            )}
+        </MediaTileButton>
+    );
+});
+
+const messageKey = (item: Message) => String(item.id);
+
+/** A timestamp's local date as YYYY-MM-DD (jump to date). */
+const formatDateKey = (timestamp: string) => {
+    const date = new Date(timestamp);
+    return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
 // Tab configuration - module level constant to avoid recreation on each render
 const MEDIA_TABS: { id: MediaTab; icon: React.ElementType; labelKey: string }[] = [
     { id: 'photos', icon: ImageIcon, labelKey: 'media.tabs.photos' },
@@ -116,12 +184,18 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     serviceId,
     memberPath,
     onSourceJump,
+    listStatus = 'ready',
+    onRetryList,
 }) => {
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
     const { t } = useTranslation();
 
     const [activeTab, setActiveTab] = useState<MediaTab>('photos');
+    const tabsId = useId();
+    const tabRefs = useRef<Partial<Record<MediaTab, HTMLButtonElement | null>>>({});
     const [selectedMedia, setSelectedMedia] = useState<Message | null>(null);
+    // False while this gallery's feature is hidden (kept mounted): no key capture, no polling.
+    const featureActive = useFeatureActive();
     const [selectedVoice, setSelectedVoice] = useState<Message | null>(null);
     const [showCalendar, setShowCalendar] = useState(false);
     // Closing detail/voice state must happen BEFORE bubbling up — the
@@ -142,7 +216,15 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     // (VoicePlayer variant="gallery", VideoPlayer variant="gallery").
     const scrollContainerRef = useRef<HTMLDivElement>(null);
     // The Modal body, the scroller (reset to the top when the tab changes).
-    const bodyRef = useRef<HTMLDivElement>(null);
+    const bodyRef = useRef<HTMLDivElement | null>(null);
+    // The same element as state: the virtual grid scrolls with it (`customScrollParent`).
+    const [bodyEl, setBodyEl] = useState<HTMLDivElement | null>(null);
+    const setBody = useCallback((el: HTMLDivElement | null) => {
+        bodyRef.current = el;
+        setBodyEl(el);
+    }, []);
+    const gridRef = useRef<VirtualMediaGridHandle>(null);
+    // Voice list only (a plain list): the grid jumps through `gridRef.scrollToItem` instead.
     const monthRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemRefs = useRef<Map<string, HTMLElement>>(new Map());  // Keyed by date string YYYY-MM-DD
 
@@ -163,12 +245,16 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const { view, dragging, step, reset, stageHandlers } = useZoomPan(zoomStageRef, detailIsPhoto, selectedMedia?.id);
 
     // Filter messages by media type
+    // Closed (it stays mounted in ConversationMenu): nothing to list, so no filter and no sort on
+    // every change of the room (UI health P-B3). The viewer is a sibling dialog that outlives the
+    // gallery's own `isOpen`, so while it is open the items stay (its arrows and counter use them).
+    const source = isOpen || selectedMedia ? messages : NO_MESSAGES;
     const mediaItems = useMemo(() => {
-        const photos = messages.filter(m => m.type === 'picture' && m.media_file);
-        const videos = messages.filter(m => m.type === 'video' && m.media_file);
-        const voice = messages.filter(m => m.type === 'voice' && m.media_file);
+        const photos = source.filter(m => m.type === 'picture' && m.media_file);
+        const videos = source.filter(m => m.type === 'video' && m.media_file);
+        const voice = source.filter(m => m.type === 'voice' && m.media_file);
         return { photos, videos, voice };
-    }, [messages]);
+    }, [source]);
 
     // Group items by month (for all tabs)
     const groupedItems = useMemo(() => {
@@ -177,9 +263,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                       mediaItems.voice;
 
         // Sort by timestamp descending
-        const sorted = [...items].sort((a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
+        const sorted = sortNewestFirst(items);
 
         // Group by year-month
         const groups: Map<string, Message[]> = new Map();
@@ -206,20 +290,31 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         return result;
     }, [activeTab, mediaItems]);
 
-    const getMediaUrl = (mediaFile: string) => {
+    const getMediaUrl = useCallback((mediaFile: string) => {
         // media_file is relative to service dir (e.g., "messages/62 石森 璃花/.../picture/123.jpg")
         // API expects full path from output dir with service prefix
         const encodedPath = mediaFile.split('/').map(encodeURIComponent).join('/');
         return serviceId
             ? `/api/content/media/${encodeURIComponent(serviceId)}/${encodedPath}`
             : `/api/content/media/${encodedPath}`;
-    };
+    }, [serviceId]);
+    const gridMediaUrl = useCallback((item: Message) => (item.media_file ? getMediaUrl(item.media_file) : null), [getMediaUrl]);
 
-    // Format date to YYYY-MM-DD for item refs
-    const formatDateKey = (timestamp: string) => {
-        const date = new Date(timestamp);
-        return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-    };
+    // The grid's groups: the month groups above (items always have a media file, see `mediaItems`).
+    const gridGroups = useMemo<MediaGridGroup<Message>[]>(() => groupedItems, [groupedItems]);
+    // Local date (YYYY-MM-DD) → the flat grid index of its first (newest) item, for jump to date.
+    const firstIndexByDate = useMemo(() => {
+        const map = new Map<string, number>();
+        let flat = 0;
+        for (const group of gridGroups) {
+            for (const item of group.items) {
+                const key = formatDateKey(item.timestamp);
+                if (!map.has(key)) map.set(key, flat);
+                flat += 1;
+            }
+        }
+        return map;
+    }, [gridGroups]);
 
     // Get current tab's messages for calendar
     const currentTabMessages = useMemo(() => {
@@ -231,6 +326,14 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     // Handle calendar date selection - scroll to specific item or fall back to month
     const handleCalendarDateSelect = useCallback((date: Date) => {
         const dateKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+        if (activeTab !== 'voice') {
+            // The grid unmounts far rows, so it scrolls by index, never by a DOM lookup.
+            const flatIndex = firstIndexByDate.get(dateKey);
+            if (flatIndex !== undefined) gridRef.current?.scrollToItem(flatIndex);
+            else gridRef.current?.scrollToGroup(monthKey);
+            return;
+        }
         const itemElement = itemRefs.current.get(dateKey);
 
         if (itemElement) {
@@ -240,27 +343,28 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         }
 
         // Fall back to month if no item found
-        const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
         const monthElement = monthRefs.current.get(monthKey);
 
         if (monthElement) {
             monthElement.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
-    }, []);
+    }, [activeTab, firstIndexByDate]);
 
     // Get the flat sorted list of items for the current tab
     const currentTabItems = useMemo(() => {
         const items = activeTab === 'photos' ? mediaItems.photos :
                       activeTab === 'videos' ? mediaItems.videos :
                       mediaItems.voice;
-        return [...items].sort((a, b) =>
-            new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime()
-        );
+        return sortNewestFirst(items);
     }, [activeTab, mediaItems]);
 
     // Keyboard navigation for detail view
+    // Logged once per gallery (by leavesKeysToControl): a range, tab list or menu kept the arrow keys.
+    const loggedKeysRef = useRef(false);
     const handleDetailKeyDown = useCallback((e: KeyboardEvent) => {
         if (!selectedMedia) return;
+        // Keys typed in a range (video seek / volume), a tab list or a menu belong to that control.
+        if (leavesKeysToControl(e.target, loggedKeysRef)) return;
 
         const currentIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
         if (currentIdx === -1) return;
@@ -293,10 +397,10 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     }, [selectedMedia, currentTabItems, detailIsPhoto, step]);
 
     useEffect(() => {
-        if (!selectedMedia) return;
+        if (!selectedMedia || !featureActive) return;
         document.addEventListener('keydown', handleDetailKeyDown);
         return () => document.removeEventListener('keydown', handleDetailKeyDown);
-    }, [selectedMedia, handleDetailKeyDown]);
+    }, [selectedMedia, featureActive, handleDetailKeyDown]);
 
     // Detail view for selected media
     const renderDetailView = () => {
@@ -304,10 +408,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
 
         const mediaUrl = selectedMedia.media_file ? getMediaUrl(selectedMedia.media_file) : null;
         const detailIdx = currentTabItems.findIndex(m => m.id === selectedMedia.id);
+        const { older, newer } = timeNeighbours(detailIdx, currentTabItems.length, 'newest_first');
 
         return (
             <Modal isOpen onClose={() => setSelectedMedia(null)} tone="viewer" layout="bare" aria-label={t('common.mediaViewer')} logId="media_viewer">
                 <IconButton variant="overlay" className="absolute right-4 top-4 z-10" aria-label={t('common.close')} icon={<X />} onClick={() => setSelectedMedia(null)} />
+                {currentTabItems.length > 1 && (
+                    <StepButtons
+                        hasOlder={older !== null}
+                        hasNewer={newer !== null}
+                        onOlder={() => { if (older !== null) setSelectedMedia(currentTabItems[older]); }}
+                        onNewer={() => { if (newer !== null) setSelectedMedia(currentTabItems[newer]); }}
+                    />
+                )}
                 {detailIsPhoto && (
                     // aria-disabled (not disabled) at the limits, so a focused button keeps focus and ← / → keep working.
                     <div className="absolute left-4 top-4 z-10 flex gap-2">
@@ -384,8 +497,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                         )}
                     </div>
                 </div>
+                <LiveRegion message={clipboardToast ?? ''} />
                 {clipboardToast && (
-                    <div role="status" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer">
+                    <div aria-hidden="true" className="absolute left-1/2 top-4 z-20 -translate-x-1/2 rounded-pill bg-toast px-4 py-2 text-small text-viewer">
                         {clipboardToast}
                     </div>
                 )}
@@ -409,17 +523,36 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         setActiveTab(tab);
     };
 
+    // Arrows, Home and End move between the tabs and select them (UI health A-D5; the tabs pattern).
+    const onTabsKeyDown = (e: React.KeyboardEvent) => {
+        const ids = MEDIA_TABS.map((tab) => tab.id);
+        const at = ids.indexOf(activeTab);
+        const next = e.key === 'ArrowRight' ? (at + 1) % ids.length
+            : e.key === 'ArrowLeft' ? (at - 1 + ids.length) % ids.length
+            : e.key === 'Home' ? 0
+            : e.key === 'End' ? ids.length - 1
+            : -1;
+        if (next === -1) return;
+        e.preventDefault();
+        e.stopPropagation();
+        selectTab(ids[next]);
+        tabRefs.current[ids[next]]?.focus();
+    };
+
     // Render icon-only tabs (like official app) - in the Modal toolbar slot (outside the scroller)
     const renderTabs = () => (
-        <div role="tablist" aria-label={t('media.typeTabs')} className="flex">
+        <div role="tablist" aria-label={t('media.typeTabs')} className="flex" onKeyDown={onTabsKeyDown}>
             {MEDIA_TABS.map((tab) => {
                 const selected = activeTab === tab.id;
                 return (
                     <button
                         key={tab.id}
                         type="button"
+                        ref={(el) => { tabRefs.current[tab.id] = el; }}
+                        id={`${tabsId}-${tab.id}`}
                         role="tab"
                         aria-selected={selected}
+                        tabIndex={selected ? 0 : -1}
                         aria-label={t(tab.labelKey)}
                         onClick={() => selectTab(tab.id)}
                         className={cn(
@@ -436,90 +569,37 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         </div>
     );
 
-    // Render photos/videos grid with month grouping
+    const openMedia = useCallback((item: Message) => setSelectedMedia(item), []);
+    const gridKind = activeTab === 'videos' ? 'video' : 'picture';
+    const renderGridTile = useCallback((item: Message, _flatIndex: number, tilePx: number) => {
+        const url = gridMediaUrl(item);
+        if (!url) return null;
+        return <GalleryTile item={item} url={url} kind={gridKind} tilePx={tilePx} onOpen={openMedia} />;
+    }, [gridMediaUrl, gridKind, openMedia]);
+
+    // Render photos/videos grid with month grouping, virtualised (rows outside the overscan unmount)
     const renderMediaGrid = () => {
         const EmptyIcon = getEmptyIcon();
         if (groupedItems.length === 0) {
             return (
-                <DialogStatus kind="empty" icon={<EmptyIcon />} title={t(`media.empty.${activeTab}`)} />
+                <StatusBlock kind="empty" variant="dialog" surface="media_gallery" icon={<EmptyIcon />} title={t(`media.empty.${activeTab}`)} />
             );
         }
 
-        // Track which dates we've seen to register only first item per date
-        const seenDates = new Set<string>();
-
+        // The grid scrolls with the Modal body, so it mounts once the body element is known.
+        if (!bodyEl) return null;
         return (
-            <div ref={scrollContainerRef}>
-                {groupedItems.map((group) => (
-                    <div
-                        key={group.key}
-                        ref={(el) => {
-                            if (el) monthRefs.current.set(group.key, el);
-                        }}
-                    >
-                        {/* Month header - sticky to the scroller's top edge (the tabs are in the toolbar) */}
-                        <div className="sticky top-0 z-10 bg-sheet px-4 py-3 text-small font-semibold text-secondary">
-                            {group.label}
-                        </div>
-
-                        {/* Grid */}
-                        <div className="grid grid-cols-4 gap-1 px-1">
-                            {group.items.map((item) => {
-                                const mediaUrl = item.media_file ? getMediaUrl(item.media_file) : null;
-                                if (!mediaUrl) return null;
-
-                                const dateKey = formatDateKey(item.timestamp);
-                                const isFirstOfDate = !seenDates.has(dateKey);
-                                if (isFirstOfDate) seenDates.add(dateKey);
-
-                                // Photos use PhotoPlayer's gallery-thumb (own button),
-                                // videos use LazyVideo's built-in button.
-                                if (activeTab === 'photos') {
-                                    return (
-                                        <PhotoPlayer
-                                            key={item.id}
-                                            variant="gallery-thumb"
-                                            src={mediaUrl}
-                                            onClick={() => setSelectedMedia(item)}
-                                            anchorRef={isFirstOfDate ? (el) => {
-                                                if (el) itemRefs.current.set(dateKey, el);
-                                            } : undefined}
-                                        />
-                                    );
-                                }
-
-                                // Video with lazy loading
-                                return (
-                                    <div
-                                        key={item.id}
-                                        ref={isFirstOfDate ? (el) => {
-                                            if (el) itemRefs.current.set(dateKey, el);
-                                        } : undefined}
-                                        className="aspect-square"
-                                    >
-                                        <LazyVideo
-                                            src={mediaUrl}
-                                            className="w-full h-full"
-                                            onClick={() => setSelectedMedia(item)}
-                                        >
-                                            {/* Mute icon - bottom left with background like official app */}
-                                            {item.is_muted && (
-                                                <div className="absolute bottom-1 left-1 rounded-pill bg-toast p-1">
-                                                    <VolumeX className="h-4 w-4 text-viewer" />
-                                                </div>
-                                            )}
-                                            {/* Duration overlay - bottom right */}
-                                            <div className="absolute bottom-1 right-1 rounded-pill bg-toast px-2 text-caption tabular-nums text-viewer">
-                                                {formatDuration(item.media_duration)}
-                                            </div>
-                                        </LazyVideo>
-                                    </div>
-                                );
-                            })}
-                        </div>
-                    </div>
-                ))}
-            </div>
+            <VirtualMediaGrid<Message>
+                key={activeTab}
+                ref={gridRef}
+                groups={gridGroups}
+                itemKey={messageKey}
+                mediaUrl={gridMediaUrl}
+                renderTile={renderGridTile}
+                scrollParent={bodyEl}
+                grid="messages"
+                className="px-1"
+            />
         );
     };
 
@@ -527,7 +607,7 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
     const renderVoiceList = () => {
         if (groupedItems.length === 0) {
             return (
-                <DialogStatus kind="empty" icon={<Volume2 />} title={t('media.empty.voice')} />
+                <StatusBlock kind="empty" variant="dialog" surface="media_gallery" icon={<Volume2 />} title={t('media.empty.voice')} />
             );
         }
 
@@ -612,8 +692,20 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
         );
     };
 
+    // The list's first load (L1 timing: shown after `reveal`, slow / very-slow copy, held at least
+    // `minVisible`) and its failure; pre-generation progress while the photos / videos grid is open.
+    const listLoading = useHeldLoading(isOpen && listStatus === 'loading');
+    const pregen = usePregenProgress(isOpen && featureActive && activeTab !== 'voice' && listStatus === 'ready', serviceId);
+
     // Render content based on active tab
     const renderContent = () => {
+        if (listLoading) {
+            return <StatusBlock kind="loading" variant="dialog" surface="media_gallery" />;
+        }
+        if (listStatus === 'error') {
+            // Without a retry handler the error still shows (never "No photos yet"), just with no Retry.
+            return <StatusBlock kind="error" variant="dialog" surface="media_gallery" onRetry={onRetryList} />;
+        }
         if (activeTab === 'voice') {
             return renderVoiceList();
         }
@@ -631,15 +723,19 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                 logId="media_gallery"
                 className="h-[80vh] max-w-4xl"
                 bodyClassName="px-0 pb-0 pt-0"
-                bodyRef={bodyRef}
+                bodyRef={setBody}
                 toolbar={renderTabs()}
                 footer={
                     <>
-                        <p className="mr-auto text-small text-muted">
-                            {activeTab === 'photos' && t('media.count.photos', { count: mediaItems.photos.length })}
-                            {activeTab === 'videos' && t('media.count.videos', { count: mediaItems.videos.length })}
-                            {activeTab === 'voice' && t('media.count.voice', { count: mediaItems.voice.length })}
-                        </p>
+                        <div className="mr-auto flex min-w-0 flex-1 flex-col gap-1">
+                            <p className="text-small text-muted">
+                                {activeTab === 'photos' && t('media.count.photos', { count: mediaItems.photos.length })}
+                                {activeTab === 'videos' && t('media.count.videos', { count: mediaItems.videos.length })}
+                                {activeTab === 'voice' && t('media.count.voice', { count: mediaItems.voice.length })}
+                            </p>
+                            {/* Quiet background progress: thumbnails still being prepared (or paused). */}
+                            {pregen && <PregenProgressBar progress={pregen} />}
+                        </div>
                         <Button variant="ghost" onClick={() => setShowCalendar(true)}>
                             <Calendar className="h-4 w-4" />
                             {t('media.jumpToDate')}
@@ -647,7 +743,9 @@ export const MediaGalleryModal: React.FC<MediaGalleryModalProps> = ({
                     </>
                 }
             >
-                {renderContent()}
+                <div role="tabpanel" aria-labelledby={`${tabsId}-${activeTab}`}>
+                    {renderContent()}
+                </div>
             </Modal>
 
             {renderDetailView()}

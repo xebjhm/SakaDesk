@@ -1,5 +1,8 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
-import { downloadMedia } from './download'
+import { downloadMedia, openDownloadUrl } from './download'
+
+vi.mock('./clientLog', () => ({ clientLog: vi.fn() }))
+import { clientLog } from './clientLog'
 
 describe('downloadMedia', () => {
     let appendChildSpy: ReturnType<typeof vi.spyOn>
@@ -17,6 +20,21 @@ describe('downloadMedia', () => {
     afterEach(() => {
         appendChildSpy.mockRestore()
         vi.useRealTimers()
+    })
+
+    describe('refused URLs (security audit 2026-11-13)', () => {
+        it.each([
+            'javascript:alert(1)',
+            'data:text/html,<script>1</script>',
+            '//evil.example/api/content/media/a',
+            'blob:http://localhost:3000/abc',
+            '/assets/index.js',
+        ])('never puts %s into the frame', (url) => {
+            vi.mocked(clientLog).mockClear()
+            downloadMedia(url, 'x.jpg')
+            expect(capturedIframe).toBeNull()
+            expect(clientLog).toHaveBeenCalledWith('download_refused', { reason: 'not_app_url' })
+        })
     })
 
     describe('content media routing', () => {
@@ -125,5 +143,26 @@ describe('downloadMedia', () => {
             vi.advanceTimersByTime(60000)
             expect(removeSpy).toHaveBeenCalledOnce()
         })
+    })
+})
+
+describe('openDownloadUrl', () => {
+    it('opens the URL in a hidden iframe and removes it later', () => {
+        vi.useFakeTimers()
+        openDownloadUrl('/api/memories/export/tok?filename=a.png')
+        const iframe = document.body.querySelector('iframe') as HTMLIFrameElement
+        expect(iframe.style.display).toBe('none')
+        expect(iframe.src).toContain('/api/memories/export/tok?filename=a.png')
+        vi.advanceTimersByTime(60000)
+        expect(document.body.querySelector('iframe')).toBeNull()
+        vi.useRealTimers()
+    })
+
+    it('refuses anything but a same-origin /api/ path', () => {
+        vi.mocked(clientLog).mockClear()
+        openDownloadUrl('javascript:alert(1)')
+        openDownloadUrl('https://evil.example/api/x')
+        expect(document.body.querySelector('iframe')).toBeNull()
+        expect(clientLog).toHaveBeenCalledTimes(2)
     })
 })

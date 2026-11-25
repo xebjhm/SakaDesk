@@ -28,14 +28,14 @@ describe('Search (R-c)', () => {
     });
 
     it('selects a result with the accent roles and keeps its group dot', () => {
-        render(<SearchResultItem result={MESSAGE} isSelected onSelect={vi.fn()} onMouseEnter={vi.fn()} />);
+        render(<SearchResultItem result={MESSAGE} isSelected onSelect={vi.fn()} index={0} optionId="o-0" onHover={vi.fn()} />);
         const row = screen.getByText('山下 瞳月', { selector: 'span.font-semibold' }).closest('div.flex.w-full') as HTMLElement;
         expect(row).toHaveClass('bg-accent-subtle');
         expect(row.querySelector('.bg-group-marker')).not.toBeNull();
     });
 
     it('marks member names, room names and snippets as Japanese content', () => {
-        render(<SearchResultItem result={MESSAGE} isSelected={false} onSelect={vi.fn()} onMouseEnter={vi.fn()} />);
+        render(<SearchResultItem result={MESSAGE} isSelected={false} onSelect={vi.fn()} index={0} optionId="o-0" onHover={vi.fn()} />);
         for (const el of screen.getAllByText('山下 瞳月')) expect(el).toHaveAttribute('lang', 'ja');
         expect(screen.getByText('おはよう', { selector: 'mark' }).closest('p')).toHaveAttribute('lang', 'ja');
     });

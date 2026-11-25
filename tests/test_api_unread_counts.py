@@ -32,7 +32,7 @@ class TestUnreadCountsEndpoint:
         """Should count all messages when lastReadId is 0."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create test message file
-            member_path = Path(temp_dir) / "test" / "member"
+            member_path = Path(temp_dir) / "日向坂46" / "member"
             member_path.mkdir(parents=True)
             msg_file = member_path / "messages.json"
             msg_file.write_text(
@@ -51,17 +51,17 @@ class TestUnreadCountsEndpoint:
                 "backend.api.content.get_output_dir", return_value=Path(temp_dir)
             ):
                 response = client.post(
-                    "/api/content/unread_counts", json={"test/member": 0}
+                    "/api/content/unread_counts", json={"日向坂46/member": 0}
                 )
 
             assert response.status_code == 200
             data = response.json()
-            assert data["test/member"] == 3  # All messages are unread
+            assert data["日向坂46/member"] == 3  # All messages are unread
 
     def test_counts_messages_after_last_read_id(self, client):
         """Should only count messages with ID > lastReadId."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            member_path = Path(temp_dir) / "test" / "member"
+            member_path = Path(temp_dir) / "日向坂46" / "member"
             member_path.mkdir(parents=True)
             msg_file = member_path / "messages.json"
             msg_file.write_text(
@@ -83,18 +83,18 @@ class TestUnreadCountsEndpoint:
             ):
                 response = client.post(
                     "/api/content/unread_counts",
-                    json={"test/member": {"lastReadId": 200, "revealedIds": []}},
+                    json={"日向坂46/member": {"lastReadId": 200, "revealedIds": []}},
                 )
 
             assert response.status_code == 200
             data = response.json()
             # IDs 300, 400, 500 are unread (3 messages)
-            assert data["test/member"] == 3
+            assert data["日向坂46/member"] == 3
 
     def test_excludes_revealed_ids_from_count(self, client):
         """Should exclude revealedIds from unread count."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            member_path = Path(temp_dir) / "test" / "member"
+            member_path = Path(temp_dir) / "日向坂46" / "member"
             member_path.mkdir(parents=True)
             msg_file = member_path / "messages.json"
             msg_file.write_text(
@@ -118,19 +118,22 @@ class TestUnreadCountsEndpoint:
                 response = client.post(
                     "/api/content/unread_counts",
                     json={
-                        "test/member": {"lastReadId": 200, "revealedIds": [300, 500]}
+                        "日向坂46/member": {
+                            "lastReadId": 200,
+                            "revealedIds": [300, 500],
+                        }
                     },
                 )
 
             assert response.status_code == 200
             data = response.json()
             # ID 300, 500 were revealed individually, only 400 is unread
-            assert data["test/member"] == 1
+            assert data["日向坂46/member"] == 1
 
     def test_counts_zero_when_all_read(self, client):
         """Should return 0 when all messages are read."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            member_path = Path(temp_dir) / "test" / "member"
+            member_path = Path(temp_dir) / "日向坂46" / "member"
             member_path.mkdir(parents=True)
             msg_file = member_path / "messages.json"
             msg_file.write_text(
@@ -149,17 +152,17 @@ class TestUnreadCountsEndpoint:
             ):
                 response = client.post(
                     "/api/content/unread_counts",
-                    json={"test/member": 200},  # All read
+                    json={"日向坂46/member": 200},  # All read
                 )
 
             assert response.status_code == 200
             data = response.json()
-            assert data["test/member"] == 0
+            assert data["日向坂46/member"] == 0
 
     def test_handles_group_chat_with_multiple_members(self, client):
         """Should count messages across all members in a group chat."""
         with tempfile.TemporaryDirectory() as temp_dir:
-            group_path = Path(temp_dir) / "group"
+            group_path = Path(temp_dir) / "日向坂46" / "group"
             group_path.mkdir(parents=True)
 
             # Create two member directories with messages
@@ -194,26 +197,26 @@ class TestUnreadCountsEndpoint:
             ):
                 response = client.post(
                     "/api/content/unread_counts",
-                    json={"group": 150},  # Read up to ID 150
+                    json={"日向坂46/group": 150},  # Read up to ID 150
                 )
 
             assert response.status_code == 200
             data = response.json()
             # Unread: member1 has ID 300, member2 has IDs 200, 400 = 3 total
-            assert data["group"] == 3
+            assert data["日向坂46/group"] == 3
 
     def test_handles_multiple_paths(self, client):
         """Should handle multiple paths in a single request."""
         with tempfile.TemporaryDirectory() as temp_dir:
             # Create two separate member paths
-            path1 = Path(temp_dir) / "member1"
-            path1.mkdir()
+            path1 = Path(temp_dir) / "日向坂46" / "member1"
+            path1.mkdir(parents=True)
             (path1 / "messages.json").write_text(
                 json.dumps({"messages": [{"id": 100}, {"id": 200}]})
             )
 
-            path2 = Path(temp_dir) / "member2"
-            path2.mkdir()
+            path2 = Path(temp_dir) / "日向坂46" / "member2"
+            path2.mkdir(parents=True)
             (path2 / "messages.json").write_text(
                 json.dumps({"messages": [{"id": 300}, {"id": 400}, {"id": 500}]})
             )
@@ -224,15 +227,15 @@ class TestUnreadCountsEndpoint:
                 response = client.post(
                     "/api/content/unread_counts",
                     json={
-                        "member1": 100,  # 1 unread (ID 200)
-                        "member2": 400,  # 1 unread (ID 500)
+                        "日向坂46/member1": 100,  # 1 unread (ID 200)
+                        "日向坂46/member2": 400,  # 1 unread (ID 500)
                     },
                 )
 
             assert response.status_code == 200
             data = response.json()
-            assert data["member1"] == 1
-            assert data["member2"] == 1
+            assert data["日向坂46/member1"] == 1
+            assert data["日向坂46/member2"] == 1
 
     def test_handles_nonexistent_path(self, client):
         """Should return 0 for paths that don't exist."""

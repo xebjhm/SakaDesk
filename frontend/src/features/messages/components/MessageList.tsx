@@ -2,10 +2,13 @@ import React, { useRef, useCallback, useMemo, useEffect } from 'react';
 import { GroupedVirtuoso, type GroupedVirtuosoHandle, type GroupedVirtuosoProps, type ListRange, type TopItemListProps } from 'react-virtuoso';
 import type { Message } from '../../../types';
 import { useChatScroll } from '../hooks/useChatScroll';
+import { KeepListPainted } from './listSnapshot';
 import { MessageBubble } from './MessageBubble';
 import { notifyVisibleMessages } from '../hooks/useMessageVisibility';
 import { cn } from '../../../utils/classnames';
 import { useTranslation } from '../../../i18n';
+import { useDevicePixelRatio } from '../../../hooks/useDevicePixelRatio';
+import { chatPictureThumbWidth } from '../mediaUrl';
 import { DatePill } from '../../../design/primitives';
 import { fromLocalDateStr } from '../../../utils/dateFormatters';
 import { rowKeyOf, type RowKey, type Timeline, type TimelineItem } from '../timeline/buildTimeline';
@@ -46,6 +49,8 @@ interface ChatListProps {
     userNickname?: string;
     /** Callback to toggle favorite status of a message */
     onToggleFavorite?: (messageId: number, currentState: boolean) => void;
+    /** ★ changes of the open room not yet in `timeline` (MessagesFeature's favoriteOverrides). */
+    favoriteOverrides?: ReadonlyMap<number, boolean>;
     /** Callback when avatar is clicked (for member profile popup) */
     onAvatarClick?: () => void;
     /** Active service ID for media URL construction */
@@ -100,7 +105,7 @@ const LIST_COMPONENTS: GroupedVirtuosoProps<unknown, unknown>['components'] = { 
 
 const DEFAULT_ITEM_HEIGHT = 80;
 
-export const MessageList: React.FC<ChatListProps> = ({
+const MessageListComponent: React.FC<ChatListProps> = ({
     footer,
     memberId,
     timeline,
@@ -113,6 +118,7 @@ export const MessageList: React.FC<ChatListProps> = ({
     scrollerRef,
     userNickname,
     onToggleFavorite,
+    favoriteOverrides,
     onAvatarClick,
     service,
     targetMessageId,
@@ -196,6 +202,29 @@ export const MessageList: React.FC<ChatListProps> = ({
         if (frameRef.current === null) frameRef.current = requestAnimationFrame(resolveVisibleRange);
     }, [handleRangeChanged, resolveVisibleRange]);
 
+    // One stable reveal callback per message id, calling the latest `onReveal`: an inline
+    // `() => onReveal(msg.id)` was a new prop on every render and re-rendered every bubble.
+    const onRevealRef = useRef(onReveal);
+    useEffect(() => { onRevealRef.current = onReveal; }, [onReveal]);
+    const revealCallbacks = useRef(new Map<number, () => void>());
+    // The list is not remounted on a room switch: drop the old room's callbacks (cleared during
+    // render so the new room's bubbles get callbacks that stay in the map).
+    const revealRoomRef = useRef(memberId);
+    if (revealRoomRef.current !== memberId) {
+        revealRoomRef.current = memberId;
+        revealCallbacks.current.clear();
+    }
+    const revealFor = (id: number) => {
+        let fn = revealCallbacks.current.get(id);
+        if (!fn) {
+            fn = () => onRevealRef.current(id);
+            revealCallbacks.current.set(id, fn);
+        }
+        return fn;
+    };
+
+    const dpr = useDevicePixelRatio();
+
     const renderItem = (item: TimelineItem) => {
         const rowKey = rowKeyOf(item);
         const rowClass = cn('isolate rounded-card px-4 pb-1', highlightedRowKey === rowKey && 'animate-landing');
@@ -211,11 +240,13 @@ export const MessageList: React.FC<ChatListProps> = ({
                     member_name={senderInfo.name}
                     member_avatar={senderInfo.avatar}
                     isUnread={isUnread(msg.id)}
-                    onReveal={() => onReveal(msg.id)}
+                    onReveal={revealFor(msg.id)}
                     onLongPress={onLongPress}
                     onToggleFavorite={onToggleFavorite}
+                    isFavorite={favoriteOverrides?.get(msg.id) ?? msg.is_favorite}
                     onAvatarClick={avatarClickFor(msg, onAvatarClick)}
                     onMediaClick={onMediaClick}
+                    mediaThumbWidth={msg.type === 'picture' ? chatPictureThumbWidth(msg.width, msg.height, msg.media_file, dpr) : undefined}
                     service={service}
                     memberPath={getMemberPath?.(msg)}
                     userNickname={userNickname}
@@ -237,6 +268,8 @@ export const MessageList: React.FC<ChatListProps> = ({
     // lets the next one push it away. Indices passed around are item indices (probe fact 3).
     return (
         <TimelineFooterContext.Provider value={footer ?? null}>
+            {/* A revisited room shows its last painted list while Virtuoso positions the new one. */}
+            <KeepListPainted roomKey={virtuosoKey} restore={targetMessageId == null}>
             <GroupedVirtuoso
                 key={virtuosoKey}
                 ref={virtuosoRef}
@@ -254,6 +287,10 @@ export const MessageList: React.FC<ChatListProps> = ({
                 rangeChanged={onRangeChange}
                 itemContent={(index) => renderItem(timeline.items[index])}
             />
+            </KeepListPainted>
         </TimelineFooterContext.Provider>
     );
 };
+
+/** Memoised: MessagesFeature re-renders for state the list does not show (dialogs, the header). */
+export const MessageList = React.memo(MessageListComponent);

@@ -31,6 +31,20 @@ from typing import Any, NamedTuple, Optional
 # the same apparent size for every user regardless of their display scaling.
 BASE_LOGICAL: dict[str, int] = {"width": 1200, "height": 800}
 
+# Smallest window in LOGICAL units. Handed to pywebview unscaled (WinForms
+# applies the DPI itself, see min_window_size). 960 wide leaves
+# the content sheet about 840 px beside the service and feature rails (64 + 48
+# + 8): enough for a Memories member pane (12.5-15rem) plus a grid of at least
+# two 9rem album tiles beside the polaroid, and for the chat's member list
+# beside a readable bubble column. 640 tall keeps the page header, the filter
+# row and about two tile rows (or a chat composer plus several bubbles) on
+# screen. pywebview's own default (200 x 100) let the album collapse.
+MIN_LOGICAL: dict[str, int] = {"width": 960, "height": 640}
+
+# GetSystemMetrics: client area of a full-screen window on the primary monitor
+# (the screen minus the taskbar and a caption), in device pixels.
+_SM_CXFULLSCREEN, _SM_CYFULLSCREEN = 16, 17
+
 # Sanity bounds (device pixels) so a corrupt/absurd saved size falls back to the
 # default instead of an unusable window.
 _MIN_W, _MIN_H, _MAX_W, _MAX_H = 400, 300, 7680, 4320
@@ -129,17 +143,84 @@ def _position_is_usable(
     )
 
 
-def default_geometry(scale: Optional[float] = None) -> dict:
+_SCREEN_UNSET_MIN: Any = object()
+
+
+def default_geometry(
+    scale: Optional[float] = None, work: Any = _SCREEN_UNSET_MIN
+) -> dict:
     """First-open window size in DEVICE pixels: ``BASE_LOGICAL`` x the monitor DPI
     scale, so the window looks the same relative to the (DPI-scaled) UI at any
     scale (100% -> 1200x800, 175% -> 2100x1400, ...). ``scale`` defaults to the
-    live primary-monitor scale."""
+    live primary-monitor scale.
+
+    N-R4-4: when the primary monitor's usable area is known (``work``, device
+    px; default the live ``primary_work_size()``, ``None`` = unknown), the size
+    is capped to it and the window is centred on it with an explicit ``x``/``y``.
+    Without a position pywebview starts the form centre-screen, and on that path
+    WinForms grew the 2100 x 1400 request to 3657 x 2402 at 175 % (taller than
+    the 2160 px screen); with a position it takes the same path as restored
+    geometry, which round-trips verbatim.
+    """
     if scale is None:
         scale = dpi_scale()
-    return {
-        "width": round(BASE_LOGICAL["width"] * scale),
-        "height": round(BASE_LOGICAL["height"] * scale),
-    }
+    w = round(BASE_LOGICAL["width"] * scale)
+    h = round(BASE_LOGICAL["height"] * scale)
+    if work is _SCREEN_UNSET_MIN:
+        work = primary_work_size()
+    if work is None:
+        return {"width": w, "height": h}
+    w, h = min(w, work[0]), min(h, work[1])
+    return {"width": w, "height": h, "x": (work[0] - w) // 2, "y": (work[1] - h) // 2}
+
+
+def primary_work_size() -> Optional[tuple[int, int]]:
+    """The primary monitor's usable size in device pixels, or ``None`` when
+    unknown (non-Windows / failure)."""
+    if platform.system() != "Windows":
+        return None
+    try:
+        gsm = ctypes.windll.user32.GetSystemMetrics  # type: ignore[attr-defined]
+        w, h = int(gsm(_SM_CXFULLSCREEN)), int(gsm(_SM_CYFULLSCREEN))
+        if w > 0 and h > 0:
+            return w, h
+    except Exception:
+        pass
+    return None
+
+
+def min_window_size(
+    scale: Optional[float] = None,
+    work: Any = _SCREEN_UNSET_MIN,
+) -> tuple[int, int]:
+    """pywebview ``min_size`` in LOGICAL (96-DPI) pixels.
+
+    Unlike ``create_window``'s size, pywebview's WinForms backend hands
+    ``min_size`` to ``Form.MinimumSize`` BEFORE switching the form to
+    ``AutoScaleMode.Dpi`` (pywebview 5.3.2, ``BrowserForm.__init__``), so
+    WinForms multiplies it by the DPI scale once more. A device-pixel value was
+    therefore scaled twice (N1: 1680 x 1120 at 175% became 2922 x 1912 device
+    px). This returns the logical size, so the EFFECTIVE minimum is
+    ``MIN_LOGICAL`` (960 x 640 CSS px) at any DPI.
+
+    The cap and the sanity floor are applied in device pixels, where the screen
+    is measured: the minimum is capped to the primary monitor's usable area so a
+    small or heavily scaled screen (e.g. 1920x1080 at 175%) can still hold the
+    window, then divided back by ``scale``. ``scale`` and ``work`` default to
+    the live values; ``work=None`` means "unknown" (no cap).
+    """
+    if scale is None:
+        scale = dpi_scale()
+    if work is _SCREEN_UNSET_MIN:
+        work = primary_work_size()
+    w = round(MIN_LOGICAL["width"] * scale)
+    h = round(MIN_LOGICAL["height"] * scale)
+    if work is not None:
+        w, h = min(w, work[0]), min(h, work[1])
+    w, h = max(w, _MIN_W), max(h, _MIN_H)
+    # Floor, not round: WinForms re-applies ``scale``, and rounding up could
+    # push a capped minimum one pixel past the usable area.
+    return int(w / scale), int(h / scale)
 
 
 # Sentinel distinguishing "caller passed no screen" from an explicit ``None``
@@ -152,6 +233,7 @@ def parse_saved_geometry(
     default: Optional[dict] = None,
     *,
     screen: Any = _SCREEN_UNSET,
+    work: Any = _SCREEN_UNSET_MIN,
 ) -> dict:
     """Normalize a stored ``window`` dict into ``create_window()`` device-pixel
     coordinates, used verbatim (no scale conversion).
@@ -166,6 +248,12 @@ def parse_saved_geometry(
     would restore fully off-screen and appear not to launch. ``screen`` defaults
     to the live ``virtual_screen_bounds()``; tests may inject a ``VirtualScreen``
     or ``None`` (``None`` = bounds unknown, keep the position).
+
+    N-R4-1: the size is capped to the primary monitor's usable area (``work``,
+    device px; default the live ``primary_work_size()``, ``None`` = unknown, no
+    cap). ``window.width/height`` read at close are the MAXIMIZED bounds when the
+    window closes maximized (e.g. 3868 x 2188 on a 3840 x 2160 screen at 175 %),
+    and restoring that as a normal window put its bottom edge off the screen.
     """
     fallback = default if default is not None else default_geometry()
     if not data:
@@ -178,6 +266,11 @@ def parse_saved_geometry(
 
     if not (_MIN_W <= w <= _MAX_W and _MIN_H <= h <= _MAX_H):
         return dict(fallback)
+
+    if work is _SCREEN_UNSET_MIN:
+        work = primary_work_size()
+    if work is not None:
+        w, h = min(w, work[0]), min(h, work[1])
 
     result: dict[str, int] = {"width": w, "height": h}
     if screen is _SCREEN_UNSET:

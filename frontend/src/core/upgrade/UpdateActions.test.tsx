@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach, beforeAll } from 'vitest';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor, cleanup, act } from '@testing-library/react';
 import i18n from '../../i18n';
 import { UpdateActions } from './UpdateActions';
 import { useUpgradeStore, resetUpgradeStoreForTests, type VersionInfo } from './upgradeStore';
@@ -27,7 +27,7 @@ describe('UpdateActions (Settings → Updates)', () => {
             return json({});
         }));
     });
-    afterEach(() => { vi.unstubAllGlobals(); resetUpgradeStoreForTests(); });
+    afterEach(() => { cleanup(); vi.unstubAllGlobals(); resetUpgradeStoreForTests(); });
 
     it('renders nothing when up to date', () => {
         useUpgradeStore.setState({ versionInfo: { ...INFO, update_available: false } });
@@ -55,8 +55,10 @@ describe('UpdateActions (Settings → Updates)', () => {
         expect(screen.getByText(/closes and reopens/)).toBeInTheDocument();
         vi.useFakeTimers({ toFake: ['setTimeout'] });
         const close = vi.spyOn(window, 'close').mockImplementation(() => {});
-        fireEvent.click(screen.getByRole('button', { name: 'Install Now' }));
-        await vi.waitFor(() => expect(calls).toContain('POST /api/version/upgrade/install'));
+        await act(async () => {
+            fireEvent.click(screen.getByRole('button', { name: 'Install Now' }));
+            await vi.waitFor(() => expect(calls).toContain('POST /api/version/upgrade/install'));
+        });
         vi.useRealTimers();
         close.mockRestore();
     });
@@ -76,5 +78,28 @@ describe('UpdateActions (Settings → Updates)', () => {
         fireEvent.click(screen.getByRole('button', { name: 'Open download page' }));
         expect(open).toHaveBeenCalledWith(INFO.release_url, '_blank');
         open.mockRestore();
+    });
+
+    it('explains an unverified update in the user\'s language instead of the backend text', () => {
+        useUpgradeStore.setState({
+            versionInfo: INFO,
+            status: { state: 'error', progress: 0, error: 'The update could not be verified', error_code: 'not_verified', version: '0.4.2' },
+        });
+        render(<UpdateActions />);
+        expect(screen.getByText('This update could not be verified, so it was not installed. Try again later.')).toBeInTheDocument();
+        expect(screen.queryByText(/Upgrade failed/)).not.toBeInTheDocument();
+        expect(screen.getByRole('button', { name: 'Try again' })).toBeInTheDocument();
+    });
+
+    it('keeps the install failure code from the backend', async () => {
+        vi.stubGlobal('fetch', vi.fn(async () => ({
+            ok: true,
+            json: async () => ({ success: false, error: 'The update could not be verified', error_code: 'not_verified' }),
+        }) as Response));
+        useUpgradeStore.setState({ versionInfo: INFO, status: { state: 'ready', progress: 100, error: null, version: '0.4.2' } });
+        render(<UpdateActions />);
+        fireEvent.click(screen.getByRole('button', { name: 'Install Now' }));
+        expect(await screen.findByText('This update could not be verified, so it was not installed. Try again later.')).toBeInTheDocument();
+        expect(useUpgradeStore.getState().status?.error_code).toBe('not_verified');
     });
 });

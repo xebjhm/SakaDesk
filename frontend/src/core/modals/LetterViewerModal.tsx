@@ -13,7 +13,7 @@ import { formatDateTime, formatDownloadFilename } from '../../utils/classnames';
 import { toValidDate } from '../../utils/dateFormatters';
 
 /** Where the viewer was opened from (breadcrumb `surface`). */
-export type LetterViewerSource = 'sent_letters' | 'timeline';
+export type LetterViewerSource = 'sent_letters' | 'timeline' | 'memories';
 
 export interface LetterViewerModalProps {
     /** The letters in the order of the list the viewer was opened from (see `order`); the list keeps that order, but ← / → always step in time order. */
@@ -207,7 +207,7 @@ const OpenLetterViewer: React.FC<LetterViewerModalProps & { index: number }> = (
                     aria-label={t('letterViewer.fullText')}
                     tabIndex={0}
                     lang={letter.text ? 'ja' : undefined}
-                    className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap rounded-card px-1 pb-4 text-body text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent min-[900px]:basis-2/5"
+                    className="min-h-0 flex-1 overflow-y-auto whitespace-pre-wrap break-words rounded-card px-1 pb-4 text-body text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent min-[900px]:basis-2/5"
                 >
                     {letter.text || t('sentLetters.noTextContent')}
                 </div>

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from '../i18n';
 import { aiErrorKey } from '../i18n/aiError';
+import { clientLog } from '../utils/clientLog';
 
 export interface TranscriptionSegment {
     start: number;
@@ -32,6 +33,26 @@ export interface Transcription {
     segments: TranscriptionSegment[];
     /** True when the media has no audible speech (empty transcript, not a failure). */
     no_speech?: boolean;
+}
+
+/**
+ * The cached transcription of one message (`GET /api/transcription/{service}/{id}`), or null when
+ * there is none (404, or a body without `ok`). Rejects on a network error, a non-404 failure
+ * status or an abort. Pass `memberPath` so the backend loads the cached transcript directly
+ * instead of scanning every member directory.
+ */
+export async function fetchCachedTranscription(
+    service: string,
+    messageId: number,
+    memberPath: string | undefined,
+    signal?: AbortSignal,
+): Promise<Transcription | null> {
+    const query = memberPath ? `?member_path=${encodeURIComponent(memberPath)}` : '';
+    const res = await fetch(`/api/transcription/${encodeURIComponent(service)}/${messageId}${query}`, { signal });
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`transcription request failed (${res.status})`);
+    const data = await res.json();
+    return data.ok ? (data.transcription as Transcription) : null;
 }
 
 type TranscriptionState = 'idle' | 'loading' | 'done' | 'error';
@@ -72,31 +93,24 @@ export function useTranscription(
         setError(null);
         if (!service || !messageId) return;
 
-        let cancelled = false;
-        const fetchCached = async () => {
-            try {
-                // Pass member_path so the backend can load the cached transcript
-                // directly instead of brute-force scanning every member directory.
-                const query = memberPath ? `?member_path=${encodeURIComponent(memberPath)}` : '';
-                const res = await fetch(
-                    `/api/transcription/${encodeURIComponent(service)}/${messageId}${query}`
-                );
-                if (res.ok) {
-                    const data = await res.json();
-                    if (!cancelled && data.ok) {
-                        setTranscription(data.transcription);
-                        setState('done');
-                    }
+        // Aborted when the bubble scrolls away or the message changes: it must not hold one of the
+        // six connections the media and the next lookups need.
+        const controller = new AbortController();
+        // 404 = not transcribed yet: stay idle. A failure stays idle too (no error shown) but leaves a
+        // code-only breadcrumb; an abort is the normal way out and logs nothing.
+        fetchCachedTranscription(service, messageId, memberPath, controller.signal).then(
+            (cached) => {
+                if (!controller.signal.aborted && cached) {
+                    setTranscription(cached);
+                    setState('done');
                 }
-                // 404 = not transcribed yet, stay in 'idle'
-            } catch {
-                // Network error — stay idle, don't show error
-            }
-        };
-
-        fetchCached();
+            },
+            () => {
+                if (!controller.signal.aborted) clientLog('chat_load', { outcome: 'transcript_lookup_failed', message_id: messageId });
+            },
+        );
         return () => {
-            cancelled = true;
+            controller.abort();
             // Cancel any in-flight transcribe POST for the message we're leaving.
             abortRef.current?.abort();
         };

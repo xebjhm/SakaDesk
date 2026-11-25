@@ -2,8 +2,14 @@ import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render } from '@testing-library/react';
 
 const captured: Record<string, string | undefined> = {};
+const galleryList: { status?: string; retry?: () => void } = {};
 vi.mock('../../../core/media/MediaGalleryModal', () => ({
-    MediaGalleryModal: ({ memberAvatar }: { memberAvatar?: string }) => { captured.gallery = memberAvatar; return null; },
+    MediaGalleryModal: ({ memberAvatar, listStatus, onRetryList }: { memberAvatar?: string; listStatus?: string; onRetryList?: () => void }) => {
+        captured.gallery = memberAvatar;
+        galleryList.status = listStatus;
+        galleryList.retry = onRetryList;
+        return null;
+    },
 }));
 vi.mock('../../../core/modals/FavoritesModal', () => ({
     FavoritesModal: ({ memberAvatar }: { memberAvatar?: string }) => { captured.favorites = memberAvatar; return null; },
@@ -28,6 +34,34 @@ function renderMenu(memberAvatar: string) {
         />,
     );
 }
+
+describe('ConversationMenu media gallery list state', () => {
+    it('hands the room list\'s load state and retry to the gallery', () => {
+        const retry = vi.fn();
+        render(
+            <ConversationMenu
+                conversationPath="p"
+                isGroupChat={false}
+                messages={[]}
+                messagesStatus="loading"
+                onRetryMessages={retry}
+                memberName="金村 美玖"
+                onOpenCalendar={vi.fn()}
+                letters={[]}
+                lettersStatus="ready"
+                onJumpToLetter={vi.fn()}
+            />,
+        );
+        expect(galleryList.status).toBe('loading');
+        galleryList.retry!();
+        expect(retry).toHaveBeenCalledTimes(1);
+    });
+
+    it('defaults to ready', () => {
+        renderMenu('https://cdn.example/t.jpg');
+        expect(galleryList.status).toBe('ready');
+    });
+});
 
 describe('ConversationMenu avatar sizes', () => {
     const original = window.devicePixelRatio;

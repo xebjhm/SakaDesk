@@ -22,10 +22,11 @@ describe('Badge', () => {
         [99, '99'],
         [100, '99+'],
         [1234, '99+'],
-    ])('shows %i as %s with an accessible label', (count, text) => {
+    ])('shows %i as %s with the count as hidden text', (count, text) => {
         render(<Badge count={count} />);
-        const badge = screen.getByText(text);
-        expect(badge).toHaveAttribute('aria-label', `${count} unread`);
+        const badge = screen.getByText(text).parentElement!;
+        expect(badge).toHaveTextContent(`${count} unread`);
+        expect(badge).not.toHaveAttribute('aria-label');
         expect(badge).toHaveClass('bg-accent', 'rounded-pill');
         expect(badge).toHaveClass('shadow-accent-unread');
     });

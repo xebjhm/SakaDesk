@@ -242,3 +242,33 @@ class TestDiagnosticsScrubbing:
         body = response.text
         assert jwt not in body
         assert "[REDACTED_SECRET]" in body
+
+
+def test_diagnostics_errors_are_codes_never_paths(tmp_path, monkeypatch):
+    """Review M8: /api/diagnostics needs no login, so an error must not echo a
+    path (an OSError's text carries the settings or log path)."""
+    from structlog.testing import capture_logs
+
+    from backend.api import diagnostics
+
+    secret = str(tmp_path / "ひなた" / "settings.json")
+
+    def unreadable(path):
+        raise PermissionError(13, "denied", secret)
+
+    monkeypatch.setattr(diagnostics, "read_settings_file", unreadable)
+
+    class BrokenDir:
+        def exists(self):
+            raise OSError(5, "io", secret)
+
+    monkeypatch.setattr(diagnostics, "get_logs_dir", lambda: BrokenDir())
+    with capture_logs() as logs:
+        resp = diagnostics._collect_diagnostics()
+    assert resp.config_state["error"] == "settings_unreadable"
+    assert resp.logs.recent == ["logs_unreadable"]
+    dumped = resp.model_dump_json() + repr(logs)
+    assert secret not in dumped and "ひなた" not in dumped
+    events = {e["event"]: e for e in logs}
+    assert events["diagnostics_config_read_failed"]["error_type"] == "PermissionError"
+    assert events["diagnostics_logs_read_failed"]["error_type"] == "OSError"

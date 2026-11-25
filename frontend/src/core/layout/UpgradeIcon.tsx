@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { Download, ArrowUpCircle, Loader2, X, AlertCircle } from 'lucide-react';
+import { Download, ArrowUpCircle, X, AlertCircle } from 'lucide-react';
 import { cn } from '../../utils/classnames';
 import { useTranslation } from '../../i18n';
-import { useUpgradeStore, upgradeStage, openReleasePage } from '../upgrade/upgradeStore';
+import { Spinner } from '../../design/primitives';
+import { useUpgradeStore, upgradeStage, upgradeErrorKey, openReleasePage } from '../upgrade/upgradeStore';
 
 // SVG progress ring constants (hoisted to avoid recomputation on every render)
 const RING_RADIUS = 18;
@@ -82,7 +83,10 @@ export function UpgradeIcon() {
             case 'downloading': return `${t('update.downloading', { version })} ${Math.round(progress)}%`;
             case 'ready': return t('update.readyToInstall', { version });
             case 'launching': return t('update.installing');
-            case 'error': return `${t('update.upgradeFailed')} ${upgradeStatus?.error || ''}`;
+            case 'error': {
+                const errorKey = upgradeErrorKey(upgradeStatus?.error_code);
+                return errorKey ? t(errorKey) : `${t('update.upgradeFailed')} ${upgradeStatus?.error || ''}`;
+            }
             default: return '';
         }
     })();
@@ -143,7 +147,7 @@ export function UpgradeIcon() {
                 {stage === 'error' ? (
                     <AlertCircle className="h-5 w-5" />
                 ) : stage === 'launching' ? (
-                    <Loader2 className="h-5 w-5 animate-spin" />
+                    <Spinner size="sm" tone="current" decorative />
                 ) : stage === 'ready' ? (
                     <ArrowUpCircle className="h-5 w-5" />
                 ) : (

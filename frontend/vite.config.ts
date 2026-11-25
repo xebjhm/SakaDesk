@@ -26,16 +26,18 @@ export default defineConfig({
         },
     },
     server: {
-        host: '0.0.0.0',
+        // Loopback only: the proxied API is for this machine (security audit 2026-11-13).
+        // 127.0.0.1 rather than localhost: Node on Windows resolves localhost to ::1 alone,
+        // which the dev scripts' probes and the http://127.0.0.1 app URL would not reach.
+        host: '127.0.0.1',
         proxy: {
             '/api': {
                 target: 'http://127.0.0.1:8000',
-                changeOrigin: true,
+                // Host is not rewritten: the backend must see the browser's own Host, so it still
+                // rejects non-loopback hosts and its exact-Origin check sees Origin == Host.
+                // The proxy adds no credentials: the page authenticates itself with the #t= token
+                // in the URL that dev.sh / dev.ps1 open, exactly like SakaDesk's own windows.
             },
-            '/media': {
-                target: 'http://127.0.0.1:8000',
-                changeOrigin: true,
-            }
-        }
-    }
+        },
+    },
 })

@@ -1,0 +1,178 @@
+"""Cache of text-free Memories view payloads (binder, timeline, album, hub, ...).
+
+Table ``memories_view_cache`` lives in the memory-index DB
+(:func:`index._connect`); it is created on first use::
+
+    memories_view_cache(service_dir TEXT, view TEXT, key TEXT, data_hash TEXT,
+                        payload TEXT, PRIMARY KEY(service_dir, view, key))
+                        WITHOUT ROWID
+
+A row is a hit only when its ``data_hash`` equals the caller's. Payloads must
+not hold her words: views store message objects with ``text`` / ``caption``
+set to ``None`` and call ``people.attach_texts`` after the cache read. As a
+bug guard, :func:`cached_view` refuses to store a payload in which any dict has
+a non-null ``text``, ``caption``, ``sentence``, ``segments`` (transcript
+segments) or ``note`` (capsule note body) (``outcome=uncacheable``).
+
+Every read logs ``memories_view_cache`` with ``view`` and ``outcome``
+(``hit`` / ``miss`` / ``uncacheable`` / ``unserialisable`` / ``transient``;
+``unserialisable`` is a payload that is not strict JSON, returned uncached
+instead of failing). A ``build`` that hit a transient failure (an archive
+file it could not read just now) returns :class:`Uncacheable`: its payload is
+served but never stored (``outcome=transient``, ``reason``), so the next open
+builds the view again instead of serving the degraded one until the data
+changes. The key is never logged: it may be
+derived from room folders. SQLite errors are logged
+(``memories_view_cache_failed``, ``op=read|write``) and never raise.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import contextlib
+import hashlib
+import json
+import sqlite3
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass
+from pathlib import Path
+from typing import Any
+
+import structlog
+
+from backend.services.memories import index as mi
+
+logger = structlog.get_logger(__name__)
+
+_SCHEMA = (
+    "CREATE TABLE IF NOT EXISTS memories_view_cache (service_dir TEXT, view TEXT, "
+    "key TEXT, data_hash TEXT, payload TEXT, "
+    "PRIMARY KEY(service_dir, view, key)) WITHOUT ROWID"
+)
+_TEXT_KEYS = ("text", "caption", "sentence", "segments", "note")
+
+
+@dataclass(frozen=True)
+class Uncacheable:
+    """A build result to serve but not store: it was degraded by a transient failure.
+
+    ``reason`` is a code (logged), never a path.
+    """
+
+    payload: dict
+    reason: str
+
+
+def view_hash(*parts: object) -> str:
+    """Short hash of ``parts`` (sha256 of their ``repr``, first 16 hex chars)."""
+    return hashlib.sha256(repr(parts).encode("utf-8")).hexdigest()[:16]
+
+
+def contains_text(payload: Any) -> bool:
+    """True when any dict in ``payload`` has a non-null text-bearing value."""
+    stack = [payload]
+    while stack:
+        item = stack.pop()
+        if isinstance(item, dict):
+            if any(item.get(k) is not None for k in _TEXT_KEYS):
+                return True
+            stack.extend(item.values())
+        elif isinstance(item, (list, tuple)):
+            stack.extend(item)
+    return False
+
+
+def _read(service_dir: str, view: str, key: str, data_hash: str) -> dict | None:
+    """The cached payload when its hash matches, else ``None``. Blocking."""
+    try:
+        with contextlib.closing(mi._connect()) as c:
+            c.execute(_SCHEMA)
+            row = c.execute(
+                "SELECT data_hash, payload FROM memories_view_cache "
+                "WHERE service_dir=? AND view=? AND key=?",
+                (service_dir, view, key),
+            ).fetchone()
+        if row is None or row[0] != data_hash:
+            return None
+        payload = json.loads(row[1])
+    except (sqlite3.Error, ValueError) as e:
+        logger.warning(
+            "memories_view_cache_failed",
+            view=view,
+            op="read",
+            error_type=type(e).__name__,
+        )
+        return None
+    return payload if isinstance(payload, dict) else None
+
+
+def _dumps(payload: dict) -> str:
+    """Strict JSON of ``payload``: ``TypeError`` / ``ValueError`` when it cannot be stored."""
+    return json.dumps(payload, ensure_ascii=False, allow_nan=False)
+
+
+def _write(service_dir: str, view: str, key: str, data_hash: str, blob: str) -> None:
+    """Store the serialised payload ``blob``. Blocking; errors are logged, never raised."""
+    try:
+        with contextlib.closing(mi._connect()) as c, c:
+            c.execute(_SCHEMA)
+            c.execute(
+                "INSERT OR REPLACE INTO memories_view_cache"
+                "(service_dir, view, key, data_hash, payload) VALUES (?,?,?,?,?)",
+                (service_dir, view, key, data_hash, blob),
+            )
+    except sqlite3.Error as e:
+        logger.warning(
+            "memories_view_cache_failed",
+            view=view,
+            op="write",
+            error_type=type(e).__name__,
+        )
+
+
+async def cached_view(
+    sdir: Path,
+    view: str,
+    key: str,
+    data_hash: str,
+    build: Callable[[], Awaitable[dict | Uncacheable]],
+) -> dict:
+    """The payload of ``view`` / ``key`` for ``sdir``: cached, or built and stored.
+
+    On a miss ``build()`` is awaited; an :class:`Uncacheable` result is returned
+    unstored (``outcome=transient``). Otherwise its payload is stored unless it contains
+    text (see the module docstring) or cannot be serialised as strict JSON
+    (``outcome=unserialisable``; the built payload is still returned). The DB
+    is read and written, and the text check walks the payload, in a worker.
+    """
+    service_dir = str(sdir)
+    hit = await asyncio.to_thread(_read, service_dir, view, key, data_hash)
+    if hit is not None:
+        logger.info("memories_view_cache", view=view, outcome="hit")
+        return hit
+    built = await build()
+    if isinstance(built, Uncacheable):
+        logger.info(
+            "memories_view_cache", view=view, outcome="transient", reason=built.reason
+        )
+        return built.payload
+    payload = built
+    if await asyncio.to_thread(contains_text, payload):
+        logger.warning("memories_view_cache", view=view, outcome="uncacheable")
+        return payload
+    try:
+        blob = await asyncio.to_thread(_dumps, payload)
+    except (TypeError, ValueError) as e:
+        logger.warning(
+            "memories_view_cache",
+            view=view,
+            outcome="unserialisable",
+            error_type=type(e).__name__,
+        )
+        return payload
+    logger.info("memories_view_cache", view=view, outcome="miss")
+    await asyncio.to_thread(_write, service_dir, view, key, data_hash, blob)
+    return payload
+
+
+__all__ = ["Uncacheable", "cached_view", "contains_text", "view_hash"]

@@ -6,11 +6,13 @@ import { VoicePlayer } from '../media/VoicePlayer';
 import { useMediaSource } from '../media/mediaElement';
 import { SafeImage } from '../common';
 import type { BaseModalProps } from '../../types/modal';
-import { Modal, Card, Avatar, IconButton } from '../../design/primitives';
-import { DialogStatus } from '../common/DialogStatus';
+import { Modal, Card, Avatar, IconButton, StatusBlock } from '../../design/primitives';
 import { useAppStore } from '../../store/appStore';
 import { useTranslation } from '../../i18n';
 import { clientLog } from '../../utils/clientLog';
+import { sortNewestFirst } from '../../utils/timeOrder';
+
+const NO_MESSAGES: Message[] = [];
 
 interface FavoritesModalProps extends BaseModalProps {
     messages: Message[];
@@ -155,12 +157,10 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
 
     const goldenFingerActive = useAppStore(s => s.goldenFingerActive);
 
-    // Filter only favorite messages, sorted by timestamp (newest first)
-    const favoriteMessages = useMemo(() => {
-        return messages
-            .filter(m => m.is_favorite)
-            .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
-    }, [messages]);
+    // Closed (it stays mounted in ConversationMenu): nothing to list, so no filter and no sort on
+    // every change of the room (UI health P-B3).
+    const source = isOpen ? messages : NO_MESSAGES;
+    const favoriteMessages = useMemo(() => sortNewestFirst(source.filter(m => m.is_favorite)), [source]);
 
     const getMediaUrl = (mediaFile: string) => {
         // media_file is relative to service dir (e.g., "messages/62 石森 璃花/.../picture/123.jpg")
@@ -218,7 +218,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                 </div>
                 <div className="pl-12">
                     {message.type === 'text' && (
-                        <p lang="ja" className="whitespace-pre-wrap text-body text-primary">{message.content}</p>
+                        <p lang="ja" className="whitespace-pre-wrap break-words text-body text-primary">{message.content}</p>
                     )}
                     {message.type === 'picture' && mediaUrl && (
                         <button
@@ -266,7 +266,7 @@ export const FavoritesModal: React.FC<FavoritesModalProps> = ({
                 footer={<p className="mr-auto text-small text-muted">{t('favorites.count', { count: favoriteMessages.length })}</p>}
             >
                 {favoriteMessages.length === 0 ? (
-                    <DialogStatus kind="empty" icon={<Star />} title={t('favorites.noFavorites')} hint={t('favorites.addHint')} />
+                    <StatusBlock kind="empty" surface="dialog_favorites" icon={<Star />} title={t('favorites.noFavorites')} hint={t('favorites.addHint')} />
                 ) : (
                     <div className="flex flex-col gap-3">{favoriteMessages.map(renderMessageCard)}</div>
                 )}

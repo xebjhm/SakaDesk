@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import json
 import types
 
 from structlog.testing import capture_logs
 
 import desktop
 from backend.services.notification_planner import ChatTarget
+from hostjs_page import shape, values
 
 TARGET = ChatTarget(
     service="hinatazaka46",
@@ -16,8 +16,9 @@ TARGET = ChatTarget(
     name="金村 美玖",
     is_group_chat=False,
 )
-PREFIX = "window.__sakadeskOpenChat ? (window.__sakadeskOpenChat("
-SUFFIX = "), true) : false"
+CHAT_SHAPE = (
+    "window.__sakadeskOpenChat ? (window.__sakadeskOpenChat(<value>), true) : false"
+)
 
 
 class _FakeWindow:
@@ -43,14 +44,17 @@ class _FakeWindow:
     def show(self) -> None:
         self._record("show")
 
-    def evaluate_js(self, script: str) -> object:
-        self._record("evaluate_js", script)
-        return self._js_result
+    def evaluate_js(
+        self, script: str, callback: object = None, raw: bool = False
+    ) -> object:
+        self._record("evaluate_js", script, raw)
+        return {"v": self._js_result}
 
 
 def _payload(script: str) -> dict:
-    assert script.startswith(PREFIX) and script.endswith(SUFFIX)
-    return json.loads(script[len(PREFIX) : -len(SUFFIX)])
+    assert shape(script) == CHAT_SHAPE
+    (payload,) = values(script)
+    return payload
 
 
 def test_handler_shows_focuses_then_evaluates_js_without_restore():
@@ -71,8 +75,7 @@ def test_handler_shows_focuses_then_evaluates_js_without_restore():
         "name": TARGET.name,
         "is_group_chat": False,
     }
-    # ensure_ascii=False: CJK is sent verbatim, not \u-escaped.
-    assert "金村" in script and "\\u" not in script
+    assert window.calls[1][1][1] is True  # raw mode: no eval in the page
 
     (event,) = [e for e in logs if e["event"] == "notify_open_chat"]
     assert event["service"] == "hinatazaka46"
@@ -330,7 +333,9 @@ def test_focus_is_a_noop_off_windows(monkeypatch):
     desktop._focus_existing_window()
 
 
-LOGIN_SCRIPT = 'window.__sakadeskOpenLogin ? window.__sakadeskOpenLogin("sakurazaka46") === true : false'
+LOGIN_SHAPE = (
+    "window.__sakadeskOpenLogin ? window.__sakadeskOpenLogin(<value>) === true : false"
+)
 
 
 def test_login_handler_shows_focuses_and_asks_the_frontend():
@@ -340,7 +345,12 @@ def test_login_handler_shows_focuses_and_asks_the_frontend():
     with capture_logs() as logs:
         handler("sakurazaka46")
     assert [c[0] for c in window.calls] == ["show", "evaluate_js"]
-    assert window.calls[1][1] == (LOGIN_SCRIPT,)
+    script, raw = window.calls[1][1]
+    assert (
+        raw is True
+        and shape(script) == LOGIN_SHAPE
+        and values(script) == ["sakurazaka46"]
+    )
     assert len(focused) == 1
     assert {
         "event": "notify_open_login",
@@ -378,4 +388,196 @@ def test_login_handler_never_raises_and_logs_only_the_error_type():
 def test_login_handler_quotes_a_hostile_service_id_safely():
     window = _FakeWindow()
     desktop.make_open_login_handler(window, lambda _h: None)('x");alert(1);("')
-    assert json.dumps('x");alert(1);("') in window.calls[1][1][0]
+    assert values(window.calls[1][1][0]) == ['x");alert(1);("']
+    assert '"' not in window.calls[1][1][0]
+
+
+OTD_ROUTE = {"page": "onThisDay", "monthDay": "11-10", "year": 2023}
+OTD_SHAPE = "window.__sakadeskOpenMemories ? window.__sakadeskOpenMemories(<value>) === true : null"
+
+
+def _mem(logs: list[dict]) -> list[dict]:
+    return [e for e in logs if e["event"].startswith("notify_open_memories")]
+
+
+def test_memories_handler_shows_focuses_and_asks_the_frontend():
+    window = _FakeWindow()
+    focused: list[object] = []
+    handler = desktop.make_open_memories_handler(window, focused.append)
+    with capture_logs() as logs:
+        handler("hinatazaka46", OTD_ROUTE)
+    assert [c[0] for c in window.calls] == ["show", "evaluate_js"]
+    script, raw = window.calls[1][1]
+    assert (
+        raw is True
+        and shape(script) == OTD_SHAPE
+        and values(script) == [{"service": "hinatazaka46", "route": OTD_ROUTE}]
+    )
+    assert len(focused) == 1
+    assert _mem(logs) == [
+        {
+            "event": "notify_open_memories",
+            "service": "hinatazaka46",
+            "target": "on_this_day",
+            "delivered": True,
+            "log_level": "info",
+        }
+    ]
+
+
+def test_memories_handler_escapes_a_hostile_member_path():
+    window = _FakeWindow()
+    path = '日向坂46/x");alert(1);("</script><script>'
+    route = {"page": "memoir", "memberPath": path, "tab": "binder"}
+    with capture_logs() as logs:
+        desktop.make_open_memories_handler(window, lambda _h: None)(
+            "hinatazaka46", route
+        )
+    script = window.calls[1][1][0]
+    assert values(script) == [{"service": "hinatazaka46", "route": route}]
+    assert '"' not in script and "</script>" not in script
+    assert _mem(logs)[0]["target"] == "memoir"
+    assert "日向坂" not in repr(logs) and "alert" not in repr(logs)
+
+
+def test_memories_handler_logs_not_ready_and_an_unknown_page():
+    handler = desktop.make_open_memories_handler(
+        _FakeWindow(js_result=None), lambda _h: None
+    )
+    with capture_logs() as logs:
+        handler("sakurazaka46", {"page": "secret 金村", "year": 2025})
+        handler("sakurazaka46", {"page": "recap", "year": 2025})
+    assert [(e["event"], e["target"], e["reason"]) for e in _mem(logs)] == [
+        ("notify_open_memories_failed", "unknown", "not_ready"),
+        ("notify_open_memories_failed", "recap", "not_ready"),
+    ]
+    assert "金村" not in repr(logs) and "2025" not in repr(logs)
+
+
+def test_memories_handler_logs_a_frontend_refusal_as_refused():
+    # The bridge is mounted but answered false (malformed, unknown group,
+    # onboarding): that is a refusal, not "not ready".
+    handler = desktop.make_open_memories_handler(
+        _FakeWindow(js_result=False), lambda _h: None
+    )
+    with capture_logs() as logs:
+        handler("sakurazaka46", OTD_ROUTE)
+    assert [(e["event"], e["target"], e["reason"]) for e in _mem(logs)] == [
+        ("notify_open_memories_failed", "on_this_day", "refused"),
+    ]
+
+
+def test_memories_handler_never_raises_and_logs_only_the_error_type():
+    handler = desktop.make_open_memories_handler(
+        _FakeWindow(fail_on="evaluate_js"), lambda _h: None
+    )
+    with capture_logs() as logs:
+        handler("sakurazaka46", OTD_ROUTE)
+    (failed,) = [e for e in logs if e["event"] == "notify_open_memories_failed"]
+    assert failed["error_type"] == "RuntimeError"
+    assert failed["target"] == "on_this_day"
+    assert "secret" not in repr(logs)
+
+
+def test_memories_handler_survives_an_unserialisable_route():
+    window = _FakeWindow()
+    with capture_logs() as logs:
+        desktop.make_open_memories_handler(window, lambda _h: None)(
+            "sakurazaka46", {"page": "recap", "year": {2025}}
+        )
+    assert [c[0] for c in window.calls] == ["show"]
+    (failed,) = [e for e in logs if e["event"] == "notify_open_memories_failed"]
+    assert failed["target"] == "recap"
+    assert failed["error_type"] == "TypeError"
+
+
+def test_memories_handler_tolerates_a_non_dict_route():
+    with capture_logs() as logs:
+        desktop.make_open_memories_handler(
+            _FakeWindow(js_result=False), lambda _h: None
+        )("sakurazaka46", None)  # type: ignore[arg-type]
+    (failed,) = _mem(logs)
+    assert failed["target"] == "unknown"
+    assert failed["reason"] == "refused"
+
+
+class _ThrowingPage(_FakeWindow):
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        self._name = name
+
+    def evaluate_js(self, script, callback=None, raw=False):
+        self._record("evaluate_js", script, raw)
+        return {"e": self._name}
+
+
+def _handlers():
+    return [
+        (desktop.make_open_chat_handler, (TARGET,), "notify_open_chat_failed"),
+        (
+            desktop.make_open_login_handler,
+            ("hinatazaka46",),
+            "notify_open_login_failed",
+        ),
+        (
+            desktop.make_open_memories_handler,
+            ("hinatazaka46", OTD_ROUTE),
+            "notify_open_memories_failed",
+        ),
+    ]
+
+
+def test_page_error_name_is_logged_as_js_error():
+    for build, args, event in _handlers():
+        with capture_logs() as logs:
+            build(_ThrowingPage("TypeError"), lambda _h: None)(*args)
+        (failed,) = [e for e in logs if e["event"] == event]
+        assert failed["error_type"] == "HostScriptError"
+        assert failed["js_error"] == "TypeError"
+
+
+def test_hostile_page_error_name_is_logged_as_other():
+    for build, args, event in _handlers():
+        with capture_logs() as logs:
+            build(_ThrowingPage("金村 secret\n"), lambda _h: None)(*args)
+        (failed,) = [e for e in logs if e["event"] == event]
+        assert failed["js_error"] == "other"
+        assert "金村" not in repr(failed)
+
+
+def test_chat_click_while_quitting_leaves_the_window_alone():
+    window = _FakeWindow()
+    handler = desktop.make_open_chat_handler(
+        window, lambda _hwnd: None, is_quitting=lambda: True
+    )
+    with capture_logs() as logs:
+        handler(TARGET, 5)
+    assert window.calls == []
+    (failed,) = [e for e in logs if e["event"] == "notify_open_chat_failed"]
+    assert failed["reason"] == "quitting"
+
+
+def test_login_click_while_quitting_leaves_the_window_alone():
+    window = _FakeWindow()
+    handler = desktop.make_open_login_handler(
+        window, lambda _hwnd: None, is_quitting=lambda: True
+    )
+    with capture_logs() as logs:
+        handler("hinatazaka46")
+    assert window.calls == []
+    assert [e["reason"] for e in logs if e["event"] == "notify_open_login_failed"] == [
+        "quitting"
+    ]
+
+
+def test_memories_click_while_quitting_leaves_the_window_alone():
+    window = _FakeWindow()
+    handler = desktop.make_open_memories_handler(
+        window, lambda _hwnd: None, is_quitting=lambda: True
+    )
+    with capture_logs() as logs:
+        handler("hinatazaka46", {"page": "recap"})
+    assert window.calls == []
+    assert [
+        e["reason"] for e in logs if e["event"] == "notify_open_memories_failed"
+    ] == ["quitting"]

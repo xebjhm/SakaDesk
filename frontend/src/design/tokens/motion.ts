@@ -4,12 +4,19 @@
  * hover nudge, `transition-caption`), `landing`
  * (1400 ms, the landed-row highlight only) and `toast` (350 ms, the
  * celebration toast entrance only).
+ *
+ * `loading` is the wait timing (milliseconds, not an animation): an indicator
+ * appears only after `reveal`, slow copy joins at `slow`, an explanation plus
+ * Cancel or progress at `verySlow`, and a shown indicator stays at least
+ * `minVisible` (docs/design/DESIGN_SYSTEM.md, "Loading and waiting").
  */
 export const motion = {
     /** Milliseconds. framer-motion wants seconds: `motion.duration.base / 1000`. */
     duration: { fast: 150, base: 200, glide: 400, landing: 1400, toast: 350 },
     /** Cubic-bezier control points; pass directly to framer-motion `ease`. */
     easing: { standard: [0.2, 0, 0, 1] },
+    /** Milliseconds. Waits: reveal an indicator, add slow copy, explain; keep a shown indicator. */
+    loading: { reveal: 200, slow: 3000, verySlow: 10000, minVisible: 400 },
 } as const;
 
 export type DurationStep = keyof typeof motion.duration;
