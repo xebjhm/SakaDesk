@@ -333,7 +333,8 @@ def test_uv_and_inno_setup_are_pinned():
     assert 'version: "latest"' not in text
     assert text.count('version: "0.9.21"') == text.count("astral-sh/setup-uv@")
     assert "choco install innosetup --version=6.7.1" in text
-    assert 'StartsWith("6.7.1")' in text
+    assert "DisplayVersion" in text
+    assert '$found -ne "6.7.1"' in text
 
 
 def test_checkouts_do_not_keep_the_token():

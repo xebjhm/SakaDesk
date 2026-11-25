@@ -232,12 +232,19 @@ jobs:
     - name: Install Inno Setup
       run: |
         choco install innosetup --version=6.7.1 --allow-downgrade --yes --no-progress
-        $candidates = @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe")
-        $iscc = $candidates | Where-Object { Test-Path $_ } | Select-Object -First 1
-        if (-not $iscc) { Write-Error "ISCC.exe not found after installing Inno Setup"; exit 1 }
-        $found = (Get-Item $iscc).VersionInfo.ProductVersion
-        if (-not $found.StartsWith("6.7.1")) { Write-Error "Inno Setup $found, expected 6.7.1"; exit 1 }
-        Write-Host "Inno Setup $found"
+        # ISCC.exe has no usable version resource (it reads 0.0.0.0), so check
+        # the version Inno Setup registers among the installed programs.
+        $uninstall = @(
+          'HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*',
+          'HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        )
+        $entries = @(Get-ItemProperty $uninstall -ErrorAction SilentlyContinue | Where-Object { $_.DisplayName -like 'Inno Setup*' })
+        if ($entries.Count -ne 1) { Write-Error "expected one Inno Setup install, found $($entries.Count)"; exit 1 }
+        $found = $entries[0].DisplayVersion
+        if ($found -ne "6.7.1") { Write-Error "Inno Setup $found, expected 6.7.1"; exit 1 }
+        $iscc = Join-Path $entries[0].InstallLocation "ISCC.exe"
+        if (-not (Test-Path -LiteralPath $iscc)) { Write-Error "ISCC.exe not found in the Inno Setup folder"; exit 1 }
+        Write-Host "Inno Setup $found at $iscc"
 
     - name: Extract Version
       id: version
